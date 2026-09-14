@@ -23,15 +23,15 @@ the mechanism that was actually measured, not a frozen HyRemote API.
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Transport | Status | Notes |
 |---|---|---|---|---|---|---|---|
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget/raster | `QWidget::render()` into a caller buffer, `QWidget::grab()` | VNC candidate | Experimental | 2.5-3.8 ms at 960x600; region damage available; popups/dialogs are separate top-level windows |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget/raster | `QWidget::render()` into a caller buffer, `QWidget::grab()` | VNC candidate | Experimental | 2.7-3.7 ms at 960x600 including the buffer clear; child paint regions can be mapped into the shared target (deterministic controls pass); popups/dialogs are separate top-level windows |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget with custom QPainter | same | VNC candidate | Experimental | Covered by the `widgets` case |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QOpenGLWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab composes GL content at 4.6-4.8 ms; `grabFramebuffer()` returns only the GL widget; first call 55-61 ms |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab stable at 4.3-6.0 ms; `grabFramebuffer()` varied 3.05-13.30 ms across identical runs |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Qt Quick 2D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 18.8 ms at 960x600; blocks the GUI thread; no damage regions |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Quick3D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 19.3 ms; content fidelity verified |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | custom Quick FBO/OpenGL | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | Freshness verified with an encoded render counter (24 -> 743 over 743 rendered frames) |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QOpenGLWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab composes GL content at 5.2-9.9 ms; `grabFramebuffer()` returns only the GL widget at 3.8-4.9 ms; first call 70-141 ms |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab 4.9-8.2 ms across sessions; `grabFramebuffer()` 4.1-12.7 ms across sessions; parent path preferred for the whole-window contract and damage mapping |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Qt Quick 2D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 17.1 ms at 960x600; blocks the GUI thread; no damage region (no QWidget root, only `QEvent::UpdateRequest`) |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Quick3D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 16.4 ms; content fidelity verified |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | custom Quick FBO/OpenGL | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | Freshness verified with an encoded render counter (24 -> 723 over 723 rendered frames) |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | custom Quick FBO/OpenGL | none | VNC candidate | Unsupported | `QQuickFramebufferObject` never rendered on a non-OpenGL RHI backend |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Qt Quick 2D | `QQuickWindow::grabWindow()` once per frame | VNC candidate | Unsupported | The application's own event loop fell to ~1 fps while the call itself reported 16 ms |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Qt Quick 2D | `QQuickWindow::grabWindow()` once per frame | VNC candidate | Unsupported | The application's own event loop fell to ~1 fps while the call itself reported 15.8 ms |
 
 ## Rows still awaiting evidence
 
