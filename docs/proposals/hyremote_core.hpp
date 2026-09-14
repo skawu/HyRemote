@@ -56,6 +56,14 @@ struct PlaneView {
     std::size_t offset = 0;
 };
 
+// Base class for platform/encoder-specific storage extensions. Core knows only this lifetime
+// anchor plus an extension id. #17 may define (for example) a DMA-BUF descriptor extension in
+// its own module without adding DRM/GBM types to hyremote-core.
+class StorageExtension {
+public:
+    virtual ~StorageExtension() = default;
+};
+
 // Lifetime anchor for frame pixels/resources.
 //
 // A published storage object is immutable from the consumer's point of view. If its backing
@@ -72,9 +80,13 @@ public:
     // only while this FrameStorage object is retained.
     virtual std::optional<PlaneView> mapRead(std::size_t plane) const = 0;
 
-    // Generic extension boundary for optimized/platform storage. Core itself never interprets
-    // the domain. Exact DMA-BUF/GBM/native-handle descriptors remain deferred to #17.
+    // Generic extension boundary for optimized/platform storage. Core never interprets the
+    // domain or extension payload. A consumer that understands the named domain may request a
+    // lifetime-owned extension object and cast it to the interface defined by that optional
+    // module. Exact DMA-BUF/GBM/native-handle descriptors remain deferred to #17.
     virtual std::string_view externalDomain() const noexcept = 0;
+    virtual std::shared_ptr<const StorageExtension>
+    extension(std::string_view extensionId) const = 0;
 };
 
 struct FrameGeometry {
