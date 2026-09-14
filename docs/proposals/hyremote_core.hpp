@@ -116,40 +116,36 @@ struct FrameGeometry {
 };
 
 enum class DamageKind {
-    Unknown,   // no trustworthy region information; consumer falls back to full frame
+    Unknown,
     FullFrame,
     Regions,
 };
 
 struct Damage {
     DamageKind kind = DamageKind::Unknown;
-    std::vector<Rect> regions; // root/frame coordinates when kind == Regions
+    std::vector<Rect> regions;
 };
 
 enum class PtsSource {
-    Completion,   // safe public-API fallback
-    Render,       // backend observed render time
-    Presentation, // backend observed presentation/scanout time
+    Completion,
+    Render,
+    Presentation,
 };
 
 struct FrameTiming {
     TimePoint pts;
     PtsSource ptsSource = PtsSource::Completion;
-
-    // Diagnostics only. requestTime is never promoted to content PTS automatically.
-    std::optional<TimePoint> requestTime;
+    std::optional<TimePoint> requestTime;    // diagnostics only
     std::optional<TimePoint> completionTime;
 };
 
 struct RemoteFrame {
-    FrameId id = 0; // assigned in completion/Core acceptance order
+    FrameId id = 0;
     FrameGeometry geometry;
     std::shared_ptr<const FrameStorage> storage;
     FrameTiming timing;
     Damage damage;
-
-    // Optional capture request identity for diagnostics only; not visual age/order semantics.
-    std::optional<CaptureRequestId> requestId;
+    std::optional<CaptureRequestId> requestId; // diagnostics only
 };
 
 struct CaptureRequest {
@@ -167,9 +163,6 @@ struct CaptureCapabilities {
     std::vector<std::string> externalDomains;
 };
 
-// Consumer-side format/storage contract used for fail-fast compatibility checks. It is not
-// protocol-specific: a transport may satisfy these requirements directly or by composing an
-// optional encoder/converter module downstream from Core.
 struct FrameConsumerCapabilities {
     bool acceptsCpu = true;
     std::vector<PixelFormat> cpuFormats;
@@ -192,12 +185,9 @@ struct CaptureEvent {
 using FrameReadyHandler = std::function<void(RemoteFrame)>;
 using CaptureEventHandler = std::function<void(const CaptureEvent &)>;
 
-// Adapter-owned capture source. requestFrame() initiates one asynchronous logical request and
-// must marshal to any required Qt GUI/render thread itself. It must never call the transport.
 class CaptureSource {
 public:
     virtual ~CaptureSource() = default;
-
     virtual CaptureCapabilities capabilities() const = 0;
     virtual bool start(FrameReadyHandler onFrame, CaptureEventHandler onEvent) = 0;
     virtual void stop() noexcept = 0;
@@ -205,30 +195,29 @@ public:
 };
 
 enum class BackpressurePolicy {
-    DropOldest,       // default near-live/latest-frame-wins policy
-    ProducerThrottle, // explicit alternative when every frame matters
+    DropOldest,
+    ProducerThrottle,
 };
 
 struct FrameQueueConfig {
-    // Host-evidence starting default; #18 may tune platform defaults without changing semantics.
-    std::size_t capacity = 2; // waiting frames; dispatcher-owned frame is in addition
+    std::size_t capacity = 2; // host-evidence starting default; dispatcher-owned frame extra
     BackpressurePolicy policy = BackpressurePolicy::DropOldest;
 };
 
 struct CaptureSchedule {
-    // Host-evidence starting default; #18 may tune platform defaults without changing semantics.
-    std::size_t maxInFlight = 2;
+    std::size_t maxInFlight = 2; // host-evidence starting default; #18 may tune
     std::optional<double> targetFramesPerSecond;
 };
 
 // Exact normalized keyboard/pointer payload schema is intentionally not frozen in ARCH-01.
-// The boundary is frozen: protocol-specific events must be translated before entering the
-// target adapter, and target-thread marshaling is the InputSink's responsibility.
 struct InputEvent;
 
 class InputSink {
 public:
     virtual ~InputSink() = default;
+
+    // Must enqueue/marshal to the target-required thread; it must not synchronously wait on
+    // GUI execution from the transport runtime thread.
     virtual void post(const InputEvent &event) = 0;
 };
 
@@ -251,15 +240,13 @@ using TransportEventHandler = std::function<void(const TransportEvent &)>;
 class Transport {
 public:
     virtual ~Transport() = default;
-
     virtual FrameConsumerCapabilities frameCapabilities() const = 0;
-
-    // Transport owns its event loop/runtime. start() must not expose that runtime to Core.
     virtual bool start(InputHandler onInput, TransportEventHandler onEvent) = 0;
     virtual void stop() noexcept = 0;
 
-    // Called only by the Core dispatch path, never by the Qt capture callback directly.
-    // Implementations should post/enqueue promptly and own client-specific queueing themselves.
+    // Core dispatch calls this, never the Qt capture callback. The implementation MUST be a
+    // bounded/nonblocking post/enqueue operation: no network I/O, encode wait, client fan-out
+    // or unbounded queue wait is permitted on this call.
     virtual void enqueueFrame(RemoteFrame frame) = 0;
 };
 
