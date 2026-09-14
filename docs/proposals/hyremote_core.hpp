@@ -44,6 +44,25 @@ enum class PixelFormat {
     // Optimized/YUV formats may be added without changing Session semantics.
 };
 
+enum class AlphaMode {
+    Opaque,
+    Straight,
+    Premultiplied,
+};
+
+enum class Rotation {
+    Rotate0,
+    Rotate90,
+    Rotate180,
+    Rotate270,
+};
+
+struct FrameTransform {
+    Rotation rotation = Rotation::Rotate0;
+    bool mirrorX = false;
+    bool mirrorY = false;
+};
+
 enum class StorageKind {
     Cpu,
     External,
@@ -53,7 +72,6 @@ struct PlaneView {
     const std::byte *data = nullptr;
     std::size_t bytes = 0;
     std::size_t stride = 0;
-    std::size_t offset = 0;
 };
 
 // Base class for platform/encoder-specific storage extensions. Core knows only this lifetime
@@ -92,6 +110,8 @@ public:
 struct FrameGeometry {
     Size size;
     PixelFormat pixelFormat = PixelFormat::Unknown;
+    AlphaMode alphaMode = AlphaMode::Opaque;
+    FrameTransform transform;
     std::uint32_t planeCount = 0;
 };
 
@@ -147,6 +167,15 @@ struct CaptureCapabilities {
     std::vector<std::string> externalDomains;
 };
 
+// Consumer-side format/storage contract used for fail-fast compatibility checks. It is not
+// protocol-specific: a transport may satisfy these requirements directly or by composing an
+// optional encoder/converter module downstream from Core.
+struct FrameConsumerCapabilities {
+    bool acceptsCpu = true;
+    std::vector<PixelFormat> cpuFormats;
+    std::vector<std::string> externalDomains;
+};
+
 enum class CaptureEventCode {
     TemporarilyUnavailable,
     RequestRejected,
@@ -181,11 +210,13 @@ enum class BackpressurePolicy {
 };
 
 struct FrameQueueConfig {
+    // Host-evidence starting default; #18 may tune platform defaults without changing semantics.
     std::size_t capacity = 2; // waiting frames; dispatcher-owned frame is in addition
     BackpressurePolicy policy = BackpressurePolicy::DropOldest;
 };
 
 struct CaptureSchedule {
+    // Host-evidence starting default; #18 may tune platform defaults without changing semantics.
     std::size_t maxInFlight = 2;
     std::optional<double> targetFramesPerSecond;
 };
@@ -221,6 +252,8 @@ class Transport {
 public:
     virtual ~Transport() = default;
 
+    virtual FrameConsumerCapabilities frameCapabilities() const = 0;
+
     // Transport owns its event loop/runtime. start() must not expose that runtime to Core.
     virtual bool start(InputHandler onInput, TransportEventHandler onEvent) = 0;
     virtual void stop() noexcept = 0;
@@ -240,6 +273,7 @@ enum class SessionState {
 
 enum class SessionErrorCode {
     InvalidConfiguration,
+    IncompatibleFrameCapabilities,
     CaptureStartFailed,
     TransportStartFailed,
     TargetLost,
@@ -275,5 +309,11 @@ public:
     SessionState state() const noexcept;
     std::optional<SessionError> lastError() const;
 };
+
+// Encoder extension point (architectural, not a frozen ABI in #5): an optional encoder module
+// composes downstream of RemoteFrame and before/inside a transport. It advertises input
+// FrameConsumerCapabilities and may understand a StorageExtension domain such as the future
+// #17 DMA-BUF extension. Session does not require an encoder and codec-specific packet types do
+// not belong in hyremote-core.
 
 } // namespace hyremote
