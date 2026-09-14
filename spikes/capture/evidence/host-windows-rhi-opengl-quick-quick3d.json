@@ -1,0 +1,232 @@
+{
+    "arguments": [
+        "--sample",
+        "quick,quick3d",
+        "--frames",
+        "150",
+        "--warmup",
+        "20",
+        "--interval-ms",
+        "16",
+        "--submit-every",
+        "10",
+        "--disable-path",
+        "grabToImage",
+        "--rhi",
+        "opengl",
+        "--json",
+        "spikes/capture/evidence/host-windows-rhi-opengl-quick-quick3d.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "cpuArchitecture": "x86_64",
+        "defaultSurfaceFormat": "2.0 profile=0 swapInterval=1 samples=-1",
+        "glInfo": {
+            "contextFormat": "4.6 compatibility",
+            "renderer": "Intel(R) UHD Graphics 770",
+            "shadingLanguage": "4.60 - Build 32.0.101.7088",
+            "vendor": "Intel",
+            "version": "4.6.0 - Build 32.0.101.7088"
+        },
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "opengl",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080+0+0",
+                "logicalDpi": 96,
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/3",
+    "results": [
+        {
+            "damage": {
+                "avgAppDamageRatio": 0,
+                "avgCaptureDamageRatio": 0,
+                "observedObjects": 1,
+                "paintEvents": 0,
+                "updateRequests": 354
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 15,
+                "deliveredByPath": {
+                    "QQuickWindow::grabWindow()": 15
+                },
+                "droppedOverflow": 0,
+                "enabled": true,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 15
+            },
+            "memory": {
+                "rssEndBytes": 177192960,
+                "rssPeakBytes": 181805056,
+                "rssSlopeBytesPer100Frames": 26614.62429441309,
+                "rssStartBytes": 176640000
+            },
+            "observations": [
+                "The scene mixes an animated region with static chrome, so a capture can be compared against the expected content.",
+                "On EGLFS the same scene must render directly to the display device; the capture path is expected to be identical because grabWindow() renders into its own target.",
+                "QQuickWindow::beforeRendering fired 591 times (afterRendering 591); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
+                "grabWindow() is documented as GUI-thread only. Calling it from beforeRendering/afterRendering (render thread) is not a supported public path and was deliberately not executed here; a render-thread capture needs QQuickWindow::setGraphicsDevice / QSGRendererInterface-level work.",
+                "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
+                "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
+                "Damage probe: 354 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+            ],
+            "paths": [
+                {
+                    "attempts": 150,
+                    "avgNs": 18785353.333333332,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 19106000,
+                    "frameFormat": "RGBA8888_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 24828900,
+                    "notes": [
+                        "documented as callable from the GUI thread only; it renders the scene graph into an offscreen surface and reads it back, so the cost is roughly one full frame render plus a GPU->CPU readback"
+                    ],
+                    "p50Ns": 17831200,
+                    "p95Ns": 23348500,
+                    "path": "QQuickWindow::grabWindow()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 150
+                }
+            ],
+            "run": 0,
+            "sample": "quick",
+            "sampleInfo": {
+                "afterRenderingCount": 591,
+                "beforeRenderingCount": 591,
+                "devicePixelRatio": 1,
+                "graphicsApi": "OpenGL",
+                "qmlType": "QuickScene",
+                "requestedSize": "960x600",
+                "rootItemIsItem": true,
+                "windowSize": "960x600"
+            },
+            "targetFamily": "QQuickWindow 2D",
+            "timing": {
+                "achievedFps": 25.433438351956603,
+                "avgCaptureLoopMs": 18.799011333333336,
+                "avgPumpMs": 20.219598666666666,
+                "cpuPercentOfOneCore": 21.459463609463384,
+                "cpuSeconds": 1.265625,
+                "framesCaptured": 150,
+                "framesRequested": 150,
+                "guiLatencyAvgMs": 5.951506451612892,
+                "guiLatencyMaxMs": 35.62739999999985,
+                "guiLatencyP95Ms": 23.703899999999976,
+                "intervalMs": 16,
+                "wallSeconds": 5.8977476
+            },
+            "title": "QQuickWindow / Qt Quick 2D scene",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0,
+                "avgCaptureDamageRatio": 0,
+                "observedObjects": 1,
+                "paintEvents": 0,
+                "updateRequests": 368
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 15,
+                "deliveredByPath": {
+                    "QQuickWindow::grabWindow()": 15
+                },
+                "droppedOverflow": 0,
+                "enabled": true,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 15
+            },
+            "memory": {
+                "rssEndBytes": 216293376,
+                "rssPeakBytes": 223313920,
+                "rssSlopeBytesPer100Frames": -2115419.1514289523,
+                "rssStartBytes": 218624000
+            },
+            "observations": [
+                "Quick3D renders through its own renderer inside the scene graph; the baseline capture must not assume a plain 2D scene graph.",
+                "This case needs the QtQuick3D module; it is reported as unverified when the module is not present in the Qt installation.",
+                "QQuickWindow::beforeRendering fired 606 times (afterRendering 606); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
+                "grabWindow() is documented as GUI-thread only. Calling it from beforeRendering/afterRendering (render thread) is not a supported public path and was deliberately not executed here; a render-thread capture needs QQuickWindow::setGraphicsDevice / QSGRendererInterface-level work.",
+                "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
+                "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
+                "Damage probe: 368 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+            ],
+            "paths": [
+                {
+                    "attempts": 150,
+                    "avgNs": 19297055.333333332,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 18085600,
+                    "frameFormat": "RGBA8888_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 25444400,
+                    "notes": [
+                        "documented as callable from the GUI thread only; it renders the scene graph into an offscreen surface and reads it back, so the cost is roughly one full frame render plus a GPU->CPU readback"
+                    ],
+                    "p50Ns": 19099500,
+                    "p95Ns": 23391800,
+                    "path": "QQuickWindow::grabWindow()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 150
+                }
+            ],
+            "run": 0,
+            "sample": "quick3d",
+            "sampleInfo": {
+                "afterRenderingCount": 606,
+                "beforeRenderingCount": 606,
+                "devicePixelRatio": 1,
+                "graphicsApi": "OpenGL",
+                "qmlType": "Quick3DScene",
+                "requestedSize": "960x600",
+                "rootItemIsItem": true,
+                "windowSize": "960x600"
+            },
+            "targetFamily": "Quick3D",
+            "timing": {
+                "achievedFps": 24.45217629503983,
+                "avgCaptureLoopMs": 19.311362,
+                "avgPumpMs": 21.296092666666667,
+                "cpuPercentOfOneCore": 22.66920510685984,
+                "cpuSeconds": 1.390625,
+                "framesCaptured": 150,
+                "framesRequested": 150,
+                "guiLatencyAvgMs": 6.702263291139238,
+                "guiLatencyMaxMs": 33.053100000000086,
+                "guiLatencyP95Ms": 25.1846000000005,
+                "intervalMs": 16,
+                "wallSeconds": 6.1344233
+            },
+            "title": "Quick3D scene (View3D, lit materials, MSAA)",
+            "warnings": [
+            ]
+        }
+    ],
+    "schema": "hyremote-capture-spike/1",
+    "skippedCases": [
+    ]
+}

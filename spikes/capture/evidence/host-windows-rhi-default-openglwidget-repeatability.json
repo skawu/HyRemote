@@ -1,0 +1,399 @@
+{
+    "arguments": [
+        "--sample",
+        "openglwidget",
+        "--runs",
+        "3",
+        "--frames",
+        "60",
+        "--warmup",
+        "15",
+        "--interval-ms",
+        "16",
+        "--no-sink",
+        "--json",
+        "spikes/capture/evidence/host-windows-rhi-default-openglwidget-repeatability.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "cpuArchitecture": "x86_64",
+        "defaultSurfaceFormat": "2.0 profile=0 swapInterval=1 samples=-1",
+        "glInfo": {
+            "contextFormat": "4.6 compatibility",
+            "renderer": "Intel(R) UHD Graphics 770",
+            "shadingLanguage": "4.60 - Build 32.0.101.7088",
+            "vendor": "Intel",
+            "version": "4.6.0 - Build 32.0.101.7088"
+        },
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080+0+0",
+                "logicalDpi": 96,
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/3",
+    "results": [
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.69265,
+                "avgCaptureDamageRatio": 0.7843375,
+                "observedObjects": 6,
+                "paintEvents": 480,
+                "updateRequests": 60
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 188309504,
+                "rssPeakBytes": 189968384,
+                "rssSlopeBytesPer100Frames": 3785573.5037510423,
+                "rssStartBytes": 186044416
+            },
+            "observations": [
+                "grabFramebuffer() requires the widget's OpenGL context and must be called on the GUI thread; Qt performs makeCurrent()/paint/readback internally, so a blocking glReadPixels is unavoidable on this path.",
+                "grabFramebuffer() returns only the GL widget. In a hierarchy that also contains raster widgets, the caller must compose the rest itself, or use QWidget::grab() on the parent.",
+                "The non-blocking replacement for grabFramebuffer() is not a public API: asynchronous PBO/FBO readback requires custom GL code or Qt private scene graph integration, which belongs to the later GL/PBO follow-up instead of the v0.1 baseline.",
+                "Damage probe: application repaints covered 69.3 % of the frame area on average, while the capture calls themselves added 78.4 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3491168.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 61155900,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 5267300,
+                    "notes": [
+                        "public GL-target capture: Qt makes the widget's context current, draws the widget and reads the framebuffer back. Includes a full glReadPixels of the widget only, not of the surrounding widget hierarchy"
+                    ],
+                    "p50Ns": 3270400,
+                    "p95Ns": 4751900,
+                    "path": "QOpenGLWidget::grabFramebuffer()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 3965820,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 6986500,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 6912000,
+                    "notes": [
+                        "raster widget capture of a GL-backed widget; whether the GL content is included depends on QOpenGLWidget composing its FBO into the widget backing store"
+                    ],
+                    "p50Ns": 3734100,
+                    "p95Ns": 5049400,
+                    "path": "QWidget::grab() on the QOpenGLWidget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 4829010,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 4296600,
+                    "frameFormat": "RGB32",
+                    "frameSize": "1000x640 dpr=1",
+                    "maxNs": 8504900,
+                    "notes": [
+                        "the practical single-call path for a mixed raster+GL widget tree: captures the whole parent, so no per-widget composition is required"
+                    ],
+                    "p50Ns": 4364300,
+                    "p95Ns": 6803400,
+                    "path": "QWidget::grab() on the parent widget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                }
+            ],
+            "run": 0,
+            "sample": "openglwidget",
+            "sampleInfo": {
+                "glWidgetDevicePixelRatio": 1,
+                "glWidgetSize": "729x568",
+                "parentSize": "1000x640"
+            },
+            "targetFamily": "QOpenGLWidget",
+            "timing": {
+                "achievedFps": 34.18368867182753,
+                "avgCaptureLoopMs": 12.314628333333333,
+                "avgPumpMs": 16.605896666666666,
+                "cpuPercentOfOneCore": 60.53361535636125,
+                "cpuSeconds": 1.0625,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 2.4531109090909076,
+                "guiLatencyMaxMs": 14.500300000000038,
+                "guiLatencyP95Ms": 10.31740000000002,
+                "intervalMs": 16,
+                "wallSeconds": 1.7552231
+            },
+            "title": "QOpenGLWidget inside a QWidget hierarchy",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.69265,
+                "avgCaptureDamageRatio": 0.7843375,
+                "observedObjects": 6,
+                "paintEvents": 480,
+                "updateRequests": 60
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 188854272,
+                "rssPeakBytes": 190513152,
+                "rssSlopeBytesPer100Frames": 0,
+                "rssStartBytes": 188854272
+            },
+            "observations": [
+                "grabFramebuffer() requires the widget's OpenGL context and must be called on the GUI thread; Qt performs makeCurrent()/paint/readback internally, so a blocking glReadPixels is unavoidable on this path.",
+                "grabFramebuffer() returns only the GL widget. In a hierarchy that also contains raster widgets, the caller must compose the rest itself, or use QWidget::grab() on the parent.",
+                "The non-blocking replacement for grabFramebuffer() is not a public API: asynchronous PBO/FBO readback requires custom GL code or Qt private scene graph integration, which belongs to the later GL/PBO follow-up instead of the v0.1 baseline.",
+                "Damage probe: application repaints covered 69.3 % of the frame area on average, while the capture calls themselves added 78.4 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3607861.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 56898700,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 5986400,
+                    "notes": [
+                        "public GL-target capture: Qt makes the widget's context current, draws the widget and reads the framebuffer back. Includes a full glReadPixels of the widget only, not of the surrounding widget hierarchy"
+                    ],
+                    "p50Ns": 3325900,
+                    "p95Ns": 5184900,
+                    "path": "QOpenGLWidget::grabFramebuffer()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 3899201.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 4815100,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 6878500,
+                    "notes": [
+                        "raster widget capture of a GL-backed widget; whether the GL content is included depends on QOpenGLWidget composing its FBO into the widget backing store"
+                    ],
+                    "p50Ns": 3643900,
+                    "p95Ns": 5445400,
+                    "path": "QWidget::grab() on the QOpenGLWidget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 4844648.333333333,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 6319900,
+                    "frameFormat": "RGB32",
+                    "frameSize": "1000x640 dpr=1",
+                    "maxNs": 9319600,
+                    "notes": [
+                        "the practical single-call path for a mixed raster+GL widget tree: captures the whole parent, so no per-widget composition is required"
+                    ],
+                    "p50Ns": 4516500,
+                    "p95Ns": 6975100,
+                    "path": "QWidget::grab() on the parent widget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                }
+            ],
+            "run": 1,
+            "sample": "openglwidget",
+            "sampleInfo": {
+                "glWidgetDevicePixelRatio": 1,
+                "glWidgetSize": "729x568",
+                "parentSize": "1000x640"
+            },
+            "targetFamily": "QOpenGLWidget",
+            "timing": {
+                "achievedFps": 34.4937649070554,
+                "avgCaptureLoopMs": 12.380516666666667,
+                "avgPumpMs": 16.269013333333334,
+                "cpuPercentOfOneCore": 67.37063458409258,
+                "cpuSeconds": 1.171875,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 2.3036917431192676,
+                "guiLatencyMaxMs": 14.054399999999987,
+                "guiLatencyP95Ms": 9.6284,
+                "intervalMs": 16,
+                "wallSeconds": 1.7394448
+            },
+            "title": "QOpenGLWidget inside a QWidget hierarchy",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.69265,
+                "avgCaptureDamageRatio": 0.7843375,
+                "observedObjects": 6,
+                "paintEvents": 480,
+                "updateRequests": 60
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 189140992,
+                "rssPeakBytes": 190799872,
+                "rssSlopeBytesPer100Frames": 0,
+                "rssStartBytes": 189140992
+            },
+            "observations": [
+                "grabFramebuffer() requires the widget's OpenGL context and must be called on the GUI thread; Qt performs makeCurrent()/paint/readback internally, so a blocking glReadPixels is unavoidable on this path.",
+                "grabFramebuffer() returns only the GL widget. In a hierarchy that also contains raster widgets, the caller must compose the rest itself, or use QWidget::grab() on the parent.",
+                "The non-blocking replacement for grabFramebuffer() is not a public API: asynchronous PBO/FBO readback requires custom GL code or Qt private scene graph integration, which belongs to the later GL/PBO follow-up instead of the v0.1 baseline.",
+                "Damage probe: application repaints covered 69.3 % of the frame area on average, while the capture calls themselves added 78.4 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3405920,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 55572100,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 5673000,
+                    "notes": [
+                        "public GL-target capture: Qt makes the widget's context current, draws the widget and reads the framebuffer back. Includes a full glReadPixels of the widget only, not of the surrounding widget hierarchy"
+                    ],
+                    "p50Ns": 3188500,
+                    "p95Ns": 4560700,
+                    "path": "QOpenGLWidget::grabFramebuffer()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 4123556.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 3801300,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 6741500,
+                    "notes": [
+                        "raster widget capture of a GL-backed widget; whether the GL content is included depends on QOpenGLWidget composing its FBO into the widget backing store"
+                    ],
+                    "p50Ns": 3859400,
+                    "p95Ns": 5490400,
+                    "path": "QWidget::grab() on the QOpenGLWidget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 4626426.666666667,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 6059000,
+                    "frameFormat": "RGB32",
+                    "frameSize": "1000x640 dpr=1",
+                    "maxNs": 6777300,
+                    "notes": [
+                        "the practical single-call path for a mixed raster+GL widget tree: captures the whole parent, so no per-widget composition is required"
+                    ],
+                    "p50Ns": 4232300,
+                    "p95Ns": 6459100,
+                    "path": "QWidget::grab() on the parent widget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                }
+            ],
+            "run": 2,
+            "sample": "openglwidget",
+            "sampleInfo": {
+                "glWidgetDevicePixelRatio": 1,
+                "glWidgetSize": "729x568",
+                "parentSize": "1000x640"
+            },
+            "targetFamily": "QOpenGLWidget",
+            "timing": {
+                "achievedFps": 34.49788019150693,
+                "avgCaptureLoopMs": 12.186119999999999,
+                "avgPumpMs": 16.482435,
+                "cpuPercentOfOneCore": 51.2077909092681,
+                "cpuSeconds": 0.890625,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 2.5537651376146853,
+                "guiLatencyMaxMs": 13.642799999999966,
+                "guiLatencyP95Ms": 10.572799999999916,
+                "intervalMs": 16,
+                "wallSeconds": 1.7392373
+            },
+            "title": "QOpenGLWidget inside a QWidget hierarchy",
+            "warnings": [
+            ]
+        }
+    ],
+    "schema": "hyremote-capture-spike/1",
+    "skippedCases": [
+    ]
+}

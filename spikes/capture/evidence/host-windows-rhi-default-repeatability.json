@@ -1,0 +1,771 @@
+{
+    "arguments": [
+        "--sample",
+        "widgets,quickwidget",
+        "--runs",
+        "3",
+        "--frames",
+        "60",
+        "--warmup",
+        "15",
+        "--interval-ms",
+        "16",
+        "--no-sink",
+        "--json",
+        "spikes/capture/evidence/host-windows-rhi-default-repeatability.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "cpuArchitecture": "x86_64",
+        "defaultSurfaceFormat": "2.0 profile=0 swapInterval=1 samples=-1",
+        "glInfo": {
+            "contextFormat": "4.6 compatibility",
+            "renderer": "Intel(R) UHD Graphics 770",
+            "shadingLanguage": "4.60 - Build 32.0.101.7088",
+            "vendor": "Intel",
+            "version": "4.6.0 - Build 32.0.101.7088"
+        },
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080+0+0",
+                "logicalDpi": 96,
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/3",
+    "results": [
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.6976170138888889,
+                "avgCaptureDamageRatio": 0.7973385416666666,
+                "observedObjects": 10,
+                "paintEvents": 2710,
+                "updateRequests": 76
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 66842624,
+                "rssPeakBytes": 91271168,
+                "rssSlopeBytesPer100Frames": 50747.60766879689,
+                "rssStartBytes": 66818048
+            },
+            "observations": [
+                "QWidget::grab() and QWidget::render() must be called on the GUI thread. Both are implemented by repainting the widget through QWidget::render(), so the call is synchronous and blocks the GUI thread for its duration.",
+                "Neither call needs a current OpenGL context for raster widgets. A QWidget hierarchy that contains a QOpenGLWidget/D3D child is the case that needs a graphics context (see the openglwidget sample).",
+                "Popups, QMenu and non-modal QDialog are separate top-level windows and are NOT part of a top-level widget capture. The target adapter must decide whether to share only the main window or to compose extra windows.",
+                "Damage can be observed with public APIs by installing an application-level event filter and reading QPaintEvent::region(). Capture itself emits paint events, so capture-induced damage has to be separated from application damage.",
+                "Reused target buffer: 74 reallocations were observed in 75 capture attempts. QImage is copy-on-write, so publishing a shallow copy to a consumer forces the producer's next write to detach and allocate a new buffer. Handing out a QImage therefore does not give a free buffer recycling scheme, and it is also why a consumer that keeps a QImage copy never observes torn pixels.",
+                "Damage probe: application repaints covered 69.8 % of the frame area on average, while the capture calls themselves added 79.7 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3384348.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2387800,
+                    "frameFormat": "RGB32",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 7560900,
+                    "notes": [
+                        "grabs the widget through QWidget::render(); includes child widgets, excludes popups and dialogs that are separate top-level windows; triggers real paint events"
+                    ],
+                    "p50Ns": 2830100,
+                    "p95Ns": 5243700,
+                    "path": "QWidget::grab()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2511751.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 4353300,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 5407100,
+                    "notes": [
+                        "draws directly into a caller-owned QImage; the same buffer is reused every frame, so a consumer must not hold a reference across captures without a deep copy"
+                    ],
+                    "p50Ns": 2065900,
+                    "p95Ns": 4816700,
+                    "path": "QWidget::render() into reused QImage",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2704716.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2040300,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 7123100,
+                    "notes": [
+                        "same public API as the reused variant; measured time includes the per-frame buffer allocation and clear"
+                    ],
+                    "p50Ns": 2237200,
+                    "p95Ns": 5476000,
+                    "path": "QWidget::render() into fresh QImage",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 3071618.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2124700,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 7366900,
+                    "notes": [
+                        "paints into a caller-owned raw pixel buffer and only publishes a borrowed view of that memory; this is the shape a zero-copy (GBM/DMA-BUF) producer would take. The measured time therefore excludes the one deep copy the harness performs for reporting"
+                    ],
+                    "p50Ns": 2253500,
+                    "p95Ns": 6579100,
+                    "path": "QWidget::render() into a borrowed raw pixel buffer",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "successes": 60
+                }
+            ],
+            "run": 0,
+            "sample": "widgets",
+            "sampleInfo": {
+                "devicePixelRatio": 1,
+                "isWindow": true,
+                "reusedBufferAttempts": 75,
+                "reusedBufferReallocations": 74,
+                "visibleTopLevelWidgets": 3,
+                "widgetSize": "960x600"
+            },
+            "targetFamily": "QWidget/raster",
+            "timing": {
+                "achievedFps": 33.57234981269426,
+                "avgCaptureLoopMs": 12.783811666666667,
+                "avgPumpMs": 16.645085,
+                "cpuPercentOfOneCore": 48.085396867140226,
+                "cpuSeconds": 0.859375,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 2.572710909090913,
+                "guiLatencyMaxMs": 24.22530000000006,
+                "guiLatencyP95Ms": 10.854000000000042,
+                "intervalMs": 16,
+                "wallSeconds": 1.787185
+            },
+            "title": "QWidget / raster baseline (child widgets, QPainter, popup, dialog)",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.6976170138888889,
+                "avgCaptureDamageRatio": 0.7973385416666666,
+                "observedObjects": 10,
+                "paintEvents": 2705,
+                "updateRequests": 71
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 67080192,
+                "rssPeakBytes": 91271168,
+                "rssSlopeBytesPer100Frames": 29180.72797999444,
+                "rssStartBytes": 67059712
+            },
+            "observations": [
+                "QWidget::grab() and QWidget::render() must be called on the GUI thread. Both are implemented by repainting the widget through QWidget::render(), so the call is synchronous and blocks the GUI thread for its duration.",
+                "Neither call needs a current OpenGL context for raster widgets. A QWidget hierarchy that contains a QOpenGLWidget/D3D child is the case that needs a graphics context (see the openglwidget sample).",
+                "Popups, QMenu and non-modal QDialog are separate top-level windows and are NOT part of a top-level widget capture. The target adapter must decide whether to share only the main window or to compose extra windows.",
+                "Damage can be observed with public APIs by installing an application-level event filter and reading QPaintEvent::region(). Capture itself emits paint events, so capture-induced damage has to be separated from application damage.",
+                "Reused target buffer: 74 reallocations were observed in 75 capture attempts. QImage is copy-on-write, so publishing a shallow copy to a consumer forces the producer's next write to detach and allocate a new buffer. Handing out a QImage therefore does not give a free buffer recycling scheme, and it is also why a consumer that keeps a QImage copy never observes torn pixels.",
+                "Damage probe: application repaints covered 69.8 % of the frame area on average, while the capture calls themselves added 79.7 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3482360,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 7689600,
+                    "frameFormat": "RGB32",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 8068200,
+                    "notes": [
+                        "grabs the widget through QWidget::render(); includes child widgets, excludes popups and dialogs that are separate top-level windows; triggers real paint events"
+                    ],
+                    "p50Ns": 3133200,
+                    "p95Ns": 5360800,
+                    "path": "QWidget::grab()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2873023.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 5539900,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 8713700,
+                    "notes": [
+                        "draws directly into a caller-owned QImage; the same buffer is reused every frame, so a consumer must not hold a reference across captures without a deep copy"
+                    ],
+                    "p50Ns": 2397600,
+                    "p95Ns": 5684000,
+                    "path": "QWidget::render() into reused QImage",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2914183.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 8671000,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 7795500,
+                    "notes": [
+                        "same public API as the reused variant; measured time includes the per-frame buffer allocation and clear"
+                    ],
+                    "p50Ns": 2332800,
+                    "p95Ns": 5443100,
+                    "path": "QWidget::render() into fresh QImage",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2780820,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 5437000,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 7559800,
+                    "notes": [
+                        "paints into a caller-owned raw pixel buffer and only publishes a borrowed view of that memory; this is the shape a zero-copy (GBM/DMA-BUF) producer would take. The measured time therefore excludes the one deep copy the harness performs for reporting"
+                    ],
+                    "p50Ns": 2434700,
+                    "p95Ns": 4547000,
+                    "path": "QWidget::render() into a borrowed raw pixel buffer",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "successes": 60
+                }
+            ],
+            "run": 1,
+            "sample": "widgets",
+            "sampleInfo": {
+                "devicePixelRatio": 1,
+                "isWindow": true,
+                "reusedBufferAttempts": 75,
+                "reusedBufferReallocations": 74,
+                "visibleTopLevelWidgets": 3,
+                "widgetSize": "960x600"
+            },
+            "targetFamily": "QWidget/raster",
+            "timing": {
+                "achievedFps": 33.29580156590155,
+                "avgCaptureLoopMs": 13.20322,
+                "avgPumpMs": 16.456188333333333,
+                "cpuPercentOfOneCore": 52.02468994672117,
+                "cpuSeconds": 0.9375,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 2.3714801801801717,
+                "guiLatencyMaxMs": 18.2489,
+                "guiLatencyP95Ms": 11.275300000000016,
+                "intervalMs": 16,
+                "wallSeconds": 1.802029
+            },
+            "title": "QWidget / raster baseline (child widgets, QPainter, popup, dialog)",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.6973188657407408,
+                "avgCaptureDamageRatio": 0.7973385416666666,
+                "observedObjects": 10,
+                "paintEvents": 2711,
+                "updateRequests": 78
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 64282624,
+                "rssPeakBytes": 91271168,
+                "rssSlopeBytesPer100Frames": 15182.17282578494,
+                "rssStartBytes": 64274432
+            },
+            "observations": [
+                "QWidget::grab() and QWidget::render() must be called on the GUI thread. Both are implemented by repainting the widget through QWidget::render(), so the call is synchronous and blocks the GUI thread for its duration.",
+                "Neither call needs a current OpenGL context for raster widgets. A QWidget hierarchy that contains a QOpenGLWidget/D3D child is the case that needs a graphics context (see the openglwidget sample).",
+                "Popups, QMenu and non-modal QDialog are separate top-level windows and are NOT part of a top-level widget capture. The target adapter must decide whether to share only the main window or to compose extra windows.",
+                "Damage can be observed with public APIs by installing an application-level event filter and reading QPaintEvent::region(). Capture itself emits paint events, so capture-induced damage has to be separated from application damage.",
+                "Reused target buffer: 74 reallocations were observed in 75 capture attempts. QImage is copy-on-write, so publishing a shallow copy to a consumer forces the producer's next write to detach and allocate a new buffer. Handing out a QImage therefore does not give a free buffer recycling scheme, and it is also why a consumer that keeps a QImage copy never observes torn pixels.",
+                "Damage probe: application repaints covered 69.7 % of the frame area on average, while the capture calls themselves added 79.7 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3472776.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 3040600,
+                    "frameFormat": "RGB32",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 13237700,
+                    "notes": [
+                        "grabs the widget through QWidget::render(); includes child widgets, excludes popups and dialogs that are separate top-level windows; triggers real paint events"
+                    ],
+                    "p50Ns": 2994800,
+                    "p95Ns": 5269400,
+                    "path": "QWidget::grab()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2793051.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 1956700,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 9289600,
+                    "notes": [
+                        "draws directly into a caller-owned QImage; the same buffer is reused every frame, so a consumer must not hold a reference across captures without a deep copy"
+                    ],
+                    "p50Ns": 2237900,
+                    "p95Ns": 5501100,
+                    "path": "QWidget::render() into reused QImage",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2714038.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 3442900,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 9211300,
+                    "notes": [
+                        "same public API as the reused variant; measured time includes the per-frame buffer allocation and clear"
+                    ],
+                    "p50Ns": 2263600,
+                    "p95Ns": 5656400,
+                    "path": "QWidget::render() into fresh QImage",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 2909418.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2211100,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 9705800,
+                    "notes": [
+                        "paints into a caller-owned raw pixel buffer and only publishes a borrowed view of that memory; this is the shape a zero-copy (GBM/DMA-BUF) producer would take. The measured time therefore excludes the one deep copy the harness performs for reporting"
+                    ],
+                    "p50Ns": 2202500,
+                    "p95Ns": 5252200,
+                    "path": "QWidget::render() into a borrowed raw pixel buffer",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "successes": 60
+                }
+            ],
+            "run": 2,
+            "sample": "widgets",
+            "sampleInfo": {
+                "devicePixelRatio": 1,
+                "isWindow": true,
+                "reusedBufferAttempts": 75,
+                "reusedBufferReallocations": 74,
+                "visibleTopLevelWidgets": 3,
+                "widgetSize": "960x600"
+            },
+            "targetFamily": "QWidget/raster",
+            "timing": {
+                "achievedFps": 33.32840998654699,
+                "avgCaptureLoopMs": 13.108749999999999,
+                "avgPumpMs": 16.513726666666667,
+                "cpuPercentOfOneCore": 53.811495290778986,
+                "cpuSeconds": 0.96875,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 2.844655855855851,
+                "guiLatencyMaxMs": 30.016499999999997,
+                "guiLatencyP95Ms": 10.58140000000003,
+                "intervalMs": 16,
+                "wallSeconds": 1.8002659
+            },
+            "title": "QWidget / raster baseline (child widgets, QPainter, popup, dialog)",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.6911279166666666,
+                "avgCaptureDamageRatio": 0.7843375,
+                "observedObjects": 6,
+                "paintEvents": 515,
+                "updateRequests": 99
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 133038080,
+                "rssPeakBytes": 138907648,
+                "rssSlopeBytesPer100Frames": -290976.47124201164,
+                "rssStartBytes": 134889472
+            },
+            "observations": [
+                "QQuickWidget::grabFramebuffer() returns the Quick render target, so the result excludes the surrounding raster widgets and has the Quick item size, not the window size.",
+                "Full-parent QWidget::grab() composes the embedded Quick content and the raster siblings into one image, which is the simpler contract for a whole-window target.",
+                "Input coordinates differ between the two paths: a viewer coordinate must be translated from the parent widget geometry into the QQuickWidget's own coordinate space before it is delivered to the embedded Quick item.",
+                "QQuickWidget owns an offscreen render target and its own render loop, so capture cost includes one extra composition/readback step compared with a native QQuickWindow.",
+                "Damage probe: application repaints covered 69.1 % of the frame area on average, while the capture calls themselves added 78.4 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3050653.3333333335,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 5103800,
+                    "frameFormat": "RGBA8888_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 6567400,
+                    "notes": [
+                        "Quick-specific capture: returns the Quick content only, at the Quick render target size. It does not include the raster siblings of the parent widget"
+                    ],
+                    "p50Ns": 2542200,
+                    "p95Ns": 5378300,
+                    "path": "QQuickWidget::grabFramebuffer()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 5191616.666666667,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 14060200,
+                    "frameFormat": "RGB32",
+                    "frameSize": "1000x640 dpr=1",
+                    "maxNs": 12068300,
+                    "notes": [
+                        "full-parent capture: includes the embedded Quick content and every raster sibling, which is what a whole-window sharing target needs"
+                    ],
+                    "p50Ns": 4627700,
+                    "p95Ns": 9276700,
+                    "path": "QWidget::grab() on the parent widget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                }
+            ],
+            "run": 0,
+            "sample": "quickwidget",
+            "sampleInfo": {
+                "parentSize": "1000x640",
+                "quickWidgetDpr": 1,
+                "quickWidgetSize": "729x568",
+                "quickWidgetStatus": 1,
+                "source": "qrc:/qt/qml/HyRemoteCaptureSpike/QuickScene.qml"
+            },
+            "targetFamily": "QQuickWidget",
+            "timing": {
+                "achievedFps": 30.65626949068134,
+                "avgCaptureLoopMs": 8.262203333333334,
+                "avgPumpMs": 23.969538333333333,
+                "cpuPercentOfOneCore": 49.497101781829244,
+                "cpuSeconds": 0.96875,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 1.2723943089430936,
+                "guiLatencyMaxMs": 18.78010000000006,
+                "guiLatencyP95Ms": 5.284600000000012,
+                "intervalMs": 16,
+                "wallSeconds": 1.9571853
+            },
+            "title": "QQuickWidget embedded in a QWidget hierarchy",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.6865616666666666,
+                "avgCaptureDamageRatio": 0.7843375,
+                "observedObjects": 6,
+                "paintEvents": 520,
+                "updateRequests": 116
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 140460032,
+                "rssPeakBytes": 146354176,
+                "rssSlopeBytesPer100Frames": 2224541.1280911365,
+                "rssStartBytes": 140152832
+            },
+            "observations": [
+                "QQuickWidget::grabFramebuffer() returns the Quick render target, so the result excludes the surrounding raster widgets and has the Quick item size, not the window size.",
+                "Full-parent QWidget::grab() composes the embedded Quick content and the raster siblings into one image, which is the simpler contract for a whole-window target.",
+                "Input coordinates differ between the two paths: a viewer coordinate must be translated from the parent widget geometry into the QQuickWidget's own coordinate space before it is delivered to the embedded Quick item.",
+                "QQuickWidget owns an offscreen render target and its own render loop, so capture cost includes one extra composition/readback step compared with a native QQuickWindow.",
+                "Damage probe: application repaints covered 68.7 % of the frame area on average, while the capture calls themselves added 78.4 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 7780791.666666667,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 16209900,
+                    "frameFormat": "RGBA8888_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 19551500,
+                    "notes": [
+                        "Quick-specific capture: returns the Quick content only, at the Quick render target size. It does not include the raster siblings of the parent widget"
+                    ],
+                    "p50Ns": 4659400,
+                    "p95Ns": 18576700,
+                    "path": "QQuickWidget::grabFramebuffer()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 5516833.333333333,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 4547100,
+                    "frameFormat": "RGB32",
+                    "frameSize": "1000x640 dpr=1",
+                    "maxNs": 12910000,
+                    "notes": [
+                        "full-parent capture: includes the embedded Quick content and every raster sibling, which is what a whole-window sharing target needs"
+                    ],
+                    "p50Ns": 5087600,
+                    "p95Ns": 9070400,
+                    "path": "QWidget::grab() on the parent widget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                }
+            ],
+            "run": 1,
+            "sample": "quickwidget",
+            "sampleInfo": {
+                "parentSize": "1000x640",
+                "quickWidgetDpr": 1,
+                "quickWidgetSize": "729x568",
+                "quickWidgetStatus": 1,
+                "source": "qrc:/qt/qml/HyRemoteCaptureSpike/QuickScene.qml"
+            },
+            "targetFamily": "QQuickWidget",
+            "timing": {
+                "achievedFps": 28.74329430920139,
+                "avgCaptureLoopMs": 13.32163,
+                "avgPumpMs": 21.147703333333332,
+                "cpuPercentOfOneCore": 35.929117886501736,
+                "cpuSeconds": 0.75,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 3.247206451612907,
+                "guiLatencyMaxMs": 27.01490000000001,
+                "guiLatencyP95Ms": 15.827099999999973,
+                "intervalMs": 16,
+                "wallSeconds": 2.0874434
+            },
+            "title": "QQuickWidget embedded in a QWidget hierarchy",
+            "warnings": [
+            ]
+        },
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.68808375,
+                "avgCaptureDamageRatio": 0.7843375,
+                "observedObjects": 6,
+                "paintEvents": 504,
+                "updateRequests": 96
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 0,
+                "deliveredByPath": {
+                },
+                "droppedOverflow": 0,
+                "enabled": false,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 0
+            },
+            "memory": {
+                "rssEndBytes": 141856768,
+                "rssPeakBytes": 146763776,
+                "rssSlopeBytesPer100Frames": -208373.61489302584,
+                "rssStartBytes": 143052800
+            },
+            "observations": [
+                "QQuickWidget::grabFramebuffer() returns the Quick render target, so the result excludes the surrounding raster widgets and has the Quick item size, not the window size.",
+                "Full-parent QWidget::grab() composes the embedded Quick content and the raster siblings into one image, which is the simpler contract for a whole-window target.",
+                "Input coordinates differ between the two paths: a viewer coordinate must be translated from the parent widget geometry into the QQuickWidget's own coordinate space before it is delivered to the embedded Quick item.",
+                "QQuickWidget owns an offscreen render target and its own render loop, so capture cost includes one extra composition/readback step compared with a native QQuickWindow.",
+                "Damage probe: application repaints covered 68.8 % of the frame area on average, while the capture calls themselves added 78.4 %; a region-based damage stream is available but capture-induced repaints are part of it."
+            ],
+            "paths": [
+                {
+                    "attempts": 60,
+                    "avgNs": 3210631.6666666665,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 3583400,
+                    "frameFormat": "RGBA8888_Premultiplied",
+                    "frameSize": "729x568 dpr=1",
+                    "maxNs": 8679100,
+                    "notes": [
+                        "Quick-specific capture: returns the Quick content only, at the Quick render target size. It does not include the raster siblings of the parent widget"
+                    ],
+                    "p50Ns": 2728300,
+                    "p95Ns": 4633500,
+                    "path": "QQuickWidget::grabFramebuffer()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                },
+                {
+                    "attempts": 60,
+                    "avgNs": 5995100,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 6244000,
+                    "frameFormat": "RGB32",
+                    "frameSize": "1000x640 dpr=1",
+                    "maxNs": 12816500,
+                    "notes": [
+                        "full-parent capture: includes the embedded Quick content and every raster sibling, which is what a whole-window sharing target needs"
+                    ],
+                    "p50Ns": 5176400,
+                    "p95Ns": 11924600,
+                    "path": "QWidget::grab() on the parent widget",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 60
+                }
+            ],
+            "run": 2,
+            "sample": "quickwidget",
+            "sampleInfo": {
+                "parentSize": "1000x640",
+                "quickWidgetDpr": 1,
+                "quickWidgetSize": "729x568",
+                "quickWidgetStatus": 1,
+                "source": "qrc:/qt/qml/HyRemoteCaptureSpike/QuickScene.qml"
+            },
+            "targetFamily": "QQuickWidget",
+            "timing": {
+                "achievedFps": 28.830035361479876,
+                "avgCaptureLoopMs": 9.228291666666667,
+                "avgPumpMs": 25.074036666666665,
+                "cpuPercentOfOneCore": 42.79458373969669,
+                "cpuSeconds": 0.890625,
+                "framesCaptured": 60,
+                "framesRequested": 60,
+                "guiLatencyAvgMs": 1.4068015384615449,
+                "guiLatencyMaxMs": 17.009400000000028,
+                "guiLatencyP95Ms": 5.465799999999945,
+                "intervalMs": 16,
+                "wallSeconds": 2.0811629
+            },
+            "title": "QQuickWidget embedded in a QWidget hierarchy",
+            "warnings": [
+            ]
+        }
+    ],
+    "schema": "hyremote-capture-spike/1",
+    "skippedCases": [
+    ]
+}

@@ -1,0 +1,143 @@
+{
+    "arguments": [
+        "--sample",
+        "quick",
+        "--frames",
+        "40",
+        "--warmup",
+        "5",
+        "--interval-ms",
+        "16",
+        "--submit-every",
+        "10",
+        "--disable-path",
+        "grabWindow",
+        "--rhi",
+        "opengl",
+        "--json",
+        "spikes/capture/evidence/host-windows-rhi-opengl-quick-grabtoimage-only.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "cpuArchitecture": "x86_64",
+        "defaultSurfaceFormat": "2.0 profile=0 swapInterval=1 samples=-1",
+        "glInfo": {
+            "contextFormat": "4.6 compatibility",
+            "renderer": "Intel(R) UHD Graphics 770",
+            "shadingLanguage": "4.60 - Build 32.0.101.7088",
+            "vendor": "Intel",
+            "version": "4.6.0 - Build 32.0.101.7088"
+        },
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "opengl",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080+0+0",
+                "logicalDpi": 96,
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/3",
+    "results": [
+        {
+            "damage": {
+                "avgAppDamageRatio": 0,
+                "avgCaptureDamageRatio": 0,
+                "observedObjects": 1,
+                "paintEvents": 0,
+                "updateRequests": 101
+            },
+            "handoff": {
+                "borrowedViews": 0,
+                "consumerDelayMs": 40,
+                "delivered": 4,
+                "deliveredByPath": {
+                    "QQuickItem::grabToImage() (async)": 4
+                },
+                "droppedOverflow": 0,
+                "enabled": true,
+                "mutated": 0,
+                "mutatedByPath": {
+                },
+                "nullFrames": 0,
+                "stable": 4
+            },
+            "memory": {
+                "rssEndBytes": 177725440,
+                "rssPeakBytes": 185122816,
+                "rssSlopeBytesPer100Frames": -4084511.2195121953,
+                "rssStartBytes": 180146176
+            },
+            "observations": [
+                "The scene mixes an animated region with static chrome, so a capture can be compared against the expected content.",
+                "On EGLFS the same scene must render directly to the display device; the capture path is expected to be identical because grabWindow() renders into its own target.",
+                "QQuickWindow::beforeRendering fired 134 times (afterRendering 134); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
+                "grabWindow() is documented as GUI-thread only. Calling it from beforeRendering/afterRendering (render thread) is not a supported public path and was deliberately not executed here; a render-thread capture needs QQuickWindow::setGraphicsDevice / QSGRendererInterface-level work.",
+                "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
+                "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
+                "Damage probe: 101 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+            ],
+            "paths": [
+                {
+                    "attempts": 40,
+                    "avgNs": 23475562.5,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 29421600,
+                    "frameFormat": "RGBA8888_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 35946200,
+                    "notes": [
+                        "asynchronous public API: the call returns immediately and the image becomes valid on a later event loop iteration, so the measured time is end-to-end latency, not CPU cost"
+                    ],
+                    "p50Ns": 20706800,
+                    "p95Ns": 33942700,
+                    "path": "QQuickItem::grabToImage() (async)",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "successes": 40
+                }
+            ],
+            "run": 0,
+            "sample": "quick",
+            "sampleInfo": {
+                "afterRenderingCount": 134,
+                "beforeRenderingCount": 134,
+                "devicePixelRatio": 1,
+                "graphicsApi": "OpenGL",
+                "qmlType": "QuickScene",
+                "requestedSize": "960x600",
+                "rootItemIsItem": true,
+                "windowSize": "960x600"
+            },
+            "targetFamily": "QQuickWindow 2D",
+            "timing": {
+                "achievedFps": 23.76978582115637,
+                "avgCaptureLoopMs": 23.48701,
+                "avgPumpMs": 18.32312,
+                "cpuPercentOfOneCore": 19.498652431417334,
+                "cpuSeconds": 0.328125,
+                "framesCaptured": 40,
+                "framesRequested": 40,
+                "guiLatencyAvgMs": 1.0415733333333337,
+                "guiLatencyMaxMs": 16.0694,
+                "guiLatencyP95Ms": 2.8351000000000113,
+                "intervalMs": 16,
+                "wallSeconds": 1.6828086
+            },
+            "title": "QQuickWindow / Qt Quick 2D scene",
+            "warnings": [
+            ]
+        }
+    ],
+    "schema": "hyremote-capture-spike/1",
+    "skippedCases": [
+    ]
+}
