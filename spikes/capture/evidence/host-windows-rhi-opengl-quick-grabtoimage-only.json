@@ -51,10 +51,16 @@
             "damage": {
                 "avgAppDamageRatio": 0,
                 "avgCaptureDamageRatio": 0,
-                "observedObjects": 1,
-                "paintEvents": 0,
-                "updateRequests": 101
+                "emptyMappedRegions": 0,
+                "excludedPaintEvents": 0,
+                "mappedPaintEvents": 0,
+                "observedObjects": 0,
+                "ratioCoordinateSystem": "shared target QWidget (mapped and clipped)",
+                "targetAreaPx": 0,
+                "updateRequests": 105
             },
+            "damageMappingControls": [
+            ],
             "handoff": {
                 "borrowedViews": 0,
                 "consumerDelayMs": 40,
@@ -71,45 +77,49 @@
                 "stable": 4
             },
             "memory": {
-                "rssEndBytes": 177725440,
-                "rssPeakBytes": 185122816,
-                "rssSlopeBytesPer100Frames": -4084511.2195121953,
-                "rssStartBytes": 180146176
+                "rssEndBytes": 178626560,
+                "rssPeakBytes": 183595008,
+                "rssSlopeBytesPer100Frames": -1457538.161350844,
+                "rssStartBytes": 181039104
             },
             "observations": [
                 "The scene mixes an animated region with static chrome, so a capture can be compared against the expected content.",
                 "On EGLFS the same scene must render directly to the display device; the capture path is expected to be identical because grabWindow() renders into its own target.",
-                "QQuickWindow::beforeRendering fired 134 times (afterRendering 134); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
+                "QQuickWindow::beforeRendering fired 141 times (afterRendering 141); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
                 "grabWindow() is documented as GUI-thread only. Calling it from beforeRendering/afterRendering (render thread) is not a supported public path and was deliberately not executed here; a render-thread capture needs QQuickWindow::setGraphicsDevice / QSGRendererInterface-level work.",
                 "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
                 "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
-                "Damage probe: 101 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+                "Damage probe: this target family has no QWidget root whose coordinate system damage could be mapped into, so no region-carrying paint event can be attributed to the shared target; only 105 application-wide update requests (QEvent::UpdateRequest carries no geometry) and 0 excluded paint events were observed. Region-level damage is not observable through public APIs for this target."
             ],
             "paths": [
                 {
                     "attempts": 40,
-                    "avgNs": 23475562.5,
+                    "avgNs": 24944470,
                     "callerThread": "Qt mainThread (gui=yes)",
-                    "firstNs": 29421600,
+                    "firstNs": 37289000,
                     "frameFormat": "RGBA8888_Premultiplied",
                     "frameSize": "960x600 dpr=1",
-                    "maxNs": 35946200,
+                    "maxNs": 34699100,
                     "notes": [
                         "asynchronous public API: the call returns immediately and the image becomes valid on a later event loop iteration, so the measured time is end-to-end latency, not CPU cost"
                     ],
-                    "p50Ns": 20706800,
-                    "p95Ns": 33942700,
+                    "p50Ns": 21114600,
+                    "p95Ns": 33976300,
                     "path": "QQuickItem::grabToImage() (async)",
                     "primary": false,
                     "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
                     "successes": 40
                 }
             ],
             "run": 0,
             "sample": "quick",
             "sampleInfo": {
-                "afterRenderingCount": 134,
-                "beforeRenderingCount": 134,
+                "afterRenderingCount": 141,
+                "beforeRenderingCount": 141,
                 "devicePixelRatio": 1,
                 "graphicsApi": "OpenGL",
                 "qmlType": "QuickScene",
@@ -119,18 +129,18 @@
             },
             "targetFamily": "QQuickWindow 2D",
             "timing": {
-                "achievedFps": 23.76978582115637,
-                "avgCaptureLoopMs": 23.48701,
-                "avgPumpMs": 18.32312,
-                "cpuPercentOfOneCore": 19.498652431417334,
-                "cpuSeconds": 0.328125,
+                "achievedFps": 22.920608056227,
+                "avgCaptureLoopMs": 24.9568675,
+                "avgPumpMs": 18.39412,
+                "cpuPercentOfOneCore": 25.069415061498283,
+                "cpuSeconds": 0.4375,
                 "framesCaptured": 40,
                 "framesRequested": 40,
-                "guiLatencyAvgMs": 1.0415733333333337,
-                "guiLatencyMaxMs": 16.0694,
-                "guiLatencyP95Ms": 2.8351000000000113,
+                "guiLatencyAvgMs": 0.8367568807339484,
+                "guiLatencyMaxMs": 11.8965,
+                "guiLatencyP95Ms": 2.5108999999999924,
                 "intervalMs": 16,
-                "wallSeconds": 1.6828086
+                "wallSeconds": 1.7451544
             },
             "title": "QQuickWindow / Qt Quick 2D scene",
             "warnings": [

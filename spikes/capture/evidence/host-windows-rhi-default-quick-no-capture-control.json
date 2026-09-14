@@ -50,10 +50,16 @@
             "damage": {
                 "avgAppDamageRatio": 0,
                 "avgCaptureDamageRatio": 0,
-                "observedObjects": 1,
-                "paintEvents": 0,
+                "emptyMappedRegions": 0,
+                "excludedPaintEvents": 0,
+                "mappedPaintEvents": 0,
+                "observedObjects": 0,
+                "ratioCoordinateSystem": "shared target QWidget (mapped and clipped)",
+                "targetAreaPx": 0,
                 "updateRequests": 42
             },
+            "damageMappingControls": [
+            ],
             "handoff": {
                 "borrowedViews": 0,
                 "consumerDelayMs": 40,
@@ -69,10 +75,10 @@
                 "stable": 0
             },
             "memory": {
-                "rssEndBytes": 159096832,
-                "rssPeakBytes": 159096832,
-                "rssSlopeBytesPer100Frames": 3311919.549718574,
-                "rssStartBytes": 158097408
+                "rssEndBytes": 159215616,
+                "rssPeakBytes": 159236096,
+                "rssSlopeBytesPer100Frames": 2746279.6247654785,
+                "rssStartBytes": 158408704
             },
             "observations": [
                 "The scene mixes an animated region with static chrome, so a capture can be compared against the expected content.",
@@ -99,17 +105,17 @@
             "targetFamily": "QQuickWindow 2D",
             "timing": {
                 "achievedFps": 0,
-                "avgCaptureLoopMs": 0.00334,
-                "avgPumpMs": 17.502914999999998,
-                "cpuPercentOfOneCore": 8.919217717533655,
-                "cpuSeconds": 0.0625,
+                "avgCaptureLoopMs": 0.0032425,
+                "avgPumpMs": 17.49633,
+                "cpuPercentOfOneCore": 11.153596697650228,
+                "cpuSeconds": 0.078125,
                 "framesCaptured": 0,
                 "framesRequested": 40,
-                "guiLatencyAvgMs": 1.0501840909090936,
-                "guiLatencyMaxMs": 14.8237,
-                "guiLatencyP95Ms": 2.783999999999992,
+                "guiLatencyAvgMs": 0.8740863636363639,
+                "guiLatencyMaxMs": 13.399,
+                "guiLatencyP95Ms": 1.4841000000000122,
                 "intervalMs": 16,
-                "wallSeconds": 0.7007341
+                "wallSeconds": 0.7004467
             },
             "title": "QQuickWindow / Qt Quick 2D scene",
             "warnings": [

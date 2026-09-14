@@ -48,10 +48,16 @@
             "damage": {
                 "avgAppDamageRatio": 0,
                 "avgCaptureDamageRatio": 0,
-                "observedObjects": 1,
-                "paintEvents": 0,
-                "updateRequests": 14
+                "emptyMappedRegions": 0,
+                "excludedPaintEvents": 0,
+                "mappedPaintEvents": 0,
+                "observedObjects": 0,
+                "ratioCoordinateSystem": "shared target QWidget (mapped and clipped)",
+                "targetAreaPx": 0,
+                "updateRequests": 15
             },
+            "damageMappingControls": [
+            ],
             "handoff": {
                 "borrowedViews": 0,
                 "consumerDelayMs": 40,
@@ -67,10 +73,10 @@
                 "stable": 0
             },
             "memory": {
-                "rssEndBytes": 167333888,
-                "rssPeakBytes": 170844160,
-                "rssSlopeBytesPer100Frames": -25781394.285714287,
-                "rssStartBytes": 168468480
+                "rssEndBytes": 166522880,
+                "rssPeakBytes": 169709568,
+                "rssSlopeBytesPer100Frames": -19134171.42857143,
+                "rssStartBytes": 167387136
             },
             "observations": [
                 "QQuickFramebufferObject is an OpenGL-specific Quick item, so this case forces the OpenGL RHI backend. It is expected to fail or fall back on non-OpenGL backends.",
@@ -79,43 +85,51 @@
                 "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
                 "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
                 "The custom QQuickFramebufferObject renderer never ran in this run, so this target is unsupported on the active graphics backend and any pixel decoded from the captured region is meaningless. QQuickFramebufferObject requires a graphics backend that exposes a GL framebuffer path.",
-                "Damage probe: 14 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+                "Damage probe: this target family has no QWidget root whose coordinate system damage could be mapped into, so no region-carrying paint event can be attributed to the shared target; only 15 application-wide update requests (QEvent::UpdateRequest carries no geometry) and 0 excluded paint events were observed. Region-level damage is not observable through public APIs for this target."
             ],
             "paths": [
                 {
                     "attempts": 6,
-                    "avgNs": 14797116.666666666,
+                    "avgNs": 13416800,
                     "callerThread": "Qt mainThread (gui=yes)",
-                    "firstNs": 25391200,
+                    "firstNs": 35836000,
                     "frameFormat": "RGBA8888_Premultiplied",
                     "frameSize": "960x600 dpr=1",
-                    "maxNs": 22082500,
+                    "maxNs": 20738900,
                     "notes": [
                         "documented as callable from the GUI thread only; it renders the scene graph into an offscreen surface and reads it back, so the cost is roughly one full frame render plus a GPU->CPU readback"
                     ],
-                    "p50Ns": 11399500,
-                    "p95Ns": 22082500,
+                    "p50Ns": 11960900,
+                    "p95Ns": 20738900,
                     "path": "QQuickWindow::grabWindow()",
                     "primary": true,
                     "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
                     "successes": 6
                 },
                 {
                     "attempts": 6,
-                    "avgNs": 1008827716.6666666,
+                    "avgNs": 1007688350,
                     "callerThread": "Qt mainThread (gui=yes)",
-                    "firstNs": 13916600,
+                    "firstNs": 10848600,
                     "frameFormat": "RGBA8888_Premultiplied",
                     "frameSize": "960x600 dpr=1",
-                    "maxNs": 1013847700,
+                    "maxNs": 1011684600,
                     "notes": [
                         "asynchronous public API: the call returns immediately and the image becomes valid on a later event loop iteration, so the measured time is end-to-end latency, not CPU cost"
                     ],
-                    "p50Ns": 1006095500,
-                    "p95Ns": 1013847700,
+                    "p50Ns": 1004829000,
+                    "p95Ns": 1011684600,
                     "path": "QQuickItem::grabToImage() (async)",
                     "primary": false,
                     "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
                     "successes": 6
                 }
             ],
@@ -139,18 +153,18 @@
             },
             "targetFamily": "custom QQuickFramebufferObject",
             "timing": {
-                "achievedFps": 0.9595643731276301,
-                "avgCaptureLoopMs": 1023.6606333333334,
-                "avgPumpMs": 18.126466666666666,
-                "cpuPercentOfOneCore": 1.749205888513909,
+                "achievedFps": 0.9611970209428491,
+                "avgCaptureLoopMs": 1021.1290833333334,
+                "avgPumpMs": 18.987166666666667,
+                "cpuPercentOfOneCore": 1.7521820694270687,
                 "cpuSeconds": 0.109375,
                 "framesCaptured": 6,
                 "framesRequested": 6,
-                "guiLatencyAvgMs": 315.6105263157895,
-                "guiLatencyMaxMs": 1000.7041000000004,
-                "guiLatencyP95Ms": 1000.7041000000004,
+                "guiLatencyAvgMs": 353.8207294117647,
+                "guiLatencyMaxMs": 1003.1170999999999,
+                "guiLatencyP95Ms": 1003.1170999999999,
                 "intervalMs": 16,
-                "wallSeconds": 6.2528374
+                "wallSeconds": 6.2422166
             },
             "title": "custom QQuickFramebufferObject in a QQuickWindow",
             "warnings": [

@@ -48,10 +48,16 @@
             "damage": {
                 "avgAppDamageRatio": 0,
                 "avgCaptureDamageRatio": 0,
-                "observedObjects": 1,
-                "paintEvents": 0,
+                "emptyMappedRegions": 0,
+                "excludedPaintEvents": 0,
+                "mappedPaintEvents": 0,
+                "observedObjects": 0,
+                "ratioCoordinateSystem": "shared target QWidget (mapped and clipped)",
+                "targetAreaPx": 0,
                 "updateRequests": 12
             },
+            "damageMappingControls": [
+            ],
             "handoff": {
                 "borrowedViews": 0,
                 "consumerDelayMs": 40,
@@ -67,10 +73,10 @@
                 "stable": 0
             },
             "memory": {
-                "rssEndBytes": 161165312,
-                "rssPeakBytes": 166092800,
-                "rssSlopeBytesPer100Frames": -31811311.88811189,
-                "rssStartBytes": 163770368
+                "rssEndBytes": 161099776,
+                "rssPeakBytes": 166170624,
+                "rssSlopeBytesPer100Frames": -33565717.48251749,
+                "rssStartBytes": 163848192
             },
             "observations": [
                 "The scene mixes an animated region with static chrome, so a capture can be compared against the expected content.",
@@ -79,25 +85,29 @@
                 "grabWindow() is documented as GUI-thread only. Calling it from beforeRendering/afterRendering (render thread) is not a supported public path and was deliberately not executed here; a render-thread capture needs QQuickWindow::setGraphicsDevice / QSGRendererInterface-level work.",
                 "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
                 "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
-                "Damage probe: 12 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+                "Damage probe: this target family has no QWidget root whose coordinate system damage could be mapped into, so no region-carrying paint event can be attributed to the shared target; only 12 application-wide update requests (QEvent::UpdateRequest carries no geometry) and 0 excluded paint events were observed. Region-level damage is not observable through public APIs for this target."
             ],
             "paths": [
                 {
                     "attempts": 12,
-                    "avgNs": 15340691.666666666,
+                    "avgNs": 15839916.666666666,
                     "callerThread": "Qt mainThread (gui=yes)",
-                    "firstNs": 36322300,
+                    "firstNs": 32386600,
                     "frameFormat": "RGBA8888_Premultiplied",
                     "frameSize": "960x600 dpr=1",
-                    "maxNs": 17630100,
+                    "maxNs": 17939300,
                     "notes": [
                         "documented as callable from the GUI thread only; it renders the scene graph into an offscreen surface and reads it back, so the cost is roughly one full frame render plus a GPU->CPU readback"
                     ],
-                    "p50Ns": 15978300,
-                    "p95Ns": 17630100,
+                    "p50Ns": 16062500,
+                    "p95Ns": 17939300,
                     "path": "QQuickWindow::grabWindow()",
                     "primary": true,
                     "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
                     "successes": 12
                 }
             ],
@@ -115,18 +125,18 @@
             },
             "targetFamily": "QQuickWindow 2D",
             "timing": {
-                "achievedFps": 0.9837410799380049,
-                "avgCaptureLoopMs": 15.355658333333333,
-                "avgPumpMs": 1000.9814,
-                "cpuPercentOfOneCore": 1.6651867238533937,
-                "cpuSeconds": 0.203125,
+                "achievedFps": 0.9836296242979927,
+                "avgCaptureLoopMs": 15.852691666666667,
+                "avgPumpMs": 1000.6249833333333,
+                "cpuPercentOfOneCore": 0.6403838699856723,
+                "cpuSeconds": 0.078125,
                 "framesCaptured": 12,
                 "framesRequested": 12,
-                "guiLatencyAvgMs": 746.3785999999999,
-                "guiLatencyMaxMs": 1002.0086000000001,
-                "guiLatencyP95Ms": 1002.0086000000001,
+                "guiLatencyAvgMs": 797.3988266666667,
+                "guiLatencyMaxMs": 1003.9042,
+                "guiLatencyP95Ms": 1003.9042,
                 "intervalMs": 16,
-                "wallSeconds": 12.1983317
+                "wallSeconds": 12.1997139
             },
             "title": "QQuickWindow / Qt Quick 2D scene",
             "warnings": [

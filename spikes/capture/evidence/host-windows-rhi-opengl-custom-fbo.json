@@ -47,10 +47,16 @@
             "damage": {
                 "avgAppDamageRatio": 0,
                 "avgCaptureDamageRatio": 0,
-                "observedObjects": 1,
-                "paintEvents": 0,
-                "updateRequests": 329
+                "emptyMappedRegions": 0,
+                "excludedPaintEvents": 0,
+                "mappedPaintEvents": 0,
+                "observedObjects": 0,
+                "ratioCoordinateSystem": "shared target QWidget (mapped and clipped)",
+                "targetAreaPx": 0,
+                "updateRequests": 319
             },
+            "damageMappingControls": [
+            ],
             "handoff": {
                 "borrowedViews": 0,
                 "consumerDelayMs": 40,
@@ -68,91 +74,99 @@
                 "stable": 30
             },
             "memory": {
-                "rssEndBytes": 176070656,
-                "rssPeakBytes": 180781056,
-                "rssSlopeBytesPer100Frames": 43802.568291924086,
-                "rssStartBytes": 175001600
+                "rssEndBytes": 178839552,
+                "rssPeakBytes": 183451648,
+                "rssSlopeBytesPer100Frames": 67338.3201031157,
+                "rssStartBytes": 177815552
             },
             "observations": [
                 "QQuickFramebufferObject is an OpenGL-specific Quick item, so this case forces the OpenGL RHI backend. It is expected to fail or fall back on non-OpenGL backends.",
-                "QQuickWindow::beforeRendering fired 743 times (afterRendering 743); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
+                "QQuickWindow::beforeRendering fired 723 times (afterRendering 723); the hook ran on a separate render thread. The scene graph is therefore rendered on its own OS thread, so graphics work does not have to run on the GUI thread.",
                 "grabWindow() is documented as GUI-thread only. Calling it from beforeRendering/afterRendering (render thread) is not a supported public path and was deliberately not executed here; a render-thread capture needs QQuickWindow::setGraphicsDevice / QSGRendererInterface-level work.",
                 "Qt Quick exposes no public damage-region API: QQuickWindow::update() posts an UpdateRequest without geometry. Region-level damage for Quick requires the private renderer or application-declared dirty hints.",
                 "grabRootItemToImage() is asynchronous and therefore never blocks the GUI thread, but it delivers frames one event loop iteration later, so it cannot be driven at a fixed frame cadence without extra buffering.",
-                "The pixel inside the custom QQuickFramebufferObject region encoded the value 24 at the start and 743 at the end of the run (340 observations), while the renderer had produced 743 frames. The baseline capture therefore contains freshly composed custom OpenGL content, not a stale or blank buffer.",
-                "Observed value advanced by 719 over the run.",
-                "Damage probe: 329 update requests but zero region-carrying paint events were observed, so this target exposes no damage region through public Qt APIs; a viewer update must assume full frames."
+                "The pixel inside the custom QQuickFramebufferObject region encoded the value 24 at the start and 723 at the end of the run (340 observations), while the renderer had produced 723 frames. The baseline capture therefore contains freshly composed custom OpenGL content, not a stale or blank buffer.",
+                "Observed value advanced by 699 over the run.",
+                "Damage probe: this target family has no QWidget root whose coordinate system damage could be mapped into, so no region-carrying paint event can be attributed to the shared target; only 319 application-wide update requests (QEvent::UpdateRequest carries no geometry) and 0 excluded paint events were observed. Region-level damage is not observable through public APIs for this target."
             ],
             "paths": [
                 {
                     "attempts": 150,
-                    "avgNs": 17308092.666666668,
+                    "avgNs": 16579918.666666666,
                     "callerThread": "Qt mainThread (gui=yes)",
-                    "firstNs": 18349500,
+                    "firstNs": 16995700,
                     "frameFormat": "RGBA8888_Premultiplied",
                     "frameSize": "960x600 dpr=1",
-                    "maxNs": 25811900,
+                    "maxNs": 20766700,
                     "notes": [
                         "documented as callable from the GUI thread only; it renders the scene graph into an offscreen surface and reads it back, so the cost is roughly one full frame render plus a GPU->CPU readback"
                     ],
-                    "p50Ns": 16617400,
-                    "p95Ns": 21583200,
+                    "p50Ns": 16334200,
+                    "p95Ns": 20236400,
                     "path": "QQuickWindow::grabWindow()",
                     "primary": true,
                     "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
                     "successes": 150
                 },
                 {
                     "attempts": 150,
-                    "avgNs": 18186950,
+                    "avgNs": 17762769.333333332,
                     "callerThread": "Qt mainThread (gui=yes)",
-                    "firstNs": 29123000,
+                    "firstNs": 29515500,
                     "frameFormat": "RGBA8888_Premultiplied",
                     "frameSize": "960x600 dpr=1",
-                    "maxNs": 34986600,
+                    "maxNs": 30449700,
                     "notes": [
                         "asynchronous public API: the call returns immediately and the image becomes valid on a later event loop iteration, so the measured time is end-to-end latency, not CPU cost"
                     ],
-                    "p50Ns": 17274100,
-                    "p95Ns": 29252100,
+                    "p50Ns": 17445100,
+                    "p95Ns": 19001000,
                     "path": "QQuickItem::grabToImage() (async)",
                     "primary": false,
                     "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
                     "successes": 150
                 }
             ],
             "run": 0,
             "sample": "customfbo",
             "sampleInfo": {
-                "afterRenderingCount": 743,
-                "beforeRenderingCount": 743,
+                "afterRenderingCount": 723,
+                "beforeRenderingCount": 723,
                 "devicePixelRatio": 1,
                 "fboRegion": "40,40 280x280",
                 "firstObservedValue": 24,
                 "graphicsApi": "OpenGL",
-                "lastObservedValue": 743,
+                "lastObservedValue": 723,
                 "observedFrames": 340,
                 "qmlType": "CustomFboScene",
-                "rendererFrameCount": 743,
-                "rendererLastEncoded": 743,
+                "rendererFrameCount": 723,
+                "rendererLastEncoded": 723,
                 "requestedSize": "960x600",
                 "rootItemIsItem": true,
                 "windowSize": "960x600"
             },
             "targetFamily": "custom QQuickFramebufferObject",
             "timing": {
-                "achievedFps": 18.68772362820211,
-                "avgCaptureLoopMs": 35.520468,
-                "avgPumpMs": 17.569403333333334,
-                "cpuPercentOfOneCore": 23.74898211084018,
-                "cpuSeconds": 1.90625,
+                "achievedFps": 19.191900956382323,
+                "avgCaptureLoopMs": 34.36959733333333,
+                "avgPumpMs": 17.315401333333334,
+                "cpuPercentOfOneCore": 27.588357624799592,
+                "cpuSeconds": 2.15625,
                 "framesCaptured": 150,
                 "framesRequested": 150,
-                "guiLatencyAvgMs": 5.4032291566265105,
-                "guiLatencyMaxMs": 28.361899999999878,
-                "guiLatencyP95Ms": 18.766500000000633,
+                "guiLatencyAvgMs": 5.520529113924048,
+                "guiLatencyMaxMs": 22.15599999999995,
+                "guiLatencyP95Ms": 17.334000000000003,
                 "intervalMs": 16,
-                "wallSeconds": 8.0266598
+                "wallSeconds": 7.8157969
             },
             "title": "custom QQuickFramebufferObject in a QQuickWindow",
             "warnings": [
