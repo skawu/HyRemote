@@ -57,17 +57,19 @@ No capture backend may call a transport synchronously as part of frame productio
 
 ### Core dispatch worker
 
-Consumes the completed-frame mailbox and passes frames toward the transport adapter. If a transport call blocks unexpectedly, only this worker is affected; the capture producer continues to be protected by the bounded mailbox/drop policy.
+Consumes the completed-frame mailbox and passes frames toward the transport adapter. The transport hand-off itself is a **bounded/nonblocking enqueue contract**: the dispatch worker must never perform network I/O, compression, client fan-out or an unbounded wait inside `Transport::enqueueFrame()`.
+
+This is required for deterministic shutdown as well as responsiveness. The Core mailbox protects capture from a slow transport runtime; the transport's own bounded runtime/client queues protect the dispatch worker from network peers.
 
 ### Transport runtime
 
 Owned by the transport implementation. For NeatVNC this means one isolated AML/NeatVNC runtime; Core and capture modules never call AML directly.
 
-Transport implementations should post/enqueue into their own runtime rather than exposing event-loop internals to Core.
+Transport implementations **must** implement the Core hand-off by posting/enqueueing into their own runtime with bounded execution time. If their internal queue is full, they must apply an explicit local drop/reject policy rather than block the Core dispatch worker indefinitely.
 
 ### Input delivery
 
-Remote input originates on the transport runtime thread. The transport normalizes protocol-specific events, then the input adapter marshals them to the target's required thread (normally the Qt GUI thread).
+Remote input originates on the transport runtime thread. The transport normalizes protocol-specific events, then the input adapter marshals them to the target's required thread (normally the Qt GUI thread). `InputSink::post()` follows the same rule: it schedules/marshals work and must not make the transport runtime wait on synchronous GUI execution.
 
 ## Capture scheduling
 
@@ -146,7 +148,7 @@ A transport is always allowed to drop superseded frames according to PTS/queue p
 1. stop scheduling new capture requests;
 2. ask capture source to stop/cancel where supported;
 3. close the completed-frame mailbox;
-4. stop/join dispatch worker;
+4. stop/join dispatch worker (safe because `Transport::enqueueFrame()` is bounded/nonblocking by contract);
 5. ask transport to stop its runtime/clients;
 6. release adapters/storage.
 
@@ -203,11 +205,13 @@ A transport adapter:
 - must not assume producer memory remains valid after its owning frame is released;
 - owns client-specific queueing/backpressure beyond the Core mailbox;
 - must not expose protocol-native input/frame types into Core;
-- should return/post from Core dispatch promptly even if its network runtime is busy.
+- **must implement `enqueueFrame()` as a bounded/nonblocking post/enqueue operation**; no network I/O, encode wait, client fan-out or unbounded queue wait is permitted on the Core dispatch call;
+- must choose an explicit internal overflow policy when its own runtime/client queue is full.
 
 ## Consequences
 
 - a blocked/slow viewer cannot directly block Qt rendering;
+- a blocked/slow peer also cannot indefinitely block Core shutdown;
 - transport implementations can use their natural event loop/thread;
 - capture and transport can evolve independently;
 - queue ownership limits are explicit and testable;
