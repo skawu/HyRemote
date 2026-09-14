@@ -25,7 +25,7 @@
             {
                 "devicePixelRatio": 1,
                 "geometry": "1920x1080",
-                "name": "HP E24 G4"
+                "name": "\\\\.\\DISPLAY5"
             }
         ]
     },
@@ -36,7 +36,7 @@
                 "applicable": true,
                 "contentItemSize": "960x600",
                 "grabs": {
-                    "backgroundPixel": "#b04620ff",
+                    "backgroundPixel": "#34689dff",
                     "contentItemAsyncOverlayPixel": "#ff00ffff",
                     "contentItemAsyncSize": "960x600 dpr=1",
                     "expectedOverlayPixel": "#ff00ffff",
@@ -94,7 +94,7 @@
                 {
                     "api": "QQuickItem::grabToImage() on contentItem()",
                     "completed": true,
-                    "completionMs": 29,
+                    "completionMs": 19,
                     "imageNull": false,
                     "imageSize": "960x600 dpr=1",
                     "name": "async grab again after re-showing the window",
@@ -176,24 +176,50 @@
                 "scene": "quick3d",
                 "status": "completed with an image",
                 "stderr": "",
-                "stdout": "hidden-sync: scene=quick3d image=960x600 elapsedMs=5"
+                "stdout": "hidden-sync: scene=quick3d image=960x600 elapsedMs=2"
             },
             "observations": [
                 "Quick3D renders through its own renderer inside the scene graph, so this case checks whether the asynchronous item grab reproduces composed 3D content."
             ],
             "pipeline": {
-                "consumerDelayMs": 0,
-                "consumerWindow": 0,
+                "consumer": {
+                    "backlogAtEndOfLoad": 0,
+                    "backlogGrowthPerSecond": 0,
+                    "consumerPerSecond": 89.31645669112002,
+                    "delivered": 60,
+                    "deliveredDuringLoad": 60,
+                    "dropRatio": 0,
+                    "dropped": 0,
+                    "frameAgeAvgMs": 0,
+                    "frameAgeMaxMs": 0,
+                    "frameAgeP95Ms": 0,
+                    "maxOwnedFramesObserved": 0,
+                    "maxQueueDepthObserved": 0,
+                    "producerPerSecond": 89.31645669112002,
+                    "retainedBytesAtEndOfLoad": 0,
+                    "staleFramesAvg": 0,
+                    "staleFramesMax": 0,
+                    "staleFramesP95": 0
+                },
+                "consumerConfig": {
+                    "backpressureStrategy": "none (unbounded completed queue)",
+                    "completedQueueCapacity": 0,
+                    "drainAfterLoad": true,
+                    "model": "single serial consumer, one frame serviced at a time",
+                    "queueCapacityBounds": "queue depth only; the frame being serviced is owned in addition, so peak ownership is capacity + 1 frames",
+                    "serviceMsPerFrame": 0,
+                    "targetConsumerFps": 0
+                },
                 "content": {
                     "distinctFboCounters": 0,
-                    "distinctTicks": 19,
-                    "duplicateCompletions": 41,
+                    "distinctTicks": 20,
+                    "duplicateCompletions": 40,
                     "fboCounterFirst": -1,
                     "fboCounterLast": -1,
-                    "framesRendered": 29,
+                    "framesRendered": 30,
                     "lastFrameBytes": 2304000,
                     "outOfOrderCompletions": 0,
-                    "tickLagAvg": 1.2833333333333334,
+                    "tickLagAvg": 1.1666666666666667,
                     "tickLagMax": 3,
                     "tickLagP95": 3
                 },
@@ -201,39 +227,40 @@
                 "grabTarget": "QQuickWindow::contentItem()",
                 "intervalMs": 0,
                 "latency": {
-                    "avgMs": 28.86866999999999,
-                    "maxMs": 36.4962,
-                    "p50Ms": 32.9702,
-                    "p95Ms": 33.8117
+                    "avgMs": 36.38915,
+                    "maxMs": 50.412,
+                    "p50Ms": 33.3433,
+                    "p95Ms": 50.0406
                 },
                 "maxInFlight": 4,
                 "notes": [
                 ],
                 "outcome": {
+                    "admissionBlockedSlices": 0,
                     "completed": 60,
-                    "completedPerSecond": 123.38547534974127,
+                    "completedPerSecond": 89.31645669112002,
+                    "drainSeconds": 3e-07,
                     "failedToStart": 0,
+                    "loadSeconds": 0.6717687,
                     "maxInFlightObserved": 4,
                     "nullImages": 0,
                     "timedOut": false,
-                    "wallSeconds": 0.4862809
+                    "wallSeconds": 0.671769
                 },
                 "pacedRequests": false,
                 "requests": 60,
                 "resources": {
-                    "cpuPercentOfOneCore": 41.77112446736032,
-                    "cpuSeconds": 0.203125,
-                    "guiLatencyAvgMs": 1.8063344827586225,
-                    "guiLatencyMaxMs": 36.6282,
-                    "guiLatencyP95Ms": 1.461199999999991,
-                    "maxHeldObserved": 0,
+                    "cpuPercentOfOneCore": 41.86707037687062,
+                    "cpuSeconds": 0.28125,
+                    "guiLatencyAvgMs": 4.708194594594597,
+                    "guiLatencyMaxMs": 35.5283,
+                    "guiLatencyP95Ms": 17.475099999999998,
                     "peakRetainedBytes": 0,
-                    "rssEndBytes": 224985088,
-                    "rssGrowthBytes": 13549568,
-                    "rssGrowthPerCompletionBytes": 225826.13333333333,
-                    "rssSlopeBytesPer100Frames": 2927369.932794206,
-                    "rssStartBytes": 211435520,
-                    "throttledSlices": 0
+                    "rssEndBytes": 148783104,
+                    "rssGrowthBytes": 11431936,
+                    "rssGrowthPerCompletionBytes": 190532.26666666666,
+                    "rssSlopeBytesPer100Frames": 1187771.3464761754,
+                    "rssStartBytes": 137351168
                 }
             },
             "scene": "quick3d",
@@ -251,6 +278,20 @@
                 "scene": "quick3d",
                 "tickPatchRectInContentItem": "8,8 48x48",
                 "windowSize": "960x600"
+            },
+            "syncBaseline": {
+                "api": "QQuickWindow::grabWindow()",
+                "avgMs": 12.320158333333332,
+                "captures": 60,
+                "capturesPerSecond": 0.9914499242289352,
+                "guiLatencyAvgMs": 740.7234337499999,
+                "guiLatencyP95Ms": 1017.0469000000012,
+                "lastImageSize": "960x600 dpr=1",
+                "maxMs": 32.7281,
+                "nullImages": 0,
+                "p50Ms": 12.5856,
+                "p95Ms": 19.9707,
+                "rssGrowthBytes": 3121152
             },
             "title": "Quick3D scene"
         }

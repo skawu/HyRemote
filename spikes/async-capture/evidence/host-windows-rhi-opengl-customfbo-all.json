@@ -25,7 +25,7 @@
             {
                 "devicePixelRatio": 1,
                 "geometry": "1920x1080",
-                "name": "HP E24 G4"
+                "name": "\\\\.\\DISPLAY5"
             }
         ]
     },
@@ -36,7 +36,7 @@
                 "applicable": true,
                 "contentItemSize": "960x600",
                 "grabs": {
-                    "backgroundPixel": "#2900ffff",
+                    "backgroundPixel": "#cb00ffff",
                     "contentItemAsyncOverlayPixel": "#ff00ffff",
                     "contentItemAsyncSize": "960x600 dpr=1",
                     "expectedOverlayPixel": "#ff00ffff",
@@ -94,7 +94,7 @@
                 {
                     "api": "QQuickItem::grabToImage() on contentItem()",
                     "completed": true,
-                    "completionMs": 32,
+                    "completionMs": 53,
                     "imageNull": false,
                     "imageSize": "960x600 dpr=1",
                     "name": "async grab again after re-showing the window",
@@ -110,8 +110,8 @@
                     "bothContainExpectedTick": true,
                     "differingOutsideOverlayPct": 0,
                     "differingPixelPct": 0,
-                    "fboCounterA": 74,
-                    "fboCounterB": 76,
+                    "fboCounterA": 217,
+                    "fboCounterB": 219,
                     "labelA": "contentItem async",
                     "labelB": "QQuickWindow::grabWindow() sync",
                     "maxChannelDiff": 2,
@@ -126,8 +126,8 @@
                     "bothContainExpectedTick": true,
                     "differingOutsideOverlayPct": 0,
                     "differingPixelPct": 3.3125,
-                    "fboCounterA": 75,
-                    "fboCounterB": 76,
+                    "fboCounterA": 218,
+                    "fboCounterB": 219,
                     "labelA": "rootItem async",
                     "labelB": "QQuickWindow::grabWindow() sync",
                     "maxChannelDiff": 239,
@@ -142,8 +142,8 @@
                     "bothContainExpectedTick": true,
                     "differingOutsideOverlayPct": 0,
                     "differingPixelPct": 3.3125,
-                    "fboCounterA": 75,
-                    "fboCounterB": 74,
+                    "fboCounterA": 218,
+                    "fboCounterB": 217,
                     "labelA": "rootItem async",
                     "labelB": "contentItem async",
                     "maxChannelDiff": 239,
@@ -158,8 +158,8 @@
                     "bothContainExpectedTick": true,
                     "differingOutsideOverlayPct": 13.659375,
                     "differingPixelPct": 13.659375,
-                    "fboCounterA": 78,
-                    "fboCounterB": 74,
+                    "fboCounterA": 221,
+                    "fboCounterB": 217,
                     "labelA": "contentItem async (repeat)",
                     "labelB": "contentItem async",
                     "maxChannelDiff": 4,
@@ -182,18 +182,44 @@
                 "The custom FBO renderer encodes its own render counter in its clear color, so both the freshness and the composition of the grabbed region can be checked."
             ],
             "pipeline": {
-                "consumerDelayMs": 0,
-                "consumerWindow": 0,
+                "consumer": {
+                    "backlogAtEndOfLoad": 0,
+                    "backlogGrowthPerSecond": 0,
+                    "consumerPerSecond": 38.373417352356995,
+                    "delivered": 60,
+                    "deliveredDuringLoad": 60,
+                    "dropRatio": 0,
+                    "dropped": 0,
+                    "frameAgeAvgMs": 0,
+                    "frameAgeMaxMs": 0,
+                    "frameAgeP95Ms": 0,
+                    "maxOwnedFramesObserved": 0,
+                    "maxQueueDepthObserved": 0,
+                    "producerPerSecond": 38.373417352356995,
+                    "retainedBytesAtEndOfLoad": 0,
+                    "staleFramesAvg": 0,
+                    "staleFramesMax": 0,
+                    "staleFramesP95": 0
+                },
+                "consumerConfig": {
+                    "backpressureStrategy": "none (unbounded completed queue)",
+                    "completedQueueCapacity": 0,
+                    "drainAfterLoad": true,
+                    "model": "single serial consumer, one frame serviced at a time",
+                    "queueCapacityBounds": "queue depth only; the frame being serviced is owned in addition, so peak ownership is capacity + 1 frames",
+                    "serviceMsPerFrame": 0,
+                    "targetConsumerFps": 0
+                },
                 "content": {
-                    "distinctFboCounters": 26,
-                    "distinctTicks": 26,
-                    "duplicateCompletions": 34,
-                    "fboCounterFirst": 80,
-                    "fboCounterLast": 105,
-                    "framesRendered": 26,
+                    "distinctFboCounters": 29,
+                    "distinctTicks": 29,
+                    "duplicateCompletions": 31,
+                    "fboCounterFirst": 222,
+                    "fboCounterLast": 250,
+                    "framesRendered": 29,
                     "lastFrameBytes": 2304000,
                     "outOfOrderCompletions": 0,
-                    "tickLagAvg": 0.75,
+                    "tickLagAvg": 0.8,
                     "tickLagMax": 3,
                     "tickLagP95": 2
                 },
@@ -201,39 +227,40 @@
                 "grabTarget": "QQuickWindow::contentItem()",
                 "intervalMs": 0,
                 "latency": {
-                    "avgMs": 26.05349333333333,
-                    "maxMs": 40.0272,
-                    "p50Ms": 26.3407,
-                    "p95Ms": 33.3464
+                    "avgMs": 71.57072,
+                    "maxMs": 109.3237,
+                    "p50Ms": 61.5769,
+                    "p95Ms": 108.551
                 },
                 "maxInFlight": 4,
                 "notes": [
                 ],
                 "outcome": {
+                    "admissionBlockedSlices": 0,
                     "completed": 60,
-                    "completedPerSecond": 137.02681500580653,
+                    "completedPerSecond": 38.373417352356995,
+                    "drainSeconds": 4e-07,
                     "failedToStart": 0,
+                    "loadSeconds": 1.5635824,
                     "maxInFlightObserved": 4,
                     "nullImages": 0,
                     "timedOut": false,
-                    "wallSeconds": 0.4378705
+                    "wallSeconds": 1.5635828
                 },
                 "pacedRequests": false,
                 "requests": 60,
                 "resources": {
-                    "cpuPercentOfOneCore": 82.07335273785286,
-                    "cpuSeconds": 0.359375,
-                    "guiLatencyAvgMs": 1.3493518518518504,
-                    "guiLatencyMaxMs": 16.8449,
-                    "guiLatencyP95Ms": 7.391500000000008,
-                    "maxHeldObserved": 0,
+                    "cpuPercentOfOneCore": 18.98684227020149,
+                    "cpuSeconds": 0.296875,
+                    "guiLatencyAvgMs": 11.965286440677968,
+                    "guiLatencyMaxMs": 34.11789999999996,
+                    "guiLatencyP95Ms": 32.600799999999936,
                     "peakRetainedBytes": 0,
-                    "rssEndBytes": 144805888,
-                    "rssGrowthBytes": 12939264,
-                    "rssGrowthPerCompletionBytes": 215654.4,
-                    "rssSlopeBytesPer100Frames": 3980074.2968452075,
-                    "rssStartBytes": 131866624,
-                    "throttledSlices": 0
+                    "rssEndBytes": 146337792,
+                    "rssGrowthBytes": 19755008,
+                    "rssGrowthPerCompletionBytes": 329250.13333333336,
+                    "rssSlopeBytesPer100Frames": 7906346.5876835715,
+                    "rssStartBytes": 126582784
                 }
             },
             "scene": "customfbo",
@@ -242,7 +269,7 @@
                 "devicePixelRatio": 1,
                 "family": "custom QQuickFramebufferObject",
                 "fboRectInContentItem": "360,160 280x280",
-                "fboRendererFrameCount": 282,
+                "fboRendererFrameCount": 322,
                 "graphicsApi": "3",
                 "overlayColor": "#ff00ff",
                 "overlayRectInContentItem": "760,440 160x120",
@@ -253,6 +280,20 @@
                 "scene": "customfbo",
                 "tickPatchRectInContentItem": "8,8 48x48",
                 "windowSize": "960x600"
+            },
+            "syncBaseline": {
+                "api": "QQuickWindow::grabWindow()",
+                "avgMs": 39.68823666666669,
+                "captures": 60,
+                "capturesPerSecond": 13.23390961716152,
+                "guiLatencyAvgMs": 40.867808749999995,
+                "guiLatencyP95Ms": 78.21160000000009,
+                "lastImageSize": "960x600 dpr=1",
+                "maxMs": 59.7701,
+                "nullImages": 0,
+                "p50Ms": 34.1395,
+                "p95Ms": 52.2753,
+                "rssGrowthBytes": 3416064
             },
             "title": "custom QQuickFramebufferObject content"
         }

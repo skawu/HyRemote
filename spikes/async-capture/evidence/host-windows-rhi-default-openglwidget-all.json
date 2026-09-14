@@ -23,7 +23,7 @@
             {
                 "devicePixelRatio": 1,
                 "geometry": "1920x1080",
-                "name": "HP E24 G4"
+                "name": "\\\\.\\DISPLAY5"
             }
         ]
     },
@@ -80,17 +80,17 @@
             },
             "syncBaseline": {
                 "api": "QOpenGLWidget::grabFramebuffer()",
-                "avgMs": 4.4342483333333345,
+                "avgMs": 3.980151666666666,
                 "captures": 60,
-                "capturesPerSecond": 46.88243159794627,
-                "guiLatencyAvgMs": 1.2612565789473678,
-                "guiLatencyP95Ms": 2.265899999999988,
+                "capturesPerSecond": 48.25529754699021,
+                "guiLatencyAvgMs": 1.208959999999999,
+                "guiLatencyP95Ms": 1.9320999999999913,
                 "lastImageSize": "938x557 dpr=1",
-                "maxMs": 64.8316,
+                "maxMs": 55.2624,
                 "nullImages": 0,
-                "p50Ms": 3.2795,
-                "p95Ms": 4.4402,
-                "rssGrowthBytes": 6393856
+                "p50Ms": 3.1422,
+                "p95Ms": 3.2919,
+                "rssGrowthBytes": 6266880
             },
             "title": "QOpenGLWidget inside a QWidget hierarchy"
         }

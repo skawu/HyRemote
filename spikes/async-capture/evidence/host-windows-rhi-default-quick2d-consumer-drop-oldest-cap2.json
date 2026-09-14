@@ -8,10 +8,14 @@
         "240",
         "--max-inflight",
         "4",
-        "--consumer-delay",
+        "--consumer-service-ms",
         "100",
+        "--completed-queue-capacity",
+        "2",
+        "--backpressure",
+        "drop-oldest",
         "--json",
-        "spikes/async-capture/evidence/host-windows-rhi-default-quick2d-pipeline-consumer-unbounded.json"
+        "spikes/async-capture/evidence/host-windows-rhi-default-quick2d-consumer-drop-oldest-cap2.json"
     ],
     "environment": {
         "buildAbi": "x86_64-little_endian-llp64",
@@ -27,7 +31,7 @@
             {
                 "devicePixelRatio": 1,
                 "geometry": "1920x1080",
-                "name": "HP E24 G4"
+                "name": "\\\\.\\DISPLAY5"
             }
         ]
     },
@@ -40,21 +44,47 @@
                 "scene": "quick2d",
                 "status": "completed with an image",
                 "stderr": "",
-                "stdout": "hidden-sync: scene=quick2d image=960x600 elapsedMs=3"
+                "stdout": "hidden-sync: scene=quick2d image=960x600 elapsedMs=2"
             },
             "observations": [
                 "The scene animates continuously and its encoded tick patch is driven from the harness, so every captured image can be attributed to the request that produced it."
             ],
             "pipeline": {
-                "consumerDelayMs": 100,
-                "consumerWindow": 0,
+                "consumer": {
+                    "backlogAtEndOfLoad": 2,
+                    "backlogGrowthPerSecond": 0.9938361289446721,
+                    "consumerPerSecond": 9.938361289446721,
+                    "delivered": 22,
+                    "deliveredDuringLoad": 20,
+                    "dropRatio": 0.9083333333333333,
+                    "dropped": 218,
+                    "frameAgeAvgMs": 21.833440909090907,
+                    "frameAgeMaxMs": 170.1919,
+                    "frameAgeP95Ms": 70.1509,
+                    "maxOwnedFramesObserved": 3,
+                    "maxQueueDepthObserved": 2,
+                    "producerPerSecond": 119.26033547336066,
+                    "retainedBytesAtEndOfLoad": 6912000,
+                    "staleFramesAvg": 1.9545454545454546,
+                    "staleFramesMax": 2,
+                    "staleFramesP95": 2
+                },
+                "consumerConfig": {
+                    "backpressureStrategy": "drop-oldest (latest-frame-wins)",
+                    "completedQueueCapacity": 2,
+                    "drainAfterLoad": true,
+                    "model": "single serial consumer, one frame serviced at a time",
+                    "queueCapacityBounds": "queue depth only; the frame being serviced is owned in addition, so peak ownership is capacity + 1 frames",
+                    "serviceMsPerFrame": 100,
+                    "targetConsumerFps": 10
+                },
                 "content": {
                     "distinctFboCounters": 0,
                     "distinctTicks": 60,
                     "duplicateCompletions": 180,
                     "fboCounterFirst": -1,
                     "fboCounterLast": -1,
-                    "framesRendered": 125,
+                    "framesRendered": 138,
                     "lastFrameBytes": 2304000,
                     "outOfOrderCompletions": 0,
                     "tickLagAvg": 1.5,
@@ -65,39 +95,40 @@
                 "grabTarget": "QQuickWindow::contentItem()",
                 "intervalMs": 0,
                 "latency": {
-                    "avgMs": 45.939550416666656,
-                    "maxMs": 74.461,
-                    "p50Ms": 46.9259,
-                    "p95Ms": 54.081
+                    "avgMs": 32.39946166666666,
+                    "maxMs": 47.0878,
+                    "p50Ms": 32.1573,
+                    "p95Ms": 33.1916
                 },
                 "maxInFlight": 4,
                 "notes": [
                 ],
                 "outcome": {
+                    "admissionBlockedSlices": 0,
                     "completed": 240,
-                    "completedPerSecond": 82.38364725793753,
+                    "completedPerSecond": 119.26033547336066,
+                    "drainSeconds": 0.2868983,
                     "failedToStart": 0,
+                    "loadSeconds": 2.0124042,
                     "maxInFlightObserved": 4,
                     "nullImages": 0,
                     "timedOut": false,
-                    "wallSeconds": 2.9131995
+                    "wallSeconds": 2.2993025
                 },
                 "pacedRequests": false,
                 "requests": 240,
                 "resources": {
-                    "cpuPercentOfOneCore": 40.76274213283367,
-                    "cpuSeconds": 1.1875,
-                    "guiLatencyAvgMs": 8.748539259259251,
-                    "guiLatencyMaxMs": 34.84940000000006,
-                    "guiLatencyP95Ms": 29.617999999999938,
-                    "maxHeldObserved": 16,
-                    "peakRetainedBytes": 36864000,
-                    "rssEndBytes": 147431424,
-                    "rssGrowthBytes": 57765888,
-                    "rssGrowthPerCompletionBytes": 240691.2,
-                    "rssSlopeBytesPer100Frames": 1269728.748022131,
-                    "rssStartBytes": 89665536,
-                    "throttledSlices": 0
+                    "cpuPercentOfOneCore": 27.1821563278429,
+                    "cpuSeconds": 0.625,
+                    "guiLatencyAvgMs": 7.077595798319331,
+                    "guiLatencyMaxMs": 17.91629999999998,
+                    "guiLatencyP95Ms": 17.676099999999906,
+                    "peakRetainedBytes": 6912000,
+                    "rssEndBytes": 129425408,
+                    "rssGrowthBytes": 39325696,
+                    "rssGrowthPerCompletionBytes": 163857.06666666668,
+                    "rssSlopeBytesPer100Frames": 555562.6664651246,
+                    "rssStartBytes": 90099712
                 }
             },
             "scene": "quick2d",
