@@ -526,7 +526,7 @@ document's conclusions are:
 | Path | Direct3D 11 | OpenGL RHI |
 |---|---|---|
 | `QQuickWindow::grabWindow()` once per iteration | loop collapses to **1.0-1.1 iterations/s** (GUI latency p95 ~1003 ms) | 27.8 iterations/s (GUI latency p95 18.9 ms) |
-| `contentItem()->grabToImage()`, 4 in flight | **115.5 captures/s**, ~33 ms latency, GUI latency p95 19.0 ms | 120.9 captures/s, ~30 ms latency, GUI latency p95 5.3 ms |
+| `contentItem()->grabToImage()`, 4 in flight | **119.1 captures/s**, ~32 ms latency, GUI latency p95 17.6 ms | 120.9 captures/s, ~30 ms latency, GUI latency p95 5.3 ms |
 
 So the Direct3D 11 pathology of section 8.2 is specific to the **synchronous** path, and the
 asynchronous path is a genuine alternative on that backend. It does not remove the gaps this

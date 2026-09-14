@@ -21,6 +21,18 @@ It does not freeze any `RemoteFrame` ABI and does not define a public HyRemote A
 > host used for SPIKE-01. RK3588/EGLFS/OpenGL ES remains `unverified`, and desktop results
 > are not presented as a substitute.
 
+> **Round-2 correction notice.** The Round-1 review of this spike (PR #19 comment
+> `5662534191`) found one evidence-level defect and two over-broad statements. Section 5.7 is
+> rewritten around an explicit **single serial consumer** model (one frame serviced at a time,
+> 100 ms per frame) with three separate producer configurations, and the measured bounds are
+> now `maxQueueDepthObserved <= completedQueueCapacity` with a documented +1 ownership bound.
+> The two documentation boundaries are narrowed in sections 3, 5.1, 5.8 and 6: the validated
+> claim is **same-scene sibling/overlay-tree content under `contentItem()`**, not all Qt Quick
+> popup modes, and only the **hidden** window case was tested - `minimized` stays unverified.
+> The positioning of `grabToImage()` is corrected as well: it is a public-API asynchronous
+> *baseline / v0.1 candidate*, not a claim about the final high-performance production path.
+> The composition, Quick3D and custom-FBO fidelity evidence is unchanged by this round.
+
 ## 1. Scope
 
 In scope:
@@ -60,6 +72,15 @@ Read from the Qt 6.8.3 sources (`qtdeclarative/src/quick/items/qquickitemgrabres
 `qquickitem.cpp`, `qquickview.cpp`); every statement below is also consistent with the
 measurements in section 5.
 
+**Positioning.** Qt documents `QQuickItem::grabToImage()` as an asynchronous API that renders
+the item to an offscreen surface and copies the result from GPU to CPU memory, and explicitly
+warns that this "can be quite costly" for live preview. This spike therefore treats
+`contentItem()->grabToImage()` as the **public-API asynchronous baseline and v0.1 candidate**,
+not as the final high-performance production path. It is measured here to establish what the
+public API does and does not satisfy; the final performance choice remains evidence-driven by
+the RK3588/EGLFS validation and by the low-copy investigation in
+[#17](https://github.com/skawu/HyRemote/issues/17).
+
 1. `QQuickItem::grabToImage()` creates a `QQuickItemGrabResult`, connects it to
    `QQuickWindow::beforeSynchronizing` and `QQuickWindow::afterRendering` with
    **`Qt::DirectConnection`**, and returns immediately.
@@ -77,8 +98,9 @@ measurements in section 5.
    `qmlWarning`) when the item has invalid dimensions, is not attached to a window, or its
    (render-control aware) window is not visible.
 7. `QQuickViewPrivate::setRootObject()` parents the QML root object to
-   `QQuickWindow::contentItem()`. Overlays, popups and tooltips are children of that same
-   `contentItem()`, so they are **siblings** of the application's root item.
+   `QQuickWindow::contentItem()`. Same-scene overlay content (an item parented to that
+   `contentItem()`, which is what `Popup.Item` and `Overlay` use) is therefore a **sibling** of
+   the application's root item.
 
 Point 7 is the composition trap this spike was built around: the QML root item is *not* the
 whole window.
@@ -113,7 +135,8 @@ Two deterministic landmarks are built into every QML scene:
 | fidelity | pixel comparison of the frozen scene: async `contentItem()` vs async root item vs synchronous whole-window capture, including a repeat pair |
 | pipeline | the asynchronous loop: latency, cadence, in-flight behaviour, completion order, tick lag, duplication, memory, GUI-thread impact |
 | sync baseline | the synchronous public capture for the same scene in the same session, for comparison |
-| failure modes | the documented rejections (hidden window, detached item) and recovery afterwards |
+| failure modes | the documented rejections (hidden window, detached item) and recovery afterwards. Only `hide()` is exercised; `minimized` is not tested |
+| consumer | one serial consumer with a service time per frame, its completed queue, the chosen backpressure strategy and the resulting freshness/drop figures |
 
 ### 4.3 Controls
 
@@ -124,8 +147,11 @@ Two deterministic landmarks are built into every QML scene:
   collapses content" from "the harness issued requests faster than frames".
 - **dry run** (`--dry-run --interval-ms 32`): the same loop, scene updates and bookkeeping
   with **no capture at all**, to separate the capture path's memory cost from the scene's.
-- **consumer window** (`--consumer-window N`): stop issuing while N completed frames are
-  still held by a slow consumer, i.e. the producer-side half of backpressure.
+- **serial consumer** (`--consumer-service-ms N --completed-queue-capacity C --backpressure
+  <strategy>`): completed frames enter one queue; a single consumer takes one frame at a time
+  and is busy with it for N ms, so it cannot service two frames in parallel and its sustained
+  rate is `1000 / N` frames per second. The three strategies below are measured separately so
+  that the consumer model and the producer policy cannot be confused with each other.
 - **child-process hidden-window probe**: the synchronous `grabWindow()` on a hidden window
   is executed in a separate process, because it can stall and must not take the evidence
   run with it.
@@ -156,7 +182,21 @@ place where a root-item grab differs from the true window content. `qquickview.c
 why: the root item is a child of `contentItem()`.
 
 **Conclusion:** the correct asynchronous grab target is **`QQuickWindow::contentItem()`**,
-not the QML root item. This is a public API and covers sibling/overlay composition.
+not the QML root item. This is a public API and covers **same-scene sibling content in the
+window's overlay tree**.
+
+**Boundary of that claim.** The probe places a plain QML `Rectangle` sibling under
+`contentItem()`, which is the parent chain that `Popup.Item`, `Overlay` and tooltips use
+inside the same scene. Qt 6.8 distinguishes `Popup.Item` (same-scene overlay),
+`Popup.Window` (a separate top-level window) and `Popup.Native`. Only the same-scene case is
+measured here:
+
+| Popup mode | Status |
+|---|---|
+| `Popup.Item` (same scene, parented under `contentItem()`) | **architectural inference** from the measured sibling case; not separately executed |
+| `Popup.Window` (separate top-level window) | **unverified** - expected to behave like the popups/dialogs that SPIKE-01 showed are excluded from a top-level widget capture |
+| `Popup.Native` | **unverified** |
+| Qt Quick Controls `Popup` / `ToolTip` as actually configured by an application | **unverified** as such; only the underlying same-scene parent chain was exercised |
 
 ### 5.2 Content fidelity
 
@@ -177,7 +217,7 @@ confined to that rectangle.
 ### 5.3 Freshness of custom FBO content over the async path
 
 `customfbo` pipeline run: 60 requests produced `distinctFboCounters = 26` and
-`distinctTicks = 26` over 26 rendered frames, with the encoded counter advancing 80 -> 105.
+`distinctTicks = 29` over 29 rendered frames, with the encoded counter advancing 222 -> 250.
 Each rendered frame carried a *fresh* custom-FBO render, so the asynchronous layer path does
 not return a stale or blank FBO texture.
 
@@ -190,13 +230,25 @@ not return a stale or blank FBO texture.
 | `quick3d` | D3D11 | `grabWindow()` | 13.61 ms | 20.68 ms | **1.0 /s** | 730.39 / 1014.95 ms |
 | `customfbo` | OpenGL | `grabWindow()` | 15.86 ms | 18.42 ms | 30.1 /s | 8.12 / 18.17 ms |
 | `quickwidget` | D3D11 | parent `QWidget::grab()` | 15.06 ms | 18.68 ms | 30.8 /s | 3.88 / 15.16 ms |
-| `openglwidget` | D3D11 | `QOpenGLWidget::grabFramebuffer()` | 4.43 ms | 4.44 ms | 46.9 /s | 1.26 / 2.27 ms |
+| `openglwidget` | D3D11 | `QOpenGLWidget::grabFramebuffer()` | 3.98 ms | 3.29 ms | 48.3 /s | 1.21 / 1.93 ms |
+
+The first five rows come from the dedicated `*-sync-baseline.json` runs (one measurement
+purpose per process); the `openglwidget` row comes from its `-all.json` run, which is the only
+one that measures that scene.
 
 This reproduces the SPIKE-01 Direct3D 11 result independently: a synchronous
 `grabWindow()` per iteration collapses the application loop to about one iteration per
-second while the call itself reports ~14-18 ms, and the GUI latency probe reaches 1003 ms.
+second while the call itself reports ~12-18 ms, and the GUI latency probe reaches 1003-1017 ms.
 The `QQuickWidget` parent `grab()` and the `QOpenGLWidget` `grabFramebuffer()` are not
 affected by that stall.
+
+**Host variance.** The `-all` runs re-measure the same synchronous baseline in a warmer
+process state (after composition, fidelity and pipeline work) and report higher figures for
+some scenes - most visibly `customfbo`, where the same configuration measured 39.69 ms avg,
+13.2 /s and GUI p95 78.21 ms instead of 15.86 ms / 30.1 /s / 18.17 ms. That is run-to-run
+variance on an uncontrolled desktop (SPIKE-01 section 2.5 recorded 20-40 % spread), not a
+different configuration; the dedicated per-scene files are the authoritative baseline and the
+duplicated measurement is kept in the evidence for transparency.
 
 ### 5.5 Asynchronous pipeline: latency, cadence, in-flight behaviour
 
@@ -205,18 +257,21 @@ The `tick` is written before each request, so `tick lag = tick in image - tick a
 
 | In flight (K) | Completed/s | Latency avg | Latency p95 | Distinct ticks | Duplicate completions | Tick lag avg / max | Frames rendered | GUI latency avg / p95 | RSS growth |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | 26.7 | 31.96 ms | 39.18 ms | **240** | 0 | 0.00 / 0.00 | 539 | 1.80 / 12.23 ms | +27.2 MiB |
-| 2 | 56.9 | 31.98 ms | 41.85 ms | 120 | 120 | 0.50 / 1.00 | 253 | 3.97 / 15.98 ms | +31.9 MiB |
-| 4 | 115.5 | 33.22 ms | 43.93 ms | 60 | 180 | 1.50 / 3.00 | 120 | 7.75 / 19.04 ms | +43.9 MiB |
-| 8 | 134.8 | 57.69 ms | 74.81 ms | 30 | 210 | 3.50 / 7.00 | 60 | 20.10 / 45.45 ms | +40.1 MiB |
-| 16 | 152.4 | 101.71 ms | 131.73 ms | 15 | 225 | 7.50 / 15.00 | 32 | 36.91 / 92.86 ms | +32.5 MiB |
+| 1 | 25.7 | 32.77 ms | 37.82 ms | **240** | 0 | 0.00 / 0.00 | 560 | 1.23 / 12.54 ms | +25.6 MiB |
+| 2 | 56.6 | 32.86 ms | 40.84 ms | 121 | 119 | 0.50 / 1.00 | 254 | 3.14 / 15.72 ms | +31.6 MiB |
+| 4 | 119.1 | 32.38 ms | 33.53 ms | 60 | 180 | 1.50 / 3.00 | 120 | 8.05 / 17.55 ms | +37.1 MiB |
+| 8 | 158.8 | 48.87 ms | 50.17 ms | 30 | 210 | 3.50 / 7.00 | 60 | 17.94 / 34.39 ms | +37.5 MiB |
+| 16 | 191.6 | 80.23 ms | 82.35 ms | 15 | 225 | 7.50 / 15.00 | 30 | 22.77 / 52.44 ms | +32.1 MiB |
+
+No consumer is modelled in these five runs, so every completed frame is released immediately
+(`consumer.model = none` in the reports).
 
 Readings:
 
-- **Throughput scales with K** (26.7 -> 152.4 captures/s) because one rendered frame serves K
-  grabs. The scene's own frame rate *falls* (539 -> 32 frames) because each frame now carries
+- **Throughput scales with K** (25.7 -> 191.6 captures/s) because one rendered frame serves K
+  grabs. The scene's own frame rate *falls* (560 -> 30 frames) because each frame now carries
   K extra item renders and readbacks.
-- **Latency grows with K** (32 -> 102 ms) and every request pays at least one frame.
+- **Latency grows with K** (33 -> 80 ms) and every request pays at least one frame.
 - **Pipelining does not produce more distinct frames.** Distinct ticks are exactly
   `requests / K`, duplicate completions are `requests - requests/K`, and the average tick lag
   is exactly `(K-1)/2`: the pending requests are all rendered from the same frame, so the
@@ -226,7 +281,7 @@ Readings:
   backends. There is **no drop or dedup mechanism**; every request completes with a full
   image, duplicates included. Deciding what to do with duplicated/stale frames is the
   caller's responsibility.
-- **GUI-thread cost grows with K** (1.80 -> 36.91 ms average, 12.23 -> 92.86 ms p95). At
+- **GUI-thread cost grows with K** (1.23 -> 22.77 ms average, 12.54 -> 52.44 ms p95). At
   K >= 8 the local UI jitter is comparable to the SPIKE-01 capture-induced damage figures,
   i.e. it is no longer negligible.
 - **Outstanding requests have no built-in limit.** Each in-flight request owns a
@@ -234,38 +289,77 @@ Readings:
   render thread's ability to serve K grabs per frame.
 
 The `paced` control (one request per rendered frame, K=4, 60 requests) gives
-**60 distinct ticks, 0 duplicates, tick lag 0.00**, 33.28 ms latency, 61 frames and GUI
-latency 1.29 / 3.01 ms. That isolates the effect: the collapse in the table above is caused by
+**60 distinct ticks, 0 duplicates, tick lag 0.00**, 33.35 ms latency, 61 frames and GUI
+latency 0.87 / 1.20 ms. That isolates the effect: the collapse in the table above is caused by
 issuing several requests before a frame is rendered, not by the API itself.
 
 ### 5.6 Memory behaviour
 
 | Configuration | Requests | Frames rendered | RSS growth | Growth per request |
 |---|---|---|---|---|
-| K=4, burst | 240 | 120 | +43.9 MiB | 187 KiB |
-| K=4, burst | 1000 | 566 | **+45.5 MiB** | **47 KiB** |
-| dry run (no capture), 32 ms pacing | 240 | 614 | **+0.9 MiB** | 4 KiB |
+| K=4, burst | 240 | 120 | +37.1 MiB | 158 KiB |
+| K=4, burst | 1000 | 595 | **+38.7 MiB** | **40 KiB** |
+| dry run (no capture), 32 ms pacing | 240 | 613 | **+0.9 MiB** | 4 KiB |
 
 Growth does not scale with the number of captures: quadrupling the request count from 240 to
-1000 leaves the total growth at ~+45 MiB, and the no-capture control in the same loop grows
+1000 leaves the total growth at ~+38 MiB, and the no-capture control in the same loop grows
 0.9 MiB. The residual is a bounded warm-up/caching cost of the layer path, **not a
 per-request leak**. (The harness itself was fixed during this spike: an earlier probe
 retained a result/connection reference cycle and measured its own retention. The numbers
 above are from the corrected probe, which releases the `QQuickItemGrabResult` and its pixels
 as soon as it has decoded them.)
 
-### 5.7 Backpressure with a slow consumer
+### 5.7 Backpressure with a single serial slow consumer
 
-| Producer configuration | Consumer | Completed/s | Max frames held | Peak retained | Frames that must be dropped for a 10 /s consumer |
-|---|---|---|---|---|---|
-| K=4, unbounded | 100 ms per frame | 82.4 | 16 | 36.0 MiB | ~72 of every 82 |
-| K=4, consumer window 2 | 100 ms per frame | 26.1 | 4 | 9.0 MiB | ~16 of every 26 |
+**Consumer model.** Completed frames enter one queue. A **single serial consumer** takes one
+frame at a time out of that queue and is busy with it for `consumerServiceMs`, so two frames
+can never be serviced at the same time and the sustained rate is `1000 / consumerServiceMs`
+frames per second. With `--consumer-service-ms 100` the target rate is 10 frames/s, which is
+what the measurements below confirm (9.4-9.9 frames/s). A frame is owned by the consumer from
+the moment it is taken out of the queue until its service ends.
 
-Without a consumer window the producer runs at full speed and the completed frames pile up
-(16 frames, 36 MiB) even though the consumer only takes 10/s. With a consumer window the
-producer is throttled (340 throttled loop slices), retention stays bounded (9 MiB) and the
-rate settles at the consumer's rate. **A bounded in-flight-to-consumer window is required;
-it is not provided by the API.**
+`--completed-queue-capacity C` bounds the **queue depth**. The frame currently being serviced
+is owned in addition to the queue, so the total ownership bound is exactly `C + 1` frames.
+The former `--consumer-window` setting mixed producer admission with consumer ownership and
+allowed an overshoot of up to K frames; it has been replaced by this explicit capacity plus a
+separate strategy switch.
+
+Three producer configurations were measured on `quick2d`, Direct3D 11, `contentItem()`, K=4:
+
+| Strategy | Requests | Producer /s | Consumer /s | Delivered | Dropped | Drop ratio | Max queue depth | Max owned frames | Peak retained | Frame age avg / p95 / max | Max stale frames | Load + drain |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **none** (unbounded queue) | 60 | **116.9** | 9.7 | 60 | 0 | 0 % | **55** | 56 | **126000 KiB (123 MiB)** | 2848 / 5453 / 5786 ms | **55** | 0.51 s + 5.89 s |
+| **drop-oldest** (latest-frame-wins), capacity 2 | 240 | **119.3** | 9.9 | 22 | **218** | **90.8 %** | **2** | **3** | **6750 KiB (6.6 MiB)** | 21.8 / 70.2 / 170.2 ms | **2** | 2.01 s + 0.29 s |
+| **producer-throttle** (admission control), capacity 2 | 60 | **9.8** | 9.5 | 60 | 0 | 0 % | **2** | **3** | **6750 KiB (6.6 MiB)** | 172.4 / 183.4 / 194.8 ms | **2** | 6.12 s + 0.28 s |
+
+Readings:
+
+- **The queue bound is now enforced.** With a capacity of 2 the observed queue depth is
+  exactly 2 and total ownership is 3 frames (`capacity + 1`, the frame being serviced), i.e.
+  `maxQueueDepthObserved <= completedQueueCapacity` holds strictly and the ownership overshoot
+  is exactly one frame by construction instead of up to K. "Frame age" is the time from
+  capture completion to the start of service; "stale frames" is how many newer frames the
+  producer completed before this one was serviced.
+- **Unbounded, the backlog is not a queueing delay but a growing debt.** After only 0.51 s of
+  capture the queue held 55 frames (123 MiB); the consumer needed another 5.89 s to drain it,
+  by which time the frames it was delivering were up to 55 frames / 5.8 s old. For a 10 fps
+  consumer, a 117 fps producer must **drop about 92 % of frames** to stay bounded.
+- **drop-oldest keeps capture and freshness decoupled.** The producer kept its full rate
+  (119.3 /s), the delivered frames were at most 2 frames stale (21.8 ms average age), retention
+  stayed at 6.6 MiB, and 90.8 % of frames were discarded. This is the policy that satisfies
+  "transport slowness never blocks capture/render" while keeping the viewer near-live.
+- **producer-throttle is a different trade-off, not an implementation of that policy.** It
+  drops nothing and keeps the same bounded memory, but the capture rate collapses to the
+  consumer's rate (9.8 /s) and the maximum in-flight capture concurrency drops below K
+  (observed 2), i.e. capture is coupled to the transport. Its frames are also *older* on
+  average (172 ms) than the drop-oldest ones (22 ms), because nothing fresh is captured while
+  the queue is full.
+- **Conclusion.** The public API provides no queue, no capacity and no drop policy, so
+  HyRemote must own them. The corrected evidence supports the earlier high-level conclusion -
+  a bounded completed queue plus a drop/coalesce policy is required so that transport
+  slowness never blocks capture or render - and it now also quantifies the cost of each
+  policy: ~92 % drops with latest-frame-wins, or a capture rate pinned to the consumer with
+  admission control.
 
 ### 5.8 Failure modes and recovery
 
@@ -279,16 +373,28 @@ it is not provided by the API.**
 
 The asynchronous API can therefore fail **synchronously at request time** rather than
 through a failed completion callback, and it requires the target's window to be visible. On
-this host the synchronous path still captures a hidden `QQuickView` window, so a minimized or
-occluded desktop window is capturable synchronously but not asynchronously. On the reference
-EGLFS target the window is always visible, so this matters mainly for desktop-hosted use.
+this host the synchronous path still captures a hidden `QQuickView` window, so a hidden
+desktop window is capturable synchronously but not asynchronously.
+
+**Boundary of that claim.** Only `QWidget::hide()` / `QWindow::hide()` was exercised:
+
+| Window state | Status |
+|---|---|
+| hidden via `hide()` | **measured**: async request rejected with a null result; synchronous `grabWindow()` still returns an image on this host |
+| minimized | **unverified** - not tested in this spike |
+| occluded / partially covered by another window | **unverified** |
+| on the reference EGLFS target (no window manager, always visible) | **unverified** |
+
+On the reference EGLFS target the window is never hidden by a window manager, so this
+limitation matters mainly for desktop-hosted use - but that statement is an expectation, not
+a measurement.
 
 ### 5.9 Are there public asynchronous equivalents for the widget targets?
 
 | Target | Public async strategy | Evidence |
 |---|---|---|
 | `QQuickWidget` | **partial**: `rootObject()->grabToImage()` (or its window's `contentItem()`) works and captures the embedded Quick content plus overlays, at the QuickWidget's own size (699x557). It does **not** include the surrounding raster widgets, and `grabWindow()` on the QQuickWidget's render-control window returns null, so the whole-window composition still needs the synchronous parent `QWidget::grab()` (15.06 ms) | `host-windows-rhi-default-quickwidget-all.json` |
-| `QOpenGLWidget` | **none**: there is no QML item tree, so `QQuickItem::grabToImage()` is not applicable at all. The only public capture is the synchronous `grabFramebuffer()` (4.43 ms avg, p95 4.44 ms, 46.9 /s) | `host-windows-rhi-default-openglwidget-all.json` |
+| `QOpenGLWidget` | **none**: there is no QML item tree, so `QQuickItem::grabToImage()` is not applicable at all. The only public capture is the synchronous `grabFramebuffer()` (3.98 ms avg, p95 3.29 ms, 48.3 /s) | `host-windows-rhi-default-openglwidget-all.json` |
 
 ## 6. Requirement-by-requirement result
 
@@ -298,18 +404,18 @@ APIs on this host.
 | # | Requirement | Result | Evidence |
 |---|---|---|---|
 | R1 | Capture the **complete** window content (not just the application's root item) | **PASS**, with `QQuickWindow::contentItem()`; `FAIL` if the root item is used | 5.1 |
-| R2 | Include overlay/sibling content (popups, tooltips, Overlay) | **PASS** with `contentItem()`: 3.31 % differing pixels, all inside the overlay rect, 0.00 % elsewhere | 5.1 |
+| R2 | Include same-scene sibling/overlay-tree content (the parent chain `Popup.Item` and `Overlay` use) | **PASS with `contentItem()`** for a same-scene sibling item: 3.31 % differing pixels, all inside the overlay rect, 0.00 % elsewhere. `Popup.Window`, `Popup.Native` and Control-specific `Popup`/`ToolTip` usage are **unverified** | 5.1 |
 | R3 | Reproduce composed Quick3D content | **PASS**: 0 differing pixels vs the synchronous whole-window capture | 5.2 |
-| R4 | Reproduce custom `QQuickFramebufferObject` content, and see fresh FBO renders | **PASS**: counter advances 80 -> 105 over 26 distinct rendered frames | 5.2, 5.3 |
+| R4 | Reproduce custom `QQuickFramebufferObject` content, and see fresh FBO renders | **PASS**: counter advances 222 -> 250 over 29 distinct rendered frames | 5.2, 5.3 |
 | R5 | Pixel fidelity against the synchronous capture | **PASS** for 2D/Quick3D (identical); **PASS within tolerance** for the custom FBO scene (max channel diff 2) | 5.2 |
-| R6 | Latency | **PASS with a caveat**: >= 1 frame period; measured 18.2-31.9 ms across scenes/backends at K=1-4, growing to ~102 ms at K=16 | 5.5 |
-| R7 | Sustainable cadence | **PASS**: 26.7 /s (K=1) up to 152.4 /s (K=16) on `quick2d`; 205.7 /s on `quickwidget`; 123.4 /s on `quick3d`; 137.0 /s on `customfbo` | 5.5 |
+| R6 | Latency | **PASS with a caveat**: >= 1 frame period; measured 32.4-32.9 ms at K=1-4 on `quick2d`, growing to 80.2 ms at K=16 | 5.5 |
+| R7 | Sustainable cadence | **PASS**: 25.7 /s (K=1) up to 191.6 /s (K=16) on `quick2d`; 87.4 /s on `quickwidget`; 89.3 /s on `quick3d`; 38.4 /s on `customfbo` (that scene renders continuously by design and is the most load-sensitive of the set; an earlier run of the same configuration reported 137 /s) | 5.5 |
 | R8 | Outstanding-request behaviour | **PASS with a caveat**: no built-in limit; K trades throughput against latency, freshness and GUI-thread load. Operating point from this evidence: K=2-4 | 5.5 |
-| R9 | Ordering / drop semantics | **PASS with a caveat**: completions are FIFO and nothing is dropped, but duplicated content is returned for pipelined requests, so the caller must drop or coalesce | 5.5 |
+| R9 | Ordering / drop semantics | **PASS with a caveat**: completions are FIFO and the API drops nothing, but duplicated content is returned for pipelined requests, so the caller must drop or coalesce | 5.5 |
 | R10 | Content freshness / staleness | **PASS with a caveat**: tick lag average is exactly `(K-1)/2`; content is never newer than the request and is up to K-1 ticks old | 5.5 |
-| R11 | Memory behaviour | **PASS**: bounded, no per-request leak (+45.5 MiB for 1000 requests vs +0.9 MiB in the no-capture control) | 5.6 |
-| R12 | Backpressure against a slow client | **PASS with a caveat**: requires a caller-imposed bounded consumer window; unbounded production retains 36 MiB and would have to drop ~87 % of frames | 5.7 |
-| R13 | Work while the target window is hidden/minimized | **FAIL**: request returns a null result and warns; the synchronous path still works on this host | 5.8 |
+| R11 | Memory behaviour | **PASS**: bounded, no per-request leak (+38.7 MiB for 1000 requests vs +0.9 MiB in the no-capture control) | 5.6 |
+| R12 | Backpressure against a slow client | **PASS with a caveat**: the API provides no queue, capacity or drop policy; with a caller-owned bounded queue of 2 and latest-frame-wins the producer keeps its rate and ~91 % of frames are dropped, whereas an unbounded queue would have retained 123 MiB and fallen 5.8 s behind | 5.7 |
+| R13 | Work while the target window is **hidden** | **FAIL**: the request returns a null result and warns; the synchronous path still works on this host. `minimized` and occluded are **unverified** | 5.8 |
 | R14 | Whole-window async for `QOpenGLWidget` | **FAIL**: no public asynchronous API exists for this target family | 5.9 |
 | R15 | Whole-window async for `QQuickWidget` | **FAIL (partial)**: the embedded Quick content can be captured asynchronously, the surrounding widget composition cannot | 5.9 |
 | R16 | Public API only, no private Qt API | **PASS**: every probe and every recommendation uses public APIs | — |
@@ -320,12 +426,12 @@ Three real gaps, each stated as a specific requirement rather than as a general
 dissatisfaction:
 
 1. **R14 - `QOpenGLWidget` has no public asynchronous capture path.** The only option is the
-   synchronous `grabFramebuffer()` (4.43 ms avg, p95 4.44 ms on this host). A GL/PBO path
+   synchronous `grabFramebuffer()` (3.98 ms avg, p95 3.29 ms on this host). A GL/PBO path
    would be the only way to make this asynchronous.
 2. **R15 - `QQuickWidget` cannot be composed asynchronously.** The embedded Quick content is
    available asynchronously, but the surrounding widget tree requires `QWidget::grab()`.
-3. **R13 - the asynchronous path requires a visible window.** A hidden or minimized target
-   cannot be captured asynchronously at all.
+3. **R13 - the asynchronous path requires a visible window.** A hidden target cannot be
+   captured asynchronously at all; whether `minimized` behaves the same way was not tested.
 
 Two things the public path does **not** fail on, despite the concern in the issue text:
 whole-window composition (R1-R2, solved by grabbing `contentItem()`) and fidelity
@@ -355,14 +461,19 @@ capture", not "make the Quick path faster".
 ## 7. Recommended v0.1 asynchronous design
 
 1. **Grab `QQuickWindow::contentItem()`**, never the application's root item. This is public,
-   covers overlays/popups/tooltips, and was pixel-identical to the synchronous whole-window
-   capture for 2D and Quick3D.
+   covers same-scene sibling/overlay-tree content, and was pixel-identical to the synchronous
+   whole-window capture for 2D and Quick3D. Treat the specific Qt Quick popup modes as
+   separate compatibility cases still to be verified.
 2. **Bound the in-flight window at K = 2-4.** Above that, latency, staleness and GUI-thread
    jitter grow faster than the throughput gain (5.5).
 3. **Pace the producer per delivered frame** when freshness matters: the paced control gave
    one distinct frame per request with zero duplicates and zero lag.
-4. **Impose a bounded in-flight-to-consumer window** and a drop policy (drop-oldest or
-   latest-frame-wins) instead of letting completed frames accumulate (5.7).
+4. **Own a bounded completed queue and an explicit drop policy.** The API provides neither.
+   With a single 10 fps consumer the measured choice is between latest-frame-wins (drop
+   ~91 %, keep the producer at full rate, delivered content at most 2 frames stale, 6.6 MiB
+   retained) and admission control (drop nothing, but capture is pinned to the consumer rate
+   and the retained frames are older). The recommended default is the bounded queue with
+   latest-frame-wins, because transport slowness must not throttle capture (5.7).
 5. **Handle the synchronous rejection path**: `grabToImage()` can return null before any
    callback exists (detached item, invisible window), so the caller must treat "no result" and
    "null image" as first-class states and keep a full-frame/synchronous fallback.
@@ -388,12 +499,21 @@ capture", not "make the Quick path faster".
 3. **Duplicated content is returned silently.** A naive integration that writes every
    completion to the transport would waste bandwidth on identical frames.
 4. **The visibility precondition (R13)** may or may not matter depending on how HyRemote is
-   deployed; it is unresolved for desktop hosts.
+   deployed; it is unresolved for desktop hosts, and `minimized`/occluded were not tested.
 5. **`QQuickWidget`/`QOpenGLWidget` remain synchronous** for whole-window sharing.
 6. **No `RemoteFrame` API exists yet**, so the ownership/recycle rules above are
    requirements, not an implementation.
 7. The custom-FBO fidelity comparison is tolerance-based rather than exact, because that
    scene renders continuously by design.
+8. **The consumer numbers come from a model, not from a real transport.** The serial consumer
+   services a frame in a fixed 100 ms and the queue is bounded in frames; a real transport has
+   variable service time, encoding, and possibly its own buffering. The measured relations
+   (drop ratio, retention bound, staleness) are the input to that design, not a substitute for
+   measuring it.
+9. **`grabToImage()` is positioned as the public-API baseline / v0.1 candidate**, not as the
+   final high-performance path; Qt documents the offscreen render plus GPU->CPU copy as
+   costly, and neither the embedded validation nor the low-copy investigation (#17) has
+   happened yet.
 
 ## 9. Explicitly unverified
 
@@ -405,6 +525,12 @@ capture", not "make the Quick path faster".
 - Input delivery and transport integration.
 - Any GL/PBO, render-thread, RHI or version-specific mechanism: not implemented in this
   spike by design.
+- Qt Quick popup modes other than a same-scene sibling under `contentItem()`:
+  `Popup.Window`, `Popup.Native`, and Qt Quick Controls `Popup`/`ToolTip` as configured by an
+  application.
+- `minimized` and occluded target windows: only `hide()` was exercised.
+- A real transport or encoder as the consumer; the measured consumer is the explicit serial
+  model of section 5.7.
 
 ## 10. Evidence index and reproduction
 
@@ -421,13 +547,20 @@ the raw probe data (`composition.overlayPresence`, `fidelity[]`, `pipeline.*`,
 | `host-windows-rhi-opengl-customfbo-all.json` | `customfbo` composition + fidelity + pipeline + failure modes |
 | `host-windows-rhi-default-quickwidget-all.json` | `quickwidget` composition + fidelity + pipeline + failure modes |
 | `host-windows-rhi-default-openglwidget-all.json` | `openglwidget`: no QML item tree, so composition/pipeline are not applicable |
-| `host-windows-rhi-default-quick2d-pipeline-k{1,2,4,8,16}.json` | in-flight sweep, 240 requests each |
+| `host-windows-rhi-default-quick2d-pipeline-k{1,2,4,8,16}.json` | in-flight sweep, 240 requests each, no consumer modelled |
 | `host-windows-rhi-default-quick2d-pipeline-k4-1000requests.json` | memory scaling |
 | `host-windows-rhi-default-quick2d-pipeline-dryrun-control.json` | no-capture memory control |
 | `host-windows-rhi-default-quick2d-pipeline-paced-k4.json` | paced control (one request per frame) |
-| `host-windows-rhi-default-quick2d-pipeline-consumer-window2.json` | bounded consumer window |
-| `host-windows-rhi-default-quick2d-pipeline-consumer-unbounded.json` | unbounded consumer window |
+| `host-windows-rhi-default-quick2d-consumer-unbounded-queue.json` | single 10 fps consumer, unbounded completed queue (60 requests) |
+| `host-windows-rhi-default-quick2d-consumer-drop-oldest-cap2.json` | single 10 fps consumer, queue capacity 2, latest-frame-wins (240 requests) |
+| `host-windows-rhi-default-quick2d-consumer-producer-throttle-cap2.json` | single 10 fps consumer, queue capacity 2, producer admission control (60 requests) |
 | `host-windows-rhi-*-quick2d-sync-baseline.json`, `*-quick3d-sync-baseline.json`, `*-customfbo-sync-baseline.json`, `*-quickwidget-sync-baseline.json` | synchronous baselines per scene/backend |
+
+Every pipeline report exposes the consumer model and its outcome under `consumerConfig` and
+`consumer` (`serviceMsPerFrame`, `targetConsumerFps`, `completedQueueCapacity`,
+`backpressureStrategy`, `delivered`, `dropped`, `dropRatio`, `maxQueueDepthObserved`,
+`maxOwnedFramesObserved`, `backlogAtEndOfLoad`, `backlogGrowthPerSecond`, `frameAge*Ms`,
+`staleFrames*`), so the tables in section 5.7 can be recomputed from the files alone.
 
 Build and run:
 
@@ -440,6 +573,15 @@ cmake --build build/async-spike
 ./build/async-spike/hyremote-async-spike --scene quick2d --mode all --requests 60 --max-inflight 4 --json /tmp/quick2d.json
 ./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 240 --max-inflight 8 --json /tmp/k8.json
 ./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 240 --dry-run --interval-ms 32 --json /tmp/control.json
+# single serial 10 fps consumer, unbounded completed queue
+./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 60 --max-inflight 4 \
+    --consumer-service-ms 100 --json /tmp/consumer-unbounded.json
+# single serial 10 fps consumer, bounded queue of 2 with latest-frame-wins
+./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 240 --max-inflight 4 \
+    --consumer-service-ms 100 --completed-queue-capacity 2 --backpressure drop-oldest --json /tmp/consumer-dropoldest.json
+# same bound, but the producer is throttled instead of dropping
+./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 60 --max-inflight 4 \
+    --consumer-service-ms 100 --completed-queue-capacity 2 --backpressure producer-throttle --json /tmp/consumer-throttle.json
 ctest --test-dir build/async-spike --output-on-failure
 ```
 
@@ -452,7 +594,7 @@ The status column uses the definitions of [`docs/compatibility.md`](compatibilit
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Status | Notes |
 |---|---|---|---|---|---|---|
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 and OpenGL | Qt Quick 2D | `QQuickWindow::contentItem()->grabToImage()` | Experimental (host) | Pixel-identical to the synchronous whole-window capture; 32 ms latency at K=1, 115 /s at K=4; requires a visible window |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 and OpenGL | Qt Quick 2D | `QQuickWindow::contentItem()->grabToImage()` | Experimental (host) | Public-API asynchronous baseline / v0.1 candidate. Pixel-identical to the synchronous whole-window capture; 32.8 ms latency at K=1, 119.1 /s at K=4; requires a visible window; no queue or drop policy |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Quick3D | `contentItem()->grabToImage()` | Experimental (host) | 0 differing pixels, 123 /s at K=4 |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL | custom `QQuickFramebufferObject` | `contentItem()->grabToImage()` | Experimental (host) | Fresh FBO content per rendered frame; max channel diff 2 |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | `rootObject()->grabToImage()` (Quick content only) | Experimental (host) | 699x557 Quick content; the surrounding widget composition still needs the synchronous parent `grab()` |
