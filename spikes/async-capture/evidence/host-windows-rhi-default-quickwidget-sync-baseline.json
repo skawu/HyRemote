@@ -1,0 +1,80 @@
+{
+    "arguments": [
+        "--scene",
+        "quickwidget",
+        "--mode",
+        "sync-baseline",
+        "--sync-captures",
+        "60",
+        "--json",
+        "spikes/async-capture/evidence/host-windows-rhi-default-quickwidget-sync-baseline.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080",
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/16",
+    "results": [
+        {
+            "family": "QQuickWidget",
+            "hiddenWindowSyncGrab": {
+                "exitCode": 2,
+                "scene": "quickwidget",
+                "status": "completed, grabWindow() returned a null image",
+                "stderr": "",
+                "stdout": "hidden-sync: scene=quickwidget image=0x0 elapsedMs=0"
+            },
+            "observations": [
+                "Tests whether a QQuickWidget's Quick content can be captured asynchronously through its public rootObject(), and what that does and does not cover."
+            ],
+            "scene": "quickwidget",
+            "sceneInfo": {
+                "contentItemSize": "699x557",
+                "devicePixelRatio": 1,
+                "family": "QQuickWidget",
+                "graphicsApi": "4",
+                "overlayColor": "#ff00ff",
+                "overlayRectInContentItem": "499,397 160x120",
+                "requestedSize": "960x600",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "699x557",
+                "scene": "quickwidget",
+                "tickPatchRectInContentItem": "8,8 48x48",
+                "windowSize": "699x557"
+            },
+            "syncBaseline": {
+                "api": "QWidget::grab() on the parent widget",
+                "avgMs": 15.056538333333329,
+                "captures": 60,
+                "capturesPerSecond": 30.829753527938617,
+                "guiLatencyAvgMs": 3.8798113043478324,
+                "guiLatencyP95Ms": 15.157400000000052,
+                "lastImageSize": "960x600 dpr=1",
+                "maxMs": 21.0773,
+                "nullImages": 0,
+                "p50Ms": 16.5631,
+                "p95Ms": 18.6838,
+                "rssGrowthBytes": 13606912
+            },
+            "title": "QQuickWidget inside a QWidget hierarchy"
+        }
+    ],
+    "schema": "hyremote-async-capture-spike/1",
+    "skippedScenes": [
+    ]
+}

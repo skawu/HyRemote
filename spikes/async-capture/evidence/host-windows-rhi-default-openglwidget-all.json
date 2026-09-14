@@ -1,0 +1,101 @@
+{
+    "arguments": [
+        "--scene",
+        "openglwidget",
+        "--mode",
+        "all",
+        "--sync-captures",
+        "60",
+        "--json",
+        "spikes/async-capture/evidence/host-windows-rhi-default-openglwidget-all.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080",
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/16",
+    "results": [
+        {
+            "composition": {
+                "applicable": false,
+                "contentItemSize": "",
+                "grabs": {
+                    "backgroundPixel": "",
+                    "contentItemAsyncOverlayPixel": "",
+                    "contentItemAsyncSize": "",
+                    "expectedOverlayPixel": "",
+                    "rootItemAsyncOverlayPixel": "",
+                    "rootItemAsyncSize": "",
+                    "syncWindowOverlayPixel": "",
+                    "syncWindowSize": "",
+                    "tickInContentItemAsync": -1,
+                    "tickInRootItemAsync": -1,
+                    "tickInSyncWindow": -1
+                },
+                "notes": [
+                    "this scene has no QML item tree, so QQuickItem::grabToImage() does not apply"
+                ],
+                "overlayColor": "",
+                "overlayPresence": {
+                    "inContentItemAsync": false,
+                    "inRootItemAsync": false,
+                    "inSyncWindow": false
+                },
+                "overlayRectInContentItem": "",
+                "rootItemParentIsContentItem": false,
+                "rootItemPositionInContentItem": "",
+                "rootItemSize": "",
+                "tickAtCapture": -1,
+                "windowSize": ""
+            },
+            "failureModes": [
+            ],
+            "family": "QOpenGLWidget",
+            "fidelity": [
+            ],
+            "observations": [
+                "Control case: Qt exposes no public asynchronous capture API for a QOpenGLWidget, so only the synchronous baseline is measurable.",
+                "This scene has no QML item tree, so QQuickItem::grabToImage() is not applicable: Qt exposes no public asynchronous capture API for a QOpenGLWidget."
+            ],
+            "pipelineApplicable": false,
+            "scene": "openglwidget",
+            "sceneInfo": {
+                "family": "QOpenGLWidget",
+                "requestedSize": "960x600",
+                "scene": "openglwidget"
+            },
+            "syncBaseline": {
+                "api": "QOpenGLWidget::grabFramebuffer()",
+                "avgMs": 4.4342483333333345,
+                "captures": 60,
+                "capturesPerSecond": 46.88243159794627,
+                "guiLatencyAvgMs": 1.2612565789473678,
+                "guiLatencyP95Ms": 2.265899999999988,
+                "lastImageSize": "938x557 dpr=1",
+                "maxMs": 64.8316,
+                "nullImages": 0,
+                "p50Ms": 3.2795,
+                "p95Ms": 4.4402,
+                "rssGrowthBytes": 6393856
+            },
+            "title": "QOpenGLWidget inside a QWidget hierarchy"
+        }
+    ],
+    "schema": "hyremote-async-capture-spike/1",
+    "skippedScenes": [
+    ]
+}

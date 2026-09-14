@@ -1,0 +1,123 @@
+{
+    "arguments": [
+        "--scene",
+        "quick2d",
+        "--mode",
+        "pipeline",
+        "--requests",
+        "240",
+        "--max-inflight",
+        "4",
+        "--json",
+        "spikes/async-capture/evidence/host-windows-rhi-default-quick2d-pipeline-k4.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080",
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/16",
+    "results": [
+        {
+            "family": "QQuickWindow 2D",
+            "hiddenWindowSyncGrab": {
+                "exitCode": 0,
+                "scene": "quick2d",
+                "status": "completed with an image",
+                "stderr": "",
+                "stdout": "hidden-sync: scene=quick2d image=960x600 elapsedMs=3"
+            },
+            "observations": [
+                "The scene animates continuously and its encoded tick patch is driven from the harness, so every captured image can be attributed to the request that produced it."
+            ],
+            "pipeline": {
+                "consumerDelayMs": 0,
+                "consumerWindow": 0,
+                "content": {
+                    "distinctFboCounters": 0,
+                    "distinctTicks": 60,
+                    "duplicateCompletions": 180,
+                    "fboCounterFirst": -1,
+                    "fboCounterLast": -1,
+                    "framesRendered": 120,
+                    "lastFrameBytes": 2304000,
+                    "outOfOrderCompletions": 0,
+                    "tickLagAvg": 1.5,
+                    "tickLagMax": 3,
+                    "tickLagP95": 3
+                },
+                "dryRun": false,
+                "grabTarget": "QQuickWindow::contentItem()",
+                "intervalMs": 0,
+                "latency": {
+                    "avgMs": 33.215432916666686,
+                    "maxMs": 50.3037,
+                    "p50Ms": 32.2224,
+                    "p95Ms": 43.9315
+                },
+                "maxInFlight": 4,
+                "notes": [
+                ],
+                "outcome": {
+                    "completed": 240,
+                    "completedPerSecond": 115.52180307970538,
+                    "failedToStart": 0,
+                    "maxInFlightObserved": 4,
+                    "nullImages": 0,
+                    "timedOut": false,
+                    "wallSeconds": 2.0775299
+                },
+                "pacedRequests": false,
+                "requests": 240,
+                "resources": {
+                    "cpuPercentOfOneCore": 34.596373318140934,
+                    "cpuSeconds": 0.71875,
+                    "guiLatencyAvgMs": 7.74633271028037,
+                    "guiLatencyMaxMs": 24.785199999999975,
+                    "guiLatencyP95Ms": 19.041999999999916,
+                    "maxHeldObserved": 0,
+                    "peakRetainedBytes": 0,
+                    "rssEndBytes": 135725056,
+                    "rssGrowthBytes": 46067712,
+                    "rssGrowthPerCompletionBytes": 191948.8,
+                    "rssSlopeBytesPer100Frames": 657637.5166654935,
+                    "rssStartBytes": 89657344,
+                    "throttledSlices": 0
+                }
+            },
+            "scene": "quick2d",
+            "sceneInfo": {
+                "contentItemSize": "960x600",
+                "devicePixelRatio": 1,
+                "family": "QQuickWindow 2D",
+                "graphicsApi": "4",
+                "overlayColor": "#ff00ff",
+                "overlayRectInContentItem": "760,440 160x120",
+                "requestedSize": "960x600",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "960x600",
+                "scene": "quick2d",
+                "tickPatchRectInContentItem": "8,8 48x48",
+                "windowSize": "960x600"
+            },
+            "title": "QQuickWindow 2D scene"
+        }
+    ],
+    "schema": "hyremote-async-capture-spike/1",
+    "skippedScenes": [
+    ]
+}

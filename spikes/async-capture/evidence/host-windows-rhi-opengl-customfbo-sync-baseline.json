@@ -1,0 +1,82 @@
+{
+    "arguments": [
+        "--scene",
+        "customfbo",
+        "--mode",
+        "sync-baseline",
+        "--sync-captures",
+        "60",
+        "--json",
+        "spikes/async-capture/evidence/host-windows-rhi-opengl-customfbo-sync-baseline.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "opengl",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080",
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/16",
+    "results": [
+        {
+            "family": "custom QQuickFramebufferObject",
+            "hiddenWindowSyncGrab": {
+                "exitCode": 0,
+                "scene": "customfbo",
+                "status": "completed with an image",
+                "stderr": "",
+                "stdout": "hidden-sync: scene=customfbo image=960x600 elapsedMs=6"
+            },
+            "observations": [
+                "The custom FBO renderer encodes its own render counter in its clear color, so both the freshness and the composition of the grabbed region can be checked."
+            ],
+            "scene": "customfbo",
+            "sceneInfo": {
+                "contentItemSize": "960x600",
+                "devicePixelRatio": 1,
+                "family": "custom QQuickFramebufferObject",
+                "fboRectInContentItem": "360,160 280x280",
+                "fboRendererFrameCount": 321,
+                "graphicsApi": "3",
+                "overlayColor": "#ff00ff",
+                "overlayRectInContentItem": "760,440 160x120",
+                "requestedSize": "960x600",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "960x600",
+                "scene": "customfbo",
+                "tickPatchRectInContentItem": "8,8 48x48",
+                "windowSize": "960x600"
+            },
+            "syncBaseline": {
+                "api": "QQuickWindow::grabWindow()",
+                "avgMs": 15.858243333333338,
+                "captures": 60,
+                "capturesPerSecond": 30.131018708650824,
+                "guiLatencyAvgMs": 8.12344301075269,
+                "guiLatencyP95Ms": 18.173299999999983,
+                "lastImageSize": "960x600 dpr=1",
+                "maxMs": 21.2206,
+                "nullImages": 0,
+                "p50Ms": 16.0346,
+                "p95Ms": 18.4196,
+                "rssGrowthBytes": 4079616
+            },
+            "title": "custom QQuickFramebufferObject content"
+        }
+    ],
+    "schema": "hyremote-async-capture-spike/1",
+    "skippedScenes": [
+    ]
+}
