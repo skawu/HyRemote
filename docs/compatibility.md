@@ -32,6 +32,11 @@ the mechanism that was actually measured, not a frozen HyRemote API.
 | 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | custom Quick FBO/OpenGL | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | Freshness verified with an encoded render counter (24 -> 723 over 723 rendered frames) |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | custom Quick FBO/OpenGL | none | VNC candidate | Unsupported | `QQuickFramebufferObject` never rendered on a non-OpenGL RHI backend |
 | 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Qt Quick 2D | `QQuickWindow::grabWindow()` once per frame | VNC candidate | Unsupported | The application's own event loop fell to ~1 fps while the call itself reported 15.8 ms |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 and OpenGL | Qt Quick 2D | `QQuickWindow::contentItem()->grabToImage()` (async) | VNC candidate | Experimental (host) | Pixel-identical to the synchronous whole-window capture; ~32 ms latency at 1 in flight, 115 /s at 4; requires a visible window; see `async-capture-spike.md` |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Quick3D | `contentItem()->grabToImage()` (async) | VNC candidate | Experimental (host) | 0 differing pixels vs the synchronous capture; 123 /s at 4 in flight |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL | custom Quick FBO/OpenGL | `contentItem()->grabToImage()` (async) | VNC candidate | Experimental (host) | Fresh FBO content per rendered frame (counter 80 -> 105 over 26 frames); max channel diff 2 |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | `rootObject()->grabToImage()` (async, Quick content only) | VNC candidate | Experimental (host) | 699x557 Quick content; surrounding widget composition still requires the synchronous parent `grab()` |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / any | QOpenGLWidget | none | VNC candidate | Unsupported | No public asynchronous capture API exists for this family |
 
 ## Rows still awaiting evidence
 
