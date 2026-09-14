@@ -1182,6 +1182,9 @@ QVariantMap pipelineToVariant(const PipelineResult &result)
     consumer.insert(QStringLiteral("frameAgeMaxMs"), result.frameAgeMaxMs);
     consumer.insert(QStringLiteral("staleFramesAvg"), result.staleFramesAvg);
     consumer.insert(QStringLiteral("staleFramesP95"), result.staleFramesP95);
+    // Key name kept for evidence stability; the quantity is the request-sequence age
+    // (producedSoFar - frame index), not visual content staleness.
+    // See PipelineResult::staleFramesAvg.
     consumer.insert(QStringLiteral("staleFramesMax"), result.staleFramesMax);
     map.insert(QStringLiteral("consumer"), consumer);
 
@@ -1196,6 +1199,9 @@ QVariantMap pipelineToVariant(const PipelineResult &result)
     content.insert(QStringLiteral("distinctTicks"), result.distinctTicks);
     content.insert(QStringLiteral("duplicateCompletions"), result.duplicateCompletions);
     content.insert(QStringLiteral("outOfOrderCompletions"), result.outOfOrderCompletions);
+    // Key name kept for evidence stability; the quantity is the SIGNED scene-state advance
+    // from the request to the captured image (positive = the image is newer than the
+    // request). See PipelineResult::tickLagAvg.
     content.insert(QStringLiteral("tickLagAvg"), result.tickLagAvg);
     content.insert(QStringLiteral("tickLagP95"), result.tickLagP95);
     content.insert(QStringLiteral("tickLagMax"), result.tickLagMax);

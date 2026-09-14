@@ -165,6 +165,20 @@ struct PipelineResult
     int distinctTicks = 0;
     int duplicateCompletions = 0;
     int outOfOrderCompletions = 0;
+
+    // Signed scene-state advance from the request to the captured image
+    // (tick in image - tick at request).
+    //
+    // A positive value means the returned image carries a NEWER scene state than the state at
+    // the moment the request was issued, which is the normal result of pipelining: several
+    // pending requests are served by one later render and all receive that newer state. It is
+    // NOT an age or a staleness measurement, and it must not be read as "the image is behind
+    // its request".
+    //
+    // The JSON key is still "tickLag*" so that the recorded evidence stays readable as
+    // published; the definition above is authoritative. The practical consequence is a
+    // timestamp rule, not a freshness rule: a request timestamp cannot serve as the content
+    // PTS of the returned frame.
     double tickLagAvg = 0.0;
     double tickLagP95 = 0.0;
     double tickLagMax = 0.0;
@@ -187,10 +201,20 @@ struct PipelineResult
     double producerPerSecond = 0.0;       // completed / load seconds
     double consumerPerSecond = 0.0;       // delivered during load / load seconds
     quint64 retainedBytesAtEndOfLoad = 0;
-    double frameAgeAvgMs = 0.0;           // ready -> service start
+    double frameAgeAvgMs = 0.0;           // ready -> service start (wall clock)
     double frameAgeP95Ms = 0.0;
     double frameAgeMaxMs = 0.0;
-    double staleFramesAvg = 0.0;          // frames produced after the delivered one
+
+    // Request-sequence age: how many later requests the producer had already completed before
+    // this frame was serviced (producedSoFar - frame index).
+    //
+    // This is an ordering/backlog indicator in the REQUEST sequence. It is not the visual age
+    // of the pixels: a frame's pixels correspond to whatever scene state its servicing render
+    // produced, and that state can be ahead of the request time (see tickLag* above), so
+    // "positions behind in the request sequence" must never be reported as "the image is N
+    // rendered frames behind the live scene". The JSON key keeps the historical name
+    // "staleFrames*"; the definition here is authoritative.
+    double staleFramesAvg = 0.0;
     double staleFramesP95 = 0.0;
     double staleFramesMax = 0.0;
 
