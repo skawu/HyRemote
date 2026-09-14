@@ -248,12 +248,44 @@ struct AsyncRequest
     int tickAtRequest = 0;
     qint64 requestedNs = 0;
     qint64 readyNs = 0;
-    qint64 releaseAfterNs = 0;
     QSharedPointer<QQuickItemGrabResult> result;
     QImage image;
     int tickInImage = -1;
     int fboCounterInImage = -1;
     bool decoded = false;
+
+    // Consumer side.
+    qint64 serviceStartNs = 0;
+    qint64 serviceEndNs = 0;
+    int producedAtServiceTime = 0;
+};
+
+// One serial consumer: a single service slot that takes one frame at a time out of
+// the completed queue and is busy with it for `consumerServiceMs`. Frames are never
+// serviced in parallel, so the sustained rate is 1000 / consumerServiceMs per second
+// whenever the queue has a backlog.
+struct ConsumerModel
+{
+    int serviceMs = 0;
+    int capacity = 0;  // 0 = unbounded
+    BackpressureStrategy strategy = BackpressureStrategy::None;
+
+    QVector<QSharedPointer<AsyncRequest>> queue;
+    QSharedPointer<AsyncRequest> inService;
+    qint64 serviceIntervalNs = 0;
+    qint64 nextServiceStartNs = 0;
+
+    int maxQueueDepth = 0;
+    int maxOwnedFrames = 0;
+    quint64 retainedBytes = 0;
+    quint64 peakRetainedBytes = 0;
+    quint64 retainedBytesAtEndOfLoad = 0;
+    int delivered = 0;
+    int deliveredAtEndOfLoad = 0;
+    int dropped = 0;
+    int backlogAtEndOfLoad = 0;
+    QVector<double> frameAgeMs;
+    QVector<double> staleFrames;
 };
 
 struct PipelineState
@@ -262,7 +294,6 @@ struct PipelineState
     QQuickItem *target = nullptr;
     ProbeConfig config;
     QVector<QSharedPointer<AsyncRequest>> inFlight;
-    QVector<QSharedPointer<AsyncRequest>> held;
     QVector<double> latenciesMs;
     QVector<double> tickLags;
     QSet<int> ticksSeen;
@@ -271,19 +302,16 @@ struct PipelineState
     int fboCounterLast = -1;
     int nextIndex = 0;
     int completedCount = 0;
-    int completedInRequestOrder = 0;
     int lastCompletedIndex = -1;
     int outOfOrder = 0;
     int duplicateCompletions = 0;
     int nullImages = 0;
     int failedToStart = 0;
     int maxInFlightObserved = 0;
-    quint64 retainedBytes = 0;
-    quint64 peakRetainedBytes = 0;
+    int admissionBlockedSlices = 0;
     qint64 lastFrameBytes = 0;
-    int maxHeldObserved = 0;
-    int throttledSlices = 0;
     bool timedOut = false;
+    bool loadComplete = false;
 };
 
 void decodeRequest(PipelineState &state, const QSharedPointer<AsyncRequest> &request)
@@ -309,7 +337,111 @@ void decodeRequest(PipelineState &state, const QSharedPointer<AsyncRequest> &req
     }
 }
 
+void releaseFrame(ConsumerModel &consumer, const QSharedPointer<AsyncRequest> &frame)
+{
+    if (!frame || frame->image.isNull())
+        return;
+    const quint64 bytes = quint64(frame->image.sizeInBytes());
+    consumer.retainedBytes = consumer.retainedBytes >= bytes ? consumer.retainedBytes - bytes : 0;
+    frame->image = QImage();
+}
+
+// A completed frame enters the single completed queue.
+//
+// DropOldest implements latest-frame-wins: while the queue is at capacity the oldest
+// queued frame is discarded, so capture is never throttled by the consumer and the
+// queue can never exceed its capacity.
+void enqueueCompleted(ConsumerModel &consumer, const QSharedPointer<AsyncRequest> &frame)
+{
+    if (consumer.capacity > 0 && consumer.strategy == BackpressureStrategy::DropOldest) {
+        while (consumer.queue.size() >= consumer.capacity) {
+            releaseFrame(consumer, consumer.queue.takeFirst());
+            ++consumer.dropped;
+        }
+    }
+
+    if (!frame->image.isNull()) {
+        consumer.retainedBytes += quint64(frame->image.sizeInBytes());
+        consumer.peakRetainedBytes = qMax(consumer.peakRetainedBytes, consumer.retainedBytes);
+    }
+    consumer.queue.append(frame);
+    consumer.maxQueueDepth = qMax(consumer.maxQueueDepth, consumer.queue.size());
+    consumer.maxOwnedFrames =
+        qMax(consumer.maxOwnedFrames, consumer.queue.size() + (consumer.inService ? 1 : 0));
+}
+
+// Producer admission. Only the ProducerThrottle strategy couples capture to the
+// consumer; the other strategies never block the producer.
+bool admissionAllowsIssue(const ConsumerModel &consumer, const PipelineState &state)
+{
+    if (consumer.capacity <= 0)
+        return true;
+    if (consumer.strategy != BackpressureStrategy::ProducerThrottle)
+        return true;
+    // Count the requests that are still in flight, otherwise completions would push the
+    // queue past its capacity after admission was granted.
+    return consumer.queue.size() + state.inFlight.size() < consumer.capacity;
+}
+
+// One serial consumer: it is busy with at most one frame at a time, and the next
+// service cannot start before the previous one ends. That is what makes the sustained
+// rate 1000 / serviceMs rather than a per-frame independent release.
+void serviceConsumer(ConsumerModel &consumer, qint64 nowNs, int producedSoFar)
+{
+    if (consumer.serviceMs <= 0)
+        return;
+
+    if (consumer.inService && nowNs >= consumer.inService->serviceEndNs) {
+        releaseFrame(consumer, consumer.inService);
+        consumer.inService.reset();
+    }
+
+    if (consumer.inService || consumer.queue.isEmpty() || nowNs < consumer.nextServiceStartNs)
+        return;
+
+    const QSharedPointer<AsyncRequest> frame = consumer.queue.takeFirst();
+    frame->serviceStartNs = nowNs;
+    frame->serviceEndNs = nowNs + consumer.serviceIntervalNs;
+    frame->producedAtServiceTime = producedSoFar;
+    consumer.nextServiceStartNs = frame->serviceEndNs;
+    ++consumer.delivered;
+    consumer.frameAgeMs.append(double(frame->serviceStartNs - frame->readyNs) / 1.0e6);
+    consumer.staleFrames.append(double(producedSoFar - frame->index));
+    consumer.inService = frame;
+    consumer.maxOwnedFrames = qMax(consumer.maxOwnedFrames, consumer.queue.size() + 1);
+}
+
 }  // namespace
+
+QString backpressureStrategyName(BackpressureStrategy strategy)
+{
+    switch (strategy) {
+    case BackpressureStrategy::None:
+        return QStringLiteral("none (unbounded completed queue)");
+    case BackpressureStrategy::DropOldest:
+        return QStringLiteral("drop-oldest (latest-frame-wins)");
+    case BackpressureStrategy::ProducerThrottle:
+        return QStringLiteral("producer-throttle (admission control)");
+    }
+    return QStringLiteral("<unknown>");
+}
+
+bool backpressureStrategyFromName(const QString &name, BackpressureStrategy *strategy)
+{
+    if (name == QLatin1String("none")) {
+        *strategy = BackpressureStrategy::None;
+        return true;
+    }
+    if (name == QLatin1String("drop-oldest")) {
+        *strategy = BackpressureStrategy::DropOldest;
+        return true;
+    }
+    if (name == QLatin1String("producer-throttle")) {
+        *strategy = BackpressureStrategy::ProducerThrottle;
+        return true;
+    }
+    return false;
+}
 
 QString grabTargetName(GrabTarget target)
 {
@@ -361,7 +493,10 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
     result.requests = config.requests;
     result.maxInFlight = config.maxInFlight;
     result.intervalMs = config.intervalMs;
-    result.consumerDelayMs = config.consumerDelayMs;
+    result.consumerServiceMs = config.consumerServiceMs;
+    result.completedQueueCapacity = config.completedQueueCapacity;
+    result.backpressureStrategy = backpressureStrategyName(config.backpressure);
+    result.drainQueue = config.drainQueue;
     result.pacedRequests = config.pacedRequests;
 
     QQuickItem *target = config.target == GrabTarget::ContentItem ? scene.contentItem()
@@ -405,29 +540,45 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
     state->target = target;
     state->config = config;
 
-    QElapsedTimer wall;
-    wall.start();
+    constexpr qint64 kDrainTimeoutMs = 30000;
 
-    while (state->completedCount < config.requests) {
+    auto consumer = QSharedPointer<ConsumerModel>::create();
+    consumer->serviceMs = config.consumerServiceMs;
+    consumer->capacity = config.completedQueueCapacity;
+    consumer->strategy = config.backpressure;
+    consumer->serviceIntervalNs = qint64(config.consumerServiceMs) * 1000000LL;
+
+    const qint64 wallStartNs = monotonicNs();
+    qint64 loadEndNs = 0;
+    qint64 drainStartNs = 0;
+
+    while (true) {
         const qint64 nowNs = monotonicNs();
 
-        // Release frames the slow consumer has finished with.
-        for (int i = state->held.size() - 1; i >= 0; --i) {
-            if (state->held.at(i)->releaseAfterNs <= nowNs) {
-                state->retainedBytes -= state->held.at(i)->image.sizeInBytes();
-                state->held.at(i)->image = QImage();
-                state->held.removeAt(i);
-            }
-        }
+        // The serial consumer takes one frame at a time (never in parallel).
+        serviceConsumer(*consumer, nowNs, state->completedCount);
 
-        // Issue as many requests as the in-flight and consumer windows allow.
+        const bool loadDone = state->completedCount >= config.requests && state->inFlight.isEmpty();
+        if (loadDone && !state->loadComplete) {
+            state->loadComplete = true;
+            loadEndNs = nowNs;
+            consumer->deliveredAtEndOfLoad = consumer->delivered;
+            consumer->backlogAtEndOfLoad = consumer->queue.size();
+            consumer->retainedBytesAtEndOfLoad = consumer->retainedBytes;
+            drainStartNs = nowNs;
+        }
+        if (loadDone
+            && (!config.drainQueue || (consumer->queue.isEmpty() && !consumer->inService)))
+            break;
+
+        // Issue as many requests as the in-flight window and the admission policy allow.
         bool issuedAny = false;
-            const bool consumerWindowFull = config.consumerWindow > 0
-                                            && state->held.size() >= config.consumerWindow;
-            if (consumerWindowFull)
-                ++state->throttledSlices;
-            while (!consumerWindowFull && state->nextIndex < config.requests
-                   && state->inFlight.size() < qMax(1, config.maxInFlight)) {
+        const bool admissionOk = admissionAllowsIssue(*consumer, *state);
+        if (!admissionOk)
+            ++state->admissionBlockedSlices;
+        while (!loadDone && admissionAllowsIssue(*consumer, *state)
+               && state->nextIndex < config.requests
+               && state->inFlight.size() < qMax(1, config.maxInFlight)) {
             const int index = state->nextIndex;
             scene.setTick(index);
 
@@ -461,7 +612,7 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
 
             QObject::connect(
                 grabResult.data(), &QQuickItemGrabResult::ready, grabResult.data(),
-                [state, request] {
+                [state, request, consumer] {
                     request->readyNs = monotonicNs();
                     request->image = request->result->image();
 
@@ -473,12 +624,10 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
 
                     state->latenciesMs.append(double(request->readyNs - request->requestedNs) / 1.0e6);
 
-                    if (request->index < state->lastCompletedIndex) {
+                    if (request->index < state->lastCompletedIndex)
                         ++state->outOfOrder;
-                    } else {
+                    else
                         state->lastCompletedIndex = request->index;
-                        ++state->completedInRequestOrder;
-                    }
 
                     for (int i = 0; i < state->inFlight.size(); ++i) {
                         if (state->inFlight.at(i).data() == request.data()) {
@@ -489,27 +638,28 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
 
                     ++state->completedCount;
 
-                    if (state->config.consumerDelayMs > 0 && !request->image.isNull()) {
-                        request->releaseAfterNs =
-                            request->readyNs + qint64(state->config.consumerDelayMs) * 1000000LL;
-                        state->retainedBytes += request->image.sizeInBytes();
-                        state->peakRetainedBytes = qMax(state->peakRetainedBytes, state->retainedBytes);
-                        state->held.append(request);
-                        state->maxHeldObserved = qMax(state->maxHeldObserved, state->held.size());
+                    if (consumer->serviceMs > 0) {
+                        if (!request->image.isNull())
+                            enqueueCompleted(*consumer, request);
+                    } else {
+                        // No consumer is modelled for this configuration: the frame is
+                        // released as soon as it is decoded, so "delivered" counts it and
+                        // "delivered + dropped == completed" holds in every configuration.
+                        ++consumer->delivered;
                     }
 
-                    // Release the result and its pixels as soon as the probe has copied
-                    // what it needs. This also breaks the reference cycle
+                    // Release the result and break the reference cycle
                     // result -> connection -> lambda -> request -> result, which would
                     // otherwise make the probe measure its own retention instead of the
                     // capture path's. Deferred so that the pixels are not destroyed while
                     // the ready() emission is still on the stack.
-                    QTimer::singleShot(0, qApp, [request] {
+                    const bool releasePixelsNow = consumer->serviceMs <= 0;
+                    QTimer::singleShot(0, qApp, [request, releasePixelsNow] {
                         if (request->result) {
                             request->result->disconnect();
                             request->result.clear();
                         }
-                        if (request->releaseAfterNs == 0)
+                        if (releasePixelsNow)
                             request->image = QImage();
                     });
                 });
@@ -527,7 +677,9 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
 
         rssSeries.append(double(sampleProcessMetrics().rssBytes));
 
-        if (wall.elapsed() > config.timeoutMs) {
+        const qint64 elapsedMs = (monotonicNs() - wallStartNs) / 1000000;
+
+        if (!state->loadComplete && elapsedMs > config.timeoutMs) {
             state->timedOut = true;
             result.notes.append(
                 QStringLiteral("timed out after %1 ms with %2 request(s) still outstanding")
@@ -535,23 +687,71 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
                     .arg(state->inFlight.size()));
             break;
         }
+        if (state->loadComplete && elapsedMs - config.timeoutMs > kDrainTimeoutMs) {
+            result.notes.append(
+                QStringLiteral("stopped draining after %1 ms with %2 frame(s) still queued")
+                    .arg(kDrainTimeoutMs)
+                    .arg(consumer->queue.size()));
+            break;
+        }
     }
 
-    const double wallSeconds = double(wall.nsecsElapsed()) / 1.0e9;
+    const qint64 endNs = monotonicNs();
+    const double wallSeconds = double(endNs - wallStartNs) / 1.0e9;
     const ProcessMetrics endMetrics = sampleProcessMetrics();
 
     latencyTimer.stop();
     if (frameConnection)
         QObject::disconnect(frameConnection);
 
+    const double loadSeconds =
+        loadEndNs > wallStartNs ? double(loadEndNs - wallStartNs) / 1.0e9 : wallSeconds;
+    const double drainSeconds = drainStartNs > 0 ? double(endNs - drainStartNs) / 1.0e9 : 0.0;
+
     result.requested = config.requests;
     result.completed = state->completedCount;
     result.failedToStart = state->failedToStart;
     result.nullImages = state->nullImages;
     result.maxInFlightObserved = state->maxInFlightObserved;
+    result.admissionBlockedSlices = state->admissionBlockedSlices;
     result.timedOut = state->timedOut;
     result.wallSeconds = wallSeconds;
-    result.completedPerSecond = wallSeconds > 0.0 ? double(state->completedCount) / wallSeconds : 0.0;
+    result.loadSeconds = loadSeconds;
+    result.drainSeconds = drainSeconds;
+    result.completedPerSecond =
+        loadSeconds > 0.0 ? double(state->completedCount) / loadSeconds : 0.0;
+
+    // Serial consumer outcome.
+    result.consumerServiceMs = config.consumerServiceMs;
+    result.completedQueueCapacity = config.completedQueueCapacity;
+    result.backpressureStrategy = backpressureStrategyName(config.backpressure);
+    result.drainQueue = config.drainQueue;
+    result.delivered = consumer->delivered;
+    result.deliveredDuringLoad = consumer->deliveredAtEndOfLoad;
+    result.dropped = consumer->dropped;
+    result.dropRatio = state->completedCount > 0
+                           ? double(consumer->dropped) / double(state->completedCount)
+                           : 0.0;
+    result.maxQueueDepthObserved = consumer->maxQueueDepth;
+    result.maxOwnedFramesObserved = consumer->maxOwnedFrames;
+    result.backlogAtEndOfLoad = consumer->backlogAtEndOfLoad;
+    result.retainedBytesAtEndOfLoad = consumer->retainedBytesAtEndOfLoad;
+    result.backlogGrowthPerSecond =
+        loadSeconds > 0.0 ? double(consumer->backlogAtEndOfLoad) / loadSeconds : 0.0;
+    result.producerPerSecond = result.completedPerSecond;
+    result.consumerPerSecond =
+        loadSeconds > 0.0 ? double(consumer->deliveredAtEndOfLoad) / loadSeconds : 0.0;
+    result.peakRetainedBytes = consumer->peakRetainedBytes;
+    result.frameAgeAvgMs = mean(consumer->frameAgeMs);
+    QVector<double> sortedAges = consumer->frameAgeMs;
+    std::sort(sortedAges.begin(), sortedAges.end());
+    result.frameAgeP95Ms = percentileOfSorted(sortedAges, 0.95);
+    result.frameAgeMaxMs = sortedAges.isEmpty() ? 0.0 : sortedAges.last();
+    result.staleFramesAvg = mean(consumer->staleFrames);
+    QVector<double> sortedStale = consumer->staleFrames;
+    std::sort(sortedStale.begin(), sortedStale.end());
+    result.staleFramesP95 = percentileOfSorted(sortedStale, 0.95);
+    result.staleFramesMax = sortedStale.isEmpty() ? 0.0 : sortedStale.last();
 
     QVector<double> sortedLatencies = state->latenciesMs;
     std::sort(sortedLatencies.begin(), sortedLatencies.end());
@@ -573,14 +773,10 @@ PipelineResult runPipeline(SceneHost &scene, const ProbeConfig &config)
     result.distinctFboCounters = state->fboCountersSeen.size();
     result.fboCounterFirst = state->fboCounterFirst;
     result.fboCounterLast = state->fboCounterLast;
-    result.consumerWindow = config.consumerWindow;
-    result.maxHeldObserved = state->maxHeldObserved;
-    result.throttledSlices = state->throttledSlices;
     result.dryRun = config.dryRun;
 
     result.rssStartBytes = rssSeries.isEmpty() ? 0 : quint64(rssSeries.first());
     result.rssEndBytes = rssSeries.isEmpty() ? 0 : quint64(rssSeries.last());
-    result.peakRetainedBytes = state->peakRetainedBytes;
     result.rssSlopeBytesPer100Frames = slopePer100(rssSeries);
     result.rssGrowthBytes = qint64(result.rssEndBytes) - qint64(result.rssStartBytes);
     result.rssGrowthPerCompletionBytes =
@@ -937,20 +1133,57 @@ QVariantMap pipelineToVariant(const PipelineResult &result)
     map.insert(QStringLiteral("requests"), result.requests);
     map.insert(QStringLiteral("maxInFlight"), result.maxInFlight);
     map.insert(QStringLiteral("intervalMs"), result.intervalMs);
-    map.insert(QStringLiteral("consumerDelayMs"), result.consumerDelayMs);
-    map.insert(QStringLiteral("consumerWindow"), result.consumerWindow);
     map.insert(QStringLiteral("pacedRequests"), result.pacedRequests);
     map.insert(QStringLiteral("dryRun"), result.dryRun);
+
+    QVariantMap consumerConfig;
+    consumerConfig.insert(QStringLiteral("model"),
+                          QStringLiteral("single serial consumer, one frame serviced at a time"));
+    consumerConfig.insert(QStringLiteral("serviceMsPerFrame"), result.consumerServiceMs);
+    consumerConfig.insert(QStringLiteral("targetConsumerFps"),
+                          result.consumerServiceMs > 0
+                              ? 1000.0 / double(result.consumerServiceMs)
+                              : 0.0);
+    consumerConfig.insert(QStringLiteral("completedQueueCapacity"), result.completedQueueCapacity);
+    consumerConfig.insert(QStringLiteral("queueCapacityBounds"),
+                          QStringLiteral("queue depth only; the frame being serviced is owned in "
+                                         "addition, so peak ownership is capacity + 1 frames"));
+    consumerConfig.insert(QStringLiteral("backpressureStrategy"), result.backpressureStrategy);
+    consumerConfig.insert(QStringLiteral("drainAfterLoad"), result.drainQueue);
+    map.insert(QStringLiteral("consumerConfig"), consumerConfig);
 
     QVariantMap outcome;
     outcome.insert(QStringLiteral("completed"), result.completed);
     outcome.insert(QStringLiteral("failedToStart"), result.failedToStart);
     outcome.insert(QStringLiteral("nullImages"), result.nullImages);
     outcome.insert(QStringLiteral("maxInFlightObserved"), result.maxInFlightObserved);
+    outcome.insert(QStringLiteral("admissionBlockedSlices"), result.admissionBlockedSlices);
     outcome.insert(QStringLiteral("timedOut"), result.timedOut);
     outcome.insert(QStringLiteral("wallSeconds"), result.wallSeconds);
+    outcome.insert(QStringLiteral("loadSeconds"), result.loadSeconds);
+    outcome.insert(QStringLiteral("drainSeconds"), result.drainSeconds);
     outcome.insert(QStringLiteral("completedPerSecond"), result.completedPerSecond);
     map.insert(QStringLiteral("outcome"), outcome);
+
+    QVariantMap consumer;
+    consumer.insert(QStringLiteral("delivered"), result.delivered);
+    consumer.insert(QStringLiteral("deliveredDuringLoad"), result.deliveredDuringLoad);
+    consumer.insert(QStringLiteral("dropped"), result.dropped);
+    consumer.insert(QStringLiteral("dropRatio"), result.dropRatio);
+    consumer.insert(QStringLiteral("maxQueueDepthObserved"), result.maxQueueDepthObserved);
+    consumer.insert(QStringLiteral("maxOwnedFramesObserved"), result.maxOwnedFramesObserved);
+    consumer.insert(QStringLiteral("backlogAtEndOfLoad"), result.backlogAtEndOfLoad);
+    consumer.insert(QStringLiteral("backlogGrowthPerSecond"), result.backlogGrowthPerSecond);
+    consumer.insert(QStringLiteral("retainedBytesAtEndOfLoad"), result.retainedBytesAtEndOfLoad);
+    consumer.insert(QStringLiteral("producerPerSecond"), result.producerPerSecond);
+    consumer.insert(QStringLiteral("consumerPerSecond"), result.consumerPerSecond);
+    consumer.insert(QStringLiteral("frameAgeAvgMs"), result.frameAgeAvgMs);
+    consumer.insert(QStringLiteral("frameAgeP95Ms"), result.frameAgeP95Ms);
+    consumer.insert(QStringLiteral("frameAgeMaxMs"), result.frameAgeMaxMs);
+    consumer.insert(QStringLiteral("staleFramesAvg"), result.staleFramesAvg);
+    consumer.insert(QStringLiteral("staleFramesP95"), result.staleFramesP95);
+    consumer.insert(QStringLiteral("staleFramesMax"), result.staleFramesMax);
+    map.insert(QStringLiteral("consumer"), consumer);
 
     QVariantMap latency;
     latency.insert(QStringLiteral("avgMs"), result.latencyAvgMs);
@@ -977,8 +1210,6 @@ QVariantMap pipelineToVariant(const PipelineResult &result)
     resources.insert(QStringLiteral("rssStartBytes"), result.rssStartBytes);
     resources.insert(QStringLiteral("rssEndBytes"), result.rssEndBytes);
     resources.insert(QStringLiteral("peakRetainedBytes"), result.peakRetainedBytes);
-    resources.insert(QStringLiteral("maxHeldObserved"), result.maxHeldObserved);
-    resources.insert(QStringLiteral("throttledSlices"), result.throttledSlices);
     resources.insert(QStringLiteral("rssSlopeBytesPer100Frames"), result.rssSlopeBytesPer100Frames);
     resources.insert(QStringLiteral("rssGrowthBytes"), result.rssGrowthBytes);
     resources.insert(QStringLiteral("rssGrowthPerCompletionBytes"), result.rssGrowthPerCompletionBytes);

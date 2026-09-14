@@ -31,16 +31,50 @@ enum class GrabTarget {
 
 QString grabTargetName(GrabTarget target);
 
+// How a frame that reaches the completed queue is handled when the queue is full.
+//
+//  None             - the queue is unbounded; frames accumulate until the drain.
+//  DropOldest       - the queue is bounded and the oldest queued frame is discarded
+//                     (latest-frame-wins) so capture is never throttled by the consumer.
+//  ProducerThrottle - the queue is bounded by admission control: the producer stops
+//                     issuing requests while "queued + in flight" reaches the capacity.
+//                     This couples capture to the consumer and is a different design
+//                     trade-off, not an implementation of a transport drop policy.
+enum class BackpressureStrategy {
+    None,
+    DropOldest,
+    ProducerThrottle,
+};
+
+QString backpressureStrategyName(BackpressureStrategy strategy);
+bool backpressureStrategyFromName(const QString &name, BackpressureStrategy *strategy);
+
 struct ProbeConfig
 {
     int requests = 60;
     int maxInFlight = 1;
-    int intervalMs = 0;          // event-loop time granted between request slices
-    int consumerDelayMs = 0;     // hold a completed frame this long (slow consumer)
-    int consumerWindow = 0;      // 0 = unlimited; else stop issuing while this many frames are held
+    int intervalMs = 0;  // event-loop time granted between request slices
+
+    // Single serial consumer model: the consumer takes one frame from the completed
+    // queue at a time and is busy for `consumerServiceMs` with it, so the sustained
+    // consumer rate is 1000 / consumerServiceMs frames per second. Services are
+    // serialized: the next service may start no earlier than the end of the previous
+    // one, never in parallel with it.
+    int consumerServiceMs = 0;  // 0 = consume immediately, no modelled consumer
+
+    // Capacity of the completed queue. 0 = unbounded. The frame currently being
+    // serviced is owned in addition to the queue, so peak ownership is
+    // completedQueueCapacity + 1 frames when a capacity is configured.
+    int completedQueueCapacity = 0;
+
+    BackpressureStrategy backpressure = BackpressureStrategy::None;
+
+    // Keep running after the last request until the consumer has drained the queue.
+    bool drainQueue = true;
+
     bool pacedRequests = false;  // pump between individual requests
     GrabTarget target = GrabTarget::ContentItem;
-    int timeoutMs = 30000;
+    int timeoutMs = 60000;
     bool dryRun = false;  // run the same loop without issuing any grab (memory control)
 };
 
@@ -102,17 +136,23 @@ struct PipelineResult
     int requests = 0;
     int maxInFlight = 0;
     int intervalMs = 0;
-    int consumerDelayMs = 0;
+    int consumerServiceMs = 0;
+    int completedQueueCapacity = 0;
+    QString backpressureStrategy;
+    bool drainQueue = true;
     bool pacedRequests = false;
 
-    // outcome
+    // capture outcome
     int requested = 0;
     int failedToStart = 0;
     int completed = 0;
     int nullImages = 0;
     int maxInFlightObserved = 0;
+    int admissionBlockedSlices = 0;
     bool timedOut = false;
-    double wallSeconds = 0.0;
+    double wallSeconds = 0.0;       // whole run, including the drain
+    double loadSeconds = 0.0;       // until the last request completed
+    double drainSeconds = 0.0;      // consumer draining after the load
     double completedPerSecond = 0.0;
 
     // latency (request -> ready), milliseconds
@@ -133,10 +173,26 @@ struct PipelineResult
     int distinctFboCounters = 0;
     int fboCounterFirst = -1;
     int fboCounterLast = -1;
-    int consumerWindow = 0;
-    int maxHeldObserved = 0;
-    int throttledSlices = 0;
     bool dryRun = false;
+
+    // serial consumer outcome
+    int delivered = 0;
+    int deliveredDuringLoad = 0;
+    int dropped = 0;
+    double dropRatio = 0.0;               // dropped / completed
+    int maxQueueDepthObserved = 0;        // frames waiting in the completed queue
+    int maxOwnedFramesObserved = 0;       // queue + the frame currently being serviced
+    int backlogAtEndOfLoad = 0;
+    double backlogGrowthPerSecond = 0.0;  // backlog at end of load / load seconds
+    double producerPerSecond = 0.0;       // completed / load seconds
+    double consumerPerSecond = 0.0;       // delivered during load / load seconds
+    quint64 retainedBytesAtEndOfLoad = 0;
+    double frameAgeAvgMs = 0.0;           // ready -> service start
+    double frameAgeP95Ms = 0.0;
+    double frameAgeMaxMs = 0.0;
+    double staleFramesAvg = 0.0;          // frames produced after the delivered one
+    double staleFramesP95 = 0.0;
+    double staleFramesMax = 0.0;
 
     // resources
     quint64 rssStartBytes = 0;

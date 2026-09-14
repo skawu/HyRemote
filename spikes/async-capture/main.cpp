@@ -39,8 +39,10 @@ struct CliOptions
     int syncCaptures = 60;
     int maxInFlight = 4;
     int intervalMs = 0;
-    int consumerDelayMs = 0;
-    int consumerWindow = 0;
+    int consumerServiceMs = 0;
+    int completedQueueCapacity = 0;
+    BackpressureStrategy backpressure = BackpressureStrategy::None;
+    bool drainQueue = true;
     bool paced = false;
     bool dryRun = false;
     GrabTarget target = GrabTarget::ContentItem;
@@ -67,8 +69,10 @@ void printUsage()
         << "  --sync-captures <n>     synchronous baseline captures (default 60)\n"
         << "  --max-inflight <n>      concurrent grabToImage() requests (default 4)\n"
         << "  --interval-ms <n>       event-loop time granted between request slices\n"
-        << "  --consumer-delay <ms>   hold each completed frame this long (slow consumer)\n"
-        << "  --consumer-window <n>   stop issuing while this many frames are held (0 = unlimited)\n"
+        << "  --consumer-service-ms <n>  serial consumer service time per frame (0 = no consumer)\n"
+        << "  --completed-queue-capacity <n>  bounded completed queue (0 = unbounded)\n"
+        << "  --backpressure <name>  none | drop-oldest | producer-throttle (default none)\n"
+        << "  --no-drain             stop as soon as the last request completes\n"
         << "  --paced                 pump between individual requests (one request per frame)\n"
         << "  --dry-run               run the pipeline loop without issuing any grab (memory control)\n"
         << "  --target <name>         contentItem | rootItem (default contentItem)\n"
@@ -155,22 +159,35 @@ CliOptions parseArguments(const QStringList &arguments)
             options.intervalMs = value.toInt(&ok);
             if (!ok || options.intervalMs < 0)
                 options.problems.append(QStringLiteral("--interval-ms must be non-negative"));
-        } else if (argument.startsWith(QLatin1String("--consumer-delay"))) {
+        } else if (argument.startsWith(QLatin1String("--consumer-service-ms"))) {
             if (!takeValue(arguments, &i, &value)) {
-                options.problems.append(QStringLiteral("--consumer-delay requires a value"));
+                options.problems.append(QStringLiteral("--consumer-service-ms requires a value"));
                 continue;
             }
-            options.consumerDelayMs = value.toInt(&ok);
-            if (!ok || options.consumerDelayMs < 0)
-                options.problems.append(QStringLiteral("--consumer-delay must be non-negative"));
-        } else if (argument.startsWith(QLatin1String("--consumer-window"))) {
+            options.consumerServiceMs = value.toInt(&ok);
+            if (!ok || options.consumerServiceMs < 0)
+                options.problems.append(
+                    QStringLiteral("--consumer-service-ms must be non-negative"));
+        } else if (argument.startsWith(QLatin1String("--completed-queue-capacity"))) {
             if (!takeValue(arguments, &i, &value)) {
-                options.problems.append(QStringLiteral("--consumer-window requires a value"));
+                options.problems.append(
+                    QStringLiteral("--completed-queue-capacity requires a value"));
                 continue;
             }
-            options.consumerWindow = value.toInt(&ok);
-            if (!ok || options.consumerWindow < 0)
-                options.problems.append(QStringLiteral("--consumer-window must be non-negative"));
+            options.completedQueueCapacity = value.toInt(&ok);
+            if (!ok || options.completedQueueCapacity < 0)
+                options.problems.append(
+                    QStringLiteral("--completed-queue-capacity must be non-negative"));
+        } else if (argument.startsWith(QLatin1String("--backpressure"))) {
+            if (!takeValue(arguments, &i, &value)) {
+                options.problems.append(QStringLiteral("--backpressure requires a value"));
+                continue;
+            }
+            if (!backpressureStrategyFromName(value, &options.backpressure))
+                options.problems.append(
+                    QStringLiteral("--backpressure must be none, drop-oldest or producer-throttle"));
+        } else if (argument == QLatin1String("--no-drain")) {
+            options.drainQueue = false;
         } else if (argument.startsWith(QLatin1String("--target"))) {
             if (!takeValue(arguments, &i, &value)) {
                 options.problems.append(QStringLiteral("--target requires a value"));
@@ -420,25 +437,52 @@ HiddenSyncResult runHiddenSyncInChildProcess(const QString &sceneId, const QStri
 void printPipelineSummary(const PipelineResult &result)
 {
     QTextStream out(stdout);
-    out << QStringLiteral("\n  pipeline     : target %1, requests %2, max in flight %3, paced %4, "
-                          "consumer delay %5 ms\n")
+    out << QStringLiteral("\n  pipeline     : target %1, requests %2, max in flight %3, paced %4\n")
                .arg(result.targetName)
                .arg(result.requests)
                .arg(result.maxInFlight)
-               .arg(result.pacedRequests ? QStringLiteral("yes") : QStringLiteral("no"))
-               .arg(result.consumerDelayMs);
-    out << QStringLiteral("  consumer     : window %1 (0 = unlimited), max frames held %2, "
-                          "throttled slices %3\n")
-               .arg(result.consumerWindow)
-               .arg(result.maxHeldObserved)
-               .arg(result.throttledSlices);
+               .arg(result.pacedRequests ? QStringLiteral("yes") : QStringLiteral("no"));
+    out << QStringLiteral("  consumer     : model single serial, service %1 ms/frame (target %2 fps), "
+                          "completed queue capacity %3, strategy %4, drain %5\n")
+               .arg(result.consumerServiceMs)
+               .arg(result.consumerServiceMs > 0 ? 1000.0 / double(result.consumerServiceMs) : 0.0,
+                    0, 'f', 1)
+               .arg(result.completedQueueCapacity)
+               .arg(result.backpressureStrategy)
+               .arg(result.drainQueue ? QStringLiteral("yes") : QStringLiteral("no"));
+    out << QStringLiteral("  consumer out : delivered %1 (during load %2), dropped %3 (ratio %4 %%), "
+                          "max queue depth %5, max owned frames %6, backlog at end of load %7, "
+                          "producer %8 /s, consumer %9 /s, backlog growth %10 /s\n")
+               .arg(result.delivered)
+               .arg(result.deliveredDuringLoad)
+               .arg(result.dropped)
+               .arg(result.dropRatio * 100.0, 0, 'f', 1)
+               .arg(result.maxQueueDepthObserved)
+               .arg(result.maxOwnedFramesObserved)
+               .arg(result.backlogAtEndOfLoad)
+               .arg(result.producerPerSecond, 0, 'f', 1)
+               .arg(result.consumerPerSecond, 0, 'f', 1)
+               .arg(result.backlogGrowthPerSecond, 0, 'f', 1);
+    out << QStringLiteral("  freshness    : frame age avg %1 / p95 %2 / max %3 ms, stale frames avg %4 "
+                          "/ p95 %5 / max %6, retained at end of load %7 KiB\n")
+               .arg(result.frameAgeAvgMs, 0, 'f', 1)
+               .arg(result.frameAgeP95Ms, 0, 'f', 1)
+               .arg(result.frameAgeMaxMs, 0, 'f', 1)
+               .arg(result.staleFramesAvg, 0, 'f', 1)
+               .arg(result.staleFramesP95, 0, 'f', 1)
+               .arg(result.staleFramesMax, 0, 'f', 1)
+               .arg(result.retainedBytesAtEndOfLoad / 1024.0, 0, 'f', 1);
     out << QStringLiteral("  outcome      : completed %1 (fps %2), failed to start %3, null images %4, "
-                          "max in flight observed %5, timed out %6\n")
+                          "max in flight observed %5, admission blocked %6, load %7 s + drain %8 s, "
+                          "timed out %9\n")
                .arg(result.completed)
                .arg(result.completedPerSecond, 0, 'f', 1)
                .arg(result.failedToStart)
                .arg(result.nullImages)
                .arg(result.maxInFlightObserved)
+               .arg(result.admissionBlockedSlices)
+               .arg(result.loadSeconds, 0, 'f', 2)
+               .arg(result.drainSeconds, 0, 'f', 2)
                .arg(result.timedOut ? QStringLiteral("yes") : QStringLiteral("no"));
     out << QStringLiteral("  latency      : avg %1 ms, p50 %2 ms, p95 %3 ms, max %4 ms\n")
                .arg(result.latencyAvgMs, 0, 'f', 2)
@@ -446,23 +490,31 @@ void printPipelineSummary(const PipelineResult &result)
                .arg(result.latencyP95Ms, 0, 'f', 2)
                .arg(result.latencyMaxMs, 0, 'f', 2);
     out << QStringLiteral("  content      : distinct ticks %1, duplicate completions %2, out of order "
-                          "%3, tick lag avg %4 / p95 %5 / max %6, frames rendered %7\n")
+                          "%3, tick lag avg %4 / p95 %5 / max %6, frames rendered %7, distinct FBO "
+                          "counters %8 (%9 -> %10)\n")
                .arg(result.distinctTicks)
                .arg(result.duplicateCompletions)
                .arg(result.outOfOrderCompletions)
                .arg(result.tickLagAvg, 0, 'f', 2)
                .arg(result.tickLagP95, 0, 'f', 2)
                .arg(result.tickLagMax, 0, 'f', 2)
-               .arg(result.framesRendered);
-    out << QStringLiteral("  resources    : RSS %1 -> %2 MiB (slope %3 KiB/100), peak retained %4 KiB, "
-                          "CPU %5 %% of one core, GUI latency avg %6 / p95 %7 ms\n")
+               .arg(result.framesRendered)
+               .arg(result.distinctFboCounters)
+               .arg(result.fboCounterFirst)
+               .arg(result.fboCounterLast);
+    out << QStringLiteral("  resources    : RSS %1 -> %2 MiB (growth %3 KiB total, %4 KiB per "
+                          "completion), peak retained %5 KiB, CPU %6 %% of one core, GUI latency avg "
+                          "%7 / p95 %8 ms\n")
                .arg(result.rssStartBytes / 1048576.0, 0, 'f', 1)
                .arg(result.rssEndBytes / 1048576.0, 0, 'f', 1)
-               .arg(result.rssSlopeBytesPer100Frames / 1024.0, 0, 'f', 1)
+               .arg(result.rssGrowthBytes / 1024.0, 0, 'f', 1)
+               .arg(result.rssGrowthPerCompletionBytes / 1024.0, 0, 'f', 1)
                .arg(result.peakRetainedBytes / 1024.0, 0, 'f', 1)
                .arg(result.cpuPercentOfOneCore, 0, 'f', 1)
                .arg(result.guiLatencyAvgMs, 0, 'f', 2)
                .arg(result.guiLatencyP95Ms, 0, 'f', 2);
+    if (result.dryRun)
+        out << QStringLiteral("  note         : dry run, no capture was issued\n");
     for (const QString &note : result.notes)
         out << QStringLiteral("  note         : %1\n").arg(note);
     out.flush();
@@ -706,8 +758,10 @@ int main(int argc, char *argv[])
             config.requests = options.requests;
             config.maxInFlight = options.maxInFlight;
             config.intervalMs = options.intervalMs;
-            config.consumerDelayMs = options.consumerDelayMs;
-            config.consumerWindow = options.consumerWindow;
+            config.consumerServiceMs = options.consumerServiceMs;
+            config.completedQueueCapacity = options.completedQueueCapacity;
+            config.backpressure = options.backpressure;
+            config.drainQueue = options.drainQueue;
             config.pacedRequests = options.paced;
             config.target = options.target;
             config.dryRun = options.dryRun;
