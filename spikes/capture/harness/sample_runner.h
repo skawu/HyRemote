@@ -39,6 +39,13 @@ struct PathStats
     QString frameSize;
     bool producerReusesBuffer = false;
     QString callerThread;
+
+    // Storage-identity probe (real QImage/backing-store address, not cacheKey).
+    int storageProbes = 0;
+    int storageReplacements = 0;
+    QString storageAddressFirst;
+    QString storageAddressLast;
+
     QStringList notes;
 };
 
@@ -71,9 +78,16 @@ struct RunReport
     double avgPumpMs = 0.0;         // application event processing
     double avgCaptureLoopMs = 0.0;  // all capture calls of one iteration
 
+    // Damage, expressed relative to the shared target rect. The ratios are only
+    // meaningful when damageTargetArea is non-zero, i.e. when the target family
+    // has a QWidget root whose coordinate system the regions could be mapped into.
     double avgDamageRatio = 0.0;
     double avgCaptureDamageRatio = 0.0;
-    quint64 paintEvents = 0;
+    qint64 damageTargetArea = 0;
+    QVector<DamageControlResult> damageControls;
+    quint64 mappedPaintEvents = 0;
+    quint64 excludedPaintEvents = 0;
+    quint64 emptyDamageRegions = 0;
     quint64 updateRequests = 0;
     int observedObjects = 0;
 

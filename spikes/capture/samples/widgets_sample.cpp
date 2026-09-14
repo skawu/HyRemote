@@ -1,5 +1,7 @@
 #include "samples/widgets_sample.h"
 
+#include "harness/damage_tracker.h"
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -95,6 +97,17 @@ public:
     }
 };
 
+// Real backing-store identity of a QImage, as opposed to QImage::cacheKey().
+//
+// QImage::constBits() is documented and implemented as "returns d->data without
+// detaching", so this probe cannot itself force a copy. The control paths in this
+// sample verify that: a producer target that nobody else references keeps the same
+// address for every capture even though the probe runs on every capture.
+quintptr storageAddress(const QImage &image)
+{
+    return reinterpret_cast<quintptr>(image.constBits());
+}
+
 QString threadLabel()
 {
     QThread *thread = QThread::currentThread();
@@ -136,14 +149,22 @@ void WidgetsSample::prepare()
     row->addWidget(customPaint, 3);
     row->addWidget(pulsing, 1);
     layout->addLayout(row, 1);
+    m_pulsing = pulsing;
 
     auto *controls = new QHBoxLayout;
     controls->addWidget(new QLabel(QStringLiteral("Text:"), root));
-    controls->addWidget(new QLineEdit(QStringLiteral("local input still works"), root), 2);
+    auto *lineEdit = new QLineEdit(QStringLiteral("local input still works"), root);
+    // NoFocus: a focused line edit blinks its cursor, which repaints
+    // asynchronously and would make the deterministic damage controls flaky.
+    lineEdit->setFocusPolicy(Qt::NoFocus);
+    controls->addWidget(lineEdit, 2);
     controls->addWidget(new QPushButton(QStringLiteral("Button"), root));
     controls->addWidget(new QCheckBox(QStringLiteral("Check"), root));
     auto *progress = new QProgressBar(root);
-    progress->setRange(0, 0);
+    // A determinate value: an indeterminate QProgressBar animates forever, which
+    // would pollute the damage controls in the same way.
+    progress->setRange(0, 100);
+    progress->setValue(40);
     progress->setMaximumWidth(160);
     controls->addWidget(progress);
     layout->addLayout(controls, 0);
@@ -158,9 +179,11 @@ void WidgetsSample::prepare()
     dialog->setGeometry(1020, 120, 320, 180);
     {
         auto *dialogLayout = new QVBoxLayout(dialog);
-        dialogLayout->addWidget(
-            new QLabel(QStringLiteral("non-modal QDialog\nseparate top-level window"), dialog));
+        auto *dialogLabel =
+            new QLabel(QStringLiteral("non-modal QDialog\nseparate top-level window"), dialog);
+        dialogLayout->addWidget(dialogLabel);
         dialogLayout->addWidget(new QPushButton(QStringLiteral("Dialog button"), dialog));
+        m_dialogLabel = dialogLabel;
     }
 
     auto *menu = new QMenu(root);
@@ -246,27 +269,45 @@ CaptureOutcome WidgetsSample::renderIntoReusedImage()
     if (m_targetImage.size() != pixelSize) {
         m_targetImage = QImage(pixelSize, QImage::Format_ARGB32_Premultiplied);
         m_targetImage.setDevicePixelRatio(dpr);
+        m_reuseLastAddress = 0;  // our own allocation, not a probe event
     }
-    m_targetImage.fill(Qt::transparent);
+
+    // Storage-identity probe: the address is sampled before the first write of
+    // this capture and after the last one, so the probe brackets every write that
+    // could detach the image. A difference means this capture replaced the pixel
+    // storage, which happens when QImage::detach() copies because a consumer still
+    // held the previous frame.
+    const quintptr addressBefore = storageAddress(m_targetImage);
+
+    // Probe self-check: with no writer in between, the address must not move on
+    // its own between captures.
+    if (m_reuseLastAddress != 0 && addressBefore != m_reuseLastAddress)
+        ++m_reuseStorageMovedBetweenCaptures;
 
     QElapsedTimer timer;
     timer.start();
+    m_targetImage.fill(Qt::transparent);
     m_root->render(&m_targetImage);
     outcome.elapsedNs = timer.nsecsElapsed();
+
+    const quintptr addressAfter = storageAddress(m_targetImage);
+
+    outcome.storageProbeAvailable = addressBefore != 0 && addressAfter != 0;
+    outcome.storageAddressBefore = addressBefore;
+    outcome.storageAddressAfter = addressAfter;
+    ++m_reuseProbes;
+    if (outcome.storageProbeAvailable && addressBefore != addressAfter) {
+        ++m_reuseStorageReplacements;
+        outcome.storageReplacedDuringCapture = true;
+    }
+    m_reuseLastAddress = addressAfter;
 
     outcome.frame = m_targetImage;  // shares storage with the tracked buffer
     outcome.ok = !outcome.frame.isNull();
     outcome.notes = QStringLiteral(
-        "draws directly into a caller-owned QImage; the same buffer is reused every frame, so a "
-        "consumer must not hold a reference across captures without a deep copy");
-
-    // Detects whether handing the buffer to a consumer forced the producer to
-    // reallocate it on the next write (QImage copy-on-write detach).
-    ++m_reuseAttempts;
-    const quint64 cacheKey = m_targetImage.cacheKey();
-    if (m_lastReuseCacheKey != 0 && cacheKey != m_lastReuseCacheKey)
-        ++m_reuseReallocations;
-    m_lastReuseCacheKey = cacheKey;
+        "draws directly into a caller-owned QImage that is reused for every capture; the measured "
+        "time covers the buffer clear and the render, and the pixel storage address is probed with "
+        "QImage::constBits() before the clear and after the render");
     return outcome;
 }
 
@@ -333,26 +374,65 @@ CaptureOutcome WidgetsSample::renderIntoFreshImage()
     }
 
     const qreal dpr = m_root->devicePixelRatioF();
-    QImage image(QSize(qCeil(m_root->width() * dpr), qCeil(m_root->height() * dpr)),
-                 QImage::Format_ARGB32_Premultiplied);
-    image.setDevicePixelRatio(dpr);
-    image.fill(Qt::transparent);
+    const QSize pixelSize(qCeil(m_root->width() * dpr), qCeil(m_root->height() * dpr));
 
     QElapsedTimer timer;
     timer.start();
+    QImage image(pixelSize, QImage::Format_ARGB32_Premultiplied);
+    image.setDevicePixelRatio(dpr);
+    image.fill(Qt::transparent);
     m_root->render(&image);
     outcome.elapsedNs = timer.nsecsElapsed();
 
     outcome.frame = image;
     outcome.ok = !outcome.frame.isNull();
     outcome.notes = QStringLiteral(
-        "same public API as the reused variant; measured time includes the per-frame buffer "
-        "allocation and clear");
+        "same public API as the reused variant, but the target image is allocated and cleared for "
+        "every capture; the measured time covers the allocation, the clear and the render, so it is "
+        "directly comparable with the reused variant");
     return outcome;
+}
+
+// Deterministic controls for the storage-identity probe. They answer the two
+// questions the probe has to be able to answer before its result can be used:
+// can it see a storage replacement at all, and does it stay silent when the
+// buffer is unique?
+void WidgetsSample::runStorageIdentityControls()
+{
+    {
+        // Positive control: while a shallow copy is alive, the next write must
+        // detach (QImage::detach() copies when the reference count is not 1) and
+        // therefore relocate the pixel storage.
+        QImage image(QSize(32, 32), QImage::Format_ARGB32_Premultiplied);
+        const quintptr before = storageAddress(image);
+        const QImage shallowConsumer = image;  // keeps the shared data alive
+        Q_UNUSED(shallowConsumer);
+        image.fill(Qt::transparent);
+        const quintptr after = storageAddress(image);
+
+        ++m_detachControlProbes;
+        if (before != 0 && after != 0 && before != after)
+            ++m_detachControlDetections;
+    }
+
+    {
+        // Negative control: with no other reference, a write must not relocate
+        // the storage.
+        QImage image(QSize(32, 32), QImage::Format_ARGB32_Premultiplied);
+        const quintptr before = storageAddress(image);
+        image.fill(Qt::transparent);
+        const quintptr after = storageAddress(image);
+
+        ++m_uniqueWriteControlProbes;
+        if (before != 0 && after != 0 && before == after)
+            ++m_uniqueWriteControlStable;
+    }
 }
 
 QVector<CaptureOutcome> WidgetsSample::captureAll()
 {
+    runStorageIdentityControls();
+
     QVector<CaptureOutcome> outcomes;
     outcomes.append(grabWidget());
     outcomes.append(renderIntoReusedImage());
@@ -377,20 +457,48 @@ QStringList WidgetsSample::observations() const
         "top-level widget capture. The target adapter must decide whether to share only the main "
         "window or to compose extra windows."));
     notes.append(QStringLiteral(
-        "Damage can be observed with public APIs by installing an application-level event filter "
-        "and reading QPaintEvent::region(). Capture itself emits paint events, so capture-induced "
-        "damage has to be separated from application damage."));
+        "Damage regions must be mapped into the shared target coordinate system before they are "
+        "unioned. Child widgets report QPaintEvent::region() in their own coordinate system, so the "
+        "tracker binds the top-level window widget as the shared target, translates each accepted "
+        "child region with QWidget::mapTo() and clips it to the visible part of the ancestor chain."));
 
-    if (m_reuseAttempts > 0) {
+    if (m_reuseProbes > 0) {
         notes.append(
-            QStringLiteral("Reused target buffer: %1 reallocations were observed in %2 capture "
-                           "attempts. QImage is copy-on-write, so publishing a shallow copy to a "
-                           "consumer forces the producer's next write to detach and allocate a new "
-                           "buffer. Handing out a QImage therefore does not give a free buffer "
-                           "recycling scheme, and it is also why a consumer that keeps a QImage "
-                           "copy never observes torn pixels.")
-                .arg(m_reuseReallocations)
-                .arg(m_reuseAttempts));
+            QStringLiteral("Storage identity (real backing-store address from QImage::constBits(), "
+                           "not QImage::cacheKey()): the reused producer target changed its pixel "
+                           "storage in %1 of %2 captures, and the address never moved on its own "
+                           "between captures (%3 self-check hits). QImage uses implicit data "
+                           "sharing: QImage::detach() copies when the reference count is not 1, so "
+                           "a producer that published a shared QImage pays for a new allocation "
+                           "exactly on the captures where a consumer still held the previous frame. "
+                           "This is a copy-on-write semantic, not a fixed per-frame allocation "
+                           "rate: with no consumer holding a frame the same buffer is reused with "
+                           "no replacement at all.")
+                .arg(m_reuseStorageReplacements)
+                .arg(m_reuseProbes)
+                .arg(m_reuseStorageMovedBetweenCaptures));
+    }
+
+    if (m_detachControlProbes > 0) {
+        notes.append(
+            QStringLiteral("Storage-identity probe controls: the synthetic shared-write control "
+                           "relocated the storage in %1 of %2 runs (probe can detect a "
+                           "replacement), and the unique-write control kept the same address in "
+                           "%3 of %4 runs (the probe does not report phantom replacements).")
+                .arg(m_detachControlDetections)
+                .arg(m_detachControlProbes)
+                .arg(m_uniqueWriteControlStable)
+                .arg(m_uniqueWriteControlProbes));
+    }
+
+    if (m_borrowedProbes > 0) {
+        notes.append(
+            QStringLiteral("Storage identity is not safety: the caller-owned raw pixel buffer "
+                           "kept the same address in all %1 captures (%2 replacements) while the "
+                           "hand-off probe still observed its content rewritten, so an address "
+                           "check cannot replace an explicit ownership contract.")
+                .arg(m_borrowedProbes)
+                .arg(m_borrowedStorageReplacements));
     }
     return notes;
 }
@@ -411,9 +519,92 @@ QVariantMap WidgetsSample::info() const
             ++visibleTopLevels;
     }
     info.insert(QStringLiteral("visibleTopLevelWidgets"), visibleTopLevels);
-    info.insert(QStringLiteral("reusedBufferAttempts"), m_reuseAttempts);
-    info.insert(QStringLiteral("reusedBufferReallocations"), m_reuseReallocations);
+    info.insert(QStringLiteral("reusedBufferStorageProbes"), m_reuseProbes);
+    info.insert(QStringLiteral("reusedBufferStorageReplacements"), m_reuseStorageReplacements);
+    info.insert(QStringLiteral("reusedBufferStorageMovedBetweenCaptures"),
+                m_reuseStorageMovedBetweenCaptures);
+    info.insert(QStringLiteral("borrowedBufferStorageProbes"), m_borrowedProbes);
+    info.insert(QStringLiteral("borrowedBufferStorageReplacements"), m_borrowedStorageReplacements);
+    info.insert(QStringLiteral("detachControlProbes"), m_detachControlProbes);
+    info.insert(QStringLiteral("detachControlDetections"), m_detachControlDetections);
+    info.insert(QStringLiteral("uniqueWriteControlProbes"), m_uniqueWriteControlProbes);
+    info.insert(QStringLiteral("uniqueWriteControlStable"), m_uniqueWriteControlStable);
     return info;
+}
+
+QWidget *WidgetsSample::damageTargetWidget() const
+{
+    // The top-level window widget is the shared target: this case shares exactly
+    // one top-level window, and the popup menu and the dialog are separate
+    // windows that the tracker excludes.
+    return m_root.data();
+}
+
+void WidgetsSample::setDamageTracker(DamageTracker *tracker)
+{
+    m_damageTracker = tracker;
+}
+
+// Deterministic controls for the damage mapping rules. A damage ratio on its own
+// cannot distinguish "child regions were mapped into the shared target" from
+// "child-local regions were unioned as if they already were target coordinates",
+// so the mapping is checked against a known rectangle instead.
+QVector<DamageControlResult> WidgetsSample::runDamageControls()
+{
+    QVector<DamageControlResult> results;
+    if (!m_damageTracker || !m_root || !m_pulsing)
+        return results;
+
+    // Let anything still pending from the measurement loop settle, so that it
+    // cannot be attributed to a control step.
+    pumpEvents(80);
+    m_damageTracker->takeSnapshot();
+
+    {
+        DamageControlResult result;
+        result.description = QStringLiteral(
+            "repaint only the pulsing child widget; the damage region must be exactly that child's "
+            "rectangle expressed in the shared target coordinate system");
+
+        QWidget *pulsing = m_pulsing.data();
+        result.expectedTargetRect =
+            QRect(pulsing->mapTo(m_root.data(), QPoint(0, 0)), pulsing->size());
+        pulsing->update();
+        pumpEvents(80);
+
+        const DamageSnapshot snapshot = m_damageTracker->takeSnapshot();
+        result.observedArea = snapshot.area();
+        result.observedBoundingRect = snapshot.region.boundingRect();
+        result.observedPaintEvents = snapshot.paintEvents;
+        result.observedExcludedPaintEvents = snapshot.excludedPaintEvents;
+        result.passed =
+            !result.expectedTargetRect.isEmpty()
+            && result.observedBoundingRect == result.expectedTargetRect
+            && result.observedArea == qint64(result.expectedTargetRect.width())
+                                          * qint64(result.expectedTargetRect.height());
+        results.append(result);
+    }
+
+    if (m_dialogLabel) {
+        DamageControlResult result;
+        result.description = QStringLiteral(
+            "repaint a widget inside the separate top-level dialog; it must be excluded from the "
+            "shared target damage even though the dialog's parent widget is the target");
+        result.expectEmpty = true;
+
+        m_dialogLabel->update();
+        pumpEvents(80);
+
+        const DamageSnapshot snapshot = m_damageTracker->takeSnapshot();
+        result.observedArea = snapshot.area();
+        result.observedBoundingRect = snapshot.region.boundingRect();
+        result.observedPaintEvents = snapshot.paintEvents;
+        result.observedExcludedPaintEvents = snapshot.excludedPaintEvents;
+        result.passed = snapshot.area() == 0 && snapshot.excludedPaintEvents > 0;
+        results.append(result);
+    }
+
+    return results;
 }
 
 void WidgetsSample::shutdown()

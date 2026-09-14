@@ -30,6 +30,10 @@ public:
     void shutdown() override;
     QVariantMap info() const override;
 
+    // The top-level parent widget is the shared target, not the embedded Quick
+    // render target.
+    QWidget *damageTargetWidget() const override;
+
 private:
     CaptureOutcome grabQuickContent();
     CaptureOutcome grabParentComposition();

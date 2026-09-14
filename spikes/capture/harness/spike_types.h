@@ -10,6 +10,7 @@
 #include <QEventLoop>
 #include <QImage>
 #include <QObject>
+#include <QRect>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -17,6 +18,14 @@
 #include <QVector>
 
 #include <functional>
+
+class QWidget;
+
+namespace hyremote {
+namespace spike {
+class DamageTracker;
+}
+}  // namespace hyremote
 
 namespace hyremote {
 namespace spike {
@@ -53,6 +62,38 @@ struct CaptureOutcome
     // callable builds a QImage over that memory without copying it, so the
     // hand-off probe observes exactly what a zero-copy consumer would see.
     std::function<QImage()> borrowedView;
+
+    // Storage-identity probe. Only paths that keep a producer target buffer can
+    // report it; a zero address means "not observed".
+    //
+    // The addresses come from QImage::constBits(), which is documented and
+    // implemented as returning d->data without detaching, so the probe itself
+    // does not perturb the buffer. This is a real backing-store identity, unlike
+    // QImage::cacheKey(), which mixes a serial number with a detach counter and
+    // therefore changes for content edits and for detaches that do not reallocate.
+    bool storageProbeAvailable = false;
+    bool storageReplacedDuringCapture = false;
+    quintptr storageAddressBefore = 0;
+    quintptr storageAddressAfter = 0;
+};
+
+// Deterministic result of one damage-mapping control executed by a sample.
+//
+// The control exists because a damage ratio alone cannot show whether child
+// regions were mapped into the shared target coordinate system: an unmapped
+// (buggy) tracker still produces a plausible-looking ratio. A control therefore
+// repaints exactly one known widget and compares the observed damage region with
+// the rectangle that widget occupies in the target's coordinate system.
+struct DamageControlResult
+{
+    QString description;
+    QRect expectedTargetRect;  // in the shared target's coordinate system
+    bool expectEmpty = false;  // true when the repaint must NOT reach the target
+    qint64 observedArea = 0;
+    QRect observedBoundingRect;
+    quint64 observedPaintEvents = 0;
+    quint64 observedExcludedPaintEvents = 0;
+    bool passed = false;
 };
 
 // One independently testable capture target.
@@ -87,6 +128,19 @@ public:
 
     virtual QStringList observations() const = 0;
     virtual void shutdown() = 0;
+
+    // QWidget whose coordinate system defines the shared target for damage
+    // mapping. Null for target families without a QWidget root (native Quick
+    // windows), where no region-carrying paint event can be attributed.
+    virtual QWidget *damageTargetWidget() const { return nullptr; }
+
+    // The harness hands its damage tracker to the sample so that the sample can
+    // run deterministic mapping controls against it.
+    virtual void setDamageTracker(DamageTracker *tracker) { Q_UNUSED(tracker); }
+
+    // Deterministic controls for the damage mapping rules. Executed after the
+    // measurement loop; an empty result means the sample has no control to run.
+    virtual QVector<DamageControlResult> runDamageControls() { return {}; }
 
     // Recorded once per run (render backend, native handle, ...).
     virtual QVariantMap info() const { return {}; }

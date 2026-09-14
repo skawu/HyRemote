@@ -30,6 +30,17 @@ struct PathAccumulator
     QVector<double> times;
 };
 
+QString rectToString(const QRect &rect)
+{
+    if (rect.isNull())
+        return QStringLiteral("empty");
+    return QStringLiteral("%1,%2 %3x%4")
+        .arg(rect.x())
+        .arg(rect.y())
+        .arg(rect.width())
+        .arg(rect.height());
+}
+
 QString imageFormatName(QImage::Format format)
 {
     switch (format) {
@@ -249,7 +260,11 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
     sample->show();
 
     DamageTracker damage;
-    damage.start();
+    // Bind the tracker to the shared target so that child paint regions can be
+    // mapped into the target's coordinate system instead of being unioned in
+    // their own coordinate systems.
+    damage.start(sample->damageTargetWidget());
+    sample->setDamageTracker(&damage);
 
     FrameSink sink;
     if (config.sink)
@@ -306,9 +321,12 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
     qint64 pumpNsTotal = 0;
     qint64 captureLoopNsTotal = 0;
     qint64 frameArea = 0;
+    qint64 damageTargetArea = 0;
     qint64 appDamageArea = 0;
     qint64 captureDamageArea = 0;
-    quint64 paintEvents = 0;
+    quint64 mappedPaintEvents = 0;
+    quint64 excludedPaintEvents = 0;
+    quint64 emptyDamageRegions = 0;
     quint64 updateRequests = 0;
     int observedObjects = 0;
     int framesCaptured = 0;
@@ -332,9 +350,12 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
         captureLoopNsTotal += phaseTimer.nsecsElapsed();
         const DamageSnapshot captureDamage = damage.takeSnapshot();
 
-        paintEvents += appDamage.paintEvents + captureDamage.paintEvents;
+        mappedPaintEvents += appDamage.paintEvents + captureDamage.paintEvents;
+        excludedPaintEvents += appDamage.excludedPaintEvents + captureDamage.excludedPaintEvents;
+        emptyDamageRegions += appDamage.emptyRegions + captureDamage.emptyRegions;
         updateRequests += appDamage.updateRequests + captureDamage.updateRequests;
-        observedObjects = qMax(observedObjects, appDamage.observedObjects);
+        observedObjects = qMax(observedObjects, appDamage.observedWidgets);
+        damageTargetArea = qMax(damageTargetArea, appDamage.targetArea);
 
         bool anySuccess = false;
         for (const CaptureOutcome &outcome : outcomes) {
@@ -343,6 +364,17 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
             accumulator.stats.producerReusesBuffer = outcome.producerReusesBuffer;
             accumulator.stats.callerThread = outcome.callerThread;
             appendUnique(accumulator.stats.notes, outcome.notes);
+
+            if (outcome.storageProbeAvailable) {
+                ++accumulator.stats.storageProbes;
+                if (outcome.storageReplacedDuringCapture)
+                    ++accumulator.stats.storageReplacements;
+                const QString first = QStringLiteral("0x%1").arg(outcome.storageAddressBefore, 0, 16);
+                const QString last = QStringLiteral("0x%1").arg(outcome.storageAddressAfter, 0, 16);
+                if (accumulator.stats.storageAddressFirst.isEmpty())
+                    accumulator.stats.storageAddressFirst = first;
+                accumulator.stats.storageAddressLast = last;
+            }
 
             if (outcome.ok && !outcome.frame.isNull()) {
                 ++accumulator.stats.successes;
@@ -353,10 +385,11 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
                         .arg(outcome.frame.width())
                         .arg(outcome.frame.height())
                         .arg(outcome.frame.devicePixelRatio());
-                // The damage denominator is the largest captured surface, which
-                // is the whole shared target. A path that returns only a
-                // sub-region (for example QQuickWidget::grabFramebuffer()) must
-                // not make the damage ratio exceed 100 %.
+                // Fallback damage denominator when the sample reports no shared
+                // QWidget target: the largest captured surface. A path that
+                // returns only a sub-region (for example
+                // QQuickWidget::grabFramebuffer()) must not make the ratio
+                // exceed 100 %.
                 const qint64 area = qint64(outcome.frame.width()) * qint64(outcome.frame.height());
                 frameArea = qMax(frameArea, area);
                 anySuccess = true;
@@ -381,6 +414,31 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
 
     const double wallSeconds = double(wallTimer.nsecsElapsed()) / 1.0e9;
     const ProcessMetrics endMetrics = sampleProcessMetrics();
+
+    // Deterministic damage-mapping controls, executed with captures stopped so
+    // that capture-induced repaints cannot be attributed to a control step.
+    const QVector<DamageControlResult> damageControls = sample->runDamageControls();
+    for (const DamageControlResult &control : damageControls) {
+        if (!control.passed) {
+            report.warnings.append(
+                QStringLiteral("damage mapping control failed: %1 (expected %2, observed %3, "
+                               "area %4)")
+                    .arg(control.description,
+                         control.expectEmpty
+                             ? QStringLiteral("no damage")
+                             : QStringLiteral("[%1,%2 %3x%4]")
+                                   .arg(control.expectedTargetRect.x())
+                                   .arg(control.expectedTargetRect.y())
+                                   .arg(control.expectedTargetRect.width())
+                                   .arg(control.expectedTargetRect.height()),
+                         QStringLiteral("[%1,%2 %3x%4]")
+                             .arg(control.observedBoundingRect.x())
+                             .arg(control.observedBoundingRect.y())
+                             .arg(control.observedBoundingRect.width())
+                             .arg(control.observedBoundingRect.height()),
+                         QString::number(control.observedArea)));
+        }
+    }
 
     // Snapshot everything the sample and the sink can report before they are
     // torn down; after shutdown() the target objects no longer exist.
@@ -416,12 +474,21 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
     report.guiLatencyP95Ms = percentile(sortedLatency, 0.95);
     report.guiLatencyMaxMs = sortedLatency.isEmpty() ? 0.0 : sortedLatency.last();
 
-    if (frameArea > 0) {
-        report.avgDamageRatio = double(appDamageArea) / double(frameArea * qMax(1, config.frames));
+    // The damage denominator is the shared target rect when the sample reports
+    // one, because the mapped damage region lives in that coordinate system.
+    // Otherwise fall back to the largest captured surface.
+    const qint64 damageDenominator = damageTargetArea > 0 ? damageTargetArea : frameArea;
+    if (damageDenominator > 0) {
+        report.avgDamageRatio =
+            double(appDamageArea) / double(damageDenominator * qMax(1, config.frames));
         report.avgCaptureDamageRatio =
-            double(captureDamageArea) / double(frameArea * qMax(1, config.frames));
+            double(captureDamageArea) / double(damageDenominator * qMax(1, config.frames));
     }
-    report.paintEvents = paintEvents;
+    report.damageControls = damageControls;
+    report.damageTargetArea = damageTargetArea;
+    report.mappedPaintEvents = mappedPaintEvents;
+    report.excludedPaintEvents = excludedPaintEvents;
+    report.emptyDamageRegions = emptyDamageRegions;
     report.updateRequests = updateRequests;
     report.observedObjects = observedObjects;
 
@@ -442,20 +509,58 @@ RunReport runSample(CaptureSample *sample, const RunConfig &config, int runIndex
 
     report.handoff = handoffReport;
 
+    // Storage-identity aggregate across all probed paths.
+    QStringList storageNotes;
+    for (const PathStats &path : report.paths) {
+        if (path.storageProbes == 0)
+            continue;
+        storageNotes.append(QStringLiteral("'%1' probed %2 captures and replaced its pixel storage "
+                                           "%3 times")
+                                .arg(path.path)
+                                .arg(path.storageProbes)
+                                .arg(path.storageReplacements));
+    }
+    if (!storageNotes.isEmpty()) {
+        report.observations.append(
+            QStringLiteral("Storage-identity probe (real backing-store address from "
+                           "QImage::constBits(), not QImage::cacheKey()): %1.")
+                .arg(storageNotes.join(QStringLiteral("; "))));
+    }
+
     // Data-driven damage conclusion for this target.
     if (framesCaptured > 0) {
-        if (paintEvents == 0 && updateRequests > 0) {
+        if (damageTargetArea == 0) {
             report.observations.append(
-                QStringLiteral("Damage probe: %1 update requests but zero region-carrying paint "
-                               "events were observed, so this target exposes no damage region "
-                               "through public Qt APIs; a viewer update must assume full frames.")
+                QStringLiteral("Damage probe: this target family has no QWidget root whose "
+                               "coordinate system damage could be mapped into, so no "
+                               "region-carrying paint event can be attributed to the shared "
+                               "target; only %1 application-wide update requests (QEvent::"
+                               "UpdateRequest carries no geometry) and %2 excluded paint events "
+                               "were observed. Region-level damage is not observable through "
+                               "public APIs for this target.")
+                    .arg(updateRequests)
+                    .arg(excludedPaintEvents));
+        } else if (mappedPaintEvents == 0) {
+            report.observations.append(
+                QStringLiteral("Damage probe: no region-carrying paint event could be mapped into "
+                               "the shared target rect of %1 px^2, although %2 update requests "
+                               "were observed, so no usable damage stream was obtained for this "
+                               "target in this run.")
+                    .arg(damageTargetArea)
                     .arg(updateRequests));
-        } else if (paintEvents > 0 && frameArea > 0) {
+        } else {
             report.observations.append(
-                QStringLiteral("Damage probe: application repaints covered %1 % of the frame area "
-                               "on average, while the capture calls themselves added %2 %; a "
-                               "region-based damage stream is available but capture-induced "
-                               "repaints are part of it.")
+                QStringLiteral("Damage probe (mapped into the shared target coordinate system): %1 "
+                               "paint events from the target subtree were accepted, %2 paint "
+                               "events were excluded because they belong to separate top-level "
+                               "windows or non-widget objects, and %3 mapped events fell outside "
+                               "the target rect. Application repaints covered %4 % of the shared "
+                               "target rect per frame on average, while the capture calls added "
+                               "%5 %. This is an observable child-region stream after mapping and "
+                               "clipping; it is not yet a transport-ready damage protocol.")
+                    .arg(mappedPaintEvents)
+                    .arg(excludedPaintEvents)
+                    .arg(emptyDamageRegions)
                     .arg(report.avgDamageRatio * 100.0, 0, 'f', 1)
                     .arg(report.avgCaptureDamageRatio * 100.0, 0, 'f', 1));
         }
@@ -502,12 +607,33 @@ QVariantMap runReportToVariant(const RunReport &report)
     map.insert(QStringLiteral("memory"), memory);
 
     QVariantMap damage;
+    damage.insert(QStringLiteral("ratioCoordinateSystem"),
+                  QStringLiteral("shared target QWidget (mapped and clipped)"));
+    damage.insert(QStringLiteral("targetAreaPx"), report.damageTargetArea);
     damage.insert(QStringLiteral("avgAppDamageRatio"), report.avgDamageRatio);
     damage.insert(QStringLiteral("avgCaptureDamageRatio"), report.avgCaptureDamageRatio);
-    damage.insert(QStringLiteral("paintEvents"), report.paintEvents);
+    damage.insert(QStringLiteral("mappedPaintEvents"), report.mappedPaintEvents);
+    damage.insert(QStringLiteral("excludedPaintEvents"), report.excludedPaintEvents);
+    damage.insert(QStringLiteral("emptyMappedRegions"), report.emptyDamageRegions);
     damage.insert(QStringLiteral("updateRequests"), report.updateRequests);
     damage.insert(QStringLiteral("observedObjects"), report.observedObjects);
     map.insert(QStringLiteral("damage"), damage);
+
+    QVariantList damageControls;
+    for (const DamageControlResult &control : report.damageControls) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("description"), control.description);
+        entry.insert(QStringLiteral("expectEmpty"), control.expectEmpty);
+        entry.insert(QStringLiteral("expectedTargetRect"), rectToString(control.expectedTargetRect));
+        entry.insert(QStringLiteral("observedBoundingRect"), rectToString(control.observedBoundingRect));
+        entry.insert(QStringLiteral("observedAreaPx"), control.observedArea);
+        entry.insert(QStringLiteral("observedPaintEvents"), control.observedPaintEvents);
+        entry.insert(QStringLiteral("observedExcludedPaintEvents"),
+                     control.observedExcludedPaintEvents);
+        entry.insert(QStringLiteral("passed"), control.passed);
+        damageControls.append(entry);
+    }
+    map.insert(QStringLiteral("damageMappingControls"), damageControls);
 
     QVariantList paths;
     for (const PathStats &path : report.paths) {
@@ -525,6 +651,10 @@ QVariantMap runReportToVariant(const RunReport &report)
         entry.insert(QStringLiteral("frameSize"), path.frameSize);
         entry.insert(QStringLiteral("producerReusesBuffer"), path.producerReusesBuffer);
         entry.insert(QStringLiteral("callerThread"), path.callerThread);
+        entry.insert(QStringLiteral("storageProbes"), path.storageProbes);
+        entry.insert(QStringLiteral("storageReplacements"), path.storageReplacements);
+        entry.insert(QStringLiteral("storageAddressFirst"), path.storageAddressFirst);
+        entry.insert(QStringLiteral("storageAddressLast"), path.storageAddressLast);
         entry.insert(QStringLiteral("notes"), path.notes);
         paths.append(entry);
     }

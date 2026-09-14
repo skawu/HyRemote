@@ -32,6 +32,9 @@ public:
     void shutdown() override;
     QVariantMap info() const override;
 
+    // The top-level parent widget is the shared target, not the GL child.
+    QWidget *damageTargetWidget() const override;
+
 private:
     CaptureOutcome grabFramebuffer();
     CaptureOutcome grabGlWidgetViaWidgetApi();

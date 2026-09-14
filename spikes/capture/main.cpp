@@ -292,11 +292,22 @@ void printRunSummary(const hyremote::spike::RunReport &report)
                     0,
                     'f',
                     2);
-    out << QStringLiteral("damage        : app %1 %, capture-induced %2 % (paint events %3, update requests %4)\n")
-               .arg(report.avgDamageRatio * 100.0, 0, 'f', 2)
-               .arg(report.avgCaptureDamageRatio * 100.0, 0, 'f', 2)
-               .arg(report.paintEvents)
-               .arg(report.updateRequests);
+    if (report.damageTargetArea > 0) {
+        out << QStringLiteral("damage        : app %1 %, capture-induced %2 % of the shared target "
+                              "(%3 px^2); mapped paint events %4, excluded %5, update requests %6\n")
+                   .arg(report.avgDamageRatio * 100.0, 0, 'f', 2)
+                   .arg(report.avgCaptureDamageRatio * 100.0, 0, 'f', 2)
+                   .arg(report.damageTargetArea)
+                   .arg(report.mappedPaintEvents)
+                   .arg(report.excludedPaintEvents)
+                   .arg(report.updateRequests);
+    } else {
+        out << QStringLiteral("damage        : no shared QWidget target; mapped paint events %1, "
+                              "excluded %2, update requests %3\n")
+                   .arg(report.mappedPaintEvents)
+                   .arg(report.excludedPaintEvents)
+                   .arg(report.updateRequests);
+    }
 
     for (const PathStats &path : report.paths) {
         out << QStringLiteral("\n  path        : %1%2\n")
@@ -315,8 +326,37 @@ void printRunSummary(const hyremote::spike::RunReport &report)
                        .arg(path.producerReusesBuffer ? QStringLiteral("yes")
                                                       : QStringLiteral("no"));
         }
+        if (path.storageProbes > 0) {
+            out << QStringLiteral("  storage     : %1 probes, %2 storage replacements (%3 -> %4)\n")
+                       .arg(path.storageProbes)
+                       .arg(path.storageReplacements)
+                       .arg(path.storageAddressFirst, path.storageAddressLast);
+        }
         for (const QString &note : path.notes)
             out << QStringLiteral("  note        : %1\n").arg(note);
+    }
+
+    for (const DamageControlResult &control : report.damageControls) {
+        out << QStringLiteral("  control     : %1 -> %2\n")
+                   .arg(control.description,
+                        control.passed ? QStringLiteral("PASSED") : QStringLiteral("FAILED"));
+        out << QStringLiteral("                expected %1, observed %2, area %3 px, "
+                              "mapped events %4, excluded events %5\n")
+                   .arg(control.expectEmpty
+                            ? QStringLiteral("no damage")
+                            : QStringLiteral("%1,%2 %3x%4")
+                                  .arg(control.expectedTargetRect.x())
+                                  .arg(control.expectedTargetRect.y())
+                                  .arg(control.expectedTargetRect.width())
+                                  .arg(control.expectedTargetRect.height()),
+                        QStringLiteral("%1,%2 %3x%4")
+                            .arg(control.observedBoundingRect.x())
+                            .arg(control.observedBoundingRect.y())
+                            .arg(control.observedBoundingRect.width())
+                            .arg(control.observedBoundingRect.height()),
+                        QString::number(control.observedArea),
+                        QString::number(control.observedPaintEvents),
+                        QString::number(control.observedExcludedPaintEvents));
     }
 
     const QVariantMap handoff = report.handoff;

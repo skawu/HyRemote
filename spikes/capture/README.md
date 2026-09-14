@@ -25,11 +25,25 @@ buffer ownership actually land:
 
 In addition, every run measures:
 
-- capture cost (first call, average, p50, p95, max) per path, on the GUI thread;
+- capture cost (first call, average, p50, p95, max) per path, on the GUI thread. For the
+  reused-target and fresh-target paths the measured region covers the complete operation
+  (buffer allocation or clear plus the render), so the two are comparable;
 - process CPU and resident memory trend per frame;
 - GUI responsiveness through the delay of a precise 16 ms timer;
-- damage through an application-level event filter (`QPaintEvent::region()` and
-  `QEvent::UpdateRequest`);
+- damage through an application-level event filter, bound to one shared target widget.
+  Child `QPaintEvent::region()` values are accepted only inside that target's window,
+  translated into the target's coordinate system and clipped before they are unioned.
+  `QEvent::UpdateRequest` is counted separately and application-wide because Qt Quick
+  posts it without geometry;
+- deterministic damage-mapping controls in the `widgets` case: one repaints exactly one
+  known child widget and expects exactly its rectangle in target coordinates, one
+  repaints a widget inside a separate top-level dialog and expects no damage in the
+  target;
+- producer pixel-storage identity for paths that own a target buffer, sampled with
+  `QImage::constBits()` before the first write and after the last write of a capture.
+  This is a real backing-store address, unlike `QImage::cacheKey()`, which mixes a serial
+  number with a detach counter. Two synthetic controls (a shared write that must
+  relocate, a unique write that must not) validate the probe on every capture;
 - frame hand-off safety by handing frames to a worker thread that re-reads the pixels
   40 ms later, for both a `QImage` value and a borrowed raw-memory view;
 - which thread renders the scene graph, through `QQuickWindow::beforeRendering` /
@@ -106,8 +120,18 @@ short by design; the numbers that matter come from the longer documented runs.
 
 ## Known limitations of the harness
 
-- Damage counters include capture-induced repaints; the harness separates application
-  damage from capture-induced damage but cannot remove the effect.
+- The damage stream is a raw child-region union after mapping and clipping. It has no
+  coalescing policy, it does not cover separate top-level windows, and it includes
+  capture-induced repaints unless the snapshot is taken before capturing (which the
+  harness does). The scenes are deliberately damage-heavy, so the reported ratios
+  characterise those scenes and not a typical application.
+- The storage-identity probe reports whether a capture replaced the pixel storage, not
+  the size or the cost of that replacement. For the reused-target path that cost lands in
+  the measured clear/render region; it is not isolated further.
+- Two of the seven damage/measurement scenes are made deterministic on purpose (a
+  non-focusable line edit and a determinate progress bar), because a blinking cursor or
+  an indeterminate progress bar repaints asynchronously and would make the damage
+  controls non-repeatable.
 - The borrowed-buffer probe reads producer memory concurrently with the producer
   writing it. That is deliberate (it is the failure mode being demonstrated) and it is
   benign here because the buffer stays allocated and keeps its size for the whole run.
@@ -115,3 +139,6 @@ short by design; the numbers that matter come from the longer documented runs.
   caches; only the 500-frame run is used for a memory conclusion.
 - The frame hand-off probe is not a transport. It exists only to answer the ownership
   question.
+- Storage-identity numbers depend on `--submit-every`: the reused target only replaces
+  its storage on captures that follow a hand-off. Run with `--no-sink` for the negative
+  control.

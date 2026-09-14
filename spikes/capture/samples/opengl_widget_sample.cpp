@@ -265,6 +265,11 @@ QVariantMap OpenGlWidgetSample::info() const
     return info;
 }
 
+QWidget *OpenGlWidgetSample::damageTargetWidget() const
+{
+    return m_root.data();
+}
+
 void OpenGlWidgetSample::shutdown()
 {
     m_advanceScene = nullptr;

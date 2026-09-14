@@ -216,6 +216,11 @@ QVariantMap QuickWidgetSample::info() const
     return info;
 }
 
+QWidget *QuickWidgetSample::damageTargetWidget() const
+{
+    return m_root.data();
+}
+
 void QuickWidgetSample::shutdown()
 {
     if (m_root)
