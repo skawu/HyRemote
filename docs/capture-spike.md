@@ -524,13 +524,15 @@ tested and remains an open architectural question for a dedicated issue.
 ## 12. Follow-up work
 
 1. **GL/PBO asynchronous readback** for `QOpenGLWidget`, `QQuickWidget` and
-   `QQuickWindow`, including a render-thread capture path and its synchronization rules.
+   `QQuickWindow`, including a render-thread capture path and its synchronization rules:
+   [#16](https://github.com/skawu/HyRemote/issues/16).
 2. **GBM/DMA-BUF zero-copy feasibility** from Qt/EGLFS, plus the explicit `RemoteFrame`
-   ownership model that the evidence in section 7 requires.
+   ownership model that the evidence in section 7 requires:
+   [#17](https://github.com/skawu/HyRemote/issues/17).
 3. **Qt Quick damage**: private renderer integration versus application-declared dirty
    hints, with a full-frame fallback.
 4. **RK3588/EGLFS validation** of the whole matrix in this document, which is the actual
-   acceptance gate of issue #3.
+   acceptance gate of issue #3. This is the blocker that keeps SPIKE-01 open.
 5. **Buffer pool and frame lifetime API design** for `hyremote-core`, driven by the
    ownership result rather than by a pixel-format discussion.
 
