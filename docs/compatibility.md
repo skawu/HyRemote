@@ -1,8 +1,11 @@
 # HyRemote Compatibility Matrix
 
-Status: **bootstrap / evidence required**
+Status: **bootstrap / initial capture evidence collected, embedded validation outstanding**
 
 HyRemote does not claim support based only on API similarity. A configuration is marked supported only after it has a reproducible build and functional validation.
+
+Capture evidence and the reasoning behind the recommended baseline paths are recorded in
+[`capture-spike.md`](capture-spike.md) (SPIKE-01, issue #3).
 
 ## Status definitions
 
@@ -11,16 +14,38 @@ HyRemote does not claim support based only on API similarity. A configuration is
 - **Unsupported** — known architectural or implementation limitation.
 - **Unverified** — not yet tested; no support claim should be inferred.
 
-## Initial matrix
+## Capture rows validated on the host (SPIKE-01)
+
+These rows come from the host runs in `spikes/capture/evidence/` (Windows 11, Qt 6.8.3,
+MSVC 19.44, Intel UHD Graphics 770). They are **host-only** evidence: per rule 2 below
+they say nothing about Embedded Linux/EGLFS support. The capture backend column names
+the mechanism that was actually measured, not a frozen HyRemote API.
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Transport | Status | Notes |
 |---|---|---|---|---|---|---|---|
-| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | Qt Quick 2D | TBD by SPIKE-01 | VNC candidate | Unverified | Primary reference target |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | Quick3D | TBD by SPIKE-01 | VNC candidate | Unverified | Must be tested separately |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | custom Quick FBO/OpenGL | TBD by SPIKE-01 | VNC candidate | Unverified | Must be tested separately |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS | QWidget/raster | TBD by SPIKE-01 | VNC candidate | Unverified | Widgets are first-class support target |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS/OpenGL | QOpenGLWidget | TBD by SPIKE-01 | VNC candidate | Unverified | Dedicated GL capture may be required |
-| 6.8.x | Embedded Linux / RK3588 | mixed | QQuickWidget | TBD by SPIKE-01 | VNC candidate | Unverified | Composition must be validated |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget/raster | `QWidget::render()` into a caller buffer, `QWidget::grab()` | VNC candidate | Experimental | 2.5-3.8 ms at 960x600; region damage available; popups/dialogs are separate top-level windows |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget with custom QPainter | same | VNC candidate | Experimental | Covered by the `widgets` case |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QOpenGLWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab composes GL content at 4.6-4.8 ms; `grabFramebuffer()` returns only the GL widget; first call 55-61 ms |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab stable at 4.3-6.0 ms; `grabFramebuffer()` varied 3.05-13.30 ms across identical runs |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Qt Quick 2D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 18.8 ms at 960x600; blocks the GUI thread; no damage regions |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Quick3D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 19.3 ms; content fidelity verified |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | custom Quick FBO/OpenGL | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | Freshness verified with an encoded render counter (24 -> 743 over 743 rendered frames) |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | custom Quick FBO/OpenGL | none | VNC candidate | Unsupported | `QQuickFramebufferObject` never rendered on a non-OpenGL RHI backend |
+| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Qt Quick 2D | `QQuickWindow::grabWindow()` once per frame | VNC candidate | Unsupported | The application's own event loop fell to ~1 fps while the call itself reported 16 ms |
+
+## Rows still awaiting evidence
+
+Every row below needs the same treatment on the target itself before any claim.
+
+| Qt | OS / target | QPA / graphics | Application type | Capture backend | Transport | Status | Notes |
+|---|---|---|---|---|---|---|---|
+| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | Qt Quick 2D | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Primary reference target; acceptance gate of issue #3 |
+| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | Quick3D | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Must be tested separately |
+| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | custom Quick FBO/OpenGL | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Must be tested separately |
+| 6.8.x | Embedded Linux / RK3588 | EGLFS | QWidget/raster | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Widgets are a first-class support target |
+| 6.8.x | Embedded Linux / RK3588 | EGLFS/OpenGL | QOpenGLWidget | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Composing a child GL surface without a window system is unproven |
+| 6.8.x | Embedded Linux / RK3588 | mixed | QQuickWidget | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Composition must be validated |
+| 6.8.x | Linux desktop (X11/Wayland) | any | any | not measured | VNC candidate | Unverified | SPIKE-01 was executed on Windows only |
 
 ## Required evidence per entry
 
