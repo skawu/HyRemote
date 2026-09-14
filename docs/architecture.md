@@ -109,7 +109,10 @@ The model is expected to carry, as applicable:
 - ownership/lifetime information;
 - synchronization metadata where required.
 
-The exact public representation is not frozen until SPIKE-01 is complete.
+The exact public representation is not frozen until SPIKE-01 is complete. The
+requirements that SPIKE-01 did establish (ownership/lifetime states, optional damage,
+capability metadata) are recorded in [`capture-spike.md`](capture-spike.md) and remain
+requirements rather than a frozen ABI.
 
 ### 3.4 Transport
 

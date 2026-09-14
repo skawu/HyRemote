@@ -1,0 +1,245 @@
+{
+    "arguments": [
+        "--sample",
+        "widgets",
+        "--frames",
+        "500",
+        "--warmup",
+        "20",
+        "--interval-ms",
+        "0",
+        "--submit-every",
+        "20",
+        "--json",
+        "spikes/capture/evidence/host-windows-rhi-default-widgets-memory-run.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "cpuArchitecture": "x86_64",
+        "defaultSurfaceFormat": "2.0 profile=0 swapInterval=1 samples=-1",
+        "glInfo": {
+            "contextFormat": "4.6 compatibility",
+            "renderer": "Intel(R) UHD Graphics 770",
+            "shadingLanguage": "4.60 - Build 32.0.101.7088",
+            "vendor": "Intel",
+            "version": "4.6.0 - Build 32.0.101.7088"
+        },
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080+0+0",
+                "logicalDpi": 96,
+                "name": "HP E24 G4"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/3",
+    "results": [
+        {
+            "damage": {
+                "avgAppDamageRatio": 0.8350729166666667,
+                "avgCaptureDamageRatio": 1,
+                "emptyMappedRegions": 0,
+                "excludedPaintEvents": 0,
+                "mappedPaintEvents": 22000,
+                "observedObjects": 10,
+                "ratioCoordinateSystem": "shared target QWidget (mapped and clipped)",
+                "targetAreaPx": 576000,
+                "updateRequests": 501
+            },
+            "damageMappingControls": [
+                {
+                    "description": "repaint only the pulsing child widget; the damage region must be exactly that child's rectangle expressed in the shared target coordinate system",
+                    "expectEmpty": false,
+                    "expectedTargetRect": "716,38 233x501",
+                    "observedAreaPx": 116733,
+                    "observedBoundingRect": "716,38 233x501",
+                    "observedExcludedPaintEvents": 0,
+                    "observedPaintEvents": 1,
+                    "passed": true
+                },
+                {
+                    "description": "repaint a widget inside the separate top-level dialog; it must be excluded from the shared target damage even though the dialog's parent widget is the target",
+                    "expectEmpty": true,
+                    "expectedTargetRect": "empty",
+                    "observedAreaPx": 0,
+                    "observedBoundingRect": "empty",
+                    "observedExcludedPaintEvents": 2,
+                    "observedPaintEvents": 0,
+                    "passed": true
+                }
+            ],
+            "handoff": {
+                "borrowedViews": 25,
+                "consumerDelayMs": 40,
+                "delivered": 100,
+                "deliveredByPath": {
+                    "QWidget::grab()": 25,
+                    "QWidget::render() into a borrowed raw pixel buffer": 25,
+                    "QWidget::render() into fresh QImage": 25,
+                    "QWidget::render() into reused QImage": 25
+                },
+                "droppedOverflow": 0,
+                "enabled": true,
+                "mutated": 25,
+                "mutatedByPath": {
+                    "QWidget::render() into a borrowed raw pixel buffer": 25
+                },
+                "nullFrames": 0,
+                "stable": 75
+            },
+            "memory": {
+                "rssEndBytes": 64823296,
+                "rssPeakBytes": 91222016,
+                "rssSlopeBytesPer100Frames": -993395.345459782,
+                "rssStartBytes": 66850816
+            },
+            "observations": [
+                "QWidget::grab() and QWidget::render() must be called on the GUI thread. Both are implemented by repainting the widget through QWidget::render(), so the call is synchronous and blocks the GUI thread for its duration.",
+                "Neither call needs a current OpenGL context for raster widgets. A QWidget hierarchy that contains a QOpenGLWidget/D3D child is the case that needs a graphics context (see the openglwidget sample).",
+                "Popups, QMenu and non-modal QDialog are separate top-level windows and are NOT part of a top-level widget capture. The target adapter must decide whether to share only the main window or to compose extra windows.",
+                "Damage regions must be mapped into the shared target coordinate system before they are unioned. Child widgets report QPaintEvent::region() in their own coordinate system, so the tracker binds the top-level window widget as the shared target, translates each accepted child region with QWidget::mapTo() and clips it to the visible part of the ancestor chain.",
+                "Storage identity (real backing-store address from QImage::constBits(), not QImage::cacheKey()): the reused producer target changed its pixel storage in 25 of 520 captures, and the address never moved on its own between captures (0 self-check hits). QImage uses implicit data sharing: QImage::detach() copies when the reference count is not 1, so a producer that published a shared QImage pays for a new allocation exactly on the captures where a consumer still held the previous frame. This is a copy-on-write semantic, not a fixed per-frame allocation rate: with no consumer holding a frame the same buffer is reused with no replacement at all.",
+                "Storage-identity probe controls: the synthetic shared-write control relocated the storage in 520 of 520 runs (probe can detect a replacement), and the unique-write control kept the same address in 520 of 520 runs (the probe does not report phantom replacements).",
+                "Storage-identity probe (real backing-store address from QImage::constBits(), not QImage::cacheKey()): 'QWidget::render() into reused QImage' probed 500 captures and replaced its pixel storage 25 times.",
+                "Damage probe (mapped into the shared target coordinate system): 22000 paint events from the target subtree were accepted, 0 paint events were excluded because they belong to separate top-level windows or non-widget objects, and 0 mapped events fell outside the target rect. Application repaints covered 83.5 % of the shared target rect per frame on average, while the capture calls added 100.0 %. This is an observable child-region stream after mapping and clipping; it is not yet a transport-ready damage protocol."
+            ],
+            "paths": [
+                {
+                    "attempts": 500,
+                    "avgNs": 3736748,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2379100,
+                    "frameFormat": "RGB32",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 39632500,
+                    "notes": [
+                        "grabs the widget through QWidget::render(); includes child widgets, excludes popups and dialogs that are separate top-level windows; triggers real paint events"
+                    ],
+                    "p50Ns": 3216500,
+                    "p95Ns": 6477800,
+                    "path": "QWidget::grab()",
+                    "primary": true,
+                    "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
+                    "successes": 500
+                },
+                {
+                    "attempts": 500,
+                    "avgNs": 3314164.8,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2296000,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 34503600,
+                    "notes": [
+                        "draws directly into a caller-owned QImage that is reused for every capture; the measured time covers the buffer clear and the render, and the pixel storage address is probed with QImage::constBits() before the clear and after the render"
+                    ],
+                    "p50Ns": 2815100,
+                    "p95Ns": 5995500,
+                    "path": "QWidget::render() into reused QImage",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "storageAddressFirst": "0x1f001e7b040",
+                    "storageAddressLast": "0x1f00662a040",
+                    "storageProbes": 500,
+                    "storageReplacements": 25,
+                    "successes": 500
+                },
+                {
+                    "attempts": 500,
+                    "avgNs": 3803807.8,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 2302400,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 31001400,
+                    "notes": [
+                        "same public API as the reused variant, but the target image is allocated and cleared for every capture; the measured time covers the allocation, the clear and the render, so it is directly comparable with the reused variant"
+                    ],
+                    "p50Ns": 3169400,
+                    "p95Ns": 7893800,
+                    "path": "QWidget::render() into fresh QImage",
+                    "primary": false,
+                    "producerReusesBuffer": false,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
+                    "successes": 500
+                },
+                {
+                    "attempts": 500,
+                    "avgNs": 3352307.8,
+                    "callerThread": "Qt mainThread (gui=yes)",
+                    "firstNs": 3234300,
+                    "frameFormat": "ARGB32_Premultiplied",
+                    "frameSize": "960x600 dpr=1",
+                    "maxNs": 22513700,
+                    "notes": [
+                        "paints into a caller-owned raw pixel buffer and only publishes a borrowed view of that memory; this is the shape a zero-copy (GBM/DMA-BUF) producer would take. The measured time therefore excludes the one deep copy the harness performs for reporting"
+                    ],
+                    "p50Ns": 2838200,
+                    "p95Ns": 6431600,
+                    "path": "QWidget::render() into a borrowed raw pixel buffer",
+                    "primary": false,
+                    "producerReusesBuffer": true,
+                    "storageAddressFirst": "",
+                    "storageAddressLast": "",
+                    "storageProbes": 0,
+                    "storageReplacements": 0,
+                    "successes": 500
+                }
+            ],
+            "run": 0,
+            "sample": "widgets",
+            "sampleInfo": {
+                "borrowedBufferStorageProbes": 0,
+                "borrowedBufferStorageReplacements": 0,
+                "detachControlDetections": 520,
+                "detachControlProbes": 520,
+                "devicePixelRatio": 1,
+                "isWindow": true,
+                "reusedBufferStorageMovedBetweenCaptures": 0,
+                "reusedBufferStorageProbes": 520,
+                "reusedBufferStorageReplacements": 25,
+                "uniqueWriteControlProbes": 520,
+                "uniqueWriteControlStable": 520,
+                "visibleTopLevelWidgets": 2,
+                "widgetSize": "960x600"
+            },
+            "targetFamily": "QWidget/raster",
+            "timing": {
+                "achievedFps": 53.25517802226118,
+                "avgCaptureLoopMs": 14.7966926,
+                "avgPumpMs": 3.3429034,
+                "cpuPercentOfOneCore": 89.36884561860703,
+                "cpuSeconds": 8.390625,
+                "framesCaptured": 500,
+                "framesRequested": 500,
+                "guiLatencyAvgMs": 16.34076157989228,
+                "guiLatencyMaxMs": 147.9928,
+                "guiLatencyP95Ms": 28.66879999999992,
+                "intervalMs": 0,
+                "wallSeconds": 9.3887584
+            },
+            "title": "QWidget / raster baseline (child widgets, QPainter, popup, dialog)",
+            "warnings": [
+            ]
+        }
+    ],
+    "schema": "hyremote-capture-spike/1",
+    "skippedCases": [
+    ]
+}
