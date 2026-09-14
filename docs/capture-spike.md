@@ -515,6 +515,24 @@ This is recorded as a host/Windows/Direct3D 11 limitation. Whether an equivalent
 exists on EGLFS/OpenGL ES is unknown, and it is one of the reasons the embedded half of
 issue #3 must still be executed.
 
+### 8.3 The public asynchronous path does not suffer from the Direct3D 11 stall
+
+The asynchronous follow-up
+([#16](https://github.com/skawu/HyRemote/issues/16)) measured the public
+`QQuickItem::grabToImage()` path in the same session and on the same scenes. The results are
+recorded in [`async-capture-spike.md`](async-capture-spike.md); the parts that change this
+document's conclusions are:
+
+| Path | Direct3D 11 | OpenGL RHI |
+|---|---|---|
+| `QQuickWindow::grabWindow()` once per iteration | loop collapses to **1.0-1.1 iterations/s** (GUI latency p95 ~1003 ms) | 27.8 iterations/s (GUI latency p95 18.9 ms) |
+| `contentItem()->grabToImage()`, 4 in flight | **119.1 captures/s**, ~32 ms latency, GUI latency p95 17.6 ms | 120.9 captures/s, ~30 ms latency, GUI latency p95 5.3 ms |
+
+So the Direct3D 11 pathology of section 8.2 is specific to the **synchronous** path, and the
+asynchronous path is a genuine alternative on that backend. It does not remove the gaps this
+document records: `grabToImage()` still needs a visible window, exposes no damage region,
+cannot capture a `QOpenGLWidget` at all, and its pipelined requests share one frame's content.
+
 ## 9. Open risks
 
 1. **Embedded validation missing.** No RK3588/EGLFS/OpenGL ES evidence exists. The
@@ -660,9 +678,15 @@ tested and remains an open architectural question for a dedicated issue.
 
 ## 12. Follow-up work
 
-1. **Asynchronous capture path**: evaluate the public asynchronous
-   `QQuickItem::grabToImage()` first and only then GL/PBO, render-thread or
-   version-specific mechanisms - [#16](https://github.com/skawu/HyRemote/issues/16).
+1. **Asynchronous capture path** - [#16](https://github.com/skawu/HyRemote/issues/16):
+   the public asynchronous path was evaluated first and is recorded in
+   [`async-capture-spike.md`](async-capture-spike.md). It resolves whole-window
+   composition (grab `QQuickWindow::contentItem()`, not the root item), Quick3D and
+   custom-FBO fidelity, and it does not suffer from the Direct3D 11 stall of section 8.2.
+   Three gaps remain open rather than solved: no public asynchronous path for
+   `QOpenGLWidget`, no asynchronous whole-window composition for `QQuickWidget`, and a
+   visible-window precondition. GL/PBO or render-thread work is therefore **not** justified
+   by this evidence yet; it would have to show a material gap against a target frame budget.
 2. **GBM/DMA-BUF feasibility** from Qt/EGLFS, plus the explicit `RemoteFrame` ownership
    model; the corrected storage-identity evidence in section 7.2 is its input - [#17](https://github.com/skawu/HyRemote/issues/17).
 3. **Qt Quick damage**: private renderer integration versus application-declared dirty

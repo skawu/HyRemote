@@ -1,0 +1,304 @@
+{
+    "arguments": [
+        "--scene",
+        "customfbo",
+        "--mode",
+        "all",
+        "--requests",
+        "60",
+        "--max-inflight",
+        "4",
+        "--json",
+        "spikes/async-capture/evidence/host-windows-rhi-opengl-customfbo-all.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "opengl",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080",
+                "name": "\\\\.\\DISPLAY5"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/16",
+    "results": [
+        {
+            "composition": {
+                "applicable": true,
+                "contentItemSize": "960x600",
+                "grabs": {
+                    "backgroundPixel": "#cb00ffff",
+                    "contentItemAsyncOverlayPixel": "#ff00ffff",
+                    "contentItemAsyncSize": "960x600 dpr=1",
+                    "expectedOverlayPixel": "#ff00ffff",
+                    "rootItemAsyncOverlayPixel": "#101418ff",
+                    "rootItemAsyncSize": "960x600 dpr=1",
+                    "syncWindowOverlayPixel": "#ff00ffff",
+                    "syncWindowSize": "960x600 dpr=1",
+                    "tickInContentItemAsync": 321,
+                    "tickInRootItemAsync": 321,
+                    "tickInSyncWindow": 321
+                },
+                "notes": [
+                    "the overlay sibling is only captured when the grabbed item is the window's contentItem, not the application's root item"
+                ],
+                "overlayColor": "#ff00ff",
+                "overlayPresence": {
+                    "inContentItemAsync": true,
+                    "inRootItemAsync": false,
+                    "inSyncWindow": true
+                },
+                "overlayRectInContentItem": "760,440 160x120",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "960x600",
+                "tickAtCapture": 321,
+                "windowSize": "960x600"
+            },
+            "failureModes": [
+                {
+                    "api": "QQuickItem::grabToImage() on contentItem()",
+                    "completed": false,
+                    "completionMs": 0,
+                    "imageNull": false,
+                    "imageSize": "",
+                    "name": "async grab of a hidden window",
+                    "note": "window hidden",
+                    "qtWarnings": [
+                        "<Unknown File>: QML QQuickRootItem: grabToImage: item's window is not visible"
+                    ],
+                    "returnedNullRequest": true
+                },
+                {
+                    "api": "QQuickItem::grabToImage() on a detached item",
+                    "completed": false,
+                    "completionMs": -1,
+                    "imageNull": true,
+                    "imageSize": "<no result>",
+                    "name": "async grab of an item that is not in a window",
+                    "note": "root item temporarily detached from its parent",
+                    "qtWarnings": [
+                        "qrc:/qt/qml/HyRemoteAsyncSpike/CustomFboScene.qml:9:1: QML CustomFboScene: grabToImage: item is not attached to a window"
+                    ],
+                    "returnedNullRequest": true
+                },
+                {
+                    "api": "QQuickItem::grabToImage() on contentItem()",
+                    "completed": true,
+                    "completionMs": 53,
+                    "imageNull": false,
+                    "imageSize": "960x600 dpr=1",
+                    "name": "async grab again after re-showing the window",
+                    "note": "window visible again",
+                    "qtWarnings": [
+                    ],
+                    "returnedNullRequest": false
+                }
+            ],
+            "family": "custom QQuickFramebufferObject",
+            "fidelity": [
+                {
+                    "bothContainExpectedTick": true,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 0,
+                    "fboCounterA": 217,
+                    "fboCounterB": 219,
+                    "labelA": "contentItem async",
+                    "labelB": "QQuickWindow::grabWindow() sync",
+                    "maxChannelDiff": 2,
+                    "meanAbsChannelDiff": 0.0910625,
+                    "sizeA": "960x600 dpr=1",
+                    "sizeB": "960x600 dpr=1",
+                    "sizeMatch": true,
+                    "tickA": 4242,
+                    "tickB": 4242
+                },
+                {
+                    "bothContainExpectedTick": true,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 3.3125,
+                    "fboCounterA": 218,
+                    "fboCounterB": 219,
+                    "labelA": "rootItem async",
+                    "labelB": "QQuickWindow::grabWindow() sync",
+                    "maxChannelDiff": 239,
+                    "meanAbsChannelDiff": 5.455947916666666,
+                    "sizeA": "960x600 dpr=1",
+                    "sizeB": "960x600 dpr=1",
+                    "sizeMatch": true,
+                    "tickA": 4242,
+                    "tickB": 4242
+                },
+                {
+                    "bothContainExpectedTick": true,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 3.3125,
+                    "fboCounterA": 218,
+                    "fboCounterB": 217,
+                    "labelA": "rootItem async",
+                    "labelB": "contentItem async",
+                    "maxChannelDiff": 239,
+                    "meanAbsChannelDiff": 5.455947916666666,
+                    "sizeA": "960x600 dpr=1",
+                    "sizeB": "960x600 dpr=1",
+                    "sizeMatch": true,
+                    "tickA": 4242,
+                    "tickB": 4242
+                },
+                {
+                    "bothContainExpectedTick": true,
+                    "differingOutsideOverlayPct": 13.659375,
+                    "differingPixelPct": 13.659375,
+                    "fboCounterA": 221,
+                    "fboCounterB": 217,
+                    "labelA": "contentItem async (repeat)",
+                    "labelB": "contentItem async",
+                    "maxChannelDiff": 4,
+                    "meanAbsChannelDiff": 0.182125,
+                    "sizeA": "960x600 dpr=1",
+                    "sizeB": "960x600 dpr=1",
+                    "sizeMatch": true,
+                    "tickA": 4242,
+                    "tickB": 4242
+                }
+            ],
+            "hiddenWindowSyncGrab": {
+                "exitCode": 0,
+                "scene": "customfbo",
+                "status": "completed with an image",
+                "stderr": "",
+                "stdout": "hidden-sync: scene=customfbo image=960x600 elapsedMs=3"
+            },
+            "observations": [
+                "The custom FBO renderer encodes its own render counter in its clear color, so both the freshness and the composition of the grabbed region can be checked."
+            ],
+            "pipeline": {
+                "consumer": {
+                    "backlogAtEndOfLoad": 0,
+                    "backlogGrowthPerSecond": 0,
+                    "consumerPerSecond": 38.373417352356995,
+                    "delivered": 60,
+                    "deliveredDuringLoad": 60,
+                    "dropRatio": 0,
+                    "dropped": 0,
+                    "frameAgeAvgMs": 0,
+                    "frameAgeMaxMs": 0,
+                    "frameAgeP95Ms": 0,
+                    "maxOwnedFramesObserved": 0,
+                    "maxQueueDepthObserved": 0,
+                    "producerPerSecond": 38.373417352356995,
+                    "retainedBytesAtEndOfLoad": 0,
+                    "staleFramesAvg": 0,
+                    "staleFramesMax": 0,
+                    "staleFramesP95": 0
+                },
+                "consumerConfig": {
+                    "backpressureStrategy": "none (unbounded completed queue)",
+                    "completedQueueCapacity": 0,
+                    "drainAfterLoad": true,
+                    "model": "single serial consumer, one frame serviced at a time",
+                    "queueCapacityBounds": "queue depth only; the frame being serviced is owned in addition, so peak ownership is capacity + 1 frames",
+                    "serviceMsPerFrame": 0,
+                    "targetConsumerFps": 0
+                },
+                "content": {
+                    "distinctFboCounters": 29,
+                    "distinctTicks": 29,
+                    "duplicateCompletions": 31,
+                    "fboCounterFirst": 222,
+                    "fboCounterLast": 250,
+                    "framesRendered": 29,
+                    "lastFrameBytes": 2304000,
+                    "outOfOrderCompletions": 0,
+                    "tickLagAvg": 0.8,
+                    "tickLagMax": 3,
+                    "tickLagP95": 2
+                },
+                "dryRun": false,
+                "grabTarget": "QQuickWindow::contentItem()",
+                "intervalMs": 0,
+                "latency": {
+                    "avgMs": 71.57072,
+                    "maxMs": 109.3237,
+                    "p50Ms": 61.5769,
+                    "p95Ms": 108.551
+                },
+                "maxInFlight": 4,
+                "notes": [
+                ],
+                "outcome": {
+                    "admissionBlockedSlices": 0,
+                    "completed": 60,
+                    "completedPerSecond": 38.373417352356995,
+                    "drainSeconds": 4e-07,
+                    "failedToStart": 0,
+                    "loadSeconds": 1.5635824,
+                    "maxInFlightObserved": 4,
+                    "nullImages": 0,
+                    "timedOut": false,
+                    "wallSeconds": 1.5635828
+                },
+                "pacedRequests": false,
+                "requests": 60,
+                "resources": {
+                    "cpuPercentOfOneCore": 18.98684227020149,
+                    "cpuSeconds": 0.296875,
+                    "guiLatencyAvgMs": 11.965286440677968,
+                    "guiLatencyMaxMs": 34.11789999999996,
+                    "guiLatencyP95Ms": 32.600799999999936,
+                    "peakRetainedBytes": 0,
+                    "rssEndBytes": 146337792,
+                    "rssGrowthBytes": 19755008,
+                    "rssGrowthPerCompletionBytes": 329250.13333333336,
+                    "rssSlopeBytesPer100Frames": 7906346.5876835715,
+                    "rssStartBytes": 126582784
+                }
+            },
+            "scene": "customfbo",
+            "sceneInfo": {
+                "contentItemSize": "960x600",
+                "devicePixelRatio": 1,
+                "family": "custom QQuickFramebufferObject",
+                "fboRectInContentItem": "360,160 280x280",
+                "fboRendererFrameCount": 322,
+                "graphicsApi": "3",
+                "overlayColor": "#ff00ff",
+                "overlayRectInContentItem": "760,440 160x120",
+                "requestedSize": "960x600",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "960x600",
+                "scene": "customfbo",
+                "tickPatchRectInContentItem": "8,8 48x48",
+                "windowSize": "960x600"
+            },
+            "syncBaseline": {
+                "api": "QQuickWindow::grabWindow()",
+                "avgMs": 39.68823666666669,
+                "captures": 60,
+                "capturesPerSecond": 13.23390961716152,
+                "guiLatencyAvgMs": 40.867808749999995,
+                "guiLatencyP95Ms": 78.21160000000009,
+                "lastImageSize": "960x600 dpr=1",
+                "maxMs": 59.7701,
+                "nullImages": 0,
+                "p50Ms": 34.1395,
+                "p95Ms": 52.2753,
+                "rssGrowthBytes": 3416064
+            },
+            "title": "custom QQuickFramebufferObject content"
+        }
+    ],
+    "schema": "hyremote-async-capture-spike/1",
+    "skippedScenes": [
+    ]
+}

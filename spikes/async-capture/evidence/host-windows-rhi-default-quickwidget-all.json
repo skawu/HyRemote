@@ -1,0 +1,302 @@
+{
+    "arguments": [
+        "--scene",
+        "quickwidget",
+        "--mode",
+        "all",
+        "--requests",
+        "60",
+        "--max-inflight",
+        "4",
+        "--json",
+        "spikes/async-capture/evidence/host-windows-rhi-default-quickwidget-all.json"
+    ],
+    "environment": {
+        "buildAbi": "x86_64-little_endian-llp64",
+        "kernelType": "winnt",
+        "kernelVersion": "10.0.26200",
+        "platformName": "windows",
+        "productType": "windows",
+        "productVersion": "11",
+        "qsgRhiBackend": "<default>",
+        "qtCompileVersion": "6.8.3",
+        "qtRuntimeVersion": "6.8.3",
+        "screens": [
+            {
+                "devicePixelRatio": 1,
+                "geometry": "1920x1080",
+                "name": "\\\\.\\DISPLAY5"
+            }
+        ]
+    },
+    "issue": "https://github.com/skawu/HyRemote/issues/16",
+    "results": [
+        {
+            "composition": {
+                "applicable": true,
+                "contentItemSize": "699x557",
+                "grabs": {
+                    "backgroundPixel": "#101418ff",
+                    "contentItemAsyncOverlayPixel": "#ff00ffff",
+                    "contentItemAsyncSize": "699x557 dpr=1",
+                    "expectedOverlayPixel": "#ff00ffff",
+                    "rootItemAsyncOverlayPixel": "#101418ff",
+                    "rootItemAsyncSize": "699x557 dpr=1",
+                    "syncWindowOverlayPixel": "<invalid>",
+                    "syncWindowSize": "<null>",
+                    "tickInContentItemAsync": 321,
+                    "tickInRootItemAsync": 321,
+                    "tickInSyncWindow": -1
+                },
+                "notes": [
+                    "the overlay sibling is only captured when the grabbed item is the window's contentItem, not the application's root item"
+                ],
+                "overlayColor": "#ff00ff",
+                "overlayPresence": {
+                    "inContentItemAsync": true,
+                    "inRootItemAsync": false,
+                    "inSyncWindow": false
+                },
+                "overlayRectInContentItem": "499,397 160x120",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "699x557",
+                "tickAtCapture": 321,
+                "windowSize": "699x557"
+            },
+            "failureModes": [
+                {
+                    "api": "QQuickItem::grabToImage() on contentItem()",
+                    "completed": false,
+                    "completionMs": 0,
+                    "imageNull": false,
+                    "imageSize": "",
+                    "name": "async grab of a hidden window",
+                    "note": "window hidden",
+                    "qtWarnings": [
+                        "<Unknown File>: QML QQuickRootItem: grabToImage: item's window is not visible"
+                    ],
+                    "returnedNullRequest": true
+                },
+                {
+                    "api": "QQuickItem::grabToImage() on a detached item",
+                    "completed": false,
+                    "completionMs": -1,
+                    "imageNull": true,
+                    "imageSize": "<no result>",
+                    "name": "async grab of an item that is not in a window",
+                    "note": "root item temporarily detached from its parent",
+                    "qtWarnings": [
+                        "qrc:/qt/qml/HyRemoteAsyncSpike/AsyncScene.qml:9:1: QML AsyncScene: grabToImage: item is not attached to a window"
+                    ],
+                    "returnedNullRequest": true
+                },
+                {
+                    "api": "QQuickItem::grabToImage() on contentItem()",
+                    "completed": true,
+                    "completionMs": 20,
+                    "imageNull": false,
+                    "imageSize": "699x557 dpr=1",
+                    "name": "async grab again after re-showing the window",
+                    "note": "window visible again",
+                    "qtWarnings": [
+                    ],
+                    "returnedNullRequest": false
+                }
+            ],
+            "family": "QQuickWidget",
+            "fidelity": [
+                {
+                    "bothContainExpectedTick": false,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 0,
+                    "fboCounterA": -1,
+                    "fboCounterB": -1,
+                    "labelA": "contentItem async",
+                    "labelB": "QQuickWindow::grabWindow() sync",
+                    "maxChannelDiff": 0,
+                    "meanAbsChannelDiff": 0,
+                    "sizeA": "699x557 dpr=1",
+                    "sizeB": "<null>",
+                    "sizeMatch": false,
+                    "tickA": 4242,
+                    "tickB": -1
+                },
+                {
+                    "bothContainExpectedTick": false,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 0,
+                    "fboCounterA": -1,
+                    "fboCounterB": -1,
+                    "labelA": "rootItem async",
+                    "labelB": "QQuickWindow::grabWindow() sync",
+                    "maxChannelDiff": 0,
+                    "meanAbsChannelDiff": 0,
+                    "sizeA": "699x557 dpr=1",
+                    "sizeB": "<null>",
+                    "sizeMatch": false,
+                    "tickA": 4242,
+                    "tickB": -1
+                },
+                {
+                    "bothContainExpectedTick": true,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 4.8917808851354465,
+                    "fboCounterA": -1,
+                    "fboCounterB": -1,
+                    "labelA": "rootItem async",
+                    "labelB": "contentItem async",
+                    "maxChannelDiff": 239,
+                    "meanAbsChannelDiff": 7.96774962696325,
+                    "sizeA": "699x557 dpr=1",
+                    "sizeB": "699x557 dpr=1",
+                    "sizeMatch": true,
+                    "tickA": 4242,
+                    "tickB": 4242
+                },
+                {
+                    "bothContainExpectedTick": true,
+                    "differingOutsideOverlayPct": 0,
+                    "differingPixelPct": 0,
+                    "fboCounterA": -1,
+                    "fboCounterB": -1,
+                    "labelA": "contentItem async (repeat)",
+                    "labelB": "contentItem async",
+                    "maxChannelDiff": 0,
+                    "meanAbsChannelDiff": 0,
+                    "sizeA": "699x557 dpr=1",
+                    "sizeB": "699x557 dpr=1",
+                    "sizeMatch": true,
+                    "tickA": 4242,
+                    "tickB": 4242
+                }
+            ],
+            "hiddenWindowSyncGrab": {
+                "exitCode": 2,
+                "scene": "quickwidget",
+                "status": "completed, grabWindow() returned a null image",
+                "stderr": "",
+                "stdout": "hidden-sync: scene=quickwidget image=0x0 elapsedMs=0"
+            },
+            "observations": [
+                "Tests whether a QQuickWidget's Quick content can be captured asynchronously through its public rootObject(), and what that does and does not cover."
+            ],
+            "pipeline": {
+                "consumer": {
+                    "backlogAtEndOfLoad": 0,
+                    "backlogGrowthPerSecond": 0,
+                    "consumerPerSecond": 87.43926250228435,
+                    "delivered": 60,
+                    "deliveredDuringLoad": 60,
+                    "dropRatio": 0,
+                    "dropped": 0,
+                    "frameAgeAvgMs": 0,
+                    "frameAgeMaxMs": 0,
+                    "frameAgeP95Ms": 0,
+                    "maxOwnedFramesObserved": 0,
+                    "maxQueueDepthObserved": 0,
+                    "producerPerSecond": 87.43926250228435,
+                    "retainedBytesAtEndOfLoad": 0,
+                    "staleFramesAvg": 0,
+                    "staleFramesMax": 0,
+                    "staleFramesP95": 0
+                },
+                "consumerConfig": {
+                    "backpressureStrategy": "none (unbounded completed queue)",
+                    "completedQueueCapacity": 0,
+                    "drainAfterLoad": true,
+                    "model": "single serial consumer, one frame serviced at a time",
+                    "queueCapacityBounds": "queue depth only; the frame being serviced is owned in addition, so peak ownership is capacity + 1 frames",
+                    "serviceMsPerFrame": 0,
+                    "targetConsumerFps": 0
+                },
+                "content": {
+                    "distinctFboCounters": 0,
+                    "distinctTicks": 15,
+                    "duplicateCompletions": 45,
+                    "fboCounterFirst": -1,
+                    "fboCounterLast": -1,
+                    "framesRendered": 28,
+                    "lastFrameBytes": 1557372,
+                    "outOfOrderCompletions": 0,
+                    "tickLagAvg": 1.5,
+                    "tickLagMax": 3,
+                    "tickLagP95": 3
+                },
+                "dryRun": false,
+                "grabTarget": "QQuickWindow::contentItem()",
+                "intervalMs": 0,
+                "latency": {
+                    "avgMs": 31.564633333333333,
+                    "maxMs": 46.1625,
+                    "p50Ms": 31.5747,
+                    "p95Ms": 46.1014
+                },
+                "maxInFlight": 4,
+                "notes": [
+                ],
+                "outcome": {
+                    "admissionBlockedSlices": 0,
+                    "completed": 60,
+                    "completedPerSecond": 87.43926250228435,
+                    "drainSeconds": 3e-07,
+                    "failedToStart": 0,
+                    "loadSeconds": 0.6861906,
+                    "maxInFlightObserved": 4,
+                    "nullImages": 0,
+                    "timedOut": false,
+                    "wallSeconds": 0.6861909
+                },
+                "pacedRequests": false,
+                "requests": 60,
+                "resources": {
+                    "cpuPercentOfOneCore": 34.15594698210075,
+                    "cpuSeconds": 0.234375,
+                    "guiLatencyAvgMs": 7.077899999999995,
+                    "guiLatencyMaxMs": 30.277399999999943,
+                    "guiLatencyP95Ms": 22.8866,
+                    "peakRetainedBytes": 0,
+                    "rssEndBytes": 126918656,
+                    "rssGrowthBytes": 7000064,
+                    "rssGrowthPerCompletionBytes": 116667.73333333334,
+                    "rssSlopeBytesPer100Frames": 3228500.6587615246,
+                    "rssStartBytes": 119918592
+                }
+            },
+            "scene": "quickwidget",
+            "sceneInfo": {
+                "contentItemSize": "699x557",
+                "devicePixelRatio": 1,
+                "family": "QQuickWidget",
+                "graphicsApi": "4",
+                "overlayColor": "#ff00ff",
+                "overlayRectInContentItem": "499,397 160x120",
+                "requestedSize": "960x600",
+                "rootItemParentIsContentItem": true,
+                "rootItemPositionInContentItem": "0,0",
+                "rootItemSize": "699x557",
+                "scene": "quickwidget",
+                "tickPatchRectInContentItem": "8,8 48x48",
+                "windowSize": "699x557"
+            },
+            "syncBaseline": {
+                "api": "QWidget::grab() on the parent widget",
+                "avgMs": 14.090806666666664,
+                "captures": 60,
+                "capturesPerSecond": 31.345697434715138,
+                "guiLatencyAvgMs": 3.8459758928571377,
+                "guiLatencyP95Ms": 14.622500000000002,
+                "lastImageSize": "960x600 dpr=1",
+                "maxMs": 19.073,
+                "nullImages": 0,
+                "p50Ms": 16.5943,
+                "p95Ms": 18.9313,
+                "rssGrowthBytes": 13520896
+            },
+            "title": "QQuickWidget inside a QWidget hierarchy"
+        }
+    ],
+    "schema": "hyremote-async-capture-spike/1",
+    "skippedScenes": [
+    ]
+}

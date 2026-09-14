@@ -27,4 +27,5 @@ message(STATUS "  Build spikes:   ${HYREMOTE_BUILD_SPIKES}")
 # architecture decisions are implemented. See docs/capture-spike.md.
 if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/capture)
+    add_subdirectory(spikes/async-capture)
 endif()
