@@ -25,7 +25,9 @@ render-thread or RHI mechanism is considered. It does not implement any lower-le
 Every QML scene contains two deterministic landmarks:
 
 - a **tick patch**: a 48x48 rectangle whose colour encodes a counter the harness writes
-  before each request, so a captured image can be attributed to a request;
+  before each request, so a captured image can be attributed to a specific harness-visible
+  scene state (the request that wrote that state can then be identified, but the image is
+  attributed to the *state*, not assumed to belong to that request under pipelining);
 - an **overlay sibling**: a QML rectangle parented to `QQuickWindow::contentItem()`, i.e. the
   same parent chain a same-scene QML overlay / `Popup.Item` uses, and deliberately *not* a
   descendant of the application's root item. It is a plain item, not a Qt Quick Controls
@@ -38,7 +40,7 @@ Every QML scene contains two deterministic landmarks:
 |---|---|
 | `composition` | samples the overlay location in a root-item grab, a `contentItem()` grab and a synchronous whole-window grab |
 | `fidelity` | freezes the scene, pins the tick, then compares async `contentItem()`, async root item and synchronous whole-window captures pixel by pixel |
-| `pipeline` | drives the asynchronous loop and measures latency, cadence, in-flight behaviour, completion order, tick lag, duplication, memory and GUI-thread impact |
+| `pipeline` | drives the asynchronous loop and measures latency, cadence, in-flight behaviour, completion order, request-to-image scene-state advance, duplication, memory and GUI-thread impact |
 | `sync-baseline` | measures the synchronous public capture for the same scene in the same session |
 | `failure` | exercises the documented rejections (hidden window, detached item) and the recovery afterwards |
 | `all` | composition + fidelity + pipeline + failure + sync baseline |
@@ -107,6 +109,31 @@ when the queue is at capacity:
 
 The reported bounds are `maxQueueDepthObserved <= completedQueueCapacity` and
 `maxOwnedFramesObserved <= completedQueueCapacity + 1` (the frame being serviced).
+
+`consumer.frameAge*Ms` is the measured wall-clock time from capture completion (`ready()`) to
+the start of service. `consumer.staleFrames*` is a **request-sequence age**
+(`producedSoFar - frame index`): how many later requests had completed before this frame was
+serviced. It is an ordering/backlog indicator, **not** the visual age of the pixels - see the
+metric definitions below.
+
+## Metric definitions
+
+Two report keys carry names that predate the corrected semantics. Use these definitions, not
+the key names:
+
+| Key | Quantity | Sign / meaning |
+|---|---|---|
+| `content.tickLag*` | **signed scene-state advance from the request to the captured image** (`tick in image - tick at request`) | Positive means the returned image carries a **newer** scene state than the request time, which is the normal result of pipelining: several pending requests are served by one later render and all receive that newer state. It is not an age and not staleness |
+| `latency.*` | request -> `ready()` timing for each request | Diagnostic only |
+| `consumer.frameAge*Ms` | completion-to-service wall-clock age inside the serial consumer | Measured elapsed time |
+| `consumer.staleFrames*` | **request-sequence age** (`producedSoFar - frame index`) | How many later requests were completed before service. Not visual content staleness |
+
+**Timestamp rule.** Because `tickLag` can be positive, **the request timestamp is not a valid
+content PTS**: it does not identify the scene state contained in the returned image. Take the
+timestamp at capture completion / `ready()` time as the safe v0.1 baseline (that is also when
+the buffer enters the caller's ownership), keep the request time only as a latency diagnostic,
+and let a backend that can observe the real rendered or presented frame time supply a more
+accurate PTS. No probe here measures the visual age of the pixels in a delivered frame.
 
 Requirements: Qt 6.8 or newer with Core, Gui, Widgets, Quick, QuickWidgets, OpenGLWidgets
 and OpenGL. `QtQuick3D` is optional; the `quick3d` scene is compiled out when the module is

@@ -33,6 +33,17 @@ It does not freeze any `RemoteFrame` ABI and does not define a public HyRemote A
 > *baseline / v0.1 candidate*, not a claim about the final high-performance production path.
 > The composition, Quick3D and custom-FBO fidelity evidence is unchanged by this round.
 
+> **Round-2 review terminology correction.** The Round-2 review (PR #19 comment
+> `5663534836`) accepted the backpressure result but found the timestamp/freshness wording
+> reversed. `tick in image - tick at request` is a **signed scene-state advance from the request
+> to the captured image**; a positive value means the image is *newer* than the request, so the
+> earlier phrasings ("lags the request", "never newer than the request", "up to K-1 ticks old")
+> were wrong and have been removed. The architectural consequence is recorded in section 5.5
+> and in recommendation 6 of section 7: **the request timestamp is not a valid content PTS**,
+> and the v0.1 baseline is the completion / `ready()` timestamp. The consumer's `staleFrames`
+> is redefined as a **request-sequence age**, not visual content staleness. No measurement was
+> re-run for this round; only the wording and the derivations that depend on it changed.
+
 ## 1. Scope
 
 In scope:
@@ -121,11 +132,12 @@ Two deterministic landmarks are built into every QML scene:
 
 - a 48x48 **tick patch** whose colour encodes `tick` in an 8-bit exact way, where `tick` is
   written by the harness before each request. A captured image can therefore be attributed
-  to a specific harness-visible scene state, which is what makes ordering/duplication/
-  freshness measurable rather than inferred.
+  to a specific harness-visible scene state, which is what makes completion ordering,
+  duplication and the request-to-image scene-state advance measurable rather than inferred.
 - an **overlay sibling**: a QML rectangle parented to `QQuickWindow::contentItem()`, i.e.
-  the same parent chain QML overlays, popups and tooltips use. It is deliberately not a
-  descendant of the application's root item.
+  the same parent chain a same-scene QML overlay / `Popup.Item` uses. It is deliberately not a
+  descendant of the application's root item, and it is a plain item rather than a Qt Quick
+  Controls `Popup`/`ToolTip` in a specific popup mode (see the boundary table in section 5.1).
 
 ### 4.2 Probes
 
@@ -133,10 +145,10 @@ Two deterministic landmarks are built into every QML scene:
 |---|---|
 | composition | where the overlay lands in a root-item grab, a `contentItem()` grab and a synchronous `grabWindow()` grab |
 | fidelity | pixel comparison of the frozen scene: async `contentItem()` vs async root item vs synchronous whole-window capture, including a repeat pair |
-| pipeline | the asynchronous loop: latency, cadence, in-flight behaviour, completion order, tick lag, duplication, memory, GUI-thread impact |
+| pipeline | the asynchronous loop: latency, cadence, in-flight behaviour, completion order, request-to-image scene-state advance, duplication, memory, GUI-thread impact |
 | sync baseline | the synchronous public capture for the same scene in the same session, for comparison |
 | failure modes | the documented rejections (hidden window, detached item) and recovery afterwards. Only `hide()` is exercised; `minimized` is not tested |
-| consumer | one serial consumer with a service time per frame, its completed queue, the chosen backpressure strategy and the resulting freshness/drop figures |
+| consumer | one serial consumer with a service time per frame, its completed queue, the chosen backpressure strategy and the resulting queue-depth, age and drop figures |
 
 ### 4.3 Controls
 
@@ -214,12 +226,14 @@ The asynchronous path therefore reproduces the composed result, including Quick3
 custom FBO), two captures legitimately contain different FBO counters; the difference is
 confined to that rectangle.
 
-### 5.3 Freshness of custom FBO content over the async path
+### 5.3 Custom FBO content is re-rendered, not a stale texture
 
-`customfbo` pipeline run: 60 requests produced `distinctFboCounters = 26` and
+`customfbo` pipeline run: 60 requests produced `distinctFboCounters = 29` and
 `distinctTicks = 29` over 29 rendered frames, with the encoded counter advancing 222 -> 250.
-Each rendered frame carried a *fresh* custom-FBO render, so the asynchronous layer path does
-not return a stale or blank FBO texture.
+Every captured frame therefore carried a *newly rendered* custom-FBO render, so the
+asynchronous layer path does not hand back a cached, stale or blank FBO texture. This claim is
+about the FBO texture being re-rendered per frame; it says nothing about the age of the content
+relative to a request, which is governed by the advance semantics of section 5.5.
 
 ### 5.4 Synchronous baseline in the same session
 
@@ -253,9 +267,24 @@ duplicated measurement is kept in the evidence for transparency.
 ### 5.5 Asynchronous pipeline: latency, cadence, in-flight behaviour
 
 `quick2d`, Direct3D 11, `contentItem()`, 240 requests per configuration, no consumer delay.
-The `tick` is written before each request, so `tick lag = tick in image - tick at request`.
 
-| In flight (K) | Completed/s | Latency avg | Latency p95 | Distinct ticks | Duplicate completions | Tick lag avg / max | Frames rendered | GUI latency avg / p95 | RSS growth |
+The harness writes a `tick` value into the scene before issuing each request, and the captured
+image encodes the `tick` that was rendered into it. The reported metric is therefore
+
+```
+scene-state advance (request -> captured image) = tick in image - tick at request
+```
+
+**Sign convention.** A **positive** value means the captured image carries a scene state that is
+*newer* than the scene state at the moment the request was issued: the request was serviced by a
+render that happened later than the request itself. It is **not** an age or a staleness
+measurement, and a positive value must never be read as "the image is behind its request".
+A negative value would mean the image carried a state older than the request, which did not
+occur in any run here. The JSON key is `tickLag*` in the evidence files; it holds exactly this
+signed advance, and the name is retained only so the recorded reports stay readable - the
+definition above is authoritative.
+
+| In flight (K) | Completed/s | Latency avg | Latency p95 | Distinct ticks | Duplicate completions | Scene-state advance avg / max | Frames rendered | GUI latency avg / p95 | RSS growth |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | 25.7 | 32.77 ms | 37.82 ms | **240** | 0 | 0.00 / 0.00 | 560 | 1.23 / 12.54 ms | +25.6 MiB |
 | 2 | 56.6 | 32.86 ms | 40.84 ms | 121 | 119 | 0.50 / 1.00 | 254 | 3.14 / 15.72 ms | +31.6 MiB |
@@ -273,14 +302,16 @@ Readings:
   K extra item renders and readbacks.
 - **Latency grows with K** (33 -> 80 ms) and every request pays at least one frame.
 - **Pipelining does not produce more distinct frames.** Distinct ticks are exactly
-  `requests / K`, duplicate completions are `requests - requests/K`, and the average tick lag
-  is exactly `(K-1)/2`: the pending requests are all rendered from the same frame, so the
-  content is shared and lags the request by up to K-1 ticks. Content is **never newer than
-  the request** (no negative lag was observed).
+  `requests / K`, duplicate completions are `requests - requests/K`, and the average
+  scene-state advance is exactly `(K-1)/2`: all pending requests are served by a later shared
+  render, so they receive the **same newer** visual state. A pending request does not hold a
+  frozen copy of "the scene as it was when I asked" - what it returns is whatever state the
+  servicing render produced, which for K>1 is ahead of the request time. This is precisely why
+  a request timestamp cannot serve as the content timestamp of the returned frame.
 - **Completion order is FIFO**: 0 out-of-order completions in every configuration, on both
   backends. There is **no drop or dedup mechanism**; every request completes with a full
-  image, duplicates included. Deciding what to do with duplicated/stale frames is the
-  caller's responsibility.
+  image, duplicates included. Deciding what to do with duplicated content is the caller's
+  responsibility.
 - **GUI-thread cost grows with K** (1.23 -> 22.77 ms average, 12.54 -> 52.44 ms p95). At
   K >= 8 the local UI jitter is comparable to the SPIKE-01 capture-induced damage figures,
   i.e. it is no longer negligible.
@@ -289,9 +320,18 @@ Readings:
   render thread's ability to serve K grabs per frame.
 
 The `paced` control (one request per rendered frame, K=4, 60 requests) gives
-**60 distinct ticks, 0 duplicates, tick lag 0.00**, 33.35 ms latency, 61 frames and GUI
-latency 0.87 / 1.20 ms. That isolates the effect: the collapse in the table above is caused by
-issuing several requests before a frame is rendered, not by the API itself.
+**60 distinct ticks, 0 duplicates, scene-state advance 0.00**, 33.35 ms latency, 61 frames and
+GUI latency 0.87 / 1.20 ms. That isolates the effect: the collapse in the table above is caused
+by issuing several requests before a frame is rendered, not by the API itself.
+
+**Timestamp contract (input for ARCH-01).** Because of the above, **the request timestamp is not
+a valid content PTS for `grabToImage()` under pipelining**. The safe v0.1 baseline is to take the
+frame's timestamp at **completion / `ready()` time**, which is also the moment the buffer enters
+the caller's ownership; the request timestamp is still useful, but only as a latency diagnostic
+for that request. A future lower-level backend that can observe the actual rendered or presented
+frame time (for example a render-thread or presentation hook) may supply a more accurate content
+PTS, and the generic Core must not depend on either choice: it must accept a PTS from the
+backend rather than deriving one from the request.
 
 ### 5.6 Memory behaviour
 
@@ -326,40 +366,59 @@ separate strategy switch.
 
 Three producer configurations were measured on `quick2d`, Direct3D 11, `contentItem()`, K=4:
 
-| Strategy | Requests | Producer /s | Consumer /s | Delivered | Dropped | Drop ratio | Max queue depth | Max owned frames | Peak retained | Frame age avg / p95 / max | Max stale frames | Load + drain |
+| Strategy | Requests | Producer /s | Consumer /s | Delivered | Dropped | Drop ratio | Max queue depth | Max owned frames | Peak retained | Completion-to-service age avg / p95 / max | Max request-sequence age | Load + drain |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **none** (unbounded queue) | 60 | **116.9** | 9.7 | 60 | 0 | 0 % | **55** | 56 | **126000 KiB (123 MiB)** | 2848 / 5453 / 5786 ms | **55** | 0.51 s + 5.89 s |
 | **drop-oldest** (latest-frame-wins), capacity 2 | 240 | **119.3** | 9.9 | 22 | **218** | **90.8 %** | **2** | **3** | **6750 KiB (6.6 MiB)** | 21.8 / 70.2 / 170.2 ms | **2** | 2.01 s + 0.29 s |
 | **producer-throttle** (admission control), capacity 2 | 60 | **9.8** | 9.5 | 60 | 0 | 0 % | **2** | **3** | **6750 KiB (6.6 MiB)** | 172.4 / 183.4 / 194.8 ms | **2** | 6.12 s + 0.28 s |
+
+Two different quantities appear in this table and they must not be conflated:
+
+- **Completion-to-service age** (wall clock, measured): the time from the moment the capture
+  completed (`ready()`, when the frame entered the consumer's ownership) to the moment the
+  consumer started servicing it. This is a real elapsed-time measurement.
+- **Request-sequence age** (frame counter, `producedSoFar - frame->index`): how many *later
+  requests* the producer had already completed before this frame was serviced. It is an
+  ordering/backlog indicator in the request sequence. It is **not** a measurement of visual
+  content staleness: the pixels in a frame correspond to whatever scene state its servicing
+  render produced, and per section 5.5 that state can be *ahead* of the request time, so "age
+  in requests" is not "age of the picture". The JSON key is `staleFrames*` in the evidence
+  files; it holds this request-sequence age, and the name is retained only so the recorded
+  reports stay readable - the definition above is authoritative.
+- **Scene-state freshness of these frames is not measured here** and should not be claimed. The
+  capture pipeline measures request-to-image scene-state advance separately (section 5.5);
+  the consumer measurements below bound memory, rates and wall-clock age, not visual content
+  age.
 
 Readings:
 
 - **The queue bound is now enforced.** With a capacity of 2 the observed queue depth is
   exactly 2 and total ownership is 3 frames (`capacity + 1`, the frame being serviced), i.e.
   `maxQueueDepthObserved <= completedQueueCapacity` holds strictly and the ownership overshoot
-  is exactly one frame by construction instead of up to K. "Frame age" is the time from
-  capture completion to the start of service; "stale frames" is how many newer frames the
-  producer completed before this one was serviced.
+  is exactly one frame by construction instead of up to K.
 - **Unbounded, the backlog is not a queueing delay but a growing debt.** After only 0.51 s of
   capture the queue held 55 frames (123 MiB); the consumer needed another 5.89 s to drain it,
-  by which time the frames it was delivering were up to 55 frames / 5.8 s old. For a 10 fps
-  consumer, a 117 fps producer must **drop about 92 % of frames** to stay bounded.
-- **drop-oldest keeps capture and freshness decoupled.** The producer kept its full rate
-  (119.3 /s), the delivered frames were at most 2 frames stale (21.8 ms average age), retention
-  stayed at 6.6 MiB, and 90.8 % of frames were discarded. This is the policy that satisfies
-  "transport slowness never blocks capture/render" while keeping the viewer near-live.
+  and the frames it was still delivering then were 55 positions behind in the request sequence
+  and up to 5.8 s old in wall clock since their completion. For a 10 fps consumer, a 117 fps
+  producer must **drop about 92 % of frames** to stay bounded.
+- **drop-oldest keeps capture and transport latency decoupled.** The producer kept its full
+  rate (119.3 /s), retention stayed at 6.6 MiB, 90.8 % of frames were discarded, and the
+  delivered frames were at most 2 positions behind in the request sequence with 21.8 ms average
+  completion-to-service age. This is the policy that satisfies "transport slowness never blocks
+  capture/render" while keeping what the viewer receives as recent as the transport allows.
 - **producer-throttle is a different trade-off, not an implementation of that policy.** It
   drops nothing and keeps the same bounded memory, but the capture rate collapses to the
   consumer's rate (9.8 /s) and the maximum in-flight capture concurrency drops below K
-  (observed 2), i.e. capture is coupled to the transport. Its frames are also *older* on
-  average (172 ms) than the drop-oldest ones (22 ms), because nothing fresh is captured while
-  the queue is full.
+  (observed 2), i.e. capture is coupled to the transport. Its frames also wait longer before
+  service (172 ms average completion-to-service age versus 22 ms), because nothing is captured
+  while the queue is full.
 - **Conclusion.** The public API provides no queue, no capacity and no drop policy, so
   HyRemote must own them. The corrected evidence supports the earlier high-level conclusion -
   a bounded completed queue plus a drop/coalesce policy is required so that transport
   slowness never blocks capture or render - and it now also quantifies the cost of each
   policy: ~92 % drops with latest-frame-wins, or a capture rate pinned to the consumer with
-  admission control.
+  admission control. The accepted default remains the **bounded completed queue with
+  drop-oldest / latest-frame-wins**.
 
 ### 5.8 Failure modes and recovery
 
@@ -410,9 +469,9 @@ APIs on this host.
 | R5 | Pixel fidelity against the synchronous capture | **PASS** for 2D/Quick3D (identical); **PASS within tolerance** for the custom FBO scene (max channel diff 2) | 5.2 |
 | R6 | Latency | **PASS with a caveat**: >= 1 frame period; measured 32.4-32.9 ms at K=1-4 on `quick2d`, growing to 80.2 ms at K=16 | 5.5 |
 | R7 | Sustainable cadence | **PASS**: 25.7 /s (K=1) up to 191.6 /s (K=16) on `quick2d`; 87.4 /s on `quickwidget`; 89.3 /s on `quick3d`; 38.4 /s on `customfbo` (that scene renders continuously by design and is the most load-sensitive of the set; an earlier run of the same configuration reported 137 /s) | 5.5 |
-| R8 | Outstanding-request behaviour | **PASS with a caveat**: no built-in limit; K trades throughput against latency, freshness and GUI-thread load. Operating point from this evidence: K=2-4 | 5.5 |
+| R8 | Outstanding-request behaviour | **PASS with a caveat**: no built-in limit; K trades throughput against latency, request/scene-state correspondence and GUI-thread load. Operating point from this evidence: K=2-4 | 5.5 |
 | R9 | Ordering / drop semantics | **PASS with a caveat**: completions are FIFO and the API drops nothing, but duplicated content is returned for pipelined requests, so the caller must drop or coalesce | 5.5 |
-| R10 | Content freshness / staleness | **PASS with a caveat**: tick lag average is exactly `(K-1)/2`; content is never newer than the request and is up to K-1 ticks old | 5.5 |
+| R10 | Content freshness / staleness | **PASS with a caveat, redefined**: the measured quantity is the signed scene-state advance from request to captured image, averaging exactly `(K-1)/2`, i.e. for K>1 the returned image is *newer* than the request. There is no measurement of visual content being stale relative to the request; what the caller loses is the correspondence between a request and a specific scene state, so a request timestamp cannot be used as the frame's content timestamp | 5.5 |
 | R11 | Memory behaviour | **PASS**: bounded, no per-request leak (+38.7 MiB for 1000 requests vs +0.9 MiB in the no-capture control) | 5.6 |
 | R12 | Backpressure against a slow client | **PASS with a caveat**: the API provides no queue, capacity or drop policy; with a caller-owned bounded queue of 2 and latest-frame-wins the producer keeps its rate and ~91 % of frames are dropped, whereas an unbounded queue would have retained 123 MiB and fallen 5.8 s behind | 5.7 |
 | R13 | Work while the target window is **hidden** | **FAIL**: the request returns a null result and warns; the synchronous path still works on this host. `minimized` and occluded are **unverified** | 5.8 |
@@ -464,28 +523,36 @@ capture", not "make the Quick path faster".
    covers same-scene sibling/overlay-tree content, and was pixel-identical to the synchronous
    whole-window capture for 2D and Quick3D. Treat the specific Qt Quick popup modes as
    separate compatibility cases still to be verified.
-2. **Bound the in-flight window at K = 2-4.** Above that, latency, staleness and GUI-thread
-   jitter grow faster than the throughput gain (5.5).
-3. **Pace the producer per delivered frame** when freshness matters: the paced control gave
-   one distinct frame per request with zero duplicates and zero lag.
+2. **Bound the in-flight window at K = 2-4.** Above that, latency, the loss of
+   request-to-scene-state correspondence and GUI-thread jitter grow faster than the throughput
+   gain (5.5).
+3. **Pace the producer per delivered frame** when a request must map to one specific scene
+   state: the paced control gave one distinct frame per request with zero duplicates and zero
+   request-to-image scene-state advance.
 4. **Own a bounded completed queue and an explicit drop policy.** The API provides neither.
    With a single 10 fps consumer the measured choice is between latest-frame-wins (drop
-   ~91 %, keep the producer at full rate, delivered content at most 2 frames stale, 6.6 MiB
-   retained) and admission control (drop nothing, but capture is pinned to the consumer rate
-   and the retained frames are older). The recommended default is the bounded queue with
-   latest-frame-wins, because transport slowness must not throttle capture (5.7).
+   ~91 %, keep the producer at full rate, 6.6 MiB retained, at most 2 positions behind in the
+   request sequence and 21.8 ms average completion-to-service age) and admission control (drop
+   nothing, but capture is pinned to the consumer rate and frames wait 172 ms on average for
+   service). The recommended default is the bounded queue with latest-frame-wins, because
+   transport slowness must not throttle capture (5.7).
 5. **Handle the synchronous rejection path**: `grabToImage()` can return null before any
    callback exists (detached item, invisible window), so the caller must treat "no result" and
    "null image" as first-class states and keep a full-frame/synchronous fallback.
-6. **`RemoteFrame` consequences**: because a pipelined request can return a frame that is
-   shared with other requests and up to K-1 ticks old, the frame needs a presentation
-   timestamp and an explicit ownership/lifetime state (transfer or snapshot). The
-   asynchronous delivery also means the capture completion, not the capture request, is the
-   moment at which a buffer enters the transport's ownership.
-7. **Report the staleness**: a `RemoteFrame` produced this way should carry "content age"
-   implicitly through its PTS so the transport can drop stale frames rather than transmit
-   them.
-8. **Keep the synchronous path** for the widget-based targets and as a correctness
+6. **`RemoteFrame` timestamp**: **do not use the request time as the frame's content/PTS.**
+   Under pipelining the returned image can be *newer* than the request (5.5), so a request
+   timestamp does not identify the scene state in the frame. Take the timestamp at capture
+   completion / `ready()` time as the safe v0.1 baseline, and let a backend that can observe
+   the real rendered or presented frame time provide a more accurate one. Keep the request time
+   only as a latency diagnostic for that request.
+7. **`RemoteFrame` ownership**: the frame also needs an explicit ownership/lifetime state
+   (transfer or snapshot). The asynchronous delivery means the capture completion, not the
+   capture request, is the moment at which a buffer enters the transport's ownership, and it
+   is also the moment the baseline timestamp is taken.
+8. **Frame selection in the transport** follows from the PTS policy of item 6: the transport can
+   drop or coalesce frames by comparing their completion timestamps, rather than assuming a
+   fixed relationship between a request and the content it produced (5.7).
+9. **Keep the synchronous path** for the widget-based targets and as a correctness
    cross-check; it is the only whole-window option for `QQuickWidget` and the only option at
    all for `QOpenGLWidget`.
 
@@ -508,8 +575,8 @@ capture", not "make the Quick path faster".
 8. **The consumer numbers come from a model, not from a real transport.** The serial consumer
    services a frame in a fixed 100 ms and the queue is bounded in frames; a real transport has
    variable service time, encoding, and possibly its own buffering. The measured relations
-   (drop ratio, retention bound, staleness) are the input to that design, not a substitute for
-   measuring it.
+   (drop ratio, retention bound, completion-to-service age) are the input to that design, not a
+   substitute for measuring it.
 9. **`grabToImage()` is positioned as the public-API baseline / v0.1 candidate**, not as the
    final high-performance path; Qt documents the offscreen render plus GPU->CPU copy as
    costly, and neither the embedded validation nor the low-copy investigation (#17) has
@@ -529,6 +596,12 @@ capture", not "make the Quick path faster".
   `Popup.Window`, `Popup.Native`, and Qt Quick Controls `Popup`/`ToolTip` as configured by an
   application.
 - `minimized` and occluded target windows: only `hide()` was exercised.
+- The **visual content age** of a frame that a consumer receives: the consumer probe measures
+  queue depth, completion-to-service wall-clock age, rates and drop accounting, and the capture
+  pipeline measures request-to-image scene-state advance separately. No probe in this spike
+  measures how old the pixels in a delivered frame are relative to the live scene.
+- Pipelining with a content PTS taken from a backend render/presentation hook: not implemented,
+  so the recommended completion-time PTS is a v0.1 baseline rather than a measured optimum.
 - A real transport or encoder as the consumer; the measured consumer is the explicit serial
   model of section 5.7.
 
@@ -561,6 +634,16 @@ Every pipeline report exposes the consumer model and its outcome under `consumer
 `backpressureStrategy`, `delivered`, `dropped`, `dropRatio`, `maxQueueDepthObserved`,
 `maxOwnedFramesObserved`, `backlogAtEndOfLoad`, `backlogGrowthPerSecond`, `frameAge*Ms`,
 `staleFrames*`), so the tables in section 5.7 can be recomputed from the files alone.
+
+Two report keys carry names that predate the corrected semantics and are defined here so that
+no reader has to guess:
+
+| Key | Actual quantity |
+|---|---|
+| `latency`, `outcome.loadSeconds`, `outcome.drainSeconds` | timing of the request/completion path (request -> `ready()`) and of the load/drain phases |
+| `content.tickLag*` | **signed scene-state advance from request to captured image** (`tick in image - tick at request`); positive = the image carries a newer scene state than the request. Not an age, not staleness |
+| `consumer.frameAge*Ms` | completion-to-service wall-clock age inside the serial consumer |
+| `consumer.staleFrames*` | **request-sequence age** (`producedSoFar - frame index`): how many later requests had completed before this frame was serviced. Not visual content age |
 
 Build and run:
 
