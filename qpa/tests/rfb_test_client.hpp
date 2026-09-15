@@ -5,6 +5,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QHostAddress>
+#include <QImage>
 #include <QSize>
 #include <QTcpSocket>
 
@@ -121,6 +122,7 @@ public:
             != static_cast<qsizetype>(nameLength)) {
             return false;
         }
+        resetImage(m_geometry);
 
         QByteArray encodings;
         encodings.append(char(2));
@@ -166,6 +168,7 @@ public:
 
     bool connected() const { return m_socket.state() == QAbstractSocket::ConnectedState; }
     FramebufferGeometry geometry() const { return m_geometry; }
+    const QImage &image() const { return m_image; }
     QTcpSocket &socket() { return m_socket; }
 
 private:
@@ -211,6 +214,41 @@ private:
         return connected();
     }
 
+    void resetImage(const FramebufferGeometry &geometry)
+    {
+        m_image = QImage(geometry.width, geometry.height, QImage::Format_RGB32);
+        if (!m_image.isNull())
+            m_image.fill(Qt::black);
+    }
+
+    bool applyRawRectangle(std::uint16_t x,
+                           std::uint16_t y,
+                           std::uint16_t width,
+                           std::uint16_t height,
+                           const QByteArray &pixels)
+    {
+        if (m_image.isNull() || x + width > m_image.width() || y + height > m_image.height())
+            return false;
+        const qsizetype expected = static_cast<qsizetype>(width) * height * 4;
+        if (pixels.size() != expected)
+            return false;
+
+        // The test client never sends SetPixelFormat, so HyRemote's native 32-bpp little-endian
+        // test format applies: red/green/blue are the first three bytes of each raw pixel and the
+        // high byte is unused. Decode into RGB32 so product E2Es can assert actual remote content.
+        qsizetype offset = 0;
+        for (std::uint16_t row = 0; row < height; ++row) {
+            for (std::uint16_t column = 0; column < width; ++column) {
+                const int red = byteAt(pixels, offset + 0);
+                const int green = byteAt(pixels, offset + 1);
+                const int blue = byteAt(pixels, offset + 2);
+                m_image.setPixelColor(x + column, y + row, QColor(red, green, blue));
+                offset += 4;
+            }
+        }
+        return true;
+    }
+
     bool readFramebufferUpdate(int timeoutMs)
     {
         const QByteArray header = readExact(4, timeoutMs);
@@ -226,6 +264,8 @@ private:
             const QByteArray rect = readExact(12, timeoutMs);
             if (rect.size() != 12)
                 return false;
+            const std::uint16_t x = readU16(rect, 0);
+            const std::uint16_t y = readU16(rect, 2);
             const std::uint16_t width = readU16(rect, 4);
             const std::uint16_t height = readU16(rect, 6);
             const std::int32_t encoding = readS32(rect, 8);
@@ -233,6 +273,7 @@ private:
             if (encoding == kEncodingDesktopSize) {
                 announced.width = width;
                 announced.height = height;
+                resetImage(announced);
                 continue;
             }
             if (encoding != kEncodingRaw)
@@ -241,10 +282,9 @@ private:
             const std::uint64_t bytes = static_cast<std::uint64_t>(width) * height * 4U;
             if (bytes > 16U * 1024U * 1024U)
                 return false;
-            if (readExact(static_cast<qsizetype>(bytes), timeoutMs).size()
-                != static_cast<qsizetype>(bytes)) {
+            const QByteArray pixels = readExact(static_cast<qsizetype>(bytes), timeoutMs);
+            if (!applyRawRectangle(x, y, width, height, pixels))
                 return false;
-            }
         }
 
         m_geometry = announced;
@@ -254,6 +294,7 @@ private:
     quint16 m_port = 0;
     QTcpSocket m_socket;
     FramebufferGeometry m_geometry;
+    QImage m_image;
 };
 
 }  // namespace HyRemote::Qpa::Test
