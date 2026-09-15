@@ -51,7 +51,8 @@ constexpr bool hasModifier(InputModifiers modifiers, InputModifier modifier) noe
 
 // Logical key identity shared by transports and target adapters. Printable text is carried
 // separately through InputEventKind::Text, so keyboard-layout/IME output is not inferred from a
-// physical or logical key code.
+// physical or logical key code. Modifier/lock keys have their own identities in addition to the
+// event's modifier-state mask so press/release transitions can be delivered without guessing.
 enum class KeyCode : std::uint16_t {
     Unknown,
     Enter,
@@ -69,6 +70,12 @@ enum class KeyCode : std::uint16_t {
     ArrowRight,
     ArrowDown,
     Space,
+    Shift,
+    Control,
+    Alt,
+    Meta,
+    CapsLock,
+    NumLock,
     Digit0,
     Digit1,
     Digit2,
