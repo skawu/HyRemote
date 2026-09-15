@@ -75,6 +75,15 @@ add_test(NAME hyremote-qpa-remote-config-test COMMAND hyremote-qpa-remote-config
 set_tests_properties(hyremote-qpa-remote-config-test PROPERTIES TIMEOUT 15)
 
 if(TARGET Qt6::Widgets)
+    # E4 is deliberately an ordinary Qt application. Compile its real source in the QPA build graph
+    # with Qt Widgets only; do not add HyRemote targets here. The platform plugin remains a launch /
+    # deployment concern rather than an application-source dependency.
+    add_executable(hyremote-qpa-existing-app-build-check
+        ${PROJECT_SOURCE_DIR}/examples/qpa-proxy-existing-app/main.cpp
+    )
+    target_compile_features(hyremote-qpa-existing-app-build-check PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qpa-existing-app-build-check PRIVATE Qt6::Widgets)
+
     add_executable(hyremote-qpa-auto-remoteaccess-smoke
         qpa_auto_remoteaccess_smoke.cpp
     )
