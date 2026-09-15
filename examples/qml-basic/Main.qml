@@ -5,7 +5,7 @@ import HyRemote
 ApplicationWindow {
     id: window
     width: 360
-    height: 220
+    height: 240
     visible: true
     title: "HyRemote QML Basic"
 
@@ -23,6 +23,8 @@ ApplicationWindow {
             if (state === RemoteAccess.Running)
                 console.log("READY " + port)
         }
+        onConnectedClientCountChanged:
+            console.log("CLIENT_COUNT " + connectedClientCount)
         onErrorChanged: {
             if (errorString.length > 0)
                 console.log("REMOTE_ERROR " + errorString)
@@ -32,7 +34,7 @@ ApplicationWindow {
     Column {
         anchors.fill: parent
         anchors.margins: 20
-        spacing: 14
+        spacing: 12
 
         Label {
             text: "HyRemote · Declarative QML API"
@@ -80,7 +82,8 @@ ApplicationWindow {
         }
 
         Label {
-            text: "State: " + remote.state + " · 127.0.0.1:" + acceptancePort
+            text: "State: " + remote.state + " · clients: " + remote.connectedClientCount
+                  + " · 127.0.0.1:" + acceptancePort
             color: "#c6ceda"
         }
     }
@@ -91,7 +94,9 @@ ApplicationWindow {
         if (!remote.enabled && remote.errorString.length > 0) {
             console.log("START_FAILED " + remote.errorString)
             Qt.exit(2)
+            return
         }
+        console.log("CLIENT_COUNT " + remote.connectedClientCount)
     }
 
     Timer {
@@ -100,6 +105,7 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             remote.enabled = false
+            console.log("CLIENT_COUNT " + remote.connectedClientCount)
             console.log("STOPPED")
             Qt.quit()
         }
