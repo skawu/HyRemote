@@ -40,6 +40,16 @@ A viewer may disconnect and reconnect without recreating the target application.
 
 `RemoteAccess::stop()` tears down the session/listener and returns the public facade to the stopped state. A new session can then be started under the documented lifecycle rules.
 
+#90 tracks the required disconnect-time release cleanup for any remote key/button that was still held when a viewer connection disappeared. Do not claim that acceptance point until its implementation/evidence lands.
+
+## Listening versus connected
+
+`RemoteAccessState::Running` means the remote runtime/listener is running. It is not equivalent to “a viewer is connected”.
+
+#91 / PR #92 introduces the backend-neutral connected-client diagnostic required for product UI to distinguish these states without accessing protocol/backend internals. Until that dependency lands, examples and applications must not fake connection state from `Running` alone.
+
 ## Security boundary
 
-The current RFB correctness baseline uses SecurityType None. It is suitable for loopback/trusted test use, not direct untrusted-network exposure. Do not infer encryption/authentication from successful viewer interoperability. See `docs/security-model.md` and `docs/known-limitations.md`.
+The current RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. It is suitable for loopback/trusted test use, not direct untrusted-network exposure.
+
+Read [`security.md`](security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](security-model.md) is the broader architecture/threat-model document and contains future security requirements that are not current V1 features.
