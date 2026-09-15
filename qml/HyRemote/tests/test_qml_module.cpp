@@ -3,7 +3,7 @@
 #include <QEventLoop>
 #include <QQmlComponent>
 #include <QQmlEngine>
-#include <QThread>
+#include <QTimer>
 #include <QVariant>
 
 #include <iostream>
@@ -25,12 +25,17 @@ void waitForComponent(QQmlComponent &component)
 {
     QElapsedTimer timer;
     timer.start();
-    while (component.status() == QQmlComponent::Loading && timer.elapsed() < 2000) {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
-        QThread::msleep(1);
+    while (component.status() == QQmlComponent::Loading && timer.elapsed() < 5000) {
+        // processEvents(maxTime) does not wait when the queue is momentarily empty. Give dynamic
+        // QML plugin/type loading a bounded real event-loop slice so Windows and Linux exercise the
+        // same asynchronous import contract.
+        QEventLoop loop;
+        QTimer::singleShot(10, &loop, &QEventLoop::quit);
+        loop.exec(QEventLoop::AllEvents);
     }
 
     if (component.isError() || component.status() != QQmlComponent::Ready) {
+        std::cerr << "QML component status=" << static_cast<int>(component.status()) << '\n';
         const auto errors = component.errors();
         for (const QQmlError &error : errors)
             std::cerr << error.toString().toStdString() << '\n';
@@ -50,7 +55,7 @@ void testDeclarativeImportAndSafeDefaults()
             remoteInputEnabled: true
         }
     )QML",
-                      QUrl());
+                      QUrl(QStringLiteral("inline:hyremote-test.qml")));
     waitForComponent(component);
     CHECK(component.status() == QQmlComponent::Ready);
 
@@ -79,7 +84,7 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
         import HyRemote 1.0
         RemoteAccess {}
     )QML",
-                      QUrl());
+                      QUrl(QStringLiteral("inline:hyremote-invalid-config.qml")));
     waitForComponent(component);
     CHECK(component.status() == QQmlComponent::Ready);
 
