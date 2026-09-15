@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 
 #include "hyremote/core/capabilities.hpp"
@@ -42,6 +43,12 @@ struct CaptureEvent
     // A recoverable event (a hidden target, a rejected single request) leaves the Session
     // `Running`; a non-recoverable one escalates the Session to `Faulted`.
     bool recoverable = true;
+
+    // Optional diagnostic correlation. For RequestRejected this identifies the request that was
+    // accepted by requestFrame() but later rejected asynchronously before a frame could be
+    // produced. Core treats RequestRejected as the terminal outcome of exactly one accepted
+    // request and releases one in-flight slot.
+    std::optional<CaptureRequestId> requestId;
 };
 
 using FrameReadyHandler = std::function<void(RemoteFrame)>;
@@ -76,6 +83,12 @@ public:
     //
     // Returning false means the request was rejected before any work was scheduled; Core counts
     // it, keeps the Session running and retries after a bounded delay.
+    //
+    // Returning true transfers one in-flight slot to the backend. The backend must eventually
+    // produce exactly one terminal outcome for that request: either invoke frameReady(), or report
+    // a recoverable CaptureEventCode::RequestRejected if work was accepted but later could not
+    // produce a frame. Fatal TargetLost/BackendFailure events fault the Session and therefore need
+    // not additionally synthesize RequestRejected.
     virtual bool requestFrame(const CaptureRequest &request) = 0;
 };
 
