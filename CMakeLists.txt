@@ -79,6 +79,13 @@ if(HYREMOTE_BUILD_QML_API)
     endif()
 endif()
 
+# The declarative product example consumes the generated QML module exactly as an application does.
+# This temporary direct wiring is kept on the stacked #66 branch; once the shared examples graph from
+# #60 lands it moves under examples/CMakeLists.txt without changing the example itself.
+if(HYREMOTE_BUILD_EXAMPLES AND TARGET hyremote-qml AND TARGET Qt6::Quick)
+    add_subdirectory(examples/qml-basic)
+endif()
+
 # Throwaway architecture spike harnesses. They are not part of the production build graph.
 if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/capture)
