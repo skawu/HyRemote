@@ -68,8 +68,9 @@ when the module is missing.
 ### Windows notes
 
 - The Qt `bin` directory must be on `PATH` when running, otherwise the executable
-  fails with `STATUS_DLL_NOT_FOUND`. For the reference run that was
-  `C:\Qt\6.8.3\msvc2022_64\bin`.
+  fails with `STATUS_DLL_NOT_FOUND`. For the reference run that was the `bin` directory
+  of the Qt 6.8.3 kit the harness was built with, i.e. `<QtRoot>\6.8.3\<toolchain>\bin`
+  (the same `<CMAKE_PREFIX_PATH>/bin` the build used).
 - The harness links `Qt::Gui`, so `WIN32_EXECUTABLE` is explicitly disabled: it is a
   console application and reports through stdout.
 - A visible desktop session is required. An occluded window is throttled by the
