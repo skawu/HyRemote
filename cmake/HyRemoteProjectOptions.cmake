@@ -2,6 +2,7 @@ include_guard(GLOBAL)
 
 option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" ON)
 option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" ON)
+option(HYREMOTE_BUILD_CORE "Build the hyremote-core session/frame/dispatch library" ON)
 option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)
 option(HYREMOTE_WITH_VNC "Enable the first VNC/RFB transport backend when available" ON)
 option(HYREMOTE_WITH_QPA_PROXY "Enable the optional zero-code Qt platform/QPA adapter" OFF)

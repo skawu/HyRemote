@@ -6,6 +6,32 @@ Issue: #5
 
 This document connects ADR-0001/0002/0003 into one implementation-ready flow for the v0.1 MVP. It does not claim RK3588/EGLFS validation; #18 remains the embedded evidence gate.
 
+## Implementation status
+
+`hyremote-core` implements the semantic contract fixed here (issue #21, CORE-02). Target adapters,
+transports and encoding remain out of scope.
+
+| Contract element | Implementation |
+|---|---|
+| one Session, one capture source, one transport, optional input sink | `Session` (`session.hpp`) |
+| frame lifetime anchored by owned storage | `RemoteFrame::storage` + `CpuFrameStorage`, `FrameStorage::extension()` for platform domains |
+| damage `Unknown` / `FullFrame` / `Regions` | `Damage` + `Damage::hasRegions()`; an empty `Regions` list is explicitly not `Unknown` |
+| content PTS vs request diagnostics | `FrameTiming` + `normalizeFrameTiming()`: request time is never promoted to PTS, a declared Render/Presentation source must supply its value |
+| `FrameId` in acceptance order | assigned when the mailbox accepts the frame, not in request order |
+| bounded completed-frame mailbox | `DropOldest` (latest-frame-wins) default with an explicit `ProducerThrottle` alternative; Core-side ownership is bounded by `capacity + 1` |
+| capture callback never performs transport work | capture completion only validates, stamps and enqueues; the dispatch worker is the only `Transport::enqueueFrame()` caller |
+| capability negotiation before `Running` | `checkFrameCompatibility()` |
+| component mutation rules | `setCaptureSource()` / `setTransport()` only succeed in `Stopped` and report refusal through their return value; the `InputSink` is held by `shared_ptr` and may be replaced at runtime |
+| deterministic startup handshake | the Core workers are created while the Session is still `Starting` and wait for the `Running` publication, so a worker can never miss it; no capture request is issued before `Running` |
+| teardown ownership | the teardown claim is taken atomically under the Session mutex and invalidates the run generation; concurrent `stop()` callers wait for the owner and return without touching the run's components or workers again (`SessionStats::teardownsPerformed` is exactly 1 per run) |
+| cancellable startup | `start()` re-checks its run generation after every startup boundary (source start, worker creation, transport start) and before publishing `Running`; a `stop()` that wins while `start()` is in progress makes it stop whatever it had started, return false with `SessionErrorCode::StartCancelled`, and never publish `Running` — every component is stopped exactly once by exactly one side |
+| callback lifetime | Core wraps every adapter callback in a lifetime gate: callbacks that arrive after teardown are ignored and counted (`SessionStats::callbacksIgnoredAfterStop`) and in-flight ones are drained, which makes `~Session()` safe even for an adapter that violates the `stop()` quiescence rule |
+| adapter exception policy | exceptions never escape Core: startup exceptions become a deterministic `SessionError` with the already-started components cleaned up, runtime exceptions on the request/enqueue paths are counted and escalate to `Faulted`, and `InputSink::post()` failures are reported as recoverable so remote input cannot interrupt frame delivery |
+
+Build: `HYREMOTE_BUILD_CORE` (ON by default) with `HYREMOTE_BUILD_TESTS`; the library is
+`hyremote-core` with the `HyRemote::Core` alias and headers under `hyremote/core/`. The
+`spikes/` trees stay non-production and are not linked by Core.
+
 ## 1. Canonical pipeline
 
 ```mermaid
