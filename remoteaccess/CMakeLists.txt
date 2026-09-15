@@ -50,6 +50,26 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
+set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
+    "RemoteAccess was built with the Qt Quick adapter" FORCE)
+if(HYREMOTE_BUILD_QUICK_ADAPTER)
+    if(NOT TARGET Qt6::Quick)
+        find_package(Qt6 6.8 QUIET COMPONENTS Quick)
+    endif()
+
+    if(TARGET Qt6::Quick)
+        target_sources(hyremote-remoteaccess PRIVATE
+            src/quick/quick_target.cpp
+        )
+        target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
+        target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
+        set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
+            "RemoteAccess was built with the Qt Quick adapter" FORCE)
+    else()
+        message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
+    endif()
+endif()
+
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h
