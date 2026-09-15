@@ -34,3 +34,27 @@ endif()
 
 add_test(NAME hyremote-qpa-remote-config-test COMMAND hyremote-qpa-remote-config-test)
 set_tests_properties(hyremote-qpa-remote-config-test PROPERTIES TIMEOUT 15)
+
+# Gate-02 product composition smoke: a normal QWidget app selects only the `hyremote` QPA plugin;
+# the plugin must attach the shared RemoteAccess runtime automatically, then release the listener when
+# the visible primary target disappears. This remains hosted native-QPA evidence, not physical-display proof.
+if(TARGET Qt6::Widgets)
+    add_executable(hyremote-qpa-auto-remoteaccess-smoke
+        qpa_auto_remoteaccess_smoke.cpp
+    )
+    target_compile_features(hyremote-qpa-auto-remoteaccess-smoke PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qpa-auto-remoteaccess-smoke
+        PRIVATE
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Network
+            Qt6::Widgets
+    )
+    add_dependencies(hyremote-qpa-auto-remoteaccess-smoke hyremote-qpa-platform)
+
+    add_test(NAME hyremote-qpa-auto-remoteaccess-smoke COMMAND hyremote-qpa-auto-remoteaccess-smoke)
+    set_tests_properties(hyremote-qpa-auto-remoteaccess-smoke PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5998;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
+        TIMEOUT 15
+    )
+endif()
