@@ -157,13 +157,25 @@ public:
         m_capabilities.cpuFormats = {PixelFormat::Bgra8888};
     }
 
+    ~FakeCaptureSource() override { ++(*destroyed); }
+
     void setCapabilities(CaptureCapabilities capabilities) { m_capabilities = std::move(capabilities); }
 
-    CaptureCapabilities capabilities() const override { return m_capabilities; }
+    CaptureCapabilities capabilities() const override
+    {
+        if (throwFromCapabilities)
+            throw std::runtime_error("fake capture capabilities failure");
+        return m_capabilities;
+    }
 
     bool start(FrameReadyHandler onFrame, CaptureEventHandler onEvent) override
     {
-        // `startResult` is set by the test before start(), so it needs no lock here.
+        // A test can hold the startup here to keep the Session in `Starting` deterministically.
+        if (startGate != nullptr)
+            startGate->enter();
+
+        if (throwFromStart)
+            throw std::runtime_error("fake capture start failure");
         if (!startResult)
             return false;
 
@@ -212,6 +224,12 @@ public:
     // ---- test controls -------------------------------------------------
     bool startResult = true;
     bool throwFromRequestFrame = false;
+    bool throwFromCapabilities = false;
+    bool throwFromStart = false;
+    EnqueueGate *startGate = nullptr;
+
+    // Set by the destructor: a test can prove that the Session never destroys a live component.
+    std::shared_ptr<int> destroyed = std::make_shared<int>(0);
 
     // Optional hooks so a test can observe the Session state from inside start()/stop().
     std::function<void()> onStart;
@@ -254,11 +272,24 @@ public:
     }
 
     // Delivers a completion from the calling thread, which models a backend completion thread.
-    bool deliver(RemoteFrame frame)
+    //
+    // Conforming: `stop()` quiesces callbacks, so the fake only calls back while it is started.
+    bool deliver(RemoteFrame frame) { return deliverInternal(std::move(frame), false); }
+
+    // Deliberately violates the quiescence rule, to prove that Core ignores late callbacks.
+    bool forceDeliver(RemoteFrame frame) { return deliverInternal(std::move(frame), true); }
+
+    void reportEvent(const CaptureEvent &event) { reportEventInternal(event, false); }
+    void forceReportEvent(const CaptureEvent &event) { reportEventInternal(event, true); }
+
+private:
+    bool deliverInternal(RemoteFrame frame, bool force)
     {
         FrameReadyHandler handler;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!force && !m_started)
+                return false;
             if (!m_onFrame)
                 return false;
             if (m_outstanding > 0)
@@ -269,11 +300,13 @@ public:
         return true;
     }
 
-    void reportEvent(const CaptureEvent &event)
+    void reportEventInternal(const CaptureEvent &event, bool force)
     {
         CaptureEventHandler handler;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!force && !m_started)
+                return;
             handler = m_onEvent;
         }
         if (handler)
@@ -308,13 +341,25 @@ public:
         m_capabilities.cpuFormats = {PixelFormat::Bgra8888};
     }
 
+    ~FakeTransport() override { ++(*destroyed); }
+
     void setCapabilities(FrameConsumerCapabilities capabilities) { m_capabilities = std::move(capabilities); }
 
-    FrameConsumerCapabilities frameCapabilities() const override { return m_capabilities; }
+    FrameConsumerCapabilities frameCapabilities() const override
+    {
+        if (throwFromCapabilities)
+            throw std::runtime_error("fake transport capabilities failure");
+        return m_capabilities;
+    }
 
     bool start(InputHandler onInput, TransportEventHandler onEvent) override
     {
-        // `startResult` is set by the test before start(), so it needs no lock here.
+        // A test can hold the transport startup to keep the Session in `Starting` deterministically.
+        if (startGate != nullptr)
+            startGate->enter();
+
+        if (throwFromStart)
+            throw std::runtime_error("fake transport start failure");
         if (!startResult)
             return false;
 
@@ -322,6 +367,7 @@ public:
             std::lock_guard<std::mutex> lock(m_mutex);
             m_onInput = std::move(onInput);
             m_onEvent = std::move(onEvent);
+            m_started = true;
             m_events.push_back("start");
         }
 
@@ -335,6 +381,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             ++m_stopCalls;
+            m_started = false;
             m_events.push_back("stop");
         }
 
@@ -371,6 +418,12 @@ public:
     // ---- test controls -------------------------------------------------
     bool startResult = true;
     bool throwFromEnqueue = false;
+    bool throwFromCapabilities = false;
+    bool throwFromStart = false;
+    EnqueueGate *startGate = nullptr;
+
+    // Set by the destructor: a test can prove that the Session never destroys a live component.
+    std::shared_ptr<int> destroyed = std::make_shared<int>(0);
 
     // Optional hooks so a test can observe the Session state from inside start()/stop().
     std::function<void()> onStart;
@@ -439,30 +492,43 @@ public:
         return m_cv.wait_for(lock, timeout, [this, count] { return m_accepted >= count; });
     }
 
-    // Models the transport runtime thread handing remote input to Core.
-    void deliverInput(const InputEvent &event)
+    // Models the transport runtime thread handing remote input to Core. Conforming: the runtime
+    // stops delivering once it was stopped.
+    void deliverInput(const InputEvent &event) { deliverInputInternal(event, false); }
+
+    // Deliberately violates the quiescence rule, to prove that Core ignores late callbacks.
+    void forceDeliverInput(const InputEvent &event) { deliverInputInternal(event, true); }
+
+    void reportEvent(const TransportEvent &event) { reportEventInternal(event, false); }
+    void forceReportEvent(const TransportEvent &event) { reportEventInternal(event, true); }
+
+private:
+    void deliverInputInternal(const InputEvent &event, bool force)
     {
         InputHandler handler;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!force && !m_started)
+                return;
             handler = m_onInput;
         }
         if (handler)
             handler(event);
     }
 
-    void reportEvent(const TransportEvent &event)
+    void reportEventInternal(const TransportEvent &event, bool force)
     {
         TransportEventHandler handler;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!force && !m_started)
+                return;
             handler = m_onEvent;
         }
         if (handler)
             handler(event);
     }
 
-private:
     mutable std::mutex m_mutex;
     std::condition_variable m_cv;
     FrameConsumerCapabilities m_capabilities;
@@ -477,6 +543,54 @@ private:
     std::size_t m_enqueueCalls = 0;
     std::size_t m_droppedByRuntimeQueue = 0;
     int m_stopCalls = 0;
+    bool m_started = false;
+};
+
+// Test-only forwarding adapters.
+//
+// They let a test keep ownership of the backend, so the backend can outlive the Session. That is
+// exactly the scenario in which a late callback used to be able to dereference freed Core state.
+class LoaningCaptureSource : public CaptureSource
+{
+public:
+    explicit LoaningCaptureSource(FakeCaptureSource *backend)
+        : m_backend(backend)
+    {
+    }
+
+    CaptureCapabilities capabilities() const override { return m_backend->capabilities(); }
+    bool start(FrameReadyHandler onFrame, CaptureEventHandler onEvent) override
+    {
+        return m_backend->start(std::move(onFrame), std::move(onEvent));
+    }
+    void stop() noexcept override { m_backend->stop(); }
+    bool requestFrame(const CaptureRequest &request) override { return m_backend->requestFrame(request); }
+
+private:
+    FakeCaptureSource *m_backend;
+};
+
+class LoaningTransport : public Transport
+{
+public:
+    explicit LoaningTransport(FakeTransport *backend)
+        : m_backend(backend)
+    {
+    }
+
+    FrameConsumerCapabilities frameCapabilities() const override
+    {
+        return m_backend->frameCapabilities();
+    }
+    bool start(InputHandler onInput, TransportEventHandler onEvent) override
+    {
+        return m_backend->start(std::move(onInput), std::move(onEvent));
+    }
+    void stop() noexcept override { m_backend->stop(); }
+    void enqueueFrame(RemoteFrame frame) override { m_backend->enqueueFrame(std::move(frame)); }
+
+private:
+    FakeTransport *m_backend;
 };
 
 // ---------------------------------------------------------------------------
@@ -486,8 +600,18 @@ private:
 class FakeInputSink : public InputSink
 {
 public:
+    ~FakeInputSink() override { ++(*destroyed); }
+
+    bool throwFromPost = false;
+
+    // Set by the destructor, so a test can observe runtime sink replacement.
+    std::shared_ptr<int> destroyed = std::make_shared<int>(0);
+
     void post(const InputEvent &event) override
     {
+        if (throwFromPost)
+            throw std::runtime_error("fake input sink failure");
+
         std::lock_guard<std::mutex> lock(m_mutex);
         m_events.push_back(event);
         m_threads.insert(std::this_thread::get_id());
@@ -575,3 +699,5 @@ struct RunningSession
 };
 
 }  // namespace hyremote::test
+
+  

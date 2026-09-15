@@ -102,24 +102,29 @@ HYR_TEST(input_without_a_sink_is_counted_and_not_fatal)
     HYR_CHECK_EQ(running.session->state(), SessionState::Running);
 }
 
-HYR_TEST(input_after_stop_is_dropped_safely)
+HYR_TEST(input_after_stop_is_ignored_safely)
 {
     auto sink = std::make_shared<FakeInputSink>();
 
     RunningSession running;
     HYR_CHECK(running.start());
     running.setInputSink(sink);
+
+    // A conforming transport runtime stops calling back once it is stopped.
     running.stop();
     HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK(!running.transport->events().empty());
+    running.transport->deliverInput(InputEvent{});
+    HYR_CHECK_EQ(sink->count(), std::size_t{0});
+    HYR_CHECK_EQ(running.session->stats().callbacksIgnoredAfterStop, std::uint64_t{0});
 
+    // A transport that ignores the quiescence rule is also safe: Core's gate ignores the callback
+    // and counts it instead of delivering it to a torn-down Session.
     InputEvent event;
     event.kind = InputEventKind::Placeholder;
-    running.transport->deliverInput(event);
-
-    // A late event from a transport runtime that is shutting down is counted, not delivered, and
-    // never crashes the Session.
+    running.transport->forceDeliverInput(event);
     HYR_CHECK_EQ(sink->count(), std::size_t{0});
-    HYR_CHECK_EQ(running.session->stats().inputEventsDropped, std::uint64_t{1});
+    HYR_CHECK_EQ(running.session->stats().callbacksIgnoredAfterStop, std::uint64_t{1});
 }
 
 HYR_TEST_MAIN()

@@ -320,4 +320,226 @@ HYR_TEST(a_transport_exception_does_not_terminate_the_host_process)
     HYR_CHECK_EQ(running.transport->stopCalls(), 1);
 }
 
+// --- B1: startup race regression -------------------------------------------------------------
+
+HYR_TEST(b1_workers_created_during_starting_survive_the_running_publication)
+{
+    // Hold the transport startup: at that moment the Core workers already exist and the Session is
+    // still `Starting`, which is exactly the window in which a fast worker used to exit for good.
+    EnqueueGate gate;
+    gate.close();
+
+    RunningSession running;
+    running.prepare();
+    running.transport->startGate = &gate;
+
+    bool started = false;
+    std::thread starter([&] { started = running.session->start(); });
+
+    HYR_CHECK(gate.waitForEntered(1));
+    HYR_CHECK_EQ(running.session->state(), SessionState::Starting);
+
+    // Both workers have provably begun while the Session is still `Starting`: this is the racy
+    // window. With the previous implementation the scheduler decided to exit right here.
+    HYR_CHECK(waitFor([&] { return running.session->stats().workersStarted == 2; }));
+    HYR_CHECK_EQ(running.session->state(), SessionState::Starting);
+
+    // No capture request is issued before `Running` is published.
+    HYR_CHECK_EQ(running.source->requestCalls(), std::size_t{0});
+
+    gate.open();
+    starter.join();
+
+    HYR_CHECK(started);
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+
+    // The scheduler is still alive: it issues requests now that `Running` is published. With the
+    // racy implementation this never happens and the wait fails deterministically.
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+    HYR_CHECK(waitFor([&] { return running.session->stats().maxInFlightObserved >= 1; }));
+
+    running.stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
+// --- B2: component mutation rules ------------------------------------------------------------
+
+HYR_TEST(b2_component_replacement_is_rejected_while_active)
+{
+    RunningSession running;
+    HYR_CHECK(running.start());
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+
+    const std::shared_ptr<int> sourceDestroyed = running.source->destroyed;
+    const std::shared_ptr<int> transportDestroyed = running.transport->destroyed;
+
+    auto replacementSource = std::make_unique<FakeCaptureSource>();
+    const std::shared_ptr<int> replacementDestroyed = replacementSource->destroyed;
+    HYR_CHECK(!running.session->setCaptureSource(std::move(replacementSource)));
+    HYR_CHECK(!running.session->setTransport(std::make_unique<FakeTransport>()));
+
+    // The active components are alive and unchanged; the refused replacement was released.
+    HYR_CHECK_EQ(*sourceDestroyed, 0);
+    HYR_CHECK_EQ(*transportDestroyed, 0);
+    HYR_CHECK_EQ(*replacementDestroyed, 1);
+
+    // The run keeps working with the original components.
+    const std::size_t requestsBefore = running.source->requestCalls();
+    RemoteFrame frame = makeFrame(16, 8);
+    HYR_CHECK(running.source->deliver(frame));
+    HYR_CHECK(running.transport->waitForAccepted(1));
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() > requestsBefore; }));
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+}
+
+HYR_TEST(b2_replacement_is_rejected_while_starting_and_while_faulted)
+{
+    {
+        EnqueueGate gate;
+        gate.close();
+
+        RunningSession running;
+        running.prepare();
+        running.transport->startGate = &gate;
+
+        bool started = false;
+        std::thread starter([&] { started = running.session->start(); });
+        HYR_CHECK(gate.waitForEntered(1));
+        HYR_CHECK_EQ(running.session->state(), SessionState::Starting);
+
+        HYR_CHECK(!running.session->setCaptureSource(std::make_unique<FakeCaptureSource>()));
+        HYR_CHECK(!running.session->setTransport(std::make_unique<FakeTransport>()));
+        HYR_CHECK_EQ(*running.source->destroyed, 0);
+        HYR_CHECK_EQ(*running.transport->destroyed, 0);
+
+        gate.open();
+        starter.join();
+        HYR_CHECK(started);
+        running.stop();
+    }
+
+    {
+        RunningSession running;
+        HYR_CHECK(running.start());
+
+        CaptureEvent event;
+        event.code = CaptureEventCode::TargetLost;
+        event.message = "gone";
+        event.recoverable = false;
+        running.source->reportEvent(event);
+        HYR_CHECK(waitFor([&] { return running.session->state() == SessionState::Faulted; }));
+
+        HYR_CHECK(!running.session->setCaptureSource(std::make_unique<FakeCaptureSource>()));
+        HYR_CHECK(!running.session->setTransport(std::make_unique<FakeTransport>()));
+        HYR_CHECK_EQ(*running.source->destroyed, 0);
+        HYR_CHECK_EQ(*running.transport->destroyed, 0);
+
+        running.session->stop();
+        HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    }
+}
+
+HYR_TEST(b2_replacement_is_rejected_while_stopping)
+{
+    RunningSession running;
+    HYR_CHECK(running.start());
+
+    SessionState stateDuringSourceStop = SessionState::Stopped;
+    bool sourceRejected = false;
+    bool transportRejected = false;
+
+    running.source->onStop = [&] {
+        stateDuringSourceStop = running.session->state();
+        sourceRejected = !running.session->setCaptureSource(std::make_unique<FakeCaptureSource>());
+    };
+    running.transport->onStop = [&] {
+        transportRejected = !running.session->setTransport(std::make_unique<FakeTransport>());
+    };
+
+    running.session->stop();
+
+    HYR_CHECK(stateDuringSourceStop == SessionState::Stopping);
+    HYR_CHECK(sourceRejected);
+    HYR_CHECK(transportRejected);
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
+// --- B4: plugin-boundary exceptions ----------------------------------------------------------
+
+HYR_TEST(b4_a_throwing_capture_start_faults_and_cleans_up)
+{
+    RunningSession running;
+    running.prepare();
+    running.source->throwFromStart = true;
+
+    HYR_CHECK(!running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Faulted);
+
+    const std::optional<SessionError> error = running.session->lastError();
+    HYR_CHECK(error.has_value());
+    HYR_CHECK(error->code == SessionErrorCode::CaptureStartFailed);
+    HYR_CHECK(error->message.find("threw") != std::string::npos);
+
+    // A throwing start may have left partial state, so the component is stopped again; the
+    // transport was never started.
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK(running.transport->events().empty());
+
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
+HYR_TEST(b4_a_throwing_transport_start_stops_the_capture_source)
+{
+    RunningSession running;
+    running.prepare();
+    running.transport->throwFromStart = true;
+
+    HYR_CHECK(!running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Faulted);
+
+    const std::optional<SessionError> error = running.session->lastError();
+    HYR_CHECK(error.has_value());
+    HYR_CHECK(error->code == SessionErrorCode::TransportStartFailed);
+    HYR_CHECK(error->message.find("threw") != std::string::npos);
+
+    // The capture source that did start is stopped again, and the throwing transport is stopped
+    // once as well.
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK_EQ(running.transport->stopCalls(), 1);
+
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
+HYR_TEST(b4_a_throwing_capability_query_fails_before_starting)
+{
+    {
+        RunningSession running;
+        running.prepare();
+        running.source->throwFromCapabilities = true;
+
+        HYR_CHECK(!running.session->start());
+        HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+        HYR_CHECK_EQ(running.source->stopCalls(), 0);
+
+        const std::optional<SessionError> error = running.session->lastError();
+        HYR_CHECK(error.has_value());
+        HYR_CHECK(error->code == SessionErrorCode::ComponentFailure);
+        HYR_CHECK(error->message.find("capability query") != std::string::npos);
+        HYR_CHECK(running.transport->events().empty());
+    }
+
+    {
+        RunningSession running;
+        running.prepare();
+        running.transport->throwFromCapabilities = true;
+
+        HYR_CHECK(!running.session->start());
+        HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+        HYR_CHECK_EQ(running.source->stopCalls(), 0);
+        HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::ComponentFailure);
+    }
+}
+
 HYR_TEST_MAIN()
