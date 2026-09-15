@@ -41,6 +41,14 @@ if(TARGET Qt6::Widgets)
     target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
 endif()
 
+# Surface enumeration must distinguish a qualified QQuickWindow from an arbitrary QWindow. Link
+# Qt Quick only when the normal RemoteAccess build already resolved that product adapter; this does
+# not add a new rendering/capture implementation to the QPA plugin.
+if(TARGET Qt6::Quick)
+    target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Quick)
+    target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_QUICK=1)
+endif()
+
 # The plugin is version-coupled by design. Refuse accidental compilation against a different private ABI.
 target_compile_definitions(hyremote-qpa-platform PRIVATE
     HYREMOTE_QPA_QT_VERSION_MAJOR=6
