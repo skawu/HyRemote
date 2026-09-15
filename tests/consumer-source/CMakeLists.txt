@@ -16,6 +16,10 @@ set(HYREMOTE_BUILD_REMOTE_ACCESS ON CACHE BOOL "" FORCE)
 
 add_subdirectory("${HYREMOTE_SOURCE_DIR}" hyremote)
 
+if(NOT COMMAND hyremote_deploy)
+    message(FATAL_ERROR "HyRemote source consumption must provide hyremote_deploy()")
+endif()
+
 add_executable(hyremote-source-consumer main.cpp)
 target_compile_features(hyremote-source-consumer PRIVATE cxx_std_17)
 target_link_libraries(hyremote-source-consumer PRIVATE HyRemote::RemoteAccess)
