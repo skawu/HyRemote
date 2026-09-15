@@ -118,6 +118,8 @@ def verify_example(name: str, executable: Path, quick: bool) -> None:
                 f"{name}: remote pointer did not reach the Qt application")
         require(any(line.startswith("APP_KEY") for line in lines),
                 f"{name}: remote keyboard did not reach the Qt application")
+        require(any(line.startswith("APP_TEXT") for line in lines),
+                f"{name}: remote text commit did not reach the Qt application")
         require("STOPPED" in lines, f"{name}: public RemoteAccess did not stop cleanly")
 
         check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -128,7 +130,7 @@ def verify_example(name: str, executable: Path, quick: bool) -> None:
         finally:
             check.close()
 
-        print(f"PASS: {name} public facade -> standard viewer -> Qt input -> reconnect -> stop")
+        print(f"PASS: {name} public facade -> standard viewer -> Qt pointer/key/text -> reconnect -> stop")
     finally:
         if process.poll() is None:
             process.kill()
