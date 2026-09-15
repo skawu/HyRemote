@@ -19,6 +19,12 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set(HYREMOTE_PACKAGE_WITH_QUICK TRUE)
 endif()
 
+set(HYREMOTE_PACKAGE_WITH_QML FALSE)
+if(TARGET hyremote-qml)
+    set(HYREMOTE_PACKAGE_WITH_QML TRUE)
+endif()
+set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "${CMAKE_INSTALL_LIBDIR}/qml")
+
 configure_package_config_file(
     "${CMAKE_CURRENT_LIST_DIR}/HyRemoteConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"
