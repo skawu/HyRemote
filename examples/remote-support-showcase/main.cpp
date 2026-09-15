@@ -58,7 +58,7 @@ public:
         , m_port(port)
     {
         setWindowTitle(QStringLiteral("HyRemote Remote Support Showcase"));
-        resize(780, 560);
+        resize(780, 580);
 
         m_remote.setPort(port);
         m_remote.setRemoteInputEnabled(initialInputEnabled);
@@ -85,11 +85,13 @@ public:
         auto *statusForm = new QFormLayout;
         m_state = new QLabel(remoteBox);
         m_endpoint = new QLabel(QStringLiteral("127.0.0.1:%1 (loopback only)").arg(port), remoteBox);
+        m_clients = new QLabel(QStringLiteral("0"), remoteBox);
         m_policy = new QLabel(remoteBox);
         m_error = new QLabel(QStringLiteral("None"), remoteBox);
         m_error->setWordWrap(true);
         statusForm->addRow(QStringLiteral("State"), m_state);
         statusForm->addRow(QStringLiteral("Listener"), m_endpoint);
+        statusForm->addRow(QStringLiteral("Connected clients"), m_clients);
         statusForm->addRow(QStringLiteral("Policy"), m_policy);
         statusForm->addRow(QStringLiteral("Last error"), m_error);
         remoteLayout->addLayout(statusForm);
@@ -152,7 +154,8 @@ public:
         });
 
         auto *timer = new QTimer(this);
-        timer->setInterval(250);
+        timer->setInterval(100);
+        timer->setTimerType(Qt::CoarseTimer);
         QObject::connect(timer, &QTimer::timeout, this, [this] { refreshStatus(); });
         timer->start();
         refreshStatus();
@@ -170,8 +173,10 @@ public:
             refreshStatus();
             return false;
         }
+        m_lastReportedClientCount = m_remote.connectedClientCount();
         refreshStatus();
         std::cout << "REMOTE_STARTED " << m_port << std::endl;
+        std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
         return true;
     }
 
@@ -179,6 +184,7 @@ public:
     {
         m_remote.stop();
         refreshStatus();
+        std::cout << "SHOWCASE_CLIENTS " << m_remote.connectedClientCount() << std::endl;
         std::cout << "REMOTE_STOPPED" << std::endl;
     }
 
@@ -225,6 +231,13 @@ private:
                               ? QStringLiteral("Remote view + control")
                               : QStringLiteral("View-only (safe default)"));
 
+        const std::size_t clientCount = m_remote.connectedClientCount();
+        m_clients->setText(QString::number(static_cast<qulonglong>(clientCount)));
+        if (clientCount != m_lastReportedClientCount) {
+            m_lastReportedClientCount = clientCount;
+            std::cout << "SHOWCASE_CLIENTS " << clientCount << std::endl;
+        }
+
         const bool active = state == HyRemote::RemoteAccessState::Running ||
                             state == HyRemote::RemoteAccessState::Starting;
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
@@ -238,8 +251,10 @@ private:
 
     HyRemote::RemoteAccess m_remote;
     quint16 m_port = 5900;
+    std::size_t m_lastReportedClientCount = 0;
     QLabel *m_state = nullptr;
     QLabel *m_endpoint = nullptr;
+    QLabel *m_clients = nullptr;
     QLabel *m_policy = nullptr;
     QLabel *m_error = nullptr;
     QPushButton *m_startStop = nullptr;
