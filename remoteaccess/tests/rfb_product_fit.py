@@ -53,9 +53,9 @@ def verify_occupied_port_failure(executable: Path) -> None:
         occupied.close()
 
 
-def start_harness(executable: Path, port: int):
+def start_harness(executable: Path, port: int, duration_seconds: int = 8):
     env = os.environ.copy()
-    env["HYREMOTE_RFB_TEST_SECONDS"] = "8"
+    env["HYREMOTE_RFB_TEST_SECONDS"] = str(duration_seconds)
     process = subprocess.Popen(
         [str(executable), str(port)],
         stdout=subprocess.PIPE,
@@ -77,7 +77,7 @@ def start_harness(executable: Path, port: int):
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
 
-    deadline = time.monotonic() + 8
+    deadline = time.monotonic() + min(8, duration_seconds)
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError(f"RFB harness exited before READY: {lines}")
@@ -90,6 +90,62 @@ def start_harness(executable: Path, port: int):
     process.kill()
     process.wait(timeout=5)
     raise RuntimeError(f"RFB harness did not become ready: {lines}")
+
+
+def verify_handshake_slots_expire(executable: Path) -> None:
+    """Eight silent sockets must not own every bounded viewer slot forever."""
+    port = free_port()
+    process, reader, lines = start_harness(executable, port, duration_seconds=7)
+    stalled: list[socket.socket] = []
+    try:
+        for index in range(8):
+            sock = socket.create_connection(("127.0.0.1", port), timeout=2)
+            sock.settimeout(2)
+            banner = sock.recv(12)
+            require(banner == b"RFB 003.008\n", f"stalled client {index} was not accepted: {banner!r}")
+            # Intentionally never send our protocol version. This pins the client in AwaitVersion
+            # until the server-side handshake deadline expires.
+            stalled.append(sock)
+
+        # Keep the sockets open beyond the 3 s transport deadline. The worker must abort them and
+        # erase their ClientState entries, otherwise a subsequent legitimate viewer is rejected by
+        # the max-eight-client guard forever.
+        time.sleep(3.6)
+
+        expired = 0
+        for sock in stalled:
+            try:
+                data = sock.recv(1)
+                if data == b"":
+                    expired += 1
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError):
+                expired += 1
+        require(expired == len(stalled), f"only {expired}/{len(stalled)} incomplete handshakes expired")
+
+        with tempfile.TemporaryDirectory(prefix="hyremote-rfb-handshake-") as temp_dir:
+            capture = Path(temp_dir) / "after-timeout.png"
+            with api.connect(f"127.0.0.1::{port}", password=None, timeout=3) as client:
+                client.captureScreen(str(capture))
+            require(Image.open(capture).size == (64, 48), "legitimate viewer could not connect after slot expiry")
+
+        result = process.wait(timeout=10)
+        reader.join(timeout=2)
+        require(result == 0, f"handshake-timeout harness failed: {lines}")
+        require(
+            sum(1 for line in lines if "RFB client handshake timed out" in line) >= 8,
+            "server did not report every incomplete-handshake expiry",
+        )
+        require(any("RFB client connected" in line for line in lines), "post-timeout legitimate viewer was not accepted")
+        require("STOPPED" in lines, "handshake-timeout transport did not stop cleanly")
+    finally:
+        for sock in stalled:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
 
 
 def verify_standard_client(executable: Path) -> None:
@@ -159,8 +215,11 @@ def main() -> int:
 
     try:
         verify_occupied_port_failure(executable)
+        verify_handshake_slots_expire(executable)
         verify_standard_client(executable)
-        print("PASS: bounded RFB bind + vncdotool framebuffer/input/reconnect + quiescent stop")
+        print(
+            "PASS: bounded RFB bind + handshake expiry + vncdotool framebuffer/input/reconnect + quiescent stop"
+        )
         return 0
     finally:
         api.shutdown()
