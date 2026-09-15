@@ -19,6 +19,7 @@ message(STATUS "  Build RemoteAccess:  ${HYREMOTE_BUILD_REMOTE_ACCESS}")
 message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
+message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Build spikes:        ${HYREMOTE_BUILD_SPIKES}")
 
 # hyremote-core: the production session/frame/dispatch contract frozen by ARCH-01.
@@ -49,6 +50,19 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
             "HYREMOTE_BUILD_REMOTE_ACCESS=ON requires Qt 6.8+ Core and Network. "
             "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the product target explicitly.")
     endif()
+endif()
+
+# Transparent QPA Proxy is an explicitly version-coupled integration package. It is never part of
+# hyremote-core and is opt-in because Qt does not guarantee QPA source/binary compatibility.
+if(HYREMOTE_WITH_QPA_PROXY)
+    if(NOT TARGET Qt6::Gui)
+        find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui)
+    endif()
+    if(NOT TARGET Qt6::GuiPrivate)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_QPA_PROXY=ON requires the exact Qt 6.8.3 private Gui development target (Qt6::GuiPrivate)")
+    endif()
+    add_subdirectory(qpa)
 endif()
 
 # Throwaway architecture spike harnesses. They are not part of the production build graph.
