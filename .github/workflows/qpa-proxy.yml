@@ -5,24 +5,26 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
+      - 'core/**'
+      - 'remoteaccess/**'
       - 'qpa/**'
       - '.github/workflows/qpa-proxy.yml'
   workflow_dispatch:
 
 jobs:
-  native-delegate-smoke:
+  native-delegate-and-remoteaccess:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / Qt 6.8.3 / qwindows delegate
+          - name: Windows x86_64 / Qt 6.8.3 / qualified qwindows + shared RemoteAccess
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt 6.8.3 / qxcb delegate
+          - name: Linux x86_64 / Qt 6.8.3 / qualified qxcb + shared RemoteAccess
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -48,23 +50,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libxcb-cursor0 libxkbcommon-x11-0
 
-      - name: Configure, build and qualify — Linux
+      - name: Configure, build and QPA tests — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
-            -DHYREMOTE_BUILD_CORE=OFF \
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF \
+            -DHYREMOTE_BUILD_CORE=ON \
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
+            -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
+            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON \
             -DHYREMOTE_BUILD_TESTS=ON \
             -DHYREMOTE_BUILD_EXAMPLES=OFF \
             -DHYREMOTE_BUILD_SPIKES=OFF \
+            -DHYREMOTE_WITH_VNC=ON \
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
           xvfb-run -a ctest --test-dir build -R '^hyremote-qpa-' --output-on-failure
 
-      - name: Configure, build and qualify — Windows / MSVC x64
+      - name: Configure, build and QPA tests — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
@@ -75,11 +80,14 @@ jobs:
           cmake -S . -B build -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
-            -DHYREMOTE_BUILD_CORE=OFF ^
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF ^
+            -DHYREMOTE_BUILD_CORE=ON ^
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
+            -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON ^
+            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON ^
             -DHYREMOTE_BUILD_TESTS=ON ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF ^
             -DHYREMOTE_BUILD_SPIKES=OFF ^
+            -DHYREMOTE_WITH_VNC=ON ^
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
           ctest --test-dir build -R "^hyremote-qpa-" --output-on-failure
