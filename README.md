@@ -12,13 +12,15 @@ HyRemote is an open-source remote access framework for Qt applications. It is de
 
 ## Product integration modes
 
-HyRemote is productized through three integration modes:
+HyRemote V1.0 is productized through **three mandatory integration modes**:
 
 1. **Embedded C++ API** — stable, explicit integration for maximum control and performance.
 2. **Declarative QML API** — convenient integration for Qt Quick applications using the same core semantics.
-3. **Transparent QPA Proxy** — optional low/zero-source-change compatibility path for existing Qt applications.
+3. **Transparent QPA Proxy** — low/zero-source-change integration for supported exact Qt/platform combinations, with the product goal of preserving local display/input while adding remote view/control simultaneously.
 
 Qt Widgets and Qt Quick are first-class application types. The integration mode is a product capability; capture, transport, input, and hardware acceleration remain replaceable implementation layers.
+
+The QPA mode is intentionally different from Qt's replacement-only `qvnc` platform-plugin model. HyRemote's target is a version-coupled proxy/decorator that delegates normal local platform behavior to the native Qt platform backend and mirrors supported presentation/input through the shared HyRemote runtime. Because Qt does not guarantee QPA source or binary compatibility, this mode is isolated from the stable Core and is supported only for explicitly validated Qt/OS configurations.
 
 ## How applications consume HyRemote
 
@@ -65,7 +67,23 @@ RemoteAccess {
 }
 ```
 
-Examples and user guides are release acceptance artifacts. V0.0.1.0 is not complete until the public C++ facade, SDK/source-consumption paths, Widgets/Quick examples, Windows/Linux getting-started guides and deployment instructions are reproducible.
+Examples and user guides are release acceptance artifacts. V0.0.1.0 is not complete until the public C++ facade, SDK/source-consumption paths, Widgets/Quick examples, Windows/Linux getting-started guides and deployment instructions are reproducible. V1.0.0.0 additionally requires complete examples and guides for the QML and QPA Proxy modes.
+
+## V1.0 differentiation target
+
+HyRemote does not treat “stronger than Qt VNC Server” as an unverified marketing claim. The V1.0 target is to provide evidence-backed product advantages where HyRemote deliberately extends the baseline model:
+
+- **three integration modes**: Embedded C++, Declarative QML and Transparent QPA Proxy;
+- **Qt Widgets and Qt Quick** as first-class application targets;
+- **local + remote coexistence** in every supported integration mode;
+- **Windows + Linux** as the x86 reference platform;
+- **explicit lifecycle and safer defaults**, including no listener opened merely by object construction and independently controlled remote input;
+- **backend-neutral architecture**, so VNC/capture/hardware implementations can evolve without changing normal application code;
+- **Apache-2.0 open-source distribution**;
+- **standalone SDK plus source-consumption** workflows;
+- **richer examples and documentation**, including deployment, reconnect, diagnostics, security boundaries, troubleshooting and exact compatibility claims.
+
+The example suite is expected to cover, at minimum, Widgets C++, Quick C++, declarative QML, zero/minimal-change QPA Proxy, a production-like remote-support showcase, and a clean external installed-SDK consumer. Examples must not imply capabilities that have not been implemented and validated.
 
 ## Architecture direction
 
@@ -107,9 +125,10 @@ VNC/RFB is the first transport family, but its concrete backend is an internal i
 
 - **Existing applications first.** Adding remote access must not require rewriting application UI or business logic.
 - **Qt-like consumption experience.** After acquiring HyRemote once, users should integrate it through normal CMake/QML mechanisms instead of assembling internal subsystems.
-- **Three product integration modes.** C++ API, QML API, and optional QPA Proxy are distinct user-facing capabilities.
+- **Three mandatory product integration modes for V1.0.** C++ API, QML API and Transparent QPA Proxy are distinct user-facing capabilities.
 - **Qt Widgets and Qt Quick are peers.** Neither is treated as a compatibility afterthought.
-- **Public API first.** Stable user-facing APIs and Qt public APIs define the supported contract; private/QPA integration stays isolated in optional adapters.
+- **Local + remote coexistence.** Supported modes must preserve normal local behavior while remote access is active.
+- **Public API first.** Stable user-facing APIs and Qt public APIs define the supported contract; private/QPA integration stays isolated in version-coupled adapters.
 - **Backend separation.** Target, capture, transport, input, and hardware encoding are independent implementation interfaces.
 - **Backend invisibility.** Switching the default VNC/capture backend must not require normal application-source changes.
 - **Portable baseline before hardware optimization.** Correctness comes before PBO, DMA-BUF, GBM, or hardware video encoding.
@@ -134,7 +153,7 @@ The x86_64 standard/reference platform includes **both Windows x86_64 and Linux 
 | --- | --- |
 | `V0.0.1.0` | x86_64 (Windows + Linux) — Embedded C++ API |
 | `V0.0.2.0` | x86_64 (Windows + Linux) — Declarative QML API |
-| `V0.0.3.0` | x86_64 (Windows + Linux) — Transparent QPA Proxy |
+| `V0.0.3.0` | x86_64 (Windows + Linux) — Transparent QPA Proxy with local + remote coexistence |
 | `V1.0.0.0` | x86_64 GA — Windows + Linux and all three integration modes productized |
 
 ### Embedded-platform expansion after V1.0
@@ -163,10 +182,11 @@ A platform or integration mode is considered **supported** only when it has repe
 - the claimed operating system;
 - a reproducible build and supported SDK/source-consumption path;
 - functional remote-view and, where applicable, remote-input validation;
+- local rendering/input coexistence where claimed;
 - a compatibility entry;
 - documented known limitations.
 
-For x86_64, Windows evidence does not substitute for Linux evidence and Linux evidence does not substitute for Windows evidence. Desktop/x86 validation must not be used as a substitute for an embedded-platform support claim.
+For x86_64, Windows evidence does not substitute for Linux evidence and Linux evidence does not substitute for Windows evidence. Desktop/x86 validation must not be used as a substitute for an embedded-platform support claim. QPA Proxy support additionally requires an exact tested Qt/private-API compatibility entry.
 
 ## Current non-goals
 
