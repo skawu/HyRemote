@@ -3,8 +3,9 @@
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
     add_subdirectory(widgets-basic)
+    add_subdirectory(remote-support-showcase)
 else()
-    message(STATUS "  widgets-basic example skipped: Widgets adapter is unavailable")
+    message(STATUS "  widgets-basic and remote-support-showcase examples skipped: Widgets adapter is unavailable")
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND TARGET Qt6::Quick)
