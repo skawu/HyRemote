@@ -92,6 +92,8 @@ def main() -> int:
         require(result == 0, f"qml-basic exited with {result}: {lines}")
         require(any("APP_POINTER" in line for line in lines), f"pointer did not reach QML: {lines}")
         require(any("APP_KEY" in line for line in lines), f"key did not reach QML: {lines}")
+        require(any("APP_TEXT" in line and "a" in line for line in lines),
+                f"text commit did not reach QML TextField: {lines}")
         require(any("STOPPED" in line for line in lines), f"declarative stop not observed: {lines}")
 
         check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -102,7 +104,7 @@ def main() -> int:
         finally:
             check.close()
 
-        print("PASS: qml-basic import HyRemote -> viewer -> QML input -> reconnect -> stop")
+        print("PASS: qml-basic import HyRemote -> viewer -> pointer/key/text -> reconnect -> stop")
         return 0
     finally:
         if process.poll() is None:
