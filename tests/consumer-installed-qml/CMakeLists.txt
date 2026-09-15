@@ -34,12 +34,13 @@ target_link_libraries(hyremote-installed-qml-consumer PRIVATE
     Qt6::Quick
 )
 
-# This is deliberately the only HyRemote-owned consumer integration call. The helper bridges the
-# installed module root into Qt's target import path before asking Qt to generate its QML deploy
-# script; the consumer does not name/copy a HyRemote plugin or qmldir itself.
-hyremote_deploy(TARGET hyremote-installed-qml-consumer QML)
-
 install(TARGETS hyremote-installed-qml-consumer
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
 )
+
+# This is deliberately the only HyRemote-owned consumer integration call. Register it after the
+# application install rule, matching Qt's deployment contract. The helper bridges the installed
+# module root into Qt's target import path before generating the QML deploy script; the consumer
+# does not name/copy a HyRemote plugin or qmldir itself.
+hyremote_deploy(TARGET hyremote-installed-qml-consumer QML)
