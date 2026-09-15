@@ -35,8 +35,6 @@ InterceptionSeam::WindowRecord &InterceptionSeam::ensureTracked(QWindow *window)
         const WindowRecord record = recordIt.value();
         if (record.platformWindowCreated)
             emitEvent(record, InterceptionObject::PlatformWindow, InterceptionEventType::WindowDestroyed);
-        if (record.backingStoreCreated)
-            emitEvent(record, InterceptionObject::BackingStore, InterceptionEventType::WindowDestroyed);
         m_windows.erase(recordIt);
     });
 
@@ -85,12 +83,11 @@ void InterceptionSeam::observeBackingStoreCreated(QWindow *window)
     if (!window)
         return;
 
+    // Each call corresponds to a concrete delegate-created backing store. Do not retain its pointer
+    // or synthesize a destruction lifetime that Qt does not expose safely at this layer.
     WindowRecord &record = ensureTracked(window);
     refreshSnapshot(window, record);
-    if (!record.backingStoreCreated) {
-        record.backingStoreCreated = true;
-        emitEvent(record, InterceptionObject::BackingStore, InterceptionEventType::Created);
-    }
+    emitEvent(record, InterceptionObject::BackingStore, InterceptionEventType::Created);
 }
 
 bool InterceptionSeam::eventFilter(QObject *watched, QEvent *event)
@@ -117,20 +114,13 @@ bool InterceptionSeam::eventFilter(QObject *watched, QEvent *event)
         break;
     case QEvent::PlatformSurface: {
         const auto *surfaceEvent = static_cast<QPlatformSurfaceEvent *>(event);
-        if (surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+        if (surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed
+            && record.platformWindowCreated) {
             refreshSnapshot(window, record);
-            if (record.backingStoreCreated) {
-                emitEvent(record,
-                          InterceptionObject::BackingStore,
-                          InterceptionEventType::SurfaceAboutToBeDestroyed);
-                record.backingStoreCreated = false;
-            }
-            if (record.platformWindowCreated) {
-                emitEvent(record,
-                          InterceptionObject::PlatformWindow,
-                          InterceptionEventType::SurfaceAboutToBeDestroyed);
-                record.platformWindowCreated = false;
-            }
+            emitEvent(record,
+                      InterceptionObject::PlatformWindow,
+                      InterceptionEventType::SurfaceAboutToBeDestroyed);
+            record.platformWindowCreated = false;
         }
         break;
     }
