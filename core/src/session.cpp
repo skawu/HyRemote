@@ -62,9 +62,30 @@ std::string_view sessionErrorCodeName(SessionErrorCode code)
         return "TargetLost";
     case SessionErrorCode::ComponentFailure:
         return "ComponentFailure";
+    case SessionErrorCode::StartCancelled:
+        return "StartCancelled";
     }
     return "ComponentFailure";
 }
+
+namespace {
+
+// Stops a component without letting an adapter failure interfere with cleanup. Component `stop()`
+// is `noexcept` in the interface; the guard is defensive.
+template <typename Component>
+void stopComponentQuietly(Component *component) noexcept
+{
+    if (component == nullptr)
+        return;
+
+    try {
+        component->stop();
+    } catch (...) {
+        // Cleanup continues.
+    }
+}
+
+}  // namespace
 
 // Core-owned callback gate.
 //
@@ -176,9 +197,24 @@ struct Session::Impl
     SessionState state = SessionState::Stopped;
     std::optional<SessionError> lastError;
     bool stopRequested = false;
-    bool teardownStarted = false;  // exactly one thread performs the ordered teardown of a run
+
+    // Lifecycle ownership (all guarded by `mutex`).
+    //
+    // `teardownStarted` is the single teardown claim of a run: it is acquired *while holding the
+    // mutex* (never in a check-then-release-then-set sequence), so exactly one stop() caller or
+    // startup-failure path can own the component stop/join sequence.
+    //
+    // `runGeneration` identifies the run that start() is establishing. Every claim (start() run
+    // claim, teardown claim) increments it, so an in-progress start() can tell at its next boundary
+    // that its run was cancelled by a concurrent stop().
+    bool teardownStarted = false;
+    std::uint64_t runGeneration = 0;
+
+    // Resources of the current run, each owned by exactly one side: the flag is cleared under the
+    // mutex by whoever takes over the cleanup, so a component is stopped/joined exactly once.
     bool sourceStarted = false;
     bool transportStarted = false;
+    bool workersCreated = false;
     std::size_t inFlight = 0;
     CaptureRequestId nextRequestId = 1;
     SessionStats stats;
@@ -453,7 +489,69 @@ struct Session::Impl
         }
     }
 
-    // Ordered teardown of a run that failed to start or is being torn down.
+    // --- lifecycle ownership ---------------------------------------------------------------
+
+    // Claims the teardown of the current run atomically. Must be called with `mutex` held, and only
+    // when the caller has established that its run is still current: taking the claim also
+    // invalidates the run generation, so an in-progress start() stops committing to that run.
+    static void claimTeardownLocked(Impl &impl)
+    {
+        impl.teardownStarted = true;
+        ++impl.runGeneration;
+    }
+
+    // Blocking claim used by stop(): waits for an in-flight teardown of this run to finish and then
+    // takes the claim atomically. It never returns while another caller owns the teardown, and it
+    // never uses a check-then-release-then-set sequence.
+    static void claimTeardown(Impl &impl)
+    {
+        std::unique_lock<std::mutex> lock(impl.mutex);
+        impl.cv.wait(lock, [&impl] { return !impl.teardownStarted; });
+        claimTeardownLocked(impl);
+    }
+
+    // True while the run the calling start() is establishing is still the current one and may
+    // commit its next step.
+    static bool runStillValidLocked(const Impl &impl, std::uint64_t generation)
+    {
+        return impl.runGeneration == generation && impl.state == SessionState::Starting;
+    }
+
+    // Startup-failure helper: takes the teardown claim for a run that is still current. Reports
+    // false when a concurrent stop() already owns the teardown of that run.
+    static bool claimFailureTeardown(Impl &impl, std::uint64_t generation)
+    {
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        if (!Impl::runStillValidLocked(impl, generation) || impl.teardownStarted)
+            return false;
+
+        claimTeardownLocked(impl);
+        return true;
+    }
+
+    // Completes a start() whose run was taken over by a concurrent stop(). The teardown owns the run
+    // resources, so this only publishes the diagnostic and never touches them.
+    static void finishCancelledStart(Impl &impl)
+    {
+        {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.state != SessionState::Running) {
+                impl.lastError =
+                    SessionError{SessionErrorCode::StartCancelled,
+                                 "Session::start() was cancelled by a concurrent stop(); the Session "
+                                 "is Stopped",
+                                 false};
+            }
+        }
+        impl.cv.notify_all();
+    }
+
+    // Ordered teardown of a run.
+    //
+    // The caller owns the teardown claim and this function releases it at the end. The run's
+    // resources are taken over under the mutex (their flags are cleared there), so exactly one side
+    // stops/joins each of them: whatever start() committed before the claim, and whatever start()
+    // completed afterwards, is cleaned up by exactly one of the two paths.
     //
     // Stops whatever started, unblocks and joins the workers, closes the callback gate and finally
     // publishes `Faulted` (for a startup failure) or `Stopped` (when called from stop()), so that
@@ -461,24 +559,22 @@ struct Session::Impl
     //   Starting -> Faulted -> (stop) -> Stopping -> Stopped
     static void teardownRun(Impl &impl, bool faulted, SessionErrorCode code, const std::string &message)
     {
-        {
-            std::lock_guard<std::mutex> lock(impl.mutex);
-            impl.teardownStarted = true;
-        }
-
         CaptureSource *source = nullptr;
         Transport *transport = nullptr;
         detail::Mailbox *mailbox = nullptr;
+        bool workers = false;
         std::shared_ptr<CallbackGate> gate;
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
             impl.stopRequested = true;
             source = impl.sourceStarted ? impl.source.get() : nullptr;
             transport = impl.transportStarted ? impl.transport.get() : nullptr;
-            mailbox = impl.mailbox.get();
+            workers = impl.workersCreated;
+            mailbox = workers ? impl.mailbox.get() : nullptr;
             gate = impl.gate;
             impl.sourceStarted = false;
             impl.transportStarted = false;
+            impl.workersCreated = false;
 
             // Publish the terminal state before touching the components so that observers inside the
             // components see the documented sequence: a startup failure is `Faulted` from here on,
@@ -487,6 +583,9 @@ struct Session::Impl
                 setFaultedLocked(impl, code, message);
             else
                 impl.state = SessionState::Stopping;
+
+            // Observable proof that exactly one owner performed the ordered teardown of this run.
+            ++impl.stats.teardownsPerformed;
         }
         impl.cv.notify_all();  // let the workers leave their startup handshake
 
@@ -494,36 +593,26 @@ struct Session::Impl
         if (gate)
             gate->closeAndDrain();
 
-        if (source != nullptr) {
-            try {
-                source->stop();
-            } catch (...) {
-                // Cleanup must not be prevented by a misbehaving adapter.
-            }
-        }
+        stopComponentQuietly(source);
 
         if (mailbox != nullptr)
             mailbox->close();  // the dispatch worker drains what Core already accepted
 
-        if (impl.schedulerThread.joinable())
-            impl.schedulerThread.join();
-        if (impl.dispatcherThread.joinable())
-            impl.dispatcherThread.join();
-
-        if (transport != nullptr) {
-            try {
-                transport->stop();
-            } catch (...) {
-                // As above: cleanup continues.
-            }
+        if (workers) {
+            if (impl.schedulerThread.joinable())
+                impl.schedulerThread.join();
+            if (impl.dispatcherThread.joinable())
+                impl.dispatcherThread.join();
         }
+
+        stopComponentQuietly(transport);
 
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
             impl.mailbox.reset();
             impl.inFlight = 0;
             impl.stats.inFlight = 0;
-            impl.teardownStarted = false;
+            impl.teardownStarted = false;  // release the claim for the next claimant or start()
             if (!faulted)
                 impl.state = SessionState::Stopped;
         }
@@ -629,6 +718,9 @@ bool Session::start()
 {
     Impl &impl = *m_impl;
 
+    // Generation of the run this call is establishing; every startup boundary re-checks it.
+    std::uint64_t generation = 0;
+
     const std::string configProblem = validateSessionConfig(impl.config);
     if (!configProblem.empty()) {
         std::lock_guard<std::mutex> lock(impl.mutex);
@@ -690,6 +782,11 @@ bool Session::start()
         impl.stopRequested = false;
         impl.lastError.reset();
         impl.nextIssueTime.reset();
+
+        // Claim the run. The generation is what a concurrent stop() invalidates when it takes the
+        // teardown claim, and every startup boundary below re-checks it before committing the next
+        // step, so a cancelled start() can never publish `Running` or install a new run afterwards.
+        generation = ++impl.runGeneration;
         impl.state = SessionState::Starting;
     }
     impl.cv.notify_all();
@@ -699,13 +796,22 @@ bool Session::start()
 
     // A Core-owned callback gate makes late adapter callbacks harmless: the callbacks capture the
     // gate, not `&impl`, and closing the gate invalidates the target before Impl is destroyed.
+    //
+    // Installing the gate and validating the run are a single step: either this start() still owns
+    // the run (and the teardown will close this gate), or the run was already taken over and
+    // nothing is installed at all.
     auto gate = std::make_shared<CallbackGate>();
     gate->target = &impl;
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
+        if (!Impl::runStillValidLocked(impl, generation)) {
+            Impl::finishCancelledStart(impl);
+            return false;
+        }
         impl.gate = gate;
     }
 
+    // ---- boundary 1: capture source start ------------------------------------------------
     bool sourceStarted = false;
     std::string sourceMessage;
     try {
@@ -728,49 +834,93 @@ bool Session::start()
         sourceMessage = "capture source threw from start()";
     }
 
-    if (!sourceMessage.empty()) {
-        try {
-            source->stop();
-        } catch (...) {
-            // Cleanup continues.
-        }
-        Impl::teardownRun(impl, true, SessionErrorCode::CaptureStartFailed, sourceMessage);
-        return false;
-    }
+    bool cancelled = false;
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
-        impl.sourceStarted = sourceStarted;
+        if (!Impl::runStillValidLocked(impl, generation))
+            cancelled = true;
+        else
+            impl.sourceStarted = sourceStarted;  // committed: the teardown now owns this component
+    }
+
+    if (cancelled) {
+        // The run was taken over while the source was starting. The teardown snapshot ran before
+        // this component was committed, so cleaning it up here is what keeps the stop count at
+        // exactly one.
+        if (sourceStarted || !sourceMessage.empty())
+            stopComponentQuietly(source);
+        Impl::finishCancelledStart(impl);
+        return false;
+    }
+
+    if (!sourceMessage.empty()) {
+        stopComponentQuietly(source);
+        if (Impl::claimFailureTeardown(impl, generation))
+            Impl::teardownRun(impl, true, SessionErrorCode::CaptureStartFailed, sourceMessage);
+        else
+            Impl::finishCancelledStart(impl);
+        return false;
     }
     if (!sourceStarted) {
-        Impl::teardownRun(impl, true, SessionErrorCode::CaptureStartFailed,
-                          "capture source failed to start");
+        if (Impl::claimFailureTeardown(impl, generation))
+            Impl::teardownRun(impl, true, SessionErrorCode::CaptureStartFailed,
+                              "capture source failed to start");
+        else
+            Impl::finishCancelledStart(impl);
         return false;
     }
 
-    // The workers are created while the Session is still `Starting`, before the transport starts.
-    // They wait in the startup handshake, so no capture request is issued before `Running` and the
+    // ---- boundary 2: Core workers --------------------------------------------------------
+    //
+    // The mailbox and both worker threads are created while the Session is still `Starting`, and
+    // they wait in the startup handshake, so no capture request is issued before `Running` and the
     // transport is guaranteed to be started before any frame can be handed over.
+    //
+    // Creating them and validating the run are one step under the mutex: a teardown sees either
+    // "no workers" or "both threads assigned", never a half state it would join incorrectly.
+    std::string workerMessage;
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
-        impl.mailbox = std::make_unique<detail::Mailbox>(impl.config.frameQueue.capacity,
-                                                         impl.config.frameQueue.policy);
+        if (!Impl::runStillValidLocked(impl, generation)) {
+            cancelled = true;
+        } else {
+            try {
+                impl.mailbox = std::make_unique<detail::Mailbox>(impl.config.frameQueue.capacity,
+                                                                impl.config.frameQueue.policy);
+                // Set before creating the threads so that a partial failure still hands the
+                // existing thread to the teardown.
+                impl.workersCreated = true;
+                impl.schedulerThread = std::thread([&impl] { Impl::runScheduler(impl); });
+                impl.dispatcherThread = std::thread([&impl] { Impl::runDispatcher(impl); });
+            } catch (const std::exception &error) {
+                workerMessage = std::string("failed to create a Core worker thread: ") + error.what();
+            } catch (...) {
+                workerMessage = "failed to create a Core worker thread";
+            }
+        }
     }
 
-    std::string workerMessage;
-    try {
-        impl.schedulerThread = std::thread([&impl] { Impl::runScheduler(impl); });
-        impl.dispatcherThread = std::thread([&impl] { Impl::runDispatcher(impl); });
-    } catch (const std::exception &error) {
-        workerMessage = std::string("failed to create a Core worker thread: ") + error.what();
-    } catch (...) {
-        workerMessage = "failed to create a Core worker thread";
+    if (cancelled) {
+        Impl::finishCancelledStart(impl);
+        return false;  // nothing was created, so nothing to clean up here
     }
-
     if (!workerMessage.empty()) {
-        // A half-started run must never be left behind: teardownRun joins whichever worker exists,
-        // stops the capture source and leaves the Session Faulted.
-        Impl::teardownRun(impl, true, SessionErrorCode::ComponentFailure, workerMessage);
+        // A half-started run must never be left behind: the failure teardown joins whichever worker
+        // exists, stops the capture source and leaves the Session Faulted.
+        if (Impl::claimFailureTeardown(impl, generation))
+            Impl::teardownRun(impl, true, SessionErrorCode::ComponentFailure, workerMessage);
+        else
+            Impl::finishCancelledStart(impl);
         return false;
+    }
+
+    // ---- boundary 3: transport start -----------------------------------------------------
+    {
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        if (!Impl::runStillValidLocked(impl, generation)) {
+            Impl::finishCancelledStart(impl);
+            return false;  // do not call the external start after the run was cancelled
+        }
     }
 
     bool transportStarted = false;
@@ -793,31 +943,56 @@ bool Session::start()
         transportMessage = "transport threw from start()";
     }
 
-    if (!transportMessage.empty()) {
-        try {
-            transport->stop();
-        } catch (...) {
-            // Cleanup continues.
-        }
-        Impl::teardownRun(impl, true, SessionErrorCode::TransportStartFailed, transportMessage);
-        return false;
-    }
+    cancelled = false;
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
-        impl.transportStarted = transportStarted;
+        if (!Impl::runStillValidLocked(impl, generation))
+            cancelled = true;
+        else
+            impl.transportStarted = transportStarted;
+    }
+
+    if (cancelled) {
+        // The transport finished starting after the cancellation, so it belongs to this start().
+        if (transportStarted || !transportMessage.empty())
+            stopComponentQuietly(transport);
+        Impl::finishCancelledStart(impl);
+        return false;
+    }
+
+    if (!transportMessage.empty()) {
+        stopComponentQuietly(transport);
+        if (Impl::claimFailureTeardown(impl, generation))
+            Impl::teardownRun(impl, true, SessionErrorCode::TransportStartFailed, transportMessage);
+        else
+            Impl::finishCancelledStart(impl);
+        return false;
     }
     if (!transportStarted) {
         // The capture source that did start is stopped here; the Session stays Faulted so the
         // startup failure is observable until the owner calls stop().
-        Impl::teardownRun(impl, true, SessionErrorCode::TransportStartFailed,
-                          "transport failed to start");
+        if (Impl::claimFailureTeardown(impl, generation))
+            Impl::teardownRun(impl, true, SessionErrorCode::TransportStartFailed,
+                              "transport failed to start");
+        else
+            Impl::finishCancelledStart(impl);
         return false;
     }
 
+    // ---- publish `Running` ---------------------------------------------------------------
+    //
+    // The check and the publication are one step: if a stop() claimed the run between the transport
+    // boundary and here, the teardown owns every component of this run (it snapshotted the
+    // committed flags) and this start() only reports the cancellation.
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
+        if (!Impl::runStillValidLocked(impl, generation)) {
+            Impl::finishCancelledStart(impl);
+            return false;
+        }
         impl.state = SessionState::Running;
     }
+
     impl.cv.notify_all();  // release the workers from the startup handshake
     return true;
 }
@@ -826,23 +1001,32 @@ void Session::stop() noexcept
 {
     Impl &impl = *m_impl;
 
-    // Only one thread performs the ordered teardown of a run; a concurrent stop() waits for it and
-    // then finishes the transition to `Stopped` if the other thread was tearing down a faulted run.
-    for (;;) {
-        {
-            std::unique_lock<std::mutex> lock(impl.mutex);
-            if (impl.state == SessionState::Stopped)
-                return;
+    // Fast path: this run is already down.
+    {
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        if (impl.state == SessionState::Stopped)
+            return;
+    }
 
-            if (!impl.teardownStarted) {
-                lock.unlock();
-                break;
-            }
+    // Take the teardown claim atomically. A concurrent stop() (or an in-progress start() that is
+    // being cancelled) waits here until the current teardown has finished, and then either finds the
+    // run already `Stopped` or completes the transition of a faulted run. The claim also invalidates
+    // the run generation, which is how a concurrent start() learns that its run was cancelled.
+    Impl::claimTeardown(impl);
 
-            impl.cv.wait(lock, [&impl] {
-                return !impl.teardownStarted || impl.state == SessionState::Stopped;
-            });
+    bool alreadyStopped = false;
+    {
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        if (impl.state == SessionState::Stopped) {
+            // Another caller completed the teardown while we waited for the claim. Release it so
+            // further waiting callers can finish as well, and touch nothing else.
+            impl.teardownStarted = false;
+            alreadyStopped = true;
         }
+    }
+    if (alreadyStopped) {
+        impl.cv.notify_all();
+        return;
     }
 
     // The ordered teardown closes the callback gate before touching the components, so a late

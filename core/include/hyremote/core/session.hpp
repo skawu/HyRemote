@@ -109,6 +109,10 @@ enum class SessionErrorCode {
     TransportStartFailed,
     TargetLost,
     ComponentFailure,
+
+    // A concurrent stop() claimed the run while start() was still establishing it. Nothing was
+    // published as `Running`; the Session is `Stopped` as the stop requested.
+    StartCancelled,
 };
 
 std::string_view sessionErrorCodeName(SessionErrorCode code);
@@ -169,6 +173,11 @@ struct SessionStats
     // creation failed, and one that appears but issues nothing did not survive the transition to
     // `Running`.
     std::size_t workersStarted = 0;
+
+    // Ordered teardowns actually performed for the current run. It must be exactly 1 for a run:
+    // concurrent stop() callers wait for the owner and return without touching the run's components
+    // or workers again.
+    std::uint64_t teardownsPerformed = 0;
 };
 
 class Session
@@ -204,11 +213,20 @@ public:
     // `Running` on any failure: configuration and capability errors leave it `Stopped` (nothing was
     // started), while a component startup failure leaves it `Faulted` with the already-started
     // components cleaned up.
+    //
+    // Cancellation: start() claims a run generation before touching any component and re-checks it
+    // after every startup boundary. If a concurrent stop() claims the run while start() is still in
+    // progress, start() stops whatever it had already started, returns false with
+    // `SessionErrorCode::StartCancelled` and never publishes `Running`; the Session is left
+    // `Stopped` as the stop requested.
     bool start();
 
     // Deterministic stop: stop scheduling, stop the capture source, close the mailbox (the
-    // dispatch worker drains accepted frames), join the workers, stop the transport. Idempotent
-    // and safe from every state, including `Faulted`.
+    // dispatch worker drains accepted frames), join the workers, stop the transport. Idempotent and
+    // safe from every state, including `Faulted` and `Starting`; it may be called from any thread,
+    // including concurrently with an in-progress start() (which is then cancelled) or from several
+    // threads at once (exactly one caller performs the ordered teardown, the others wait for it and
+    // then return). It must not be called from inside an adapter callback.
     void stop() noexcept;
 
     SessionState state() const;
