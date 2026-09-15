@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QHostAddress>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QWidget>
