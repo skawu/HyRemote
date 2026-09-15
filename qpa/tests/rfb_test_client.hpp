@@ -154,7 +154,9 @@ public:
         timer.start();
         while (timer.elapsed() < timeoutMs) {
             pumpEvents(80);
-            if (!requestFramebuffer(qMin(1500, timeoutMs - static_cast<int>(timer.elapsed()))))
+            const int remaining = timeoutMs - static_cast<int>(timer.elapsed());
+            const int attemptTimeout = qMax(1, qMin(1500, remaining));
+            if (!requestFramebuffer(attemptTimeout))
                 return false;
             if (m_geometry.size() == expected)
                 return true;
