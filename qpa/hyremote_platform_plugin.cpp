@@ -1,4 +1,5 @@
 #include "hyremote_qpa_interception.hpp"
+#include "hyremote_qpa_remote_controller.hpp"
 
 #include <QtCore/QDebug>
 #include <QtCore/QStringList>
@@ -73,8 +74,10 @@ class HyRemotePlatformIntegration final : public QPlatformIntegration
 #endif
 {
 public:
-    explicit HyRemotePlatformIntegration(std::unique_ptr<QPlatformIntegration> delegate)
+    HyRemotePlatformIntegration(std::unique_ptr<QPlatformIntegration> delegate,
+                                ::HyRemote::Qpa::RemoteConfig remoteConfig)
         : m_delegate(std::move(delegate))
+        , m_remoteConfig(std::move(remoteConfig))
     {
     }
 
@@ -86,15 +89,19 @@ public:
     QPlatformWindow *createPlatformWindow(QWindow *window) const override
     {
         QPlatformWindow *platformWindow = m_delegate->createPlatformWindow(window);
-        if (platformWindow)
+        if (platformWindow) {
             m_interception.observePlatformWindowCreated(window);
+            ensureRemoteControllerStarted();
+        }
         return platformWindow;
     }
     QPlatformWindow *createForeignWindow(QWindow *window, WId id) const override
     {
         QPlatformWindow *platformWindow = m_delegate->createForeignWindow(window, id);
-        if (platformWindow)
+        if (platformWindow) {
             m_interception.observePlatformWindowCreated(window);
+            ensureRemoteControllerStarted();
+        }
         return platformWindow;
     }
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override
@@ -122,8 +129,20 @@ public:
     {
         return m_delegate->createEventDispatcher();
     }
-    void initialize() override { m_delegate->initialize(); }
-    void destroy() override { m_delegate->destroy(); }
+    void initialize() override
+    {
+        // Loading/initializing the QPA plugin itself must never open the remote listener. The
+        // shared RemoteAccess controller is armed only after the native delegate successfully
+        // creates a real platform window; it still waits for a supported visible target.
+        m_delegate->initialize();
+    }
+    void destroy() override
+    {
+        if (m_remoteController)
+            m_remoteController->stop();
+        m_remoteController.reset();
+        m_delegate->destroy();
+    }
     QPlatformFontDatabase *fontDatabase() const override { return m_delegate->fontDatabase(); }
 #ifndef QT_NO_CLIPBOARD
     QPlatformClipboard *clipboard() const override { return m_delegate->clipboard(); }
@@ -288,9 +307,6 @@ public:
 protected:
     Qt::KeyboardModifiers queryKeyboardModifiers() const override
     {
-        // Qt 6.8.3 exposes the native keyboard semantics through QPlatformKeyMapper's public virtual
-        // API. The qualified qwindows/qxcb delegates both return native key-mapper subclasses, so use
-        // that public bridge rather than silently falling back to QPlatformIntegration's generic state.
         if (QPlatformKeyMapper *mapper = m_delegate->keyMapper())
             return mapper->queryKeyboardModifiers();
         return QPlatformIntegration::queryKeyboardModifiers();
@@ -309,11 +325,26 @@ protected:
     }
 
 private:
-    // Native delegate ownership remains authoritative. The seam is declared after the delegate so
-    // it is destroyed first, disconnecting all public-QWindow observers before native delegate
-    // ownership is finally released by this integration's destructor.
+    void ensureRemoteControllerStarted() const
+    {
+        if (m_remoteController)
+            return;
+
+        auto controller = std::make_unique<::HyRemote::Qpa::RemoteController>(m_remoteConfig);
+        if (!controller->start()) {
+            qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition";
+            return;
+        }
+        m_remoteController = std::move(controller);
+    }
+
+    // Destruction is reverse declaration order: controller is torn down first, then its config,
+    // then the QPA-02 observation seam, and finally the native delegate. This prevents automatic
+    // remote runtime callbacks from outliving native-semantics qualification state.
     std::unique_ptr<QPlatformIntegration> m_delegate;
     mutable ::HyRemote::Qpa::Internal::InterceptionSeam m_interception;
+    ::HyRemote::Qpa::RemoteConfig m_remoteConfig;
+    mutable std::unique_ptr<::HyRemote::Qpa::RemoteController> m_remoteController;
 };
 
 class HyRemotePlatformIntegrationPlugin final : public QPlatformIntegrationPlugin
@@ -331,6 +362,13 @@ public:
             return nullptr;
 
         QStringList delegateParameters = paramList;
+        ::HyRemote::Qpa::RemoteConfig remoteConfig;
+        QString remoteConfigError;
+        if (!::HyRemote::Qpa::parseRemoteConfig(delegateParameters, remoteConfig, remoteConfigError)) {
+            qWarning() << "HyRemote QPA Proxy rejected remote configuration:" << remoteConfigError;
+            return nullptr;
+        }
+
         const QString delegateName = requestedDelegate(delegateParameters);
         if (delegateName.isEmpty()) {
             qWarning() << "HyRemote QPA Proxy rejected delegate; this build only permits"
@@ -348,8 +386,11 @@ public:
             return nullptr;
         }
 
-        qInfo() << "HyRemote QPA Proxy active; native delegate:" << delegateName;
-        return new HyRemotePlatformIntegration(std::move(delegate));
+        qInfo() << "HyRemote QPA Proxy active; native delegate:" << delegateName
+                << "remote address:" << remoteConfig.listenAddress.toString()
+                << "port:" << remoteConfig.port
+                << "remote input:" << remoteConfig.remoteInputEnabled;
+        return new HyRemotePlatformIntegration(std::move(delegate), std::move(remoteConfig));
     }
 };
 
