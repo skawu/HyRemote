@@ -1,6 +1,5 @@
 #include <QApplication>
 #include <QByteArray>
-#include <QElapsedTimer>
 #include <QHostAddress>
 #include <QTcpSocket>
 #include <QTimer>
@@ -24,21 +23,6 @@ bool waitForRfbBanner()
     return banner.startsWith("RFB 003.008");
 }
 
-bool waitForListenerClosed()
-{
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < 2000) {
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, kPort);
-        if (!socket.waitForConnected(100))
-            return true;
-        socket.abort();
-        QCoreApplication::processEvents();
-    }
-    return false;
-}
-
 }  // namespace
 
 int main(int argc, char **argv)
@@ -58,19 +42,12 @@ int main(int argc, char **argv)
             return;
         }
 
-        window.hide();
-        QCoreApplication::processEvents();
-        QTimer::singleShot(250, &app, [&] {
-            if (!waitForListenerClosed()) {
-                std::cerr << "FAIL: listener remained open after the primary target was hidden\n";
-                app.quit();
-                return;
-            }
-
-            std::cout << "PASS: qualified native QPA target -> shared RemoteAccess -> listener lifecycle\n";
-            result = 0;
-            app.quit();
-        });
+        // QPA-04 intentionally supersedes the old single-primary behavior where hiding this one
+        // target stopped the listener. Multi-surface persistence is qualified by the dedicated
+        // connection-continuity E2E; this predecessor smoke remains focused on transparent start.
+        std::cout << "PASS: qualified native QPA application auto-started shared RemoteAccess\n";
+        result = 0;
+        app.quit();
     });
 
     QTimer::singleShot(6000, &app, [&] {
