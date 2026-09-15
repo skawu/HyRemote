@@ -84,7 +84,9 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "SDK_PREFIX=%RUNNER_TEMP%\hyremote-sdk"
+          set "SDK_SHARED_PREFIX=%RUNNER_TEMP%\hyremote-sdk-shared"
 
+          rem Default/static SDK consumption.
           cmake -S . -B build-sdk -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -110,3 +112,24 @@ jobs:
             -DHYREMOTE_SOURCE_DIR="%GITHUB_WORKSPACE%"
           cmake --build build-consumer-source --parallel
           build-consumer-source\hyremote-source-consumer.exe
+
+          rem Shared installed SDK consumption: catches missing Windows DLL exports/import libraries.
+          cmake -S . -B build-sdk-shared -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DBUILD_SHARED_LIBS=ON ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%SDK_SHARED_PREFIX%" ^
+            -DHYREMOTE_BUILD_CORE=ON ^
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
+            -DHYREMOTE_BUILD_TESTS=OFF ^
+            -DHYREMOTE_BUILD_SPIKES=OFF ^
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build-sdk-shared --parallel
+          cmake --install build-sdk-shared
+
+          cmake -S tests\consumer-installed-sdk -B build-consumer-installed-shared -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_SHARED_PREFIX%"
+          cmake --build build-consumer-installed-shared --parallel
+          set "PATH=%SDK_SHARED_PREFIX%\bin;%QT_PREFIX%\bin;%PATH%"
+          build-consumer-installed-shared\hyremote-installed-consumer.exe
