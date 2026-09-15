@@ -10,6 +10,7 @@
 #include <QQmlError>
 #include <QQuickView>
 #include <QTimer>
+#include <QWheelEvent>
 
 #include <iostream>
 
@@ -32,13 +33,24 @@ protected:
         switch (event->type()) {
         case QEvent::MouseButtonPress: {
             const auto *mouse = static_cast<QMouseEvent *>(event);
-            std::cout << "APP_POINTER x=" << mouse->position().x()
+            std::cout << "APP_POINTER button=" << static_cast<int>(mouse->button())
+                      << " x=" << mouse->position().x()
                       << " y=" << mouse->position().y() << std::endl;
+            break;
+        }
+        case QEvent::Wheel: {
+            const auto *wheel = static_cast<QWheelEvent *>(event);
+            std::cout << "APP_WHEEL y=" << wheel->angleDelta().y() << std::endl;
             break;
         }
         case QEvent::KeyPress: {
             const auto *key = static_cast<QKeyEvent *>(event);
-            std::cout << "APP_KEY key=" << key->key() << std::endl;
+            const Qt::KeyboardModifiers modifiers = key->modifiers();
+            std::cout << "APP_KEY key=" << key->key()
+                      << " shift=" << ((modifiers & Qt::ShiftModifier) ? 1 : 0)
+                      << " ctrl=" << ((modifiers & Qt::ControlModifier) ? 1 : 0)
+                      << " alt=" << ((modifiers & Qt::AltModifier) ? 1 : 0)
+                      << std::endl;
             break;
         }
         case QEvent::InputMethod: {
