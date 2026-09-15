@@ -6,6 +6,8 @@ include(GNUInstallDirs)
 add_library(hyremote-qpa-platform MODULE
     application_surface_model.cpp
     composite_target.cpp
+    composite_target_routing.cpp
+    interactive_composite_target.cpp
     hyremote_platform_plugin.cpp
     hyremote_qpa_interception.cpp
     hyremote_qpa_remote_controller.cpp
