@@ -9,6 +9,7 @@ project(
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
+include(HyRemoteDeploy)
 
 include(CTest)
 
@@ -31,6 +32,10 @@ endif()
 # explicit status message. A source-consumer subproject, however, is expected to provide its Qt SDK
 # and fails if the product target was requested but Qt Core/Network cannot be resolved.
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
+    if(NOT TARGET HyRemote::Core)
+        message(FATAL_ERROR "HyRemote::RemoteAccess requires HYREMOTE_BUILD_CORE=ON")
+    endif()
+
     if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::Network)
         find_package(Qt6 6.8 QUIET COMPONENTS Core Network)
     endif()
@@ -50,4 +55,10 @@ endif()
 if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/capture)
     add_subdirectory(spikes/async-capture)
+endif()
+
+# Install/export is part of the SDK contract. A bare Core-only package remains valid; when the Qt
+# product facade is present it is exported from the same HyRemote package and namespace.
+if(TARGET hyremote-core)
+    include(HyRemoteInstall)
 endif()
