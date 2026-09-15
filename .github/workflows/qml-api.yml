@@ -1,0 +1,79 @@
+name: Declarative QML API
+
+on:
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'core/**'
+      - 'remoteaccess/**'
+      - 'qml/**'
+      - '.github/workflows/qml-api.yml'
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x86_64 / Qt QML 6.8.3
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+          - name: Linux x86_64 / Qt QML 6.8.3
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt and Ninja
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
+
+      - name: Configure, build and test — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
+            -DHYREMOTE_BUILD_CORE=ON \
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
+            -DHYREMOTE_BUILD_QML_API=ON \
+            -DHYREMOTE_BUILD_TESTS=ON \
+            -DHYREMOTE_BUILD_SPIKES=OFF \
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
+
+      - name: Configure, build and test — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "PATH=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}\bin;%PATH%"
+          cmake -S . -B build -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}" ^
+            -DHYREMOTE_BUILD_CORE=ON ^
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
+            -DHYREMOTE_BUILD_QML_API=ON ^
+            -DHYREMOTE_BUILD_TESTS=ON ^
+            -DHYREMOTE_BUILD_SPIKES=OFF ^
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
