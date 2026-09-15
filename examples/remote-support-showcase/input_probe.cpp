@@ -3,6 +3,7 @@
 #include <QEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QTimer>
 #include <QWidget>
 
 #include <iostream>
@@ -40,14 +41,15 @@ protected:
     }
 };
 
-void installGlobalInputProbe()
+void scheduleGlobalInputProbe()
 {
-    auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
-    if (!app)
-        return;
-    app->installEventFilter(new InputProbe(app));
+    QTimer::singleShot(0, [] {
+        auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
+        if (app)
+            app->installEventFilter(new InputProbe(app));
+    });
 }
 
 }  // namespace
 
-Q_COREAPP_STARTUP_FUNCTION(installGlobalInputProbe)
+Q_COREAPP_STARTUP_FUNCTION(scheduleGlobalInputProbe)
