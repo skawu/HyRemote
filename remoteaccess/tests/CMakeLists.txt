@@ -14,3 +14,23 @@ target_include_directories(hyremote-remoteaccess-test
 )
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
+
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
+    add_executable(hyremote-widgets-capture-test
+        test_widgets_capture.cpp
+    )
+    target_link_libraries(hyremote-widgets-capture-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-widgets-capture-test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    add_test(NAME hyremote-widgets-capture-test COMMAND hyremote-widgets-capture-test)
+    set_tests_properties(hyremote-widgets-capture-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endif()

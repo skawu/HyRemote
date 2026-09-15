@@ -30,6 +30,26 @@ target_link_libraries(hyremote-remoteaccess
         HyRemote::Core
 )
 
+set(HYREMOTE_REMOTEACCESS_WITH_WIDGETS FALSE CACHE INTERNAL
+    "RemoteAccess was built with the Qt Widgets adapter" FORCE)
+if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
+    if(NOT TARGET Qt6::Widgets)
+        find_package(Qt6 6.8 QUIET COMPONENTS Widgets)
+    endif()
+
+    if(TARGET Qt6::Widgets)
+        target_sources(hyremote-remoteaccess PRIVATE
+            src/widgets/widget_target.cpp
+        )
+        target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Widgets)
+        target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_WIDGETS_ADAPTER=1)
+        set(HYREMOTE_REMOTEACCESS_WITH_WIDGETS TRUE CACHE INTERNAL
+            "RemoteAccess was built with the Qt Widgets adapter" FORCE)
+    else()
+        message(STATUS "  Widgets adapter skipped: Qt 6.8+ Widgets not found")
+    endif()
+endif()
+
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h
