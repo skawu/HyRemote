@@ -647,7 +647,8 @@ private:
                 const bool pressed = byteAt(client.input, 1) != 0;
                 const std::uint32_t keysym = readU32(client.input, 4);
                 client.input.remove(0, 8);
-                deliverKey(client, keysym, pressed);
+                if (!deliverKey(client, keysym, pressed))
+                    return;
                 continue;
             }
 
@@ -744,17 +745,17 @@ private:
         const std::vector<std::uint32_t> held = client.heldKeysyms;
         for (const std::uint32_t keysym : held) {
             if (!modifierForKey(keyCodeFromKeysym(keysym)))
-                deliverKey(client, keysym, false);
+                (void)deliverKey(client, keysym, false);
         }
         const std::vector<std::uint32_t> remaining = client.heldKeysyms;
         for (const std::uint32_t keysym : remaining)
-            deliverKey(client, keysym, false);
+            (void)deliverKey(client, keysym, false);
 
         client.heldKeysyms.clear();
         client.modifiers = 0U;
     }
 
-    void deliverKey(ClientState &client, std::uint32_t keysym, bool pressed)
+    bool deliverKey(ClientState &client, std::uint32_t keysym, bool pressed)
     {
         const hyremote::KeyCode key = keyCodeFromKeysym(keysym);
         if (key != hyremote::KeyCode::Unknown) {
@@ -763,7 +764,7 @@ private:
                 if (held == client.heldKeysyms.end()) {
                     if (client.heldKeysyms.size() >= kMaxHeldKeys) {
                         protocolFailure(client, "RFB client exceeded the bounded held-key limit");
-                        return;
+                        return false;
                     }
                     client.heldKeysyms.push_back(keysym);
                 }
@@ -784,7 +785,7 @@ private:
         if (!pressed || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Control)
             || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Alt)
             || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Meta)) {
-            return;
+            return true;
         }
 
         std::string text = utf8ForKeysym(keysym);
@@ -795,6 +796,7 @@ private:
             textEvent.textUtf8 = std::move(text);
             publishInput(textEvent);
         }
+        return true;
     }
 
     hyremote::InputViewport currentViewport() const
