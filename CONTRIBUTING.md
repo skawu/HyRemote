@@ -1,6 +1,6 @@
 # Contributing to HyRemote
 
-HyRemote is in an early architecture phase. Contributions are welcome, but changes must preserve the project's portability and separation of concerns.
+HyRemote is in an early product-development phase. Contributions are welcome, but changes must preserve the project's portability, product integration modes, and separation of concerns.
 
 ## Before coding
 
@@ -12,9 +12,16 @@ For non-trivial changes, start with a GitHub Issue describing:
 - public API impact;
 - Qt/private API impact;
 - platform-specific impact;
-- validation plan.
+- validation plan;
+- affected product milestone/version when applicable.
 
 Architecture-affecting changes should be discussed and recorded before implementation.
+
+## Product milestones and technical WBS
+
+HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/versioning.md`](docs/versioning.md).
+
+Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable.
 
 ## Core boundaries
 
@@ -30,13 +37,13 @@ Such dependencies belong behind adapters/backends.
 
 ## Integration modes
 
-HyRemote intentionally supports multiple integration styles. A contribution must not remove another mode merely to simplify one implementation:
+HyRemote intentionally supports three product integration styles. A contribution must not remove another mode merely to simplify one implementation:
 
 - Embedded C++ API;
 - Declarative QML API;
-- optional zero-code platform/QPA proxy.
+- Transparent QPA Proxy.
 
-The Embedded C++ API is the stable reference integration. The QML API wraps the same core. The zero-code path is optional and may have stronger Qt-version constraints.
+The Embedded C++ API is the stable reference integration. The QML API wraps the same core. The QPA Proxy is optional and may have stronger Qt-version constraints.
 
 ## Qt application types
 
@@ -106,6 +113,10 @@ Use concise conventional-style subjects where practical, for example:
 - `docs: record capture backend decision`
 - `test: add Quick3D compatibility case`
 
-## License
+## License and contributions
 
-The project license is intentionally not frozen during bootstrap. Do not add source files copied from external projects unless their license compatibility and attribution requirements have been reviewed first.
+HyRemote is licensed under the **Apache License 2.0**. Unless a contribution is explicitly marked otherwise and accepted under a compatible license, contributions intentionally submitted for inclusion in HyRemote are provided under the Apache License 2.0, consistent with Section 5 of that license.
+
+Do not add source or assets copied from external projects unless their license compatibility, attribution, and redistribution requirements have been reviewed first.
+
+The Apache License 2.0 does not grant trademark rights. Project names, logos, trademarks, and brand assets may have separate usage terms.
