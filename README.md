@@ -144,8 +144,12 @@ ctest --test-dir build -R "spike|async-spike"
 
 ## Use HyRemote in an application
 
-After installing HyRemote (or adding it as a source subdirectory), consumption is the same as for a Qt
-module:
+HyRemote exposes the same public CMake target in both supported consumption flows, but package discovery
+and source inclusion are intentionally different.
+
+### Installed SDK
+
+Point `CMAKE_PREFIX_PATH` at the installed HyRemote prefix, then use normal package discovery:
 
 ```cmake
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
@@ -156,6 +160,23 @@ target_link_libraries(MyApp PRIVATE
     HyRemote::RemoteAccess
 )
 ```
+
+### Source / vendored tree
+
+Add the HyRemote source tree directly; do **not** call `find_package(HyRemote)` for that same vendored
+copy:
+
+```cmake
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+add_subdirectory(path/to/HyRemote hyremote)
+
+target_link_libraries(MyApp PRIVATE
+    Qt6::Widgets
+    HyRemote::RemoteAccess
+)
+```
+
+The application-facing C++ code is identical for either consumption flow:
 
 ```cpp
 #include <HyRemote/RemoteAccess.h>
