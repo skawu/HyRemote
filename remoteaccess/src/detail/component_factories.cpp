@@ -3,6 +3,9 @@
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
 #include "widgets/widget_target.hpp"
 #endif
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+#include "quick/quick_target.hpp"
+#endif
 
 #include <mutex>
 #include <utility>
@@ -48,6 +51,12 @@ TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled
     TargetComponents widgets = createWidgetsTargetComponents(target, remoteInputEnabled);
     if (widgets.supported)
         return widgets;
+#endif
+
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+    TargetComponents quick = createQuickTargetComponents(target, remoteInputEnabled);
+    if (quick.supported)
+        return quick;
 #endif
 
     TargetComponents result;
