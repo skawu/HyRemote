@@ -76,10 +76,16 @@ void testDeclarativeImportAndSafeDefaults()
     // the public C++ facade. Configuration is accepted while Stopped.
     CHECK(!object->property("enabled").toBool());
     CHECK(object->property("state").toInt() == 0); // Stopped
+    CHECK(object->property("connectedClientCount").toULongLong() == 0);
     CHECK(object->property("listenAddress").toString() == QStringLiteral("127.0.0.1"));
     CHECK(object->property("port").toInt() == 5901);
     CHECK(object->property("remoteInputEnabled").toBool());
     CHECK(object->property("errorCode").toInt() == 0); // NoError
+
+    // Connection diagnostics are runtime-owned/read-only; QML cannot forge them by assigning a
+    // property value. Live 0->1->0 mirroring is exercised by the qml-basic standard-viewer E2E.
+    CHECK(!object->setProperty("connectedClientCount", QVariant::fromValue<qulonglong>(1)));
+    CHECK(object->property("connectedClientCount").toULongLong() == 0);
 }
 
 void testInvalidConfigurationDoesNotMutateAcceptedValue()
@@ -132,6 +138,7 @@ void testEnabledStartFailureIsTransactional()
 
     CHECK(!object->property("enabled").toBool());
     CHECK(object->property("state").toInt() == 0); // Stopped
+    CHECK(object->property("connectedClientCount").toULongLong() == 0);
     CHECK(object->property("errorCode").toInt() == 1); // InvalidConfiguration: no live target
     CHECK(!object->property("errorString").toString().isEmpty());
 }
