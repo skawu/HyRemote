@@ -25,3 +25,24 @@ add_test(
         -DMODULE_RUNTIME_DIR=$<TARGET_FILE_DIR:hyremote-qml>
         -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qml_module_test.cmake
 )
+
+# The public SDK owns one deployment helper. These configure-only fixtures use deterministic Qt
+# command doubles to prove that ordinary applications select qt_generate_deploy_app_script() while
+# declarative applications select qt_generate_deploy_qml_app_script() exclusively.
+add_test(
+    NAME hyremote-qml-deploy-helper-non-qml
+    COMMAND ${CMAKE_COMMAND}
+        -S ${CMAKE_CURRENT_SOURCE_DIR}/deploy_helper_fixture
+        -B ${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-non-qml
+        -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DTEST_QML=OFF
+)
+
+add_test(
+    NAME hyremote-qml-deploy-helper-qml
+    COMMAND ${CMAKE_COMMAND}
+        -S ${CMAKE_CURRENT_SOURCE_DIR}/deploy_helper_fixture
+        -B ${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
+        -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DTEST_QML=ON
+)
