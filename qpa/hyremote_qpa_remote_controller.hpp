@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHostAddress>
+#include <QList>
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
