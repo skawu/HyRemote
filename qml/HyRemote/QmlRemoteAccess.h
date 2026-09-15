@@ -2,7 +2,7 @@
 
 #include <QObject>
 #include <QTimer>
-#include <QtQml/qqmlintegration.h>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 #include <memory>
 
