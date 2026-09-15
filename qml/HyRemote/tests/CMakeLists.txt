@@ -15,18 +15,19 @@ target_compile_definitions(hyremote-qml-module-test
 
 add_dependencies(hyremote-qml-module-test hyremote-qml hyremote-qmlplugin)
 
-# The QML engine loads hyremote-qmlplugin from the module import directory. On Windows the plugin's
-# dependent hyremote-qml DLL is not guaranteed to be found from that loaded-module directory when
-# the test executable lives in qml/HyRemote/tests. Put the module runtime next to the test process
-# so this in-tree test has the same explicit runtime-visibility property that the installed SDK's
-# deployment helper provides. Linux resolves the module through its normal build-tree rpath.
+add_test(NAME hyremote-qml-module-test COMMAND hyremote-qml-module-test)
+
+# QML imports load the generated plugin from build/qml/HyRemote at runtime. Its backing shared
+# library must be discoverable through the platform loader as well as through QML's import path.
+# Do not depend on the developer machine's current directory or global PATH/LD_LIBRARY_PATH.
 if(WIN32)
-    add_custom_command(TARGET hyremote-qml-module-test POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:hyremote-qml>
-            $<TARGET_FILE_DIR:hyremote-qml-module-test>
-        VERBATIM
+    set_tests_properties(hyremote-qml-module-test PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:hyremote-qml>"
+    )
+elseif(UNIX)
+    set_tests_properties(hyremote-qml-module-test PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:hyremote-qml>"
     )
 endif()
-
-add_test(NAME hyremote-qml-module-test COMMAND hyremote-qml-module-test)
