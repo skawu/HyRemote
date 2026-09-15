@@ -17,7 +17,10 @@ using HyRemoteVncProbeAbiVersionFn = std::uint32_t (*)();
 using HyRemoteVncProbeCreateFn = void *(*)(std::uint16_t, std::uint16_t);
 using HyRemoteVncProbeUpdateRgbaFn = int (*)(void *, const std::uint8_t *, std::size_t);
 using HyRemoteVncProbeStartFn = int (*)(void *, std::uint16_t);
+using HyRemoteVncProbeStartIpv4Fn = int (*)(void *, std::uint8_t, std::uint8_t, std::uint8_t,
+                                            std::uint8_t, std::uint16_t);
 using HyRemoteVncProbeRunningFn = int (*)(void *);
 using HyRemoteVncProbePollEventFn = int (*)(void *, HyRemoteVncProbeEvent *);
+using HyRemoteVncProbeDroppedEventsFn = std::uint64_t (*)(void *);
 using HyRemoteVncProbeStopFn = int (*)(void *);
 using HyRemoteVncProbeDestroyFn = void (*)(void *);

@@ -30,6 +30,16 @@ target_link_libraries(hyremote-remoteaccess
         HyRemote::Core
 )
 
+# V0.0.1 correctness transport. It is intentionally an internal implementation detail of
+# RemoteAccess rather than a public application target. The backend uses Qt Network, which is
+# already part of the facade dependency surface, and introduces no protocol type into Core/API.
+if(HYREMOTE_WITH_VNC)
+    target_sources(hyremote-remoteaccess PRIVATE
+        src/transport/rfb_transport.cpp
+    )
+    target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_RFB_TRANSPORT=1)
+endif()
+
 set(HYREMOTE_REMOTEACCESS_WITH_WIDGETS FALSE CACHE INTERNAL
     "RemoteAccess was built with the Qt Widgets adapter" FORCE)
 if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
@@ -47,6 +57,26 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
             "RemoteAccess was built with the Qt Widgets adapter" FORCE)
     else()
         message(STATUS "  Widgets adapter skipped: Qt 6.8+ Widgets not found")
+    endif()
+endif()
+
+set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
+    "RemoteAccess was built with the Qt Quick adapter" FORCE)
+if(HYREMOTE_BUILD_QUICK_ADAPTER)
+    if(NOT TARGET Qt6::Quick)
+        find_package(Qt6 6.8 QUIET COMPONENTS Quick)
+    endif()
+
+    if(TARGET Qt6::Quick)
+        target_sources(hyremote-remoteaccess PRIVATE
+            src/quick/quick_target.cpp
+        )
+        target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
+        target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
+        set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
+            "RemoteAccess was built with the Qt Quick adapter" FORCE)
+    else()
+        message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
     endif()
 endif()
 
