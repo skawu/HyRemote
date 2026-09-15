@@ -8,6 +8,7 @@ on:
       - 'core/**'
       - 'remoteaccess/**'
       - 'qml/**'
+      - 'tests/consumer-installed-qml/**'
       - '.github/workflows/qml-api.yml'
   workflow_dispatch:
 
@@ -43,13 +44,14 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
 
-      - name: Configure, build and test — Linux
+      - name: Configure, build, test and install SDK — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/staged-sdk" \
             -DHYREMOTE_BUILD_CORE=ON \
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
             -DHYREMOTE_BUILD_QML_API=ON \
@@ -58,8 +60,23 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
+          cmake --install build
 
-      - name: Configure, build and test — Windows / MSVC x64
+      - name: Clean installed-SDK QML consumer — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S tests/consumer-installed-qml -B qml-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }};$PWD/staged-sdk" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/qml-consumer-install"
+          cmake --build qml-consumer --parallel
+          cmake --install qml-consumer
+          test -f "$PWD/qml-consumer-install/qml/HyRemote/qmldir"
+          test -n "$(find "$PWD/qml-consumer-install/qml/HyRemote" -maxdepth 1 -type f \( -name '*.so' -o -name '*.dll' \) -print -quit)"
+          QT_QPA_PLATFORM=offscreen "$PWD/qml-consumer-install/bin/hyremote-installed-qml-consumer"
+
+      - name: Configure, build, test and install SDK — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
@@ -69,6 +86,7 @@ jobs:
           cmake -S . -B build -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\staged-sdk" ^
             -DHYREMOTE_BUILD_CORE=ON ^
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
             -DHYREMOTE_BUILD_QML_API=ON ^
@@ -77,3 +95,19 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
           ctest --test-dir build --output-on-failure
+          cmake --install build
+
+      - name: Clean installed-SDK QML consumer — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          set "CMAKE_PREFIX_PATH=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }};%CD%\staged-sdk"
+          cmake -S tests\consumer-installed-qml -B qml-consumer -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\qml-consumer-install"
+          cmake --build qml-consumer --parallel
+          cmake --install qml-consumer
+          if not exist "%CD%\qml-consumer-install\qml\HyRemote\qmldir" exit /b 1
+          dir /b "%CD%\qml-consumer-install\qml\HyRemote\*.dll" >nul 2>nul || exit /b 1
+          set "QT_QPA_PLATFORM=offscreen"
+          "%CD%\qml-consumer-install\bin\hyremote-installed-qml-consumer.exe"
