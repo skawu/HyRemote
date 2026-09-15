@@ -2,6 +2,10 @@
 
 **Qt Embedded Remote Access Framework**
 
+<p align="center">
+  <img src="logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+</p>
+
 HyRemote is an open-source remote access framework for Qt applications. It is designed to add remote display and remote input capabilities to existing Qt applications without forcing an application to adopt a single integration model, rendering stack, transport, or SoC-specific implementation.
 
 > Status: **pre-alpha**. Product capabilities, compatibility claims, and release milestones are still being completed toward the first GA release.
@@ -128,4 +132,17 @@ Contribution and architecture rules are documented in [`CONTRIBUTING.md`](CONTRI
 
 HyRemote is licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
 
-Third-party components remain subject to their own licenses and attribution requirements. Project names, logos, trademarks, and other brand assets are not granted trademark rights by the Apache License 2.0; any separate brand-asset terms must be stated explicitly.
+Third-party components remain subject to their own licenses and attribution requirements.
+
+### Logo and brand assets
+
+<p align="center">
+  <img src="logo/huayan-logo-single.png" alt="Huayan brand mark" width="96">
+</p>
+
+| Asset | Project use |
+| --- | --- |
+| [`logo/huayan-software-horizontal.png`](logo/huayan-software-horizontal.png) | Primary repository/project lockup; rendered at the top of this README |
+| [`logo/huayan-logo-single.png`](logo/huayan-logo-single.png) | Compact brand mark for square/icon placements and project documentation |
+
+The image files are distributed with this repository under Apache-2.0. Apache License 2.0 section 6 does **not** grant trademark rights: copying/redistribution of the files does not grant permission to present a fork, derivative, or unrelated product as the owner of these marks. Downstream products should use their own branding unless separately authorized.
