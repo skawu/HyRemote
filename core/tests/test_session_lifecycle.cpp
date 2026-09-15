@@ -320,6 +320,145 @@ HYR_TEST(a_transport_exception_does_not_terminate_the_host_process)
     HYR_CHECK_EQ(running.transport->stopCalls(), 1);
 }
 
+// --- R2-B1: teardown ownership ---------------------------------------------------------------
+
+HYR_TEST(r2b1_concurrent_stop_callers_produce_exactly_one_teardown)
+{
+    constexpr std::size_t kCallers = 4;
+
+    RunningSession running;
+    HYR_CHECK(running.start());
+    HYR_CHECK(waitFor([&] { return running.session->stats().workersStarted == 2; }));
+
+    TestBarrier barrier(kCallers);
+    std::atomic<int> returned{0};
+    std::vector<std::thread> callers;
+    callers.reserve(kCallers);
+    for (std::size_t i = 0; i < kCallers; ++i) {
+        callers.emplace_back([&] {
+            barrier.wait();  // release every stop() caller at the same instant
+            running.session->stop();
+            returned.fetch_add(1);
+        });
+    }
+    for (std::thread &caller : callers)
+        caller.join();
+
+    // Every caller returned, and the ordered teardown ran exactly once: the claim is taken
+    // atomically under the mutex, so the other callers wait for it instead of racing on the same
+    // component stop / worker join sequence.
+    HYR_CHECK_EQ(returned.load(), int{kCallers});
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK_EQ(running.transport->stopCalls(), 1);
+
+    // Nothing was destroyed, closed twice or joined twice while the callers ran.
+    HYR_CHECK_EQ(*running.source->destroyed, 0);
+    HYR_CHECK_EQ(*running.transport->destroyed, 0);
+
+    // And the Session is still usable afterwards.
+    HYR_CHECK(running.session->setCaptureSource(std::make_unique<FakeCaptureSource>()));
+    HYR_CHECK(running.session->setTransport(std::make_unique<FakeTransport>()));
+    HYR_CHECK(running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
+// --- R2-B2: stop() during Starting cancels the in-progress start -----------------------------
+
+HYR_TEST(r2b2_stop_while_the_capture_source_start_is_in_progress)
+{
+    EnqueueGate gate;
+    gate.close();
+
+    RunningSession running;
+    running.prepare();
+    running.source->startGate = &gate;
+
+    bool started = true;
+    std::thread starter([&] { started = running.session->start(); });
+
+    HYR_CHECK(gate.waitForEntered(1));
+    HYR_CHECK_EQ(running.session->state(), SessionState::Starting);
+
+    // stop() must be able to win while the external start is still in progress.
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+
+    gate.open();
+    starter.join();
+
+    // The in-progress start() noticed the cancellation: it returns false, it never publishes
+    // `Running`, and it stops the component that finished starting after the cancellation.
+    HYR_CHECK(!started);
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK_EQ(running.transport->stopCalls(), 0);
+    HYR_CHECK(running.transport->events().empty());
+    HYR_CHECK_EQ(running.source->requestCalls(), 0);
+    HYR_CHECK_EQ(running.session->stats().workersStarted, 0);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, 1);
+    HYR_CHECK(running.session->lastError().has_value());
+    HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::StartCancelled);
+
+    // The Session remains usable: a later start/stop cycle works normally.
+    HYR_CHECK(running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, 1);
+}
+
+HYR_TEST(r2b2_stop_while_the_transport_start_is_in_progress)
+{
+    EnqueueGate gate;
+    gate.close();
+
+    RunningSession running;
+    running.prepare();
+    running.transport->startGate = &gate;
+
+    bool started = true;
+    std::thread starter([&] { started = running.session->start(); });
+
+    HYR_CHECK(gate.waitForEntered(1));
+    HYR_CHECK_EQ(running.session->state(), SessionState::Starting);
+
+    // The workers exist and are waiting in the startup handshake; no request may be issued yet.
+    HYR_CHECK(waitFor([&] { return running.session->stats().workersStarted == 2; }));
+    HYR_CHECK_EQ(running.source->requestCalls(), 0);
+
+    // stop() wins while the transport start is still in progress: it stops the capture source and
+    // joins the workers it already owns.
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+
+    gate.open();
+    starter.join();
+
+    HYR_CHECK(!started);
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    // The source was stopped once (by the teardown); the transport, which finished starting after
+    // the cancellation, was stopped once by the cancelled start().
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK_EQ(running.transport->stopCalls(), 1);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, 1);
+    HYR_CHECK_EQ(running.source->requestCalls(), 0);
+    HYR_CHECK_EQ(running.session->stats().framesDispatched, std::uint64_t{0});
+    HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::StartCancelled);
+    HYR_CHECK_EQ(*running.source->destroyed, 0);
+    HYR_CHECK_EQ(*running.transport->destroyed, 0);
+
+    // A later cycle works, and the cancelled run left no worker behind.
+    HYR_CHECK(running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
 // --- B1: startup race regression -------------------------------------------------------------
 
 HYR_TEST(b1_workers_created_during_starting_survive_the_running_publication)

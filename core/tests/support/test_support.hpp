@@ -48,6 +48,11 @@ inline void fail(const char *file, int line, const std::string &message)
 
 inline int runAll()
 {
+    // Unbuffered so that the per-case progress prints are never lost when a case crashes and stay
+    // interleaved correctly with anything the run writes to stderr. (MSVC requires a null buffer to
+    // come with _IONBF; _IOLBF with a null buffer trips the invalid-parameter handler.)
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+
     int failed = 0;
     for (const Case &testCase : registry()) {
         try {

@@ -143,6 +143,37 @@ private:
     std::size_t m_entered = 0;
 };
 
+// Reusable barrier: every participating thread blocks in wait() until `count` threads have
+// arrived, so concurrent callers can be released at the same instant deterministically.
+class TestBarrier
+{
+public:
+    explicit TestBarrier(std::size_t count)
+        : m_count(count)
+    {
+    }
+
+    void wait()
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        ++m_arrived;
+        if (m_arrived == m_count) {
+            m_released = true;
+            lock.unlock();
+            m_cv.notify_all();
+            return;
+        }
+        m_cv.wait(lock, [this] { return m_released; });
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+    const std::size_t m_count;
+    std::size_t m_arrived = 0;
+    bool m_released = false;
+};
+
 // ---------------------------------------------------------------------------
 // CaptureSource
 // ---------------------------------------------------------------------------
