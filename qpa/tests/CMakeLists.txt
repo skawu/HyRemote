@@ -86,3 +86,15 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 15
     )
 endif()
+
+# QPA-04 deterministic model gate. This is deliberately transport/capture independent; it pins the
+# application-canvas semantics before the same-runtime compositor is allowed to consume them.
+add_executable(hyremote-qpa-application-surface-model-test
+    qpa_application_surface_model_test.cpp
+    ../application_surface_model.cpp
+)
+target_compile_features(hyremote-qpa-application-surface-model-test PRIVATE cxx_std_17)
+target_link_libraries(hyremote-qpa-application-surface-model-test PRIVATE Qt6::Core)
+
+add_test(NAME hyremote-qpa-application-surface-model-test COMMAND hyremote-qpa-application-surface-model-test)
+set_tests_properties(hyremote-qpa-application-surface-model-test PROPERTIES TIMEOUT 15)
