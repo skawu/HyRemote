@@ -1,6 +1,5 @@
-#include "input_probe.hpp"
-
 #include <QApplication>
+#include <QCoreApplication>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -13,17 +12,13 @@ namespace {
 class InputProbe final : public QObject
 {
 public:
-    explicit InputProbe(QWidget *root)
-        : QObject(root)
-        , m_root(root)
-    {
-    }
+    using QObject::QObject;
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
         auto *widget = qobject_cast<QWidget *>(watched);
-        if (!widget || !m_root || (widget != m_root && !m_root->isAncestorOf(widget)))
+        if (!widget)
             return false;
 
         switch (event->type()) {
@@ -43,14 +38,16 @@ protected:
         }
         return false;
     }
-
-private:
-    QWidget *m_root = nullptr;
 };
+
+void installGlobalInputProbe()
+{
+    auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
+    if (!app)
+        return;
+    app->installEventFilter(new InputProbe(app));
+}
 
 }  // namespace
 
-void installInputProbe(QApplication &app, QWidget &root)
-{
-    app.installEventFilter(new InputProbe(&root));
-}
+Q_COREAPP_STARTUP_FUNCTION(installGlobalInputProbe)
