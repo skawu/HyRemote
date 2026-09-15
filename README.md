@@ -11,7 +11,7 @@ Remote display and remote input for existing Qt Widgets and Qt Quick application
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/status-pre--alpha-orange.svg" alt="Status: pre-alpha">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20x86__64-lightgrey.svg" alt="Platform: Windows | Linux x86_64">
-  <img src="https://img.shields.io/badge/Qt-6.8%2B-41CD52.svg" alt="Qt 6.8+">
+  <img src="https://img.shields.io/badge/Qt-6.8.x-41CD52.svg" alt="Qt 6.8.x reference line">
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.21%2B-064f8c.svg" alt="CMake 3.21+">
 </p>
@@ -20,15 +20,16 @@ Remote display and remote input for existing Qt Widgets and Qt Quick application
   <a href="https://github.com/skawu/HyRemote/actions/workflows/remoteaccess-facade.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/remoteaccess-facade.yml/badge.svg" alt="RemoteAccess facade CI"></a>
   <a href="https://github.com/skawu/HyRemote/actions/workflows/sdk-consumption.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/sdk-consumption.yml/badge.svg" alt="SDK consumption CI"></a>
   <a href="https://github.com/skawu/HyRemote/actions/workflows/widgets-adapter.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/widgets-adapter.yml/badge.svg" alt="Widgets adapter CI"></a>
-  <a href="https://github.com/skawu/HyRemote/actions/workflows/transport-rustvnc-ffi-spike.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/transport-rustvnc-ffi-spike.yml/badge.svg" alt="Rust VNC transport spike CI"></a>
+  <a href="https://github.com/skawu/HyRemote/actions/workflows/quick-adapter.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/quick-adapter.yml/badge.svg" alt="Quick adapter CI"></a>
 </p>
 
 HyRemote is an open-source remote access framework for Qt applications. It adds remote display and
 remote input to existing Qt Widgets and Qt Quick applications without forcing an application to adopt a
 single integration model, rendering stack, transport, or SoC-specific implementation.
 
-> **Status: pre-alpha.** The public facade, the Core contract and the SDK consumption paths exist and
-> are exercised by CI; capture backends, examples and the QML/QPA integration modes are still being
+> **Status: pre-alpha.** The Core contract, public C++ facade, standalone SDK/source-consumption path,
+> Widgets/Quick target adapters and bounded x86 RFB correctness transport are in place. Product examples,
+> complete dual-OS acceptance, the declarative QML mode and the Transparent QPA Proxy are still being
 > productized toward `V1.0.0.0`. See [Status](#status).
 
 - [Highlights](#highlights)
@@ -67,14 +68,16 @@ single integration model, rendering stack, transport, or SoC-specific implementa
 | Version | Product milestone | State |
 | --- | --- | --- |
 | `V0.0.1.0` | x86_64 (Windows + Linux) - Embedded C++ API | in progress |
-| `V0.0.2.0` | x86_64 (Windows + Linux) - Declarative QML API | planned |
-| `V0.0.3.0` | x86_64 (Windows + Linux) - Transparent QPA Proxy, local + remote | planned |
+| `V0.0.2.0` | x86_64 (Windows + Linux) - Declarative QML API | in progress |
+| `V0.0.3.0` | x86_64 (Windows + Linux) - Transparent QPA Proxy, local + remote | in progress |
 | `V1.0.0.0` | x86_64 GA - all three integration modes productized | planned |
 
-The Core session/frame/dispatch contract, the `RemoteAccess` facade, the install/export package and the
-Widgets capture/input adapter are merged; examples, getting-started guides and the QML/QPA modes are
-outstanding. Execution order: [`docs/development-roadmap.md`](docs/development-roadmap.md); version
-semantics: [`docs/versioning.md`](docs/versioning.md).
+The Core session/frame/dispatch contract, the `RemoteAccess` facade, install/export package,
+Widgets/Quick capture and input adapters, and the bounded cross-platform RFB 3.8 correctness baseline
+are merged. Product examples and final acceptance evidence remain active; QML and QPA implementation
+proceed in parallel without redefining the shared runtime semantics. Execution order:
+[`docs/development-roadmap.md`](docs/development-roadmap.md); version semantics:
+[`docs/versioning.md`](docs/versioning.md).
 
 ## Requirements
 
@@ -84,11 +87,11 @@ the source-consumption workflows.
 
 | Requirement | Notes |
 | --- | --- |
-| C++17 toolchain | MSVC 19.4x, GCC, Clang - any conforming C++17 compiler |
-| CMake | 3.21 or newer; Ninja recommended |
-| Qt | Qt 6.8 or newer for the application-facing product targets. Which Qt modules a configuration needs is decided by CMake, which reports every missing module together with the option that satisfies or disables it |
-| Operating systems | **x86_64 reference: Windows and Linux** - both are gated for every pre-GA milestone, and one does not substitute for the other. Near-term embedded baseline: **Embedded Linux**, with Rockchip and NXP i.MX class platforms as the current high-priority candidates. **OpenHarmony** is a long-term direction and deliberately not a delivery gate |
-| Optional toolchains and SDKs | Only for the components that are explicitly enabled: a Rust toolchain for the optional VNC transport spike, and the platform SDKs for the experimental GBM/DMA-BUF and hardware-encoder backends (`HYREMOTE_WITH_GBM`, `HYREMOTE_WITH_RKMPP`, both `OFF` by default) |
+| C++17 toolchain | A conforming C++17 toolchain is required. A compiler/version becomes a support claim only after its configuration is recorded in [`docs/compatibility.md`](docs/compatibility.md) |
+| CMake | 3.21 or newer; Ninja is commonly used by the project but is not the product architecture boundary |
+| Qt | **Qt 6.8.x is the current V1.0 reference/support line.** Other Qt lines remain unverified unless explicitly listed in the compatibility matrix; do not infer a standing `6.8+` support promise from the CMake minimum |
+| Operating systems | **x86_64 reference: Windows and Linux** - both are gated for every pre-GA milestone, and one does not substitute for the other. Near-term embedded baseline: **Embedded Linux**, with Rockchip and NXP i.MX class platforms as current high-priority candidates. **OpenHarmony** is a long-term direction and deliberately not a V1.0 delivery gate |
+| Optional toolchains and SDKs | Only for explicitly enabled experimental/spike components. Production x86 consumers do not require a Rust toolchain; GBM/DMA-BUF and RKMPP remain opt-in experimental backends (`HYREMOTE_WITH_GBM`, `HYREMOTE_WITH_RKMPP`, both `OFF` by default) |
 | Support claims | A platform or integration mode counts as supported only with recorded evidence; per-configuration status is in [`docs/compatibility.md`](docs/compatibility.md) and version semantics in [`docs/versioning.md`](docs/versioning.md) |
 
 The three product integration modes (Embedded C++, Declarative QML, Transparent QPA Proxy) are part of the
@@ -130,10 +133,11 @@ ctest --test-dir build -R "spike|async-spike"
 | `HYREMOTE_BUILD_CORE` | `ON` | Qt-free `hyremote-core` session/frame/dispatch library |
 | `HYREMOTE_BUILD_REMOTE_ACCESS` | `ON` | public `HyRemote::RemoteAccess` facade (skipped with a status message on a Qt-less top-level build) |
 | `HYREMOTE_BUILD_WIDGETS_ADAPTER` | `ON` | Qt Widgets target adapter (built when Qt Widgets is available) |
+| `HYREMOTE_BUILD_QUICK_ADAPTER` | `ON` | Qt Quick target adapter (built when Qt Quick is available) |
 | `HYREMOTE_BUILD_TESTS` | `ON` | Core/RemoteAccess test suites registered with CTest |
-| `HYREMOTE_BUILD_EXAMPLES` | `ON` | reserved for the V0.0.1.0 example suite; no targets yet |
+| `HYREMOTE_BUILD_EXAMPLES` | `ON` | product examples when present in the current milestone branch |
 | `HYREMOTE_BUILD_SPIKES` | `OFF` | throwaway spike harnesses under `spikes/` (not part of the production graph) |
-| `HYREMOTE_WITH_VNC` | `ON` | first VNC/RFB transport backend, when available |
+| `HYREMOTE_WITH_VNC` | `ON` | internal bounded RFB 3.8 correctness transport used by the x86 product path |
 | `HYREMOTE_WITH_QPA_PROXY` | `OFF` | Transparent QPA Proxy mode (version-coupled, isolated from Core) |
 | `HYREMOTE_WITH_GBM` | `OFF` | experimental GBM/DMA-BUF-oriented backends |
 | `HYREMOTE_WITH_RKMPP` | `OFF` | experimental Rockchip MPP encoder backend |
@@ -171,7 +175,8 @@ remote.stop();
 
 `QWidget` and `QQuickWindow` targets use the same product-level facade; internal `Session`,
 `RemoteFrame`, capture, input and transport objects are not part of the application contract. The
-declarative QML form (`import HyRemote; RemoteAccess { target: mainWindow }`) arrives with `V0.0.2.0`.
+declarative QML form (`import HyRemote; RemoteAccess { target: mainWindow }`) is the V0.0.2.0 integration
+mode and wraps the same runtime rather than creating a second stack.
 
 - Consumption contract: [`docs/sdk-consumption.md`](docs/sdk-consumption.md)
 - External consumer fixtures: [`tests/consumer-installed-sdk`](tests/consumer-installed-sdk),
@@ -182,7 +187,7 @@ declarative QML form (`import HyRemote; RemoteAccess { target: mainWindow }`) ar
 | Path | Contents |
 | --- | --- |
 | `core/` | `hyremote-core`: session, `RemoteFrame`, mailbox/dispatch and capability contract. Qt-free, protocol-free and covered by the deterministic test suite |
-| `remoteaccess/` | public product facade (`HyRemote::RemoteAccess`) and its tests |
+| `remoteaccess/` | public product facade (`HyRemote::RemoteAccess`), target adapters, internal x86 transport and tests |
 | `tests/` | external consumption fixtures: installed-SDK consumer and source consumer |
 | `spikes/` | throwaway architecture evidence harnesses: `capture`, `async-capture`, `vnc-transport-rust-ffi` |
 | `docs/` | architecture, ADRs, product/roadmap, SDK, security, compatibility and spike evidence |
@@ -204,7 +209,7 @@ declarative QML form (`import HyRemote; RemoteAccess { target: mainWindow }`) ar
 | [`compatibility.md`](docs/compatibility.md) | Recorded status per configuration |
 | [`dependency-policy.md`](docs/dependency-policy.md) | Dependency and license review rules |
 | [`widgets-capture.md`](docs/widgets-capture.md), [`capture-spike.md`](docs/capture-spike.md), [`async-capture-spike.md`](docs/async-capture-spike.md) | Capture evidence for Widgets/Quick/Quick3D/OpenGLWidget/QQuickWidget |
-| [`neatvnc-evaluation.md`](docs/neatvnc-evaluation.md), [`x86-vnc-transport-evaluation.md`](docs/x86-vnc-transport-evaluation.md) | Transport backend evaluation |
+| [`neatvnc-evaluation.md`](docs/neatvnc-evaluation.md), [`x86-vnc-transport-evaluation.md`](docs/x86-vnc-transport-evaluation.md) | Transport backend evaluation and bounded selection evidence |
 
 ## Compatibility and support
 
