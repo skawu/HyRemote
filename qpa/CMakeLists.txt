@@ -1,9 +1,11 @@
 include(GNUInstallDirs)
 
 # Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
-# Private QPA types and the QPA-02 interception seam remain isolated here, while QPA-03 remote
+# Private QPA types and the QPA-02 interception seam remain isolated here, while QPA-03/04 remote
 # runtime composition reuses the same public HyRemote::RemoteAccess facade as C++ and QML modes.
 add_library(hyremote-qpa-platform MODULE
+    application_surface_model.cpp
+    composite_target.cpp
     hyremote_platform_plugin.cpp
     hyremote_qpa_interception.cpp
     hyremote_qpa_remote_controller.cpp
@@ -17,6 +19,10 @@ set_target_properties(hyremote-qpa-platform PROPERTIES
 )
 
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
+target_include_directories(hyremote-qpa-platform
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+)
 target_link_libraries(hyremote-qpa-platform
     PRIVATE
         Qt6::Core
@@ -25,7 +31,7 @@ target_link_libraries(hyremote-qpa-platform
         HyRemote::RemoteAccess
 )
 
-# QApplication can expose its real top-level QWidget as the existing public RemoteAccess target.
+# QApplication can expose its real top-level QWidget through the shared RemoteAccess adapter chain.
 # Keep Widgets optional at the QPA package level so QGuiApplication/Qt Quick applications do not
 # acquire a Widgets dependency solely because transparent mode is enabled.
 if(TARGET Qt6::Widgets)
