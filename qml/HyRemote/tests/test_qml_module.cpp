@@ -42,24 +42,32 @@ void waitForComponent(QQmlComponent &component)
     }
 }
 
+std::unique_ptr<QObject> createInline(QQmlEngine &engine, const char *qml, const char *name)
+{
+    QQmlComponent component(&engine);
+    component.setData(qml, QUrl(QString::fromLatin1(name)));
+    waitForComponent(component);
+    CHECK(component.status() == QQmlComponent::Ready);
+    if (component.status() != QQmlComponent::Ready)
+        return {};
+    return std::unique_ptr<QObject>(component.create());
+}
+
 void testDeclarativeImportAndSafeDefaults()
 {
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
 
-    QQmlComponent component(&engine);
-    component.setData(R"QML(
-        import HyRemote 1.0
-        RemoteAccess {
-            port: 5901
-            remoteInputEnabled: true
-        }
-    )QML",
-                      QUrl(QStringLiteral("inline:hyremote-test.qml")));
-    waitForComponent(component);
-    CHECK(component.status() == QQmlComponent::Ready);
-
-    std::unique_ptr<QObject> object(component.create());
+    std::unique_ptr<QObject> object = createInline(
+        engine,
+        R"QML(
+            import HyRemote 1.0
+            RemoteAccess {
+                port: 5901
+                remoteInputEnabled: true
+            }
+        )QML",
+        "inline:hyremote-test.qml");
     CHECK(object != nullptr);
     if (!object)
         return;
@@ -79,16 +87,13 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
 
-    QQmlComponent component(&engine);
-    component.setData(R"QML(
-        import HyRemote 1.0
-        RemoteAccess {}
-    )QML",
-                      QUrl(QStringLiteral("inline:hyremote-invalid-config.qml")));
-    waitForComponent(component);
-    CHECK(component.status() == QQmlComponent::Ready);
-
-    std::unique_ptr<QObject> object(component.create());
+    std::unique_ptr<QObject> object = createInline(
+        engine,
+        R"QML(
+            import HyRemote 1.0
+            RemoteAccess {}
+        )QML",
+        "inline:hyremote-invalid-config.qml");
     CHECK(object != nullptr);
     if (!object)
         return;
@@ -104,6 +109,33 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
     CHECK(object->property("errorString").toString().isEmpty());
 }
 
+void testEnabledStartFailureIsTransactional()
+{
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
+
+    // A declarative request to enable the service is allowed, but with no target the shared C++
+    // facade must reject start(). The wrapper must roll the request back instead of leaving QML
+    // claiming that a listener/service is enabled.
+    std::unique_ptr<QObject> object = createInline(
+        engine,
+        R"QML(
+            import HyRemote 1.0
+            RemoteAccess {
+                enabled: true
+            }
+        )QML",
+        "inline:hyremote-transactional-start.qml");
+    CHECK(object != nullptr);
+    if (!object)
+        return;
+
+    CHECK(!object->property("enabled").toBool());
+    CHECK(object->property("state").toInt() == 0); // Stopped
+    CHECK(object->property("errorCode").toInt() == 1); // InvalidConfiguration: no live target
+    CHECK(!object->property("errorString").toString().isEmpty());
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -111,6 +143,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     testDeclarativeImportAndSafeDefaults();
     testInvalidConfigurationDoesNotMutateAcceptedValue();
+    testEnabledStartFailureIsTransactional();
 
     if (failures != 0)
         std::cerr << failures << " QML module checks failed\n";
