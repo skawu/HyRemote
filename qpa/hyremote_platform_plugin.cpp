@@ -69,11 +69,17 @@ public:
     }
     QPlatformWindow *createPlatformWindow(QWindow *window) const override
     {
-        return m_delegate->createPlatformWindow(window);
+        QPlatformWindow *platformWindow = m_delegate->createPlatformWindow(window);
+        if (platformWindow)
+            ensureRemoteControllerStarted();
+        return platformWindow;
     }
     QPlatformWindow *createForeignWindow(QWindow *window, WId id) const override
     {
-        return m_delegate->createForeignWindow(window, id);
+        QPlatformWindow *platformWindow = m_delegate->createForeignWindow(window, id);
+        if (platformWindow)
+            ensureRemoteControllerStarted();
+        return platformWindow;
     }
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override
     {
@@ -99,12 +105,10 @@ public:
     }
     void initialize() override
     {
+        // Initializing the platform integration must not itself open a remote listener. The private
+        // RemoteController is armed lazily after a real native platform window has been created, at
+        // which point the application object/window lifecycle is available for safe target discovery.
         m_delegate->initialize();
-        m_remoteController = std::make_unique<::HyRemote::Qpa::RemoteController>(m_remoteConfig);
-        if (!m_remoteController->start()) {
-            qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition";
-            m_remoteController.reset();
-        }
     }
     void destroy() override
     {
@@ -181,9 +185,22 @@ protected:
     }
 
 private:
+    void ensureRemoteControllerStarted() const
+    {
+        if (m_remoteController)
+            return;
+
+        auto controller = std::make_unique<::HyRemote::Qpa::RemoteController>(m_remoteConfig);
+        if (!controller->start()) {
+            qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition";
+            return;
+        }
+        m_remoteController = std::move(controller);
+    }
+
     std::unique_ptr<QPlatformIntegration> m_delegate;
     ::HyRemote::Qpa::RemoteConfig m_remoteConfig;
-    std::unique_ptr<::HyRemote::Qpa::RemoteController> m_remoteController;
+    mutable std::unique_ptr<::HyRemote::Qpa::RemoteController> m_remoteController;
 };
 
 class HyRemotePlatformIntegrationPlugin final : public QPlatformIntegrationPlugin
