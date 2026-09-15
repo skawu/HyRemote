@@ -45,6 +45,12 @@ using InterceptionCallback = std::function<void(const InterceptionEvent &)>;
 // attached only to the public QWindow QObject lifetime and to
 // QPlatformSurfaceEvent notifications delivered to that QWindow. It never wraps,
 // replaces, retains or deletes a native platform object.
+//
+// Backing-store interception is intentionally creation-only in QPA-02. Qt 6.8.3
+// exposes no ownership-safe public destruction/flush observer for QBackingStore;
+// inventing one here would require wrapping QPlatformBackingStore and could change
+// its private RHI/backing-store semantics. A later presentation gate must qualify
+// any stronger interception explicitly before using it.
 class InterceptionSeam final : public QObject
 {
 public:
@@ -65,7 +71,6 @@ private:
         bool visible = false;
         bool topLevel = false;
         bool platformWindowCreated = false;
-        bool backingStoreCreated = false;
     };
 
     WindowRecord &ensureTracked(QWindow *window);
