@@ -32,7 +32,7 @@ public:
         auto *layout = new QVBoxLayout(central);
 
         auto *intro = new QLabel(
-            QStringLiteral("Ordinary Qt Widgets application — local UI remains authoritative."),
+            QStringLiteral("Operations console for local equipment monitoring and command entry."),
             central);
         intro->setWordWrap(true);
         layout->addWidget(intro);
@@ -59,7 +59,7 @@ public:
         layout->addWidget(progress);
 
         auto *notes = new QPlainTextEdit(central);
-        notes->setPlaceholderText(QStringLiteral("Operator notes — useful for local/remote text input checks"));
+        notes->setPlaceholderText(QStringLiteral("Enter shift handover notes"));
         notes->setPlainText(QStringLiteral("Shift handover: inspect gearbox temperature trend."));
         layout->addWidget(notes, 1);
 
@@ -96,7 +96,7 @@ public:
             auto *dialogLayout = new QVBoxLayout(dialog);
             auto *headline = new QLabel(QStringLiteral("Live diagnostics"), dialog);
             auto *detail = new QLabel(
-                QStringLiteral("This is a separate top-level Qt window so Transparent QPA can demonstrate multi-surface composition without application integration code."),
+                QStringLiteral("Secondary diagnostics view for device state and operator acknowledgement."),
                 dialog);
             detail->setWordWrap(true);
             auto *field = new QLineEdit(QStringLiteral("Acknowledgement text"), dialog);
