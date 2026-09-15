@@ -6,6 +6,7 @@ Rectangle {
     height: 220
     color: "#202733"
     property bool remoteControlEnabled: false
+    property int connectedClientCount: 0
 
     Text {
         x: 20
@@ -36,7 +37,6 @@ Rectangle {
             id: mouse
             anchors.fill: parent
             onClicked: {
-                status.text = "Remote pointer delivered"
                 editor.forceActiveFocus()
             }
         }
@@ -45,10 +45,10 @@ Rectangle {
     Text {
         id: status
         x: 180
-        y: 70
+        y: 66
         width: 160
-        height: 40
-        text: "Running"
+        height: 48
+        text: "Listening\nclients: " + root.connectedClientCount
         color: "#f2f4f8"
         wrapMode: Text.WordWrap
     }
