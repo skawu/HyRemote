@@ -12,27 +12,41 @@ include(HyRemoteProjectOptions)
 
 include(CTest)
 
-# Implementation targets are intentionally not frozen during bootstrap.
-# They will be added after SPIKE-01 and ARCH-01 establish the first stable
-# capture/frame/session boundaries.
-
 message(STATUS "Configuring HyRemote ${PROJECT_VERSION}")
-message(STATUS "  Build core:     ${HYREMOTE_BUILD_CORE}")
-message(STATUS "  Build tests:    ${HYREMOTE_BUILD_TESTS}")
-message(STATUS "  Build examples: ${HYREMOTE_BUILD_EXAMPLES}")
-message(STATUS "  VNC backend:    ${HYREMOTE_WITH_VNC}")
-message(STATUS "  Build spikes:   ${HYREMOTE_BUILD_SPIKES}")
+message(STATUS "  Build core:          ${HYREMOTE_BUILD_CORE}")
+message(STATUS "  Build RemoteAccess:  ${HYREMOTE_BUILD_REMOTE_ACCESS}")
+message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
+message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
+message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
+message(STATUS "  Build spikes:        ${HYREMOTE_BUILD_SPIKES}")
 
-# hyremote-core: the production session/frame/dispatch contract frozen by ARCH-01
-# (docs/adr/0001-core-boundaries.md, 0002-remoteframe-lifetime-timestamps.md,
-# 0003-threading-backpressure.md). UI-neutral and free of Qt/protocol/platform types.
+# hyremote-core: the production session/frame/dispatch contract frozen by ARCH-01.
+# UI-neutral and free of Qt/protocol/platform types.
 if(HYREMOTE_BUILD_CORE)
     add_subdirectory(core)
 endif()
 
-# Throwaway architecture spike harnesses. They are not part of the core build
-# graph, define no public API, and are expected to be deleted once the captured
-# architecture decisions are implemented. See docs/capture-spike.md.
+# Product-facing C++ facade. Keep bare Core builds usable on hosts without Qt: when HyRemote is
+# configured as the top-level project and Qt is unavailable, the product target is skipped with an
+# explicit status message. A source-consumer subproject, however, is expected to provide its Qt SDK
+# and fails if the product target was requested but Qt Core/Network cannot be resolved.
+if(HYREMOTE_BUILD_REMOTE_ACCESS)
+    if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::Network)
+        find_package(Qt6 6.8 QUIET COMPONENTS Core Network)
+    endif()
+
+    if(TARGET Qt6::Core AND TARGET Qt6::Network)
+        add_subdirectory(remoteaccess)
+    elseif(PROJECT_IS_TOP_LEVEL)
+        message(STATUS "  RemoteAccess target skipped: Qt 6.8+ Core/Network not found")
+    else()
+        message(FATAL_ERROR
+            "HYREMOTE_BUILD_REMOTE_ACCESS=ON requires Qt 6.8+ Core and Network. "
+            "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the product target explicitly.")
+    endif()
+endif()
+
+# Throwaway architecture spike harnesses. They are not part of the production build graph.
 if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/capture)
     add_subdirectory(spikes/async-capture)
