@@ -69,6 +69,10 @@ if(TARGET Qt6::Widgets)
     target_link_libraries(hyremote-qpa-remote-config-test PRIVATE Qt6::Widgets)
     target_compile_definitions(hyremote-qpa-remote-config-test PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
 endif()
+if(TARGET Qt6::Quick)
+    target_link_libraries(hyremote-qpa-remote-config-test PRIVATE Qt6::Quick)
+    target_compile_definitions(hyremote-qpa-remote-config-test PRIVATE HYREMOTE_QPA_HAS_QUICK=1)
+endif()
 
 add_test(NAME hyremote-qpa-remote-config-test COMMAND hyremote-qpa-remote-config-test)
 set_tests_properties(hyremote-qpa-remote-config-test PROPERTIES TIMEOUT 15)
@@ -82,11 +86,7 @@ if(TARGET Qt6::Widgets)
     )
     target_compile_features(hyremote-qpa-auto-remoteaccess-smoke PRIVATE cxx_std_17)
     target_link_libraries(hyremote-qpa-auto-remoteaccess-smoke
-        PRIVATE
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Network
-            Qt6::Widgets
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Widgets
     )
     add_dependencies(hyremote-qpa-auto-remoteaccess-smoke hyremote-qpa-platform)
 
@@ -96,20 +96,13 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 15
     )
 
-    # QPA-04 product E2E: complete one RFB 3.8 connection, advertise DesktopSize, then keep that
-    # exact socket alive while an independent dialog expands the application canvas, the primary
-    # window hides, and the primary/dialog set changes again. A stop/restart listener implementation
-    # necessarily disconnects this viewer and fails the test.
+    # Independent QWidget dialog/secondary-window continuity through one RFB socket.
     add_executable(hyremote-qpa-multi-surface-connection-smoke
         qpa_multi_surface_connection_smoke.cpp
     )
     target_compile_features(hyremote-qpa-multi-surface-connection-smoke PRIVATE cxx_std_17)
     target_link_libraries(hyremote-qpa-multi-surface-connection-smoke
-        PRIVATE
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Network
-            Qt6::Widgets
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Widgets
     )
     add_dependencies(hyremote-qpa-multi-surface-connection-smoke hyremote-qpa-platform)
 
@@ -118,6 +111,44 @@ if(TARGET Qt6::Widgets)
     set_tests_properties(hyremote-qpa-multi-surface-connection-smoke PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5997;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
         TIMEOUT 25
+    )
+
+    # A real top-level QWidget QMenu popup must enter and leave the same application canvas without
+    # reconnecting. This is distinct from a Qt Quick in-scene Popup, which is not a top-level window.
+    add_executable(hyremote-qpa-widget-popup-connection-smoke
+        qpa_widget_popup_connection_smoke.cpp
+    )
+    target_compile_features(hyremote-qpa-widget-popup-connection-smoke PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qpa-widget-popup-connection-smoke
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Widgets
+    )
+    add_dependencies(hyremote-qpa-widget-popup-connection-smoke hyremote-qpa-platform)
+
+    add_test(NAME hyremote-qpa-widget-popup-connection-smoke
+             COMMAND hyremote-qpa-widget-popup-connection-smoke)
+    set_tests_properties(hyremote-qpa-widget-popup-connection-smoke PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5996;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
+        TIMEOUT 25
+    )
+endif()
+
+# Two independent QQuickWindows must use the same application session. Qt Quick in-window Popups are
+# intentionally not enumerated separately: they stay inside their owning QQuickWindow scene capture.
+if(TARGET Qt6::Quick)
+    add_executable(hyremote-qpa-quick-multi-window-connection-smoke
+        qpa_quick_multi_window_connection_smoke.cpp
+    )
+    target_compile_features(hyremote-qpa-quick-multi-window-connection-smoke PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qpa-quick-multi-window-connection-smoke
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Quick
+    )
+    add_dependencies(hyremote-qpa-quick-multi-window-connection-smoke hyremote-qpa-platform)
+
+    add_test(NAME hyremote-qpa-quick-multi-window-connection-smoke
+             COMMAND hyremote-qpa-quick-multi-window-connection-smoke)
+    set_tests_properties(hyremote-qpa-quick-multi-window-connection-smoke PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5995;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins;QT_QUICK_BACKEND=software"
+        TIMEOUT 30
     )
 endif()
 
@@ -142,15 +173,10 @@ add_executable(hyremote-qpa-composite-capture-test
 )
 target_compile_features(hyremote-qpa-composite-capture-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-capture-test
-    PRIVATE
-        ..
-        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+    PRIVATE .. ${PROJECT_SOURCE_DIR}/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-composite-capture-test
-    PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        HyRemote::Core
+    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
 )
 
 add_test(NAME hyremote-qpa-composite-capture-test COMMAND hyremote-qpa-composite-capture-test)
@@ -168,15 +194,10 @@ add_executable(hyremote-qpa-composite-input-test
 )
 target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-input-test
-    PRIVATE
-        ..
-        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+    PRIVATE .. ${PROJECT_SOURCE_DIR}/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-composite-input-test
-    PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        HyRemote::Core
+    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
 )
 
 add_test(NAME hyremote-qpa-composite-input-test COMMAND hyremote-qpa-composite-input-test)
