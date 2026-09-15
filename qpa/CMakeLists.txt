@@ -4,6 +4,7 @@ include(GNUInstallDirs)
 # This target is intentionally isolated from Core and the public C++/QML API surfaces.
 add_library(hyremote-qpa-platform MODULE
     hyremote_platform_plugin.cpp
+    hyremote_qpa_interception.cpp
 )
 
 set_target_properties(hyremote-qpa-platform PROPERTIES
