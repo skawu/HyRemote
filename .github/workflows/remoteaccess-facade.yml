@@ -42,7 +42,8 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
 
-      - name: Configure
+      - name: Configure, build and test — Linux
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           cmake -S . -B build -G Ninja \
@@ -53,11 +54,22 @@ jobs:
             -DHYREMOTE_BUILD_TESTS=ON \
             -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
 
-      - name: Build
-        shell: bash
-        run: cmake --build build --parallel
-
-      - name: Test Core and product facade
-        shell: bash
-        run: ctest --test-dir build --output-on-failure
+      - name: Configure, build and test — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -S . -B build -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}" ^
+            -DHYREMOTE_BUILD_CORE=ON ^
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
+            -DHYREMOTE_BUILD_TESTS=ON ^
+            -DHYREMOTE_BUILD_SPIKES=OFF ^
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+          ctest --test-dir build --output-on-failure
