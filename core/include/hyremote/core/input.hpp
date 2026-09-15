@@ -57,6 +57,11 @@ public:
 
     // Called on the transport runtime thread. Implementations must enqueue/marshal to the thread
     // the target requires and must not synchronously wait for GUI execution.
+    //
+    // Failure policy: an exception thrown here is caught by Core inside the callback, never
+    // unwinds through the transport runtime, is counted in `SessionStats::inputPostFailures`, and
+    // is reported as a *recoverable* `SessionError`. Remote input is not on the capture path, so a
+    // failing sink does not fault the Session or interrupt frame delivery.
     virtual void post(const InputEvent &event) = 0;
 };
 

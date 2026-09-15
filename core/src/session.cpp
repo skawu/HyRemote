@@ -1,6 +1,7 @@
 #include "hyremote/core/session.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -65,6 +66,93 @@ std::string_view sessionErrorCodeName(SessionErrorCode code)
     return "ComponentFailure";
 }
 
+// Core-owned callback gate.
+//
+// The callbacks installed into adapters hold a shared reference to this gate instead of a raw
+// Session pointer. That is what makes `~Session()` safe even when an adapter violates the
+// quiescence rule of `CaptureSource::stop()` / `Transport::stop()`: teardown closes the gate,
+// drains the callbacks already inside Core, and only then invalidates the target, so a late
+// callback finds `target == nullptr` and is ignored instead of touching freed memory.
+struct CallbackGate
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    void *target = nullptr;  // guarded; the Session implementation while the run is alive
+    std::size_t active = 0;  // guarded; callbacks currently inside Core
+    bool closed = false;     // guarded
+    std::atomic<std::uint64_t> ignored{0};
+
+    // Enters the gate. Returns false when the run is over and the callback must be ignored.
+    bool enter(void **targetOut)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (closed || target == nullptr)
+            return false;
+
+        ++active;
+        *targetOut = target;
+        return true;
+    }
+
+    void leave()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (active > 0)
+            --active;
+        if (active == 0)
+            cv.notify_all();
+    }
+
+    // Closes the gate, waits for in-flight callbacks and invalidates the target. After this returns,
+    // no adapter callback can reach the Session implementation any more.
+    void closeAndDrain()
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        closed = true;
+        cv.wait(lock, [this] { return active == 0; });
+        target = nullptr;
+    }
+};
+
+// RAII helper used inside the callbacks Core installs into adapters.
+class GateGuard
+{
+public:
+    explicit GateGuard(std::shared_ptr<CallbackGate> gate)
+        : m_gate(std::move(gate))
+    {
+    }
+
+    GateGuard(const GateGuard &) = delete;
+    GateGuard &operator=(const GateGuard &) = delete;
+
+    ~GateGuard()
+    {
+        if (m_entered && m_gate)
+            m_gate->leave();
+    }
+
+    // Returns the Session implementation, or nullptr when the callback must be ignored. Ignored
+    // callbacks are counted on the gate, which outlives the implementation object.
+    void *enter()
+    {
+        if (!m_gate)
+            return nullptr;
+
+        void *target = nullptr;
+        m_entered = m_gate->enter(&target);
+        if (!m_entered) {
+            m_gate->ignored.fetch_add(1, std::memory_order_relaxed);
+            return nullptr;
+        }
+        return target;
+    }
+
+private:
+    std::shared_ptr<CallbackGate> m_gate;
+    bool m_entered = false;
+};
+
 // Implementation type of the Session. The helper routines that the worker threads and the
 // capture/transport callbacks run are static members so that they can stay file-local without
 // exposing the type in the public header.
@@ -82,9 +170,13 @@ struct Session::Impl
     mutable std::mutex mutex;
     std::condition_variable cv;
 
+    // Callback lifetime gate of the current run. Created by start(), closed by stop()/failRun().
+    std::shared_ptr<CallbackGate> gate;
+
     SessionState state = SessionState::Stopped;
     std::optional<SessionError> lastError;
     bool stopRequested = false;
+    bool teardownStarted = false;  // exactly one thread performs the ordered teardown of a run
     bool sourceStarted = false;
     bool transportStarted = false;
     std::size_t inFlight = 0;
@@ -99,6 +191,30 @@ struct Session::Impl
     {
         impl.state = SessionState::Faulted;
         impl.lastError = SessionError{code, message, false};
+    }
+
+    // Worker startup handshake.
+    //
+    // The Core workers are created while the Session is still `Starting`, so "not Running yet" must
+    // not be interpreted as "exit": that race could leave a Session that reports `Running` but has
+    // no scheduler left to issue requests. The worker waits here until `start()` publishes
+    // `Running`, or until the run fails/stops, and returns whether it may proceed.
+    static bool waitForRunning(Impl &impl, std::unique_lock<std::mutex> &lock)
+    {
+        impl.cv.wait(lock, [&impl] {
+            return impl.state != SessionState::Starting || impl.stopRequested;
+        });
+        return impl.state == SessionState::Running && !impl.stopRequested;
+    }
+
+    // Variant for the dispatch worker: it must wait for the handshake but must never decide to exit
+    // here, because the frames Core already accepted still have to be drained out of a closed
+    // mailbox even when the run never reached `Running`.
+    static void awaitStartup(Impl &impl, std::unique_lock<std::mutex> &lock)
+    {
+        impl.cv.wait(lock, [&impl] {
+            return impl.state != SessionState::Starting || impl.stopRequested;
+        });
     }
 
     // Admission control, evaluated with `mutex` held.
@@ -221,26 +337,53 @@ struct Session::Impl
                 return;
             }
             sink = impl.sink;
-            if (sink)
-                ++impl.stats.inputEventsPosted;
-            else
+            if (!sink) {
                 ++impl.stats.inputEventsDropped;
+                return;
+            }
         }
 
         // Called without any Core lock held: the sink marshals to the thread the target requires
         // and must not wait for synchronous GUI execution.
-        if (sink)
+        try {
             sink->post(event);
+        } catch (...) {
+            // The exception must not unwind through the transport runtime. Remote input is not on
+            // the capture path, so this is reported as a recoverable error instead of faulting the
+            // Session: frame delivery keeps working and the failure stays observable.
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            ++impl.stats.inputPostFailures;
+            impl.lastError = SessionError{SessionErrorCode::ComponentFailure,
+                                          "input sink threw from post()", true};
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        ++impl.stats.inputEventsPosted;
     }
 
     // Owns capture admission and request issuing.
     static void runScheduler(Impl &impl)
     {
+        {
+            // Observable "the worker thread actually began", before the handshake.
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            ++impl.stats.workersStarted;
+        }
+        impl.cv.notify_all();
+
         const bool paced = impl.config.capture.targetFramesPerSecond.has_value();
         const double fps = paced ? *impl.config.capture.targetFramesPerSecond : 0.0;
         const Clock::duration period =
             paced ? std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / fps))
                   : Clock::duration::zero();
+
+        // Startup handshake: created during `Starting`, may only work once `Running` is published.
+        {
+            std::unique_lock<std::mutex> lock(impl.mutex);
+            if (!waitForRunning(impl, lock))
+                return;
+        }
 
         for (;;) {
             std::unique_lock<std::mutex> lock(impl.mutex);
@@ -310,22 +453,46 @@ struct Session::Impl
         }
     }
 
-    // Ordered cleanup of a partially started run.
+    // Ordered teardown of a run that failed to start or is being torn down.
     //
-    // Used when start() fails after some components already started. It stops whatever started and
-    // leaves the Session in `Faulted` (the observable startup failure), so the owner can call
-    // stop() for the `Stopped` state exactly like the ADR-0003 sequence describes:
-    // Starting -> Faulted -> Stopping -> Stopped.
-    static void abortStartup(Impl &impl, SessionErrorCode code, const std::string &message)
+    // Stops whatever started, unblocks and joins the workers, closes the callback gate and finally
+    // publishes `Faulted` (for a startup failure) or `Stopped` (when called from stop()), so that
+    // the observable sequence of ADR-0003 is preserved:
+    //   Starting -> Faulted -> (stop) -> Stopping -> Stopped
+    static void teardownRun(Impl &impl, bool faulted, SessionErrorCode code, const std::string &message)
     {
+        {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            impl.teardownStarted = true;
+        }
+
         CaptureSource *source = nullptr;
+        Transport *transport = nullptr;
+        detail::Mailbox *mailbox = nullptr;
+        std::shared_ptr<CallbackGate> gate;
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
             impl.stopRequested = true;
             source = impl.sourceStarted ? impl.source.get() : nullptr;
+            transport = impl.transportStarted ? impl.transport.get() : nullptr;
+            mailbox = impl.mailbox.get();
+            gate = impl.gate;
+            impl.sourceStarted = false;
             impl.transportStarted = false;
+
+            // Publish the terminal state before touching the components so that observers inside the
+            // components see the documented sequence: a startup failure is `Faulted` from here on,
+            // an owner-initiated stop is `Stopping` until the teardown completes.
+            if (faulted)
+                setFaultedLocked(impl, code, message);
+            else
+                impl.state = SessionState::Stopping;
         }
-        impl.cv.notify_all();
+        impl.cv.notify_all();  // let the workers leave their startup handshake
+
+        // Close the callback gate first: from here on no adapter callback can reach this run.
+        if (gate)
+            gate->closeAndDrain();
 
         if (source != nullptr) {
             try {
@@ -335,10 +502,30 @@ struct Session::Impl
             }
         }
 
+        if (mailbox != nullptr)
+            mailbox->close();  // the dispatch worker drains what Core already accepted
+
+        if (impl.schedulerThread.joinable())
+            impl.schedulerThread.join();
+        if (impl.dispatcherThread.joinable())
+            impl.dispatcherThread.join();
+
+        if (transport != nullptr) {
+            try {
+                transport->stop();
+            } catch (...) {
+                // As above: cleanup continues.
+            }
+        }
+
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
-            impl.sourceStarted = false;
-            setFaultedLocked(impl, code, message);
+            impl.mailbox.reset();
+            impl.inFlight = 0;
+            impl.stats.inFlight = 0;
+            impl.teardownStarted = false;
+            if (!faulted)
+                impl.state = SessionState::Stopped;
         }
         impl.cv.notify_all();
     }
@@ -347,8 +534,22 @@ struct Session::Impl
     // touches the transport.
     static void runDispatcher(Impl &impl)
     {
+        {
+            // Observable "the worker thread actually began", before the handshake.
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            ++impl.stats.workersStarted;
+        }
+        impl.cv.notify_all();
+
         detail::Mailbox &mailbox = *impl.mailbox;
         Transport *transport = impl.transport.get();
+
+        // Startup handshake: dispatching must not begin before `Running` is published. The worker
+        // then always enters the drain loop, which exits only once the mailbox is closed and empty.
+        {
+            std::unique_lock<std::mutex> lock(impl.mutex);
+            awaitStartup(impl, lock);
+        }
 
         for (;;) {
             RemoteFrame frame;
@@ -398,16 +599,24 @@ Session::~Session()
     stop();
 }
 
-void Session::setCaptureSource(std::unique_ptr<CaptureSource> source)
+bool Session::setCaptureSource(std::unique_ptr<CaptureSource> source)
 {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
+    if (m_impl->state != SessionState::Stopped)
+        return false;  // never destroy a component that a worker or callback may still be using
+
     m_impl->source = std::move(source);
+    return true;
 }
 
-void Session::setTransport(std::unique_ptr<Transport> transport)
+bool Session::setTransport(std::unique_ptr<Transport> transport)
 {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
+    if (m_impl->state != SessionState::Stopped)
+        return false;
+
     m_impl->transport = std::move(transport);
+    return true;
 }
 
 void Session::setInputSink(std::shared_ptr<InputSink> sink)
@@ -449,8 +658,24 @@ bool Session::start()
             return false;
         }
 
-        const CompatibilityResult compatibility =
-            checkFrameCompatibility(impl.source->capabilities(), impl.transport->frameCapabilities());
+        // Adapter exceptions must not escape start(): this path runs before anything is started, so
+        // it fails cleanly while the Session is still Stopped.
+        CompatibilityResult compatibility;
+        std::string capabilityFailure;
+        try {
+            compatibility =
+                checkFrameCompatibility(impl.source->capabilities(), impl.transport->frameCapabilities());
+        } catch (const std::exception &error) {
+            capabilityFailure =
+                std::string("capability query threw: ") + error.what();
+        } catch (...) {
+            capabilityFailure = "capability query threw an unknown exception";
+        }
+
+        if (!capabilityFailure.empty()) {
+            impl.lastError = SessionError{SessionErrorCode::ComponentFailure, capabilityFailure, false};
+            return false;
+        }
         if (!compatibility.compatible) {
             // A capability mismatch is a configuration error: it fails before `Running`.
             impl.lastError = SessionError{SessionErrorCode::IncompatibleFrameCapabilities,
@@ -472,22 +697,111 @@ bool Session::start()
     CaptureSource *source = impl.source.get();
     Transport *transport = impl.transport.get();
 
-    const bool sourceStarted =
-        source->start([&impl](RemoteFrame frame) { Impl::onFrameReady(impl, std::move(frame)); },
-                      [&impl](const CaptureEvent &event) { Impl::onCaptureEvent(impl, event); });
+    // A Core-owned callback gate makes late adapter callbacks harmless: the callbacks capture the
+    // gate, not `&impl`, and closing the gate invalidates the target before Impl is destroyed.
+    auto gate = std::make_shared<CallbackGate>();
+    gate->target = &impl;
+    {
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        impl.gate = gate;
+    }
+
+    bool sourceStarted = false;
+    std::string sourceMessage;
+    try {
+        sourceStarted =
+            source->start([gate](RemoteFrame frame) {
+                              GateGuard guard(gate);
+                              if (auto *target = static_cast<Impl *>(guard.enter()))
+                                  Impl::onFrameReady(*target, std::move(frame));
+                          },
+                          [gate](const CaptureEvent &event) {
+                              GateGuard guard(gate);
+                              if (auto *target = static_cast<Impl *>(guard.enter()))
+                                  Impl::onCaptureEvent(*target, event);
+                          });
+    } catch (const std::exception &error) {
+        // A throwing start may have left partial state behind, so the component is stopped again
+        // before the run is torn down.
+        sourceMessage = std::string("capture source threw from start(): ") + error.what();
+    } catch (...) {
+        sourceMessage = "capture source threw from start()";
+    }
+
+    if (!sourceMessage.empty()) {
+        try {
+            source->stop();
+        } catch (...) {
+            // Cleanup continues.
+        }
+        Impl::teardownRun(impl, true, SessionErrorCode::CaptureStartFailed, sourceMessage);
+        return false;
+    }
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
         impl.sourceStarted = sourceStarted;
     }
     if (!sourceStarted) {
-        Impl::abortStartup(impl, SessionErrorCode::CaptureStartFailed,
-                           "capture source failed to start");
+        Impl::teardownRun(impl, true, SessionErrorCode::CaptureStartFailed,
+                          "capture source failed to start");
         return false;
     }
 
-    const bool transportStarted =
-        transport->start([&impl](const InputEvent &event) { Impl::onInput(impl, event); },
-                         [&impl](const TransportEvent &event) { Impl::onTransportEvent(impl, event); });
+    // The workers are created while the Session is still `Starting`, before the transport starts.
+    // They wait in the startup handshake, so no capture request is issued before `Running` and the
+    // transport is guaranteed to be started before any frame can be handed over.
+    {
+        std::lock_guard<std::mutex> lock(impl.mutex);
+        impl.mailbox = std::make_unique<detail::Mailbox>(impl.config.frameQueue.capacity,
+                                                         impl.config.frameQueue.policy);
+    }
+
+    std::string workerMessage;
+    try {
+        impl.schedulerThread = std::thread([&impl] { Impl::runScheduler(impl); });
+        impl.dispatcherThread = std::thread([&impl] { Impl::runDispatcher(impl); });
+    } catch (const std::exception &error) {
+        workerMessage = std::string("failed to create a Core worker thread: ") + error.what();
+    } catch (...) {
+        workerMessage = "failed to create a Core worker thread";
+    }
+
+    if (!workerMessage.empty()) {
+        // A half-started run must never be left behind: teardownRun joins whichever worker exists,
+        // stops the capture source and leaves the Session Faulted.
+        Impl::teardownRun(impl, true, SessionErrorCode::ComponentFailure, workerMessage);
+        return false;
+    }
+
+    bool transportStarted = false;
+    std::string transportMessage;
+    try {
+        transportStarted =
+            transport->start([gate](const InputEvent &event) {
+                                 GateGuard guard(gate);
+                                 if (auto *target = static_cast<Impl *>(guard.enter()))
+                                     Impl::onInput(*target, event);
+                             },
+                             [gate](const TransportEvent &event) {
+                                 GateGuard guard(gate);
+                                 if (auto *target = static_cast<Impl *>(guard.enter()))
+                                     Impl::onTransportEvent(*target, event);
+                             });
+    } catch (const std::exception &error) {
+        transportMessage = std::string("transport threw from start(): ") + error.what();
+    } catch (...) {
+        transportMessage = "transport threw from start()";
+    }
+
+    if (!transportMessage.empty()) {
+        try {
+            transport->stop();
+        } catch (...) {
+            // Cleanup continues.
+        }
+        Impl::teardownRun(impl, true, SessionErrorCode::TransportStartFailed, transportMessage);
+        return false;
+    }
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
         impl.transportStarted = transportStarted;
@@ -495,25 +809,16 @@ bool Session::start()
     if (!transportStarted) {
         // The capture source that did start is stopped here; the Session stays Faulted so the
         // startup failure is observable until the owner calls stop().
-        Impl::abortStartup(impl, SessionErrorCode::TransportStartFailed,
-                           "transport failed to start");
+        Impl::teardownRun(impl, true, SessionErrorCode::TransportStartFailed,
+                          "transport failed to start");
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
-        impl.mailbox = std::make_unique<detail::Mailbox>(impl.config.frameQueue.capacity,
-                                                         impl.config.frameQueue.policy);
-    }
-
-    impl.schedulerThread = std::thread([&impl] { Impl::runScheduler(impl); });
-    impl.dispatcherThread = std::thread([&impl] { Impl::runDispatcher(impl); });
-
-    {
-        std::lock_guard<std::mutex> lock(impl.mutex);
         impl.state = SessionState::Running;
     }
-    impl.cv.notify_all();
+    impl.cv.notify_all();  // release the workers from the startup handshake
     return true;
 }
 
@@ -521,62 +826,29 @@ void Session::stop() noexcept
 {
     Impl &impl = *m_impl;
 
-    CaptureSource *source = nullptr;
-    Transport *transport = nullptr;
-    detail::Mailbox *mailbox = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(impl.mutex);
-        if (impl.state == SessionState::Stopped)
-            return;
+    // Only one thread performs the ordered teardown of a run; a concurrent stop() waits for it and
+    // then finishes the transition to `Stopped` if the other thread was tearing down a faulted run.
+    for (;;) {
+        {
+            std::unique_lock<std::mutex> lock(impl.mutex);
+            if (impl.state == SessionState::Stopped)
+                return;
 
-        impl.state = SessionState::Stopping;
-        impl.stopRequested = true;
-        source = impl.sourceStarted ? impl.source.get() : nullptr;
-        transport = impl.transportStarted ? impl.transport.get() : nullptr;
-        mailbox = impl.mailbox.get();
-    }
-    impl.cv.notify_all();
+            if (!impl.teardownStarted) {
+                lock.unlock();
+                break;
+            }
 
-    // 1./2. Stop scheduling and ask the capture source to stop.
-    if (source != nullptr) {
-        try {
-            source->stop();
-        } catch (...) {
-            // stop() is noexcept: a misbehaving adapter must not prevent local cleanup.
+            impl.cv.wait(lock, [&impl] {
+                return !impl.teardownStarted || impl.state == SessionState::Stopped;
+            });
         }
     }
 
-    // 3. Close the mailbox; the dispatch worker drains the frames Core already accepted.
-    if (mailbox != nullptr)
-        mailbox->close();
-
-    // 4. Join the workers. This terminates because the transport hand-off is bounded by contract
-    // (ADR-0003), so the dispatch worker can never be stuck waiting on a remote peer.
-    if (impl.schedulerThread.joinable())
-        impl.schedulerThread.join();
-    if (impl.dispatcherThread.joinable())
-        impl.dispatcherThread.join();
-
-    // 5. Stop the transport runtime.
-    if (transport != nullptr) {
-        try {
-            transport->stop();
-        } catch (...) {
-            // As above: cleanup continues.
-        }
-    }
-
-    // 6. Release the run-scoped state.
-    {
-        std::lock_guard<std::mutex> lock(impl.mutex);
-        impl.mailbox.reset();
-        impl.sourceStarted = false;
-        impl.transportStarted = false;
-        impl.inFlight = 0;
-        impl.stats.inFlight = 0;
-        impl.state = SessionState::Stopped;
-    }
-    impl.cv.notify_all();
+    // The ordered teardown closes the callback gate before touching the components, so a late
+    // frame/event/input callback from an adapter that violates its quiescence rule is ignored
+    // instead of reaching a half-destroyed Session.
+    Impl::teardownRun(impl, false, SessionErrorCode::ComponentFailure, {});
 }
 
 SessionState Session::state() const
@@ -598,6 +870,12 @@ SessionStats Session::stats() const
 
     SessionStats snapshot = impl.stats;
     snapshot.inFlight = impl.inFlight;
+    if (impl.gate) {
+        // The counter lives on the gate so that a callback arriving after teardown can still be
+        // counted without touching the implementation object.
+        snapshot.callbacksIgnoredAfterStop =
+            impl.gate->ignored.load(std::memory_order_relaxed);
+    }
 
     if (impl.mailbox) {
         const detail::MailboxStats mailbox = impl.mailbox->stats();

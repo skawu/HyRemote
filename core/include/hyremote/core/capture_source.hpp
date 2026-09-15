@@ -55,9 +55,20 @@ public:
     virtual CaptureCapabilities capabilities() const = 0;
 
     // Starts the backend and installs the Core callbacks. Returning false fails `Session::start()`.
+    //
+    // Exceptions from this call are caught by Core, converted into a `SessionError` and followed by
+    // a `stop()` attempt (see below), because a throwing start may have left partial state.
     virtual bool start(FrameReadyHandler onFrame, CaptureEventHandler onEvent) = 0;
 
     // Must not block on any consumer; called during deterministic stop.
+    //
+    // **Quiescence rule.** `stop()` must not return until the callbacks installed by `start()` can
+    // no longer be invoked. Core additionally guards every callback with its own lifetime gate, so a
+    // late callback is ignored rather than delivered, but an implementation that violates this rule
+    // cannot rely on Core keeping the Session alive for it.
+    //
+    // `stop()` may be called after a failed or throwing `start()`; implementations must tolerate
+    // that (stopping a backend that never fully started is a no-op).
     virtual void stop() noexcept = 0;
 
     // Issues one asynchronous capture request. Implementations should return promptly: Core

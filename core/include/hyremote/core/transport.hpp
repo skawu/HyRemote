@@ -46,10 +46,21 @@ public:
 
     // Starts the transport runtime and installs the callbacks. Returning false fails
     // `Session::start()`.
+    //
+    // Exceptions from this call are caught by Core, converted into a `SessionError`, and the
+    // capture source that already started is stopped again.
     virtual bool start(InputHandler onInput, TransportEventHandler onEvent) = 0;
 
     // Stops the runtime. Called after the dispatch worker has been joined, so no further
     // `enqueueFrame()` call can arrive afterwards.
+    //
+    // **Quiescence rule.** `stop()` must not return until the callbacks installed by `start()` can
+    // no longer be invoked. Core additionally guards every callback with its own lifetime gate, so a
+    // late callback is ignored rather than delivered, but an implementation that violates this rule
+    // cannot rely on Core keeping the Session alive for it.
+    //
+    // `stop()` may be called after a failed or throwing `start()`; implementations must tolerate
+    // that.
     virtual void stop() noexcept = 0;
 
     // Core dispatch calls this, never the capture callback. Must be a bounded/nonblocking

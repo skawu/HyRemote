@@ -10,6 +10,30 @@
 //   - `start()` fails before `Running` for configuration and capability errors;
 //   - `stop()` is deterministic and never waits on a remote peer, because
 //     `Transport::enqueueFrame()` is bounded by contract.
+//
+// Lifecycle rules that adapters and callers can rely on:
+//
+//   - **Component mutation.** Capture source and transport may only be installed or replaced while
+//     the Session is `Stopped`; the setters report refusal through their return value and leave the
+//     active component untouched. The input sink is held by `shared_ptr` and *may* be replaced at
+//     runtime (see `setInputSink`).
+//   - **Worker startup handshake.** The Core workers may be created while the Session is still
+//     `Starting`. They wait for the `Running` publication instead of treating "not Running yet" as
+//     "exit", and no capture request is issued before `Running`, so a capture source never sees a
+//     request before the transport has started.
+//   - **Callback lifetime.** Core wraps every adapter callback in a Core-owned gate. Once `stop()`
+//     has been entered, further callbacks are ignored and counted
+//     (`SessionStats::callbacksIgnoredAfterStop`), and in-flight callbacks are drained before the
+//     Session state is torn down. Combined with the quiescence rule documented on
+//     `CaptureSource::stop()` / `Transport::stop()`, this makes `~Session()` safe even for an
+//     adapter that calls back late.
+//   - **Adapter exceptions.** Exceptions thrown by an adapter on a Core-owned path
+//     (`capabilities()`, `frameCapabilities()`, `start()`, `stop()`, `requestFrame()`,
+//     `enqueueFrame()`, `InputSink::post()`) never escape Core. Startup exceptions become a
+//     deterministic `SessionError` and already-started components are cleaned up; runtime
+//     exceptions are counted and escalate the Session to `Faulted`, except `InputSink::post()`,
+//     which is reported as a recoverable error because remote input is not on the capture path.
+//   - `stop()` must not be called from inside an adapter callback.
 
 #include <cstddef>
 #include <cstdint>
@@ -133,8 +157,18 @@ struct SessionStats
     std::uint64_t transportEnqueueFailures = 0;     // a transport threw from enqueueFrame()
 
     // Input.
-    std::uint64_t inputEventsPosted = 0;
-    std::uint64_t inputEventsDropped = 0;        // no InputSink installed
+    std::uint64_t inputEventsPosted = 0;         // delivered to an InputSink without an exception
+    std::uint64_t inputEventsDropped = 0;        // no InputSink installed, or not Running
+    std::uint64_t inputPostFailures = 0;         // InputSink::post() threw
+
+    // Callback gate: callbacks that arrived after stop() was entered and were therefore ignored.
+    std::uint64_t callbacksIgnoredAfterStop = 0;
+
+    // Core workers that have begun executing (scheduler + dispatch worker, so 2 in a running
+    // Session). Diagnostic for the startup handshake: a worker that never appears here means thread
+    // creation failed, and one that appears but issues nothing did not survive the transition to
+    // `Running`.
+    std::size_t workersStarted = 0;
 };
 
 class Session
@@ -148,16 +182,28 @@ public:
     Session(Session &&) = delete;
     Session &operator=(Session &&) = delete;
 
-    // Components must be installed before start(). They are owned by the Session.
-    void setCaptureSource(std::unique_ptr<CaptureSource> source);
-    void setTransport(std::unique_ptr<Transport> transport);
+    // Installs or replaces the capture source. Only allowed while the Session is `Stopped`:
+    // returns false for every other state and leaves the active component untouched (the rejected
+    // object is released). Components are owned by the Session.
+    bool setCaptureSource(std::unique_ptr<CaptureSource> source);
+
+    // Same contract as setCaptureSource().
+    bool setTransport(std::unique_ptr<Transport> transport);
 
     // Optional: without a sink, remote input is counted and dropped instead of being delivered.
+    //
+    // The sink is held through `shared_ptr`, so unlike the capture source and transport it may be
+    // replaced at runtime, in any state. An event that is already being routed may still reach the
+    // previous sink, so implementations must tolerate being called after replacement. A following
+    // call is delivered to the new sink.
     void setInputSink(std::shared_ptr<InputSink> sink);
 
     // Validates the configuration and components, checks capability compatibility, starts the
-    // capture source and the transport, then starts the scheduler and dispatch workers.
-    // Returns false and leaves the Session out of `Running` on any failure.
+    // capture source, creates the Core workers (which wait for the Running publication), starts the
+    // transport and finally publishes `Running`. Returns false and leaves the Session out of
+    // `Running` on any failure: configuration and capability errors leave it `Stopped` (nothing was
+    // started), while a component startup failure leaves it `Faulted` with the already-started
+    // components cleaned up.
     bool start();
 
     // Deterministic stop: stop scheduling, stop the capture source, close the mailbox (the
