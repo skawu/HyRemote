@@ -1,3 +1,5 @@
+#include "hyremote_qpa_remote_controller.hpp"
+
 #include <QtCore/QDebug>
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
@@ -7,6 +9,7 @@
 #include <qpa/qplatformintegrationplugin.h>
 
 #include <memory>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 namespace {
@@ -42,8 +45,8 @@ QString requestedDelegate(QStringList &parameters)
         }
     }
 
-    // Gate 01 deliberately allows only the reference native delegate. This prevents accidentally
-    // turning the product mode into a headless/replacement stack such as vnc/offscreen/minimal.
+    // The transparent mode may only decorate the reference native platform. Never permit this path
+    // to silently become replacement-only qvnc/offscreen/minimal behavior.
     if (selected != native)
         return {};
     return selected;
@@ -52,8 +55,10 @@ QString requestedDelegate(QStringList &parameters)
 class HyRemotePlatformIntegration final : public QPlatformIntegration
 {
 public:
-    explicit HyRemotePlatformIntegration(std::unique_ptr<QPlatformIntegration> delegate)
+    HyRemotePlatformIntegration(std::unique_ptr<QPlatformIntegration> delegate,
+                                HyRemote::Qpa::RemoteConfig remoteConfig)
         : m_delegate(std::move(delegate))
+        , m_remoteConfig(std::move(remoteConfig))
     {
     }
 
@@ -92,8 +97,22 @@ public:
     {
         return m_delegate->createEventDispatcher();
     }
-    void initialize() override { m_delegate->initialize(); }
-    void destroy() override { m_delegate->destroy(); }
+    void initialize() override
+    {
+        m_delegate->initialize();
+        m_remoteController = std::make_unique<HyRemote::Qpa::RemoteController>(m_remoteConfig);
+        if (!m_remoteController->start()) {
+            qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition";
+            m_remoteController.reset();
+        }
+    }
+    void destroy() override
+    {
+        if (m_remoteController)
+            m_remoteController->stop();
+        m_remoteController.reset();
+        m_delegate->destroy();
+    }
     QPlatformFontDatabase *fontDatabase() const override { return m_delegate->fontDatabase(); }
 #ifndef QT_NO_CLIPBOARD
     QPlatformClipboard *clipboard() const override { return m_delegate->clipboard(); }
@@ -151,8 +170,8 @@ protected:
     Qt::KeyboardModifiers queryKeyboardModifiers() const override
     {
         // QPlatformIntegration exposes this hook as protected, so it cannot legally be invoked on an
-        // arbitrary delegate object here. The native key mapper and native event dispatcher remain
-        // delegated; this protected query is intentionally left at Qt's base implementation for Gate 01.
+        // arbitrary delegate object. Qt's base implementation returns the application modifier state;
+        // exact native query/possible-key parity remains an explicit final QPA qualification item.
         return QPlatformIntegration::queryKeyboardModifiers();
     }
 
@@ -163,6 +182,8 @@ protected:
 
 private:
     std::unique_ptr<QPlatformIntegration> m_delegate;
+    HyRemote::Qpa::RemoteConfig m_remoteConfig;
+    std::unique_ptr<HyRemote::Qpa::RemoteController> m_remoteController;
 };
 
 class HyRemotePlatformIntegrationPlugin final : public QPlatformIntegrationPlugin
@@ -180,9 +201,16 @@ public:
             return nullptr;
 
         QStringList delegateParameters = paramList;
+        HyRemote::Qpa::RemoteConfig remoteConfig;
+        QString remoteConfigError;
+        if (!HyRemote::Qpa::parseRemoteConfig(delegateParameters, remoteConfig, remoteConfigError)) {
+            qWarning() << "HyRemote QPA Proxy rejected remote configuration:" << remoteConfigError;
+            return nullptr;
+        }
+
         const QString delegateName = requestedDelegate(delegateParameters);
         if (delegateName.isEmpty()) {
-            qWarning() << "HyRemote QPA Proxy rejected delegate; Gate 01 only permits"
+            qWarning() << "HyRemote QPA Proxy rejected delegate; this build only permits"
                        << referenceNativeDelegate();
             return nullptr;
         }
@@ -197,8 +225,11 @@ public:
             return nullptr;
         }
 
-        qInfo() << "HyRemote QPA Proxy active; native delegate:" << delegateName;
-        return new HyRemotePlatformIntegration(std::move(delegate));
+        qInfo() << "HyRemote QPA Proxy active; native delegate:" << delegateName
+                << "remote address:" << remoteConfig.listenAddress.toString()
+                << "port:" << remoteConfig.port
+                << "remote input:" << remoteConfig.remoteInputEnabled;
+        return new HyRemotePlatformIntegration(std::move(delegate), std::move(remoteConfig));
     }
 };
 
