@@ -52,6 +52,14 @@ bool waitForCount(const std::shared_ptr<RecordedInput> &left,
     return left->events.size() + right->events.size() >= count;
 }
 
+void drainEvents(int milliseconds = 100)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < milliseconds)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+}
+
 hyremote::InputEvent pointerEvent(hyremote::InputEventKind kind,
                                   float x,
                                   float y,
@@ -176,15 +184,24 @@ int main(int argc, char **argv)
         return 7;
     }
 
-    // Hiding the active surface makes it ineligible; activeSurface() falls back to current topmost.
+    // Stacking order is not keyboard focus. Once the active surface is hidden, key/text events are
+    // intentionally dropped until the QPA controller reports a new real Qt active/focus surface.
     composite.setSurfaceVisible(1, false);
     components.input->post(key);
-    if (!check(waitForCount(left, right, 8), "key fallback is delivered")
-        || !check(right->events.size() == 5 && right->events.back().kind == hyremote::InputEventKind::Key,
-                  "hidden active surface falls back to a live topmost application surface")) {
+    drainEvents();
+    if (!check(left->events.size() + right->events.size() == 7,
+               "hidden active surface does not invent a topmost keyboard target")) {
         return 8;
     }
 
-    std::cout << "PASS: QPA composite input routes pointer lifecycle and active key/text correctly\n";
+    composite.setActiveSurface(2);
+    components.input->post(key);
+    if (!check(waitForCount(left, right, 8), "new explicit active surface receives key")
+        || !check(right->events.size() == 5 && right->events.back().kind == hyremote::InputEventKind::Key,
+                  "keyboard routing resumes only after explicit active-surface update")) {
+        return 9;
+    }
+
+    std::cout << "PASS: QPA composite input routes pointer lifecycle and explicit active key/text correctly\n";
     return 0;
 }
