@@ -8,6 +8,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
+#include <QTimer>
 
 #include <algorithm>
 #include <array>
@@ -27,6 +28,7 @@ namespace HyRemote::detail {
 namespace {
 
 constexpr int kMaxClients = 8;
+constexpr int kHandshakeTimeoutMs = 3000;
 constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
 constexpr std::uint16_t kMaxEncodings = 1024;
 constexpr std::uint32_t kMaxCutTextBytes = 64 * 1024;
@@ -460,6 +462,19 @@ private:
                 if (announced)
                     publishEvent(hyremote::TransportEventCode::ClientDisconnected,
                                  "RFB client disconnected");
+            });
+
+            QPointer<QTcpSocket> guardedSocket(socket);
+            QTimer::singleShot(kHandshakeTimeoutMs, this, [this, guardedSocket] {
+                QTcpSocket *socket = guardedSocket.data();
+                if (!socket)
+                    return;
+                const auto it = m_clients.find(socket);
+                if (it == m_clients.end() || it->second->phase == ClientPhase::Normal)
+                    return;
+                publishEvent(hyremote::TransportEventCode::RecoverableFailure,
+                             "RFB client handshake timed out");
+                socket->abort();
             });
 
             static constexpr char kVersion[] = "RFB 003.008\n";
