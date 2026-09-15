@@ -41,18 +41,28 @@ set_tests_properties(hyremote-qpa-interception-test PROPERTIES
     TIMEOUT 15
 )
 
-# Parse/config coverage is independent from plugin loading so safe defaults and fail-closed
-# parameter handling stay deterministic even when hosted native-display execution is unavailable.
+# Parse/config coverage keeps the controller source honest as it evolves through QPA-04. The
+# controller now owns a private composite target, so compile the same private composition sources
+# into this non-installed test target rather than hiding unresolved dependencies until plugin CI.
 add_executable(hyremote-qpa-remote-config-test
     qpa_remote_config_test.cpp
+    ../application_surface_model.cpp
+    ../composite_target.cpp
+    ../composite_target_routing.cpp
+    ../interactive_composite_target.cpp
     ../hyremote_qpa_remote_controller.cpp
 )
 target_compile_features(hyremote-qpa-remote-config-test PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-remote-config-test PRIVATE ..)
+target_include_directories(hyremote-qpa-remote-config-test
+    PRIVATE
+        ..
+        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+)
 target_link_libraries(hyremote-qpa-remote-config-test
     PRIVATE
         Qt6::Core
         Qt6::Gui
+        HyRemote::Core
         HyRemote::RemoteAccess
 )
 if(TARGET Qt6::Widgets)
@@ -63,9 +73,9 @@ endif()
 add_test(NAME hyremote-qpa-remote-config-test COMMAND hyremote-qpa-remote-config-test)
 set_tests_properties(hyremote-qpa-remote-config-test PROPERTIES TIMEOUT 15)
 
-# QPA-03 product-composition smoke: a normal QWidget app selects only the `hyremote` QPA plugin;
-# the qualified native proxy must attach the shared RemoteAccess runtime automatically, then release
-# the listener when its visible primary target disappears. Hosted evidence is not physical-display proof.
+# Transparent-mode predecessor smoke: a normal QWidget application selects only the `hyremote`
+# platform and gets the shared RemoteAccess listener automatically. QPA-04 intentionally supersedes
+# the old single-target "hide primary => stop listener" behavior; continuity is tested below.
 if(TARGET Qt6::Widgets)
     add_executable(hyremote-qpa-auto-remoteaccess-smoke
         qpa_auto_remoteaccess_smoke.cpp
@@ -84,6 +94,30 @@ if(TARGET Qt6::Widgets)
     set_tests_properties(hyremote-qpa-auto-remoteaccess-smoke PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5998;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
         TIMEOUT 15
+    )
+
+    # QPA-04 product E2E: complete one RFB 3.8 connection, advertise DesktopSize, then keep that
+    # exact socket alive while an independent dialog expands the application canvas, the primary
+    # window hides, and the primary/dialog set changes again. A stop/restart listener implementation
+    # necessarily disconnects this viewer and fails the test.
+    add_executable(hyremote-qpa-multi-surface-connection-smoke
+        qpa_multi_surface_connection_smoke.cpp
+    )
+    target_compile_features(hyremote-qpa-multi-surface-connection-smoke PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qpa-multi-surface-connection-smoke
+        PRIVATE
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Network
+            Qt6::Widgets
+    )
+    add_dependencies(hyremote-qpa-multi-surface-connection-smoke hyremote-qpa-platform)
+
+    add_test(NAME hyremote-qpa-multi-surface-connection-smoke
+             COMMAND hyremote-qpa-multi-surface-connection-smoke)
+    set_tests_properties(hyremote-qpa-multi-surface-connection-smoke PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5997;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
+        TIMEOUT 25
     )
 endif()
 
