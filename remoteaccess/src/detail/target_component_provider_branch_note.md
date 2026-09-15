@@ -1,1 +1,0 @@
-This branch continues QPA-04 after the deterministic surface-model slice. It owns the private per-target component-provider integration and subsequent composite target work. The note itself has no product semantics and may be removed before PR creation.
