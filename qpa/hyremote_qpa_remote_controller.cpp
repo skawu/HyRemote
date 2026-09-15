@@ -247,8 +247,7 @@ QList<QObject *> RemoteController::candidateTargets() const
     for (QWindow *window : windows) {
         if (!window || !window->isVisible() || widgetWindowHandles.contains(window))
             continue;
-        const auto type = static_cast<Qt::WindowType>(window->flags() & Qt::WindowType_Mask);
-        if (!isPrimaryCandidateWindowType(type))
+        if (!isPrimaryCandidateWindowType(window->type()))
             continue;
         candidates.push_back(window);
     }
