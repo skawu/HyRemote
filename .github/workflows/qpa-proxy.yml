@@ -48,7 +48,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libxcb-cursor0 libxkbcommon-x11-0
 
-      - name: Configure, build and smoke — Linux
+      - name: Configure, build and qualify — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
@@ -62,9 +62,9 @@ jobs:
             -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
-          xvfb-run -a ctest --test-dir build -R hyremote-qpa-proxy-smoke --output-on-failure
+          xvfb-run -a ctest --test-dir build -R '^hyremote-qpa-' --output-on-failure
 
-      - name: Configure, build and smoke — Windows / MSVC x64
+      - name: Configure, build and qualify — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
@@ -82,4 +82,4 @@ jobs:
             -DHYREMOTE_BUILD_SPIKES=OFF ^
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
-          ctest --test-dir build -R hyremote-qpa-proxy-smoke --output-on-failure
+          ctest --test-dir build -R "^hyremote-qpa-" --output-on-failure
