@@ -52,6 +52,24 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     set_tests_properties(hyremote-widgets-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
+
+    add_executable(hyremote-widgets-input-backpressure-test
+        test_widgets_input_backpressure.cpp
+    )
+    target_link_libraries(hyremote-widgets-input-backpressure-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-widgets-input-backpressure-test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    add_test(NAME hyremote-widgets-input-backpressure-test COMMAND hyremote-widgets-input-backpressure-test)
+    set_tests_properties(hyremote-widgets-input-backpressure-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
@@ -70,6 +88,24 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     )
     add_test(NAME hyremote-quick-capture-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    )
+
+    add_executable(hyremote-quick-input-backpressure-test
+        test_quick_input_backpressure.cpp
+    )
+    target_link_libraries(hyremote-quick-input-backpressure-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Quick
+    )
+    target_include_directories(hyremote-quick-input-backpressure-test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    add_test(NAME hyremote-quick-input-backpressure-test COMMAND hyremote-quick-input-backpressure-test)
+    set_tests_properties(hyremote-quick-input-backpressure-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
 endif()
