@@ -1,4 +1,5 @@
-use rustvncserver::{ServerEvent, VncServer};
+use rustvncserver::server::ServerEvent;
+use rustvncserver::VncServer;
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::slice;
