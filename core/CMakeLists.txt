@@ -19,7 +19,15 @@ add_library(hyremote-core
     src/types.cpp
 )
 add_library(HyRemote::Core ALIAS hyremote-core)
-set_target_properties(hyremote-core PROPERTIES EXPORT_NAME Core)
+set_target_properties(hyremote-core PROPERTIES
+    EXPORT_NAME Core
+    # Core currently keeps a Qt-free public header surface without platform export annotations.
+    # When consumers opt into BUILD_SHARED_LIBS on Windows, let CMake generate the DLL export table
+    # so the installed HyRemote::Core target remains usable. This is inert for static builds and
+    # non-Windows platforms; an explicit visibility macro may replace it if ABI policy later needs
+    # finer-grained symbol control.
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+)
 
 target_include_directories(hyremote-core
     PUBLIC
