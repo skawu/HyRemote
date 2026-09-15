@@ -64,6 +64,16 @@ int main(int argc, char **argv)
                      "platform window and backing store must share the same window token"))
             return 5;
 
+        // Multiple delegate-created backing stores for one public QWindow must each be observable;
+        // QPA-02 deliberately does not retain them or synthesize a destruction lifetime.
+        seam.observeBackingStoreCreated(&survivingWindow);
+        if (!require(countEvents(events,
+                                 survivingToken,
+                                 InterceptionObject::BackingStore,
+                                 InterceptionEventType::Created) == 2,
+                     "each backing-store creation call must produce a fresh neutral observation"))
+            return 6;
+
         survivingWindow.setGeometry(30, 40, 400, 220);
         QCoreApplication::processEvents();
 
@@ -75,12 +85,6 @@ int main(int argc, char **argv)
                                  InterceptionObject::PlatformWindow,
                                  InterceptionEventType::SurfaceAboutToBeDestroyed) == 1,
                      "platform-window destruction boundary must be observed exactly once"))
-            return 6;
-        if (!require(countEvents(events,
-                                 survivingToken,
-                                 InterceptionObject::BackingStore,
-                                 InterceptionEventType::SurfaceAboutToBeDestroyed) == 1,
-                     "backing-store destruction boundary must be observed exactly once"))
             return 7;
 
         // A recreated native surface keeps the public QWindow identity/token but emits a new
