@@ -1,3 +1,4 @@
+#include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QDialog>
