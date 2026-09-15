@@ -38,7 +38,7 @@ struct CompositeRoutedPoint
 // TargetComponentProvider interface and obtains one composite CaptureSource/InputSink while still
 // owning the normal Session/Transport lifecycle. The target/model may change while that Session
 // stays alive.
-class CompositeTarget final : public QObject, public ::HyRemote::detail::TargetComponentProvider
+class CompositeTarget : public QObject, public ::HyRemote::detail::TargetComponentProvider
 {
 public:
     explicit CompositeTarget(QObject *parent = nullptr);
