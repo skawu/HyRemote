@@ -62,6 +62,7 @@ int main(int argc, char **argv)
                       << " button=" << static_cast<int>(event.button)
                       << " pressed=" << (event.pressed ? 1 : 0)
                       << " key=" << static_cast<int>(event.key)
+                      << " modifiers=" << event.modifiers
                       << " scrollX=" << event.scrollX << " scrollY=" << event.scrollY;
             if (event.kind == hyremote::InputEventKind::Text)
                 std::cout << " text=" << event.textUtf8;
