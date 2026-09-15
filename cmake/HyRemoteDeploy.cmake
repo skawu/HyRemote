@@ -34,6 +34,24 @@ function(hyremote_deploy)
                 "qt_generate_deploy_qml_app_script(). Find Qt6 Qml before calling the helper.")
         endif()
 
+        # An installed HyRemote package publishes the root containing its `HyRemote/qmldir` as
+        # HyRemote_QML_IMPORT_PATH. Qt 6.8's QML tooling reads the target's QT_QML_IMPORT_PATH when
+        # qmlimportscanner prepares deployment metadata. Bridge the package-owned path into that
+        # normal Qt mechanism here so external consumers do not have to know/copy the plugin or
+        # manually reproduce a scanner command.
+        #
+        # This remains intentionally conditional: source/build-tree users may not have the installed
+        # package variable, and their project can already provide its own qt_add_qml_module
+        # IMPORT_PATH. APPEND preserves every caller-provided import path.
+        if(DEFINED HyRemote_QML_IMPORT_PATH AND NOT "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
+            if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
+                message(FATAL_ERROR
+                    "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute installed QML import root")
+            endif()
+            set_property(TARGET "${HYREMOTE_DEPLOY_TARGET}" APPEND PROPERTY
+                QT_QML_IMPORT_PATH "${HyRemote_QML_IMPORT_PATH}")
+        endif()
+
         # Qt documents that QML applications must use the QML-aware deployment script and that it is
         # an error to generate both the QML and non-QML deploy scripts for the same target. On a host
         # where generic runtime dependency deployment is unsupported, still deploy project QML
