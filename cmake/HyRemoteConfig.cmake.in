@@ -16,6 +16,11 @@ if(@HYREMOTE_PACKAGE_WITH_QUICK@)
     find_dependency(Qt6 6.8 COMPONENTS Quick)
 endif()
 
+if(@HYREMOTE_PACKAGE_WITH_QML@)
+    find_dependency(Qt6 6.8 COMPONENTS Qml)
+    set(HyRemote_QML_IMPORT_PATH "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/HyRemoteTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/HyRemoteDeploy.cmake")
 
