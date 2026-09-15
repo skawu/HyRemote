@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QWindow>
@@ -6,6 +7,7 @@
 #include <QtGui/qguiapplication_platform.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformkeymapper.h>
+#include <qpa/qplatformnativeinterface.h>
 #include <qpa/qplatformopenglcontext.h>
 
 #include <cstdio>
@@ -57,7 +59,7 @@ int main(int argc, char **argv)
                  "proxy must preserve QWindowsApplication native-interface dynamic_cast"))
         return 6;
 
-    // Exercise a read-only method so the test proves forwarding, not only inheritance.
+    // Exercise read-only methods so the test proves forwarding, not only inheritance.
     (void) windowsApplication->windowActivationBehavior();
     (void) windowsApplication->darkModeHandling();
 
