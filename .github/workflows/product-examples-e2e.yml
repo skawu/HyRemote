@@ -66,6 +66,9 @@ jobs:
             python tests/product-e2e/example_product_fit.py \
               --widgets build-e2e/examples/widgets-basic/hyremote-widgets-basic \
               --quick build-e2e/examples/quick-basic/hyremote-quick-basic
+          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+            python tests/product-e2e/showcase_product_fit.py \
+              --showcase build-e2e/examples/remote-support-showcase/hyremote-remote-support-showcase
 
       - name: Configure, build, regress and product-fit — Windows / MSVC x64
         if: runner.os == 'Windows'
@@ -91,3 +94,5 @@ jobs:
           python tests\product-e2e\example_product_fit.py ^
             --widgets build-e2e\examples\widgets-basic\hyremote-widgets-basic.exe ^
             --quick build-e2e\examples\quick-basic\hyremote-quick-basic.exe
+          python tests\product-e2e\showcase_product_fit.py ^
+            --showcase build-e2e\examples\remote-support-showcase\hyremote-remote-support-showcase.exe
