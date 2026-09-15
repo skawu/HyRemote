@@ -23,7 +23,7 @@ The qualification is based on the Qt 6.8.3 source contract, not on an unbounded 
 | --- | --- | --- | --- |
 | ordinary `QPlatformIntegration` public virtuals | native implementation | native implementation | forward directly to delegate |
 | platform-window creation | `QWindowsIntegration` | `QXcbIntegration` | delegate creates/owns real platform window; proxy only observes successful creation |
-| backing-store creation | native backing store | native backing store | delegate creates/owns real backing store; proxy does not wrap it |
+| backing-store creation | native backing store | native backing store | delegate creates/owns real backing store; proxy records only synchronous creation observations and does not wrap/retain it |
 | event dispatcher | Windows GUI dispatcher | XCB dispatcher | return delegate dispatcher unchanged |
 | font/clipboard/drag/input/accessibility/services/theme | native objects where configured | native objects where configured | forward accessor/factory unchanged |
 | `QPlatformNativeInterface *nativeInterface()` | not used as the primary modern Windows native surface | `QXcbNativeInterface`, including `QX11Application` | forward the native-interface object unchanged |
@@ -67,12 +67,14 @@ The private `InterceptionSeam` records only neutral observations:
 
 - a monotonic HyRemote-internal window token;
 - platform-window creation;
-- backing-store creation;
+- each successful backing-store creation call;
 - geometry/visibility changes from the public `QWindow` event stream;
-- `QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed`;
-- final `QWindow` destruction.
+- the platform-window `QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed` boundary;
+- final `QWindow` destruction while a platform surface remains active.
 
 The record carries no `QPlatformWindow *`, `QPlatformBackingStore *`, HWND, XCB window id, GLX/EGL object or other backend-native handle. The delegate retains ownership and Qt continues to drive show/hide/resize/input/destruction exactly as before.
+
+Qt 6.8.3 does not expose an ownership-safe public callback for arbitrary `QBackingStore` destruction or flush. QPA-02 therefore **does not synthesize one** and does not keep a backing-store pointer after `createPlatformBackingStore()` returns. A later presentation-mirroring gate must separately qualify any stronger flush/presentation interception instead of silently introducing a forwarding wrapper whose private RHI/backing-store state could diverge from Qt's real object.
 
 This is the narrow prerequisite seam for later QPA composition. It is **not** a framebuffer/presentation-capture implementation and must not be represented as one.
 
@@ -89,8 +91,8 @@ This is the narrow prerequisite seam for later QPA composition. It is **not** a 
 `hyremote-qpa-interception-test` is delegate-independent and checks:
 
 - one public `QWindow` maps to one stable neutral token;
-- platform-window/backing-store creation events do not retain native objects;
-- native-surface destruction boundaries are emitted once;
+- platform-window creation and every backing-store creation are observable without retaining native objects;
+- the native platform-surface destruction boundary is emitted once;
 - recreation keeps public-window identity without reusing a native pointer;
 - callback connections cannot outlive the interception seam/proxy integration.
 
@@ -101,6 +103,7 @@ Hosted execution remains required before this gate can be accepted. A GitHub Act
 QPA-02 does not claim:
 
 - remote framebuffer delivery;
+- backing-store flush/presentation interception;
 - automatic `RemoteAccess` composition (#72/QPA-03 owns it);
 - multi-window/dialog/popup composition (#76/QPA-04 owns it);
 - Qt Quick RHI/OpenGL rendering coverage;
