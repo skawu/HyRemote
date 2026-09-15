@@ -7,9 +7,16 @@ endif()
 
 add_executable(deploy-probe EXCLUDE_FROM_ALL dummy.cpp)
 
-# These deterministic test doubles verify only HyRemote's dispatch contract. The product helper must
+# Simulate an application-owned import path established before HyRemote is configured. QML mode
+# must preserve it while adding the installed HyRemote import root; non-QML mode must not alter it.
+set(_app_import_root "${CMAKE_CURRENT_BINARY_DIR}/app-qml")
+set_property(TARGET deploy-probe PROPERTY QT_QML_IMPORT_PATH "${_app_import_root}")
+set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/installed-sdk/lib/qml")
+
+# These deterministic test doubles verify HyRemote's dispatch contract. The product helper must
 # select exactly one Qt deployment API: the QML-aware command for QML applications and the ordinary
-# command otherwise.
+# command otherwise. QML mode must also bridge the installed package import root onto the target
+# before Qt's command is generated, because Qt's qmlimportscanner reads QT_QML_IMPORT_PATH.
 function(qt_generate_deploy_app_script)
     set(options NO_UNSUPPORTED_PLATFORM_ERROR)
     set(oneValueArgs TARGET OUTPUT_SCRIPT)
@@ -23,6 +30,11 @@ function(qt_generate_deploy_app_script)
     endif()
     if(NOT ARG_NO_UNSUPPORTED_PLATFORM_ERROR)
         message(FATAL_ERROR "HyRemote must preserve NO_UNSUPPORTED_PLATFORM_ERROR")
+    endif()
+
+    get_target_property(import_paths deploy-probe QT_QML_IMPORT_PATH)
+    if(NOT import_paths STREQUAL "${_app_import_root}")
+        message(FATAL_ERROR "non-QML deployment must not mutate QML import paths: ${import_paths}")
     endif()
 
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-app-deploy.cmake")
@@ -46,6 +58,15 @@ function(qt_generate_deploy_qml_app_script)
     endif()
     if(NOT ARG_DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM)
         message(FATAL_ERROR "HyRemote must preserve user QML module deployment on unsupported hosts")
+    endif()
+
+    get_target_property(import_paths deploy-probe QT_QML_IMPORT_PATH)
+    if(NOT _app_import_root IN_LIST import_paths)
+        message(FATAL_ERROR "HyRemote QML deployment lost the application's existing import path")
+    endif()
+    if(NOT HyRemote_QML_IMPORT_PATH IN_LIST import_paths)
+        message(FATAL_ERROR
+            "HyRemote installed QML import root was not bridged into QT_QML_IMPORT_PATH: ${import_paths}")
     endif()
 
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-qml-deploy.cmake")
