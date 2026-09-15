@@ -2,6 +2,7 @@ use rustvncserver::server::ServerEvent;
 use rustvncserver::VncServer;
 use std::collections::VecDeque;
 use std::ffi::c_void;
+use std::io::Read;
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::slice;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -147,6 +148,15 @@ fn listener_failed(probe: &Probe) -> Option<i32> {
     })
 }
 
+fn speaks_rfb(address: &SocketAddr) -> bool {
+    let Ok(mut stream) = TcpStream::connect_timeout(address, Duration::from_millis(50)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+    let mut banner = [0_u8; 12];
+    stream.read_exact(&mut banner).is_ok() && banner.starts_with(b"RFB ")
+}
+
 #[no_mangle]
 pub extern "C" fn hyremote_vnc_probe_abi_version() -> u32 {
     ABI_VERSION
@@ -264,17 +274,18 @@ pub unsafe extern "C" fn hyremote_vnc_probe_start_ipv4(
         *listener = Some(probe.runtime.spawn(async move { server.listen_on(address).await }));
     }
 
-    // The candidate API binds inside the spawned future. For the spike we do not return success
-    // merely because a task was scheduled: prove the requested address is accepting connections,
-    // or return the listener's immediate bind error. This is evidence for product fit, while the
-    // remaining start-ready/pre-bound-listener API gap is recorded as an upstream requirement.
+    // The candidate API binds inside the spawned future. Do not report success because an arbitrary
+    // service accepts the port: the startup probe must observe an actual RFB protocol banner from
+    // the requested endpoint. This also makes the occupied-port test meaningful. A pre-bound
+    // listener/explicit ready result remains the preferred production API and is recorded as an
+    // upstream gap rather than hidden by this probe.
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
         if let Some(code) = listener_failed(probe) {
             return code;
         }
 
-        if TcpStream::connect_timeout(&address, Duration::from_millis(50)).is_ok() {
+        if speaks_rfb(&address) {
             return 0;
         }
         thread::sleep(Duration::from_millis(10));
