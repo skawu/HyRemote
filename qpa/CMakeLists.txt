@@ -1,9 +1,11 @@
 include(GNUInstallDirs)
 
 # Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
-# This target is intentionally isolated from Core and the public C++/QML API surfaces.
+# Private QPA types remain isolated here, while remote runtime composition reuses the same public
+# HyRemote::RemoteAccess facade as the C++ and QML modes.
 add_library(hyremote-qpa-platform MODULE
     hyremote_platform_plugin.cpp
+    hyremote_qpa_remote_controller.cpp
 )
 
 set_target_properties(hyremote-qpa-platform PROPERTIES
@@ -14,7 +16,20 @@ set_target_properties(hyremote-qpa-platform PROPERTIES
 )
 
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
-target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate)
+target_link_libraries(hyremote-qpa-platform
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::GuiPrivate
+        HyRemote::RemoteAccess
+)
+
+# A QApplication can expose its real top-level QWidget as the RemoteAccess target. This is optional
+# at the QPA package level so pure QGuiApplication/Qt Quick programs do not require Widgets.
+if(TARGET Qt6::Widgets)
+    target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Widgets)
+    target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
+endif()
 
 # The plugin is version-coupled by design. Refuse accidental compilation against a different private ABI.
 target_compile_definitions(hyremote-qpa-platform PRIVATE
