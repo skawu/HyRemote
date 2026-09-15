@@ -53,10 +53,16 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
 endif()
 
 # Transparent QPA Proxy is an explicitly version-coupled integration package. It is never part of
-# hyremote-core and is opt-in because Qt does not guarantee QPA source/binary compatibility. Run the
-# exact package check even if another module already created Qt targets: an existing 6.8.x target must
-# not silently bypass the QPA private-ABI qualification.
+# hyremote-core and is opt-in because Qt does not guarantee QPA source/binary compatibility. The
+# transparent mode composes the same product RemoteAccess runtime after the QPA-02 native semantics
+# are preserved; it must not grow a parallel Session/transport/input implementation merely because
+# its launch mechanism is a platform plugin. Run exact package qualification unconditionally so
+# earlier public-Qt discovery cannot bypass the private-ABI gate merely because Qt6::Gui exists.
 if(HYREMOTE_WITH_QPA_PROXY)
+    if(NOT TARGET HyRemote::RemoteAccess)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a usable HyRemote::RemoteAccess target")
+    endif()
     find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui)
     if(NOT TARGET Qt6::GuiPrivate)
         message(FATAL_ERROR
