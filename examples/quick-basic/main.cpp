@@ -8,6 +8,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QQmlError>
+#include <QQuickItem>
 #include <QQuickView>
 #include <QTimer>
 #include <QWheelEvent>
@@ -123,6 +124,12 @@ int main(int argc, char **argv)
         return 65;
     }
 
+    QQuickItem *root = view.rootObject();
+    if (!root) {
+        std::cerr << "quick root object unavailable" << std::endl;
+        return 66;
+    }
+
     InputProbe probe(&view);
     view.installEventFilter(&probe);
     view.show();
@@ -140,12 +147,32 @@ int main(int argc, char **argv)
         return 2;
     }
 
+    std::size_t lastClientCount = remote.connectedClientCount();
+    root->setProperty("connectedClientCount", static_cast<int>(lastClientCount));
+    std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
+
+    QTimer statusTimer;
+    statusTimer.setInterval(100);
+    statusTimer.setTimerType(Qt::CoarseTimer);
+    QObject::connect(&statusTimer, &QTimer::timeout, &view, [&] {
+        const std::size_t nextClientCount = remote.connectedClientCount();
+        if (nextClientCount == lastClientCount)
+            return;
+        lastClientCount = nextClientCount;
+        root->setProperty("connectedClientCount", static_cast<int>(lastClientCount));
+        std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
+    });
+    statusTimer.start();
+
     std::cout << "READY " << port << std::endl;
     if (testSeconds > 0)
         QTimer::singleShot(testSeconds * 1000, &app, &QCoreApplication::quit);
 
     const int result = app.exec();
+    statusTimer.stop();
     remote.stop();
+    root->setProperty("connectedClientCount", 0);
+    std::cout << "CLIENT_COUNT " << remote.connectedClientCount() << std::endl;
     std::cout << "STOPPED" << std::endl;
     return result;
 }
