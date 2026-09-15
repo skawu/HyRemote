@@ -1,7 +1,5 @@
 #include "composite_target.hpp"
 
-#include <algorithm>
-
 namespace HyRemote::Qpa {
 
 void CompositeTarget::setActiveSurface(SurfaceId id)
@@ -26,17 +24,13 @@ std::optional<CompositeSurfaceSnapshot> CompositeTarget::surfaceById(SurfaceId i
 
 std::optional<CompositeSurfaceSnapshot> CompositeTarget::activeSurface() const
 {
-    const CompositeTargetSnapshot snapshot = captureSnapshot();
-    if (m_activeSurface) {
-        for (const CompositeSurfaceSnapshot &surface : snapshot.backToFront) {
-            if (surface.id == *m_activeSurface)
-                return surface;
-        }
-    }
-
-    if (snapshot.backToFront.isEmpty())
+    if (!m_activeSurface)
         return std::nullopt;
-    return snapshot.backToFront.back();
+
+    // Keyboard/text routing must follow real application activation/focus state supplied by the
+    // QPA controller. Stacking order is not a substitute for focus, so a hidden/removed active
+    // surface yields no keyboard target until Qt reports another active surface.
+    return surfaceById(*m_activeSurface);
 }
 
 std::optional<CompositeRoutedPoint> CompositeTarget::routeCanvasPoint(
