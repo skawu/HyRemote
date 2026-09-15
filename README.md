@@ -2,19 +2,19 @@
 
 **Qt Embedded Remote Access Framework**
 
-HyRemote is an open-source remote access framework for Qt Embedded applications. It is designed to add remote display and remote input capabilities to existing Qt applications without forcing an application to adopt a single integration model, rendering stack, transport, or SoC-specific implementation.
+HyRemote is an open-source remote access framework for Qt applications. It is designed to add remote display and remote input capabilities to existing Qt applications without forcing an application to adopt a single integration model, rendering stack, transport, or SoC-specific implementation.
 
-> Status: **early architecture / pre-alpha**. APIs and project boundaries are not yet stable.
+> Status: **pre-alpha**. Product capabilities, compatibility claims, and release milestones are still being completed toward the first GA release.
 
-## Goals
+## Product integration modes
 
-HyRemote aims to support both **Qt Widgets** and **Qt Quick** as first-class application types, with three integration modes:
+HyRemote is productized through three integration modes:
 
 1. **Embedded C++ API** — stable, explicit integration for maximum control and performance.
-2. **Declarative QML API** — convenient integration for Qt Quick applications.
-3. **Zero-code platform proxy** — optional compatibility mode for existing applications that cannot be modified.
+2. **Declarative QML API** — convenient integration for Qt Quick applications using the same core semantics.
+3. **Transparent QPA Proxy** — optional low/zero-source-change compatibility path for existing Qt applications.
 
-The project starts with Qt 6 on Embedded Linux and EGLFS/OpenGL. The architecture is intentionally not tied to VNC, EGLFS, RK3588, or any single capture/encoding backend.
+Qt Widgets and Qt Quick are first-class application types. The integration mode is a product capability; capture, transport, input, and hardware acceleration remain replaceable implementation layers.
 
 ## Architecture direction
 
@@ -53,75 +53,79 @@ The first VNC/RFB transport candidate is [NeatVNC](https://github.com/any1/neatv
 ## Design principles
 
 - **Existing applications first.** Adding remote access must not require rewriting application UI or business logic.
-- **Multiple integration modes.** Developers choose the integration style that fits their application.
+- **Three product integration modes.** C++ API, QML API, and optional QPA Proxy are distinct user-facing capabilities.
 - **Qt Widgets and Qt Quick are peers.** Neither is treated as a compatibility afterthought.
 - **Public API first.** The stable core should prefer Qt public APIs. Qt private/QPA integration is isolated behind optional adapters.
 - **Backend separation.** Target, capture, transport, input, and hardware encoding are independent interfaces.
 - **Portable baseline before hardware optimization.** Correctness comes before PBO, DMA-BUF, GBM, or hardware video encoding.
-- **Hardware acceleration is pluggable.** RK3588/RKMPP may become the first optimized backend, but not a core dependency.
+- **Hardware acceleration is pluggable.** SoC-specific acceleration may be added without becoming a generic-core dependency.
 - **No protocol lock-in.** VNC/RFB is the first transport, not the permanent boundary of the project.
 
-## Initial roadmap
+## Product roadmap and versioning
 
-### v0.1 — Architecture and functional baseline
+HyRemote uses four-part product versions:
 
-- project governance and public API boundaries
-- Qt Widgets target adapter
-- Qt Quick target adapter
-- portable/raster capture baseline
-- OpenGL capture baseline
-- VNC/RFB transport integration
-- remote pointer and keyboard input into Qt
-- Widgets and Qt Quick examples
-- compatibility and performance test matrix
+```text
+Major.Minor.Feature.Maintenance
+```
 
-### v0.2 — Performance
+The version number represents product capability and compatibility, not the internal technical work breakdown. The canonical rules are in [`docs/versioning.md`](docs/versioning.md).
 
-- asynchronous OpenGL/PBO readback
-- damage-region propagation
-- frame pacing/backpressure
-- Quick3D, QOpenGLWidget, and QQuickWidget validation
+### Linux x86_64 reference platform
 
-### v0.3 — Hardware acceleration
+Linux x86_64 is the standard/reference platform used to complete the first HyRemote product generation.
 
-- GBM/DMA-BUF experiments
-- hardware encoder abstraction
-- RK3588/RKMPP H.264 backend candidate
-- end-to-end low-copy path where technically viable
+| Version | Product milestone |
+| --- | --- |
+| `V0.0.1.0` | Linux x86_64 — Embedded C++ API |
+| `V0.0.2.0` | Linux x86_64 — Declarative QML API |
+| `V0.0.3.0` | Linux x86_64 — Transparent QPA Proxy |
+| `V1.0.0.0` | Linux x86_64 GA — all three integration modes productized |
 
-### Later
+### Embedded-platform expansion after V1.0
 
-- zero-code QPA/platform proxy
-- additional Linux graphics backends
-- additional transports such as WebRTC or custom low-latency video transports
-- additional SoC hardware encoder backends
+After `V1.0.0.0`, each newly formalized embedded platform family receives a new `V1.x.0.0` product line. Within that line, independently deliverable integration modes use `V1.x.y.0`.
+
+For example:
+
+```text
+V1.x.0.0   platform family enters formal support
+V1.x.1.0   Embedded C++ API
+V1.x.2.0   Declarative QML API
+V1.x.3.0   Transparent QPA Proxy
+```
+
+Platform ordering is a product-roadmap decision based on Linux/Qt ecosystem support, industrial relevance, BSP maturity, hardware availability, and customer demand. Rockchip and NXP i.MX are current high-priority candidates; other mainstream Linux embedded platforms can be added under the same model.
+
+Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, and similar engineering work are WBS/tasks under these product milestones; they are not top-level product milestones themselves.
+
+## Compatibility policy
+
+A platform or integration mode is considered **supported** only when it has repeatable evidence for its claimed environment, including:
+
+- a reproducible build;
+- functional remote-view and, where applicable, remote-input validation;
+- a compatibility entry;
+- documented known limitations.
+
+Desktop validation must not be used as a substitute for an embedded-platform support claim.
 
 ## Current non-goals
 
-The early project will not:
+The early product will not:
 
 - replace a general-purpose Linux remote desktop system;
 - implement the RFB protocol from scratch when a suitable maintained library exists;
 - require Wayland migration merely to enable remote maintenance;
-- promise zero-copy or hardware H.264 before an architecture spike proves the buffer path;
+- promise zero-copy or hardware H.264 before measured proof;
 - make Qt private/QPA APIs part of the stable core contract.
-
-## Supported environments
-
-The initial reference environment is:
-
-- Qt 6.8.x Open Source
-- Embedded Linux
-- EGLFS
-- OpenGL ES
-- Qt Widgets and Qt Quick
-
-Other environments will be added only after they have repeatable tests and a documented compatibility level.
 
 ## Contributing
 
-HyRemote is being structured as an independent open-source project. Contribution and architecture rules will live in [`CONTRIBUTING.md`](CONTRIBUTING.md) and `docs/` as the baseline is established.
+Contribution and architecture rules are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) and `docs/`.
 
 ## License
 
-**TBD before public release.** The repository is currently in project-bootstrap stage and a permissive open-source license will be selected explicitly before the first public release.
+HyRemote is licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
+
+Third-party components remain subject to their own licenses and attribution requirements. Project names, logos, trademarks, and other brand assets are not granted trademark rights by the Apache License 2.0; any separate brand-asset terms must be stated explicitly.
