@@ -14,7 +14,10 @@ namespace HyRemote::Qml {
 
 // Thin declarative wrapper over the same HyRemote::RemoteAccess product runtime used by C++ apps.
 // It owns no capture, transport, input or Session implementation of its own.
-class QmlRemoteAccess final : public QObject
+//
+// Do not mark this QObject final: Qt's generated QML registration layer derives an internal
+// QQmlElement<T> wrapper from creatable QML element types.
+class QmlRemoteAccess : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(RemoteAccess)
