@@ -1,5 +1,4 @@
 #include <QGuiApplication>
-#include <QPlatformSurfaceEvent>
 #include <QTimer>
 #include <QWindow>
 
@@ -26,19 +25,21 @@ int main(int argc, char **argv)
         return 3;
     }
 
-    bool exposedOrCreated = window.handle() != nullptr;
-    QObject::connect(&window, &QWindow::visibleChanged, &app, [&exposedOrCreated](bool visible) {
-        if (visible)
-            exposedOrCreated = true;
-    });
+    bool eventLoopTicked = false;
+    QTimer::singleShot(0, &app, [&eventLoopTicked] { eventLoopTicked = true; });
 
     QTimer::singleShot(250, &app, [&]() {
-        if (!exposedOrCreated) {
-            std::fprintf(stderr, "FAIL: proxy window never became locally visible/created\n");
+        if (!eventLoopTicked) {
+            std::fprintf(stderr, "FAIL: proxy event loop did not dispatch a queued timer\n");
             app.exit(4);
             return;
         }
-        std::printf("PASS: HyRemote QPA proxy loaded, native delegate created a local window, event loop is alive\n");
+        if (!window.handle()) {
+            std::fprintf(stderr, "FAIL: native delegate platform window disappeared during smoke run\n");
+            app.exit(5);
+            return;
+        }
+        std::printf("PASS: HyRemote QPA proxy loaded, native delegate created a platform window, event loop is alive\n");
         window.close();
         app.quit();
     });
