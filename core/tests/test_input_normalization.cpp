@@ -108,6 +108,29 @@ HYR_TEST(modifier_mask_is_backend_neutral_and_composable)
     HYR_CHECK(!hasModifier(modifiers, InputModifier::Meta));
 }
 
+HYR_TEST(modifier_keys_have_explicit_press_release_identity)
+{
+    InputEvent shiftDown;
+    shiftDown.kind = InputEventKind::Key;
+    shiftDown.key = KeyCode::Shift;
+    shiftDown.pressed = true;
+    shiftDown.modifiers = modifierMask(InputModifier::Shift);
+    HYR_CHECK(shiftDown.key == KeyCode::Shift);
+    HYR_CHECK(shiftDown.pressed);
+    HYR_CHECK(hasModifier(shiftDown.modifiers, InputModifier::Shift));
+
+    InputEvent shiftUp = shiftDown;
+    shiftUp.pressed = false;
+    shiftUp.modifiers = 0U;
+    HYR_CHECK(shiftUp.key == KeyCode::Shift);
+    HYR_CHECK(!shiftUp.pressed);
+    HYR_CHECK(!hasModifier(shiftUp.modifiers, InputModifier::Shift));
+
+    HYR_CHECK(KeyCode::Control != KeyCode::Alt);
+    HYR_CHECK(KeyCode::Meta != KeyCode::CapsLock);
+    HYR_CHECK(KeyCode::CapsLock != KeyCode::NumLock);
+}
+
 HYR_TEST(key_text_and_scroll_have_separate_semantics)
 {
     InputEvent key;
