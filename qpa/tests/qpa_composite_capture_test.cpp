@@ -1,7 +1,9 @@
 #include "../composite_target.hpp"
 
+#include <QColor>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QImage>
 
 #include <iostream>
@@ -184,7 +186,9 @@ int main(int argc, char **argv)
         return 4;
     }
 
-    // Moving one surface changes RemoteFrame geometry inside the same capture-source lifetime.
+    // QPA composite mode uses one logical-pixel remote canvas. A child adapter may capture at a
+    // higher device-pixel ratio; drawImage scales that child frame into this logical geometry so
+    // global Qt coordinates and later input routing stay in the same coordinate space.
     composite.setSurfaceGeometry(2, QRect(2, 0, 2, 2));
     hyremote::CaptureRequest request2{2, hyremote::Clock::now()};
     if (!check(components.capture->requestFrame(request2), "geometry-change request is accepted")
