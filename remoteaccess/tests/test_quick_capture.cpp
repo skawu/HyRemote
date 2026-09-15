@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QQuickPaintedItem>
 #include <QQuickWindow>
+#include <QTimer>
 #include <QWheelEvent>
 
 #include <cmath>
@@ -36,7 +37,13 @@ bool pumpUntil(const std::function<bool()> &predicate, int attempts = 400)
     for (int i = 0; i < attempts; ++i) {
         if (predicate())
             return true;
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+
+        // processEvents() alone does not wait for a future scene-graph/queued callback. Give the
+        // platform event loop a bounded real-time slice on every iteration so Windows and Linux
+        // exercise the same asynchronous contract instead of depending on immediate readiness.
+        QEventLoop loop;
+        QTimer::singleShot(10, &loop, &QEventLoop::quit);
+        loop.exec(QEventLoop::AllEvents);
     }
     return predicate();
 }
@@ -60,6 +67,7 @@ class EventProbe final : public QObject
 {
 public:
     int mousePresses = 0;
+    int mouseMoves = 0;
     int wheels = 0;
     int keyPresses = 0;
     int keyReleases = 0;
@@ -73,6 +81,7 @@ public:
     void reset()
     {
         mousePresses = 0;
+        mouseMoves = 0;
         wheels = 0;
         keyPresses = 0;
         keyReleases = 0;
@@ -92,6 +101,13 @@ protected:
         case QEvent::MouseButtonPress: {
             auto *mouse = static_cast<QMouseEvent *>(event);
             ++mousePresses;
+            lastLocal = mouse->position();
+            lastModifiers = mouse->modifiers();
+            break;
+        }
+        case QEvent::MouseMove: {
+            auto *mouse = static_cast<QMouseEvent *>(event);
+            ++mouseMoves;
             lastLocal = mouse->position();
             lastModifiers = mouse->modifiers();
             break;
@@ -284,7 +300,7 @@ void testQueuedQuickInputIsDroppedWhenSinkIsDestroyed()
     components.input.reset();
 
     QCoreApplication::processEvents();
-    CHECK(probe.mousePresses == 0);
+    CHECK(probe.mouseMoves == 0);
 }
 
 }  // namespace
