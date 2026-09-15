@@ -9,6 +9,11 @@ if(TARGET hyremote-remoteaccess)
     set(HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS TRUE)
 endif()
 
+set(HYREMOTE_PACKAGE_WITH_WIDGETS FALSE)
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
+    set(HYREMOTE_PACKAGE_WITH_WIDGETS TRUE)
+endif()
+
 configure_package_config_file(
     "${CMAKE_CURRENT_LIST_DIR}/HyRemoteConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"

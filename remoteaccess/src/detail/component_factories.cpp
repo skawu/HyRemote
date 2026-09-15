@@ -1,5 +1,9 @@
 #include "detail/component_factories.hpp"
 
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+#include "widgets/widget_target.hpp"
+#endif
+
 #include <mutex>
 #include <utility>
 
@@ -34,15 +38,23 @@ TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled
         factory = targetFactory();
     }
 
-    if (!factory) {
-        TargetComponents result;
-        result.error = QStringLiteral(
-            "No HyRemote target adapter is linked yet for this build. Widgets and Quick adapters "
-            "are provided by the V0.0.1.0 target-integration work.");
-        return result;
-    }
+    // setTargetFactory() is an internal deterministic override used by tests and future custom
+    // composition. Normal product builds fall through to built-in target adapters so ordinary
+    // applications never register CaptureSource/InputSink objects themselves.
+    if (factory)
+        return factory(target, remoteInputEnabled);
 
-    return factory(target, remoteInputEnabled);
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+    TargetComponents widgets = createWidgetsTargetComponents(target, remoteInputEnabled);
+    if (widgets.supported)
+        return widgets;
+#endif
+
+    TargetComponents result;
+    result.error = QStringLiteral(
+        "No HyRemote target adapter in this build supports the attached Qt object. Enable/link a "
+        "supported Widgets or Quick adapter for the target type.");
+    return result;
 }
 
 TransportComponent createDefaultTransport(const QHostAddress &listenAddress, quint16 port)
