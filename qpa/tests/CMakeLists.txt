@@ -58,3 +58,16 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 15
     )
 endif()
+
+# Gate-03 model: pure QtCore geometry/stacking/input routing, independent from native plugin loading.
+add_executable(hyremote-qpa-application-surface-model-test
+    qpa_application_surface_model_test.cpp
+    ../application_surface_model.cpp
+)
+target_compile_features(hyremote-qpa-application-surface-model-test PRIVATE cxx_std_17)
+target_include_directories(hyremote-qpa-application-surface-model-test PRIVATE ..)
+target_link_libraries(hyremote-qpa-application-surface-model-test PRIVATE Qt6::Core)
+
+add_test(NAME hyremote-qpa-application-surface-model-test
+    COMMAND hyremote-qpa-application-surface-model-test)
+set_tests_properties(hyremote-qpa-application-surface-model-test PROPERTIES TIMEOUT 15)
