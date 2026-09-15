@@ -87,16 +87,28 @@ def verify_rendered_image(path: Path) -> tuple[int, int]:
     return width, height
 
 
-def send_basic_input(client, width: int, height: int) -> None:
+def send_acceptance_input(client, width: int, height: int) -> None:
     # Both examples intentionally place the click target at the same proportional location. Using
     # framebuffer-relative coordinates also covers non-1.0 DPR mapping.
     x = max(1, int(width * 0.25))
     y = max(1, int(height * 0.41))
     client.mouseMove(x, y)
-    client.mouseDown(1)
-    client.mouseUp(1)
+
+    # RFB buttons 1/2/3 are left/middle/right. Buttons 4/5 are wheel transitions; exercise wheel-up
+    # here because the lower transport product-fit already checks its normalized scroll value.
+    for button in (1, 2, 3):
+        client.mouseDown(button)
+        client.mouseUp(button)
+    client.mouseDown(4)
+    client.mouseUp(4)
+
+    # Plain key/text is checked independently from modifier delivery. vncdotool's documented
+    # compound-key syntax sends explicit modifier press/release sequences around the base key.
     client.keyDown("a")
     client.keyUp("a")
+    client.keyPress("shift-a")
+    client.keyPress("ctrl-a")
+    client.keyPress("alt-a")
 
 
 def verify_listener_released(name: str, port: int) -> None:
@@ -118,13 +130,15 @@ def verify_view_only(name: str, executable: Path, quick: bool) -> None:
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(image_path))
                 width, height = verify_rendered_image(image_path)
-                send_basic_input(client, width, height)
+                send_acceptance_input(client, width, height)
                 time.sleep(0.35)
 
         # View-only is not merely a UI label: the transport may accept a viewer connection, but no
         # normalized remote input may reach the Qt application while the policy is disabled.
         require(not any(line.startswith("APP_POINTER") for line in lines),
                 f"{name}: pointer reached application in default view-only mode: {lines}")
+        require(not any(line.startswith("APP_WHEEL") for line in lines),
+                f"{name}: wheel reached application in default view-only mode: {lines}")
         require(not any(line.startswith("APP_KEY") for line in lines),
                 f"{name}: key reached application in default view-only mode: {lines}")
         require(not any(line.startswith("APP_TEXT") for line in lines),
@@ -151,8 +165,8 @@ def verify_control(name: str, executable: Path, quick: bool) -> None:
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(first))
                 width, height = verify_rendered_image(first)
-                send_basic_input(client, width, height)
-                time.sleep(0.25)
+                send_acceptance_input(client, width, height)
+                time.sleep(0.35)
 
             second = Path(temp_dir) / "second.png"
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
@@ -162,16 +176,29 @@ def verify_control(name: str, executable: Path, quick: bool) -> None:
         result = process.wait(timeout=12)
         reader.join(timeout=2)
         require(result == 0, f"{name} control run exited with {result}: {lines}")
-        require(any(line.startswith("APP_POINTER") for line in lines),
-                f"{name}: remote pointer did not reach the Qt application")
+
+        pointer_lines = [line for line in lines if line.startswith("APP_POINTER")]
+        require(len(pointer_lines) >= 3,
+                f"{name}: left/middle/right button delivery incomplete: {pointer_lines}")
+        require(any(line.startswith("APP_WHEEL") for line in lines),
+                f"{name}: remote wheel did not reach the Qt application")
         require(any(line.startswith("APP_KEY") for line in lines),
                 f"{name}: remote keyboard did not reach the Qt application")
+        require(any(line.startswith("APP_KEY") and "shift=1" in line for line in lines),
+                f"{name}: Shift modifier did not reach Qt key delivery: {lines}")
+        require(any(line.startswith("APP_KEY") and "ctrl=1" in line for line in lines),
+                f"{name}: Ctrl modifier did not reach Qt key delivery: {lines}")
+        require(any(line.startswith("APP_KEY") and "alt=1" in line for line in lines),
+                f"{name}: Alt modifier did not reach Qt key delivery: {lines}")
         require(any(line.startswith("APP_TEXT") for line in lines),
                 f"{name}: remote text commit did not reach the Qt application")
         require("STOPPED" in lines, f"{name}: public RemoteAccess did not stop cleanly")
         verify_listener_released(name, port)
 
-        print(f"PASS: {name} view-only isolation + public facade -> viewer -> Qt pointer/key/text -> reconnect -> stop")
+        print(
+            f"PASS: {name} view-only isolation + public facade -> viewer -> "
+            "Qt buttons/wheel/modifiers/text -> reconnect -> stop"
+        )
     finally:
         if process.poll() is None:
             process.kill()
