@@ -66,7 +66,6 @@ ApplicationWindow {
             id: editor
             width: 320
             placeholderText: "Remote keyboard/text target"
-            onPressed: console.log("APP_POINTER x=" + event.position.x + " y=" + event.position.y)
             Keys.onPressed: event => console.log("APP_KEY key=" + event.key)
             onTextChanged: {
                 if (text.length > 0)
