@@ -2,6 +2,10 @@
 
 **Qt Embedded Remote Access Framework**
 
+<p align="center">
+  <img src="logo/huayan-software-horizontal.png" alt="Huayan Software" width="420">
+</p>
+
 HyRemote is an open-source remote access framework for Qt Embedded applications. It is designed to add remote display and remote input capabilities to existing Qt applications without forcing an application to adopt a single integration model, rendering stack, transport, or SoC-specific implementation.
 
 > Status: **early architecture / pre-alpha**. APIs and project boundaries are not yet stable.
@@ -125,3 +129,14 @@ HyRemote is being structured as an independent open-source project. Contribution
 ## License
 
 **TBD before public release.** The repository is currently in project-bootstrap stage and a permissive open-source license will be selected explicitly before the first public release.
+
+### Logo and brand assets
+
+| Asset | Intended use |
+|---|---|
+| [`logo/huayan-software-horizontal.png`](logo/huayan-software-horizontal.png) | horizontal lockup, used at the top of this README |
+| [`logo/huayan-logo-single.png`](logo/huayan-logo-single.png) | vertical mark for square/icon placements |
+
+These assets are provided by the project maintainer and are **intended to be distributed under the same license as the rest of this repository**, to be applied once that license is selected.
+
+Because the repository license is still undecided, **no license is granted for these assets in the meantime: they remain all rights reserved**. Downstream forks and derivatives should ship their own branding unless they have permission to keep these marks.
