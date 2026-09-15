@@ -13,8 +13,10 @@
 #include <QWidget>
 #include <QtMath>
 
+#include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -333,6 +335,8 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_state->mutex);
         m_state->active = false;
+        m_state->pending.clear();
+        m_state->drainScheduled = false;
     }
 
     void post(const hyremote::InputEvent &event) override
@@ -342,28 +346,66 @@ public:
             throw std::runtime_error("Qt application event dispatcher is unavailable");
 
         const std::shared_ptr<State> state = m_state;
+        bool scheduleDrain = false;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active)
+                return;
+
+            // Pointer motion is freshness-oriented. Adjacent pending moves collapse to the newest
+            // coordinate, and when the bounded mailbox is full an older pending move is sacrificed
+            // before any key/button/text lifecycle event. Lifecycle-sensitive input is never
+            // silently overwritten.
+            if (event.kind == hyremote::InputEventKind::PointerMove
+                && !state->pending.empty()
+                && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
+                state->pending.back() = event;
+            } else {
+                if (state->pending.size() >= kMaxPendingInputEvents) {
+                    const auto staleMove = std::find_if(
+                        state->pending.begin(), state->pending.end(), [](const hyremote::InputEvent &queued) {
+                            return queued.kind == hyremote::InputEventKind::PointerMove;
+                        });
+                    if (staleMove != state->pending.end())
+                        state->pending.erase(staleMove);
+                }
+                if (state->pending.size() >= kMaxPendingInputEvents)
+                    throw std::runtime_error("bounded Qt input mailbox is full");
+                state->pending.push_back(event);
+            }
+
+            if (!state->drainScheduled) {
+                state->drainScheduled = true;
+                scheduleDrain = true;
+            }
+        }
+
+        if (!scheduleDrain)
+            return;
+
         if (!QMetaObject::invokeMethod(
                 dispatcher,
-                [state, event] { deliverOnGuiThread(state, event); },
+                [state] { drainOnGuiThread(state); },
                 Qt::QueuedConnection)) {
-            throw std::runtime_error("failed to queue remote input to the Qt GUI thread");
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->drainScheduled = false;
+            state->pending.clear();
+            throw std::runtime_error("failed to queue remote input drain to the Qt GUI thread");
         }
     }
 
 private:
+    static constexpr std::size_t kMaxPendingInputEvents = 64;
+
     struct State
     {
         std::mutex mutex;
         QPointer<QWidget> target;
         bool active = true;
+        bool drainScheduled = false;
+        std::deque<hyremote::InputEvent> pending;
         Qt::MouseButtons buttons = Qt::NoButton;  // GUI-thread owned
     };
-
-    static bool active(const std::shared_ptr<State> &state)
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        return state->active;
-    }
 
     static void deliverPointer(const std::shared_ptr<State> &state,
                                QWidget *root,
@@ -455,8 +497,6 @@ private:
     static void deliverOnGuiThread(const std::shared_ptr<State> &state,
                                    const hyremote::InputEvent &event)
     {
-        if (!active(state))
-            return;
         QWidget *root = state->target.data();
         if (!root)
             return;
@@ -475,6 +515,32 @@ private:
             break;
         case hyremote::InputEventKind::None:
             break;
+        }
+    }
+
+    static void drainOnGuiThread(const std::shared_ptr<State> &state)
+    {
+        std::deque<hyremote::InputEvent> batch;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active) {
+                state->pending.clear();
+                state->drainScheduled = false;
+                return;
+            }
+            batch.swap(state->pending);
+            // Clear before delivery so concurrent producers can schedule exactly one next drain.
+            // Thus the Qt event queue contains at most one pending drain invocation per sink.
+            state->drainScheduled = false;
+        }
+
+        for (const hyremote::InputEvent &event : batch) {
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (!state->active)
+                    return;
+            }
+            deliverOnGuiThread(state, event);
         }
     }
 
