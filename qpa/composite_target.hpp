@@ -9,6 +9,8 @@
 #include <QRect>
 #include <QVector>
 
+#include <optional>
+
 namespace HyRemote::Qpa {
 
 struct CompositeSurfaceSnapshot
@@ -24,11 +26,18 @@ struct CompositeTargetSnapshot
     QVector<CompositeSurfaceSnapshot> backToFront;
 };
 
+struct CompositeRoutedPoint
+{
+    CompositeSurfaceSnapshot surface;
+    QPoint localPosition;
+};
+
 // QPA-private QObject target presented to the normal RemoteAccess facade.
 //
 // It is not a public application target type. RemoteAccess discovers the private
-// TargetComponentProvider interface and obtains one composite CaptureSource while still owning the
-// normal Session/Transport lifecycle. The target/model may change while that Session stays alive.
+// TargetComponentProvider interface and obtains one composite CaptureSource/InputSink while still
+// owning the normal Session/Transport lifecycle. The target/model may change while that Session
+// stays alive.
 class CompositeTarget final : public QObject, public ::HyRemote::detail::TargetComponentProvider
 {
 public:
@@ -39,8 +48,13 @@ public:
     void setSurfaceVisible(SurfaceId id, bool visible);
     void setSurfaceGeometry(SurfaceId id, const QRect &globalGeometry);
     void raiseSurface(SurfaceId id);
+    void setActiveSurface(SurfaceId id);
+    void clearActiveSurface();
 
     CompositeTargetSnapshot captureSnapshot() const;
+    std::optional<CompositeSurfaceSnapshot> surfaceById(SurfaceId id) const;
+    std::optional<CompositeSurfaceSnapshot> activeSurface() const;
+    std::optional<CompositeRoutedPoint> routeCanvasPoint(const QPoint &canvasPosition) const;
 
     ::HyRemote::detail::TargetComponents createTargetComponents(
         bool remoteInputEnabled,
@@ -49,6 +63,7 @@ public:
 private:
     ApplicationSurfaceModel m_model;
     QHash<SurfaceId, QPointer<QObject>> m_targets;
+    std::optional<SurfaceId> m_activeSurface;
 };
 
 }  // namespace HyRemote::Qpa
