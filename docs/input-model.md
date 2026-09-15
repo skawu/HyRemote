@@ -25,7 +25,9 @@ Pointer buttons are the V0.0.1.0 acceptance set: left, middle and right. Scroll 
 
 ## Keyboard and text
 
-`KeyCode` is a backend-neutral logical-key vocabulary for the V0.0.1.0 baseline: navigation/editing keys, digits, Latin A-Z and F1-F12. It is not numerically compatible with Qt keys, VNC keysyms, Windows virtual keys or Linux evdev codes.
+`KeyCode` is a backend-neutral logical-key vocabulary for the V0.0.1.0 baseline: navigation/editing keys, digits, Latin A-Z, F1-F12, and the Shift/Control/Alt/Meta/CapsLock/NumLock keys themselves. It is not numerically compatible with Qt keys, VNC keysyms, Windows virtual keys or Linux evdev codes.
+
+Modifier and lock keys have **two complementary representations**: their `KeyCode` identifies the key whose press/release transition is being delivered, while `InputEvent::modifiers` is the state mask that applies to the event. For example, a Shift press is `key=Shift`, `pressed=true`, with Shift present in the mask; its release is `key=Shift`, `pressed=false`, with the post-transition mask cleared. This lets protocol/target adapters preserve actual key-up state instead of inferring it from unrelated keystrokes.
 
 Committed UTF-8 text is carried separately as `InputEventKind::Text`. Target adapters must not infer committed text from `KeyCode`; this avoids embedding keyboard-layout assumptions in Core. IME pre-edit/composition parity remains outside the minimum V0.0.1.0 contract.
 
