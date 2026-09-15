@@ -31,14 +31,18 @@ def free_port() -> int:
         sock.close()
 
 
-def start_example(executable: Path, port: int, quick: bool):
+def start_example(executable: Path, port: int, quick: bool, remote_input: bool, seconds: int):
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
     if quick:
         env["QT_QUICK_BACKEND"] = "software"
 
+    command = [str(executable), "--port", str(port), "--test-seconds", str(seconds)]
+    if remote_input:
+        command.append("--remote-input")
+
     process = subprocess.Popen(
-        [str(executable), "--port", str(port), "--remote-input", "--test-seconds", "7"],
+        command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -74,6 +78,22 @@ def start_example(executable: Path, port: int, quick: bool):
     raise RuntimeError(f"example did not become ready: {lines}")
 
 
+def line_count(lines: list[str], needle: str) -> int:
+    return sum(1 for line in lines if needle in line)
+
+
+def wait_for_line_count(process: subprocess.Popen[str], lines: list[str], needle: str,
+                        expected: int, context: str, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if line_count(lines, needle) >= expected:
+            return
+        if process.poll() is not None:
+            raise RuntimeError(f"{context}; process exited early: {lines}")
+        time.sleep(0.05)
+    raise RuntimeError(f"{context}: expected {expected} occurrence(s) of {needle!r}: {lines}")
+
+
 def verify_rendered_image(path: Path) -> tuple[int, int]:
     image = Image.open(path).convert("RGB")
     width, height = image.size
@@ -83,56 +103,155 @@ def verify_rendered_image(path: Path) -> tuple[int, int]:
     return width, height
 
 
-def verify_example(name: str, executable: Path, quick: bool) -> None:
-    require(executable.exists(), f"{name} executable not found: {executable}")
-    port = free_port()
-    process, reader, lines = start_example(executable, port, quick)
+def send_acceptance_input(client, width: int, height: int) -> None:
+    # Both examples intentionally place the click target at the same proportional location. Using
+    # framebuffer-relative coordinates also covers non-1.0 DPR mapping.
+    x = max(1, int(width * 0.25))
+    y = max(1, int(height * 0.41))
+    client.mouseMove(x, y)
 
+    # RFB buttons 1/2/3 are left/middle/right. Buttons 4/5 are wheel transitions; exercise wheel-up
+    # here because the lower transport product-fit already checks its normalized scroll value.
+    for button in (1, 2, 3):
+        client.mouseDown(button)
+        client.mouseUp(button)
+    client.mouseDown(4)
+    client.mouseUp(4)
+
+    # Plain key/text is checked independently from modifier delivery. vncdotool's documented
+    # compound-key syntax sends explicit modifier press/release sequences around the base key.
+    client.keyDown("a")
+    client.keyUp("a")
+    client.keyPress("shift-a")
+    client.keyPress("ctrl-a")
+    client.keyPress("alt-a")
+
+
+def verify_listener_released(name: str, port: int) -> None:
+    check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        with tempfile.TemporaryDirectory(prefix=f"hyremote-{name}-") as temp_dir:
-            first = Path(temp_dir) / "first.png"
+        check.settimeout(0.25)
+        require(check.connect_ex(("127.0.0.1", port)) != 0,
+                f"{name}: listener still accepts after RemoteAccess::stop()")
+    finally:
+        check.close()
+
+
+def verify_view_only(name: str, executable: Path, quick: bool) -> None:
+    port = free_port()
+    process, reader, lines = start_example(executable, port, quick, remote_input=False, seconds=6)
+    try:
+        require(line_count(lines, "CLIENT_COUNT 0") >= 1,
+                f"{name}: initial zero-client status missing: {lines}")
+
+        with tempfile.TemporaryDirectory(prefix=f"hyremote-{name}-view-only-") as temp_dir:
+            image_path = Path(temp_dir) / "view-only.png"
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
-                client.captureScreen(str(first))
-                width, height = verify_rendered_image(first)
+                client.captureScreen(str(image_path))
+                wait_for_line_count(process, lines, "CLIENT_COUNT 1", 1,
+                                    f"{name}: view-only client connection not reflected locally")
+                width, height = verify_rendered_image(image_path)
+                send_acceptance_input(client, width, height)
+                time.sleep(0.35)
 
-                # Both examples intentionally place the click target at the same proportional
-                # location. Using framebuffer-relative coordinates also covers non-1.0 DPR mapping.
-                x = max(1, int(width * 0.25))
-                y = max(1, int(height * 0.41))
-                client.mouseMove(x, y)
-                client.mouseDown(1)
-                client.mouseUp(1)
-                client.keyDown("a")
-                client.keyUp("a")
-                time.sleep(0.25)
+            wait_for_line_count(process, lines, "CLIENT_COUNT 0", 2,
+                                f"{name}: view-only disconnect not reflected locally")
 
-            second = Path(temp_dir) / "second.png"
-            with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
-                client.captureScreen(str(second))
-                verify_rendered_image(second)
+        # View-only is not merely a UI label: the transport may accept a viewer connection, but no
+        # normalized remote input may reach the Qt application while the policy is disabled.
+        require(not any(line.startswith("APP_POINTER") for line in lines),
+                f"{name}: pointer reached application in default view-only mode: {lines}")
+        require(not any(line.startswith("APP_WHEEL") for line in lines),
+                f"{name}: wheel reached application in default view-only mode: {lines}")
+        require(not any(line.startswith("APP_KEY") for line in lines),
+                f"{name}: key reached application in default view-only mode: {lines}")
+        require(not any(line.startswith("APP_TEXT") for line in lines),
+                f"{name}: text reached application in default view-only mode: {lines}")
 
-        result = process.wait(timeout=12)
+        result = process.wait(timeout=11)
         reader.join(timeout=2)
-        require(result == 0, f"{name} exited with {result}: {lines}")
-        require(any(line.startswith("APP_POINTER") for line in lines),
-                f"{name}: remote pointer did not reach the Qt application")
-        require(any(line.startswith("APP_KEY") for line in lines),
-                f"{name}: remote keyboard did not reach the Qt application")
-        require("STOPPED" in lines, f"{name}: public RemoteAccess did not stop cleanly")
-
-        check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            check.settimeout(0.25)
-            require(check.connect_ex(("127.0.0.1", port)) != 0,
-                    f"{name}: listener still accepts after RemoteAccess::stop()")
-        finally:
-            check.close()
-
-        print(f"PASS: {name} public facade -> standard viewer -> Qt input -> reconnect -> stop")
+        require(result == 0, f"{name} view-only run exited with {result}: {lines}")
+        require("STOPPED" in lines, f"{name}: view-only run did not stop cleanly")
+        require(line_count(lines, "CLIENT_COUNT 1") >= 1 and line_count(lines, "CLIENT_COUNT 0") >= 2,
+                f"{name}: view-only connection diagnostics incomplete: {lines}")
+        verify_listener_released(name, port)
     finally:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def verify_control(name: str, executable: Path, quick: bool) -> None:
+    port = free_port()
+    process, reader, lines = start_example(executable, port, quick, remote_input=True, seconds=10)
+
+    try:
+        require(line_count(lines, "CLIENT_COUNT 0") >= 1,
+                f"{name}: initial zero-client status missing: {lines}")
+
+        with tempfile.TemporaryDirectory(prefix=f"hyremote-{name}-control-") as temp_dir:
+            first = Path(temp_dir) / "first.png"
+            with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
+                client.captureScreen(str(first))
+                wait_for_line_count(process, lines, "CLIENT_COUNT 1", 1,
+                                    f"{name}: first client connection not reflected locally")
+                width, height = verify_rendered_image(first)
+                send_acceptance_input(client, width, height)
+                time.sleep(0.35)
+
+            # Require the intermediate disconnected state before reconnecting so the diagnostic
+            # lifecycle cannot accidentally collapse 1 -> 0 -> 1 into one visible value.
+            wait_for_line_count(process, lines, "CLIENT_COUNT 0", 2,
+                                f"{name}: first client disconnect not reflected locally")
+
+            second = Path(temp_dir) / "second.png"
+            with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
+                client.captureScreen(str(second))
+                wait_for_line_count(process, lines, "CLIENT_COUNT 1", 2,
+                                    f"{name}: reconnect not reflected locally")
+                verify_rendered_image(second)
+
+            wait_for_line_count(process, lines, "CLIENT_COUNT 0", 3,
+                                f"{name}: second client disconnect not reflected locally")
+
+        result = process.wait(timeout=15)
+        reader.join(timeout=2)
+        require(result == 0, f"{name} control run exited with {result}: {lines}")
+
+        pointer_lines = [line for line in lines if line.startswith("APP_POINTER")]
+        require(len(pointer_lines) >= 3,
+                f"{name}: left/middle/right button delivery incomplete: {pointer_lines}")
+        require(any(line.startswith("APP_WHEEL") for line in lines),
+                f"{name}: remote wheel did not reach the Qt application")
+        require(any(line.startswith("APP_KEY") for line in lines),
+                f"{name}: remote keyboard did not reach the Qt application")
+        require(any(line.startswith("APP_KEY") and "shift=1" in line for line in lines),
+                f"{name}: Shift modifier did not reach Qt key delivery: {lines}")
+        require(any(line.startswith("APP_KEY") and "ctrl=1" in line for line in lines),
+                f"{name}: Ctrl modifier did not reach Qt key delivery: {lines}")
+        require(any(line.startswith("APP_KEY") and "alt=1" in line for line in lines),
+                f"{name}: Alt modifier did not reach Qt key delivery: {lines}")
+        require(any(line.startswith("APP_TEXT") for line in lines),
+                f"{name}: remote text commit did not reach the Qt application")
+        require(line_count(lines, "CLIENT_COUNT 1") >= 2 and line_count(lines, "CLIENT_COUNT 0") >= 3,
+                f"{name}: connect/disconnect/reconnect diagnostics incomplete: {lines}")
+        require("STOPPED" in lines, f"{name}: public RemoteAccess did not stop cleanly")
+        verify_listener_released(name, port)
+
+        print(
+            f"PASS: {name} view-only isolation + public facade -> viewer -> client-count 0/1 -> "
+            "Qt buttons/wheel/modifiers/text -> reconnect -> stop"
+        )
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def verify_example(name: str, executable: Path, quick: bool) -> None:
+    require(executable.exists(), f"{name} executable not found: {executable}")
+    verify_view_only(name, executable, quick)
+    verify_control(name, executable, quick)
 
 
 def main() -> int:

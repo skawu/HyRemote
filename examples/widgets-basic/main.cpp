@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QTimer>
+#include <QWheelEvent>
 #include <QWidget>
 
 #include <iostream>
@@ -36,13 +37,24 @@ protected:
         switch (event->type()) {
         case QEvent::MouseButtonPress: {
             const auto *mouse = static_cast<QMouseEvent *>(event);
-            std::cout << "APP_POINTER x=" << mouse->position().x()
+            std::cout << "APP_POINTER button=" << static_cast<int>(mouse->button())
+                      << " x=" << mouse->position().x()
                       << " y=" << mouse->position().y() << std::endl;
+            break;
+        }
+        case QEvent::Wheel: {
+            const auto *wheel = static_cast<QWheelEvent *>(event);
+            std::cout << "APP_WHEEL y=" << wheel->angleDelta().y() << std::endl;
             break;
         }
         case QEvent::KeyPress: {
             const auto *key = static_cast<QKeyEvent *>(event);
-            std::cout << "APP_KEY key=" << key->key() << std::endl;
+            const Qt::KeyboardModifiers modifiers = key->modifiers();
+            std::cout << "APP_KEY key=" << key->key()
+                      << " shift=" << ((modifiers & Qt::ShiftModifier) ? 1 : 0)
+                      << " ctrl=" << ((modifiers & Qt::ControlModifier) ? 1 : 0)
+                      << " alt=" << ((modifiers & Qt::AltModifier) ? 1 : 0)
+                      << std::endl;
             break;
         }
         case QEvent::InputMethod: {
@@ -117,7 +129,7 @@ int main(int argc, char **argv)
     button->setGeometry(20, 70, 140, 40);
 
     auto *status = new QLabel(&window);
-    status->setGeometry(180, 70, 160, 40);
+    status->setGeometry(180, 66, 160, 48);
     status->setWordWrap(true);
 
     auto *editor = new QLineEdit(&window);
@@ -153,14 +165,37 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    status->setText(QStringLiteral("Running on 127.0.0.1:%1").arg(port));
+    std::size_t lastClientCount = remote.connectedClientCount();
+    const auto updateStatus = [&] {
+        status->setText(QStringLiteral("Listening 127.0.0.1:%1\nclients: %2")
+                            .arg(port)
+                            .arg(static_cast<qulonglong>(lastClientCount)));
+    };
+    updateStatus();
+    std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
+
+    QTimer statusTimer;
+    statusTimer.setInterval(100);
+    statusTimer.setTimerType(Qt::CoarseTimer);
+    QObject::connect(&statusTimer, &QTimer::timeout, &window, [&] {
+        const std::size_t nextClientCount = remote.connectedClientCount();
+        if (nextClientCount == lastClientCount)
+            return;
+        lastClientCount = nextClientCount;
+        updateStatus();
+        std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
+    });
+    statusTimer.start();
+
     std::cout << "READY " << port << std::endl;
 
     if (testSeconds > 0)
         QTimer::singleShot(testSeconds * 1000, &app, &QCoreApplication::quit);
 
     const int result = app.exec();
+    statusTimer.stop();
     remote.stop();
+    std::cout << "CLIENT_COUNT " << remote.connectedClientCount() << std::endl;
     std::cout << "STOPPED" << std::endl;
     return result;
 }

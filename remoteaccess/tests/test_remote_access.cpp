@@ -35,6 +35,7 @@ struct RuntimeCounters
     bool provideInputSink = true;
     QHostAddress observedAddress;
     quint16 observedPort = 0;
+    hyremote::TransportEventHandler transportEventHandler;
 };
 
 class FakeCapture final : public hyremote::CaptureSource
@@ -116,7 +117,7 @@ public:
     {
         ++m_counters->transportStarts;
         m_onInput = std::move(onInput);
-        m_onEvent = std::move(onEvent);
+        m_counters->transportEventHandler = std::move(onEvent);
         return m_counters->transportStartResult;
     }
 
@@ -124,7 +125,7 @@ public:
     {
         ++m_counters->transportStops;
         m_onInput = {};
-        m_onEvent = {};
+        m_counters->transportEventHandler = {};
     }
 
     void enqueueFrame(hyremote::RemoteFrame) override {}
@@ -132,7 +133,6 @@ public:
 private:
     std::shared_ptr<RuntimeCounters> m_counters;
     hyremote::InputHandler m_onInput;
-    hyremote::TransportEventHandler m_onEvent;
 };
 
 void installFakeRuntime(const std::shared_ptr<RuntimeCounters> &counters)
@@ -159,6 +159,14 @@ void installFakeRuntime(const std::shared_ptr<RuntimeCounters> &counters)
         });
 }
 
+void emitTransportEvent(const std::shared_ptr<RuntimeCounters> &counters,
+                        hyremote::TransportEventCode code)
+{
+    CHECK(static_cast<bool>(counters->transportEventHandler));
+    if (counters->transportEventHandler)
+        counters->transportEventHandler(hyremote::TransportEvent{code, "facade diagnostic probe"});
+}
+
 void testSafeDefaultsAndNoConstructionSideEffect()
 {
     HyRemote::detail::resetFactories();
@@ -172,6 +180,7 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(remote.listenAddress() == QHostAddress(QHostAddress::LocalHost));
     CHECK(remote.port() == 5900);
     CHECK(!remote.remoteInputEnabled());
+    CHECK(remote.connectedClientCount() == 0);
     CHECK(counters->targetFactoryCalls.load() == 0);
     CHECK(counters->transportFactoryCalls.load() == 0);
     CHECK(counters->captureStarts.load() == 0);
@@ -185,6 +194,7 @@ void testMissingTargetAndMissingAdapterFailCleanly()
     HyRemote::RemoteAccess noTarget;
     CHECK(!noTarget.start());
     CHECK(noTarget.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(noTarget.connectedClientCount() == 0);
     CHECK(noTarget.lastError().has_value());
     CHECK(noTarget.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
 
@@ -192,6 +202,7 @@ void testMissingTargetAndMissingAdapterFailCleanly()
     HyRemote::RemoteAccess noAdapter(&target);
     CHECK(!noAdapter.start());
     CHECK(noAdapter.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(noAdapter.connectedClientCount() == 0);
     CHECK(noAdapter.lastError().has_value());
     CHECK(noAdapter.lastError()->code == HyRemote::RemoteAccessErrorCode::TargetAdapterUnavailable);
 }
@@ -210,6 +221,7 @@ void testProductLifecycleAndConfigurationForwarding()
 
     CHECK(remote.start());
     CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
+    CHECK(remote.connectedClientCount() == 0);
     CHECK(counters->targetFactoryCalls.load() == 1);
     CHECK(counters->transportFactoryCalls.load() == 1);
     CHECK(counters->captureStarts.load() == 1);
@@ -224,12 +236,54 @@ void testProductLifecycleAndConfigurationForwarding()
 
     remote.stop();
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(remote.connectedClientCount() == 0);
     CHECK(counters->captureStops.load() == 1);
     CHECK(counters->transportStops.load() == 1);
 
     // Configuration becomes mutable again after stop.
     CHECK(remote.setPort(5901));
     CHECK(remote.setRemoteInputEnabled(false));
+}
+
+void testConnectedClientCountUsesTransportNeutralEvents()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+    CHECK(remote.connectedClientCount() == 0);
+    CHECK(remote.start());
+    CHECK(remote.connectedClientCount() == 0);
+
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientConnected);
+    CHECK(remote.connectedClientCount() == 1);
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientConnected);
+    CHECK(remote.connectedClientCount() == 2);
+
+    emitTransportEvent(counters, hyremote::TransportEventCode::RecoverableFailure);
+    emitTransportEvent(counters, hyremote::TransportEventCode::AuthenticationRejected);
+    CHECK(remote.connectedClientCount() == 2);
+
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientDisconnected);
+    CHECK(remote.connectedClientCount() == 1);
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientDisconnected);
+    CHECK(remote.connectedClientCount() == 0);
+
+    // A malformed/duplicate disconnect diagnostic cannot underflow the product count.
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientDisconnected);
+    CHECK(remote.connectedClientCount() == 0);
+
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientConnected);
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientConnected);
+    CHECK(remote.connectedClientCount() == 2);
+
+    remote.stop();
+    CHECK(remote.connectedClientCount() == 0);
+    // The fake transport obeys the quiescence contract by removing its callback on stop. This pins
+    // the public invariant that no late connection event can resurrect a Stopped facade count.
+    CHECK(!counters->transportEventHandler);
 }
 
 void testRemoteInputIsIndependentAndOffByDefault()
@@ -264,6 +318,7 @@ void testBackendStartFailureIsMappedAndCleanedUp()
     HyRemote::RemoteAccess remote(&target);
     CHECK(!remote.start());
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(remote.connectedClientCount() == 0);
     CHECK(remote.lastError().has_value());
     CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::StartFailed);
     CHECK(counters->captureStarts.load() == 1);
@@ -295,6 +350,7 @@ int main()
     testSafeDefaultsAndNoConstructionSideEffect();
     testMissingTargetAndMissingAdapterFailCleanly();
     testProductLifecycleAndConfigurationForwarding();
+    testConnectedClientCountUsesTransportNeutralEvents();
     testRemoteInputIsIndependentAndOffByDefault();
     testBackendStartFailureIsMappedAndCleanedUp();
     testInvalidPublicConfigurationIsProductLevel();
