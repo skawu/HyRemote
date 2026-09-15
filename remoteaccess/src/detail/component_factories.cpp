@@ -6,6 +6,9 @@
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
 #include "quick/quick_target.hpp"
 #endif
+#ifdef HYREMOTE_HAS_RFB_TRANSPORT
+#include "transport/rfb_transport.hpp"
+#endif
 
 #include <mutex>
 #include <utility>
@@ -74,15 +77,24 @@ TransportComponent createDefaultTransport(const QHostAddress &listenAddress, qui
         factory = transportFactory();
     }
 
-    if (!factory) {
-        TransportComponent result;
-        result.error = QStringLiteral(
-            "No HyRemote transport backend is linked yet for this build. The product facade does "
-            "not expose or require an application to select a backend manually.");
-        return result;
-    }
+    // Tests/custom compositions retain an explicit override seam, but normal product code never
+    // registers/selects a protocol backend itself.
+    if (factory)
+        return factory(listenAddress, port);
 
-    return factory(listenAddress, port);
+#ifdef HYREMOTE_HAS_RFB_TRANSPORT
+    TransportComponent result;
+    result.transport = createRfbTransport(listenAddress, port);
+    if (!result.transport)
+        result.error = QStringLiteral("failed to construct the built-in HyRemote RFB transport");
+    return result;
+#else
+    TransportComponent result;
+    result.error = QStringLiteral(
+        "No HyRemote transport backend is linked for this build. Enable HYREMOTE_WITH_VNC or "
+        "provide an internal product transport implementation.");
+    return result;
+#endif
 }
 
 void setTargetFactory(TargetFactory factory)
