@@ -75,16 +75,16 @@ Major.Minor.Feature.Maintenance
 
 The version number represents product capability and compatibility, not the internal technical work breakdown. The canonical rules are in [`docs/versioning.md`](docs/versioning.md).
 
-### Linux x86_64 reference platform
+### x86_64 reference platform — Windows + Linux
 
-Linux x86_64 is the standard/reference platform used to complete the first HyRemote product generation.
+The x86_64 standard/reference platform includes **both Windows x86_64 and Linux x86_64**. Each pre-GA integration-mode milestone must be validated on both operating systems; one OS does not substitute for the other.
 
 | Version | Product milestone |
 | --- | --- |
-| `V0.0.1.0` | Linux x86_64 — Embedded C++ API |
-| `V0.0.2.0` | Linux x86_64 — Declarative QML API |
-| `V0.0.3.0` | Linux x86_64 — Transparent QPA Proxy |
-| `V1.0.0.0` | Linux x86_64 GA — all three integration modes productized |
+| `V0.0.1.0` | x86_64 (Windows + Linux) — Embedded C++ API |
+| `V0.0.2.0` | x86_64 (Windows + Linux) — Declarative QML API |
+| `V0.0.3.0` | x86_64 (Windows + Linux) — Transparent QPA Proxy |
+| `V1.0.0.0` | x86_64 GA — Windows + Linux and all three integration modes productized |
 
 ### Embedded-platform expansion after V1.0
 
@@ -99,7 +99,9 @@ V1.x.2.0   Declarative QML API
 V1.x.3.0   Transparent QPA Proxy
 ```
 
-Platform ordering is a product-roadmap decision based on Linux/Qt ecosystem support, industrial relevance, BSP maturity, hardware availability, and customer demand. Rockchip and NXP i.MX are current high-priority candidates; other mainstream Linux embedded platforms can be added under the same model.
+The near-term embedded operating-system baseline is **Embedded Linux**. Platform ordering is a product-roadmap decision based on supported-OS and Qt ecosystem maturity, industrial relevance, BSP maturity, hardware availability, and customer demand. Rockchip and NXP i.MX are current high-priority candidates; other mainstream Linux embedded platforms can be added under the same model.
+
+**OpenHarmony is a long-term embedded OS direction.** It is intentionally not a current delivery gate and must not delay x86 GA or the initial Embedded Linux platform expansion. Its concrete version mapping will be decided only after the Qt/OpenHarmony integration boundary, graphics/input stack, toolchain/BSP maturity, and compatibility with the existing HyRemote product contract have been validated.
 
 Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, and similar engineering work are WBS/tasks under these product milestones; they are not top-level product milestones themselves.
 
@@ -107,22 +109,24 @@ Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, and simil
 
 A platform or integration mode is considered **supported** only when it has repeatable evidence for its claimed environment, including:
 
+- the claimed operating system;
 - a reproducible build;
 - functional remote-view and, where applicable, remote-input validation;
 - a compatibility entry;
 - documented known limitations.
 
-Desktop validation must not be used as a substitute for an embedded-platform support claim.
+For x86_64, Windows evidence does not substitute for Linux evidence and Linux evidence does not substitute for Windows evidence. Desktop/x86 validation must not be used as a substitute for an embedded-platform support claim.
 
 ## Current non-goals
 
 The early product will not:
 
-- replace a general-purpose Linux remote desktop system;
+- replace a general-purpose operating-system remote desktop system;
 - implement the RFB protocol from scratch when a suitable maintained library exists;
 - require Wayland migration merely to enable remote maintenance;
 - promise zero-copy or hardware H.264 before measured proof;
-- make Qt private/QPA APIs part of the stable core contract.
+- make Qt private/QPA APIs part of the stable core contract;
+- make OpenHarmony support a gate for `V1.0.0.0` or the first Embedded Linux platform releases.
 
 ## Contributing
 
