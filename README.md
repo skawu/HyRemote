@@ -1,32 +1,147 @@
-# HyRemote
-
-**Qt Embedded Remote Access Framework**
-
 <p align="center">
   <img src="logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
 </p>
 
-HyRemote is an open-source remote access framework for Qt applications. It is designed to add remote display and remote input capabilities to existing Qt applications without forcing an application to adopt a single integration model, rendering stack, transport, or SoC-specific implementation.
+<h1 align="center">HyRemote</h1>
 
-> Status: **pre-alpha**. Product capabilities, compatibility claims, SDK packaging, examples, and release milestones are still being completed toward the first GA release.
+<p align="center"><strong>Qt Embedded Remote Access Framework</strong><br>
+Remote display and remote input for existing Qt Widgets and Qt Quick applications.</p>
 
-## Product integration modes
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/status-pre--alpha-orange.svg" alt="Status: pre-alpha">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20x86__64-lightgrey.svg" alt="Platform: Windows | Linux x86_64">
+  <img src="https://img.shields.io/badge/Qt-6.8%2B-41CD52.svg" alt="Qt 6.8+">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
+  <img src="https://img.shields.io/badge/CMake-3.21%2B-064f8c.svg" alt="CMake 3.21+">
+</p>
 
-HyRemote V1.0 is productized through **three mandatory integration modes**:
+<p align="center">
+  <a href="https://github.com/skawu/HyRemote/actions/workflows/remoteaccess-facade.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/remoteaccess-facade.yml/badge.svg" alt="RemoteAccess facade CI"></a>
+  <a href="https://github.com/skawu/HyRemote/actions/workflows/sdk-consumption.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/sdk-consumption.yml/badge.svg" alt="SDK consumption CI"></a>
+  <a href="https://github.com/skawu/HyRemote/actions/workflows/widgets-adapter.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/widgets-adapter.yml/badge.svg" alt="Widgets adapter CI"></a>
+  <a href="https://github.com/skawu/HyRemote/actions/workflows/transport-rustvnc-ffi-spike.yml"><img src="https://github.com/skawu/HyRemote/actions/workflows/transport-rustvnc-ffi-spike.yml/badge.svg" alt="Rust VNC transport spike CI"></a>
+</p>
 
-1. **Embedded C++ API** — stable, explicit integration for maximum control and performance.
-2. **Declarative QML API** — convenient integration for Qt Quick applications using the same core semantics.
-3. **Transparent QPA Proxy** — low/zero-source-change integration for supported exact Qt/platform combinations, with the product goal of preserving local display/input while adding remote view/control simultaneously.
+HyRemote is an open-source remote access framework for Qt applications. It adds remote display and
+remote input to existing Qt Widgets and Qt Quick applications without forcing an application to adopt a
+single integration model, rendering stack, transport, or SoC-specific implementation.
 
-Qt Widgets and Qt Quick are first-class application types. The integration mode is a product capability; capture, transport, input, and hardware acceleration remain replaceable implementation layers.
+> **Status: pre-alpha.** The public facade, the Core contract and the SDK consumption paths exist and
+> are exercised by CI; capture backends, examples and the QML/QPA integration modes are still being
+> productized toward `V1.0.0.0`. See [Status](#status).
 
-The QPA mode is intentionally different from Qt's replacement-only `qvnc` platform-plugin model. HyRemote's target is a version-coupled proxy/decorator that delegates normal local platform behavior to the native Qt platform backend and mirrors supported presentation/input through the shared HyRemote runtime. Because Qt does not guarantee QPA source or binary compatibility, this mode is isolated from the stable Core and is supported only for explicitly validated Qt/OS configurations.
+- [Highlights](#highlights)
+- [Status](#status)
+- [Requirements](#requirements)
+- [Build from source](#build-from-source)
+- [Use HyRemote in an application](#use-hyremote-in-an-application)
+- [Repository layout](#repository-layout)
+- [Documentation](#documentation)
+- [Compatibility and support](#compatibility-and-support)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+- [Brand and trademarks](#brand-and-trademarks)
 
-## How applications consume HyRemote
+## Highlights
 
-HyRemote is an independent SDK/framework. It does not modify the user's Qt installation, but after it has been installed or added as source once, normal usage is designed to feel like using a Qt module.
+- **Three product integration modes**: Embedded C++ API (reference), Declarative QML API and
+  Transparent QPA Proxy. The QPA mode is a version-coupled proxy, not a replacement-only platform
+  plugin, and stays outside the stable Core.
+- **Qt Widgets and Qt Quick are peers** - neither is a compatibility afterthought. Quick3D,
+  `QOpenGLWidget` and `QQuickWidget` capture paths have recorded per-configuration evidence.
+- **Local + remote coexistence** is a product requirement for every supported integration mode.
+- **Backend-neutral architecture**: target adapters, capture backends, input paths, transports and
+  hardware encoders are replaceable implementation layers; the public product API does not expose them.
+- **Qt-like consumption**: an installed SDK (`find_package(HyRemote CONFIG REQUIRED)`) or normal CMake
+  source consumption, with a small `RemoteAccess` facade for `QWidget`/`QQuickWindow` targets.
+- **Safer defaults**: constructing `RemoteAccess` opens no listener; remote input is opt-in and
+  independently controlled; the lifecycle is explicit.
+- **Evidence over claims**: a configuration is marked supported only after a reproducible build,
+  functional validation and a documented limitation list are recorded.
+- **Apache-2.0**, with third-party components kept behind reviewable boundaries.
 
-The target installed-SDK CMake experience is:
+## Status
+
+| Version | Product milestone | State |
+| --- | --- | --- |
+| `V0.0.1.0` | x86_64 (Windows + Linux) - Embedded C++ API | in progress |
+| `V0.0.2.0` | x86_64 (Windows + Linux) - Declarative QML API | planned |
+| `V0.0.3.0` | x86_64 (Windows + Linux) - Transparent QPA Proxy, local + remote | planned |
+| `V1.0.0.0` | x86_64 GA - all three integration modes productized | planned |
+
+The Core session/frame/dispatch contract, the `RemoteAccess` facade, the install/export package and the
+Widgets capture/input adapter are merged; examples, getting-started guides and the QML/QPA modes are
+outstanding. Execution order: [`docs/development-roadmap.md`](docs/development-roadmap.md); version
+semantics: [`docs/versioning.md`](docs/versioning.md).
+
+## Requirements
+
+The support envelope follows the product roadmap rather than one development machine: the x86_64
+reference platforms first, embedded Linux next, and the same framework serving both the installed-SDK and
+the source-consumption workflows.
+
+| Requirement | Notes |
+| --- | --- |
+| C++17 toolchain | MSVC 19.4x, GCC, Clang - any conforming C++17 compiler |
+| CMake | 3.21 or newer; Ninja recommended |
+| Qt | Qt 6.8 or newer for the application-facing product targets. Which Qt modules a configuration needs is decided by CMake, which reports every missing module together with the option that satisfies or disables it |
+| Operating systems | **x86_64 reference: Windows and Linux** - both are gated for every pre-GA milestone, and one does not substitute for the other. Near-term embedded baseline: **Embedded Linux**, with Rockchip and NXP i.MX class platforms as the current high-priority candidates. **OpenHarmony** is a long-term direction and deliberately not a delivery gate |
+| Optional toolchains and SDKs | Only for the components that are explicitly enabled: a Rust toolchain for the optional VNC transport spike, and the platform SDKs for the experimental GBM/DMA-BUF and hardware-encoder backends (`HYREMOTE_WITH_GBM`, `HYREMOTE_WITH_RKMPP`, both `OFF` by default) |
+| Support claims | A platform or integration mode counts as supported only with recorded evidence; per-configuration status is in [`docs/compatibility.md`](docs/compatibility.md) and version semantics in [`docs/versioning.md`](docs/versioning.md) |
+
+The three product integration modes (Embedded C++, Declarative QML, Transparent QPA Proxy) are part of the
+V1.0 product scope. The C++ and QML modes stay on Qt public APIs, while the QPA proxy is version-coupled -
+Qt does not guarantee QPA compatibility - and is therefore validated per exact Qt/OS combination.
+
+## Build from source
+
+```bash
+cmake -S . -B build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<toolchain>
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+The Qt `bin` directory must be reachable when the tests run, otherwise the Qt-linked test binaries
+abort with `STATUS_DLL_NOT_FOUND` on Windows: set it in the same shell before `ctest`
+(`set PATH=<Qt>\bin;%PATH%` on Windows, `export LD_LIBRARY_PATH=<Qt>/lib:$LD_LIBRARY_PATH` on Linux).
+
+Core-only builds (no Qt required):
+
+```bash
+cmake -S . -B build-core -G Ninja -DCMAKE_BUILD_TYPE=Release -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF
+cmake --build build-core
+ctest --test-dir build-core --output-on-failure
+```
+
+The throwaway architecture spike harnesses are excluded by default:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DHYREMOTE_BUILD_SPIKES=ON
+cmake --build build
+ctest --test-dir build -R "spike|async-spike"
+```
+
+| CMake option | Default | Purpose |
+| --- | --- | --- |
+| `HYREMOTE_BUILD_CORE` | `ON` | Qt-free `hyremote-core` session/frame/dispatch library |
+| `HYREMOTE_BUILD_REMOTE_ACCESS` | `ON` | public `HyRemote::RemoteAccess` facade (skipped with a status message on a Qt-less top-level build) |
+| `HYREMOTE_BUILD_WIDGETS_ADAPTER` | `ON` | Qt Widgets target adapter (built when Qt Widgets is available) |
+| `HYREMOTE_BUILD_TESTS` | `ON` | Core/RemoteAccess test suites registered with CTest |
+| `HYREMOTE_BUILD_EXAMPLES` | `ON` | reserved for the V0.0.1.0 example suite; no targets yet |
+| `HYREMOTE_BUILD_SPIKES` | `OFF` | throwaway spike harnesses under `spikes/` (not part of the production graph) |
+| `HYREMOTE_WITH_VNC` | `ON` | first VNC/RFB transport backend, when available |
+| `HYREMOTE_WITH_QPA_PROXY` | `OFF` | Transparent QPA Proxy mode (version-coupled, isolated from Core) |
+| `HYREMOTE_WITH_GBM` | `OFF` | experimental GBM/DMA-BUF-oriented backends |
+| `HYREMOTE_WITH_RKMPP` | `OFF` | experimental Rockchip MPP encoder backend |
+
+## Use HyRemote in an application
+
+After installing HyRemote (or adding it as a source subdirectory), consumption is the same as for a Qt
+module:
 
 ```cmake
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
@@ -38,179 +153,93 @@ target_link_libraries(MyApp PRIVATE
 )
 ```
 
-The target Embedded C++ application experience is intentionally small:
-
 ```cpp
 #include <HyRemote/RemoteAccess.h>
 
+// Construction has no side effects: no listener is opened until start().
 HyRemote::RemoteAccess remote(window);
-remote.start();
+remote.setListenAddress(QHostAddress(QHostAddress::LocalHost));
+remote.setPort(5900);
+remote.setRemoteInputEnabled(true);  // remote input is opt-in
+
+if (!remote.start())
+    return handleError(remote.lastError());
+
+// ... inspect with remote.state(), remote.target(), remote.listenAddress(), remote.port()
+remote.stop();
 ```
 
-`QWidget`/Widgets targets and `QQuickWindow` targets use the same product-level facade. Internal `Session`, `RemoteFrame`, capture, input, transport and protocol-backend objects are not part of the normal application integration contract.
+`QWidget` and `QQuickWindow` targets use the same product-level facade; internal `Session`,
+`RemoteFrame`, capture, input and transport objects are not part of the application contract. The
+declarative QML form (`import HyRemote; RemoteAccess { target: mainWindow }`) arrives with `V0.0.2.0`.
 
-HyRemote will support both:
+- Consumption contract: [`docs/sdk-consumption.md`](docs/sdk-consumption.md)
+- External consumer fixtures: [`tests/consumer-installed-sdk`](tests/consumer-installed-sdk),
+  [`tests/consumer-source`](tests/consumer-source)
 
-- **prebuilt Windows/Linux SDKs** with normal CMake package discovery and deployment support;
-- **source consumption** through normal CMake integration for open-source, embedded and cross-compilation workflows.
+## Repository layout
 
-The canonical SDK/user-consumption contract is [`docs/sdk-consumption.md`](docs/sdk-consumption.md).
-
-The declarative milestone later exposes the same product semantics through a normal QML module, conceptually:
-
-```qml
-import HyRemote
-
-RemoteAccess {
-    target: mainWindow
-    enabled: true
-}
-```
-
-Examples and user guides are release acceptance artifacts. V0.0.1.0 is not complete until the public C++ facade, SDK/source-consumption paths, Widgets/Quick examples, Windows/Linux getting-started guides and deployment instructions are reproducible. V1.0.0.0 additionally requires complete examples and guides for the QML and QPA Proxy modes.
-
-## V1.0 differentiation target
-
-HyRemote does not treat “stronger than Qt VNC Server” as an unverified marketing claim. The V1.0 target is to provide evidence-backed product advantages where HyRemote deliberately extends the baseline model:
-
-- **three integration modes**: Embedded C++, Declarative QML and Transparent QPA Proxy;
-- **Qt Widgets and Qt Quick** as first-class application targets;
-- **local + remote coexistence** in every supported integration mode;
-- **Windows + Linux** as the x86 reference platform;
-- **explicit lifecycle and safer defaults**, including no listener opened merely by object construction and independently controlled remote input;
-- **backend-neutral architecture**, so VNC/capture/hardware implementations can evolve without changing normal application code;
-- **Apache-2.0 open-source distribution**;
-- **standalone SDK plus source-consumption** workflows;
-- **richer examples and documentation**, including deployment, reconnect, diagnostics, security boundaries, troubleshooting and exact compatibility claims.
-
-The example suite is expected to cover, at minimum, Widgets C++, Quick C++, declarative QML, zero/minimal-change QPA Proxy, a production-like remote-support showcase, and a clean external installed-SDK consumer. Examples must not imply capabilities that have not been implemented and validated.
-
-## Architecture direction
-
-```text
-Qt Application
-  ├─ Qt Widgets
-  ├─ Qt Quick
-  ├─ Quick3D
-  ├─ QOpenGLWidget
-  └─ QQuickWidget
-         │
-    Public RemoteAccess facade
-         │
-    Target Adapter
-         │
-    Capture Backend
-         │
-  ┌──────┼───────────┐
-  │      │           │
-Raster  GL/PBO   GBM/DMA-BUF
-  │      │           │
-  └──────┴─────┬─────┘
-               │
-          RemoteFrame
-      pixels/damage/PTS
-               │
-         Transport Layer
-               │
-        VNC/RFB first
-               │
-            Viewer
-
-Viewer Input → Transport → Input Adapter → Qt Event
-```
-
-VNC/RFB is the first transport family, but its concrete backend is an internal implementation choice. HyRemote should reuse a maintained protocol implementation where practical instead of reimplementing RFB by default. A backend is selected only when it satisfies protocol, security, backpressure, packaging and downstream toolchain requirements without leaking complexity into the public product API.
-
-## Design principles
-
-- **Existing applications first.** Adding remote access must not require rewriting application UI or business logic.
-- **Qt-like consumption experience.** After acquiring HyRemote once, users should integrate it through normal CMake/QML mechanisms instead of assembling internal subsystems.
-- **Three mandatory product integration modes for V1.0.** C++ API, QML API and Transparent QPA Proxy are distinct user-facing capabilities.
-- **Qt Widgets and Qt Quick are peers.** Neither is treated as a compatibility afterthought.
-- **Local + remote coexistence.** Supported modes must preserve normal local behavior while remote access is active.
-- **Public API first.** Stable user-facing APIs and Qt public APIs define the supported contract; private/QPA integration stays isolated in version-coupled adapters.
-- **Backend separation.** Target, capture, transport, input, and hardware encoding are independent implementation interfaces.
-- **Backend invisibility.** Switching the default VNC/capture backend must not require normal application-source changes.
-- **Portable baseline before hardware optimization.** Correctness comes before PBO, DMA-BUF, GBM, or hardware video encoding.
-- **Hardware acceleration is pluggable.** SoC-specific acceleration may be added without becoming a generic-core dependency.
-- **No protocol lock-in.** VNC/RFB is the first transport, not the permanent boundary of the project.
-
-## Product roadmap and versioning
-
-HyRemote uses four-part product versions:
-
-```text
-Major.Minor.Feature.Maintenance
-```
-
-The version number represents product capability and compatibility, not the internal technical work breakdown. The canonical rules are in [`docs/versioning.md`](docs/versioning.md).
-
-### x86_64 reference platform — Windows + Linux
-
-The x86_64 standard/reference platform includes **both Windows x86_64 and Linux x86_64**. Each pre-GA integration-mode milestone must be validated on both operating systems; one OS does not substitute for the other.
-
-| Version | Product milestone |
+| Path | Contents |
 | --- | --- |
-| `V0.0.1.0` | x86_64 (Windows + Linux) — Embedded C++ API |
-| `V0.0.2.0` | x86_64 (Windows + Linux) — Declarative QML API |
-| `V0.0.3.0` | x86_64 (Windows + Linux) — Transparent QPA Proxy with local + remote coexistence |
-| `V1.0.0.0` | x86_64 GA — Windows + Linux and all three integration modes productized |
+| `core/` | `hyremote-core`: session, `RemoteFrame`, mailbox/dispatch and capability contract. Qt-free, protocol-free and covered by the deterministic test suite |
+| `remoteaccess/` | public product facade (`HyRemote::RemoteAccess`) and its tests |
+| `tests/` | external consumption fixtures: installed-SDK consumer and source consumer |
+| `spikes/` | throwaway architecture evidence harnesses: `capture`, `async-capture`, `vnc-transport-rust-ffi` |
+| `docs/` | architecture, ADRs, product/roadmap, SDK, security, compatibility and spike evidence |
+| `cmake/` | project options, install/export and deployment helpers |
+| `logo/` | project and brand assets |
 
-### Embedded-platform expansion after V1.0
+## Documentation
 
-After `V1.0.0.0`, each newly formalized embedded platform family receives a new `V1.x.0.0` product line. Within that line, independently deliverable integration modes use `V1.x.y.0`.
+| Document | Purpose |
+| --- | --- |
+| [`product-overview.md`](docs/product-overview.md) | Long-form product description: integration modes, design principles, roadmap detail, non-goals |
+| [`architecture.md`](docs/architecture.md) | Top-level boundaries and layer model |
+| [`core-architecture.md`](docs/core-architecture.md) | Implementation-level Core semantics |
+| [`adr/`](docs/adr) | Accepted decisions: core boundaries, `RemoteFrame` lifetime/timestamps, threading/backpressure |
+| [`sdk-consumption.md`](docs/sdk-consumption.md) | Frozen user-facing consumption contract |
+| [`versioning.md`](docs/versioning.md), [`development-roadmap.md`](docs/development-roadmap.md) | Product versions and execution order toward V1.0.0.0 |
+| [`input-model.md`](docs/input-model.md) | Normalized remote input contract |
+| [`security-model.md`](docs/security-model.md) | Security requirements and trust boundaries |
+| [`compatibility.md`](docs/compatibility.md) | Recorded status per configuration |
+| [`dependency-policy.md`](docs/dependency-policy.md) | Dependency and license review rules |
+| [`widgets-capture.md`](docs/widgets-capture.md), [`capture-spike.md`](docs/capture-spike.md), [`async-capture-spike.md`](docs/async-capture-spike.md) | Capture evidence for Widgets/Quick/Quick3D/OpenGLWidget/QQuickWidget |
+| [`neatvnc-evaluation.md`](docs/neatvnc-evaluation.md), [`x86-vnc-transport-evaluation.md`](docs/x86-vnc-transport-evaluation.md) | Transport backend evaluation |
 
-For example:
+## Compatibility and support
 
-```text
-V1.x.0.0   platform family enters formal support
-V1.x.1.0   Embedded C++ API
-V1.x.2.0   Declarative QML API
-V1.x.3.0   Transparent QPA Proxy
-```
-
-The near-term embedded operating-system baseline is **Embedded Linux**. Platform ordering is a product-roadmap decision based on supported-OS and Qt ecosystem maturity, industrial relevance, BSP maturity, hardware availability, and customer demand. Rockchip and NXP i.MX are current high-priority candidates; other mainstream Linux embedded platforms can be added under the same model.
-
-**OpenHarmony is a long-term embedded OS direction.** It is intentionally not a current delivery gate and must not delay x86 GA or the initial Embedded Linux platform expansion. Its concrete version mapping will be decided only after the Qt/OpenHarmony integration boundary, graphics/input stack, toolchain/BSP maturity, and compatibility with the existing HyRemote product contract have been validated.
-
-Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, and similar engineering work are WBS/tasks under these product milestones; they are not top-level product milestones themselves.
-
-## Compatibility policy
-
-A platform or integration mode is considered **supported** only when it has repeatable evidence for its claimed environment, including:
-
-- the claimed operating system;
-- a reproducible build and supported SDK/source-consumption path;
-- functional remote-view and, where applicable, remote-input validation;
-- local rendering/input coexistence where claimed;
-- a compatibility entry;
-- documented known limitations.
-
-For x86_64, Windows evidence does not substitute for Linux evidence and Linux evidence does not substitute for Windows evidence. Desktop/x86 validation must not be used as a substitute for an embedded-platform support claim. QPA Proxy support additionally requires an exact tested Qt/private-API compatibility entry.
-
-## Current non-goals
-
-The early product will not:
-
-- replace a general-purpose operating-system remote desktop system;
-- expose backend-specific APIs to normal application developers;
-- implement the RFB protocol from scratch when a suitable maintained library exists;
-- require Wayland migration merely to enable remote maintenance;
-- promise zero-copy or hardware H.264 before measured proof;
-- make Qt private/QPA APIs part of the stable core contract;
-- make OpenHarmony support a gate for `V1.0.0.0` or the first Embedded Linux platform releases.
+A configuration is marked **supported** only with a reproducible build, functional validation, a
+compatibility entry and documented limitations; everything else is `experimental`, `unsupported` or
+`unverified`, and no support claim should be inferred. Windows evidence does not substitute for Linux
+evidence (or the reverse), and x86 desktop validation is not a substitute for an embedded-platform
+claim. Current per-configuration status: [`docs/compatibility.md`](docs/compatibility.md).
 
 ## Contributing
 
-Contribution and architecture rules are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) and `docs/`.
+Issues and pull requests are welcome. Non-trivial changes start with an Issue describing the problem,
+the affected layers and application types, public/private API impact, the validation plan and known
+limitations; a PR should be focused, linked to its Issue and include the tests and platforms actually
+validated. The full rules - Core boundaries, integration modes, dependency review, commit style and
+license expectations - are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Security
+
+HyRemote is remote-access infrastructure: a working viewer is not by itself a safe deployment. The
+framework's security requirements (service enablement, listen address, view/input authorization,
+transport authentication, client lifecycle, deployment guidance) are defined in
+[`docs/security-model.md`](docs/security-model.md). Report vulnerabilities as described in
+[`SECURITY.md`](SECURITY.md) instead of opening a public Issue.
 
 ## License
 
-HyRemote is licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE).
+HyRemote is licensed under the **Apache License 2.0** - see [`LICENSE`](LICENSE). Third-party
+components remain subject to their own licenses and attribution requirements.
 
-Third-party components remain subject to their own licenses and attribution requirements.
+Unless a contribution is explicitly marked otherwise and accepted under a compatible license,
+contributions intentionally submitted for inclusion are provided under the Apache License 2.0,
+consistent with Section 5 of that license.
 
-### Logo and brand assets
+## Brand and trademarks
 
 <p align="center">
   <img src="logo/huayan-logo-single.png" alt="Huayan brand mark" width="96">
@@ -218,7 +247,10 @@ Third-party components remain subject to their own licenses and attribution requ
 
 | Asset | Project use |
 | --- | --- |
-| [`logo/huayan-software-horizontal.png`](logo/huayan-software-horizontal.png) | Primary repository/project lockup; rendered at the top of this README |
+| [`logo/huayan-software-horizontal.png`](logo/huayan-software-horizontal.png) | Primary repository/project lockup, rendered at the top of this README |
 | [`logo/huayan-logo-single.png`](logo/huayan-logo-single.png) | Compact brand mark for square/icon placements and project documentation |
 
-The image files are distributed with this repository under Apache-2.0. Apache License 2.0 section 6 does **not** grant trademark rights: copying/redistribution of the files does not grant permission to present a fork, derivative, or unrelated product as the owner of these marks. Downstream products should use their own branding unless separately authorized.
+The image files are distributed with this repository under Apache-2.0. Apache License 2.0 section 6 does
+**not** grant trademark rights: copying or redistributing the files does not grant permission to present
+a fork, derivative or unrelated product as the owner of these marks. Downstream products should use
+their own branding unless separately authorized.
