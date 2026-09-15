@@ -9,6 +9,9 @@ compile_commands.json
 CTestTestfile.cmake
 Testing/
 
+# Rust / Cargo
+target/
+
 # Build outputs
 *.o
 *.obj

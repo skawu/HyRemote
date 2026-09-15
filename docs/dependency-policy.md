@@ -30,12 +30,14 @@ Third-party code remains under its own license. Required notices and attribution
 
 Prefer libraries that:
 
-- expose a stable C/C++ API;
+- expose a stable C/C++ API, or can be isolated behind a small stable C ABI when there is a justified cross-language backend;
 - use permissive licenses compatible with Apache-2.0 and broad embedded adoption;
-- can be built with CMake/Meson/toolchain files in cross-compilation environments;
+- can be built reproducibly with normal toolchain/package mechanisms;
 - allow optional features to be disabled;
 - do not pull desktop-only dependencies into the core;
 - have active upstream maintenance and reproducible releases.
+
+A non-C++ toolchain must not become a project-wide requirement merely because one optional backend uses it. Its build/runtime boundary, supported platforms and fallback strategy must be explicit.
 
 ## Fork policy
 
@@ -48,20 +50,49 @@ A temporary pinned patch may be maintained when necessary, but it must document:
 - the upstream issue/PR if applicable;
 - criteria for deleting the patch.
 
-## Initial candidates
+## VNC/RFB backend candidates
+
+Canonical x86 transport evaluation: [`x86-vnc-transport-evaluation.md`](x86-vnc-transport-evaluation.md).
 
 ### NeatVNC
 
-Candidate role: first VNC/RFB transport backend.
+Candidate role: Linux/Embedded Linux-oriented VNC/RFB transport backend.
 
-Why it is being evaluated:
+Why it remains valuable:
 
 - embeddable server library rather than a full desktop stack;
-- transport/protocol responsibility can remain outside HyRemote core;
-- existing support for frame buffers, damage, input callbacks, and modern Linux graphics-oriented integrations;
-- permissive ISC license, compatible with HyRemote's Apache-2.0 project distribution when its attribution obligations are preserved.
+- transport/protocol responsibility can remain outside HyRemote Core;
+- frame buffers, damage, input callbacks and modern Linux graphics-oriented integrations;
+- permissive ISC license;
+- strong fit for later Linux GBM/DRM/low-copy work without becoming a Core dependency.
 
-No dependency is considered frozen until its dedicated evaluation Issue is accepted.
+The accepted #4 evidence does **not** establish native Windows support, so NeatVNC alone cannot satisfy the frozen V0.0.1.0 Windows + Linux product gate.
+
+### rustvncserver
+
+Current disposition: **Conditional GO for bounded x86 C ABI/build feasibility only** (#34), not production dependency approval.
+
+- pinned evaluation release: `v2.2.1`;
+- upstream license: Apache-2.0;
+- upstream-declared Windows x86_64 and Linux x86_64/ARM64 support;
+- Rust/Tokio implementation;
+- Rust-native public API; no exported upstream C ABI was found during evaluation, so HyRemote's spike owns a thin opaque C ABI shim.
+
+Before production adoption, #27 must resolve safe bind/listener control, lifecycle/error propagation, bounded downstream backpressure, real viewer interoperability, input fidelity and the cost of carrying a Rust/Cargo backend in a C++/Qt project.
+
+### LibVNCServer
+
+Current disposition: **NO-GO as HyRemote's default linked production backend**.
+
+LibVNCServer is mature and cross-platform, but upstream is GPL-2.0-or-later and explicitly states that linking makes the program derivative work under GPL. That conflicts with the frozen normal Apache-2.0 HyRemote distribution model unless project licensing policy is explicitly changed.
+
+### Custom HyRemote RFB implementation
+
+Current disposition: **NO-GO by default**.
+
+Owning an RFB server stack is not HyRemote's product value. Reconsider only if bounded evidence shows that maintained permissive backends cannot satisfy the product contract.
+
+No transport dependency is considered production-frozen until #27 acceptance is complete.
 
 ## Qt
 
