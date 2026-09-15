@@ -28,6 +28,7 @@ class QmlRemoteAccess : public QObject
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY portChanged)
     Q_PROPERTY(bool remoteInputEnabled READ remoteInputEnabled WRITE setRemoteInputEnabled NOTIFY remoteInputEnabledChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
+    Q_PROPERTY(quint64 connectedClientCount READ connectedClientCount NOTIFY connectedClientCountChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorChanged)
     Q_PROPERTY(ErrorCode errorCode READ errorCode NOTIFY errorChanged)
     Q_PROPERTY(bool recoverableError READ recoverableError NOTIFY errorChanged)
@@ -73,6 +74,7 @@ public:
     void setRemoteInputEnabled(bool enabled);
 
     State state() const noexcept;
+    quint64 connectedClientCount() const noexcept;
     QString errorString() const;
     ErrorCode errorCode() const noexcept;
     bool recoverableError() const noexcept;
@@ -86,6 +88,7 @@ signals:
     void portChanged();
     void remoteInputEnabledChanged();
     void stateChanged();
+    void connectedClientCountChanged();
     void errorChanged();
 
 private:
@@ -97,6 +100,7 @@ private:
     QTimer m_pollTimer;
     bool m_enabled = false;
     State m_state = Stopped;
+    quint64 m_connectedClientCount = 0;
     ErrorCode m_errorCode = NoError;
     QString m_errorString;
     bool m_recoverableError = false;
