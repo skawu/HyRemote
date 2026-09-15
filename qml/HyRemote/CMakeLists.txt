@@ -1,5 +1,10 @@
 include(GNUInstallDirs)
 
+# qt_add_qml_module() extracts QObject metadata while configuring the module. Enable AUTOMOC before
+# the target is created so type registration is identical on all supported host toolchains.
+set(CMAKE_AUTOMOC ON)
+qt_policy(SET QTP0001 NEW)
+
 qt_add_qml_module(hyremote-qml
     URI HyRemote
     VERSION 1.0
