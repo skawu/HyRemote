@@ -154,8 +154,7 @@ def verify_standard_client_round_trip(lib) -> None:
 
         with tempfile.TemporaryDirectory(prefix="hyremote-vnc-fit-") as temp_dir:
             first_capture = Path(temp_dir) / "first.png"
-            with api.connect(f"127.0.0.1::{port}", password=None) as client:
-                client.timeout = 5
+            with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(first_capture))
                 image = Image.open(first_capture).convert("RGB")
                 require(image.size == (width, height), f"unexpected framebuffer size {image.size}")
@@ -189,8 +188,7 @@ def verify_standard_client_round_trip(lib) -> None:
 
             # Reconnect to the same listener without recreating the server/target.
             second_capture = Path(temp_dir) / "second.png"
-            with api.connect(f"127.0.0.1::{port}", password=None) as client:
-                client.timeout = 5
+            with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(second_capture))
             require(Image.open(second_capture).size == (width, height), "reconnect capture failed")
             second_events = poll_events(lib, handle)
@@ -225,12 +223,17 @@ def main() -> int:
 
     lib = load_probe(args.library)
     require(lib.hyremote_vnc_probe_abi_version() == 2, "unexpected product-fit probe ABI version")
-    verify_occupied_port_failure(lib)
-    verify_standard_client_round_trip(lib)
-    print(
-        "PASS: loopback bind + occupied-port failure + vncdotool framebuffer/input/reconnect + deterministic stop"
-    )
-    return 0
+    try:
+        verify_occupied_port_failure(lib)
+        verify_standard_client_round_trip(lib)
+        print(
+            "PASS: loopback bind + occupied-port failure + vncdotool framebuffer/input/reconnect + deterministic stop"
+        )
+        return 0
+    finally:
+        # vncdotool's synchronous compatibility API owns a background Twisted reactor thread. It
+        # must be shut down explicitly or an otherwise successful CI process can remain alive.
+        api.shutdown()
 
 
 if __name__ == "__main__":
