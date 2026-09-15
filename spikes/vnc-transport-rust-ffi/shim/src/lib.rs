@@ -55,7 +55,7 @@ fn map_event(event: ServerEvent) -> Option<HyRemoteVncProbeEvent> {
             kind: EVENT_KEY,
             client_id: client_id as u64,
             key,
-            pressed: u32::from(down),
+            pressed: if down { 1 } else { 0 },
             ..Default::default()
         }),
         ServerEvent::PointerMove {
