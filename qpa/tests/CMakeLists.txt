@@ -121,3 +121,29 @@ target_link_libraries(hyremote-qpa-composite-capture-test
 
 add_test(NAME hyremote-qpa-composite-capture-test COMMAND hyremote-qpa-composite-capture-test)
 set_tests_properties(hyremote-qpa-composite-capture-test PROPERTIES TIMEOUT 15)
+
+# QPA-04 normalized-input gate. Child sinks are deterministic recorders; the composite router is
+# responsible only for application-canvas routing and delegates target-specific Qt delivery to the
+# same built-in adapter contract used by ordinary RemoteAccess.
+add_executable(hyremote-qpa-composite-input-test
+    qpa_composite_input_test.cpp
+    ../application_surface_model.cpp
+    ../composite_target.cpp
+    ../composite_target_routing.cpp
+    ../interactive_composite_target.cpp
+)
+target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
+target_include_directories(hyremote-qpa-composite-input-test
+    PRIVATE
+        ..
+        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+)
+target_link_libraries(hyremote-qpa-composite-input-test
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        HyRemote::Core
+)
+
+add_test(NAME hyremote-qpa-composite-input-test COMMAND hyremote-qpa-composite-input-test)
+set_tests_properties(hyremote-qpa-composite-input-test PROPERTIES TIMEOUT 15)
