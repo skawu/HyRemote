@@ -16,6 +16,7 @@ include(CTest)
 message(STATUS "Configuring HyRemote ${PROJECT_VERSION}")
 message(STATUS "  Build core:          ${HYREMOTE_BUILD_CORE}")
 message(STATUS "  Build RemoteAccess:  ${HYREMOTE_BUILD_REMOTE_ACCESS}")
+message(STATUS "  Build QML API:       ${HYREMOTE_BUILD_QML_API}")
 message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
@@ -48,6 +49,33 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
         message(FATAL_ERROR
             "HYREMOTE_BUILD_REMOTE_ACCESS=ON requires Qt 6.8+ Core and Network. "
             "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the product target explicitly.")
+    endif()
+endif()
+
+# Declarative QML integration is a thin wrapper over the same public RemoteAccess runtime. It must
+# never create a second capture/transport/input stack. Keep the module optional for bare Core builds
+# and source consumers that intentionally disable the product-facing QML mode.
+if(HYREMOTE_BUILD_QML_API)
+    if(NOT TARGET hyremote-remoteaccess)
+        if(PROJECT_IS_TOP_LEVEL)
+            message(STATUS "  QML API skipped: HyRemote::RemoteAccess is unavailable")
+        else()
+            message(FATAL_ERROR "HYREMOTE_BUILD_QML_API=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON")
+        endif()
+    else()
+        if(NOT TARGET Qt6::Qml)
+            find_package(Qt6 6.8 QUIET COMPONENTS Qml)
+        endif()
+
+        if(TARGET Qt6::Qml)
+            add_subdirectory(qml/HyRemote)
+        elseif(PROJECT_IS_TOP_LEVEL)
+            message(STATUS "  QML API skipped: Qt 6.8+ Qml not found")
+        else()
+            message(FATAL_ERROR
+                "HYREMOTE_BUILD_QML_API=ON requires Qt 6.8+ Qml. "
+                "Provide the target Qt SDK before add_subdirectory(HyRemote), or disable the QML API explicitly.")
+        endif()
     endif()
 endif()
 
