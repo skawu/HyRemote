@@ -56,7 +56,7 @@ class HyRemotePlatformIntegration final : public QPlatformIntegration
 {
 public:
     HyRemotePlatformIntegration(std::unique_ptr<QPlatformIntegration> delegate,
-                                HyRemote::Qpa::RemoteConfig remoteConfig)
+                                ::HyRemote::Qpa::RemoteConfig remoteConfig)
         : m_delegate(std::move(delegate))
         , m_remoteConfig(std::move(remoteConfig))
     {
@@ -100,7 +100,7 @@ public:
     void initialize() override
     {
         m_delegate->initialize();
-        m_remoteController = std::make_unique<HyRemote::Qpa::RemoteController>(m_remoteConfig);
+        m_remoteController = std::make_unique<::HyRemote::Qpa::RemoteController>(m_remoteConfig);
         if (!m_remoteController->start()) {
             qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition";
             m_remoteController.reset();
@@ -182,8 +182,8 @@ protected:
 
 private:
     std::unique_ptr<QPlatformIntegration> m_delegate;
-    HyRemote::Qpa::RemoteConfig m_remoteConfig;
-    std::unique_ptr<HyRemote::Qpa::RemoteController> m_remoteController;
+    ::HyRemote::Qpa::RemoteConfig m_remoteConfig;
+    std::unique_ptr<::HyRemote::Qpa::RemoteController> m_remoteController;
 };
 
 class HyRemotePlatformIntegrationPlugin final : public QPlatformIntegrationPlugin
@@ -201,9 +201,9 @@ public:
             return nullptr;
 
         QStringList delegateParameters = paramList;
-        HyRemote::Qpa::RemoteConfig remoteConfig;
+        ::HyRemote::Qpa::RemoteConfig remoteConfig;
         QString remoteConfigError;
-        if (!HyRemote::Qpa::parseRemoteConfig(delegateParameters, remoteConfig, remoteConfigError)) {
+        if (!::HyRemote::Qpa::parseRemoteConfig(delegateParameters, remoteConfig, remoteConfigError)) {
             qWarning() << "HyRemote QPA Proxy rejected remote configuration:" << remoteConfigError;
             return nullptr;
         }
