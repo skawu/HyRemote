@@ -459,6 +459,218 @@ HYR_TEST(r2b2_stop_while_the_transport_start_is_in_progress)
     HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
 }
 
+// --- R3-B1: no mutex re-entry while a start() reports its cancellation -------------------------
+
+namespace {
+
+// Records whether the Session was ever observed `Running`, so "start() never publishes `Running`
+// after a stop() won" is checked by observation and not only inferred from the final state.
+class RunningWatcher
+{
+public:
+    explicit RunningWatcher(Session &session)
+        : m_session(session)
+        , m_thread([this] {
+            while (!m_stop) {
+                if (m_session.state() == SessionState::Running)
+                    m_sawRunning = true;
+                std::this_thread::sleep_for(std::chrono::microseconds(200));
+            }
+        })
+    {
+    }
+
+    ~RunningWatcher() { stop(); }
+
+    void stop()
+    {
+        m_stop = true;
+        if (m_thread.joinable())
+            m_thread.join();
+    }
+
+    bool sawRunning()
+    {
+        stop();
+        return m_sawRunning.load();
+    }
+
+private:
+    Session &m_session;
+    std::atomic<bool> m_stop{false};
+    std::atomic<bool> m_sawRunning{false};
+    std::thread m_thread;
+};
+
+// Runs `action` on a separate thread and returns only once it has completed, so a test can inject a
+// stop() at a deterministic point from inside a gated component start.
+bool stopOnSeparateThreadAndWait(Session &session, std::thread &thread)
+{
+    std::atomic<bool> returned{false};
+    thread = std::thread([&session, &returned] {
+        session.stop();
+        returned.store(true);
+    });
+    return waitFor([&returned] { return returned.load(); });
+}
+
+}  // namespace
+
+HYR_TEST(r3b1_stop_wins_at_the_earliest_moment_after_starting_is_published)
+{
+    // Shape (a) of the R3 review: the stop wins at the earliest moment an external thread can act,
+    // i.e. immediately after `Starting` is published. The callback gate is installed in the same
+    // critical section as the run claim, so "while the gate installation is committed" is no longer
+    // a separate window (there is no helper that could re-enter the mutex there either); this test
+    // pins the observable consequences of a stop() winning at that point.
+    RunningSession running;
+    running.prepare();
+
+    std::atomic<bool> rendezvousOk{false};
+    std::thread stopper;
+    running.source->onStart = [&] {
+        // Runs on the Session's start() thread, inside CaptureSource::start(), with no Session lock
+        // held. The stop() is performed by a normal external thread and this hook waits for the whole
+        // teardown to complete before the component reports "started", so the interleaving is
+        // deterministic: the stop has definitely won before the source start returns.
+        rendezvousOk.store(stopOnSeparateThreadAndWait(*running.session, stopper));
+    };
+
+    RunningWatcher watcher(*running.session);
+    const bool started = running.session->start();
+    stopper.join();
+
+    HYR_CHECK(rendezvousOk.load());
+    HYR_CHECK(!started);
+    HYR_CHECK(!watcher.sawRunning());  // no later transition to `Running`
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK_EQ(running.transport->stopCalls(), 0);
+    HYR_CHECK(running.transport->events().empty());
+    HYR_CHECK_EQ(running.source->requestCalls(), 0);
+    HYR_CHECK_EQ(running.session->stats().workersStarted, 0);
+    HYR_CHECK(running.session->lastError().has_value());
+    HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::StartCancelled);
+
+    // A subsequent fresh start/stop still works: the cancelled run left no lock held and no state
+    // behind.
+    running.source->onStart = nullptr;
+    HYR_CHECK(running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+}
+
+HYR_TEST(r3b1_stop_wins_after_the_transport_startup_commits_before_running)
+{
+    // Shape (b) of the R3 review: the transport has already started but has not returned to the
+    // Session yet. The transport commit and the `Running` publication are one critical section, so
+    // this is the deterministic injection point: the teardown completes before `Transport::start()`
+    // returns, which guarantees that the Session's commit section sees a cancelled run and therefore
+    // must not publish `Running`.
+    RunningSession running;
+    running.prepare();
+
+    std::atomic<bool> rendezvousOk{false};
+    std::thread stopper;
+    running.transport->onStart = [&] {
+        // Runs on the Session's start() thread, inside Transport::start(), after the transport has
+        // been marked started and with no Session lock held.
+        rendezvousOk.store(stopOnSeparateThreadAndWait(*running.session, stopper));
+    };
+
+    RunningWatcher watcher(*running.session);
+    const bool started = running.session->start();
+    stopper.join();
+
+    HYR_CHECK(rendezvousOk.load());
+    HYR_CHECK(!started);
+    HYR_CHECK(!watcher.sawRunning());  // no later transition to `Running`
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+    // The teardown stopped the capture source (it had been committed); the transport finished
+    // starting after the cancellation, so the cancelled start() stops it. Each component exactly
+    // once, and no component is destroyed while it is still live.
+    HYR_CHECK_EQ(running.source->stopCalls(), 1);
+    HYR_CHECK_EQ(running.transport->stopCalls(), 1);
+    HYR_CHECK_EQ(running.source->requestCalls(), 0);
+    HYR_CHECK_EQ(running.session->stats().framesDispatched, std::uint64_t{0});
+    HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::StartCancelled);
+    HYR_CHECK_EQ(*running.source->destroyed, 0);
+    HYR_CHECK_EQ(*running.transport->destroyed, 0);
+
+    running.transport->onStart = nullptr;
+    HYR_CHECK(running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+}
+
+HYR_TEST(r3b1_concurrent_start_and_stop_complete_without_deadlock)
+{
+    // Bounded race over the narrow windows a deterministic test cannot pin: `start()` and `stop()`
+    // are released through a barrier while the start is between two critical sections, which is where
+    // a stop() claims the run while the start() thread is about to re-acquire the mutex. A watchdog
+    // turns a hypothetical deadlock (the R3-B1 failure mode) into a test failure instead of a hung
+    // binary, and the fixture is intentionally leaked in that case because its destructor would block
+    // on the mutex the deadlocked thread holds.
+    constexpr int kIterations = 200;
+
+    int stoppedByTheRacer = 0;
+    int stoppedByTheTest = 0;
+    for (int iteration = 0; iteration < kIterations; ++iteration) {
+        auto running = std::make_unique<RunningSession>();
+        running->prepare();
+
+        TestBarrier barrier(2);
+        std::atomic<bool> startReturned{false};
+        std::atomic<bool> stopReturned{false};
+        std::thread starter([&] {
+            barrier.wait();
+            running->session->start();
+            startReturned.store(true);
+        });
+        std::thread stopper([&] {
+            barrier.wait();
+            running->session->stop();
+            stopReturned.store(true);
+        });
+
+        const bool completed = waitFor([&] { return startReturned.load() && stopReturned.load(); },
+                                       std::chrono::milliseconds(10000));
+        if (!completed) {
+            (void)running.release();
+            starter.detach();
+            stopper.detach();
+            HYR_CHECK_MSG(false,
+                          "concurrent start()/stop() did not complete within the watchdog: deadlock");
+            return;
+        }
+        starter.join();
+        stopper.join();
+
+        if (running->session->state() == SessionState::Running) {
+            // The start won the race and published `Running`; the owner then stops normally.
+            ++stoppedByTheTest;
+            running->session->stop();
+        } else {
+            // The stop won during startup and cancelled it, or it completed before the run was
+            // claimed and the start then failed/never started.
+            ++stoppedByTheRacer;
+        }
+
+        HYR_CHECK_EQ(running->session->state(), SessionState::Stopped);
+        // Exactly one ordered teardown per run, whichever side won.
+        HYR_CHECK_EQ(running->session->stats().teardownsPerformed, std::uint64_t{1});
+    }
+
+    // Both outcomes are legal; the assertion that matters is that every iteration completed.
+    HYR_CHECK_EQ(stoppedByTheRacer + stoppedByTheTest, kIterations);
+}
+
 // --- B1: startup race regression -------------------------------------------------------------
 
 HYR_TEST(b1_workers_created_during_starting_survive_the_running_publication)
