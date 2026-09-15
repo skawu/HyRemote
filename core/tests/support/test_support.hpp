@@ -8,7 +8,9 @@
 
 #include <chrono>
 #include <cstdio>
+#include <exception>
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
