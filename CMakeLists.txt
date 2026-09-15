@@ -51,6 +51,20 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 endif()
 
+# Release examples are deliberately wired after the product facade/adapters so they prove the same
+# public integration contract that downstream applications use. They never assemble Core or a
+# concrete transport directly.
+if(HYREMOTE_BUILD_EXAMPLES)
+    if(TARGET hyremote-remoteaccess)
+        add_subdirectory(examples)
+    elseif(PROJECT_IS_TOP_LEVEL)
+        message(STATUS "  Product examples skipped: HyRemote::RemoteAccess is unavailable")
+    else()
+        message(FATAL_ERROR
+            "HYREMOTE_BUILD_EXAMPLES=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a supported Qt SDK")
+    endif()
+endif()
+
 # Throwaway architecture spike harnesses. They are not part of the production build graph.
 if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/capture)
