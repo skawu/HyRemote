@@ -1,0 +1,13 @@
+[package]
+name = "hyremote-vnc-rust-ffi-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "hyremote_vnc_rust_ffi_probe"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustvncserver = "=2.2.1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
