@@ -1,0 +1,112 @@
+name: SDK consumption
+
+on:
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'core/**'
+      - 'remoteaccess/**'
+      - 'tests/consumer-installed-sdk/**'
+      - 'tests/consumer-source/**'
+      - '.github/workflows/sdk-consumption.yml'
+  workflow_dispatch:
+
+jobs:
+  consume:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x86_64 / installed + source SDK
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+          - name: Linux x86_64 / installed + source SDK
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt and Ninja
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
+
+      - name: Build, install and consume — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          SDK_PREFIX="$RUNNER_TEMP/hyremote-sdk"
+
+          cmake -S . -B build-sdk -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$SDK_PREFIX" \
+            -DHYREMOTE_BUILD_CORE=ON \
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
+            -DHYREMOTE_BUILD_TESTS=OFF \
+            -DHYREMOTE_BUILD_SPIKES=OFF \
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build-sdk --parallel
+          cmake --install build-sdk
+
+          cmake -S tests/consumer-installed-sdk -B build-consumer-installed -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX"
+          cmake --build build-consumer-installed --parallel
+          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-consumer-installed/hyremote-installed-consumer
+
+          cmake -S tests/consumer-source -B build-consumer-source -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_SOURCE_DIR="$GITHUB_WORKSPACE"
+          cmake --build build-consumer-source --parallel
+          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-consumer-source/hyremote-source-consumer
+
+      - name: Build, install and consume — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "SDK_PREFIX=%RUNNER_TEMP%\hyremote-sdk"
+
+          cmake -S . -B build-sdk -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%SDK_PREFIX%" ^
+            -DHYREMOTE_BUILD_CORE=ON ^
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
+            -DHYREMOTE_BUILD_TESTS=OFF ^
+            -DHYREMOTE_BUILD_SPIKES=OFF ^
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build-sdk --parallel
+          cmake --install build-sdk
+
+          cmake -S tests\consumer-installed-sdk -B build-consumer-installed -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_PREFIX%"
+          cmake --build build-consumer-installed --parallel
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          build-consumer-installed\hyremote-installed-consumer.exe
+
+          cmake -S tests\consumer-source -B build-consumer-source -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DHYREMOTE_SOURCE_DIR="%GITHUB_WORKSPACE%"
+          cmake --build build-consumer-source --parallel
+          build-consumer-source\hyremote-source-consumer.exe

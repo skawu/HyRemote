@@ -8,6 +8,8 @@
 # Qt QML, Qt private/QPA, NeatVNC/AML, DRM/GBM/DMA-BUF or RKMPP/V4L2/VA-API types.
 # core/tests/check_dependencies.cmake enforces the include/link part of that rule.
 
+include(GNUInstallDirs)
+
 add_library(hyremote-core
     src/capabilities.cpp
     src/detail/mailbox.cpp
@@ -17,11 +19,12 @@ add_library(hyremote-core
     src/types.cpp
 )
 add_library(HyRemote::Core ALIAS hyremote-core)
+set_target_properties(hyremote-core PROPERTIES EXPORT_NAME Core)
 
 target_include_directories(hyremote-core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -32,6 +35,21 @@ target_compile_features(hyremote-core PUBLIC cxx_std_17)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(hyremote-core PUBLIC Threads::Threads)
+
+install(
+    TARGETS hyremote-core
+    EXPORT HyRemoteTargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+
+install(
+    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp"
+)
 
 if(HYREMOTE_BUILD_TESTS)
     add_subdirectory(tests)
