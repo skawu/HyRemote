@@ -15,19 +15,13 @@ target_compile_definitions(hyremote-qml-module-test
 
 add_dependencies(hyremote-qml-module-test hyremote-qml hyremote-qmlplugin)
 
-add_test(NAME hyremote-qml-module-test COMMAND hyremote-qml-module-test)
-
-# QML imports load the generated plugin from build/qml/HyRemote at runtime. Its backing shared
-# library must be discoverable through the platform loader as well as through QML's import path.
-# Do not depend on the developer machine's current directory or global PATH/LD_LIBRARY_PATH.
-if(WIN32)
-    set_tests_properties(hyremote-qml-module-test PROPERTIES
-        ENVIRONMENT_MODIFICATION
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:hyremote-qml>"
-    )
-elseif(UNIX)
-    set_tests_properties(hyremote-qml-module-test PROPERTIES
-        ENVIRONMENT_MODIFICATION
-            "LD_LIBRARY_PATH=path_list_prepend:$<TARGET_FILE_DIR:hyremote-qml>"
-    )
-endif()
+# Keep the repository's CMake 3.21 contract: ENVIRONMENT_MODIFICATION was added after that
+# baseline, so launch the test through a tiny CMake script that explicitly prepends the generated
+# QML module runtime directory to the platform loader path.
+add_test(
+    NAME hyremote-qml-module-test
+    COMMAND ${CMAKE_COMMAND}
+        -DTEST_EXE=$<TARGET_FILE:hyremote-qml-module-test>
+        -DMODULE_RUNTIME_DIR=$<TARGET_FILE_DIR:hyremote-qml>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qml_module_test.cmake
+)
