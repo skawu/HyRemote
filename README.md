@@ -128,7 +128,9 @@ HyRemote is being structured as an independent open-source project. Contribution
 
 ## License
 
-**TBD before public release.** The repository is currently in project-bootstrap stage and a permissive open-source license will be selected explicitly before the first public release.
+HyRemote is licensed under the **Apache License, Version 2.0**: see [`LICENSE`](LICENSE). The text is also available at <https://www.apache.org/licenses/LICENSE-2.0>.
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 
 ### Logo and brand assets
 
@@ -137,6 +139,6 @@ HyRemote is being structured as an independent open-source project. Contribution
 | [`logo/huayan-software-horizontal.png`](logo/huayan-software-horizontal.png) | horizontal lockup, used at the top of this README |
 | [`logo/huayan-logo-single.png`](logo/huayan-logo-single.png) | vertical mark for square/icon placements |
 
-These assets are provided by the project maintainer and are **intended to be distributed under the same license as the rest of this repository**, to be applied once that license is selected.
+These assets are provided by the project maintainer and are distributed under the same license as the rest of this repository (Apache-2.0).
 
-Because the repository license is still undecided, **no license is granted for these assets in the meantime: they remain all rights reserved**. Downstream forks and derivatives should ship their own branding unless they have permission to keep these marks.
+Note that section 6 of the Apache License does **not** grant permission to use trade names, trademarks, service marks or product names. The license therefore covers copying and redistribution of these files, not the right to present a derived or unrelated product as the mark's owner. Forks and downstream products should ship their own branding.
