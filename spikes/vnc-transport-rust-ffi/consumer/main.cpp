@@ -105,6 +105,7 @@ int main(int argc, char **argv)
     HyRemoteVncProbeStartFn start = nullptr;
     HyRemoteVncProbeRunningFn running = nullptr;
     HyRemoteVncProbePollEventFn pollEvent = nullptr;
+    HyRemoteVncProbeDroppedEventsFn droppedEvents = nullptr;
     HyRemoteVncProbeStopFn stop = nullptr;
     HyRemoteVncProbeDestroyFn destroy = nullptr;
 
@@ -114,12 +115,13 @@ int main(int argc, char **argv)
         || !loadRequired(library, start, "hyremote_vnc_probe_start")
         || !loadRequired(library, running, "hyremote_vnc_probe_running")
         || !loadRequired(library, pollEvent, "hyremote_vnc_probe_poll_event")
+        || !loadRequired(library, droppedEvents, "hyremote_vnc_probe_dropped_events")
         || !loadRequired(library, stop, "hyremote_vnc_probe_stop")
         || !loadRequired(library, destroy, "hyremote_vnc_probe_destroy")) {
         return 4;
     }
 
-    if (abiVersion() != 1) {
+    if (abiVersion() != 2) {
         std::cerr << "unexpected probe ABI version: " << abiVersion() << "\n";
         return 5;
     }
@@ -146,16 +148,16 @@ int main(int argc, char **argv)
         return 7;
     }
 
-    // Port 0 is intentionally used only by this feasibility smoke test. The upstream API binds
-    // 0.0.0.0 internally; production HyRemote adoption remains blocked until an explicit safe bind
-    // address/pre-bound listener API exists.
-    if (start(handle, 0) != 0) {
-        std::cerr << "listener start scheduling failed\n";
+    // Product-fit ABI v2 routes the default through loopback rather than upstream's v2.2.1
+    // wildcard listen. The richer product-fit workflow performs dynamic-port, occupied-port,
+    // standard-client interoperability, input and reconnect checks.
+    constexpr std::uint16_t kSmokePort = 59123;
+    if (start(handle, kSmokePort) != 0) {
+        std::cerr << "loopback listener start failed\n";
         destroy(handle);
         return 8;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
     if (running(handle) != 1) {
         std::cerr << "listener task terminated during startup\n";
         destroy(handle);
@@ -170,19 +172,25 @@ int main(int argc, char **argv)
         return 10;
     }
 
+    if (droppedEvents(handle) != 0) {
+        std::cerr << "unexpected local event drop in lifecycle smoke\n";
+        destroy(handle);
+        return 11;
+    }
+
     if (stop(handle) != 0) {
         std::cerr << "probe stop failed\n";
         destroy(handle);
-        return 11;
+        return 12;
     }
 
     if (running(handle) != 0) {
         std::cerr << "listener still marked running after stop\n";
         destroy(handle);
-        return 12;
+        return 13;
     }
 
     destroy(handle);
-    std::cout << "PASS: C++ loaded Rust VNC probe ABI, updated RGBA frame, and exercised lifecycle\n";
+    std::cout << "PASS: C++ loaded the product-fit probe ABI, used loopback bind, updated RGBA, and exercised lifecycle\n";
     return 0;
 }
