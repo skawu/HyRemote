@@ -14,6 +14,7 @@ add_library(hyremote-core
     src/capabilities.cpp
     src/detail/mailbox.cpp
     src/frame.cpp
+    src/input.cpp
     src/session.cpp
     src/storage.cpp
     src/types.cpp

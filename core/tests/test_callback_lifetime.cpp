@@ -67,7 +67,8 @@ HYR_TEST(late_input_callbacks_are_ignored)
     running.session->stop();
 
     InputEvent event;
-    event.kind = InputEventKind::Placeholder;
+    event.kind = InputEventKind::PointerMove;
+    event.sourceViewport = InputViewport{16, 8, 1.0F};
     running.transport->forceDeliverInput(event);
     running.transport->forceReportEvent(TransportEvent{TransportEventCode::FatalFailure, "late"});
 
@@ -117,7 +118,8 @@ HYR_TEST(a_throwing_input_sink_is_reported_but_not_fatal)
 
     InputEvent event;
     event.kind = InputEventKind::Key;
-    event.key = 42;
+    event.key = KeyCode::A;
+    event.pressed = true;
 
     // The exception must not unwind through the transport runtime.
     running.transport->deliverInput(event);
@@ -151,7 +153,10 @@ HYR_TEST(the_input_sink_may_be_replaced_at_runtime)
     running.setInputSink(first);
 
     InputEvent event;
-    event.kind = InputEventKind::Placeholder;
+    event.kind = InputEventKind::PointerMove;
+    event.sourceViewport = InputViewport{16, 8, 1.0F};
+    event.x = 4.0F;
+    event.y = 2.0F;
     running.transport->deliverInput(event);
     HYR_CHECK_EQ(first->count(), std::size_t{1});
     HYR_CHECK_EQ(*firstDestroyed, 0);
