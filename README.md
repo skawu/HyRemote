@@ -8,7 +8,7 @@
 
 HyRemote is an open-source remote access framework for Qt applications. It is designed to add remote display and remote input capabilities to existing Qt applications without forcing an application to adopt a single integration model, rendering stack, transport, or SoC-specific implementation.
 
-> Status: **pre-alpha**. Product capabilities, compatibility claims, and release milestones are still being completed toward the first GA release.
+> Status: **pre-alpha**. Product capabilities, compatibility claims, SDK packaging, examples, and release milestones are still being completed toward the first GA release.
 
 ## Product integration modes
 
@@ -20,6 +20,53 @@ HyRemote is productized through three integration modes:
 
 Qt Widgets and Qt Quick are first-class application types. The integration mode is a product capability; capture, transport, input, and hardware acceleration remain replaceable implementation layers.
 
+## How applications consume HyRemote
+
+HyRemote is an independent SDK/framework. It does not modify the user's Qt installation, but after it has been installed or added as source once, normal usage is designed to feel like using a Qt module.
+
+The target installed-SDK CMake experience is:
+
+```cmake
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(HyRemote CONFIG REQUIRED)
+
+target_link_libraries(MyApp PRIVATE
+    Qt6::Widgets
+    HyRemote::RemoteAccess
+)
+```
+
+The target Embedded C++ application experience is intentionally small:
+
+```cpp
+#include <HyRemote/RemoteAccess.h>
+
+HyRemote::RemoteAccess remote(window);
+remote.start();
+```
+
+`QWidget`/Widgets targets and `QQuickWindow` targets use the same product-level facade. Internal `Session`, `RemoteFrame`, capture, input, transport and protocol-backend objects are not part of the normal application integration contract.
+
+HyRemote will support both:
+
+- **prebuilt Windows/Linux SDKs** with normal CMake package discovery and deployment support;
+- **source consumption** through normal CMake integration for open-source, embedded and cross-compilation workflows.
+
+The canonical SDK/user-consumption contract is [`docs/sdk-consumption.md`](docs/sdk-consumption.md).
+
+The declarative milestone later exposes the same product semantics through a normal QML module, conceptually:
+
+```qml
+import HyRemote
+
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+Examples and user guides are release acceptance artifacts. V0.0.1.0 is not complete until the public C++ facade, SDK/source-consumption paths, Widgets/Quick examples, Windows/Linux getting-started guides and deployment instructions are reproducible.
+
 ## Architecture direction
 
 ```text
@@ -29,6 +76,8 @@ Qt Application
   ├─ Quick3D
   ├─ QOpenGLWidget
   └─ QQuickWidget
+         │
+    Public RemoteAccess facade
          │
     Target Adapter
          │
@@ -52,15 +101,17 @@ Raster  GL/PBO   GBM/DMA-BUF
 Viewer Input → Transport → Input Adapter → Qt Event
 ```
 
-The first VNC/RFB transport candidate is [NeatVNC](https://github.com/any1/neatvnc). HyRemote should reuse a mature protocol implementation instead of reimplementing RFB from scratch.
+VNC/RFB is the first transport family, but its concrete backend is an internal implementation choice. HyRemote should reuse a maintained protocol implementation where practical instead of reimplementing RFB by default. A backend is selected only when it satisfies protocol, security, backpressure, packaging and downstream toolchain requirements without leaking complexity into the public product API.
 
 ## Design principles
 
 - **Existing applications first.** Adding remote access must not require rewriting application UI or business logic.
+- **Qt-like consumption experience.** After acquiring HyRemote once, users should integrate it through normal CMake/QML mechanisms instead of assembling internal subsystems.
 - **Three product integration modes.** C++ API, QML API, and optional QPA Proxy are distinct user-facing capabilities.
 - **Qt Widgets and Qt Quick are peers.** Neither is treated as a compatibility afterthought.
-- **Public API first.** The stable core should prefer Qt public APIs. Qt private/QPA integration is isolated behind optional adapters.
-- **Backend separation.** Target, capture, transport, input, and hardware encoding are independent interfaces.
+- **Public API first.** Stable user-facing APIs and Qt public APIs define the supported contract; private/QPA integration stays isolated in optional adapters.
+- **Backend separation.** Target, capture, transport, input, and hardware encoding are independent implementation interfaces.
+- **Backend invisibility.** Switching the default VNC/capture backend must not require normal application-source changes.
 - **Portable baseline before hardware optimization.** Correctness comes before PBO, DMA-BUF, GBM, or hardware video encoding.
 - **Hardware acceleration is pluggable.** SoC-specific acceleration may be added without becoming a generic-core dependency.
 - **No protocol lock-in.** VNC/RFB is the first transport, not the permanent boundary of the project.
@@ -110,7 +161,7 @@ Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, and simil
 A platform or integration mode is considered **supported** only when it has repeatable evidence for its claimed environment, including:
 
 - the claimed operating system;
-- a reproducible build;
+- a reproducible build and supported SDK/source-consumption path;
 - functional remote-view and, where applicable, remote-input validation;
 - a compatibility entry;
 - documented known limitations.
@@ -122,6 +173,7 @@ For x86_64, Windows evidence does not substitute for Linux evidence and Linux ev
 The early product will not:
 
 - replace a general-purpose operating-system remote desktop system;
+- expose backend-specific APIs to normal application developers;
 - implement the RFB protocol from scratch when a suitable maintained library exists;
 - require Wayland migration merely to enable remote maintenance;
 - promise zero-copy or hardware H.264 before measured proof;
