@@ -31,14 +31,18 @@ def free_port() -> int:
         sock.close()
 
 
-def start_example(executable: Path, port: int, quick: bool):
+def start_example(executable: Path, port: int, quick: bool, remote_input: bool, seconds: int):
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
     if quick:
         env["QT_QUICK_BACKEND"] = "software"
 
+    command = [str(executable), "--port", str(port), "--test-seconds", str(seconds)]
+    if remote_input:
+        command.append("--remote-input")
+
     process = subprocess.Popen(
-        [str(executable), "--port", str(port), "--remote-input", "--test-seconds", "7"],
+        command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -83,27 +87,71 @@ def verify_rendered_image(path: Path) -> tuple[int, int]:
     return width, height
 
 
-def verify_example(name: str, executable: Path, quick: bool) -> None:
-    require(executable.exists(), f"{name} executable not found: {executable}")
+def send_basic_input(client, width: int, height: int) -> None:
+    # Both examples intentionally place the click target at the same proportional location. Using
+    # framebuffer-relative coordinates also covers non-1.0 DPR mapping.
+    x = max(1, int(width * 0.25))
+    y = max(1, int(height * 0.41))
+    client.mouseMove(x, y)
+    client.mouseDown(1)
+    client.mouseUp(1)
+    client.keyDown("a")
+    client.keyUp("a")
+
+
+def verify_listener_released(name: str, port: int) -> None:
+    check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        check.settimeout(0.25)
+        require(check.connect_ex(("127.0.0.1", port)) != 0,
+                f"{name}: listener still accepts after RemoteAccess::stop()")
+    finally:
+        check.close()
+
+
+def verify_view_only(name: str, executable: Path, quick: bool) -> None:
     port = free_port()
-    process, reader, lines = start_example(executable, port, quick)
+    process, reader, lines = start_example(executable, port, quick, remote_input=False, seconds=4)
+    try:
+        with tempfile.TemporaryDirectory(prefix=f"hyremote-{name}-view-only-") as temp_dir:
+            image_path = Path(temp_dir) / "view-only.png"
+            with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
+                client.captureScreen(str(image_path))
+                width, height = verify_rendered_image(image_path)
+                send_basic_input(client, width, height)
+                time.sleep(0.35)
+
+        # View-only is not merely a UI label: the transport may accept a viewer connection, but no
+        # normalized remote input may reach the Qt application while the policy is disabled.
+        require(not any(line.startswith("APP_POINTER") for line in lines),
+                f"{name}: pointer reached application in default view-only mode: {lines}")
+        require(not any(line.startswith("APP_KEY") for line in lines),
+                f"{name}: key reached application in default view-only mode: {lines}")
+        require(not any(line.startswith("APP_TEXT") for line in lines),
+                f"{name}: text reached application in default view-only mode: {lines}")
+
+        result = process.wait(timeout=9)
+        reader.join(timeout=2)
+        require(result == 0, f"{name} view-only run exited with {result}: {lines}")
+        require("STOPPED" in lines, f"{name}: view-only run did not stop cleanly")
+        verify_listener_released(name, port)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def verify_control(name: str, executable: Path, quick: bool) -> None:
+    port = free_port()
+    process, reader, lines = start_example(executable, port, quick, remote_input=True, seconds=7)
 
     try:
-        with tempfile.TemporaryDirectory(prefix=f"hyremote-{name}-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix=f"hyremote-{name}-control-") as temp_dir:
             first = Path(temp_dir) / "first.png"
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(first))
                 width, height = verify_rendered_image(first)
-
-                # Both examples intentionally place the click target at the same proportional
-                # location. Using framebuffer-relative coordinates also covers non-1.0 DPR mapping.
-                x = max(1, int(width * 0.25))
-                y = max(1, int(height * 0.41))
-                client.mouseMove(x, y)
-                client.mouseDown(1)
-                client.mouseUp(1)
-                client.keyDown("a")
-                client.keyUp("a")
+                send_basic_input(client, width, height)
                 time.sleep(0.25)
 
             second = Path(temp_dir) / "second.png"
@@ -113,7 +161,7 @@ def verify_example(name: str, executable: Path, quick: bool) -> None:
 
         result = process.wait(timeout=12)
         reader.join(timeout=2)
-        require(result == 0, f"{name} exited with {result}: {lines}")
+        require(result == 0, f"{name} control run exited with {result}: {lines}")
         require(any(line.startswith("APP_POINTER") for line in lines),
                 f"{name}: remote pointer did not reach the Qt application")
         require(any(line.startswith("APP_KEY") for line in lines),
@@ -121,20 +169,19 @@ def verify_example(name: str, executable: Path, quick: bool) -> None:
         require(any(line.startswith("APP_TEXT") for line in lines),
                 f"{name}: remote text commit did not reach the Qt application")
         require("STOPPED" in lines, f"{name}: public RemoteAccess did not stop cleanly")
+        verify_listener_released(name, port)
 
-        check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            check.settimeout(0.25)
-            require(check.connect_ex(("127.0.0.1", port)) != 0,
-                    f"{name}: listener still accepts after RemoteAccess::stop()")
-        finally:
-            check.close()
-
-        print(f"PASS: {name} public facade -> standard viewer -> Qt pointer/key/text -> reconnect -> stop")
+        print(f"PASS: {name} view-only isolation + public facade -> viewer -> Qt pointer/key/text -> reconnect -> stop")
     finally:
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def verify_example(name: str, executable: Path, quick: bool) -> None:
+    require(executable.exists(), f"{name} executable not found: {executable}")
+    verify_view_only(name, executable, quick)
+    verify_control(name, executable, quick)
 
 
 def main() -> int:
