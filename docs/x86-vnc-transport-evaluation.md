@@ -1,9 +1,9 @@
 # x86 Windows + Linux VNC/RFB Transport Evaluation
 
-Status: **in progress — rustvncserver FFI feasibility spike selected**
+Status: **FFI/toolchain feasibility PASS on Windows x86_64 + Linux x86_64; production fit still open in #27**
 
 Parent: #27  
-Bounded spike: #34  
+Completed bounded spike: #34 / PR #37  
 Product milestone: **V0.0.1.0 — x86_64 (Windows + Linux) / Embedded C++ API**
 
 This document complements `docs/neatvnc-evaluation.md`. It does not invalidate the accepted NeatVNC findings for Linux/Embedded Linux; it addresses the additional Windows requirement introduced by the frozen x86 product baseline.
@@ -31,7 +31,7 @@ Different OS-specific backends are architecturally allowed, but one maintained c
 | --- | --- | --- | --- | --- | --- |
 | NeatVNC v1.0.1 | ISC | not established by upstream/HyRemote evidence | strong fit | native C API | **Keep for Linux/Embedded Linux; not accepted as x86 cross-platform backend** |
 | LibVNCServer | GPL-2.0-or-later | yes | yes | native C/CMake | **NO-GO for default linked HyRemote backend** |
-| rustvncserver v2.2.1 | Apache-2.0 | upstream claims/supports x86_64 Windows | upstream claims/supports x86_64/ARM64 Linux | Rust-native; no exported C ABI found | **CONDITIONAL GO for #34 FFI feasibility only** |
+| rustvncserver v2.2.1 | Apache-2.0 | **C ABI/toolchain spike PASS** | **C ABI/toolchain spike PASS** | Rust-native behind HyRemote-owned opaque C ABI | **Advance to bounded production-fit evaluation in #27** |
 | HyRemote custom RFB | project Apache-2.0 | possible | possible | native | **NO-GO by default; last resort only** |
 
 ## 3. NeatVNC
@@ -89,20 +89,37 @@ Upstream v2.2.1 currently provides:
 - upstream-declared platform support including Windows x86_64 and Linux x86_64/ARM64;
 - Cargo crate output configured as `cdylib` and `rlib`.
 
-The release `v2.2.1` was published 2026-02-09. The repository is young compared with NeatVNC/LibVNCServer, so maturity must be treated as a risk rather than inferred from feature count.
+The release `v2.2.1` was published 2026-02-09. The repository is young compared with NeatVNC/LibVNCServer, so maturity remains a product risk rather than something inferred from feature count.
 
 Upstream: <https://github.com/rustvnc/rustvncserver>  
 Pinned release: <https://github.com/rustvnc/rustvncserver/releases/tag/v2.2.1>
 
-### 5.2 C++ integration gap
+### 5.2 C++ integration gap and #34 result
 
 The crate's public API is Rust-native. Repository code search at evaluation time found no exported `extern "C"` API.
 
 `crate-type = ["cdylib", "rlib"]` means Rust can produce a dynamic library; it does **not** by itself define a stable C ABI that C++ can call.
 
-Therefore a HyRemote-owned thin C ABI shim is required if this backend is adopted.
+PR #37 therefore implemented a HyRemote-owned opaque C ABI probe. Rust/Tokio/upstream types remain behind the shim; an independent C++17 executable dynamically loads only the C symbols.
 
-#34 validates that boundary by keeping all Rust/Tokio/upstream objects behind an opaque handle and calling it from an independent C++17 process on Windows and Linux.
+**Result: PASS on both reference operating systems.**
+
+GitHub Actions run `34920869266` validated the same bridge on:
+
+| OS | Toolchain evidence | Result |
+| --- | --- | --- |
+| Windows Server 2025 x86_64 | Rust 1.90.0, Cargo 1.90.0, MSVC 19.51, CMake 4.4.3 | **PASS** |
+| Ubuntu 24.04.5 x86_64 | Rust 1.90.0, Cargo 1.90.0, GCC 13.3.0, CMake 3.31.6 | **PASS** |
+
+Both jobs built `rustvncserver` v2.2.1 + the `cdylib`, built the independent C++ consumer, loaded the shared library, resolved the exported ABI, created a framebuffer, copied an RGBA frame, exercised listener start/running/stop, and destroyed cleanly. Both smoke programs ended with:
+
+```text
+PASS: C++ loaded Rust VNC probe ABI, updated RGBA frame, and exercised lifecycle
+```
+
+Accepted conclusion:
+
+> A thin HyRemote-owned C ABI over rustvncserver is technically feasible on both x86 reference operating systems. This removes FFI/toolchain feasibility as a blocker, but it is **not** production transport acceptance.
 
 ### 5.3 Security blocker — bind address
 
@@ -115,8 +132,6 @@ TcpListener::bind(format!("0.0.0.0:{port}"))
 inside `VncServer::listen(port)`.
 
 That does not satisfy HyRemote's frozen safe-listener requirement. HyRemote needs an explicit bind address and must be able to make loopback (or another explicitly safe policy) the product default.
-
-A successful #34 build/FFI result therefore remains only a feasibility result.
 
 Production GO requires one of:
 
@@ -138,32 +153,19 @@ This is acceptable as a **CPU full-frame correctness baseline** for V0.0.1.0 if 
 
 ### 5.5 Runtime/lifecycle fit
 
-Tokio can be owned entirely by a transport/shim runtime; this is compatible with HyRemote's rule that networking must not execute on the Qt GUI/render thread.
+The successful probe demonstrates that Tokio can be owned entirely by the transport/shim runtime without becoming a `hyremote-core` dependency. Production still needs to prove:
 
-The probe uses an owned multi-thread Tokio runtime, an opaque server handle, an async listener task and explicit client disconnect cleanup. Production still needs to prove:
-
-- listener start failure propagation rather than merely scheduling a task;
-- deterministic listener cancellation;
-- reconnect/client cleanup;
+- listener bind/start failure is reported deterministically before `Transport::start()` succeeds;
+- explicit bind address / loopback default;
+- deterministic listener cancellation and reconnect cleanup;
 - bounded frame handoff and per-client overload behavior;
-- viewer interoperability;
-- input-event completeness;
+- real standard-viewer interoperability on Windows and Linux;
+- pointer/key event fidelity through the normalized HyRemote input model;
 - no unbounded queues between Core and network encoders.
 
 ## 6. Why HyRemote does not implement RFB now
 
-RFB is simple at the baseline protocol level, but a production server rapidly expands into:
-
-- negotiation/version compatibility;
-- pixel formats;
-- multiple encodings;
-- authentication/security types;
-- client update semantics;
-- reconnect/error handling;
-- cursor/desktop-size extensions;
-- compression state;
-- interoperability quirks;
-- per-client backpressure and resource bounds.
+RFB is simple at the baseline protocol level, but a production server rapidly expands into negotiation/version compatibility, pixel formats, encodings, authentication/security types, client-update semantics, reconnect/error handling, cursor/desktop-size extensions, compression state, interoperability quirks and per-client resource bounds.
 
 HyRemote's value is Qt application integration, not owning another protocol stack. A custom implementation is only reconsidered if bounded evidence shows that maintained permissive backends cannot satisfy the Windows + Linux product contract.
 
@@ -172,25 +174,31 @@ HyRemote's value is Qt application integration, not owning another protocol stac
 ### Accepted now
 
 1. **NeatVNC remains the preferred Linux/Embedded Linux-oriented backend candidate.**
-2. **LibVNCServer is rejected as the default linked backend on licensing grounds.**
-3. **rustvncserver v2.2.1 receives Conditional GO only for the #34 cross-platform C ABI/toolchain spike.**
-4. **No custom RFB implementation is authorized.**
+2. **LibVNCServer remains rejected as the default linked backend on licensing grounds.**
+3. **rustvncserver v2.2.1 C++/Rust FFI and x86 toolchain feasibility are accepted on Windows + Linux.**
+4. **rustvncserver advances to a bounded production-fit increment under #27; it is not yet the production-frozen backend.**
+5. **No custom RFB implementation is authorized.**
 
-### Not accepted yet
+### Still not accepted
 
 - rustvncserver as the production V0.0.1.0 backend;
-- a mandatory Rust toolchain in the final HyRemote consumer build;
+- a mandatory Rust toolchain in every HyRemote consumer configuration;
 - any zero-copy/performance claim;
 - safe listener behavior;
-- Windows/Linux viewer interoperability;
-- downstream backpressure correctness.
+- Windows/Linux real-viewer interoperability;
+- normalized input fidelity;
+- downstream/per-client backpressure correctness.
 
-## 8. Next decision after #34
+## 8. Next bounded decision
 
-If #34 passes on both GitHub-hosted x86 operating systems:
+The next #27 increment must validate production fit rather than repeat build feasibility:
 
-- keep rustvncserver in #27 for a second bounded production-fit increment covering safe bind, listener-start result, bounded frame handoff and real viewer interoperability;
-- prefer upstream contribution for the missing bind API;
-- decide whether the final x86 product uses rustvncserver on both OSes or uses an OS-specific split while preserving one HyRemote `Transport`/public API contract.
+1. explicit/safe bind address with loopback-capable default;
+2. synchronous/deterministic listener-start success or failure reporting;
+3. bounded frame handoff consistent with `Transport::enqueueFrame()`;
+4. standard VNC viewer connect/view on Windows and Linux;
+5. pointer/key events captured and mapped toward #29 normalized input;
+6. disconnect/reconnect and deterministic stop;
+7. explicit decision on whether a Rust backend remains optional/internal or becomes the default x86 transport implementation.
 
-If #34 fails on either OS or the C ABI/toolchain burden is disproportionate, retain the evidence and evaluate the next permissive candidate/split-backend option rather than weakening V0.0.1.0 acceptance.
+Only after that evidence may #27 freeze the production x86 backend strategy.
