@@ -1,12 +1,18 @@
+#include "hyremote_qpa_interception.hpp"
+
 #include <QtCore/QDebug>
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
 #include <QtGui/QIcon>
+#include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qplatformintegrationfactory_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformintegrationplugin.h>
+#include <qpa/qplatformkeymapper.h>
+#include <qpa/qplatformopenglcontext.h>
 
 #include <memory>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 namespace {
@@ -42,14 +48,29 @@ QString requestedDelegate(QStringList &parameters)
         }
     }
 
-    // Gate 01 deliberately allows only the reference native delegate. This prevents accidentally
-    // turning the product mode into a headless/replacement stack such as vnc/offscreen/minimal.
+    // The transparent product mode decorates only the qualified native delegate. Never silently
+    // degrade to replacement/headless qvnc, offscreen or minimal behavior.
     if (selected != native)
         return {};
     return selected;
 }
 
 class HyRemotePlatformIntegration final : public QPlatformIntegration
+#ifdef Q_OS_WIN
+#ifndef QT_NO_OPENGL
+    , public QNativeInterface::Private::QWindowsGLIntegration
+#endif
+    , public QNativeInterface::Private::QWindowsApplication
+#elif defined(Q_OS_LINUX)
+#ifndef QT_NO_OPENGL
+#if QT_CONFIG(xcb_glx_plugin)
+    , public QNativeInterface::Private::QGLXIntegration
+#endif
+#if QT_CONFIG(egl)
+    , public QNativeInterface::Private::QEGLIntegration
+#endif
+#endif
+#endif
 {
 public:
     explicit HyRemotePlatformIntegration(std::unique_ptr<QPlatformIntegration> delegate)
@@ -64,15 +85,24 @@ public:
     }
     QPlatformWindow *createPlatformWindow(QWindow *window) const override
     {
-        return m_delegate->createPlatformWindow(window);
+        QPlatformWindow *platformWindow = m_delegate->createPlatformWindow(window);
+        if (platformWindow)
+            m_interception.observePlatformWindowCreated(window);
+        return platformWindow;
     }
     QPlatformWindow *createForeignWindow(QWindow *window, WId id) const override
     {
-        return m_delegate->createForeignWindow(window, id);
+        QPlatformWindow *platformWindow = m_delegate->createForeignWindow(window, id);
+        if (platformWindow)
+            m_interception.observePlatformWindowCreated(window);
+        return platformWindow;
     }
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override
     {
-        return m_delegate->createPlatformBackingStore(window);
+        QPlatformBackingStore *backingStore = m_delegate->createPlatformBackingStore(window);
+        if (backingStore)
+            m_interception.observeBackingStoreCreated(window);
+        return backingStore;
     }
 #ifndef QT_NO_OPENGL
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override
@@ -147,22 +177,143 @@ public:
     }
 #endif
 
+#ifdef Q_OS_WIN
+    using WindowsApplication = QNativeInterface::Private::QWindowsApplication;
+
+    void setTouchWindowTouchType(WindowsApplication::TouchWindowTouchTypes type) override
+    {
+        m_delegate->call<&WindowsApplication::setTouchWindowTouchType>(type);
+    }
+    WindowsApplication::TouchWindowTouchTypes touchWindowTouchType() const override
+    {
+        return m_delegate->call<&WindowsApplication::touchWindowTouchType>();
+    }
+    WindowsApplication::WindowActivationBehavior windowActivationBehavior() const override
+    {
+        return m_delegate->call<&WindowsApplication::windowActivationBehavior>();
+    }
+    void setWindowActivationBehavior(WindowsApplication::WindowActivationBehavior behavior) override
+    {
+        m_delegate->call<&WindowsApplication::setWindowActivationBehavior>(behavior);
+    }
+    void setHasBorderInFullScreenDefault(bool border) override
+    {
+        m_delegate->call<&WindowsApplication::setHasBorderInFullScreenDefault>(border);
+    }
+    bool isTabletMode() const override { return m_delegate->call<&WindowsApplication::isTabletMode>(); }
+    bool isWinTabEnabled() const override
+    {
+        return m_delegate->call<&WindowsApplication::isWinTabEnabled>();
+    }
+    bool setWinTabEnabled(bool enabled) override
+    {
+        return m_delegate->call<&WindowsApplication::setWinTabEnabled>(enabled);
+    }
+    WindowsApplication::DarkModeHandling darkModeHandling() const override
+    {
+        return m_delegate->call<&WindowsApplication::darkModeHandling>();
+    }
+    void setDarkModeHandling(WindowsApplication::DarkModeHandling handling) override
+    {
+        m_delegate->call<&WindowsApplication::setDarkModeHandling>(handling);
+    }
+    void registerMime(QWindowsMimeConverter *mime) override
+    {
+        m_delegate->call<&WindowsApplication::registerMime>(mime);
+    }
+    void unregisterMime(QWindowsMimeConverter *mime) override
+    {
+        m_delegate->call<&WindowsApplication::unregisterMime>(mime);
+    }
+    int registerMimeType(const QString &mime) override
+    {
+        return m_delegate->call<&WindowsApplication::registerMimeType>(mime);
+    }
+    HWND createMessageWindow(const QString &classNameTemplate,
+                             const QString &windowName,
+                             QFunctionPointer eventProc) const override
+    {
+        return m_delegate->call<&WindowsApplication::createMessageWindow>(classNameTemplate,
+                                                                          windowName,
+                                                                          eventProc);
+    }
+    bool asyncExpose() const override { return m_delegate->call<&WindowsApplication::asyncExpose>(); }
+    void setAsyncExpose(bool value) override
+    {
+        m_delegate->call<&WindowsApplication::setAsyncExpose>(value);
+    }
+    QVariant gpu() const override { return m_delegate->call<&WindowsApplication::gpu>(); }
+    QVariant gpuList() const override { return m_delegate->call<&WindowsApplication::gpuList>(); }
+    void populateLightSystemPalette(QPalette &palette) const override
+    {
+        m_delegate->call<&WindowsApplication::populateLightSystemPalette>(palette);
+    }
+
+#ifndef QT_NO_OPENGL
+    HMODULE openGLModuleHandle() const override
+    {
+        return m_delegate->call<&QNativeInterface::Private::QWindowsGLIntegration::openGLModuleHandle>();
+    }
+    QOpenGLContext *createOpenGLContext(HGLRC context,
+                                        HWND window,
+                                        QOpenGLContext *shareContext) const override
+    {
+        return m_delegate->call<&QNativeInterface::Private::QWindowsGLIntegration::createOpenGLContext>(
+            context, window, shareContext);
+    }
+#endif
+#elif defined(Q_OS_LINUX)
+#ifndef QT_NO_OPENGL
+#if QT_CONFIG(xcb_glx_plugin)
+    QOpenGLContext *createOpenGLContext(GLXContext context,
+                                        void *visualInfo,
+                                        QOpenGLContext *shareContext) const override
+    {
+        return m_delegate->call<&QNativeInterface::Private::QGLXIntegration::createOpenGLContext>(
+            context, visualInfo, shareContext);
+    }
+#endif
+#if QT_CONFIG(egl)
+    QOpenGLContext *createOpenGLContext(EGLContext context,
+                                        EGLDisplay display,
+                                        QOpenGLContext *shareContext) const override
+    {
+        return m_delegate->call<&QNativeInterface::Private::QEGLIntegration::createOpenGLContext>(
+            context, display, shareContext);
+    }
+#endif
+#endif
+#endif
+
 protected:
     Qt::KeyboardModifiers queryKeyboardModifiers() const override
     {
-        // QPlatformIntegration exposes this hook as protected, so it cannot legally be invoked on an
-        // arbitrary delegate object here. The native key mapper and native event dispatcher remain
-        // delegated; this protected query is intentionally left at Qt's base implementation for Gate 01.
+        // Qt 6.8.3 exposes the native keyboard semantics through QPlatformKeyMapper's public virtual
+        // API. The qualified qwindows/qxcb delegates both return native key-mapper subclasses, so use
+        // that public bridge rather than silently falling back to QPlatformIntegration's generic state.
+        if (QPlatformKeyMapper *mapper = m_delegate->keyMapper())
+            return mapper->queryKeyboardModifiers();
         return QPlatformIntegration::queryKeyboardModifiers();
     }
 
     QList<int> possibleKeys(const QKeyEvent *event) const override
     {
-        return QPlatformIntegration::possibleKeys(event);
+        QList<int> result;
+        if (QPlatformKeyMapper *mapper = m_delegate->keyMapper()) {
+            const auto combinations = mapper->possibleKeyCombinations(event);
+            result.reserve(combinations.size());
+            for (const auto &combination : combinations)
+                result.push_back(combination.toCombined());
+        }
+        return result;
     }
 
 private:
+    // Native delegate ownership remains authoritative. The seam is declared after the delegate so
+    // it is destroyed first, disconnecting all public-QWindow observers before native delegate
+    // ownership is finally released by this integration's destructor.
     std::unique_ptr<QPlatformIntegration> m_delegate;
+    mutable ::HyRemote::Qpa::Internal::InterceptionSeam m_interception;
 };
 
 class HyRemotePlatformIntegrationPlugin final : public QPlatformIntegrationPlugin
@@ -182,7 +333,7 @@ public:
         QStringList delegateParameters = paramList;
         const QString delegateName = requestedDelegate(delegateParameters);
         if (delegateName.isEmpty()) {
-            qWarning() << "HyRemote QPA Proxy rejected delegate; Gate 01 only permits"
+            qWarning() << "HyRemote QPA Proxy rejected delegate; this build only permits"
                        << referenceNativeDelegate();
             return nullptr;
         }
