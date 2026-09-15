@@ -21,6 +21,10 @@ transports and encoding remain out of scope.
 | bounded completed-frame mailbox | `DropOldest` (latest-frame-wins) default with an explicit `ProducerThrottle` alternative; Core-side ownership is bounded by `capacity + 1` |
 | capture callback never performs transport work | capture completion only validates, stamps and enqueues; the dispatch worker is the only `Transport::enqueueFrame()` caller |
 | capability negotiation before `Running` | `checkFrameCompatibility()` |
+| component mutation rules | `setCaptureSource()` / `setTransport()` only succeed in `Stopped` and report refusal through their return value; the `InputSink` is held by `shared_ptr` and may be replaced at runtime |
+| deterministic startup handshake | the Core workers are created while the Session is still `Starting` and wait for the `Running` publication, so a worker can never miss it; no capture request is issued before `Running` |
+| callback lifetime | Core wraps every adapter callback in a lifetime gate: callbacks that arrive after teardown are ignored and counted (`SessionStats::callbacksIgnoredAfterStop`) and in-flight ones are drained, which makes `~Session()` safe even for an adapter that violates the `stop()` quiescence rule |
+| adapter exception policy | exceptions never escape Core: startup exceptions become a deterministic `SessionError` with the already-started components cleaned up, runtime exceptions on the request/enqueue paths are counted and escalate to `Faulted`, and `InputSink::post()` failures are reported as recoverable so remote input cannot interrupt frame delivery |
 
 Build: `HYREMOTE_BUILD_CORE` (ON by default) with `HYREMOTE_BUILD_TESTS`; the library is
 `hyremote-core` with the `HyRemote::Core` alias and headers under `hyremote/core/`. The
