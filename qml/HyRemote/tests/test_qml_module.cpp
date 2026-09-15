@@ -1,6 +1,9 @@
 #include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QThread>
 #include <QVariant>
 
 #include <iostream>
@@ -18,6 +21,22 @@ int failures = 0;
         }                                                                                          \
     } while (false)
 
+void waitForComponent(QQmlComponent &component)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (component.status() == QQmlComponent::Loading && timer.elapsed() < 2000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+        QThread::msleep(1);
+    }
+
+    if (component.isError() || component.status() != QQmlComponent::Ready) {
+        const auto errors = component.errors();
+        for (const QQmlError &error : errors)
+            std::cerr << error.toString().toStdString() << '\n';
+    }
+}
+
 void testDeclarativeImportAndSafeDefaults()
 {
     QQmlEngine engine;
@@ -31,13 +50,8 @@ void testDeclarativeImportAndSafeDefaults()
             remoteInputEnabled: true
         }
     )QML",
-                      QUrl(QStringLiteral("inline:hyremote-test.qml")));
-
-    if (component.isError()) {
-        const auto errors = component.errors();
-        for (const QQmlError &error : errors)
-            std::cerr << error.toString().toStdString() << '\n';
-    }
+                      QUrl());
+    waitForComponent(component);
     CHECK(component.status() == QQmlComponent::Ready);
 
     std::unique_ptr<QObject> object(component.create());
@@ -65,7 +79,10 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
         import HyRemote 1.0
         RemoteAccess {}
     )QML",
-                      QUrl(QStringLiteral("inline:hyremote-invalid.qml")));
+                      QUrl());
+    waitForComponent(component);
+    CHECK(component.status() == QQmlComponent::Ready);
+
     std::unique_ptr<QObject> object(component.create());
     CHECK(object != nullptr);
     if (!object)
