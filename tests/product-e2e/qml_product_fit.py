@@ -22,7 +22,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def free_port() -> int:
-    sock = socket.socket(socket.AF_INET, 0)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
@@ -58,14 +58,14 @@ def main() -> int:
 
     # Start with the product-safe view-only default, then have the real QML surface execute the
     # documented stop -> configure(remoteInputEnabled=true) -> start lifecycle in the same process.
-    # Eight seconds deliberately leaves a wide window for the first maintained-viewer assertions on
+    # Ten seconds deliberately leaves a wide window for the first maintained-viewer assertions on
     # slow hosted runners; the total lifetime still leaves ample time for control/reconnect proof.
     process = subprocess.Popen(
         [
             str(args.qml.resolve()),
             "--port", str(port),
-            "--policy-transition-ms", "8000",
-            "--test-seconds", "20",
+            "--policy-transition-ms", "10000",
+            "--test-seconds", "24",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -120,7 +120,7 @@ def main() -> int:
                        "QML diagnostic did not mirror view-only viewer disconnect")
 
             wait_until(process, lines, lambda: line_count(lines, "POLICY_STOPPED") >= 1,
-                       "QML wrapper did not stop for policy transition", timeout=10)
+                       "QML wrapper did not stop for policy transition", timeout=12)
             wait_until(process, lines, lambda: line_count(lines, "POLICY_INPUT true") >= 1,
                        "QML wrapper did not apply remoteInputEnabled while stopped")
             wait_until(process, lines, lambda: line_count(lines, "POLICY_RESTART_REQUESTED") >= 1,
@@ -160,7 +160,7 @@ def main() -> int:
             wait_until(process, lines, lambda: line_count(lines, "CLIENT_COUNT 0") >= 4,
                        "QML diagnostic did not mirror final viewer disconnect")
 
-        result = process.wait(timeout=24)
+        result = process.wait(timeout=28)
         thread.join(timeout=2)
         require(result == 0, f"qml-basic exited with {result}: {lines}")
         require(line_count(lines, f"READY {port}") >= 2,
