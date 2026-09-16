@@ -288,6 +288,17 @@ void testConcurrentViewerHeldStateIsolation()
     CHECK(countKey(inputs, hyremote::KeyCode::B, false) == 0);
     CHECK(countButton(inputs, hyremote::PointerButton::Left, false) == 0);
 
+    // Aggregating distinct viewer holds must not suppress normal repeat input from the surviving
+    // viewer. Its repeated B-down is a repeat while it is already the remaining holder, not a new
+    // global held-state transition from another client.
+    CHECK(sendKey(second, static_cast<std::uint32_t>('b'), true));
+    CHECK(recorder.waitFor([](const auto &events, const auto &) {
+        return countKey(events, hyremote::KeyCode::B, true) >= 2;
+    }));
+    inputs = recorder.inputSnapshot();
+    CHECK(countKey(inputs, hyremote::KeyCode::B, true) == 2);
+    CHECK(countKey(inputs, hyremote::KeyCode::B, false) == 0);
+
     // The surviving viewer owns the final references. Only its releases may transition the shared
     // target back to up, and the ordinary B release must still observe Shift as held.
     CHECK(sendKey(second, static_cast<std::uint32_t>('b'), false));
