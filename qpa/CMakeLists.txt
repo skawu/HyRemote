@@ -106,6 +106,17 @@ if(HYREMOTE_BUILD_TESTS)
     )
 
     add_test(
+        NAME hyremote-qpa-deploy-helper-installed-payload-qml
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload-qml
+            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DTEST_QML=ON
+            -DTEST_INSTALLED_PAYLOAD=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    add_test(
         NAME hyremote-qpa-deploy-helper-reject-qt-mismatch
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
