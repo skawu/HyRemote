@@ -5,6 +5,7 @@
 #include <atomic>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -35,8 +36,10 @@ struct RuntimeCounters
     std::atomic<int> inputShutdowns{0};
     bool transportStartResult = true;
     bool provideInputSink = true;
+    bool inputPostThrows = false;
     QHostAddress observedAddress;
     quint16 observedPort = 0;
+    hyremote::InputHandler transportInputHandler;
     hyremote::TransportEventHandler transportEventHandler;
 };
 
@@ -93,7 +96,13 @@ public:
     {
     }
 
-    void post(const hyremote::InputEvent &) override { ++m_counters->inputPosts; }
+    void post(const hyremote::InputEvent &) override
+    {
+        ++m_counters->inputPosts;
+        if (m_counters->inputPostThrows)
+            throw std::runtime_error("fake input post failure");
+    }
+
     void shutdown() noexcept override { ++m_counters->inputShutdowns; }
 
 private:
@@ -120,6 +129,7 @@ public:
     {
         ++m_counters->transportStarts;
         m_onInput = std::move(onInput);
+        m_counters->transportInputHandler = m_onInput;
         m_counters->transportEventHandler = std::move(onEvent);
         return m_counters->transportStartResult;
     }
@@ -128,6 +138,7 @@ public:
     {
         ++m_counters->transportStops;
         m_onInput = {};
+        m_counters->transportInputHandler = {};
         m_counters->transportEventHandler = {};
     }
 
@@ -168,6 +179,14 @@ void emitTransportEvent(const std::shared_ptr<RuntimeCounters> &counters,
     CHECK(static_cast<bool>(counters->transportEventHandler));
     if (counters->transportEventHandler)
         counters->transportEventHandler(hyremote::TransportEvent{code, "facade diagnostic probe"});
+}
+
+void emitTransportInput(const std::shared_ptr<RuntimeCounters> &counters,
+                        const hyremote::InputEvent &event)
+{
+    CHECK(static_cast<bool>(counters->transportInputHandler));
+    if (counters->transportInputHandler)
+        counters->transportInputHandler(event);
 }
 
 void testSafeDefaultsAndNoConstructionSideEffect()
@@ -368,6 +387,90 @@ void testRemoteInputIsIndependentAndOffByDefault()
     CHECK(counters->inputShutdowns.load() == 0);
 }
 
+void testRecoverableRuntimeErrorCanBeAcknowledgedAndReappearsOnNewFailure()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    counters->inputPostThrows = true;
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+    CHECK(remote.setRemoteInputEnabled(true));
+    CHECK(remote.start());
+
+    hyremote::InputEvent input;
+    input.kind = hyremote::InputEventKind::Key;
+    input.key = hyremote::KeyCode::A;
+    input.pressed = true;
+
+    emitTransportInput(counters, input);
+    CHECK(counters->inputPosts.load() == 1);
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::RuntimeFailure);
+    CHECK(remote.lastError()->recoverable);
+
+    remote.clearError();
+    CHECK(!remote.lastError().has_value());
+
+    // An identical recoverable failure is a new diagnostic occurrence and must become visible again
+    // rather than being hidden forever merely because code/message match the acknowledged error.
+    emitTransportInput(counters, input);
+    CHECK(counters->inputPosts.load() == 2);
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->recoverable);
+
+    remote.clearError();
+    CHECK(!remote.lastError().has_value());
+    remote.stop();
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(!remote.lastError().has_value()); // acknowledged recoverable error must not resurrect
+    CHECK(counters->inputShutdowns.load() == 1);
+}
+
+void testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+    CHECK(remote.setRemoteInputEnabled(true));
+    CHECK(remote.start());
+
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientConnected);
+    CHECK(remote.connectedClientCount() == 1);
+    emitTransportEvent(counters, hyremote::TransportEventCode::FatalFailure);
+
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Faulted);
+    CHECK(remote.connectedClientCount() == 1); // runtime remains owned until explicit stop()
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::RuntimeFailure);
+    CHECK(!remote.lastError()->recoverable);
+
+    // clearError() acknowledges transient/recoverable diagnostics only. An active fatal error is the
+    // explanation for Faulted and remains visible until the owner performs the documented cleanup.
+    remote.clearError();
+    CHECK(remote.lastError().has_value());
+    CHECK(!remote.setPort(5901));
+    CHECK(!remote.setRemoteInputEnabled(false));
+
+    remote.stop();
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(remote.connectedClientCount() == 0);
+    CHECK(counters->captureStops.load() == 1);
+    CHECK(counters->transportStops.load() == 1);
+    CHECK(counters->inputShutdowns.load() == 1);
+    CHECK(remote.lastError().has_value()); // preserve the fatal reason across cleanup
+
+    remote.clearError();
+    CHECK(!remote.lastError().has_value());
+    CHECK(remote.setPort(5901));
+    CHECK(remote.setRemoteInputEnabled(false));
+}
+
 void testBackendStartFailureIsMappedAndCleanedUp()
 {
     HyRemote::detail::resetFactories();
@@ -415,6 +518,8 @@ int main()
     testMoveTransfersOwnershipAndQuiescesReplacedRuntime();
     testConnectedClientCountUsesTransportNeutralEvents();
     testRemoteInputIsIndependentAndOffByDefault();
+    testRecoverableRuntimeErrorCanBeAcknowledgedAndReappearsOnNewFailure();
+    testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic();
     testBackendStartFailureIsMappedAndCleanedUp();
     testInvalidPublicConfigurationIsProductLevel();
 
