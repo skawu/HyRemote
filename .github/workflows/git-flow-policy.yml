@@ -140,13 +140,23 @@ jobs:
                   "maintenance releases require an explicit release-policy update"
               )
 
-      - name: Require tag commit on main
+      - name: Require annotated tag on exact main release head
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
-          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || {
-            echo "release tag ${GITHUB_REF_NAME} must point to a commit reachable from main" >&2
+
+          tag_type="$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")"
+          test "${tag_type}" = "tag" || {
+            echo "release tag ${GITHUB_REF_NAME} must be an annotated tag, not a lightweight tag" >&2
+            exit 1
+          }
+
+          tagged_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          main_head="$(git rev-parse origin/main)"
+          test "${tagged_commit}" = "${main_head}" || {
+            echo "release tag ${GITHUB_REF_NAME} must point to the exact current main release head" >&2
+            echo "tagged=${tagged_commit} main=${main_head}" >&2
             exit 1
           }
 
@@ -173,5 +183,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "Validated release tag ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
+          echo "Validated annotated release tag ${GITHUB_REF_NAME} at exact main head ${GITHUB_SHA}."
           echo "This post-push audit does not replace the pre-merge release/v* gate."
