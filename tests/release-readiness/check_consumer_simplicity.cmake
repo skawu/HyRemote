@@ -154,6 +154,8 @@ foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../.."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
         [=[INSTALL_RPATH "$ORIGIN/../../.."]=])
+    # Bracket arguments are literal: normalize the quote spelling used by qpa/CMakeLists itself.
+    string(REPLACE "\\\"" "\"" required_token "${required_token}")
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
