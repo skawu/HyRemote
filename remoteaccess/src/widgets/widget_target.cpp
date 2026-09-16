@@ -61,6 +61,9 @@ public:
         if (m_state->active || m_state->target.isNull())
             return false;
 
+        // QWidget instances are GUI-thread objects. Capture requests are posted to the
+        // QCoreApplication event loop so requestFrame() never touches QWidget from Core's scheduler
+        // thread.
         if (m_state->target->thread() != QCoreApplication::instance()->thread())
             return false;
 
@@ -76,6 +79,10 @@ public:
         m_state->active = false;
         m_state->onFrame = {};
         m_state->onEvent = {};
+
+        // A callback already copied out before stop() must finish before this method returns. Queued
+        // capture tasks that have not reached callback publication simply observe active=false and
+        // become no-ops.
         m_state->callbacksDrained.wait(lock, [this] { return m_state->callbacksInFlight == 0; });
     }
 
@@ -92,9 +99,10 @@ public:
             return false;
 
         const std::shared_ptr<State> state = m_state;
-        return QMetaObject::invokeMethod(dispatcher,
-                                         [state, request] { captureOnGuiThread(state, request); },
-                                         Qt::QueuedConnection);
+        return QMetaObject::invokeMethod(
+            dispatcher,
+            [state, request] { captureOnGuiThread(state, request); },
+            Qt::QueuedConnection);
     }
 
 private:
@@ -128,6 +136,8 @@ private:
         try {
             callback(std::move(payload));
         } catch (...) {
+            // Core callbacks are specified not to leak exceptions through adapter boundaries.
+            // Treat an unexpected violation as a dropped callback while preserving stop quiescence.
         }
 
         {
@@ -206,6 +216,7 @@ private:
         frame.timing.completionTime = completion;
         frame.damage = hyremote::Damage::fullFrame();
         frame.requestId = request.id;
+
         publishCallback(state, &State::onFrame, std::move(frame));
     }
 
@@ -223,6 +234,8 @@ Qt::KeyboardModifiers toQtModifiers(hyremote::InputModifiers modifiers)
         result |= Qt::AltModifier;
     if (hyremote::hasModifier(modifiers, hyremote::InputModifier::Meta))
         result |= Qt::MetaModifier;
+    // Qt::KeyboardModifiers has no CapsLock/NumLock state flags. Their transitions are delivered
+    // through explicit KeyCode::CapsLock/NumLock key events instead of inventing a Qt modifier.
     return result;
 }
 
@@ -366,6 +379,10 @@ public:
             if (!state->active)
                 return;
 
+            // Pointer motion is freshness-oriented. Adjacent pending moves collapse to the newest
+            // coordinate, and when the bounded mailbox is full an older pending move is sacrificed
+            // before any key/button/text lifecycle event. Lifecycle-sensitive input is never
+            // silently overwritten.
             if (event.kind == hyremote::InputEventKind::PointerMove
                 && !state->pending.empty()
                 && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
@@ -393,9 +410,10 @@ public:
         if (!scheduleDrain)
             return;
 
-        if (!QMetaObject::invokeMethod(dispatcher,
-                                       [state] { drainOnGuiThread(state); },
-                                       Qt::QueuedConnection)) {
+        if (!QMetaObject::invokeMethod(
+                dispatcher,
+                [state] { drainOnGuiThread(state); },
+                Qt::QueuedConnection)) {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->drainScheduled = false;
             state->pending.clear();
@@ -445,6 +463,9 @@ private:
         bool drainScheduled = false;
         bool shutdownRequested = false;
         std::deque<hyremote::InputEvent> pending;
+
+        // GUI-thread-owned delivered-state bookkeeping. shutdown() clears pending transport input
+        // first, then balances only state that actually reached Qt.
         Qt::MouseButtons buttons = Qt::NoButton;
         std::array<QPointer<QWidget>, 3> buttonReceivers;
         QPoint lastRootPoint;
@@ -489,7 +510,8 @@ private:
             QWheelEvent wheel(QPointF(childPoint),
                               QPointF(globalPoint),
                               QPoint(),
-                              QPoint(qRound(event.scrollX * 120.0F), qRound(event.scrollY * 120.0F)),
+                              QPoint(qRound(event.scrollX * 120.0F),
+                                     qRound(event.scrollY * 120.0F)),
                               state->buttons,
                               modifiers,
                               Qt::NoScrollPhase,
@@ -546,6 +568,7 @@ private:
         } else if (held != state->heldKeys.end()) {
             if (held->receiver)
                 receiver = held->receiver.data();
+
             const auto modifier = modifierForQtKey(key);
             if (!modifier || !(state->modifiers & *modifier))
                 state->heldKeys.erase(held);
@@ -564,6 +587,7 @@ private:
         QWidget *receiver = keyboardReceiver(root);
         if (!receiver)
             return;
+
         QInputMethodEvent inputMethod;
         inputMethod.setCommitString(QString::fromUtf8(event.textUtf8.data(),
                                                       static_cast<qsizetype>(event.textUtf8.size())));
@@ -664,6 +688,8 @@ private:
                 return;
             }
             batch.swap(state->pending);
+            // Clear before delivery so concurrent producers can schedule exactly one next drain.
+            // Thus the Qt event queue contains at most one pending drain invocation per sink.
             state->drainScheduled = false;
         }
 
