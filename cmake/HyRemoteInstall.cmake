@@ -26,18 +26,14 @@ endif()
 set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "${CMAKE_INSTALL_LIBDIR}/qml")
 
 # Transparent QPA is separately version-coupled. Export only package metadata and the installed
-# MODULE target location; consuming applications do not link it. The normal product facade is always
-# a shared library. Core follows BUILD_SHARED_LIBS only as a low-level SDK/internal composition choice.
+# MODULE target location; consuming applications do not link it. The V1 runtime shape is fixed:
+# RemoteAccess is shared and Core is statically composed behind it.
 set(HYREMOTE_PACKAGE_WITH_QPA FALSE)
 set(HYREMOTE_PACKAGE_QPA_QT_VERSION "6.8.3")
 set(HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME FALSE)
-set(HYREMOTE_PACKAGE_QPA_CORE_SHARED FALSE)
 if(TARGET hyremote-qpa-platform)
     set(HYREMOTE_PACKAGE_WITH_QPA TRUE)
     set(HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME TRUE)
-    if(BUILD_SHARED_LIBS)
-        set(HYREMOTE_PACKAGE_QPA_CORE_SHARED TRUE)
-    endif()
 endif()
 
 configure_package_config_file(
