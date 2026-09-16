@@ -14,6 +14,9 @@ endif()
 if(NOT DEFINED TEST_QML_AVAILABLE)
     set(TEST_QML_AVAILABLE ON)
 endif()
+if(NOT DEFINED TEST_STALE_QML_METADATA)
+    set(TEST_STALE_QML_METADATA OFF)
+endif()
 if(NOT DEFINED TEST_QPA_AVAILABLE)
     set(TEST_QPA_AVAILABLE ON)
 endif()
@@ -66,17 +69,28 @@ else()
     add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
 endif()
 
-# Source QML deployment has two local runtime payload targets plus a build import root. Installed QML
-# deployment publishes only an import root and relies on already-built SDK payloads. A deliberately
-# unavailable QML payload leaves both absent so hyremote_deploy(... QML) must fail at configure time.
-if(TEST_QML AND TEST_QML_AVAILABLE)
-    set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
-    file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
-    if(NOT TEST_INSTALLED_PAYLOAD)
-        add_library(qml-backing SHARED EXCLUDE_FROM_ALL dummy.cpp)
-        add_library(qml-plugin MODULE EXCLUDE_FROM_ALL dummy.cpp)
-        set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS
-            "qml-backing;qml-plugin")
+# Source QML deployment proves current-configure availability with the actual module target. Installed
+# deployment proves it with package availability metadata. A stale absolute import path without either
+# fact must never authorize `hyremote_deploy(... QML)` after a source build has disabled the module.
+if(TEST_QML)
+    if(TEST_QML_AVAILABLE)
+        set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
+        file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
+        if(TEST_INSTALLED_PAYLOAD)
+            set(HyRemote_QML_AVAILABLE TRUE)
+        else()
+            add_library(qml-backing SHARED EXCLUDE_FROM_ALL dummy.cpp)
+            add_library(hyremote-qml ALIAS qml-backing)
+            add_library(qml-plugin MODULE EXCLUDE_FROM_ALL dummy.cpp)
+            set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS
+                "qml-backing;qml-plugin")
+        endif()
+    else()
+        set(HyRemote_QML_AVAILABLE FALSE)
+        if(TEST_STALE_QML_METADATA)
+            set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/stale-qml-import")
+            file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
+        endif()
     endif()
 endif()
 
