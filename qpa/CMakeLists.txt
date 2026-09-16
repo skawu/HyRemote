@@ -12,10 +12,12 @@ add_library(hyremote-qpa-platform MODULE
     hyremote_qpa_interception.cpp
     hyremote_qpa_remote_controller.cpp
 )
+add_library(HyRemote::QpaPlatform ALIAS hyremote-qpa-platform)
 
 set_target_properties(hyremote-qpa-platform PROPERTIES
     AUTOMOC ON
     OUTPUT_NAME qhyremote
+    EXPORT_NAME QpaPlatform
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/platforms"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/platforms"
 )
@@ -56,7 +58,11 @@ target_compile_definitions(hyremote-qpa-platform PRIVATE
     HYREMOTE_QPA_QT_VERSION_PATCH=3
 )
 
+# Export the module target as package metadata only. Applications never link this target; the one
+# HyRemote deployment helper uses its imported LOCATION to copy the exact SDK-built platform plugin
+# into the application's Qt plugin tree. PRIVATE QPA dependencies therefore remain isolated.
 install(TARGETS hyremote-qpa-platform
+    EXPORT HyRemoteTargets
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms"
     RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms"
 )
