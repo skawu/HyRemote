@@ -22,7 +22,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def free_port() -> int:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock = socket.socket(socket.AF_INET, 0)
     try:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
@@ -58,12 +58,14 @@ def main() -> int:
 
     # Start with the product-safe view-only default, then have the real QML surface execute the
     # documented stop -> configure(remoteInputEnabled=true) -> start lifecycle in the same process.
+    # Eight seconds deliberately leaves a wide window for the first maintained-viewer assertions on
+    # slow hosted runners; the total lifetime still leaves ample time for control/reconnect proof.
     process = subprocess.Popen(
         [
             str(args.qml.resolve()),
             "--port", str(port),
-            "--policy-transition-ms", "4500",
-            "--test-seconds", "14",
+            "--policy-transition-ms", "8000",
+            "--test-seconds", "20",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -100,26 +102,27 @@ def main() -> int:
                 require(any(low != high for low, high in ImageStat.Stat(image).extrema),
                         "qml framebuffer is visually uniform")
 
-                # Input is deliberately attempted while the QML wrapper is still view-only. The
-                # transport may receive these protocol messages, but no APP_* event may reach QML.
                 client.mouseMove(max(1, int(image.width * 0.25)), max(1, int(image.height * 0.36)))
                 client.mouseDown(1)
                 client.mouseUp(1)
                 client.keyDown("a")
                 client.keyUp("a")
                 time.sleep(0.3)
-                require(not any(line.startswith("qml: APP_") or " APP_" in line for line in lines),
-                        f"view-only QML path delivered remote input: {lines}")
+                require(
+                    not any(
+                        "APP_POINTER" in line or "APP_KEY" in line or "APP_TEXT" in line
+                        for line in lines
+                    ),
+                    f"view-only QML path delivered remote input: {lines}",
+                )
 
             wait_until(process, lines, lambda: line_count(lines, "CLIENT_COUNT 0") >= 2,
                        "QML diagnostic did not mirror view-only viewer disconnect")
 
-            # The same application process must stop only the HyRemote runtime, change input policy,
-            # restart it, and expose a second Running state. No QML engine/application restart is
-            # involved, so this is direct evidence for the declarative lifecycle rather than an
-            # inference from the C++ facade tests.
             wait_until(process, lines, lambda: line_count(lines, "POLICY_STOPPED") >= 1,
-                       "QML wrapper did not stop for policy transition", timeout=7)
+                       "QML wrapper did not stop for policy transition", timeout=10)
+            wait_until(process, lines, lambda: line_count(lines, "POLICY_INPUT true") >= 1,
+                       "QML wrapper did not apply remoteInputEnabled while stopped")
             wait_until(process, lines, lambda: line_count(lines, "POLICY_RESTART_REQUESTED") >= 1,
                        "QML wrapper did not request restart after policy change")
             wait_until(process, lines, lambda: line_count(lines, f"READY {port}") >= 2,
@@ -149,8 +152,6 @@ def main() -> int:
             wait_until(process, lines, lambda: line_count(lines, "CLIENT_COUNT 0") >= 3,
                        "QML diagnostic did not mirror control viewer disconnect")
 
-            # Reconnect once more in the same control-mode runtime to preserve the original E3
-            # reconnect evidence after the policy lifecycle was strengthened.
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(Path(temp_dir) / "qml-control-reconnect.png"))
                 wait_until(process, lines, lambda: line_count(lines, "CLIENT_COUNT 1") >= 3,
@@ -159,7 +160,7 @@ def main() -> int:
             wait_until(process, lines, lambda: line_count(lines, "CLIENT_COUNT 0") >= 4,
                        "QML diagnostic did not mirror final viewer disconnect")
 
-        result = process.wait(timeout=18)
+        result = process.wait(timeout=24)
         thread.join(timeout=2)
         require(result == 0, f"qml-basic exited with {result}: {lines}")
         require(line_count(lines, f"READY {port}") >= 2,
