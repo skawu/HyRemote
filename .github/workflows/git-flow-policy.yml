@@ -12,6 +12,9 @@ on:
       - ready_for_review
       - converted_to_draft
   push:
+    branches:
+      - main
+      - develop
     tags:
       - 'v*'
   workflow_dispatch:
@@ -19,8 +22,36 @@ on:
 permissions:
   contents: read
   issues: read
+  pull-requests: read
 
 jobs:
+  mainline-push-audit:
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Audit mainline push came through an accepted PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Current repository settings do not provide pre-push branch protection. This job is an
+          # after-the-fact audit only: it cannot undo a direct push and must never be described as
+          # equivalent to protected-branch enforcement. It records a red governance signal whenever
+          # the new main/develop head is not associated with a merged PR into that same branch.
+          merged_prs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+            --jq ".[] | select(.merged_at != null and .base.ref == \"${BRANCH}\") | .number")"
+          if [[ -z "${merged_prs}" ]]; then
+            echo "mainline direct-push audit failed: ${GITHUB_SHA} has no merged PR into ${BRANCH}" >&2
+            echo "Repository branch protection is not currently available/enabled; treat this as governance evidence, not rollback." >&2
+            exit 1
+          fi
+          echo "mainline push audit passed for ${BRANCH}: merged PR(s) ${merged_prs//$'\n'/, }"
+
   pull-request-topology:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
@@ -157,9 +188,6 @@ jobs:
           set -euo pipefail
           version="${HEAD_REF#release/v}"
 
-          # Issues are the release authorities. This gate only reads their accepted state; it never
-          # closes them or manufactures evidence. V1 therefore cannot bypass #104/#109 merely by
-          # editing release notes or changing the release PR out of Draft.
           case "${version}" in
             0.0.1.0)
               required_issues=(30)
