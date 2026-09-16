@@ -18,7 +18,7 @@ Before a release branch is cut:
 - required automated tests are green on the exact claimed Windows/Linux + Qt matrix;
 - any milestone-required physical/manual acceptance has recorded reproducible evidence;
 - no unresolved blocker is reclassified as post-release merely to make the milestone appear complete;
-- compatibility/support documents use `supported`, `experimental`, `unsupported`, and `unverified` truthfully;
+- compatibility/support documents use `Supported`, `Candidate`, `Experimental`, `Unsupported`, and `Unverified` truthfully;
 - the milestone acceptance issue records the final evidence envelope and is ready to close;
 - root `project(VERSION ...)` on `develop` is still the development sentinel `0.0.0`.
 
@@ -53,11 +53,15 @@ Common gates:
 - source-consumption validation;
 - runtime deployment validation;
 - standard VNC viewer connect/view/input/disconnect/reconnect as required;
+- abrupt viewer disconnect while supported remote input is held does not leave stale key/button state and the next viewer begins clean;
+- explicit HyRemote runtime stop/policy transition while supported remote input is held returns the still-running target to neutral state, drops undelivered pending remote input, and does not synthesize duplicate releases on repeated teardown;
 - safe-default checks: loopback listener and remote input disabled unless explicitly enabled;
 - no Core/backend/private-QPA types leak into stable installed application APIs;
 - package contents and licenses/notices are complete;
 - docs and examples correspond to the release candidate, not another branch;
 - support/compatibility rows remain Candidate/Unverified until their exact required evidence has actually executed and passed.
+
+The explicit-stop cleanup requirement is an internal target-adapter/runtime guarantee. It must not be satisfied by adding a new public application reset API, second runtime, or test-only bypass.
 
 Branch/version authorization belongs to the Git Flow workflow. Repository metadata CTest must remain valid after an authorized release branch changes the project version from `0.0.0` to its exact milestone version.
 
@@ -73,7 +77,7 @@ V1.0.0.0 additionally requires these explicit engineering/release-closure gates 
 - **#101 — public API/package freeze:** one normal installed C++ target (`HyRemote::RemoteAccess`), no installed/exported Core or QPA application link target, stable C++/QML/deploy surface;
 - **#104 — integrated GA automation:** all three modes coexist in one exact-Qt-6.8.3 candidate and the Windows/Linux jobs actually execute and pass; a no-runner result does not satisfy it;
 - **#107 — release readiness:** release notes, NOTICE/dependency classification, package manifest, LICENSE/NOTICE installation and deterministic metadata checks are complete and aligned with the frozen artifact model;
-- **#109 — physical/native coexistence:** the required Windows/Linux E1/E2/E3/E4 local-visible/local-input + remote envelope passes where specified by #32/#33.
+- **#109 — physical/native coexistence:** the required Windows/Linux E1/E2/E3/E4 local-visible/local-input + remote envelope passes where specified by #32/#33, including abrupt-disconnect held-state cleanup and explicit-stop/policy-transition cleanup with no late queued remote input.
 
 These are not optional documentation references. #33 must record them as passed/accepted before `release/v1.0.0.0` can leave the pre-release gate.
 
@@ -87,7 +91,7 @@ Only after the release candidate is accepted:
 2. move the release PR out of Draft only after all mandatory acceptance evidence is complete;
 3. merge `release/vX.Y.Z.W` into `main`;
 4. verify the resulting current `main` HEAD still contains the accepted candidate and exact four-part CMake version;
-5. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD;
+5. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD`;
 6. allow the tag audit workflow to verify the authorized milestone, annotated-tag object, exact `main` HEAD equality, and CMake-version equality;
 7. publish release artifacts/notes from that tag only.
 
@@ -123,6 +127,7 @@ Release mechanics must never change the frozen product architecture merely to ma
 - Transparent QPA remains a package-owned platform MODULE/native-delegate-preserving proxy/decorator, not a replacement-only qvnc clone and not an application link target;
 - Qt Widgets and Qt Quick remain first-class peers;
 - one `hyremote_deploy()` entry point owns C++/QML/QPA payload placement;
+- target-input terminal cleanup remains internal: Session/transport callbacks quiesce before sink shutdown, pending undelivered input is discarded, and delivered supported held state is balanced without exposing a new application reset API;
 - the current V1 RFB correctness baseline remains explicitly unauthenticated/unencrypted (`SecurityType None`) unless a separately reviewed release changes that fact;
 - no support claim is made without reproducible evidence for the exact environment;
 - no Local Agent result is used to paper over #74 no-runner infrastructure, and no hosted/headless result is relabeled as #109 physical evidence.
