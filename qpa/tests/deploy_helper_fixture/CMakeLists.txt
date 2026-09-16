@@ -11,6 +11,9 @@ endif()
 if(NOT DEFINED TEST_DEPLOY_QPA)
     set(TEST_DEPLOY_QPA ON)
 endif()
+if(NOT DEFINED TEST_QML_AVAILABLE)
+    set(TEST_QML_AVAILABLE ON)
+endif()
 if(NOT DEFINED TEST_QPA_AVAILABLE)
     set(TEST_QPA_AVAILABLE ON)
 endif()
@@ -64,9 +67,9 @@ else()
 endif()
 
 # Source QML deployment has two local runtime payload targets plus a build import root. Installed QML
-# deployment publishes only an import root and relies on already-built SDK payloads. This fixture
-# checks that the same public helper handles both without turning either payload into an app link.
-if(TEST_QML)
+# deployment publishes only an import root and relies on already-built SDK payloads. A deliberately
+# unavailable QML payload leaves both absent so hyremote_deploy(... QML) must fail at configure time.
+if(TEST_QML AND TEST_QML_AVAILABLE)
     set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
     file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
     if(NOT TEST_INSTALLED_PAYLOAD)
@@ -175,7 +178,7 @@ else()
     if(TEST_DEPLOY_QPA)
         list(APPEND _expected_dependencies qpa-probe)
     endif()
-    if(TEST_QML)
+    if(TEST_QML AND TEST_QML_AVAILABLE)
         list(APPEND _expected_dependencies qml-backing qml-plugin)
     endif()
     foreach(_expected IN LISTS _expected_dependencies)
