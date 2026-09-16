@@ -43,6 +43,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     set(_runtime_copy_commands "")
     set(_additional_library_args "")
     set(_additional_library_section "")
+    set(_linux_plugin_rpath_rewrite "")
 
     if(WIN32)
         set(_runtime_deploy_dir "\${QT_DEPLOY_BIN_DIR}")
@@ -64,6 +65,20 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
         endforeach()
         set(_additional_library_section
             "\n    ADDITIONAL_LIBRARIES${_additional_library_args}")
+
+        # The installed Linux SDK keeps qhyremote below <libdir>/HyRemote/plugins/platforms and the
+        # shared HyRemote runtime in <libdir>, so qhyremote is built with $ORIGIN/../../... Normal
+        # application deployment relocates the plugin to <plugins>/platforms while runtime libraries
+        # go to QT_DEPLOY_LIB_DIR. Rewrite exactly that controlled SDK RPATH after copying the module;
+        # do not use LD_LIBRARY_PATH or bake an application-specific absolute path into the SDK.
+        if(UNIX AND NOT APPLE)
+            set(_linux_plugin_rpath_rewrite
+"file(RPATH_CHANGE
+    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"
+    OLD_RPATH \"$ORIGIN/../../..\"
+    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
+)\n")
+        endif()
     endif()
 
     # Qt's high-level deployment command owns the application's normal Qt/native-platform payload.
@@ -76,7 +91,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::QpaPlatform>\")
-${_runtime_copy_commands}qt_deploy_runtime_dependencies(
+${_linux_plugin_rpath_rewrite}${_runtime_copy_commands}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"${_additional_library_section}
 )
