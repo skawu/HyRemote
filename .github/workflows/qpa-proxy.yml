@@ -8,6 +8,7 @@ on:
       - 'core/**'
       - 'remoteaccess/**'
       - 'qpa/**'
+      - 'tests/consumer-installed-qpa/**'
       - '.github/workflows/qpa-proxy.yml'
   workflow_dispatch:
 
@@ -50,13 +51,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libxcb-cursor0 libxkbcommon-x11-0
 
-      - name: Configure, build and QPA tests — Linux
+      - name: Configure, build, QPA tests and install SDK — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/staged-sdk" \
             -DHYREMOTE_BUILD_CORE=ON \
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
             -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
@@ -68,8 +71,25 @@ jobs:
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
           xvfb-run -a ctest --test-dir build -R '^hyremote-qpa-' --output-on-failure
+          cmake --install build
 
-      - name: Configure, build and QPA tests — Windows / MSVC x64
+      - name: Clean installed-SDK QPA consumer — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          cmake -S tests/consumer-installed-qpa -B qpa-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX;$PWD/staged-sdk" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/qpa-consumer-install"
+          cmake --build qpa-consumer --parallel
+          cmake --install qpa-consumer
+          test -f "$PWD/qpa-consumer-install/plugins/platforms/libqhyremote.so"
+          xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
+            --app "$PWD/qpa-consumer-install/bin/hyremote-installed-qpa-consumer" \
+            --port 5992
+
+      - name: Configure, build, QPA tests and install SDK — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
@@ -80,6 +100,7 @@ jobs:
           cmake -S . -B build -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\staged-sdk" ^
             -DHYREMOTE_BUILD_CORE=ON ^
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
             -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON ^
@@ -91,3 +112,22 @@ jobs:
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
           ctest --test-dir build -R "^hyremote-qpa-" --output-on-failure
+          cmake --install build
+
+      - name: Clean installed-SDK QPA consumer — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
+          cmake -S tests\consumer-installed-qpa -B qpa-consumer -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\qpa-consumer-install"
+          cmake --build qpa-consumer --parallel
+          cmake --install qpa-consumer
+          if not exist "%CD%\qpa-consumer-install\plugins\platforms\qhyremote.dll" exit /b 1
+          set "QT_PLUGIN_PATH="
+          set "QT_QPA_PLATFORM_PLUGIN_PATH="
+          python tests\consumer-installed-qpa\product_fit.py ^
+            --app "%CD%\qpa-consumer-install\bin\hyremote-installed-qpa-consumer.exe" ^
+            --port 5992
