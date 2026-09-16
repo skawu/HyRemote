@@ -87,9 +87,27 @@ if(TEST_SHARED_RUNTIME)
                 "shared QPA deployment script is missing ${runtime_fragment}:\n${generated_content}")
         endif()
     endforeach()
+
+    if(UNIX AND NOT APPLE)
+        foreach(rpath_fragment IN ITEMS
+                "RPATH_CHANGE"
+                "$ORIGIN/../../.."
+                "$ORIGIN/../../${QT_DEPLOY_LIB_DIR}")
+            string(FIND "${generated_content}" "${rpath_fragment}" rpath_pos)
+            if(rpath_pos EQUAL -1)
+                message(FATAL_ERROR
+                    "shared Linux QPA deployment script is missing RPATH relocation '${rpath_fragment}':\n${generated_content}")
+            endif()
+        endforeach()
+    endif()
 else()
     if(NOT additional_libraries_pos EQUAL -1)
         message(FATAL_ERROR
             "static/default QPA deployment unexpectedly emitted ADDITIONAL_LIBRARIES:\n${generated_content}")
+    endif()
+    string(FIND "${generated_content}" "RPATH_CHANGE" static_rpath_pos)
+    if(NOT static_rpath_pos EQUAL -1)
+        message(FATAL_ERROR
+            "static/default QPA deployment unexpectedly emitted shared-runtime RPATH rewrite:\n${generated_content}")
     endif()
 endif()
