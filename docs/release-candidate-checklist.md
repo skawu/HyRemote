@@ -52,8 +52,12 @@ Common gates:
 - installed SDK clean-consumer configure/build/run;
 - source-consumption validation;
 - runtime deployment validation;
+- all applicable `hyremote_deploy()` call shapes are executed rather than inferred from independent payload tests; for V1 this includes C++, QML, QPA and combined `QML QPA`;
+- clean source/add_subdirectory deployment resolves from its deployed tree and does not rely on the original build tree or Qt SDK remaining reachable through an embedded build RUNPATH;
+- clean installed QML+QPA deployment loads the deployed `HyRemote` module, starts transparent QPA over the same shared runtime, accepts/reaccepts an RFB viewer, and does so without SDK/plugin/QML/runtime environment overrides;
 - standard VNC viewer connect/view/input/disconnect/reconnect as required;
 - abrupt viewer disconnect while supported remote input is held does not leave stale key/button state and the next viewer begins clean;
+- simultaneous viewer disconnect/release does not clear another viewer's still-held logical key/button state;
 - explicit HyRemote runtime stop/policy transition while supported remote input is held returns the still-running target to neutral state, drops undelivered pending remote input, and does not synthesize duplicate releases on repeated teardown;
 - safe-default checks: loopback listener and remote input disabled unless explicitly enabled;
 - no Core/backend/private-QPA types leak into stable installed application APIs;
@@ -61,7 +65,7 @@ Common gates:
 - docs and examples correspond to the release candidate, not another branch;
 - support/compatibility rows remain Candidate/Unverified until their exact required evidence has actually executed and passed.
 
-The explicit-stop cleanup requirement is an internal target-adapter/runtime guarantee. It must not be satisfied by adding a new public application reset API, second runtime, or test-only bypass.
+The explicit-stop cleanup requirement is an internal target-adapter/runtime guarantee. Multi-viewer held-state aggregation is likewise a private transport correctness rule. Neither may be satisfied by adding a new public application reset/per-client API, second runtime, or test-only bypass.
 
 Branch/version authorization belongs to the Git Flow workflow. Repository metadata CTest must remain valid after an authorized release branch changes the project version from `0.0.0` to its exact milestone version.
 
@@ -126,8 +130,9 @@ Release mechanics must never change the frozen product architecture merely to ma
 - Declarative QML remains a thin surface over the same shared runtime rather than a second runtime stack;
 - Transparent QPA remains a package-owned platform MODULE/native-delegate-preserving proxy/decorator, not a replacement-only qvnc clone and not an application link target;
 - Qt Widgets and Qt Quick remain first-class peers;
-- one `hyremote_deploy()` entry point owns C++/QML/QPA payload placement;
+- one `hyremote_deploy()` entry point owns all four C++/QML/QPA/combined-QML+QPA payload compositions;
 - target-input terminal cleanup remains internal: Session/transport callbacks quiesce before sink shutdown, pending undelivered input is discarded, and delivered supported held state is balanced without exposing a new application reset API;
+- simultaneous-viewer held-state isolation remains private transport bookkeeping and must not grow a public client-ownership/control channel;
 - the current V1 RFB correctness baseline remains explicitly unauthenticated/unencrypted (`SecurityType None`) unless a separately reviewed release changes that fact;
 - no support claim is made without reproducible evidence for the exact environment;
 - no Local Agent result is used to paper over #74 no-runner infrastructure, and no hosted/headless result is relabeled as #109 physical evidence.
