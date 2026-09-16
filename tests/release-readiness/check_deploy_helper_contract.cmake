@@ -17,8 +17,6 @@ foreach(path IN LISTS required_files)
     endif()
 endforeach()
 
-# Source QML deployment metadata must be current-configure truth. The source module republishes its
-# import root later in the same configure; old cache/global-property state is cleared first.
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[unset(HyRemote_QML_IMPORT_PATH CACHE)]=]
@@ -32,27 +30,31 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
 foreach(required_token
-        [=[set(HyRemote_QML_AVAILABLE @HYREMOTE_PACKAGE_WITH_QML@)]=]
-        [=[if(HyRemote_QML_AVAILABLE)]=]
+        [=[if(@HYREMOTE_PACKAGE_WITH_QML@)]=]
+        [=[set(HyRemote_QML_IMPORT_PATH "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")]=]
         [=[set(HyRemote_QML_IMPORT_PATH "")]=])
     string(FIND "${package_config}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deploy-helper-contract: installed QML availability metadata drifted: ${required_token}")
+            "deploy-helper-contract: installed QML import metadata drifted: ${required_token}")
     endif()
 endforeach()
+string(FIND "${package_config}" "HyRemote_QML_AVAILABLE" leaked_qml_api)
+if(NOT leaked_qml_api EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
         [=[set(options QML QPA)]=]
+        [=[_hyremote_target_is_local]=]
         [=[TARGET hyremote-qml]=]
-        [=[HyRemote_QML_AVAILABLE]=]
         [=[HYREMOTE_BUILD_QML_API=ON]=]
         [=[HyRemote_QML_IMPORT_PATH]=]
         [=[HYREMOTE_QML_SOURCE_DEPLOY_TARGETS]=]
         [=[HyRemote_QPA_AVAILABLE]=]
         [=[HyRemote::QpaPlatform]=]
-        [=[_hyremote_add_local_build_dependency]=]
         [=[ALIASED_TARGET]=]
         [=[IMPORTED]=]
         [=[add_dependencies]=]
@@ -64,12 +66,14 @@ foreach(required_token
             "deploy-helper-contract: public helper lost required dispatch/fail-closed behavior: ${required_token}")
     endif()
 endforeach()
+string(FIND "${deploy_helper}" "HyRemote_QML_AVAILABLE" leaked_helper_api)
+if(NOT leaked_helper_api EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: QML source availability must remain internal target/build metadata")
+endif()
 
-# QML and QPA are optional payloads, but asking for an unavailable selected mode must fail during
-# configuration rather than produce an apparently successful incomplete deployment.
 foreach(required_phrase
         [=[requires a HyRemote QML payload]=]
-        [=[available HyRemote QML payload did not publish HyRemote_QML_IMPORT_PATH]=]
         [=[requested an SDK that was built without Transparent QPA]=]
         [=[requires exact Qt]=])
     string(FIND "${deploy_helper}" "${required_phrase}" found)
@@ -85,8 +89,6 @@ foreach(required_token
         [=[TEST_QML_AVAILABLE]=]
         [=[TEST_STALE_QML_METADATA]=]
         [=[add_library(hyremote-qml ALIAS qml-backing)]=]
-        [=[set(HyRemote_QML_AVAILABLE TRUE)]=]
-        [=[set(HyRemote_QML_AVAILABLE FALSE)]=]
         [=[HYREMOTE_QML_SOURCE_DEPLOY_TARGETS]=]
         [=[QT_QML_IMPORT_PATH]=]
         [=[MANUALLY_ADDED_DEPENDENCIES]=]
@@ -97,6 +99,11 @@ foreach(required_token
             "deploy-helper-contract: deterministic fixture lost required source/installed proof: ${required_token}")
     endif()
 endforeach()
+string(FIND "${fixture}" "HyRemote_QML_AVAILABLE" leaked_fixture_api)
+if(NOT leaked_fixture_api EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: deterministic fixture must not rely on a new QML package API")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake" runner)
 foreach(required_token
@@ -151,4 +158,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; optional QML/QPA fail closed; stale source QML metadata rejected; source build-only payload wiring and QPA sub-build isolation frozen)")
+    "(four public shapes remain distinct; optional QML/QPA fail closed; stale source QML metadata rejected without new package API; source build-only payload wiring and QPA sub-build isolation frozen)")
