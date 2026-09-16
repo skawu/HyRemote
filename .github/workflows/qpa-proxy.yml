@@ -20,12 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / Qt 6.8.3 / qualified qwindows + shared RemoteAccess
+          - name: Windows x86_64 / Qt 6.8.3 / qwindows / QPA module + shared facade
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt 6.8.3 / qualified qxcb + shared RemoteAccess
+          - name: Linux x86_64 / Qt 6.8.3 / qxcb / QPA module + shared facade
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -55,6 +55,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -72,11 +73,14 @@ jobs:
           cmake --build build --parallel
           xvfb-run -a ctest --test-dir build -R '^hyremote-qpa-' --output-on-failure
           cmake --install build
+          test -f "$PWD/staged-sdk/lib/libHyRemoteRemoteAccess.so"
+          test -f "$PWD/staged-sdk/lib/HyRemote/plugins/platforms/libqhyremote.so"
 
       - name: Clean installed-SDK QPA consumer — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           cmake -S tests/consumer-installed-qpa -B qpa-consumer -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -85,9 +89,11 @@ jobs:
           cmake --build qpa-consumer --parallel
           cmake --install qpa-consumer
           test -f "$PWD/qpa-consumer-install/plugins/platforms/libqhyremote.so"
-          xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
-            --app "$PWD/qpa-consumer-install/bin/hyremote-installed-qpa-consumer" \
-            --port 5992
+          test -f "$PWD/qpa-consumer-install/lib/libHyRemoteRemoteAccess.so"
+          env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
+            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
+              --app "$PWD/qpa-consumer-install/bin/hyremote-installed-qpa-consumer" \
+              --port 5992
 
       - name: Configure, build, QPA tests and install SDK — Windows / MSVC x64
         if: runner.os == 'Windows'
@@ -113,11 +119,15 @@ jobs:
           cmake --build build --parallel
           ctest --test-dir build -R "^hyremote-qpa-" --output-on-failure
           cmake --install build
+          if not exist "%CD%\staged-sdk\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          if not exist "%CD%\staged-sdk\lib\HyRemote\plugins\platforms\qhyremote.dll" exit /b 1
 
       - name: Clean installed-SDK QPA consumer — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
           cmake -S tests\consumer-installed-qpa -B qpa-consumer -G Ninja ^
@@ -126,8 +136,10 @@ jobs:
           cmake --build qpa-consumer --parallel
           cmake --install qpa-consumer
           if not exist "%CD%\qpa-consumer-install\plugins\platforms\qhyremote.dll" exit /b 1
+          if not exist "%CD%\qpa-consumer-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
           set "QT_PLUGIN_PATH="
           set "QT_QPA_PLATFORM_PLUGIN_PATH="
+          set "QT_QPA_PLATFORM="
           python tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\qpa-consumer-install\bin\hyremote-installed-qpa-consumer.exe" ^
             --port 5992
