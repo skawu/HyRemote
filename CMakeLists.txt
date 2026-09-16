@@ -11,7 +11,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
 include(HyRemoteDeploy)
 
-include(CTest)
+# A normal add_subdirectory(HyRemote) consumer must not acquire CTest/BUILD_TESTING side effects just
+# by using the library. HyRemote's own tests are a developer concern and are explicitly opt-in for
+# subprojects through HYREMOTE_BUILD_TESTS.
+if(HYREMOTE_BUILD_TESTS)
+    include(CTest)
+endif()
 
 message(STATUS "Configuring HyRemote ${PROJECT_VERSION}")
 message(STATUS "  Build core:          ${HYREMOTE_BUILD_CORE}")
