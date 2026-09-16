@@ -12,15 +12,26 @@ endfunction()
 # script that references $<TARGET_FILE:...> does not itself make that local target part of the
 # consumer application's build. Add build-only dependencies for local HyRemote payload targets while
 # leaving installed/imported SDK targets untouched and, crucially, without adding application links.
+# Resolve aliases explicitly so this helper does not depend on alias handling details in the minimum
+# supported CMake line.
 function(_hyremote_add_local_build_dependency consumer dependency)
     if(NOT TARGET "${dependency}")
         return()
     endif()
-    get_target_property(_hyremote_dependency_imported "${dependency}" IMPORTED)
+
+    get_target_property(_hyremote_aliased_target "${dependency}" ALIASED_TARGET)
+    if(_hyremote_aliased_target)
+        set(_hyremote_build_target "${_hyremote_aliased_target}")
+    else()
+        set(_hyremote_build_target "${dependency}")
+    endif()
+
+    get_target_property(_hyremote_dependency_imported "${_hyremote_build_target}" IMPORTED)
     if(_hyremote_dependency_imported)
         return()
     endif()
-    add_dependencies("${consumer}" "${dependency}")
+
+    add_dependencies("${consumer}" "${_hyremote_build_target}")
 endfunction()
 
 # Generate the supplemental deployment script for the normal C++/QML product path. The V1 facade
