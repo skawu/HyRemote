@@ -19,12 +19,14 @@ Before a release branch is cut:
 - any milestone-required physical/manual acceptance has recorded reproducible evidence;
 - no unresolved blocker is reclassified as post-release merely to make the milestone appear complete;
 - compatibility/support documents use `Supported`, `Candidate`, `Experimental`, `Unsupported`, and `Unverified` truthfully;
-- the milestone acceptance issue records the final evidence envelope and is ready to close;
+- the milestone acceptance authority records the final evidence envelope and is **closed as completed**; `not_planned` is not release acceptance;
 - root `project(VERSION ...)` on `develop` is still the development sentinel `0.0.0`.
 
-Infrastructure failure such as #74 is not a product pass. If required jobs never execute, the milestone remains unaccepted.
+Infrastructure failure such as #74 is not a product pass. If required jobs never execute, the milestone remains unaccepted and its authority issue remains open.
 
-For **V1.0.0.0**, repository implementation on Draft PR #106 is the single convergence line, but that branch is not itself release authorization. Before `release/v1.0.0.0` may be cut, the GA authority must have executable evidence for the integrated candidate and every V1-specific closure gate listed in section 3.
+For **V1.0.0.0**, repository implementation on Draft PR #106 is the single convergence line, but that branch is not itself release authorization. Before `release/v1.0.0.0` may be cut, #30/#31/#32/#39/#41, #101/#104/#107/#109 and final GA authority #33 must all be accepted/closed as completed. This means #104 must contain actually executed Windows/Linux evidence and #109 must contain the distinct physical/native evidence before the release branch can exist legitimately.
+
+The Git Flow workflow reads those issue states for `release/v* -> main`; it does not close issues or create acceptance on the user's behalf. Editing release notes or toggling PR Draft state cannot substitute for authority closure.
 
 ## 2. Cut the release branch
 
@@ -34,15 +36,15 @@ Only after section 1 is complete:
 2. create `release/vMajor.Minor.Feature.Maintenance` from that point;
 3. update root `project(HyRemote VERSION ...)` to exactly the release-branch version;
 4. prepare/finalize release notes, package metadata, compatibility matrix and third-party notices for that exact candidate;
-5. open the release PR from `release/v*` to `main` as Draft while release-candidate verification runs.
+5. open the release PR from `release/v*` to `main` as Draft while release-candidate verification is repeated on the exact versioned branch.
 
-No new product feature enters the release branch. Only release-blocking fixes, packaging corrections, documentation corrections, and evidence fixes are allowed.
+The release branch is therefore a versioned verification/finalization line, not a place to complete missing product acceptance. No new product feature enters it. Only release-blocking fixes, packaging corrections, documentation corrections, and evidence corrections are allowed; any material product change must be reaccepted by the applicable authority before merge.
 
 `develop` may continue with later work after the release branch is cut; the release candidate is not required to absorb unrelated later `develop` commits.
 
 ## 3. Release-candidate verification
 
-The release PR must pass all gates applicable to the milestone.
+The release PR must pass all gates applicable to the milestone on the exact versioned candidate even though the milestone authority was already accepted before the branch was cut.
 
 Common gates:
 
@@ -83,16 +85,16 @@ V1.0.0.0 additionally requires these explicit engineering/release-closure gates 
 - **#107 — release readiness:** release notes, NOTICE/dependency classification, package manifest, LICENSE/NOTICE installation and deterministic metadata checks are complete and aligned with the frozen artifact model;
 - **#109 — physical/native coexistence:** the required Windows/Linux E1/E2/E3/E4 local-visible/local-input + remote envelope passes where specified by #32/#33, including abrupt-disconnect held-state cleanup and explicit-stop/policy-transition cleanup with no late queued remote input.
 
-These are not optional documentation references. #33 must record them as passed/accepted before `release/v1.0.0.0` can leave the pre-release gate.
+These are not optional documentation references. #33 closes only after these gates and predecessor authorities have been accepted; the Git Flow release-authority check then prevents a `release/v1.0.0.0` PR from bypassing them.
 
 For the current candidate, hosted/Xvfb execution may prove protocol/runtime/Qt-target correctness but cannot substitute for #109 physical evidence. Conversely, local physical evidence cannot substitute for #104 Windows/Linux build/install/deployment automation.
 
 ## 4. Merge to `main` and tag
 
-Only after the release candidate is accepted:
+Only after the exact versioned release candidate has repeated its applicable verification successfully:
 
 1. finalize the applicable release note so it no longer says acceptance is pending;
-2. move the release PR out of Draft only after all mandatory acceptance evidence is complete;
+2. move the release PR out of Draft only after the versioned-candidate checks are complete;
 3. merge `release/vX.Y.Z.W` into `main`;
 4. verify the resulting current `main` HEAD still contains the accepted candidate and exact four-part CMake version;
 5. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD;
