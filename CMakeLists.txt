@@ -119,9 +119,9 @@ if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/async-capture)
 endif()
 
-# Install/export is part of the SDK contract. A bare Core-only package remains valid; when the Qt
-# product facade is present it is exported from the same HyRemote package and namespace.
-if(TARGET hyremote-core)
+# The V1 installed SDK exists only when the product facade exists. Core remains a source/internal
+# static composition target and is deliberately not exported as a second normal SDK product.
+if(TARGET hyremote-remoteaccess)
     include(HyRemoteInstall)
 endif()
 
