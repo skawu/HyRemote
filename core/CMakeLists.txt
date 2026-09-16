@@ -10,7 +10,10 @@
 
 include(GNUInstallDirs)
 
-add_library(hyremote-core
+# Core is an internal/static composition layer for the V1 product. Applications link the shared
+# HyRemote::RemoteAccess facade; QPA is delivered as a platform MODULE. Keeping Core STATIC avoids a
+# second runtime library that normal users would otherwise need to understand and deploy.
+add_library(hyremote-core STATIC
     src/capabilities.cpp
     src/detail/mailbox.cpp
     src/frame.cpp
@@ -22,16 +25,9 @@ add_library(hyremote-core
 add_library(HyRemote::Core ALIAS hyremote-core)
 set_target_properties(hyremote-core PROPERTIES
     EXPORT_NAME Core
-    # Core is also linked into product plugins/modules (for example the shared QML module) when
-    # HyRemote itself is built statically. Keep the static archive PIC-capable on ELF platforms so
-    # an SDK consumer does not need to rebuild Core merely to compose a shared integration layer.
+    # RemoteAccess and other product modules are shared, so the internal static archive must remain
+    # PIC-capable on ELF platforms.
     POSITION_INDEPENDENT_CODE ON
-    # Core currently keeps a Qt-free public header surface without platform export annotations.
-    # When consumers opt into BUILD_SHARED_LIBS on Windows, let CMake generate the DLL export table
-    # so the installed HyRemote::Core target remains usable. This is inert for static builds and
-    # non-Windows platforms; an explicit visibility macro may replace it if ABI policy later needs
-    # finer-grained symbol control.
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 target_include_directories(hyremote-core
