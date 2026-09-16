@@ -37,9 +37,15 @@ int main(int argc, char **argv)
                                      QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
                                      QStringLiteral("seconds"),
                                      QStringLiteral("0"));
+    QCommandLineOption transitionOption(
+        QStringLiteral("policy-transition-ms"),
+        QStringLiteral("After N ms, stop the QML RemoteAccess runtime, enable remote input, and restart it (CI/product-fit helper)."),
+        QStringLiteral("milliseconds"),
+        QStringLiteral("0"));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     parser.addOption(secondsOption);
+    parser.addOption(transitionOption);
     parser.process(app);
 
     const int port = readPositiveInt(parser, portOption, 5900);
@@ -49,12 +55,14 @@ int main(int argc, char **argv)
     }
 
     const int testSeconds = readPositiveInt(parser, secondsOption, 0);
+    const int policyTransitionMs = readPositiveInt(parser, transitionOption, 0);
 
     QQmlApplicationEngine engine;
     engine.addImportPath(QStringLiteral(HYREMOTE_BUILD_QML_IMPORT_PATH));
     engine.rootContext()->setContextProperty(QStringLiteral("acceptancePort"), port);
     engine.rootContext()->setContextProperty(QStringLiteral("acceptanceRemoteInput"), parser.isSet(inputOption));
     engine.rootContext()->setContextProperty(QStringLiteral("acceptanceTimeoutMs"), testSeconds * 1000);
+    engine.rootContext()->setContextProperty(QStringLiteral("acceptancePolicyTransitionMs"), policyTransitionMs);
 
     QObject::connect(&engine,
                      &QQmlApplicationEngine::objectCreationFailed,
