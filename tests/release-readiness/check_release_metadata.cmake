@@ -4,9 +4,6 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
-# V1 release metadata, complete user documentation and the E1-E6 acceptance entry points are product
-# artifacts, not post-release polish. Keep this list repository-relative so the same deterministic
-# gate runs on feature/develop and later on authorized release branches.
 set(required_files
     "LICENSE"
     "NOTICE.md"
@@ -28,6 +25,7 @@ set(required_files
     "docs/source-consumption.md"
     "docs/deployment.md"
     "docs/qml-consumption.md"
+    "docs/input-model.md"
     "docs/security.md"
     "docs/security-model.md"
     "docs/viewer-connection.md"
@@ -84,9 +82,6 @@ if(DEFINED HYREMOTE_PROJECT_VERSION
         "source project version ${source_project_version}")
 endif()
 
-# Every taggable product milestone owns release notes before its release branch is cut. This generic
-# CTest validates stable facts only; candidate-vs-final status belongs to the Git Flow PR/tag gate so
-# the exact same test suite remains runnable both during acceptance and after note finalization.
 foreach(milestone_version
         "0.0.1.0"
         "0.0.2.0"
@@ -139,8 +134,6 @@ foreach(forbidden_token
     endif()
 endforeach()
 
-# Freeze the simple V1 product shape. Internal architecture remains rich, but ordinary users get one
-# C++ shared facade; QML/QPA are package payloads behind import/deploy entry points.
 file(READ "${HYREMOTE_SOURCE_DIR}/core/CMakeLists.txt" core_cmake)
 string(FIND "${core_cmake}" "add_library(hyremote-core STATIC" core_static)
 if(core_static EQUAL -1)
@@ -221,8 +214,6 @@ foreach(required_phrase
     endif()
 endforeach()
 
-# README is the external-developer entry point. Every required V1 user path must remain directly
-# discoverable instead of forcing users through architecture/internal documentation.
 file(READ "${HYREMOTE_SOURCE_DIR}/README.md" readme_text)
 foreach(required_link
         "docs/getting-started/cpp.md"
@@ -245,9 +236,6 @@ foreach(required_link
     endif()
 endforeach()
 
-# E1-E5 must participate in the common examples graph and each must carry its own user-facing README;
-# E6 is the existing clean installed/source consumer fixture above and is intentionally not duplicated
-# as a toy example target.
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
         "add_subdirectory(widgets-basic)"
@@ -262,10 +250,6 @@ foreach(required_example
     endif()
 endforeach()
 
-# E4 is the defining zero/minimal-source-change product proof. Pin both halves of its release path:
-# its own project must remain an ordinary Qt-only executable with opt-in installed QPA deployment,
-# and the clean external installed-SDK fixture must compile that exact E4 source rather than a
-# duplicate look-alike application.
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/qpa-proxy-existing-app/CMakeLists.txt" e4_cmake)
 foreach(required_token
         "target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)"
@@ -304,9 +288,6 @@ if(EXISTS "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/main.cpp")
         "release-readiness: clean installed-QPA fixture must not maintain a duplicate E4 application source")
 endif()
 
-# Freeze the terminal input lifecycle that keeps a still-running local Qt application neutral when
-# HyRemote is stopped or a QPA child leaves the composed application surface set. This remains an
-# internal composition contract; the V1 application-facing API stays the single RemoteAccess facade.
 file(READ "${HYREMOTE_SOURCE_DIR}/core/include/hyremote/core/input.hpp" input_contract)
 string(FIND "${input_contract}" "virtual void shutdown() noexcept" input_shutdown_contract)
 if(input_shutdown_contract EQUAL -1)
@@ -328,6 +309,7 @@ foreach(adapter_file
     file(READ "${HYREMOTE_SOURCE_DIR}/${adapter_file}" adapter_source)
     foreach(required_token
             "void shutdown() noexcept override"
+            "override { shutdown(); }"
             "state->pending.clear()"
             "releaseHeldStateOnGuiThread")
         string(FIND "${adapter_source}" "${required_token}" found)
@@ -375,6 +357,35 @@ foreach(required_phrase
     if(found EQUAL -1)
         message(FATAL_ERROR
             "release-readiness: canonical V1 GA acceptance omits terminal input lifecycle fact: ${required_phrase}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/input-model.md" input_model)
+foreach(required_phrase
+        "Viewer disconnect cleanup belongs to the transport"
+        "HyRemote runtime/target teardown cleanup belongs to the target `InputSink`"
+        "pending"
+        "delivered")
+    string(FIND "${input_model}" "${required_phrase}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: input model omits terminal lifecycle boundary: ${required_phrase}")
+    endif()
+endforeach()
+
+foreach(doc_check
+        "docs/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
+        "docs/releases/v1.0.0.0.md|explicit HyRemote runtime stop/policy transition"
+        "docs/compatibility.md|explicit HyRemote stop/policy transition"
+        "docs/known-limitations.md|explicit HyRemote runtime stop")
+    string(REPLACE "|" ";" doc_parts "${doc_check}")
+    list(GET doc_parts 0 doc_path)
+    list(GET doc_parts 1 required_phrase)
+    file(READ "${HYREMOTE_SOURCE_DIR}/${doc_path}" doc_text)
+    string(FIND "${doc_text}" "${required_phrase}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: V1 lifecycle documentation drift in ${doc_path}: ${required_phrase}")
     endif()
 endforeach()
 
