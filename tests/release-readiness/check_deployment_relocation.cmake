@@ -121,7 +121,7 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/verify_linux_dependency_origin.py" origin_verifier)
 foreach(required_token
-        [=[PRODUCT_PREFIXES = ("libHyRemote", "libQt6")]=]
+        [=[PRODUCT_PREFIXES = ("libHyRemote", "libhyremote-qml", "libQt6")]=]
         [=[env.pop("LD_LIBRARY_PATH", None)]=]
         [=[deployed dependency escaped prefix]=])
     string(FIND "${origin_verifier}" "${required_token}" found)
@@ -147,4 +147,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deployment-relocation gate: PASS "
-    "(source/install shared runtime + QML + QPA origin paths and executable loaded-library evidence frozen)")
+    "(source/install shared runtime + QML backing/plugin + QPA origin paths and executable loaded-library evidence frozen)")
