@@ -1,4 +1,5 @@
 #include "detail/component_factories.hpp"
+#include "detail/target_component_provider.hpp"
 
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
 #include "widgets/widget_target.hpp"
@@ -34,22 +35,8 @@ TransportFactory &transportFactory()
     return factory;
 }
 
-}  // namespace
-
-TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled)
+TargetComponents createBuiltinTargetComponents(QObject *target, bool remoteInputEnabled)
 {
-    TargetFactory factory;
-    {
-        std::lock_guard<std::mutex> lock(factoryMutex());
-        factory = targetFactory();
-    }
-
-    // setTargetFactory() is an internal deterministic override used by tests and future custom
-    // composition. Normal product builds fall through to built-in target adapters so ordinary
-    // applications never register CaptureSource/InputSink objects themselves.
-    if (factory)
-        return factory(target, remoteInputEnabled);
-
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
     TargetComponents widgets = createWidgetsTargetComponents(target, remoteInputEnabled);
     if (widgets.supported)
@@ -67,6 +54,37 @@ TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled
         "No HyRemote target adapter in this build supports the attached Qt object. Enable/link a "
         "supported Widgets or Quick adapter for the target type.");
     return result;
+}
+
+}  // namespace
+
+TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled)
+{
+    TargetFactory factory;
+    {
+        std::lock_guard<std::mutex> lock(factoryMutex());
+        factory = targetFactory();
+    }
+
+    // The explicit global override remains a deterministic test seam and therefore has highest
+    // precedence. Production composition must not register itself globally.
+    if (factory)
+        return factory(target, remoteInputEnabled);
+
+    // Product-internal composite targets may provide components per QObject instance. The resolver
+    // intentionally bypasses providers and reaches only the normal built-in Widgets/Quick chain,
+    // which lets a composite reuse the same adapters without recursion and without changing any
+    // other RemoteAccess instance in the process.
+    if (target) {
+        if (auto *provider = dynamic_cast<TargetComponentProvider *>(target)) {
+            const BuiltinTargetResolver resolver = [](QObject *child, bool childRemoteInputEnabled) {
+                return createBuiltinTargetComponents(child, childRemoteInputEnabled);
+            };
+            return provider->createTargetComponents(remoteInputEnabled, resolver);
+        }
+    }
+
+    return createBuiltinTargetComponents(target, remoteInputEnabled);
 }
 
 TransportComponent createDefaultTransport(const QHostAddress &listenAddress, quint16 port)

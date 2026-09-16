@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QPointer>
 
+#include <atomic>
+#include <cstddef>
 #include <utility>
 
 #include "detail/component_factories.hpp"
@@ -55,6 +57,84 @@ RemoteAccessError mapError(const hyremote::SessionError &error)
     return result;
 }
 
+void decrementConnectedClients(const std::shared_ptr<std::atomic<std::size_t>> &count) noexcept
+{
+    if (!count)
+        return;
+
+    std::size_t current = count->load(std::memory_order_relaxed);
+    while (current != 0
+           && !count->compare_exchange_weak(current,
+                                            current - 1,
+                                            std::memory_order_relaxed,
+                                            std::memory_order_relaxed)) {
+    }
+}
+
+// Private product diagnostic decorator. It observes only Core's transport-neutral connection
+// events, then forwards the exact same event stream into the one Session owned by RemoteAccess.
+// Concrete RFB/client/socket types never enter the facade API and no second runtime is created.
+class ClientCountingTransport final : public hyremote::Transport
+{
+public:
+    ClientCountingTransport(std::unique_ptr<hyremote::Transport> transport,
+                            std::shared_ptr<std::atomic<std::size_t>> connectedClients)
+        : m_transport(std::move(transport))
+        , m_connectedClients(std::move(connectedClients))
+    {
+    }
+
+    hyremote::FrameConsumerCapabilities frameCapabilities() const override
+    {
+        return m_transport->frameCapabilities();
+    }
+
+    bool start(hyremote::InputHandler onInput, hyremote::TransportEventHandler onEvent) override
+    {
+        m_connectedClients->store(0, std::memory_order_relaxed);
+        const auto connectedClients = m_connectedClients;
+        const bool started = m_transport->start(
+            std::move(onInput),
+            [connectedClients, onEvent = std::move(onEvent)](const hyremote::TransportEvent &event) mutable {
+                switch (event.code) {
+                case hyremote::TransportEventCode::ClientConnected:
+                    connectedClients->fetch_add(1, std::memory_order_relaxed);
+                    break;
+                case hyremote::TransportEventCode::ClientDisconnected:
+                    decrementConnectedClients(connectedClients);
+                    break;
+                case hyremote::TransportEventCode::AuthenticationRejected:
+                case hyremote::TransportEventCode::RecoverableFailure:
+                case hyremote::TransportEventCode::FatalFailure:
+                    break;
+                }
+
+                if (onEvent)
+                    onEvent(event);
+            });
+        if (!started)
+            m_connectedClients->store(0, std::memory_order_relaxed);
+        return started;
+    }
+
+    void stop() noexcept override
+    {
+        m_transport->stop();
+        // Transport::stop() is quiescent by contract. Once it returns no late connection callback
+        // may race this reset, so Stopped always exposes zero connected clients.
+        m_connectedClients->store(0, std::memory_order_relaxed);
+    }
+
+    void enqueueFrame(hyremote::RemoteFrame frame) override
+    {
+        m_transport->enqueueFrame(std::move(frame));
+    }
+
+private:
+    std::unique_ptr<hyremote::Transport> m_transport;
+    std::shared_ptr<std::atomic<std::size_t>> m_connectedClients;
+};
+
 }  // namespace
 
 struct RemoteAccess::Impl
@@ -65,6 +145,8 @@ struct RemoteAccess::Impl
     bool remoteInputEnabled = false;
     std::unique_ptr<hyremote::Session> session;
     std::optional<RemoteAccessError> error;
+    std::shared_ptr<std::atomic<std::size_t>> connectedClients =
+        std::make_shared<std::atomic<std::size_t>>(0);
 
     bool isConfigurable() const
     {
@@ -205,6 +287,9 @@ bool RemoteAccess::start()
         return false;
     }
 
+    transport.transport = std::make_unique<ClientCountingTransport>(
+        std::move(transport.transport), m_impl->connectedClients);
+
     auto session = std::make_unique<hyremote::Session>();
     if (!session->setCaptureSource(std::move(targetComponents.capture))
         || !session->setTransport(std::move(transport.transport))) {
@@ -250,6 +335,13 @@ RemoteAccessState RemoteAccess::state() const
     if (!m_impl || !m_impl->session)
         return RemoteAccessState::Stopped;
     return mapState(m_impl->session->state());
+}
+
+std::size_t RemoteAccess::connectedClientCount() const noexcept
+{
+    if (!m_impl || !m_impl->connectedClients)
+        return 0;
+    return m_impl->connectedClients->load(std::memory_order_relaxed);
 }
 
 std::optional<RemoteAccessError> RemoteAccess::lastError() const
