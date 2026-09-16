@@ -1,274 +1,223 @@
 # HyRemote Security Model
 
-Status: **Architecture baseline**
+Status: **V1 architecture/security model; release acceptance still pending**
 
-HyRemote is remote-access infrastructure. A working remote viewer is not, by itself, a safe deployment architecture.
+HyRemote is remote-access infrastructure. A working viewer connection is not, by itself, a secure deployment architecture.
 
-This document defines security requirements for the framework and its adapters. Transport-specific implementation details may vary, but they must preserve these controls.
+This document defines the security architecture and threat boundaries that the V1 product must preserve. For the concise user-facing deployment rules and exact implemented behavior, see [`security.md`](security.md).
 
-## 1. Security goals
+A requirement described as **future** here is not a V1 product claim.
 
-HyRemote should make it possible for an embedding application to control:
+## 1. V1 security baseline
 
-- whether a remote service is running;
-- which interface/address it listens on;
-- whether remote viewing is allowed;
-- whether remote input is allowed;
-- how the selected transport authenticates/encrypts clients;
-- when clients connect/disconnect;
-- how sessions are terminated;
-- how security-relevant events are observed by the host application.
+The current V1 candidate uses HyRemote's bounded internal RFB 3.8 correctness transport across Embedded C++, Declarative QML and Transparent QPA.
 
-HyRemote should **not** become an identity/account platform. Product-specific users, roles, cloud identity, centralized audit storage, and fleet authorization belong above the generic framework.
+The implemented V1 security boundary is deliberately narrow and explicit:
+
+- constructing `HyRemote::RemoteAccess` does **not** open a listener;
+- Embedded C++ starts remote access only through explicit `start()`;
+- QML starts only after an explicit `enabled: true` request is applied after component completion;
+- Transparent QPA starts only when the process is deliberately launched through `-platform hyremote`;
+- the default listener address is loopback (`127.0.0.1`);
+- remote input is disabled by default;
+- the current RFB transport negotiates **SecurityType None**;
+- V1 provides **no transport authentication and no transport encryption**;
+- passwords, TLS certificates/private keys, authenticated identities, roles and per-client authorization are not part of the V1 public product surface.
+
+These facts are release constraints. Documentation, examples and compatibility claims must not imply stronger security.
 
 ## 2. Trust boundaries
 
 ```text
-+---------------- Qt Application ----------------+
-|                                                |
-| Business/UI code                               |
-|      |                                         |
-| HyRemote Core                                  |
-|      |                                         |
-| Target/Capture/Input adapters                  |
-|      |                                         |
-| Transport adapter (e.g. NeatVNC)               |
-+------+-----------------------------------------+
-       |
-       | network boundary
-       v
-Remote client / viewer
-       |
-       +-- potentially untrusted network
++-------------------- Qt application/process --------------------+
+|                                                               |
+| Application UI/business code                                  |
+|          |                                                    |
+| HyRemote public facade / QML facade / QPA controller          |
+|          |                                                    |
+| Core Session + target/capture/input adapters                  |
+|          |                                                    |
+| bounded internal RFB transport                                |
++----------+----------------------------------------------------+
+           |
+           | unauthenticated / unencrypted network boundary
+           v
+       remote viewer
 ```
 
-Additional boundaries may exist around:
+Transparent QPA additionally delegates native display/input behavior to the qualified native Qt platform plugin (`qwindows` or `qxcb` on the V1 reference line). HyRemote must remain additive to that native path rather than replacing local operation.
 
-- TLS/VPN tunnels;
-- centralized device-management systems;
-- Linux permissions for system-level input backends;
-- platform-specific hardware/buffer APIs.
+External boundaries may be placed around HyRemote, for example host/network ACLs, a VPN or another separately managed secure tunnel. Those controls are deployment infrastructure, not HyRemote V1 transport-security features.
 
 ## 3. Threats considered
 
-At minimum:
+At minimum, V1 design and documentation must account for:
 
-- unauthorized viewing of application content;
-- unauthorized remote control/input;
-- credential interception;
-- connection from an unintended network interface;
-- brute-force or repeated connection attempts;
-- malformed protocol input from a remote client;
-- denial of service through slow clients or excessive connections;
-- sensitive credential/log leakage;
-- stale sessions surviving application security-state changes;
-- privilege escalation through system-level input injection;
-- accidental Internet exposure of a maintenance interface.
+- unauthorized viewing when a listener becomes reachable;
+- unauthorized remote control when remote input is enabled;
+- accidental non-loopback or public-Internet exposure;
+- malformed or deliberately incomplete RFB clients;
+- denial of service through slow clients, excessive connection attempts or unbounded protocol state;
+- stale input state after abrupt viewer disconnect;
+- sensitive information leaking through diagnostics;
+- remote input escaping the intended Qt application/surface boundary;
+- local display/input being disrupted by Transparent QPA operation;
+- future transport-security configuration being mistaken for already implemented V1 capability.
 
 ## 4. Secure-default requirements
 
 ### 4.1 No implicit listener
 
-Constructing a HyRemote object must not open a network port.
+Installing or constructing HyRemote must not create a remotely reachable service.
 
-The host application must explicitly enable/start remote access.
+- C++ construction is inert.
+- QML defaults `enabled` to `false`.
+- QPA requires explicit selection of the `hyremote` platform path.
 
-The QML API should default `enabled` to `false`.
+### 4.2 Loopback by default
 
-The zero-code/QPA mode must also require explicit opt-in through configuration/environment rather than silently exposing a service merely because the adapter library is installed.
+The default listener is loopback-only. A non-loopback bind is an explicit widening of the network trust boundary; it does not add authentication or encryption.
 
-### 4.2 Listener scope is explicit
+Examples must not use wildcard/public binds merely for convenience.
 
-The transport API must make bind address/interface configuration explicit.
+### 4.3 View and control are separate policies
 
-When no bind address is provided, the safest portable default is loopback-only unless a transport/backend documents a stronger platform-specific mechanism.
+Remote input is disabled by default and must be explicitly enabled.
 
-Binding to wildcard/non-loopback addresses should be visible in logs/diagnostics and documentation.
+For the frozen V1 application contract:
 
-### 4.3 Viewing and control are separate capabilities
+- Embedded C++ and QML remote-input configuration is mutable while the runtime is stopped; changing it for an active service uses the explicit `stop -> configure -> start` lifecycle;
+- Transparent QPA uses an explicit startup policy (`hyremote-input=true`); returning to view-only requires relaunch without that option;
+- V1 does **not** invent a hidden runtime authorization/control channel solely to avoid this lifecycle;
+- local native input remains independent from remote-input policy.
 
-Remote viewing and remote input must be independently controllable.
+A future additive API may support live authorization downgrade or per-client control, but that is not a V1 acceptance requirement and must not be retroactively inferred from this threat model.
 
-Conceptually:
+### 4.4 Connection state is not authorization
 
-```text
-serverEnabled
-viewEnabled
-remoteInputEnabled
-```
+`Running` means the remote runtime/listener is active. `connectedClientCount()` is an operational connection diagnostic. Neither is an authentication or authorization result.
 
-Disabling remote input must prevent keyboard/pointer/touch events from reaching the Qt application without requiring the connection to be closed.
+Because V1 uses SecurityType None, a reachable viewer is not authenticated by HyRemote.
 
-Changing authorization state should be able to terminate or downgrade active sessions.
+## 5. Input safety
 
-### 4.4 Security mode is transport-specific but explicit
+The normal V1 input path delivers normalized input only to the intended Qt application target/supported surface semantics.
 
-HyRemote core should not invent a universal password API that hides meaningful differences between transports.
+HyRemote V1 does not use Linux `uinput`, Windows virtual-HID injection, or desktop-wide OS input injection as its default mechanism.
 
-Instead:
+The input boundary distinguishes pointer motion/buttons, wheel, key/modifier state and committed text where the protocol provides sufficient information. Unsupported key/IME/composition behavior must be skipped or documented rather than guessed.
 
-- core exposes high-level security/session controls;
-- each transport exposes typed configuration for its supported authentication/encryption mechanisms;
-- documentation states which modes are safe only on trusted networks.
+Recognized held remote key/button state must be balanced when a viewer disconnects abruptly so stale remote state is not left inside the Qt application.
 
-### 4.5 Credentials are never diagnostics
+## 6. Resource and denial-of-service boundaries
 
-Passwords, private keys, raw authentication credentials, tokens, or equivalent secrets must not be written to normal logs, exceptions, tracing output, crash context, or example configuration committed to the repository.
+V1 must remain bounded even though the transport is unauthenticated.
 
-## 5. NeatVNC transport baseline
+The current architecture includes or requires bounded behavior for:
 
-The initial NeatVNC candidate supports policy flags including:
+- concurrent client slots;
+- per-client protocol input buffering;
+- advertised encoding count;
+- cut-text payload length even though clipboard transfer is not a V1 feature;
+- incomplete-handshake lifetime;
+- Core frame mailbox/backpressure;
+- transport frame handoff;
+- GUI input delivery/coalescing;
+- callback lifetime and quiescent stop.
 
-- authentication required;
-- encryption required;
-- username required;
-- explicitly allowing legacy/broken cryptography for trusted private networks.
+A slow or malformed client must not create unbounded memory growth or indefinitely block the Qt GUI/render path.
 
-It supports TLS certificate/private-key configuration and asynchronous authentication callbacks when built with the relevant crypto/TLS dependencies.
+These resource controls reduce failure/DoS exposure. They do **not** make SecurityType None safe for a hostile public network.
 
-HyRemote's VNC adapter should therefore expose transport configuration that can express these capabilities without reducing them to an 8-character legacy VNC password abstraction.
+## 7. Diagnostics and sensitive data
 
-### Legacy VNC authentication
+V1 has no password/TLS credential surface, so examples and diagnostics must not invent credentials or imply authentication identities.
 
-Legacy DES/VNC authentication must be documented as a compatibility mechanism, not as sufficient protection for direct untrusted-network/Internet exposure.
+Future security mechanisms must preserve these rules:
 
-## 6. Deployment profiles
+- passwords, tokens, private keys and equivalent secrets are never written to normal logs/errors/traces;
+- an authenticated identity, if introduced later, must be distinguished from a connection count or socket address;
+- security-relevant failures should remain observable without disclosing secrets.
 
-### Profile A — local/loopback development
+## 8. V1 deployment profiles
 
-- listener: loopback;
-- encryption: optional for local-only development;
-- remote input: explicit opt-in;
-- no claim of production deployment security.
+### Local developer / same machine
 
-### Profile B — trusted industrial LAN
+Use the default loopback listener. Enable remote input only when intentionally testing or using remote control.
 
-- listener: specific interface/address preferred over wildcard;
-- authentication required;
-- encryption preferred/required according to deployment policy;
-- remote input independently controlled;
-- host application should expose session events for local audit/operations.
+### Controlled lab / industrial maintenance network
 
-### Profile C — VPN / secure maintenance tunnel
+Use a specific bind address and an external trusted access boundary appropriate to the deployment. Treat the HyRemote RFB payload itself as unauthenticated and unencrypted.
 
-- HyRemote listener reachable only through trusted VPN/tunnel or equivalent access layer;
-- transport authentication should still be enabled where practical;
-- centralized product authorization may decide when HyRemote starts/stops;
-- host application may log session lifecycle and authorization decisions.
+### VPN / separately secured maintenance tunnel
 
-### Profile D — direct public Internet
+A separately managed secure tunnel may constrain who can reach the HyRemote listener. The tunnel is outside HyRemote V1 and must not be described as built-in HyRemote authentication/TLS.
 
-Not a recommended default deployment profile.
+### Direct public Internet
 
-HyRemote documentation must not suggest that simply setting a VNC password makes direct Internet exposure safe.
+**Not a supported V1 deployment profile.**
 
-## 7. Public API requirements
+Do not expose a SecurityType None listener directly to the public Internet or rely on a non-default port/viewer password UI as protection.
 
-The core/API design in ARCH-01 should provide transport-neutral equivalents of:
+## 9. Transparent QPA security boundary
 
-```text
-start / stop
-isRunning
-setViewEnabled
-setRemoteInputEnabled
-clientConnected
-clientDisconnected
-sessionError
-terminateClient / terminateAllClients
-```
+Zero/minimal-source-change integration must not weaken defaults.
 
-The exact names are not frozen here.
+V1 QPA launch configuration supports explicit process-start policy for:
 
-The transport adapter should additionally support:
+- listener address;
+- port;
+- remote input enabled/disabled.
 
-- bind address/port;
-- maximum clients where supported;
-- authentication configuration;
-- TLS/credential paths or callback providers;
-- transport-specific policy flags.
+The QPA path does not add a hidden credential system or dynamic policy service. Native local display/input remains delegated to the qualified native platform implementation; physical local-visible/local-input plus remote coexistence is a separate acceptance gate tracked by #109/#32.
 
-## 8. Input safety
+## 10. Future transport-security requirements
 
-### Qt event backend
+Authenticated/encrypted transport support is a post-baseline capability unless separately accepted into a later release.
 
-The default application-embedded input path should inject only into the intended Qt application/target semantics, not into the Linux input subsystem.
+A future transport may add, behind the stable application model:
 
-### `uinput` backend
+- password or stronger authentication;
+- TLS or equivalent encryption;
+- certificate/private-key provisioning;
+- authenticated identities;
+- per-client authorization/termination;
+- richer audit events.
 
-If a system-level `uinput` backend is added later:
+Such work must preserve backend-neutral public boundaries and must not force backend-specific types/toolchains on normal application consumers. A historical NeatVNC/rustvncserver investigation is research evidence only; it is not the selected V1 transport or a current security promise.
 
-- it is optional;
-- permissions/privileges are documented;
-- it is treated as a separate trust boundary;
-- it is never silently selected when direct Qt event delivery is available.
+## 11. Non-goals
 
-## 9. Resource / denial-of-service controls
-
-The architecture should permit limits on:
-
-- concurrent clients;
-- pending/in-flight frames;
-- frame rate;
-- encoder/network queue growth;
-- authentication/handshake lifetime;
-- connection retry/backoff at higher layers.
-
-A slow client must not be allowed to block the Qt GUI/render thread indefinitely.
-
-Frame replacement/drop under backpressure is acceptable for remote display and preferable to unbounded memory growth.
-
-## 10. Session events and audit hooks
-
-HyRemote should emit enough information for an embedding product to implement audit without embedding a product-specific audit database.
-
-Potential events:
-
-- server started/stopped;
-- client connected/disconnected;
-- remote address;
-- authenticated username when supplied by transport;
-- authentication failure summary without credentials;
-- remote input enabled/disabled;
-- session termination reason.
-
-## 11. Zero-code/QPA mode
-
-Zero-code integration must not weaken defaults.
-
-Configuration must provide explicit controls for:
-
-- service enablement;
-- bind address/port;
-- remote input;
-- transport security settings.
-
-If secure configuration cannot be expressed safely through environment variables alone, a configuration file/API boundary should be provided rather than encouraging secrets in command lines/process listings.
-
-## 12. Public-release security gate
-
-Before HyRemote is advertised as production-ready or the repository is made public with deployment guidance:
-
-- [ ] project license frozen;
-- [ ] threat model reviewed against implemented API;
-- [ ] no listener starts implicitly;
-- [ ] view and input permissions are independent;
-- [ ] sensitive values are excluded from logs;
-- [ ] supported authentication/encryption modes documented;
-- [ ] legacy/insecure modes clearly labeled;
-- [ ] malformed-client tests exist for the transport boundary where practical;
-- [ ] connection/backpressure limits tested;
-- [ ] dependency versions and update policy documented;
-- [ ] security reporting instructions are public and usable.
-
-## 13. Non-goals
-
-HyRemote does not itself provide:
+HyRemote V1 does not provide:
 
 - user/account management;
 - fleet identity;
 - cloud authorization;
 - centralized audit storage;
-- VPN infrastructure;
-- firewall management.
+- VPN/tunnel provisioning;
+- firewall management;
+- public-Internet-safe transport security;
+- per-client identity/role management.
 
-It provides the controls and hooks required for those systems to safely govern remote access.
+Products may place those systems around HyRemote, but they remain separate trust boundaries.
+
+## 12. V1 release security gate
+
+Before `v1.0.0.0` is authorized, evidence must confirm at least:
+
+- [x] Apache-2.0 project licensing is frozen;
+- [x] construction/installation does not implicitly open a listener;
+- [x] loopback is the default bind policy;
+- [x] remote input is disabled by default and explicitly controlled;
+- [x] the current SecurityType None limitation is explicit in user docs/release notes;
+- [x] bounded protocol/frame/input/handshake behavior is represented in implementation/tests;
+- [x] no V1 documentation claims password/TLS/authenticated identity support;
+- [ ] Windows x86_64 reference acceptance actually executes and passes;
+- [ ] Linux x86_64 reference acceptance actually executes and passes;
+- [ ] physical native local-display/local-input + remote coexistence evidence required by #109/#32 passes.
+
+A GitHub Actions job that never receives a runner is neither passing security evidence nor a code failure. #74 must not be bypassed by relabeling no-runner results.
+
+The concise V1 user-facing statement remains:
+
+> HyRemote V1 uses an unauthenticated, unencrypted RFB correctness transport. It defaults to loopback and remote input off. Keep it behind an appropriate trusted access boundary; do not expose it directly to the public Internet.
