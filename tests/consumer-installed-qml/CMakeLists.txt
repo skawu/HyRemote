@@ -15,6 +15,8 @@ if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
     message(FATAL_ERROR "HyRemote_QML_IMPORT_PATH must be an absolute installed import root")
 endif()
 
+qt_standard_project_setup(REQUIRES 6.8)
+
 qt_add_executable(hyremote-installed-qml-consumer
     main.cpp
 )
@@ -39,8 +41,7 @@ install(TARGETS hyremote-installed-qml-consumer
     RUNTIME DESTINATION bin
 )
 
-# This is deliberately the only HyRemote-owned consumer integration call. Register it after the
-# application install rule, matching Qt's deployment contract. The helper bridges the installed
-# module root into Qt's target import path before generating the QML deploy script; the consumer
-# does not name/copy a HyRemote plugin or qmldir itself.
+# This is deliberately the only HyRemote-owned consumer integration call. The helper bridges the
+# installed module root into Qt deployment and also carries the same shared RemoteAccess runtime used
+# by the QML module. The consumer does not name/copy HyRemote plugin/runtime files itself.
 hyremote_deploy(TARGET hyremote-installed-qml-consumer QML)
