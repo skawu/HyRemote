@@ -107,10 +107,17 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
             "hyremote_deploy(TARGET ${target} QPA) is supported only for the V1 Windows/Linux reference platforms")
     endif()
 
-    set(_required_qt_version "${HyRemote_QPA_QT_VERSION}")
-    if(_required_qt_version STREQUAL "")
-        # Source-tree use reaches this helper before installed package metadata exists.
+    # Source QPA is compiled in this exact configure and its V1 private-ABI contract is fixed to
+    # Qt 6.8.3. Do not let an unrelated installed SDK's metadata in the parent scope override that
+    # source truth. Installed acquisition uses the package-published exact version instead.
+    _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_qpa_source_acquisition)
+    if(_hyremote_qpa_source_acquisition)
         set(_required_qt_version "6.8.3")
+    else()
+        set(_required_qt_version "${HyRemote_QPA_QT_VERSION}")
+        if(_required_qt_version STREQUAL "")
+            set(_required_qt_version "6.8.3")
+        endif()
     endif()
 
     if(DEFINED Qt6Core_VERSION)
@@ -228,7 +235,8 @@ function(hyremote_deploy)
     endif()
 
     if(HYREMOTE_DEPLOY_QPA)
-        if(DEFINED HyRemote_QPA_AVAILABLE AND NOT HyRemote_QPA_AVAILABLE)
+        if(NOT _hyremote_source_acquisition
+           AND DEFINED HyRemote_QPA_AVAILABLE AND NOT HyRemote_QPA_AVAILABLE)
             message(FATAL_ERROR
                 "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QPA) requested an SDK that was built without Transparent QPA")
         endif()
