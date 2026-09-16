@@ -9,6 +9,10 @@ include(GNUInstallDirs)
 find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Widgets)
 find_package(HyRemote CONFIG REQUIRED)
 
+# Use Qt's standard deployable application layout. On ELF platforms this gives the executable the
+# normal origin-relative bin -> lib lookup; HyRemote's helper only adds qhyremote + RemoteAccess.
+qt_standard_project_setup(REQUIRES 6.8)
+
 if(NOT HyRemote_QPA_AVAILABLE)
     message(FATAL_ERROR "installed HyRemote SDK does not contain the Transparent QPA package")
 endif()
