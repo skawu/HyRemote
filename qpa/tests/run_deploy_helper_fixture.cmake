@@ -96,7 +96,7 @@ if(UNIX AND NOT APPLE)
     set(_literal_deploy_lib_dir "$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}")
     foreach(rpath_fragment IN ITEMS
             "RPATH_CHANGE"
-            "$ORIGIN/../../.."
+            "$ORIGIN/../../../."
             "${_literal_deploy_lib_dir}")
         string(FIND "${generated_content}" "${rpath_fragment}" rpath_pos)
         if(rpath_pos EQUAL -1)
