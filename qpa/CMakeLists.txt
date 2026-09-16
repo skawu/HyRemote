@@ -188,6 +188,24 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # Installed package metadata must fail closed when the advertised QML import root is missing.
+    # An absolute path string alone is not proof that the optional module is present in the SDK.
+    add_test(
+        NAME hyremote-qpa-deploy-helper-reject-missing-qml-root
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-missing-qml-root
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+            -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=OFF
+            -DTEST_QML_AVAILABLE=ON
+            -DTEST_QML_IMPORT_PATH_EXISTS=OFF
+            -DTEST_INSTALLED_PAYLOAD=ON
+            -DEXPECT_CONFIGURE_FAILURE=ON
+            "-DEXPECT_FAILURE_FRAGMENT=QML import root does not exist"
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
     # Source acquisition must never borrow a qhyremote payload from unrelated installed-package
     # metadata in the parent scope. Current-configure HyRemote::QpaPlatform is the only source proof.
     add_test(
