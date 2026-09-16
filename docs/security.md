@@ -1,31 +1,33 @@
 # HyRemote V1 Security
 
-Status: **V1 user-facing implemented-security boundary**
+Status: **V1 user-facing implemented-security boundary; release acceptance still pending**
 
 HyRemote is remote-access infrastructure. A working viewer connection is not evidence of a secure deployment.
 
-This page describes the security behavior that is **actually implemented in the current V1 reference line**. [`security-model.md`](security-model.md) is the broader architecture/threat-model document and includes future transport-security requirements; do not read those future requirements as already implemented capabilities.
+This page describes security behavior implemented in the current V1 candidate. [`security-model.md`](security-model.md) is the broader architecture/threat-model document and includes future transport-security requirements; do not read those future requirements as already implemented capabilities.
 
 ## Current V1 baseline
 
-The current V1 correctness transport is HyRemote's bounded internal RFB transport.
+The current correctness transport is HyRemote's bounded internal RFB transport shared by Embedded C++, Declarative QML and Transparent QPA.
 
 Implemented defaults and controls:
 
-- constructing `HyRemote::RemoteAccess` does **not** open a listener;
-- the application must call `start()` explicitly;
+- constructing C++ `HyRemote::RemoteAccess` does **not** open a listener;
+- Embedded C++ requires explicit `start()`;
+- QML requires an explicit `enabled: true` request, applied after component completion;
+- Transparent QPA starts only when the application is deliberately launched through the `hyremote` platform path;
 - the default listener is loopback (`127.0.0.1`);
 - remote input is disabled by default;
-- remote viewing and remote input are independent policies;
+- remote viewing and remote input policy remain distinct;
 - malformed/incomplete clients are bounded by protocol/input and handshake limits;
 - concurrent clients are bounded by the transport implementation;
-- passwords, certificates, TLS configuration, user accounts, or authentication identities are **not** currently part of the V1 public product surface.
+- passwords, certificates, TLS configuration, user accounts, or authentication identities are **not** part of the current V1 product surface.
 
 ## Critical limitation: RFB SecurityType None
 
 The current transport negotiates **RFB SecurityType None**.
 
-That means HyRemote V1 currently provides **no transport authentication and no transport encryption**. Anyone who can reach a non-loopback listener may be able to view the exposed application, subject to network controls outside HyRemote. If remote input is enabled, an unauthorized reachable viewer may also be able to control the target application.
+That means HyRemote currently provides **no transport authentication and no transport encryption**. Anyone who can reach a non-loopback listener may be able to view the exposed application, subject to network controls outside HyRemote. If remote input is enabled, an unauthorized reachable viewer may also be able to control the target application.
 
 Therefore:
 
@@ -37,7 +39,7 @@ Therefore:
 
 ## Listener exposure
 
-Default:
+Embedded C++ defaults to loopback:
 
 ```cpp
 HyRemote::RemoteAccess remote(&window);
@@ -52,36 +54,48 @@ remote.setListenAddress(QHostAddress(QStringLiteral("192.0.2.10")));
 
 Do not use a wildcard or externally reachable address merely to make viewer setup easier. First decide which network security layer is responsible for restricting access.
 
-The same rule applies to Transparent QPA Proxy configuration: changing `hyremote-address` from loopback widens the network trust boundary; it does not add authentication.
+The same rule applies to QML `listenAddress` and Transparent QPA `hyremote-address`: changing away from loopback widens the network trust boundary; it does not add authentication.
 
 ## Remote viewing versus control
 
-The default Embedded C++ policy is view-only:
-
-```cpp
-remote.setRemoteInputEnabled(false);
-```
-
-Remote control must be explicitly enabled while the facade is stopped:
+The safe default is view-only. For Embedded C++, remote control must be enabled explicitly while stopped:
 
 ```cpp
 remote.setRemoteInputEnabled(true);
 remote.start();
 ```
 
-For the current public facade, configuration mutation is accepted only while Stopped. Examples that need to change control policy therefore stop, update the policy, and start the **same** `RemoteAccess` instance rather than creating a second runtime.
+The Declarative QML API mirrors the same product policy. A normal compact start can remain view-only:
 
-The declarative QML API mirrors the same semantics. Transparent QPA currently receives its zero-code input policy through startup configuration and must not pretend to provide an application-owned runtime toggle that does not exist.
+```qml
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+Transparent QPA uses explicit startup policy rather than inventing an application control API for an otherwise unmodified program:
+
+```text
+-platform hyremote                         # view-only default
+-platform hyremote:hyremote-input=true     # remote control explicitly enabled
+```
+
+In all modes, local input remains separate from the remote-input policy; final physical coexistence evidence is tracked by #109.
 
 ## Connection state is not authorization
 
 `RemoteAccessState::Running` means the remote runtime/listener is running. It does not mean that a viewer is authenticated or even connected.
 
-#91 / PR #92 introduces a backend-neutral connected-client count so applications can distinguish listening from connected state without reading RFB/socket internals. This is an operational diagnostic, **not an authentication identity or authorization result**.
+The current candidate exposes backend-neutral `connectedClientCount()` diagnostics so application UI can distinguish listening from connected state without reading RFB/socket internals. This is an operational diagnostic, **not an authentication identity or authorization result**.
+
+Exact Windows/Linux viewer lifecycle acceptance remains pending while #74 prevents the reference jobs from receiving runners.
 
 ## Input safety boundary
 
-The Embedded C++ and Declarative QML modes inject normalized input only into the attached Qt application target through the Qt adapter path. They do not use Linux `uinput`, a Windows virtual-HID driver, or desktop-wide OS input injection as the V1 default.
+Embedded C++ and Declarative QML inject normalized input only into the attached Qt application target through the Qt adapter path. Transparent QPA routes remote input through the same normalized product semantics to qualified application surfaces while native local input remains owned by the native delegate.
+
+HyRemote does not use Linux `uinput`, a Windows virtual-HID driver, or desktop-wide OS input injection as the V1 default.
 
 The input model deliberately separates:
 
@@ -93,7 +107,7 @@ The input model deliberately separates:
 
 Unsupported keys, composition, or IME behavior must be skipped or documented rather than guessed.
 
-#90 tracks disconnect-time balancing releases so an abruptly disconnected viewer cannot leave a held key/button state behind in the Qt target.
+The #90 held-key/button disconnect correction is absorbed into #106: recognized remote held state is balanced when a viewer disappears abruptly. Its exact dual-OS product-fit acceptance is still pending because #74 prevents the corresponding jobs from executing.
 
 ## Resource / denial-of-service boundaries
 
@@ -104,7 +118,8 @@ The current RFB baseline includes bounded behavior such as:
 - bounded advertised encoding count;
 - bounded cut-text payload length even though clipboard transfer is not a V1 feature;
 - handshake timeout for incomplete clients;
-- bounded/latest-frame-oriented Core and transport handoff.
+- bounded/latest-frame-oriented Core and transport handoff;
+- bounded/coalescing GUI input delivery.
 
 These controls reduce accidental/unbounded resource growth. They do **not** turn an unauthenticated listener into a safe hostile-Internet service.
 
@@ -132,7 +147,7 @@ Do not bind HyRemote's SecurityType None listener directly to a public interface
 
 ## What is not implemented yet
 
-Do not claim the following as current V1 capabilities unless a later accepted issue/PR changes the product baseline:
+Do not claim the following as current V1 capabilities unless a later accepted change updates the product baseline:
 
 - RFB/VNC password authentication;
 - TLS encryption;
