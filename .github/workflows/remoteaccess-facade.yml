@@ -18,12 +18,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / Qt 6.8.3
+          - name: Windows x86_64 / Qt 6.8.3 / shared facade
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt 6.8.3
+          - name: Linux x86_64 / Qt 6.8.3 / shared facade
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -46,16 +46,20 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          set -euo pipefail
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DHYREMOTE_BUILD_CORE=ON \
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
             -DHYREMOTE_BUILD_TESTS=ON \
             -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
-          ctest --test-dir build --output-on-failure
+          test -f build/remoteaccess/libHyRemoteRemoteAccess.so
+          LD_LIBRARY_PATH="$PWD/build/remoteaccess:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+            ctest --test-dir build --output-on-failure
 
       - name: Configure, build and test — Windows / MSVC x64
         if: runner.os == 'Windows'
@@ -74,4 +78,6 @@ jobs:
             -DHYREMOTE_BUILD_SPIKES=OFF ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
+          if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
+          set "PATH=%CD%\build\remoteaccess;%QT_PREFIX%\bin;%PATH%"
           ctest --test-dir build --output-on-failure
