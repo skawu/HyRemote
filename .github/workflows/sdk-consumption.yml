@@ -78,7 +78,6 @@ jobs:
           cmake --build build-sdk --parallel
           cmake --install build-sdk
 
-          # Fixed V1 package surface: only the shared product facade is installed. Core stays internal.
           test -f "$SDK_PREFIX/lib/libHyRemoteRemoteAccess.so"
           test -z "$(find "$SDK_PREFIX/lib" -maxdepth 1 -type f -name 'libhyremote-core*' -print -quit)"
 
@@ -111,8 +110,7 @@ jobs:
           test -f deploy-source/lib/libHyRemoteRemoteAccess.so
           env -u LD_LIBRARY_PATH deploy-source/bin/hyremote-source-consumer
 
-          # Source shape 2/4: Declarative QML only. The exact clean QML application must import the
-          # build-tree HyRemote module, deploy it, then run without QML/SDK runtime-path assistance.
+          # Source shape 2/4: Declarative QML only.
           cmake -S tests/consumer-installed-qml -B build-consumer-source-qml -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -127,8 +125,7 @@ jobs:
             QT_QPA_PLATFORM=offscreen \
             deploy-source-qml/bin/hyremote-installed-qml-consumer
 
-          # Source shape 3/4: Transparent QPA. Compile the exact E4 Qt-only source, deploy the
-          # source-built qhyremote/shared runtime, then exercise listener/reconnect with no overrides.
+          # Source shape 3/4: Transparent QPA using the exact E4 Qt-only source.
           cmake -S tests/consumer-installed-qpa -B build-consumer-source-qpa -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -144,8 +141,7 @@ jobs:
               --app "$PWD/deploy-source-qpa/bin/hyremote-installed-qpa-consumer" \
               --port 5994
 
-          # Source shape 4/4: QML + QPA. The same clean QML application proves build-tree import-root
-          # discovery and the combined public deployment call without becoming a second C++ API.
+          # Source shape 4/4: QML + QPA using the same clean declarative application fixture.
           cmake -S tests/consumer-installed-qml -B build-consumer-source-qml-qpa -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -172,7 +168,9 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "SDK_PREFIX=%RUNNER_TEMP%\hyremote-sdk"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          rem Preserve the runner + MSVC build tool PATH before any clean-deployment run narrows it.
+          set "BUILD_PATH=%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
 
           cmake -S . -B build-sdk -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
@@ -200,9 +198,8 @@ jobs:
           set "PATH=%CD%\deploy-installed\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\deploy-installed\bin\hyremote-installed-consumer.exe"
 
-          rem Restore build-time toolchain paths only for the API-contract build.
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%SDK_PREFIX%\bin;%PATH%"
+          rem Restore all runner/MSVC build tools, not just Visual Studio variables, after clean PATH.
+          set "PATH=%QT_PREFIX%\bin;%SDK_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\public-api-contract -B build-public-api-contract -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_PREFIX%"
@@ -210,8 +207,7 @@ jobs:
           build-public-api-contract\hyremote-public-api-contract.exe
 
           rem Source shape 1/4: Embedded C++.
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-source -B build-consumer-source -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -225,8 +221,7 @@ jobs:
           "%CD%\deploy-source\bin\hyremote-source-consumer.exe"
 
           rem Source shape 2/4: Declarative QML only.
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-installed-qml -B build-consumer-source-qml -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -244,8 +239,7 @@ jobs:
           "%CD%\deploy-source-qml\bin\hyremote-installed-qml-consumer.exe"
 
           rem Source shape 3/4: Transparent QPA using the exact E4 Qt-only application source.
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-installed-qpa -B build-consumer-source-qpa -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -264,8 +258,7 @@ jobs:
             --port 5994
 
           rem Source shape 4/4: QML + QPA using the same clean declarative application fixture.
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-installed-qml -B build-consumer-source-qml-qpa -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
