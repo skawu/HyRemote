@@ -1,7 +1,10 @@
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 
-add_library(hyremote-remoteaccess
+# V1 primary product artifact: applications link one HyRemote shared library and use the public
+# C++ facade. BUILD_SHARED_LIBS may still control lower-level/internal SDK targets such as Core, but
+# it must not silently turn the normal application product into a static archive.
+add_library(hyremote-remoteaccess SHARED
     src/remote_access.cpp
     src/detail/component_factories.cpp
 )
@@ -9,10 +12,15 @@ add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 set_target_properties(hyremote-remoteaccess PROPERTIES
     EXPORT_NAME RemoteAccess
     OUTPUT_NAME HyRemoteRemoteAccess
-    # The public facade may be built as a static SDK library and then consumed by shared integration
-    # modules such as the declarative QML plugin. Keep that composition valid on ELF platforms.
     POSITION_INDEPENDENT_CODE ON
 )
+
+# When an adopter deliberately builds the low-level Core target shared, keep the sibling runtime
+# lookup relocatable on ELF. In the normal/default product build Core remains an implementation
+# detail and RemoteAccess is still the one shared library the application links.
+if(UNIX AND NOT APPLE AND BUILD_SHARED_LIBS)
+    set_property(TARGET hyremote-remoteaccess PROPERTY INSTALL_RPATH "$ORIGIN")
+endif()
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
