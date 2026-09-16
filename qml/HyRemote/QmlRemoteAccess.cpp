@@ -196,6 +196,11 @@ QmlRemoteAccess::State QmlRemoteAccess::state() const noexcept
     return m_state;
 }
 
+quint64 QmlRemoteAccess::connectedClientCount() const noexcept
+{
+    return m_connectedClientCount;
+}
+
 QString QmlRemoteAccess::errorString() const
 {
     return m_errorString;
@@ -228,6 +233,13 @@ void QmlRemoteAccess::refreshRuntimeSnapshot()
     if (nextState != m_state) {
         m_state = nextState;
         emit stateChanged();
+    }
+
+    const quint64 nextConnectedClientCount =
+        static_cast<quint64>(m_access->connectedClientCount());
+    if (nextConnectedClientCount != m_connectedClientCount) {
+        m_connectedClientCount = nextConnectedClientCount;
+        emit connectedClientCountChanged();
     }
 
     const std::optional<::HyRemote::RemoteAccessError> runtimeError = m_access->lastError();
