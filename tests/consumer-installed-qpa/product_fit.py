@@ -7,6 +7,7 @@ import argparse
 import os
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -32,6 +33,38 @@ def wait_for_rfb(port: int, process: subprocess.Popen[str]) -> bytes:
     raise RuntimeError(f"deployed QPA listener did not become ready: {last_error}")
 
 
+def verify_linux_dependency_origins(app: Path) -> None:
+    if os.name == "nt":
+        return
+
+    prefix = app.parent.parent
+    qpa_plugins = sorted((prefix / "plugins" / "platforms").glob("*qhyremote*.so*"))
+    require(len(qpa_plugins) == 1, f"expected one deployed qhyremote ELF under {prefix}, got {qpa_plugins}")
+
+    artifacts = [app, qpa_plugins[0]]
+    qml_dir = prefix / "qml" / "HyRemote"
+    if qml_dir.is_dir():
+        artifacts.extend(sorted(path for path in qml_dir.glob("*.so*") if path.is_file()))
+
+    verifier = Path(__file__).resolve().parents[1] / "release-readiness" / "verify_linux_dependency_origin.py"
+    require(verifier.is_file(), f"Linux dependency-origin verifier is missing: {verifier}")
+
+    command = [sys.executable, str(verifier), "--prefix", str(prefix)]
+    for artifact in artifacts:
+        command.extend(["--artifact", str(artifact)])
+
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    result = subprocess.run(command, check=False, text=True, capture_output=True, env=env)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "deployed Linux dependency-origin verification failed:\n"
+            + result.stdout
+            + result.stderr
+        )
+    print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", required=True, type=Path)
@@ -40,6 +73,7 @@ def main() -> int:
 
     app = args.app.resolve()
     require(app.exists(), f"deployed consumer not found: {app}")
+    verify_linux_dependency_origins(app)
 
     env = os.environ.copy()
     # Product-fit must prove the deployed tree is self-contained with respect to HyRemote/Qt SDK
