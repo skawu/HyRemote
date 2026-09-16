@@ -154,6 +154,21 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # Optional package modes fail closed. Requesting QML without a source/installed module must be a
+    # configure-time error, matching the existing QPA missing-payload behavior.
+    add_test(
+        NAME hyremote-qpa-deploy-helper-reject-missing-qml
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-no-qml
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+            -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=OFF
+            -DTEST_QML_AVAILABLE=OFF
+            -DEXPECT_CONFIGURE_FAILURE=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-qt-mismatch
         COMMAND ${CMAKE_COMMAND}
