@@ -8,9 +8,6 @@ endif()
 if(NOT DEFINED TEST_QPA_AVAILABLE)
     set(TEST_QPA_AVAILABLE ON)
 endif()
-if(NOT DEFINED TEST_SHARED_RUNTIME)
-    set(TEST_SHARED_RUNTIME OFF)
-endif()
 if(NOT DEFINED TEST_QT_VERSION)
     set(TEST_QT_VERSION "6.8.3")
 endif()
@@ -26,7 +23,6 @@ execute_process(
         "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
         "-DTEST_QML=${TEST_QML}"
         "-DTEST_QPA_AVAILABLE=${TEST_QPA_AVAILABLE}"
-        "-DTEST_SHARED_RUNTIME=${TEST_SHARED_RUNTIME}"
         "-DTEST_QT_VERSION=${TEST_QT_VERSION}"
     RESULT_VARIABLE configure_result
     OUTPUT_VARIABLE configure_stdout
@@ -60,7 +56,9 @@ file(READ "${generated_script}" generated_content)
 foreach(required_fragment IN ITEMS
         "qt_deploy_runtime_dependencies"
         "ADDITIONAL_MODULES"
-        "platforms")
+        "ADDITIONAL_LIBRARIES"
+        "platforms"
+        "fake-remoteaccess")
     string(FIND "${generated_content}" "${required_fragment}" fragment_pos)
     if(fragment_pos EQUAL -1)
         message(FATAL_ERROR
@@ -68,28 +66,30 @@ foreach(required_fragment IN ITEMS
     endif()
 endforeach()
 
+# Core is statically composed behind RemoteAccess in the fixed V1 artifact model and must never be
+# copied as a second user-visible runtime library.
+string(FIND "${generated_content}" "fake-core" fake_core_pos)
+if(NOT fake_core_pos EQUAL -1)
+    message(FATAL_ERROR
+        "QPA deployment unexpectedly exposes a separate Core runtime:\n${generated_content}")
+endif()
+
 string(FIND "${generated_content}" "QT_PLUGIN_PATH" plugin_path_pos)
 if(NOT plugin_path_pos EQUAL -1)
     message(FATAL_ERROR
         "normal QPA deployment must not require QT_PLUGIN_PATH: ${generated_content}")
 endif()
 
-string(FIND "${generated_content}" "ADDITIONAL_LIBRARIES" additional_libraries_pos)
-if(TEST_SHARED_RUNTIME)
-    if(additional_libraries_pos EQUAL -1)
-        message(FATAL_ERROR
-            "shared QPA deployment must classify HyRemote runtime DLL/SO files as ADDITIONAL_LIBRARIES:\n${generated_content}")
-    endif()
-    foreach(runtime_fragment IN ITEMS "fake-remoteaccess" "fake-core")
-        string(FIND "${generated_content}" "${runtime_fragment}" runtime_pos)
-        if(runtime_pos EQUAL -1)
+if(UNIX AND NOT APPLE)
+    set(_literal_deploy_lib_dir "$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}")
+    foreach(rpath_fragment IN ITEMS
+            "RPATH_CHANGE"
+            "$ORIGIN/../../.."
+            "${_literal_deploy_lib_dir}")
+        string(FIND "${generated_content}" "${rpath_fragment}" rpath_pos)
+        if(rpath_pos EQUAL -1)
             message(FATAL_ERROR
-                "shared QPA deployment script is missing ${runtime_fragment}:\n${generated_content}")
+                "shared-facade QPA deployment script is missing RPATH relocation '${rpath_fragment}':\n${generated_content}")
         endif()
     endforeach()
-else()
-    if(NOT additional_libraries_pos EQUAL -1)
-        message(FATAL_ERROR
-            "static/default QPA deployment unexpectedly emitted ADDITIONAL_LIBRARIES:\n${generated_content}")
-    endif()
 endif()
