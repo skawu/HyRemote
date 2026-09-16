@@ -144,16 +144,15 @@ foreach(required_token
     endif()
 endforeach()
 
-# Source-tree and installed-SDK QPA deployment must feed the same public helper without assuming that
-# a build-tree module already has install-tree RPATH metadata. The real qhyremote target therefore
-# reserves one stable origin-relative relocation anchor in both forms. The helper rewrites only that
-# known segment after copying the module into the Qt deployment tree; no undocumented ELF parser or
-# extra patching tool becomes a V1 prerequisite.
+# Source-tree and installed-SDK QPA deployment must feed the same public helper. qhyremote reserves a
+# semantically equivalent SDK-layout RPATH anchor with enough ELF string capacity for the deployed
+# plugins/platforms -> lib replacement. The helper rewrites only that package-owned segment; no
+# undocumented ELF parser or extra patching tool becomes a V1 prerequisite.
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
-        [=[BUILD_RPATH "$ORIGIN/../../.."]=]
+        [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
-        [=[INSTALL_RPATH "$ORIGIN/../../.."]=])
+        [=[INSTALL_RPATH "$ORIGIN/../../../."]=])
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -164,7 +163,7 @@ endforeach()
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
         [=[file(RPATH_CHANGE]=]
-        [=[OLD_RPATH \"$ORIGIN/../../..\"]=]
+        [=[OLD_RPATH \"$ORIGIN/../../../.\"]=]
         [=[NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"]=])
     string(FIND "${deploy_helper}" "${required_token}" found)
     if(found EQUAL -1)
