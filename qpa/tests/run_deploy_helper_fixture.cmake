@@ -11,6 +11,9 @@ endif()
 if(NOT DEFINED TEST_QT_VERSION)
     set(TEST_QT_VERSION "6.8.3")
 endif()
+if(NOT DEFINED TEST_INSTALLED_PAYLOAD)
+    set(TEST_INSTALLED_PAYLOAD OFF)
+endif()
 if(NOT DEFINED EXPECT_CONFIGURE_FAILURE)
     set(EXPECT_CONFIGURE_FAILURE OFF)
 endif()
@@ -24,6 +27,7 @@ execute_process(
         "-DTEST_QML=${TEST_QML}"
         "-DTEST_QPA_AVAILABLE=${TEST_QPA_AVAILABLE}"
         "-DTEST_QT_VERSION=${TEST_QT_VERSION}"
+        "-DTEST_INSTALLED_PAYLOAD=${TEST_INSTALLED_PAYLOAD}"
     RESULT_VARIABLE configure_result
     OUTPUT_VARIABLE configure_stdout
     ERROR_VARIABLE configure_stderr
@@ -65,6 +69,14 @@ foreach(required_fragment IN ITEMS
             "generated QPA deploy script is missing '${required_fragment}':\n${generated_content}")
     endif()
 endforeach()
+
+if(TEST_INSTALLED_PAYLOAD)
+    string(FIND "${generated_content}" "qhyremote${CMAKE_SHARED_MODULE_SUFFIX}" installed_payload_pos)
+    if(installed_payload_pos EQUAL -1)
+        message(FATAL_ERROR
+            "installed-payload QPA deployment did not use published plugin file:\n${generated_content}")
+    endif()
+endif()
 
 # Core is statically composed behind RemoteAccess in the fixed V1 artifact model and must never be
 # copied as a second user-visible runtime library.
