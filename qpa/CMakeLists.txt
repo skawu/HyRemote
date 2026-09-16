@@ -18,11 +18,16 @@ add_library(hyremote-qpa-platform MODULE
 # HyRemote::QpaPlatform link target; installed consumers use `hyremote_deploy(... QPA)`.
 add_library(HyRemote::QpaPlatform ALIAS hyremote-qpa-platform)
 
+# Top-level HyRemote keeps the historical <build>/plugins/platforms location because
+# PROJECT_BINARY_DIR == CMAKE_BINARY_DIR there. In add_subdirectory() source consumption,
+# PROJECT_BINARY_DIR is the HyRemote sub-build root, so qhyremote no longer pollutes or collides with
+# the host application's own top-level plugins directory. hyremote_deploy() resolves the target file
+# directly, therefore this isolation does not create another consumer path or deployment rule.
 set_target_properties(hyremote-qpa-platform PROPERTIES
     AUTOMOC ON
     OUTPUT_NAME qhyremote
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/platforms"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/platforms"
+    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"
 )
 
 # QPA is the zero-source-change artifact. The SDK stores qhyremote below
