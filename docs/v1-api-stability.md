@@ -50,7 +50,12 @@ Frozen behavioral invariants:
 - view and input policy remain independent;
 - errors/diagnostics use HyRemote product types rather than backend objects;
 - `connectedClientCount()` is backend-neutral and `Running` does not imply a connected viewer;
+- a non-recoverable runtime failure remains observable as `Faulted` until the owner explicitly calls `stop()`; configuration is not silently reopened while the failed runtime still exists;
+- `clearError()` acknowledges product-level and live recoverable diagnostics, and a later occurrence must become visible again; it does not hide the active non-recoverable diagnostic that explains `Faulted`;
+- after `stop()` quiesces a Faulted runtime, the retained fatal diagnostic may be cleared explicitly and normal Stopped-state configuration/restart rules apply;
 - replacing transport/capture/input internals must not require normal application-source changes.
+
+A Faulted runtime still owns its listener/transport until explicit `stop()`. Therefore `connectedClientCount()` may remain nonzero while Faulted and returns to zero when teardown completes. Applications must not reinterpret this diagnostic as lifecycle or authorization state.
 
 ### V1 binary/runtime shape
 
@@ -85,7 +90,7 @@ V1 freezes:
 - creatable type: `RemoteAccess`;
 - properties: `target`, `enabled`, `listenAddress`, `port`, `remoteInputEnabled`, `state`, `connectedClientCount`, `errorString`, `errorCode`, `recoverableError`;
 - `connectedClientCount` remains read-only;
-- `clearError()` remains a product-level operation;
+- `clearError()` remains a product-level operation with the same acknowledgement/Faulted semantics as the C++ facade;
 - state/error meanings track the C++ facade rather than protocol/backend state.
 
 `HyRemote::Qml::QmlRemoteAccess` is not a consumer C++ API. The QML implementation remains a thin wrapper over the same shared `HyRemote::RemoteAccess`; 1.x must not create a second Session/transport/input implementation for declarative syntax.
@@ -143,6 +148,7 @@ The following are not normal application-facing compatibility surfaces:
 
 - `hyremote::Session` and Core composition internals;
 - `CaptureSource`, `InputSink`, concrete `Transport` implementations and RFB protocol classes;
+- transport-private concurrent-viewer held-state/reference-count arbitration;
 - Widgets/Quick target-adapter classes;
 - QPA interception/composite/provider/controller classes;
 - RFB test clients/servers and product-fit harness types;
