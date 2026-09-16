@@ -67,6 +67,15 @@ foreach(required_token "LICENSE" "NOTICE.md" "HyRemote/licenses")
             "release-readiness: install rules do not preserve required release metadata token: ${required_token}")
     endif()
 endforeach()
+foreach(forbidden_token
+        "HYREMOTE_PACKAGE_WITH_WIDGETS"
+        "HYREMOTE_PACKAGE_WITH_QUICK")
+    string(FIND "${install_rules}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: private UI adapter leaked into installed package dependency model: ${forbidden_token}")
+    endif()
+endforeach()
 
 # Freeze the simple V1 product shape. Internal architecture remains rich, but ordinary users get one
 # C++ shared facade or the QPA MODULE; Core must not reappear as a second installed application SDK.
@@ -91,6 +100,13 @@ foreach(required_token
     endif()
 endforeach()
 
+file(READ "${HYREMOTE_SOURCE_DIR}/qml/HyRemote/CMakeLists.txt" qml_cmake)
+string(FIND "${qml_cmake}" "TARGETS hyremote-qml\n    EXPORT HyRemoteTargets" qml_export)
+if(NOT qml_export EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: declarative QML backing library must not become a second C++ SDK target")
+endif()
+
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
 string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module)
 if(qpa_module EQUAL -1)
@@ -98,11 +114,26 @@ if(qpa_module EQUAL -1)
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
-foreach(forbidden_token "HyRemote::Core" "find_dependency(Threads)")
+foreach(forbidden_token
+        "HyRemote::Core"
+        "find_dependency(Threads)"
+        "COMPONENTS Widgets"
+        "COMPONENTS Quick"
+        "COMPONENTS Qml")
     string(FIND "${package_config}" "${forbidden_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
-            "release-readiness: installed package leaked internal Core contract: ${forbidden_token}")
+            "release-readiness: installed package leaked internal/unused consumer dependency: ${forbidden_token}")
+    endif()
+endforeach()
+foreach(required_token
+        "find_dependency(Qt6 6.8 COMPONENTS Core Network)"
+        "HyRemote_QML_IMPORT_PATH"
+        "HyRemote_QPA_QT_VERSION")
+    string(FIND "${package_config}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: installed package missing required minimal product metadata: ${required_token}")
     endif()
 endforeach()
 
@@ -120,4 +151,4 @@ foreach(required_phrase
 endforeach()
 
 message(STATUS
-    "HyRemote release-readiness metadata gate: PASS (project ${source_project_version}, simple V1 artifact surface)")
+    "HyRemote release-readiness metadata gate: PASS (project ${source_project_version}, minimal V1 consumer surface)")
