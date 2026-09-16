@@ -1,6 +1,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QCommandLineOption>
+#include <QCommandLineParser>
 #include <QDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -15,6 +17,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -122,9 +125,27 @@ public:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QCoreApplication::setApplicationName(QStringLiteral("Existing Qt Operations Console"));
+
+    // This is an ordinary application-owned command-line option, not a HyRemote integration API.
+    // It gives automated package acceptance a bounded lifetime while preserving the defining E4
+    // contract: this source and executable target remain Qt-only and know nothing about HyRemote.
+    QCommandLineParser parser;
+    parser.addHelpOption();
+    QCommandLineOption secondsOption(QStringLiteral("test-seconds"),
+                                     QStringLiteral("Exit after N seconds for automated application acceptance."),
+                                     QStringLiteral("seconds"),
+                                     QStringLiteral("0"));
+    parser.addOption(secondsOption);
+    parser.process(app);
 
     ExistingOperationsWindow window;
     window.show();
+
+    bool ok = false;
+    const int seconds = parser.value(secondsOption).toInt(&ok);
+    if (ok && seconds > 0)
+        QTimer::singleShot(seconds * 1000, &app, &QCoreApplication::quit);
 
     return app.exec();
 }
