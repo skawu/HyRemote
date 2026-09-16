@@ -69,4 +69,49 @@ install(TARGETS hyremote-qpa-platform
 
 if(HYREMOTE_BUILD_TESTS)
     add_subdirectory(tests)
+
+    set(_hyremote_qpa_deploy_fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/deploy_helper_fixture")
+    set(_hyremote_qpa_deploy_runner "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_deploy_helper_fixture.cmake")
+
+    add_test(
+        NAME hyremote-qpa-deploy-helper-ordinary
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-ordinary
+            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DTEST_QML=OFF
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    add_test(
+        NAME hyremote-qpa-deploy-helper-qml-composed
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
+            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DTEST_QML=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    add_test(
+        NAME hyremote-qpa-deploy-helper-reject-qt-mismatch
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qt-mismatch
+            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DTEST_QT_VERSION=6.8.2
+            -DEXPECT_CONFIGURE_FAILURE=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    add_test(
+        NAME hyremote-qpa-deploy-helper-reject-missing-package
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-no-qpa
+            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DTEST_QPA_AVAILABLE=OFF
+            -DEXPECT_CONFIGURE_FAILURE=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
 endif()
