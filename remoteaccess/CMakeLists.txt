@@ -14,6 +14,13 @@ set_target_properties(hyremote-remoteaccess PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
 
+# Shared installed/deployed HyRemote libraries are co-located in the Qt/CMake lib directory. Use an
+# origin-relative RUNPATH on ELF platforms so RemoteAccess can resolve HyRemote::Core after the SDK
+# payload is relocated by hyremote_deploy(), without LD_LIBRARY_PATH or an SDK-specific absolute path.
+if(UNIX AND NOT APPLE AND BUILD_SHARED_LIBS)
+    set_property(TARGET hyremote-remoteaccess PROPERTY INSTALL_RPATH "$ORIGIN")
+endif()
+
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
 target_include_directories(hyremote-remoteaccess
