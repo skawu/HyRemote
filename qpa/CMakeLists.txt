@@ -93,6 +93,19 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # QML-only is a distinct public deploy shape from QML+QPA. Exercise the normal shared-runtime
+    # supplemental script without letting QPA payload or RPATH relocation leak into it.
+    add_test(
+        NAME hyremote-qpa-deploy-helper-qml-only
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml-only
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+            -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=OFF
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
     add_test(
         NAME hyremote-qpa-deploy-helper-qml-composed
         COMMAND ${CMAKE_COMMAND}
@@ -100,6 +113,7 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -117,12 +131,25 @@ if(HYREMOTE_BUILD_TESTS)
     )
 
     add_test(
+        NAME hyremote-qpa-deploy-helper-installed-payload-qml-only
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload-qml-only
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+            -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=OFF
+            -DTEST_INSTALLED_PAYLOAD=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    add_test(
         NAME hyremote-qpa-deploy-helper-installed-payload-qml
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload-qml
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=ON
             -DTEST_INSTALLED_PAYLOAD=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
