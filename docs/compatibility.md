@@ -7,6 +7,8 @@ HyRemote does not claim support based only on API similarity. A configuration is
 Capture evidence and the reasoning behind the recommended baseline paths are recorded in
 [`capture-spike.md`](capture-spike.md) (SPIKE-01, issue #3).
 
+For the **V1 Transparent QPA production implementation**, do not infer support directly from the historical spike rows below. The production-path classification, exact adapter mapping and current acceptance boundary are recorded in [`qpa-capture-classification-qt-6.8.3.md`](qpa-capture-classification-qt-6.8.3.md) (#86). In particular, that document distinguishes current `QWidget::render()` / `QQuickWindow::contentItem()->grabToImage()` production paths from older probe-only alternatives and keeps dual-OS QPA rows unverified until #74 restores executable Windows/Linux evidence.
+
 ## Status definitions
 
 - **Supported** — repeatable build + functional validation + documented limitations.
@@ -17,9 +19,7 @@ Capture evidence and the reasoning behind the recommended baseline paths are rec
 ## Capture rows validated on the host (SPIKE-01)
 
 These rows come from the host runs in `spikes/capture/evidence/` (Windows 11, Qt 6.8.3,
-MSVC 19.44, Intel UHD Graphics 770). They are **host-only** evidence: per rule 2 below
-they say nothing about Embedded Linux/EGLFS support. The capture backend column names
-the mechanism that was actually measured, not a frozen HyRemote API.
+MSVC 19.44, Intel UHD Graphics 770). They are **host-only historical evidence**, not by themselves V1 QPA production support. Per rule 2 below they say nothing about Embedded Linux/EGLFS support. The capture backend column names the mechanism that was actually measured, not a frozen HyRemote API.
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Transport | Status | Notes |
 |---|---|---|---|---|---|---|---|
