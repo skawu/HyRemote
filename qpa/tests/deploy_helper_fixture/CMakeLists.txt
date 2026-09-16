@@ -48,13 +48,17 @@ if(TEST_DEPLOY_QPA)
         # A local/source RemoteAccess acquisition must not consume this plugin when its own source
         # configure did not create HyRemote::QpaPlatform.
         set(HyRemote_QPA_AVAILABLE TRUE)
-        set(_fixture_qpa_payload "${CMAKE_CURRENT_BINARY_DIR}/stale-qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
+        set(_fixture_qpa_payload
+            "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_MODULE_PREFIX}stale-qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
         file(WRITE "${_fixture_qpa_payload}" "fixture")
         set(HyRemote_QPA_PLUGIN_FILE "${_fixture_qpa_payload}")
     elseif(TEST_QPA_AVAILABLE)
         set(HyRemote_QPA_AVAILABLE TRUE)
         if(TEST_INSTALLED_PAYLOAD)
-            set(_fixture_qpa_payload "${CMAKE_CURRENT_BINARY_DIR}/qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
+            # Mirror the real qhyremote MODULE filename exactly: Linux carries the `lib` module
+            # prefix while Windows does not. A platform-inaccurate fixture could hide package metadata regressions.
+            set(_fixture_qpa_payload
+                "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
             file(WRITE "${_fixture_qpa_payload}" "fixture")
             set(HyRemote_QPA_PLUGIN_FILE "${_fixture_qpa_payload}")
         else()
