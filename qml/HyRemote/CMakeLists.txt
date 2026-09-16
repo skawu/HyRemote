@@ -42,6 +42,17 @@ qt_query_qml_module(hyremote-qml
     TYPEINFO HYREMOTE_QML_TYPEINFO
 )
 
+# Source/add_subdirectory consumers normally add HyRemote with EXCLUDE_FROM_ALL. Merely referencing a
+# target file from an install script does not make that target part of the application's build graph.
+# Publish the concrete QML payload targets as an internal global property so hyremote_deploy() can
+# add build-only dependencies without making QML a C++ link target or installed SDK target.
+set(_hyremote_qml_source_deploy_targets hyremote-qml)
+if(HYREMOTE_QML_PLUGIN_TARGET)
+    list(APPEND _hyremote_qml_source_deploy_targets "${HYREMOTE_QML_PLUGIN_TARGET}")
+endif()
+set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS
+    "${_hyremote_qml_source_deploy_targets}")
+
 # Publish the same abstract "QML import root" metadata for source and installed acquisition. In a
 # source/add_subdirectory build the module lives below <build>/qml/HyRemote, so <build>/qml is the
 # import root. HyRemoteConfig.cmake publishes the installed <prefix>/<libdir>/qml root instead.
