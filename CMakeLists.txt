@@ -62,3 +62,15 @@ endif()
 if(TARGET hyremote-core)
     include(HyRemoteInstall)
 endif()
+
+# Release metadata is repository-owned and must stay valid throughout normal feature/develop work.
+# The gate deliberately rejects a premature 1.0.0.0 project version; that version change belongs to
+# the Git Flow release/v1.0.0.0 branch after the V1 product acceptance prerequisites are satisfied.
+if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
+    add_test(
+        NAME hyremote-release-readiness-metadata
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
+    )
+endif()
