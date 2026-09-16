@@ -13,15 +13,15 @@ if(@HYREMOTE_PACKAGE_WITH_QML@)
     set(HyRemote_QML_IMPORT_PATH "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
 endif()
 
+# Transparent QPA is a package-owned plugin payload. There is no consumer link target and no
+# static/shared personality switch in V1: qhyremote always reuses the one shared RemoteAccess runtime.
 set(HyRemote_QPA_AVAILABLE @HYREMOTE_PACKAGE_WITH_QPA@)
 if(HyRemote_QPA_AVAILABLE)
     set(HyRemote_QPA_QT_VERSION "@HYREMOTE_PACKAGE_QPA_QT_VERSION@")
-    set(HyRemote_QPA_SHARED_RUNTIME @HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME@)
     set(HyRemote_QPA_PLUGIN_FILE
         "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR@/@HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME@")
 else()
     set(HyRemote_QPA_QT_VERSION "")
-    set(HyRemote_QPA_SHARED_RUNTIME FALSE)
     set(HyRemote_QPA_PLUGIN_FILE "")
 endif()
 
