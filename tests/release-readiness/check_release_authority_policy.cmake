@@ -13,6 +13,13 @@ endif()
 file(READ "${workflow_path}" policy)
 foreach(required_token
         [=[issues: read]=]
+        [=[pull-requests: read]=]
+        [=[mainline-push-audit]=]
+        [=[commits/${GITHUB_SHA}/pulls]=]
+        [=[select(.merged_at != null and .base.ref ==]=]
+        [=[after-the-fact audit only]=]
+        [=[it cannot undo a direct push]=]
+        [=[must never be described as]=]
         [=[Require accepted milestone authorities before release PR]=]
         [=[required_issues=(30)]=]
         [=[required_issues=(30 31)]=]
@@ -30,16 +37,20 @@ foreach(required_token
     endif()
 endforeach()
 
-# The workflow may read authority state, but it must never mutate/close issues as part of release
-# authorization. Acceptance remains a deliberate governance action backed by evidence.
+# The workflow may read PR/authority state, but it must never mutate/close issues as part of release
+# authorization. Acceptance remains a deliberate governance action backed by evidence. The mainline
+# push job is deliberately detection-only; repository policy must not pretend that an audit can undo
+# or prevent a direct push when branch protection is unavailable.
 foreach(forbidden_token
         [=[gh issue close]=]
         [=[-X PATCH]=]
-        [=[--method PATCH]=])
+        [=[--method PATCH]=]
+        [=[git reset --hard]=]
+        [=[git push --force]=])
     string(FIND "${policy}" "${forbidden_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
-            "release-authority-policy: workflow must not manufacture issue acceptance: ${forbidden_token}")
+            "release-authority-policy: workflow must not manufacture acceptance/rollback: ${forbidden_token}")
     endif()
 endforeach()
 
@@ -49,7 +60,11 @@ foreach(required_phrase
         [=[`not_planned` is not release acceptance]=]
         [=[#30/#31/#32/#39/#41, #101/#104/#107/#109 and final GA authority #33]=]
         [=[Editing release notes or toggling PR Draft state cannot substitute for authority closure]=]
-        [=[release branch is therefore a versioned verification/finalization line]=])
+        [=[release branch is therefore a versioned verification/finalization line]=]
+        [=[`main` and `develop` as **unprotected**]=]
+        [=[after-the-fact direct-push audit]=]
+        [=[cannot undo a push]=]
+        [=[must not be described as branch protection]=])
     string(FIND "${checklist}" "${required_phrase}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -59,4 +74,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release-authority policy gate: PASS "
-    "(issue-backed acceptance precedes release branch; workflow remains read-only; tag/backmerge facts preserved)")
+    "(issue-backed acceptance precedes release branch; mainline direct-push audit is explicitly detection-only; tag/backmerge facts preserved)")
