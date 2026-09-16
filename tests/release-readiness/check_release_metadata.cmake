@@ -6,13 +6,16 @@ endif()
 
 # V1 release metadata, complete user documentation and the E1-E6 acceptance entry points are product
 # artifacts, not post-release polish. Keep this list repository-relative so the same deterministic
-# gate runs on feature/develop and later on the authorized release branch.
+# gate runs on feature/develop and later on authorized release branches.
 set(required_files
     "LICENSE"
     "NOTICE.md"
     "README.md"
     "docs/versioning.md"
     "docs/release-package-manifest.md"
+    "docs/releases/v0.0.1.0.md"
+    "docs/releases/v0.0.2.0.md"
+    "docs/releases/v0.0.3.0.md"
     "docs/releases/v1.0.0.0.md"
     "docs/getting-started/windows.md"
     "docs/getting-started/linux.md"
@@ -62,17 +65,26 @@ if(DEFINED HYREMOTE_PROJECT_VERSION
         "source project version ${source_project_version}")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/docs/releases/v1.0.0.0.md" release_notes)
-foreach(required_phrase
-        "candidate / acceptance pending"
-        "SecurityType None"
-        "v1.0.0.0"
-        "release/v1.0.0.0")
-    string(FIND "${release_notes}" "${required_phrase}" found)
-    if(found EQUAL -1)
-        message(FATAL_ERROR
-            "release-readiness: release notes missing required boundary text: ${required_phrase}")
-    endif()
+# Every taggable product milestone owns release notes before its release branch is cut. This generic
+# CTest validates stable facts only; candidate-vs-final status belongs to the Git Flow PR/tag gate so
+# the exact same test suite remains runnable both during acceptance and after note finalization.
+foreach(milestone_version
+        "0.0.1.0"
+        "0.0.2.0"
+        "0.0.3.0"
+        "1.0.0.0")
+    set(release_note_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v${milestone_version}.md")
+    file(READ "${release_note_path}" milestone_notes)
+    foreach(required_phrase
+            "v${milestone_version}"
+            "SecurityType None"
+            "release/v${milestone_version}")
+        string(FIND "${milestone_notes}" "${required_phrase}" found)
+        if(found EQUAL -1)
+            message(FATAL_ERROR
+                "release-readiness: v${milestone_version} notes missing stable release fact: ${required_phrase}")
+        endif()
+    endforeach()
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/NOTICE.md" notice_text)
@@ -146,6 +158,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
 foreach(forbidden_token
         "HyRemote::Core"
         "HyRemote::QpaPlatform"
+        "HyRemote_QPA_SHARED_RUNTIME"
         "find_dependency(Threads)"
         "COMPONENTS Widgets"
         "COMPONENTS Quick"
@@ -224,4 +237,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release-readiness metadata gate: PASS "
-    "(project ${source_project_version}, minimal SDK surface + complete V1 user entry points)")
+    "(project ${source_project_version}, milestone notes + minimal SDK surface + complete V1 user entry points)")
