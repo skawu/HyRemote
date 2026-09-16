@@ -4,15 +4,13 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
-# V1 normal use is deliberately small: one shared C++ facade or the qhyremote plugin. Internal
-# developer/test switches must not become setup work for an application that vendors HyRemote.
+# V1 normal use is deliberately small: one shared C++ facade or the qhyremote plugin. A plain source
+# configure builds the product, not repository tests/examples/spikes, and an add_subdirectory()
+# consumer must not need to know internal component switches to obtain the standard C++ runtime.
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteProjectOptions.cmake" options_text)
 set(required_option_tokens
-    [=[if(PROJECT_IS_TOP_LEVEL)]=]
-    [=[set(_hyremote_developer_default ON)]=]
-    [=[set(_hyremote_developer_default OFF)]=]
-    [=[option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" ${_hyremote_developer_default})]=]
-    [=[option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" ${_hyremote_developer_default})]=]
+    [=[option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" OFF)]=]
+    [=[option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" OFF)]=]
     [=[option(HYREMOTE_BUILD_CORE "Build the internal hyremote-core session/frame/dispatch library" ON)]=]
     [=[option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the public HyRemote::RemoteAccess C++ facade when Qt is available" ON)]=]
     [=[option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)]=]
@@ -20,12 +18,26 @@ set(required_option_tokens
     [=[option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)]=]
     [=[option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)]=]
     [=[option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)]=]
+    [=[option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)]=]
 )
 foreach(required_token IN LISTS required_option_tokens)
     string(FIND "${options_text}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
             "consumer-simplicity: required V1 option/default contract missing: ${required_token}")
+    endif()
+endforeach()
+
+# Do not let the old top-level-versus-subproject developer default return. It makes a plain source
+# build unexpectedly compile tests/examples and creates two different default products.
+foreach(forbidden_token
+        "_hyremote_developer_default"
+        "set(HYREMOTE_BUILD_TESTS ON"
+        "set(HYREMOTE_BUILD_EXAMPLES ON")
+    string(FIND "${options_text}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: product-only default build regressed: ${forbidden_token}")
     endif()
 endforeach()
 
@@ -50,11 +62,14 @@ foreach(forbidden_token
         "set(HYREMOTE_BUILD_EXAMPLES"
         "set(HYREMOTE_BUILD_SPIKES"
         "set(HYREMOTE_BUILD_CORE"
-        "set(HYREMOTE_BUILD_REMOTE_ACCESS")
+        "set(HYREMOTE_BUILD_REMOTE_ACCESS"
+        "set(HYREMOTE_BUILD_WIDGETS_ADAPTER"
+        "set(HYREMOTE_BUILD_QUICK_ADAPTER"
+        "set(HYREMOTE_WITH_VNC")
     string(FIND "${source_consumer}" "${forbidden_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: source fixture is hiding a bad default with manual setup: ${forbidden_token}")
+            "consumer-simplicity: source fixture is hiding a bad standard-product default with manual setup: ${forbidden_token}")
     endif()
 endforeach()
 set(required_source_tokens
@@ -97,4 +112,4 @@ foreach(required_token
     endif()
 endforeach()
 
-message(STATUS "HyRemote consumer-simplicity gate: PASS")
+message(STATUS "HyRemote consumer-simplicity gate: PASS (product-only defaults, one public C++ target)")
