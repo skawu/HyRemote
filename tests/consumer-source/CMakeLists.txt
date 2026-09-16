@@ -10,16 +10,23 @@ include(GNUInstallDirs)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network)
 
-set(HYREMOTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(HYREMOTE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(HYREMOTE_BUILD_SPIKES OFF CACHE BOOL "" FORCE)
-set(HYREMOTE_BUILD_CORE ON CACHE BOOL "" FORCE)
-set(HYREMOTE_BUILD_REMOTE_ACCESS ON CACHE BOOL "" FORCE)
-
-# The consumer validates vendored linkage/deployment, not installation of a second nested HyRemote SDK.
-# Product targets remain available through normal dependency resolution.
+# Do not preconfigure HyRemote's developer-only switches here. This fixture intentionally proves
+# that a normal add_subdirectory() consumer gets the product facade without inheriting HyRemote's
+# own tests/examples/spikes into the application build.
 add_subdirectory("${HYREMOTE_SOURCE_DIR}" hyremote EXCLUDE_FROM_ALL)
 
+if(HYREMOTE_BUILD_TESTS)
+    message(FATAL_ERROR "source consumer unexpectedly inherited HyRemote tests")
+endif()
+if(HYREMOTE_BUILD_EXAMPLES)
+    message(FATAL_ERROR "source consumer unexpectedly inherited HyRemote examples")
+endif()
+if(HYREMOTE_BUILD_SPIKES)
+    message(FATAL_ERROR "source consumer unexpectedly inherited HyRemote spike harnesses")
+endif()
+if(NOT TARGET HyRemote::RemoteAccess)
+    message(FATAL_ERROR "source consumption must provide the HyRemote::RemoteAccess product target")
+endif()
 if(NOT COMMAND hyremote_deploy)
     message(FATAL_ERROR "HyRemote source consumption must provide hyremote_deploy()")
 endif()
@@ -35,6 +42,6 @@ install(TARGETS hyremote-source-consumer
     BUNDLE DESTINATION .
 )
 
-# Source/vendored consumption must have the same deployment experience as an installed SDK: one
-# public target and one HyRemote deployment call, with no manual DLL/SO copying.
+# Source/vendored consumption has the same deployment experience as an installed SDK: one public
+# target and one HyRemote deployment call, with no manual DLL/SO copying or backend assembly.
 hyremote_deploy(TARGET hyremote-source-consumer)
