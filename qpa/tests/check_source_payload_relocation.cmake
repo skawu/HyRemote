@@ -23,10 +23,11 @@ file(COPY_FILE "${REMOTEACCESS_FILE}" "${deployed_remoteaccess}")
 
 # Exercise the exact Linux relocation contract used by HyRemoteDeploy.cmake. The source-built module
 # must contain this stable non-toolchain anchor even though CMake may append other build/toolchain
-# entries. If the anchor disappears, RPATH_CHANGE itself fails and this test fails before GA.
+# entries. The trailing `/.` intentionally reserves enough RUNPATH string capacity for the deployed
+# plugins/platforms -> lib replacement. If the anchor disappears or shrinks, RPATH_CHANGE fails here.
 file(RPATH_CHANGE
     FILE "${deployed_qpa}"
-    OLD_RPATH "$ORIGIN/../../.."
+    OLD_RPATH "$ORIGIN/../../../."
     NEW_RPATH "$ORIGIN/../../lib"
 )
 
