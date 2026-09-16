@@ -71,14 +71,33 @@ file(READ "${generated_script}" generated_content)
 
 foreach(required_fragment IN ITEMS
         "qt_deploy_runtime_dependencies"
-        "ADDITIONAL_LIBRARIES"
-        "fake-remoteaccess")
+        "ADDITIONAL_LIBRARIES")
     string(FIND "${generated_content}" "${required_fragment}" fragment_pos)
     if(fragment_pos EQUAL -1)
         message(FATAL_ERROR
             "generated ${_script_kind} deploy script is missing '${required_fragment}':\n${generated_content}")
     endif()
 endforeach()
+
+# Keep source and installed acquisition distinguishable. Source should resolve the local fake target;
+# installed-payload mode should resolve the imported SDK-shaped HyRemoteRemoteAccess filename.
+if(TEST_INSTALLED_PAYLOAD)
+    set(_expected_runtime "HyRemoteRemoteAccess")
+    set(_forbidden_runtime "fake-remoteaccess")
+else()
+    set(_expected_runtime "fake-remoteaccess")
+    set(_forbidden_runtime "HyRemoteRemoteAccess")
+endif()
+string(FIND "${generated_content}" "${_expected_runtime}" runtime_pos)
+if(runtime_pos EQUAL -1)
+    message(FATAL_ERROR
+        "generated ${_script_kind} deploy script is missing expected runtime '${_expected_runtime}':\n${generated_content}")
+endif()
+string(FIND "${generated_content}" "${_forbidden_runtime}" wrong_runtime_pos)
+if(NOT wrong_runtime_pos EQUAL -1)
+    message(FATAL_ERROR
+        "generated ${_script_kind} deploy script mixed source/installed runtime identity '${_forbidden_runtime}':\n${generated_content}")
+endif()
 
 if(TEST_DEPLOY_QPA)
     foreach(required_fragment IN ITEMS
