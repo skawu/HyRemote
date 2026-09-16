@@ -1,81 +1,64 @@
 # Linux x86_64 Getting Started
 
-Reference target for the current V1 line: Linux x86_64. Current candidate qualification uses **Qt 6.8.3 + GCC x86_64**; no broader support claim is implied until the corresponding evidence is accepted.
+Reference target for the current V1 line: Linux x86_64, Qt 6.8.x; current CI/product work uses Qt 6.8.3 with a GCC x86_64 Qt kit. Transparent QPA is qualified only for exact Qt 6.8.3 with the xcb native delegate.
 
-## Build HyRemote
+## Build the normal product
 
 Configure against the target Qt installation:
 
 ```bash
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
-  -DHYREMOTE_BUILD_EXAMPLES=ON
+  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64
 cmake --build build --parallel
 ```
 
-When running directly from the **build tree**, make the matching Qt and HyRemote shared libraries discoverable if the environment does not already provide a runtime path:
+A plain configure is intentionally product-only: it builds the standard C++ `HyRemote::RemoteAccess` path but does not build repository tests, examples or spikes. QML and Transparent QPA are opt-in integration packages.
+
+To create an installed SDK, also provide `-DCMAKE_INSTALL_PREFIX=<prefix>` and run `cmake --install build`.
+
+## Maintainer / acceptance test build
+
+Enable repository validation explicitly:
 
 ```bash
-export LD_LIBRARY_PATH="$PWD/build/remoteaccess:/opt/Qt/6.8.3/gcc_64/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-ctest --test-dir build --output-on-failure
+cmake -S . -B build-test -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
+  -DHYREMOTE_BUILD_TESTS=ON \
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build-test --parallel
 ```
 
-That environment variable is a developer build-tree convenience, not the installed deployment contract. A normal application installed through `hyremote_deploy()` must run from its deployed tree without the original HyRemote SDK/build directory on `LD_LIBRARY_PATH`.
+For build-tree tests, make the matching Qt libraries discoverable only when the local kit does not already provide suitable runtime lookup:
+
+```bash
+export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}
+ctest --test-dir build-test --output-on-failure
+```
+
+That environment override is a **build-tree test concern**, not the product deployment contract. Clean deployed-consumer gates remove SDK/runtime path assistance before launching the application.
 
 Desktop Linux results do not imply Embedded Linux/EGLFS support.
 
-## Embedded C++ examples
+## Run the public examples
 
-The convergence tree contains:
+With `HYREMOTE_BUILD_EXAMPLES=ON`, the current V1 candidate contains `widgets-basic`, `quick-basic`, `qml-basic`, `qpa-proxy-existing-app`, and `remote-support-showcase` according to the enabled integration packages.
 
-- `examples/widgets-basic`;
-- `examples/quick-basic`;
-- `examples/remote-support-showcase`.
-
-They use the same public `HyRemote::RemoteAccess` facade. The default endpoint is loopback and remote input is disabled until explicitly enabled.
-
-## Declarative QML
-
-A QML application imports the same product runtime declaratively:
-
-```qml
-RemoteAccess {
-    target: mainWindow
-    enabled: true
-}
-```
-
-The actual start is deferred until QML component completion so initial bindings can settle. See `docs/getting-started/qml.md`.
+E1/E2 use the same `HyRemote::RemoteAccess` product facade. They default to view-only; remote input is enabled only by an explicit application/test option.
 
 ## Display backend
 
-Normal local product acceptance must run through the intended native desktop Qt platform backend. Hosted protocol E2E may use `offscreen`, software rendering or Xvfb to validate the viewer-to-application path; those runs are not evidence that a physical local display/input path remained usable at the same time.
+Normal local product acceptance must run through the intended local desktop Qt platform backend. Hosted protocol E2E may use `offscreen`/software rendering to validate the protocol-to-application path; such a run is not evidence of local-visible display/input coexistence.
 
-## Transparent QPA
-
-V1 Transparent QPA is qualified against **exact Qt 6.8.3 private ABI** and the native `qxcb` delegate. Build the optional proxy payload with:
-
-```text
--DHYREMOTE_WITH_QPA_PROXY=ON
-```
-
-A deployed ordinary Qt application then remains Qt-only and launches through:
-
-```bash
-./MyApp -platform hyremote
-```
-
-See `docs/getting-started/qpa-proxy.md`. Wayland, EGLFS and other native delegates are not implied by the current xcb qualification.
+Transparent QPA V1 uses the exact Qt 6.8.3 `qxcb` delegate path on the Linux reference environment.
 
 ## Viewer and security
 
-Connect a standard VNC client to the loopback listener, normally `127.0.0.1:5900`, as described in `docs/viewer-connection.md`.
+Connect a standard VNC client to the loopback listener (normally `127.0.0.1:5900`) as described in `docs/viewer-connection.md`.
 
-The current correctness baseline uses unauthenticated and unencrypted RFB SecurityType None. Do not expose it directly to untrusted networks. See `docs/security.md`.
+The current correctness baseline uses unauthenticated RFB SecurityType None. Do not expose it directly to untrusted networks. See `docs/security.md`.
 
-## Support and physical-evidence boundary
+## Support boundary
 
-Final Linux V1 acceptance must identify the exact Qt/compiler/native-QPA/viewer configuration and demonstrate the required local + remote behavior independently from Windows.
-
-The physical local-display/local-input + remote envelope is tracked by #109. `docs/compatibility.md` remains Candidate until both the hosted/reference executable evidence and the required physical evidence actually run and are accepted.
+Final Linux product acceptance must identify the exact Qt/compiler/QPA/viewer configuration and demonstrate the claimed local + remote behavior independently from Windows. Physical E1/E2/E3/E4 evidence is tracked by #109; exact status remains in `docs/compatibility.md` and milestone issues #30/#31/#32.
