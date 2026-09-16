@@ -42,6 +42,15 @@ qt_query_qml_module(hyremote-qml
     TYPEINFO HYREMOTE_QML_TYPEINFO
 )
 
+# Publish the same abstract "QML import root" metadata for source and installed acquisition. In a
+# source/add_subdirectory build the module lives below <build>/qml/HyRemote, so <build>/qml is the
+# import root. HyRemoteConfig.cmake publishes the installed <prefix>/<libdir>/qml root instead.
+# hyremote_deploy() consumes this variable in either case; applications never copy or name module
+# files directly.
+get_filename_component(_hyremote_qml_build_import_root "${CMAKE_CURRENT_BINARY_DIR}/.." ABSOLUTE)
+set(HyRemote_QML_IMPORT_PATH "${_hyremote_qml_build_import_root}" CACHE INTERNAL
+    "HyRemote QML import root for source-tree deployment" FORCE)
+
 set(HYREMOTE_QML_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qml/${HYREMOTE_QML_TARGET_PATH}")
 set(HYREMOTE_QML_INSTALL_DIR "${HYREMOTE_QML_INSTALL_DIR}" CACHE INTERNAL
     "Installed HyRemote QML module directory" FORCE)
