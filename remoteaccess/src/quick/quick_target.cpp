@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QPointer>
 #include <QSharedPointer>
+#include <QThread>
 #include <QTimer>
 #include <QWheelEvent>
 #include <QtMath>
@@ -16,14 +17,17 @@
 #include <QtQuick/QQuickWindow>
 
 #include <algorithm>
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstring>
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
@@ -420,6 +424,22 @@ int toQtKey(hyremote::KeyCode key)
     return 0;
 }
 
+std::optional<Qt::KeyboardModifier> modifierForQtKey(int key)
+{
+    switch (key) {
+    case Qt::Key_Shift:
+        return Qt::ShiftModifier;
+    case Qt::Key_Control:
+        return Qt::ControlModifier;
+    case Qt::Key_Alt:
+        return Qt::AltModifier;
+    case Qt::Key_Meta:
+        return Qt::MetaModifier;
+    default:
+        return std::nullopt;
+    }
+}
+
 class QuickInputSink final : public hyremote::InputSink
 {
 public:
@@ -488,6 +508,31 @@ public:
         }
     }
 
+    void shutdown() noexcept override
+    {
+        QObject *dispatcher = QCoreApplication::instance();
+        const std::shared_ptr<State> state = m_state;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->shutdownRequested)
+                return;
+            state->shutdownRequested = true;
+            state->active = false;
+            state->pending.clear();
+            state->drainScheduled = false;
+        }
+
+        if (!dispatcher)
+            return;
+
+        const auto release = [state] { releaseHeldStateOnGuiThread(state); };
+        if (QThread::currentThread() == dispatcher->thread()) {
+            release();
+            return;
+        }
+        (void)QMetaObject::invokeMethod(dispatcher, release, Qt::QueuedConnection);
+    }
+
 private:
     static constexpr std::size_t kMaxPendingInputEvents = 64;
 
@@ -497,8 +542,16 @@ private:
         QPointer<QQuickWindow> target;
         bool active = true;
         bool drainScheduled = false;
+        bool shutdownRequested = false;
         std::deque<hyremote::InputEvent> pending;
-        Qt::MouseButtons buttons = Qt::NoButton;  // GUI-thread owned
+
+        // GUI-thread-owned state already delivered into the QQuickWindow.
+        Qt::MouseButtons buttons = Qt::NoButton;
+        QPoint lastLocalPoint;
+        QPoint lastGlobalPoint;
+        bool pointerPositionKnown = false;
+        Qt::KeyboardModifiers modifiers = Qt::NoModifier;
+        std::vector<int> heldKeys;
     };
 
     static void deliverPointer(const std::shared_ptr<State> &state,
@@ -515,6 +568,10 @@ private:
         const QPoint localPoint(qRound(mapped->x), qRound(mapped->y));
         const QPoint globalPoint = window->mapToGlobal(localPoint);
         const Qt::KeyboardModifiers modifiers = toQtModifiers(event.modifiers);
+        state->modifiers = modifiers;
+        state->lastLocalPoint = localPoint;
+        state->lastGlobalPoint = globalPoint;
+        state->pointerPositionKnown = true;
 
         if (event.kind == hyremote::InputEventKind::PointerScroll) {
             QWheelEvent wheel(QPointF(localPoint),
@@ -554,14 +611,28 @@ private:
         QCoreApplication::sendEvent(window, &mouse);
     }
 
-    static void deliverKey(QQuickWindow *window, const hyremote::InputEvent &event)
+    static void deliverKey(const std::shared_ptr<State> &state,
+                           QQuickWindow *window,
+                           const hyremote::InputEvent &event)
     {
         const int key = toQtKey(event.key);
         if (key == 0)
             return;
+
+        state->modifiers = toQtModifiers(event.modifiers);
+        auto held = std::find(state->heldKeys.begin(), state->heldKeys.end(), key);
+        if (event.pressed) {
+            if (held == state->heldKeys.end())
+                state->heldKeys.push_back(key);
+        } else if (held != state->heldKeys.end()) {
+            const auto modifier = modifierForQtKey(key);
+            if (!modifier || !(state->modifiers & *modifier))
+                state->heldKeys.erase(held);
+        }
+
         QKeyEvent keyEvent(event.pressed ? QEvent::KeyPress : QEvent::KeyRelease,
                            key,
-                           toQtModifiers(event.modifiers));
+                           state->modifiers);
         QCoreApplication::sendEvent(window, &keyEvent);
     }
 
@@ -573,6 +644,53 @@ private:
         inputMethod.setCommitString(QString::fromUtf8(event.textUtf8.data(),
                                                       static_cast<qsizetype>(event.textUtf8.size())));
         QCoreApplication::sendEvent(window, &inputMethod);
+    }
+
+    static void releaseHeldStateOnGuiThread(const std::shared_ptr<State> &state)
+    {
+        QQuickWindow *window = state->target.data();
+        if (!window) {
+            state->buttons = Qt::NoButton;
+            state->heldKeys.clear();
+            return;
+        }
+
+        if (state->pointerPositionKnown) {
+            static constexpr std::array<Qt::MouseButton, 3> buttons{
+                Qt::LeftButton, Qt::MiddleButton, Qt::RightButton};
+            for (Qt::MouseButton button : buttons) {
+                if (!(state->buttons & button))
+                    continue;
+                state->buttons &= ~Qt::MouseButtons(button);
+                QMouseEvent release(QEvent::MouseButtonRelease,
+                                    QPointF(state->lastLocalPoint),
+                                    QPointF(state->lastLocalPoint),
+                                    QPointF(state->lastGlobalPoint),
+                                    button,
+                                    state->buttons,
+                                    state->modifiers);
+                QCoreApplication::sendEvent(window, &release);
+            }
+        }
+        state->buttons = Qt::NoButton;
+
+        const std::vector<int> held = state->heldKeys;
+        for (int key : held) {
+            if (modifierForQtKey(key))
+                continue;
+            QKeyEvent release(QEvent::KeyRelease, key, state->modifiers);
+            QCoreApplication::sendEvent(window, &release);
+        }
+        for (int key : held) {
+            const auto modifier = modifierForQtKey(key);
+            if (!modifier)
+                continue;
+            state->modifiers &= ~Qt::KeyboardModifiers(*modifier);
+            QKeyEvent release(QEvent::KeyRelease, key, state->modifiers);
+            QCoreApplication::sendEvent(window, &release);
+        }
+        state->heldKeys.clear();
+        state->modifiers = Qt::NoModifier;
     }
 
     static void deliverOnGuiThread(const std::shared_ptr<State> &state,
@@ -589,7 +707,7 @@ private:
             deliverPointer(state, window, event);
             break;
         case hyremote::InputEventKind::Key:
-            deliverKey(window, event);
+            deliverKey(state, window, event);
             break;
         case hyremote::InputEventKind::Text:
             deliverText(window, event);
