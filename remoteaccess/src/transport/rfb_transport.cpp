@@ -34,6 +34,7 @@ constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
 constexpr std::uint16_t kMaxEncodings = 1024;
 constexpr std::uint32_t kMaxCutTextBytes = 64 * 1024;
 constexpr std::size_t kMaxHeldKeys = 64;
+constexpr std::size_t kKeyCodeCount = static_cast<std::size_t>(hyremote::KeyCode::F12) + 1U;
 constexpr std::int32_t kEncodingRaw = 0;
 constexpr std::int32_t kEncodingDesktopSize = -223;
 
@@ -404,6 +405,8 @@ public:
             socket->deleteLater();
         }
         m_clients.clear();
+        m_keyHolderCounts.fill(0);
+        m_buttonHolderCounts.fill(0);
         m_onInput = {};
         m_onEvent = {};
     }
@@ -453,6 +456,22 @@ private:
     {
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         return m_frames->latest;
+    }
+
+    hyremote::InputModifiers aggregateModifiers() const
+    {
+        hyremote::InputModifiers result = 0U;
+        const auto include = [this, &result](hyremote::KeyCode key, hyremote::InputModifier modifier) {
+            if (m_keyHolderCounts[static_cast<std::size_t>(key)] != 0U)
+                result |= hyremote::modifierMask(modifier);
+        };
+        include(hyremote::KeyCode::Shift, hyremote::InputModifier::Shift);
+        include(hyremote::KeyCode::Control, hyremote::InputModifier::Control);
+        include(hyremote::KeyCode::Alt, hyremote::InputModifier::Alt);
+        include(hyremote::KeyCode::Meta, hyremote::InputModifier::Meta);
+        include(hyremote::KeyCode::CapsLock, hyremote::InputModifier::CapsLock);
+        include(hyremote::KeyCode::NumLock, hyremote::InputModifier::NumLock);
+        return result;
     }
 
     void acceptPendingClients()
@@ -716,15 +735,21 @@ private:
         if (m_stopping || !client.connectedEventSent)
             return;
 
-        // Pointer buttons are released first while the client's current keyboard modifiers are
-        // still active. Use the viewport/coordinates from the last pointer event instead of a
-        // possibly resized current framebuffer so the target adapter can perform its normal source
-        // viewport remapping.
+        // Each client owns only its contribution to the shared target's logical held state. A
+        // disconnect decrements those contributions, but it may publish a button release only when
+        // that client was the last holder of the logical button.
         if (client.pointerPositionKnown && client.buttonMask != 0
             && hyremote::isValidInputViewport(client.lastPointerViewport)) {
-            for (const ButtonBit &entry : kButtons) {
+            for (std::size_t index = 0; index < kButtons.size(); ++index) {
+                const ButtonBit &entry = kButtons[index];
                 if ((client.buttonMask & entry.bit) == 0)
                     continue;
+                if (m_buttonHolderCounts[index] == 0U)
+                    continue;
+                --m_buttonHolderCounts[index];
+                if (m_buttonHolderCounts[index] != 0U)
+                    continue;
+
                 hyremote::InputEvent button;
                 button.kind = hyremote::InputEventKind::PointerButton;
                 button.sourceViewport = client.lastPointerViewport;
@@ -732,16 +757,15 @@ private:
                 button.y = static_cast<float>(client.lastPointerY);
                 button.button = entry.button;
                 button.pressed = false;
-                button.modifiers = client.modifiers;
+                button.modifiers = aggregateModifiers();
                 publishInput(button);
             }
         }
         client.buttonMask = 0;
 
         // Release ordinary keys before modifiers so combinations such as Shift+A preserve the same
-        // modifier state on A-up that a normal viewer would have sent. Then release the remaining
-        // modifier keys. Each call removes one keysym from heldKeysyms and recomputes the modifier
-        // mask, including the left/right variants of the same logical modifier.
+        // modifier state on A-up that a normal viewer would have sent. deliverKey() removes only
+        // this client's holder contribution and emits the logical release only for the last holder.
         const std::vector<std::uint32_t> held = client.heldKeysyms;
         for (const std::uint32_t keysym : held) {
             if (!modifierForKey(keyCodeFromKeysym(keysym)))
@@ -758,33 +782,53 @@ private:
     bool deliverKey(ClientState &client, std::uint32_t keysym, bool pressed)
     {
         const hyremote::KeyCode key = keyCodeFromKeysym(keysym);
+        bool publishTransition = true;
+
         if (key != hyremote::KeyCode::Unknown) {
             const auto held = std::find(client.heldKeysyms.begin(), client.heldKeysyms.end(), keysym);
+            std::size_t &holderCount = m_keyHolderCounts[static_cast<std::size_t>(key)];
+
             if (pressed) {
                 if (held == client.heldKeysyms.end()) {
                     if (client.heldKeysyms.size() >= kMaxHeldKeys) {
                         protocolFailure(client, "RFB client exceeded the bounded held-key limit");
                         return false;
                     }
+                    publishTransition = holderCount == 0U;
                     client.heldKeysyms.push_back(keysym);
+                    ++holderCount;
+                } else {
+                    // Preserve same-viewer repeated key-down behavior. A second viewer becoming an
+                    // additional holder is not a new physical transition on the shared Qt target.
+                    publishTransition = true;
                 }
             } else if (held != client.heldKeysyms.end()) {
                 client.heldKeysyms.erase(held);
+                if (holderCount != 0U)
+                    --holderCount;
+                publishTransition = holderCount == 0U;
+            } else {
+                // An unmatched release from one viewer must never release another viewer's hold.
+                publishTransition = false;
             }
         }
 
         client.modifiers = modifiersForHeldKeysyms(client.heldKeysyms);
+        const hyremote::InputModifiers modifiers = aggregateModifiers();
 
-        hyremote::InputEvent event;
-        event.kind = hyremote::InputEventKind::Key;
-        event.key = key;
-        event.pressed = pressed;
-        event.modifiers = client.modifiers;
-        publishInput(event);
+        if (publishTransition) {
+            hyremote::InputEvent event;
+            event.kind = hyremote::InputEventKind::Key;
+            event.key = key;
+            event.pressed = pressed;
+            event.modifiers = modifiers;
+            publishInput(event);
+        }
 
-        if (!pressed || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Control)
-            || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Alt)
-            || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Meta)) {
+        if (!pressed || !publishTransition
+            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Control)
+            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Alt)
+            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Meta)) {
             return true;
         }
 
@@ -792,7 +836,7 @@ private:
         if (!text.empty()) {
             hyremote::InputEvent textEvent;
             textEvent.kind = hyremote::InputEventKind::Text;
-            textEvent.modifiers = client.modifiers;
+            textEvent.modifiers = modifiers;
             textEvent.textUtf8 = std::move(text);
             publishInput(textEvent);
         }
@@ -823,20 +867,34 @@ private:
         client.lastPointerX = x;
         client.lastPointerY = y;
         client.pointerPositionKnown = true;
+        const hyremote::InputModifiers modifiers = aggregateModifiers();
 
         hyremote::InputEvent move;
         move.kind = hyremote::InputEventKind::PointerMove;
         move.sourceViewport = viewport;
         move.x = static_cast<float>(x);
         move.y = static_cast<float>(y);
-        move.modifiers = client.modifiers;
+        move.modifiers = modifiers;
         publishInput(move);
 
-        for (const ButtonBit &entry : kButtons) {
+        for (std::size_t index = 0; index < kButtons.size(); ++index) {
+            const ButtonBit &entry = kButtons[index];
             const bool before = (client.buttonMask & entry.bit) != 0;
             const bool after = (mask & entry.bit) != 0;
             if (before == after)
                 continue;
+
+            bool publishTransition = false;
+            if (after) {
+                publishTransition = m_buttonHolderCounts[index] == 0U;
+                ++m_buttonHolderCounts[index];
+            } else if (m_buttonHolderCounts[index] != 0U) {
+                --m_buttonHolderCounts[index];
+                publishTransition = m_buttonHolderCounts[index] == 0U;
+            }
+            if (!publishTransition)
+                continue;
+
             hyremote::InputEvent button;
             button.kind = hyremote::InputEventKind::PointerButton;
             button.sourceViewport = viewport;
@@ -844,7 +902,7 @@ private:
             button.y = static_cast<float>(y);
             button.button = entry.button;
             button.pressed = after;
-            button.modifiers = client.modifiers;
+            button.modifiers = modifiers;
             publishInput(button);
         }
 
@@ -855,7 +913,7 @@ private:
             scroll.sourceViewport = viewport;
             scroll.x = static_cast<float>(x);
             scroll.y = static_cast<float>(y);
-            scroll.modifiers = client.modifiers;
+            scroll.modifiers = modifiers;
             if (rising & 0x08U)
                 scroll.scrollY += 1.0F;
             if (rising & 0x10U)
@@ -999,6 +1057,8 @@ private:
     hyremote::TransportEventHandler m_onEvent;
     QTcpServer *m_server = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
+    std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
+    std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
 };
 
