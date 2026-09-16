@@ -18,11 +18,9 @@ foreach(path IN LISTS required_files)
     endif()
 endforeach()
 
-# This test validates repository-owned release metadata only. Git branch/version authorization is
-# deliberately owned by the Git Flow policy workflow: feature/develop PRs must not impersonate a
-# release, while release/vX.Y.Z.W -> main must carry the exact matching four-part project version.
-# Keeping those responsibilities separate lets the exact same CTest suite run on a real release
-# candidate after project(VERSION ...) is changed to the authorized milestone version.
+# Repository metadata and configured project version must describe the same candidate. Git branch
+# authorization remains the responsibility of the Git Flow workflow so this same test can run on a
+# real release/vX.Y.Z.W tree.
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
 string(REGEX MATCH
     "project[ \\t\\r\\n]*\\([ \\t\\r\\n]*HyRemote[ \\t\\r\\n]+VERSION[ \\t\\r\\n]+([0-9]+(\\.[0-9]+){2,3})"
@@ -70,5 +68,56 @@ foreach(required_token "LICENSE" "NOTICE.md" "HyRemote/licenses")
     endif()
 endforeach()
 
+# Freeze the simple V1 product shape. Internal architecture remains rich, but ordinary users get one
+# C++ shared facade or the QPA MODULE; Core must not reappear as a second installed application SDK.
+file(READ "${HYREMOTE_SOURCE_DIR}/core/CMakeLists.txt" core_cmake)
+string(FIND "${core_cmake}" "add_library(hyremote-core STATIC" core_static)
+if(core_static EQUAL -1)
+    message(FATAL_ERROR "release-readiness: V1 Core must remain an internal STATIC composition target")
+endif()
+string(FIND "${core_cmake}" "install(" core_install)
+if(NOT core_install EQUAL -1)
+    message(FATAL_ERROR "release-readiness: V1 Core must not be installed/exported as a second product target")
+endif()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/remoteaccess/CMakeLists.txt" remoteaccess_cmake)
+foreach(required_token
+        "add_library(hyremote-remoteaccess SHARED"
+        "OUTPUT_NAME HyRemoteRemoteAccess"
+        "EXPORT_NAME RemoteAccess")
+    string(FIND "${remoteaccess_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "release-readiness: RemoteAccess shared facade contract missing: ${required_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
+string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module)
+if(qpa_module EQUAL -1)
+    message(FATAL_ERROR "release-readiness: Transparent QPA must remain a platform MODULE")
+endif()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
+foreach(forbidden_token "HyRemote::Core" "find_dependency(Threads)")
+    string(FIND "${package_config}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: installed package leaked internal Core contract: ${forbidden_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/release-package-manifest.md" package_manifest)
+foreach(required_phrase
+        "HyRemote::RemoteAccess"
+        "not installed/exported"
+        "qhyremote"
+        "hyremote_deploy(TARGET MyApp)")
+    string(FIND "${package_manifest}" "${required_phrase}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: package manifest missing simple V1 product contract: ${required_phrase}")
+    endif()
+endforeach()
+
 message(STATUS
-    "HyRemote release-readiness metadata gate: PASS (project ${source_project_version})")
+    "HyRemote release-readiness metadata gate: PASS (project ${source_project_version}, simple V1 artifact surface)")
