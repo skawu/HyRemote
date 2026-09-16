@@ -42,11 +42,14 @@ The normalized input contract covers pointer/button/wheel, logical key/modifier 
 
 #90's held-key/button disconnect correction has been absorbed into the single V1 candidate #106. It balances recognized held input when a viewer disappears abruptly. The candidate also now treats explicit HyRemote runtime stop as a separate terminal target-input boundary: after transport/Core callbacks are quiescent, pending remote events not yet delivered to Qt are discarded, while supported remote key/button state already delivered to the target is balanced before the target input adapter retires. QML reuses the same runtime semantics, and QPA propagates terminal cleanup to child surfaces before retiring their adapters.
 
-These repository behaviors are covered by deterministic transport, facade, Widgets, Quick and QPA tests. However, the exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore milestone authorities must not yet describe abrupt-disconnect or explicit-stop cleanup as accepted release support solely from repository implementation.
+The bounded RFB candidate also treats simultaneous viewers as contributors to one shared logical Qt input device rather than as independent virtual keyboards/mice. Per-viewer protocol state remains isolated, but overlapping holds of the same normalized key or left/middle/right button are internally reference-counted: one viewer disconnecting or releasing cannot release the shared target while another viewer still holds the same logical input. The target transition returns to up only when the final holder releases/disconnects. Aggregate remote modifier state is used for the shared target. HyRemote V1 does not expose per-viewer cursors, independent focus contexts, input ownership arbitration, or a live per-client authorization API.
+
+These repository behaviors are covered by deterministic transport, facade, Widgets, Quick and QPA tests. However, the exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore milestone authorities must not yet describe abrupt-disconnect, concurrent-viewer held-state isolation or explicit-stop cleanup as accepted release support solely from repository implementation.
 
 The following remain explicit V1 boundaries rather than hidden promises:
 
 - terminal target-input cleanup is an internal composition contract, not a new application-facing reset API;
+- simultaneous viewers share one logical remote input device; HyRemote V1 does not promise independent per-viewer pointer/focus state;
 - only supported normalized key/button state can be balanced; unsupported IME/composition semantics are not reconstructed or guessed;
 - pending input that never reached the Qt GUI is dropped on explicit stop rather than replayed after stop;
 - repeated teardown is intended to be idempotent and must not synthesize duplicate releases;
