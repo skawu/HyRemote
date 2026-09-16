@@ -5,6 +5,8 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
 endif()
 
 set(required_files
+    "CMakeLists.txt"
+    "cmake/HyRemoteConfig.cmake.in"
     "cmake/HyRemoteDeploy.cmake"
     "qpa/CMakeLists.txt"
     "qpa/tests/deploy_helper_fixture/CMakeLists.txt"
@@ -15,9 +17,36 @@ foreach(path IN LISTS required_files)
     endif()
 endforeach()
 
+# Source QML deployment metadata must be current-configure truth. The source module republishes its
+# import root later in the same configure; old cache/global-property state is cleared first.
+file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
+foreach(required_token
+        [=[unset(HyRemote_QML_IMPORT_PATH CACHE)]=]
+        [=[set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")]=])
+    string(FIND "${root_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: source QML metadata is not reset per configure: ${required_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
+foreach(required_token
+        [=[set(HyRemote_QML_AVAILABLE @HYREMOTE_PACKAGE_WITH_QML@)]=]
+        [=[if(HyRemote_QML_AVAILABLE)]=]
+        [=[set(HyRemote_QML_IMPORT_PATH "")]=])
+    string(FIND "${package_config}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: installed QML availability metadata drifted: ${required_token}")
+    endif()
+endforeach()
+
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
         [=[set(options QML QPA)]=]
+        [=[TARGET hyremote-qml]=]
+        [=[HyRemote_QML_AVAILABLE]=]
         [=[HYREMOTE_BUILD_QML_API=ON]=]
         [=[HyRemote_QML_IMPORT_PATH]=]
         [=[HYREMOTE_QML_SOURCE_DEPLOY_TARGETS]=]
@@ -40,6 +69,7 @@ endforeach()
 # configuration rather than produce an apparently successful incomplete deployment.
 foreach(required_phrase
         [=[requires a HyRemote QML payload]=]
+        [=[available HyRemote QML payload did not publish HyRemote_QML_IMPORT_PATH]=]
         [=[requested an SDK that was built without Transparent QPA]=]
         [=[requires exact Qt]=])
     string(FIND "${deploy_helper}" "${required_phrase}" found)
@@ -53,6 +83,10 @@ file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/deploy_helper_fixture/CMakeLists.txt
 foreach(required_token
         [=[TEST_DEPLOY_QPA]=]
         [=[TEST_QML_AVAILABLE]=]
+        [=[TEST_STALE_QML_METADATA]=]
+        [=[add_library(hyremote-qml ALIAS qml-backing)]=]
+        [=[set(HyRemote_QML_AVAILABLE TRUE)]=]
+        [=[set(HyRemote_QML_AVAILABLE FALSE)]=]
         [=[HYREMOTE_QML_SOURCE_DEPLOY_TARGETS]=]
         [=[QT_QML_IMPORT_PATH]=]
         [=[MANUALLY_ADDED_DEPENDENCIES]=]
@@ -66,6 +100,7 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake" runner)
 foreach(required_token
+        [=[TEST_STALE_QML_METADATA]=]
         [=[hyremote-runtime-deploy-deploy-probe]=]
         [=[hyremote-qpa-deploy-deploy-probe]=]
         [=[ADDITIONAL_MODULES]=]
@@ -103,6 +138,7 @@ foreach(required_test
         "hyremote-qpa-deploy-helper-installed-payload-qml-only"
         "hyremote-qpa-deploy-helper-installed-payload-qml"
         "hyremote-qpa-deploy-helper-reject-missing-qml"
+        "hyremote-qpa-deploy-helper-reject-stale-qml-metadata"
         "hyremote-qpa-deploy-helper-reject-missing-package"
         "hyremote-qpa-deploy-helper-reject-qt-mismatch"
         "hyremote-qpa-source-payload-relocation")
@@ -115,4 +151,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; optional QML/QPA fail closed; source build-only payload wiring and QPA sub-build isolation frozen)")
+    "(four public shapes remain distinct; optional QML/QPA fail closed; stale source QML metadata rejected; source build-only payload wiring and QPA sub-build isolation frozen)")
