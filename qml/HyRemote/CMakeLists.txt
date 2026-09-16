@@ -14,22 +14,21 @@ qt_add_qml_module(hyremote-qml
         QmlRemoteAccess.cpp
 )
 
-set_target_properties(hyremote-qml PROPERTIES
-    EXPORT_NAME Qml
-)
+# This backing library is implementation of the declarative `import HyRemote` module, not a second
+# C++ SDK target. Consumers use the QML URI/type and the deployment helper; they do not link it.
 
-# The QML backing library is deployed beside HyRemoteRemoteAccess in the runtime lib directory.
-if(UNIX AND NOT APPLE)
-    set_property(TARGET hyremote-qml PROPERTY INSTALL_RPATH "$ORIGIN")
-endif()
-
-target_compile_features(hyremote-qml PUBLIC cxx_std_17)
+target_compile_features(hyremote-qml PRIVATE cxx_std_17)
 target_link_libraries(hyremote-qml
     PRIVATE
         Qt6::Core
         Qt6::Qml
         HyRemote::RemoteAccess
 )
+
+# The QML backing library is deployed beside HyRemoteRemoteAccess in the runtime lib directory.
+if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-qml PROPERTY INSTALL_RPATH "$ORIGIN")
+endif()
 
 qt_query_qml_module(hyremote-qml
     PLUGIN_TARGET HYREMOTE_QML_PLUGIN_TARGET
@@ -52,7 +51,6 @@ endif()
 
 install(
     TARGETS hyremote-qml
-    EXPORT HyRemoteTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
