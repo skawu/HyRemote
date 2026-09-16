@@ -4,7 +4,7 @@ Status: **V0.0.2.0 installed-SDK contract; executable dual-OS evidence pending #
 
 Issues: #31, #69, #41.
 
-HyRemote's QML API is a thin declarative surface over the same `HyRemote::RemoteAccess` runtime used by Embedded C++. It does not introduce a second Session, capture stack, input implementation or transport.
+HyRemote's QML API is a thin declarative surface over the same `HyRemote::RemoteAccess` runtime used by Embedded C++. It does not introduce a second Session, capture stack, input implementation or transport, and its backing library is not a second C++ SDK target.
 
 ## 1. Installed SDK
 
@@ -21,7 +21,7 @@ When the installed package contains the QML API, `HyRemoteConfig.cmake` publishe
 HyRemote_QML_IMPORT_PATH
 ```
 
-This is the absolute QML import root containing the installed `HyRemote/qmldir`. It is package metadata, not a plugin filename that application developers should copy manually.
+This is the absolute QML import root containing the installed `HyRemote/qmldir`. It is package metadata used by `hyremote_deploy(... QML)`, not a C++ link target or plugin filename that application developers should copy manually.
 
 Normal application QML remains concise:
 
@@ -31,14 +31,13 @@ import HyRemote
 
 Item {
     RemoteAccess {
-        id: remote
         target: someSupportedQtTarget
-        enabled: false
+        enabled: true
     }
 }
 ```
 
-Construction is inert. `enabled` must be set/requested explicitly before a listener starts. Loopback and remote-input-disabled defaults are inherited from the same C++ facade.
+`enabled: true` is an explicit declarative start request. The wrapper defers the actual shared-runtime start until QML component completion so initial `target` and policy bindings can settle; object construction itself remains inert. Loopback and remote-input-disabled defaults are inherited from the same C++ facade.
 
 ## 2. Define the application QML module normally
 
@@ -64,7 +63,7 @@ target_link_libraries(MyQmlApp PRIVATE
 )
 ```
 
-The application does not link or instantiate Core, Session, capture, input or transport implementation targets.
+The application does not link HyRemote Core, QML backing, Session, capture, input or transport implementation targets. `import HyRemote` is the declarative product boundary.
 
 ## 3. Install the application, then call the single HyRemote deploy hook
 
@@ -84,7 +83,8 @@ hyremote_deploy(TARGET MyQmlApp QML)
 1. appends its installed `HyRemote_QML_IMPORT_PATH` to the target's existing `QT_QML_IMPORT_PATH` without replacing caller paths;
 2. calls Qt's supported `qt_generate_deploy_qml_app_script()`;
 3. never also calls `qt_generate_deploy_app_script()` for the same QML target;
-4. lets Qt's `qmlimportscanner` and QML deployment machinery discover and deploy `import HyRemote` recursively.
+4. lets Qt's `qmlimportscanner` and QML deployment machinery discover and deploy `import HyRemote` recursively;
+5. deploys the same shared `HyRemoteRemoteAccess` runtime used by C++ and QPA modes.
 
 The developer does **not** name the HyRemote QML plugin, copy `qmldir`, discover transport libraries, or implement a second deployment scanner.
 
@@ -112,8 +112,8 @@ HyRemote does not require copying its QML module into the user's Qt SDK tree.
 - imports `HyRemote` from QML;
 - calls only `hyremote_deploy(TARGET ... QML)` for HyRemote-owned deployment integration;
 - builds and installs independently from the HyRemote source targets;
-- verifies the deployed `qml/HyRemote/qmldir` and plugin exist;
-- loads the installed/deployed application with `QT_QPA_PLATFORM=offscreen` as a packaging/import smoke.
+- verifies the deployed `qml/HyRemote/qmldir`, QML payload and shared `HyRemoteRemoteAccess` runtime exist;
+- loads the deployed application with `QT_QPA_PLATFORM=offscreen` after SDK/import/runtime path assistance is removed.
 
 The Windows/Linux Qt 6.8.3 workflow contains this sequence, but current hosted jobs are blocked before runner assignment by #74. Until those commands actually execute, this is an implemented acceptance gate, not a passing support claim.
 
@@ -127,9 +127,10 @@ The package variable above is specifically the installed-SDK import root. A sour
 
 The declarative `RemoteAccess` surface preserves product semantics rather than hiding failures:
 
+- initial property order is not part of the product contract; an `enabled: true` request waits for component completion before the shared runtime starts;
 - invalid address/port/policy mutations do not silently change the accepted value;
 - configuration changes while Running are rejected rather than causing implicit restart;
-- `enabled: true` is transactional: if the shared C++ facade cannot start, QML does not remain `enabled` while the runtime is Stopped;
+- `enabled: true` is transactional: if the shared C++ facade cannot start, QML returns to `enabled: false` while exposing product-level error state;
 - state and diagnostics expose product-level values, not backend-specific errors;
 - destroying the QML wrapper stops its owned `RemoteAccess` runtime.
 
@@ -147,6 +148,6 @@ See the common security documentation before exposing a listener beyond a truste
 
 The clean installed-SDK consumer and deployment workflow must execute on both reference operating systems before #69/#31 can close. Current GitHub-hosted jobs fail before any runner steps execute under #74; those failures are infrastructure evidence, not code pass/fail evidence.
 
-Hosted offscreen execution also does not prove physical local-visible + remote coexistence. That product-level evidence remains separate from packaging/import correctness.
+Hosted offscreen execution also does not prove physical local-visible + remote coexistence. The cross-mode physical acceptance envelope is tracked by #109 and remains separate from packaging/import correctness.
 
 Governance mode: `transitional-explicit`.
