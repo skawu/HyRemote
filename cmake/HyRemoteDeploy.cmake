@@ -8,14 +8,33 @@ function(_hyremote_runtime_deploy_dir output_var)
     endif()
 endfunction()
 
+# Return whether a target belongs to the current build graph rather than an installed/imported SDK.
+# This lets source deployment validate current-configure payload targets without publishing another
+# application-facing package variable. Resolve aliases explicitly for the CMake 3.21 baseline.
+function(_hyremote_target_is_local target output_var)
+    set(_hyremote_local FALSE)
+    if(TARGET "${target}")
+        get_target_property(_hyremote_aliased_target "${target}" ALIASED_TARGET)
+        if(_hyremote_aliased_target)
+            set(_hyremote_build_target "${_hyremote_aliased_target}")
+        else()
+            set(_hyremote_build_target "${target}")
+        endif()
+        get_target_property(_hyremote_dependency_imported "${_hyremote_build_target}" IMPORTED)
+        if(NOT _hyremote_dependency_imported)
+            set(_hyremote_local TRUE)
+        endif()
+    endif()
+    set(${output_var} "${_hyremote_local}" PARENT_SCOPE)
+endfunction()
+
 # add_subdirectory(... EXCLUDE_FROM_ALL) is the normal source-consumption shape. A generated install
 # script that references $<TARGET_FILE:...> does not itself make that local target part of the
 # consumer application's build. Add build-only dependencies for local HyRemote payload targets while
 # leaving installed/imported SDK targets untouched and, crucially, without adding application links.
-# Resolve aliases explicitly so this helper does not depend on alias handling details in the minimum
-# supported CMake line.
 function(_hyremote_add_local_build_dependency consumer dependency)
-    if(NOT TARGET "${dependency}")
+    _hyremote_target_is_local("${dependency}" _hyremote_dependency_local)
+    if(NOT _hyremote_dependency_local)
         return()
     endif()
 
@@ -25,12 +44,6 @@ function(_hyremote_add_local_build_dependency consumer dependency)
     else()
         set(_hyremote_build_target "${dependency}")
     endif()
-
-    get_target_property(_hyremote_dependency_imported "${_hyremote_build_target}" IMPORTED)
-    if(_hyremote_dependency_imported)
-        return()
-    endif()
-
     add_dependencies("${consumer}" "${_hyremote_build_target}")
 endfunction()
 
@@ -128,9 +141,6 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     set(_linux_plugin_rpath_rewrite "")
     if(UNIX AND NOT APPLE)
-        # qhyremote reserves this semantically equivalent SDK-layout anchor with enough ELF string
-        # capacity for the normal deployed plugins/platforms -> lib replacement. Keep the rewrite
-        # bounded to this package-owned segment; do not parse or patch arbitrary toolchain RPATHs.
         set(_linux_plugin_rpath_rewrite
 "file(RPATH_CHANGE
     FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
@@ -157,12 +167,6 @@ qt_deploy_runtime_dependencies(
 endfunction()
 
 # Public deployment entry point installed with the HyRemote CMake package.
-#
-# Usage:
-#   hyremote_deploy(TARGET MyWidgetsApp)
-#   hyremote_deploy(TARGET MyQmlApp QML)
-#   hyremote_deploy(TARGET ExistingQtApp QPA)
-#   hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 function(hyremote_deploy)
     set(options QML QPA)
     set(oneValueArgs TARGET)
@@ -180,25 +184,17 @@ function(hyremote_deploy)
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
     endif()
 
-    # QML is an optional package payload. Source acquisition proves availability with the concrete
-    # module target from this configure; installed acquisition publishes an explicit availability
-    # bit from HyRemoteConfig.cmake. An import-path string by itself is not sufficient because CMake
-    # cache state can survive a source consumer reconfigure after QML has been disabled.
     if(HYREMOTE_DEPLOY_QML)
-        set(_hyremote_qml_available FALSE)
-        if(TARGET hyremote-qml)
-            set(_hyremote_qml_available TRUE)
-        elseif(DEFINED HyRemote_QML_AVAILABLE AND HyRemote_QML_AVAILABLE)
-            set(_hyremote_qml_available TRUE)
-        endif()
-        if(NOT _hyremote_qml_available)
+        _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)
+        if(_hyremote_source_acquisition AND NOT TARGET hyremote-qml)
             message(FATAL_ERROR
                 "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QML) requires a HyRemote QML payload; "
                 "install/build HyRemote with HYREMOTE_BUILD_QML_API=ON")
         endif()
         if(NOT DEFINED HyRemote_QML_IMPORT_PATH OR "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
             message(FATAL_ERROR
-                "hyremote_deploy: available HyRemote QML payload did not publish HyRemote_QML_IMPORT_PATH")
+                "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QML) requires a HyRemote QML payload; "
+                "install/build HyRemote with HYREMOTE_BUILD_QML_API=ON")
         endif()
         if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
             message(FATAL_ERROR
@@ -206,9 +202,6 @@ function(hyremote_deploy)
         endif()
     endif()
 
-    # Source consumption may place HyRemote below EXCLUDE_FROM_ALL. Ensure every payload referenced
-    # by generated deployment scripts is actually built with the application, but do not add link
-    # libraries: QPA remains Qt-only and QML remains import-driven at the application boundary.
     _hyremote_add_local_build_dependency(
         "${HYREMOTE_DEPLOY_TARGET}" HyRemote::RemoteAccess)
     if(HYREMOTE_DEPLOY_QPA)
@@ -266,8 +259,6 @@ function(hyremote_deploy)
         endif()
     endif()
 
-    # Always run the HyRemote-owned supplemental script after Qt's normal deployment. For C++/QML it
-    # carries the single shared facade; for QPA it carries that facade plus qhyremote.
     if(DEFINED _hyremote_supplemental_deploy_script AND
        NOT "${_hyremote_supplemental_deploy_script}" STREQUAL "")
         install(SCRIPT "${_hyremote_supplemental_deploy_script}")
