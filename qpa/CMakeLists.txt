@@ -144,4 +144,18 @@ if(HYREMOTE_BUILD_TESTS)
             -DEXPECT_CONFIGURE_FAILURE=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
+
+    # Unlike the configure-only helper fixtures above, this Linux test exercises the relocation on
+    # the actual qhyremote build artifact. It catches a source-tree module that lost the stable
+    # rewrite anchor before an installed consumer ever reaches the release gate.
+    if(UNIX AND NOT APPLE)
+        add_test(
+            NAME hyremote-qpa-source-payload-relocation
+            COMMAND ${CMAKE_COMMAND}
+                -DQPA_FILE=$<TARGET_FILE:hyremote-qpa-platform>
+                -DREMOTEACCESS_FILE=$<TARGET_FILE:hyremote-remoteaccess>
+                -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/source-payload-relocation
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_source_payload_relocation.cmake
+        )
+    endif()
 endif()
