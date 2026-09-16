@@ -16,8 +16,16 @@ qt_standard_project_setup(REQUIRES 6.8)
 if(NOT HyRemote_QPA_AVAILABLE)
     message(FATAL_ERROR "installed HyRemote SDK does not contain the Transparent QPA package")
 endif()
-if(NOT TARGET HyRemote::QpaPlatform)
-    message(FATAL_ERROR "installed HyRemote SDK did not export its deployable QPA module target")
+if(TARGET HyRemote::QpaPlatform)
+    message(FATAL_ERROR
+        "installed V1 SDK must not expose qhyremote as a consumer CMake link target")
+endif()
+if(NOT DEFINED HyRemote_QPA_PLUGIN_FILE OR "${HyRemote_QPA_PLUGIN_FILE}" STREQUAL "")
+    message(FATAL_ERROR "installed HyRemote SDK did not publish its QPA payload location")
+endif()
+if(NOT IS_ABSOLUTE "${HyRemote_QPA_PLUGIN_FILE}" OR NOT EXISTS "${HyRemote_QPA_PLUGIN_FILE}")
+    message(FATAL_ERROR
+        "installed HyRemote QPA payload path is invalid: ${HyRemote_QPA_PLUGIN_FILE}")
 endif()
 
 add_executable(hyremote-installed-qpa-consumer
