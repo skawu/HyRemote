@@ -18,7 +18,7 @@ int failures = 0;
 #define CHECK(expr)                                                                                \
     do {                                                                                           \
         if (!(expr)) {                                                                             \
-            std::cerr << __FILE__ << ':' << __LINE__ << ": CHECK failed: " #expr << '\n';       
+            std::cerr << __FILE__ << ':' << __LINE__ << ": CHECK failed: " #expr << '\n';       \
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
@@ -32,6 +32,7 @@ struct RuntimeCounters
     std::atomic<int> transportStarts{0};
     std::atomic<int> transportStops{0};
     std::atomic<int> inputPosts{0};
+    std::atomic<int> inputShutdowns{0};
     bool transportStartResult = true;
     bool provideInputSink = true;
     QHostAddress observedAddress;
@@ -93,6 +94,7 @@ public:
     }
 
     void post(const hyremote::InputEvent &) override { ++m_counters->inputPosts; }
+    void shutdown() noexcept override { ++m_counters->inputShutdowns; }
 
 private:
     std::shared_ptr<RuntimeCounters> m_counters;
@@ -186,6 +188,7 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(counters->transportFactoryCalls.load() == 0);
     CHECK(counters->captureStarts.load() == 0);
     CHECK(counters->transportStarts.load() == 0);
+    CHECK(counters->inputShutdowns.load() == 0);
 }
 
 void testMissingTargetAndMissingAdapterFailCleanly()
@@ -240,6 +243,11 @@ void testProductLifecycleAndConfigurationForwarding()
     CHECK(remote.connectedClientCount() == 0);
     CHECK(counters->captureStops.load() == 1);
     CHECK(counters->transportStops.load() == 1);
+    CHECK(counters->inputShutdowns.load() == 1);
+
+    // Stop is idempotent: a terminal target-input reset belongs to one runtime only.
+    remote.stop();
+    CHECK(counters->inputShutdowns.load() == 1);
 
     // Configuration becomes mutable again after stop.
     CHECK(remote.setPort(5901));
@@ -255,6 +263,8 @@ void testMoveTransfersOwnershipAndQuiescesReplacedRuntime()
     QObject target;
     HyRemote::RemoteAccess destination(&target);
     HyRemote::RemoteAccess source(&target);
+    CHECK(destination.setRemoteInputEnabled(true));
+    CHECK(source.setRemoteInputEnabled(true));
 
     CHECK(destination.start());
     CHECK(source.start());
@@ -262,12 +272,15 @@ void testMoveTransfersOwnershipAndQuiescesReplacedRuntime()
     CHECK(counters->transportStarts.load() == 2);
     CHECK(counters->captureStops.load() == 0);
     CHECK(counters->transportStops.load() == 0);
+    CHECK(counters->inputShutdowns.load() == 0);
 
     // Move assignment must destroy/quiesce the destination's old running Impl before it takes
-    // ownership of the source runtime. The source runtime itself must remain Running afterwards.
+    // ownership of the source runtime. The old target input sink is terminally shut down as part of
+    // the same replacement; the source runtime itself must remain Running afterwards.
     destination = std::move(source);
     CHECK(counters->captureStops.load() == 1);
     CHECK(counters->transportStops.load() == 1);
+    CHECK(counters->inputShutdowns.load() == 1);
     CHECK(destination.state() == HyRemote::RemoteAccessState::Running);
 
     // A moved-from facade is intentionally inert/null-safe rather than retaining runtime ownership.
@@ -280,13 +293,15 @@ void testMoveTransfersOwnershipAndQuiescesReplacedRuntime()
     CHECK(destination.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(counters->captureStops.load() == 2);
     CHECK(counters->transportStops.load() == 2);
+    CHECK(counters->inputShutdowns.load() == 2);
 
-    // Move construction transfers a stopped facade without creating or stopping another runtime.
+    // Move construction transfers a stopped facade without creating/stopping another runtime/sink.
     HyRemote::RemoteAccess moved(std::move(destination));
     CHECK(moved.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(destination.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(counters->captureStops.load() == 2);
     CHECK(counters->transportStops.load() == 2);
+    CHECK(counters->inputShutdowns.load() == 2);
 }
 
 void testConnectedClientCountUsesTransportNeutralEvents()
@@ -342,6 +357,7 @@ void testRemoteInputIsIndependentAndOffByDefault()
     CHECK(viewOnly.start());  // input sink is not required for view-only mode
     CHECK(viewOnly.state() == HyRemote::RemoteAccessState::Running);
     viewOnly.stop();
+    CHECK(counters->inputShutdowns.load() == 0);
 
     HyRemote::RemoteAccess control(&target);
     CHECK(control.setRemoteInputEnabled(true));
@@ -349,6 +365,7 @@ void testRemoteInputIsIndependentAndOffByDefault()
     CHECK(control.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(control.lastError().has_value());
     CHECK(control.lastError()->code == HyRemote::RemoteAccessErrorCode::RemoteInputUnavailable);
+    CHECK(counters->inputShutdowns.load() == 0);
 }
 
 void testBackendStartFailureIsMappedAndCleanedUp()
@@ -368,6 +385,7 @@ void testBackendStartFailureIsMappedAndCleanedUp()
     CHECK(counters->captureStarts.load() == 1);
     CHECK(counters->captureStops.load() == 1);
     CHECK(counters->transportStarts.load() == 1);
+    CHECK(counters->inputShutdowns.load() == 0);
 }
 
 void testInvalidPublicConfigurationIsProductLevel()
