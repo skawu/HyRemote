@@ -22,6 +22,14 @@ set_target_properties(hyremote-qpa-platform PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/platforms"
 )
 
+# A shared HyRemote SDK installs qhyremote below <libdir>/HyRemote/plugins/platforms while its
+# product runtime libraries live directly in <libdir>. Give the installed SDK plugin a deterministic
+# origin-relative lookup path. hyremote_deploy(... QPA) rewrites this one controlled RPATH when the
+# same binary is relocated into an application's <plugins>/platforms directory.
+if(UNIX AND NOT APPLE AND BUILD_SHARED_LIBS)
+    set_property(TARGET hyremote-qpa-platform PROPERTY INSTALL_RPATH "$ORIGIN/../../..")
+endif()
+
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform
     PRIVATE
