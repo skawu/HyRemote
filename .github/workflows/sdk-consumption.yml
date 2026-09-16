@@ -9,6 +9,7 @@ on:
       - 'remoteaccess/**'
       - 'tests/consumer-installed-sdk/**'
       - 'tests/consumer-source/**'
+      - 'tests/public-api-contract/**'
       - '.github/workflows/sdk-consumption.yml'
   workflow_dispatch:
 
@@ -69,6 +70,12 @@ jobs:
           cmake --build build-consumer-installed --parallel
           LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-consumer-installed/hyremote-installed-consumer
 
+          cmake -S tests/public-api-contract -B build-public-api-contract -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX"
+          cmake --build build-public-api-contract --parallel
+          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-public-api-contract/hyremote-public-api-contract
+
           cmake -S tests/consumer-source -B build-consumer-source -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -106,6 +113,12 @@ jobs:
           set "PATH=%QT_PREFIX%\bin;%PATH%"
           build-consumer-installed\hyremote-installed-consumer.exe
 
+          cmake -S tests\public-api-contract -B build-public-api-contract -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_PREFIX%"
+          cmake --build build-public-api-contract --parallel
+          build-public-api-contract\hyremote-public-api-contract.exe
+
           cmake -S tests\consumer-source -B build-consumer-source -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -133,3 +146,9 @@ jobs:
           cmake --build build-consumer-installed-shared --parallel
           set "PATH=%SDK_SHARED_PREFIX%\bin;%QT_PREFIX%\bin;%PATH%"
           build-consumer-installed-shared\hyremote-installed-consumer.exe
+
+          cmake -S tests\public-api-contract -B build-public-api-contract-shared -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_SHARED_PREFIX%"
+          cmake --build build-public-api-contract-shared --parallel
+          build-public-api-contract-shared\hyremote-public-api-contract.exe
