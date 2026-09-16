@@ -23,10 +23,13 @@ foreach(required_token
         [=[release tag ${GITHUB_REF_NAME} must be an annotated tag]=]
         [=[must point to the exact current main release head]=]
         [=[backmerge requires the already-published annotated release tag]=])
-    string(FIND "${policy}" "${required_token}" found)
+    # The workflow is YAML/bash text. CMake's bracket arguments above preserve characters literally;
+    # normalize the two shell-quote probes here rather than relying on CMake escape processing.
+    string(REPLACE [=[\"]=] [=["]=] normalized_token "${required_token}")
+    string(FIND "${policy}" "${normalized_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "release-authority-policy: Git Flow lost required authority invariant: ${required_token}")
+            "release-authority-policy: Git Flow lost required authority invariant: ${normalized_token}")
     endif()
 endforeach()
 
@@ -35,7 +38,7 @@ endforeach()
 foreach(forbidden_token
         [=[gh issue close]=]
         [=[-X PATCH]=]
-        [=["state":"closed"]=])
+        [=[--method PATCH]=])
     string(FIND "${policy}" "${forbidden_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
