@@ -18,6 +18,11 @@ set_target_properties(hyremote-qml PROPERTIES
     EXPORT_NAME Qml
 )
 
+# The QML backing library is deployed beside HyRemoteRemoteAccess in the runtime lib directory.
+if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-qml PROPERTY INSTALL_RPATH "$ORIGIN")
+endif()
+
 target_compile_features(hyremote-qml PUBLIC cxx_std_17)
 target_link_libraries(hyremote-qml
     PRIVATE
@@ -36,6 +41,14 @@ qt_query_qml_module(hyremote-qml
 set(HYREMOTE_QML_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qml/${HYREMOTE_QML_TARGET_PATH}")
 set(HYREMOTE_QML_INSTALL_DIR "${HYREMOTE_QML_INSTALL_DIR}" CACHE INTERNAL
     "Installed HyRemote QML module directory" FORCE)
+
+# The plugin lives under <lib>/qml/HyRemote in the SDK and under <prefix>/qml/HyRemote in a normal
+# deployed Qt application. Cover both layouts with bounded origin-relative lookup entries; users do
+# not need QML/SDK-specific runtime environment variables.
+if(HYREMOTE_QML_PLUGIN_TARGET AND UNIX AND NOT APPLE)
+    set_property(TARGET "${HYREMOTE_QML_PLUGIN_TARGET}" PROPERTY
+        INSTALL_RPATH "$ORIGIN/../..;$ORIGIN/../../${CMAKE_INSTALL_LIBDIR}")
+endif()
 
 install(
     TARGETS hyremote-qml
