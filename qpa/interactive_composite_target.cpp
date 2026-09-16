@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "hyremote/core/input.hpp"
 
@@ -32,14 +33,7 @@ public:
         m_state->resolver = std::move(resolver);
     }
 
-    ~CompositeInputSink() override
-    {
-        std::lock_guard<std::mutex> lock(m_state->mutex);
-        m_state->active = false;
-        m_state->pending.clear();
-        m_state->drainScheduled = false;
-        m_state->children.clear();
-    }
+    ~CompositeInputSink() override { shutdown(); }
 
     void post(const hyremote::InputEvent &event) override
     {
@@ -104,6 +98,35 @@ public:
         }
     }
 
+    void shutdown() noexcept override
+    {
+        std::vector<std::shared_ptr<hyremote::InputSink>> childSinks;
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (m_state->shutdownRequested)
+                return;
+            m_state->shutdownRequested = true;
+            m_state->active = false;
+            m_state->pending.clear();
+            m_state->drainScheduled = false;
+            m_state->pointerGrabSurface.reset();
+            m_state->pressedButtons = 0;
+            childSinks.reserve(m_state->children.size());
+            for (const auto &entry : m_state->children) {
+                if (entry.second.sink)
+                    childSinks.push_back(entry.second.sink);
+            }
+            m_state->children.clear();
+        }
+
+        // Each child is a normal Widgets/Quick sink. Its terminal shutdown discards child events
+        // that never reached Qt and balances only held state already delivered to that surface.
+        for (const auto &sink : childSinks) {
+            if (sink)
+                sink->shutdown();
+        }
+    }
+
 private:
     static constexpr std::size_t kMaxPendingInputEvents = 64;
 
@@ -120,6 +143,7 @@ private:
         ::HyRemote::detail::BuiltinTargetResolver resolver;
         bool active = true;
         bool drainScheduled = false;
+        bool shutdownRequested = false;
         std::deque<hyremote::InputEvent> pending;
         std::unordered_map<SurfaceId, ChildInput> children;
         std::string deferredError;
@@ -197,17 +221,31 @@ private:
         for (const CompositeSurfaceSnapshot &surface : snapshot.backToFront)
             live.insert(surface.id);
 
-        std::lock_guard<std::mutex> lock(state->mutex);
-        for (auto it = state->children.begin(); it != state->children.end();) {
-            if (live.find(it->first) == live.end())
-                it = state->children.erase(it);
-            else
-                ++it;
+        std::vector<std::shared_ptr<hyremote::InputSink>> removed;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            for (auto it = state->children.begin(); it != state->children.end();) {
+                if (live.find(it->first) == live.end()) {
+                    if (it->second.sink)
+                        removed.push_back(it->second.sink);
+                    it = state->children.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            if (state->pointerGrabSurface
+                && live.find(*state->pointerGrabSurface) == live.end()) {
+                state->pointerGrabSurface.reset();
+                state->pressedButtons = 0;
+            }
         }
-        if (state->pointerGrabSurface
-            && live.find(*state->pointerGrabSurface) == live.end()) {
-            state->pointerGrabSurface.reset();
-            state->pressedButtons = 0;
+
+        // A child may disappear while it owns delivered remote input. Shut it down before its last
+        // shared_ptr is released so hidden/detached but still-live Qt objects cannot keep a
+        // synthetic remote press after leaving the composed canvas.
+        for (const auto &sink : removed) {
+            if (sink)
+                sink->shutdown();
         }
     }
 
