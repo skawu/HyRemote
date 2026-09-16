@@ -54,7 +54,7 @@ Frozen behavioral invariants:
 
 ### V1 binary/runtime shape
 
-The normal V1 C++ artifact is the shared `HyRemoteRemoteAccess` library. Core is statically composed behind it. `BUILD_SHARED_LIBS` must not silently switch the normal application contract between static and shared products.
+The normal V1 C++ artifact is the shared `HyRemoteRemoteAccess` library. Core is statically composed behind it and is not installed/exported as a second SDK product target. `BUILD_SHARED_LIBS` must not silently switch the normal application contract between static and shared products.
 
 This artifact decision is a usability boundary: ordinary applications link one HyRemote library and deployment carries one HyRemote C++ runtime library.
 
@@ -113,11 +113,13 @@ The helper owns HyRemote runtime/module placement. A normal developer must not d
 
 Installed metadata such as `HyRemote_QML_IMPORT_PATH`, `HyRemote_QPA_AVAILABLE` and `HyRemote_QPA_QT_VERSION` exists to implement/document the package contract. New metadata may be added in 1.x, but existing documented meanings must not be silently redefined incompatibly.
 
-## 4. Core is not a second application integration mode
+## 4. Core remains an internal/source architecture boundary
 
-The build/install tree may expose `HyRemote::Core` for framework composition and advanced low-level use. In V1 it is a static library and not a separately deployed runtime dependency of normal C++/QML/QPA applications.
+The repository keeps the Qt-free Core implementation and its architecture contracts so capture, transport and platform backends remain separable and testable. In the V1 installed product, however, Core is statically composed into `HyRemoteRemoteAccess` and is not exported as `HyRemote::Core` to ordinary SDK consumers.
 
-Normal getting-started material must not instruct developers to assemble `Session`, `RemoteFrame`, `CaptureSource`, `InputSink` or `Transport`. Core does not replace `HyRemote::RemoteAccess` as the stable application facade.
+Normal getting-started material must not instruct developers to assemble `Session`, `RemoteFrame`, `CaptureSource`, `InputSink` or `Transport`. The existence of Core source code does not create a second application integration mode and does not replace `HyRemote::RemoteAccess` as the stable facade.
+
+Future low-level developer packaging, if ever introduced, must be a deliberate separately reviewed product decision and must not silently expand the V1 normal application surface.
 
 ## 5. Transparent QPA compatibility category
 
