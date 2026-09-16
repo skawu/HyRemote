@@ -14,6 +14,11 @@ on:
 
 jobs:
   native-delegate-and-remoteaccess:
+    # Transparent QPA becomes a released product mode at v0.0.3.0. Earlier milestone release PRs
+    # deliberately reject HYREMOTE_WITH_QPA_PROXY=ON and therefore must not run this future-mode job.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.head_ref != 'release/v0.0.1.0' && github.head_ref != 'release/v0.0.2.0')
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -61,14 +66,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/staged-sdk" \
-            -DHYREMOTE_BUILD_CORE=ON \
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
-            -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
-            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON \
             -DHYREMOTE_BUILD_TESTS=ON \
-            -DHYREMOTE_BUILD_EXAMPLES=OFF \
-            -DHYREMOTE_BUILD_SPIKES=OFF \
-            -DHYREMOTE_WITH_VNC=ON \
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
           test -f build/remoteaccess/libHyRemoteRemoteAccess.so
@@ -108,14 +106,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\staged-sdk" ^
-            -DHYREMOTE_BUILD_CORE=ON ^
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
-            -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON ^
-            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON ^
             -DHYREMOTE_BUILD_TESTS=ON ^
-            -DHYREMOTE_BUILD_EXAMPLES=OFF ^
-            -DHYREMOTE_BUILD_SPIKES=OFF ^
-            -DHYREMOTE_WITH_VNC=ON ^
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
           if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
