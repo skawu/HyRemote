@@ -10,12 +10,12 @@ Implementation in Draft PR #106 is not itself a released support claim.
 
 ### Product artifact boundary
 
-V1 intentionally fixes the normal artifact shape to keep consumption simple:
+V1 intentionally fixes the normal installed surface to keep consumption simple:
 
-- Core is static/internal composition;
-- `HyRemote::RemoteAccess` is the one shared C++ product library;
-- `qhyremote` is the Transparent QPA platform module;
-- QML is a thin wrapper over the same shared runtime.
+- Core is a static source/internal composition component and is **not installed/exported** as a V1 SDK target;
+- `HyRemote::RemoteAccess` is the one shared C++ product library and the one exported normal CMake target;
+- `qhyremote` is a Transparent QPA platform MODULE payload selected through the deployment helper and is **not** an installed consumer link target;
+- QML is a thin declarative payload over the same shared runtime; its backing library is not a second C++ SDK target.
 
 Static `RemoteAccess` consumption is not a second V1 product personality. `BUILD_SHARED_LIBS` must not be interpreted as a supported switch between two normal application distribution models.
 
@@ -52,6 +52,12 @@ Lifecycle `Running` means that the remote runtime/listener is active; it does **
 
 Applications and documentation must not infer Connected from Running.
 
+### QML initialization lifecycle
+
+Declarative `RemoteAccess { target: window; enabled: true }` defers the actual runtime start until QML component completion so initial target/policy bindings can settle. The property is a request during object construction, not permission for an implicit listener before component completion.
+
+A failed start remains transactional: `enabled` returns to false and product-level error state is exposed. This convenience does not weaken the shared C++ rule that construction itself is inert.
+
 ### Performance and acceleration
 
 V1 is a correctness-first CPU-readable frame baseline. It does not promise:
@@ -78,7 +84,7 @@ Do not infer compatibility with another Qt patch/minor, Wayland, EGLFS or a diff
 
 ### Deployment scope
 
-Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemoteRemoteAccess` runtime. Transparent QPA uses the same helper to carry that runtime plus `qhyremote`.
+Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemoteRemoteAccess` runtime. Transparent QPA uses the same helper to carry that runtime plus the package-owned `qhyremote` payload. Applications do not link a QPA CMake target.
 
 A deployment that only works because the original HyRemote SDK/build tree is still on `PATH`, `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` or `QT_QPA_PLATFORM_PLUGIN_PATH` does not satisfy the V1 product contract.
 
@@ -86,7 +92,7 @@ A deployment that only works because the original HyRemote SDK/build tree is sti
 
 Hosted offscreen/software/Xvfb tests can prove viewer → transport → shared runtime → Qt target behavior. They do **not** prove that a physical local display and local keyboard/mouse remained usable at the same time.
 
-Physical local-visible/local-input coexistence remains tracked by #109 and the milestone/GA authorities. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
+Physical local-visible/local-input coexistence for the GA cross-mode envelope is tracked by #109, including E1/E2/E3/E4 on Windows/Linux as applicable. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
 
 ### Hosted CI infrastructure
 
