@@ -10,15 +10,17 @@ ApplicationWindow {
     title: "HyRemote QML Basic"
 
     color: "#202733"
+    property bool runtimeRemoteInput: acceptanceRemoteInput
 
-    // Normal declarative use is target + enabled. The port/input bindings below exist only so the
-    // repository product-fit can exercise non-default policy from command-line test arguments.
+    // Normal declarative use is target + enabled. The port/input bindings and transition timer
+    // exist only so repository product-fit can exercise non-default policy and the documented
+    // stop -> configure -> start lifecycle without introducing another runtime or private API.
     RemoteAccess {
         id: remote
         enabled: true
         target: window
         port: acceptancePort
-        remoteInputEnabled: acceptanceRemoteInput
+        remoteInputEnabled: window.runtimeRemoteInput
 
         onStateChanged: {
             if (state === RemoteAccess.Running)
@@ -77,8 +79,8 @@ ApplicationWindow {
         }
 
         Label {
-            text: acceptanceRemoteInput ? "Remote control: enabled explicitly"
-                                        : "Remote control: view-only default"
+            text: window.runtimeRemoteInput ? "Remote control: enabled explicitly"
+                                            : "Remote control: view-only default"
             color: "#f2f4f8"
         }
 
@@ -97,6 +99,19 @@ ApplicationWindow {
             return
         }
         console.log("CLIENT_COUNT " + remote.connectedClientCount)
+    }
+
+    Timer {
+        interval: acceptancePolicyTransitionMs
+        running: acceptancePolicyTransitionMs > 0
+        repeat: false
+        onTriggered: {
+            remote.enabled = false
+            console.log("POLICY_STOPPED")
+            window.runtimeRemoteInput = true
+            remote.enabled = true
+            console.log("POLICY_RESTART_REQUESTED")
+        }
     }
 
     Timer {
