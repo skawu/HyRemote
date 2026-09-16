@@ -65,10 +65,9 @@ jobs:
           cmake --build build-sdk --parallel
           cmake --install build-sdk
 
-          # Fixed V1 product shape: Core is static/internal; RemoteAccess is the one shared product library.
-          test -f "$SDK_PREFIX/lib/libhyremote-core.a"
+          # Fixed V1 package surface: only the shared product facade is installed. Core stays internal.
           test -f "$SDK_PREFIX/lib/libHyRemoteRemoteAccess.so"
-          test ! -e "$SDK_PREFIX/lib/libhyremote-core.so"
+          test -z "$(find "$SDK_PREFIX/lib" -maxdepth 1 -type f -name 'libhyremote-core*' -print -quit)"
 
           cmake -S tests/consumer-installed-sdk -B build-consumer-installed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -120,6 +119,7 @@ jobs:
           cmake --build build-sdk --parallel
           cmake --install build-sdk
           if not exist "%SDK_PREFIX%\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          if exist "%SDK_PREFIX%\lib\hyremote-core.lib" exit /b 1
           if exist "%SDK_PREFIX%\bin\hyremote-core.dll" exit /b 1
 
           cmake -S tests\consumer-installed-sdk -B build-consumer-installed -G Ninja ^
