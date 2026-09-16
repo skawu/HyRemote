@@ -144,6 +144,54 @@ foreach(required_token
     endif()
 endforeach()
 
+# The fourth documented deployment shape (`QML QPA`) must be executable evidence, not an inference
+# from two separate consumers. Reuse the same clean installed-QML application so the combined path
+# cannot drift into a second toy fixture, and keep the application free of HyRemote C++ link targets.
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/CMakeLists.txt" installed_qml_consumer)
+foreach(required_token
+        "HYREMOTE_CONSUMER_WITH_QPA"
+        "hyremote_deploy(TARGET hyremote-installed-qml-consumer QML)"
+        "hyremote_deploy(TARGET hyremote-installed-qml-consumer QML QPA)")
+    string(FIND "${installed_qml_consumer}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: installed QML fixture lost a documented deployment shape: ${required_token}")
+    endif()
+endforeach()
+foreach(forbidden_token
+        "HyRemote::RemoteAccess"
+        "HyRemote::QpaPlatform")
+    string(FIND "${installed_qml_consumer}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: QML/QPA consumer must remain application-link neutral: ${forbidden_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/main.cpp" installed_qml_main)
+foreach(required_token
+        "contractOk"
+        "--test-seconds")
+    string(FIND "${installed_qml_main}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: clean QML consumer cannot prove combined runtime execution: ${required_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/v1-ga-acceptance.yml" ga_workflow)
+foreach(required_token
+        "Installed combined QML + QPA consumer — Linux"
+        "Installed combined QML + QPA consumer — Windows"
+        "-DHYREMOTE_CONSUMER_WITH_QPA=ON"
+        "ga-qml-qpa-consumer.log")
+    string(FIND "${ga_workflow}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: integrated GA lost combined installed QML+QPA evidence: ${required_token}")
+    endif()
+endforeach()
+
 message(STATUS
     "HyRemote consumer-simplicity gate: PASS "
-    "(product-only defaults, one public C++ target, executable version-derived milestone profiles)")
+    "(product-only defaults, one public C++ target, four deployment shapes, executable version-derived milestone profiles)")
