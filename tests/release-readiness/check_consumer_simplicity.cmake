@@ -28,8 +28,6 @@ foreach(required_token IN LISTS required_option_tokens)
     endif()
 endforeach()
 
-# Do not let the old top-level-versus-subproject developer default return. It makes a plain source
-# build unexpectedly compile tests/examples and creates two different default products.
 foreach(forbidden_token
         "_hyremote_developer_default"
         "set(HYREMOTE_BUILD_TESTS ON"
@@ -64,9 +62,6 @@ foreach(required_token IN LISTS required_root_tokens)
     endif()
 endforeach()
 
-# The version-derived release profile is internal policy, not another user-facing mode switch. Keep
-# the actual thresholds centralized and executable so tagged early milestones cannot expose later V1
-# modes merely because their source already exists.
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteReleaseProfile.cmake" release_profile)
 foreach(required_token
         [=[HYREMOTE_PROFILE_VERSION STREQUAL "0.0.0"]=]
@@ -117,7 +112,6 @@ foreach(required_token IN LISTS required_source_tokens)
     endif()
 endforeach()
 
-# Installed CMake surface must not reintroduce alternate low-level/QPA/runtime-personality choices.
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
 foreach(forbidden_token
         "HyRemote::Core"
@@ -152,7 +146,7 @@ foreach(required_token
         "_hyremote_qml_build_import_root"
         "HyRemote_QML_IMPORT_PATH"
         "HYREMOTE_QML_SOURCE_DEPLOY_TARGETS"
-        "hyremote-qml;${HYREMOTE_QML_PLUGIN_TARGET}"
+        [=["hyremote-qml;${HYREMOTE_QML_PLUGIN_TARGET}"]=]
         [=[CACHE INTERNAL
     "HyRemote QML import root for source-tree deployment" FORCE)]=])
     string(FIND "${qml_cmake}" "${required_token}" found)
@@ -162,10 +156,6 @@ foreach(required_token
     endif()
 endforeach()
 
-# Source-tree and installed-SDK QPA deployment must feed the same public helper. qhyremote reserves a
-# semantically equivalent SDK-layout RPATH anchor with enough ELF string capacity for the deployed
-# plugins/platforms -> lib replacement. The helper rewrites only that package-owned segment; no
-# undocumented ELF parser or extra patching tool becomes a V1 prerequisite.
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../../."]=]
@@ -202,10 +192,6 @@ if(NOT undocumented_readelf EQUAL -1)
         "consumer-simplicity: deployment must not depend on CMake's undocumented READ_ELF mode")
 endif()
 
-# Reuse the same clean external applications for installed and source acquisition. Internal source
-# targets may be observed by the fixture, but the application target itself must remain link-neutral;
-# the executable CMake guard checks its actual LINK_LIBRARIES rather than banning internal target names
-# from the fixture text.
 file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/CMakeLists.txt" qml_consumer)
 foreach(required_token
         "HYREMOTE_CONSUMER_SOURCE_DIR"
@@ -250,8 +236,6 @@ foreach(required_token
     endif()
 endforeach()
 
-# The installed integrated GA proves package combinations; the SDK workflow separately proves that
-# source acquisition reaches real deployed QPA and combined QML+QPA applications on both reference OSes.
 file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/v1-ga-acceptance.yml" ga_workflow)
 foreach(required_token
         "Installed combined QML + QPA consumer — Linux"
@@ -265,8 +249,15 @@ foreach(required_token
     endif()
 endforeach()
 
+# #39 source-consumption evidence must execute all four public deployment call shapes, not infer QML
+# from the QML+QPA case because those paths use different supplemental deployment scripts.
 file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/sdk-consumption.yml" sdk_workflow)
 foreach(required_token
+        "Source shape 1/4: Embedded C++"
+        "Source shape 2/4: Declarative QML only"
+        "Source shape 3/4: Transparent QPA"
+        "Source shape 4/4: QML + QPA"
+        "build-consumer-source-qml"
         "build-consumer-source-qpa"
         "build-consumer-source-qml-qpa"
         "HYREMOTE_CONSUMER_SOURCE_DIR"
@@ -275,7 +266,7 @@ foreach(required_token
     string(FIND "${sdk_workflow}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: SDK workflow lost executable source QML/QPA evidence: ${required_token}")
+            "consumer-simplicity: SDK workflow lost executable source deployment evidence: ${required_token}")
     endif()
 endforeach()
 
