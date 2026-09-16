@@ -42,7 +42,6 @@ set(HyRemote_QPA_QT_VERSION "6.8.3")
 # internal static composition detail and is intentionally absent from the deployment fixture.
 add_library(fake-remoteaccess SHARED EXCLUDE_FROM_ALL dummy.cpp)
 add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
-set(HyRemote_QPA_SHARED_RUNTIME TRUE)
 
 set(Qt6Core_VERSION "${TEST_QT_VERSION}")
 
