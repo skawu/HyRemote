@@ -8,6 +8,21 @@ function(_hyremote_runtime_deploy_dir output_var)
     endif()
 endfunction()
 
+# add_subdirectory(... EXCLUDE_FROM_ALL) is the normal source-consumption shape. A generated install
+# script that references $<TARGET_FILE:...> does not itself make that local target part of the
+# consumer application's build. Add build-only dependencies for local HyRemote payload targets while
+# leaving installed/imported SDK targets untouched and, crucially, without adding application links.
+function(_hyremote_add_local_build_dependency consumer dependency)
+    if(NOT TARGET "${dependency}")
+        return()
+    endif()
+    get_target_property(_hyremote_dependency_imported "${dependency}" IMPORTED)
+    if(_hyremote_dependency_imported)
+        return()
+    endif()
+    add_dependencies("${consumer}" "${dependency}")
+endfunction()
+
 # Generate the supplemental deployment script for the normal C++/QML product path. The V1 facade
 # is always shared, while Core is statically composed behind it; users deploy one HyRemote runtime.
 function(_hyremote_generate_remoteaccess_deploy_script target output_var)
@@ -154,6 +169,23 @@ function(hyremote_deploy)
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
     endif()
 
+    # Source consumption may place HyRemote below EXCLUDE_FROM_ALL. Ensure every payload referenced
+    # by generated deployment scripts is actually built with the application, but do not add link
+    # libraries: QPA remains Qt-only and QML remains import-driven at the application boundary.
+    _hyremote_add_local_build_dependency(
+        "${HYREMOTE_DEPLOY_TARGET}" HyRemote::RemoteAccess)
+    if(HYREMOTE_DEPLOY_QPA)
+        _hyremote_add_local_build_dependency(
+            "${HYREMOTE_DEPLOY_TARGET}" HyRemote::QpaPlatform)
+    endif()
+    if(HYREMOTE_DEPLOY_QML)
+        get_property(_hyremote_qml_source_targets GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS)
+        foreach(_hyremote_qml_source_target IN LISTS _hyremote_qml_source_targets)
+            _hyremote_add_local_build_dependency(
+                "${HYREMOTE_DEPLOY_TARGET}" "${_hyremote_qml_source_target}")
+        endforeach()
+    endif()
+
     if(HYREMOTE_DEPLOY_QPA)
         if(DEFINED HyRemote_QPA_AVAILABLE AND NOT HyRemote_QPA_AVAILABLE)
             message(FATAL_ERROR
@@ -176,7 +208,7 @@ function(hyremote_deploy)
         if(DEFINED HyRemote_QML_IMPORT_PATH AND NOT "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
             if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
                 message(FATAL_ERROR
-                    "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute installed QML import root")
+                    "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute QML import root")
             endif()
             set_property(TARGET "${HYREMOTE_DEPLOY_TARGET}" APPEND PROPERTY
                 QT_QML_IMPORT_PATH "${HyRemote_QML_IMPORT_PATH}")
