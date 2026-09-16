@@ -15,6 +15,21 @@ target_include_directories(hyremote-remoteaccess-test
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
 
+add_executable(hyremote-target-component-provider-test
+    test_target_component_provider.cpp
+)
+target_link_libraries(hyremote-target-component-provider-test
+    PRIVATE
+        hyremote-remoteaccess
+        HyRemote::Core
+        Qt6::Core
+)
+target_include_directories(hyremote-target-component-provider-test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+add_test(NAME hyremote-target-component-provider-test COMMAND hyremote-target-component-provider-test)
+
 if(HYREMOTE_WITH_VNC)
     # Network interoperability harness used by the dual-OS maintained-client workflow. It links the
     # same private factory as RemoteAccess; it is not installed and is not part of the public SDK.

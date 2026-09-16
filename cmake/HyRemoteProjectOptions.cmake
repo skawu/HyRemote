@@ -6,6 +6,11 @@ option(HYREMOTE_BUILD_CORE "Build the hyremote-core session/frame/dispatch libra
 option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the public HyRemote::RemoteAccess C++ facade when Qt is available" ON)
 option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)
 option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)
+# QML is a product integration mode, not an implicit dependency of every C++ source consumer.
+# Keep it opt-in so existing Embedded C++ users do not acquire a QtQml requirement merely by
+# updating HyRemote. V0.0.2 packages/builds enable it explicitly and install it beside the same
+# RemoteAccess runtime rather than creating a second stack.
+option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)
 option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)
 option(HYREMOTE_WITH_VNC "Enable the first VNC/RFB transport backend when available" ON)
 option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)

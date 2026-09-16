@@ -9,6 +9,9 @@ add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 set_target_properties(hyremote-remoteaccess PROPERTIES
     EXPORT_NAME RemoteAccess
     OUTPUT_NAME HyRemoteRemoteAccess
+    # The public facade may be built as a static SDK library and then consumed by shared integration
+    # modules such as the declarative QML plugin. Keep that composition valid on ELF platforms.
+    POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)

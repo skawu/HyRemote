@@ -220,6 +220,9 @@ mode and wraps the same runtime rather than creating a second stack.
 | Document | Purpose |
 | --- | --- |
 | [`product-overview.md`](docs/product-overview.md) | Long-form product description: integration modes, design principles, roadmap detail, non-goals |
+| [`getting-started/cpp.md`](docs/getting-started/cpp.md), [`windows.md`](docs/getting-started/windows.md), [`linux.md`](docs/getting-started/linux.md) | V0.0.1 Embedded C++ integration and the two x86 reference-platform getting-started paths |
+| [`sdk-installation.md`](docs/sdk-installation.md), [`source-consumption.md`](docs/source-consumption.md), [`deployment.md`](docs/deployment.md) | Installed-SDK, source/vendored and runtime deployment workflows |
+| [`viewer-connection.md`](docs/viewer-connection.md), [`troubleshooting.md`](docs/troubleshooting.md), [`known-limitations.md`](docs/known-limitations.md) | Viewer/control workflow, failure diagnosis and explicit V0.0.1 limitations |
 | [`architecture.md`](docs/architecture.md) | Top-level boundaries and layer model |
 | [`core-architecture.md`](docs/core-architecture.md) | Implementation-level Core semantics |
 | [`adr/`](docs/adr) | Accepted decisions: core boundaries, `RemoteFrame` lifetime/timestamps, threading/backpressure |

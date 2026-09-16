@@ -1,45 +1,30 @@
 #include "hyremote/core/capabilities.hpp"
 
 #include <algorithm>
-#include <cstddef>
-#include <string>
-#include <string_view>
-#include <vector>
 
 namespace hyremote {
 namespace {
 
-// Renders `values` as "a, b, c" (an empty range renders as an empty string); `toName` maps one
-// element to its textual form. The result is sized up front, so building it never reallocates, and
-// both lists this file formats share this single implementation instead of a copy each.
-template <typename Range, typename ToName>
-std::string joinNames(const Range &values, ToName toName)
+std::string formatList(const std::vector<PixelFormat> &formats)
 {
-    std::size_t length = values.empty() ? 0 : 2 * (values.size() - 1);  // the ", " separators
-    for (const auto &value : values)
-        length += std::string_view(toName(value)).size();
-
     std::string text;
-    text.reserve(length);
-    for (std::size_t i = 0; i < values.size(); ++i) {
+    for (std::size_t i = 0; i < formats.size(); ++i) {
         if (i != 0)
             text += ", ";
-        text += toName(values[i]);
+        text += pixelFormatName(formats[i]);
     }
     return text;
 }
 
-// Thin adapters keep the call sites readable while sharing the formatting above.
-std::string formatList(const std::vector<PixelFormat> &formats)
-{
-    return joinNames(formats, [](PixelFormat format) { return pixelFormatName(format); });
-}
-
 std::string domainList(const std::vector<std::string> &domains)
 {
-    return joinNames(domains, [](const std::string &domain) -> const std::string & {
-        return domain;
-    });
+    std::string text;
+    for (std::size_t i = 0; i < domains.size(); ++i) {
+        if (i != 0)
+            text += ", ";
+        text += domains[i];
+    }
+    return text;
 }
 
 bool shareCpuFormat(const CaptureCapabilities &source, const FrameConsumerCapabilities &consumer)
