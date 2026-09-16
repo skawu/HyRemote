@@ -86,7 +86,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          xvfb-run -a ctest --test-dir build-ga --output-on-failure | tee ga-ctest.log
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          LD_LIBRARY_PATH="$PWD/build-ga/remoteaccess:$PWD/build-ga/qml/HyRemote:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+            xvfb-run -a ctest --test-dir build-ga --output-on-failure | tee ga-ctest.log
 
       - name: RFB correctness and disconnect reset — Linux
         if: runner.os == 'Linux'
@@ -94,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+          LD_LIBRARY_PATH="$PWD/build-ga/remoteaccess:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
             python remoteaccess/tests/rfb_product_fit.py \
               build-ga/remoteaccess/tests/hyremote-rfb-test-server | tee ga-rfb-product-fit.log
 
@@ -104,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          export LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH="$PWD/build-ga/remoteaccess:$PWD/build-ga/qml/HyRemote:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           python tests/product-e2e/example_product_fit.py \
             --widgets build-ga/examples/widgets-basic/hyremote-widgets-basic \
             --quick build-ga/examples/quick-basic/hyremote-quick-basic | tee ga-e1-e2.log
@@ -113,37 +115,50 @@ jobs:
           python tests/product-e2e/showcase_product_fit.py \
             --showcase build-ga/examples/remote-support-showcase/hyremote-remote-support-showcase | tee ga-e5.log
 
-      - name: Install integrated SDK — Linux
+      - name: Install integrated SDK and assert V1 artifacts — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           cmake --install build-ga
+          test -f "$PWD/staged-sdk/lib/libHyRemoteRemoteAccess.so"
+          test -f "$PWD/staged-sdk/lib/libhyremote-core.a"
+          test -f "$PWD/staged-sdk/lib/HyRemote/plugins/platforms/libqhyremote.so"
 
-      - name: Installed/source/API/QML consumers — Linux
+      - name: Public API and deployed C++/source/QML consumers — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           PREFIX="$QT_PREFIX;$PWD/staged-sdk"
-          export LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 
           cmake -S tests/public-api-contract -B consumer-public-api -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX"
           cmake --build consumer-public-api --parallel
-          ./consumer-public-api/hyremote-public-api-contract
+          LD_LIBRARY_PATH="$PWD/staged-sdk/lib:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+            ./consumer-public-api/hyremote-public-api-contract
 
           cmake -S tests/consumer-installed-sdk -B consumer-installed -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX"
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/consumer-installed-install"
           cmake --build consumer-installed --parallel
-          ./consumer-installed/hyremote-installed-consumer
+          cmake --install consumer-installed
+          test -f "$PWD/consumer-installed-install/bin/hyremote-installed-consumer"
+          test -f "$PWD/consumer-installed-install/lib/libHyRemoteRemoteAccess.so"
+          cmake -E env --unset=LD_LIBRARY_PATH \
+            "$PWD/consumer-installed-install/bin/hyremote-installed-consumer"
 
           cmake -S tests/consumer-source -B consumer-source -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/consumer-source-install" \
             -DHYREMOTE_SOURCE_DIR="$GITHUB_WORKSPACE"
           cmake --build consumer-source --parallel
-          ./consumer-source/hyremote-source-consumer
+          cmake --install consumer-source
+          test -f "$PWD/consumer-source-install/bin/hyremote-source-consumer"
+          test -f "$PWD/consumer-source-install/lib/libHyRemoteRemoteAccess.so"
+          cmake -E env --unset=LD_LIBRARY_PATH \
+            "$PWD/consumer-source-install/bin/hyremote-source-consumer"
 
           cmake -S tests/consumer-installed-qml -B consumer-qml -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
@@ -151,7 +166,9 @@ jobs:
           cmake --build consumer-qml --parallel
           cmake --install consumer-qml
           test -f "$PWD/consumer-qml-install/qml/HyRemote/qmldir"
-          QT_QPA_PLATFORM=offscreen "$PWD/consumer-qml-install/bin/hyremote-installed-qml-consumer"
+          test -f "$PWD/consumer-qml-install/lib/libHyRemoteRemoteAccess.so"
+          cmake -E env --unset=LD_LIBRARY_PATH QT_QPA_PLATFORM=offscreen \
+            "$PWD/consumer-qml-install/bin/hyremote-installed-qml-consumer"
 
       - name: Installed QPA consumer — Linux
         if: runner.os == 'Linux'
@@ -166,10 +183,10 @@ jobs:
           cmake --build consumer-qpa --parallel
           cmake --install consumer-qpa
           test -f "$PWD/consumer-qpa-install/plugins/platforms/libqhyremote.so"
-          QT_PLUGIN_PATH= QT_QPA_PLATFORM_PLUGIN_PATH= \
-            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
-              --app "$PWD/consumer-qpa-install/bin/hyremote-installed-qpa-consumer" \
-              --port 5992 | tee ga-qpa-consumer.log
+          test -f "$PWD/consumer-qpa-install/lib/libHyRemoteRemoteAccess.so"
+          xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
+            --app "$PWD/consumer-qpa-install/bin/hyremote-installed-qpa-consumer" \
+            --port 5992 | tee ga-qpa-consumer.log
 
       - name: Configure, build and CTest — Windows / MSVC x64
         if: runner.os == 'Windows'
@@ -194,6 +211,7 @@ jobs:
             -DHYREMOTE_WITH_VNC=ON ^
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build-ga --parallel
+          set "PATH=%CD%\build-ga\remoteaccess;%CD%\build-ga\qml\HyRemote;%QT_PREFIX%\bin;%PATH%"
           ctest --test-dir build-ga --output-on-failure > ga-ctest.log 2>&1 || (type ga-ctest.log & exit /b 1)
           type ga-ctest.log
 
@@ -202,7 +220,7 @@ jobs:
         shell: cmd
         run: |
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%CD%\build-ga\remoteaccess;%CD%\build-ga\qml\HyRemote;%QT_PREFIX%\bin;%PATH%"
           python remoteaccess\tests\rfb_product_fit.py build-ga\remoteaccess\tests\hyremote-rfb-test-server.exe > ga-rfb-product-fit.log 2>&1 || (type ga-rfb-product-fit.log & exit /b 1)
           type ga-rfb-product-fit.log
           python tests\product-e2e\example_product_fit.py ^
@@ -216,30 +234,45 @@ jobs:
             --showcase build-ga\examples\remote-support-showcase\hyremote-remote-support-showcase.exe > ga-e5.log 2>&1 || (type ga-e5.log & exit /b 1)
           type ga-e5.log
 
-      - name: Install integrated SDK and consume — Windows
+      - name: Install SDK and validate deployed C++/source/QML consumers — Windows
         if: runner.os == 'Windows'
         shell: cmd
         run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "PREFIX=%QT_PREFIX%;%CD%\staged-sdk"
           cmake --install build-ga
+          if not exist "%CD%\staged-sdk\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          if not exist "%CD%\staged-sdk\lib\hyremote-core.lib" exit /b 1
+          if not exist "%CD%\staged-sdk\lib\HyRemote\plugins\platforms\qhyremote.dll" exit /b 1
 
           cmake -S tests\public-api-contract -B consumer-public-api -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%"
           cmake --build consumer-public-api --parallel
+          set "PATH=%CD%\staged-sdk\bin;%QT_PREFIX%\bin;%PATH%"
           consumer-public-api\hyremote-public-api-contract.exe
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
 
           cmake -S tests\consumer-installed-sdk -B consumer-installed -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%"
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\consumer-installed-install"
           cmake --build consumer-installed --parallel
-          consumer-installed\hyremote-installed-consumer.exe
+          cmake --install consumer-installed
+          if not exist "%CD%\consumer-installed-install\bin\hyremote-installed-consumer.exe" exit /b 1
+          if not exist "%CD%\consumer-installed-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          cmake -E env --unset=PATH "%CD%\consumer-installed-install\bin\hyremote-installed-consumer.exe"
 
           cmake -S tests\consumer-source -B consumer-source -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\consumer-source-install" ^
             -DHYREMOTE_SOURCE_DIR="%GITHUB_WORKSPACE%"
           cmake --build consumer-source --parallel
-          consumer-source\hyremote-source-consumer.exe
+          cmake --install consumer-source
+          if not exist "%CD%\consumer-source-install\bin\hyremote-source-consumer.exe" exit /b 1
+          if not exist "%CD%\consumer-source-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          cmake -E env --unset=PATH "%CD%\consumer-source-install\bin\hyremote-source-consumer.exe"
 
           cmake -S tests\consumer-installed-qml -B consumer-qml -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%" ^
@@ -247,14 +280,15 @@ jobs:
           cmake --build consumer-qml --parallel
           cmake --install consumer-qml
           if not exist "%CD%\consumer-qml-install\qml\HyRemote\qmldir" exit /b 1
-          set "QT_QPA_PLATFORM=offscreen"
-          "%CD%\consumer-qml-install\bin\hyremote-installed-qml-consumer.exe"
-          set "QT_QPA_PLATFORM="
+          if not exist "%CD%\consumer-qml-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          cmake -E env --unset=PATH QT_QPA_PLATFORM=offscreen "%CD%\consumer-qml-install\bin\hyremote-installed-qml-consumer.exe"
 
       - name: Installed QPA consumer — Windows
         if: runner.os == 'Windows'
         shell: cmd
         run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
@@ -264,8 +298,7 @@ jobs:
           cmake --build consumer-qpa --parallel
           cmake --install consumer-qpa
           if not exist "%CD%\consumer-qpa-install\plugins\platforms\qhyremote.dll" exit /b 1
-          set "QT_PLUGIN_PATH="
-          set "QT_QPA_PLATFORM_PLUGIN_PATH="
+          if not exist "%CD%\consumer-qpa-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
           python tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\consumer-qpa-install\bin\hyremote-installed-qpa-consumer.exe" ^
             --port 5992 > ga-qpa-consumer.log 2>&1 || (type ga-qpa-consumer.log & exit /b 1)
