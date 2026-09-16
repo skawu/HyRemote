@@ -3,14 +3,14 @@
 include(CMakeFindDependencyMacro)
 
 # The installed V1 package exposes one shared RemoteAccess product facade. Its installed public header
-# uses Qt Core/Network types, so those are the package-level dependencies. Widgets and Quick are
-# private adapters inside the shared runtime; each application resolves only the UI modules it uses.
+# uses Qt Core/Network types, so those are the only unconditional package-level Qt dependencies.
+# Widgets, Quick and QML remain application-selected UI layers; private HyRemote adapters/modules must
+# not force an unrelated C++ consumer to resolve them.
 if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
     find_dependency(Qt6 6.8 COMPONENTS Core Network)
 endif()
 
 if(@HYREMOTE_PACKAGE_WITH_QML@)
-    find_dependency(Qt6 6.8 COMPONENTS Qml)
     set(HyRemote_QML_IMPORT_PATH "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
 endif()
 
