@@ -15,12 +15,13 @@ Remote display and optional remote input for Qt Widgets and Qt Quick application
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
 </p>
 
-HyRemote keeps the application-facing model deliberately small. V1 has two primary usage paths:
+HyRemote keeps the application-facing model deliberately small. V1 has three mandatory integration modes:
 
-1. **C++:** link one shared library, `HyRemote::RemoteAccess`;
-2. **Transparent QPA:** keep the application Qt-only and launch it with `-platform hyremote`.
+1. **Embedded C++ API:** link one shared library, `HyRemote::RemoteAccess`;
+2. **Declarative QML API:** `import HyRemote` and use the thin `RemoteAccess` wrapper over the same C++ runtime;
+3. **Transparent QPA Proxy:** keep the application Qt-only and launch it with `-platform hyremote`.
 
-Declarative QML is a thin wrapper over the same C++ runtime; it is not a second backend stack.
+Qt Widgets and Qt Quick are first-class peers. The three integration modes share one remote-access runtime architecture rather than creating separate Session/transport stacks.
 
 > **Release status:** V1.0.0.0 acceptance is pending. The current reference matrix is Windows x86_64 + Linux x86_64 with Qt 6.8.3. Candidate implementation is not a Supported claim until the required executable and physical evidence actually passes.
 
@@ -56,6 +57,27 @@ hyremote_deploy(TARGET MyApp)
 
 The helper carries the shared `HyRemoteRemoteAccess` runtime and its Qt runtime dependencies.
 
+## Declarative QML
+
+```qml
+import HyRemote
+
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+`enabled: true` is applied after QML component construction, so users do not need `Component.onCompleted` startup glue. The wrapper reuses the same shared C++ runtime.
+
+Deploy with:
+
+```cmake
+hyremote_deploy(TARGET MyQmlApp QML)
+```
+
+The QML backing library is payload, not another consumer C++ target.
+
 ## Transparent QPA — zero HyRemote application linkage
 
 An existing Qt application remains Qt-only:
@@ -82,34 +104,13 @@ No HyRemote source/API call is required in the application. `qhyremote` preserve
 
 The installed SDK does **not** expose `HyRemote::QpaPlatform` as an application link target. Plugin/runtime placement belongs to `hyremote_deploy()`.
 
-## Declarative QML
-
-```qml
-import HyRemote
-
-RemoteAccess {
-    target: mainWindow
-    enabled: true
-}
-```
-
-`enabled: true` is applied after QML component construction, so users do not need `Component.onCompleted` startup glue. The wrapper reuses the same shared C++ runtime.
-
-Deploy with:
-
-```cmake
-hyremote_deploy(TARGET MyQmlApp QML)
-```
-
-The QML backing library is payload, not another consumer C++ target.
-
 ## Product artifacts
 
 | Artifact | V1 role |
 | --- | --- |
 | `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` | **Shared library**; the one normal C++ product target |
-| `qhyremote` | Qt platform **MODULE payload**; Transparent QPA entry point |
 | `HyRemote` QML module | Thin declarative payload over the same shared runtime |
+| `qhyremote` | Qt platform **MODULE payload**; Transparent QPA entry point |
 | `hyremote-core` | Internal static source component; not installed/exported as an application SDK target |
 
 `BUILD_SHARED_LIBS` does not create alternate V1 product personalities.
@@ -180,7 +181,17 @@ The V1 candidate contains:
 - `examples/remote-support-showcase` — operator-controlled remote-support workflow;
 - clean installed/source consumer fixtures under `tests/` for SDK acceptance.
 
-Enable examples with `-DHYREMOTE_BUILD_EXAMPLES=ON`.
+`-DHYREMOTE_BUILD_EXAMPLES=ON` builds the examples for product modes enabled in the current configuration. The standard C++ configuration therefore builds the C++ Widgets/Quick examples without requiring QML or QPA.
+
+For the complete V1 three-mode example matrix, use:
+
+```text
+-DHYREMOTE_BUILD_EXAMPLES=ON
+-DHYREMOTE_BUILD_QML_API=ON
+-DHYREMOTE_WITH_QPA_PROXY=ON
+```
+
+Formal pre-GA release versions enforce their cumulative milestone profile and reject later integration modes until those modes reach their own release milestone.
 
 ## Documentation
 
@@ -215,14 +226,14 @@ Do **not** expose the current baseline directly to an untrusted network or the p
 
 ## V1 release discipline
 
-Milestone tags are release facts, not progress markers:
+Milestone tags are release facts, not progress markers, and the pre-GA profiles are cumulative:
 
-| Milestone | Tag | Current state |
-| --- | --- | --- |
-| Embedded C++ | `v0.0.1.0` | acceptance pending |
-| Declarative QML | `v0.0.2.0` | acceptance pending |
-| Transparent QPA | `v0.0.3.0` | acceptance pending |
-| GA / all three modes | `v1.0.0.0` | acceptance pending |
+| Milestone | Tag | Released product surface | Current state |
+| --- | --- | --- | --- |
+| Embedded C++ | `v0.0.1.0` | C++ | acceptance pending |
+| Declarative QML | `v0.0.2.0` | C++ + QML | acceptance pending |
+| Transparent QPA | `v0.0.3.0` | C++ + QML + QPA | acceptance pending |
+| GA / all three modes | `v1.0.0.0` | C++ + QML + QPA | acceptance pending |
 
 Development uses version sentinel `0.0.0`. Formal release branches enforce the milestone product surface, then merge to `main` before an annotated tag is created on the exact accepted main HEAD.
 
