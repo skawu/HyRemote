@@ -43,6 +43,12 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     set(_runtime_copy_commands "")
     set(_additional_library_args "")
 
+    if(WIN32)
+        set(_runtime_deploy_dir "\${QT_DEPLOY_BIN_DIR}")
+    else()
+        set(_runtime_deploy_dir "\${QT_DEPLOY_LIB_DIR}")
+    endif()
+
     if(HyRemote_QPA_SHARED_RUNTIME)
         foreach(_runtime_target IN ITEMS HyRemote::RemoteAccess HyRemote::Core)
             if(NOT TARGET ${_runtime_target})
@@ -50,16 +56,10 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
                     "hyremote_deploy(TARGET ${target} QPA) expected shared runtime target ${_runtime_target} in this SDK")
             endif()
 
-            if(WIN32)
-                set(_runtime_dir_var "QT_DEPLOY_BIN_DIR")
-            else()
-                set(_runtime_dir_var "QT_DEPLOY_LIB_DIR")
-            endif()
-
             string(APPEND _runtime_copy_commands
-                "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${${_runtime_dir_var}}\" TYPE FILE FILES \"$<TARGET_FILE:${_runtime_target}>\")\n")
+                "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:${_runtime_target}>\")\n")
             string(APPEND _additional_library_args
-                "\n        \"\${${_runtime_dir_var}}/$<TARGET_FILE_NAME:${_runtime_target}>\"")
+                "\n        \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:${_runtime_target}>\"")
         endforeach()
     endif()
 
