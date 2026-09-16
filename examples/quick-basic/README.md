@@ -26,13 +26,10 @@ The current baseline RFB transport uses **SecurityType None**. It is a correctne
 
 ## Build
 
-From the source tree with Qt 6.8.x Quick available:
+From the source tree with the matching Qt 6.8.3 Quick kit available:
 
 ```sh
 cmake -S . -B build \
-  -DHYREMOTE_BUILD_CORE=ON \
-  -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
-  -DHYREMOTE_BUILD_QUICK_ADAPTER=ON \
   -DHYREMOTE_BUILD_EXAMPLES=ON
 cmake --build build --parallel
 ```
@@ -75,7 +72,7 @@ The acceptance path also verifies `RemoteAccess::stop()` releases the listener.
 
 ## Input, resize and DPR semantics
 
-The V1 product path covers:
+The current V1 candidate implements and tests:
 
 - left/middle/right pointer buttons;
 - vertical wheel delivery;
@@ -85,9 +82,10 @@ The V1 product path covers:
 - focus into the Quick text target;
 - default view-only rejection;
 - disconnect/reconnect;
-- stop/listener release.
+- stop/listener release;
+- balancing releases when a viewer disappears with recognized keys/buttons still held.
 
-Pointer events carry the remote framebuffer viewport and are mapped to the target's logical geometry. Core deterministic tests pin edge and DPR normalization; Quick capture tests cover asynchronous public-API capture behavior. #90 separately tracks disconnect-time balancing releases for any held input state.
+Pointer events carry the remote framebuffer viewport and are mapped to the target's logical geometry. Core deterministic tests pin edge and DPR normalization; Quick capture tests cover asynchronous public-API capture behavior. Dual-OS acceptance remains pending until the reference jobs actually execute; #74 no-runner failures are not pass evidence.
 
 ## Graphics boundary
 
@@ -97,12 +95,14 @@ The production Quick adapter uses the public `QQuickWindow::contentItem()->grabT
 
 HyRemote's Embedded C++ mode leaves the native Quick application as the normal local application. Hosted E2E currently runs with offscreen/software Quick for repeatability, so it proves remote protocol→Quick behavior but **does not prove a physical monitor/local input path**.
 
-Physical local display and local input coexistence remains a final #30/#33 acceptance item.
+Physical local display and local input coexistence is tracked by #109 and remains a final #30/#33 acceptance item.
 
 ## Connected-viewer status
 
-`RemoteAccessState::Running` means the service is running, not that a viewer exists. #91 / PR #92 provides the backend-neutral connected-client diagnostic needed for the final local status display. Do not derive a fake connected indicator from lifecycle state.
+`RemoteAccessState::Running` means the service is running, not that a viewer exists. The current V1 candidate exposes backend-neutral `RemoteAccess::connectedClientCount()` and this example displays the real client count rather than deriving a fake connected state from lifecycle status.
+
+The connect/disconnect/reconnect count transitions are part of the product-fit gate; they remain acceptance-pending until the reference jobs execute.
 
 ## Related documentation
 
-The broader Windows/Linux, SDK/source-consumption, deployment, security, viewer and compatibility guides converge under #41. Keep all support statements aligned with their recorded evidence.
+Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/security.md`, `docs/compatibility.md`, and `docs/known-limitations.md`. Keep all support statements aligned with recorded evidence.
