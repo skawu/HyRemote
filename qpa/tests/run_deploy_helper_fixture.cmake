@@ -32,6 +32,9 @@ endif()
 if(NOT DEFINED EXPECT_CONFIGURE_FAILURE)
     set(EXPECT_CONFIGURE_FAILURE OFF)
 endif()
+if(NOT DEFINED EXPECT_FAILURE_FRAGMENT)
+    set(EXPECT_FAILURE_FRAGMENT "")
+endif()
 
 file(REMOVE_RECURSE "${FIXTURE_BINARY_DIR}")
 execute_process(
@@ -57,6 +60,16 @@ if(EXPECT_CONFIGURE_FAILURE)
     if(configure_result EQUAL 0)
         message(FATAL_ERROR
             "deploy fixture unexpectedly configured successfully\n${configure_stdout}\n${configure_stderr}")
+    endif()
+    if("${EXPECT_FAILURE_FRAGMENT}" STREQUAL "")
+        message(FATAL_ERROR
+            "negative deploy fixture must declare EXPECT_FAILURE_FRAGMENT so unrelated CMake failures cannot pass")
+    endif()
+    set(_configure_output "${configure_stdout}\n${configure_stderr}")
+    string(FIND "${_configure_output}" "${EXPECT_FAILURE_FRAGMENT}" _failure_fragment_pos)
+    if(_failure_fragment_pos EQUAL -1)
+        message(FATAL_ERROR
+            "deploy fixture failed for the wrong reason; expected '${EXPECT_FAILURE_FRAGMENT}'\n${_configure_output}")
     endif()
     return()
 endif()
