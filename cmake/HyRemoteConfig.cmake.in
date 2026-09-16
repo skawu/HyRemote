@@ -2,10 +2,9 @@
 
 include(CMakeFindDependencyMacro)
 
-# The installed V1 package exposes one shared RemoteAccess product facade. Its installed public header
+# The installed V1 package exposes one shared RemoteAccess C++ target. Its installed public header
 # uses Qt Core/Network types, so those are the only unconditional package-level Qt dependencies.
-# Widgets, Quick and QML remain application-selected UI layers; private HyRemote adapters/modules must
-# not force an unrelated C++ consumer to resolve them.
+# Widgets, Quick and QML remain application-selected UI layers.
 if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
     find_dependency(Qt6 6.8 COMPONENTS Core Network)
 endif()
@@ -16,13 +15,14 @@ endif()
 
 set(HyRemote_QPA_AVAILABLE @HYREMOTE_PACKAGE_WITH_QPA@)
 if(HyRemote_QPA_AVAILABLE)
-    # This is product metadata, not a broad Qt compatibility claim. hyremote_deploy(... QPA)
-    # requires the consumer Qt runtime to match this exact private-ABI line.
     set(HyRemote_QPA_QT_VERSION "@HYREMOTE_PACKAGE_QPA_QT_VERSION@")
     set(HyRemote_QPA_SHARED_RUNTIME @HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME@)
+    set(HyRemote_QPA_PLUGIN_FILE
+        "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR@/@HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME@")
 else()
     set(HyRemote_QPA_QT_VERSION "")
     set(HyRemote_QPA_SHARED_RUNTIME FALSE)
+    set(HyRemote_QPA_PLUGIN_FILE "")
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/HyRemoteTargets.cmake")
