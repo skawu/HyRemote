@@ -48,8 +48,6 @@ if(NOT leaked_qml_api EQUAL -1)
         "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
 endif()
 
-# Installed qhyremote is a CMake MODULE payload. Package metadata must use the platform's MODULE
-# prefix/suffix pair so Linux resolves libqhyremote.so while Windows keeps its native module name.
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteInstall.cmake" install_rules)
 foreach(required_token
         [=[set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")]=]
@@ -144,6 +142,8 @@ foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_STALE_QPA_METADATA]=]
         [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
+        [=[EXPECT_FAILURE_FRAGMENT]=]
+        [=[failed for the wrong reason]=]
         [=[hyremote-runtime-deploy-deploy-probe]=]
         [=[hyremote-qpa-deploy-deploy-probe]=]
         [=[ADDITIONAL_MODULES]=]
@@ -160,11 +160,15 @@ endforeach()
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
-        [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=])
+        [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requires the current HyRemote source build]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requires exact Qt]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requested an SDK that was built without Transparent QPA]=])
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deploy-helper-contract: source qhyremote no longer stays inside the HyRemote sub-build: ${required_token}")
+            "deploy-helper-contract: deterministic deploy test lost required semantic rejection evidence: ${required_token}")
     endif()
 endforeach()
 string(FIND "${qpa_cmake}" [=[CMAKE_BINARY_DIR}/plugins/platforms]=] leaked_host_output)
@@ -195,4 +199,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; installed QPA metadata matches the platform MODULE filename; source/installed optional payloads cannot cross-contaminate in either direction; source QPA target fixes its own exact-Qt authority; stale QML/QPA metadata is rejected without widening the package API)")
+    "(four public shapes remain distinct; negative fixtures must fail for their intended semantic reason; installed QPA metadata matches the platform MODULE filename; source/installed optional payloads remain isolated)")
