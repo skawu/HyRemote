@@ -80,6 +80,21 @@ foreach(required_token
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
+foreach(required_token
+        [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
+        [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=])
+    string(FIND "${qpa_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: source qhyremote no longer stays inside the HyRemote sub-build: ${required_token}")
+    endif()
+endforeach()
+string(FIND "${qpa_cmake}" [=[CMAKE_BINARY_DIR}/plugins/platforms]=] leaked_host_output)
+if(NOT leaked_host_output EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: qhyremote must not write into a source consumer's top-level plugin directory")
+endif()
+
 foreach(required_test
         "hyremote-qpa-deploy-helper-ordinary"
         "hyremote-qpa-deploy-helper-qml-only"
@@ -100,4 +115,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; optional QML/QPA fail closed; source build-only payload wiring frozen)")
+    "(four public shapes remain distinct; optional QML/QPA fail closed; source build-only payload wiring and QPA sub-build isolation frozen)")
