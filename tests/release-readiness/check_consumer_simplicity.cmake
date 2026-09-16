@@ -47,12 +47,28 @@ set(required_root_tokens
     include(CTest)]=]
     [=[if(HYREMOTE_BUILD_REMOTE_ACCESS)]=]
     [=[if(HYREMOTE_WITH_QPA_PROXY)]=]
+    [=[if(NOT PROJECT_VERSION STREQUAL "0.0.0")]=]
+    [=[PROJECT_VERSION VERSION_LESS "0.0.2.0" AND HYREMOTE_BUILD_QML_API]=]
+    [=[PROJECT_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_WITH_QPA_PROXY]=]
 )
 foreach(required_token IN LISTS required_root_tokens)
     string(FIND "${root_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: root build graph lost required product/developer separation: ${required_token}")
+            "consumer-simplicity: root build/release graph lost required contract: ${required_token}")
+    endif()
+endforeach()
+
+# Milestone source history may already contain later V1 implementation, but a tagged release must not
+# let a user enable a product mode that has not reached its own accepted milestone yet. The project
+# version itself is the release profile; no additional public profile switch is allowed.
+foreach(forbidden_token
+        "HYREMOTE_RELEASE_PROFILE"
+        "HYREMOTE_PRODUCT_PROFILE")
+    string(FIND "${root_cmake}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: release profile must be derived from project version, not another user option: ${forbidden_token}")
     endif()
 endforeach()
 
@@ -112,4 +128,6 @@ foreach(required_token
     endif()
 endforeach()
 
-message(STATUS "HyRemote consumer-simplicity gate: PASS (product-only defaults, one public C++ target)")
+message(STATUS
+    "HyRemote consumer-simplicity gate: PASS "
+    "(product-only defaults, one public C++ target, version-derived milestone profiles)")
