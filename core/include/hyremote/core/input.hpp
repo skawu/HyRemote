@@ -192,6 +192,17 @@ public:
     // is reported as a recoverable `SessionError`. Remote input is not on the capture path, so a
     // failing sink does not fault the Session or interrupt frame delivery.
     virtual void post(const InputEvent &event) = 0;
+
+    // Terminal product-runtime teardown hook. RemoteAccess calls this only after Session::stop()
+    // has made transport callbacks quiescent and immediately before the target components are
+    // destroyed. A Qt-facing sink uses it to discard input that has not reached the GUI yet and to
+    // balance key/button state that was already delivered, so stopping remote access cannot leave
+    // the still-running local application with a synthetic remote key/button held down.
+    //
+    // Core does not require this hook for its generic scheduling semantics and therefore provides a
+    // no-op default for non-GUI/internal sinks. Implementations must not throw or synchronously wait
+    // for a target event loop owned by another thread.
+    virtual void shutdown() noexcept {}
 };
 
 }  // namespace hyremote
