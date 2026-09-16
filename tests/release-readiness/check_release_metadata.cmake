@@ -45,6 +45,7 @@ set(required_files
     "examples/qml-basic/CMakeLists.txt"
     "examples/qml-basic/README.md"
     "examples/qpa-proxy-existing-app/CMakeLists.txt"
+    "examples/qpa-proxy-existing-app/main.cpp"
     "examples/qpa-proxy-existing-app/README.md"
     "examples/remote-support-showcase/CMakeLists.txt"
     "examples/remote-support-showcase/README.md"
@@ -52,6 +53,7 @@ set(required_files
     "tests/consumer-source/CMakeLists.txt"
     "tests/consumer-installed-qml/CMakeLists.txt"
     "tests/consumer-installed-qpa/CMakeLists.txt"
+    "tests/consumer-installed-qpa/product_fit.py"
     "tests/public-api-contract/CMakeLists.txt"
 )
 
@@ -255,6 +257,48 @@ foreach(required_example
             "release-readiness: common V1 examples graph missing required example: ${required_example}")
     endif()
 endforeach()
+
+# E4 is the defining zero/minimal-source-change product proof. Pin both halves of its release path:
+# its own project must remain an ordinary Qt-only executable with opt-in installed QPA deployment,
+# and the clean external installed-SDK fixture must compile that exact E4 source rather than a
+# duplicate look-alike application.
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/qpa-proxy-existing-app/CMakeLists.txt" e4_cmake)
+foreach(required_token
+        "target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)"
+        "HYREMOTE_EXAMPLE_DEPLOY_QPA"
+        "find_package(HyRemote CONFIG REQUIRED)"
+        "hyremote_deploy(TARGET hyremote-qpa-proxy-existing-app QPA)")
+    string(FIND "${e4_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: E4 ordinary-Qt/deployment contract missing: ${required_token}")
+    endif()
+endforeach()
+foreach(forbidden_token
+        "HyRemote::RemoteAccess"
+        "HyRemote::QpaPlatform")
+    string(FIND "${e4_cmake}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: E4 application project leaked a HyRemote link target: ${forbidden_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" clean_qpa_cmake)
+foreach(required_token
+        "examples/qpa-proxy-existing-app/main.cpp"
+        "target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)"
+        "hyremote_deploy(TARGET hyremote-installed-qpa-consumer QPA)")
+    string(FIND "${clean_qpa_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: clean installed-QPA E4 evidence is not bound to the real example: ${required_token}")
+    endif()
+endforeach()
+if(EXISTS "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/main.cpp")
+    message(FATAL_ERROR
+        "release-readiness: clean installed-QPA fixture must not maintain a duplicate E4 application source")
+endif()
 
 message(STATUS
     "HyRemote release-readiness metadata gate: PASS "
