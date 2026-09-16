@@ -8,11 +8,9 @@
 # Qt QML, Qt private/QPA, NeatVNC/AML, DRM/GBM/DMA-BUF or RKMPP/V4L2/VA-API types.
 # core/tests/check_dependencies.cmake enforces the include/link part of that rule.
 
-include(GNUInstallDirs)
-
 # Core is an internal/static composition layer for the V1 product. Applications link the shared
-# HyRemote::RemoteAccess facade; QPA is delivered as a platform MODULE. Keeping Core STATIC avoids a
-# second runtime library that normal users would otherwise need to understand and deploy.
+# HyRemote::RemoteAccess facade; QPA is delivered as a platform MODULE. Core deliberately is not
+# installed/exported as a second normal SDK product target in V1.
 add_library(hyremote-core STATIC
     src/capabilities.cpp
     src/detail/mailbox.cpp
@@ -24,7 +22,6 @@ add_library(hyremote-core STATIC
 )
 add_library(HyRemote::Core ALIAS hyremote-core)
 set_target_properties(hyremote-core PROPERTIES
-    EXPORT_NAME Core
     # RemoteAccess and other product modules are shared, so the internal static archive must remain
     # PIC-capable on ELF platforms.
     POSITION_INDEPENDENT_CODE ON
@@ -33,7 +30,6 @@ set_target_properties(hyremote-core PROPERTIES
 target_include_directories(hyremote-core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -44,21 +40,6 @@ target_compile_features(hyremote-core PUBLIC cxx_std_17)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 target_link_libraries(hyremote-core PUBLIC Threads::Threads)
-
-install(
-    TARGETS hyremote-core
-    EXPORT HyRemoteTargets
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-)
-
-install(
-    DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    FILES_MATCHING PATTERN "*.hpp"
-)
 
 if(HYREMOTE_BUILD_TESTS)
     add_subdirectory(tests)
