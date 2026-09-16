@@ -15,6 +15,13 @@ set_target_properties(hyremote-remoteaccess PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
 
+# Installed/deployed Linux applications place the shared facade and Qt runtime libraries in the same
+# lib directory. Give the facade its own origin-relative lookup so transitive Qt dependencies do not
+# depend on the executable's RUNPATH semantics or the original SDK location.
+if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-remoteaccess PROPERTY INSTALL_RPATH "$ORIGIN")
+endif()
+
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
 target_include_directories(hyremote-remoteaccess
