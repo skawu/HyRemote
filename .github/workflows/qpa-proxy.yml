@@ -14,11 +14,13 @@ on:
 
 jobs:
   native-delegate-and-remoteaccess:
-    # Transparent QPA becomes a released product mode at v0.0.3.0. Earlier milestone release PRs
-    # deliberately reject HYREMOTE_WITH_QPA_PROXY=ON and therefore must not run this future-mode job.
+    # Transparent QPA becomes a released product mode at v0.0.3.0. Automatic PR runs and manual
+    # dispatches must both skip the earlier C++/QML-only formal release profiles.
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.head_ref != 'release/v0.0.1.0' && github.head_ref != 'release/v0.0.2.0')
+      (github.event_name == 'pull_request' &&
+        github.head_ref != 'release/v0.0.1.0' && github.head_ref != 'release/v0.0.2.0') ||
+      (github.event_name == 'workflow_dispatch' &&
+        github.ref_name != 'release/v0.0.1.0' && github.ref_name != 'release/v0.0.2.0')
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
