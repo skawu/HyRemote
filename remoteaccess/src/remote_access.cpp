@@ -144,9 +144,12 @@ struct RemoteAccess::Impl
     quint16 port = 5900;
     bool remoteInputEnabled = false;
     std::unique_ptr<hyremote::Session> session;
+    std::shared_ptr<hyremote::InputSink> inputSink;
     std::optional<RemoteAccessError> error;
     std::shared_ptr<std::atomic<std::size_t>> connectedClients =
         std::make_shared<std::atomic<std::size_t>>(0);
+
+    ~Impl() { shutdownRuntime(); }
 
     bool isConfigurable() const
     {
@@ -156,6 +159,24 @@ struct RemoteAccess::Impl
     void setError(RemoteAccessErrorCode code, QString message, bool recoverable = false)
     {
         error = RemoteAccessError{code, std::move(message), recoverable};
+    }
+
+    void shutdownRuntime() noexcept
+    {
+        if (!session) {
+            inputSink.reset();
+            return;
+        }
+
+        // Session::stop() first closes/drains Core's callback gate and makes the transport
+        // quiescent. Only then may the target adapter discard queued remote input and balance state
+        // that was already delivered to the still-running local Qt application. This is deliberately
+        // below the public API and shared by C++, QML and Transparent QPA through RemoteAccess.
+        session->stop();
+        if (inputSink)
+            inputSink->shutdown();
+        session.reset();
+        inputSink.reset();
     }
 };
 
@@ -297,8 +318,10 @@ bool RemoteAccess::start()
                          QStringLiteral("failed to compose the internal HyRemote session"));
         return false;
     }
-    if (targetComponents.input)
-        session->setInputSink(std::move(targetComponents.input));
+
+    std::shared_ptr<hyremote::InputSink> inputSink = targetComponents.input;
+    if (inputSink)
+        session->setInputSink(inputSink);
 
     if (!session->start()) {
         const std::optional<hyremote::SessionError> coreError = session->lastError();
@@ -314,6 +337,7 @@ bool RemoteAccess::start()
         return false;
     }
 
+    m_impl->inputSink = std::move(inputSink);
     m_impl->session = std::move(session);
     return true;
 }
@@ -326,8 +350,7 @@ void RemoteAccess::stop() noexcept
     if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError())
         m_impl->error = mapError(*coreError);
 
-    m_impl->session->stop();
-    m_impl->session.reset();
+    m_impl->shutdownRuntime();
 }
 
 RemoteAccessState RemoteAccess::state() const
