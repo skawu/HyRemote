@@ -109,6 +109,7 @@ ApplicationWindow {
             remote.enabled = false
             console.log("POLICY_STOPPED")
             window.runtimeRemoteInput = true
+            console.log("POLICY_INPUT " + remote.remoteInputEnabled)
             remote.enabled = true
             console.log("POLICY_RESTART_REQUESTED")
         }
