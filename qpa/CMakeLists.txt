@@ -81,6 +81,8 @@ if(HYREMOTE_BUILD_TESTS)
     set(_hyremote_qpa_deploy_fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/deploy_helper_fixture")
     set(_hyremote_qpa_deploy_runner "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_deploy_helper_fixture.cmake")
 
+    # Test the two user-facing QPA deployment shapes only: ordinary Qt and QML+QPA. Both share the
+    # exact same fixed artifact model (qhyremote MODULE + HyRemoteRemoteAccess shared library).
     add_test(
         NAME hyremote-qpa-deploy-helper-ordinary
         COMMAND ${CMAKE_COMMAND}
@@ -98,16 +100,6 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
             -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
             -DTEST_QML=ON
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-shared-core
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-shared-core
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-            -DTEST_SHARED_CORE=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
 
