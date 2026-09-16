@@ -165,7 +165,14 @@ Local Developer Agent/physical hosts are used only for genuinely local-only evid
 | #32 | `V0.0.3.0` | `release/v0.0.3.0` | `docs/releases/v0.0.3.0.md` | `v0.0.3.0` |
 | #33 | `V1.0.0.0` | `release/v1.0.0.0` | `docs/releases/v1.0.0.0.md` | `v1.0.0.0` |
 
-`release/v1.0.0.0` may not be cut until #30, #31, #32, #39 and #41 are accepted and integrated, together with the required GA engineering/physical evidence.
+`release/v1.0.0.0` may not be cut until the predecessor product authorities #30, #31, #32, #39 and #41 are accepted and integrated **and** all of the following exact-candidate closure gates are accepted:
+
+- #101 — V1 public C++/QML/CMake/API/package freeze;
+- #104 — integrated all-three-mode GA automation has actually executed and passed on both Windows and Linux reference environments;
+- #107 — release notes, notices, package manifest and deterministic release-readiness metadata are complete and aligned with the frozen V1 artifact model;
+- #109 — required physical native local-display/local-input + remote coexistence evidence has passed for the applicable E1/E2/E3/E4 envelope.
+
+A #74 job that never receives a runner is not #104 acceptance. Local/physical evidence is not a substitute for #104 build/install/deployment automation, and hosted/Xvfb evidence is not a substitute for #109.
 
 Creating a release branch is not acceptance and never authorizes its tag.
 
@@ -178,7 +185,7 @@ For V1.0.0.0, at minimum verify:
 - all three integration modes;
 - Widgets + Quick paths;
 - remote view/input and reconnect;
-- bounded backpressure/lifecycle behavior;
+- bounded backpressure/lifecycle/protocol/input behavior;
 - safe loopback/input defaults and current SecurityType None limitation;
 - local + remote coexistence where claimed;
 - clean installed SDK and source consumer;
@@ -187,7 +194,10 @@ For V1.0.0.0, at minimum verify:
 - licenses/notices;
 - compatibility/known limitations;
 - exact Qt/OS statements;
-- release notes.
+- release notes;
+- #101, #104, #107 and #109 against the same exact release candidate.
+
+The frozen V1 package shape itself is part of acceptance: `hyremote-core` remains static source/internal composition and is not installed/exported as a normal SDK target; `HyRemote::RemoteAccess` is the one shared C++ product target; QML is a thin payload over that runtime; and `qhyremote` is a package-owned QPA platform MODULE rather than an application link target.
 
 A candidate remains unreleased while any mandatory item is blocked, failed or unexecuted.
 
