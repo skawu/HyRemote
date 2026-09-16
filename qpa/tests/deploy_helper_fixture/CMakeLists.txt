@@ -14,19 +14,31 @@ endif()
 if(NOT DEFINED TEST_QT_VERSION)
     set(TEST_QT_VERSION "6.8.3")
 endif()
+if(NOT DEFINED TEST_INSTALLED_PAYLOAD)
+    set(TEST_INSTALLED_PAYLOAD OFF)
+endif()
 
 add_executable(deploy-probe EXCLUDE_FROM_ALL dummy.cpp)
 
 if(TEST_QPA_AVAILABLE)
-    add_library(qpa-probe MODULE EXCLUDE_FROM_ALL dummy.cpp)
-    add_library(HyRemote::QpaPlatform ALIAS qpa-probe)
     set(HyRemote_QPA_AVAILABLE TRUE)
+    if(TEST_INSTALLED_PAYLOAD)
+        # Installed V1 packages publish qhyremote only as payload metadata; no consumer CMake target
+        # is exported for the platform module.
+        set(_fixture_qpa_payload "${CMAKE_CURRENT_BINARY_DIR}/qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
+        file(WRITE "${_fixture_qpa_payload}" "fixture")
+        set(HyRemote_QPA_PLUGIN_FILE "${_fixture_qpa_payload}")
+    else()
+        # Source-tree calls still resolve the internal build target directly.
+        add_library(qpa-probe MODULE EXCLUDE_FROM_ALL dummy.cpp)
+        add_library(HyRemote::QpaPlatform ALIAS qpa-probe)
+    endif()
 else()
     set(HyRemote_QPA_AVAILABLE FALSE)
 endif()
 set(HyRemote_QPA_QT_VERSION "6.8.3")
 
-# Fixed V1 artifact shape under test: one shared product facade plus one QPA module. Core is an
+# Fixed V1 artifact shape under test: one shared product facade plus one QPA payload. Core is an
 # internal static composition detail and is intentionally absent from the deployment fixture.
 add_library(fake-remoteaccess SHARED EXCLUDE_FROM_ALL dummy.cpp)
 add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
