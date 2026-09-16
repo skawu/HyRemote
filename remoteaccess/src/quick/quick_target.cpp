@@ -449,13 +449,7 @@ public:
         m_state->target = target;
     }
 
-    ~QuickInputSink() override
-    {
-        std::lock_guard<std::mutex> lock(m_state->mutex);
-        m_state->active = false;
-        m_state->pending.clear();
-        m_state->drainScheduled = false;
-    }
+    ~QuickInputSink() override { shutdown(); }
 
     void post(const hyremote::InputEvent &event) override
     {
