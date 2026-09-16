@@ -63,7 +63,7 @@ The workflow must build that single tree and pass all deterministic CTest suites
 
 The workflow must also assert the installed artifact classes themselves: static Core archive, shared RemoteAccess runtime and QPA platform module.
 
-## 4. Transport correctness
+## 4. Transport and input-lifecycle correctness
 
 The release candidate runs maintained RFB product-fit against the production internal RFB transport. Required behavior includes:
 
@@ -74,6 +74,15 @@ The release candidate runs maintained RFB product-fit against the production int
 - abrupt viewer disconnect balances held pointer/key state (#90);
 - subsequent viewer begins from clean input state;
 - quiescent stop releases the listener.
+
+Explicit HyRemote runtime stop is also a terminal remote-input lifecycle boundary. After transport/Core callbacks are quiescent, the target input adapter must discard remote input accepted into its pending mailbox but not yet delivered to Qt, and balance any supported remote key/button state that was already delivered to the still-running local application. Repeated teardown must be idempotent and must not synthesize duplicate releases. This behavior is internal to the shared runtime and does not add an application-facing reset API.
+
+The integrated deterministic suite must therefore retain evidence for all of the following:
+
+- Widgets and Quick adapter shutdown balance delivered held state and drop pending undelivered input;
+- `RemoteAccess::stop()` and runtime replacement/move teardown invoke the same terminal input cleanup exactly once;
+- QPA composite child-surface pruning propagates terminal shutdown before a still-live detached child can retain remote state;
+- QPA composite final shutdown is idempotent and cleans every remaining child adapter.
 
 SecurityType None remains only the current correctness baseline. Passing this gate does not make the stream authenticated or encrypted.
 
@@ -89,11 +98,12 @@ E1 `widgets-basic` and E2 `quick-basic` must prove through the public `HyRemote:
 - pointer/keyboard/text behavior;
 - viewer disconnect/reconnect;
 - backend-neutral connected-client diagnostics;
-- explicit stop/listener release.
+- explicit stop/listener release;
+- explicit stop/policy transition cannot leave delivered remote key/button state held and cannot inject queued remote input after stop.
 
 ### Declarative QML
 
-E3 `qml-basic` must prove the same shared runtime through `import HyRemote`, including live `connectedClientCount` lifecycle. QML must not expose or construct backend/session/client objects.
+E3 `qml-basic` must prove the same shared runtime through `import HyRemote`, including live `connectedClientCount` lifecycle. QML must not expose or construct backend/session/client objects. Disabling/stopping the QML wrapper uses the same terminal input-cleanup semantics as the C++ facade; QML does not own a second input stack.
 
 ### Transparent QPA
 
@@ -106,7 +116,8 @@ The QPA CTest/product chain must prove the exact Qt 6.8.3 qualified proxy behavi
 - QWidget dialog/menu/popup scope;
 - multiple QQuickWindow scope;
 - current production capture-family checks;
-- safe startup policy and reconnect.
+- safe startup policy and reconnect;
+- child surfaces leaving the composed application canvas receive terminal child-input cleanup before their adapters are retired.
 
 E4 remains an ordinary Qt application. Its executable may not acquire HyRemote application-link dependencies merely to use Transparent QPA.
 
@@ -142,6 +153,7 @@ Required deployment evidence:
 - the deployed applications run without the original HyRemote SDK/build-tree runtime path;
 - QML deployment carries the same shared facade automatically;
 - QPA deployment contains `qhyremote` plus the same shared facade while the executable itself remains Qt-only;
+- the clean installed-QPA consumer compiles the real E4 application source rather than a duplicate look-alike fixture;
 - QPA product-fit removes `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, `QT_QPA_PLATFORM` and SDK runtime-path assistance before launching the deployed application;
 - Linux QPA relocation uses the controlled origin-relative/RPATH deployment rule rather than `LD_LIBRARY_PATH` as product configuration.
 
@@ -163,6 +175,8 @@ The stable application-facing model remains:
 - Transparent QPA: exact-version package/launch/deployment mode, not a generic private-QPA C++ API;
 - Core/Session/transport/capture/input composition types are not a second normal application path.
 
+The target-input shutdown hook is an internal composition contract and is not an additional stable application API. Release-readiness must reject a candidate that removes the hook, reverses the required `Session::stop()` then input-shutdown ordering, drops Widgets/Quick/QPA propagation, or removes the deterministic tests that pin these semantics.
+
 Release notes stay candidate/pending until the final release branch is accepted. Feature/develop must not set the root project version to `1.0.0.0`; that version change belongs on `release/v1.0.0.0`.
 
 ## 8. Manual / physical acceptance not replaced by CI
@@ -175,7 +189,11 @@ Physical/native evidence is tracked by #109. On the claimed Windows and Linux re
 - local pointer/keyboard/text input continues to reach the application while remote input is enabled as claimed;
 - remote input does not disable or replace the native local path;
 - QPA is demonstrably not replacement-only qvnc behavior;
-- reconnect does not require application restart where claimed.
+- reconnect does not require application restart where claimed;
+- during a control-enabled E1/E2 run, abrupt viewer disconnect while a supported key/button is held leaves the target clean and the next viewer starts clean;
+- during a control-enabled E1/E2 run, explicit HyRemote stop/policy transition while a supported key/button is held returns the still-running local UI to neutral state and does not deliver pending remote input after stop;
+- E3 proves the same stop-boundary behavior through the QML wrapper rather than inferring it solely from C++;
+- E4 observes applicable child-surface/process teardown without stuck remote input or teardown crash/hang.
 
 Use the Local Developer Agent or equivalent physical host only when #109 reaches its execution entry condition. Do not use it to substitute for unavailable GitHub-hosted runners. Evidence from one OS does not substitute for the other.
 
@@ -198,7 +216,7 @@ If either reference OS job does not actually execute, the GA workflow is **unexe
 - #91 connected-client diagnostics accepted;
 - #101 API/artifact freeze accepted;
 - #107 release-readiness metadata accepted;
-- #109 required cross-mode physical/native evidence accepted;
+- #109 required cross-mode physical/native evidence accepted, including explicit-stop/policy-transition input cleanup;
 - #104 integrated GA workflow has actually passed on both reference OSes;
 - clean deployed C++/source/QML/QPA consumers have passed the no-SDK-runtime-path gate;
 - compatibility/known-limitations/security documentation matches the candidate;
