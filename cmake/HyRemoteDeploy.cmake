@@ -212,6 +212,10 @@ function(hyremote_deploy)
             message(FATAL_ERROR
                 "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute QML import root")
         endif()
+        if(NOT IS_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
+            message(FATAL_ERROR
+                "hyremote_deploy: HyRemote QML import root does not exist: ${HyRemote_QML_IMPORT_PATH}")
+        endif()
     endif()
 
     if(HYREMOTE_DEPLOY_QPA AND _hyremote_source_acquisition AND NOT TARGET HyRemote::QpaPlatform)
