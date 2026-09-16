@@ -130,9 +130,9 @@ if(TARGET hyremote-remoteaccess)
     include(HyRemoteInstall)
 endif()
 
-# Release metadata is repository-owned and must stay valid on both development and release-candidate
-# trees. Branch/version authorization is enforced separately by the Git Flow policy workflow so the
-# same full CTest suite remains runnable after release/vX.Y.Z.W sets the exact milestone version.
+# Release metadata and the simple consumer contract are repository-owned and must stay valid on both
+# development and release-candidate trees. Branch/version authorization is enforced separately by the
+# Git Flow policy workflow so the same full CTest suite remains runnable on release/vX.Y.Z.W.
 if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     add_test(
         NAME hyremote-release-readiness-metadata
@@ -140,5 +140,11 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-consumer-simplicity
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
     )
 endif()
