@@ -11,9 +11,25 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
 include(HyRemoteDeploy)
 
+# Development integrates all V1 modes behind explicit options, but a milestone tag is a release fact:
+# an earlier tagged product must not let users opt into a later, not-yet-accepted integration mode
+# merely because its source already exists on develop. No extra user-facing release-profile option is
+# introduced; the four-part project version itself defines the allowed released product surface.
+if(NOT PROJECT_VERSION STREQUAL "0.0.0")
+    if(PROJECT_VERSION VERSION_LESS "0.0.2.0" AND HYREMOTE_BUILD_QML_API)
+        message(FATAL_ERROR
+            "HyRemote ${PROJECT_VERSION} does not release the Declarative QML integration mode. "
+            "QML becomes a released product surface at v0.0.2.0.")
+    endif()
+    if(PROJECT_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_WITH_QPA_PROXY)
+        message(FATAL_ERROR
+            "HyRemote ${PROJECT_VERSION} does not release the Transparent QPA integration mode. "
+            "QPA becomes a released product surface at v0.0.3.0.")
+    endif()
+endif()
+
 # A normal add_subdirectory(HyRemote) consumer must not acquire CTest/BUILD_TESTING side effects just
-# by using the library. HyRemote's own tests are a developer concern and are explicitly opt-in for
-# subprojects through HYREMOTE_BUILD_TESTS.
+# by using the library. HyRemote's own tests are a developer concern and are explicitly opt-in.
 if(HYREMOTE_BUILD_TESTS)
     include(CTest)
 endif()
@@ -87,10 +103,10 @@ endif()
 
 # Transparent QPA Proxy is an explicitly version-coupled integration package. It is never part of
 # hyremote-core and is opt-in because Qt does not guarantee QPA source/binary compatibility. The
-# transparent mode composes the same product RemoteAccess runtime after the QPA-02 native semantics
-# are preserved; it must not grow a parallel Session/transport/input implementation merely because
-# its launch mechanism is a platform plugin. Run exact package qualification unconditionally so
-# earlier public-Qt discovery cannot bypass the private-ABI gate merely because Qt6::Gui exists.
+# transparent mode composes the same product RemoteAccess runtime after native semantics are preserved;
+# it must not grow a parallel Session/transport/input implementation merely because its launch
+# mechanism is a platform plugin. Run exact package qualification unconditionally so earlier public-Qt
+# discovery cannot bypass the private-ABI gate merely because Qt6::Gui exists.
 if(HYREMOTE_WITH_QPA_PROXY)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
