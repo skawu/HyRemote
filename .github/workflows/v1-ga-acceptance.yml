@@ -20,6 +20,13 @@ on:
 
 jobs:
   integrated-ga-candidate:
+    # Develop/feature convergence exercises the full future V1 product. Formal pre-GA milestone
+    # releases intentionally expose only their accepted version profile; do not make v0.0.1/2/3
+    # fail because this all-modes matrix correctly enables later integration modes.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.base_ref == 'develop' ||
+      github.head_ref == 'release/v1.0.0.0'
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -69,19 +76,12 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/staged-sdk" \
-            -DHYREMOTE_BUILD_CORE=ON \
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
-            -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
-            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON \
             -DHYREMOTE_BUILD_QML_API=ON \
             -DHYREMOTE_BUILD_TESTS=ON \
             -DHYREMOTE_BUILD_EXAMPLES=ON \
-            -DHYREMOTE_BUILD_SPIKES=OFF \
-            -DHYREMOTE_WITH_VNC=ON \
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build-ga --parallel
 
-          # Build-tree shape: Core is internal/static; RemoteAccess is the one shared product runtime.
           test -f build-ga/core/libhyremote-core.a
           test -f build-ga/remoteaccess/libHyRemoteRemoteAccess.so
           test -f build-ga/plugins/platforms/libqhyremote.so
@@ -200,15 +200,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\staged-sdk" ^
-            -DHYREMOTE_BUILD_CORE=ON ^
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
-            -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON ^
-            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON ^
             -DHYREMOTE_BUILD_QML_API=ON ^
             -DHYREMOTE_BUILD_TESTS=ON ^
             -DHYREMOTE_BUILD_EXAMPLES=ON ^
-            -DHYREMOTE_BUILD_SPIKES=OFF ^
-            -DHYREMOTE_WITH_VNC=ON ^
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build-ga --parallel
           if not exist "%CD%\build-ga\core\hyremote-core.lib" exit /b 1
