@@ -9,16 +9,9 @@ if(TARGET hyremote-remoteaccess)
     set(HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS TRUE)
 endif()
 
-set(HYREMOTE_PACKAGE_WITH_WIDGETS FALSE)
-if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
-    set(HYREMOTE_PACKAGE_WITH_WIDGETS TRUE)
-endif()
-
-set(HYREMOTE_PACKAGE_WITH_QUICK FALSE)
-if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
-    set(HYREMOTE_PACKAGE_WITH_QUICK TRUE)
-endif()
-
+# Widgets and Quick adapters are private implementation inside the shared RemoteAccess runtime. The
+# installed package must not force every consumer to resolve both UI stacks merely because the SDK was
+# built with both adapters. Each application finds the Qt UI modules it actually uses.
 set(HYREMOTE_PACKAGE_WITH_QML FALSE)
 if(TARGET hyremote-qml)
     set(HYREMOTE_PACKAGE_WITH_QML TRUE)
