@@ -25,6 +25,8 @@ v1.0.0.0
 
 A tag is a **release fact**, not a progress marker. Never create a milestone tag merely because implementation exists. The corresponding product milestone must satisfy its complete acceptance gate first.
 
+Release tags are **annotated tags**. A milestone tag must peel to the exact current `main` release HEAD produced by the accepted release-branch merge; tagging an older ancestor of `main`, using a lightweight tag, or moving/reusing a prior release tag is not an accepted release operation.
+
 ## 2. Long-lived branches
 
 ### `main`
@@ -36,7 +38,7 @@ Rules:
 - no direct feature development;
 - no speculative compatibility claim;
 - no implementation-only milestone merge;
-- every product milestone tag points to a commit reachable from `main`;
+- every product milestone tag points to the exact accepted `main` release HEAD for that milestone;
 - a release branch may merge into `main` only after its full acceptance gate is green.
 
 ### `develop`
@@ -189,13 +191,14 @@ After the release branch passes its complete milestone gate:
 
 1. freeze the accepted release-branch head;
 2. merge the release branch into `main` without rewriting away the accepted history;
-3. verify the resulting `main` commit is the intended release commit;
-4. create the milestone tag on that exact `main` release commit;
-5. publish release notes/artifacts from the same tag where repository tooling supports them;
-6. merge/reconcile the release branch/main release changes back into `develop`;
-7. only then close the milestone issue as released.
+3. verify the resulting `main` HEAD is the intended release commit;
+4. create an **annotated** milestone tag on that exact `main` HEAD;
+5. verify the tag peels to the same `main` release commit and the root CMake version matches the tag;
+6. publish release notes/artifacts from the same tag where repository tooling supports them;
+7. merge/reconcile the release branch/main release changes back into `develop`;
+8. only then close the milestone issue as released.
 
-Do not tag a release-branch commit that was never merged to `main`, and do not move/reuse an existing release tag to point at another commit.
+Do not tag a release-branch commit that was never merged to `main`, do not use a lightweight milestone tag, do not tag an older `main` ancestor, and do not move/reuse an existing release tag to point at another commit.
 
 ## 9. Maintenance releases
 
