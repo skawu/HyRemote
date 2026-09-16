@@ -9,7 +9,10 @@ import subprocess
 from pathlib import Path
 
 
-PRODUCT_PREFIXES = ("libHyRemote", "libQt6")
+# The public shared facade uses `libHyRemote...`; the declarative backing library is the internal
+# `libhyremote-qml...` payload. Both are product-owned runtime dependencies and must resolve from the
+# deployed prefix just like Qt6 libraries. Core remains static and therefore has no runtime entry.
+PRODUCT_PREFIXES = ("libHyRemote", "libhyremote-qml", "libQt6")
 
 
 def fail(message: str) -> None:
