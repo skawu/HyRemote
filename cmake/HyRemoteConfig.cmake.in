@@ -9,10 +9,10 @@ if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
     find_dependency(Qt6 6.8 COMPONENTS Core Network)
 endif()
 
-# QML is optional package payload, not a second C++ target. Publish an explicit availability fact so
-# hyremote_deploy(... QML) cannot mistake stale source/build metadata for a module in this SDK.
-set(HyRemote_QML_AVAILABLE @HYREMOTE_PACKAGE_WITH_QML@)
-if(HyRemote_QML_AVAILABLE)
+# QML is optional package payload, not a second C++ target. Publish only the existing import-root
+# metadata when the module is actually in this SDK; clear it otherwise so repeated package discovery
+# cannot retain a path from another configuration.
+if(@HYREMOTE_PACKAGE_WITH_QML@)
     set(HyRemote_QML_IMPORT_PATH "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
 else()
     set(HyRemote_QML_IMPORT_PATH "")
