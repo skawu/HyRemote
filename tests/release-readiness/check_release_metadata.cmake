@@ -12,6 +12,8 @@ set(required_files
     "NOTICE.md"
     "README.md"
     "docs/versioning.md"
+    "docs/git-flow-release.md"
+    "docs/release-candidate-checklist.md"
     "docs/release-package-manifest.md"
     "docs/releases/v0.0.1.0.md"
     "docs/releases/v0.0.2.0.md"
@@ -27,10 +29,13 @@ set(required_files
     "docs/deployment.md"
     "docs/qml-consumption.md"
     "docs/security.md"
+    "docs/security-model.md"
     "docs/viewer-connection.md"
     "docs/troubleshooting.md"
     "docs/compatibility.md"
     "docs/known-limitations.md"
+    "docs/v1-api-stability.md"
+    "docs/v1-ga-acceptance.md"
     "examples/README.md"
     "examples/CMakeLists.txt"
     "examples/widgets-basic/CMakeLists.txt"
@@ -45,6 +50,9 @@ set(required_files
     "examples/remote-support-showcase/README.md"
     "tests/consumer-installed-sdk/CMakeLists.txt"
     "tests/consumer-source/CMakeLists.txt"
+    "tests/consumer-installed-qml/CMakeLists.txt"
+    "tests/consumer-installed-qpa/CMakeLists.txt"
+    "tests/public-api-contract/CMakeLists.txt"
 )
 
 foreach(path IN LISTS required_files)
@@ -93,7 +101,14 @@ foreach(milestone_version
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/NOTICE.md" notice_text)
-foreach(required_phrase "Qt" "Apache License 2.0" "vncdotool" "Pillow")
+foreach(required_phrase
+        "Qt"
+        "Apache License 2.0"
+        "aqtinstall"
+        "Ninja"
+        "GitHub Actions"
+        "vncdotool"
+        "Pillow")
     string(FIND "${notice_text}" "${required_phrase}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR "release-readiness: NOTICE.md missing classification: ${required_phrase}")
