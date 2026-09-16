@@ -145,17 +145,20 @@ foreach(required_token
 endforeach()
 
 # Source and installed QML acquisition publish the same abstract import-root input to the one deploy
-# helper. The source root must be module-owned metadata, not a path reconstructed by applications.
+# helper. Source payload targets are internal build metadata: they may become build-only dependencies
+# of the consumer target, but never application link targets or installed SDK choices.
 file(READ "${HYREMOTE_SOURCE_DIR}/qml/HyRemote/CMakeLists.txt" qml_cmake)
 foreach(required_token
         "_hyremote_qml_build_import_root"
         "HyRemote_QML_IMPORT_PATH"
+        "HYREMOTE_QML_SOURCE_DEPLOY_TARGETS"
+        "hyremote-qml;${HYREMOTE_QML_PLUGIN_TARGET}"
         [=[CACHE INTERNAL
     "HyRemote QML import root for source-tree deployment" FORCE)]=])
     string(FIND "${qml_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: source QML module lost deploy import-root metadata: ${required_token}")
+            "consumer-simplicity: source QML module lost deploy metadata: ${required_token}")
     endif()
 endforeach()
 
@@ -177,13 +180,20 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
+        "_hyremote_add_local_build_dependency"
+        "ALIASED_TARGET"
+        "IMPORTED"
+        "add_dependencies"
+        "HYREMOTE_QML_SOURCE_DEPLOY_TARGETS"
+        "HyRemote::RemoteAccess"
+        "HyRemote::QpaPlatform"
         [=[file(RPATH_CHANGE]=]
         [=[OLD_RPATH \"$ORIGIN/../../../.\"]=]
         [=[NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"]=])
     string(FIND "${deploy_helper}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: QPA deployment lost bounded Linux RPATH relocation: ${required_token}")
+            "consumer-simplicity: source/deployed payload wiring lost required contract: ${required_token}")
     endif()
 endforeach()
 string(FIND "${deploy_helper}" "file(READ_ELF" undocumented_readelf)
@@ -259,7 +269,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/sdk-consumption.yml" sdk_wor
 foreach(required_token
         "build-consumer-source-qpa"
         "build-consumer-source-qml-qpa"
-        "-DHYREMOTE_CONSUMER_SOURCE_DIR=\"$GITHUB_WORKSPACE\""
+        "HYREMOTE_CONSUMER_SOURCE_DIR"
         "--port 5994"
         "--port 5995")
     string(FIND "${sdk_workflow}" "${required_token}" found)
@@ -271,4 +281,4 @@ endforeach()
 
 message(STATUS
     "HyRemote consumer-simplicity gate: PASS "
-    "(product-only defaults, one public C++ target, four deployment shapes, installed/source QML+QPA acquisition, executable version-derived milestone profiles)")
+    "(product-only defaults, one public C++ target, four deployment shapes, build-only source payload wiring, installed/source QML+QPA acquisition, executable version-derived milestone profiles)")
