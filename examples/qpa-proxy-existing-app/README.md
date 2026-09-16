@@ -7,7 +7,7 @@ The same application is used in two modes:
 1. native Qt platform only — normal local application;
 2. HyRemote Transparent QPA Proxy — native local platform remains the delegate while HyRemote adds remote view/control.
 
-This is the V1 E4 example required by #41 / #88. Installed deployment is owned by #94 through the same public `hyremote_deploy()` entry point used by the other HyRemote product modes.
+This is the V1 E4 example required by #41/#32. Packaging uses the same public `hyremote_deploy()` entry point as the other HyRemote modes.
 
 ## 1. Application boundary
 
@@ -15,7 +15,7 @@ The UI contains text input, a spin box, slider/progress state, checkbox, menu, o
 
 There is deliberately no HyRemote status/control widget or backend selector inside the application source. Transparent QPA policy is process-launch configuration.
 
-The executable target always links **only `Qt6::Widgets`**. The optional HyRemote CMake package integration described below is packaging/deployment metadata only; it never adds `HyRemote::RemoteAccess`, Core, transport or QPA-private types to application code or link libraries.
+The executable target always links **only `Qt6::Widgets`**. The optional HyRemote CMake package integration below is packaging metadata only; it never adds `HyRemote::RemoteAccess`, Core, transport or QPA-private types to application code or link libraries.
 
 ## 2. Reference compatibility boundary
 
@@ -28,24 +28,20 @@ Current production-path capture classification is documented in `docs/qpa-captur
 
 Do not generalize this example to arbitrary Qt versions, Wayland, EGLFS, foreign/native windows or unsupported custom surfaces without separate compatibility evidence.
 
-## 3. Build and install the HyRemote SDK with QPA
+## 3. Build and install HyRemote with the QPA payload
 
-Use the same Qt 6.8.3 SDK for HyRemote and the application. Building the QPA package requires `Qt6::GuiPrivate` because Qt does not provide QPA source/binary compatibility.
+Use the same Qt 6.8.3 SDK for HyRemote and the application. The only QPA-specific product option is:
 
 ```sh
 cmake -S . -B build-qpa \
+  -DCMAKE_PREFIX_PATH=<Qt-6.8.3-prefix> \
   -DCMAKE_INSTALL_PREFIX=<hyremote-prefix> \
-  -DHYREMOTE_BUILD_CORE=ON \
-  -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
-  -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
-  -DHYREMOTE_BUILD_QUICK_ADAPTER=ON \
-  -DHYREMOTE_WITH_VNC=ON \
-  -DHYREMOTE_WITH_QPA_PROXY=ON \
-  -DHYREMOTE_BUILD_TESTS=OFF \
-  -DHYREMOTE_BUILD_SPIKES=OFF
+  -DHYREMOTE_WITH_QPA_PROXY=ON
 cmake --build build-qpa --config Release
 cmake --install build-qpa --config Release
 ```
+
+The normal V1 build supplies the shared `HyRemoteRemoteAccess` runtime and its internal adapters/transport. Users do not select Core, capture, input or RFB implementation targets to enable QPA.
 
 The SDK keeps its qualified proxy module under its own prefix. Normal application deployment does **not** require copying that file by hand or modifying the Qt SDK.
 
@@ -54,7 +50,8 @@ The SDK keeps its qualified proxy module under its own prefix. Normal applicatio
 The default example configuration requires only Qt:
 
 ```sh
-cmake -S examples/qpa-proxy-existing-app -B build-qpa-example
+cmake -S examples/qpa-proxy-existing-app -B build-qpa-example \
+  -DCMAKE_PREFIX_PATH=<Qt-6.8.3-prefix>
 cmake --build build-qpa-example --config Release
 ```
 
@@ -78,7 +75,7 @@ Verify local display, mouse, keyboard, text input, menus and the diagnostics win
 
 ## 5. Produce a normal deployed QPA application
 
-For the product deployment path, configure the same source with the installed HyRemote prefix and the explicit packaging option:
+Configure the same source with the installed HyRemote prefix and the explicit packaging option:
 
 ```sh
 cmake -S examples/qpa-proxy-existing-app -B build-qpa-deployed \
@@ -89,7 +86,7 @@ cmake --build build-qpa-deployed --config Release
 cmake --install build-qpa-deployed --config Release
 ```
 
-The optional block in the example CMake file is intentionally small:
+The entire HyRemote packaging integration is:
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
@@ -97,30 +94,22 @@ install(TARGETS hyremote-qpa-proxy-existing-app ...)
 hyremote_deploy(TARGET hyremote-qpa-proxy-existing-app QPA)
 ```
 
-`hyremote_deploy(... QPA)` keeps Qt's normal application deployment path for the native runtime/delegate, then deploys the exact SDK-owned `qhyremote` module into the application's Qt `platforms` tree and resolves dependencies of that additional module through Qt's deployment support.
+The installed package does **not** expose a `HyRemote::QpaPlatform` application target. `hyremote_deploy(... QPA)` resolves the package-owned `qhyremote` payload internally, preserves Qt's normal native application deployment and carries the same shared `HyRemoteRemoteAccess` runtime.
 
 The deployed application must therefore **not require `QT_PLUGIN_PATH` or `QT_QPA_PLATFORM_PLUGIN_PATH`** for normal use.
 
 ## 6. Launch deployed view-only mode
 
-From the deployed application tree, launch with the HyRemote platform selection only.
+The shortest normal launch is:
 
-Windows:
-
-```powershell
-.\bin\hyremote-qpa-proxy-existing-app.exe -platform "hyremote:hyremote-port=5900"
+```text
+hyremote-qpa-proxy-existing-app -platform hyremote
 ```
 
-Linux:
-
-```sh
-./bin/hyremote-qpa-proxy-existing-app -platform 'hyremote:hyremote-port=5900'
-```
-
-Safe defaults remain:
+Safe defaults are:
 
 - listener address: loopback only;
-- port: 5900 unless changed explicitly;
+- port: 5900;
 - remote input: **disabled**;
 - native local display/input remains the authoritative local path.
 
@@ -138,31 +127,23 @@ Expected behavior in view-only mode:
 - remote input is rejected by policy;
 - disconnect/reconnect does not require application restart.
 
-Hosted/headless tests can validate deployment and session continuity, but they are not proof that a physical monitor remained visible. Physical local-display/local-input coexistence is still a final #32 acceptance item.
+Hosted/headless tests can validate deployment and session continuity, but they are not proof that a physical monitor remained visible. Physical local-display/local-input coexistence is tracked by #109 and remains a final #32 acceptance item.
 
 ## 8. Explicitly enable remote control
 
-For the current zero-code QPA contract, remote-input policy is an explicit **startup policy**:
+For the zero-code V1 QPA contract, remote-input policy is an explicit **startup policy**:
 
-Windows:
-
-```powershell
-.\bin\hyremote-qpa-proxy-existing-app.exe -platform "hyremote:hyremote-port=5900:hyremote-input=true"
-```
-
-Linux:
-
-```sh
-./bin/hyremote-qpa-proxy-existing-app -platform 'hyremote:hyremote-port=5900:hyremote-input=true'
+```text
+hyremote-qpa-proxy-existing-app -platform "hyremote:hyremote-input=true"
 ```
 
 Reconnect the viewer and verify pointer, keyboard and text input. Native/local input must continue through the native delegate.
 
-To return to view-only, relaunch without `hyremote-input=true`. E4 deliberately does not invent a hidden runtime control channel. Applications that require application-owned runtime policy controls should use a product API mode that exposes those controls.
+To return to view-only, relaunch without `hyremote-input=true`. E4 deliberately does not invent a hidden runtime control channel. Applications that require application-owned live policy controls should use the C++ or QML integration mode.
 
-## 9. Address and security boundary
+## 9. Optional policy parameters and security boundary
 
-The default loopback listener is intentional. Explicit QPA parameters are:
+The defaults require no parameters. Optional QPA policy parameters are:
 
 ```text
 hyremote-address=<numeric-ip-address>
@@ -170,34 +151,21 @@ hyremote-port=<1..65535>
 hyremote-input=<0|1|false|true|off|on|no|yes>
 ```
 
-The current RFB correctness baseline uses **SecurityType None**. It provides no production authentication or encryption. Do not expose the listener directly to the Internet or treat view-only policy as authentication.
+The current RFB correctness baseline uses **SecurityType None**. It provides no transport authentication or encryption. Do not expose the listener directly to the Internet or treat view-only policy as authentication.
 
-## 10. Build-tree/debug plugin discovery
+## 10. Build-tree debugging only
 
-Manual plugin-path overrides are **not the normal installed deployment workflow**. They may still be useful while developing the QPA plugin directly from a build tree:
-
-```text
-QT_PLUGIN_PATH=<hyremote-build-or-sdk-plugin-root>
-```
-
-If a released/deployed application requires that environment variable merely to locate `qhyremote`, treat that as a deployment defect under #94 rather than documenting it as the product workflow.
+Manual plugin-path overrides are **not** the installed product workflow. A maintainer may use `QT_PLUGIN_PATH` while debugging the plugin directly from a build tree, but a deployed application that needs that override is considered broken deployment.
 
 ## 11. Common failures
 
 ### Deployed application cannot find `hyremote`
 
-Confirm the application was installed using `hyremote_deploy(TARGET ... QPA)` and that its deployed Qt plugin tree contains:
-
-```text
-plugins/platforms/qhyremote.dll       # Windows
-plugins/platforms/libqhyremote.so     # Linux
-```
-
-Do not fix a broken normal deployment by permanently adding the SDK directory to `QT_PLUGIN_PATH`.
+Confirm the application was installed using `hyremote_deploy(TARGET ... QPA)` and that its deployed Qt plugin tree contains the platform module (`qhyremote.dll` on Windows or `libqhyremote.so` on Linux). Do not fix normal deployment by permanently adding the HyRemote SDK to `QT_PLUGIN_PATH`.
 
 ### `hyremote_deploy(... QPA)` rejects the SDK or Qt version
 
-The V1 proxy is exact-version coupled. The installed SDK must contain QPA and the consumer must resolve **Qt 6.8.3 exactly**. Unsupported combinations fail explicitly instead of silently loading a mismatched private ABI.
+The V1 proxy is exact-version coupled. The installed SDK must contain the QPA payload and the consumer must resolve **Qt 6.8.3 exactly**. Unsupported combinations fail explicitly instead of silently loading a mismatched private ABI.
 
 ### Linux launch cannot initialize the native delegate
 
@@ -213,8 +181,8 @@ V1 QPA support is adapter-scoped, not arbitrary desktop/window-server capture. C
 
 ## 12. Evidence status
 
-#94 adds deterministic deployment-helper tests plus a clean installed-SDK Qt-only consumer. That consumer must install the application, remove `QT_PLUGIN_PATH` overrides, launch `-platform hyremote` and establish/re-establish an RFB connection on both exact reference operating systems.
+The current #106 candidate contains deterministic deployment-helper tests, source-target and installed-payload resolution tests, and a clean installed-SDK Qt-only QPA consumer. The clean consumer must deploy the application, remove plugin/runtime path overrides, launch `-platform hyremote`, and establish/re-establish an RFB connection on both exact reference operating systems.
 
-The repository currently has #74 blocking GitHub-hosted jobs before runner assignment. Until the Windows/Linux jobs actually execute and pass, the deployment path remains implemented/candidate evidence rather than a `Supported` release claim.
+#74 currently blocks GitHub-hosted jobs before runner assignment. Until those Windows/Linux jobs actually execute and pass, this is implemented/candidate evidence rather than a `Supported` release claim.
 
-Physical local-visible + remote coexistence remains a separate final #32 acceptance requirement.
+Physical local-visible + remote coexistence remains #109/#32 and is not replaced by hosted execution.
