@@ -1,20 +1,18 @@
 # HyRemote Git Flow, Testing and Release Policy
 
-This document is the canonical repository workflow for developing, testing and releasing HyRemote product milestones. It complements [`versioning.md`](versioning.md); it does not redefine the frozen four-part product version semantics.
+This is the canonical repository workflow for developing, testing and releasing HyRemote milestones. It complements `docs/versioning.md`; it does not redefine the frozen four-part version semantics.
 
-Governance mode remains `transitional-explicit` until the repository's reusable ADS machine acceptance tracked by #14 is complete.
+Governance mode remains `transitional-explicit` until #14 passes reusable ADS machine acceptance.
 
-## 1. Product version versus Git tag
+## 1. Version and tag rule
 
-HyRemote product versions use the frozen four-part form:
+HyRemote product versions use:
 
 ```text
 Major.Minor.Feature.Maintenance
 ```
 
-Product documentation may write the version with an uppercase `V`, for example `V0.0.3.0` or `V1.0.0.0`.
-
-Repository release tags use the same four numeric fields with a lowercase `v` prefix:
+Current authorized milestone tags are:
 
 ```text
 v0.0.1.0
@@ -23,9 +21,9 @@ v0.0.3.0
 v1.0.0.0
 ```
 
-A tag is a **release fact**, not a progress marker. Never create a milestone tag merely because implementation exists. The corresponding product milestone must satisfy its complete acceptance gate first.
+A tag is a **release fact**, never a progress marker. Implementation existing on `develop` is not enough to create a tag.
 
-Every taggable milestone also owns a repository release-notes file:
+Every taggable milestone owns matching candidate release notes:
 
 ```text
 docs/releases/v0.0.1.0.md
@@ -34,13 +32,13 @@ docs/releases/v0.0.3.0.md
 docs/releases/v1.0.0.0.md
 ```
 
-During development and release-branch acceptance that file carries the explicit marker:
+During acceptance the notes keep:
 
 ```text
 Status: **candidate / acceptance pending**
 ```
 
-The marker is removed only after the full milestone gate has passed and before the release PR leaves Draft. A tagged release must never still claim that acceptance is pending.
+Remove that marker only after the complete milestone gate passes and before the release PR leaves Draft.
 
 ## 2. Long-lived branches
 
@@ -48,212 +46,185 @@ The marker is removed only after the full milestone gate has passed and before t
 
 `main` contains accepted release history only.
 
-Rules:
-
 - no direct feature development;
-- no speculative compatibility claim;
-- no implementation-only milestone merge;
-- every product milestone tag points to the exact accepted release commit on `main`;
-- a release branch may merge into `main` only after its full acceptance gate is green and its release notes are finalized.
+- no speculative support claim;
+- release branches merge only after complete acceptance;
+- every milestone tag is annotated and points to the exact accepted current `main` release HEAD.
 
 ### `develop`
 
-`develop` is the integration branch for the next product release line.
+`develop` is the integration branch.
 
-Rules:
-
-- new feature branches start from `develop`;
-- accepted feature PRs merge back into `develop`;
-- `develop` keeps the development CMake version sentinel `0.0.0`;
-- `develop` may contain completed features that are not yet a released product milestone;
-- a milestone release branch is cut from `develop` only when the milestone's feature scope is complete and all predecessor product dependencies are integrated.
-
-`develop` is not a substitute for `main`: its contents are not automatically a supported release claim.
+- feature branches start from `develop`;
+- accepted feature PRs merge to `develop`;
+- root project version remains development sentinel `0.0.0`;
+- `develop` may contain source for later V1 modes before those modes are released;
+- contents of `develop` are not automatically product/support claims.
 
 ## 3. Short-lived branches
 
 ### `feature/<issue>-<topic>`
 
-Use for new product/engineering work.
-
-Example:
-
-```text
-feature/94-qpa-deploy
-```
-
-Rules:
-
 - create from `develop`;
-- link a GitHub Issue/WBS item;
-- include implementation and its bounded tests/evidence in the same branch when practical;
-- PR target is `develop`;
-- remain Draft while mandatory evidence is unavailable;
-- do not merge merely to make `develop` appear complete.
+- link an Issue/WBS item;
+- target `develop`;
+- stay Draft while mandatory evidence is unavailable;
+- include bounded implementation/tests/docs in the same line when practical.
 
-Historical atomic/stacked branches created before this policy are not force-renamed or history-rewritten. Their accepted contents converge into `develop` in dependency order.
+Historical atomic/stacked branches are not history-rewritten merely for cosmetics. Their accepted content converges through the current single V1 product line.
 
 ### `release/vX.Y.Z.W`
 
-Use only for a feature-complete product milestone candidate.
+Create only for a feature-complete milestone candidate.
 
-Examples:
+- create from `develop`;
+- change root `project(VERSION ...)` to the exact four-part milestone version;
+- target `main` as Draft;
+- no new product capability is added on the release branch;
+- only release blockers, acceptance corrections, security/license/compatibility/release metadata and docs may change;
+- run the milestone-specific acceptance matrix;
+- remove the candidate release-note marker only after every mandatory gate passes;
+- merge to `main`, then create the annotated tag on the exact accepted `main` HEAD;
+- reconcile released history through `backmerge/vX.Y.Z.W` and restore `develop` to `0.0.0`.
 
-```text
-release/v0.0.1.0
-release/v0.0.2.0
-release/v0.0.3.0
-release/v1.0.0.0
-```
+### `backmerge/vX.Y.Z.W`
 
-Rules:
-
-- create from `develop` only after the milestone scope is integrated;
-- change the root CMake `project(VERSION ...)` to the exact four-part milestone version;
-- open the release PR to `main` as **Draft**;
-- keep the matching `docs/releases/vX.Y.Z.W.md` candidate marker while acceptance is still running;
-- only release-blocking defects, acceptance fixes, release metadata, license/security/compatibility corrections and release documentation may enter the branch;
-- no new product capability is added on a release branch;
-- full milestone acceptance runs from this branch;
-- after every mandatory acceptance item passes, remove the release-note candidate marker and then mark the PR ready for review;
-- a non-Draft release PR that still says `candidate / acceptance pending` is invalid and must not merge;
-- final PR target is `main`;
-- after release, reconcile the released commit back into `develop` through `backmerge/vX.Y.Z.W` and restore the `0.0.0` development sentinel before further feature integration.
+- create from the released history after the annotated tag exists;
+- target `develop`;
+- must contain the tagged release commit;
+- restore the development version sentinel `0.0.0` before merging.
 
 ### `hotfix/<issue>-<topic>`
 
-Use for an urgent correction to an already released `main` version.
+Use only for corrections to an already released `main` version. A hotfix may not smuggle in a new integration mode or platform capability.
 
-Rules:
+## 4. Product-only development default
 
-- create from `main`;
-- scope must fit the frozen Maintenance-field definition unless a new product release is explicitly authorized;
-- validate against the released compatibility matrix;
-- merge the accepted fix into `main`;
-- create the corresponding maintenance release/tag only after acceptance;
-- merge the same correction back into `develop`.
+A normal source configure builds the standard C++ product, not repository development infrastructure.
 
-A hotfix must not be used to smuggle in a new platform or integration-mode capability.
+Default product shape:
 
-## 4. Development gate
+- Core: ON, internal static composition;
+- `HyRemote::RemoteAccess`: ON, shared product facade;
+- Widgets/Quick adapters: ON when the matching Qt modules exist;
+- bounded C++ RFB correctness transport: ON;
+- tests/examples/spikes: OFF;
+- QML API: opt-in;
+- Transparent QPA: opt-in and exact-private-ABI qualified.
 
-Before a feature PR can leave Draft state, its scope must have the evidence required by the linked issue. Depending on the feature this includes:
+Maintainers/CI explicitly enable tests/examples. `add_subdirectory()` consumers must not need to know internal Core/adapter/RFB switches to obtain the normal C++ product.
 
-- deterministic unit/contract tests;
-- build/configure/generate checks;
-- standard-viewer product-fit tests;
-- clean installed-SDK/source consumers;
-- exact Qt/OS compatibility tests;
-- documentation and known-limitations updates;
-- architecture/API review where public or private boundaries change.
+## 5. Version-derived milestone product profiles
 
-A failed job that never received a runner or executed repository steps is infrastructure evidence only. It is not a feature test failure and it is not passing evidence.
+`develop` intentionally integrates the full future V1 source while its version is `0.0.0`. Formal milestone releases must not expose later unaccepted modes merely because their source is already present.
 
-Local Developer Agent or physical hardware evidence is used only when the acceptance requirement genuinely needs a capability unavailable to hosted/repository execution, such as physical local-display/local-input coexistence. It must not be used to disguise broken hosted CI/account infrastructure.
+The four-part project version is therefore also the release-profile authority; **there is no second public release-profile option**.
 
-## 5. Integration gate (`feature/*` -> `develop`)
+| Release version | Product modes allowed |
+| --- | --- |
+| `0.0.1.0` | Embedded C++ |
+| `0.0.2.0` | Embedded C++ + Declarative QML |
+| `0.0.3.0` | Embedded C++ + Declarative QML + Transparent QPA |
+| `1.0.0.0` | all three modes / GA |
 
-Merge a feature PR to `develop` only when all of the following are true:
+The root CMake graph enforces this profile:
 
-1. the implementation stays inside frozen product/architecture boundaries;
-2. required feature-level tests actually executed and passed for the claimed scope;
-3. unsupported/unverified combinations remain explicitly classified;
-4. required docs/examples are updated;
-5. no unresolved correctness blocker is hidden by a performance or future-hardware promise;
-6. stacked predecessor PRs are already integrated or the merge order makes the dependency graph valid;
-7. the PR is no longer Draft and review/acceptance requirements are satisfied.
+- a formal version below `0.0.2.0` rejects `HYREMOTE_BUILD_QML_API=ON`;
+- a formal version below `0.0.3.0` rejects `HYREMOTE_WITH_QPA_PROXY=ON`.
 
-Do not merge a Draft PR solely because its code is useful to another branch. Stacked/convergence branches may preserve predecessor history until those predecessors are accepted.
+CI follows the same rule:
 
-## 6. Release-candidate gate (`develop` -> `release/vX.Y.Z.W`)
+- QML acceptance does not run for `release/v0.0.1.0`;
+- QPA acceptance does not run for `release/v0.0.1.0` or `release/v0.0.2.0`;
+- the integrated all-modes GA matrix runs on V1 convergence/develop and `release/v1.0.0.0`, not the three pre-GA release profiles.
 
-A release branch may be created only when the corresponding product milestone is feature-complete on `develop`.
+This prevents a correct early release profile from being falsely failed by a future-mode workflow, while also preventing an early tag from becoming an accidental support claim for later modes.
 
-For the current pre-GA line:
+## 6. Development/integration gate
 
-| Milestone issue | Product version | Release branch | Release notes | Final tag |
+Before a feature PR can leave Draft and merge to `develop`:
+
+1. implementation remains inside frozen product/architecture boundaries;
+2. required tests actually executed and passed for the claimed scope;
+3. unverified/unsupported combinations remain explicit;
+4. required examples/docs are current;
+5. no correctness blocker is hidden behind future performance/hardware work;
+6. dependencies/merge order are valid;
+7. review/acceptance requirements are satisfied.
+
+A GitHub Actions job with no runner and no executed steps is infrastructure evidence only. It is neither pass nor code failure.
+
+Local Developer Agent/physical hosts are used only for genuinely local-only evidence such as physical native local-display/local-input coexistence. They are not substitutes for broken hosted CI.
+
+## 7. Current milestone release map
+
+| Authority | Product version | Release branch | Release notes | Final tag |
 | --- | --- | --- | --- | --- |
 | #30 | `V0.0.1.0` | `release/v0.0.1.0` | `docs/releases/v0.0.1.0.md` | `v0.0.1.0` |
 | #31 | `V0.0.2.0` | `release/v0.0.2.0` | `docs/releases/v0.0.2.0.md` | `v0.0.2.0` |
 | #32 | `V0.0.3.0` | `release/v0.0.3.0` | `docs/releases/v0.0.3.0.md` | `v0.0.3.0` |
 | #33 | `V1.0.0.0` | `release/v1.0.0.0` | `docs/releases/v1.0.0.0.md` | `v1.0.0.0` |
 
-The V1.0 GA release branch may not be cut until #30, #31, #32, #39 and #41 are accepted and integrated on `develop`.
+`release/v1.0.0.0` may not be cut until #30, #31, #32, #39 and #41 are accepted and integrated, together with the required GA engineering/physical evidence.
 
-Creating a release branch is not acceptance and does not authorize its tag. The matching release PR remains Draft while required evidence is being collected.
+Creating a release branch is not acceptance and never authorizes its tag.
 
-## 7. Release-branch acceptance and finalization
+## 8. Release acceptance and finalization
 
-The release branch owns final product acceptance, not new feature development.
+For every claimed Windows/Linux x86 milestone, evidence must exist independently for both operating systems where the milestone requires both.
 
-For x86 V1 milestones, the required matrix must include the exact claimed Windows x86_64 and Linux x86_64 environments. Where the milestone claims both operating systems, evidence from one does not substitute for the other.
+For V1.0.0.0, at minimum verify:
 
-For `V1.0.0.0`, at minimum verify the #33 gate:
-
-- Embedded C++ API;
-- Declarative QML API;
-- Transparent QPA Proxy;
-- Widgets and Quick product paths;
-- local + remote coexistence for the claimed modes/environments;
-- remote view/input, disconnect/reconnect and bounded backpressure;
-- loopback/input safe defaults and current security limitations;
-- clean installed SDK/source consumers;
-- deployment helper paths;
-- examples and getting-started documentation;
-- license/third-party notices;
-- compatibility and known limitations;
-- exact Qt/OS support statements;
+- all three integration modes;
+- Widgets + Quick paths;
+- remote view/input and reconnect;
+- bounded backpressure/lifecycle behavior;
+- safe loopback/input defaults and current SecurityType None limitation;
+- local + remote coexistence where claimed;
+- clean installed SDK and source consumer;
+- one deployment-helper contract;
+- examples/user documentation;
+- licenses/notices;
+- compatibility/known limitations;
+- exact Qt/OS statements;
 - release notes.
 
-A release candidate remains unreleased while any mandatory acceptance item is unexecuted, failed or blocked. During this period the release PR stays Draft and its matching release notes keep the candidate marker.
+A candidate remains unreleased while any mandatory item is blocked, failed or unexecuted.
 
-After every mandatory acceptance item passes:
+After all gates pass:
 
-1. freeze the accepted release-branch content except release-finalization metadata;
-2. remove `Status: **candidate / acceptance pending**` from the matching release notes;
-3. verify the root CMake version still exactly matches the release branch version;
-4. rerun/confirm the release policy and any metadata-only checks affected by finalization;
-5. mark the release PR ready for review.
+1. freeze release content except finalization metadata;
+2. remove the candidate marker from matching release notes;
+3. verify root version equals release branch version;
+4. rerun affected metadata/policy checks;
+5. mark the release PR ready;
+6. merge to `main`;
+7. verify exact intended release HEAD;
+8. create the annotated milestone tag on that exact `main` HEAD;
+9. run post-tag audit;
+10. backmerge/reconcile to `develop` and restore `0.0.0`.
 
-The Git Flow workflow rejects a non-Draft `release/v*` PR whose matching release notes still contain the candidate marker.
-
-## 8. Merge to `main` and create the tag
-
-After the release branch passes its complete milestone gate and its finalization checks are green:
-
-1. merge the release branch into `main` without rewriting away the accepted history;
-2. verify the resulting `main` commit is the intended release commit;
-3. create an **annotated** milestone tag on that exact current `main` release HEAD;
-4. the tag workflow revalidates the four-part CMake version and rejects release notes that still contain the candidate marker;
-5. publish release notes/artifacts from the same tag where repository tooling supports them;
-6. create `backmerge/vX.Y.Z.W` from the released history, reconcile the release changes into `develop`, and restore the `0.0.0` development sentinel;
-7. only then close the milestone issue as released.
-
-Do not tag a release-branch commit that was never merged to `main`, do not create a lightweight milestone tag, and do not move/reuse an existing release tag to point at another commit.
+Do not tag a release-branch commit that was never merged to `main`; do not create lightweight milestone tags; do not move/reuse release tags.
 
 ## 9. Maintenance releases
 
-Maintenance increments follow the same release discipline. Example after `V1.0.0.0`:
+After V1 GA, a maintenance release such as:
 
 ```text
 release/v1.0.0.1
 v1.0.0.1
 ```
 
-The Maintenance field may carry fixes, security corrections, packaging/docs corrections and small-scope optimizations that do not add a new product capability.
-
-A future maintenance release must add its own `docs/releases/vX.Y.Z.W.md` and extend the currently authorized version list in the Git Flow policy before its branch/tag is created.
+follows the same discipline. Maintenance may carry fixes/security/packaging/docs/small-scope optimizations, but not a new product capability. Each new maintenance release must add its own release notes and explicit policy authorization.
 
 ## 10. Current migration rule
 
-This policy was introduced after substantial V1 work already existed as atomic/stacked PRs based on the historical `main` workflow.
+This policy was introduced after substantial V1 work already existed in historical stacked branches.
 
-Migration is deliberately non-destructive:
+- do not force-push/rename historical branches only for appearance;
+- preserve Issue/PR/evidence history;
+- current repository-accessible V1 work converges through the single #106 feature line, then `develop`;
+- closed historical slices are audit records, not parallel execution lines;
+- do not create retroactive tags for milestones that have not passed current acceptance.
 
-- do not force-push or rename existing historical feature branches merely for cosmetics;
-- keep their Issue/PR/canonical evidence records intact;
-- new repository work converges through the current single V1 feature line and then `develop`;
-- converge accepted historical work into `develop` without inventing parallel product architectures;
-- do not create retroactive milestone tags for versions that have not actually passed their current Windows/Linux acceptance criteria.
-
-This preserves auditability while making Git Flow authoritative from this point forward.
+This preserves auditability while making Git Flow authoritative for all releases from this point forward.
