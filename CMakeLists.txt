@@ -9,24 +9,18 @@ project(
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
+include(HyRemoteReleaseProfile)
 include(HyRemoteDeploy)
 
 # Development integrates all V1 modes behind explicit options, but a milestone tag is a release fact:
 # an earlier tagged product must not let users opt into a later, not-yet-accepted integration mode
 # merely because its source already exists on develop. No extra user-facing release-profile option is
 # introduced; the four-part project version itself defines the allowed released product surface.
-if(NOT PROJECT_VERSION STREQUAL "0.0.0")
-    if(PROJECT_VERSION VERSION_LESS "0.0.2.0" AND HYREMOTE_BUILD_QML_API)
-        message(FATAL_ERROR
-            "HyRemote ${PROJECT_VERSION} does not release the Declarative QML integration mode. "
-            "QML becomes a released product surface at v0.0.2.0.")
-    endif()
-    if(PROJECT_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_WITH_QPA_PROXY)
-        message(FATAL_ERROR
-            "HyRemote ${PROJECT_VERSION} does not release the Transparent QPA integration mode. "
-            "QPA becomes a released product surface at v0.0.3.0.")
-    endif()
-endif()
+hyremote_validate_release_profile(
+    VERSION "${PROJECT_VERSION}"
+    QML_ENABLED "${HYREMOTE_BUILD_QML_API}"
+    QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"
+)
 
 # A normal add_subdirectory(HyRemote) consumer must not acquire CTest/BUILD_TESTING side effects just
 # by using the library. HyRemote's own tests are a developer concern and are explicitly opt-in.
@@ -146,9 +140,9 @@ if(TARGET hyremote-remoteaccess)
     include(HyRemoteInstall)
 endif()
 
-# Release metadata and the simple consumer contract are repository-owned and must stay valid on both
-# development and release-candidate trees. Branch/version authorization is enforced separately by the
-# Git Flow policy workflow so the same full CTest suite remains runnable on release/vX.Y.Z.W.
+# Release metadata, simple consumer behavior and milestone product surfaces are repository-owned and
+# must stay valid on development and release-candidate trees. Branch/version authorization is enforced
+# separately by the Git Flow policy workflow.
 if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     add_test(
         NAME hyremote-release-readiness-metadata
@@ -163,4 +157,28 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
     )
+
+    function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled expect_reject)
+        add_test(
+            NAME "${test_name}"
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_TEST_VERSION=${version}
+                -DHYREMOTE_TEST_QML=${qml_enabled}
+                -DHYREMOTE_TEST_QPA=${qpa_enabled}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
+        )
+        if(expect_reject)
+            set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
+        endif()
+    endfunction()
+
+    hyremote_add_release_profile_test(hyremote-release-profile-develop-all-modes 0.0.0 ON ON FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-cpp-only 0.0.1.0 OFF OFF FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qml 0.0.1.0 ON OFF TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qpa 0.0.1.0 OFF ON TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v002-qml 0.0.2.0 ON OFF FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-qpa 0.0.2.0 ON ON TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v003-all-modes 0.0.3.0 ON ON FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v100-all-modes 1.0.0.0 ON ON FALSE)
 endif()
