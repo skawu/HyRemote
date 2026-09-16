@@ -50,7 +50,8 @@ Rules:
 - new feature branches start from `develop`;
 - accepted feature PRs merge back into `develop`;
 - `develop` may contain completed features that are not yet a released product milestone;
-- a milestone release branch is cut from `develop` only when the milestone's feature scope is complete and all predecessor product dependencies are integrated.
+- a milestone release branch is cut from `develop` only when the milestone's feature scope is complete and all predecessor product dependencies are integrated;
+- the root CMake project version on `develop` remains the development sentinel `0.0.0`; an externally meaningful milestone version exists only on an authorized `release/v*` candidate and the corresponding released `main` history.
 
 `develop` is not a substitute for `main`: its contents are not automatically a supported release claim.
 
@@ -72,6 +73,7 @@ Rules:
 - link a GitHub Issue/WBS item;
 - include implementation and its bounded tests/evidence in the same branch when practical;
 - PR target is `develop`;
+- retain the `0.0.0` development version sentinel;
 - remain Draft while mandatory evidence is unavailable;
 - do not merge merely to make `develop` appear complete.
 
@@ -93,12 +95,27 @@ release/v1.0.0.0
 Rules:
 
 - create from `develop` only after the milestone scope is integrated;
-- change the root CMake `project(VERSION ...)` to the exact four-part milestone version;
+- change the root CMake `project(VERSION ...)` from the development sentinel to the exact four-part milestone version;
 - only release-blocking defects, acceptance fixes, release metadata, license/security/compatibility corrections and release documentation may enter the branch;
 - no new product capability is added on a release branch;
-- full milestone acceptance runs from this branch;
+- full milestone acceptance runs from this branch, including the same normal CTest suite used during development;
 - final PR target is `main`;
-- after release, merge/reconcile the release changes back into `develop` before further product work continues.
+- after release/tag creation, reconcile released history back to `develop` through the bounded `backmerge/vX.Y.Z.W` path below.
+
+### `backmerge/vX.Y.Z.W`
+
+Use only after the matching release has been accepted, merged to `main`, and published as an annotated `vX.Y.Z.W` tag.
+
+Rules:
+
+- start from the released `main` history containing the matching annotated tag;
+- contain the already-released commit; it must not recreate or rewrite release history;
+- reset root CMake `project(VERSION ...)` to the `0.0.0` development sentinel before targeting `develop`;
+- PR target is `develop` only;
+- carry release-only fixes/metadata forward without adding new product capability;
+- the machine gate verifies the corresponding annotated tag exists in `main` history and is contained by the backmerge branch.
+
+This explicit backmerge path keeps `develop` ready for the next milestone without leaving unreleased feature builds stamped with the previous release version.
 
 ### `hotfix/<issue>-<topic>`
 
@@ -111,7 +128,7 @@ Rules:
 - validate against the released compatibility matrix;
 - merge the accepted fix into `main`;
 - create the corresponding maintenance release/tag only after acceptance;
-- merge the same correction back into `develop`.
+- reconcile the same correction back into `develop` under the same development-version discipline.
 
 A hotfix must not be used to smuggle in a new platform or integration-mode capability.
 
@@ -141,7 +158,8 @@ Merge a feature PR to `develop` only when all of the following are true:
 4. required docs/examples are updated;
 5. no unresolved correctness blocker is hidden by a performance or future-hardware promise;
 6. stacked predecessor PRs are already integrated or the merge order makes the dependency graph valid;
-7. the PR is no longer Draft and review/acceptance requirements are satisfied.
+7. the PR is no longer Draft and review/acceptance requirements are satisfied;
+8. root CMake still carries the `0.0.0` development version sentinel.
 
 Do not merge a Draft PR solely because its code is useful to another branch. Stacked/convergence branches may preserve predecessor history until those predecessors are accepted.
 
@@ -183,9 +201,11 @@ For `V1.0.0.0`, at minimum verify the #33 gate:
 - exact Qt/OS support statements;
 - release notes.
 
+The repository metadata CTest validates metadata/package consistency on both development and release-candidate versions. Git branch/version authorization is owned separately by the Git Flow workflow so changing `project(VERSION ...)` to the authorized release version does not disable the normal release CTest suite.
+
 A release candidate remains unreleased while any mandatory acceptance item is unexecuted, failed or blocked.
 
-## 8. Merge to `main` and create the tag
+## 8. Merge to `main`, tag, and backmerge
 
 After the release branch passes its complete milestone gate:
 
@@ -195,8 +215,9 @@ After the release branch passes its complete milestone gate:
 4. create an **annotated** milestone tag on that exact `main` HEAD;
 5. verify the tag peels to the same `main` release commit and the root CMake version matches the tag;
 6. publish release notes/artifacts from the same tag where repository tooling supports them;
-7. merge/reconcile the release branch/main release changes back into `develop`;
-8. only then close the milestone issue as released.
+7. create `backmerge/vX.Y.Z.W` from released `main`, reset only the root development version to `0.0.0`, and PR it to `develop`;
+8. verify the backmerge contains the released tagged commit and preserves any already-approved later `develop` history through normal PR merge/reconciliation;
+9. only then close the milestone issue as released.
 
 Do not tag a release-branch commit that was never merged to `main`, do not use a lightweight milestone tag, do not tag an older `main` ancestor, and do not move/reuse an existing release tag to point at another commit.
 
@@ -221,6 +242,7 @@ Migration is deliberately non-destructive:
 - keep their Issue/PR/canonical evidence records intact;
 - create new work from `develop` using `feature/*`;
 - converge accepted historical work into `develop` in dependency order;
+- keep `develop` at the `0.0.0` development version sentinel;
 - do not create retroactive milestone tags for versions that have not actually passed their current Windows/Linux acceptance criteria.
 
 This preserves auditability while making Git Flow authoritative from this point forward.
