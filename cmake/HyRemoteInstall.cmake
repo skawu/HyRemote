@@ -9,24 +9,27 @@ if(TARGET hyremote-remoteaccess)
     set(HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS TRUE)
 endif()
 
-# Widgets and Quick adapters are private implementation inside the shared RemoteAccess runtime. The
-# installed package must not force every consumer to resolve both UI stacks merely because the SDK was
-# built with both adapters. Each application finds the Qt UI modules it actually uses.
+# Widgets and Quick adapters are private implementation inside the shared RemoteAccess runtime. Each
+# application resolves only the Qt UI modules it actually uses.
 set(HYREMOTE_PACKAGE_WITH_QML FALSE)
 if(TARGET hyremote-qml)
     set(HYREMOTE_PACKAGE_WITH_QML TRUE)
 endif()
 set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "${CMAKE_INSTALL_LIBDIR}/qml")
 
-# Transparent QPA is separately version-coupled. Export only package metadata and the installed
-# MODULE target location; consuming applications do not link it. The V1 runtime shape is fixed:
-# RemoteAccess is shared and Core is statically composed behind it.
+# Transparent QPA is package payload, not a C++ link target. Export only availability, exact Qt ABI
+# metadata and the installed plugin location used internally by hyremote_deploy(... QPA).
 set(HYREMOTE_PACKAGE_WITH_QPA FALSE)
 set(HYREMOTE_PACKAGE_QPA_QT_VERSION "6.8.3")
 set(HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME FALSE)
+set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "")
+set(HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME "")
 if(TARGET hyremote-qpa-platform)
     set(HYREMOTE_PACKAGE_WITH_QPA TRUE)
     set(HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME TRUE)
+    set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")
+    set(HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME
+        "${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
 endif()
 
 configure_package_config_file(
