@@ -180,6 +180,21 @@ function(hyremote_deploy)
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
     endif()
 
+    # QML is an optional package payload. Fail at configure time when a consumer selects the QML
+    # deploy shape from an SDK/source build that did not provide the module, instead of producing an
+    # apparently successful deployment that fails later at `import HyRemote`.
+    if(HYREMOTE_DEPLOY_QML)
+        if(NOT DEFINED HyRemote_QML_IMPORT_PATH OR "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
+            message(FATAL_ERROR
+                "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QML) requires a HyRemote QML payload; "
+                "install/build HyRemote with HYREMOTE_BUILD_QML_API=ON")
+        endif()
+        if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
+            message(FATAL_ERROR
+                "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute QML import root")
+        endif()
+    endif()
+
     # Source consumption may place HyRemote below EXCLUDE_FROM_ALL. Ensure every payload referenced
     # by generated deployment scripts is actually built with the application, but do not add link
     # libraries: QPA remains Qt-only and QML remains import-driven at the application boundary.
@@ -216,14 +231,8 @@ function(hyremote_deploy)
                 "qt_generate_deploy_qml_app_script(). Find Qt6 Qml before calling the helper.")
         endif()
 
-        if(DEFINED HyRemote_QML_IMPORT_PATH AND NOT "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
-            if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
-                message(FATAL_ERROR
-                    "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute QML import root")
-            endif()
-            set_property(TARGET "${HYREMOTE_DEPLOY_TARGET}" APPEND PROPERTY
-                QT_QML_IMPORT_PATH "${HyRemote_QML_IMPORT_PATH}")
-        endif()
+        set_property(TARGET "${HYREMOTE_DEPLOY_TARGET}" APPEND PROPERTY
+            QT_QML_IMPORT_PATH "${HyRemote_QML_IMPORT_PATH}")
 
         qt_generate_deploy_qml_app_script(
             TARGET "${HYREMOTE_DEPLOY_TARGET}"
