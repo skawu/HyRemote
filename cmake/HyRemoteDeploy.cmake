@@ -40,43 +40,65 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
             "hyremote_deploy(TARGET ${target} QPA) requires Qt's deployment support script from Qt6 Core")
     endif()
 
-    set(_runtime_copy_commands "")
-    set(_additional_library_args "")
-    set(_additional_library_section "")
-
     if(WIN32)
         set(_runtime_deploy_dir "\${QT_DEPLOY_BIN_DIR}")
     else()
         set(_runtime_deploy_dir "\${QT_DEPLOY_LIB_DIR}")
     endif()
 
-    if(HyRemote_QPA_SHARED_RUNTIME)
-        foreach(_runtime_target IN ITEMS HyRemote::RemoteAccess HyRemote::Core)
-            if(NOT TARGET ${_runtime_target})
-                message(FATAL_ERROR
-                    "hyremote_deploy(TARGET ${target} QPA) expected shared runtime target ${_runtime_target} in this SDK")
-            endif()
+    # The normal V1 facade is always shared, so Transparent QPA always carries exactly that product
+    # runtime. Core is copied separately only when a low-level SDK build deliberately made Core shared.
+    set(_runtime_targets HyRemote::RemoteAccess)
+    set(_core_shared FALSE)
+    if(DEFINED HyRemote_QPA_CORE_SHARED)
+        set(_core_shared "${HyRemote_QPA_CORE_SHARED}")
+    elseif(BUILD_SHARED_LIBS)
+        # Source-tree deployment has no installed package metadata yet.
+        set(_core_shared TRUE)
+    endif()
+    if(_core_shared)
+        list(APPEND _runtime_targets HyRemote::Core)
+    endif()
 
-            string(APPEND _runtime_copy_commands
-                "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:${_runtime_target}>\")\n")
-            string(APPEND _additional_library_args
-                "\n        \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:${_runtime_target}>\"")
-        endforeach()
-        set(_additional_library_section
-            "\n    ADDITIONAL_LIBRARIES${_additional_library_args}")
+    set(_runtime_copy_commands "")
+    set(_additional_library_args "")
+    foreach(_runtime_target IN LISTS _runtime_targets)
+        if(NOT TARGET ${_runtime_target})
+            message(FATAL_ERROR
+                "hyremote_deploy(TARGET ${target} QPA) expected runtime target ${_runtime_target} in this SDK")
+        endif()
+
+        string(APPEND _runtime_copy_commands
+            "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:${_runtime_target}>\")\n")
+        string(APPEND _additional_library_args
+            "\n        \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:${_runtime_target}>\"")
+    endforeach()
+    set(_additional_library_section
+        "\n    ADDITIONAL_LIBRARIES${_additional_library_args}")
+
+    set(_linux_plugin_rpath_rewrite "")
+    if(UNIX AND NOT APPLE)
+        # In the SDK qhyremote lives at <libdir>/HyRemote/plugins/platforms and resolves the shared
+        # facade via $ORIGIN/../../... Deployment relocates it to <plugins>/platforms while runtime
+        # libraries go to QT_DEPLOY_LIB_DIR; rewrite only that controlled product RPATH.
+        set(_linux_plugin_rpath_rewrite
+"file(RPATH_CHANGE
+    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"
+    OLD_RPATH \"$ORIGIN/../../..\"
+    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
+)\n")
     endif()
 
     # Qt's high-level deployment command owns the application's normal Qt/native-platform payload.
-    # This second bounded script adds only HyRemote's project-owned platform module and asks Qt's
-    # low-level deploy API to resolve dependencies of that additional module. ADDITIONAL_MODULES is
-    # specifically intended for plugins not linked by the executable.
+    # This second bounded script adds only HyRemote's project-owned platform module and shared facade,
+    # then asks Qt's low-level deploy API to resolve their dependencies.
     set(_qpa_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-qpa-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_qpa_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::QpaPlatform>\")
-${_runtime_copy_commands}qt_deploy_runtime_dependencies(
+${_linux_plugin_rpath_rewrite}${_runtime_copy_commands}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"${_additional_library_section}
 )
@@ -162,7 +184,7 @@ function(hyremote_deploy)
         else()
             message(STATUS
                 "hyremote_deploy(${HYREMOTE_DEPLOY_TARGET}): Qt deployment helper unavailable; "
-                "HyRemote has no extra runtime payload in this build")
+                "HyRemote runtime deployment remains the application's packaging responsibility")
         endif()
     endif()
 
