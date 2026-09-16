@@ -11,13 +11,14 @@ ApplicationWindow {
 
     color: "#202733"
 
+    // Normal declarative use is target + enabled. The port/input bindings below exist only so the
+    // repository product-fit can exercise non-default policy from command-line test arguments.
     RemoteAccess {
         id: remote
+        enabled: true
         target: window
-        listenAddress: "127.0.0.1"
         port: acceptancePort
         remoteInputEnabled: acceptanceRemoteInput
-        enabled: false
 
         onStateChanged: {
             if (state === RemoteAccess.Running)
@@ -90,7 +91,6 @@ ApplicationWindow {
 
     Component.onCompleted: {
         editor.forceActiveFocus()
-        remote.enabled = true
         if (!remote.enabled && remote.errorString.length > 0) {
             console.log("START_FAILED " + remote.errorString)
             Qt.exit(2)
