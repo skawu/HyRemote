@@ -22,11 +22,16 @@ jobs:
   integrated-ga-candidate:
     # Develop/feature convergence exercises the full future V1 product. Formal pre-GA milestone
     # releases intentionally expose only their accepted version profile; do not make v0.0.1/2/3
-    # fail because this all-modes matrix correctly enables later integration modes.
+    # fail because this all-modes matrix correctly enables later integration modes. Apply the same
+    # release-profile boundary to manual dispatches so an intentional pre-GA branch does not get a
+    # structurally impossible all-modes red run.
     if: >-
-      github.event_name != 'pull_request' ||
-      github.base_ref == 'develop' ||
-      github.head_ref == 'release/v1.0.0.0'
+      (github.event_name == 'pull_request' &&
+       (github.base_ref == 'develop' || github.head_ref == 'release/v1.0.0.0')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref_name != 'release/v0.0.1.0' &&
+       github.ref_name != 'release/v0.0.2.0' &&
+       github.ref_name != 'release/v0.0.3.0')
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
