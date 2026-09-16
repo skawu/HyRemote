@@ -72,14 +72,16 @@ A maintenance release must not be used to introduce a newly supported platform o
 
 The x86_64 reference/standard platform includes **both Windows x86_64 and Linux x86_64**. The first HyRemote product generation is not considered complete on x86 if only one of these operating systems is supported.
 
-The frozen pre-GA milestones are:
+The frozen pre-GA release profiles are **cumulative**. Each later milestone retains the already accepted earlier product modes; it adds the next independently accepted mode rather than replacing the previous one.
 
-| Version | Product milestone |
+| Version | Released product surface |
 | --- | --- |
 | `V0.0.1.0` | x86_64 (Windows + Linux) — Embedded C++ API |
-| `V0.0.2.0` | x86_64 (Windows + Linux) — Declarative QML API |
-| `V0.0.3.0` | x86_64 (Windows + Linux) — Transparent QPA Proxy |
-| `V1.0.0.0` | x86_64 reference-platform GA; Windows + Linux and all three integration modes productized |
+| `V0.0.2.0` | x86_64 (Windows + Linux) — Embedded C++ API + Declarative QML API |
+| `V0.0.3.0` | x86_64 (Windows + Linux) — Embedded C++ API + Declarative QML API + Transparent QPA Proxy |
+| `V1.0.0.0` | x86_64 reference-platform GA — Windows + Linux, all three integration modes productized |
+
+The development sentinel `0.0.0` may integrate all in-flight V1 modes concurrently. A formal release version is stricter: its CMake release-profile gate rejects any integration mode whose milestone has not yet been reached, even if later-mode source already exists in the branch history. No separate user-selectable release-profile option exists.
 
 Each pre-GA milestone must be independently validated on both Windows x86_64 and Linux x86_64. Passing on one operating system is useful engineering evidence, but it does not complete the product milestone for the other operating system.
 
