@@ -18,9 +18,6 @@ foreach(path IN LISTS required_files)
     endif()
 endforeach()
 
-# Repository metadata and configured project version must describe the same candidate. Git branch
-# authorization remains the responsibility of the Git Flow workflow so this same test can run on a
-# real release/vX.Y.Z.W tree.
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
 string(REGEX MATCH
     "project[ \\t\\r\\n]*\\([ \\t\\r\\n]*HyRemote[ \\t\\r\\n]+VERSION[ \\t\\r\\n]+([0-9]+(\\.[0-9]+){2,3})"
@@ -78,7 +75,7 @@ foreach(forbidden_token
 endforeach()
 
 # Freeze the simple V1 product shape. Internal architecture remains rich, but ordinary users get one
-# C++ shared facade or the QPA MODULE; Core must not reappear as a second installed application SDK.
+# C++ shared facade; QML/QPA are package payloads behind import/deploy entry points.
 file(READ "${HYREMOTE_SOURCE_DIR}/core/CMakeLists.txt" core_cmake)
 string(FIND "${core_cmake}" "add_library(hyremote-core STATIC" core_static)
 if(core_static EQUAL -1)
@@ -112,10 +109,16 @@ string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module
 if(qpa_module EQUAL -1)
     message(FATAL_ERROR "release-readiness: Transparent QPA must remain a platform MODULE")
 endif()
+string(FIND "${qpa_cmake}" "EXPORT HyRemoteTargets" qpa_export)
+if(NOT qpa_export EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: qhyremote must install as payload, not export HyRemote::QpaPlatform")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
 foreach(forbidden_token
         "HyRemote::Core"
+        "HyRemote::QpaPlatform"
         "find_dependency(Threads)"
         "COMPONENTS Widgets"
         "COMPONENTS Quick"
@@ -129,7 +132,8 @@ endforeach()
 foreach(required_token
         "find_dependency(Qt6 6.8 COMPONENTS Core Network)"
         "HyRemote_QML_IMPORT_PATH"
-        "HyRemote_QPA_QT_VERSION")
+        "HyRemote_QPA_QT_VERSION"
+        "HyRemote_QPA_PLUGIN_FILE")
     string(FIND "${package_config}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -141,6 +145,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/docs/release-package-manifest.md" package_mani
 foreach(required_phrase
         "HyRemote::RemoteAccess"
         "not installed/exported"
+        "does not export `HyRemote::QpaPlatform`"
         "qhyremote"
         "hyremote_deploy(TARGET MyApp)")
     string(FIND "${package_manifest}" "${required_phrase}" found)
