@@ -2,18 +2,11 @@
 
 include(CMakeFindDependencyMacro)
 
-# The installed V1 package exposes the shared RemoteAccess product facade, not the internal static
-# Core target. Only dependencies that are part of the installed product runtime are resolved here.
+# The installed V1 package exposes one shared RemoteAccess product facade. Its installed public header
+# uses Qt Core/Network types, so those are the package-level dependencies. Widgets and Quick are
+# private adapters inside the shared runtime; each application resolves only the UI modules it uses.
 if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
     find_dependency(Qt6 6.8 COMPONENTS Core Network)
-endif()
-
-if(@HYREMOTE_PACKAGE_WITH_WIDGETS@)
-    find_dependency(Qt6 6.8 COMPONENTS Widgets)
-endif()
-
-if(@HYREMOTE_PACKAGE_WITH_QUICK@)
-    find_dependency(Qt6 6.8 COMPONENTS Quick)
 endif()
 
 if(@HYREMOTE_PACKAGE_WITH_QML@)
@@ -26,7 +19,6 @@ if(HyRemote_QPA_AVAILABLE)
     # This is product metadata, not a broad Qt compatibility claim. hyremote_deploy(... QPA)
     # requires the consumer Qt runtime to match this exact private-ABI line.
     set(HyRemote_QPA_QT_VERSION "@HYREMOTE_PACKAGE_QPA_QT_VERSION@")
-    # Fixed V1 runtime shape: qhyremote is a platform module and HyRemote::RemoteAccess is shared.
     set(HyRemote_QPA_SHARED_RUNTIME @HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME@)
 else()
     set(HyRemote_QPA_QT_VERSION "")
