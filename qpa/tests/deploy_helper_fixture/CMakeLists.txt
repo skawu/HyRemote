@@ -29,7 +29,7 @@ if(TEST_QPA_AVAILABLE)
         file(WRITE "${_fixture_qpa_payload}" "fixture")
         set(HyRemote_QPA_PLUGIN_FILE "${_fixture_qpa_payload}")
     else()
-        # Source-tree calls still resolve the internal build target directly.
+        # Source-tree calls resolve the internal build target directly.
         add_library(qpa-probe MODULE EXCLUDE_FROM_ALL dummy.cpp)
         add_library(HyRemote::QpaPlatform ALIAS qpa-probe)
     endif()
@@ -38,16 +38,38 @@ else()
 endif()
 set(HyRemote_QPA_QT_VERSION "6.8.3")
 
-# Fixed V1 artifact shape under test: one shared product facade plus one QPA payload. Core is an
-# internal static composition detail and is intentionally absent from the deployment fixture.
-add_library(fake-remoteaccess SHARED EXCLUDE_FROM_ALL dummy.cpp)
-add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
+# Model the acquisition distinction that matters to source deployment. Source mode has a local shared
+# facade target hidden behind the public alias; installed mode has only an imported SDK target. The
+# deploy helper must create build dependencies only for the former.
+if(TEST_INSTALLED_PAYLOAD)
+    set(_fixture_remoteaccess "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}HyRemoteRemoteAccess${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    file(WRITE "${_fixture_remoteaccess}" "fixture")
+    add_library(HyRemote::RemoteAccess SHARED IMPORTED GLOBAL)
+    set_target_properties(HyRemote::RemoteAccess PROPERTIES IMPORTED_LOCATION "${_fixture_remoteaccess}")
+else()
+    add_library(fake-remoteaccess SHARED EXCLUDE_FROM_ALL dummy.cpp)
+    add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
+endif()
+
+# Source QML deployment has two local runtime payload targets plus a build import root. Installed QML
+# deployment publishes only an import root and relies on already-built SDK payloads. This fixture
+# checks that the same public helper handles both without turning either payload into an app link.
+if(TEST_QML)
+    set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
+    file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
+    if(NOT TEST_INSTALLED_PAYLOAD)
+        add_library(qml-backing SHARED EXCLUDE_FROM_ALL dummy.cpp)
+        add_library(qml-plugin MODULE EXCLUDE_FROM_ALL dummy.cpp)
+        set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS
+            "qml-backing;qml-plugin")
+    endif()
+endif()
 
 set(Qt6Core_VERSION "${TEST_QT_VERSION}")
 
 # The supplemental script includes Qt's low-level deployment support only at install time. A tiny
 # deterministic stand-in is sufficient for configure/generate contract tests; the clean installed
-# consumer exercises the real Qt 6.8.3 deployment implementation.
+# and source consumers exercise the real Qt 6.8.3 deployment implementation.
 set(QT_DEPLOY_SUPPORT "${CMAKE_CURRENT_BINARY_DIR}/fake-qt-deploy-support.cmake")
 file(WRITE "${QT_DEPLOY_SUPPORT}"
 "function(qt_deploy_runtime_dependencies)\nendfunction()\n")
@@ -92,6 +114,12 @@ function(qt_generate_deploy_qml_app_script)
         message(FATAL_ERROR "HyRemote QML deployment options regressed")
     endif()
 
+    get_target_property(_probe_qml_imports "${ARG_TARGET}" QT_QML_IMPORT_PATH)
+    if(NOT _probe_qml_imports OR NOT HyRemote_QML_IMPORT_PATH IN_LIST _probe_qml_imports)
+        message(FATAL_ERROR
+            "HyRemote QML import root was not attached before Qt deploy generation: ${_probe_qml_imports}")
+    endif()
+
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-qml-deploy.cmake")
     file(WRITE "${script}" "# QML deployment probe\n")
     set(${ARG_OUTPUT_SCRIPT} "${script}" PARENT_SCOPE)
@@ -109,5 +137,36 @@ else()
     hyremote_deploy(TARGET deploy-probe QPA)
     if(NOT APP_DEPLOY_CALLED OR QML_DEPLOY_CALLED)
         message(FATAL_ERROR "ordinary QPA must preserve ordinary high-level deployment dispatch")
+    endif()
+endif()
+
+# Build-only dependency contract for EXCLUDE_FROM_ALL source acquisition. Imported installed targets
+# must not appear here; local source payload targets must all be pulled into the application build.
+get_target_property(_manual_dependencies deploy-probe MANUALLY_ADDED_DEPENDENCIES)
+if(NOT _manual_dependencies)
+    set(_manual_dependencies "")
+endif()
+
+if(TEST_INSTALLED_PAYLOAD)
+    if(_manual_dependencies)
+        message(FATAL_ERROR
+            "installed payloads must not become local build dependencies: ${_manual_dependencies}")
+    endif()
+else()
+    set(_expected_dependencies fake-remoteaccess qpa-probe)
+    if(TEST_QML)
+        list(APPEND _expected_dependencies qml-backing qml-plugin)
+    endif()
+    foreach(_expected IN LISTS _expected_dependencies)
+        if(NOT _expected IN_LIST _manual_dependencies)
+            message(FATAL_ERROR
+                "source deploy payload was not pulled into application build: ${_expected}; got ${_manual_dependencies}")
+        endif()
+    endforeach()
+    list(LENGTH _manual_dependencies _dependency_count)
+    list(LENGTH _expected_dependencies _expected_count)
+    if(NOT _dependency_count EQUAL _expected_count)
+        message(FATAL_ERROR
+            "unexpected source deploy build dependency set: ${_manual_dependencies}")
     endif()
 endif()
