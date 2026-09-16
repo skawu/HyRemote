@@ -91,7 +91,7 @@ Only after the release candidate is accepted:
 2. move the release PR out of Draft only after all mandatory acceptance evidence is complete;
 3. merge `release/vX.Y.Z.W` into `main`;
 4. verify the resulting current `main` HEAD still contains the accepted candidate and exact four-part CMake version;
-5. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD`;
+5. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD;
 6. allow the tag audit workflow to verify the authorized milestone, annotated-tag object, exact `main` HEAD equality, and CMake-version equality;
 7. publish release artifacts/notes from that tag only.
 
