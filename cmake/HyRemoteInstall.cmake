@@ -18,15 +18,14 @@ endif()
 set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "${CMAKE_INSTALL_LIBDIR}/qml")
 
 # Transparent QPA is package payload, not a C++ link target. Export only availability, exact Qt ABI
-# metadata and the installed plugin location used internally by hyremote_deploy(... QPA).
+# metadata and the installed plugin location used internally by hyremote_deploy(... QPA). V1 has one
+# fixed shared RemoteAccess runtime, so no static/shared QPA personality flag is published.
 set(HYREMOTE_PACKAGE_WITH_QPA FALSE)
 set(HYREMOTE_PACKAGE_QPA_QT_VERSION "6.8.3")
-set(HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME FALSE)
 set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "")
 set(HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME "")
 if(TARGET hyremote-qpa-platform)
     set(HYREMOTE_PACKAGE_WITH_QPA TRUE)
-    set(HYREMOTE_PACKAGE_QPA_SHARED_RUNTIME TRUE)
     set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")
     set(HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME
         "${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
