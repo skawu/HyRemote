@@ -16,9 +16,14 @@ set_target_properties(hyremote-remoteaccess PROPERTIES
 )
 
 # Installed/deployed Linux applications place the shared facade and Qt runtime libraries in the same
-# lib directory. Give the facade its own origin-relative lookup so transitive Qt dependencies do not
-# depend on the executable's RUNPATH semantics or the original SDK location.
+# lib directory. Give both the installed artifact and the source/build artifact an origin-local
+# lookup entry: hyremote_deploy() deliberately supports add_subdirectory() consumption and may copy
+# the build-tree facade directly into a clean deployment. CMake may append Qt/toolchain lookup paths
+# needed while running from the build tree; BUILD_RPATH_USE_ORIGIN keeps paths that point back into
+# this build tree relative instead of baking the HyRemote build directory into the product artifact.
 if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-remoteaccess PROPERTY BUILD_RPATH "$ORIGIN")
+    set_property(TARGET hyremote-remoteaccess PROPERTY BUILD_RPATH_USE_ORIGIN TRUE)
     set_property(TARGET hyremote-remoteaccess PROPERTY INSTALL_RPATH "$ORIGIN")
 endif()
 
