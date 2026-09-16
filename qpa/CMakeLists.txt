@@ -98,8 +98,6 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
-    # QML-only is a distinct public deploy shape from QML+QPA. Exercise the normal shared-runtime
-    # supplemental script without letting QPA payload or RPATH relocation leak into it.
     add_test(
         NAME hyremote-qpa-deploy-helper-qml-only
         COMMAND ${CMAKE_COMMAND}
@@ -174,8 +172,6 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
-    # A stale absolute import root from an earlier source configure is not proof that the current
-    # build still contains the QML payload. This guards the ON -> OFF reconfigure boundary.
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-stale-qml-metadata
         COMMAND ${CMAKE_COMMAND}
@@ -186,6 +182,20 @@ if(HYREMOTE_BUILD_TESTS)
             -DTEST_DEPLOY_QPA=OFF
             -DTEST_QML_AVAILABLE=OFF
             -DTEST_STALE_QML_METADATA=ON
+            -DEXPECT_CONFIGURE_FAILURE=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    # Source acquisition must never borrow a qhyremote payload from unrelated installed-package
+    # metadata in the parent scope. Current-configure HyRemote::QpaPlatform is the only source proof.
+    add_test(
+        NAME hyremote-qpa-deploy-helper-reject-stale-qpa-metadata
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-stale-qpa
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+            -DTEST_QML=OFF
+            -DTEST_STALE_QPA_METADATA=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
