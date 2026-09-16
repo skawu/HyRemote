@@ -34,10 +34,15 @@ set(required_files
     "examples/README.md"
     "examples/CMakeLists.txt"
     "examples/widgets-basic/CMakeLists.txt"
+    "examples/widgets-basic/README.md"
     "examples/quick-basic/CMakeLists.txt"
+    "examples/quick-basic/README.md"
     "examples/qml-basic/CMakeLists.txt"
+    "examples/qml-basic/README.md"
     "examples/qpa-proxy-existing-app/CMakeLists.txt"
+    "examples/qpa-proxy-existing-app/README.md"
     "examples/remote-support-showcase/CMakeLists.txt"
+    "examples/remote-support-showcase/README.md"
     "tests/consumer-installed-sdk/CMakeLists.txt"
     "tests/consumer-source/CMakeLists.txt"
 )
@@ -219,8 +224,9 @@ foreach(required_link
     endif()
 endforeach()
 
-# E1-E5 must participate in the common examples graph; E6 is the existing clean installed/source
-# consumer fixture above and is intentionally not duplicated as a toy example target.
+# E1-E5 must participate in the common examples graph and each must carry its own user-facing README;
+# E6 is the existing clean installed/source consumer fixture above and is intentionally not duplicated
+# as a toy example target.
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
         "add_subdirectory(widgets-basic)"
