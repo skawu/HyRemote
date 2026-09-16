@@ -16,7 +16,9 @@ set(HYREMOTE_BUILD_SPIKES OFF CACHE BOOL "" FORCE)
 set(HYREMOTE_BUILD_CORE ON CACHE BOOL "" FORCE)
 set(HYREMOTE_BUILD_REMOTE_ACCESS ON CACHE BOOL "" FORCE)
 
-add_subdirectory("${HYREMOTE_SOURCE_DIR}" hyremote)
+# The consumer validates vendored linkage/deployment, not installation of a second nested HyRemote SDK.
+# Product targets remain available through normal dependency resolution.
+add_subdirectory("${HYREMOTE_SOURCE_DIR}" hyremote EXCLUDE_FROM_ALL)
 
 if(NOT COMMAND hyremote_deploy)
     message(FATAL_ERROR "HyRemote source consumption must provide hyremote_deploy()")
