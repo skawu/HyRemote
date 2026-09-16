@@ -21,12 +21,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / installed + source SDK
+          - name: Windows x86_64 / fixed shared facade / installed + source
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / installed + source SDK
+          - name: Linux x86_64 / fixed shared facade / installed + source
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -49,6 +49,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           SDK_PREFIX="$RUNNER_TEMP/hyremote-sdk"
 
@@ -64,24 +65,38 @@ jobs:
           cmake --build build-sdk --parallel
           cmake --install build-sdk
 
+          # Fixed V1 product shape: Core is static/internal; RemoteAccess is the one shared product library.
+          test -f "$SDK_PREFIX/lib/libhyremote-core.a"
+          test -f "$SDK_PREFIX/lib/libHyRemoteRemoteAccess.so"
+          test ! -e "$SDK_PREFIX/lib/libhyremote-core.so"
+
           cmake -S tests/consumer-installed-sdk -B build-consumer-installed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX"
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/deploy-installed"
           cmake --build build-consumer-installed --parallel
-          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-consumer-installed/hyremote-installed-consumer
+          cmake --install build-consumer-installed
+          test -f deploy-installed/bin/hyremote-installed-consumer
+          test -f deploy-installed/lib/libHyRemoteRemoteAccess.so
+          env -u LD_LIBRARY_PATH deploy-installed/bin/hyremote-installed-consumer
 
           cmake -S tests/public-api-contract -B build-public-api-contract -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX"
           cmake --build build-public-api-contract --parallel
-          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-public-api-contract/hyremote-public-api-contract
+          LD_LIBRARY_PATH="$SDK_PREFIX/lib:$QT_PREFIX/lib" \
+            ./build-public-api-contract/hyremote-public-api-contract
 
           cmake -S tests/consumer-source -B build-consumer-source -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/deploy-source" \
             -DHYREMOTE_SOURCE_DIR="$GITHUB_WORKSPACE"
           cmake --build build-consumer-source --parallel
-          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" ./build-consumer-source/hyremote-source-consumer
+          cmake --install build-consumer-source
+          test -f deploy-source/bin/hyremote-source-consumer
+          test -f deploy-source/lib/libHyRemoteRemoteAccess.so
+          env -u LD_LIBRARY_PATH deploy-source/bin/hyremote-source-consumer
 
       - name: Build, install and consume — Windows / MSVC x64
         if: runner.os == 'Windows'
@@ -91,9 +106,8 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "SDK_PREFIX=%RUNNER_TEMP%\hyremote-sdk"
-          set "SDK_SHARED_PREFIX=%RUNNER_TEMP%\hyremote-sdk-shared"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
 
-          rem Default/static SDK consumption.
           cmake -S . -B build-sdk -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -105,50 +119,40 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build-sdk --parallel
           cmake --install build-sdk
+          if not exist "%SDK_PREFIX%\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          if exist "%SDK_PREFIX%\bin\hyremote-core.dll" exit /b 1
 
           cmake -S tests\consumer-installed-sdk -B build-consumer-installed -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_PREFIX%"
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\deploy-installed"
           cmake --build build-consumer-installed --parallel
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
-          build-consumer-installed\hyremote-installed-consumer.exe
+          cmake --install build-consumer-installed
+          if not exist "%CD%\deploy-installed\bin\hyremote-installed-consumer.exe" exit /b 1
+          if not exist "%CD%\deploy-installed\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          set "PATH=%CD%\deploy-installed\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\deploy-installed\bin\hyremote-installed-consumer.exe"
 
+          rem Restore build-time toolchain paths only for the API-contract build.
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "PATH=%QT_PREFIX%\bin;%SDK_PREFIX%\bin;%PATH%"
           cmake -S tests\public-api-contract -B build-public-api-contract -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_PREFIX%"
           cmake --build build-public-api-contract --parallel
           build-public-api-contract\hyremote-public-api-contract.exe
 
+          rem Source/vendored consumption must deploy with the exact same public helper contract.
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
           cmake -S tests\consumer-source -B build-consumer-source -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\deploy-source" ^
             -DHYREMOTE_SOURCE_DIR="%GITHUB_WORKSPACE%"
           cmake --build build-consumer-source --parallel
-          build-consumer-source\hyremote-source-consumer.exe
-
-          rem Shared installed SDK consumption: catches missing Windows DLL exports/import libraries.
-          cmake -S . -B build-sdk-shared -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DBUILD_SHARED_LIBS=ON ^
-            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
-            -DCMAKE_INSTALL_PREFIX="%SDK_SHARED_PREFIX%" ^
-            -DHYREMOTE_BUILD_CORE=ON ^
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
-            -DHYREMOTE_BUILD_TESTS=OFF ^
-            -DHYREMOTE_BUILD_SPIKES=OFF ^
-            -DHYREMOTE_BUILD_EXAMPLES=OFF
-          cmake --build build-sdk-shared --parallel
-          cmake --install build-sdk-shared
-
-          cmake -S tests\consumer-installed-sdk -B build-consumer-installed-shared -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_SHARED_PREFIX%"
-          cmake --build build-consumer-installed-shared --parallel
-          set "PATH=%SDK_SHARED_PREFIX%\bin;%QT_PREFIX%\bin;%PATH%"
-          build-consumer-installed-shared\hyremote-installed-consumer.exe
-
-          cmake -S tests\public-api-contract -B build-public-api-contract-shared -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%QT_PREFIX%;%SDK_SHARED_PREFIX%"
-          cmake --build build-public-api-contract-shared --parallel
-          build-public-api-contract-shared\hyremote-public-api-contract.exe
+          cmake --install build-consumer-source
+          if not exist "%CD%\deploy-source\bin\hyremote-source-consumer.exe" exit /b 1
+          if not exist "%CD%\deploy-source\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          set "PATH=%CD%\deploy-source\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\deploy-source\bin\hyremote-source-consumer.exe"
