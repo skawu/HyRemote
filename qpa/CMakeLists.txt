@@ -71,6 +71,7 @@ if(HYREMOTE_BUILD_TESTS)
     set(_hyremote_qpa_deploy_fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/deploy_helper_fixture")
     set(_hyremote_qpa_deploy_runner "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_deploy_helper_fixture.cmake")
 
+    # Source-tree usage resolves the internal module target directly.
     add_test(
         NAME hyremote-qpa-deploy-helper-ordinary
         COMMAND ${CMAKE_COMMAND}
@@ -88,6 +89,19 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
             -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
             -DTEST_QML=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
+    # Installed-package usage deliberately has no HyRemote::QpaPlatform target. The public helper
+    # must resolve the package-owned plugin through HyRemote_QPA_PLUGIN_FILE instead.
+    add_test(
+        NAME hyremote-qpa-deploy-helper-installed-payload
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload
+            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DTEST_QML=OFF
+            -DTEST_INSTALLED_PAYLOAD=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
 
