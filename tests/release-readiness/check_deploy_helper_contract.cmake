@@ -20,11 +20,13 @@ endforeach()
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[unset(HyRemote_QML_IMPORT_PATH CACHE)]=]
-        [=[set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")]=])
+        [=[set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")]=]
+        [=[hyremote-release-readiness-source-qpa-authority]=]
+        [=[TEST_STALE_QPA_NEGATIVE_METADATA=ON]=])
     string(FIND "${root_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deploy-helper-contract: source QML metadata is not reset per configure: ${required_token}")
+            "deploy-helper-contract: root deployment/readiness wiring drifted: ${required_token}")
     endif()
 endforeach()
 
@@ -50,6 +52,7 @@ foreach(required_token
         [=[set(options QML QPA)]=]
         [=[_hyremote_target_is_local]=]
         [=[_hyremote_source_acquisition]=]
+        [=[_hyremote_qpa_source_acquisition]=]
         [=[TARGET hyremote-qml]=]
         [=[HYREMOTE_BUILD_QML_API=ON]=]
         [=[HyRemote_QML_IMPORT_PATH]=]
@@ -57,6 +60,9 @@ foreach(required_token
         [=[HyRemote_QPA_AVAILABLE]=]
         [=[HyRemote::QpaPlatform]=]
         [=[installed QPA metadata cannot satisfy a source deployment]=]
+        [=[if(_hyremote_qpa_source_acquisition)]=]
+        [=[set(_required_qt_version "6.8.3")]=]
+        [=[if(NOT _hyremote_source_acquisition]=]
         [=[ALIASED_TARGET]=]
         [=[IMPORTED]=]
         [=[add_dependencies]=]
@@ -65,7 +71,7 @@ foreach(required_token
     string(FIND "${deploy_helper}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deploy-helper-contract: public helper lost required dispatch/fail-closed behavior: ${required_token}")
+            "deploy-helper-contract: public helper lost required dispatch/acquisition isolation: ${required_token}")
     endif()
 endforeach()
 string(FIND "${deploy_helper}" "HyRemote_QML_AVAILABLE" leaked_helper_api)
@@ -93,7 +99,10 @@ foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_QPA_AVAILABLE]=]
         [=[TEST_STALE_QPA_METADATA]=]
+        [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
         [=[stale-qhyremote]=]
+        [=[set(HyRemote_QPA_AVAILABLE FALSE)]=]
+        [=[set(HyRemote_QPA_QT_VERSION "6.8.2")]=]
         [=[add_library(hyremote-qml ALIAS qml-backing)]=]
         [=[HYREMOTE_QML_SOURCE_DEPLOY_TARGETS]=]
         [=[QT_QML_IMPORT_PATH]=]
@@ -115,6 +124,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake" run
 foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_STALE_QPA_METADATA]=]
+        [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
         [=[hyremote-runtime-deploy-deploy-probe]=]
         [=[hyremote-qpa-deploy-deploy-probe]=]
         [=[ADDITIONAL_MODULES]=]
@@ -166,4 +176,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; source/installed optional payloads cannot cross-contaminate; stale QML/QPA metadata is rejected without widening the package API; source build-only wiring and QPA sub-build isolation frozen)")
+    "(four public shapes remain distinct; source/installed optional payloads cannot cross-contaminate in either direction; source QPA target fixes its own exact-Qt authority; stale QML/QPA metadata is rejected without widening the package API)")
