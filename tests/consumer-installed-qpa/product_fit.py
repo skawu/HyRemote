@@ -42,11 +42,23 @@ def main() -> int:
     require(app.exists(), f"deployed consumer not found: {app}")
 
     env = os.environ.copy()
-    # This is the product requirement for #94: normal installed deployment must find the HyRemote
-    # platform plugin from the application's deployed Qt plugin tree, not an SDK-side override.
-    env.pop("QT_PLUGIN_PATH", None)
-    env.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
-    env.pop("QT_QPA_PLATFORM", None)
+    # Product-fit must prove the deployed tree is self-contained with respect to HyRemote/Qt SDK
+    # lookup. Plugin/runtime overrides are removed before the application process is created.
+    for variable in (
+        "QT_PLUGIN_PATH",
+        "QT_QPA_PLATFORM_PLUGIN_PATH",
+        "QT_QPA_PLATFORM",
+        "LD_LIBRARY_PATH",
+    ):
+        env.pop(variable, None)
+
+    if os.name == "nt":
+        # Do not let an aqt/Visual Studio build-step PATH accidentally supply Qt or HyRemote DLLs.
+        # Windows still searches the executable directory and normal system directories.
+        system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        env["PATH"] = os.pathsep.join(
+            [str(app.parent), str(system_root / "System32"), str(system_root)]
+        )
 
     process = subprocess.Popen(
         [
@@ -64,15 +76,16 @@ def main() -> int:
         first_banner = wait_for_rfb(args.port, process)
         require(first_banner.startswith(b"RFB 003.008"), f"unexpected first RFB banner: {first_banner!r}")
 
-        # Disconnect/reconnect without application restart also proves the deployed plugin reached
-        # the shared production runtime rather than merely being discoverable as a file.
         second_banner = wait_for_rfb(args.port, process)
         require(second_banner.startswith(b"RFB 003.008"), f"unexpected reconnect banner: {second_banner!r}")
 
         result = process.wait(timeout=10)
         output = process.stdout.read() if process.stdout is not None else ""
         require(result == 0, f"deployed QPA consumer exited with {result}: {output}")
-        print("PASS: installed Qt-only consumer -> deployed qhyremote -> RFB reconnect without QT_PLUGIN_PATH")
+        print(
+            "PASS: installed Qt-only consumer -> deployed qhyremote + shared RemoteAccess -> "
+            "RFB reconnect without SDK/plugin/runtime-path overrides"
+        )
         return 0
     finally:
         if process.poll() is None:
