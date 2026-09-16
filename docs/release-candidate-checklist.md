@@ -24,6 +24,8 @@ Before a release branch is cut:
 
 Infrastructure failure such as #74 is not a product pass. If required jobs never execute, the milestone remains unaccepted.
 
+For **V1.0.0.0**, repository implementation on Draft PR #106 is the single convergence line, but that branch is not itself release authorization. Before `release/v1.0.0.0` may be cut, the GA authority must have executable evidence for the integrated candidate and every V1-specific closure gate listed in section 3.
+
 ## 2. Cut the release branch
 
 Only after section 1 is complete:
@@ -31,8 +33,8 @@ Only after section 1 is complete:
 1. freeze the accepted `develop` integration point;
 2. create `release/vMajor.Minor.Feature.Maintenance` from that point;
 3. update root `project(HyRemote VERSION ...)` to exactly the release-branch version;
-4. prepare release notes, package metadata, compatibility matrix and third-party notices for that exact candidate;
-5. open the release PR from `release/v*` to `main`.
+4. prepare/finalize release notes, package metadata, compatibility matrix and third-party notices for that exact candidate;
+5. open the release PR from `release/v*` to `main` as Draft while release-candidate verification runs.
 
 No new product feature enters the release branch. Only release-blocking fixes, packaging corrections, documentation corrections, and evidence fixes are allowed.
 
@@ -52,28 +54,42 @@ Common gates:
 - runtime deployment validation;
 - standard VNC viewer connect/view/input/disconnect/reconnect as required;
 - safe-default checks: loopback listener and remote input disabled unless explicitly enabled;
-- no backend/private-QPA types leak into stable public APIs;
+- no Core/backend/private-QPA types leak into stable installed application APIs;
 - package contents and licenses/notices are complete;
-- docs and examples correspond to the release candidate, not another branch.
+- docs and examples correspond to the release candidate, not another branch;
+- support/compatibility rows remain Candidate/Unverified until their exact required evidence has actually executed and passed.
 
 Branch/version authorization belongs to the Git Flow workflow. Repository metadata CTest must remain valid after an authorized release branch changes the project version from `0.0.0` to its exact milestone version.
 
-Milestone-specific gates remain authoritative in their issue:
+Milestone-specific authorities:
 
 - `v0.0.1.0`: #30
 - `v0.0.2.0`: #31, after #30
-- `v0.0.3.0`: #32, including physical local + remote display/input coexistence on both supported OSes
-- `v1.0.0.0`: #33, requiring #30 + #31 + #32 + #39 + #41
+- `v0.0.3.0`: #32, after #30/#31 and including required physical native local + remote display/input coexistence
+- `v1.0.0.0`: #33, after accepted #30 + #31 + #32 + #39 + #41
+
+V1.0.0.0 additionally requires these explicit engineering/release-closure gates on the exact candidate:
+
+- **#101 — public API/package freeze:** one normal installed C++ target (`HyRemote::RemoteAccess`), no installed/exported Core or QPA application link target, stable C++/QML/deploy surface;
+- **#104 — integrated GA automation:** all three modes coexist in one exact-Qt-6.8.3 candidate and the Windows/Linux jobs actually execute and pass; a no-runner result does not satisfy it;
+- **#107 — release readiness:** release notes, NOTICE/dependency classification, package manifest, LICENSE/NOTICE installation and deterministic metadata checks are complete and aligned with the frozen artifact model;
+- **#109 — physical/native coexistence:** the required Windows/Linux E1/E2/E3/E4 local-visible/local-input + remote envelope passes where specified by #32/#33.
+
+These are not optional documentation references. #33 must record them as passed/accepted before `release/v1.0.0.0` can leave the pre-release gate.
+
+For the current candidate, hosted/Xvfb execution may prove protocol/runtime/Qt-target correctness but cannot substitute for #109 physical evidence. Conversely, local physical evidence cannot substitute for #104 Windows/Linux build/install/deployment automation.
 
 ## 4. Merge to `main` and tag
 
 Only after the release candidate is accepted:
 
-1. merge `release/vX.Y.Z.W` into `main`;
-2. verify the resulting current `main` HEAD still contains the accepted candidate and exact four-part CMake version;
-3. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD;
-4. allow the tag audit workflow to verify the authorized milestone, annotated-tag object, exact `main` HEAD equality, and CMake-version equality;
-5. publish release artifacts/notes from that tag only.
+1. finalize the applicable release note so it no longer says acceptance is pending;
+2. move the release PR out of Draft only after all mandatory acceptance evidence is complete;
+3. merge `release/vX.Y.Z.W` into `main`;
+4. verify the resulting current `main` HEAD still contains the accepted candidate and exact four-part CMake version;
+5. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD;
+6. allow the tag audit workflow to verify the authorized milestone, annotated-tag object, exact `main` HEAD equality, and CMake-version equality;
+7. publish release artifacts/notes from that tag only.
 
 A tag is never created first and validated later as the normal workflow. The tag workflow is a second-line audit; the release PR is the blocking gate. Do not use a lightweight release tag, tag an older `main` ancestor, or move an existing milestone tag.
 
@@ -97,13 +113,16 @@ A production hotfix starts from `main` on `hotfix/*`, is validated against the a
 
 Maintenance tags are not implicitly authorized by the V1 milestone list. Add the exact maintenance version to release policy deliberately before cutting/publishing it.
 
-## Non-negotiable product boundaries
+## Non-negotiable V1 product boundaries
 
 Release mechanics must never change the frozen product architecture merely to make a gate easier to pass:
 
-- HyRemote Core remains transport-neutral and Qt-private-free;
-- Embedded C++ public API remains `HyRemote::RemoteAccess`;
-- Declarative QML remains a thin surface over the same runtime;
-- Transparent QPA remains a native-delegate-preserving proxy/decorator, not a replacement-only qvnc clone;
+- `hyremote-core` remains transport-neutral, Qt-private-free, STATIC source/internal composition and is not installed/exported as a normal V1 SDK target;
+- Embedded C++ public API remains the one shared `HyRemote::RemoteAccess` product facade;
+- Declarative QML remains a thin surface over the same shared runtime rather than a second runtime stack;
+- Transparent QPA remains a package-owned platform MODULE/native-delegate-preserving proxy/decorator, not a replacement-only qvnc clone and not an application link target;
 - Qt Widgets and Qt Quick remain first-class peers;
-- no support claim is made without reproducible evidence for the exact environment.
+- one `hyremote_deploy()` entry point owns C++/QML/QPA payload placement;
+- the current V1 RFB correctness baseline remains explicitly unauthenticated/unencrypted (`SecurityType None`) unless a separately reviewed release changes that fact;
+- no support claim is made without reproducible evidence for the exact environment;
+- no Local Agent result is used to paper over #74 no-runner infrastructure, and no hosted/headless result is relabeled as #109 physical evidence.
