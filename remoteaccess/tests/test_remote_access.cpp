@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "detail/component_factories.hpp"
 #include "hyremote/core/hyremote_core.hpp"
@@ -245,6 +246,49 @@ void testProductLifecycleAndConfigurationForwarding()
     CHECK(remote.setRemoteInputEnabled(false));
 }
 
+void testMoveTransfersOwnershipAndQuiescesReplacedRuntime()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess destination(&target);
+    HyRemote::RemoteAccess source(&target);
+
+    CHECK(destination.start());
+    CHECK(source.start());
+    CHECK(counters->captureStarts.load() == 2);
+    CHECK(counters->transportStarts.load() == 2);
+    CHECK(counters->captureStops.load() == 0);
+    CHECK(counters->transportStops.load() == 0);
+
+    // Move assignment must destroy/quiesce the destination's old running Impl before it takes
+    // ownership of the source runtime. The source runtime itself must remain Running afterwards.
+    destination = std::move(source);
+    CHECK(counters->captureStops.load() == 1);
+    CHECK(counters->transportStops.load() == 1);
+    CHECK(destination.state() == HyRemote::RemoteAccessState::Running);
+
+    // A moved-from facade is intentionally inert/null-safe rather than retaining runtime ownership.
+    CHECK(source.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(source.connectedClientCount() == 0);
+    CHECK(!source.start());
+    CHECK(source.lastError().has_value());
+
+    destination.stop();
+    CHECK(destination.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(counters->captureStops.load() == 2);
+    CHECK(counters->transportStops.load() == 2);
+
+    // Move construction transfers a stopped facade without creating or stopping another runtime.
+    HyRemote::RemoteAccess moved(std::move(destination));
+    CHECK(moved.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(destination.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(counters->captureStops.load() == 2);
+    CHECK(counters->transportStops.load() == 2);
+}
+
 void testConnectedClientCountUsesTransportNeutralEvents()
 {
     HyRemote::detail::resetFactories();
@@ -350,6 +394,7 @@ int main()
     testSafeDefaultsAndNoConstructionSideEffect();
     testMissingTargetAndMissingAdapterFailCleanly();
     testProductLifecycleAndConfigurationForwarding();
+    testMoveTransfersOwnershipAndQuiescesReplacedRuntime();
     testConnectedClientCountUsesTransportNeutralEvents();
     testRemoteInputIsIndependentAndOffByDefault();
     testBackendStartFailureIsMappedAndCleanedUp();
