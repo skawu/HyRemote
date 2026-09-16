@@ -22,6 +22,14 @@ set_target_properties(hyremote-qpa-platform PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/platforms"
 )
 
+# QPA is the zero-source-change product artifact. It always links the shared RemoteAccess facade.
+# The installed SDK places qhyremote below <libdir>/HyRemote/plugins/platforms and RemoteAccess in
+# <libdir>, so keep that lookup origin-relative. hyremote_deploy(... QPA) rewrites the same controlled
+# RPATH when the plugin is copied into an application's normal <plugins>/platforms directory.
+if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-qpa-platform PROPERTY INSTALL_RPATH "$ORIGIN/../../..")
+endif()
+
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform
     PRIVATE
@@ -94,12 +102,12 @@ if(HYREMOTE_BUILD_TESTS)
     )
 
     add_test(
-        NAME hyremote-qpa-deploy-helper-shared-runtime
+        NAME hyremote-qpa-deploy-helper-shared-core
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-shared
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-shared-core
             -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-            -DTEST_SHARED_RUNTIME=ON
+            -DTEST_SHARED_CORE=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
 
