@@ -4,9 +4,20 @@ This file separates implemented repository behavior from released support claims
 
 ## V1 x86 milestone boundary
 
-HyRemote V1 targets `QWidget` and `QQuickWindow` application paths on Windows x86_64 and Linux x86_64 through three mandatory integration modes: Embedded C++, Declarative QML and Transparent QPA Proxy. Their milestone issues #30, #31 and #32 remain open until required executable/reference-environment evidence is complete.
+HyRemote V1 targets supported `QWidget` and `QQuickWindow` application paths on Windows x86_64 and Linux x86_64 through Embedded C++, Declarative QML and Transparent QPA Proxy. Milestone issues #30, #31 and #32 remain open until their required executable/reference-environment evidence is complete.
 
-Implementation in an open Draft PR is not itself a released support claim.
+Implementation in Draft PR #106 is not itself a released support claim.
+
+### Product artifact boundary
+
+V1 intentionally fixes the normal artifact shape to keep consumption simple:
+
+- Core is static/internal composition;
+- `HyRemote::RemoteAccess` is the one shared C++ product library;
+- `qhyremote` is the Transparent QPA platform module;
+- QML is a thin wrapper over the same shared runtime.
+
+Static `RemoteAccess` consumption is not a second V1 product personality. `BUILD_SHARED_LIBS` must not be interpreted as a supported switch between two normal application distribution models.
 
 ### Transport security
 
@@ -29,15 +40,15 @@ See the QPA capture-classification document and `compatibility.md` for exact sta
 
 The normalized input contract covers pointer/button/wheel, logical key/modifier and committed-text behavior. Full IME composition/dead-key/international-layout parity is not claimed.
 
-#90 / Draft PR #93 implements bounded held-key/button tracking and balancing releases when an RFB viewer disconnects abruptly. The implementation is present, but the required exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore #30/#31/#32 must not yet claim this correctness gate as accepted.
+#90's held-key/button disconnect correction has been absorbed into the single V1 candidate #106. It balances recognized held input when a viewer disappears abruptly, but the exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore the milestone authorities must not yet claim this correctness gate as accepted.
 
-Ordinary key/button release and reconnect paths are separate and already represented in their corresponding product-fit tests.
+Ordinary key/button release and reconnect paths are separately represented in product-fit tests.
 
 ### Connected-viewer diagnostics
 
 Lifecycle `Running` means that the remote runtime/listener is active; it does **not** mean a viewer is connected.
 
-#91 / Draft PR #92 implements the backend-neutral `RemoteAccess::connectedClientCount()` product diagnostic. The same diagnostic is consumed by the QML wrapper and E1/E2/E3/E5 branches, whose product-fit tests require `0 → 1 → 0 → 1 → 0` across connect/disconnect/reconnect. Those tests remain acceptance-pending until the reference jobs execute.
+#91's backend-neutral `RemoteAccess::connectedClientCount()` implementation has also been absorbed into #106. E1/E2/E3/E5 product-fit requires the expected connect/disconnect/reconnect lifecycle. That evidence remains acceptance-pending until the reference jobs actually execute.
 
 Applications and documentation must not infer Connected from Running.
 
@@ -51,31 +62,37 @@ V1 is a correctness-first CPU-readable frame baseline. It does not promise:
 - optimized per-surface damage on every Qt application type;
 - universal Quick3D/custom-OpenGL acceleration.
 
-Those remain replaceable implementation/back-end concerns and may not alter the stable application product model merely to optimize one platform.
+Those remain replaceable implementation/backend concerns and may not alter the stable application product model merely to optimize one platform.
 
 ### Multi-window and desktop scope
 
 HyRemote targets a Qt application, not an arbitrary whole operating-system desktop.
 
-Embedded C++/QML do not gain a blanket arbitrary-native-window claim. Transparent QPA has a dedicated multi-surface/composite qualification chain for supported application-owned QWidget and QQuickWindow families, including tested dialog/popup/window churn, while unsupported foreign/native families remain explicit.
+Embedded C++/QML do not gain a blanket arbitrary-native-window claim. Transparent QPA has a dedicated multi-surface/composite path for supported application-owned QWidget and QQuickWindow families, including dialog/popup/window churn, while unsupported foreign/native families remain explicit.
 
 ### Transparent QPA private ABI
 
 Qt does not guarantee QPA source/binary compatibility. The current V1 QPA package is qualified specifically for **Qt 6.8.3** and delegates to `qwindows` on Windows and `qxcb` on the Linux reference path.
 
-Do not infer compatibility with another Qt patch/minor, Wayland, EGLFS or a different native delegate. QPA package deployment also enforces the exact qualified Qt version.
+Do not infer compatibility with another Qt patch/minor, Wayland, EGLFS or a different native delegate. QPA package deployment enforces the exact qualified Qt version.
+
+### Deployment scope
+
+Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemoteRemoteAccess` runtime. Transparent QPA uses the same helper to carry that runtime plus `qhyremote`.
+
+A deployment that only works because the original HyRemote SDK/build tree is still on `PATH`, `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` or `QT_QPA_PLATFORM_PLUGIN_PATH` does not satisfy the V1 product contract.
 
 ### Physical local + remote coexistence
 
-Hosted offscreen/software tests can prove viewer → transport → shared runtime → Qt target behavior. They do **not** prove that a physical local display and local keyboard/mouse remained usable at the same time.
+Hosted offscreen/software/Xvfb tests can prove viewer → transport → shared runtime → Qt target behavior. They do **not** prove that a physical local display and local keyboard/mouse remained usable at the same time.
 
-Physical local-visible/local-input coexistence remains a final #30/#32/#33 acceptance boundary. When repository/hosted implementation has otherwise converged, this is a legitimate local-only evidence task and may require the designated reference machine. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
+Physical local-visible/local-input coexistence remains tracked by #109 and the milestone/GA authorities. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
 
 ### Hosted CI infrastructure
 
 #74 currently causes multiple independent GitHub Actions jobs to terminate before a runner is assigned (`steps=[]`, `runner_id=0`). Such runs execute no repository commands and therefore prove neither pass nor failure of the code under test.
 
-Repository work continues, but Draft PRs, milestone release branches and release tags must remain gated on actual executable evidence according to `docs/git-flow-release.md` once that policy is integrated.
+Repository work continues on the single V1 candidate #106. No release branch or milestone tag may be authorized from unexecuted hosted jobs.
 
 ## Qt version envelope
 
