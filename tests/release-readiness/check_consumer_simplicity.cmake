@@ -144,6 +144,21 @@ foreach(required_token
     endif()
 endforeach()
 
+# Source and installed QML acquisition publish the same abstract import-root input to the one deploy
+# helper. The source root must be module-owned metadata, not a path reconstructed by applications.
+file(READ "${HYREMOTE_SOURCE_DIR}/qml/HyRemote/CMakeLists.txt" qml_cmake)
+foreach(required_token
+        "_hyremote_qml_build_import_root"
+        "HyRemote_QML_IMPORT_PATH"
+        [=[CACHE INTERNAL
+    "HyRemote QML import root for source-tree deployment" FORCE)]=])
+    string(FIND "${qml_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: source QML module lost deploy import-root metadata: ${required_token}")
+    endif()
+endforeach()
+
 # Source-tree and installed-SDK QPA deployment must feed the same public helper. qhyremote reserves a
 # semantically equivalent SDK-layout RPATH anchor with enough ELF string capacity for the deployed
 # plugins/platforms -> lib replacement. The helper rewrites only that package-owned segment; no
@@ -177,41 +192,56 @@ if(NOT undocumented_readelf EQUAL -1)
         "consumer-simplicity: deployment must not depend on CMake's undocumented READ_ELF mode")
 endif()
 
-# The fourth documented deployment shape (`QML QPA`) must be executable evidence, not an inference
-# from two separate consumers. Reuse the same clean installed-QML application so the combined path
-# cannot drift into a second toy fixture, and keep the application free of HyRemote C++ link targets.
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/CMakeLists.txt" installed_qml_consumer)
+# Reuse the same clean external applications for installed and source acquisition. Internal source
+# targets may be observed by the fixture, but the application target itself must remain link-neutral;
+# the executable CMake guard checks its actual LINK_LIBRARIES rather than banning internal target names
+# from the fixture text.
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/CMakeLists.txt" qml_consumer)
 foreach(required_token
+        "HYREMOTE_CONSUMER_SOURCE_DIR"
         "HYREMOTE_CONSUMER_WITH_QPA"
+        "set(HYREMOTE_BUILD_QML_API ON"
+        [=[add_subdirectory("${HYREMOTE_CONSUMER_SOURCE_DIR}" hyremote-source EXCLUDE_FROM_ALL)]=]
+        "HyRemote_QML_IMPORT_PATH"
+        [=[if(_consumer_link MATCHES "^HyRemote::")]=]
         "hyremote_deploy(TARGET hyremote-installed-qml-consumer QML)"
         "hyremote_deploy(TARGET hyremote-installed-qml-consumer QML QPA)")
-    string(FIND "${installed_qml_consumer}" "${required_token}" found)
+    string(FIND "${qml_consumer}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: installed QML fixture lost a documented deployment shape: ${required_token}")
-    endif()
-endforeach()
-foreach(forbidden_token
-        "HyRemote::RemoteAccess"
-        "HyRemote::QpaPlatform")
-    string(FIND "${installed_qml_consumer}" "${forbidden_token}" found)
-    if(NOT found EQUAL -1)
-        message(FATAL_ERROR
-            "consumer-simplicity: QML/QPA consumer must remain application-link neutral: ${forbidden_token}")
+            "consumer-simplicity: clean QML fixture lost installed/source contract evidence: ${required_token}")
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/main.cpp" installed_qml_main)
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" qpa_consumer)
+foreach(required_token
+        "HYREMOTE_CONSUMER_SOURCE_DIR"
+        "set(HYREMOTE_WITH_QPA_PROXY ON"
+        [=[add_subdirectory("${HYREMOTE_CONSUMER_SOURCE_DIR}" hyremote-source EXCLUDE_FROM_ALL)]=]
+        [=[if(_consumer_link MATCHES "^HyRemote::")]=]
+        "hyremote_deploy(TARGET hyremote-installed-qpa-consumer QPA)")
+    string(FIND "${qpa_consumer}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: clean QPA fixture lost installed/source contract evidence: ${required_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/main.cpp" qml_consumer_main)
 foreach(required_token
         "contractOk"
-        "--test-seconds")
-    string(FIND "${installed_qml_main}" "${required_token}" found)
+        "--test-seconds"
+        "loadedProductLibrariesComeFromDeployment"
+        "libhyremote-qml.so")
+    string(FIND "${qml_consumer_main}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: clean QML consumer cannot prove combined runtime execution: ${required_token}")
+            "consumer-simplicity: clean QML consumer lost runtime/deployment proof: ${required_token}")
     endif()
 endforeach()
 
+# The installed integrated GA proves package combinations; the SDK workflow separately proves that
+# source acquisition reaches real deployed QPA and combined QML+QPA applications on both reference OSes.
 file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/v1-ga-acceptance.yml" ga_workflow)
 foreach(required_token
         "Installed combined QML + QPA consumer — Linux"
@@ -225,6 +255,20 @@ foreach(required_token
     endif()
 endforeach()
 
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/sdk-consumption.yml" sdk_workflow)
+foreach(required_token
+        "build-consumer-source-qpa"
+        "build-consumer-source-qml-qpa"
+        "-DHYREMOTE_CONSUMER_SOURCE_DIR=\"$GITHUB_WORKSPACE\""
+        "--port 5994"
+        "--port 5995")
+    string(FIND "${sdk_workflow}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: SDK workflow lost executable source QML/QPA evidence: ${required_token}")
+    endif()
+endforeach()
+
 message(STATUS
     "HyRemote consumer-simplicity gate: PASS "
-    "(product-only defaults, one public C++ target, four deployment shapes, source/install QPA relocation, executable version-derived milestone profiles)")
+    "(product-only defaults, one public C++ target, four deployment shapes, installed/source QML+QPA acquisition, executable version-derived milestone profiles)")
