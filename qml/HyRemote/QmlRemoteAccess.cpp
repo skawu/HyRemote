@@ -54,8 +54,9 @@ QmlRemoteAccess::QmlRemoteAccess(QObject *parent)
     : QObject(parent)
     , m_access(std::make_unique<::HyRemote::RemoteAccess>())
 {
-    // RemoteAccess construction is deliberately inert. Creating this QML object must therefore
-    // preserve the same "no implicit listener" security property as the C++ API.
+    // RemoteAccess construction is deliberately inert. QML may request enabled=true during object
+    // creation, but the wrapper defers the actual start until componentComplete() so initial target
+    // and policy bindings can settle first.
     m_pollTimer.setInterval(100);
     m_pollTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_pollTimer, &QTimer::timeout, this, &QmlRemoteAccess::refreshRuntimeSnapshot);
@@ -67,6 +68,28 @@ QmlRemoteAccess::~QmlRemoteAccess()
     m_pollTimer.stop();
     if (m_access)
         m_access->stop();
+}
+
+void QmlRemoteAccess::classBegin()
+{
+    // Intentionally inert. Initial QML property setters may run after this callback.
+}
+
+void QmlRemoteAccess::componentComplete()
+{
+    if (m_componentComplete)
+        return;
+
+    m_componentComplete = true;
+    if (!m_enabled)
+        return;
+
+    // m_enabled represents the declarative request while QML is being constructed. Once complete,
+    // convert it transactionally into real runtime state. A failed start rolls the property back.
+    if (!startRuntime()) {
+        m_enabled = false;
+        emit enabledChanged();
+    }
 }
 
 QObject *QmlRemoteAccess::target() const noexcept
@@ -92,24 +115,43 @@ bool QmlRemoteAccess::enabled() const noexcept
     return m_enabled;
 }
 
+bool QmlRemoteAccess::startRuntime()
+{
+    if (!m_access)
+        return false;
+
+    clearLocalError();
+    if (!m_access->start()) {
+        refreshRuntimeSnapshot();
+        return false;
+    }
+
+    m_pollTimer.start();
+    refreshRuntimeSnapshot();
+    return true;
+}
+
 void QmlRemoteAccess::setEnabled(bool enabledValue)
 {
     if (!m_access || enabledValue == m_enabled)
         return;
 
+    if (!m_componentComplete) {
+        // During QML construction this is a request only. This preserves inert construction and
+        // avoids depending on target/property assignment order.
+        m_enabled = enabledValue;
+        emit enabledChanged();
+        return;
+    }
+
     if (enabledValue) {
-        clearLocalError();
-        if (!m_access->start()) {
-            refreshRuntimeSnapshot();
-            // enabled is a request property with transactional semantics: a failed start does not
-            // leave QML claiming that remote access is enabled.
+        if (!startRuntime()) {
+            // Transactional semantics: a failed start leaves enabled=false.
             emit enabledChanged();
             return;
         }
         m_enabled = true;
-        m_pollTimer.start();
         emit enabledChanged();
-        refreshRuntimeSnapshot();
         return;
     }
 
