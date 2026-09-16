@@ -14,6 +14,9 @@ on:
 
 jobs:
   build-test:
+    # v0.0.1.0 is deliberately C++-only. The source tree may already contain later V1 work, but a
+    # milestone release must not test/advertise a mode that its version profile correctly rejects.
+    if: github.event_name != 'pull_request' || github.head_ref != 'release/v0.0.1.0'
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -52,11 +55,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
             -DCMAKE_INSTALL_PREFIX="$PWD/staged-sdk" \
-            -DHYREMOTE_BUILD_CORE=ON \
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
             -DHYREMOTE_BUILD_QML_API=ON \
             -DHYREMOTE_BUILD_TESTS=ON \
-            -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
           test -f build/remoteaccess/libHyRemoteRemoteAccess.so
@@ -93,11 +93,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\staged-sdk" ^
-            -DHYREMOTE_BUILD_CORE=ON ^
-            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
             -DHYREMOTE_BUILD_QML_API=ON ^
             -DHYREMOTE_BUILD_TESTS=ON ^
-            -DHYREMOTE_BUILD_SPIKES=OFF ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
           if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
