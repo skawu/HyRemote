@@ -47,6 +47,24 @@ if(HYREMOTE_WITH_VNC)
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../src
     )
+
+    # Deterministic transport-level regression for simultaneous viewers sharing one Qt target.
+    # Per-client held-state accounting must not let one disconnect release another viewer's hold.
+    add_executable(hyremote-rfb-multi-client-input-test
+        test_rfb_multi_client_input.cpp
+    )
+    target_link_libraries(hyremote-rfb-multi-client-input-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+    )
+    target_include_directories(hyremote-rfb-multi-client-input-test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    add_test(NAME hyremote-rfb-multi-client-input-test COMMAND hyremote-rfb-multi-client-input-test)
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
