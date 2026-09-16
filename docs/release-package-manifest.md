@@ -74,6 +74,8 @@ The application does not link a HyRemote QPA target. `find_package(HyRemote)` pu
 
 The deployed HyRemote payload is intentionally bounded to the QPA module plus the same shared `RemoteAccess` runtime. QPA is version-coupled to the qualified Qt private ABI and must not imply generic Qt-private compatibility. Native `qwindows` / `qxcb` deployment remains Qt-owned. Normal deployed applications must not require manually configured `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH` or SDK-specific runtime search paths.
 
+The combined `QML QPA` form is a first-class deployment composition, not a fourth runtime architecture and not something release verification may infer from two independent successful consumers. The clean combined fixture must load the deployed `HyRemote` QML module while the transparent QPA plugin owns the one active remote listener/runtime, and must do so without SDK/plugin/QML path overrides.
+
 ## Source-tree internal architecture is not an installed product API
 
 The repository still contains the Qt-free Core architecture, QPA build target and their tests/headers. Those source-level contracts support HyRemote implementation and future backend work, but their presence in the repository does not create extra V1 application integration paths or installed library choices.
@@ -92,6 +94,8 @@ The following remain repository development or acceptance assets unless a releas
 
 Their presence in the source repository does not make them stable application-facing 1.x APIs.
 
+Source/add_subdirectory consumption nevertheless uses the same shared product artifacts and the same `hyremote_deploy()` entry point. On Linux, build-tree shared artifacts that the helper may copy directly must contain bounded origin-relative deployment lookup entries; a source deployment is not considered clean merely because the original build tree or Qt SDK happens to remain reachable through an embedded absolute RUNPATH.
+
 ## License and notices
 
 The installed SDK must preserve the project Apache-2.0 `LICENSE` and `NOTICE.md`. Qt and other separately obtained third-party dependencies remain under their own terms; HyRemote's Apache-2.0 license does not replace them.
@@ -107,9 +111,11 @@ A release candidate must verify at minimum:
 3. the installed product export contains `HyRemote::RemoteAccess` and exposes neither `HyRemote::Core` nor `HyRemote::QpaPlatform` as alternate application targets;
 4. clean installed C++ consumers build and deploy with one `HyRemote::RemoteAccess` target plus one `hyremote_deploy()` call;
 5. deployed C++ applications run without the original SDK runtime path;
-6. QML/QPA payloads appear only when their build options are enabled;
-7. QPA deployment resolves its package-owned plugin payload without a consumer link target, contains the exact module + shared facade, preserves the exact Qt ABI boundary and requires no manual plugin-path override;
-8. no Core/runtime/backend filename knowledge leaks into the normal application contract;
-9. no examples/tests/CI-only dependencies are accidentally classified as mandatory runtime payload.
+6. source/add_subdirectory consumers deploy the same shared product runtime without requiring original build-tree runtime lookup;
+7. QML/QPA payloads appear only when their build options are enabled;
+8. QPA deployment resolves its package-owned plugin payload without a consumer link target, contains the exact module + shared facade, preserves the exact Qt ABI boundary and requires no manual plugin-path override;
+9. `hyremote_deploy(... QML QPA)` is configured, installed and executed as its own clean-consumer case on both reference operating systems, proving the deployed QML module + qhyremote + one shared runtime coexist in one application tree;
+10. no Core/runtime/backend filename knowledge leaks into the normal application contract;
+11. no examples/tests/CI-only dependencies are accidentally classified as mandatory runtime payload.
 
 The exact accepted payload is frozen only on the accepted release branch/main commit that receives the milestone tag.
