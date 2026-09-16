@@ -116,15 +116,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate four-part release tag
-        shell: bash
+      - name: Validate four-part authorized milestone tag
+        shell: python
         run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "HyRemote release tags must use vMajor.Minor.Feature.Maintenance" >&2
-            exit 1
-          fi
+          import os
+          import re
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          match = re.fullmatch(r"v([0-9]+(?:\.[0-9]+){3})", tag)
+          if not match:
+              raise SystemExit("HyRemote release tags must use vMajor.Minor.Feature.Maintenance")
+
+          version = match.group(1)
+          allowed_milestones = {
+              "0.0.1.0",
+              "0.0.2.0",
+              "0.0.3.0",
+              "1.0.0.0",
+          }
+          if version not in allowed_milestones:
+              raise SystemExit(
+                  f"tag {tag} is not a currently authorized HyRemote milestone; "
+                  "maintenance releases require an explicit release-policy update"
+              )
 
       - name: Require tag commit on main
         shell: bash
