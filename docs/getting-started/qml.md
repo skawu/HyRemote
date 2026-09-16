@@ -2,24 +2,24 @@
 
 Status: **V0.0.2.0 candidate user guide; executable Windows/Linux acceptance pending #74.**
 
-HyRemote's Declarative QML mode is a thin QML surface over the same `HyRemote::RemoteAccess` runtime used by Embedded C++. It does not create a second Session, capture path, transport or input implementation.
+HyRemote's Declarative QML mode is a thin declarative surface over the same shared `HyRemote::RemoteAccess` runtime used by C++. It does not create a second Session, capture, transport or input stack.
 
 ## Prerequisites
 
-The V1 reference line is Qt 6.8.3 on Windows x86_64 and Linux x86_64. Until the exact reference jobs execute successfully, treat these rows as candidate configurations rather than released support claims.
+The V1 reference line is Qt 6.8.3 on Windows x86_64 and Linux x86_64. Until those reference jobs actually execute successfully, treat the configurations as candidates rather than released support claims.
 
-For an installed SDK:
+A QML application resolves its normal Qt modules and then the HyRemote package:
 
 ```cmake
 find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Qml Quick)
 find_package(HyRemote CONFIG REQUIRED)
 ```
 
-For source consumption, follow `../source-consumption.md`; the application still imports the same `HyRemote` QML module and uses the same runtime semantics.
+`find_package(HyRemote)` itself does not force unrelated Widgets/Quick/QML development components onto a plain C++ consumer; the application chooses the Qt UI stack it already uses.
 
-## QML usage
+## Minimal QML use
 
-A normal application can declare the remote-access object directly:
+Normal declarative startup is intentionally two properties:
 
 ```qml
 import QtQuick
@@ -28,47 +28,43 @@ import HyRemote
 
 ApplicationWindow {
     id: window
-    width: 800
-    height: 600
     visible: true
 
     RemoteAccess {
-        id: remote
         target: window
-        listenAddress: "127.0.0.1"
-        port: 5900
-        remoteInputEnabled: false
-        enabled: false
+        enabled: true
     }
-
-    Component.onCompleted: remote.enabled = true
 }
 ```
 
-Construction is inert: declaring `RemoteAccess` does not implicitly open a listener. The example starts it explicitly after the application window is ready.
+`enabled: true` is a request, not constructor side effect. HyRemote waits until the QML component is complete before starting the shared runtime, so initial property declaration order does not require `Component.onCompleted` glue. If start fails, `enabled` rolls back to `false` and the product-level error properties describe the failure.
 
-Safe defaults remain the same as Embedded C++:
+Safe defaults match C++:
 
-- loopback listener by default;
-- remote input disabled by default;
-- explicit start/enable required;
-- the current RFB baseline uses SecurityType None and is not Internet-safe authentication/encryption.
+- loopback listener;
+- port 5900;
+- remote input disabled;
+- explicit `enabled: true` required;
+- current RFB correctness baseline uses SecurityType None and is unauthenticated/unencrypted.
 
-## Lifecycle and configuration
+## Optional configuration
 
-The declarative wrapper preserves the C++ facade rules rather than hiding them:
+Only set values you actually need to change:
 
-- `enabled: true` requests start; `enabled: false` stops;
-- failed start is transactional and does not leave QML claiming the runtime is enabled;
-- listener address, port, target and remote-input policy are configuration and should be changed while Stopped;
-- changing live configuration does not silently create a second runtime or implicit restart;
-- state/error values remain product-level rather than protocol/backend objects.
+```qml
+RemoteAccess {
+    target: window
+    port: 5901
+    remoteInputEnabled: true
+    enabled: true
+}
+```
+
+Configuration belongs to the stopped state. To change listener/input policy while running, disable first, update the properties, then enable again. HyRemote does not silently create a second runtime or hidden restart path.
 
 ## Connection status
 
-`Running` means the remote runtime/listener is active. It does **not** mean a viewer is connected.
-
-The QML type exposes the same read-only backend-neutral connection diagnostic as the C++ facade:
+`Running` means the listener/runtime is active; it does not mean a viewer is connected.
 
 ```qml
 Label {
@@ -78,25 +74,25 @@ Label {
 }
 ```
 
-`connectedClientCount` is not assignable from QML. E3 product-fit pins the real viewer lifecycle as `0 → 1 → 0 → 1 → 0` across connect, disconnect and reconnect without recreating the application. That repository evidence still requires successful reference-platform execution before it becomes a release support claim.
+`connectedClientCount` is read-only and backend-neutral. E3 product-fit requires the real viewer lifecycle `0 → 1 → 0 → 1 → 0` across connect, disconnect and reconnect without recreating the application.
 
 ## View-only and remote control
 
-Keep `remoteInputEnabled: false` for view-only operation. To opt into remote control, stop the runtime, change the policy, then start it again according to the shared configuration contract.
+The default is view-only. Opt into remote control only when intended:
 
-Remote pointer, key and committed-text events use the same normalized input path as the C++ mode. Application focus remains normal Qt focus; HyRemote does not expose RFB-specific key or socket types to QML.
+```qml
+RemoteAccess {
+    target: window
+    remoteInputEnabled: true
+    enabled: true
+}
+```
 
-## Connect and reconnect a viewer
-
-With the default endpoint, connect a standard RFB/VNC viewer to `127.0.0.1:5900`.
-
-Close the viewer and reconnect without restarting the Qt application. The listener remains the same runtime while the read-only connected-client count returns to zero between clients.
-
-See `../viewer-connection.md` for viewer behavior and the security boundary.
+Remote pointer, key and committed-text events use the same normalized input path as C++. Normal Qt focus remains authoritative; no RFB-specific key/socket object enters QML.
 
 ## Deployment
 
-Install the application normally, then use the single HyRemote deployment entry point in QML mode:
+Install the application normally and use the one HyRemote helper:
 
 ```cmake
 install(TARGETS MyQmlApp
@@ -107,34 +103,41 @@ install(TARGETS MyQmlApp
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-The installed package exports its QML import root and `hyremote_deploy(... QML)` bridges that root into Qt's supported QML deployment machinery. Application developers do not name or manually copy HyRemote's QML plugin/qmldir or transport implementation files.
+The QML module is an import payload, not a second C++ SDK target. Application developers do not link a `HyRemote::Qml` target or manually copy the backing library, plugin, `qmldir`, shared facade, or transport files.
 
-`QML QPA` is also a valid deployment-option combination for an application that intentionally deploys both package payloads, but it does not merge the Declarative QML and Transparent QPA **integration semantics** into one mode. Choose the integration mode appropriate to the application rather than adding QPA merely to make QML work.
+`QML QPA` is available when an application deliberately combines declarative API use with Transparent QPA packaging:
 
-For the full packaging contract, see `../qml-consumption.md` and `../deployment.md`.
+```cmake
+hyremote_deploy(TARGET MyQmlApp QML QPA)
+```
 
-## Security
+This still reuses one shared runtime; it does not create a fourth integration architecture.
 
-The current correctness baseline negotiates RFB SecurityType None. Do not expose it directly to an untrusted/public network. View-only is an input policy, not viewer authentication, and the stream is not encrypted by this baseline.
+## Viewer workflow
 
-See `../security.md` for the implemented product boundary.
+With defaults, connect a standard RFB/VNC viewer to `127.0.0.1:5900`. Close the viewer and reconnect without restarting the Qt application. The listener remains active and `connectedClientCount` returns to zero between clients.
+
+See `../viewer-connection.md` for viewer behavior.
+
+## Security boundary
+
+The current correctness baseline negotiates RFB SecurityType None. Do not expose it directly to an untrusted/public network. View-only is an input policy, not authentication, and the stream is not encrypted.
+
+See `../security.md`.
 
 ## Local + remote coexistence evidence
 
-HyRemote's product requirement is that the local Qt application remains visible and interactive while remote access is active. Hosted offscreen/software E2E verifies the viewer-to-QML product path but is not proof of a physical local monitor/keyboard/mouse remaining usable at the same time.
-
-Final physical local + remote coexistence remains part of #31/#33 release acceptance and must be recorded separately when the reference environment is available.
+Hosted offscreen/software E2E proves the viewer-to-QML product path but does not prove a physical monitor and local keyboard/mouse remain usable at the same time. Final local + remote coexistence evidence remains part of the cross-mode V1 acceptance tracked by #109/#33.
 
 ## Related documentation
 
-- Installed QML package/deployment details: `../qml-consumption.md`
+- deployment: `../deployment.md`
 - Windows setup: `windows.md`
 - Linux setup: `linux.md`
-- Deployment: `../deployment.md`
-- Viewer connection: `../viewer-connection.md`
-- Security: `../security.md`
-- Troubleshooting: `../troubleshooting.md`
-- Compatibility: `../compatibility.md`
-- Known limitations: `../known-limitations.md`
+- viewer connection: `../viewer-connection.md`
+- security: `../security.md`
+- troubleshooting: `../troubleshooting.md`
+- compatibility: `../compatibility.md`
+- known limitations: `../known-limitations.md`
 
 Governance mode: `transitional-explicit`.
