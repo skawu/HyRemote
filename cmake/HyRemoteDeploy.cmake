@@ -102,10 +102,13 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     set(_linux_plugin_rpath_rewrite "")
     if(UNIX AND NOT APPLE)
+        # qhyremote reserves this semantically equivalent SDK-layout anchor with enough ELF string
+        # capacity for the normal deployed plugins/platforms -> lib replacement. Keep the rewrite
+        # bounded to this package-owned segment; do not parse or patch arbitrary toolchain RPATHs.
         set(_linux_plugin_rpath_rewrite
 "file(RPATH_CHANGE
     FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../..\"
+    OLD_RPATH \"$ORIGIN/../../../.\"
     NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
 )\n")
     endif()
