@@ -20,12 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / Qt QML 6.8.3
+          - name: Windows x86_64 / Qt QML 6.8.3 / shared RemoteAccess
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt QML 6.8.3
+          - name: Linux x86_64 / Qt QML 6.8.3 / shared RemoteAccess
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -59,8 +59,10 @@ jobs:
             -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
+          test -f build/remoteaccess/libHyRemoteRemoteAccess.so
           ctest --test-dir build --output-on-failure
           cmake --install build
+          test -f staged-sdk/lib/libHyRemoteRemoteAccess.so
 
       - name: Clean installed-SDK QML consumer — Linux
         if: runner.os == 'Linux'
@@ -73,8 +75,11 @@ jobs:
           cmake --build qml-consumer --parallel
           cmake --install qml-consumer
           test -f "$PWD/qml-consumer-install/qml/HyRemote/qmldir"
-          test -n "$(find "$PWD/qml-consumer-install/qml/HyRemote" -maxdepth 1 -type f \( -name '*.so' -o -name '*.dll' \) -print -quit)"
-          QT_QPA_PLATFORM=offscreen "$PWD/qml-consumer-install/bin/hyremote-installed-qml-consumer"
+          test -f "$PWD/qml-consumer-install/lib/libHyRemoteRemoteAccess.so"
+          test -n "$(find "$PWD/qml-consumer-install/qml/HyRemote" -maxdepth 1 -type f -name '*.so' -print -quit)"
+          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
+            QT_QPA_PLATFORM=offscreen \
+            "$PWD/qml-consumer-install/bin/hyremote-installed-qml-consumer"
 
       - name: Configure, build, test and install SDK — Windows / MSVC x64
         if: runner.os == 'Windows'
@@ -82,10 +87,11 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}\bin;%PATH%"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%CD%\build\remoteaccess;%PATH%"
           cmake -S . -B build -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}" ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\staged-sdk" ^
             -DHYREMOTE_BUILD_CORE=ON ^
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
@@ -94,20 +100,30 @@ jobs:
             -DHYREMOTE_BUILD_SPIKES=OFF ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
+          if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
           ctest --test-dir build --output-on-failure
           cmake --install build
+          if not exist "%CD%\staged-sdk\bin\HyRemoteRemoteAccess.dll" exit /b 1
 
       - name: Clean installed-SDK QML consumer — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          set "CMAKE_PREFIX_PATH=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }};%CD%\staged-sdk"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
           cmake -S tests\consumer-installed-qml -B qml-consumer -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_INSTALL_PREFIX="%CD%\qml-consumer-install"
           cmake --build qml-consumer --parallel
           cmake --install qml-consumer
           if not exist "%CD%\qml-consumer-install\qml\HyRemote\qmldir" exit /b 1
+          if not exist "%CD%\qml-consumer-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
           dir /b "%CD%\qml-consumer-install\qml\HyRemote\*.dll" >nul 2>nul || exit /b 1
+          set "QML2_IMPORT_PATH="
+          set "QML_IMPORT_PATH="
           set "QT_QPA_PLATFORM=offscreen"
+          set "PATH=%CD%\qml-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\qml-consumer-install\bin\hyremote-installed-qml-consumer.exe"
