@@ -25,6 +25,23 @@ v1.0.0.0
 
 A tag is a **release fact**, not a progress marker. Never create a milestone tag merely because implementation exists. The corresponding product milestone must satisfy its complete acceptance gate first.
 
+Every taggable milestone also owns a repository release-notes file:
+
+```text
+docs/releases/v0.0.1.0.md
+docs/releases/v0.0.2.0.md
+docs/releases/v0.0.3.0.md
+docs/releases/v1.0.0.0.md
+```
+
+During development and release-branch acceptance that file carries the explicit marker:
+
+```text
+Status: **candidate / acceptance pending**
+```
+
+The marker is removed only after the full milestone gate has passed and before the release PR leaves Draft. A tagged release must never still claim that acceptance is pending.
+
 ## 2. Long-lived branches
 
 ### `main`
@@ -36,8 +53,8 @@ Rules:
 - no direct feature development;
 - no speculative compatibility claim;
 - no implementation-only milestone merge;
-- every product milestone tag points to a commit reachable from `main`;
-- a release branch may merge into `main` only after its full acceptance gate is green.
+- every product milestone tag points to the exact accepted release commit on `main`;
+- a release branch may merge into `main` only after its full acceptance gate is green and its release notes are finalized.
 
 ### `develop`
 
@@ -47,6 +64,7 @@ Rules:
 
 - new feature branches start from `develop`;
 - accepted feature PRs merge back into `develop`;
+- `develop` keeps the development CMake version sentinel `0.0.0`;
 - `develop` may contain completed features that are not yet a released product milestone;
 - a milestone release branch is cut from `develop` only when the milestone's feature scope is complete and all predecessor product dependencies are integrated.
 
@@ -92,11 +110,15 @@ Rules:
 
 - create from `develop` only after the milestone scope is integrated;
 - change the root CMake `project(VERSION ...)` to the exact four-part milestone version;
+- open the release PR to `main` as **Draft**;
+- keep the matching `docs/releases/vX.Y.Z.W.md` candidate marker while acceptance is still running;
 - only release-blocking defects, acceptance fixes, release metadata, license/security/compatibility corrections and release documentation may enter the branch;
 - no new product capability is added on a release branch;
 - full milestone acceptance runs from this branch;
+- after every mandatory acceptance item passes, remove the release-note candidate marker and then mark the PR ready for review;
+- a non-Draft release PR that still says `candidate / acceptance pending` is invalid and must not merge;
 - final PR target is `main`;
-- after release, merge/reconcile the release changes back into `develop` before further product work continues.
+- after release, reconcile the released commit back into `develop` through `backmerge/vX.Y.Z.W` and restore the `0.0.0` development sentinel before further feature integration.
 
 ### `hotfix/<issue>-<topic>`
 
@@ -149,16 +171,18 @@ A release branch may be created only when the corresponding product milestone is
 
 For the current pre-GA line:
 
-| Milestone issue | Product version | Release branch | Final tag |
-| --- | --- | --- | --- |
-| #30 | `V0.0.1.0` | `release/v0.0.1.0` | `v0.0.1.0` |
-| #31 | `V0.0.2.0` | `release/v0.0.2.0` | `v0.0.2.0` |
-| #32 | `V0.0.3.0` | `release/v0.0.3.0` | `v0.0.3.0` |
-| #33 | `V1.0.0.0` | `release/v1.0.0.0` | `v1.0.0.0` |
+| Milestone issue | Product version | Release branch | Release notes | Final tag |
+| --- | --- | --- | --- | --- |
+| #30 | `V0.0.1.0` | `release/v0.0.1.0` | `docs/releases/v0.0.1.0.md` | `v0.0.1.0` |
+| #31 | `V0.0.2.0` | `release/v0.0.2.0` | `docs/releases/v0.0.2.0.md` | `v0.0.2.0` |
+| #32 | `V0.0.3.0` | `release/v0.0.3.0` | `docs/releases/v0.0.3.0.md` | `v0.0.3.0` |
+| #33 | `V1.0.0.0` | `release/v1.0.0.0` | `docs/releases/v1.0.0.0.md` | `v1.0.0.0` |
 
 The V1.0 GA release branch may not be cut until #30, #31, #32, #39 and #41 are accepted and integrated on `develop`.
 
-## 7. Release-branch acceptance
+Creating a release branch is not acceptance and does not authorize its tag. The matching release PR remains Draft while required evidence is being collected.
+
+## 7. Release-branch acceptance and finalization
 
 The release branch owns final product acceptance, not new feature development.
 
@@ -181,21 +205,31 @@ For `V1.0.0.0`, at minimum verify the #33 gate:
 - exact Qt/OS support statements;
 - release notes.
 
-A release candidate remains unreleased while any mandatory acceptance item is unexecuted, failed or blocked.
+A release candidate remains unreleased while any mandatory acceptance item is unexecuted, failed or blocked. During this period the release PR stays Draft and its matching release notes keep the candidate marker.
+
+After every mandatory acceptance item passes:
+
+1. freeze the accepted release-branch content except release-finalization metadata;
+2. remove `Status: **candidate / acceptance pending**` from the matching release notes;
+3. verify the root CMake version still exactly matches the release branch version;
+4. rerun/confirm the release policy and any metadata-only checks affected by finalization;
+5. mark the release PR ready for review.
+
+The Git Flow workflow rejects a non-Draft `release/v*` PR whose matching release notes still contain the candidate marker.
 
 ## 8. Merge to `main` and create the tag
 
-After the release branch passes its complete milestone gate:
+After the release branch passes its complete milestone gate and its finalization checks are green:
 
-1. freeze the accepted release-branch head;
-2. merge the release branch into `main` without rewriting away the accepted history;
-3. verify the resulting `main` commit is the intended release commit;
-4. create the milestone tag on that exact `main` release commit;
+1. merge the release branch into `main` without rewriting away the accepted history;
+2. verify the resulting `main` commit is the intended release commit;
+3. create an **annotated** milestone tag on that exact current `main` release HEAD;
+4. the tag workflow revalidates the four-part CMake version and rejects release notes that still contain the candidate marker;
 5. publish release notes/artifacts from the same tag where repository tooling supports them;
-6. merge/reconcile the release branch/main release changes back into `develop`;
+6. create `backmerge/vX.Y.Z.W` from the released history, reconcile the release changes into `develop`, and restore the `0.0.0` development sentinel;
 7. only then close the milestone issue as released.
 
-Do not tag a release-branch commit that was never merged to `main`, and do not move/reuse an existing release tag to point at another commit.
+Do not tag a release-branch commit that was never merged to `main`, do not create a lightweight milestone tag, and do not move/reuse an existing release tag to point at another commit.
 
 ## 9. Maintenance releases
 
@@ -208,6 +242,8 @@ v1.0.0.1
 
 The Maintenance field may carry fixes, security corrections, packaging/docs corrections and small-scope optimizations that do not add a new product capability.
 
+A future maintenance release must add its own `docs/releases/vX.Y.Z.W.md` and extend the currently authorized version list in the Git Flow policy before its branch/tag is created.
+
 ## 10. Current migration rule
 
 This policy was introduced after substantial V1 work already existed as atomic/stacked PRs based on the historical `main` workflow.
@@ -216,8 +252,8 @@ Migration is deliberately non-destructive:
 
 - do not force-push or rename existing historical feature branches merely for cosmetics;
 - keep their Issue/PR/canonical evidence records intact;
-- create new work from `develop` using `feature/*`;
-- converge accepted historical work into `develop` in dependency order;
+- new repository work converges through the current single V1 feature line and then `develop`;
+- converge accepted historical work into `develop` without inventing parallel product architectures;
 - do not create retroactive milestone tags for versions that have not actually passed their current Windows/Linux acceptance criteria.
 
 This preserves auditability while making Git Flow authoritative from this point forward.
