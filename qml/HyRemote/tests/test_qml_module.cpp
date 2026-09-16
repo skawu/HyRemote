@@ -26,9 +26,6 @@ void waitForComponent(QQmlComponent &component)
     QElapsedTimer timer;
     timer.start();
     while (component.status() == QQmlComponent::Loading && timer.elapsed() < 5000) {
-        // processEvents(maxTime) does not wait when the queue is momentarily empty. Give dynamic
-        // QML plugin/type loading a bounded real event-loop slice so Windows and Linux exercise the
-        // same asynchronous import contract.
         QEventLoop loop;
         QTimer::singleShot(10, &loop, &QEventLoop::quit);
         loop.exec(QEventLoop::AllEvents);
@@ -72,8 +69,6 @@ void testDeclarativeImportAndSafeDefaults()
     if (!object)
         return;
 
-    // Construction must stay inert: the QML wrapper has the same no-implicit-listener contract as
-    // the public C++ facade. Configuration is accepted while Stopped.
     CHECK(!object->property("enabled").toBool());
     CHECK(object->property("state").toInt() == 0); // Stopped
     CHECK(object->property("connectedClientCount").toULongLong() == 0);
@@ -82,8 +77,6 @@ void testDeclarativeImportAndSafeDefaults()
     CHECK(object->property("remoteInputEnabled").toBool());
     CHECK(object->property("errorCode").toInt() == 0); // NoError
 
-    // Connection diagnostics are runtime-owned/read-only; QML cannot forge them by assigning a
-    // property value. Live 0->1->0 mirroring is exercised by the qml-basic standard-viewer E2E.
     CHECK(!object->setProperty("connectedClientCount", QVariant::fromValue<qulonglong>(1)));
     CHECK(object->property("connectedClientCount").toULongLong() == 0);
 }
@@ -120,9 +113,6 @@ void testEnabledStartFailureIsTransactional()
     QQmlEngine engine;
     engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
 
-    // A declarative request to enable the service is allowed, but with no target the shared C++
-    // facade must reject start(). The wrapper must roll the request back instead of leaving QML
-    // claiming that a listener/service is enabled.
     std::unique_ptr<QObject> object = createInline(
         engine,
         R"QML(
@@ -139,8 +129,40 @@ void testEnabledStartFailureIsTransactional()
     CHECK(!object->property("enabled").toBool());
     CHECK(object->property("state").toInt() == 0); // Stopped
     CHECK(object->property("connectedClientCount").toULongLong() == 0);
-    CHECK(object->property("errorCode").toInt() == 1); // InvalidConfiguration: no live target
+    CHECK(object->property("errorCode").toInt() == 1); // InvalidConfiguration: no target
     CHECK(!object->property("errorString").toString().isEmpty());
+}
+
+void testInitialEnabledDoesNotRaceLaterTargetBinding()
+{
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
+
+    // The declaration deliberately requests enabled before assigning target. QQmlParserStatus must
+    // defer start until componentComplete(), at which point the target is present. A plain QtObject
+    // is intentionally unsupported, so the expected final error is TargetAdapterUnavailable rather
+    // than InvalidConfiguration/no-target. This distinguishes correct deferred startup from a setter-
+    // order race without requiring a GUI target in this deterministic unit test.
+    std::unique_ptr<QObject> object = createInline(
+        engine,
+        R"QML(
+            import QtQml
+            import HyRemote 1.0
+            RemoteAccess {
+                enabled: true
+                property QtObject dummyTarget: QtObject {}
+                target: dummyTarget
+            }
+        )QML",
+        "inline:hyremote-deferred-enabled.qml");
+    CHECK(object != nullptr);
+    if (!object)
+        return;
+
+    CHECK(object->property("target").value<QObject *>() != nullptr);
+    CHECK(!object->property("enabled").toBool());
+    CHECK(object->property("state").toInt() == 0); // Stopped after transactional failure
+    CHECK(object->property("errorCode").toInt() == 2); // TargetAdapterUnavailable
 }
 
 }  // namespace
@@ -151,6 +173,7 @@ int main(int argc, char **argv)
     testDeclarativeImportAndSafeDefaults();
     testInvalidConfigurationDoesNotMutateAcceptedValue();
     testEnabledStartFailureIsTransactional();
+    testInitialEnabledDoesNotRaceLaterTargetBinding();
 
     if (failures != 0)
         std::cerr << failures << " QML module checks failed\n";
