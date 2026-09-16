@@ -28,6 +28,8 @@ For **V1.0.0.0**, repository implementation on Draft PR #106 is the single conve
 
 The Git Flow workflow reads those issue states for `release/v* -> main`; it does not close issues or create acceptance on the user's behalf. Editing release notes or toggling PR Draft state cannot substitute for authority closure.
 
+Repository API inspection currently reports both `main` and `develop` as **unprotected**. The current repository/plan also does not expose a usable repository ruleset for this private repository, so Git Flow checks are policy and audit rather than pre-push enforcement. The workflow therefore audits every push to `main`/`develop` and fails when the new head is not associated with a merged PR into that same branch. This is deliberately an **after-the-fact direct-push audit**: it cannot undo a push and must not be described as branch protection. Release operators must still use the documented PR topology; any direct-push audit failure is a governance incident that must be investigated and reconciled before release evidence is accepted.
+
 ## 2. Cut the release branch
 
 Only after section 1 is complete:
