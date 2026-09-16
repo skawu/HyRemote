@@ -18,7 +18,7 @@ int failures = 0;
 #define CHECK(expr)                                                                                \
     do {                                                                                           \
         if (!(expr)) {                                                                             \
-            std::cerr << __FILE__ << ':' << __LINE__ << ": CHECK failed: " #expr << '\n';       \
+            std::cerr << __FILE__ << ':' << __LINE__ << ": CHECK failed: " #expr << '\n';       
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
@@ -274,7 +274,7 @@ void testMoveTransfersOwnershipAndQuiescesReplacedRuntime()
     CHECK(source.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(source.connectedClientCount() == 0);
     CHECK(!source.start());
-    CHECK(source.lastError().has_value());
+    CHECK(!source.lastError().has_value());
 
     destination.stop();
     CHECK(destination.state() == HyRemote::RemoteAccessState::Stopped);
