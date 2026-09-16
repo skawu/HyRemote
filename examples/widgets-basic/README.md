@@ -27,13 +27,10 @@ The current baseline RFB transport uses **SecurityType None**. Treat it as a cor
 
 ## Build
 
-From a HyRemote source tree with Qt 6.8.x available:
+From a HyRemote source tree with the matching Qt 6.8.3 Widgets kit available:
 
 ```sh
 cmake -S . -B build \
-  -DHYREMOTE_BUILD_CORE=ON \
-  -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
-  -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
   -DHYREMOTE_BUILD_EXAMPLES=ON
 cmake --build build --parallel
 ```
@@ -78,7 +75,7 @@ The V1 acceptance harness also verifies that `RemoteAccess::stop()` releases the
 
 ## Input and geometry evidence
 
-The product acceptance path covers:
+The current V1 candidate implements and tests:
 
 - left/middle/right pointer buttons;
 - pointer coordinates through the remote framebuffer viewport;
@@ -88,20 +85,23 @@ The product acceptance path covers:
 - text commit as a separate semantic path from key delivery;
 - view-only input rejection;
 - disconnect/reconnect;
-- stop/listener release.
+- stop/listener release;
+- balancing releases when a viewer disappears with recognized keys/buttons still held.
 
-Precise DPR/edge-coordinate normalization is additionally covered by Core deterministic tests. #90 tracks the separate requirement to synthesize balancing releases when a viewer disconnects while a button/key is still held.
+Precise DPR/edge-coordinate normalization is additionally covered by deterministic Core tests. Dual-OS acceptance remains pending until the reference jobs actually execute; #74 no-runner failures are not pass evidence.
 
 ## Local + remote coexistence boundary
 
 The application is a normal visible Qt Widgets window and HyRemote's Embedded C++ design is additive to that local UI. However, hosted offscreen CI is **not** evidence that a physical monitor and local keyboard/mouse remained usable while a real remote viewer was attached.
 
-That physical local-visible/local-input coexistence check remains a final #30/#33 acceptance item and must not be inferred from the offscreen product E2E.
+That physical local-visible/local-input coexistence check is tracked by #109 and remains a final #30/#33 acceptance item.
 
 ## Connected-viewer status
 
-Lifecycle `Running` means the remote runtime/listener is running; it does **not** mean that a viewer is connected. #91 / PR #92 introduces the backend-neutral connected-client diagnostic required for the final local status UI. Until that dependency lands, this example must not fake a `connected` indicator from lifecycle state.
+Lifecycle `Running` means the remote runtime/listener is running; it does **not** mean that a viewer is connected. The current V1 candidate exposes backend-neutral `RemoteAccess::connectedClientCount()` and this example displays the real client count rather than deriving a fake connected state from lifecycle status.
+
+The connect/disconnect/reconnect count transitions are part of the product-fit gate; they remain acceptance-pending until the reference jobs execute.
 
 ## Related documentation
 
-Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/security.md`, `docs/compatibility.md`, and `docs/known-limitations.md` as they converge under #41. Support claims remain evidence-driven.
+Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/security.md`, `docs/compatibility.md`, and `docs/known-limitations.md`. Support claims remain evidence-driven.
