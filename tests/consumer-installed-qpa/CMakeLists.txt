@@ -9,6 +9,11 @@ include(GNUInstallDirs)
 find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Widgets)
 find_package(HyRemote CONFIG REQUIRED)
 
+# Match Qt's documented deployable CMake application layout. On ELF platforms this establishes the
+# origin-relative install RPATH from bin to lib, so the deployed consumer is self-contained without
+# LD_LIBRARY_PATH. HyRemote's helper remains responsible only for its own QPA/runtime payload.
+qt_standard_project_setup(REQUIRES 6.8)
+
 if(NOT HyRemote_QPA_AVAILABLE)
     message(FATAL_ERROR "installed HyRemote SDK does not contain the Transparent QPA package")
 endif()
