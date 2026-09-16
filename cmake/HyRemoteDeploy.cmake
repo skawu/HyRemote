@@ -42,6 +42,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     set(_runtime_copy_commands "")
     set(_additional_library_args "")
+    set(_additional_library_section "")
 
     if(WIN32)
         set(_runtime_deploy_dir "\${QT_DEPLOY_BIN_DIR}")
@@ -61,6 +62,8 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
             string(APPEND _additional_library_args
                 "\n        \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:${_runtime_target}>\"")
         endforeach()
+        set(_additional_library_section
+            "\n    ADDITIONAL_LIBRARIES${_additional_library_args}")
     endif()
 
     # Qt's high-level deployment command owns the application's normal Qt/native-platform payload.
@@ -75,7 +78,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::QpaPlatform>\")
 ${_runtime_copy_commands}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
-    ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"${_additional_library_args}
+    ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"${_additional_library_section}
 )
 ")
 
