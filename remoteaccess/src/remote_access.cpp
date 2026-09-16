@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 
 #include "detail/component_factories.hpp"
@@ -139,6 +140,13 @@ private:
 
 struct RemoteAccess::Impl
 {
+    struct SessionErrorRevision
+    {
+        std::uint64_t captureEvents = 0;
+        std::uint64_t transportEvents = 0;
+        std::uint64_t inputPostFailures = 0;
+    };
+
     QPointer<QObject> target;
     QHostAddress listenAddress = QHostAddress::LocalHost;
     quint16 port = 5900;
@@ -146,6 +154,8 @@ struct RemoteAccess::Impl
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;
     std::optional<RemoteAccessError> error;
+    std::optional<hyremote::SessionError> acknowledgedRecoverableError;
+    SessionErrorRevision acknowledgedRecoverableRevision;
     std::shared_ptr<std::atomic<std::size_t>> connectedClients =
         std::make_shared<std::atomic<std::size_t>>(0);
 
@@ -159,6 +169,51 @@ struct RemoteAccess::Impl
     void setError(RemoteAccessErrorCode code, QString message, bool recoverable = false)
     {
         error = RemoteAccessError{code, std::move(message), recoverable};
+    }
+
+    SessionErrorRevision currentSessionErrorRevision() const
+    {
+        if (!session)
+            return {};
+        const hyremote::SessionStats stats = session->stats();
+        return SessionErrorRevision{stats.captureEvents, stats.transportEvents, stats.inputPostFailures};
+    }
+
+    bool isAcknowledgedRecoverableError(const hyremote::SessionError &candidate) const
+    {
+        if (!candidate.recoverable || !acknowledgedRecoverableError || !session)
+            return false;
+
+        const hyremote::SessionError &acknowledged = *acknowledgedRecoverableError;
+        if (acknowledged.code != candidate.code || acknowledged.message != candidate.message
+            || acknowledged.recoverable != candidate.recoverable) {
+            return false;
+        }
+
+        const SessionErrorRevision current = currentSessionErrorRevision();
+        return current.captureEvents == acknowledgedRecoverableRevision.captureEvents
+               && current.transportEvents == acknowledgedRecoverableRevision.transportEvents
+               && current.inputPostFailures == acknowledgedRecoverableRevision.inputPostFailures;
+    }
+
+    void resetErrorAcknowledgement() noexcept
+    {
+        acknowledgedRecoverableError.reset();
+        acknowledgedRecoverableRevision = {};
+    }
+
+    void acknowledgeCurrentRecoverableError()
+    {
+        resetErrorAcknowledgement();
+        if (!session)
+            return;
+
+        const std::optional<hyremote::SessionError> coreError = session->lastError();
+        if (!coreError || !coreError->recoverable)
+            return;
+
+        acknowledgedRecoverableError = *coreError;
+        acknowledgedRecoverableRevision = currentSessionErrorRevision();
     }
 
     void shutdownRuntime() noexcept
@@ -177,6 +232,7 @@ struct RemoteAccess::Impl
             inputSink->shutdown();
         session.reset();
         inputSink.reset();
+        resetErrorAcknowledgement();
     }
 };
 
@@ -272,6 +328,7 @@ bool RemoteAccess::start()
     }
 
     m_impl->error.reset();
+    m_impl->resetErrorAcknowledgement();
 
     QObject *targetObject = m_impl->target.data();
     if (targetObject == nullptr) {
@@ -347,8 +404,10 @@ void RemoteAccess::stop() noexcept
     if (!m_impl || !m_impl->session)
         return;
 
-    if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError())
-        m_impl->error = mapError(*coreError);
+    if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError()) {
+        if (!m_impl->isAcknowledgedRecoverableError(*coreError))
+            m_impl->error = mapError(*coreError);
+    }
 
     m_impl->shutdownRuntime();
 }
@@ -373,16 +432,25 @@ std::optional<RemoteAccessError> RemoteAccess::lastError() const
         return std::nullopt;
 
     if (m_impl->session) {
-        if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError())
-            return mapError(*coreError);
+        if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError()) {
+            if (!m_impl->isAcknowledgedRecoverableError(*coreError))
+                return mapError(*coreError);
+        }
     }
     return m_impl->error;
 }
 
 void RemoteAccess::clearError()
 {
-    if (m_impl)
-        m_impl->error.reset();
+    if (!m_impl)
+        return;
+
+    m_impl->error.reset();
+    // A live non-recoverable Core fault remains the reason the Session is Faulted and cannot be
+    // hidden by a UI acknowledgement. Recoverable runtime diagnostics may be acknowledged; a later
+    // event advances the Core counters and makes the error visible again even when its text/code is
+    // identical to the acknowledged one.
+    m_impl->acknowledgeCurrentRecoverableError();
 }
 
 }  // namespace HyRemote
