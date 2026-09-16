@@ -15,6 +15,10 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Validate branch topology
         shell: bash
         env:
@@ -55,6 +59,65 @@ jobs:
               }
               ;;
           esac
+
+      - name: Validate release candidate version before main merge
+        if: startsWith(github.head_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          import os
+          import pathlib
+          import re
+
+          head = os.environ["HEAD_REF"]
+          base = os.environ["BASE_REF"]
+          if base != "main":
+              raise SystemExit("release/v* candidates must target main")
+
+          match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
+          if not match:
+              raise SystemExit("release branches must use release/vMajor.Minor.Feature.Maintenance")
+          branch_version = match.group(1)
+
+          allowed_milestones = {
+              "0.0.1.0",
+              "0.0.2.0",
+              "0.0.3.0",
+              "1.0.0.0",
+          }
+          if branch_version not in allowed_milestones:
+              raise SystemExit(
+                  f"release/{branch_version} is not a currently authorized HyRemote milestone; "
+                  "maintenance releases require an explicit release-policy update"
+              )
+
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          cmake = re.search(
+              r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})",
+              text,
+              re.S,
+          )
+          if not cmake:
+              raise SystemExit("root project(VERSION ...) must contain a four-part release version")
+          if cmake.group(1) != branch_version:
+              raise SystemExit(
+                  f"release branch version {branch_version} does not match root CMake project version {cmake.group(1)}"
+              )
+
+          print(f"release candidate version gate passed for v{branch_version}")
+
+      - name: Require release branch to contain develop integration point
+        if: startsWith(github.head_ref, 'release/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin develop --no-tags
+          git merge-base --is-ancestor origin/develop HEAD || {
+            echo "release/v* must be cut from and contain the current accepted develop integration point" >&2
+            exit 1
+          }
 
   release-tag:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -103,9 +166,9 @@ jobs:
                   f"tag {tag_version} does not match root CMake project version {cmake_version}"
               )
 
-      - name: Reject pre-acceptance tag mutation convention
+      - name: Audit release tag fact
         shell: bash
         run: |
           set -euo pipefail
-          echo "Validated immutable release tag candidate ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
-          echo "Milestone acceptance/Release publication remains governed by docs/git-flow-release.md."
+          echo "Validated release tag ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
+          echo "This post-push audit does not replace the pre-merge release/v* gate."
