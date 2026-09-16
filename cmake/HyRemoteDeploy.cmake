@@ -184,8 +184,13 @@ function(hyremote_deploy)
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
     endif()
 
+    # Acquisition identity is derived from the one public runtime target. Source/add_subdirectory
+    # provides a local target; installed find_package provides an imported target. Optional source
+    # payload requests must be satisfied by targets from this exact configure and may not fall back
+    # to stale metadata left by another installed SDK in the parent CMake scope.
+    _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)
+
     if(HYREMOTE_DEPLOY_QML)
-        _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)
         if(_hyremote_source_acquisition AND NOT TARGET hyremote-qml)
             message(FATAL_ERROR
                 "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QML) requires a HyRemote QML payload; "
@@ -200,6 +205,12 @@ function(hyremote_deploy)
             message(FATAL_ERROR
                 "hyremote_deploy: HyRemote_QML_IMPORT_PATH must be an absolute QML import root")
         endif()
+    endif()
+
+    if(HYREMOTE_DEPLOY_QPA AND _hyremote_source_acquisition AND NOT TARGET HyRemote::QpaPlatform)
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QPA) requires the current HyRemote source build "
+            "to enable HYREMOTE_WITH_QPA_PROXY=ON; installed QPA metadata cannot satisfy a source deployment")
     endif()
 
     _hyremote_add_local_build_dependency(
