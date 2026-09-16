@@ -193,6 +193,28 @@ jobs:
               --app "$PWD/consumer-qpa-install/bin/hyremote-installed-qpa-consumer" \
               --port 5992 | tee ga-qpa-consumer.log
 
+      - name: Installed combined QML + QPA consumer — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          PREFIX="$QT_PREFIX;$PWD/staged-sdk"
+          cmake -S tests/consumer-installed-qml -B consumer-qml-qpa -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/consumer-qml-qpa-install" \
+            -DHYREMOTE_CONSUMER_WITH_QPA=ON
+          cmake --build consumer-qml-qpa --parallel
+          cmake --install consumer-qml-qpa
+          test -f "$PWD/consumer-qml-qpa-install/qml/HyRemote/qmldir"
+          test -f "$PWD/consumer-qml-qpa-install/plugins/platforms/libqhyremote.so"
+          test -f "$PWD/consumer-qml-qpa-install/lib/libHyRemoteRemoteAccess.so"
+          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
+              -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
+            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
+              --app "$PWD/consumer-qml-qpa-install/bin/hyremote-installed-qml-consumer" \
+              --port 5993 | tee ga-qml-qpa-consumer.log
+
       - name: Configure build and CTest — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
@@ -319,6 +341,34 @@ jobs:
             --app "%CD%\consumer-qpa-install\bin\hyremote-installed-qpa-consumer.exe" ^
             --port 5992 > ga-qpa-consumer.log 2>&1 || (type ga-qpa-consumer.log & exit /b 1)
           type ga-qpa-consumer.log
+
+      - name: Installed combined QML + QPA consumer — Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
+          cmake -S tests\consumer-installed-qml -B consumer-qml-qpa -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\consumer-qml-qpa-install" ^
+            -DHYREMOTE_CONSUMER_WITH_QPA=ON
+          cmake --build consumer-qml-qpa --parallel
+          cmake --install consumer-qml-qpa
+          if not exist "%CD%\consumer-qml-qpa-install\qml\HyRemote\qmldir" exit /b 1
+          if not exist "%CD%\consumer-qml-qpa-install\plugins\platforms\qhyremote.dll" exit /b 1
+          if not exist "%CD%\consumer-qml-qpa-install\bin\HyRemoteRemoteAccess.dll" exit /b 1
+          set "QML2_IMPORT_PATH="
+          set "QML_IMPORT_PATH="
+          set "QT_PLUGIN_PATH="
+          set "QT_QPA_PLATFORM_PLUGIN_PATH="
+          set "QT_QPA_PLATFORM="
+          python tests\consumer-installed-qpa\product_fit.py ^
+            --app "%CD%\consumer-qml-qpa-install\bin\hyremote-installed-qml-consumer.exe" ^
+            --port 5993 > ga-qml-qpa-consumer.log 2>&1 || (type ga-qml-qpa-consumer.log & exit /b 1)
+          type ga-qml-qpa-consumer.log
 
       - name: Upload GA diagnostic logs
         if: always()
