@@ -174,6 +174,22 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # A stale absolute import root from an earlier source configure is not proof that the current
+    # build still contains the QML payload. This guards the ON -> OFF reconfigure boundary.
+    add_test(
+        NAME hyremote-qpa-deploy-helper-reject-stale-qml-metadata
+        COMMAND ${CMAKE_COMMAND}
+            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-stale-qml
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+            -DTEST_QML=ON
+            -DTEST_DEPLOY_QPA=OFF
+            -DTEST_QML_AVAILABLE=OFF
+            -DTEST_STALE_QML_METADATA=ON
+            -DEXPECT_CONFIGURE_FAILURE=ON
+            -P ${_hyremote_qpa_deploy_runner}
+    )
+
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-qt-mismatch
         COMMAND ${CMAKE_COMMAND}
