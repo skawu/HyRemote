@@ -180,14 +180,25 @@ function(hyremote_deploy)
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
     endif()
 
-    # QML is an optional package payload. Fail at configure time when a consumer selects the QML
-    # deploy shape from an SDK/source build that did not provide the module, instead of producing an
-    # apparently successful deployment that fails later at `import HyRemote`.
+    # QML is an optional package payload. Source acquisition proves availability with the concrete
+    # module target from this configure; installed acquisition publishes an explicit availability
+    # bit from HyRemoteConfig.cmake. An import-path string by itself is not sufficient because CMake
+    # cache state can survive a source consumer reconfigure after QML has been disabled.
     if(HYREMOTE_DEPLOY_QML)
-        if(NOT DEFINED HyRemote_QML_IMPORT_PATH OR "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
+        set(_hyremote_qml_available FALSE)
+        if(TARGET hyremote-qml)
+            set(_hyremote_qml_available TRUE)
+        elseif(DEFINED HyRemote_QML_AVAILABLE AND HyRemote_QML_AVAILABLE)
+            set(_hyremote_qml_available TRUE)
+        endif()
+        if(NOT _hyremote_qml_available)
             message(FATAL_ERROR
                 "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QML) requires a HyRemote QML payload; "
                 "install/build HyRemote with HYREMOTE_BUILD_QML_API=ON")
+        endif()
+        if(NOT DEFINED HyRemote_QML_IMPORT_PATH OR "${HyRemote_QML_IMPORT_PATH}" STREQUAL "")
+            message(FATAL_ERROR
+                "hyremote_deploy: available HyRemote QML payload did not publish HyRemote_QML_IMPORT_PATH")
         endif()
         if(NOT IS_ABSOLUTE "${HyRemote_QML_IMPORT_PATH}")
             message(FATAL_ERROR
