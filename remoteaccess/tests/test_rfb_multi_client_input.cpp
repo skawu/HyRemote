@@ -1,4 +1,5 @@
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QTcpServer>
@@ -340,8 +341,9 @@ void testConcurrentViewerHeldStateIsolation()
 
 }  // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    QCoreApplication app(argc, argv);
     testConcurrentViewerHeldStateIsolation();
     if (failures != 0)
         std::cerr << failures << " concurrent-viewer RFB input checks failed\n";
