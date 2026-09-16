@@ -26,7 +26,12 @@ target_link_libraries(hyremote-qml
 )
 
 # The QML backing library is deployed beside HyRemoteRemoteAccess in the runtime lib directory.
+# Source/add_subdirectory deployment may copy the build artifact directly, so reserve the same
+# origin-local lookup in BUILD_RPATH as in the installed artifact. CMake still appends whatever
+# build-time Qt lookup it needs; paths that stay inside the build tree are kept origin-relative.
 if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-qml PROPERTY BUILD_RPATH "$ORIGIN")
+    set_property(TARGET hyremote-qml PROPERTY BUILD_RPATH_USE_ORIGIN TRUE)
     set_property(TARGET hyremote-qml PROPERTY INSTALL_RPATH "$ORIGIN")
 endif()
 
@@ -43,8 +48,12 @@ set(HYREMOTE_QML_INSTALL_DIR "${HYREMOTE_QML_INSTALL_DIR}" CACHE INTERNAL
 
 # The plugin lives under <lib>/qml/HyRemote in the SDK and under <prefix>/qml/HyRemote in a normal
 # deployed Qt application. Cover both layouts with bounded origin-relative lookup entries; users do
-# not need QML/SDK-specific runtime environment variables.
+# not need QML/SDK-specific runtime environment variables. Mirror these entries in BUILD_RPATH so a
+# source-built module copied by Qt's QML deployment machinery remains relocatable too.
 if(HYREMOTE_QML_PLUGIN_TARGET AND UNIX AND NOT APPLE)
+    set_property(TARGET "${HYREMOTE_QML_PLUGIN_TARGET}" PROPERTY
+        BUILD_RPATH "$ORIGIN/../..;$ORIGIN/../../${CMAKE_INSTALL_LIBDIR}")
+    set_property(TARGET "${HYREMOTE_QML_PLUGIN_TARGET}" PROPERTY BUILD_RPATH_USE_ORIGIN TRUE)
     set_property(TARGET "${HYREMOTE_QML_PLUGIN_TARGET}" PROPERTY
         INSTALL_RPATH "$ORIGIN/../..;$ORIGIN/../../${CMAKE_INSTALL_LIBDIR}")
 endif()
