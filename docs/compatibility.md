@@ -18,27 +18,27 @@ The integrated GA workflow qualifies exact Qt 6.8.3 on both reference operating 
 
 | Qt | OS / architecture | Mode | Native/QPA path | Application scope | Status | Required evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| 6.8.3 | Windows x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Windows acceptance + required physical evidence |
-| 6.8.3 | Linux x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Linux acceptance + required physical evidence |
-| 6.8.3 | Windows x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Windows acceptance |
-| 6.8.3 | Linux x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Linux acceptance |
-| 6.8.3 | Windows x86_64 | Transparent QPA | `hyremote` -> native `qwindows` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + required physical native local+remote evidence |
-| 6.8.3 | Linux x86_64 | Transparent QPA | `hyremote` -> native `qxcb` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + required physical native local+remote evidence |
+| 6.8.3 | Windows x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Windows acceptance + #109 physical coexistence |
+| 6.8.3 | Linux x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Linux acceptance + #109 physical coexistence |
+| 6.8.3 | Windows x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Windows acceptance + #109 physical coexistence |
+| 6.8.3 | Linux x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Linux acceptance + #109 physical coexistence |
+| 6.8.3 | Windows x86_64 | Transparent QPA | `hyremote` -> native `qwindows` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
+| 6.8.3 | Linux x86_64 | Transparent QPA | `hyremote` -> native `qxcb` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
 
 #74 currently prevents the required hosted jobs from receiving runners. Therefore none of these rows is upgraded to Supported from repository implementation alone.
 
 ## V1 artifact compatibility contract
 
-The normal V1 artifact shape is itself part of compatibility:
+The installed V1 product surface is deliberately smaller than the repository's internal architecture:
 
 | Artifact | V1 form | Application expectation |
 | --- | --- | --- |
-| `HyRemote::RemoteAccess` | shared library | normal C++ application links this one HyRemote product target |
-| `hyremote-core` | static/internal | not a separately deployed normal application runtime |
-| `qhyremote` | Qt platform MODULE | existing Qt app can use `-platform hyremote` without HyRemote linkage |
-| QML `HyRemote` module | thin wrapper | uses the same shared `RemoteAccess` runtime |
+| `HyRemote::RemoteAccess` | shared library + exported CMake target | the one normal C++ HyRemote product target |
+| `hyremote-core` | static source/internal component | not installed/exported as a V1 SDK target and not a separately deployed runtime |
+| `qhyremote` | Qt platform MODULE payload | selected through `hyremote_deploy(... QPA)` / `-platform hyremote`; no installed `HyRemote::QpaPlatform` link target |
+| QML `HyRemote` module | declarative payload over shared runtime | consumed through `import HyRemote`; backing library is not a second C++ SDK target |
 
-A build where `BUILD_SHARED_LIBS` changes this normal product model is not the frozen V1 artifact contract.
+`BUILD_SHARED_LIBS` does not change this normal V1 product model.
 
 ## V1 capture/application scope
 
@@ -112,4 +112,4 @@ Record at minimum:
 4. public Qt API compatibility does not imply QPA private-ABI compatibility.
 5. graphics-family evidence is configuration-specific unless an acceptance matrix explicitly broadens it.
 6. hardware acceleration support is independent of the stable application-facing product contract.
-7. V1 usability remains one shared C++ facade or the QPA plugin path; platform optimization must stay behind that boundary.
+7. V1 usability remains one exported shared C++ facade, a declarative QML payload, or the QPA plugin launch path; platform optimization must stay behind that boundary.
