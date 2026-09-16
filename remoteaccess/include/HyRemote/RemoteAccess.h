@@ -73,8 +73,9 @@ public:
     bool setRemoteInputEnabled(bool enabled);
 
     // Explicit lifecycle. start() owns creation of the target adapter, input path and default
-    // transport behind the facade. On failure, RemoteAccess returns to Stopped and preserves a
-    // product-level error for lastError().
+    // transport behind the facade. On startup failure, RemoteAccess returns to Stopped and preserves
+    // a product-level error for lastError(). A non-recoverable runtime failure is observable as
+    // Faulted until the owner calls stop(); configuration becomes mutable again only after Stopped.
     bool start();
     void stop() noexcept;
 
@@ -82,10 +83,16 @@ public:
 
     // Backend-neutral product diagnostic. Running with zero connected clients means the listener is
     // available but no viewer is currently attached. Concrete transport/client objects never cross
-    // this API boundary.
+    // this API boundary. A Faulted runtime remains owned until explicit stop(), so this diagnostic
+    // may remain nonzero until that cleanup completes.
     std::size_t connectedClientCount() const noexcept;
 
     std::optional<RemoteAccessError> lastError() const;
+
+    // Acknowledge/clear product-level and live recoverable diagnostics. A new occurrence becomes
+    // visible again. An active non-recoverable Session fault remains visible while state()==Faulted;
+    // call stop() to quiesce the failed runtime, then clearError() if the retained diagnostic has
+    // been handled.
     void clearError();
 
 private:
