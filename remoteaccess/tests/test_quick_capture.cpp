@@ -211,6 +211,36 @@ void testQuickFactoryAndOwnedFrame()
     components.capture->stop();
 }
 
+void testDestroyedQuickTargetReportsTargetLost()
+{
+    HyRemote::detail::resetFactories();
+
+    auto *window = new QQuickWindow;
+    window->resize(80, 40);
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(window, false);
+    CHECK(components.capture != nullptr);
+
+    int frames = 0;
+    std::optional<hyremote::CaptureEvent> lastEvent;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame) { ++frames; },
+        [&](const hyremote::CaptureEvent &event) { lastEvent = event; }));
+
+    hyremote::CaptureRequest request{22, hyremote::Clock::now()};
+    CHECK(components.capture->requestFrame(request));
+    delete window;
+
+    CHECK(pumpUntil([&] { return lastEvent.has_value(); }));
+    CHECK(frames == 0);
+    CHECK(lastEvent.has_value());
+    if (lastEvent) {
+        CHECK(lastEvent->code == hyremote::CaptureEventCode::TargetLost);
+        CHECK(!lastEvent->recoverable);
+    }
+    components.capture->stop();
+}
+
 void testQuickInputIsQueuedToWindow()
 {
     HyRemote::detail::resetFactories();
@@ -310,6 +340,7 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
 
     testQuickFactoryAndOwnedFrame();
+    testDestroyedQuickTargetReportsTargetLost();
     testQuickInputIsQueuedToWindow();
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 
