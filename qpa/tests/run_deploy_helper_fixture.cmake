@@ -17,6 +17,9 @@ endif()
 if(NOT DEFINED TEST_QPA_AVAILABLE)
     set(TEST_QPA_AVAILABLE ON)
 endif()
+if(NOT DEFINED TEST_STALE_QPA_METADATA)
+    set(TEST_STALE_QPA_METADATA OFF)
+endif()
 if(NOT DEFINED TEST_QT_VERSION)
     set(TEST_QT_VERSION "6.8.3")
 endif()
@@ -38,6 +41,7 @@ execute_process(
         "-DTEST_QML_AVAILABLE=${TEST_QML_AVAILABLE}"
         "-DTEST_STALE_QML_METADATA=${TEST_STALE_QML_METADATA}"
         "-DTEST_QPA_AVAILABLE=${TEST_QPA_AVAILABLE}"
+        "-DTEST_STALE_QPA_METADATA=${TEST_STALE_QPA_METADATA}"
         "-DTEST_QT_VERSION=${TEST_QT_VERSION}"
         "-DTEST_INSTALLED_PAYLOAD=${TEST_INSTALLED_PAYLOAD}"
     RESULT_VARIABLE configure_result
@@ -87,8 +91,6 @@ foreach(required_fragment IN ITEMS
     endif()
 endforeach()
 
-# Keep source and installed acquisition distinguishable. Source should resolve the local fake target;
-# installed-payload mode should resolve the imported SDK-shaped HyRemoteRemoteAccess filename.
 if(TEST_INSTALLED_PAYLOAD)
     set(_expected_runtime "HyRemoteRemoteAccess")
     set(_forbidden_runtime "fake-remoteaccess")
@@ -126,8 +128,6 @@ if(TEST_DEPLOY_QPA)
         endif()
     endif()
 else()
-    # QML-only must use the normal shared-runtime supplemental path. QPA payload/relocation leaking
-    # here would mean the four public deploy shapes no longer have independent semantics.
     foreach(forbidden_fragment IN ITEMS
             "ADDITIONAL_MODULES"
             "qhyremote"
@@ -140,8 +140,6 @@ else()
     endforeach()
 endif()
 
-# Core is statically composed behind RemoteAccess in the fixed V1 artifact model and must never be
-# copied as a second user-visible runtime library.
 string(FIND "${generated_content}" "fake-core" fake_core_pos)
 if(NOT fake_core_pos EQUAL -1)
     message(FATAL_ERROR
