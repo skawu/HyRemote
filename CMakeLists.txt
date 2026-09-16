@@ -152,6 +152,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
     )
     add_test(
+        NAME hyremote-release-readiness-runtime-contract
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_v1_runtime_contract.cmake"
+    )
+    add_test(
         NAME hyremote-release-readiness-consumer-simplicity
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
