@@ -5,6 +5,12 @@ on:
     branches:
       - main
       - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
   push:
     tags:
       - 'v*'
@@ -137,6 +143,47 @@ jobs:
 
           print(f"release candidate version gate passed for v{branch_version}")
 
+      - name: Validate milestone release-note state
+        if: startsWith(github.head_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          import os
+          import pathlib
+          import re
+
+          head = os.environ["HEAD_REF"]
+          match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
+          if not match:
+              raise SystemExit(f"invalid release branch name: {head}")
+          version = match.group(1)
+          notes = pathlib.Path(f"docs/releases/v{version}.md")
+          if not notes.is_file():
+              raise SystemExit(f"release branch {head} requires {notes}")
+
+          text = notes.read_text(encoding="utf-8")
+          for required in (f"v{version}", f"release/v{version}", "SecurityType None"):
+              if required not in text:
+                  raise SystemExit(f"{notes} is missing required release fact: {required}")
+
+          marker = "Status: **candidate / acceptance pending**"
+          is_draft = os.environ.get("PR_DRAFT", "true").lower() == "true"
+          if is_draft:
+              if marker not in text:
+                  raise SystemExit(
+                      f"Draft release PR {head} must keep the explicit candidate marker until acceptance is complete"
+                  )
+              print(f"release note candidate-state gate passed for draft {head}")
+          else:
+              if marker in text:
+                  raise SystemExit(
+                      f"release PR {head} is ready for review but {notes} still says acceptance pending; "
+                      "complete acceptance and remove the candidate status before merge"
+                  )
+              print(f"release note finalization gate passed for {head}")
+
       - name: Validate released-history backmerge
         if: startsWith(github.head_ref, 'backmerge/v')
         shell: bash
@@ -246,6 +293,28 @@ jobs:
               raise SystemExit(
                   f"tag {tag_version} does not match root CMake project version {cmake_version}"
               )
+
+      - name: Require finalized milestone release notes
+        shell: python
+        run: |
+          import os
+          import pathlib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag[1:]
+          notes = pathlib.Path(f"docs/releases/{tag}.md")
+          if not notes.is_file():
+              raise SystemExit(f"release tag {tag} requires {notes}")
+
+          text = notes.read_text(encoding="utf-8")
+          marker = "Status: **candidate / acceptance pending**"
+          if marker in text:
+              raise SystemExit(f"tagged release {tag} still contains the candidate acceptance marker")
+          for required in (tag, f"release/{tag}", "SecurityType None"):
+              if required not in text:
+                  raise SystemExit(f"{notes} is missing required release fact: {required}")
+
+          print(f"final release-note gate passed for {tag}")
 
       - name: Audit release tag fact
         shell: bash
