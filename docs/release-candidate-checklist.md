@@ -66,12 +66,12 @@ Milestone-specific gates remain authoritative in their issue:
 Only after the release candidate is accepted:
 
 1. merge `release/vX.Y.Z.W` into `main`;
-2. verify the resulting `main` commit still contains the accepted candidate and exact four-part CMake version;
-3. create tag `vX.Y.Z.W` on that accepted `main` release commit;
-4. allow the tag audit workflow to verify authorized milestone, four-part version, `main` reachability, and CMake-version equality;
+2. verify the resulting current `main` HEAD still contains the accepted candidate and exact four-part CMake version;
+3. create an **annotated** tag `vX.Y.Z.W` on that exact current `main` HEAD;
+4. allow the tag audit workflow to verify the authorized milestone, annotated-tag object, exact `main` HEAD equality, and CMake-version equality;
 5. publish release artifacts/notes from that tag only.
 
-A tag is never created first and validated later as the normal workflow. The tag workflow is a second-line audit; the release PR is the blocking gate.
+A tag is never created first and validated later as the normal workflow. The tag workflow is a second-line audit; the release PR is the blocking gate. Do not use a lightweight release tag, tag an older `main` ancestor, or move an existing milestone tag.
 
 ## 5. Back-merge to `develop`
 
