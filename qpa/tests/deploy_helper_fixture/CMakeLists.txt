@@ -37,13 +37,10 @@ if(TEST_DEPLOY_QPA)
     if(TEST_QPA_AVAILABLE)
         set(HyRemote_QPA_AVAILABLE TRUE)
         if(TEST_INSTALLED_PAYLOAD)
-            # Installed V1 packages publish qhyremote only as payload metadata; no consumer CMake
-            # target is exported for the platform module.
             set(_fixture_qpa_payload "${CMAKE_CURRENT_BINARY_DIR}/qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
             file(WRITE "${_fixture_qpa_payload}" "fixture")
             set(HyRemote_QPA_PLUGIN_FILE "${_fixture_qpa_payload}")
         else()
-            # Source-tree calls resolve the internal build target directly.
             add_library(qpa-probe MODULE EXCLUDE_FROM_ALL dummy.cpp)
             add_library(HyRemote::QpaPlatform ALIAS qpa-probe)
         endif()
@@ -51,14 +48,10 @@ if(TEST_DEPLOY_QPA)
         set(HyRemote_QPA_AVAILABLE FALSE)
     endif()
 else()
-    # QML-only deliberately proves that the public helper does not require or deploy QPA payload.
     set(HyRemote_QPA_AVAILABLE FALSE)
 endif()
 set(HyRemote_QPA_QT_VERSION "6.8.3")
 
-# Model the acquisition distinction that matters to source deployment. Source mode has a local shared
-# facade target hidden behind the public alias; installed mode has only an imported SDK target. The
-# deploy helper must create build dependencies only for the former.
 if(TEST_INSTALLED_PAYLOAD)
     set(_fixture_remoteaccess "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}HyRemoteRemoteAccess${CMAKE_SHARED_LIBRARY_SUFFIX}")
     file(WRITE "${_fixture_remoteaccess}" "fixture")
@@ -69,36 +62,28 @@ else()
     add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
 endif()
 
-# Source QML deployment proves current-configure availability with the actual module target. Installed
-# deployment proves it with package availability metadata. A stale absolute import path without either
-# fact must never authorize `hyremote_deploy(... QML)` after a source build has disabled the module.
+# Source availability is proven by the current-configure hyremote-qml target; installed availability
+# is represented only by the existing import-root metadata from HyRemoteConfig.cmake. The stale case
+# deliberately provides a plausible absolute path without a source module target.
 if(TEST_QML)
     if(TEST_QML_AVAILABLE)
         set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
         file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
-        if(TEST_INSTALLED_PAYLOAD)
-            set(HyRemote_QML_AVAILABLE TRUE)
-        else()
+        if(NOT TEST_INSTALLED_PAYLOAD)
             add_library(qml-backing SHARED EXCLUDE_FROM_ALL dummy.cpp)
             add_library(hyremote-qml ALIAS qml-backing)
             add_library(qml-plugin MODULE EXCLUDE_FROM_ALL dummy.cpp)
             set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS
                 "qml-backing;qml-plugin")
         endif()
-    else()
-        set(HyRemote_QML_AVAILABLE FALSE)
-        if(TEST_STALE_QML_METADATA)
-            set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/stale-qml-import")
-            file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
-        endif()
+    elseif(TEST_STALE_QML_METADATA)
+        set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/stale-qml-import")
+        file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
     endif()
 endif()
 
 set(Qt6Core_VERSION "${TEST_QT_VERSION}")
 
-# The supplemental script includes Qt's low-level deployment support only at install time. A tiny
-# deterministic stand-in is sufficient for configure/generate contract tests; the clean installed
-# and source consumers exercise the real Qt 6.8.3 deployment implementation.
 set(QT_DEPLOY_SUPPORT "${CMAKE_CURRENT_BINARY_DIR}/fake-qt-deploy-support.cmake")
 file(WRITE "${QT_DEPLOY_SUPPORT}"
 "function(qt_deploy_runtime_dependencies)\nendfunction()\n")
@@ -110,7 +95,6 @@ function(qt_generate_deploy_app_script)
     set(options NO_UNSUPPORTED_PLATFORM_ERROR)
     set(oneValueArgs TARGET OUTPUT_SCRIPT)
     cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "" ${ARGN})
-
     if(TEST_QML)
         message(FATAL_ERROR "ordinary Qt deploy command called for QML probe")
     endif()
@@ -120,7 +104,6 @@ function(qt_generate_deploy_app_script)
     if(NOT ARG_NO_UNSUPPORTED_PLATFORM_ERROR)
         message(FATAL_ERROR "HyRemote must preserve NO_UNSUPPORTED_PLATFORM_ERROR")
     endif()
-
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-app-deploy.cmake")
     file(WRITE "${script}" "# ordinary deployment probe\n")
     set(${ARG_OUTPUT_SCRIPT} "${script}" PARENT_SCOPE)
@@ -131,7 +114,6 @@ function(qt_generate_deploy_qml_app_script)
     set(options NO_UNSUPPORTED_PLATFORM_ERROR DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM)
     set(oneValueArgs TARGET OUTPUT_SCRIPT)
     cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "" ${ARGN})
-
     if(NOT TEST_QML)
         message(FATAL_ERROR "QML Qt deploy command called for ordinary QPA probe")
     endif()
@@ -142,15 +124,11 @@ function(qt_generate_deploy_qml_app_script)
        NOT ARG_DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM)
         message(FATAL_ERROR "HyRemote QML deployment options regressed")
     endif()
-
-    # This is deliberately checked inside the fake Qt generator so ordering is proven: the import
-    # root must already be attached when Qt computes its deployment script.
     get_target_property(_probe_qml_imports "${ARG_TARGET}" QT_QML_IMPORT_PATH)
     if(NOT _probe_qml_imports OR NOT HyRemote_QML_IMPORT_PATH IN_LIST _probe_qml_imports)
         message(FATAL_ERROR
             "HyRemote QML import root was not attached before Qt deploy generation: ${_probe_qml_imports}")
     endif()
-
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-qml-deploy.cmake")
     file(WRITE "${script}" "# QML deployment probe\n")
     set(${ARG_OUTPUT_SCRIPT} "${script}" PARENT_SCOPE)
@@ -175,8 +153,6 @@ else()
     endif()
 endif()
 
-# Build-only dependency contract for EXCLUDE_FROM_ALL source acquisition. Imported installed targets
-# must not appear here; local source payload targets must all be pulled into the application build.
 get_target_property(_manual_dependencies deploy-probe MANUALLY_ADDED_DEPENDENCIES)
 if(NOT _manual_dependencies)
     set(_manual_dependencies "")
