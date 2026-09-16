@@ -3,6 +3,8 @@ include(GNUInstallDirs)
 # Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
 # Private QPA types and interception/composition remain isolated here while the plugin reuses the
 # same shared HyRemote::RemoteAccess runtime as the C++ and QML modes.
+get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
 add_library(hyremote-qpa-platform MODULE
     application_surface_model.cpp
     composite_target.cpp
@@ -41,7 +43,7 @@ endif()
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform
     PRIVATE
-        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+        "${_hyremote_root_dir}/remoteaccess/src"
 )
 target_link_libraries(hyremote-qpa-platform
     PRIVATE
@@ -86,7 +88,7 @@ if(HYREMOTE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-ordinary
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=OFF
             -P ${_hyremote_qpa_deploy_runner}
     )
@@ -96,7 +98,7 @@ if(HYREMOTE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
             -P ${_hyremote_qpa_deploy_runner}
     )
@@ -108,7 +110,7 @@ if(HYREMOTE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=OFF
             -DTEST_INSTALLED_PAYLOAD=ON
             -P ${_hyremote_qpa_deploy_runner}
@@ -119,7 +121,7 @@ if(HYREMOTE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload-qml
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
             -DTEST_INSTALLED_PAYLOAD=ON
             -P ${_hyremote_qpa_deploy_runner}
@@ -130,7 +132,7 @@ if(HYREMOTE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qt-mismatch
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QT_VERSION=6.8.2
             -DEXPECT_CONFIGURE_FAILURE=ON
             -P ${_hyremote_qpa_deploy_runner}
@@ -141,7 +143,7 @@ if(HYREMOTE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-no-qpa
-            -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QPA_AVAILABLE=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
             -P ${_hyremote_qpa_deploy_runner}
