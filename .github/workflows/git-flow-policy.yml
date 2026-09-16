@@ -16,6 +16,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: read
+
 jobs:
   pull-request-topology:
     if: github.event_name == 'pull_request'
@@ -142,6 +146,51 @@ jobs:
               )
 
           print(f"release candidate version gate passed for v{branch_version}")
+
+      - name: Require accepted milestone authorities before release PR
+        if: startsWith(github.head_ref, 'release/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          version="${HEAD_REF#release/v}"
+
+          # Issues are the release authorities. This gate only reads their accepted state; it never
+          # closes them or manufactures evidence. V1 therefore cannot bypass #104/#109 merely by
+          # editing release notes or changing the release PR out of Draft.
+          case "${version}" in
+            0.0.1.0)
+              required_issues=(30)
+              ;;
+            0.0.2.0)
+              required_issues=(30 31)
+              ;;
+            0.0.3.0)
+              required_issues=(30 31 32)
+              ;;
+            1.0.0.0)
+              required_issues=(30 31 32 39 41 101 104 107 109 33)
+              ;;
+            *)
+              echo "no release-authority mapping for ${version}" >&2
+              exit 1
+              ;;
+          esac
+
+          for issue in "${required_issues[@]}"; do
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" \
+              --jq '[.state, (.state_reason // "")] | @tsv')"
+            IFS=$'\t' read -r state reason <<< "${response}"
+            if [[ "${state}" != "closed" || "${reason}" == "not_planned" ]]; then
+              echo "release/v${version} is not authorized: issue #${issue} state=${state} reason=${reason:-none}" >&2
+              exit 1
+            fi
+            echo "authority #${issue}: closed (${reason:-unspecified})"
+          done
+
+          echo "release authority gate passed for v${version}"
 
       - name: Validate milestone release-note state
         if: startsWith(github.head_ref, 'release/v')
