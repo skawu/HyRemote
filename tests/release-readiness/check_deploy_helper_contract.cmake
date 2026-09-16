@@ -73,6 +73,7 @@ foreach(required_token
         [=[TARGET hyremote-qml]=]
         [=[HYREMOTE_BUILD_QML_API=ON]=]
         [=[HyRemote_QML_IMPORT_PATH]=]
+        [=[IS_DIRECTORY "${HyRemote_QML_IMPORT_PATH}"]=]
         [=[HYREMOTE_QML_SOURCE_DEPLOY_TARGETS]=]
         [=[HyRemote_QPA_AVAILABLE]=]
         [=[HyRemote::QpaPlatform]=]
@@ -99,6 +100,7 @@ endif()
 
 foreach(required_phrase
         [=[requires a HyRemote QML payload]=]
+        [=[QML import root does not exist]=]
         [=[requires the current HyRemote source build]=]
         [=[requested an SDK that was built without Transparent QPA]=]
         [=[requires exact Qt]=])
@@ -113,6 +115,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/deploy_helper_fixture/CMakeLists.txt
 foreach(required_token
         [=[TEST_DEPLOY_QPA]=]
         [=[TEST_QML_AVAILABLE]=]
+        [=[TEST_QML_IMPORT_PATH_EXISTS]=]
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_QPA_AVAILABLE]=]
         [=[TEST_STALE_QPA_METADATA]=]
@@ -140,6 +143,7 @@ endif()
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake" runner)
 foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
+        [=[TEST_QML_IMPORT_PATH_EXISTS]=]
         [=[TEST_STALE_QPA_METADATA]=]
         [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
         [=[EXPECT_FAILURE_FRAGMENT]=]
@@ -162,6 +166,7 @@ foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[EXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload]=]
+        [=[EXPECT_FAILURE_FRAGMENT=QML import root does not exist]=]
         [=[EXPECT_FAILURE_FRAGMENT=requires the current HyRemote source build]=]
         [=[EXPECT_FAILURE_FRAGMENT=requires exact Qt]=]
         [=[EXPECT_FAILURE_FRAGMENT=requested an SDK that was built without Transparent QPA]=])
@@ -186,6 +191,7 @@ foreach(required_test
         "hyremote-qpa-deploy-helper-installed-payload-qml"
         "hyremote-qpa-deploy-helper-reject-missing-qml"
         "hyremote-qpa-deploy-helper-reject-stale-qml-metadata"
+        "hyremote-qpa-deploy-helper-reject-missing-qml-root"
         "hyremote-qpa-deploy-helper-reject-stale-qpa-metadata"
         "hyremote-qpa-deploy-helper-reject-missing-package"
         "hyremote-qpa-deploy-helper-reject-qt-mismatch"
@@ -199,4 +205,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; negative fixtures must fail for their intended semantic reason; installed QPA metadata matches the platform MODULE filename; source/installed optional payloads remain isolated)")
+    "(four public shapes remain distinct; negative fixtures must fail for their intended semantic reason; installed QML/QPA payloads fail closed when advertised paths are missing; source/installed optional payloads remain isolated)")
