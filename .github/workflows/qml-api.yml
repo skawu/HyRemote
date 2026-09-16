@@ -14,9 +14,11 @@ on:
 
 jobs:
   build-test:
-    # v0.0.1.0 is deliberately C++-only. The source tree may already contain later V1 work, but a
-    # milestone release must not test/advertise a mode that its version profile correctly rejects.
-    if: github.event_name != 'pull_request' || github.head_ref != 'release/v0.0.1.0'
+    # v0.0.1.0 is deliberately C++-only. Automatic PR runs and manual dispatches must both respect
+    # the formal milestone profile instead of enabling a future mode and producing a false failure.
+    if: >-
+      (github.event_name == 'pull_request' && github.head_ref != 'release/v0.0.1.0') ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name != 'release/v0.0.1.0')
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
