@@ -55,6 +55,10 @@ set(required_files
     "tests/consumer-installed-qpa/CMakeLists.txt"
     "tests/consumer-installed-qpa/product_fit.py"
     "tests/public-api-contract/CMakeLists.txt"
+    "remoteaccess/tests/test_remote_access.cpp"
+    "remoteaccess/tests/test_widgets_input_backpressure.cpp"
+    "remoteaccess/tests/test_quick_input_backpressure.cpp"
+    "qpa/tests/qpa_composite_input_test.cpp"
 )
 
 foreach(path IN LISTS required_files)
@@ -299,6 +303,80 @@ if(EXISTS "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/main.cpp")
     message(FATAL_ERROR
         "release-readiness: clean installed-QPA fixture must not maintain a duplicate E4 application source")
 endif()
+
+# Freeze the terminal input lifecycle that keeps a still-running local Qt application neutral when
+# HyRemote is stopped or a QPA child leaves the composed application surface set. This remains an
+# internal composition contract; the V1 application-facing API stays the single RemoteAccess facade.
+file(READ "${HYREMOTE_SOURCE_DIR}/core/include/hyremote/core/input.hpp" input_contract)
+string(FIND "${input_contract}" "virtual void shutdown() noexcept" input_shutdown_contract)
+if(input_shutdown_contract EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: internal InputSink terminal shutdown contract was removed")
+endif()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/remoteaccess/src/remote_access.cpp" remoteaccess_source)
+string(FIND "${remoteaccess_source}" "session->stop();" session_stop_pos)
+string(FIND "${remoteaccess_source}" "inputSink->shutdown();" input_shutdown_pos)
+if(session_stop_pos EQUAL -1 OR input_shutdown_pos EQUAL -1 OR input_shutdown_pos LESS session_stop_pos)
+    message(FATAL_ERROR
+        "release-readiness: RemoteAccess must quiesce Session before terminal target-input shutdown")
+endif()
+
+foreach(adapter_file
+        "remoteaccess/src/widgets/widget_target.cpp"
+        "remoteaccess/src/quick/quick_target.cpp")
+    file(READ "${HYREMOTE_SOURCE_DIR}/${adapter_file}" adapter_source)
+    foreach(required_token
+            "void shutdown() noexcept override"
+            "state->pending.clear()"
+            "releaseHeldStateOnGuiThread")
+        string(FIND "${adapter_source}" "${required_token}" found)
+        if(found EQUAL -1)
+            message(FATAL_ERROR
+                "release-readiness: terminal input cleanup missing from ${adapter_file}: ${required_token}")
+        endif()
+    endforeach()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/qpa/interactive_composite_target.cpp" qpa_input_source)
+foreach(required_token
+        "void shutdown() noexcept override"
+        "sink->shutdown()"
+        "state->pending.clear()")
+    string(FIND "${qpa_input_source}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: QPA terminal child-input propagation missing: ${required_token}")
+    endif()
+endforeach()
+
+foreach(test_entry
+        "remoteaccess/tests/test_remote_access.cpp|inputShutdowns"
+        "remoteaccess/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "remoteaccess/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
+    string(REPLACE "|" ";" test_parts "${test_entry}")
+    list(GET test_parts 0 test_path)
+    list(GET test_parts 1 required_token)
+    file(READ "${HYREMOTE_SOURCE_DIR}/${test_path}" test_source)
+    string(FIND "${test_source}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: terminal input lifecycle regression evidence missing: ${test_path}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/v1-ga-acceptance.md" ga_acceptance)
+foreach(required_phrase
+        "terminal remote-input lifecycle boundary"
+        "discard remote input accepted into its pending mailbox"
+        "explicit HyRemote stop/policy transition")
+    string(FIND "${ga_acceptance}" "${required_phrase}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: canonical V1 GA acceptance omits terminal input lifecycle fact: ${required_phrase}")
+    endif()
+endforeach()
 
 message(STATUS
     "HyRemote release-readiness metadata gate: PASS "
