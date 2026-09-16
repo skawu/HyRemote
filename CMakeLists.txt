@@ -45,16 +45,10 @@ message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
 message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Build spikes:        ${HYREMOTE_BUILD_SPIKES}")
 
-# hyremote-core: the production session/frame/dispatch contract frozen by ARCH-01.
-# UI-neutral and free of Qt/protocol/platform types.
 if(HYREMOTE_BUILD_CORE)
     add_subdirectory(core)
 endif()
 
-# Product-facing C++ facade. Keep bare Core builds usable on hosts without Qt: when HyRemote is
-# configured as the top-level project and Qt is unavailable, the product target is skipped with an
-# explicit status message. A source-consumer subproject, however, is expected to provide its Qt SDK
-# and fails if the product target was requested but Qt Core/Network cannot be resolved.
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
     if(NOT TARGET HyRemote::Core)
         message(FATAL_ERROR "HyRemote::RemoteAccess requires HYREMOTE_BUILD_CORE=ON")
@@ -75,9 +69,6 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 endif()
 
-# Declarative QML integration is a thin wrapper over the same public RemoteAccess runtime. It must
-# never create a second capture/transport/input stack. Keep the module optional for bare Core builds
-# and source consumers that intentionally disable the product-facing QML mode.
 if(HYREMOTE_BUILD_QML_API)
     if(NOT TARGET hyremote-remoteaccess)
         if(PROJECT_IS_TOP_LEVEL)
@@ -102,12 +93,6 @@ if(HYREMOTE_BUILD_QML_API)
     endif()
 endif()
 
-# Transparent QPA Proxy is an explicitly version-coupled integration package. It is never part of
-# hyremote-core and is opt-in because Qt does not guarantee QPA source/binary compatibility. The
-# transparent mode composes the same product RemoteAccess runtime after native semantics are preserved;
-# it must not grow a parallel Session/transport/input implementation merely because its launch
-# mechanism is a platform plugin. Run exact package qualification unconditionally so earlier public-Qt
-# discovery cannot bypass the private-ABI gate merely because Qt6::Gui exists.
 if(HYREMOTE_WITH_QPA_PROXY)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
@@ -121,9 +106,6 @@ if(HYREMOTE_WITH_QPA_PROXY)
     add_subdirectory(qpa)
 endif()
 
-# V1 examples are release evidence for the three frozen integration modes. They consume the public
-# product surface for their mode and must not create a second Session/transport/input architecture.
-# E4 remains an ordinary Qt-only application; its QPA packaging path is opt-in inside that example.
 if(HYREMOTE_BUILD_EXAMPLES)
     if(TARGET HyRemote::RemoteAccess)
         add_subdirectory(examples)
@@ -135,14 +117,11 @@ if(HYREMOTE_BUILD_EXAMPLES)
     endif()
 endif()
 
-# Throwaway architecture spike harnesses. They are not part of the production build graph.
 if(HYREMOTE_BUILD_SPIKES)
     add_subdirectory(spikes/capture)
     add_subdirectory(spikes/async-capture)
 endif()
 
-# The V1 installed SDK exists only when the product facade exists. Core remains a source/internal
-# static composition target and is deliberately not exported as a second normal SDK product.
 if(TARGET hyremote-remoteaccess)
     include(HyRemoteInstall)
 endif()
@@ -187,6 +166,21 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
+    )
+
+    # Source deployment truth must come from the current add_subdirectory() graph. This fixture
+    # deliberately injects installed-SDK metadata claiming QPA is unavailable and tied to Qt 6.8.2
+    # while the current source graph contains HyRemote::QpaPlatform. The source target and fixed V1
+    # Qt 6.8.3 qualification must win, proving cross-acquisition metadata cannot poison source use.
+    add_test(
+        NAME hyremote-release-readiness-source-qpa-authority
+        COMMAND "${CMAKE_COMMAND}"
+            -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/qpa/tests/deploy_helper_fixture
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-readiness-source-qpa-authority
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DTEST_QML=OFF
+            -DTEST_STALE_QPA_NEGATIVE_METADATA=ON
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake"
     )
 
     function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled expect_reject)
