@@ -36,11 +36,21 @@ See [`security.md`](security.md) for the implemented V1 security boundary. [`sec
 
 See the QPA capture-classification document and `compatibility.md` for exact status.
 
-### Input and abrupt disconnect
+### Input lifecycle, abrupt disconnect and explicit stop
 
 The normalized input contract covers pointer/button/wheel, logical key/modifier and committed-text behavior. Full IME composition/dead-key/international-layout parity is not claimed.
 
-#90's held-key/button disconnect correction has been absorbed into the single V1 candidate #106. It balances recognized held input when a viewer disappears abruptly, but the exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore the milestone authorities must not yet claim this correctness gate as accepted.
+#90's held-key/button disconnect correction has been absorbed into the single V1 candidate #106. It balances recognized held input when a viewer disappears abruptly. The candidate also now treats explicit HyRemote runtime stop as a separate terminal target-input boundary: after transport/Core callbacks are quiescent, pending remote events not yet delivered to Qt are discarded, while supported remote key/button state already delivered to the target is balanced before the target input adapter retires. QML reuses the same runtime semantics, and QPA propagates terminal cleanup to child surfaces before retiring their adapters.
+
+These repository behaviors are covered by deterministic transport, facade, Widgets, Quick and QPA tests. However, the exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore milestone authorities must not yet describe abrupt-disconnect or explicit-stop cleanup as accepted release support solely from repository implementation.
+
+The following remain explicit V1 boundaries rather than hidden promises:
+
+- terminal target-input cleanup is an internal composition contract, not a new application-facing reset API;
+- only supported normalized key/button state can be balanced; unsupported IME/composition semantics are not reconstructed or guessed;
+- pending input that never reached the Qt GUI is dropped on explicit stop rather than replayed after stop;
+- repeated teardown is intended to be idempotent and must not synthesize duplicate releases;
+- physical local-input neutrality after an abrupt disconnect or explicit stop/policy transition still requires #109 evidence on each claimed OS.
 
 Ordinary key/button release and reconnect paths are separately represented in product-fit tests.
 
@@ -88,11 +98,13 @@ Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemote
 
 A deployment that only works because the original HyRemote SDK/build tree is still on `PATH`, `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` or `QT_QPA_PLATFORM_PLUGIN_PATH` does not satisfy the V1 product contract.
 
+The clean installed-QPA acceptance fixture is intentionally bound to the real E4 Qt-only application source rather than maintaining a second look-alike application. This prevents fixture success from hiding drift in the defining existing-application example.
+
 ### Physical local + remote coexistence
 
 Hosted offscreen/software/Xvfb tests can prove viewer → transport → shared runtime → Qt target behavior. They do **not** prove that a physical local display and local keyboard/mouse remained usable at the same time.
 
-Physical local-visible/local-input coexistence for the GA cross-mode envelope is tracked by #109, including E1/E2/E3/E4 on Windows/Linux as applicable. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
+Physical local-visible/local-input coexistence for the GA cross-mode envelope is tracked by #109, including E1/E2/E3/E4 on Windows/Linux as applicable. For control-enabled paths this includes both abrupt-disconnect held-state cleanup and explicit HyRemote stop/policy-transition cleanup with no late queued remote input. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
 
 ### Hosted CI infrastructure
 
