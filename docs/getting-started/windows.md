@@ -1,70 +1,51 @@
 # Windows x86_64 Getting Started
 
-Reference target for the current V1 line: Windows x86_64. Current candidate qualification uses **Qt 6.8.3 + MSVC x64**; no broader support claim is implied until the corresponding evidence is accepted.
+Reference target for the current V1 line: Windows x86_64, Qt 6.8.x; current CI/product work uses Qt 6.8.3 with MSVC x64. Transparent QPA is qualified only for exact Qt 6.8.3.
 
-## Build HyRemote
+## Build the normal product
 
 Open an x64 MSVC developer environment, then configure with the matching Qt prefix:
 
 ```bat
 cmake -S . -B build -G Ninja ^
   -DCMAKE_BUILD_TYPE=Release ^
-  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 ^
-  -DHYREMOTE_BUILD_EXAMPLES=ON
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64
 cmake --build build --parallel
 ```
 
-When running Qt-linked binaries directly from the **build tree**, make the matching Qt `bin` directory discoverable:
+A plain configure is intentionally product-only: it builds the standard C++ `HyRemote::RemoteAccess` path but does not build repository tests, examples or spikes. QML and Transparent QPA are opt-in integration packages.
+
+To create an installed SDK, also provide `-DCMAKE_INSTALL_PREFIX=<prefix>` and run `cmake --install build`.
+
+## Maintainer / acceptance test build
+
+Repository validation is explicit rather than hidden in the normal product build:
 
 ```bat
-set PATH=C:\Qt\6.8.3\msvc2022_64\bin;%CD%\build\remoteaccess;%PATH%
-ctest --test-dir build --output-on-failure
+cmake -S . -B build-test -G Ninja ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 ^
+  -DHYREMOTE_BUILD_TESTS=ON ^
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build-test --parallel
 ```
 
-That is a developer build-tree convenience, not the installed product deployment contract. A deployed application produced by `hyremote_deploy()` must run without the original HyRemote SDK/build directory on `PATH`.
+When running Qt-linked build-tree tests, make the matching Qt and HyRemote build runtime directories discoverable:
 
-The hosted workflows use the same project CMake graph. A different successful local compiler/Qt combination is not automatically a support claim.
-
-## Embedded C++ examples
-
-The convergence tree contains:
-
-- `examples/widgets-basic`;
-- `examples/quick-basic`;
-- `examples/remote-support-showcase`.
-
-The basic examples use the public `HyRemote::RemoteAccess` facade; they do not assemble Core/transport/capture/input objects. Construction is inert and remote access begins only through explicit product lifecycle policy.
-
-The default listener is loopback and remote input is disabled. Enable remote control only deliberately in a controlled environment.
-
-## Declarative QML
-
-Use the same installed package plus the `HyRemote` QML import. The normal declarative shape is:
-
-```qml
-RemoteAccess {
-    target: mainWindow
-    enabled: true
-}
+```bat
+set PATH=C:\Qt\6.8.3\msvc2022_64\bin;%CD%\build-test\remoteaccess;%PATH%
+ctest --test-dir build-test --output-on-failure
 ```
 
-The start request is applied after QML component completion so initial bindings can settle. See `docs/getting-started/qml.md`.
+Those PATH additions are a **build-tree test concern**. A deployed application must obtain Qt/HyRemote runtime files through deployment and must not depend on the original SDK/build tree.
 
-## Transparent QPA
+The hosted workflows use the same CMake graph but explicitly enable the gates they execute. A different successful local compiler/Qt combination is not automatically a support claim.
 
-V1 Transparent QPA is qualified against **exact Qt 6.8.3 private ABI**. Build the optional proxy payload with:
+## Run the public examples
 
-```text
--DHYREMOTE_WITH_QPA_PROXY=ON
-```
+With `HYREMOTE_BUILD_EXAMPLES=ON`, the current V1 candidate contains `widgets-basic`, `quick-basic`, `qml-basic`, `qpa-proxy-existing-app`, and `remote-support-showcase` according to the enabled integration packages.
 
-An ordinary deployed Qt application then remains Qt-only and launches through:
-
-```text
-MyApp.exe -platform hyremote
-```
-
-See `docs/getting-started/qpa-proxy.md`; do not infer QPA compatibility with another Qt patch from the public API modes.
+E1/E2 use the same public `HyRemote::RemoteAccess` facade. By default they are view-only; use their explicit remote-input option only for a controlled test environment.
 
 ## Viewer
 
@@ -72,10 +53,8 @@ The current RFB correctness baseline is intended for standard VNC clients and de
 
 ## Security
 
-The current SecurityType None baseline is unauthenticated and unencrypted. Loopback and view-only defaults reduce accidental exposure but do not make the transport Internet-safe. See `docs/security.md`.
+Do not expose the current unauthenticated SecurityType None correctness transport directly to untrusted networks. Loopback is the safe default. Remote input is separately opt-in. See `docs/security.md`.
 
-## Support and physical-evidence boundary
+## Support boundary
 
-Hosted/offscreen execution can validate build, protocol, deployment and Qt-target behavior, but it cannot prove a real Windows desktop remains visible and locally interactive while a remote viewer is active.
-
-The physical local-display/local-input + remote evidence envelope is tracked by #109 for the required V1 modes. `docs/compatibility.md` remains Candidate until the exact reference evidence executes and is accepted.
+A hosted/offscreen build is not by itself proof of locally visible display/input coexistence. Final Windows product acceptance must record the exact Qt/toolchain/viewer configuration and the required local+remote behavior. Physical E1/E2/E3/E4 evidence is tracked by #109; exact status remains in `docs/compatibility.md` and milestone issues #30/#31/#32.
