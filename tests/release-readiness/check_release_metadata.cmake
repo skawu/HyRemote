@@ -4,17 +4,44 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
+# V1 release metadata, complete user documentation and the E1-E6 acceptance entry points are product
+# artifacts, not post-release polish. Keep this list repository-relative so the same deterministic
+# gate runs on feature/develop and later on the authorized release branch.
 set(required_files
     "LICENSE"
     "NOTICE.md"
+    "README.md"
     "docs/versioning.md"
     "docs/release-package-manifest.md"
     "docs/releases/v1.0.0.0.md"
+    "docs/getting-started/windows.md"
+    "docs/getting-started/linux.md"
+    "docs/getting-started/cpp.md"
+    "docs/getting-started/qml.md"
+    "docs/getting-started/qpa-proxy.md"
+    "docs/sdk-installation.md"
+    "docs/source-consumption.md"
+    "docs/deployment.md"
+    "docs/qml-consumption.md"
+    "docs/security.md"
+    "docs/viewer-connection.md"
+    "docs/troubleshooting.md"
+    "docs/compatibility.md"
+    "docs/known-limitations.md"
+    "examples/README.md"
+    "examples/CMakeLists.txt"
+    "examples/widgets-basic/CMakeLists.txt"
+    "examples/quick-basic/CMakeLists.txt"
+    "examples/qml-basic/CMakeLists.txt"
+    "examples/qpa-proxy-existing-app/CMakeLists.txt"
+    "examples/remote-support-showcase/CMakeLists.txt"
+    "tests/consumer-installed-sdk/CMakeLists.txt"
+    "tests/consumer-source/CMakeLists.txt"
 )
 
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
-        message(FATAL_ERROR "release-readiness: missing required file: ${path}")
+        message(FATAL_ERROR "release-readiness: missing required V1 product artifact: ${path}")
     endif()
 endforeach()
 
@@ -155,5 +182,46 @@ foreach(required_phrase
     endif()
 endforeach()
 
+# README is the external-developer entry point. Every required V1 user path must remain directly
+# discoverable instead of forcing users through architecture/internal documentation.
+file(READ "${HYREMOTE_SOURCE_DIR}/README.md" readme_text)
+foreach(required_link
+        "docs/getting-started/cpp.md"
+        "docs/getting-started/qml.md"
+        "docs/getting-started/qpa-proxy.md"
+        "docs/getting-started/windows.md"
+        "docs/getting-started/linux.md"
+        "docs/sdk-installation.md"
+        "docs/source-consumption.md"
+        "docs/deployment.md"
+        "docs/viewer-connection.md"
+        "docs/security.md"
+        "docs/troubleshooting.md"
+        "docs/compatibility.md"
+        "docs/known-limitations.md")
+    string(FIND "${readme_text}" "${required_link}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: README does not expose required V1 user guide: ${required_link}")
+    endif()
+endforeach()
+
+# E1-E5 must participate in the common examples graph; E6 is the existing clean installed/source
+# consumer fixture above and is intentionally not duplicated as a toy example target.
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
+foreach(required_example
+        "add_subdirectory(widgets-basic)"
+        "add_subdirectory(quick-basic)"
+        "add_subdirectory(qml-basic)"
+        "add_subdirectory(qpa-proxy-existing-app)"
+        "add_subdirectory(remote-support-showcase)")
+    string(FIND "${examples_cmake}" "${required_example}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: common V1 examples graph missing required example: ${required_example}")
+    endif()
+endforeach()
+
 message(STATUS
-    "HyRemote release-readiness metadata gate: PASS (project ${source_project_version}, minimal V1 consumer surface)")
+    "HyRemote release-readiness metadata gate: PASS "
+    "(project ${source_project_version}, minimal SDK surface + complete V1 user entry points)")
