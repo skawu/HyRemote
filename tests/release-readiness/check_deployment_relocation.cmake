@@ -8,6 +8,7 @@ set(required_files
     "remoteaccess/CMakeLists.txt"
     "qml/HyRemote/CMakeLists.txt"
     "qpa/CMakeLists.txt"
+    "qpa/tests/check_source_payload_relocation.cmake"
     "cmake/HyRemoteDeploy.cmake"
     "tests/consumer-source/main.cpp"
     "tests/consumer-installed-qpa/product_fit.py"
@@ -51,25 +52,27 @@ foreach(required_token
 endforeach()
 
 # Source-tree and installed-SDK qhyremote payloads share one known non-toolchain RPATH segment. The
-# deployment helper rewrites that anchor after moving the module from SDK/build layout to the normal
-# Qt plugins/platforms layout. Do not replace this with CMake's undocumented READ_ELF mode or an
-# external patchelf/chrpath prerequisite.
+# trailing `/.` is semantically neutral in the SDK/build layout but reserves enough ELF RUNPATH string
+# capacity for the deployed plugins/platforms -> lib replacement. The helper must rewrite exactly
+# this package-owned segment without an undocumented ELF parser or external patching prerequisite.
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
-        [=[BUILD_RPATH "$ORIGIN/../../.."]=]
+        [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
-        [=[INSTALL_RPATH "$ORIGIN/../../.."]=])
+        [=[INSTALL_RPATH "$ORIGIN/../../../."]=]
+        [=[hyremote-qpa-source-payload-relocation]=]
+        [=[check_source_payload_relocation.cmake]=])
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deployment-relocation: qhyremote lost its source/install relocation anchor: ${required_token}")
+            "deployment-relocation: qhyremote lost its source/install relocation evidence: ${required_token}")
     endif()
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
         [=[file(RPATH_CHANGE]=]
-        [=[OLD_RPATH \"$ORIGIN/../../..\"]=]
+        [=[OLD_RPATH \"$ORIGIN/../../../.\"]=]
         [=[NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"]=])
     string(FIND "${deploy_helper}" "${required_token}" found)
     if(found EQUAL -1)
@@ -85,6 +88,19 @@ foreach(forbidden_token
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
             "deployment-relocation: V1 deployment gained an unsupported patching prerequisite: ${forbidden_token}")
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/check_source_payload_relocation.cmake" source_qpa_relocation)
+foreach(required_token
+        [=[OLD_RPATH "$ORIGIN/../../../."]=]
+        [=[NEW_RPATH "$ORIGIN/../../lib"]=]
+        [=[--unset=LD_LIBRARY_PATH]=]
+        [=[relocated qhyremote escaped deployment tree]=])
+    string(FIND "${source_qpa_relocation}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deployment-relocation: executable source-QPA relocation proof regressed: ${required_token}")
     endif()
 endforeach()
 
@@ -131,4 +147,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deployment-relocation gate: PASS "
-    "(source/install shared runtime + QML + QPA origin paths and loaded-library evidence frozen)")
+    "(source/install shared runtime + QML + QPA origin paths and executable loaded-library evidence frozen)")
