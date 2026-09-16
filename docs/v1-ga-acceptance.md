@@ -32,9 +32,10 @@ One release-like source tree is configured with all V1 product paths enabled at 
 - bounded RFB transport;
 - Transparent QPA Proxy;
 - tests;
-- E1–E5 examples.
+- E1–E5 examples;
+- V1 release-readiness metadata from #107.
 
-The workflow must build that single tree and then pass all deterministic CTest suites. A mode that only passes in a separately reduced build does not satisfy this integrated gate.
+The workflow must build that single tree and then pass all deterministic CTest suites, including the release-readiness metadata gate. A mode that only passes in a separately reduced build does not satisfy this integrated gate.
 
 ## 3. Transport correctness
 
@@ -99,32 +100,41 @@ The exact SDK produced from the integrated tree is installed and then consumed c
 
 The QPA consumer must keep exact Qt private-ABI qualification. The QML and QPA deployment paths extend the single HyRemote deployment contract; they do not create separate user-facing backend commands.
 
-## 6. Public API freeze gate
+The installed candidate must also preserve the repository-owned `LICENSE` and `NOTICE.md` metadata defined by #107.
 
-Before GA, #101 / `docs/v1-api-stability.md` must be accepted. The stable application-facing model remains:
+## 6. Public API and release-readiness freeze gates
+
+Before GA:
+
+- #101 / `docs/v1-api-stability.md` must be accepted;
+- #107 / `docs/releases/v1.0.0.0.md`, `NOTICE.md` and `docs/release-package-manifest.md` must be accepted as release-readiness metadata.
+
+The stable application-facing model remains:
 
 - Embedded C++: `HyRemote::RemoteAccess`;
 - QML: `import HyRemote` / `RemoteAccess` over the same runtime;
 - Transparent QPA: exact-version package/launch/deployment mode, not a generic private-QPA C++ API;
 - transport/capture/input/Core composition types are not a second normal application integration path.
 
+Release notes stay candidate/pending until the final release branch is accepted. Feature/develop must not set the root project version to `1.0.0.0`; that version change belongs on `release/v1.0.0.0`.
+
 ## 7. Manual / physical acceptance not replaced by CI
 
 The integrated workflow is necessary but not sufficient for `v1.0.0.0`.
 
-Mandatory physical/manual evidence from #32/#33 still includes, on the claimed Windows and Linux reference environments:
+Physical/native evidence is tracked explicitly by #109. On the claimed Windows and Linux reference environments it must prove the applicable E1/E2/E3/E4 local-behavior cells, including:
 
-- a real local application window remains visibly rendered through the native delegate while remote viewing is active;
-- local pointer/keyboard input continues to reach the application while remote input is enabled as claimed;
+- a real local application window remains visibly rendered through the native path while remote viewing is active;
+- local pointer/keyboard/text input continues to reach the application while remote input is enabled as claimed;
 - remote input does not disable or replace the native local path;
 - QPA is demonstrably not replacement-only qvnc behavior;
 - reconnect does not require application restart where claimed.
 
-Use the Local Developer Agent only for this genuine local-display/input capability gap. Do not use it to substitute for unavailable GitHub-hosted runners.
+Use the Local Developer Agent or equivalent physical host only when #109 reaches its execution entry condition. Do not use it to substitute for unavailable GitHub-hosted runners. Evidence from one OS does not substitute for the other.
 
 ## 8. Infrastructure evidence rule
 
-#74 runner-assignment failures (`steps=[]`, no runner) are infrastructure failures. They are neither code failures nor passing product evidence.
+#74 runner-assignment failures (`steps=[]`/`steps=null`, no runner execution) are infrastructure failures. They are neither code failures nor passing product evidence.
 
 If either reference OS job does not actually execute, the GA workflow is **unexecuted** for that OS and cannot authorize a release branch or tag.
 
@@ -134,12 +144,14 @@ If either reference OS job does not actually execute, the GA workflow is **unexe
 
 - #30 accepted and integrated;
 - #31 accepted and integrated;
-- #32 accepted and integrated, including required physical evidence;
+- #32 accepted and integrated, including its required physical evidence;
 - #39 accepted and integrated;
 - #41 accepted and integrated;
 - #90 disconnect correctness accepted;
 - #91 connected-client diagnostics accepted;
 - #101 API freeze accepted;
+- #107 release-readiness metadata accepted;
+- #109 required cross-mode physical/native evidence accepted;
 - #104 integrated GA workflow has actually passed on both reference OSes;
 - compatibility/known-limitations/security documentation matches the candidate;
 - no mandatory acceptance item remains blocked, failed or merely inferred.
@@ -152,13 +164,13 @@ Release sequence is strictly:
 feature/* -> develop
               |
               v
-release/v1.0.0.0 -> main -> tag v1.0.0.0
+release/v1.0.0.0 -> main -> annotated tag v1.0.0.0
               |
               +---- back-merge/reconcile release result -> develop
 ```
 
 On `release/v1.0.0.0`, root `project(HyRemote VERSION ...)` must be exactly `1.0.0.0`. No new product capability is added on the release branch.
 
-The tag is created only after the accepted release branch is merged to `main`, and points to that accepted main release commit. A tag is a release fact, not a progress marker.
+The tag is created only after the accepted release branch is merged to `main`. It must be an annotated tag on the exact current accepted `main` release HEAD, and its peeled commit/version must match the release candidate. A tag is a release fact, not a progress marker.
 
 Governance mode: `transitional-explicit` until #14 passes reusable ADS machine acceptance.
