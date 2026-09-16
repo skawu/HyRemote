@@ -157,8 +157,8 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
-    # Optional package modes fail closed. Requesting QML without a source/installed module must be a
-    # configure-time error, matching the existing QPA missing-payload behavior.
+    # Negative fixtures must fail for their intended semantic reason. The runner checks the explicit
+    # fragment so an unrelated CMake error cannot make every reject case appear to pass.
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-missing-qml
         COMMAND ${CMAKE_COMMAND}
@@ -169,6 +169,7 @@ if(HYREMOTE_BUILD_TESTS)
             -DTEST_DEPLOY_QPA=OFF
             -DTEST_QML_AVAILABLE=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
+            "-DEXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload"
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -183,6 +184,7 @@ if(HYREMOTE_BUILD_TESTS)
             -DTEST_QML_AVAILABLE=OFF
             -DTEST_STALE_QML_METADATA=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
+            "-DEXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload"
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -197,6 +199,7 @@ if(HYREMOTE_BUILD_TESTS)
             -DTEST_QML=OFF
             -DTEST_STALE_QPA_METADATA=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
+            "-DEXPECT_FAILURE_FRAGMENT=requires the current HyRemote source build"
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -208,9 +211,12 @@ if(HYREMOTE_BUILD_TESTS)
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QT_VERSION=6.8.2
             -DEXPECT_CONFIGURE_FAILURE=ON
+            "-DEXPECT_FAILURE_FRAGMENT=requires exact Qt"
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # Installed acquisition has no internal QPA target. Its explicit package availability metadata
+    # must reject QPA deployment when the SDK was built without the optional payload.
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-missing-package
         COMMAND ${CMAKE_COMMAND}
@@ -218,7 +224,9 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-no-qpa
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QPA_AVAILABLE=OFF
+            -DTEST_INSTALLED_PAYLOAD=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
+            "-DEXPECT_FAILURE_FRAGMENT=requested an SDK that was built without Transparent QPA"
             -P ${_hyremote_qpa_deploy_runner}
     )
 
