@@ -71,6 +71,7 @@ jobs:
             -DHYREMOTE_WITH_VNC=ON \
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
+          test -f build/remoteaccess/libHyRemoteRemoteAccess.so
           xvfb-run -a ctest --test-dir build -R '^hyremote-qpa-' --output-on-failure
           cmake --install build
           test -f "$PWD/staged-sdk/lib/libHyRemoteRemoteAccess.so"
@@ -117,6 +118,8 @@ jobs:
             -DHYREMOTE_WITH_VNC=ON ^
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build --parallel
+          if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
+          set "PATH=%CD%\build\remoteaccess;%QT_PREFIX%\bin;%PATH%"
           ctest --test-dir build -R "^hyremote-qpa-" --output-on-failure
           cmake --install build
           if not exist "%CD%\staged-sdk\bin\HyRemoteRemoteAccess.dll" exit /b 1
@@ -129,6 +132,7 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
           cmake -S tests\consumer-installed-qpa -B qpa-consumer -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
