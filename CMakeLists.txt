@@ -12,6 +12,13 @@ include(HyRemoteProjectOptions)
 include(HyRemoteReleaseProfile)
 include(HyRemoteDeploy)
 
+# Source/add_subdirectory QML deployment metadata is configure-local truth even though the import
+# root is carried through CMake's internal cache so a child module can publish it back to the
+# consumer directory. Clear any value left by an earlier configure before deciding whether the
+# current source build actually provides the optional QML payload.
+unset(HyRemote_QML_IMPORT_PATH CACHE)
+set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")
+
 # Development integrates all V1 modes behind explicit options, but a milestone tag is a release fact:
 # an earlier tagged product must not let users opt into a later, not-yet-accepted integration mode
 # merely because its source already exists on develop. No extra user-facing release-profile option is
