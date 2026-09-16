@@ -1,0 +1,177 @@
+name: Git Flow policy
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  pull-request-topology:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate branch topology
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          echo "head=${HEAD_REF} base=${BASE_REF}"
+
+          case "${HEAD_REF}" in
+            feature/*)
+              test "${BASE_REF}" = "develop" || {
+                echo "feature/* PRs must target develop" >&2
+                exit 1
+              }
+              ;;
+            release/v*)
+              test "${BASE_REF}" = "main" || {
+                echo "release/v* PRs must target main" >&2
+                exit 1
+              }
+              ;;
+            hotfix/*)
+              case "${BASE_REF}" in
+                main|develop) ;;
+                *)
+                  echo "hotfix/* PRs may target only main or develop" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              # Historical atomic/stacked branches are deliberately not force-renamed. They may
+              # converge into develop, but no legacy/non-release branch may bypass the release gate.
+              test "${BASE_REF}" = "develop" || {
+                echo "only release/v* or hotfix/* may target main" >&2
+                exit 1
+              }
+              ;;
+          esac
+
+      - name: Validate release candidate version before main merge
+        if: startsWith(github.head_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          import os
+          import pathlib
+          import re
+
+          head = os.environ["HEAD_REF"]
+          base = os.environ["BASE_REF"]
+          if base != "main":
+              raise SystemExit("release/v* candidates must target main")
+
+          match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
+          if not match:
+              raise SystemExit("release branches must use release/vMajor.Minor.Feature.Maintenance")
+          branch_version = match.group(1)
+
+          allowed_milestones = {
+              "0.0.1.0",
+              "0.0.2.0",
+              "0.0.3.0",
+              "1.0.0.0",
+          }
+          if branch_version not in allowed_milestones:
+              raise SystemExit(
+                  f"release/{branch_version} is not a currently authorized HyRemote milestone; "
+                  "maintenance releases require an explicit release-policy update"
+              )
+
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          cmake = re.search(
+              r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})",
+              text,
+              re.S,
+          )
+          if not cmake:
+              raise SystemExit("root project(VERSION ...) must contain a four-part release version")
+          if cmake.group(1) != branch_version:
+              raise SystemExit(
+                  f"release branch version {branch_version} does not match root CMake project version {cmake.group(1)}"
+              )
+
+          print(f"release candidate version gate passed for v{branch_version}")
+
+  release-tag:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate four-part authorized milestone tag
+        shell: python
+        run: |
+          import os
+          import re
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          match = re.fullmatch(r"v([0-9]+(?:\.[0-9]+){3})", tag)
+          if not match:
+              raise SystemExit("HyRemote release tags must use vMajor.Minor.Feature.Maintenance")
+
+          version = match.group(1)
+          allowed_milestones = {
+              "0.0.1.0",
+              "0.0.2.0",
+              "0.0.3.0",
+              "1.0.0.0",
+          }
+          if version not in allowed_milestones:
+              raise SystemExit(
+                  f"tag {tag} is not a currently authorized HyRemote milestone; "
+                  "maintenance releases require an explicit release-policy update"
+              )
+
+      - name: Require tag commit on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || {
+            echo "release tag ${GITHUB_REF_NAME} must point to a commit reachable from main" >&2
+            exit 1
+          }
+
+      - name: Require CMake version to match tag
+        shell: python
+        run: |
+          import pathlib
+          import re
+          import os
+
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          match = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
+          if not match:
+              raise SystemExit("root project(VERSION ...) must contain a four-part release version")
+
+          cmake_version = match.group(1)
+          tag_version = os.environ["GITHUB_REF_NAME"][1:]
+          if cmake_version != tag_version:
+              raise SystemExit(
+                  f"tag {tag_version} does not match root CMake project version {cmake_version}"
+              )
+
+      - name: Audit release tag fact
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Validated release tag ${GITHUB_REF_NAME} at ${GITHUB_SHA}."
+          echo "This post-push audit does not replace the pre-merge release/v* gate."

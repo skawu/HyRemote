@@ -7,6 +7,7 @@ import argparse
 import os
 import queue
 import socket
+import struct
 import subprocess
 import tempfile
 import threading
@@ -29,6 +30,45 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
     finally:
         sock.close()
+
+
+def recv_exact(sock: socket.socket, size: int) -> bytes:
+    result = bytearray()
+    while len(result) < size:
+        chunk = sock.recv(size - len(result))
+        if not chunk:
+            raise RuntimeError(f"RFB peer closed while receiving {size} bytes")
+        result.extend(chunk)
+    return bytes(result)
+
+
+def connect_raw_rfb(port: int) -> socket.socket:
+    """Perform only the RFB 3.8 / SecurityType None handshake needed for precise input messages."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=3)
+    sock.settimeout(3)
+    require(recv_exact(sock, 12) == b"RFB 003.008\n", "unexpected RFB server version")
+    sock.sendall(b"RFB 003.008\n")
+
+    count = recv_exact(sock, 1)[0]
+    require(count >= 1, "RFB server offered no security type")
+    security_types = recv_exact(sock, count)
+    require(1 in security_types, f"SecurityType None was not offered: {security_types!r}")
+    sock.sendall(b"\x01")
+    require(struct.unpack(">I", recv_exact(sock, 4))[0] == 0, "RFB SecurityResult was not OK")
+
+    sock.sendall(b"\x01")  # ClientInit shared=true
+    server_init = recv_exact(sock, 24)
+    name_length = struct.unpack(">I", server_init[20:24])[0]
+    recv_exact(sock, name_length)
+    return sock
+
+
+def send_raw_key(sock: socket.socket, keysym: int, pressed: bool) -> None:
+    sock.sendall(struct.pack(">BBHI", 4, 1 if pressed else 0, 0, keysym))
+
+
+def send_raw_pointer(sock: socket.socket, mask: int, x: int, y: int) -> None:
+    sock.sendall(struct.pack(">BBHH", 5, mask, x, y))
 
 
 def verify_occupied_port_failure(executable: Path) -> None:
@@ -148,6 +188,76 @@ def verify_handshake_slots_expire(executable: Path) -> None:
             process.wait(timeout=5)
 
 
+def verify_abrupt_disconnect_releases_input(executable: Path) -> None:
+    """A client disappearing with held state must leave the next viewer/Qt target input clean."""
+    port = free_port()
+    process, reader, lines = start_harness(executable, port, duration_seconds=7)
+    raw: socket.socket | None = None
+    try:
+        raw = connect_raw_rfb(port)
+
+        # Hold Shift+A. The A release must be synthesized before Shift release so its release still
+        # carries modifiers=1, matching a normal key-up sequence.
+        send_raw_key(raw, 0xFFE1, True)  # Shift_L
+        send_raw_key(raw, ord("a"), True)
+
+        # Explicitly press/release middle once, then leave left+right held. Disconnect cleanup must
+        # release only the two still-held buttons; middle must not be released a second time.
+        send_raw_pointer(raw, 0x02, 19, 11)
+        send_raw_pointer(raw, 0x00, 19, 11)
+        send_raw_pointer(raw, 0x05, 23, 17)
+        time.sleep(0.15)
+
+        # Abruptly close the socket without any key/button-up messages.
+        raw.close()
+        raw = None
+        time.sleep(0.35)
+
+        # A new normal viewer must start from clean modifier/button state. Its A-down is the final
+        # A-down in the log and must carry modifiers=0.
+        with api.connect(f"127.0.0.1::{port}", password=None, timeout=3) as client:
+            client.keyDown("a")
+            client.keyUp("a")
+            time.sleep(0.15)
+
+        result = process.wait(timeout=10)
+        reader.join(timeout=2)
+        require(result == 0, f"disconnect-reset harness failed: {lines}")
+
+        shift_up = [line for line in lines if "INPUT key" in line and "key=16" in line and "pressed=0" in line]
+        require(len(shift_up) == 1, f"expected exactly one synthesized Shift release: {shift_up}")
+        require("modifiers=0" in shift_up[0], f"Shift release did not clear modifier state: {shift_up[0]}")
+
+        a_down = [line for line in lines if "INPUT key" in line and "key=32" in line and "pressed=1" in line]
+        a_up = [line for line in lines if "INPUT key" in line and "key=32" in line and "pressed=0" in line]
+        require(len(a_down) >= 2, f"expected held and subsequent A presses: {a_down}")
+        require(len(a_up) >= 2, f"expected synthesized and normal A releases: {a_up}")
+        require("modifiers=1" in a_down[0], f"held A did not observe Shift: {a_down[0]}")
+        require(any("modifiers=1" in line for line in a_up), f"A release was not synthesized before Shift release: {a_up}")
+        require("modifiers=0" in a_down[-1], f"next viewer inherited stale modifier state: {a_down[-1]}")
+
+        middle_up = [line for line in lines if "INPUT pointer-button" in line and "button=2" in line and "pressed=0" in line]
+        left_up = [line for line in lines if "INPUT pointer-button" in line and "button=1" in line and "pressed=0" in line]
+        right_up = [line for line in lines if "INPUT pointer-button" in line and "button=3" in line and "pressed=0" in line]
+        require(len(middle_up) == 1, f"already-released middle button was released twice: {middle_up}")
+        require(len(left_up) == 1, f"held left button was not released exactly once: {left_up}")
+        require(len(right_up) == 1, f"held right button was not released exactly once: {right_up}")
+        require("x=23" in left_up[0] and "y=17" in left_up[0], f"left release lost last pointer position: {left_up[0]}")
+        require("x=23" in right_up[0] and "y=17" in right_up[0], f"right release lost last pointer position: {right_up[0]}")
+
+        require(sum(1 for line in lines if "RFB client connected" in line) >= 2, "second viewer did not connect")
+        require("STOPPED" in lines, "disconnect-reset transport did not stop cleanly")
+    finally:
+        if raw is not None:
+            try:
+                raw.close()
+            except OSError:
+                pass
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def verify_standard_client(executable: Path) -> None:
     port = free_port()
     process, reader, lines = start_harness(executable, port)
@@ -216,9 +326,11 @@ def main() -> int:
     try:
         verify_occupied_port_failure(executable)
         verify_handshake_slots_expire(executable)
+        verify_abrupt_disconnect_releases_input(executable)
         verify_standard_client(executable)
         print(
-            "PASS: bounded RFB bind + handshake expiry + vncdotool framebuffer/input/reconnect + quiescent stop"
+            "PASS: bounded RFB bind + handshake expiry + disconnect input reset + "
+            "vncdotool framebuffer/input/reconnect + quiescent stop"
         )
         return 0
     finally:

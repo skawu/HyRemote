@@ -1,0 +1,107 @@
+# HyRemote Widgets Basic
+
+`widgets-basic` is the minimum **Embedded C++ API + Qt Widgets** product example for HyRemote V1.
+
+The application uses only the public product facade:
+
+```cpp
+#include <HyRemote/RemoteAccess.h>
+
+HyRemote::RemoteAccess remote(&window);
+remote.start();
+```
+
+It does not construct or reference Core `Session`, capture, input, transport, RFB, or backend objects.
+
+## Safety defaults
+
+Normal launch keeps the product defaults:
+
+- listener address: loopback (`127.0.0.1`);
+- port: `5900` unless changed with `--port`;
+- remote viewing: available after the explicit `remote.start()` in the example;
+- remote input: **disabled by default**;
+- construction of `RemoteAccess` alone never opens a listener.
+
+The current baseline RFB transport uses **SecurityType None**. Treat it as a correctness/trusted-loopback baseline, not Internet-safe authentication or encryption. Do not expose the listener to an untrusted network.
+
+## Build
+
+From a HyRemote source tree with Qt 6.8.x available:
+
+```sh
+cmake -S . -B build \
+  -DHYREMOTE_BUILD_CORE=ON \
+  -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
+  -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON \
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build --parallel
+```
+
+The V1 reference/acceptance line is exact Qt **6.8.3** on Windows x86_64 and Linux x86_64. Do not infer support for another Qt/OS combination from source compatibility alone.
+
+## Run view-only
+
+Run the built `hyremote-widgets-basic` executable normally. With no extra option the listener is loopback-only and remote input stays disabled.
+
+Optional port override:
+
+```sh
+hyremote-widgets-basic --port 5901
+```
+
+Connect a standard RFB/VNC viewer to:
+
+```text
+127.0.0.1:5901
+```
+
+You should be able to view the application. Pointer, keyboard, wheel, and text input received from the remote viewer must not be injected while the example is in its default view-only policy.
+
+## Run with explicit remote control
+
+For a trusted local test, relaunch with:
+
+```sh
+hyremote-widgets-basic --port 5901 --remote-input
+```
+
+The example contains a button and a text field so pointer, keyboard, and text delivery can be checked against normal Qt Widgets behavior.
+
+`--remote-input` is deliberately explicit; it is not the product default.
+
+## Reconnect
+
+Disconnect the viewer while the application remains running, then connect again to the same address/port. A normal disconnect must not require restarting the target application or recreating `RemoteAccess`.
+
+The V1 acceptance harness also verifies that `RemoteAccess::stop()` releases the listener.
+
+## Input and geometry evidence
+
+The product acceptance path covers:
+
+- left/middle/right pointer buttons;
+- pointer coordinates through the remote framebuffer viewport;
+- vertical wheel delivery;
+- key press/release;
+- Shift/Ctrl/Alt modifier propagation;
+- text commit as a separate semantic path from key delivery;
+- view-only input rejection;
+- disconnect/reconnect;
+- stop/listener release.
+
+Precise DPR/edge-coordinate normalization is additionally covered by Core deterministic tests. #90 tracks the separate requirement to synthesize balancing releases when a viewer disconnects while a button/key is still held.
+
+## Local + remote coexistence boundary
+
+The application is a normal visible Qt Widgets window and HyRemote's Embedded C++ design is additive to that local UI. However, hosted offscreen CI is **not** evidence that a physical monitor and local keyboard/mouse remained usable while a real remote viewer was attached.
+
+That physical local-visible/local-input coexistence check remains a final #30/#33 acceptance item and must not be inferred from the offscreen product E2E.
+
+## Connected-viewer status
+
+Lifecycle `Running` means the remote runtime/listener is running; it does **not** mean that a viewer is connected. #91 / PR #92 introduces the backend-neutral connected-client diagnostic required for the final local status UI. Until that dependency lands, this example must not fake a `connected` indicator from lifecycle state.
+
+## Related documentation
+
+Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/security.md`, `docs/compatibility.md`, and `docs/known-limitations.md` as they converge under #41. Support claims remain evidence-driven.

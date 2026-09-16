@@ -21,6 +21,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "hyremote/core/storage.hpp"
 
@@ -32,6 +33,7 @@ constexpr int kHandshakeTimeoutMs = 3000;
 constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
 constexpr std::uint16_t kMaxEncodings = 1024;
 constexpr std::uint32_t kMaxCutTextBytes = 64 * 1024;
+constexpr std::size_t kMaxHeldKeys = 64;
 constexpr std::int32_t kEncodingRaw = 0;
 constexpr std::int32_t kEncodingDesktopSize = -223;
 
@@ -262,6 +264,16 @@ std::optional<hyremote::InputModifier> modifierForKey(hyremote::KeyCode key)
     }
 }
 
+hyremote::InputModifiers modifiersForHeldKeysyms(const std::vector<std::uint32_t> &heldKeysyms)
+{
+    hyremote::InputModifiers result = 0U;
+    for (const std::uint32_t keysym : heldKeysyms) {
+        if (const auto modifier = modifierForKey(keyCodeFromKeysym(keysym)))
+            result |= hyremote::modifierMask(*modifier);
+    }
+    return result;
+}
+
 std::string utf8ForKeysym(std::uint32_t keysym)
 {
     std::uint32_t cp = 0;
@@ -328,8 +340,25 @@ struct ClientState
     std::uint16_t framebufferHeight = 0;
     std::uint8_t buttonMask = 0;
     hyremote::InputModifiers modifiers = 0U;
+    std::vector<std::uint32_t> heldKeysyms;
+    hyremote::InputViewport lastPointerViewport;
+    std::uint16_t lastPointerX = 0;
+    std::uint16_t lastPointerY = 0;
+    bool pointerPositionKnown = false;
     bool connectedEventSent = false;
 };
+
+struct ButtonBit
+{
+    std::uint8_t bit;
+    hyremote::PointerButton button;
+};
+
+static constexpr std::array<ButtonBit, 3> kButtons{{
+    {0x01, hyremote::PointerButton::Left},
+    {0x02, hyremote::PointerButton::Middle},
+    {0x04, hyremote::PointerButton::Right},
+}};
 
 class RfbWorker final : public QObject
 {
@@ -457,6 +486,8 @@ private:
                 if (it == m_clients.end())
                     return;
                 const bool announced = it->second->connectedEventSent;
+                if (announced)
+                    releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
                 if (announced)
@@ -616,7 +647,8 @@ private:
                 const bool pressed = byteAt(client.input, 1) != 0;
                 const std::uint32_t keysym = readU32(client.input, 4);
                 client.input.remove(0, 8);
-                deliverKey(client, keysym, pressed);
+                if (!deliverKey(client, keysym, pressed))
+                    return;
                 continue;
             }
 
@@ -679,16 +711,69 @@ private:
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
     }
 
-    void deliverKey(ClientState &client, std::uint32_t keysym, bool pressed)
+    void releaseHeldInput(ClientState &client)
+    {
+        if (m_stopping || !client.connectedEventSent)
+            return;
+
+        // Pointer buttons are released first while the client's current keyboard modifiers are
+        // still active. Use the viewport/coordinates from the last pointer event instead of a
+        // possibly resized current framebuffer so the target adapter can perform its normal source
+        // viewport remapping.
+        if (client.pointerPositionKnown && client.buttonMask != 0
+            && hyremote::isValidInputViewport(client.lastPointerViewport)) {
+            for (const ButtonBit &entry : kButtons) {
+                if ((client.buttonMask & entry.bit) == 0)
+                    continue;
+                hyremote::InputEvent button;
+                button.kind = hyremote::InputEventKind::PointerButton;
+                button.sourceViewport = client.lastPointerViewport;
+                button.x = static_cast<float>(client.lastPointerX);
+                button.y = static_cast<float>(client.lastPointerY);
+                button.button = entry.button;
+                button.pressed = false;
+                button.modifiers = client.modifiers;
+                publishInput(button);
+            }
+        }
+        client.buttonMask = 0;
+
+        // Release ordinary keys before modifiers so combinations such as Shift+A preserve the same
+        // modifier state on A-up that a normal viewer would have sent. Then release the remaining
+        // modifier keys. Each call removes one keysym from heldKeysyms and recomputes the modifier
+        // mask, including the left/right variants of the same logical modifier.
+        const std::vector<std::uint32_t> held = client.heldKeysyms;
+        for (const std::uint32_t keysym : held) {
+            if (!modifierForKey(keyCodeFromKeysym(keysym)))
+                (void)deliverKey(client, keysym, false);
+        }
+        const std::vector<std::uint32_t> remaining = client.heldKeysyms;
+        for (const std::uint32_t keysym : remaining)
+            (void)deliverKey(client, keysym, false);
+
+        client.heldKeysyms.clear();
+        client.modifiers = 0U;
+    }
+
+    bool deliverKey(ClientState &client, std::uint32_t keysym, bool pressed)
     {
         const hyremote::KeyCode key = keyCodeFromKeysym(keysym);
-        if (const auto modifier = modifierForKey(key)) {
-            const hyremote::InputModifiers bit = hyremote::modifierMask(*modifier);
-            if (pressed)
-                client.modifiers |= bit;
-            else
-                client.modifiers &= static_cast<hyremote::InputModifiers>(~bit);
+        if (key != hyremote::KeyCode::Unknown) {
+            const auto held = std::find(client.heldKeysyms.begin(), client.heldKeysyms.end(), keysym);
+            if (pressed) {
+                if (held == client.heldKeysyms.end()) {
+                    if (client.heldKeysyms.size() >= kMaxHeldKeys) {
+                        protocolFailure(client, "RFB client exceeded the bounded held-key limit");
+                        return false;
+                    }
+                    client.heldKeysyms.push_back(keysym);
+                }
+            } else if (held != client.heldKeysyms.end()) {
+                client.heldKeysyms.erase(held);
+            }
         }
+
+        client.modifiers = modifiersForHeldKeysyms(client.heldKeysyms);
 
         hyremote::InputEvent event;
         event.kind = hyremote::InputEventKind::Key;
@@ -700,7 +785,7 @@ private:
         if (!pressed || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Control)
             || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Alt)
             || hyremote::hasModifier(client.modifiers, hyremote::InputModifier::Meta)) {
-            return;
+            return true;
         }
 
         std::string text = utf8ForKeysym(keysym);
@@ -711,6 +796,7 @@ private:
             textEvent.textUtf8 = std::move(text);
             publishInput(textEvent);
         }
+        return true;
     }
 
     hyremote::InputViewport currentViewport() const
@@ -733,6 +819,11 @@ private:
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
+        client.lastPointerViewport = viewport;
+        client.lastPointerX = x;
+        client.lastPointerY = y;
+        client.pointerPositionKnown = true;
+
         hyremote::InputEvent move;
         move.kind = hyremote::InputEventKind::PointerMove;
         move.sourceViewport = viewport;
@@ -741,15 +832,6 @@ private:
         move.modifiers = client.modifiers;
         publishInput(move);
 
-        struct ButtonBit {
-            std::uint8_t bit;
-            hyremote::PointerButton button;
-        };
-        static constexpr std::array<ButtonBit, 3> kButtons{{
-            {0x01, hyremote::PointerButton::Left},
-            {0x02, hyremote::PointerButton::Middle},
-            {0x04, hyremote::PointerButton::Right},
-        }};
         for (const ButtonBit &entry : kButtons) {
             const bool before = (client.buttonMask & entry.bit) != 0;
             const bool after = (mask & entry.bit) != 0;

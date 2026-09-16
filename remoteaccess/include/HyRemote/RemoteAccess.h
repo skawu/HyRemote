@@ -3,6 +3,7 @@
 #include <QHostAddress>
 #include <QString>
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 
@@ -78,6 +79,12 @@ public:
     void stop() noexcept;
 
     RemoteAccessState state() const;
+
+    // Backend-neutral product diagnostic. Running with zero connected clients means the listener is
+    // available but no viewer is currently attached. Concrete transport/client objects never cross
+    // this API boundary.
+    std::size_t connectedClientCount() const noexcept;
+
     std::optional<RemoteAccessError> lastError() const;
     void clearError();
 
