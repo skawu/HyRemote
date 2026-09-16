@@ -15,6 +15,7 @@ namespace {
 struct RecordedInput
 {
     std::vector<hyremote::InputEvent> events;
+    int shutdownCalls = 0;
 };
 
 class RecordingSink final : public hyremote::InputSink
@@ -29,6 +30,8 @@ public:
     {
         m_recorded->events.push_back(event);
     }
+
+    void shutdown() noexcept override { ++m_recorded->shutdownCalls; }
 
 private:
     std::shared_ptr<RecordedInput> m_recorded;
@@ -186,11 +189,15 @@ int main(int argc, char **argv)
 
     // Stacking order is not keyboard focus. Once the active surface is hidden, key/text events are
     // intentionally dropped until the QPA controller reports a new real Qt active/focus surface.
+    // Pruning that surface must terminally shut down its child sink first, so any Qt-facing child
+    // adapter can balance remote state it already delivered before leaving the application canvas.
     composite.setSurfaceVisible(1, false);
     components.input->post(key);
     drainEvents();
     if (!check(left->events.size() + right->events.size() == 7,
-               "hidden active surface does not invent a topmost keyboard target")) {
+               "hidden active surface does not invent a topmost keyboard target")
+        || !check(left->shutdownCalls == 1,
+                  "hidden/pruned child input is shut down before its adapter is released")) {
         return 8;
     }
 
@@ -202,6 +209,19 @@ int main(int argc, char **argv)
         return 9;
     }
 
-    std::cout << "PASS: QPA composite input routes pointer lifecycle and explicit active key/text correctly\n";
+    components.input->shutdown();
+    if (!check(left->shutdownCalls == 1,
+               "already-pruned child is not shut down twice by composite teardown")
+        || !check(right->shutdownCalls == 1,
+                  "composite terminal shutdown propagates to the remaining child sink")) {
+        return 10;
+    }
+    components.input->shutdown();
+    if (!check(right->shutdownCalls == 1,
+               "composite terminal shutdown is idempotent")) {
+        return 11;
+    }
+
+    std::cout << "PASS: QPA composite input routes lifecycle and propagates terminal shutdown correctly\n";
     return 0;
 }
