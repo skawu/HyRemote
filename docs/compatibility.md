@@ -74,6 +74,8 @@ The current production correctness transport is bounded RFB 3.8 with SecurityTyp
 
 The V1 automated product path uses maintained `vncdotool` plus raw protocol checks. Additional viewer products such as TigerVNC can be added to the compatibility matrix only after versioned acceptance evidence exists.
 
+Input compatibility evidence is lifecycle-sensitive. A row cannot be upgraded merely because ordinary pointer/key events work: required evidence must also cover abrupt viewer disconnect with held supported state and explicit HyRemote stop/policy transition with delivered held state, proving that the next/local input state is neutral and that pending undelivered remote input is not injected after stop.
+
 ## Post-V1 embedded expansion
 
 The following are important next-platform candidates but are **not V1.0.0.0 GA acceptance rows**:
@@ -99,6 +101,8 @@ Record at minimum:
 - transport/viewer version;
 - resolution/DPR where relevant;
 - connect/view/input/disconnect/reconnect results;
+- abrupt-disconnect held-input cleanup result where control is enabled;
+- explicit remote-runtime stop/policy-transition held-input cleanup result and confirmation that no pending remote input was delivered after stop;
 - local rendering/input impact where required;
 - deployment/runtime-path result;
 - known limitations;
