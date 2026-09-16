@@ -115,8 +115,8 @@ mechanisms over the same runtime rather than creating a fourth architecture.
 | Artifact | Role |
 | --- | --- |
 | `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` | **Shared library**; normal C++ product API |
-| `qhyremote` | **Qt platform MODULE**; zero-source-change Transparent QPA entry point |
-| `HyRemote` QML module | Thin declarative wrapper over the same shared runtime |
+| `qhyremote` | **Qt platform MODULE payload**; zero-source-change Transparent QPA entry point, not an installed application link target |
+| `HyRemote` QML module | Thin declarative payload over the same shared runtime; backing library is not a second C++ SDK target |
 | `hyremote-core` | Internal static source component; **not installed/exported as a V1 application SDK target** |
 
 `BUILD_SHARED_LIBS` does not change the normal V1 product shape.
@@ -127,7 +127,7 @@ mechanisms over the same runtime rather than creating a fourth architecture.
 - **Qt Widgets and Qt Quick are peers.** Neither is a compatibility afterthought.
 - **One runtime.** C++, QML and QPA reuse the same runtime composition.
 - **Native behavior stays authoritative.** QPA remote access is additive to the native platform path.
-- **Safe defaults.** No listener on construction, loopback bind by default, remote input off by default.
+- **Safe defaults.** No listener on C++ construction, loopback bind by default, remote input off by default.
 - **Internal complexity stays internal.** Normal users do not assemble Session, capture, input,
   transport, surface-composition or QPA-interception objects.
 - **Evidence over claims.** Windows does not substitute for Linux; hosted/headless correctness does
@@ -202,14 +202,24 @@ See [`docs/deployment.md`](docs/deployment.md).
 
 ## Documentation
 
-Start with the integration path you need:
+Choose the application mode first:
 
-- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — C++ shared-library integration
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — Transparent QPA
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — declarative QML
-- [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
-- [`docs/security.md`](docs/security.md) — security boundary
+- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — Embedded C++ / one shared facade
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — Declarative QML
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — zero-source-change Transparent QPA
+
+Then use the supporting guides as needed:
+
+- [`docs/getting-started/windows.md`](docs/getting-started/windows.md) — Windows x86_64 reference setup
+- [`docs/getting-started/linux.md`](docs/getting-started/linux.md) — Linux x86_64 reference setup
+- [`docs/sdk-installation.md`](docs/sdk-installation.md) — installed/prebuilt SDK consumption
+- [`docs/source-consumption.md`](docs/source-consumption.md) — vendored/source consumption
+- [`docs/deployment.md`](docs/deployment.md) — the single packaging/deployment helper
+- [`docs/viewer-connection.md`](docs/viewer-connection.md) — viewer, control and reconnect lifecycle
+- [`docs/security.md`](docs/security.md) — implemented security boundary
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — product-level failure diagnosis
 - [`docs/compatibility.md`](docs/compatibility.md) — exact evidence/status matrix
+- [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
 - [`docs/v1-ga-acceptance.md`](docs/v1-ga-acceptance.md) — V1 release gate
 
 Architecture, Core contracts, capture/transport evidence and experimental backends remain maintainer
