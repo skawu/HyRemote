@@ -43,11 +43,15 @@ def main() -> int:
 
     env = os.environ.copy()
     # Product-fit must prove the deployed tree is self-contained with respect to HyRemote/Qt SDK
-    # lookup. Plugin/runtime overrides are removed before the application process is created.
+    # lookup. Plugin/runtime/QML overrides are removed before the application process is created so
+    # this same harness can validate both the ordinary E4 executable and the combined QML+QPA
+    # deployment without relying on caller-shell cleanup.
     for variable in (
         "QT_PLUGIN_PATH",
         "QT_QPA_PLATFORM_PLUGIN_PATH",
         "QT_QPA_PLATFORM",
+        "QML2_IMPORT_PATH",
+        "QML_IMPORT_PATH",
         "LD_LIBRARY_PATH",
     ):
         env.pop(variable, None)
@@ -83,8 +87,8 @@ def main() -> int:
         output = process.stdout.read() if process.stdout is not None else ""
         require(result == 0, f"deployed QPA consumer exited with {result}: {output}")
         print(
-            "PASS: installed Qt-only consumer -> deployed qhyremote + shared RemoteAccess -> "
-            "RFB reconnect without SDK/plugin/runtime-path overrides"
+            "PASS: deployed consumer -> qhyremote + shared RemoteAccess -> "
+            "RFB reconnect without SDK/plugin/QML/runtime-path overrides"
         )
         return 0
     finally:
