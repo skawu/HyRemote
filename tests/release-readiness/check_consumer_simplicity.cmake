@@ -43,13 +43,18 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
 set(required_root_tokens
+    [=[include(HyRemoteReleaseProfile)]=]
+    [=[hyremote_validate_release_profile(]=]
+    [=[VERSION "${PROJECT_VERSION}"]=]
+    [=[QML_ENABLED "${HYREMOTE_BUILD_QML_API}"]=]
+    [=[QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"]=]
     [=[if(HYREMOTE_BUILD_TESTS)
     include(CTest)]=]
     [=[if(HYREMOTE_BUILD_REMOTE_ACCESS)]=]
     [=[if(HYREMOTE_WITH_QPA_PROXY)]=]
-    [=[if(NOT PROJECT_VERSION STREQUAL "0.0.0")]=]
-    [=[PROJECT_VERSION VERSION_LESS "0.0.2.0" AND HYREMOTE_BUILD_QML_API]=]
-    [=[PROJECT_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_WITH_QPA_PROXY]=]
+    [=[hyremote-release-profile-v001-reject-qml]=]
+    [=[hyremote-release-profile-v002-reject-qpa]=]
+    [=[hyremote-release-profile-v100-all-modes]=]
 )
 foreach(required_token IN LISTS required_root_tokens)
     string(FIND "${root_cmake}" "${required_token}" found)
@@ -59,13 +64,24 @@ foreach(required_token IN LISTS required_root_tokens)
     endif()
 endforeach()
 
-# Milestone source history may already contain later V1 implementation, but a tagged release must not
-# let a user enable a product mode that has not reached its own accepted milestone yet. The project
-# version itself is the release profile; no additional public profile switch is allowed.
+# The version-derived release profile is internal policy, not another user-facing mode switch. Keep
+# the actual thresholds centralized and executable so tagged early milestones cannot expose later V1
+# modes merely because their source already exists.
+file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteReleaseProfile.cmake" release_profile)
+foreach(required_token
+        [=[HYREMOTE_PROFILE_VERSION STREQUAL "0.0.0"]=]
+        [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "0.0.2.0" AND HYREMOTE_PROFILE_QML_ENABLED]=]
+        [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_PROFILE_QPA_ENABLED]=])
+    string(FIND "${release_profile}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: milestone release-profile boundary missing: ${required_token}")
+    endif()
+endforeach()
 foreach(forbidden_token
         "HYREMOTE_RELEASE_PROFILE"
         "HYREMOTE_PRODUCT_PROFILE")
-    string(FIND "${root_cmake}" "${forbidden_token}" found)
+    string(FIND "${options_text}${root_cmake}${release_profile}" "${forbidden_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
             "consumer-simplicity: release profile must be derived from project version, not another user option: ${forbidden_token}")
@@ -130,4 +146,4 @@ endforeach()
 
 message(STATUS
     "HyRemote consumer-simplicity gate: PASS "
-    "(product-only defaults, one public C++ target, version-derived milestone profiles)")
+    "(product-only defaults, one public C++ target, executable version-derived milestone profiles)")
