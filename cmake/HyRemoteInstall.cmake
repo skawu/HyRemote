@@ -47,6 +47,8 @@ install(
 )
 
 install(
-    FILES "${PROJECT_SOURCE_DIR}/LICENSE"
+    FILES
+        "${PROJECT_SOURCE_DIR}/LICENSE"
+        "${PROJECT_SOURCE_DIR}/NOTICE.md"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/HyRemote/licenses"
 )
