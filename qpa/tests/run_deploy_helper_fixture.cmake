@@ -5,6 +5,9 @@ endif()
 if(NOT DEFINED TEST_QML)
     set(TEST_QML OFF)
 endif()
+if(NOT DEFINED TEST_DEPLOY_QPA)
+    set(TEST_DEPLOY_QPA ON)
+endif()
 if(NOT DEFINED TEST_QPA_AVAILABLE)
     set(TEST_QPA_AVAILABLE ON)
 endif()
@@ -25,6 +28,7 @@ execute_process(
         -B "${FIXTURE_BINARY_DIR}"
         "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
         "-DTEST_QML=${TEST_QML}"
+        "-DTEST_DEPLOY_QPA=${TEST_DEPLOY_QPA}"
         "-DTEST_QPA_AVAILABLE=${TEST_QPA_AVAILABLE}"
         "-DTEST_QT_VERSION=${TEST_QT_VERSION}"
         "-DTEST_INSTALLED_PAYLOAD=${TEST_INSTALLED_PAYLOAD}"
@@ -36,22 +40,30 @@ execute_process(
 if(EXPECT_CONFIGURE_FAILURE)
     if(configure_result EQUAL 0)
         message(FATAL_ERROR
-            "QPA deploy fixture unexpectedly configured successfully\n${configure_stdout}\n${configure_stderr}")
+            "deploy fixture unexpectedly configured successfully\n${configure_stdout}\n${configure_stderr}")
     endif()
     return()
 endif()
 
 if(NOT configure_result EQUAL 0)
     message(FATAL_ERROR
-        "QPA deploy fixture configuration failed\n${configure_stdout}\n${configure_stderr}")
+        "deploy fixture configuration failed\n${configure_stdout}\n${configure_stderr}")
 endif()
 
-file(GLOB generated_scripts
-    "${FIXTURE_BINARY_DIR}/hyremote-qpa-deploy-deploy-probe-*.cmake")
+if(TEST_DEPLOY_QPA)
+    file(GLOB generated_scripts
+        "${FIXTURE_BINARY_DIR}/hyremote-qpa-deploy-deploy-probe-*.cmake")
+    set(_script_kind "QPA")
+else()
+    file(GLOB generated_scripts
+        "${FIXTURE_BINARY_DIR}/hyremote-runtime-deploy-deploy-probe-*.cmake")
+    set(_script_kind "runtime")
+endif()
+
 list(LENGTH generated_scripts generated_count)
 if(NOT generated_count EQUAL 1)
     message(FATAL_ERROR
-        "expected exactly one generated QPA deploy script, found ${generated_count}: ${generated_scripts}")
+        "expected exactly one generated ${_script_kind} deploy script, found ${generated_count}: ${generated_scripts}")
 endif()
 
 list(GET generated_scripts 0 generated_script)
@@ -59,23 +71,46 @@ file(READ "${generated_script}" generated_content)
 
 foreach(required_fragment IN ITEMS
         "qt_deploy_runtime_dependencies"
-        "ADDITIONAL_MODULES"
         "ADDITIONAL_LIBRARIES"
-        "platforms"
         "fake-remoteaccess")
     string(FIND "${generated_content}" "${required_fragment}" fragment_pos)
     if(fragment_pos EQUAL -1)
         message(FATAL_ERROR
-            "generated QPA deploy script is missing '${required_fragment}':\n${generated_content}")
+            "generated ${_script_kind} deploy script is missing '${required_fragment}':\n${generated_content}")
     endif()
 endforeach()
 
-if(TEST_INSTALLED_PAYLOAD)
-    string(FIND "${generated_content}" "qhyremote${CMAKE_SHARED_MODULE_SUFFIX}" installed_payload_pos)
-    if(installed_payload_pos EQUAL -1)
-        message(FATAL_ERROR
-            "installed-payload QPA deployment did not use published plugin file:\n${generated_content}")
+if(TEST_DEPLOY_QPA)
+    foreach(required_fragment IN ITEMS
+            "ADDITIONAL_MODULES"
+            "platforms")
+        string(FIND "${generated_content}" "${required_fragment}" fragment_pos)
+        if(fragment_pos EQUAL -1)
+            message(FATAL_ERROR
+                "generated QPA deploy script is missing '${required_fragment}':\n${generated_content}")
+        endif()
+    endforeach()
+
+    if(TEST_INSTALLED_PAYLOAD)
+        string(FIND "${generated_content}" "qhyremote${CMAKE_SHARED_MODULE_SUFFIX}" installed_payload_pos)
+        if(installed_payload_pos EQUAL -1)
+            message(FATAL_ERROR
+                "installed-payload QPA deployment did not use published plugin file:\n${generated_content}")
+        endif()
     endif()
+else()
+    # QML-only must use the normal shared-runtime supplemental path. QPA payload/relocation leaking
+    # here would mean the four public deploy shapes no longer have independent semantics.
+    foreach(forbidden_fragment IN ITEMS
+            "ADDITIONAL_MODULES"
+            "qhyremote"
+            "RPATH_CHANGE")
+        string(FIND "${generated_content}" "${forbidden_fragment}" forbidden_pos)
+        if(NOT forbidden_pos EQUAL -1)
+            message(FATAL_ERROR
+                "QML-only runtime deploy script unexpectedly contains '${forbidden_fragment}':\n${generated_content}")
+        endif()
+    endforeach()
 endif()
 
 # Core is statically composed behind RemoteAccess in the fixed V1 artifact model and must never be
@@ -83,16 +118,16 @@ endif()
 string(FIND "${generated_content}" "fake-core" fake_core_pos)
 if(NOT fake_core_pos EQUAL -1)
     message(FATAL_ERROR
-        "QPA deployment unexpectedly exposes a separate Core runtime:\n${generated_content}")
+        "deployment unexpectedly exposes a separate Core runtime:\n${generated_content}")
 endif()
 
 string(FIND "${generated_content}" "QT_PLUGIN_PATH" plugin_path_pos)
 if(NOT plugin_path_pos EQUAL -1)
     message(FATAL_ERROR
-        "normal QPA deployment must not require QT_PLUGIN_PATH: ${generated_content}")
+        "normal deployment must not require QT_PLUGIN_PATH: ${generated_content}")
 endif()
 
-if(UNIX AND NOT APPLE)
+if(TEST_DEPLOY_QPA AND UNIX AND NOT APPLE)
     set(_literal_deploy_lib_dir "$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}")
     foreach(rpath_fragment IN ITEMS
             "RPATH_CHANGE"
