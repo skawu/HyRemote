@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QQmlParserStatus>
 #include <QTimer>
 #include <QtQmlIntegration/qqmlintegration.h>
 
@@ -15,12 +16,16 @@ namespace HyRemote::Qml {
 // Thin declarative wrapper over the same HyRemote::RemoteAccess product runtime used by C++ apps.
 // It owns no capture, transport, input or Session implementation of its own.
 //
+// QQmlParserStatus lets `enabled: true` remain a simple declarative request without racing QML's
+// initial target/property construction order. The shared runtime is started only after componentComplete().
+//
 // Do not mark this QObject final: Qt's generated QML registration layer derives an internal
 // QQmlElement<T> wrapper from creatable QML element types.
-class QmlRemoteAccess : public QObject
+class QmlRemoteAccess : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(RemoteAccess)
+    Q_INTERFACES(QQmlParserStatus)
 
     Q_PROPERTY(QObject *target READ target WRITE setTarget NOTIFY targetChanged)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
@@ -58,6 +63,9 @@ public:
     explicit QmlRemoteAccess(QObject *parent = nullptr);
     ~QmlRemoteAccess() override;
 
+    void classBegin() override;
+    void componentComplete() override;
+
     QObject *target() const noexcept;
     void setTarget(QObject *target);
 
@@ -92,12 +100,14 @@ signals:
     void errorChanged();
 
 private:
+    bool startRuntime();
     void refreshRuntimeSnapshot();
     void setLocalError(ErrorCode code, QString message, bool recoverable = false);
     void clearLocalError();
 
     std::unique_ptr<::HyRemote::RemoteAccess> m_access;
     QTimer m_pollTimer;
+    bool m_componentComplete = false;
     bool m_enabled = false;
     State m_state = Stopped;
     quint64 m_connectedClientCount = 0;
