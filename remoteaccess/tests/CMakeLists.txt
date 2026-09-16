@@ -65,6 +65,7 @@ if(HYREMOTE_WITH_VNC)
             ${CMAKE_CURRENT_SOURCE_DIR}/../src
     )
     add_test(NAME hyremote-rfb-multi-client-input-test COMMAND hyremote-rfb-multi-client-input-test)
+    set_tests_properties(hyremote-rfb-multi-client-input-test PROPERTIES TIMEOUT 15)
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
