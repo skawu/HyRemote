@@ -24,8 +24,15 @@ set_target_properties(hyremote-qpa-platform PROPERTIES
 )
 
 # QPA is the zero-source-change artifact. The SDK stores qhyremote below
-# <libdir>/HyRemote/plugins/platforms and RemoteAccess in <libdir>.
+# <libdir>/HyRemote/plugins/platforms and RemoteAccess in <libdir>. The same platform MODULE can also
+# be deployed directly from a source/add_subdirectory() build. On Linux, reserve the SDK-layout
+# origin entry in both build and install RPATHs as the stable relocation anchor consumed by
+# HyRemoteDeploy.cmake. CMake may append other build/toolchain lookup entries; the deployment helper
+# rewrites only this known non-toolchain anchor to the deployed Qt lib directory. Relative build-tree
+# paths are preferred so source builds do not bake the HyRemote build directory into qhyremote.
 if(UNIX AND NOT APPLE)
+    set_property(TARGET hyremote-qpa-platform PROPERTY BUILD_RPATH "$ORIGIN/../../..")
+    set_property(TARGET hyremote-qpa-platform PROPERTY BUILD_RPATH_USE_ORIGIN TRUE)
     set_property(TARGET hyremote-qpa-platform PROPERTY INSTALL_RPATH "$ORIGIN/../../..")
 endif()
 
