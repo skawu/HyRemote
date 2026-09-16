@@ -19,7 +19,8 @@ Before a release branch is cut:
 - any milestone-required physical/manual acceptance has recorded reproducible evidence;
 - no unresolved blocker is reclassified as post-release merely to make the milestone appear complete;
 - compatibility/support documents use `supported`, `experimental`, `unsupported`, and `unverified` truthfully;
-- the milestone acceptance issue records the final evidence envelope and is ready to close.
+- the milestone acceptance issue records the final evidence envelope and is ready to close;
+- root `project(VERSION ...)` on `develop` is still the development sentinel `0.0.0`.
 
 Infrastructure failure such as #74 is not a product pass. If required jobs never execute, the milestone remains unaccepted.
 
@@ -44,6 +45,7 @@ The release PR must pass all gates applicable to the milestone.
 Common gates:
 
 - clean configure/build on exact claimed Qt/toolchain combinations;
+- the same full CTest suite used by development, including release metadata/package checks;
 - unit/integration/product E2E tests;
 - installed SDK clean-consumer configure/build/run;
 - source-consumption validation;
@@ -53,6 +55,8 @@ Common gates:
 - no backend/private-QPA types leak into stable public APIs;
 - package contents and licenses/notices are complete;
 - docs and examples correspond to the release candidate, not another branch.
+
+Branch/version authorization belongs to the Git Flow workflow. Repository metadata CTest must remain valid after an authorized release branch changes the project version from `0.0.0` to its exact milestone version.
 
 Milestone-specific gates remain authoritative in their issue:
 
@@ -73,18 +77,23 @@ Only after the release candidate is accepted:
 
 A tag is never created first and validated later as the normal workflow. The tag workflow is a second-line audit; the release PR is the blocking gate. Do not use a lightweight release tag, tag an older `main` ancestor, or move an existing milestone tag.
 
-## 5. Back-merge to `develop`
+## 5. Audited backmerge to `develop`
 
 After the release/tag fact exists:
 
-- merge the release result back into `develop` so release-only version/docs/packaging fixes are not lost;
-- resolve conflicts in favor of the accepted release facts plus already-approved later development;
-- record the release tag and back-merge commit in the milestone issue/roadmap;
-- only then treat the Git Flow release cycle as closed.
+1. create `backmerge/vX.Y.Z.W` from the released `main` history;
+2. preserve the released tagged commit in that branch;
+3. reset only root `project(VERSION ...)` to the `0.0.0` development sentinel;
+4. open `backmerge/vX.Y.Z.W -> develop`;
+5. let the Git Flow workflow verify that the matching annotated tag exists in current `main` history and that the backmerge branch contains its released commit;
+6. reconcile any already-approved later `develop` history through the normal PR merge;
+7. record the release tag and backmerge commit in the milestone issue/roadmap.
+
+Only then treat the Git Flow release cycle as closed. The backmerge must not add new product capability or rewrite the released commit.
 
 ## 6. Hotfixes
 
-A production hotfix starts from `main` on `hotfix/*`, is validated against the affected released support matrix, merges to `main`, receives an explicitly authorized four-part maintenance tag, and is also merged to `develop`.
+A production hotfix starts from `main` on `hotfix/*`, is validated against the affected released support matrix, merges to `main`, receives an explicitly authorized four-part maintenance tag, and is reconciled back into `develop` while restoring the `0.0.0` development sentinel.
 
 Maintenance tags are not implicitly authorized by the V1 milestone list. Add the exact maintenance version to release policy deliberately before cutting/publishing it.
 
