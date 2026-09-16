@@ -7,6 +7,7 @@ endif()
 set(required_files
     "CMakeLists.txt"
     "cmake/HyRemoteConfig.cmake.in"
+    "cmake/HyRemoteInstall.cmake"
     "cmake/HyRemoteDeploy.cmake"
     "qpa/CMakeLists.txt"
     "qpa/tests/deploy_helper_fixture/CMakeLists.txt"
@@ -45,6 +46,24 @@ string(FIND "${package_config}" "HyRemote_QML_AVAILABLE" leaked_qml_api)
 if(NOT leaked_qml_api EQUAL -1)
     message(FATAL_ERROR
         "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
+endif()
+
+# Installed qhyremote is a CMake MODULE payload. Package metadata must use the platform's MODULE
+# prefix/suffix pair so Linux resolves libqhyremote.so while Windows keeps its native module name.
+file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteInstall.cmake" install_rules)
+foreach(required_token
+        [=[set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")]=]
+        [=["${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")]=])
+    string(FIND "${install_rules}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: installed QPA package metadata no longer matches the MODULE artifact: ${required_token}")
+    endif()
+endforeach()
+string(FIND "${install_rules}" [=["qhyremote${CMAKE_SHARED_MODULE_SUFFIX}"]=] missing_module_prefix)
+if(NOT missing_module_prefix EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: installed QPA filename must retain CMAKE_SHARED_MODULE_PREFIX")
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
@@ -176,4 +195,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; source/installed optional payloads cannot cross-contaminate in either direction; source QPA target fixes its own exact-Qt authority; stale QML/QPA metadata is rejected without widening the package API)")
+    "(four public shapes remain distinct; installed QPA metadata matches the platform MODULE filename; source/installed optional payloads cannot cross-contaminate in either direction; source QPA target fixes its own exact-Qt authority; stale QML/QPA metadata is rejected without widening the package API)")
