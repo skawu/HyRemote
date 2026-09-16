@@ -20,11 +20,6 @@ on:
 
 jobs:
   integrated-ga-candidate:
-    # Develop/feature convergence exercises the full future V1 product. Formal pre-GA milestone
-    # releases intentionally expose only their accepted version profile; do not make v0.0.1/2/3
-    # fail because this all-modes matrix correctly enables later integration modes. Apply the same
-    # release-profile boundary to manual dispatches so an intentional pre-GA branch does not get a
-    # structurally impossible all-modes red run.
     if: >-
       (github.event_name == 'pull_request' &&
        (github.base_ref == 'develop' || github.head_ref == 'release/v1.0.0.0')) ||
@@ -86,7 +81,6 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=ON \
             -DHYREMOTE_WITH_QPA_PROXY=ON
           cmake --build build-ga --parallel
-
           test -f build-ga/core/libhyremote-core.a
           test -f build-ga/remoteaccess/libHyRemoteRemoteAccess.so
           test -f build-ga/plugins/platforms/libqhyremote.so
@@ -107,7 +101,6 @@ jobs:
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           export LD_LIBRARY_PATH="$PWD/build-ga/remoteaccess:$PWD/build-ga/qml/HyRemote:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-
           python remoteaccess/tests/rfb_product_fit.py \
             build-ga/remoteaccess/tests/hyremote-rfb-test-server | tee ga-rfb-product-fit.log
           python tests/product-e2e/example_product_fit.py \
@@ -135,7 +128,6 @@ jobs:
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           PREFIX="$QT_PREFIX;$PWD/staged-sdk"
-
           cmake -S tests/public-api-contract -B consumer-public-api -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX"
           cmake --build consumer-public-api --parallel
@@ -149,8 +141,7 @@ jobs:
           cmake --install consumer-installed
           test -f "$PWD/consumer-installed-install/bin/hyremote-installed-consumer"
           test -f "$PWD/consumer-installed-install/lib/libHyRemoteRemoteAccess.so"
-          env -u LD_LIBRARY_PATH \
-            "$PWD/consumer-installed-install/bin/hyremote-installed-consumer"
+          env -u LD_LIBRARY_PATH "$PWD/consumer-installed-install/bin/hyremote-installed-consumer"
 
           cmake -S tests/consumer-source -B consumer-source -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -160,8 +151,7 @@ jobs:
           cmake --install consumer-source
           test -f "$PWD/consumer-source-install/bin/hyremote-source-consumer"
           test -f "$PWD/consumer-source-install/lib/libHyRemoteRemoteAccess.so"
-          env -u LD_LIBRARY_PATH \
-            "$PWD/consumer-source-install/bin/hyremote-source-consumer"
+          env -u LD_LIBRARY_PATH "$PWD/consumer-source-install/bin/hyremote-source-consumer"
 
           cmake -S tests/consumer-installed-qml -B consumer-qml -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
@@ -265,8 +255,9 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "PREFIX=%QT_PREFIX%;%CD%\staged-sdk"
+          set "BUILD_PATH=%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake --install build-ga
           if not exist "%CD%\staged-sdk\bin\HyRemoteRemoteAccess.dll" exit /b 1
           if exist "%CD%\staged-sdk\lib\hyremote-core.lib" exit /b 1
@@ -275,11 +266,10 @@ jobs:
           cmake -S tests\public-api-contract -B consumer-public-api -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%"
           cmake --build consumer-public-api --parallel
-          set "PATH=%CD%\staged-sdk\bin;%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%CD%\staged-sdk\bin;%QT_PREFIX%\bin;%BUILD_PATH%"
           consumer-public-api\hyremote-public-api-contract.exe
 
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-installed-sdk -B consumer-installed -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\consumer-installed-install"
@@ -290,8 +280,7 @@ jobs:
           set "PATH=%CD%\consumer-installed-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\consumer-installed-install\bin\hyremote-installed-consumer.exe"
 
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-source -B consumer-source -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\consumer-source-install" ^
@@ -303,8 +292,7 @@ jobs:
           set "PATH=%CD%\consumer-source-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\consumer-source-install\bin\hyremote-source-consumer.exe"
 
-          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
           cmake -S tests\consumer-installed-qml -B consumer-qml -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%PREFIX%" ^
             -DCMAKE_INSTALL_PREFIX="%CD%\consumer-qml-install"
