@@ -46,41 +46,23 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
         set(_runtime_deploy_dir "\${QT_DEPLOY_LIB_DIR}")
     endif()
 
-    # The normal V1 facade is always shared, so Transparent QPA always carries exactly that product
-    # runtime. Core is copied separately only when a low-level SDK build deliberately made Core shared.
-    set(_runtime_targets HyRemote::RemoteAccess)
-    set(_core_shared FALSE)
-    if(DEFINED HyRemote_QPA_CORE_SHARED)
-        set(_core_shared "${HyRemote_QPA_CORE_SHARED}")
-    elseif(BUILD_SHARED_LIBS)
-        # Source-tree deployment has no installed package metadata yet.
-        set(_core_shared TRUE)
-    endif()
-    if(_core_shared)
-        list(APPEND _runtime_targets HyRemote::Core)
+    # Fixed V1 runtime shape: the product facade is one shared library and Core is statically
+    # composed behind it. QPA deployment therefore carries exactly RemoteAccess as HyRemote runtime.
+    if(NOT TARGET HyRemote::RemoteAccess)
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${target} QPA) expected shared runtime target HyRemote::RemoteAccess in this SDK")
     endif()
 
-    set(_runtime_copy_commands "")
-    set(_additional_library_args "")
-    foreach(_runtime_target IN LISTS _runtime_targets)
-        if(NOT TARGET ${_runtime_target})
-            message(FATAL_ERROR
-                "hyremote_deploy(TARGET ${target} QPA) expected runtime target ${_runtime_target} in this SDK")
-        endif()
-
-        string(APPEND _runtime_copy_commands
-            "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:${_runtime_target}>\")\n")
-        string(APPEND _additional_library_args
-            "\n        \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:${_runtime_target}>\"")
-    endforeach()
+    set(_runtime_copy_commands
+        "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")\n")
     set(_additional_library_section
-        "\n    ADDITIONAL_LIBRARIES${_additional_library_args}")
+        "\n    ADDITIONAL_LIBRARIES\n        \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"")
 
     set(_linux_plugin_rpath_rewrite "")
     if(UNIX AND NOT APPLE)
         # In the SDK qhyremote lives at <libdir>/HyRemote/plugins/platforms and resolves the shared
-        # facade via $ORIGIN/../../... Deployment relocates it to <plugins>/platforms while runtime
-        # libraries go to QT_DEPLOY_LIB_DIR; rewrite only that controlled product RPATH.
+        # facade via $ORIGIN/../../... Deployment relocates it to <plugins>/platforms while the
+        # facade goes to QT_DEPLOY_LIB_DIR; rewrite only that controlled product RPATH.
         set(_linux_plugin_rpath_rewrite
 "file(RPATH_CHANGE
     FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/$<TARGET_FILE_NAME:HyRemote::QpaPlatform>\"
