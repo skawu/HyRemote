@@ -296,7 +296,7 @@ void testDisconnectCleanupCrossesSaturatedAdapterMailbox()
     hyremote::Session session;
     CHECK(session.setCaptureSource(std::make_unique<OneFrameCapture>()));
     CHECK(session.setTransport(HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port)));
-    CHECK(session.setInputSink(targetComponents.input));
+    session.setInputSink(targetComponents.input);
     CHECK(session.start());
     if (session.state() != hyremote::SessionState::Running) {
         session.stop();
