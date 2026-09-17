@@ -22,7 +22,10 @@ def wait_for_rfb(port: int, process: subprocess.Popen[str]) -> bytes:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise RuntimeError(f"consumer exited before RFB listener became ready: {process.returncode}")
+            output = process.stdout.read() if process.stdout is not None else ""
+            raise RuntimeError(
+                f"consumer exited before RFB listener became ready: {process.returncode}\n{output}"
+            )
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5) as sock:
                 sock.settimeout(1.0)
