@@ -19,6 +19,10 @@ on:
       - '.github/workflows/v1-ga-acceptance.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   integrated-ga-candidate:
     if: >-

@@ -10,6 +10,10 @@ on:
       - '.github/workflows/rfb-transport.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   product-fit:
     name: ${{ matrix.name }}

@@ -20,6 +20,10 @@ on:
       - '.github/workflows/sdk-consumption.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   consume:
     name: ${{ matrix.name }}
