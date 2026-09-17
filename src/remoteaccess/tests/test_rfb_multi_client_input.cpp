@@ -272,6 +272,18 @@ void testConcurrentViewerHeldStateIsolation()
     CHECK(countKey(inputs, hyremote::KeyCode::B, true) == 1);
     CHECK(countButton(inputs, hyremote::PointerButton::Left, true) == 1);
 
+    // A release from a viewer that never held the logical key must not subtract another viewer's
+    // contribution. This explicitly covers malformed/out-of-order clients, not just disconnect.
+    CHECK(sendKey(second, static_cast<std::uint32_t>('c'), true));
+    CHECK(recorder.waitFor([](const auto &events, const auto &) {
+        return countKey(events, hyremote::KeyCode::C, true) >= 1;
+    }));
+    CHECK(sendKey(first, static_cast<std::uint32_t>('c'), false));
+    QThread::msleep(100);
+    inputs = recorder.inputSnapshot();
+    CHECK(countKey(inputs, hyremote::KeyCode::C, true) == 1);
+    CHECK(countKey(inputs, hyremote::KeyCode::C, false) == 0);
+
     // First viewer disappears while both viewers still contribute the same logical holds. Its
     // cleanup must decrement only its own references and must not release the shared Qt target.
     first.abort();
@@ -286,6 +298,7 @@ void testConcurrentViewerHeldStateIsolation()
     inputs = recorder.inputSnapshot();
     CHECK(countKey(inputs, hyremote::KeyCode::Shift, false) == 0);
     CHECK(countKey(inputs, hyremote::KeyCode::B, false) == 0);
+    CHECK(countKey(inputs, hyremote::KeyCode::C, false) == 0);
     CHECK(countButton(inputs, hyremote::PointerButton::Left, false) == 0);
 
     // Aggregating distinct viewer holds must not suppress normal repeat input from the surviving
@@ -300,7 +313,8 @@ void testConcurrentViewerHeldStateIsolation()
     CHECK(countKey(inputs, hyremote::KeyCode::B, false) == 0);
 
     // The surviving viewer owns the final references. Only its releases may transition the shared
-    // target back to up, and the ordinary B release must still observe Shift as held.
+    // target back to up, and ordinary releases must still observe Shift as held.
+    CHECK(sendKey(second, static_cast<std::uint32_t>('c'), false));
     CHECK(sendKey(second, static_cast<std::uint32_t>('b'), false));
     CHECK(sendPointer(second, 0x00U, 22, 21));
     CHECK(sendKey(second, 0xffe1U, false));
@@ -308,6 +322,7 @@ void testConcurrentViewerHeldStateIsolation()
     CHECK(recorder.waitFor([](const auto &inputs, const auto &) {
         return countKey(inputs, hyremote::KeyCode::Shift, false) >= 1
                && countKey(inputs, hyremote::KeyCode::B, false) >= 1
+               && countKey(inputs, hyremote::KeyCode::C, false) >= 1
                && countButton(inputs, hyremote::PointerButton::Left, false) >= 1;
     }));
     QThread::msleep(100);
@@ -315,6 +330,7 @@ void testConcurrentViewerHeldStateIsolation()
     inputs = recorder.inputSnapshot();
     CHECK(countKey(inputs, hyremote::KeyCode::Shift, false) == 1);
     CHECK(countKey(inputs, hyremote::KeyCode::B, false) == 1);
+    CHECK(countKey(inputs, hyremote::KeyCode::C, false) == 1);
     CHECK(countButton(inputs, hyremote::PointerButton::Left, false) == 1);
 
     const auto bRelease = std::find_if(inputs.begin(), inputs.end(), [](const auto &event) {
@@ -324,6 +340,14 @@ void testConcurrentViewerHeldStateIsolation()
     CHECK(bRelease != inputs.end());
     if (bRelease != inputs.end())
         CHECK(hyremote::hasModifier(bRelease->modifiers, hyremote::InputModifier::Shift));
+
+    const auto cRelease = std::find_if(inputs.begin(), inputs.end(), [](const auto &event) {
+        return event.kind == hyremote::InputEventKind::Key && event.key == hyremote::KeyCode::C
+               && !event.pressed;
+    });
+    CHECK(cRelease != inputs.end());
+    if (cRelease != inputs.end())
+        CHECK(hyremote::hasModifier(cRelease->modifiers, hyremote::InputModifier::Shift));
 
     const auto leftRelease = std::find_if(inputs.begin(), inputs.end(), [](const auto &event) {
         return event.kind == hyremote::InputEventKind::PointerButton
