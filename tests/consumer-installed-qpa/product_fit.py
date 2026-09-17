@@ -8,6 +8,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -17,14 +18,37 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def wait_for_rfb(port: int, process: subprocess.Popen[str]) -> bytes:
+def collect_output(process: subprocess.Popen[str], lines: list[str]) -> threading.Thread:
+    """Drain the child's output continuously.
+
+    Waiting for RFB without reading the pipe could only report a return code or a socket error, which is
+    what made the Linux abort and the Windows "alive but never ready" case opaque; it also risks blocking
+    the child once the pipe buffer fills.
+    """
+
+    def run() -> None:
+        if process.stdout is None:
+            return
+        for line in process.stdout:
+            lines.append(line.rstrip("\r\n"))
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread
+
+
+def captured(lines: list[str]) -> str:
+    return "\n".join(lines) if lines else "<no child output captured>"
+
+
+def wait_for_rfb(port: int, process: subprocess.Popen[str], lines: list[str]) -> bytes:
     deadline = time.monotonic() + 8.0
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            output = process.stdout.read() if process.stdout is not None else ""
             raise RuntimeError(
-                f"consumer exited before RFB listener became ready: {process.returncode}\n{output}"
+                "consumer exited before RFB listener became ready: "
+                f"{process.returncode}\n{captured(lines)}"
             )
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5) as sock:
@@ -33,7 +57,7 @@ def wait_for_rfb(port: int, process: subprocess.Popen[str]) -> bytes:
         except OSError as error:
             last_error = error
             time.sleep(0.05)
-    raise RuntimeError(f"deployed QPA listener did not become ready: {last_error}")
+    raise RuntimeError(f"deployed QPA listener did not become ready: {last_error}\n{captured(lines)}")
 
 
 def require_native_platform_plugin(app: Path) -> Path:
@@ -110,6 +134,13 @@ def main() -> int:
             [str(app.parent), str(system_root / "System32"), str(system_root)]
         )
 
+    # Observability for this diagnostic, not a change to what is being proven: the deployed tree is still
+    # exercised with every HyRemote/Qt lookup override removed above. Qt plugin debug output is what shows
+    # whether the hyremote platform plugin was activated at all, and on Windows a Qt GUI application logs
+    # to the debugger rather than the inherited pipe, so both flags are needed for the capture to be useful.
+    env["QT_DEBUG_PLUGINS"] = "1"
+    env["QT_FORCE_STDERR_LOGGING"] = "1"
+
     process = subprocess.Popen(
         [
             str(app),
@@ -126,16 +157,25 @@ def main() -> int:
         env=env,
     )
 
-    try:
-        first_banner = wait_for_rfb(args.port, process)
-        require(first_banner.startswith(b"RFB 003.008"), f"unexpected first RFB banner: {first_banner!r}")
+    lines: list[str] = []
+    reader = collect_output(process, lines)
 
-        second_banner = wait_for_rfb(args.port, process)
-        require(second_banner.startswith(b"RFB 003.008"), f"unexpected reconnect banner: {second_banner!r}")
+    try:
+        first_banner = wait_for_rfb(args.port, process, lines)
+        require(
+            first_banner.startswith(b"RFB 003.008"),
+            f"unexpected first RFB banner: {first_banner!r}\n{captured(lines)}",
+        )
+
+        second_banner = wait_for_rfb(args.port, process, lines)
+        require(
+            second_banner.startswith(b"RFB 003.008"),
+            f"unexpected reconnect banner: {second_banner!r}\n{captured(lines)}",
+        )
 
         result = process.wait(timeout=10)
-        output = process.stdout.read() if process.stdout is not None else ""
-        require(result == 0, f"deployed QPA consumer exited with {result}: {output}")
+        reader.join(timeout=1.0)
+        require(result == 0, f"deployed QPA consumer exited with {result}:\n{captured(lines)}")
         print(
             "PASS: deployed consumer -> qhyremote + native QPA delegate + shared RemoteAccess -> "
             "RFB reconnect without SDK/plugin/QML/runtime-path overrides"
