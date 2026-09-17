@@ -41,6 +41,16 @@ require_file_token("remoteaccess/tests/test_quick_capture.cpp" "testDestroyedQui
 require_file_token("remoteaccess/src/widgets/widget_target.cpp" "the QWidget target was destroyed" "Widgets target-loss publication")
 require_file_token("remoteaccess/src/quick/quick_target.cpp" "the QQuickWindow target was destroyed" "Quick target-loss publication")
 
+# E3 must exercise the same stopped-runtime policy transition without a wall-clock race. The first
+# viewer disconnect is observable through the public QML connected-client diagnostic and triggers
+# stop -> configure -> start; a bounded timer remains only as a watchdog fallback.
+require_file_token("examples/qml-basic/Main.qml" "property bool acceptanceSawViewer" "E3 first-viewer lifecycle observation")
+require_file_token("examples/qml-basic/Main.qml" "function applyAcceptancePolicyTransition()" "E3 public-QML policy transition helper")
+require_file_token("examples/qml-basic/Main.qml" "window.applyAcceptancePolicyTransition()" "E3 disconnect-driven policy transition")
+require_file_token("examples/qml-basic/Main.qml" "policyTransitionTimer.stop()" "E3 watchdog cancellation after lifecycle trigger")
+require_file_token("tests/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E3 bounded policy-transition watchdog")
+require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "E3 product-fit binds policy transition to viewer lifecycle")
+
 require_file_token("qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "class PortReservation final" "deterministic occupied-port QPA failure setup")
 require_file_token("qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "SO_EXCLUSIVEADDRUSE" "deterministic Windows occupied-port ownership")
 require_file_token("qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "gRemoteStartFailureSeen" "proof that the QPA remote runtime actually attempted and failed startup")
@@ -52,4 +62,4 @@ require_file_token("docs/v1-ga-acceptance.md" "remote-capability failure only" "
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
-    "(multi-viewer input isolation + error/Faulted semantics + Widgets/Quick target-loss parity + observed QPA remote-failure native survival)")
+    "(multi-viewer input isolation + error/Faulted semantics + Widgets/Quick target-loss parity + event-driven E3 policy transition + observed QPA remote-failure native survival)")
