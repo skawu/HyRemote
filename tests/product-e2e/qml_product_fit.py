@@ -56,15 +56,15 @@ def main() -> int:
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["QT_QUICK_BACKEND"] = "software"
 
-    # Start with the product-safe view-only default, then have the real QML surface execute the
-    # documented stop -> configure(remoteInputEnabled=true) -> start lifecycle in the same process.
-    # Ten seconds deliberately leaves a wide window for the first maintained-viewer assertions on
-    # slow hosted runners; the total lifetime still leaves ample time for control/reconnect proof.
+    # Start with the product-safe view-only default. The example transitions as soon as the first
+    # viewer disconnect is observed through the public QML connectedClientCount diagnostic, then
+    # performs the documented stop -> configure(remoteInputEnabled=true) -> start lifecycle in the
+    # same process. 15 seconds is only a watchdog fallback, not the normal transition schedule.
     process = subprocess.Popen(
         [
             str(args.qml.resolve()),
             "--port", str(port),
-            "--policy-transition-ms", "10000",
+            "--policy-transition-ms", "15000",
             "--test-seconds", "24",
         ],
         stdout=subprocess.PIPE,
@@ -119,8 +119,10 @@ def main() -> int:
             wait_until(process, lines, lambda: line_count(lines, "CLIENT_COUNT 0") >= 2,
                        "QML diagnostic did not mirror view-only viewer disconnect")
 
+            # The disconnect above is also the deterministic policy-transition trigger. The 15s
+            # timer in the example exists only as a watchdog if the lifecycle signal regresses.
             wait_until(process, lines, lambda: line_count(lines, "POLICY_STOPPED") >= 1,
-                       "QML wrapper did not stop for policy transition", timeout=12)
+                       "QML wrapper did not stop for policy transition", timeout=4)
             wait_until(process, lines, lambda: line_count(lines, "POLICY_INPUT true") >= 1,
                        "QML wrapper did not apply remoteInputEnabled while stopped")
             wait_until(process, lines, lambda: line_count(lines, "POLICY_RESTART_REQUESTED") >= 1,
