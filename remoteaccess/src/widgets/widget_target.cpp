@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/input_mailbox_admission.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -379,25 +380,36 @@ public:
             if (!state->active)
                 return;
 
-            // Pointer motion is freshness-oriented. Adjacent pending moves collapse to the newest
-            // coordinate, and when the bounded mailbox is full an older pending move is sacrificed
-            // before any key/button/text lifecycle event. Lifecycle-sensitive input is never
-            // silently overwritten.
-            if (event.kind == hyremote::InputEventKind::PointerMove
-                && !state->pending.empty()
-                && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
+            const InputMailboxAdmission::Class admissionClass = state->admission.classify(event);
+            if (admissionClass == InputMailboxAdmission::Class::DropUnmatchedRelease)
+                return;
+
+            if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
+                if (!state->admission.canAcceptProtectedRelease())
+                    throw std::runtime_error("bounded Qt protected-release mailbox is full");
+                state->admission.acceptProtectedRelease(event);
+                state->pending.push_back(event);
+            } else if (event.kind == hyremote::InputEventKind::PointerMove
+                       && !state->pending.empty()
+                       && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
+                // Pointer motion is freshness-oriented. Adjacent pending moves share one normal
+                // admission slot and collapse to the newest coordinate.
                 state->pending.back() = event;
             } else {
-                if (state->pending.size() >= kMaxPendingInputEvents) {
+                if (!state->admission.canAcceptNormal()) {
                     const auto staleMove = std::find_if(
                         state->pending.begin(), state->pending.end(), [](const hyremote::InputEvent &queued) {
                             return queued.kind == hyremote::InputEventKind::PointerMove;
                         });
-                    if (staleMove != state->pending.end())
+                    if (staleMove != state->pending.end()) {
                         state->pending.erase(staleMove);
+                        state->admission.removePendingNormal();
+                    }
                 }
-                if (state->pending.size() >= kMaxPendingInputEvents)
+                if (!state->admission.canAcceptNormal())
                     throw std::runtime_error("bounded Qt input mailbox is full");
+
+                state->admission.acceptNormal(event);
                 state->pending.push_back(event);
             }
 
@@ -415,8 +427,10 @@ public:
                 [state] { drainOnGuiThread(state); },
                 Qt::QueuedConnection)) {
             std::lock_guard<std::mutex> lock(state->mutex);
+            // Preserve the bounded pending batch and its lifecycle bookkeeping. A later post may
+            // successfully schedule the same batch; terminal shutdown will otherwise discard it and
+            // balance only state that already reached Qt.
             state->drainScheduled = false;
-            state->pending.clear();
             throw std::runtime_error("failed to queue remote input drain to the Qt GUI thread");
         }
     }
@@ -432,6 +446,7 @@ public:
             state->shutdownRequested = true;
             state->active = false;
             state->pending.clear();
+            state->admission.resetAll();
             state->drainScheduled = false;
         }
 
@@ -447,8 +462,6 @@ public:
     }
 
 private:
-    static constexpr std::size_t kMaxPendingInputEvents = 64;
-
     struct HeldKey
     {
         int key = 0;
@@ -463,6 +476,7 @@ private:
         bool drainScheduled = false;
         bool shutdownRequested = false;
         std::deque<hyremote::InputEvent> pending;
+        InputMailboxAdmission admission;
 
         // GUI-thread-owned delivered-state bookkeeping. shutdown() clears pending transport input
         // first, then balances only state that actually reached Qt.
@@ -684,10 +698,12 @@ private:
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active) {
                 state->pending.clear();
+                state->admission.resetAll();
                 state->drainScheduled = false;
                 return;
             }
             batch.swap(state->pending);
+            state->admission.pendingBatchTaken();
             // Clear before delivery so concurrent producers can schedule exactly one next drain.
             // Thus the Qt event queue contains at most one pending drain invocation per sink.
             state->drainScheduled = false;
