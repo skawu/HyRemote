@@ -120,7 +120,8 @@ foreach(required_token
         [=[TEST_QPA_AVAILABLE]=]
         [=[TEST_STALE_QPA_METADATA]=]
         [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
-        [=[stale-qhyremote]=]
+        [=[${CMAKE_SHARED_MODULE_PREFIX}stale-qhyremote${CMAKE_SHARED_MODULE_SUFFIX}]=]
+        [=[${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}]=]
         [=[set(HyRemote_QPA_AVAILABLE FALSE)]=]
         [=[set(HyRemote_QPA_QT_VERSION "6.8.2")]=]
         [=[add_library(hyremote-qml ALIAS qml-backing)]=]
@@ -134,6 +135,11 @@ foreach(required_token
             "deploy-helper-contract: deterministic fixture lost required source/installed proof: ${required_token}")
     endif()
 endforeach()
+string(FIND "${fixture}" [=[/qhyremote${CMAKE_SHARED_MODULE_SUFFIX}]=] fixture_missing_module_prefix)
+if(NOT fixture_missing_module_prefix EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: installed QPA fixture must model the platform MODULE prefix")
+endif()
 string(FIND "${fixture}" "HyRemote_QML_AVAILABLE" leaked_fixture_api)
 if(NOT leaked_fixture_api EQUAL -1)
     message(FATAL_ERROR
@@ -148,6 +154,8 @@ foreach(required_token
         [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
         [=[EXPECT_FAILURE_FRAGMENT]=]
         [=[failed for the wrong reason]=]
+        [=[_expected_qpa_name]=]
+        [=[${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}]=]
         [=[hyremote-runtime-deploy-deploy-probe]=]
         [=[hyremote-qpa-deploy-deploy-probe]=]
         [=[ADDITIONAL_MODULES]=]
@@ -205,4 +213,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; negative fixtures must fail for their intended semantic reason; installed QML/QPA payloads fail closed when advertised paths are missing; source/installed optional payloads remain isolated)")
+    "(four public shapes remain distinct; negative fixtures must fail for their intended semantic reason; installed QML/QPA paths and platform MODULE names fail closed; source/installed optional payloads remain isolated)")
