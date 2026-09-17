@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/input_mailbox_admission.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -464,21 +465,34 @@ public:
             if (!state->active)
                 return;
 
-            if (event.kind == hyremote::InputEventKind::PointerMove
-                && !state->pending.empty()
-                && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
+            const InputMailboxAdmission::Class admissionClass = state->admission.classify(event);
+            if (admissionClass == InputMailboxAdmission::Class::DropUnmatchedRelease)
+                return;
+
+            if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
+                if (!state->admission.canAcceptProtectedRelease())
+                    throw std::runtime_error("bounded Qt Quick protected-release mailbox is full");
+                state->admission.acceptProtectedRelease(event);
+                state->pending.push_back(event);
+            } else if (event.kind == hyremote::InputEventKind::PointerMove
+                       && !state->pending.empty()
+                       && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
                 state->pending.back() = event;
             } else {
-                if (state->pending.size() >= kMaxPendingInputEvents) {
+                if (!state->admission.canAcceptNormal()) {
                     const auto staleMove = std::find_if(
                         state->pending.begin(), state->pending.end(), [](const hyremote::InputEvent &queued) {
                             return queued.kind == hyremote::InputEventKind::PointerMove;
                         });
-                    if (staleMove != state->pending.end())
+                    if (staleMove != state->pending.end()) {
                         state->pending.erase(staleMove);
+                        state->admission.removePendingNormal();
+                    }
                 }
-                if (state->pending.size() >= kMaxPendingInputEvents)
+                if (!state->admission.canAcceptNormal())
                     throw std::runtime_error("bounded Qt Quick input mailbox is full");
+
+                state->admission.acceptNormal(event);
                 state->pending.push_back(event);
             }
 
@@ -497,7 +511,6 @@ public:
                 Qt::QueuedConnection)) {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->drainScheduled = false;
-            state->pending.clear();
             throw std::runtime_error("failed to queue remote input drain to the Qt Quick GUI thread");
         }
     }
@@ -513,6 +526,7 @@ public:
             state->shutdownRequested = true;
             state->active = false;
             state->pending.clear();
+            state->admission.resetAll();
             state->drainScheduled = false;
         }
 
@@ -528,8 +542,6 @@ public:
     }
 
 private:
-    static constexpr std::size_t kMaxPendingInputEvents = 64;
-
     struct State
     {
         std::mutex mutex;
@@ -538,6 +550,7 @@ private:
         bool drainScheduled = false;
         bool shutdownRequested = false;
         std::deque<hyremote::InputEvent> pending;
+        InputMailboxAdmission admission;
 
         // GUI-thread-owned state already delivered into the QQuickWindow.
         Qt::MouseButtons buttons = Qt::NoButton;
@@ -718,10 +731,12 @@ private:
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active) {
                 state->pending.clear();
+                state->admission.resetAll();
                 state->drainScheduled = false;
                 return;
             }
             batch.swap(state->pending);
+            state->admission.pendingBatchTaken();
             state->drainScheduled = false;
         }
 
