@@ -30,12 +30,13 @@ target_include_directories(hyremote-target-component-provider-test
 )
 add_test(NAME hyremote-target-component-provider-test COMMAND hyremote-target-component-provider-test)
 
-# Pure admission-state proof shared by Widgets/Quick. It has no GUI/display dependency and pins the
-# bounded protected-release reserve used when normal remote-input backpressure is saturated.
 add_executable(hyremote-input-mailbox-admission-test
     test_input_mailbox_admission.cpp
 )
-target_link_libraries(hyremote-input-mailbox-admission-test PRIVATE HyRemote::Core)
+target_link_libraries(hyremote-input-mailbox-admission-test
+    PRIVATE
+        HyRemote::Core
+)
 target_include_directories(hyremote-input-mailbox-admission-test
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -117,6 +118,32 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     set_tests_properties(hyremote-widgets-input-backpressure-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
+
+    if(HYREMOTE_WITH_VNC)
+        # Real composition proof for #90: RFB disconnect cleanup must cross Session and a saturated
+        # Widgets mailbox without dropping the final accepted key/button releases.
+        add_executable(hyremote-rfb-widget-disconnect-backpressure-test
+            test_rfb_widget_disconnect_backpressure.cpp
+        )
+        target_link_libraries(hyremote-rfb-widget-disconnect-backpressure-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Network
+                Qt6::Widgets
+        )
+        target_include_directories(hyremote-rfb-widget-disconnect-backpressure-test
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        )
+        add_test(NAME hyremote-rfb-widget-disconnect-backpressure-test
+                 COMMAND hyremote-rfb-widget-disconnect-backpressure-test)
+        set_tests_properties(hyremote-rfb-widget-disconnect-backpressure-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            TIMEOUT 20
+        )
+    endif()
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK)

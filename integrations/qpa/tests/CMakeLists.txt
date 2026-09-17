@@ -53,7 +53,7 @@ target_compile_features(hyremote-qpa-remote-config-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-remote-config-test
     PRIVATE
         ..
-        ${PROJECT_SOURCE_DIR}/remoteaccess/src
+        ${PROJECT_SOURCE_DIR}/src/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-remote-config-test
     PRIVATE
@@ -211,7 +211,7 @@ add_executable(hyremote-qpa-composite-capture-test
 )
 target_compile_features(hyremote-qpa-composite-capture-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-capture-test
-    PRIVATE .. ${PROJECT_SOURCE_DIR}/remoteaccess/src
+    PRIVATE .. ${PROJECT_SOURCE_DIR}/src/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-composite-capture-test
     PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
@@ -229,7 +229,7 @@ add_executable(hyremote-qpa-composite-input-test
 )
 target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-input-test
-    PRIVATE .. ${PROJECT_SOURCE_DIR}/remoteaccess/src
+    PRIVATE .. ${PROJECT_SOURCE_DIR}/src/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-composite-input-test
     PRIVATE Qt6::Core Qt6::Gui HyRemote::Core

@@ -5,8 +5,8 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
-      - 'core/**'
-      - 'remoteaccess/**'
+      - 'src/core/**'
+      - 'src/remoteaccess/**'
       - '.github/workflows/rfb-transport.yml'
   workflow_dispatch:
 
@@ -62,7 +62,7 @@ jobs:
           test -f build-rfb/remoteaccess/libHyRemoteRemoteAccess.so
           ctest --test-dir build-rfb --output-on-failure
           LD_LIBRARY_PATH="$QT_PREFIX/lib:$PWD/build-rfb/remoteaccess:${LD_LIBRARY_PATH:-}" \
-            python remoteaccess/tests/rfb_product_fit.py \
+            python src/remoteaccess/tests/rfb_product_fit.py \
               build-rfb/remoteaccess/tests/hyremote-rfb-test-server
 
       - name: Configure, build, unit test and product-fit — Windows / MSVC x64
@@ -87,4 +87,4 @@ jobs:
           cmake --build build-rfb --parallel
           if not exist "%CD%\build-rfb\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
           ctest --test-dir build-rfb --output-on-failure
-          python remoteaccess\tests\rfb_product_fit.py build-rfb\remoteaccess\tests\hyremote-rfb-test-server.exe
+          python src\remoteaccess\tests\rfb_product_fit.py build-rfb\remoteaccess\tests\hyremote-rfb-test-server.exe

@@ -5,9 +5,9 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
-      - 'core/**'
-      - 'remoteaccess/**'
-      - 'qml/**'
+      - 'src/core/**'
+      - 'src/remoteaccess/**'
+      - 'integrations/qml/**'
       - 'tests/consumer-installed-qml/**'
       - '.github/workflows/qml-api.yml'
   workflow_dispatch:

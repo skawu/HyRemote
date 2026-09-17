@@ -5,8 +5,8 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
-      - 'core/**'
-      - 'remoteaccess/**'
+      - 'src/core/**'
+      - 'src/remoteaccess/**'
       - 'docs/widgets-capture.md'
       - '.github/workflows/widgets-adapter.yml'
   workflow_dispatch:

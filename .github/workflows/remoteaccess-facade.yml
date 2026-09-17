@@ -5,8 +5,8 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
-      - 'core/**'
-      - 'remoteaccess/**'
+      - 'src/core/**'
+      - 'src/remoteaccess/**'
       - '.github/workflows/remoteaccess-facade.yml'
   workflow_dispatch:
 

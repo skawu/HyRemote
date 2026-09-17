@@ -3,7 +3,7 @@ include(GNUInstallDirs)
 # Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
 # Private QPA types and interception/composition remain isolated here while the plugin reuses the
 # same shared HyRemote::RemoteAccess runtime as the C++ and QML modes.
-get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
 add_library(hyremote-qpa-platform MODULE
     application_surface_model.cpp
@@ -30,7 +30,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-platform PRIVATE "${_hyremote_root_dir}/remoteaccess/src")
+target_include_directories(hyremote-qpa-platform PRIVATE "${_hyremote_root_dir}/src/remoteaccess/src")
 target_link_libraries(hyremote-qpa-platform
     PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate HyRemote::RemoteAccess
 )

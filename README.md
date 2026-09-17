@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+  <img src="assets/branding/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
 </p>
 
 <h1 align="center">HyRemote</h1>
@@ -117,7 +117,7 @@ The installed SDK does **not** expose `HyRemote::QpaPlatform` as an application 
 
 ## Build
 
-A plain source build is intentionally product-only: tests, examples and architecture spikes are not built unless explicitly requested.
+A plain source build is intentionally product-only: tests, examples and architecture research are not built unless explicitly requested.
 
 ```bash
 cmake -S . -B build -G Ninja \
@@ -154,6 +154,23 @@ Maintainers/CI enable repository validation explicitly:
 ```
 
 See the Windows/Linux guides for reference test commands. Build-tree runtime path overrides are development details, not deployment requirements.
+
+## Repository layout
+
+The repository is organized by product responsibility rather than historical feature branches:
+
+```text
+src/                 product implementation (Core + RemoteAccess)
+integrations/        QML and QPA integration payloads
+tests/               cross-module/consumer/release evidence
+examples/            product examples
+research/            non-product spikes and architecture evidence
+assets/branding/     branding assets
+cmake/               build/package/deployment modules
+docs/                product and maintainer documentation
+```
+
+The source move does not intentionally change build-tree artifact paths; CMake maps canonical source directories onto the established `build/core`, `build/remoteaccess`, `build/qml/HyRemote` and QPA output locations. See [`docs/repository-layout.md`](docs/repository-layout.md).
 
 ## Deployment
 
@@ -209,6 +226,7 @@ Reference/setup and delivery guides:
 - [`docs/source-consumption.md`](docs/source-consumption.md) — vendored/source consumption
 - [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
 - [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
+- [`docs/repository-layout.md`](docs/repository-layout.md) — canonical repository ownership/layout
 - [`docs/viewer-connection.md`](docs/viewer-connection.md) — viewer/control/reconnect
 - [`docs/security.md`](docs/security.md) — implemented security boundary
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — product-level diagnosis
@@ -216,7 +234,7 @@ Reference/setup and delivery guides:
 - [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
 - [`docs/v1-ga-acceptance.md`](docs/v1-ga-acceptance.md) — GA release gate
 
-Internal Core/capture/transport/QPA implementation documents under `docs/` and `spikes/` are maintainer material; ordinary users do not need them to integrate HyRemote.
+Internal Core/capture/transport/QPA implementation documents under `docs/` and `research/` are maintainer material; ordinary users do not need them to integrate HyRemote.
 
 ## Security
 

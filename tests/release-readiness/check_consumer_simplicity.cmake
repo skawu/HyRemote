@@ -5,7 +5,7 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
 endif()
 
 # V1 normal use is deliberately small: one shared C++ facade or the qhyremote plugin. A plain source
-# configure builds the product, not repository tests/examples/spikes, and an add_subdirectory()
+# configure builds the product, not repository tests/examples/research, and an add_subdirectory()
 # consumer must not need to know internal component switches to obtain the standard C++ runtime.
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteProjectOptions.cmake" options_text)
 set(required_option_tokens
@@ -50,6 +50,10 @@ set(required_root_tokens
     include(CTest)]=]
     [=[if(HYREMOTE_BUILD_REMOTE_ACCESS)]=]
     [=[if(HYREMOTE_WITH_QPA_PROXY)]=]
+    [=[add_subdirectory(src/core core)]=]
+    [=[add_subdirectory(src/remoteaccess remoteaccess)]=]
+    [=[add_subdirectory(integrations/qml/HyRemote qml/HyRemote)]=]
+    [=[add_subdirectory(integrations/qpa qpa)]=]
     [=[hyremote-release-profile-v001-reject-qml]=]
     [=[hyremote-release-profile-v002-reject-qpa]=]
     [=[hyremote-release-profile-v100-all-modes]=]
@@ -141,7 +145,7 @@ endforeach()
 # Source and installed QML acquisition publish the same abstract import-root input to the one deploy
 # helper. Source payload targets are internal build metadata: they may become build-only dependencies
 # of the consumer target, but never application link targets or installed SDK choices.
-file(READ "${HYREMOTE_SOURCE_DIR}/qml/HyRemote/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
 foreach(required_token
         "_hyremote_qml_build_import_root"
         "HyRemote_QML_IMPORT_PATH"
@@ -156,7 +160,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
@@ -272,4 +276,4 @@ endforeach()
 
 message(STATUS
     "HyRemote consumer-simplicity gate: PASS "
-    "(product-only defaults, one public C++ target, four deployment shapes, build-only source payload wiring, installed/source QML+QPA acquisition, executable version-derived milestone profiles)")
+    "(product-only defaults, canonical repository layout, one public C++ target, four deployment shapes, build-only source payload wiring, installed/source QML+QPA acquisition, executable version-derived milestone profiles)")

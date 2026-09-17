@@ -8,10 +8,10 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
-      - 'core/**'
-      - 'remoteaccess/**'
-      - 'qml/**'
-      - 'qpa/**'
+      - 'src/core/**'
+      - 'src/remoteaccess/**'
+      - 'integrations/qml/**'
+      - 'integrations/qpa/**'
       - 'examples/**'
       - 'tests/**'
       - 'docs/**'
@@ -101,7 +101,7 @@ jobs:
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           export LD_LIBRARY_PATH="$PWD/build-ga/remoteaccess:$PWD/build-ga/qml/HyRemote:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-          python remoteaccess/tests/rfb_product_fit.py \
+          python src/remoteaccess/tests/rfb_product_fit.py \
             build-ga/remoteaccess/tests/hyremote-rfb-test-server | tee ga-rfb-product-fit.log
           python tests/product-e2e/example_product_fit.py \
             --widgets build-ga/examples/widgets-basic/hyremote-widgets-basic \
@@ -235,7 +235,7 @@ jobs:
         run: |
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "PATH=%CD%\build-ga\remoteaccess;%CD%\build-ga\qml\HyRemote;%QT_PREFIX%\bin;%PATH%"
-          python remoteaccess\tests\rfb_product_fit.py build-ga\remoteaccess\tests\hyremote-rfb-test-server.exe > ga-rfb-product-fit.log 2>&1 || (type ga-rfb-product-fit.log & exit /b 1)
+          python src\remoteaccess\tests\rfb_product_fit.py build-ga\remoteaccess\tests\hyremote-rfb-test-server.exe > ga-rfb-product-fit.log 2>&1 || (type ga-rfb-product-fit.log & exit /b 1)
           type ga-rfb-product-fit.log
           python tests\product-e2e\example_product_fit.py ^
             --widgets build-ga\examples\widgets-basic\hyremote-widgets-basic.exe ^

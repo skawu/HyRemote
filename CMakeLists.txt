@@ -43,10 +43,13 @@ message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
 message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
-message(STATUS "  Build spikes:        ${HYREMOTE_BUILD_SPIKES}")
+message(STATUS "  Build research:      ${HYREMOTE_BUILD_SPIKES}")
 
+# Repository layout is product-architecture aligned. Explicit binary directories deliberately retain
+# the historical build-tree layout so this source-tree refactor does not change deployment/test
+# artifact locations or create a second product personality.
 if(HYREMOTE_BUILD_CORE)
-    add_subdirectory(core)
+    add_subdirectory(src/core core)
 endif()
 
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
@@ -59,7 +62,7 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 
     if(TARGET Qt6::Core AND TARGET Qt6::Network)
-        add_subdirectory(remoteaccess)
+        add_subdirectory(src/remoteaccess remoteaccess)
     elseif(PROJECT_IS_TOP_LEVEL)
         message(STATUS "  RemoteAccess target skipped: Qt 6.8+ Core/Network not found")
     else()
@@ -82,7 +85,7 @@ if(HYREMOTE_BUILD_QML_API)
         endif()
 
         if(TARGET Qt6::Qml)
-            add_subdirectory(qml/HyRemote)
+            add_subdirectory(integrations/qml/HyRemote qml/HyRemote)
         elseif(PROJECT_IS_TOP_LEVEL)
             message(STATUS "  QML API skipped: Qt 6.8+ Qml not found")
         else()
@@ -103,7 +106,7 @@ if(HYREMOTE_WITH_QPA_PROXY)
         message(FATAL_ERROR
             "HYREMOTE_WITH_QPA_PROXY=ON requires the exact Qt 6.8.3 private Gui development target (Qt6::GuiPrivate)")
     endif()
-    add_subdirectory(qpa)
+    add_subdirectory(integrations/qpa qpa)
 endif()
 
 if(HYREMOTE_BUILD_EXAMPLES)
@@ -118,8 +121,8 @@ if(HYREMOTE_BUILD_EXAMPLES)
 endif()
 
 if(HYREMOTE_BUILD_SPIKES)
-    add_subdirectory(spikes/capture)
-    add_subdirectory(spikes/async-capture)
+    add_subdirectory(research/capture spikes/capture)
+    add_subdirectory(research/async-capture spikes/async-capture)
 endif()
 
 if(TARGET hyremote-remoteaccess)
@@ -167,6 +170,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
     )
+    add_test(
+        NAME hyremote-release-readiness-repository-layout
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_repository_layout.cmake"
+    )
 
     # Source deployment truth must come from the current add_subdirectory() graph. This fixture
     # deliberately injects installed-SDK metadata claiming QPA is unavailable and tied to Qt 6.8.2
@@ -175,12 +184,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     add_test(
         NAME hyremote-release-readiness-source-qpa-authority
         COMMAND "${CMAKE_COMMAND}"
-            -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/qpa/tests/deploy_helper_fixture
+            -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/deploy_helper_fixture
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-readiness-source-qpa-authority
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -DTEST_QML=OFF
             -DTEST_STALE_QPA_NEGATIVE_METADATA=ON
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
     )
 
     function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled expect_reject)
