@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# One-time V1 branch convergence manifest captured on 2026-09-17.
+# One-time V1 branch convergence manifest captured/refreshed on 2026-09-17.
 # Each candidate is SHA-locked. A still-existing ref must match this exact SHA and must not be the
 # head of an open PR. A missing ref is treated as already pruned so an interrupted cleanup is safely
 # resumable without weakening the checks for branches that still exist.
@@ -13,11 +13,15 @@ $Candidates = [ordered]@{
     "api/44-remote-access-facade" = "2f8b6a31e07efd82b3415dd69a4ead6905fda607"
     "arch/5-core-contract" = "c7dfa6398ede747c35240afa918ff650dd31ea4a"
     "bootstrap/11-cmake-ci-baseline" = "f5fedfb0b3ca82346c79a69f5c508dd79e226e71"
+    "chore/ci-concurrency-guards" = "ad81e4ae6b2c9511bc04080e7fd27023b2b667b6"
+    "chore/ci-concurrency-v1-workflows" = "7e4104648fe70d3e163766b90c2f0b5088320bca"
+    "chore/governance-and-mainline-ci" = "738603aa02c499d8a24adc45bec6debe1b8c2372"
     "core/capabilities-hygiene" = "d13b3a65ff3bd99c0a4d11d8647c5e6b95a9b543"
     "core/21-session-frame-pipeline" = "bb9dfe918e10c907efb6dd2a962839eeed9542ca"
     "diag/91-connected-client-count" = "6f315a1b8490ae9e2985c3851641875cf4929838"
     "docs/logo-assets" = "8495369ae832c856879301ab92209491200f64f3"
     "docs/readme-restructure" = "81dc4746eab52e4727e094e0fd51f1de8b540fa4"
+    "docs/truth-up-and-security-state" = "03ca4a54a70b0d46c83ca0a7be1afed16bdb8a63"
     "docs/x86-dual-os-openharmony-roadmap" = "71ac2227fb75fee2a7dfcebd5df1303ce74e0a34"
     "docs/39-sdk-consumption-contract" = "4222151567c8ca0aa90243b529bb45f9a980926f"
     "docs/41-three-mode-examples-contract" = "388d2941ce5f920340a35fce232561f25d12aad3"
@@ -33,6 +37,7 @@ $Candidates = [ordered]@{
     "feature/107-v1-release-readiness" = "7781f5dd281eb253e68284911014b2970af8e090"
     "feature/109-physical-acceptance-plan" = "d6b3d96687eb1a1b27081fa2904b10e4e90708ef"
     "fix/56-p1-bounded-input-handshake" = "2d6161b0eb6e423e6ab9bde81cabc353a9c1948d"
+    "fix/90-release-held-input" = "b6c9aedc755580593694b93b5a4e7a91eab9ff9b"
     "governance/24-versioning-license" = "cdda29421e92e0162806c05fd4620eb9021c1a14"
     "input/29-normalized-schema" = "bbd0164a9aaefd6caba351dd4f142ad1f2354ffe"
     "input/90-release-on-disconnect" = "25df5bae38506d4e4e16b90933ddf9512ca907d5"
@@ -60,6 +65,7 @@ $Candidates = [ordered]@{
     "spike/16-async-capture" = "3cb84135a1bedaa3efed0ec9225d71b83d280689"
     "spike/34-rustvncserver-ffi" = "08d149d16e3eeb0dc85e45acdb0ad8522cd948d3"
     "spike/38-rustvncserver-production-fit" = "8a48ae87ee2188c184e0fd3475d48b787731acc0"
+    "test/hardening-and-boundary-guards" = "1b6783aaabd97c079a03c769e28e328e9b66bfac"
     "transport/38-rustvnc-product-fit" = "9216f2df41aaecb9edd2887a75c2cebd18f64480"
     "transport/53-bounded-rfb" = "fc0ad4c5b156aa3098738e8a4b5493b2e8271c70"
     "widgets/6-capture-adapter" = "a92c7a12a11c81e47721b15f7741ea5cb8a0693d"
