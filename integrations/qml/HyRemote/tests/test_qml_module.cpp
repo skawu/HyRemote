@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QEvent>
 #include <QEventLoop>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -165,6 +166,42 @@ void testInitialEnabledDoesNotRaceLaterTargetBinding()
     CHECK(object->property("errorCode").toInt() == 2); // TargetAdapterUnavailable
 }
 
+void testTargetDestructionNotifiesDeclarativeProperty()
+{
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
+
+    std::unique_ptr<QObject> object = createInline(
+        engine,
+        R"QML(
+            import QtQml
+            import HyRemote 1.0
+            RemoteAccess {
+                property QtObject dummyTarget: QtObject {}
+                property int targetChangeCount: 0
+                target: dummyTarget
+                onTargetChanged: ++targetChangeCount
+            }
+        )QML",
+        "inline:hyremote-target-lifetime.qml");
+    CHECK(object != nullptr);
+    if (!object)
+        return;
+
+    QObject *target = object->property("target").value<QObject *>();
+    CHECK(target != nullptr);
+    if (!target)
+        return;
+
+    const int before = object->property("targetChangeCount").toInt();
+    delete target;
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents(QEventLoop::AllEvents);
+
+    CHECK(object->property("target").value<QObject *>() == nullptr);
+    CHECK(object->property("targetChangeCount").toInt() == before + 1);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -174,6 +211,7 @@ int main(int argc, char **argv)
     testInvalidConfigurationDoesNotMutateAcceptedValue();
     testEnabledStartFailureIsTransactional();
     testInitialEnabledDoesNotRaceLaterTargetBinding();
+    testTargetDestructionNotifiesDeclarativeProperty();
 
     if (failures != 0)
         std::cerr << failures << " QML module checks failed\n";
