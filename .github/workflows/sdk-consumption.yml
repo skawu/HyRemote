@@ -238,7 +238,7 @@ jobs:
           if not exist "%CD%\deploy-source-qml\bin\HyRemoteRemoteAccess.dll" exit /b 1
           set "QML2_IMPORT_PATH="
           set "QML_IMPORT_PATH="
-          set "QT_QPA_PLATFORM=offscreen"
+          set "QT_QPA_PLATFORM=windows"
           set "PATH=%CD%\deploy-source-qml\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\deploy-source-qml\bin\hyremote-installed-qml-consumer.exe"
 
