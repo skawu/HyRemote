@@ -60,6 +60,22 @@ require_file_token("src/remoteaccess/tests/test_quick_capture.cpp" "testDestroye
 require_file_token("src/remoteaccess/src/widgets/widget_target.cpp" "the QWidget target was destroyed" "Widgets target-loss publication")
 require_file_token("src/remoteaccess/src/quick/quick_target.cpp" "the QQuickWindow target was destroyed" "Quick target-loss publication")
 
+# E1/E2 use the same public C++ facade lifecycle required by the physical gate. Product-fit begins
+# from view-only in one application process; the first viewer disconnect triggers stop -> configure
+# -> start, and control/reconnect continues without relaunching the target application. The timer is
+# only a bounded watchdog so acceptance is tied to an observed viewer lifecycle rather than a race.
+foreach(example_source IN ITEMS
+        "examples/widgets-basic/main.cpp"
+        "examples/quick-basic/main.cpp")
+    require_file_token("${example_source}" "policy-transition-ms" "E1/E2 stopped-runtime acceptance helper")
+    require_file_token("${example_source}" "remote.stop();" "E1/E2 public facade stop during policy transition")
+    require_file_token("${example_source}" "remote.setRemoteInputEnabled(true)" "E1/E2 stopped remote-input configuration")
+    require_file_token("${example_source}" "POLICY_RESTART_REQUESTED" "E1/E2 public facade restart evidence")
+endforeach()
+require_file_token("tests/product-e2e/example_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E1/E2 bounded transition watchdog")
+require_file_token("tests/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "E1/E2 lifecycle-driven policy transition")
+require_file_token("tests/product-e2e/example_product_fit.py" "public stop/configure/start" "E1/E2 same-process acceptance result")
+
 # E3 must exercise the same stopped-runtime policy transition without a wall-clock race. The first
 # viewer disconnect is observable through the public QML connected-client diagnostic and triggers
 # stop -> configure -> start; a bounded timer remains only as a watchdog fallback.
@@ -81,4 +97,4 @@ require_file_token("docs/v1-ga-acceptance.md" "remote-capability failure only" "
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
-    "(multi-viewer isolation + protected disconnect releases under backpressure + error/Faulted semantics + Widgets/Quick parity + event-driven E3 + observed QPA remote-failure native survival)")
+    "(multi-viewer isolation + protected disconnect releases under backpressure + error/Faulted semantics + Widgets/Quick parity + same-process E1/E2/E3 policy lifecycle + observed QPA remote-failure native survival)")
