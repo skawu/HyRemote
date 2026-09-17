@@ -3,7 +3,10 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QtLogging>
 
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
 
 namespace {
@@ -15,6 +18,25 @@ int readPositiveInt(const QCommandLineParser &parser,
     bool ok = false;
     const int value = parser.value(option).toInt(&ok);
     return ok && value > 0 ? value : fallback;
+}
+
+void acceptanceMessageHandler(QtMsgType type,
+                              const QMessageLogContext &,
+                              const QString &message)
+{
+    // qt_add_executable() creates a GUI-subsystem executable on Windows. QML console.log() therefore
+    // does not provide a portable acceptance pipe by default even when the process was launched with
+    // inherited stdout/stderr handles. In product-fit mode only, mirror Qt/QML messages to the
+    // inherited stderr handle so the external harness observes the declarative lifecycle itself.
+    // This is diagnostics only: readiness/state/input decisions remain in Main.qml / RemoteAccess.
+    const QByteArray bytes = message.toLocal8Bit();
+    if (!bytes.isEmpty())
+        std::fwrite(bytes.constData(), 1, static_cast<std::size_t>(bytes.size()), stderr);
+    std::fputc('\n', stderr);
+    std::fflush(stderr);
+
+    if (type == QtFatalMsg)
+        std::abort();
 }
 
 }  // namespace
@@ -56,6 +78,8 @@ int main(int argc, char **argv)
 
     const int testSeconds = readPositiveInt(parser, secondsOption, 0);
     const int policyTransitionMs = readPositiveInt(parser, transitionOption, 0);
+    if (testSeconds > 0 || policyTransitionMs > 0)
+        qInstallMessageHandler(acceptanceMessageHandler);
 
     QQmlApplicationEngine engine;
     engine.addImportPath(QStringLiteral(HYREMOTE_BUILD_QML_IMPORT_PATH));
