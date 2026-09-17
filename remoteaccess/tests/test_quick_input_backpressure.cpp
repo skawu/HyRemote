@@ -10,6 +10,7 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <stdexcept>
 
 #include "detail/component_factories.hpp"
 #include "hyremote/core/input.hpp"
@@ -113,6 +114,93 @@ void testPointerFloodCoalescesBeforeGuiDelivery()
     components.input.reset();
 }
 
+void testProtectedReleaseSurvivesNormalMailboxSaturation()
+{
+    HyRemote::detail::resetFactories();
+
+    QQuickWindow window;
+    window.resize(100, 50);
+    window.show();
+    window.requestActivate();
+    QCoreApplication::processEvents();
+
+    EventProbe probe;
+    window.installEventFilter(&probe);
+
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(&window, true);
+    CHECK(components.supported);
+    CHECK(components.input != nullptr);
+
+    hyremote::InputEvent button;
+    button.kind = hyremote::InputEventKind::PointerButton;
+    button.sourceViewport = {100U, 50U, 1.0F};
+    button.x = 20.0F;
+    button.y = 15.0F;
+    button.button = hyremote::PointerButton::Left;
+    button.pressed = true;
+    components.input->post(button);
+
+    hyremote::InputEvent shift;
+    shift.kind = hyremote::InputEventKind::Key;
+    shift.key = hyremote::KeyCode::Shift;
+    shift.pressed = true;
+    shift.modifiers = hyremote::modifierMask(hyremote::InputModifier::Shift);
+    components.input->post(shift);
+
+    CHECK(pumpUntil([&] { return probe.buttonPresses == 1 && probe.keyPresses == 1; }));
+
+    for (int i = 0; i < 64; ++i) {
+        hyremote::InputEvent text;
+        text.kind = hyremote::InputEventKind::Text;
+        text.textUtf8 = "x";
+        components.input->post(text);
+    }
+
+    button.pressed = false;
+    shift.pressed = false;
+    shift.modifiers = 0U;
+    bool protectedReleaseThrew = false;
+    try {
+        components.input->post(button);
+        components.input->post(shift);
+    } catch (const std::runtime_error &) {
+        protectedReleaseThrew = true;
+    }
+    CHECK(!protectedReleaseThrew);
+
+    hyremote::InputEvent rejectedPress;
+    rejectedPress.kind = hyremote::InputEventKind::Key;
+    rejectedPress.key = hyremote::KeyCode::B;
+    rejectedPress.pressed = true;
+    bool pressRejected = false;
+    try {
+        components.input->post(rejectedPress);
+    } catch (const std::runtime_error &) {
+        pressRejected = true;
+    }
+    CHECK(pressRejected);
+
+    rejectedPress.pressed = false;
+    for (int i = 0; i < 256; ++i) {
+        bool unmatchedReleaseThrew = false;
+        try {
+            components.input->post(rejectedPress);
+        } catch (const std::runtime_error &) {
+            unmatchedReleaseThrew = true;
+        }
+        CHECK(!unmatchedReleaseThrew);
+    }
+
+    CHECK(pumpUntil([&] { return probe.buttonReleases == 1 && probe.keyReleases == 1; }));
+    CHECK(probe.buttonPresses == 1);
+    CHECK(probe.buttonReleases == 1);
+    CHECK(probe.keyPresses == 1);
+    CHECK(probe.keyReleases == 1);
+
+    components.input.reset();
+}
+
 void testShutdownBalancesDeliveredStateAndDropsPendingInput()
 {
     HyRemote::detail::resetFactories();
@@ -180,6 +268,7 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     testPointerFloodCoalescesBeforeGuiDelivery();
+    testProtectedReleaseSurvivesNormalMailboxSaturation();
     testShutdownBalancesDeliveredStateAndDropsPendingInput();
     HyRemote::detail::resetFactories();
     if (failures != 0)
