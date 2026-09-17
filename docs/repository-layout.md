@@ -22,6 +22,12 @@ HyRemote/
 └─ .github/                  # CI and repository governance
 ```
 
+## V1 layout freeze
+
+The V1 repository layout is now frozen. Work toward V1.0.0.0 may fix implementation, packaging, tests, documentation and CI defects, but it must not introduce another structural repository migration unless a release-blocking architecture defect proves the canonical ownership model itself is wrong.
+
+The release-readiness repository-layout gate enforces the physical layout and module boundaries. The CI-environment-baseline gate separately requires the Widgets, Quick, QML, QPA, SDK-consumption and integrated V1 GA Linux jobs to use the same repository-owned Qt desktop host dependency authority.
+
 ## Ownership rules
 
 ### `src/`
