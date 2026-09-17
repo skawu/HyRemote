@@ -141,7 +141,8 @@ foreach(required_token
         [=[if os.name == "nt":]=]
         [=[env["PATH"] = os.pathsep.join]=]
         [=[str(app.parent)]=]
-        [=[str(system_root / "System32")]=])
+        [=[str(system_root / "System32")]=]
+        [=[cwd=str(app.parent)]=])
     string(FIND "${qpa_product_fit}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -151,4 +152,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deployment-relocation gate: PASS "
-    "(source/install shared runtime + QML backing/plugin + QPA origin paths and Windows/Linux executable loaded-library isolation frozen)")
+    "(source/install shared runtime + QML backing/plugin + QPA origin paths and Windows/Linux executable loaded-library/working-directory isolation frozen)")
