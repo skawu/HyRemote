@@ -77,6 +77,13 @@ foreach(required_token
                   "root build graph lost canonical-source / stable-binary mapping")
 endforeach()
 
+# A release-readiness script that exists but is not in the CTest graph provides no protection. Keep
+# the package acquisition isolation fixture executable from every top-level V1 test configuration.
+require_token("${root_cmake}" "NAME hyremote-release-readiness-package-acquisition-isolation"
+              "package-acquisition isolation gate is not registered in CTest")
+require_token("${root_cmake}" "check_package_acquisition_isolation.cmake"
+              "package-acquisition isolation gate lost its executable script")
+
 # Research must remain opt-in and outside the V1 product graph. The existing option name is retained
 # for source compatibility, but its physical source tree is canonicalized under research/.
 string(FIND "${root_cmake}" "if(HYREMOTE_BUILD_SPIKES)" research_guard)
@@ -121,4 +128,4 @@ endforeach()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(canonical source layout + stable binary mapping + one shared RemoteAccess runtime across integrations + research/assets isolated)")
+    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across integrations + research/assets isolated)")
