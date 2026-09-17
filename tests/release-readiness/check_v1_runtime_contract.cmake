@@ -17,9 +17,6 @@ function(require_file_token relative_path token description)
     endif()
 endfunction()
 
-# Shared-target simultaneous-viewer input correctness stays private to the bounded RFB transport.
-# The public application contract must not gain a per-client ownership/authorization API simply to
-# solve protocol bookkeeping.
 require_file_token(
     "remoteaccess/src/transport/rfb_transport.cpp"
     "m_keyHolderCounts"
@@ -57,8 +54,6 @@ require_file_token(
     "simultaneous viewers as contributors to one shared logical Qt input device"
     "truthful shared-target multi-viewer boundary")
 
-# The already-frozen product clearError() API must actually acknowledge live recoverable runtime
-# diagnostics, while an active non-recoverable fault must remain visible until explicit stop().
 require_file_token(
     "remoteaccess/src/remote_access.cpp"
     "acknowledgedRecoverableError"
@@ -92,9 +87,6 @@ require_file_token(
     "a later occurrence must become visible again"
     "V1 clearError recurrence semantics")
 
-# Widgets and Quick must remain peers when their attached target disappears during an active capture
-# path. A target loss is non-recoverable and flows through Core to Faulted rather than being silently
-# treated as a recoverable hidden-window condition.
 require_file_token(
     "remoteaccess/tests/test_widgets_capture.cpp"
     "testDestroyedTargetReportsTargetLost"
@@ -112,13 +104,14 @@ require_file_token(
     "the QQuickWindow target was destroyed"
     "Quick target-loss publication")
 
-# Transparent QPA is additive to the native Qt application. A remote-listener startup failure must
-# not tear down the reference native delegate, platform window or event loop. The smoke reserves an
-# OS-assigned loopback port before QApplication so the failure is deterministic on both reference OSes.
 require_file_token(
     "qpa/tests/qpa_remote_failure_native_survival_smoke.cpp"
     "class PortReservation final"
     "deterministic occupied-port QPA failure setup")
+require_file_token(
+    "qpa/tests/qpa_remote_failure_native_survival_smoke.cpp"
+    "SO_EXCLUSIVEADDRUSE"
+    "deterministic Windows occupied-port ownership")
 require_file_token(
     "qpa/tests/qpa_remote_failure_native_survival_smoke.cpp"
     "native QPA application remains live when HyRemote remote listener cannot bind"
@@ -128,9 +121,17 @@ require_file_token(
     "hyremote-qpa-remote-failure-native-survival-smoke"
     "registered QPA native-survival CTest")
 require_file_token(
+    "qpa/tests/CMakeLists.txt"
+    "PRIVATE ws2_32"
+    "Windows native socket support for QPA failure smoke")
+require_file_token(
     "qpa/hyremote_qpa_remote_controller.cpp"
     "HyRemote QPA Proxy could not start the composite RemoteAccess runtime"
     "QPA remote-start failure remains diagnostic rather than native-fatal")
+require_file_token(
+    "docs/v1-ga-acceptance.md"
+    "remote-capability failure only"
+    "canonical GA native-survival rule for QPA remote startup failure")
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
