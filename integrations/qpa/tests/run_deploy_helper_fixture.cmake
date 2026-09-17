@@ -43,7 +43,9 @@ if(NOT DEFINED EXPECT_FAILURE_FRAGMENT)
 endif()
 # Generator-shape coverage knobs. FIXTURE_GENERATOR pins the sub-configure generator (empty keeps the
 # platform default, which is what the hosted jobs exercise); FIXTURE_BUILD_TYPE pins the single-config
-# build type; FIXTURE_EXPECTED_CONFIG pins which configuration's script carries the deep assertions.
+# build type; FIXTURE_EXPECTED_CONFIG pins which configuration's script carries the deep assertions;
+# FIXTURE_MAKE_PROGRAM pins the generator's build tool so a pinned generator does not depend on the test
+# process PATH.
 if(NOT DEFINED FIXTURE_GENERATOR)
     set(FIXTURE_GENERATOR "")
 endif()
@@ -52,6 +54,9 @@ if(NOT DEFINED FIXTURE_BUILD_TYPE)
 endif()
 if(NOT DEFINED FIXTURE_EXPECTED_CONFIG)
     set(FIXTURE_EXPECTED_CONFIG "")
+endif()
+if(NOT DEFINED FIXTURE_MAKE_PROGRAM)
+    set(FIXTURE_MAKE_PROGRAM "")
 endif()
 
 set(_fixture_configure_args
@@ -72,6 +77,9 @@ set(_fixture_configure_args
 )
 if(FIXTURE_GENERATOR)
     list(APPEND _fixture_configure_args -G "${FIXTURE_GENERATOR}")
+endif()
+if(FIXTURE_MAKE_PROGRAM)
+    list(APPEND _fixture_configure_args "-DCMAKE_MAKE_PROGRAM=${FIXTURE_MAKE_PROGRAM}")
 endif()
 if(FIXTURE_BUILD_TYPE)
     list(APPEND _fixture_configure_args "-DCMAKE_BUILD_TYPE=${FIXTURE_BUILD_TYPE}")

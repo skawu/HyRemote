@@ -239,7 +239,8 @@ if(HYREMOTE_BUILD_TESTS)
     # multi-configuration per-configuration set can regress silently. The hosted jobs exercise the
     # platform default generator (Visual Studio multi-config on Windows, single-configuration
     # elsewhere) with the registrations above; these two pin both shapes explicitly so a
-    # configuration-dependent regression is caught on any host that has ninja.
+    # configuration-dependent regression is caught on any host that has ninja. The ninja executable is
+    # pinned into the sub-configure so the pinned generator does not depend on the test process PATH.
     find_program(HYREMOTE_DEPLOY_FIXTURE_NINJA ninja)
     if(HYREMOTE_DEPLOY_FIXTURE_NINJA)
         add_test(
@@ -249,6 +250,7 @@ if(HYREMOTE_BUILD_TESTS)
                 -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-single-config-generator
                 -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
                 -DFIXTURE_GENERATOR=Ninja
+                -DFIXTURE_MAKE_PROGRAM=${HYREMOTE_DEPLOY_FIXTURE_NINJA}
                 -DFIXTURE_BUILD_TYPE=Release
                 -DFIXTURE_EXPECTED_CONFIG=Release
                 -DTEST_QML=OFF
@@ -261,6 +263,7 @@ if(HYREMOTE_BUILD_TESTS)
                 -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-multi-config-generator
                 -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
                 "-DFIXTURE_GENERATOR=Ninja Multi-Config"
+                -DFIXTURE_MAKE_PROGRAM=${HYREMOTE_DEPLOY_FIXTURE_NINJA}
                 -DFIXTURE_EXPECTED_CONFIG=Release
                 -DTEST_QML=OFF
                 -P ${_hyremote_qpa_deploy_runner}
