@@ -56,10 +56,20 @@ require_file_token("src/remoteaccess/include/HyRemote/RemoteAccess.h" "Acknowled
 require_file_token("docs/v1-api-stability.md" "a non-recoverable runtime failure remains observable as `Faulted` until the owner explicitly calls `stop()`" "V1 Faulted API freeze")
 require_file_token("docs/v1-api-stability.md" "a later occurrence must become visible again" "V1 clearError recurrence semantics")
 
+# Target lifetime must remain one facade/runtime state machine. Concrete adapters report TargetLost,
+# the public facade remains Faulted until explicit stop, and QML only observes the same facade target
+# weakly so a destroyed QObject becomes null and emits the declared targetChanged notification.
+require_file_token("src/remoteaccess/tests/test_remote_access_target_loss.cpp" "testTargetLossFaultStopReplaceRestart" "facade target-loss stop/replace/restart regression")
+require_file_token("src/remoteaccess/tests/test_remote_access_target_loss.cpp" "remote.connectedClientCount() == 1" "Faulted runtime retains viewer diagnostic until stop")
+require_file_token("src/remoteaccess/tests/CMakeLists.txt" "hyremote-remoteaccess-target-loss-test" "registered facade target-loss CTest")
 require_file_token("src/remoteaccess/tests/test_widgets_capture.cpp" "testDestroyedTargetReportsTargetLost" "Widgets target-loss regression")
 require_file_token("src/remoteaccess/tests/test_quick_capture.cpp" "testDestroyedQuickTargetReportsTargetLost" "Quick target-loss parity regression")
 require_file_token("src/remoteaccess/src/widgets/widget_target.cpp" "the QWidget target was destroyed" "Widgets target-loss publication")
 require_file_token("src/remoteaccess/src/quick/quick_target.cpp" "the QQuickWindow target was destroyed" "Quick target-loss publication")
+require_file_token("integrations/qml/HyRemote/QmlRemoteAccess.cpp" "m_targetDestroyedConnection" "QML target lifetime observation")
+require_file_token("integrations/qml/HyRemote/QmlRemoteAccess.cpp" "emit targetChanged();" "QML destroyed target notification")
+require_file_token("integrations/qml/HyRemote/tests/test_qml_module.cpp" "testTargetDestructionNotifiesDeclarativeProperty" "QML target destruction regression")
+require_file_token("integrations/qml/HyRemote/tests/CMakeLists.txt" "hyremote-qml-module-test" "registered QML module lifecycle CTest")
 
 # E1/E2 use the same public C++ facade lifecycle required by the physical gate. Product-fit begins
 # from view-only in one application process; the first viewer disconnect triggers stop -> configure
@@ -98,4 +108,4 @@ require_file_token("docs/v1-ga-acceptance.md" "remote-capability failure only" "
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
-    "(multi-viewer isolation + protected disconnect releases under backpressure + error/Faulted semantics + Widgets/Quick parity + same-process E1/E2/E3 policy lifecycle + observed QPA remote-failure native survival)")
+    "(multi-viewer isolation + protected disconnect releases under backpressure + target-loss/QML lifetime parity + error/Faulted semantics + Widgets/Quick parity + same-process E1/E2/E3 policy lifecycle + observed QPA remote-failure native survival)")
