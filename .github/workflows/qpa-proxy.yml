@@ -9,6 +9,7 @@ on:
       - 'src/remoteaccess/**'
       - 'integrations/qpa/**'
       - 'tests/consumer-installed-qpa/**'
+      - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/qpa-proxy.yml'
   workflow_dispatch:
 
@@ -51,12 +52,10 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
 
-      - name: Install Linux native-window test dependencies
+      - name: Install Linux Qt desktop host dependencies
         if: runner.os == 'Linux'
         shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxcb-cursor0 libxkbcommon-x11-0
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
 
       - name: Configure, build, QPA tests and install SDK — Linux
         if: runner.os == 'Linux'
