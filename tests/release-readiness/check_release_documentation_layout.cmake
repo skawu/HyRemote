@@ -48,6 +48,30 @@ require_doc_token("README.md" "docs/repository-layout.md" "repository-layout doc
 require_doc_token("CONTRIBUTING.md" "docs/repository-layout.md" "contributor layout authority")
 require_doc_token("CONTRIBUTING.md" "docs/branch-lifecycle.md" "contributor branch-lifecycle authority")
 
+# #109 cannot be reduced to a chat-only checklist. Keep a versioned runbook with the exact V1
+# lifecycle boundaries ready before physical execution begins. This gate proves preparation only;
+# it deliberately also pins the statement that the document itself is NOT acceptance evidence.
+set(physical_doc "docs/v1-physical-acceptance.md")
+foreach(required_token
+        "repository preparation only — this document is not physical acceptance evidence"
+        "Candidate commit SHA: `<required>`"
+        "Windows x86_64"
+        "Linux x86_64"
+        "## E1 — Embedded C++ / Widgets"
+        "## E2 — Embedded C++ / Qt Quick"
+        "## E3 — Declarative QML"
+        "## E4 — Transparent QPA Proxy / existing Qt-only application"
+        "stop -> configure -> start"
+        "hyremote-input=true"
+        "Abrupt-disconnect case"
+        "Explicit-stop case"
+        "no previously queued remote key/button is delivered late"
+        "bounded slow-viewer"
+        "#109 decision: `<OPEN until evidence reviewed; PASS only after review>`"
+        "Do not mark #109 or V1.0.0.0 accepted merely because this runbook exists")
+    require_doc_token("${physical_doc}" "${required_token}" "#109 physical/native preparation contract")
+endforeach()
+
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(package manifest + README/contributor entry points use canonical repository/branch governance facts)")
+    "(package/layout governance + versioned #109 physical acceptance preparation; no physical PASS implied)")
