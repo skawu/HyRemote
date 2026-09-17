@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(
     HyRemote
     VERSION 0.0.0
-    DESCRIPTION "Qt Embedded Remote Access Framework"
+    DESCRIPTION "Qt Remote Access Framework"
     LANGUAGES C CXX
 )
 
