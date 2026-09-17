@@ -43,6 +43,24 @@ write_basic_package_version_file(
     COMPATIBILITY SameMajorVersion
 )
 
+# The shared payload links its Qt UI adapters privately, so a consumer never links them, yet a deployment
+# must place that runtime beside the facade: the facade is installed with a deliberately narrow `$ORIGIN`
+# runtime path, so Qt's dependency scan can never resolve them from the SDK location. Record the adapter set
+# this SDK was built with inside the installed deploy helper, which keeps the frozen package surface
+# unchanged instead of publishing a new consumer-visible variable.
+set(HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES "")
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
+    list(APPEND HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES Widgets)
+endif()
+if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+    list(APPEND HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES Quick)
+endif()
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/HyRemoteDeploy.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteDeploy.cmake"
+    @ONLY
+)
+
 install(
     EXPORT HyRemoteTargets
     FILE HyRemoteTargets.cmake
@@ -54,7 +72,7 @@ install(
     FILES
         "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfigVersion.cmake"
-        "${CMAKE_CURRENT_LIST_DIR}/HyRemoteDeploy.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteDeploy.cmake"
     DESTINATION "${HYREMOTE_INSTALL_CMAKEDIR}"
 )
 

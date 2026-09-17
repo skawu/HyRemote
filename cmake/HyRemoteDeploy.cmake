@@ -1,5 +1,16 @@
 include_guard(GLOBAL)
 
+# The shared payload links its Qt UI adapters privately, so a deployed application never links them even
+# though it must ship them beside the facade. Which adapters exist is a build-time fact of the SDK that
+# installs this helper, so the installed copy is configured with the list below; in the source tree the
+# build's own adapter flags answer the same question. Baking it into the helper leaves the frozen installed
+# package surface unchanged: no new consumer-visible package variable appears and hyremote_deploy() remains
+# the single deployment entry point.
+set(HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES "@HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES@")
+if(HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES MATCHES "^@")
+    set(HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES "")
+endif()
+
 function(_hyremote_runtime_deploy_dir output_var)
     if(WIN32)
         set(${output_var} "\${QT_DEPLOY_BIN_DIR}" PARENT_SCOPE)
@@ -40,6 +51,65 @@ function(_hyremote_add_local_build_dependency consumer dependency)
     add_dependencies("${consumer}" "${_hyremote_build_target}")
 endfunction()
 
+# The shared payload links its UI adapters privately, so their Qt runtime is not part of a consumer's
+# link interface: an application that only links Core/Network still has to ship Widgets/Quick beside the
+# facade. Qt's own dependency scan cannot discover that runtime, because the facade is installed with a
+# deliberately narrow `$ORIGIN` runtime path (see the SDK install rules) and therefore never points at the
+# Qt installation that built the SDK. Resolve the modules the payload was built with so deployment can
+# place them, and their own Qt dependencies, explicitly.
+function(_hyremote_resolve_payload_qt_runtime_libraries output_var)
+    set(_hyremote_payload_qt_modules "${HYREMOTE_DEPLOY_PAYLOAD_QT_MODULES}")
+    if(NOT _hyremote_payload_qt_modules)
+        if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
+            list(APPEND _hyremote_payload_qt_modules Widgets)
+        endif()
+        if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+            list(APPEND _hyremote_payload_qt_modules Quick)
+        endif()
+    endif()
+
+    set(_hyremote_payload_qt_libraries "")
+    foreach(_hyremote_payload_qt_module IN LISTS _hyremote_payload_qt_modules)
+        if(NOT TARGET "Qt6::${_hyremote_payload_qt_module}")
+            find_package(Qt6 QUIET COMPONENTS "${_hyremote_payload_qt_module}")
+        endif()
+        if(NOT TARGET "Qt6::${_hyremote_payload_qt_module}")
+            message(FATAL_ERROR
+                "hyremote_deploy: the shared HyRemote payload was built with the Qt "
+                "${_hyremote_payload_qt_module} adapter, so a deployment must place Qt "
+                "${_hyremote_payload_qt_module} beside it, but this consumer's Qt does not provide "
+                "Qt6::${_hyremote_payload_qt_module}; the deployed application could not load the payload")
+        endif()
+        list(APPEND _hyremote_payload_qt_libraries "$<TARGET_FILE:Qt6::${_hyremote_payload_qt_module}>")
+    endforeach()
+
+    set(${output_var} "${_hyremote_payload_qt_libraries}" PARENT_SCOPE)
+endfunction()
+
+# Build the generated-script fragments that place the payload's Qt runtime modules beside the facade and
+# hand them to Qt's deployment machinery, so those modules' own Qt dependencies are deployed as well.
+function(_hyremote_payload_qt_runtime_fragments runtime_deploy_dir install_output libraries_output)
+    _hyremote_resolve_payload_qt_runtime_libraries(_hyremote_payload_qt_libraries)
+
+    set(_hyremote_payload_qt_symlink_chain "")
+    if(UNIX)
+        # Qt's own deployment keeps the versioned symlink chain; matching it means the Soname the facade
+        # requests and the file the loader opens are both present in the deployment.
+        set(_hyremote_payload_qt_symlink_chain " FOLLOW_SYMLINK_CHAIN")
+    endif()
+
+    set(_hyremote_payload_qt_install "")
+    set(_hyremote_payload_qt_libraries_args "")
+    foreach(_hyremote_payload_qt_library IN LISTS _hyremote_payload_qt_libraries)
+        string(APPEND _hyremote_payload_qt_install
+            "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${_hyremote_payload_qt_library}\"${_hyremote_payload_qt_symlink_chain})\n")
+        string(APPEND _hyremote_payload_qt_libraries_args " \"${_hyremote_payload_qt_library}\"")
+    endforeach()
+
+    set(${install_output} "${_hyremote_payload_qt_install}" PARENT_SCOPE)
+    set(${libraries_output} "${_hyremote_payload_qt_libraries_args}" PARENT_SCOPE)
+endfunction()
+
 function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
@@ -51,15 +121,21 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     endif()
 
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    _hyremote_resolve_payload_qt_runtime_libraries(_hyremote_payload_qt_libraries)
+    _hyremote_payload_qt_runtime_fragments("${_runtime_deploy_dir}"
+        _hyremote_payload_qt_install
+        _hyremote_payload_qt_libraries_args
+    )
+
     set(_runtime_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-runtime-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_runtime_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-qt_deploy_runtime_dependencies(
+${_hyremote_payload_qt_install}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
-    ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+    ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_hyremote_payload_qt_libraries_args}
 )
 ")
     set(${output_var} "${_runtime_script}" PARENT_SCOPE)
@@ -131,6 +207,10 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     _hyremote_resolve_qpa_payload(_qpa_plugin_file _qpa_plugin_name)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    _hyremote_payload_qt_runtime_fragments("${_runtime_deploy_dir}"
+        _hyremote_payload_qt_install
+        _hyremote_payload_qt_libraries_args
+    )
 
     set(_linux_plugin_rpath_rewrite "")
     if(UNIX AND NOT APPLE)
@@ -149,10 +229,10 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"${_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-qt_deploy_runtime_dependencies(
+${_hyremote_payload_qt_install}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
-    ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+    ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_hyremote_payload_qt_libraries_args}
 )
 ")
 
