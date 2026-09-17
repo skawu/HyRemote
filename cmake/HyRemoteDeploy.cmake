@@ -40,6 +40,41 @@ function(_hyremote_add_local_build_dependency consumer dependency)
     add_dependencies("${consumer}" "${_hyremote_build_target}")
 endfunction()
 
+# The installed shared facade intentionally exposes only Qt Core/Network through its CMake link interface,
+# even when the runtime itself was built with private Widgets/Quick adapters. On Linux, Qt's generic deploy
+# helper cannot resolve those private DT_NEEDED entries from a relocated HyRemote SDK because the installed
+# facade correctly carries only an $ORIGIN RPATH. Bootstrap just those runtime dependencies from the consumer's
+# own Qt prefix before handing control back to Qt's normal deploy helper. This keeps the public target surface
+# minimal and keeps the deployed tree independent of both the HyRemote SDK and the Qt SDK locations.
+function(_hyremote_linux_private_runtime_bootstrap runtime_deploy_dir output_var)
+    if(NOT UNIX OR APPLE)
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(_bootstrap
+"file(GET_RUNTIME_DEPENDENCIES
+    LIBRARIES \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+    DIRECTORIES \"$<TARGET_FILE_DIR:Qt6::Core>\"
+    RESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_dependencies
+    UNRESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_unresolved
+)
+if(_hyremote_private_runtime_unresolved)
+    message(FATAL_ERROR
+        \"HyRemote runtime deployment could not resolve private dependencies: \${_hyremote_private_runtime_unresolved}\")
+endif()
+foreach(_hyremote_dependency IN LISTS _hyremote_private_runtime_dependencies)
+    string(FIND \"\${_hyremote_dependency}\" \"$<TARGET_FILE_DIR:Qt6::Core>/\" _hyremote_qt_prefix_index)
+    if(_hyremote_qt_prefix_index EQUAL 0)
+        file(COPY \"\${_hyremote_dependency}\"
+             DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\"
+             FOLLOW_SYMLINK_CHAIN)
+    endif()
+endforeach()
+")
+    set(${output_var} "${_bootstrap}" PARENT_SCOPE)
+endfunction()
+
 function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
@@ -51,13 +86,14 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     endif()
 
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
     set(_runtime_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-runtime-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_runtime_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-qt_deploy_runtime_dependencies(
+${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
 )
@@ -131,6 +167,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     _hyremote_resolve_qpa_payload(_qpa_plugin_file _qpa_plugin_name)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
 
     set(_linux_plugin_rpath_rewrite "")
     if(UNIX AND NOT APPLE)
@@ -149,7 +186,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"${_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-qt_deploy_runtime_dependencies(
+${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
     ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
