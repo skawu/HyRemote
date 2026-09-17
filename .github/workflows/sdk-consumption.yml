@@ -16,6 +16,7 @@ on:
       - 'tests/consumer-source/**'
       - 'tests/public-api-contract/**'
       - 'tests/release-readiness/**'
+      - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/sdk-consumption.yml'
   workflow_dispatch:
 
@@ -51,12 +52,10 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
 
-      - name: Install Linux native-window dependencies
+      - name: Install Linux Qt desktop host dependencies
         if: runner.os == 'Linux'
         shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxcb-cursor0 libxkbcommon-x11-0
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
 
       - name: Build, install and consume — Linux
         if: runner.os == 'Linux'
