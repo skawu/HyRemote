@@ -135,6 +135,10 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # Negative deployment fixtures use the same canonical knobs that the runner forwards into the
+    # sub-configure. Error fragments encode spaces with underscores; the runner restores/folds
+    # whitespace before matching so CMake diagnostic wrapping cannot turn the intended failure into
+    # a false negative.
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-missing-qml
         COMMAND ${CMAKE_COMMAND}
@@ -142,9 +146,9 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
-            -DTEST_MISSING_QML_PAYLOAD=ON
+            -DTEST_QML_AVAILABLE=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requires_an_available_HyRemote_QML_module
+            -DEXPECT_FAILURE_FRAGMENT=requires_a_HyRemote_QML_payload
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -155,9 +159,10 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-stale-qml-metadata
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
+            -DTEST_QML_AVAILABLE=OFF
             -DTEST_STALE_QML_METADATA=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requires_an_available_HyRemote_QML_module
+            -DEXPECT_FAILURE_FRAGMENT=requires_a_HyRemote_QML_payload
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -169,9 +174,9 @@ if(HYREMOTE_BUILD_TESTS)
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
             -DTEST_INSTALLED_PAYLOAD=ON
-            -DTEST_MISSING_QML_ROOT=ON
+            -DTEST_QML_IMPORT_PATH_EXISTS=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=HyRemote_QML_IMPORT_PATH_to_exist
+            -DEXPECT_FAILURE_FRAGMENT=QML_import_root_does_not_exist
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -183,9 +188,9 @@ if(HYREMOTE_BUILD_TESTS)
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
             -DTEST_INSTALLED_PAYLOAD=ON
-            -DTEST_MISSING_QML_MODULE_DIR=ON
+            -DTEST_QML_MODULE_DIR_EXISTS=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=HyRemote_module_directory_under
+            -DEXPECT_FAILURE_FRAGMENT=QML_module_directory_does_not_exist
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -209,9 +214,9 @@ if(HYREMOTE_BUILD_TESTS)
             -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-qt-mismatch
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=OFF
-            -DTEST_QT_MISMATCH=ON
+            -DTEST_QT_VERSION=6.8.2
             -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=exactly_matches_6.8.3
+            -DEXPECT_FAILURE_FRAGMENT=requires_exact_Qt_6.8.3
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -223,7 +228,7 @@ if(HYREMOTE_BUILD_TESTS)
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=OFF
             -DTEST_INSTALLED_PAYLOAD=ON
-            -DTEST_MISSING_PACKAGE=ON
+            -DTEST_QPA_AVAILABLE=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
             -DEXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA
             -P ${_hyremote_qpa_deploy_runner}
