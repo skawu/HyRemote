@@ -19,6 +19,7 @@ function(hyremote_scan_core_dir _dir _report _out_violations _out_file_count)
     # literal pattern content; the synthetic self-check below detects a regression here.
     set(_forbidden_parts
         "QtWidgets|QtQuick|QtQml|QtGui|QtOpenGL|Qt3D|QWidget|QQuick|QQml|QApplication|QGuiApplication|"
+        "QImage|QPixmap|QPainter|QWindow|QMouseEvent|QKeyEvent|QTouchEvent|QRhi[A-Za-z]*|QPlatform[A-Za-z]*|"
         "neatvnc|libvnc|rfb|"
         "rkmpp|rockchip|v4l2|va/va\\.h|"
         "libdrm|drm/|gbm|dma-buf|dma_buf|"
@@ -29,9 +30,21 @@ function(hyremote_scan_core_dir _dir _report _out_violations _out_file_count)
     string(REPLACE ";" "" _forbidden "${_forbidden_parts}")
 
     # Type declarations are checked separately so a forward declaration cannot bypass the include rule.
+    # This list mirrors, family by family, what ADR-0001 "Core does not own" names explicitly
+    # (docs/adr/0001-core-boundaries.md:46-55): QWidget/QQuickWindow/QQuickItem/QML semantics,
+    # OpenGL/RHI/EGLFS, NeatVNC/AML, RFB messages/codecs, GBM/DRM/DMA-BUF, RKMPP/V4L2/VA-API and QPA
+    # private APIs. The ADR also allows QtCore internally (:61), so only GUI/Quick/QML/QPA-shaped names
+    # are listed here - never a bare "Q".
+    # Adding a family to the include list without adding it here leaves a forward-declaration hole;
+    # the self-check below probes both lists so a pattern regression cannot pass silently.
     set(_forbidden_declaration_parts
         "QWidget|QQuick[A-Za-z]*|QQml[A-Za-z]*|QApplication|QGuiApplication|QOpenGL[A-Za-z]*|"
-        "AML|aml_[A-Za-z_]*|EGLSurface|EGLDisplay|EGLConfig")
+        "QRhi[A-Za-z]*|QPlatform[A-Za-z]*|"
+        "AML|aml_[A-Za-z_]*|EGLSurface|EGLDisplay|EGLConfig|EGLContext|EGLImage|EGLNativeDisplayType|EGLFS|"
+        "nvnc_[A-Za-z_]*|rfb[A-Za-z_]*|"
+        "gbm_[A-Za-z_]*|drm_[A-Za-z_]*|dma_buf[A-Za-z_]*|"
+        "v4l2_[A-Za-z_]*|rkmpp_[A-Za-z_]*|VADisplay|VASurface|VAImage|"
+        "GLuint|GLenum|GLint|GLsizei|GLboolean|GLfloat|GLdouble|GLchar|GLvoid")
     string(REPLACE ";" "" _forbidden_declarations "${_forbidden_declaration_parts}")
 
     file(GLOB_RECURSE _sources
@@ -90,21 +103,22 @@ if(_core_cmake MATCHES "find_package[ \t]*\\([ \t]*Qt|Qt6::|Qt5::|Qt::")
 endif()
 
 # Control experiment for the guard itself. The probe is created in the test working directory, never in
-# the source tree, and intentionally contains five violations plus a comment that must not count.
+# the source tree, and intentionally contains fourteen violations (four include families plus ten type
+# declarations across the families ADR-0001:46-55 names) plus a comment that must not count.
 set(_probe ".dependency-guard-selfcheck")
 file(REMOVE_RECURSE "${_probe}")
 file(MAKE_DIRECTORY "${_probe}/include" "${_probe}/src")
 file(WRITE "${_probe}/CMakeLists.txt" "add_library(probe STATIC src/probe.cpp)\n")
 file(WRITE "${_probe}/include/forbidden_includes.hpp"
-    "#pragma once\n#include <EGL/egl.h>\n#include <aml/aml.h>\n#include <rhi/qrhi.h>\n")
+    "#pragma once\n#include <EGL/egl.h>\n#include <aml/aml.h>\n#include <rhi/qrhi.h>\n#include <QImage>\n")
 file(WRITE "${_probe}/include/forward_declarations.hpp"
-    "#pragma once\nclass QWidget;\nnamespace QQmlEngine { }\n")
+    "#pragma once\nclass QWidget;\nnamespace QQmlEngine { }\nclass QRhi;\nclass QPlatformWindow;\nstruct nvnc_display;\nstruct rfbScreenInfo;\nstruct gbm_bo;\nstruct v4l2_buffer;\nusing GLuint = unsigned int;\nusing VADisplay = void*;\n")
 file(WRITE "${_probe}/include/legitimate.hpp"
     "#pragma once\n// QWidget, EGL and AML are forbidden in Core; this comment must not count.\nnamespace hyremote { void probe(); }\n")
 hyremote_scan_core_dir("${_probe}" FALSE _selfcheck _selfcheck_files)
-if(_selfcheck LESS 5)
+if(_selfcheck LESS 14)
     message(FATAL_ERROR
-        "dependency guard self-check failed: expected at least 5 synthetic findings, got ${_selfcheck}")
+        "dependency guard self-check failed: expected at least 14 synthetic findings, got ${_selfcheck}")
 endif()
 message(STATUS
     "dependency guard self-check OK: ${_selfcheck} finding(s) in ${_selfcheck_files} synthetic file(s)")
