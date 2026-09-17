@@ -24,6 +24,12 @@ feature/104-v1-ga-acceptance-matrix
 
 until another real PR/release branch is opened.
 
+## Repository setting
+
+GitHub's repository setting **Automatically delete head branches** (`delete_branch_on_merge`) should be enabled. The V1 repository audit found it disabled, which is one direct reason merged task refs can accumulate even when the development flow itself is correct.
+
+This setting handles merged Pull Requests automatically. Superseded or abandoned PR heads still follow the explicit deletion rule below.
+
 ## Deletion rule
 
 A short-lived branch should be deleted when its Pull Request is merged, superseded or closed as abandoned, provided it is not the head of another open PR.
