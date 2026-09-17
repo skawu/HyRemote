@@ -93,27 +93,27 @@ function(run_configure name source_text expect_success expected_fragment)
     endif()
 endfunction()
 
-set(common_prefix_setup
+string(CONCAT common_prefix_setup
 "cmake_minimum_required(VERSION 3.21)\n"
 "project(HyRemotePackageIsolation LANGUAGES NONE)\n"
 "list(PREPEND CMAKE_PREFIX_PATH \"${qt_prefix}\")\n")
 
 # Fake Qt deliberately overwrites PACKAGE_PREFIX_DIR. HyRemote must still publish paths from its own
 # prefix, and a second discovery of the exact same installed package must remain harmless.
-set(success_source "${common_prefix_setup}"
+string(CONCAT success_source "${common_prefix_setup}"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n"
 "if(NOT HyRemote_QML_IMPORT_PATH STREQUAL \"${first_prefix}/lib/qml\")\n"
-"  message(FATAL_ERROR \"QML import path escaped HyRemote prefix: ${HyRemote_QML_IMPORT_PATH}\")\n"
+"  message(FATAL_ERROR \"QML import path escaped HyRemote prefix: \${HyRemote_QML_IMPORT_PATH}\")\n"
 "endif()\n"
 "if(NOT HyRemote_QPA_PLUGIN_FILE STREQUAL \"${first_prefix}/lib/HyRemote/plugins/platforms/qhyremote-first.fixture\")\n"
-"  message(FATAL_ERROR \"QPA plugin path escaped HyRemote prefix: ${HyRemote_QPA_PLUGIN_FILE}\")\n"
+"  message(FATAL_ERROR \"QPA plugin path escaped HyRemote prefix: \${HyRemote_QPA_PLUGIN_FILE}\")\n"
 "endif()\n"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
 run_configure("same-prefix" "${success_source}" TRUE "")
 
 # Loading a second installed HyRemote prefix in the same configure would pair the first imported
 # runtime target with the second package's optional metadata. It must be rejected deliberately.
-set(two_prefix_source "${common_prefix_setup}"
+string(CONCAT two_prefix_source "${common_prefix_setup}"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n"
 "unset(HyRemote_DIR CACHE)\n"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${second_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
@@ -121,7 +121,7 @@ run_configure("two-installed-prefixes" "${two_prefix_source}" FALSE "refusing a 
 
 # A local/source target followed by installed package discovery is the other dangerous mix: package
 # metadata could otherwise be attached to an unrelated local runtime.
-set(source_then_package "${common_prefix_setup}"
+string(CONCAT source_then_package "${common_prefix_setup}"
 "add_library(hyremote-local INTERFACE)\n"
 "add_library(HyRemote::RemoteAccess ALIAS hyremote-local)\n"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
