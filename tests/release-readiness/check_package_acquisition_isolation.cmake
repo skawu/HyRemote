@@ -32,10 +32,13 @@ function(make_hyremote_package prefix marker)
     file(MAKE_DIRECTORY "${package_dir}")
     file(MAKE_DIRECTORY "${prefix}/lib/qml/HyRemote")
     file(MAKE_DIRECTORY "${prefix}/lib/HyRemote/plugins/platforms")
+    file(WRITE "${prefix}/lib/hyremote-qml-${marker}.fixture" "fixture")
 
     set(HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS TRUE)
     set(HYREMOTE_PACKAGE_WITH_QML TRUE)
     set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "lib/qml")
+    set(HYREMOTE_PACKAGE_QML_BACKING_SUBDIR "lib")
+    set(HYREMOTE_PACKAGE_QML_BACKING_FILENAME "hyremote-qml-${marker}.fixture")
     set(HYREMOTE_PACKAGE_WITH_QPA TRUE)
     set(HYREMOTE_PACKAGE_QPA_QT_VERSION "6.8.3")
     set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "lib/HyRemote/plugins/platforms")
@@ -105,6 +108,9 @@ string(CONCAT success_source "${common_prefix_setup}"
 "if(NOT HyRemote_QML_IMPORT_PATH STREQUAL \"${first_prefix}/lib/qml\")\n"
 "  message(FATAL_ERROR \"QML import path escaped HyRemote prefix: \${HyRemote_QML_IMPORT_PATH}\")\n"
 "endif()\n"
+"if(NOT HyRemote_QML_BACKING_FILE STREQUAL \"${first_prefix}/lib/hyremote-qml-first.fixture\")\n"
+"  message(FATAL_ERROR \"QML backing path escaped HyRemote prefix: \${HyRemote_QML_BACKING_FILE}\")\n"
+"endif()\n"
 "if(NOT HyRemote_QPA_PLUGIN_FILE STREQUAL \"${first_prefix}/lib/HyRemote/plugins/platforms/qhyremote-first.fixture\")\n"
 "  message(FATAL_ERROR \"QPA plugin path escaped HyRemote prefix: \${HyRemote_QPA_PLUGIN_FILE}\")\n"
 "endif()\n"
@@ -147,4 +153,4 @@ run_configure("installed-then-source" "${package_then_source}" FALSE "add_subdir
 
 message(STATUS
     "HyRemote package acquisition isolation: PASS "
-    "(dependency-safe prefix + same-prefix rediscovery + second-prefix/source mixing rejected in both orders)")
+    "(dependency-safe QML/QPA payload prefix + same-prefix rediscovery + second-prefix/source mixing rejected in both orders)")
