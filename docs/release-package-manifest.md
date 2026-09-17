@@ -82,13 +82,13 @@ The repository still contains the Qt-free Core architecture, QPA build target an
 
 The following remain repository development or acceptance assets unless a release artifact explicitly includes them as documentation/source material:
 
-- `core/` low-level implementation headers and tests;
+- `src/core/` low-level implementation headers and tests;
 - the source-tree/internal `HyRemote::Core` and `HyRemote::QpaPlatform` aliases;
 - `examples/`;
 - `tests/` and product-fit harnesses;
 - `.github/workflows/`;
 - aqtinstall, vncdotool, Pillow, Ninja and GitHub Actions tooling;
-- architecture spikes under `spikes/`;
+- architecture research/evidence under `research/`;
 - QPA test clients and test-only RFB decoders;
 - private Widgets/Quick adapters and QPA interception/composite/controller/provider classes.
 
