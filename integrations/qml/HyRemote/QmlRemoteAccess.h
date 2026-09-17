@@ -107,6 +107,7 @@ private:
 
     std::unique_ptr<::HyRemote::RemoteAccess> m_access;
     QTimer m_pollTimer;
+    QMetaObject::Connection m_targetDestroyedConnection;
     bool m_componentComplete = false;
     bool m_enabled = false;
     State m_state = Stopped;
