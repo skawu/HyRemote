@@ -107,8 +107,11 @@ if(TARGET Qt6::Widgets)
     )
     target_compile_features(hyremote-qpa-remote-failure-native-survival-smoke PRIVATE cxx_std_17)
     target_link_libraries(hyremote-qpa-remote-failure-native-survival-smoke
-        PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Widgets
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets
     )
+    if(WIN32)
+        target_link_libraries(hyremote-qpa-remote-failure-native-survival-smoke PRIVATE ws2_32)
+    endif()
     add_dependencies(hyremote-qpa-remote-failure-native-survival-smoke hyremote-qpa-platform)
 
     add_test(NAME hyremote-qpa-remote-failure-native-survival-smoke
