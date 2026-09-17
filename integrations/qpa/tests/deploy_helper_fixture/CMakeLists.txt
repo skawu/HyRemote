@@ -119,8 +119,11 @@ set(QT_DEPLOY_SUPPORT "${CMAKE_CURRENT_BINARY_DIR}/fake-qt-deploy-support.cmake"
 file(WRITE "${QT_DEPLOY_SUPPORT}"
 "function(qt_deploy_runtime_dependencies)\nendfunction()\n")
 
-set(APP_DEPLOY_CALLED FALSE)
-set(QML_DEPLOY_CALLED FALSE)
+# The fake Qt deploy generators are invoked from inside hyremote_deploy(). PARENT_SCOPE would only
+# report into that helper's function scope and would make the fixture incorrectly claim that no
+# high-level deploy generator ran. GLOBAL properties record the observation independent of nesting.
+set_property(GLOBAL PROPERTY HYREMOTE_FIXTURE_APP_DEPLOY_CALLED FALSE)
+set_property(GLOBAL PROPERTY HYREMOTE_FIXTURE_QML_DEPLOY_CALLED FALSE)
 
 function(qt_generate_deploy_app_script)
     set(options NO_UNSUPPORTED_PLATFORM_ERROR)
@@ -138,7 +141,7 @@ function(qt_generate_deploy_app_script)
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-app-deploy.cmake")
     file(WRITE "${script}" "# ordinary deployment probe\n")
     set(${ARG_OUTPUT_SCRIPT} "${script}" PARENT_SCOPE)
-    set(APP_DEPLOY_CALLED TRUE PARENT_SCOPE)
+    set_property(GLOBAL PROPERTY HYREMOTE_FIXTURE_APP_DEPLOY_CALLED TRUE)
 endfunction()
 
 function(qt_generate_deploy_qml_app_script)
@@ -163,7 +166,7 @@ function(qt_generate_deploy_qml_app_script)
     set(script "${CMAKE_CURRENT_BINARY_DIR}/qt-qml-deploy.cmake")
     file(WRITE "${script}" "# QML deployment probe\n")
     set(${ARG_OUTPUT_SCRIPT} "${script}" PARENT_SCOPE)
-    set(QML_DEPLOY_CALLED TRUE PARENT_SCOPE)
+    set_property(GLOBAL PROPERTY HYREMOTE_FIXTURE_QML_DEPLOY_CALLED TRUE)
 endfunction()
 
 include("${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake")
@@ -174,11 +177,17 @@ if(TEST_QML)
     else()
         hyremote_deploy(TARGET deploy-probe QML)
     endif()
+else()
+    hyremote_deploy(TARGET deploy-probe QPA)
+endif()
+
+get_property(APP_DEPLOY_CALLED GLOBAL PROPERTY HYREMOTE_FIXTURE_APP_DEPLOY_CALLED)
+get_property(QML_DEPLOY_CALLED GLOBAL PROPERTY HYREMOTE_FIXTURE_QML_DEPLOY_CALLED)
+if(TEST_QML)
     if(NOT QML_DEPLOY_CALLED OR APP_DEPLOY_CALLED)
         message(FATAL_ERROR "QML deployment must preserve exclusive QML high-level dispatch")
     endif()
 else()
-    hyremote_deploy(TARGET deploy-probe QPA)
     if(NOT APP_DEPLOY_CALLED OR QML_DEPLOY_CALLED)
         message(FATAL_ERROR "ordinary QPA must preserve ordinary high-level deployment dispatch")
     endif()
