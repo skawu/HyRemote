@@ -176,6 +176,8 @@ foreach(required_token
         [=[TEST_STALE_QPA_METADATA]=]
         [=[TEST_STALE_QPA_NEGATIVE_METADATA]=]
         [=[EXPECT_FAILURE_FRAGMENT]=]
+        [=[string(REPLACE "_" " " _expected_fragment]=]
+        [=[string(REGEX REPLACE "[ \t\r\n]+" " " _configure_output]=]
         [=[failed for the wrong reason]=]
         [=[_expected_qpa_name]=]
         [=[${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}]=]
@@ -195,15 +197,33 @@ file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
-        [=[EXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload]=]
-        [=[EXPECT_FAILURE_FRAGMENT=QML import root does not exist]=]
-        [=[EXPECT_FAILURE_FRAGMENT=QML module directory does not exist]=]
-        [=[EXPECT_FAILURE_FRAGMENT=requires the current HyRemote source build]=]
-        [=[EXPECT_FAILURE_FRAGMENT=requires exact Qt]=]
-        [=[EXPECT_FAILURE_FRAGMENT=requested an SDK that was built without Transparent QPA]=])
+        [=[TEST_QML_AVAILABLE=OFF]=]
+        [=[TEST_STALE_QML_METADATA=ON]=]
+        [=[TEST_QML_IMPORT_PATH_EXISTS=OFF]=]
+        [=[TEST_QML_MODULE_DIR_EXISTS=OFF]=]
+        [=[TEST_STALE_QPA_METADATA=ON]=]
+        [=[TEST_QT_VERSION=6.8.2]=]
+        [=[TEST_QPA_AVAILABLE=OFF]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requires_a_HyRemote_QML_payload]=]
+        [=[EXPECT_FAILURE_FRAGMENT=QML_import_root_does_not_exist]=]
+        [=[EXPECT_FAILURE_FRAGMENT=QML_module_directory_does_not_exist]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requires_the_current_HyRemote_source_build]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requires_exact_Qt_6.8.3]=]
+        [=[EXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA]=])
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "deploy-helper-contract: deterministic deploy test lost required semantic rejection evidence: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: deterministic deploy test lost canonical semantic rejection wiring: ${required_token}")
+    endif()
+endforeach()
+foreach(forbidden_legacy_token
+        [=[TEST_MISSING_QML_PAYLOAD]=]
+        [=[TEST_MISSING_QML_ROOT]=]
+        [=[TEST_MISSING_QML_MODULE_DIR]=]
+        [=[TEST_QT_MISMATCH]=]
+        [=[TEST_MISSING_PACKAGE]=])
+    string(FIND "${qpa_cmake}" "${forbidden_legacy_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR "deploy-helper-contract: legacy negative-fixture wiring returned: ${forbidden_legacy_token}")
     endif()
 endforeach()
 string(FIND "${qpa_cmake}" [=[CMAKE_BINARY_DIR}/plugins/platforms]=] leaked_host_output)
