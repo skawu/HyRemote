@@ -171,13 +171,21 @@ HyRemote's value is Qt application integration, not owning another protocol stac
 
 ## 7. Current decision
 
+> **Supersession note (2026-09-15).** The decision record below is the state at evaluation time. Issue
+> #53 subsequently authorized a **bounded custom RFB 3.8 baseline** for the x86 product path, and that
+> baseline is what the product uses today (`HYREMOTE_WITH_VNC`, bounded queues/input/handshake). Item 5
+> under "Accepted now" is therefore historical. Items 1-4 are unchanged, and the production-frozen
+> backend decision remains open under #27.
+
 ### Accepted now
 
 1. **NeatVNC remains the preferred Linux/Embedded Linux-oriented backend candidate.**
 2. **LibVNCServer remains rejected as the default linked backend on licensing grounds.**
 3. **rustvncserver v2.2.1 C++/Rust FFI and x86 toolchain feasibility are accepted on Windows + Linux.**
 4. **rustvncserver advances to a bounded production-fit increment under #27; it is not yet the production-frozen backend.**
-5. **No custom RFB implementation is authorized.**
+5. **No custom RFB implementation is authorized.** *(Superseded 2026-09-15 by issue #53: a bounded custom
+   RFB 3.8 correctness baseline was authorized for the x86 product path - see the note above and
+   [`dependency-policy.md`](dependency-policy.md). The general default remains "do not own an RFB stack".)*
 
 ### Still not accepted
 

@@ -1,13 +1,21 @@
 include_guard(GLOBAL)
 
 option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" ON)
+
+# Placeholder control: no `examples/` tree exists in this line yet, so enabling it changes nothing here.
+# The `examples/` targets are developed on the V1 convergence line and arrive with it.
 option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" ON)
+
 option(HYREMOTE_BUILD_CORE "Build the hyremote-core session/frame/dispatch library" ON)
 option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the public HyRemote::RemoteAccess C++ facade when Qt is available" ON)
 option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)
 option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)
 option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)
 option(HYREMOTE_WITH_VNC "Enable the first VNC/RFB transport backend when available" ON)
+
+# Placeholder controls: these express an intended integration mode/backend but have no consumer in this
+# line's build graph yet (the QPA plugin and the GBM/RKMPP backends arrive with their own product lines).
+# They are kept so a downstream configuration can be prepared without changing the build here.
 option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)
 option(HYREMOTE_WITH_GBM "Enable GBM/DMA-BUF-oriented experimental backends" OFF)
 option(HYREMOTE_WITH_RKMPP "Enable Rockchip MPP experimental encoder backend" OFF)

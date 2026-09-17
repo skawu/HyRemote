@@ -222,7 +222,9 @@ Still intentionally open:
 - exact QPA proxy implementation;
 - RKMPP integration model;
 - H.264-in-RFB versus another transport for high-motion content;
-- normalized keyboard symbol schema;
-- project license.
+- normalized keyboard symbol schema.
+
+The project license is **no longer** one of the open items: HyRemote is distributed under **Apache-2.0**
+(decided 2026-09-15; see [`LICENSE`](../LICENSE) and [`dependency-policy.md`](dependency-policy.md)).
 
 These open items may refine adapters/defaults without violating the Core invariants frozen by ARCH-01.

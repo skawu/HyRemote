@@ -67,15 +67,17 @@ single integration model, rendering stack, transport, or SoC-specific implementa
 
 | Version | Product milestone | State |
 | --- | --- | --- |
-| `V0.0.1.0` | x86_64 (Windows + Linux) - Embedded C++ API | in progress |
-| `V0.0.2.0` | x86_64 (Windows + Linux) - Declarative QML API | in progress |
-| `V0.0.3.0` | x86_64 (Windows + Linux) - Transparent QPA Proxy, local + remote | in progress |
+| `V0.0.1.0` | x86_64 (Windows + Linux) - Embedded C++ API | in progress (code merged; examples and final acceptance evidence outstanding) |
+| `V0.0.2.0` | x86_64 (Windows + Linux) - Declarative QML API | in progress - QML module built on the V1 convergence line, not on this branch yet |
+| `V0.0.3.0` | x86_64 (Windows + Linux) - Transparent QPA Proxy, local + remote | in progress - QPA plugin built on the V1 convergence line, not on this branch yet |
 | `V1.0.0.0` | x86_64 GA - all three integration modes productized | planned |
 
 The Core session/frame/dispatch contract, the `RemoteAccess` facade, install/export package,
 Widgets/Quick capture and input adapters, and the bounded cross-platform RFB 3.8 correctness baseline
-are merged. Product examples and final acceptance evidence remain active; QML and QPA implementation
-proceed in parallel without redefining the shared runtime semantics. Execution order:
+are merged. Product examples (`examples/`), the declarative QML module (`integrations/qml`) and the
+transparent QPA plugin (`integrations/qpa`) are being productized on the V1 convergence line and are
+**not** part of this branch today - the option table below marks the controls that are placeholders
+here rather than working switches. Execution order:
 [`docs/development-roadmap.md`](docs/development-roadmap.md); version semantics:
 [`docs/versioning.md`](docs/versioning.md).
 
@@ -135,10 +137,10 @@ ctest --test-dir build -R "spike|async-spike"
 | `HYREMOTE_BUILD_WIDGETS_ADAPTER` | `ON` | Qt Widgets target adapter (built when Qt Widgets is available) |
 | `HYREMOTE_BUILD_QUICK_ADAPTER` | `ON` | Qt Quick target adapter (built when Qt Quick is available) |
 | `HYREMOTE_BUILD_TESTS` | `ON` | Core/RemoteAccess test suites registered with CTest |
-| `HYREMOTE_BUILD_EXAMPLES` | `ON` | product examples when present in the current milestone branch |
+| `HYREMOTE_BUILD_EXAMPLES` | `ON` | **placeholder on this branch** - `examples/` arrives with the V1 convergence line |
 | `HYREMOTE_BUILD_SPIKES` | `OFF` | throwaway spike harnesses under `spikes/` (not part of the production graph) |
 | `HYREMOTE_WITH_VNC` | `ON` | internal bounded RFB 3.8 correctness transport used by the x86 product path |
-| `HYREMOTE_WITH_QPA_PROXY` | `OFF` | Transparent QPA Proxy mode (version-coupled, isolated from Core) |
+| `HYREMOTE_WITH_QPA_PROXY` | `OFF` | **placeholder on this branch** - Transparent QPA Proxy (version-coupled, isolated from Core); the plugin is built on the V1 convergence line |
 | `HYREMOTE_WITH_GBM` | `OFF` | experimental GBM/DMA-BUF-oriented backends |
 | `HYREMOTE_WITH_RKMPP` | `OFF` | experimental Rockchip MPP encoder backend |
 
@@ -255,6 +257,13 @@ framework's security requirements (service enablement, listen address, view/inpu
 transport authentication, client lifecycle, deployment guidance) are defined in
 [`docs/security-model.md`](docs/security-model.md). Report vulnerabilities as described in
 [`SECURITY.md`](SECURITY.md) instead of opening a public Issue.
+
+**Current transport security state:** the shipped transport implements SecurityType `None` over
+plaintext and cannot express authentication or encryption yet. Until that changes, treat 0.0.x as
+**local/loopback or trusted-tunnel only** - the listener defaults to the loopback address and remote
+input is opt-in, but neither substitutes for transport security on an untrusted network. The release
+gate that must be satisfied before any stronger claim is tracked in
+[`docs/security-model.md`](docs/security-model.md) (section 12).
 
 ## License
 

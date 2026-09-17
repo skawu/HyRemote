@@ -117,6 +117,15 @@ Passwords, private keys, raw authentication credentials, tokens, or equivalent s
 
 ## 5. NeatVNC transport baseline
 
+> **Current implementation state (2026-09-17).** The transport shipped on the x86 product path is the
+> bounded custom RFB 3.8 baseline (issue #53), **not** NeatVNC, and it implements **SecurityType `None`
+> only, over plaintext**: neither `HyRemote::RemoteAccess` nor `Transport` can express authentication or
+> encryption settings yet. The protections that do exist are structural - construction opens no listener,
+> the listen address defaults to `QHostAddress::LocalHost`, the client count is capped, the handshake
+> expires, and remote input is opt-in and independently controlled. Everything below in this section is
+> the **requirement for the transport**, not a description of what exists today: deployments outside
+> Profile A (local/loopback) or a trusted tunnel are not supported by the current transport.
+
 The initial NeatVNC candidate supports policy flags including:
 
 - authentication required;
@@ -246,19 +255,25 @@ If secure configuration cannot be expressed safely through environment variables
 
 ## 12. Public-release security gate
 
-Before HyRemote is advertised as production-ready or the repository is made public with deployment guidance:
+Before HyRemote is advertised as production-ready, or the repository is made public with deployment
+guidance. **Status as of 2026-09-17** - the repository is public, so this gate is live. The third column
+is recorded evidence, not intent:
 
-- [ ] project license frozen;
-- [ ] threat model reviewed against implemented API;
-- [ ] no listener starts implicitly;
-- [ ] view and input permissions are independent;
-- [ ] sensitive values are excluded from logs;
-- [ ] supported authentication/encryption modes documented;
-- [ ] legacy/insecure modes clearly labeled;
-- [ ] malformed-client tests exist for the transport boundary where practical;
-- [ ] connection/backpressure limits tested;
-- [ ] dependency versions and update policy documented;
-- [ ] security reporting instructions are public and usable.
+| Requirement | State | Evidence / remaining gap |
+|---|---|---|
+| project license frozen | met | Apache-2.0 since 2026-09-15 (see [`LICENSE`](../LICENSE)) |
+| threat model reviewed against implemented API | **not met** | this document predates the RFB 3.8 baseline; no transport-level threat-model pass has been run against the shipped implementation |
+| no listener starts implicitly | met | construction opens nothing; the transport requires an explicit address and port |
+| view and input permissions are independent | met | remote input is opt-in (`setRemoteInputEnabled`) and independent of viewing |
+| sensitive values are excluded from logs | met (vacuously) | the current transport holds no credentials; the rule becomes binding once authentication exists |
+| supported authentication/encryption modes documented | **not met** | SecurityType `None` over plaintext is all the transport implements (see section 5) |
+| legacy/insecure modes clearly labeled | met | `None` is the only mode and is labeled as such here, in `SECURITY.md` and in the README |
+| malformed-client tests exist for the transport boundary where practical | **partial** | bounds exist in code (256 KB client-input cap, encoding-count limit, CutText limit, handshake expiry, pixel-byte/stride validation) but there is no dedicated malformed-client test suite |
+| connection/backpressure limits tested | met | capped client count, bounded input mailbox with coalescing, bounded frame queue with `DropOldest`/`ProducerThrottle`, deterministic lifecycle tests |
+| dependency versions and update policy documented | met | [`dependency-policy.md`](dependency-policy.md), including the test/CI tooling |
+| security reporting instructions are public and usable | **not met** | [`SECURITY.md`](../SECURITY.md) is published, but GitHub private vulnerability reporting is not enabled for this repository yet |
+
+Re-run this gate after any change to the transport security surface.
 
 ## 13. Non-goals
 

@@ -32,6 +32,17 @@ Until a security model is frozen:
 
 ## Reporting a vulnerability
 
-The repository is currently private during bootstrap. Security reporting instructions for external contributors will be added before the repository is made public.
+The repository is public. Please **do not** open a public issue containing exploit details.
 
-Do not open a public issue containing exploit details after public launch; use the private reporting mechanism documented here at that time.
+- Preferred channel: GitHub's private vulnerability reporting for this repository (`Security` tab, then
+  `Report a vulnerability`). *Repository action outstanding: the private reporting feature is not yet
+  enabled; enabling it makes this the documented channel.*
+- Until it is enabled: contact the maintainer directly using the contact details on the repository
+  owner's profile and state clearly that the report is a security issue.
+
+## Current transport security state
+
+The transport shipped today (the bounded RFB 3.8 baseline) implements **SecurityType `None` over
+plaintext** and cannot express authentication or encryption. Treat the 0.0.x line as **local/loopback or
+trusted-tunnel only** and never expose the listener to an untrusted network. Requirements and the
+release gate that must be satisfied before any stronger claim: [`docs/security-model.md`](docs/security-model.md).

@@ -88,9 +88,11 @@ LibVNCServer is mature and cross-platform, but upstream is GPL-2.0-or-later and 
 
 ### Custom HyRemote RFB implementation
 
-Current disposition: **NO-GO by default**.
+Current disposition: **NO-GO by default; superseded for the bounded x86 baseline on 2026-09-15.**
 
 Owning an RFB server stack is not HyRemote's product value. Reconsider only if bounded evidence shows that maintained permissive backends cannot satisfy the product contract.
+
+Issue **#53** subsequently authorized a **bounded custom RFB 3.8 baseline** for the x86 product path: it is internal to `RemoteAccess`, enabled by `HYREMOTE_WITH_VNC`, and bounded (frame queue with policy, bounded input mailbox, capped client count, handshake expiry, message-size limits). That is a scoped correctness baseline, not a general licence to grow an RFB stack - the default stays no-go, the baseline stays internal, and the production-frozen backend decision remains open under #27. The evaluation record stays in [`x86-vnc-transport-evaluation.md`](x86-vnc-transport-evaluation.md).
 
 No transport dependency is considered production-frozen until #27 acceptance is complete.
 
@@ -103,3 +105,15 @@ Qt itself is an external dependency and remains subject to the Qt license select
 ## Platform libraries
 
 GBM, DRM, RKMPP, V4L2, VA-API, and similar platform/hardware libraries must remain optional backend dependencies. They must not become required dependencies of the generic core.
+
+## Test- and CI-only tools
+
+Nothing in this section is shipped or linked by a HyRemote target; these tools are installed and run by
+the CI workflows and the transport/product-fit scripts, so their licences are recorded here as well:
+
+| Tool | Used by | Licence | Notes |
+|---|---|---|---|
+| `aqtinstall` | every workflow (installs the pinned Qt) | MIT | build-time only |
+| `vncdotool` (`1.3.0`, pinned) | `rfb-transport.yml` and the V1 GA acceptance matrix | MIT | drives a real viewer against the HyRemote test server |
+| `Pillow` | the same transport/product-fit scripts (frame comparison) | HPND | test-time only |
+| `Ninja` | every workflow and the documented build path | Apache-2.0 | build tool; not an architectural boundary |
