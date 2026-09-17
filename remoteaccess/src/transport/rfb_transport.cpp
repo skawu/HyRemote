@@ -311,6 +311,24 @@ enum class ClientPhase {
     Normal,
 };
 
+// Bounded per-viewer held-input tracking (#90). A viewer that disappears while holding a key or a
+// pointer button must be balanced with releases, but the tracking itself must stay strictly bounded:
+// a fixed array with a cap, no allocation, and duplicate presses are ignored.
+constexpr std::size_t kMaxHeldKeys = 16;
+
+struct ButtonBit
+{
+    std::uint8_t bit;
+    hyremote::PointerButton button;
+};
+
+// RFB pointer button bits mapped onto HyRemote's normalized buttons.
+constexpr std::array<ButtonBit, 3> kButtonBits{{
+    {0x01, hyremote::PointerButton::Left},
+    {0x02, hyremote::PointerButton::Middle},
+    {0x04, hyremote::PointerButton::Right},
+}};
+
 struct ClientState
 {
     QPointer<QTcpSocket> socket;
@@ -329,7 +347,41 @@ struct ClientState
     std::uint8_t buttonMask = 0;
     hyremote::InputModifiers modifiers = 0U;
     bool connectedEventSent = false;
+
+    // Held-input tracking for disconnect balancing: the last pointer location/viewport the viewer
+    // reported (so releases land where the press happened) and the keys it currently holds.
+    hyremote::InputViewport pointerViewport;
+    float pointerX = 0.0F;
+    float pointerY = 0.0F;
+    std::array<hyremote::KeyCode, kMaxHeldKeys> heldKeys{};
+    std::size_t heldKeyCount = 0;
 };
+
+// Remembers a key the viewer holds. A repeated press for a key that is already tracked is ignored, and
+// keys beyond the cap are dropped rather than growing the tracking without limit.
+void rememberHeldKey(ClientState &client, hyremote::KeyCode key)
+{
+    if (key == hyremote::KeyCode::Unknown)
+        return;
+    for (std::size_t i = 0; i < client.heldKeyCount; ++i) {
+        if (client.heldKeys[i] == key)
+            return;
+    }
+    if (client.heldKeyCount >= kMaxHeldKeys)
+        return;
+    client.heldKeys[client.heldKeyCount++] = key;
+}
+
+// Drops a key the viewer released, so the disconnect path cannot release it a second time.
+void forgetHeldKey(ClientState &client, hyremote::KeyCode key)
+{
+    for (std::size_t i = 0; i < client.heldKeyCount; ++i) {
+        if (client.heldKeys[i] != key)
+            continue;
+        client.heldKeys[i] = client.heldKeys[--client.heldKeyCount];
+        return;
+    }
+}
 
 class RfbWorker final : public QObject
 {
@@ -396,6 +448,48 @@ public:
     }
 
 private:
+    // Emits the releases for the input a viewer still holds, so an abrupt disconnect cannot leave the
+    // Qt target with an unmatched press (#90). Bounded: at most one event per held button/key, no
+    // allocation and no waiting. The caller runs this before the client state is erased; `publishInput`
+    // already suppresses everything once the transport is stopping.
+    void releaseHeldInput(ClientState &client)
+    {
+        if (client.phase != ClientPhase::Normal)
+            return;  // a viewer that never reached the input phase never held input
+
+        const hyremote::InputViewport viewport = client.pointerViewport;
+        for (const ButtonBit &entry : kButtonBits) {
+            if ((client.buttonMask & entry.bit) == 0)
+                continue;
+            hyremote::InputEvent release;
+            release.kind = hyremote::InputEventKind::PointerButton;
+            release.sourceViewport = viewport;
+            release.x = client.pointerX;
+            release.y = client.pointerY;
+            release.button = entry.button;
+            release.pressed = false;
+            release.modifiers = client.modifiers;
+            publishInput(release);
+        }
+        client.buttonMask = 0;
+
+        // Release in reverse press order and shrink the modifier set as modifier keys come up, so a
+        // release never claims a modifier that is already gone.
+        while (client.heldKeyCount > 0) {
+            const hyremote::KeyCode key = client.heldKeys[--client.heldKeyCount];
+            if (const auto modifier = modifierForKey(key)) {
+                client.modifiers &=
+                    static_cast<hyremote::InputModifiers>(~hyremote::modifierMask(*modifier));
+            }
+            hyremote::InputEvent release;
+            release.kind = hyremote::InputEventKind::Key;
+            release.key = key;
+            release.pressed = false;
+            release.modifiers = client.modifiers;
+            publishInput(release);
+        }
+    }
+
     void publishEvent(hyremote::TransportEventCode code, const std::string &message)
     {
         if (m_stopping || !m_onEvent)
@@ -456,6 +550,9 @@ private:
                 const auto it = m_clients.find(socket);
                 if (it == m_clients.end())
                     return;
+                // Balance whatever this viewer still holds before its state disappears (#90). This runs
+                // before the erase and only touches this viewer's state.
+                releaseHeldInput(*it->second);
                 const bool announced = it->second->connectedEventSent;
                 m_clients.erase(it);
                 socket->deleteLater();
@@ -682,6 +779,13 @@ private:
     void deliverKey(ClientState &client, std::uint32_t keysym, bool pressed)
     {
         const hyremote::KeyCode key = keyCodeFromKeysym(keysym);
+        // Track what the viewer holds and stop tracking what it released, so a later disconnect can be
+        // balanced and a normal release is never emitted twice (#90).
+        if (pressed)
+            rememberHeldKey(client, key);
+        else
+            forgetHeldKey(client, key);
+
         if (const auto modifier = modifierForKey(key)) {
             const hyremote::InputModifiers bit = hyremote::modifierMask(*modifier);
             if (pressed)
@@ -733,6 +837,11 @@ private:
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
+        // Remember where this viewer's pointer last was, so a disconnect can release buttons there.
+        client.pointerViewport = viewport;
+        client.pointerX = static_cast<float>(x);
+        client.pointerY = static_cast<float>(y);
+
         hyremote::InputEvent move;
         move.kind = hyremote::InputEventKind::PointerMove;
         move.sourceViewport = viewport;
@@ -741,16 +850,7 @@ private:
         move.modifiers = client.modifiers;
         publishInput(move);
 
-        struct ButtonBit {
-            std::uint8_t bit;
-            hyremote::PointerButton button;
-        };
-        static constexpr std::array<ButtonBit, 3> kButtons{{
-            {0x01, hyremote::PointerButton::Left},
-            {0x02, hyremote::PointerButton::Middle},
-            {0x04, hyremote::PointerButton::Right},
-        }};
-        for (const ButtonBit &entry : kButtons) {
+        for (const ButtonBit &entry : kButtonBits) {
             const bool before = (client.buttonMask & entry.bit) != 0;
             const bool after = (mask & entry.bit) != 0;
             if (before == after)

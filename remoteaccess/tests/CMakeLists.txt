@@ -32,6 +32,25 @@ if(HYREMOTE_WITH_VNC)
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../src
     )
+
+    # Deterministic disconnect-balancing evidence (#90): drives the real transport over loopback with a
+    # minimal client and asserts on the normalized InputEvents. Links the same private factory as the
+    # interoperability harness; it is not installed and is not part of the public SDK.
+    add_executable(hyremote-rfb-input-release-test
+        test_rfb_input_release.cpp
+    )
+    target_link_libraries(hyremote-rfb-input-release-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+    )
+    target_include_directories(hyremote-rfb-input-release-test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    add_test(NAME hyremote-rfb-input-release-test COMMAND hyremote-rfb-input-release-test)
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
