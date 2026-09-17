@@ -15,13 +15,29 @@
 
 #include <QApplication>
 #include <QByteArray>
+#include <QMessageLogContext>
+#include <QString>
 #include <QTimer>
 #include <QWidget>
 #include <QWindow>
 
+#include <atomic>
 #include <cstdio>
 
 namespace {
+
+std::atomic_bool gRemoteStartFailureSeen{false};
+
+void captureRemoteFailure(QtMsgType, const QMessageLogContext &, const QString &message)
+{
+    if (message.contains(
+            QStringLiteral("HyRemote QPA Proxy could not start the composite RemoteAccess runtime"))) {
+        gRemoteStartFailureSeen.store(true, std::memory_order_relaxed);
+    }
+
+    const QByteArray encoded = message.toLocal8Bit();
+    std::fprintf(stderr, "%s\n", encoded.constData());
+}
 
 class PortReservation final
 {
@@ -55,8 +71,6 @@ public:
         if (m_socket == INVALID_SOCKET)
             return false;
 
-        // Make ownership deterministic: the HyRemote listener must not be able to share this
-        // address/port on Windows while the reservation socket is alive.
         BOOL exclusive = TRUE;
         if (::setsockopt(m_socket,
                          SOL_SOCKET,
@@ -137,9 +151,6 @@ private:
 
 int main(int argc, char **argv)
 {
-    // Hold an OS-assigned loopback port before QPA initialization without constructing any QObject
-    // before QApplication. HyRemote receives the exact occupied port and must fail its remote bind
-    // while leaving the native delegate/application fully operational.
     PortReservation blocker;
     if (!blocker.reserve()) {
         std::fprintf(stderr, "FAIL: could not reserve loopback port for QPA remote-failure test\n");
@@ -151,9 +162,14 @@ int main(int argc, char **argv)
                                 + QByteArray::number(blockedPort);
     qputenv("QT_QPA_PLATFORM", platform);
 
+    // Capturing the established controller diagnostic prevents a false pass where the native app is
+    // healthy only because the QPA controller never attempted to start the remote runtime.
+    const QtMessageHandler previousHandler = qInstallMessageHandler(captureRemoteFailure);
+
     QApplication app(argc, argv);
     if (QApplication::platformName().compare(QStringLiteral("hyremote"), Qt::CaseInsensitive) != 0) {
         std::fprintf(stderr, "FAIL: HyRemote QPA plugin was not selected\n");
+        qInstallMessageHandler(previousHandler);
         return 2;
     }
 
@@ -165,6 +181,7 @@ int main(int argc, char **argv)
     if (!window.windowHandle() || !window.windowHandle()->handle()) {
         std::fprintf(stderr,
                      "FAIL: native delegate did not create a platform window while remote port was occupied\n");
+        qInstallMessageHandler(previousHandler);
         return 3;
     }
 
@@ -175,6 +192,12 @@ int main(int argc, char **argv)
     QTimer::singleShot(300, &app, [&] {
         if (!eventLoopTicked) {
             std::fprintf(stderr, "FAIL: native event loop stopped after remote listener failure\n");
+            app.quit();
+            return;
+        }
+        if (!gRemoteStartFailureSeen.load(std::memory_order_relaxed)) {
+            std::fprintf(stderr,
+                         "FAIL: QPA controller did not report the forced remote listener startup failure\n");
             app.quit();
             return;
         }
@@ -189,7 +212,7 @@ int main(int argc, char **argv)
             return;
         }
 
-        std::printf("PASS: native QPA application remains live when HyRemote remote listener cannot bind\n");
+        std::printf("PASS: forced remote bind failure was observed and the native QPA application remained live\n");
         result = 0;
         window.close();
         app.quit();
@@ -201,5 +224,6 @@ int main(int argc, char **argv)
     });
 
     app.exec();
+    qInstallMessageHandler(previousHandler);
     return result;
 }
