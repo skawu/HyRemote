@@ -26,6 +26,7 @@ foreach(required_token
 endforeach()
 
 set(required_workflows
+    ".github/workflows/remoteaccess-facade.yml"
     ".github/workflows/widgets-adapter.yml"
     ".github/workflows/quick-adapter.yml"
     ".github/workflows/qml-api.yml"
