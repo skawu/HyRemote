@@ -2,7 +2,7 @@
 
 Status: **V1.0.0.0 architecture frozen; release acceptance pending**
 
-HyRemote is a Qt Embedded remote-access framework for existing Qt Widgets and Qt Quick applications. V1 deliberately keeps the application-facing model small while isolating capture, input, transport and platform-specific implementation details behind one runtime architecture.
+HyRemote is a Qt remote-access framework for existing Qt Widgets and Qt Quick applications. Its V1 reference platforms are **Windows x86_64 and Linux x86_64**; embedded Linux (EGLFS/OpenGL ES) is the post-V1 platform expansion and is not a V1 support claim. V1 deliberately keeps the application-facing model small while isolating capture, input, transport and platform-specific implementation details behind one runtime architecture.
 
 This document is the canonical top-level architecture for V1. Detailed contracts are refined by:
 
