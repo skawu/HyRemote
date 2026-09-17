@@ -278,6 +278,32 @@ if(NOT wrong_runtime_pos EQUAL -1)
         "generated ${_script_kind} deploy script mixed source/installed runtime identity '${_forbidden_runtime}':\n${generated_content}")
 endif()
 
+# QML is a URI/package surface, but its private shared backing library is still a required runtime
+# payload. Verify both acquisition shapes explicitly without introducing or expecting a public QML
+# C++ target. Ordinary QPA must remain free of this optional payload.
+if(TEST_QML)
+    if(TEST_INSTALLED_PAYLOAD)
+        set(_expected_qml_backing
+            "${CMAKE_SHARED_LIBRARY_PREFIX}hyremote-qml${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    else()
+        set(_expected_qml_backing
+            "${CMAKE_SHARED_LIBRARY_PREFIX}qml-backing${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    endif()
+    string(FIND "${generated_content}" "${_expected_qml_backing}" qml_backing_pos)
+    if(qml_backing_pos EQUAL -1)
+        message(FATAL_ERROR
+            "generated ${_script_kind} deploy script is missing QML backing payload '${_expected_qml_backing}':\n${generated_content}")
+    endif()
+else()
+    foreach(forbidden_qml_backing IN ITEMS "hyremote-qml" "qml-backing")
+        string(FIND "${generated_content}" "${forbidden_qml_backing}" qml_backing_pos)
+        if(NOT qml_backing_pos EQUAL -1)
+            message(FATAL_ERROR
+                "ordinary QPA deploy script unexpectedly contains QML backing payload '${forbidden_qml_backing}':\n${generated_content}")
+        endif()
+    endforeach()
+endif()
+
 if(TEST_DEPLOY_QPA)
     foreach(required_fragment IN ITEMS
             "ADDITIONAL_MODULES"
