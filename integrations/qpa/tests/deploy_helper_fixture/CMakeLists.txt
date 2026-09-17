@@ -88,9 +88,9 @@ else()
     add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
 endif()
 
-# The public QML identity is the stable `HyRemote` URI below the advertised import root. Keep root
-# and module-directory availability independently controllable so damaged-package cases are tested
-# without teaching the deployment helper any private library filename.
+# The public QML identity is the stable `HyRemote` URI below the advertised import root. Keep root,
+# module-directory and installed backing-payload availability explicit so damaged-package cases are
+# tested without promoting the backing library to a public C++ target.
 if(TEST_QML)
     if(TEST_QML_AVAILABLE)
         set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
@@ -100,7 +100,12 @@ if(TEST_QML)
                 file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}/HyRemote")
             endif()
         endif()
-        if(NOT TEST_INSTALLED_PAYLOAD)
+        if(TEST_INSTALLED_PAYLOAD)
+            set(_fixture_qml_backing
+                "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}hyremote-qml${CMAKE_SHARED_LIBRARY_SUFFIX}")
+            file(WRITE "${_fixture_qml_backing}" "fixture")
+            set(HyRemote_QML_BACKING_FILE "${_fixture_qml_backing}")
+        else()
             add_library(qml-backing SHARED EXCLUDE_FROM_ALL dummy.cpp)
             add_library(hyremote-qml ALIAS qml-backing)
             add_library(qml-plugin MODULE EXCLUDE_FROM_ALL dummy.cpp)
