@@ -127,6 +127,29 @@ foreach(module_cmake IN ITEMS
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
+# Every continuously triggered workflow must cancel superseded runs on the same ref. Without this,
+# rapid convergence commits can create a backlog in which the current candidate never reaches a runner.
+# Mainline validation uses the same rule so multiple main pushes cannot queue stale post-merge evidence.
+foreach(workflow IN ITEMS
+        "git-flow-policy.yml"
+        "qml-api.yml"
+        "qpa-proxy.yml"
+        "quick-adapter.yml"
+        "remoteaccess-facade.yml"
+        "rfb-transport.yml"
+        "sdk-consumption.yml"
+        "v1-ga-acceptance.yml"
+        "widgets-adapter.yml"
+        "mainline-validation.yml")
+    read_repo_file(".github/workflows/${workflow}" workflow_text)
+    require_token("${workflow_text}" "concurrency:"
+                  "${workflow} lost the superseded-run concurrency guard")
+    require_token("${workflow_text}" "cancel-in-progress: true"
+                  "${workflow} stopped cancelling superseded runs")
+    require_token("${workflow_text}" [=[group: ${{ github.workflow }}-${{ github.ref }}]=]
+                  "${workflow} lost its per-workflow/per-ref concurrency identity")
+endforeach()
+
 # Every workflow that builds the default facade graph or explicit Qt GUI/Widgets/Quick/QML/QPA code
 # on the Ubuntu reference runner must use the same repository-owned host dependency baseline.
 # Focused and integrated GA jobs must not carry subtly different XCB/OpenGL provisioning, otherwise
@@ -142,7 +165,8 @@ foreach(workflow IN ITEMS
         "qml-api.yml"
         "qpa-proxy.yml"
         "sdk-consumption.yml"
-        "v1-ga-acceptance.yml")
+        "v1-ga-acceptance.yml"
+        "mainline-validation.yml")
     read_repo_file(".github/workflows/${workflow}" workflow_text)
     require_token("${workflow_text}" ".github/scripts/install-linux-qt-desktop-deps.sh"
                   "${workflow} does not use the shared Linux Qt desktop dependency baseline")
@@ -150,4 +174,4 @@ endforeach()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across integrations + research/assets isolated + shared Linux Qt desktop CI baseline)")
+    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across integrations + research/assets isolated + bounded/cancellable workflow fan-out + shared Linux Qt desktop CI baseline)")
