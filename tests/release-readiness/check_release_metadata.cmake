@@ -68,8 +68,10 @@ foreach(path IN LISTS required_files)
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
+# CMake's regex dialect does not provide portable interval quantifiers such as {2,3}. Spell the
+# accepted three/four-part shape explicitly so this gate behaves the same on CMake 3.21+ hosts.
 string(REGEX MATCH
-    "project[ \\t\\r\\n]*\\([ \\t\\r\\n]*HyRemote[ \\t\\r\\n]+VERSION[ \\t\\r\\n]+([0-9]+(\\.[0-9]+){2,3})"
+    "project[ \\t\\r\\n]*\\([ \\t\\r\\n]*HyRemote[ \\t\\r\\n]+VERSION[ \\t\\r\\n]+([0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?)"
     project_match
     "${root_cmake}")
 if(NOT project_match)
