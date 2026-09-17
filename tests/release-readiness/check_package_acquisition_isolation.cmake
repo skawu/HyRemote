@@ -112,9 +112,11 @@ string(CONCAT success_source "${common_prefix_setup}"
 run_configure("same-prefix" "${success_source}" TRUE "")
 
 # Loading a second installed HyRemote prefix in the same configure would pair the first imported
-# runtime target with the second package's optional metadata. It must be rejected deliberately.
+# runtime target with the second package's optional metadata. Clear both normal and cache forms of
+# HyRemote_DIR so the second call really enters the second package rather than reusing discovery #1.
 string(CONCAT two_prefix_source "${common_prefix_setup}"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n"
+"unset(HyRemote_DIR)\n"
 "unset(HyRemote_DIR CACHE)\n"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${second_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
 run_configure("two-installed-prefixes" "${two_prefix_source}" FALSE "refusing a second installed prefix")
