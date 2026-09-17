@@ -64,11 +64,29 @@ The scene contains a pointer target and `TextInput`. Product E2E verifies that n
 
 `--remote-input` is explicit acceptance/example configuration, never the default.
 
+## Stopped-runtime policy transition
+
+Embedded C++ / Quick uses the same stopped-runtime contract as Widgets. The application and `QQuickWindow` remain alive while only HyRemote is restarted:
+
+```cpp
+remote.stop();
+remote.setRemoteInputEnabled(true);
+remote.start();
+```
+
+Repository product-fit exercises that sequence in one `quick-basic` process. The acceptance-only helper starts view-only; the first viewer disconnect triggers the transition and the timer is only a watchdog fallback:
+
+```sh
+hyremote-quick-basic --port 5902 --policy-transition-ms 15000 --test-seconds 24
+```
+
+This is an example/acceptance control surface only. It uses the frozen public facade and does not introduce a Quick-specific runtime, hidden live-policy channel or test-only product API.
+
 ## Reconnect
 
 Disconnect the viewer and reconnect to the same listener while the application remains running. Reconnect must not require recreating the Quick window or restarting the application.
 
-The acceptance path also verifies `RemoteAccess::stop()` releases the listener.
+The V1 product-fit additionally reconnects after the same-process view-only -> control `stop -> configure -> start` transition. Final `RemoteAccess::stop()` must release the listener.
 
 ## Input, resize and DPR semantics
 
@@ -81,7 +99,8 @@ The current V1 candidate implements and tests:
 - text/IME commit separately from physical/logical key events;
 - focus into the Quick text target;
 - default view-only rejection;
-- disconnect/reconnect;
+- same-process stopped-runtime transition from view-only to explicit control;
+- disconnect/reconnect before/after that transition;
 - stop/listener release;
 - balancing releases when a viewer disappears with recognized keys/buttons still held.
 
@@ -95,7 +114,7 @@ The production Quick adapter uses the public `QQuickWindow::contentItem()->grabT
 
 HyRemote's Embedded C++ mode leaves the native Quick application as the normal local application. Hosted E2E currently runs with offscreen/software Quick for repeatability, so it proves remote protocol→Quick behavior but **does not prove a physical monitor/local input path**.
 
-Physical local display and local input coexistence is tracked by #109 and remains a final #30/#33 acceptance item.
+Physical local display and local input coexistence is tracked by #109 and remains a final #30/#33 acceptance item. The physical run reuses this same application/public facade lifecycle; it must not introduce a test-only product API.
 
 ## Connected-viewer status
 
