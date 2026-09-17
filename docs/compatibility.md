@@ -25,7 +25,7 @@ The integrated GA workflow qualifies exact Qt 6.8.3 on both reference operating 
 | 6.8.3 | Windows x86_64 | Transparent QPA | `hyremote` -> native `qwindows` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
 | 6.8.3 | Linux x86_64 | Transparent QPA | `hyremote` -> native `qxcb` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
 
-#74 currently prevents the required hosted jobs from receiving runners. Therefore none of these rows is upgraded to Supported from repository implementation alone.
+#74 currently makes hosted runner assignment intermittent. Some PR #106 jobs on 2026-09-17 received real Windows/Linux runners and produced valid configure/build/test evidence, while newer exact-candidate jobs can still remain queued with no executed steps. No row is upgraded to Supported until the required current-candidate #104 Windows/Linux pass and distinct #109 physical/native evidence are complete.
 
 ## V1 artifact compatibility contract
 
