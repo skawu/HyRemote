@@ -53,7 +53,7 @@ target_compile_features(hyremote-qpa-remote-config-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-remote-config-test
     PRIVATE
         ..
-        ${PROJECT_SOURCE_DIR}/src/remoteaccess/src
+        ${_hyremote_root_dir}/src/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-remote-config-test
     PRIVATE
@@ -79,7 +79,7 @@ if(TARGET Qt6::Widgets)
     # with Qt Widgets only; do not add HyRemote targets here. The platform plugin remains a launch /
     # deployment concern rather than an application-source dependency.
     add_executable(hyremote-qpa-existing-app-build-check
-        ${PROJECT_SOURCE_DIR}/examples/qpa-proxy-existing-app/main.cpp
+        ${_hyremote_root_dir}/examples/qpa-proxy-existing-app/main.cpp
     )
     target_compile_features(hyremote-qpa-existing-app-build-check PRIVATE cxx_std_17)
     target_link_libraries(hyremote-qpa-existing-app-build-check PRIVATE Qt6::Widgets)
@@ -211,7 +211,7 @@ add_executable(hyremote-qpa-composite-capture-test
 )
 target_compile_features(hyremote-qpa-composite-capture-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-capture-test
-    PRIVATE .. ${PROJECT_SOURCE_DIR}/src/remoteaccess/src
+    PRIVATE .. ${_hyremote_root_dir}/src/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-composite-capture-test
     PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
@@ -229,7 +229,7 @@ add_executable(hyremote-qpa-composite-input-test
 )
 target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-input-test
-    PRIVATE .. ${PROJECT_SOURCE_DIR}/src/remoteaccess/src
+    PRIVATE .. ${_hyremote_root_dir}/src/remoteaccess/src
 )
 target_link_libraries(hyremote-qpa-composite-input-test
     PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
