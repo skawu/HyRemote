@@ -44,7 +44,7 @@ The normalized input contract covers pointer/button/wheel, logical key/modifier 
 
 The bounded RFB candidate also treats simultaneous viewers as contributors to one shared logical Qt input device rather than as independent virtual keyboards/mice. Per-viewer protocol state remains isolated, but overlapping holds of the same normalized key or left/middle/right button are internally reference-counted: one viewer disconnecting or releasing cannot release the shared target while another viewer still holds the same logical input. The target transition returns to up only when the final holder releases/disconnects. Aggregate remote modifier state is used for the shared target. HyRemote V1 does not expose per-viewer cursors, independent focus contexts, input ownership arbitration, or a live per-client authorization API.
 
-These repository behaviors are covered by deterministic transport, facade, Widgets, Quick and QPA tests. However, the exact Windows/Linux product-fit jobs still have not executed because #74 prevents runner assignment. Therefore milestone authorities must not yet describe abrupt-disconnect, concurrent-viewer held-state isolation or explicit-stop cleanup as accepted release support solely from repository implementation.
+These repository behaviors are covered by deterministic transport, facade, Widgets, Quick and QPA tests. On 2026-09-17, some PR #106 Windows/Linux hosted jobs received real runners and executed repository configure/build/test steps, exposing concrete CI/repository defects that have since been corrected on the convergence branch. Runner assignment remains intermittent, however, and the current exact candidate still lacks the required complete Windows/Linux passing execution envelope. Therefore milestone authorities must not yet describe abrupt-disconnect, concurrent-viewer held-state isolation or explicit-stop cleanup as accepted release support solely from repository implementation or partial historical runs.
 
 The following remain explicit V1 boundaries rather than hidden promises:
 
@@ -61,7 +61,7 @@ Ordinary key/button release and reconnect paths are separately represented in pr
 
 Lifecycle `Running` means that the remote runtime/listener is active; it does **not** mean a viewer is connected.
 
-#91's backend-neutral `RemoteAccess::connectedClientCount()` implementation has also been absorbed into #106. E1/E2/E3/E5 product-fit requires the expected connect/disconnect/reconnect lifecycle. That evidence remains acceptance-pending until the reference jobs actually execute.
+#91's backend-neutral `RemoteAccess::connectedClientCount()` implementation has also been absorbed into #106. E1/E2/E3/E5 product-fit requires the expected connect/disconnect/reconnect lifecycle. That evidence remains acceptance-pending until the reference jobs actually execute and pass on the exact candidate.
 
 Applications and documentation must not infer Connected from Running.
 
@@ -107,13 +107,13 @@ The clean installed-QPA acceptance fixture is intentionally bound to the real E4
 
 Hosted offscreen/software/Xvfb tests can prove viewer → transport → shared runtime → Qt target behavior. They do **not** prove that a physical local display and local keyboard/mouse remained usable at the same time.
 
-Physical local-visible/local-input coexistence for the GA cross-mode envelope is tracked by #109, including E1/E2/E3/E4 on Windows/Linux as applicable. For control-enabled paths this includes both abrupt-disconnect held-state cleanup and explicit HyRemote stop/policy-transition cleanup with no late queued remote input. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
+Physical local-visible/local-input coexistence for the GA cross-mode envelope is tracked by #109, including E1/E2/E3/E4 on Windows/Linux as applicable. The repository execution/evidence template is `v1-physical-acceptance.md`; its existence or partial completion is not physical acceptance. For control-enabled paths the required evidence includes both abrupt-disconnect held-state cleanup and explicit HyRemote stop/policy-transition cleanup with no late queued remote input. This is a legitimate local-only evidence task once repository/hosted prerequisites reach its execution gate. It must not be replaced by an offscreen screenshot or inferred native-window creation result.
 
 ### Hosted CI infrastructure
 
-#74 currently causes multiple independent GitHub Actions jobs to terminate before a runner is assigned (`steps=[]`, `runner_id=0`). Such runs execute no repository commands and therefore prove neither pass nor failure of the code under test.
+#74 is currently an **intermittent hosted-runner assignment problem**. Historical jobs with `steps=[]`/`steps=null` and `runner_id=0` executed no repository commands and prove neither pass nor code failure. Other PR #106 jobs on 2026-09-17 did receive real Windows/Linux runners and reached concrete configure/build/test steps; those step-level results are valid evidence and repository-owned failures have been acted on.
 
-Repository work continues on the single V1 candidate #106. No release branch or milestone tag may be authorized from unexecuted hosted jobs.
+Newer exact-candidate runs can still remain queued with no step execution. Such queued/no-step runs do not satisfy #104, and a prior partial run does not substitute for a complete current-candidate Windows/Linux pass. Repository work continues on the single V1 candidate #106; no release branch or milestone tag may be authorized from incomplete hosted evidence.
 
 ## Qt version envelope
 
