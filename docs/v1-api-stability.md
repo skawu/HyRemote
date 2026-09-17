@@ -51,7 +51,7 @@ Frozen behavioral invariants:
 - errors/diagnostics use HyRemote product types rather than backend objects;
 - `connectedClientCount()` is backend-neutral and `Running` does not imply a connected viewer;
 - a non-recoverable runtime failure remains observable as `Faulted` until the owner explicitly calls `stop()`; configuration is not silently reopened while the failed runtime still exists;
-- `clearError()` acknowledges product-level and live recoverable diagnostics, and a later occurrence must become visible again; it does not hide the active non-recoverable diagnostic that explains `Faulted`;
+- `clearError()` acknowledges product-level and live recoverable diagnostics; unrelated viewer/capture/transport activity does not resurrect the same acknowledged occurrence, while a later occurrence must become visible again; it does not hide the active non-recoverable diagnostic that explains `Faulted`;
 - after `stop()` quiesces a Faulted runtime, the retained fatal diagnostic may be cleared explicitly and normal Stopped-state configuration/restart rules apply;
 - replacing transport/capture/input internals must not require normal application-source changes.
 
@@ -171,7 +171,7 @@ A breaking change is not allowed in a normal 1.x feature/hotfix merely because i
 
 This freeze document does not itself make any configuration Supported. `v1.0.0.0` still requires reference Windows/Linux acceptance, all three integration modes, clean installed/deployed consumers, examples/docs and the required physical local+remote coexistence gates.
 
-#74 currently prevents hosted jobs from receiving runners. Unexecuted jobs cannot authorize a release branch or tag.
+#74 is currently intermittent rather than a continuous no-runner state: some PR #106 jobs have received hosted runners and reached real configure/build/test failures, while newer candidates can still remain queued with no executable steps. Only actual step-level execution is product evidence; queued/no-step jobs are neither pass nor product failure and cannot authorize a release branch or tag.
 
 Milestone and GA tags are created only from accepted commits merged to `main` through the release process in `docs/git-flow-release.md`.
 
