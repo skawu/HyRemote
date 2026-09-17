@@ -50,10 +50,13 @@ require_file_token("docs/input-model.md" "normal backpressure may not prevent th
 require_file_token("src/remoteaccess/src/remote_access.cpp" "acknowledgedRecoverableError" "recoverable runtime error acknowledgement")
 require_file_token("src/remoteaccess/src/remote_access.cpp" "acknowledgeCurrentRecoverableError()" "clearError live-runtime acknowledgement path")
 require_file_token("src/remoteaccess/tests/test_remote_access.cpp" "testRecoverableRuntimeErrorCanBeAcknowledgedAndReappearsOnNewFailure" "recoverable clear/reoccurrence regression")
+require_file_token("src/remoteaccess/tests/test_remote_access_error_ack.cpp" "testAcknowledgedRecoverableErrorSurvivesUnrelatedTransportEvents" "recoverable acknowledgement ignores unrelated transport activity")
+require_file_token("src/remoteaccess/tests/CMakeLists.txt" "hyremote-remoteaccess-error-ack-test" "registered recoverable occurrence-isolation CTest")
 require_file_token("src/remoteaccess/tests/test_remote_access.cpp" "testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic" "Faulted explicit-stop recovery regression")
 require_file_token("src/remoteaccess/include/HyRemote/RemoteAccess.h" "A non-recoverable runtime failure is observable as" "installed-header Faulted lifecycle contract")
 require_file_token("src/remoteaccess/include/HyRemote/RemoteAccess.h" "Acknowledge/clear product-level and live recoverable diagnostics" "installed-header clearError contract")
 require_file_token("docs/v1-api-stability.md" "a non-recoverable runtime failure remains observable as `Faulted` until the owner explicitly calls `stop()`" "V1 Faulted API freeze")
+require_file_token("docs/v1-api-stability.md" "unrelated viewer/capture/transport activity does not resurrect the same acknowledged occurrence" "V1 clearError occurrence isolation")
 require_file_token("docs/v1-api-stability.md" "a later occurrence must become visible again" "V1 clearError recurrence semantics")
 
 # Target lifetime must remain one facade/runtime state machine. Concrete adapters report TargetLost,
