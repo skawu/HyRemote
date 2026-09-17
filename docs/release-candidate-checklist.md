@@ -24,7 +24,7 @@ Before a release branch is cut:
 
 Infrastructure failure such as #74 is not a product pass. If required jobs never execute, the milestone remains unaccepted and its authority issue remains open.
 
-For **V1.0.0.0**, repository implementation on Draft PR #106 is the single convergence line, but that branch is not itself release authorization. Before `release/v1.0.0.0` may be cut, #30/#31/#32/#39/#41, #101/#104/#107/#109 and final GA authority #33 must all be accepted/closed as completed. This means #104 must contain actually executed Windows/Linux evidence and #109 must contain the distinct physical/native evidence before the release branch can exist legitimately.
+For **V1.0.0.0**, repository implementation on Draft PR #106 is the single convergence line, but that branch is not itself release authorization. Before `release/v1.0.0.0` may be cut, #30/#31/#32/#39/#41, #101/#104/#107/#109 and final GA authority #33 must all be accepted/closed as completed. This means #104 must contain actually executed Windows/Linux evidence and #109 must contain the distinct physical/native evidence before the release branch can exist legitimately. The canonical repository execution/evidence template for #109 is `docs/v1-physical-acceptance.md`; completing or merely possessing that file does not replace #109 review/closure, and its candidate SHA must match the accepted integration point.
 
 The Git Flow workflow reads those issue states for `release/v* -> main`; it does not close issues or create acceptance on the user's behalf. Editing release notes or toggling PR Draft state cannot substitute for authority closure.
 
@@ -85,7 +85,7 @@ V1.0.0.0 additionally requires these explicit engineering/release-closure gates 
 - **#101 — public API/package freeze:** one normal installed C++ target (`HyRemote::RemoteAccess`), no installed/exported Core or QPA application link target, stable C++/QML/deploy surface;
 - **#104 — integrated GA automation:** all three modes coexist in one exact-Qt-6.8.3 candidate and the Windows/Linux jobs actually execute and pass; a no-runner result does not satisfy it;
 - **#107 — release readiness:** release notes, NOTICE/dependency classification, package manifest, LICENSE/NOTICE installation and deterministic metadata checks are complete and aligned with the frozen artifact model;
-- **#109 — physical/native coexistence:** the required Windows/Linux E1/E2/E3/E4 local-visible/local-input + remote envelope passes where specified by #32/#33, including abrupt-disconnect held-state cleanup and explicit-stop/policy-transition cleanup with no late queued remote input.
+- **#109 — physical/native coexistence:** the required Windows/Linux E1/E2/E3/E4 local-visible/local-input + remote envelope passes where specified by #32/#33, including abrupt-disconnect held-state cleanup and explicit-stop/policy-transition cleanup with no late queued remote input. Execute and retain that exact-candidate record through `docs/v1-physical-acceptance.md`; the runbook is preparation/evidence structure, while #109 remains the acceptance authority.
 
 These are not optional documentation references. #33 closes only after these gates and predecessor authorities have been accepted; the Git Flow release-authority check then prevents a `release/v1.0.0.0` PR from bypassing them.
 
