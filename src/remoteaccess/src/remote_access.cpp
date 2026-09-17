@@ -142,8 +142,9 @@ struct RemoteAccess::Impl
 {
     struct SessionErrorRevision
     {
-        std::uint64_t captureEvents = 0;
-        std::uint64_t transportEvents = 0;
+        // V1 Core currently publishes a recoverable SessionError only when InputSink::post() throws.
+        // Track that occurrence counter directly: unrelated capture/transport activity must not make
+        // an already acknowledged recoverable error visible again.
         std::uint64_t inputPostFailures = 0;
     };
 
@@ -176,7 +177,7 @@ struct RemoteAccess::Impl
         if (!session)
             return {};
         const hyremote::SessionStats stats = session->stats();
-        return SessionErrorRevision{stats.captureEvents, stats.transportEvents, stats.inputPostFailures};
+        return SessionErrorRevision{stats.inputPostFailures};
     }
 
     bool isAcknowledgedRecoverableError(const hyremote::SessionError &candidate) const
@@ -191,9 +192,7 @@ struct RemoteAccess::Impl
         }
 
         const SessionErrorRevision current = currentSessionErrorRevision();
-        return current.captureEvents == acknowledgedRecoverableRevision.captureEvents
-               && current.transportEvents == acknowledgedRecoverableRevision.transportEvents
-               && current.inputPostFailures == acknowledgedRecoverableRevision.inputPostFailures;
+        return current.inputPostFailures == acknowledgedRecoverableRevision.inputPostFailures;
     }
 
     void resetErrorAcknowledgement() noexcept
@@ -447,9 +446,9 @@ void RemoteAccess::clearError()
 
     m_impl->error.reset();
     // A live non-recoverable Core fault remains the reason the Session is Faulted and cannot be
-    // hidden by a UI acknowledgement. Recoverable runtime diagnostics may be acknowledged; a later
-    // event advances the Core counters and makes the error visible again even when its text/code is
-    // identical to the acknowledged one.
+    // hidden by a UI acknowledgement. Recoverable runtime diagnostics may be acknowledged; only a
+    // later occurrence of that recoverable Core error advances its occurrence counter and makes it
+    // visible again. Unrelated viewer/capture/transport activity must not resurrect the old error.
     m_impl->acknowledgeCurrentRecoverableError();
 }
 
