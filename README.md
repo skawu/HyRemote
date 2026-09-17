@@ -4,7 +4,7 @@
 
 <h1 align="center">HyRemote</h1>
 
-<p align="center"><strong>Qt Embedded Remote Access Framework</strong><br>
+<p align="center"><strong>Qt Remote Access Framework</strong><br>
 Remote display and remote input for existing Qt Widgets and Qt Quick applications.</p>
 
 <p align="center">
