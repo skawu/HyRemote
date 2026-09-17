@@ -30,6 +30,19 @@ target_include_directories(hyremote-target-component-provider-test
 )
 add_test(NAME hyremote-target-component-provider-test COMMAND hyremote-target-component-provider-test)
 
+# Pure admission-state proof shared by Widgets/Quick. It has no GUI/display dependency and pins the
+# bounded protected-release reserve used when normal remote-input backpressure is saturated.
+add_executable(hyremote-input-mailbox-admission-test
+    test_input_mailbox_admission.cpp
+)
+target_link_libraries(hyremote-input-mailbox-admission-test PRIVATE HyRemote::Core)
+target_include_directories(hyremote-input-mailbox-admission-test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+add_test(NAME hyremote-input-mailbox-admission-test COMMAND hyremote-input-mailbox-admission-test)
+set_tests_properties(hyremote-input-mailbox-admission-test PROPERTIES TIMEOUT 15)
+
 if(HYREMOTE_WITH_VNC)
     # Network interoperability harness used by the dual-OS maintained-client workflow. It links the
     # same private factory as RemoteAccess; it is not installed and is not part of the public SDK.
