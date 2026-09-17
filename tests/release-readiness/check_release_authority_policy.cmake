@@ -64,7 +64,10 @@ foreach(required_phrase
         [=[`main` and `develop` as **unprotected**]=]
         [=[after-the-fact direct-push audit]=]
         [=[cannot undo a push]=]
-        [=[must not be described as branch protection]=])
+        [=[must not be described as branch protection]=]
+        [=[The canonical repository execution/evidence template for #109 is `docs/v1-physical-acceptance.md`]=]
+        [=[its candidate SHA must match the accepted integration point]=]
+        [=[the runbook is preparation/evidence structure, while #109 remains the acceptance authority]=])
     string(FIND "${checklist}" "${required_phrase}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -74,4 +77,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release-authority policy gate: PASS "
-    "(issue-backed acceptance precedes release branch; mainline direct-push audit is explicitly detection-only; tag/backmerge facts preserved)")
+    "(issue-backed acceptance precedes release branch; exact-candidate #109 runbook stays subordinate to issue authority; mainline direct-push audit is detection-only; tag/backmerge facts preserved)")
