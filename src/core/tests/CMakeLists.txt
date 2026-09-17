@@ -20,12 +20,13 @@ hyremote_add_core_test(hyremote-core-test-timing test_timing.cpp)
 hyremote_add_core_test(hyremote-core-test-mailbox test_mailbox.cpp)
 hyremote_add_core_test(hyremote-core-test-transport-handoff test_transport_handoff.cpp)
 hyremote_add_core_test(hyremote-core-test-session-lifecycle test_session_lifecycle.cpp)
+hyremote_add_core_test(hyremote-core-test-session-defaults test_session_defaults.cpp)
 hyremote_add_core_test(hyremote-core-test-input-routing test_input_routing.cpp)
 hyremote_add_core_test(hyremote-core-test-input-normalization test_input_normalization.cpp)
 hyremote_add_core_test(hyremote-core-test-callback-lifetime test_callback_lifetime.cpp)
 
-# The dependency rule of ADR-0001 is testable: no Core source may include a Qt GUI/private,
-# protocol or platform header, and the Core target may not link a Qt target.
+# The dependency rule of ADR-0001 is testable: no Core source may include or declare a Qt GUI/private,
+# protocol or platform dependency, and the Core target may not link a Qt target.
 add_test(NAME hyremote-core-test-dependency-boundary
          COMMAND ${CMAKE_COMMAND}
                  -DCORE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/..
