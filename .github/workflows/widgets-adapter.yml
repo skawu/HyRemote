@@ -8,6 +8,7 @@ on:
       - 'src/core/**'
       - 'src/remoteaccess/**'
       - 'docs/widgets-capture.md'
+      - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/widgets-adapter.yml'
   workflow_dispatch:
 
@@ -42,6 +43,11 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
+
+      - name: Install Linux Qt desktop host dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
 
       - name: Configure, build and test — Linux
         if: runner.os == 'Linux'
