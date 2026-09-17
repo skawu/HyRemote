@@ -42,6 +42,51 @@ forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implement
 forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
                  "legacy root spikes path")
 
+# Historical engineering documents must still point at paths that exist after the canonical repository
+# layout migration. Keep this list intentionally narrow: docs/repository-layout.md itself is allowed to
+# mention legacy build-directory names when explaining the migration, but reproduction/source links may
+# not silently regress to removed root-level directories.
+require_doc_token("docs/capture-spike.md" "[`research/capture/`](../research/capture/)"
+                  "canonical capture research source path")
+require_doc_token("docs/capture-spike.md" "cmake -S research/capture -B build/spike-capture"
+                  "canonical capture reproducer path")
+forbid_doc_token("docs/capture-spike.md" "../spikes/capture/"
+                 "removed capture spike source path")
+
+require_doc_token("docs/async-capture-spike.md" "[`research/async-capture/`](../research/async-capture/)"
+                  "canonical async-capture research source path")
+require_doc_token("docs/async-capture-spike.md" "cmake -S research/async-capture -B build/async-spike"
+                  "canonical async-capture reproducer path")
+forbid_doc_token("docs/async-capture-spike.md" "../spikes/async-capture/"
+                 "removed async-capture spike source path")
+
+require_doc_token("docs/qpa-capture-classification-qt-6.8.3.md"
+                  "`src/remoteaccess/src/widgets/widget_target.cpp`"
+                  "canonical Widgets target source citation")
+require_doc_token("docs/qpa-capture-classification-qt-6.8.3.md"
+                  "`src/remoteaccess/src/quick/quick_target.cpp`"
+                  "canonical Quick target source citation")
+forbid_doc_token("docs/qpa-capture-classification-qt-6.8.3.md"
+                 "`remoteaccess/src/"
+                 "removed root RemoteAccess source citation")
+
+require_doc_token("docs/x86-vnc-transport-evaluation.md" "`research/vnc-transport-rust-ffi/`"
+                  "canonical historical Rust research path")
+forbid_doc_token("docs/x86-vnc-transport-evaluation.md" "`spikes/vnc-transport-rust-ffi/`"
+                 "removed historical Rust spike path")
+
+# ARCH-01 remains useful historical design input, but it must not compete with the frozen V1 architecture.
+# Pin the authority statement rather than rewriting proposal-era diagrams into fake present-day evidence.
+require_doc_token("docs/core-architecture.md" "Status: **ARCH-01 proposal (proposal-era design input)**"
+                  "proposal-era Core architecture status")
+require_doc_token("docs/core-architecture.md" "Canonical authority: `docs/architecture.md` is the frozen V1 architecture"
+                  "frozen architecture authority")
+require_doc_token("docs/core-architecture.md" "`research/` trees stay non-production"
+                  "canonical research path in Core architecture history")
+
+require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.cmake enforces the include/declaration/link part"
+                  "canonical Core dependency-guard path and scope")
+
 # Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
 # the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
 require_doc_token("docs/dependency-policy.md" "Source under `research/` may remain as historical research"
@@ -123,4 +168,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(package/layout/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
+    "(canonical source/research paths + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
