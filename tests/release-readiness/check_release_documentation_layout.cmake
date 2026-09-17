@@ -42,6 +42,19 @@ forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implement
 forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
                  "legacy root spikes path")
 
+# Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
+# the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
+require_doc_token("docs/dependency-policy.md" "Source under `research/` may remain as historical research"
+                  "canonical research path in dependency policy")
+forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
+                 "legacy spikes path in dependency policy")
+require_doc_token("docs/dependency-policy.md" "### Repository test/CI-only tools"
+                  "CI-only tooling boundary")
+require_doc_token("docs/dependency-policy.md" "`vncdotool==1.3.0`"
+                  "pinned maintained VNC test client")
+require_doc_token("docs/dependency-policy.md" "These tools are pinned/used by repository automation and acceptance harnesses"
+                  "CI tools are not runtime payloads")
+
 # User-facing entry points must identify the canonical layout document so repository contributors do
 # not infer module ownership from historical root names.
 require_doc_token("README.md" "docs/repository-layout.md" "repository-layout documentation link")
@@ -74,4 +87,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(package/layout governance + versioned #109 physical acceptance preparation; no physical PASS implied)")
+    "(package/layout/dependency governance + versioned #109 physical acceptance preparation; no physical PASS implied)")
