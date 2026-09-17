@@ -312,6 +312,7 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PYTHON_EXE=%pythonLocation%\python.exe"
           set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
           cmake -S tests\consumer-installed-qpa -B consumer-qpa -G Ninja ^
@@ -324,7 +325,9 @@ jobs:
           set "QT_PLUGIN_PATH="
           set "QT_QPA_PLATFORM_PLUGIN_PATH="
           set "QT_QPA_PLATFORM="
-          python tests\consumer-installed-qpa\product_fit.py ^
+          rem GA runtime proof must fail if the deployment omitted a Qt/HyRemote DLL; never inherit the Qt SDK bin path.
+          set "PATH=%CD%\consumer-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\consumer-qpa-install\bin\hyremote-installed-qpa-consumer.exe" ^
             --port 5992 > ga-qpa-consumer.log 2>&1 || (type ga-qpa-consumer.log & exit /b 1)
           type ga-qpa-consumer.log
@@ -336,6 +339,7 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PYTHON_EXE=%pythonLocation%\python.exe"
           set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
           cmake -S tests\consumer-installed-qml -B consumer-qml-qpa -G Ninja ^
@@ -352,7 +356,8 @@ jobs:
           set "QT_PLUGIN_PATH="
           set "QT_QPA_PLATFORM_PLUGIN_PATH="
           set "QT_QPA_PLATFORM="
-          python tests\consumer-installed-qpa\product_fit.py ^
+          set "PATH=%CD%\consumer-qml-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\consumer-qml-qpa-install\bin\hyremote-installed-qml-consumer.exe" ^
             --port 5993 > ga-qml-qpa-consumer.log 2>&1 || (type ga-qml-qpa-consumer.log & exit /b 1)
           type ga-qml-qpa-consumer.log
