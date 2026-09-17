@@ -27,6 +27,20 @@ function(forbid_token text token description)
     endif()
 endfunction()
 
+function(require_link_target text target description)
+    string(REGEX MATCH "target_link_libraries[ \t\r\n]*\\([^)]*${target}" match "${text}")
+    if("${match}" STREQUAL "")
+        message(FATAL_ERROR "repository-layout: ${description}: ${target}")
+    endif()
+endfunction()
+
+function(forbid_link_target text target description)
+    string(REGEX MATCH "target_link_libraries[ \t\r\n]*\\([^)]*${target}" match "${text}")
+    if(NOT "${match}" STREQUAL "")
+        message(FATAL_ERROR "repository-layout: ${description}: ${target}")
+    endif()
+endfunction()
+
 set(required_directories
     "src/core"
     "src/remoteaccess"
@@ -86,18 +100,18 @@ if(research_guard EQUAL -1 OR research_path EQUAL -1 OR research_path LESS resea
 endif()
 
 read_repo_file("integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
-require_token("${qml_cmake}" "HyRemote::RemoteAccess"
-              "QML integration stopped reusing the shared RemoteAccess runtime")
-forbid_token("${qml_cmake}" "HyRemote::Core"
-             "QML integration must not link Core directly")
+require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"
+                    "QML integration stopped linking the shared RemoteAccess runtime")
+forbid_link_target("${qml_cmake}" "HyRemote::Core"
+                   "QML integration must not link Core directly")
 forbid_token("${qml_cmake}" "remote_access.cpp"
              "QML integration must not compile a second RemoteAccess facade")
 
 read_repo_file("integrations/qpa/CMakeLists.txt" qpa_cmake)
-require_token("${qpa_cmake}" "HyRemote::RemoteAccess"
-              "QPA integration stopped reusing the shared RemoteAccess runtime")
-forbid_token("${qpa_cmake}" "HyRemote::Core"
-             "QPA platform payload must not link Core directly")
+require_link_target("${qpa_cmake}" "HyRemote::RemoteAccess"
+                    "QPA integration stopped linking the shared RemoteAccess runtime")
+forbid_link_target("${qpa_cmake}" "HyRemote::Core"
+                   "QPA platform payload must not link Core directly")
 forbid_token("${qpa_cmake}" "remote_access.cpp"
              "QPA platform payload must not compile a second RemoteAccess facade")
 
