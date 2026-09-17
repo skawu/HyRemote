@@ -17,6 +17,9 @@ endif()
 if(NOT DEFINED TEST_QML_IMPORT_PATH_EXISTS)
     set(TEST_QML_IMPORT_PATH_EXISTS ON)
 endif()
+if(NOT DEFINED TEST_QML_MODULE_DIR_EXISTS)
+    set(TEST_QML_MODULE_DIR_EXISTS ON)
+endif()
 if(NOT DEFINED TEST_STALE_QML_METADATA)
     set(TEST_STALE_QML_METADATA OFF)
 endif()
@@ -44,9 +47,6 @@ add_executable(deploy-probe EXCLUDE_FROM_ALL dummy.cpp)
 
 if(TEST_DEPLOY_QPA)
     if(TEST_STALE_QPA_METADATA)
-        # Model an unrelated installed SDK that left valid-looking QPA metadata in the parent scope.
-        # A local/source RemoteAccess acquisition must not consume this plugin when its own source
-        # configure did not create HyRemote::QpaPlatform.
         set(HyRemote_QPA_AVAILABLE TRUE)
         set(_fixture_qpa_payload
             "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_MODULE_PREFIX}stale-qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
@@ -55,8 +55,6 @@ if(TEST_DEPLOY_QPA)
     elseif(TEST_QPA_AVAILABLE)
         set(HyRemote_QPA_AVAILABLE TRUE)
         if(TEST_INSTALLED_PAYLOAD)
-            # Mirror the real qhyremote MODULE filename exactly: Linux carries the `lib` module
-            # prefix while Windows does not. A platform-inaccurate fixture could hide package metadata regressions.
             set(_fixture_qpa_payload
                 "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
             file(WRITE "${_fixture_qpa_payload}" "fixture")
@@ -65,8 +63,6 @@ if(TEST_DEPLOY_QPA)
             add_library(qpa-probe MODULE EXCLUDE_FROM_ALL dummy.cpp)
             add_library(HyRemote::QpaPlatform ALIAS qpa-probe)
             if(TEST_STALE_QPA_NEGATIVE_METADATA)
-                # Current source target exists and must remain authoritative even when unrelated
-                # installed-package metadata says QPA is unavailable / qualified for another Qt.
                 set(HyRemote_QPA_AVAILABLE FALSE)
             endif()
         endif()
@@ -92,14 +88,17 @@ else()
     add_library(HyRemote::RemoteAccess ALIAS fake-remoteaccess)
 endif()
 
-# Source availability is proven by the current-configure hyremote-qml target; installed availability
-# is represented only by the existing import-root metadata from HyRemoteConfig.cmake. The stale case
-# deliberately provides a plausible absolute path without a source module target.
+# The public QML identity is the stable `HyRemote` URI below the advertised import root. Keep root
+# and module-directory availability independently controllable so damaged-package cases are tested
+# without teaching the deployment helper any private library filename.
 if(TEST_QML)
     if(TEST_QML_AVAILABLE)
         set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/qml-import")
         if(TEST_QML_IMPORT_PATH_EXISTS)
             file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
+            if(TEST_QML_MODULE_DIR_EXISTS)
+                file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}/HyRemote")
+            endif()
         endif()
         if(NOT TEST_INSTALLED_PAYLOAD)
             add_library(qml-backing SHARED EXCLUDE_FROM_ALL dummy.cpp)
@@ -110,7 +109,7 @@ if(TEST_QML)
         endif()
     elseif(TEST_STALE_QML_METADATA)
         set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/stale-qml-import")
-        file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
+        file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}/HyRemote")
     endif()
 endif()
 
