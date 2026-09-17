@@ -167,6 +167,7 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "SDK_PREFIX=%RUNNER_TEMP%\hyremote-sdk"
+          set "PYTHON_EXE=%pythonLocation%\python.exe"
           rem Preserve the runner + MSVC build tool PATH before any clean-deployment run narrows it.
           set "BUILD_PATH=%PATH%"
           set "PATH=%QT_PREFIX%\bin;%BUILD_PATH%"
@@ -252,7 +253,9 @@ jobs:
           set "QT_PLUGIN_PATH="
           set "QT_QPA_PLATFORM_PLUGIN_PATH="
           set "QT_QPA_PLATFORM="
-          python tests\consumer-installed-qpa\product_fit.py ^
+          rem Run with only the deployed bin plus Windows system directories; the Qt SDK cannot satisfy missing DLLs.
+          set "PATH=%CD%\deploy-source-qpa\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\deploy-source-qpa\bin\hyremote-installed-qpa-consumer.exe" ^
             --port 5994
 
@@ -275,6 +278,7 @@ jobs:
           set "QT_PLUGIN_PATH="
           set "QT_QPA_PLATFORM_PLUGIN_PATH="
           set "QT_QPA_PLATFORM="
-          python tests\consumer-installed-qpa\product_fit.py ^
+          set "PATH=%CD%\deploy-source-qml-qpa\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\deploy-source-qml-qpa\bin\hyremote-installed-qml-consumer.exe" ^
             --port 5995
