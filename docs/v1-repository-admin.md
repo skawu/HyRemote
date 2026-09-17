@@ -4,16 +4,34 @@ Status: **repository preparation / administration gate; not product acceptance e
 
 This document records the repository-level actions that must be complete before `v1.0.0.0` release authorization. These actions keep the GitHub repository governable and auditable; they do **not** replace #104 Windows/Linux product execution or #109 physical/native coexistence evidence.
 
-## 1. Restore the four V1 authority workflows
+## 1. Drain superseded V1 Actions runs
 
-During the 2026-09-17 Actions backlog, four high-fan-out workflows were temporarily disabled as a queue brake:
+The 2026-09-17 V1 convergence work accumulated a large queue before per-workflow concurrency cancellation existed. The current workflows now cancel superseded runs on the same ref, but runs created from older workflow definitions can remain in the Actions queue.
+
+First inspect the exact stale-run set without changing anything:
+
+```powershell
+pwsh .github/scripts/drain-superseded-v1-runs.ps1
+```
+
+The helper reads the current `feature/104-v1-ga-acceptance-matrix` HEAD and only marks queued/in-progress `pull_request` runs from older SHAs as stale. Current-HEAD runs are always retained. To cancel the reviewed stale set:
+
+```powershell
+pwsh .github/scripts/drain-superseded-v1-runs.ps1 -Execute
+```
+
+Before cancelling anything, the script re-reads the branch HEAD; if the branch moved, the operation aborts and must be re-run from a fresh snapshot.
+
+## 2. Restore the four V1 authority workflows
+
+During the Actions backlog, four high-fan-out workflows were temporarily disabled as a queue brake:
 
 - `V1 GA acceptance`;
 - `Declarative QML API`;
 - `Transparent QPA Proxy`;
 - `Git Flow policy`.
 
-The V1 convergence branch now carries per-workflow/per-ref concurrency with `cancel-in-progress: true`, so stale runs are cancelled instead of accumulating. Before #104 can be accepted, restore the four workflows and verify they are `active`:
+The V1 convergence branch now carries per-workflow/per-ref concurrency with `cancel-in-progress: true`, so new stale runs are cancelled instead of accumulating. After the superseded-run drain, restore the four workflows and verify they are `active`:
 
 ```powershell
 pwsh .github/scripts/restore-v1-workflows.ps1
@@ -21,7 +39,7 @@ pwsh .github/scripts/restore-v1-workflows.ps1
 
 Activation itself is not test evidence. Only subsequent step-level executions on the exact accepted candidate count.
 
-## 2. Finalize repository settings
+## 3. Finalize repository settings
 
 Run the repository settings helper from an authenticated administrator environment:
 
@@ -39,7 +57,7 @@ It verifies/enforces:
 
 Private vulnerability reporting is the preferred sensitive-report path documented by `SECURITY.md`; do not claim it is available until the repository setting is actually enabled and verified.
 
-## 3. Converge historical branch refs
+## 4. Converge historical branch refs
 
 Branch history belongs in commits, PRs, issues and tags; task branches are temporary work cursors. The one-time cleanup manifest is SHA-locked and refuses to delete any ref that moved or became an open PR head.
 
@@ -65,7 +83,7 @@ feature/104-v1-ga-acceptance-matrix
 
 After #106 is merged and its lifecycle ends, its head branch should also be deleted.
 
-## 4. Branch-protection/enforcement boundary
+## 5. Branch-protection/enforcement boundary
 
 Repository API evidence on 2026-09-17 shows no required-status-check enforcement on `main` or `develop`. The Git Flow workflow, release-authority checks and mainline push audit therefore remain policy/audit controls rather than a substitute for server-side pre-push branch protection.
 
@@ -79,10 +97,11 @@ Until stronger server-side enforcement is deliberately configured, V1 release go
 
 Do not describe the current workflow/audit layer as equivalent to branch protection.
 
-## 5. Completion record
+## 6. Completion record
 
 Before #33 authorizes `v1.0.0.0`, record the following repository facts in the release evidence envelope:
 
+- [ ] superseded pre-concurrency V1 Actions runs drained without cancelling current-HEAD runs;
 - [ ] four V1 authority workflows verified `active`;
 - [ ] `delete_branch_on_merge=true` verified;
 - [ ] private vulnerability reporting verified enabled;
@@ -92,4 +111,4 @@ Before #33 authorizes `v1.0.0.0`, record the following repository facts in the r
 - [ ] #104 actual Windows/Linux acceptance complete;
 - [ ] #109 physical/native coexistence evidence complete.
 
-The first six items are repository governance readiness. The last two are product acceptance. Neither category may be used to substitute for the other.
+The first seven items are repository governance readiness. The last two are product acceptance. Neither category may be used to substitute for the other.
