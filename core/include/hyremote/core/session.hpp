@@ -178,6 +178,11 @@ struct SessionStats
     // concurrent stop() callers wait for the owner and return without touching the run's components
     // or workers again.
     std::uint64_t teardownsPerformed = 0;
+
+    // Times this run published `Running`. A cancelled start must leave it at 0, which makes "start()
+    // never published `Running` after a concurrent stop() won" an exact observation instead of a
+    // sampled one (a polling observer can miss a short-lived transition).
+    std::uint64_t runningPublications = 0;
 };
 
 class Session

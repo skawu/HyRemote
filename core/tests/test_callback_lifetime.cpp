@@ -95,6 +95,11 @@ HYR_TEST(late_callbacks_after_session_destruction_are_safe)
         session.setTransport(std::make_unique<LoaningTransport>(rawTransport));
         HYR_CHECK(session.start());
         session.stop();
+
+        // The gate is closed by stop(), so a delivery after stop() must not reach the mailbox. This is
+        // observable, unlike the destruction case below.
+        HYR_CHECK(rawSource->forceDeliver(makeFrame(8, 8)));
+        HYR_CHECK_EQ(session.stats().framesDispatched, std::uint64_t{0});
     }  // ~Session destroys the implementation here; the backends are still owned by this test
 
     HYR_CHECK(rawSource->forceDeliver(makeFrame(8, 8)));
@@ -102,9 +107,10 @@ HYR_TEST(late_callbacks_after_session_destruction_are_safe)
     rawTransport->forceDeliverInput(InputEvent{});
     rawTransport->forceReportEvent(TransportEvent{TransportEventCode::FatalFailure, "late"});
 
-    // Reaching this point without a crash is the assertion; the gate also guarantees that the
-    // callbacks never dereferenced the destroyed implementation.
-    HYR_CHECK(true);
+    // Reaching this point without a crash is the primary assertion: the closed gate guarantees the late
+    // callbacks never dereferenced the destroyed implementation. Nothing may have been started as a side
+    // effect either, so the backend saw no further capture request.
+    HYR_CHECK_EQ(rawSource->requestCalls(), 0);
 }
 
 HYR_TEST(a_throwing_input_sink_is_reported_but_not_fatal)

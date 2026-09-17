@@ -238,11 +238,19 @@ void RemoteAccess::stop() noexcept
     if (!m_impl || !m_impl->session)
         return;
 
-    if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError())
-        m_impl->error = mapError(*coreError);
+    // `noexcept` is part of the contract: an exception escaping here terminates the host process. The
+    // body builds diagnostics (QString/QtError through mapError) and stops the Session, so a bad_alloc
+    // is the realistic failure mode and it must not escape.
+    try {
+        if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError())
+            m_impl->error = mapError(*coreError);
 
-    m_impl->session->stop();
-    m_impl->session.reset();
+        m_impl->session->stop();
+        m_impl->session.reset();
+    } catch (...) {
+        // Nothing can be reported from inside a noexcept teardown; the Session has already published
+        // whatever terminal transition it reached.
+    }
 }
 
 RemoteAccessState RemoteAccess::state() const

@@ -307,11 +307,19 @@ void testQueuedInputIsDroppedWhenSinkIsDestroyed()
     event.sourceViewport = {100U, 50U, 1.0F};
     event.x = 10.0F;
     event.y = 10.0F;
+
+    // Positive control: with the sink alive, the very same event is delivered. Without this the negative
+    // assertion below would also pass if input were silently swallowed for an unrelated reason.
+    components.input->post(event);
+    CHECK(pumpUntil([&] { return probe.mouseMoves == 1; }));
+
+    // Now queue the same event and destroy the sink before the GUI thread runs it: it must be dropped,
+    // and the counter must stay at the one delivery observed above.
     components.input->post(event);
     components.input.reset();
 
     QCoreApplication::processEvents();
-    CHECK(probe.mouseMoves == 0);
+    CHECK(probe.mouseMoves == 1);
 }
 
 }  // namespace

@@ -205,10 +205,27 @@ HYR_TEST(configuration_and_component_errors_fail_before_starting)
     HYR_CHECK(!validateSessionConfig(invalid).empty());
 }
 
+HYR_TEST(session_config_defaults_are_pinned)
+{
+    // ADR-0003 records these as the initial defaults, so changing one is a deliberate decision rather
+    // than an accident. Asserting the values (not only that the configuration validates) makes such a
+    // change visible in review instead of in a later pacing or backpressure investigation.
+    const SessionConfig defaults;
+    HYR_CHECK_EQ(defaults.capture.maxInFlight, std::size_t{2});
+    HYR_CHECK_EQ(defaults.frameQueue.capacity, std::size_t{2});
+    HYR_CHECK(defaults.frameQueue.policy == BackpressurePolicy::DropOldest);
+    HYR_CHECK(!defaults.capture.targetFramesPerSecond.has_value());
+    HYR_CHECK_EQ(defaults.capture.rejectedRequestRetryDelay, std::chrono::milliseconds{50});
+    HYR_CHECK(validateSessionConfig(defaults).empty());
+}
+
 HYR_TEST(start_requires_the_stopped_state_and_stop_is_idempotent)
 {
     RunningSession running;
     HYR_CHECK(running.start());
+
+    // A successful run publishes `Running` exactly once.
+    HYR_CHECK_EQ(running.session->stats().runningPublications, std::uint64_t{1});
 
     HYR_CHECK(!running.session->start());
     HYR_CHECK(running.session->state() == SessionState::Running);
@@ -463,44 +480,10 @@ HYR_TEST(r2b2_stop_while_the_transport_start_is_in_progress)
 
 namespace {
 
-// Records whether the Session was ever observed `Running`, so "start() never publishes `Running`
-// after a stop() won" is checked by observation and not only inferred from the final state.
-class RunningWatcher
-{
-public:
-    explicit RunningWatcher(Session &session)
-        : m_session(session)
-        , m_thread([this] {
-            while (!m_stop) {
-                if (m_session.state() == SessionState::Running)
-                    m_sawRunning = true;
-                std::this_thread::sleep_for(std::chrono::microseconds(200));
-            }
-        })
-    {
-    }
-
-    ~RunningWatcher() { stop(); }
-
-    void stop()
-    {
-        m_stop = true;
-        if (m_thread.joinable())
-            m_thread.join();
-    }
-
-    bool sawRunning()
-    {
-        stop();
-        return m_sawRunning.load();
-    }
-
-private:
-    Session &m_session;
-    std::atomic<bool> m_stop{false};
-    std::atomic<bool> m_sawRunning{false};
-    std::thread m_thread;
-};
+// "start() never publishes `Running` after a stop() won" used to be observed by a polling thread that
+// sampled `Session::state()` every 200 us. Sampling can miss a short-lived transition (a false pass) and
+// couples the test to thread timing, so the exact `SessionStats::runningPublications` counter is used
+// instead.
 
 // Runs `action` on a separate thread and returns only once it has completed, so a test can inject a
 // stop() at a deterministic point from inside a gated component start.
@@ -536,13 +519,14 @@ HYR_TEST(r3b1_stop_wins_at_the_earliest_moment_after_starting_is_published)
         rendezvousOk.store(stopOnSeparateThreadAndWait(*running.session, stopper));
     };
 
-    RunningWatcher watcher(*running.session);
     const bool started = running.session->start();
     stopper.join();
 
     HYR_CHECK(rendezvousOk.load());
     HYR_CHECK(!started);
-    HYR_CHECK(!watcher.sawRunning());  // no later transition to `Running`
+    // Exact, not sampled: the run never published `Running` (a polling observer can miss a
+    // short-lived transition, which would be a false pass).
+    HYR_CHECK_EQ(running.session->stats().runningPublications, std::uint64_t{0});
     HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
     HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
     HYR_CHECK_EQ(running.source->stopCalls(), 1);
@@ -581,13 +565,12 @@ HYR_TEST(r3b1_stop_wins_after_the_transport_startup_commits_before_running)
         rendezvousOk.store(stopOnSeparateThreadAndWait(*running.session, stopper));
     };
 
-    RunningWatcher watcher(*running.session);
     const bool started = running.session->start();
     stopper.join();
 
     HYR_CHECK(rendezvousOk.load());
     HYR_CHECK(!started);
-    HYR_CHECK(!watcher.sawRunning());  // no later transition to `Running`
+    HYR_CHECK_EQ(running.session->stats().runningPublications, std::uint64_t{0});
     HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
     HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
     // The teardown stopped the capture source (it had been committed); the transport finished

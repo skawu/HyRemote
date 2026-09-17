@@ -975,6 +975,9 @@ bool Session::start()
             impl.transportStarted = transportStarted;
             if (transportMessage.empty() && transportStarted) {
                 impl.state = SessionState::Running;
+                // Observable proof of the publication itself: a cancelled start leaves this at 0 and a
+                // successful one at exactly 1, which a sampled observer cannot guarantee.
+                ++impl.stats.runningPublications;
                 published = true;
             }
         }
@@ -1032,38 +1035,46 @@ void Session::stop() noexcept
 {
     Impl &impl = *m_impl;
 
-    // Fast path: this run is already down.
-    {
-        std::lock_guard<std::mutex> lock(impl.mutex);
-        if (impl.state == SessionState::Stopped)
-            return;
-    }
-
-    // Take the teardown claim atomically. A concurrent stop() (or an in-progress start() that is
-    // being cancelled) waits here until the current teardown has finished, and then either finds the
-    // run already `Stopped` or completes the transition of a faulted run. The claim also invalidates
-    // the run generation, which is how a concurrent start() learns that its run was cancelled.
-    Impl::claimTeardown(impl);
-
-    bool alreadyStopped = false;
-    {
-        std::lock_guard<std::mutex> lock(impl.mutex);
-        if (impl.state == SessionState::Stopped) {
-            // Another caller completed the teardown while we waited for the claim. Release it so
-            // further waiting callers can finish as well, and touch nothing else.
-            impl.teardownStarted = false;
-            alreadyStopped = true;
+    // `noexcept` is part of the contract: an exception escaping here would terminate the host process.
+    // The body takes the Session mutex and builds diagnostics, so a std::system_error or std::bad_alloc
+    // is the realistic failure and it must not escape. A teardown that fails this way still leaves the
+    // Session in the terminal state it had already published.
+    try {
+        // Fast path: this run is already down.
+        {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.state == SessionState::Stopped)
+                return;
         }
-    }
-    if (alreadyStopped) {
-        impl.cv.notify_all();
-        return;
-    }
 
-    // The ordered teardown closes the callback gate before touching the components, so a late
-    // frame/event/input callback from an adapter that violates its quiescence rule is ignored
-    // instead of reaching a half-destroyed Session.
-    Impl::teardownRun(impl, false, SessionErrorCode::ComponentFailure, {});
+        // Take the teardown claim atomically. A concurrent stop() (or an in-progress start() that is
+        // being cancelled) waits here until the current teardown has finished, and then either finds the
+        // run already `Stopped` or completes the transition of a faulted run. The claim also invalidates
+        // the run generation, which is how a concurrent start() learns that its run was cancelled.
+        Impl::claimTeardown(impl);
+
+        bool alreadyStopped = false;
+        {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.state == SessionState::Stopped) {
+                // Another caller completed the teardown while we waited for the claim. Release it so
+                // further waiting callers can finish as well, and touch nothing else.
+                impl.teardownStarted = false;
+                alreadyStopped = true;
+            }
+        }
+        if (alreadyStopped) {
+            impl.cv.notify_all();
+            return;
+        }
+
+        // The ordered teardown closes the callback gate before touching the components, so a late
+        // frame/event/input callback from an adapter that violates its quiescence rule is ignored
+        // instead of reaching a half-destroyed Session.
+        Impl::teardownRun(impl, false, SessionErrorCode::ComponentFailure, {});
+    } catch (...) {
+        // Nothing can be reported from inside a noexcept teardown.
+    }
 }
 
 SessionState Session::state() const
