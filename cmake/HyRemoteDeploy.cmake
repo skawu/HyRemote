@@ -52,6 +52,17 @@ function(_hyremote_linux_private_runtime_bootstrap runtime_deploy_dir output_var
         return()
     endif()
 
+    # The bootstrap names the consumer Qt prefix through target-dependent generator expressions, and
+    # file(GENERATE) evaluates those in the deploying project. A project that fakes Qt deployment - the
+    # deploy-helper fixtures do exactly that - has no Qt targets, and a project that cannot link Qt6::Core
+    # cannot link HyRemote::RemoteAccess either, so an absent Core target means there is no private Qt
+    # runtime to bootstrap. Without this guard the generate step fails ("No target \"Qt6::Core\"") before any
+    # assertion can run, which takes out every deploy-helper fixture case on Linux.
+    if(NOT TARGET Qt6::Core)
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
     set(_bootstrap
 "file(GET_RUNTIME_DEPENDENCIES
     LIBRARIES \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
