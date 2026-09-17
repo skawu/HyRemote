@@ -106,6 +106,21 @@ void QmlRemoteAccess::setTarget(QObject *targetObject)
                       QStringLiteral("target can only be changed while remote access is stopped"));
         return;
     }
+
+    if (m_targetDestroyedConnection)
+        QObject::disconnect(m_targetDestroyedConnection);
+    m_targetDestroyedConnection = {};
+    if (targetObject) {
+        m_targetDestroyedConnection =
+            connect(targetObject, &QObject::destroyed, this, [this](QObject *) {
+                // RemoteAccess owns the authoritative QPointer. By the time QObject::destroyed is
+                // emitted that weak pointer is null; this signal simply makes the QML property
+                // binding re-read the same facade state rather than maintaining a second target.
+                m_targetDestroyedConnection = {};
+                emit targetChanged();
+            });
+    }
+
     clearLocalError();
     emit targetChanged();
 }
