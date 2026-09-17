@@ -213,8 +213,10 @@ target_compile_features(hyremote-qpa-composite-capture-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-capture-test
     PRIVATE .. ${_hyremote_root_dir}/src/remoteaccess/src
 )
+# Same reason as hyremote-qpa-composite-input-test: the compiled sources include the RemoteAccess
+# private component-factory declarations, so the product target provides their include directories.
 target_link_libraries(hyremote-qpa-composite-capture-test
-    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
+    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core HyRemote::RemoteAccess
 )
 
 add_test(NAME hyremote-qpa-composite-capture-test COMMAND hyremote-qpa-composite-capture-test)
@@ -231,8 +233,12 @@ target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-input-test
     PRIVATE .. ${_hyremote_root_dir}/src/remoteaccess/src
 )
+# This target compiles the interactive composite target and the RemoteAccess private component-factory
+# declarations, which reference QHostAddress and the generated RemoteAccess export header. Linking the
+# product target (as hyremote-qpa-remote-config-test above already does) supplies the public include
+# directory, the generated header directory and Qt6::Network transitively.
 target_link_libraries(hyremote-qpa-composite-input-test
-    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core
+    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core HyRemote::RemoteAccess
 )
 
 add_test(NAME hyremote-qpa-composite-input-test COMMAND hyremote-qpa-composite-input-test)
