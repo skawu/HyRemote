@@ -275,11 +275,16 @@ if(HYREMOTE_BUILD_TESTS)
     endif()
 
     if(UNIX AND NOT APPLE)
+        # The relocation script takes the two source payloads by path and builds its own deployed tree
+        # under TEST_ROOT, so the registration must pass exactly the variables it declares. Passing other
+        # names made it fail at its own argument check before any relocation assertion could run, which is
+        # why this Linux-only gate reported a failure on every job instead of testing the contract.
         add_test(
             NAME hyremote-qpa-source-payload-relocation
             COMMAND ${CMAKE_COMMAND}
-                -DQPA_SOURCE_FILE=$<TARGET_FILE:hyremote-qpa-platform>
-                -DREMOTEACCESS_SOURCE_FILE=$<TARGET_FILE:hyremote-remoteaccess>
+                -DQPA_FILE=$<TARGET_FILE:hyremote-qpa-platform>
+                -DREMOTEACCESS_FILE=$<TARGET_FILE:hyremote-remoteaccess>
+                -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/source-payload-relocation
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_source_payload_relocation.cmake
         )
     endif()
