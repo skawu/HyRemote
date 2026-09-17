@@ -6,8 +6,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 # One-time V1 branch convergence manifest captured on 2026-09-17.
-# Each candidate is SHA-locked. If any ref has moved since this manifest was generated, the script
-# aborts before deleting anything so a reused branch can never be removed by stale cleanup data.
+# Each candidate is SHA-locked. A still-existing ref must match this exact SHA and must not be the
+# head of an open PR. A missing ref is treated as already pruned so an interrupted cleanup is safely
+# resumable without weakening the checks for branches that still exist.
 $Candidates = [ordered]@{
     "api/44-remote-access-facade" = "2f8b6a31e07efd82b3415dd69a4ead6905fda607"
     "arch/5-core-contract" = "c7dfa6398ede747c35240afa918ff650dd31ea4a"
@@ -79,6 +80,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "GitHub CLI authentication is not valid."
 }
 
+$repoSettings = gh api "repos/$Repo" --jq '{default_branch: .default_branch, delete_branch_on_merge: .delete_branch_on_merge}' | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not read repository settings."
+}
+if ($repoSettings.default_branch -ne "main") {
+    throw "Unexpected default branch '$($repoSettings.default_branch)'; expected 'main'."
+}
+if (-not $repoSettings.delete_branch_on_merge) {
+    Write-Warning "Repository setting delete_branch_on_merge is false. Enable 'Automatically delete head branches' after the one-time cleanup to prevent branch accumulation from recurring."
+}
+
 $openHeads = @(
     gh api "repos/$Repo/pulls?state=open&per_page=100" --jq '.[].head.ref'
 )
@@ -94,6 +106,8 @@ foreach ($protected in $ProtectedBranches) {
 
 Write-Host "Preflight: validating $($Candidates.Count) historical branch refs..."
 $errors = @()
+$remaining = [ordered]@{}
+$alreadyPruned = @()
 foreach ($entry in $Candidates.GetEnumerator()) {
     $branch = $entry.Key
     $expected = $entry.Value
@@ -105,12 +119,18 @@ foreach ($entry in $Candidates.GetEnumerator()) {
 
     $actual = gh api "repos/$Repo/git/ref/heads/$branch" --jq '.object.sha' 2>$null
     if ($LASTEXITCODE -ne 0) {
-        $errors += "candidate '$branch' no longer resolves"
+        # Missing is the only safe state that permits resumption: GitHub no longer exposes a branch
+        # ref for this manifest name, so there is nothing left for this cleanup operation to delete.
+        $alreadyPruned += $branch
         continue
     }
-    if ($actual.Trim() -ne $expected) {
-        $errors += "candidate '$branch' moved: expected $expected, actual $($actual.Trim())"
+
+    $actual = $actual.Trim()
+    if ($actual -ne $expected) {
+        $errors += "candidate '$branch' moved: expected $expected, actual $actual"
+        continue
     }
+    $remaining[$branch] = $expected
 }
 
 if ($errors.Count -ne 0) {
@@ -119,18 +139,18 @@ if ($errors.Count -ne 0) {
     exit 2
 }
 
-Write-Host "Preflight PASS: all candidate refs are unchanged and none has an open PR."
+Write-Host "Preflight PASS: $($remaining.Count) refs remain at their locked SHAs; $($alreadyPruned.Count) are already absent; none is an open PR head."
 if (-not $Execute) {
-    Write-Host "Dry run only. Re-run with -Execute to delete the 53 historical refs."
-    $Candidates.Keys | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Dry run only. Re-run with -Execute to delete the remaining historical refs."
+    $remaining.Keys | ForEach-Object { Write-Host "  $_" }
     exit 0
 }
 
-foreach ($branch in $Candidates.Keys) {
+foreach ($branch in $remaining.Keys) {
     Write-Host "Deleting $branch"
     gh api --method DELETE "repos/$Repo/git/refs/heads/$branch"
     if ($LASTEXITCODE -ne 0) {
-        throw "Branch deletion failed for '$branch'. Stop and re-run preflight before continuing."
+        throw "Branch deletion failed for '$branch'. No later ref was attempted. Re-run the script: already-deleted refs are accepted and every remaining ref will be preflighted again before deletion resumes."
     }
 }
 
