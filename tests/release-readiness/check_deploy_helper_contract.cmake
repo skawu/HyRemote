@@ -12,7 +12,8 @@ set(required_files
     "remoteaccess/CMakeLists.txt"
     "qpa/CMakeLists.txt"
     "qpa/tests/deploy_helper_fixture/CMakeLists.txt"
-    "qpa/tests/run_deploy_helper_fixture.cmake")
+    "qpa/tests/run_deploy_helper_fixture.cmake"
+    "tests/release-readiness/check_package_acquisition_isolation.cmake")
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
         message(FATAL_ERROR "deploy-helper-contract: missing evidence file: ${path}")
@@ -27,8 +28,7 @@ foreach(required_token
         [=[TEST_STALE_QPA_NEGATIVE_METADATA=ON]=])
     string(FIND "${root_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: root deployment/readiness wiring drifted: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: root deployment/readiness wiring drifted: ${required_token}")
     endif()
 endforeach()
 
@@ -44,28 +44,22 @@ foreach(required_token
         [=["${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR@/@HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME@"]=])
     string(FIND "${package_config}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: installed package acquisition/prefix metadata drifted: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: installed package acquisition/prefix metadata drifted: ${required_token}")
     endif()
 endforeach()
 
-# CMake 3.21-3.29 dependency discovery may overwrite PACKAGE_PREFIX_DIR. HyRemote must snapshot its
-# own prefix before find_dependency(Qt6), then use only the snapshot for package-owned payload paths.
 string(FIND "${package_config}" [=[set(_hyremote_package_prefix "${PACKAGE_PREFIX_DIR}")]=] prefix_snapshot_pos)
 string(FIND "${package_config}" [=[find_dependency(Qt6 6.8 COMPONENTS Core Network)]=] dependency_pos)
 if(prefix_snapshot_pos EQUAL -1 OR dependency_pos EQUAL -1 OR prefix_snapshot_pos GREATER dependency_pos)
-    message(FATAL_ERROR
-        "deploy-helper-contract: HyRemote package prefix must be preserved before Qt dependency discovery")
+    message(FATAL_ERROR "deploy-helper-contract: HyRemote package prefix must be preserved before Qt dependency discovery")
 endif()
 string(FIND "${package_config}" [=[${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_]=] unstable_prefix_use)
 if(NOT unstable_prefix_use EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: optional installed payloads must not use mutable PACKAGE_PREFIX_DIR after dependency discovery")
+    message(FATAL_ERROR "deploy-helper-contract: optional installed payloads must not use mutable PACKAGE_PREFIX_DIR after dependency discovery")
 endif()
 string(FIND "${package_config}" "HyRemote_QML_AVAILABLE" leaked_qml_api)
 if(NOT leaked_qml_api EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
+    message(FATAL_ERROR "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/remoteaccess/CMakeLists.txt" remoteaccess_cmake)
@@ -77,8 +71,7 @@ foreach(required_token
         [=[add_subdirectory(HyRemote)]=])
     string(FIND "${remoteaccess_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: source acquisition no longer rejects an existing installed runtime target: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: source acquisition no longer rejects an existing installed runtime target: ${required_token}")
     endif()
 endforeach()
 
@@ -88,14 +81,12 @@ foreach(required_token
         [=["${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")]=])
     string(FIND "${install_rules}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: installed QPA package metadata no longer matches the MODULE artifact: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: installed QPA package metadata no longer matches the MODULE artifact: ${required_token}")
     endif()
 endforeach()
 string(FIND "${install_rules}" [=["qhyremote${CMAKE_SHARED_MODULE_SUFFIX}"]=] missing_module_prefix)
 if(NOT missing_module_prefix EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: installed QPA filename must retain CMAKE_SHARED_MODULE_PREFIX")
+    message(FATAL_ERROR "deploy-helper-contract: installed QPA filename must retain CMAKE_SHARED_MODULE_PREFIX")
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
@@ -123,14 +114,12 @@ foreach(required_token
         [=[qt_generate_deploy_app_script]=])
     string(FIND "${deploy_helper}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: public helper lost required dispatch/acquisition isolation: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: public helper lost required dispatch/acquisition isolation: ${required_token}")
     endif()
 endforeach()
 string(FIND "${deploy_helper}" "HyRemote_QML_AVAILABLE" leaked_helper_api)
 if(NOT leaked_helper_api EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: QML source availability must remain internal target/build metadata")
+    message(FATAL_ERROR "deploy-helper-contract: QML source availability must remain internal target/build metadata")
 endif()
 
 foreach(required_phrase
@@ -142,8 +131,7 @@ foreach(required_phrase
         [=[requires exact Qt]=])
     string(FIND "${deploy_helper}" "${required_phrase}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: optional payload no longer fails closed: ${required_phrase}")
+        message(FATAL_ERROR "deploy-helper-contract: optional payload no longer fails closed: ${required_phrase}")
     endif()
 endforeach()
 
@@ -168,19 +156,16 @@ foreach(required_token
         [=[installed payloads must not become local build dependencies]=])
     string(FIND "${fixture}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: deterministic fixture lost required source/installed proof: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: deterministic fixture lost required source/installed proof: ${required_token}")
     endif()
 endforeach()
 string(FIND "${fixture}" [=[/qhyremote${CMAKE_SHARED_MODULE_SUFFIX}]=] fixture_missing_module_prefix)
 if(NOT fixture_missing_module_prefix EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: installed QPA fixture must model the platform MODULE prefix")
+    message(FATAL_ERROR "deploy-helper-contract: installed QPA fixture must model the platform MODULE prefix")
 endif()
 string(FIND "${fixture}" "HyRemote_QML_AVAILABLE" leaked_fixture_api)
 if(NOT leaked_fixture_api EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: deterministic fixture must not rely on a new QML package API")
+    message(FATAL_ERROR "deploy-helper-contract: deterministic fixture must not rely on a new QML package API")
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/qpa/tests/run_deploy_helper_fixture.cmake" runner)
@@ -202,8 +187,7 @@ foreach(required_token
         [=[fake-remoteaccess]=])
     string(FIND "${runner}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: generated-script verifier lost a deployment distinction: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: generated-script verifier lost a deployment distinction: ${required_token}")
     endif()
 endforeach()
 
@@ -219,14 +203,12 @@ foreach(required_token
         [=[EXPECT_FAILURE_FRAGMENT=requested an SDK that was built without Transparent QPA]=])
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: deterministic deploy test lost required semantic rejection evidence: ${required_token}")
+        message(FATAL_ERROR "deploy-helper-contract: deterministic deploy test lost required semantic rejection evidence: ${required_token}")
     endif()
 endforeach()
 string(FIND "${qpa_cmake}" [=[CMAKE_BINARY_DIR}/plugins/platforms]=] leaked_host_output)
 if(NOT leaked_host_output EQUAL -1)
-    message(FATAL_ERROR
-        "deploy-helper-contract: qhyremote must not write into a source consumer's top-level plugin directory")
+    message(FATAL_ERROR "deploy-helper-contract: qhyremote must not write into a source consumer's top-level plugin directory")
 endif()
 
 foreach(required_test
@@ -246,11 +228,27 @@ foreach(required_test
         "hyremote-qpa-source-payload-relocation")
     string(FIND "${qpa_cmake}" "${required_test}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR
-            "deploy-helper-contract: deterministic deploy test missing: ${required_test}")
+        message(FATAL_ERROR "deploy-helper-contract: deterministic deploy test missing: ${required_test}")
     endif()
 endforeach()
 
+# Execute the package-config behavior probe, not just textual assertions. It intentionally uses a
+# fake Qt config that overwrites PACKAGE_PREFIX_DIR to model the CMake 3.21-3.29 hazard, then checks
+# same-prefix rediscovery and mixed installed/source acquisition rejection.
+execute_process(
+    COMMAND "${CMAKE_COMMAND}"
+        -DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}
+        -P "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
+    RESULT_VARIABLE package_probe_result
+    OUTPUT_VARIABLE package_probe_stdout
+    ERROR_VARIABLE package_probe_stderr
+)
+if(NOT package_probe_result EQUAL 0)
+    message(FATAL_ERROR
+        "deploy-helper-contract: package acquisition behavior probe failed:\n"
+        "${package_probe_stdout}\n${package_probe_stderr}")
+endif()
+
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
+    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
