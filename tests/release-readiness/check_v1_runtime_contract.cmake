@@ -112,6 +112,26 @@ require_file_token(
     "the QQuickWindow target was destroyed"
     "Quick target-loss publication")
 
+# Transparent QPA is additive to the native Qt application. A remote-listener startup failure must
+# not tear down the reference native delegate, platform window or event loop. The smoke reserves an
+# OS-assigned loopback port before QApplication so the failure is deterministic on both reference OSes.
+require_file_token(
+    "qpa/tests/qpa_remote_failure_native_survival_smoke.cpp"
+    "class PortReservation final"
+    "deterministic occupied-port QPA failure setup")
+require_file_token(
+    "qpa/tests/qpa_remote_failure_native_survival_smoke.cpp"
+    "native QPA application remains live when HyRemote remote listener cannot bind"
+    "native-survival assertion after remote bind failure")
+require_file_token(
+    "qpa/tests/CMakeLists.txt"
+    "hyremote-qpa-remote-failure-native-survival-smoke"
+    "registered QPA native-survival CTest")
+require_file_token(
+    "qpa/hyremote_qpa_remote_controller.cpp"
+    "HyRemote QPA Proxy could not start the composite RemoteAccess runtime"
+    "QPA remote-start failure remains diagnostic rather than native-fatal")
+
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
-    "(multi-viewer input isolation + error/Faulted semantics + Widgets/Quick target-loss parity)")
+    "(multi-viewer input isolation + error/Faulted semantics + Widgets/Quick target-loss parity + QPA native survival)")
