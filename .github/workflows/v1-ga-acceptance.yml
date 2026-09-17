@@ -163,9 +163,8 @@ jobs:
           cmake --install consumer-qml
           test -f "$PWD/consumer-qml-install/qml/HyRemote/qmldir"
           test -f "$PWD/consumer-qml-install/lib/libHyRemoteRemoteAccess.so"
-          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
-            QT_QPA_PLATFORM=offscreen \
-            "$PWD/consumer-qml-install/bin/hyremote-installed-qml-consumer"
+          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH -u QT_QPA_PLATFORM \
+            xvfb-run -a "$PWD/consumer-qml-install/bin/hyremote-installed-qml-consumer"
 
       - name: Installed QPA consumer — Linux
         if: runner.os == 'Linux'
