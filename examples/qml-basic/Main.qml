@@ -11,8 +11,24 @@ ApplicationWindow {
 
     color: "#202733"
     property bool runtimeRemoteInput: acceptanceRemoteInput
+    property bool acceptanceSawViewer: false
+    property bool acceptancePolicyTransitionDone: false
 
-    // Normal declarative use is target + enabled. The port/input bindings and transition timer
+    function applyAcceptancePolicyTransition() {
+        if (acceptancePolicyTransitionDone || acceptancePolicyTransitionMs <= 0)
+            return
+
+        acceptancePolicyTransitionDone = true
+        policyTransitionTimer.stop()
+        remote.enabled = false
+        console.log("POLICY_STOPPED")
+        window.runtimeRemoteInput = true
+        console.log("POLICY_INPUT " + remote.remoteInputEnabled)
+        remote.enabled = true
+        console.log("POLICY_RESTART_REQUESTED")
+    }
+
+    // Normal declarative use is target + enabled. The port/input bindings and acceptance transition
     // exist only so repository product-fit can exercise non-default policy and the documented
     // stop -> configure -> start lifecycle without introducing another runtime or private API.
     RemoteAccess {
@@ -26,8 +42,21 @@ ApplicationWindow {
             if (state === RemoteAccess.Running)
                 console.log("READY " + port)
         }
-        onConnectedClientCountChanged:
+        onConnectedClientCountChanged: {
             console.log("CLIENT_COUNT " + connectedClientCount)
+
+            // In product-fit mode, transition immediately after the first viewer disconnect. This
+            // removes an arbitrary hosted-runner race while still using only the public QML
+            // connected-client diagnostic and stopped-runtime configuration contract. The timer
+            // below remains a watchdog fallback in case that lifecycle evidence is never observed.
+            if (acceptancePolicyTransitionMs > 0 && !window.acceptancePolicyTransitionDone) {
+                if (connectedClientCount > 0) {
+                    window.acceptanceSawViewer = true
+                } else if (window.acceptanceSawViewer) {
+                    window.applyAcceptancePolicyTransition()
+                }
+            }
+        }
         onErrorChanged: {
             if (errorString.length > 0)
                 console.log("REMOTE_ERROR " + errorString)
@@ -102,17 +131,11 @@ ApplicationWindow {
     }
 
     Timer {
+        id: policyTransitionTimer
         interval: acceptancePolicyTransitionMs
-        running: acceptancePolicyTransitionMs > 0
+        running: acceptancePolicyTransitionMs > 0 && !window.acceptancePolicyTransitionDone
         repeat: false
-        onTriggered: {
-            remote.enabled = false
-            console.log("POLICY_STOPPED")
-            window.runtimeRemoteInput = true
-            console.log("POLICY_INPUT " + remote.remoteInputEnabled)
-            remote.enabled = true
-            console.log("POLICY_RESTART_REQUESTED")
-        }
+        onTriggered: window.applyAcceptancePolicyTransition()
     }
 
     Timer {
