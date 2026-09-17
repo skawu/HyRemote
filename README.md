@@ -223,10 +223,6 @@ Reference/setup and delivery guides:
 
 - [`docs/guide/install.md`](docs/guide/install.md) — build, platform setup, installed SDK and source consumption (中文; [English](docs/en/guide/install.md))
 - [`docs/README.md`](docs/README.md) — documentation index (中文 ｜ [English](docs/en/README.md))
-- [`docs/getting-started/windows.md`](docs/getting-started/windows.md) — Windows x86_64 (moved into the install guide)
-- [`docs/getting-started/linux.md`](docs/getting-started/linux.md) — Linux x86_64 (moved into the install guide)
-- [`docs/sdk-installation.md`](docs/sdk-installation.md) — installed/prebuilt SDK (moved into the install guide)
-- [`docs/source-consumption.md`](docs/source-consumption.md) — vendored/source consumption (moved into the install guide)
 - [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
 - [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
 - [`docs/repository-layout.md`](docs/repository-layout.md) — canonical repository ownership/layout

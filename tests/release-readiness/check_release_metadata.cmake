@@ -17,13 +17,11 @@ set(required_files
     "docs/releases/v0.0.2.0.md"
     "docs/releases/v0.0.3.0.md"
     "docs/releases/v1.0.0.0.md"
-    "docs/getting-started/windows.md"
-    "docs/getting-started/linux.md"
+    "docs/guide/install.md"
+    "docs/en/guide/install.md"
     "docs/getting-started/cpp.md"
     "docs/getting-started/qml.md"
     "docs/getting-started/qpa-proxy.md"
-    "docs/sdk-installation.md"
-    "docs/source-consumption.md"
     "docs/deployment.md"
     "docs/qml-consumption.md"
     "docs/input-model.md"
@@ -68,16 +66,44 @@ foreach(path IN LISTS required_files)
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/CMakeLists.txt" root_cmake)
-# CMake's regex dialect does not provide portable interval quantifiers such as {2,3}. Spell the
-# accepted three/four-part shape explicitly so this gate behaves the same on CMake 3.21+ hosts.
-string(REGEX MATCH
-    "project[ \\t\\r\\n]*\\([ \\t\\r\\n]*HyRemote[ \\t\\r\\n]+VERSION[ \\t\\r\\n]+([0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?)"
-    project_match
-    "${root_cmake}")
-if(NOT project_match)
+
+# This gate validates metadata semantics, not source formatting: a multi-line project() declaration is normal
+# CMake style and must be accepted. Whitespace is normalized before matching, and CMake's regex dialect does
+# not provide portable interval quantifiers such as {2,3}, so the accepted three/four-part shape is spelled
+# out explicitly.
+function(hyremote_match_project_version content out_version)
+    string(REGEX REPLACE "[ \t\r\n]+" " " normalized "${content}")
+    set(matched_version "")
+    if(normalized MATCHES "project *\\( *HyRemote +VERSION +([0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+        set(matched_version "${CMAKE_MATCH_1}")
+    endif()
+    set(${out_version} "${matched_version}" PARENT_SCOPE)
+endfunction()
+
+# Deterministic self-check: both declaration layouts must be accepted and a malformed or absent version must
+# still fail, so this property cannot be lost silently in a later edit of the matcher.
+hyremote_match_project_version(
+    "project(HyRemote VERSION 1.0.0.0 DESCRIPTION \"Qt Remote Access Framework\" LANGUAGES C CXX)"
+    self_check_one_line)
+hyremote_match_project_version(
+    "project(\n    HyRemote\n    VERSION 0.0.0\n    DESCRIPTION \"Qt Remote Access Framework\"\n    LANGUAGES C CXX\n)"
+    self_check_multi_line)
+hyremote_match_project_version("project(HyRemote VERSION 0.0 LANGUAGES C CXX)" self_check_malformed)
+hyremote_match_project_version("add_subdirectory(src/core core)" self_check_missing)
+if(NOT self_check_one_line STREQUAL "1.0.0.0"
+        OR NOT self_check_multi_line STREQUAL "0.0.0"
+        OR NOT self_check_malformed STREQUAL ""
+        OR NOT self_check_missing STREQUAL "")
+    message(FATAL_ERROR
+        "release-readiness: project-version matcher self-check failed "
+        "(one-line='${self_check_one_line}', multi-line='${self_check_multi_line}', "
+        "malformed='${self_check_malformed}', missing='${self_check_missing}')")
+endif()
+
+hyremote_match_project_version("${root_cmake}" source_project_version)
+if(NOT source_project_version)
     message(FATAL_ERROR "release-readiness: root project(VERSION ...) is missing or malformed")
 endif()
-set(source_project_version "${CMAKE_MATCH_1}")
 
 if(DEFINED HYREMOTE_PROJECT_VERSION
         AND NOT "${HYREMOTE_PROJECT_VERSION}" STREQUAL "${source_project_version}")
@@ -223,10 +249,7 @@ foreach(required_link
         "docs/getting-started/cpp.md"
         "docs/getting-started/qml.md"
         "docs/getting-started/qpa-proxy.md"
-        "docs/getting-started/windows.md"
-        "docs/getting-started/linux.md"
-        "docs/sdk-installation.md"
-        "docs/source-consumption.md"
+        "docs/guide/install.md"
         "docs/deployment.md"
         "docs/repository-layout.md"
         "docs/viewer-connection.md"
