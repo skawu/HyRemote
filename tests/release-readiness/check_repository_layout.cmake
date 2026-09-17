@@ -113,14 +113,16 @@ foreach(module_cmake IN ITEMS
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
-# All workflows that build Qt GUI/Widgets/Quick/QML/QPA code on the Ubuntu reference runner must use
-# the same repository-owned host dependency baseline. Focused and integrated GA jobs must not carry
-# subtly different XCB/OpenGL provisioning, otherwise CI failures become workflow-specific noise
-# rather than product evidence.
+# Every workflow that builds the default facade graph or explicit Qt GUI/Widgets/Quick/QML/QPA code
+# on the Ubuntu reference runner must use the same repository-owned host dependency baseline.
+# Focused and integrated GA jobs must not carry subtly different XCB/OpenGL provisioning, otherwise
+# CI failures become workflow-specific noise rather than product evidence. The RFB-only workflow is
+# intentionally excluded because it disables Widgets/Quick and exercises only Core/Network paths.
 if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/.github/scripts/install-linux-qt-desktop-deps.sh")
     message(FATAL_ERROR "repository-layout: shared Linux Qt desktop dependency script is missing")
 endif()
 foreach(workflow IN ITEMS
+        "remoteaccess-facade.yml"
         "widgets-adapter.yml"
         "quick-adapter.yml"
         "qml-api.yml"
