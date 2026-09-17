@@ -8,9 +8,6 @@ function(_hyremote_runtime_deploy_dir output_var)
     endif()
 endfunction()
 
-# Return whether a target belongs to the current build graph rather than an installed/imported SDK.
-# This lets source deployment validate current-configure payload targets without publishing another
-# application-facing package variable. Resolve aliases explicitly for the CMake 3.21 baseline.
 function(_hyremote_target_is_local target output_var)
     set(_hyremote_local FALSE)
     if(TARGET "${target}")
@@ -28,10 +25,6 @@ function(_hyremote_target_is_local target output_var)
     set(${output_var} "${_hyremote_local}" PARENT_SCOPE)
 endfunction()
 
-# add_subdirectory(... EXCLUDE_FROM_ALL) is the normal source-consumption shape. A generated install
-# script that references $<TARGET_FILE:...> does not itself make that local target part of the
-# consumer application's build. Add build-only dependencies for local HyRemote payload targets while
-# leaving installed/imported SDK targets untouched and, crucially, without adding application links.
 function(_hyremote_add_local_build_dependency consumer dependency)
     _hyremote_target_is_local("${dependency}" _hyremote_dependency_local)
     if(NOT _hyremote_dependency_local)
@@ -47,8 +40,6 @@ function(_hyremote_add_local_build_dependency consumer dependency)
     add_dependencies("${consumer}" "${_hyremote_build_target}")
 endfunction()
 
-# Generate the supplemental deployment script for the normal C++/QML product path. The V1 facade
-# is always shared, while Core is statically composed behind it; users deploy one HyRemote runtime.
 function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
@@ -74,8 +65,6 @@ qt_deploy_runtime_dependencies(
     set(${output_var} "${_runtime_script}" PARENT_SCOPE)
 endfunction()
 
-# Resolve the QPA payload without exposing an installed C++ link target. Source-tree calls use the
-# internal build target; installed-package calls use the absolute payload path published by config.
 function(_hyremote_resolve_qpa_payload file_var name_var)
     if(TARGET HyRemote::QpaPlatform)
         set(${file_var} "$<TARGET_FILE:HyRemote::QpaPlatform>" PARENT_SCOPE)
@@ -107,9 +96,6 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
             "hyremote_deploy(TARGET ${target} QPA) is supported only for the V1 Windows/Linux reference platforms")
     endif()
 
-    # Source QPA is compiled in this exact configure and its V1 private-ABI contract is fixed to
-    # Qt 6.8.3. Do not let an unrelated installed SDK's metadata in the parent scope override that
-    # source truth. Installed acquisition uses the package-published exact version instead.
     _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_qpa_source_acquisition)
     if(_hyremote_qpa_source_acquisition)
         set(_required_qt_version "6.8.3")
@@ -173,7 +159,6 @@ qt_deploy_runtime_dependencies(
     set(${output_var} "${_qpa_script}" PARENT_SCOPE)
 endfunction()
 
-# Public deployment entry point installed with the HyRemote CMake package.
 function(hyremote_deploy)
     set(options QML QPA)
     set(oneValueArgs TARGET)
@@ -191,10 +176,6 @@ function(hyremote_deploy)
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
     endif()
 
-    # Acquisition identity is derived from the one public runtime target. Source/add_subdirectory
-    # provides a local target; installed find_package provides an imported target. Optional source
-    # payload requests must be satisfied by targets from this exact configure and may not fall back
-    # to stale metadata left by another installed SDK in the parent CMake scope.
     _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)
 
     if(HYREMOTE_DEPLOY_QML)
@@ -215,6 +196,11 @@ function(hyremote_deploy)
         if(NOT IS_DIRECTORY "${HyRemote_QML_IMPORT_PATH}")
             message(FATAL_ERROR
                 "hyremote_deploy: HyRemote QML import root does not exist: ${HyRemote_QML_IMPORT_PATH}")
+        endif()
+        if(NOT IS_DIRECTORY "${HyRemote_QML_IMPORT_PATH}/HyRemote")
+            message(FATAL_ERROR
+                "hyremote_deploy: HyRemote QML module directory does not exist under import root: "
+                "${HyRemote_QML_IMPORT_PATH}/HyRemote")
         endif()
     endif()
 
