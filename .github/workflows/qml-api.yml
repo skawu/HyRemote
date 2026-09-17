@@ -89,9 +89,8 @@ jobs:
           test -f "$PWD/qml-consumer-install/qml/HyRemote/qmldir"
           test -f "$PWD/qml-consumer-install/lib/libHyRemoteRemoteAccess.so"
           test -n "$(find "$PWD/qml-consumer-install/qml/HyRemote" -maxdepth 1 -type f -name '*.so' -print -quit)"
-          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
-            QT_QPA_PLATFORM=offscreen \
-            "$PWD/qml-consumer-install/bin/hyremote-installed-qml-consumer"
+          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH -u QT_QPA_PLATFORM \
+            xvfb-run -a "$PWD/qml-consumer-install/bin/hyremote-installed-qml-consumer"
 
       - name: Configure, build, test and install SDK — Windows / MSVC x64
         if: runner.os == 'Windows'
