@@ -117,7 +117,10 @@ The QPA CTest/product chain must prove the exact Qt 6.8.3 qualified proxy behavi
 - multiple QQuickWindow scope;
 - current production capture-family checks;
 - safe startup policy and reconnect;
+- a valid QPA configuration whose remote listener cannot bind remains a **remote-capability failure only**: the native delegate, native application window and Qt event loop remain operational rather than being torn down or replaced;
 - child surfaces leaving the composed application canvas receive terminal child-input cleanup before their adapters are retired.
+
+An invalid `hyremote-*` startup parameter is different: the QPA plugin must reject that invalid configuration before silently starting some other remote policy. The native-survival rule above applies to a valid transparent-QPA configuration whose remote runtime subsequently fails to start.
 
 E4 remains an ordinary Qt application. Its executable may not acquire HyRemote application-link dependencies merely to use Transparent QPA.
 
@@ -152,6 +155,7 @@ Required deployment evidence:
 - the deployed trees contain the shared `HyRemoteRemoteAccess` runtime but no separate Core runtime requirement;
 - the deployed applications run without the original HyRemote SDK/build-tree runtime path;
 - QML deployment carries the same shared facade automatically;
+- requesting QML or QPA from an acquisition that does not actually contain the corresponding optional payload fails at configure time; stale metadata, a missing QML import/module directory, or a missing installed QPA module may not authorize a partial deployment;
 - QPA deployment contains `qhyremote` plus the same shared facade while the executable itself remains Qt-only;
 - the clean installed-QPA consumer compiles the real E4 application source rather than a duplicate look-alike fixture;
 - QPA product-fit removes `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, `QT_QPA_PLATFORM` and SDK runtime-path assistance before launching the deployed application;
