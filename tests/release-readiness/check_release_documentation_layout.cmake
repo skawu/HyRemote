@@ -61,6 +61,32 @@ require_doc_token("README.md" "docs/repository-layout.md" "repository-layout doc
 require_doc_token("CONTRIBUTING.md" "docs/repository-layout.md" "contributor layout authority")
 require_doc_token("CONTRIBUTING.md" "docs/branch-lifecycle.md" "contributor branch-lifecycle authority")
 
+# Repository administration is a release-preparation gate, not product acceptance. Keep the exact
+# recovery/cleanup entry points versioned so workflow state, security reporting and branch hygiene do
+# not become chat-only release knowledge.
+set(admin_doc "docs/v1-repository-admin.md")
+foreach(required_token
+        "repository preparation / administration gate; not product acceptance evidence"
+        "pwsh .github/scripts/restore-v1-workflows.ps1"
+        "pwsh .github/scripts/finalize-v1-repository-settings.ps1"
+        "pwsh .github/scripts/prune-stale-branches.ps1 -Execute"
+        "delete_branch_on_merge=true"
+        "private vulnerability reporting"
+        "Do not describe the current workflow/audit layer as equivalent to branch protection."
+        "#104 actual Windows/Linux acceptance complete"
+        "#109 physical/native coexistence evidence complete"
+        "The first six items are repository governance readiness. The last two are product acceptance.")
+    require_doc_token("${admin_doc}" "${required_token}" "V1 repository administration preparation contract")
+endforeach()
+foreach(admin_script IN ITEMS
+        ".github/scripts/restore-v1-workflows.ps1"
+        ".github/scripts/finalize-v1-repository-settings.ps1"
+        ".github/scripts/prune-stale-branches.ps1")
+    if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${admin_script}")
+        message(FATAL_ERROR "release-documentation-layout: missing repository administration helper: ${admin_script}")
+    endif()
+endforeach()
+
 # #109 cannot be reduced to a chat-only checklist. Keep a versioned runbook with the exact V1
 # lifecycle boundaries ready before physical execution begins. This gate proves preparation only;
 # it deliberately also pins the statement that the document itself is NOT acceptance evidence.
@@ -87,4 +113,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(package/layout/dependency governance + versioned #109 physical acceptance preparation; no physical PASS implied)")
+    "(package/layout/dependency governance + repository-admin preparation + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
