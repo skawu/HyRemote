@@ -30,7 +30,14 @@ if(UNIX AND NOT APPLE)
 endif()
 
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-platform PRIVATE "${_hyremote_root_dir}/src/remoteaccess/src")
+target_include_directories(hyremote-qpa-platform PRIVATE
+    "${_hyremote_root_dir}/src/remoteaccess/src"
+    # QPA consumes RemoteAccess private component-factory declarations. Those declarations use
+    # Core public value/interface types, so the integration needs their headers for compilation only.
+    # This is deliberately not a HyRemote::Core link dependency; qhyremote still reuses the single
+    # shared HyRemote::RemoteAccess runtime and Core remains internal/static composition.
+    "${_hyremote_root_dir}/src/core/include"
+)
 target_link_libraries(hyremote-qpa-platform
     PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate HyRemote::RemoteAccess
 )
@@ -128,19 +135,16 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
-    # Negative fixtures bind each failure to its intended semantic diagnostic so unrelated CMake
-    # failures cannot make optional-payload rejection tests appear to pass.
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-missing-qml
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-no-qml
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=OFF
-            -DTEST_QML_AVAILABLE=OFF
+            -DTEST_MISSING_QML_PAYLOAD=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload"
+            -DEXPECT_FAILURE_FRAGMENT=requires_an_available_HyRemote_QML_module
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -148,14 +152,12 @@ if(HYREMOTE_BUILD_TESTS)
         NAME hyremote-qpa-deploy-helper-reject-stale-qml-metadata
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-stale-qml
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-stale-qml-metadata
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=OFF
-            -DTEST_QML_AVAILABLE=OFF
             -DTEST_STALE_QML_METADATA=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=requires a HyRemote QML payload"
+            -DEXPECT_FAILURE_FRAGMENT=requires_an_available_HyRemote_QML_module
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -163,15 +165,13 @@ if(HYREMOTE_BUILD_TESTS)
         NAME hyremote-qpa-deploy-helper-reject-missing-qml-root
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-missing-qml-root
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml-root
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=OFF
-            -DTEST_QML_AVAILABLE=ON
-            -DTEST_QML_IMPORT_PATH_EXISTS=OFF
             -DTEST_INSTALLED_PAYLOAD=ON
+            -DTEST_MISSING_QML_ROOT=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=QML import root does not exist"
+            -DEXPECT_FAILURE_FRAGMENT=HyRemote_QML_IMPORT_PATH_to_exist
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -179,16 +179,13 @@ if(HYREMOTE_BUILD_TESTS)
         NAME hyremote-qpa-deploy-helper-reject-missing-qml-module-dir
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-missing-qml-module-dir
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml-module-dir
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=OFF
-            -DTEST_QML_AVAILABLE=ON
-            -DTEST_QML_IMPORT_PATH_EXISTS=ON
-            -DTEST_QML_MODULE_DIR_EXISTS=OFF
             -DTEST_INSTALLED_PAYLOAD=ON
+            -DTEST_MISSING_QML_MODULE_DIR=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=QML module directory does not exist"
+            -DEXPECT_FAILURE_FRAGMENT=HyRemote_module_directory_under
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -196,12 +193,12 @@ if(HYREMOTE_BUILD_TESTS)
         NAME hyremote-qpa-deploy-helper-reject-stale-qpa-metadata
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-stale-qpa
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-stale-qpa-metadata
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
             -DTEST_QML=OFF
             -DTEST_STALE_QPA_METADATA=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=requires the current HyRemote source build"
+            -DEXPECT_FAILURE_FRAGMENT=requires_the_current_HyRemote_source_build
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -209,11 +206,12 @@ if(HYREMOTE_BUILD_TESTS)
         NAME hyremote-qpa-deploy-helper-reject-qt-mismatch
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qt-mismatch
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-qt-mismatch
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QT_VERSION=6.8.2
+            -DTEST_QML=OFF
+            -DTEST_QT_MISMATCH=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=requires exact Qt"
+            -DEXPECT_FAILURE_FRAGMENT=exactly_matches_6.8.3
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -221,12 +219,13 @@ if(HYREMOTE_BUILD_TESTS)
         NAME hyremote-qpa-deploy-helper-reject-missing-package
         COMMAND ${CMAKE_COMMAND}
             -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-no-qpa
+            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-package
             -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QPA_AVAILABLE=OFF
+            -DTEST_QML=OFF
             -DTEST_INSTALLED_PAYLOAD=ON
+            -DTEST_MISSING_PACKAGE=ON
             -DEXPECT_CONFIGURE_FAILURE=ON
-            "-DEXPECT_FAILURE_FRAGMENT=requested an SDK that was built without Transparent QPA"
+            -DEXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA
             -P ${_hyremote_qpa_deploy_runner}
     )
 
@@ -234,9 +233,8 @@ if(HYREMOTE_BUILD_TESTS)
         add_test(
             NAME hyremote-qpa-source-payload-relocation
             COMMAND ${CMAKE_COMMAND}
-                -DQPA_FILE=$<TARGET_FILE:hyremote-qpa-platform>
-                -DREMOTEACCESS_FILE=$<TARGET_FILE:hyremote-remoteaccess>
-                -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/source-payload-relocation
+                -DQPA_SOURCE_FILE=$<TARGET_FILE:hyremote-qpa-platform>
+                -DREMOTEACCESS_SOURCE_FILE=$<TARGET_FILE:hyremote-remoteaccess>
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_source_payload_relocation.cmake
         )
     endif()
