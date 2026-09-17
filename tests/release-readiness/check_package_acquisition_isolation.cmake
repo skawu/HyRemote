@@ -119,15 +119,16 @@ string(CONCAT two_prefix_source "${common_prefix_setup}"
 "unset(HyRemote_DIR)\n"
 "unset(HyRemote_DIR CACHE)\n"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${second_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
-run_configure("two-installed-prefixes" "${two_prefix_source}" FALSE "refusing a second installed prefix")
+run_configure("two-installed-prefixes" "${two_prefix_source}" FALSE "second installed prefix")
 
 # A local/source target followed by installed package discovery is the other dangerous mix: package
-# metadata could otherwise be attached to an unrelated local runtime.
+# metadata could otherwise be attached to an unrelated local runtime. Match a no-space identity
+# fragment because CMake may line-wrap human-readable error text in configure diagnostics.
 string(CONCAT source_then_package "${common_prefix_setup}"
 "add_library(hyremote-local INTERFACE)\n"
 "add_library(HyRemote::RemoteAccess ALIAS hyremote-local)\n"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
-run_configure("source-then-installed" "${source_then_package}" FALSE "cannot be combined with")
+run_configure("source-then-installed" "${source_then_package}" FALSE "source/add_subdirectory")
 
 message(STATUS
     "HyRemote package acquisition isolation: PASS "
