@@ -107,6 +107,10 @@ def main() -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        # Keep the process working directory inside the deployment tree as well. On Windows this
+        # closes the current-directory DLL search path; on Linux it prevents relative application
+        # behavior from accidentally reaching the source/build workspace.
+        cwd=str(app.parent),
         env=env,
     )
 
