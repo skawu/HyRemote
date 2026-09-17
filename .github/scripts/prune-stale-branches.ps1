@@ -117,15 +117,19 @@ foreach ($entry in $Candidates.GetEnumerator()) {
         continue
     }
 
-    $actual = gh api "repos/$Repo/git/ref/heads/$branch" --jq '.object.sha' 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        # Missing is the only safe state that permits resumption: GitHub no longer exposes a branch
-        # ref for this manifest name, so there is nothing left for this cleanup operation to delete.
-        $alreadyPruned += $branch
+    $refResult = & gh api "repos/$Repo/git/ref/heads/$branch" --jq '.object.sha' 2>&1
+    $refExitCode = $LASTEXITCODE
+    if ($refExitCode -ne 0) {
+        $diagnostic = ($refResult | Out-String).Trim()
+        if ($diagnostic -match '(?i)HTTP\s+404|Not Found') {
+            $alreadyPruned += $branch
+            continue
+        }
+        $errors += "candidate '$branch' could not be verified: $diagnostic"
         continue
     }
 
-    $actual = $actual.Trim()
+    $actual = (($refResult | Out-String).Trim())
     if ($actual -ne $expected) {
         $errors += "candidate '$branch' moved: expected $expected, actual $actual"
         continue
@@ -136,6 +140,21 @@ foreach ($entry in $Candidates.GetEnumerator()) {
 if ($errors.Count -ne 0) {
     Write-Host "Cleanup aborted before any deletion:" -ForegroundColor Red
     $errors | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+    exit 2
+}
+
+# Re-read open PR heads after the potentially long per-ref verification loop. This closes the race
+# where a historical branch becomes active again between the first PR snapshot and deletion.
+$finalOpenHeads = @(
+    gh api "repos/$Repo/pulls?state=open&per_page=100" --jq '.[].head.ref'
+)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not re-enumerate open pull-request heads after ref validation. No branch was deleted."
+}
+$reactivated = @($remaining.Keys | Where-Object { $finalOpenHeads -contains $_ })
+if ($reactivated.Count -ne 0) {
+    Write-Host "Cleanup aborted before any deletion because candidate branches became active:" -ForegroundColor Red
+    $reactivated | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     exit 2
 }
 
