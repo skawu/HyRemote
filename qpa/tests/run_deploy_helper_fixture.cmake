@@ -142,10 +142,12 @@ if(TEST_DEPLOY_QPA)
     endforeach()
 
     if(TEST_INSTALLED_PAYLOAD)
-        string(FIND "${generated_content}" "qhyremote${CMAKE_SHARED_MODULE_SUFFIX}" installed_payload_pos)
+        set(_expected_qpa_name
+            "${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")
+        string(FIND "${generated_content}" "${_expected_qpa_name}" installed_payload_pos)
         if(installed_payload_pos EQUAL -1)
             message(FATAL_ERROR
-                "installed-payload QPA deployment did not use published plugin file:\n${generated_content}")
+                "installed-payload QPA deployment did not use exact platform MODULE name '${_expected_qpa_name}':\n${generated_content}")
         endif()
     endif()
 else()
