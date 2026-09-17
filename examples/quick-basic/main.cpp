@@ -99,9 +99,15 @@ int main(int argc, char **argv)
                                      QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
                                      QStringLiteral("seconds"),
                                      QStringLiteral("0"));
+    QCommandLineOption policyTransitionOption(
+        QStringLiteral("policy-transition-ms"),
+        QStringLiteral("Acceptance helper: after the first viewer disconnect (or this watchdog), stop HyRemote, enable remote input while stopped, then restart without restarting the app."),
+        QStringLiteral("milliseconds"),
+        QStringLiteral("0"));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     parser.addOption(secondsOption);
+    parser.addOption(policyTransitionOption);
     parser.process(app);
 
     const int port = readPositiveInt(parser, portOption, 5900);
@@ -110,6 +116,7 @@ int main(int argc, char **argv)
         return 64;
     }
     const int testSeconds = readPositiveInt(parser, secondsOption, 0);
+    const int policyTransitionMs = readPositiveInt(parser, policyTransitionOption, 0);
     const bool remoteInput = parser.isSet(inputOption);
 
     QQuickView view;
@@ -151,6 +158,44 @@ int main(int argc, char **argv)
     root->setProperty("connectedClientCount", static_cast<int>(lastClientCount));
     std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
 
+    bool acceptanceSawViewer = false;
+    bool acceptancePolicyTransitionDone = false;
+    QTimer policyTransitionTimer;
+    policyTransitionTimer.setSingleShot(true);
+
+    const auto applyAcceptancePolicyTransition = [&] {
+        if (acceptancePolicyTransitionDone || policyTransitionMs <= 0 || remoteInput)
+            return;
+
+        acceptancePolicyTransitionDone = true;
+        policyTransitionTimer.stop();
+        remote.stop();
+        lastClientCount = remote.connectedClientCount();
+        root->setProperty("connectedClientCount", static_cast<int>(lastClientCount));
+        std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
+        std::cout << "POLICY_STOPPED" << std::endl;
+
+        if (!remote.setRemoteInputEnabled(true)) {
+            std::cerr << "POLICY_FAILED remoteInputEnabled" << std::endl;
+            QCoreApplication::exit(3);
+            return;
+        }
+        root->setProperty("remoteControlEnabled", true);
+        std::cout << "POLICY_INPUT true" << std::endl;
+        std::cout << "POLICY_RESTART_REQUESTED" << std::endl;
+
+        if (!remote.start()) {
+            const auto error = remote.lastError();
+            std::cerr << "POLICY_FAILED restart";
+            if (error)
+                std::cerr << " " << error->message.toStdString();
+            std::cerr << std::endl;
+            QCoreApplication::exit(4);
+            return;
+        }
+        std::cout << "READY " << port << std::endl;
+    };
+
     QTimer statusTimer;
     statusTimer.setInterval(100);
     statusTimer.setTimerType(Qt::CoarseTimer);
@@ -161,14 +206,32 @@ int main(int argc, char **argv)
         lastClientCount = nextClientCount;
         root->setProperty("connectedClientCount", static_cast<int>(lastClientCount));
         std::cout << "CLIENT_COUNT " << lastClientCount << std::endl;
+
+        if (policyTransitionMs > 0 && !remoteInput && !acceptancePolicyTransitionDone) {
+            if (lastClientCount > 0) {
+                acceptanceSawViewer = true;
+            } else if (acceptanceSawViewer) {
+                applyAcceptancePolicyTransition();
+            }
+        }
     });
     statusTimer.start();
+
+    if (policyTransitionMs > 0 && !remoteInput) {
+        policyTransitionTimer.setInterval(policyTransitionMs);
+        QObject::connect(&policyTransitionTimer,
+                         &QTimer::timeout,
+                         &view,
+                         applyAcceptancePolicyTransition);
+        policyTransitionTimer.start();
+    }
 
     std::cout << "READY " << port << std::endl;
     if (testSeconds > 0)
         QTimer::singleShot(testSeconds * 1000, &app, &QCoreApplication::quit);
 
     const int result = app.exec();
+    policyTransitionTimer.stop();
     statusTimer.stop();
     remote.stop();
     root->setProperty("connectedClientCount", 0);
