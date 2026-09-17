@@ -13,6 +13,10 @@ on:
       - '.github/workflows/qpa-proxy.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   native-delegate-and-remoteaccess:
     # Transparent QPA becomes a released product mode at v0.0.3.0. Automatic PR runs and manual
