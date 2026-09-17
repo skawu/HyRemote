@@ -22,7 +22,7 @@ require_file_token("src/remoteaccess/src/transport/rfb_transport.cpp" "m_buttonH
 require_file_token("src/remoteaccess/src/transport/rfb_transport.cpp" "aggregateModifiers() const" "aggregate remote modifier state")
 require_file_token("src/remoteaccess/tests/test_rfb_multi_client_input.cpp" "testConcurrentViewerHeldStateIsolation" "two-viewer deterministic held-state regression")
 require_file_token("src/remoteaccess/tests/test_rfb_multi_client_input.cpp" "countKey(inputs, hyremote::KeyCode::B, true) == 2" "same-viewer key repeat preservation")
-require_file_token("src/remoteaccess/tests/test_rfb_multi_client_input.cpp" "unmatched C-up from one viewer must not release another viewer's hold" "cross-viewer unmatched-release isolation")
+require_file_token("src/remoteaccess/tests/test_rfb_multi_client_input.cpp" "countKey(inputs, hyremote::KeyCode::C, false) == 0" "cross-viewer unmatched-release isolation")
 require_file_token("src/remoteaccess/tests/CMakeLists.txt" "hyremote-rfb-multi-client-input-test" "registered concurrent-viewer CTest")
 require_file_token("src/remoteaccess/tests/CMakeLists.txt" "TIMEOUT 15" "bounded concurrent-viewer CTest runtime")
 require_file_token("docs/input-model.md" "reference-counted inside the private transport normalization layer" "canonical concurrent-viewer input model")
