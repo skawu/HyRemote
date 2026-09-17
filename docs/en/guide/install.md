@@ -11,7 +11,7 @@ conventions live elsewhere - see the "Internal documents" section of [`docs/READ
 | Dimension | V1 commitment |
 | --- | --- |
 | Operating systems | Windows x86_64 and Linux x86_64 (desktop). Embedded Linux/EGLFS is **outside** the V1 support claim |
-| Qt | **Exact Qt 6.8.3** is the reference version; the bounded RFB transport and all three integration modes are accepted against it |
+| Qt | **Exact Qt 6.8.3** is the reference version and the acceptance baseline for the bounded RFB transport and all three integration modes; the required acceptance evidence for the current candidate is still pending |
 | Compilers | Windows: MSVC x64 (C++17); Linux: GCC x86_64 (C++17) |
 | Integration modes | (1) Embedded C++ (one shared library), (2) Declarative QML (`import HyRemote`), (3) Transparent QPA Proxy (`-platform hyremote`) |
 | QPA constraint | Transparent QPA is exactly coupled to the Qt 6.8.3 private QPA ABI; it preserves the native `qwindows` / `qxcb` delegate |
@@ -87,27 +87,39 @@ normal C++ link surface.
 
 ### 3.4 Maintainer / acceptance build
 
-Repository validation is explicit rather than hidden in the normal product build:
-
-```text
--DHYREMOTE_BUILD_TESTS=ON
--DHYREMOTE_BUILD_EXAMPLES=ON
-```
-
-When running **build-tree** tests, make the Qt and HyRemote build-tree runtime directories discoverable (this is a
-build-tree test concern, not the deployment contract):
+Repository validation is explicit rather than hidden in the normal product build. The complete configure,
+build and test chain (Windows):
 
 ```bat
-:: Windows
+cmake -S . -B build-test -G Ninja ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 ^
+  -DHYREMOTE_BUILD_TESTS=ON ^
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build-test --parallel
 set PATH=C:\Qt\6.8.3\msvc2022_64\bin;%CD%\build-test\remoteaccess;%PATH%
 ctest --test-dir build-test --output-on-failure
 ```
 
+Linux:
+
 ```bash
-# Linux (only when the local kit does not already provide suitable runtime lookup)
-export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}
+cmake -S . -B build-test -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
+  -DHYREMOTE_BUILD_TESTS=ON \
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build-test --parallel
+export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}   # only when the local kit provides no suitable runtime lookup
 ctest --test-dir build-test --output-on-failure
 ```
+
+Add `-DHYREMOTE_BUILD_QML_API=ON` and `-DHYREMOTE_WITH_QPA_PROXY=ON` to the same configure when the QML/QPA
+validation scope is needed.
+
+Those `PATH` / `LD_LIBRARY_PATH` additions are a **build-tree test concern**, not the deployment contract: a
+deployed application obtains Qt/HyRemote runtime files through deployment and must not depend on the original
+SDK or build tree.
 
 ## 4. Consumption A: installed SDK
 

@@ -84,26 +84,35 @@ QML 与 Transparent QPA 是**可选载荷**，按需开启：
 
 ### 3.4 维护者/验收构建
 
-仓库自身的验证是显式开启的，不会隐藏在普通产品构建里：
-
-```text
--DHYREMOTE_BUILD_TESTS=ON
--DHYREMOTE_BUILD_EXAMPLES=ON
-```
-
-在**构建树**中运行测试时，需要让测试进程找到 Qt 与 HyRemote 的构建树运行时目录（这是构建树测试关注点，不是部署契约）：
+仓库自身的验证是显式开启的，不会隐藏在普通产品构建里。下面给出**完整的**配置、构建与测试链（Windows）：
 
 ```bat
-:: Windows
+cmake -S . -B build-test -G Ninja ^
+  -DCMAKE_BUILD_TYPE=Release ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 ^
+  -DHYREMOTE_BUILD_TESTS=ON ^
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build-test --parallel
 set PATH=C:\Qt\6.8.3\msvc2022_64\bin;%CD%\build-test\remoteaccess;%PATH%
 ctest --test-dir build-test --output-on-failure
 ```
 
+Linux：
+
 ```bash
-# Linux（仅当本地 Qt 套件未提供合适的运行时查找时）
-export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}
+cmake -S . -B build-test -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
+  -DHYREMOTE_BUILD_TESTS=ON \
+  -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build-test --parallel
+export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}   # 仅当本地 Qt 套件未提供合适的运行时查找时
 ctest --test-dir build-test --output-on-failure
 ```
+
+`-DHYREMOTE_BUILD_QML_API=ON` 与 `-DHYREMOTE_WITH_QPA_PROXY=ON` 可按需加入同一次配置，以覆盖 QML/QPA 的验证范围。
+
+上面的 `PATH` / `LD_LIBRARY_PATH` 增补是**构建树测试关注点**，不是部署契约：部署后的应用必须通过部署机制获得 Qt/HyRemote 运行时文件，不得依赖原始 SDK 或构建树。
 
 ## 4. 消费方式 A：已安装 SDK
 

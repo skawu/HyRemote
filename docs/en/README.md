@@ -9,7 +9,7 @@ integration payloads. This index is organised by reader intent rather than by de
 
 | I want to | Read |
 | --- | --- |
-| Install, build and integrate HyRemote | [`guide/install.md`](guide/install.md) | [中文](../guide/install.md) |
+| Install, build and integrate HyRemote | [English](guide/install.md) · [中文](../guide/install.md) |
 | Integrate with the Embedded C++ API | [`../getting-started/cpp.md`](../getting-started/cpp.md) |
 | Integrate with Declarative QML | [`../getting-started/qml.md`](../getting-started/qml.md) |
 | Use Transparent QPA without touching application source | [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md) |
@@ -42,7 +42,7 @@ internal zone, or to the research evidence under `research/`.
 | [`../versioning.md`](../versioning.md) | Versioning and milestone policy |
 | [`../release-package-manifest.md`](../release-package-manifest.md) | V1 release package manifest (installed payload contract) |
 | [`../dependency-policy.md`](../dependency-policy.md) | Dependency policy, including optional build-time dependencies |
-| [`../widgets-capture.md`](../widgets-capture.md) | [`../quick-capture.md`](../quick-capture.md) | [`../input-model.md`](../input-model.md) | Capture and input model |
+| [`../widgets-capture.md`](../widgets-capture.md) · [`../quick-capture.md`](../quick-capture.md) · [`../input-model.md`](../input-model.md) | Capture and input model |
 
 ## 4. Internal / release documents (not user documentation)
 
@@ -56,24 +56,25 @@ internal zone, or to the research evidence under `research/`.
 
 Ordinary integration work does not require this zone.
 
-## 5. Writing conventions (summary)
+## 5. Navigation root and writing conventions
 
-- **Bilingual**: the Chinese primary document lives at `docs/<path>` and the English mirror at `docs/en/<path>`.
-  The two trees must stay isomorphic (one-to-one by relative path), and each document carries a one-line language
-  switch at the top. A change to a user/reference document updates both languages in the same change.
+This file is the **bilingual navigation root**; its Chinese counterpart is [`../README.md`](../README.md). The
+mirrored zones are `docs/guide/**` and `docs/reference/**`; everything else is the internal/release zone and
+stays English.
+
+- **Bilingual mirror**: the Chinese primary document lives at `docs/<path>` and the English mirror at
+  `docs/en/<path>`. Files that **enter `guide/` or `reference/`** must correspond one-to-one (same relative
+  path), carry a one-line language switch at the top, and change in both languages in the same change. Legacy
+  documents that have not moved into those zones yet are not required to be mirrored while the migration runs.
 - **One document per intent**: user documentation is consolidated by reader intent, not split by development
   stage. Prefer one detailed document over five that each cover a fragment.
-- **Source comments**: Chinese primary with an English counterpart (`// 中文说明 — English`), rolled out in stages
-  (public headers, then internal code, then tests).
-- **Links**: when a document moves, update every reference in the repository; no forwarding copies.
+- **Source comments**: follow the style already in the file. New or substantially edited comments prioritize
+  clarity and consistency with their surroundings; bilingual comments are allowed where they materially help
+  maintainers, but they are **not mandatory** and there is no bulk comment-only migration.
+- **Links**: when a document moves, update every reference in the repository. Keep a **content-free** migration
+  pointer only while a release gate still lists the old path, and delete it in the same change that moves the
+  gate to the new path.
+- **Process content**: issue numbers and tracking, acceptance scheduling and status, milestone chronicles,
+  investigation logs and one-off checklists do not belong to the user/reference zones.
 
 Full rules: [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
-
-## 6. Migration status
-
-| Stage | Status |
-| --- | --- |
-| `guide/install.md` (Windows/Linux guides + installed SDK + source consumption merged) | Done, bilingual |
-| Rest of `guide/` (cpp, qml, qpa-proxy, deploy, operate) | Pending |
-| `reference/` zone (architecture, capture-and-input, merged security, ...) | Pending |
-| Research/evaluation records moving to `research/`, process content removed from user docs | Pending |
