@@ -99,6 +99,25 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 15
     )
 
+    # Transparent QPA is additive to the native application. A remote listener bind failure must
+    # never turn into a native-window/event-loop failure. The test reserves an ephemeral loopback
+    # port before QApplication construction and asks HyRemote to bind the occupied port.
+    add_executable(hyremote-qpa-remote-failure-native-survival-smoke
+        qpa_remote_failure_native_survival_smoke.cpp
+    )
+    target_compile_features(hyremote-qpa-remote-failure-native-survival-smoke PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qpa-remote-failure-native-survival-smoke
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Widgets
+    )
+    add_dependencies(hyremote-qpa-remote-failure-native-survival-smoke hyremote-qpa-platform)
+
+    add_test(NAME hyremote-qpa-remote-failure-native-survival-smoke
+             COMMAND hyremote-qpa-remote-failure-native-survival-smoke)
+    set_tests_properties(hyremote-qpa-remote-failure-native-survival-smoke PROPERTIES
+        ENVIRONMENT "QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
+        TIMEOUT 15
+    )
+
     add_executable(hyremote-qpa-multi-surface-connection-smoke
         qpa_multi_surface_connection_smoke.cpp
     )
