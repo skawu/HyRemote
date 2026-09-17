@@ -121,7 +121,7 @@ string(CONCAT two_prefix_source "${common_prefix_setup}"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${second_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
 run_configure("two-installed-prefixes" "${two_prefix_source}" FALSE "second installed prefix")
 
-# A local/source target followed by installed package discovery is the other dangerous mix: package
+# A local/source target followed by installed package discovery is one dangerous mix: package
 # metadata could otherwise be attached to an unrelated local runtime. Match a no-space identity
 # fragment because CMake may line-wrap human-readable error text in configure diagnostics.
 string(CONCAT source_then_package "${common_prefix_setup}"
@@ -130,6 +130,21 @@ string(CONCAT source_then_package "${common_prefix_setup}"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n")
 run_configure("source-then-installed" "${source_then_package}" FALSE "source/add_subdirectory")
 
+# The reverse order must fail closed too. Load the fake installed package first, then add the actual
+# HyRemote source tree with optional modes disabled. The source RemoteAccess guard must reject the
+# already-imported public runtime before a second product runtime can be created.
+string(CONCAT package_then_source "${common_prefix_setup}"
+"find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n"
+"set(HYREMOTE_BUILD_CORE ON CACHE BOOL \"\" FORCE)\n"
+"set(HYREMOTE_BUILD_REMOTE_ACCESS ON CACHE BOOL \"\" FORCE)\n"
+"set(HYREMOTE_BUILD_QML_API OFF CACHE BOOL \"\" FORCE)\n"
+"set(HYREMOTE_WITH_QPA_PROXY OFF CACHE BOOL \"\" FORCE)\n"
+"set(HYREMOTE_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\n"
+"set(HYREMOTE_BUILD_EXAMPLES OFF CACHE BOOL \"\" FORCE)\n"
+"set(HYREMOTE_BUILD_SPIKES OFF CACHE BOOL \"\" FORCE)\n"
+"add_subdirectory(\"${HYREMOTE_SOURCE_DIR}\" hyremote-source EXCLUDE_FROM_ALL)\n")
+run_configure("installed-then-source" "${package_then_source}" FALSE "add_subdirectory(HyRemote)")
+
 message(STATUS
     "HyRemote package acquisition isolation: PASS "
-    "(dependency-safe prefix + same-prefix rediscovery + mixed-prefix/source rejection)")
+    "(dependency-safe prefix + same-prefix rediscovery + second-prefix/source mixing rejected in both orders)")
