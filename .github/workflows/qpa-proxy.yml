@@ -124,6 +124,7 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PYTHON_EXE=%pythonLocation%\python.exe"
           set "PATH=%QT_PREFIX%\bin;%PATH%"
           set "CMAKE_PREFIX_PATH=%QT_PREFIX%;%CD%\staged-sdk"
           cmake -S tests\consumer-installed-qpa -B qpa-consumer -G Ninja ^
@@ -136,6 +137,8 @@ jobs:
           set "QT_PLUGIN_PATH="
           set "QT_QPA_PLATFORM_PLUGIN_PATH="
           set "QT_QPA_PLATFORM="
-          python tests\consumer-installed-qpa\product_fit.py ^
+          rem Runtime acceptance must not find Qt or HyRemote DLLs in the original SDK/build PATH.
+          set "PATH=%CD%\qpa-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py ^
             --app "%CD%\qpa-consumer-install\bin\hyremote-installed-qpa-consumer.exe" ^
             --port 5992
