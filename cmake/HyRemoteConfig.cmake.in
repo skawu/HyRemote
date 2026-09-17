@@ -35,13 +35,18 @@ if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
     find_dependency(Qt6 6.8 COMPONENTS Core Network)
 endif()
 
-# QML is optional package payload, not a second C++ target. Publish only the existing import-root
-# metadata when the module is actually in this SDK; clear it otherwise so repeated package discovery
-# cannot retain a path from another configuration.
+# QML is optional package payload, not a second C++ target. Publish the import root plus the absolute
+# backing-library payload location consumed internally by hyremote_deploy(... QML). The backing file
+# metadata does not create a link target or another runtime personality; applications still consume
+# the stable `import HyRemote` URI. Clear both values when the SDK has no QML payload so repeated
+# package discovery cannot retain stale paths from another configuration.
 if(@HYREMOTE_PACKAGE_WITH_QML@)
     set(HyRemote_QML_IMPORT_PATH "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
+    set(HyRemote_QML_BACKING_FILE
+        "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QML_BACKING_SUBDIR@/@HYREMOTE_PACKAGE_QML_BACKING_FILENAME@")
 else()
     set(HyRemote_QML_IMPORT_PATH "")
+    set(HyRemote_QML_BACKING_FILE "")
 endif()
 
 # Transparent QPA is a package-owned plugin payload. There is no consumer link target and no
