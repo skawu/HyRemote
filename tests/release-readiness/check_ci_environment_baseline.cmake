@@ -51,6 +51,49 @@ foreach(workflow IN LISTS required_workflows)
     endif()
 endforeach()
 
+# Windows clean-deployment runtime evidence must not inherit the Qt SDK's bin directory. Build and
+# install phases still need Qt/MSVC on PATH, but the launched deployed application must be able to
+# resolve every Qt/HyRemote DLL from its deployment tree. Invoke the Python harness by absolute path
+# so narrowing PATH does not weaken or prevent the check itself.
+function(require_workflow_token workflow token description)
+    set(path "${HYREMOTE_SOURCE_DIR}/${workflow}")
+    file(READ "${path}" workflow_text)
+    string(FIND "${workflow_text}" "${token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "ci-baseline: ${workflow} missing ${description}: ${token}")
+    endif()
+endfunction()
+
+foreach(workflow IN ITEMS
+        ".github/workflows/qpa-proxy.yml"
+        ".github/workflows/sdk-consumption.yml"
+        ".github/workflows/v1-ga-acceptance.yml")
+    require_workflow_token("${workflow}"
+        [=[set "PYTHON_EXE=%pythonLocation%\python.exe"]=]
+        "absolute Python capture for clean Windows runtime checks")
+    require_workflow_token("${workflow}"
+        [=["%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
+        "absolute Python invocation after Windows PATH isolation")
+endforeach()
+
+require_workflow_token(".github/workflows/qpa-proxy.yml"
+    [=[set "PATH=%CD%\qpa-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"]=]
+    "installed-QPA clean runtime PATH")
+
+require_workflow_token(".github/workflows/sdk-consumption.yml"
+    [=[set "PATH=%CD%\deploy-source-qpa\bin;%SystemRoot%\System32;%SystemRoot%"]=]
+    "source-QPA clean runtime PATH")
+require_workflow_token(".github/workflows/sdk-consumption.yml"
+    [=[set "PATH=%CD%\deploy-source-qml-qpa\bin;%SystemRoot%\System32;%SystemRoot%"]=]
+    "source QML+QPA clean runtime PATH")
+
+require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
+    [=[set "PATH=%CD%\consumer-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"]=]
+    "GA installed-QPA clean runtime PATH")
+require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
+    [=[set "PATH=%CD%\consumer-qml-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"]=]
+    "GA combined QML+QPA clean runtime PATH")
+
 message(STATUS
     "HyRemote CI environment baseline gate: PASS "
-    "(Widgets/Quick/QML/QPA/SDK/V1-GA share one Linux Qt desktop host dependency authority)")
+    "(shared Linux Qt desktop dependencies + Windows deployed-runtime SDK isolation)")
