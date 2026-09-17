@@ -9,6 +9,7 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <stdexcept>
 
 #include "detail/component_factories.hpp"
 #include "hyremote/core/input.hpp"
@@ -116,6 +117,96 @@ void testPointerFloodCoalescesBeforeGuiDelivery()
     components.input.reset();
 }
 
+void testProtectedReleaseSurvivesNormalMailboxSaturation()
+{
+    HyRemote::detail::resetFactories();
+
+    ProbeWidget target;
+    target.resize(100, 50);
+    target.setFocusPolicy(Qt::StrongFocus);
+    target.show();
+    target.setFocus();
+    QCoreApplication::processEvents();
+
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(&target, true);
+    CHECK(components.supported);
+    CHECK(components.input != nullptr);
+
+    hyremote::InputEvent button;
+    button.kind = hyremote::InputEventKind::PointerButton;
+    button.sourceViewport = {100U, 50U, 1.0F};
+    button.x = 20.0F;
+    button.y = 15.0F;
+    button.button = hyremote::PointerButton::Left;
+    button.pressed = true;
+    components.input->post(button);
+
+    hyremote::InputEvent shift;
+    shift.kind = hyremote::InputEventKind::Key;
+    shift.key = hyremote::KeyCode::Shift;
+    shift.pressed = true;
+    shift.modifiers = hyremote::modifierMask(hyremote::InputModifier::Shift);
+    components.input->post(shift);
+
+    CHECK(pumpUntil([&] { return target.buttonPresses == 1 && target.keyPresses == 1; }));
+
+    // Saturate the normal 64-event budget without processing the GUI queue. These committed-text
+    // events do not alter logical held state but reproduce the condition that previously rejected
+    // disconnect cleanup releases with "bounded Qt input mailbox is full".
+    for (int i = 0; i < 64; ++i) {
+        hyremote::InputEvent text;
+        text.kind = hyremote::InputEventKind::Text;
+        text.textUtf8 = "x";
+        components.input->post(text);
+    }
+
+    button.pressed = false;
+    shift.pressed = false;
+    shift.modifiers = 0U;
+    bool protectedReleaseThrew = false;
+    try {
+        components.input->post(button);
+        components.input->post(shift);
+    } catch (const std::runtime_error &) {
+        protectedReleaseThrew = true;
+    }
+    CHECK(!protectedReleaseThrew);
+
+    // A new press cannot enter the saturated normal lane. Its later release must be recognized as
+    // unmatched by adapter admission and dropped without consuming the protected release reserve.
+    hyremote::InputEvent rejectedPress;
+    rejectedPress.kind = hyremote::InputEventKind::Key;
+    rejectedPress.key = hyremote::KeyCode::B;
+    rejectedPress.pressed = true;
+    bool pressRejected = false;
+    try {
+        components.input->post(rejectedPress);
+    } catch (const std::runtime_error &) {
+        pressRejected = true;
+    }
+    CHECK(pressRejected);
+
+    rejectedPress.pressed = false;
+    for (int i = 0; i < 256; ++i) {
+        bool unmatchedReleaseThrew = false;
+        try {
+            components.input->post(rejectedPress);
+        } catch (const std::runtime_error &) {
+            unmatchedReleaseThrew = true;
+        }
+        CHECK(!unmatchedReleaseThrew);
+    }
+
+    CHECK(pumpUntil([&] { return target.buttonReleases == 1 && target.keyReleases == 1; }));
+    CHECK(target.buttonPresses == 1);
+    CHECK(target.buttonReleases == 1);
+    CHECK(target.keyPresses == 1);   // rejected B never reached QWidget
+    CHECK(target.keyReleases == 1); // only the accepted Shift lifecycle was released
+
+    components.input.reset();
+}
+
 void testShutdownBalancesDeliveredStateAndDropsPendingInput()
 {
     HyRemote::detail::resetFactories();
@@ -184,6 +275,7 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
     testPointerFloodCoalescesBeforeGuiDelivery();
+    testProtectedReleaseSurvivesNormalMailboxSaturation();
     testShutdownBalancesDeliveredStateAndDropsPendingInput();
     HyRemote::detail::resetFactories();
     if (failures != 0)
