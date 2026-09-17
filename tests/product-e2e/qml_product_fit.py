@@ -55,6 +55,11 @@ def main() -> int:
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["QT_QUICK_BACKEND"] = "software"
+    # A Qt GUI application on Windows sends its logging to the debugger instead of the inherited pipe, which
+    # made this harness capture an empty line list while the QML process stayed alive. Force stderr logging so
+    # the example's existing console.log product signals reach the harness; rendering settings and the public
+    # QML lifecycle stay exactly as they are.
+    env["QT_FORCE_STDERR_LOGGING"] = "1"
 
     # Start with the product-safe view-only default. The example transitions as soon as the first
     # viewer disconnect is observed through the public QML connectedClientCount diagnostic, then
