@@ -101,7 +101,13 @@ if(HYREMOTE_WITH_QPA_PROXY)
         message(FATAL_ERROR
             "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a usable HyRemote::RemoteAccess target")
     endif()
-    find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui)
+
+    # Transparent QPA is itself responsible for discovering both qualified V1 application surface
+    # families. Imported Qt targets created while building RemoteAccess live in that child directory
+    # scope and are not reliable sibling-scope inputs here. Re-resolve the exact Qt package with
+    # Widgets + Quick so qhyremote never changes capability merely because examples/QML happened to
+    # be enabled first. This keeps Widgets and Quick equal first-class surfaces in every QPA build.
+    find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Widgets Quick)
     if(NOT TARGET Qt6::GuiPrivate)
         message(FATAL_ERROR
             "HYREMOTE_WITH_QPA_PROXY=ON requires the exact Qt 6.8.3 private Gui development target (Qt6::GuiPrivate)")
