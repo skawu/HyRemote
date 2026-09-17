@@ -53,8 +53,9 @@ endforeach()
 
 # Windows clean-deployment runtime evidence must not inherit the Qt SDK's bin directory. Build and
 # install phases still need Qt/MSVC on PATH, but the launched deployed application must be able to
-# resolve every Qt/HyRemote DLL from its deployment tree. Invoke the Python harness by absolute path
-# so narrowing PATH does not weaken or prevent the check itself.
+# resolve every Qt/HyRemote DLL from its deployment tree. Python-driven QPA checks capture Python by
+# absolute path before narrowing PATH so the harness remains runnable without leaking the Qt SDK to
+# the child process.
 function(require_workflow_token workflow token description)
     set(path "${HYREMOTE_SOURCE_DIR}/${workflow}")
     file(READ "${path}" workflow_text)
@@ -70,27 +71,60 @@ foreach(workflow IN ITEMS
         ".github/workflows/v1-ga-acceptance.yml")
     require_workflow_token("${workflow}"
         [=[set "PYTHON_EXE=%pythonLocation%\python.exe"]=]
-        "absolute Python capture for clean Windows runtime checks")
+        "absolute Python capture for clean Windows QPA runtime checks")
 endforeach()
 
+# Focused declarative package evidence.
+require_workflow_token(".github/workflows/qml-api.yml"
+    [=[set "PATH=%CD%\qml-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\qml-consumer-install\bin\hyremote-installed-qml-consumer.exe"]=]
+    "installed-QML clean runtime launch")
+
+# Focused QPA package evidence.
 require_workflow_token(".github/workflows/qpa-proxy.yml"
     [=[set "PATH=%CD%\qpa-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
     "installed-QPA PATH isolation immediately before product-fit")
 
+# SDK source/installed shapes: Embedded C++, QML, QPA and QML+QPA.
+require_workflow_token(".github/workflows/sdk-consumption.yml"
+    [=[set "PATH=%CD%\deploy-installed\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\deploy-installed\bin\hyremote-installed-consumer.exe"]=]
+    "installed C++ clean runtime launch")
+require_workflow_token(".github/workflows/sdk-consumption.yml"
+    [=[set "PATH=%CD%\deploy-source\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\deploy-source\bin\hyremote-source-consumer.exe"]=]
+    "source C++ clean runtime launch")
+require_workflow_token(".github/workflows/sdk-consumption.yml"
+    [=[set "PATH=%CD%\deploy-source-qml\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\deploy-source-qml\bin\hyremote-installed-qml-consumer.exe"]=]
+    "source QML clean runtime launch")
 require_workflow_token(".github/workflows/sdk-consumption.yml"
     [=[set "PATH=%CD%\deploy-source-qpa\bin;%SystemRoot%\System32;%SystemRoot%"
           "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "source-QPA PATH isolation immediately before product-fit")
+    "source QPA PATH isolation immediately before product-fit")
 require_workflow_token(".github/workflows/sdk-consumption.yml"
     [=[set "PATH=%CD%\deploy-source-qml-qpa\bin;%SystemRoot%\System32;%SystemRoot%"
           "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
     "source QML+QPA PATH isolation immediately before product-fit")
 
+# Integrated GA installed/source evidence repeats the same isolation on the release-like all-modes tree.
+require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
+    [=[set "PATH=%CD%\consumer-installed-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\consumer-installed-install\bin\hyremote-installed-consumer.exe"]=]
+    "GA installed C++ clean runtime launch")
+require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
+    [=[set "PATH=%CD%\consumer-source-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\consumer-source-install\bin\hyremote-source-consumer.exe"]=]
+    "GA source C++ clean runtime launch")
+require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
+    [=[set "PATH=%CD%\consumer-qml-install\bin;%SystemRoot%\System32;%SystemRoot%"
+          "%CD%\consumer-qml-install\bin\hyremote-installed-qml-consumer.exe"]=]
+    "GA installed QML clean runtime launch")
 require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
     [=[set "PATH=%CD%\consumer-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "GA installed-QPA PATH isolation immediately before product-fit")
+    "GA installed QPA PATH isolation immediately before product-fit")
 require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
     [=[set "PATH=%CD%\consumer-qml-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
@@ -98,4 +132,4 @@ require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
 
 message(STATUS
     "HyRemote CI environment baseline gate: PASS "
-    "(shared Linux Qt desktop dependencies + Windows deployed-runtime SDK isolation)")
+    "(shared Linux Qt desktop dependencies + Windows clean deployed-runtime isolation for all V1 modes)")
