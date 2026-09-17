@@ -189,20 +189,22 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
     )
 
-    # Source deployment truth must come from the current add_subdirectory() graph. This fixture
-    # deliberately injects installed-SDK metadata claiming QPA is unavailable and tied to Qt 6.8.2
-    # while the current source graph contains HyRemote::QpaPlatform. The source target and fixed V1
-    # Qt 6.8.3 qualification must win, proving cross-acquisition metadata cannot poison source use.
-    add_test(
-        NAME hyremote-release-readiness-source-qpa-authority
-        COMMAND "${CMAKE_COMMAND}"
-            -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/deploy_helper_fixture
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-readiness-source-qpa-authority
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -DTEST_QML=OFF
-            -DTEST_STALE_QPA_NEGATIVE_METADATA=ON
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
-    )
+    # Source deployment truth must come from a source graph that actually provides qhyremote. Focused
+    # C++/Widgets/Quick/QML test graphs intentionally leave QPA disabled and must not manufacture a
+    # false failure for metadata that cannot participate in that configure. The integrated/QPA jobs
+    # create HyRemote::QpaPlatform and therefore execute this authority check.
+    if(TARGET HyRemote::QpaPlatform)
+        add_test(
+            NAME hyremote-release-readiness-source-qpa-authority
+            COMMAND "${CMAKE_COMMAND}"
+                -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/deploy_helper_fixture
+                -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-readiness-source-qpa-authority
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DTEST_QML=OFF
+                -DTEST_STALE_QPA_NEGATIVE_METADATA=ON
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
+        )
+    endif()
 
     function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled expect_reject)
         add_test(
