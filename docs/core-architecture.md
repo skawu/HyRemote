@@ -1,8 +1,13 @@
 # HyRemote Core Architecture Contract
 
-Status: **ARCH-01 proposal**
+Status: **ARCH-01 proposal (proposal-era design input)**
 
 Issue: #5
+
+Canonical authority: `docs/architecture.md` is the frozen V1 architecture (three integration modes over one
+shared runtime). This document is kept as the ARCH-01 design input that connected ADR-0001/0002/0003; where it
+disagrees with the frozen architecture or the ADRs - for example the NeatVNC transport rows below, which
+predate the bounded internal RFB 3.8 baseline - the frozen architecture and the ADRs win.
 
 This document connects ADR-0001/0002/0003 into one implementation-ready flow for the v0.1 MVP. It does not claim RK3588/EGLFS validation; #18 remains the embedded evidence gate.
 
@@ -30,7 +35,7 @@ transports and encoding remain out of scope.
 
 Build: `HYREMOTE_BUILD_CORE` (ON by default) with `HYREMOTE_BUILD_TESTS`; the library is
 `hyremote-core` with the `HyRemote::Core` alias and headers under `hyremote/core/`. The
-`spikes/` trees stay non-production and are not linked by Core.
+`research/` trees stay non-production and are not linked by Core.
 
 ## 1. Canonical pipeline
 

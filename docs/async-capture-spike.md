@@ -5,7 +5,7 @@ Status: **public asynchronous path evaluated; no lower-level path implemented**
 Issue: [#16 [ARCH] Asynchronous GL/PBO capture path for Widgets and Quick targets](https://github.com/skawu/HyRemote/issues/16)
 
 This document records the evidence produced by the throwaway harness in
-[`spikes/async-capture/`](../spikes/async-capture/). It answers the questions of issue #16
+[`research/async-capture/`](../research/async-capture/). It answers the questions of issue #16
 in the order the issue prescribes: the **public asynchronous path is evaluated first**,
 requirement by requirement, and lower-level mechanisms (GL/PBO, render-thread, RHI,
 version-specific adapters) are **not implemented** here. Section 6 states exactly which
@@ -608,7 +608,7 @@ capture", not "make the Quick path faster".
 ## 10. Evidence index and reproduction
 
 Evidence files live in
-[`spikes/async-capture/evidence/`](../spikes/async-capture/evidence/) and each report contains
+[`research/async-capture/evidence/`](../research/async-capture/evidence/) and each report contains
 the raw probe data (`composition.overlayPresence`, `fidelity[]`, `pipeline.*`,
 `pipeline.content.*`, `syncBaseline`, `failureModes[]`, `sceneInfo`).
 
@@ -648,7 +648,7 @@ no reader has to guess:
 Build and run:
 
 ```bash
-cmake -S spikes/async-capture -B build/async-spike -G Ninja \
+cmake -S research/async-capture -B build/async-spike -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH=<qt-install>
 cmake --build build/async-spike
@@ -668,7 +668,7 @@ cmake --build build/async-spike
 ctest --test-dir build/async-spike --output-on-failure
 ```
 
-See [`spikes/async-capture/README.md`](../spikes/async-capture/README.md) for the full option
+See [`research/async-capture/README.md`](../research/async-capture/README.md) for the full option
 list.
 
 ## 11. Compatibility matrix rows

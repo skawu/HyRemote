@@ -6,7 +6,7 @@
 #
 # Dependency rule (ADR-0001): this target must not link or include Qt Widgets, Qt Quick,
 # Qt QML, Qt private/QPA, NeatVNC/AML, DRM/GBM/DMA-BUF or RKMPP/V4L2/VA-API types.
-# core/tests/check_dependencies.cmake enforces the include/link part of that rule.
+# src/core/tests/check_dependencies.cmake enforces the include/declaration/link part of that rule.
 
 # Core is an internal/static composition layer for the V1 product. Applications link the shared
 # HyRemote::RemoteAccess facade; QPA is delivered as a platform MODULE. Core deliberately is not
