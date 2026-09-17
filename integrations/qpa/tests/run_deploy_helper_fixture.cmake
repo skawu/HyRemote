@@ -73,11 +73,21 @@ if(EXPECT_CONFIGURE_FAILURE)
         message(FATAL_ERROR
             "negative deploy fixture must declare EXPECT_FAILURE_FRAGMENT so unrelated CMake failures cannot pass")
     endif()
+
+    # CMake formats fatal diagnostics to terminal width, so a semantically stable phrase may be split
+    # across arbitrary newlines/indentation. Test registrations use underscores as explicit spaces;
+    # normalize both the expected phrase and configure output before matching so line wrapping cannot
+    # create a false negative while an unrelated configure error still cannot satisfy the contract.
+    set(_expected_fragment "${EXPECT_FAILURE_FRAGMENT}")
+    string(REPLACE "_" " " _expected_fragment "${_expected_fragment}")
+    string(REGEX REPLACE "[ \t\r\n]+" " " _expected_fragment "${_expected_fragment}")
     set(_configure_output "${configure_stdout}\n${configure_stderr}")
-    string(FIND "${_configure_output}" "${EXPECT_FAILURE_FRAGMENT}" _failure_fragment_pos)
+    string(REGEX REPLACE "[ \t\r\n]+" " " _configure_output "${_configure_output}")
+
+    string(FIND "${_configure_output}" "${_expected_fragment}" _failure_fragment_pos)
     if(_failure_fragment_pos EQUAL -1)
         message(FATAL_ERROR
-            "deploy fixture failed for the wrong reason; expected '${EXPECT_FAILURE_FRAGMENT}'\n${_configure_output}")
+            "deploy fixture failed for the wrong reason; expected '${_expected_fragment}'\n${_configure_output}")
     endif()
     return()
 endif()
