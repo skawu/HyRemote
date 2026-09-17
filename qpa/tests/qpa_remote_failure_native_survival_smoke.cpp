@@ -54,6 +54,17 @@ public:
         m_socket = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (m_socket == INVALID_SOCKET)
             return false;
+
+        // Make ownership deterministic: the HyRemote listener must not be able to share this
+        // address/port on Windows while the reservation socket is alive.
+        BOOL exclusive = TRUE;
+        if (::setsockopt(m_socket,
+                         SOL_SOCKET,
+                         SO_EXCLUSIVEADDRUSE,
+                         reinterpret_cast<const char *>(&exclusive),
+                         static_cast<int>(sizeof(exclusive))) == SOCKET_ERROR) {
+            return false;
+        }
 #else
         m_socket = ::socket(AF_INET, SOCK_STREAM, 0);
         if (m_socket < 0)
