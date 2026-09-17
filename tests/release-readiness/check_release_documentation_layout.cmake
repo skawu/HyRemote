@@ -67,18 +67,22 @@ require_doc_token("CONTRIBUTING.md" "docs/branch-lifecycle.md" "contributor bran
 set(admin_doc "docs/v1-repository-admin.md")
 foreach(required_token
         "repository preparation / administration gate; not product acceptance evidence"
+        "pwsh .github/scripts/drain-superseded-v1-runs.ps1"
+        "pwsh .github/scripts/drain-superseded-v1-runs.ps1 -Execute"
         "pwsh .github/scripts/restore-v1-workflows.ps1"
         "pwsh .github/scripts/finalize-v1-repository-settings.ps1"
         "pwsh .github/scripts/prune-stale-branches.ps1 -Execute"
+        "Current-HEAD runs are always retained"
         "delete_branch_on_merge=true"
         "private vulnerability reporting"
         "Do not describe the current workflow/audit layer as equivalent to branch protection."
         "#104 actual Windows/Linux acceptance complete"
         "#109 physical/native coexistence evidence complete"
-        "The first six items are repository governance readiness. The last two are product acceptance.")
+        "The first seven items are repository governance readiness. The last two are product acceptance.")
     require_doc_token("${admin_doc}" "${required_token}" "V1 repository administration preparation contract")
 endforeach()
 foreach(admin_script IN ITEMS
+        ".github/scripts/drain-superseded-v1-runs.ps1"
         ".github/scripts/restore-v1-workflows.ps1"
         ".github/scripts/finalize-v1-repository-settings.ps1"
         ".github/scripts/prune-stale-branches.ps1")
@@ -86,6 +90,12 @@ foreach(admin_script IN ITEMS
         message(FATAL_ERROR "release-documentation-layout: missing repository administration helper: ${admin_script}")
     endif()
 endforeach()
+require_doc_token(".github/scripts/drain-superseded-v1-runs.ps1"
+                  "if ($headBeforeCancel -ne $head)"
+                  "stale-run drain must abort if the candidate branch moved")
+require_doc_token(".github/scripts/drain-superseded-v1-runs.ps1"
+                  "if ($item.Sha -eq $head)"
+                  "stale-run drain must retain current-HEAD runs")
 
 # #109 cannot be reduced to a chat-only checklist. Keep a versioned runbook with the exact V1
 # lifecycle boundaries ready before physical execution begins. This gate proves preparation only;
@@ -113,4 +123,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(package/layout/dependency governance + repository-admin preparation + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
+    "(package/layout/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
