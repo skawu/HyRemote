@@ -1,0 +1,13 @@
+version: 2
+
+updates:
+  # The pinned action versions in .github/workflows are the only package manifests this repository has
+  # today; Qt and the test tooling are installed by the workflows themselves at pinned versions.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci

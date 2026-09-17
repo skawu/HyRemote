@@ -1,0 +1,6 @@
+# Default owner. Every path requires review from this account.
+#
+# Note: with a single collaborator this file only auto-requests the review; enforcement (required
+# reviewers, code-owner review) needs a second maintainer plus the corresponding ruleset rule.
+
+* @skawu

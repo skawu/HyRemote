@@ -1,0 +1,96 @@
+name: Mainline validation
+
+# Post-merge verification of `main`.
+#
+# Every other workflow in this repository is pull_request-only with path filters, so a merged commit was
+# previously never built or tested (gap recorded in the 2026-09 review). This workflow validates the
+# composed product on the merged commit: the default configuration (all adapters the build enables by
+# default), the full CTest suite and the transport product-fit probe, on both reference platforms.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mainline:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x86_64 / Qt 6.8.3 / default adapters
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+          - name: Linux x86_64 / Qt 6.8.3 / default adapters
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt, Ninja and the maintained VNC client
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja 'vncdotool==1.3.0' Pillow
+          aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
+
+      - name: Install Linux native-window dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0
+
+      - name: Record the verified commit
+        shell: bash
+        run: |
+          echo "verified commit $(git rev-parse HEAD) $(git log -1 --pretty=%s)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+
+      - name: Configure, build, test and product-fit — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          cmake -S . -B build-mainline -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_BUILD_TESTS=ON \
+            -DHYREMOTE_BUILD_SPIKES=OFF
+          cmake --build build-mainline --parallel
+          ctest --test-dir build-mainline --output-on-failure
+          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+            python remoteaccess/tests/rfb_product_fit.py \
+              build-mainline/remoteaccess/tests/hyremote-rfb-test-server
+
+      - name: Configure, build, test and product-fit — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          cmake -S . -B build-mainline -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DHYREMOTE_BUILD_TESTS=ON ^
+            -DHYREMOTE_BUILD_SPIKES=OFF
+          cmake --build build-mainline --parallel
+          ctest --test-dir build-mainline --output-on-failure
+          python remoteaccess\tests\rfb_product_fit.py build-mainline\remoteaccess\tests\hyremote-rfb-test-server.exe
