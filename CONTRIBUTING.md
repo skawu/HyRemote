@@ -121,6 +121,48 @@ A feature is considered **supported** only when it has:
 
 Everything else should be marked experimental, planned, or unverified.
 
+## Documentation and comment language
+
+Documentation is organised by **reader intent**, not by development stage, and it is bilingual. The
+user-facing zone is Chinese-primary; the release/internal zone stays English because the release-readiness
+documentation gate pins exact tokens in those files (translate them only together with the gate).
+
+| Zone | Paths | Language | Content rule |
+| --- | --- | --- | --- |
+| User guide | `docs/guide/**` | Chinese primary + `docs/en/guide/**` mirror | Final shape only: install, integrate, deploy, troubleshoot |
+| Reference | `docs/reference/**` | Chinese primary + `docs/en/reference/**` mirror | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
+| Internal / release | rest of `docs/`, `docs/adr/`, `docs/releases/`, `docs/proposals/` | English | Acceptance runbooks, repository administration, layout authority, milestone records |
+
+Rules for the user-facing zones:
+
+- **Bilingual pairs**: the Chinese primary document lives at `docs/<path>`; the English mirror lives at
+  `docs/en/<path>`. Both trees stay isomorphic (one-to-one by relative path), every document carries a
+  one-line language switch at the top, and a change updates both languages in the same change.
+- **One document per intent**: merge by what the reader wants to do. A single detailed document beats several
+  that each cover a fragment; repository documents are not a place to record the path that produced them.
+- **No process content**: issue numbers and tracking, acceptance scheduling/status, milestone chronicles,
+  investigation logs and one-off checklists do not belong to the user-facing zones. Keep them in the internal
+  zone, or as evidence under `research/` where they actually belong.
+- **Moves update references**: when a document moves, update every reference in the repository in the same
+  change. Do not leave forwarding copies - with one deliberate exception: a path that a release-readiness gate
+  still lists may keep a short pointer file until the gate's path list is updated. Such pointers carry no
+  documentation content, and removing them is a maintainer change rather than an authoring one.
+
+Source-comment language follows the same principle, with Chinese as the primary language:
+
+```cpp
+// 采集回调运行在 GUI 线程上，不得在此阻塞 —— The capture callback runs on the GUI thread; never block here.
+void onCapturedFrame(const RemoteFrame &frame);
+```
+
+- Write new or substantially edited comments as Chinese first, with an English counterpart on the same logical
+  unit (one line where it fits, a short bilingual block where the detail matters).
+- Rollout is staged: public headers and product-facing contracts first, then internal implementation, then
+  tests. Comment-only changes are still changes: keep them in their own commit and do not mix them into a
+  behaviour PR.
+- Keep identifiers, log tokens, CMake target names and gate-checked strings in their existing form; language
+  conventions never rename a symbol.
+
 ## Commit style
 
 Use concise conventional-style subjects where practical, for example:
