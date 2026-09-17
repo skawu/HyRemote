@@ -12,10 +12,19 @@ endif()
 # Widgets and Quick adapters are private implementation inside the shared RemoteAccess runtime. Each
 # application resolves only the Qt UI modules it actually uses.
 set(HYREMOTE_PACKAGE_WITH_QML FALSE)
+set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "${CMAKE_INSTALL_LIBDIR}/qml")
+set(HYREMOTE_PACKAGE_QML_BACKING_SUBDIR "")
+set(HYREMOTE_PACKAGE_QML_BACKING_FILENAME "")
 if(TARGET hyremote-qml)
     set(HYREMOTE_PACKAGE_WITH_QML TRUE)
+    if(WIN32)
+        set(HYREMOTE_PACKAGE_QML_BACKING_SUBDIR "${CMAKE_INSTALL_BINDIR}")
+    else()
+        set(HYREMOTE_PACKAGE_QML_BACKING_SUBDIR "${CMAKE_INSTALL_LIBDIR}")
+    endif()
+    set(HYREMOTE_PACKAGE_QML_BACKING_FILENAME
+        "${CMAKE_SHARED_LIBRARY_PREFIX}hyremote-qml${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endif()
-set(HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR "${CMAKE_INSTALL_LIBDIR}/qml")
 
 # Transparent QPA is package payload, not a C++ link target. Export only availability, exact Qt ABI
 # metadata and the installed plugin location used internally by hyremote_deploy(... QPA). V1 has one
