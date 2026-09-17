@@ -5,7 +5,7 @@ Status: **host evidence collected (Round-2 corrected); embedded validation outst
 Issue: [#3 SPIKE-01 Validate Qt capture paths across Widgets, Quick and EGLFS](https://github.com/skawu/HyRemote/issues/3)
 
 This document records the evidence produced by the throwaway harness in
-[`spikes/capture/`](../spikes/capture/). It answers the architecture questions of
+[`research/capture/`](../research/capture/). It answers the architecture questions of
 issue #3 and recommends the v0.1 capture path for each target family. It does **not**
 freeze any `RemoteFrame` ABI and does not define a public HyRemote API.
 
@@ -701,7 +701,7 @@ tested and remains an open architectural question for a dedicated issue.
 ## 13. Evidence index and reproduction
 
 Evidence files (machine-readable, one per invocation) live in
-[`spikes/capture/evidence/`](../spikes/capture/evidence/):
+[`research/capture/evidence/`](../research/capture/evidence/):
 
 | File | Content |
 |---|---|
@@ -727,7 +727,7 @@ rectangles.
 Build and run:
 
 ```bash
-cmake -S spikes/capture -B build/spike-capture -G Ninja \
+cmake -S research/capture -B build/spike-capture -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH=<qt-install>
 cmake --build build/spike-capture
@@ -739,7 +739,7 @@ cmake --build build/spike-capture
 ctest --test-dir build/spike-capture --output-on-failure
 ```
 
-See [`spikes/capture/README.md`](../spikes/capture/README.md) for the full option list
+See [`research/capture/README.md`](../research/capture/README.md) for the full option list
 and platform notes.
 
 ## 14. Compatibility matrix
