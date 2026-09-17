@@ -4,8 +4,8 @@
 
 <h1 align="center">HyRemote</h1>
 
-<p align="center"><strong>Qt Embedded Remote Access Framework</strong><br>
-Remote display and optional remote input for Qt Widgets and Qt Quick applications.</p>
+<p align="center"><strong>Qt Remote Access Framework</strong><br>
+Remote display and optional remote input for Qt Widgets and Qt Quick applications on Windows and Linux x86_64.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
