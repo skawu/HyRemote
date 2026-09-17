@@ -13,7 +13,19 @@ fi
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   xvfb \
+  libx11-xcb1 \
   libxcb-cursor0 \
+  libxcb-icccm4 \
+  libxcb-image0 \
+  libxcb-keysyms1 \
+  libxcb-randr0 \
+  libxcb-render-util0 \
+  libxcb-shape0 \
+  libxcb-shm0 \
+  libxcb-sync1 \
+  libxcb-util1 \
+  libxcb-xfixes0 \
+  libxcb-xkb1 \
   libxkbcommon-x11-0 \
   libxkbcommon-dev \
   libxkbcommon-x11-dev \
