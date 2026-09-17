@@ -16,6 +16,8 @@ foreach(required_token
         "xvfb"
         "libxcb-cursor0"
         "libxkbcommon-x11-0"
+        "libxkbcommon-dev"
+        "libxkbcommon-x11-dev"
         "libgl1-mesa-dev")
     string(FIND "${deps_script}" "${required_token}" found)
     if(found EQUAL -1)
