@@ -1,0 +1,53 @@
+cmake_minimum_required(VERSION 3.21)
+
+if(NOT DEFINED HYREMOTE_SOURCE_DIR)
+    message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
+endif()
+
+function(require_doc_token relative_path token description)
+    set(path "${HYREMOTE_SOURCE_DIR}/${relative_path}")
+    if(NOT EXISTS "${path}")
+        message(FATAL_ERROR "release-documentation-layout: missing ${relative_path}")
+    endif()
+    file(READ "${path}" text)
+    string(FIND "${text}" "${token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: ${description} missing from ${relative_path}: ${token}")
+    endif()
+endfunction()
+
+function(forbid_doc_token relative_path token description)
+    set(path "${HYREMOTE_SOURCE_DIR}/${relative_path}")
+    if(NOT EXISTS "${path}")
+        message(FATAL_ERROR "release-documentation-layout: missing ${relative_path}")
+    endif()
+    file(READ "${path}" text)
+    string(FIND "${text}" "${token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: ${description} remains in ${relative_path}: ${token}")
+    endif()
+endfunction()
+
+# The package manifest is the release-facing source-tree inventory. Keep its physical paths aligned
+# with docs/repository-layout.md instead of allowing the old root-level module names to become facts
+# again. Conceptual prose such as "Core" or "architecture research" is intentionally not forbidden.
+require_doc_token("docs/release-package-manifest.md" "`src/core/` low-level implementation headers and tests"
+                  "canonical Core source path")
+require_doc_token("docs/release-package-manifest.md" "architecture research/evidence under `research/`"
+                  "canonical research/evidence path")
+forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implementation headers and tests"
+                 "legacy root Core path")
+forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
+                 "legacy root spikes path")
+
+# User-facing entry points must identify the canonical layout document so repository contributors do
+# not infer module ownership from historical root names.
+require_doc_token("README.md" "docs/repository-layout.md" "repository-layout documentation link")
+require_doc_token("CONTRIBUTING.md" "docs/repository-layout.md" "contributor layout authority")
+require_doc_token("CONTRIBUTING.md" "docs/branch-lifecycle.md" "contributor branch-lifecycle authority")
+
+message(STATUS
+    "HyRemote release documentation layout gate: PASS "
+    "(package manifest + README/contributor entry points use canonical repository/branch governance facts)")
