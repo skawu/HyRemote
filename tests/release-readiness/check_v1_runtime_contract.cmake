@@ -27,6 +27,22 @@ require_file_token("remoteaccess/tests/CMakeLists.txt" "TIMEOUT 15" "bounded con
 require_file_token("docs/input-model.md" "reference-counted inside the private transport normalization layer" "canonical concurrent-viewer input model")
 require_file_token("docs/known-limitations.md" "simultaneous viewers as contributors to one shared logical Qt input device" "truthful shared-target multi-viewer boundary")
 
+# A viewer-disconnect release is part of the held-state lifecycle, not disposable overload traffic.
+# Widgets and Quick share one internal admission state machine: normal input retains the historical
+# 64-event budget while a mathematically bounded protected lane preserves releases for holds that the
+# adapter previously accepted. Presses rejected by normal backpressure do not earn a protected release.
+require_file_token("remoteaccess/src/detail/input_mailbox_admission.hpp" "kProtectedReleaseCapacity =" "shared protected-release admission bound")
+require_file_token("remoteaccess/src/detail/input_mailbox_admission.hpp" "kProtectedReleaseCapacity == 136U" "machine-pinned V1 protected-release capacity")
+require_file_token("remoteaccess/src/detail/input_mailbox_admission.hpp" "DropUnmatchedRelease" "rejected-press release suppression")
+require_file_token("remoteaccess/tests/test_input_mailbox_admission.cpp" "testProtectedReserveBoundCoversWorstAcceptedLifecycle" "pure admission worst-case proof")
+require_file_token("remoteaccess/tests/CMakeLists.txt" "hyremote-input-mailbox-admission-test" "registered pure admission CTest")
+require_file_token("remoteaccess/src/widgets/widget_target.cpp" "InputMailboxAdmission admission" "Widgets shared protected-release admission")
+require_file_token("remoteaccess/src/quick/quick_target.cpp" "InputMailboxAdmission admission" "Quick shared protected-release admission")
+require_file_token("remoteaccess/tests/test_widgets_input_backpressure.cpp" "testProtectedReleaseSurvivesNormalMailboxSaturation" "Widgets saturated-mailbox release regression")
+require_file_token("remoteaccess/tests/test_quick_input_backpressure.cpp" "testProtectedReleaseSurvivesNormalMailboxSaturation" "Quick saturated-mailbox release parity regression")
+require_file_token("docs/input-model.md" "bounded protected-release lane" "canonical backpressure/disconnect composition rule")
+require_file_token("docs/input-model.md" "normal backpressure may not prevent the final accepted key/button release" "canonical #90 saturation invariant")
+
 require_file_token("remoteaccess/src/remote_access.cpp" "acknowledgedRecoverableError" "recoverable runtime error acknowledgement")
 require_file_token("remoteaccess/src/remote_access.cpp" "acknowledgeCurrentRecoverableError()" "clearError live-runtime acknowledgement path")
 require_file_token("remoteaccess/tests/test_remote_access.cpp" "testRecoverableRuntimeErrorCanBeAcknowledgedAndReappearsOnNewFailure" "recoverable clear/reoccurrence regression")
@@ -62,4 +78,4 @@ require_file_token("docs/v1-ga-acceptance.md" "remote-capability failure only" "
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
-    "(multi-viewer input isolation + error/Faulted semantics + Widgets/Quick target-loss parity + event-driven E3 policy transition + observed QPA remote-failure native survival)")
+    "(multi-viewer isolation + protected disconnect releases under backpressure + error/Faulted semantics + Widgets/Quick parity + event-driven E3 + observed QPA remote-failure native survival)")
