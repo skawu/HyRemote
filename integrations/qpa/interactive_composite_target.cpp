@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/qpa_composition_seam.hpp"
 #include "hyremote/core/input.hpp"
 
 namespace HyRemote::Qpa {
@@ -258,7 +259,7 @@ private:
         if (snapshot.canvasBounds.isEmpty())
             return std::nullopt;
 
-        const auto mapped = hyremote::mapPointerToTarget(
+        const auto mapped = HyRemote::detail::mapPointerToNormalizedTarget(
             event,
             static_cast<float>(snapshot.canvasBounds.width()),
             static_cast<float>(snapshot.canvasBounds.height()));
