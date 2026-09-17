@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/qpa_composition_seam.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
@@ -238,10 +239,10 @@ private:
         const int width = qMax(1, size.width());
         const int height = qMax(1, size.height());
         const std::size_t bytesPerLine = static_cast<std::size_t>(width) * 4U;
-        auto storage = hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine,
-                                                                    static_cast<std::size_t>(height));
-        if (storage && storage->mutablePlane(0)) {
-            std::memset(storage->mutablePlane(0), 0, bytesPerLine * static_cast<std::size_t>(height));
+        auto writable = HyRemote::detail::createWritableCpuFrame(bytesPerLine,
+                                                                static_cast<std::size_t>(height));
+        if (writable.data) {
+            std::memset(writable.data, 0, bytesPerLine * static_cast<std::size_t>(height));
         }
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
@@ -250,7 +251,7 @@ private:
         frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
-        frame.storage = std::move(storage);
+        frame.storage = std::move(writable.storage);
         frame.timing.ptsSource = hyremote::PtsSource::Completion;
         frame.timing.requestTime = request.requestTime;
         frame.timing.completionTime = completion;
@@ -308,15 +309,14 @@ private:
         if (!result.storage)
             return;
 
-        auto storage = std::const_pointer_cast<hyremote::CpuFrameStorage>(
-            std::dynamic_pointer_cast<const hyremote::CpuFrameStorage>(result.storage));
-        if (!storage || !storage->mutablePlane(0))
+        const HyRemote::detail::WritableCpuFrame writable = HyRemote::detail::writableCpuFrameOf(result);
+        if (!writable.data)
             return;
 
         const int width = static_cast<int>(result.geometry.size.width);
         const int height = static_cast<int>(result.geometry.size.height);
-        const qsizetype bytesPerLine = static_cast<qsizetype>(width) * 4;
-        QImage output(reinterpret_cast<uchar *>(storage->mutablePlane(0)),
+        const qsizetype bytesPerLine = static_cast<qsizetype>(writable.bytesPerLine);
+        QImage output(reinterpret_cast<uchar *>(writable.data),
                       width,
                       height,
                       bytesPerLine,
