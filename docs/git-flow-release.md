@@ -69,9 +69,10 @@ Remove that marker only after the complete milestone gate passes and before the 
 - link an Issue/WBS item;
 - target `develop`;
 - stay Draft while mandatory evidence is unavailable;
-- include bounded implementation/tests/docs in the same line when practical.
+- include bounded implementation/tests/docs in the same line when practical;
+- delete the branch ref after its PR is merged, superseded or closed, provided it is not the head of another open PR.
 
-Historical atomic/stacked branches are not history-rewritten merely for cosmetics. Their accepted content converges through the current single V1 product line.
+Historical Issue/PR/commit evidence is durable audit history; a stale branch ref is not. Do not force-push historical refs merely to make ancestry look linear, but do prune refs whose work line is no longer active. See `docs/branch-lifecycle.md`.
 
 ### `release/vX.Y.Z.W`
 
@@ -108,7 +109,7 @@ Default product shape:
 - `HyRemote::RemoteAccess`: ON, shared product facade;
 - Widgets/Quick adapters: ON when the matching Qt modules exist;
 - bounded C++ RFB correctness transport: ON;
-- tests/examples/spikes: OFF;
+- tests/examples/research spikes: OFF;
 - QML API: opt-in;
 - Transparent QPA: opt-in and exact-private-ABI qualified.
 
@@ -227,14 +228,16 @@ v1.0.0.1
 
 follows the same discipline. Maintenance may carry fixes/security/packaging/docs/small-scope optimizations, but not a new product capability. Each new maintenance release must add its own release notes and explicit policy authorization.
 
-## 10. Current migration rule
+## 10. Current V1 convergence and branch retention
 
-This policy was introduced after substantial V1 work already existed in historical stacked branches.
+This policy was introduced after substantial V1 work already existed in historical stacked/task branches.
 
-- do not force-push/rename historical branches only for appearance;
-- preserve Issue/PR/evidence history;
+- preserve Issue/PR/commit/evidence history; do not rewrite it for appearance;
+- branch refs are temporary work cursors, not the archive mechanism;
 - current repository-accessible V1 work converges through the single #106 feature line, then `develop`;
-- closed historical slices are audit records, not parallel execution lines;
+- closed/superseded historical task branches must not receive new V1 development and should be pruned once they are no longer open-PR heads;
+- the intended steady-state visible set is `main`, `develop`, plus currently open PR heads;
+- the one-time V1 cleanup is SHA-locked and fail-closed in `.github/scripts/prune-stale-branches.ps1`;
 - do not create retroactive tags for milestones that have not passed current acceptance.
 
-This preserves auditability while making Git Flow authoritative for all releases from this point forward.
+See `docs/branch-lifecycle.md` for the retention/deletion procedure. This preserves auditability while preventing stale task refs from masquerading as parallel product lines.
