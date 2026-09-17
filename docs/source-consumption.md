@@ -74,6 +74,8 @@ These options do not create alternate Core/transport stacks. QML remains a thin 
 
 `find_package(HyRemote CONFIG REQUIRED)` consumes an **installed/exported** package. `add_subdirectory()` consumes HyRemote build targets directly. Their acquisition steps differ; their application API, artifact shape and deployment helper are deliberately the same.
 
+A single CMake configure must choose exactly **one HyRemote acquisition**: either one installed package prefix or one source/add-subdirectory tree. Do not call `find_package(HyRemote)` and `add_subdirectory(HyRemote)` in the same configure, and do not combine two different installed HyRemote prefixes. V1 deliberately fails those mixed cases closed instead of pairing one runtime target with QML/QPA metadata from another HyRemote build. Repeating `find_package(HyRemote)` for the same installed prefix remains valid.
+
 Internal build-tree aliases/targets may exist during source consumption. They are implementation/build metadata and are not stable installed 1.x application APIs.
 
 ## Clean deployment requirement
