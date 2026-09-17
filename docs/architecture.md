@@ -1,228 +1,271 @@
-# HyRemote Architecture Baseline
+# HyRemote V1 Architecture
 
-Status: **Core contract proposed in ARCH-01 (#5); embedded/performance backends remain evidence-driven**
+Status: **V1.0.0.0 architecture frozen; release acceptance pending**
 
-This document defines the top-level boundaries that HyRemote implementation work must preserve. The implementation-ready Core semantics are refined by:
+HyRemote is a Qt Embedded remote-access framework for existing Qt Widgets and Qt Quick applications. V1 deliberately keeps the application-facing model small while isolating capture, input, transport and platform-specific implementation details behind one runtime architecture.
+
+This document is the canonical top-level architecture for V1. Detailed contracts are refined by:
 
 - [`core-architecture.md`](core-architecture.md);
 - [`ADR-0001 Core Boundaries`](adr/0001-core-boundaries.md);
 - [`ADR-0002 RemoteFrame Ownership, Damage and Timestamp Contract`](adr/0002-remoteframe-lifetime-timestamps.md);
-- [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md).
+- [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md);
+- [`input-model.md`](input-model.md);
+- [`deployment.md`](deployment.md);
+- [`security-model.md`](security-model.md).
 
-## 1. Problem statement
+## 1. Frozen V1 product model
 
-HyRemote adds remote display and remote input to existing Qt Embedded applications without requiring the application to migrate its UI framework, graphics stack, or business architecture.
+V1 has exactly three first-class application integration modes:
 
-The project must support both Qt Widgets and Qt Quick and must not make one application type a compatibility layer for the other.
+1. **Embedded C++ API** — applications link the one shared `HyRemote::RemoteAccess` library;
+2. **Declarative QML API** — applications `import HyRemote`; the QML `RemoteAccess` item is a thin wrapper over that same C++ runtime;
+3. **Transparent QPA Proxy** — existing applications remain Qt-only and launch through `-platform hyremote`; the package-owned `qhyremote` module decorates the qualified native platform and uses the same shared runtime.
 
-## 2. Primary integration modes
+Qt Widgets and Qt Quick are first-class peers. One mode is not implemented by adapting the application into another UI framework.
 
-### 2.1 Embedded C++ API
+V1 does **not** expose the internal Core/Session/transport graph as the normal application API.
 
-Reference integration and stable API direction.
+## 2. Runtime and artifact ownership
 
-Conceptual API:
-
-```cpp
-HyRemote::Session session;
-session.attach(target);
-session.start();
+```text
+Embedded C++ app -----------+
+                            |
+Declarative QML wrapper ----+----> HyRemoteRemoteAccess (one SHARED runtime)
+                            |                 |
+Transparent qhyremote ------+                 v
+                                      internal target adapters
+                                               |
+                                      internal Core Session
+                                       /               \
+                               CaptureSource        InputSink
+                                      \               /
+                                       bounded RFB 3.8
+                                             |
+                                           viewer
 ```
 
-Targets may include QWidget, QWindow, or QQuickWindow through dedicated adapters/facades. The public facade must reuse the Core Session rather than place Qt target types in `hyremote-core`.
+The installed V1 artifact rules are fixed:
 
-### 2.2 Declarative QML API
+- `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` is the **one normal shared C++ product runtime**;
+- `hyremote-core` is a **static internal/source component** and is not installed/exported as an application SDK target;
+- the QML module is declarative package payload over the same shared runtime, not a second C++ runtime;
+- `qhyremote` is a Qt platform **MODULE payload**, not an application link target;
+- the installed SDK does not export `HyRemote::Core` or `HyRemote::QpaPlatform`;
+- `BUILD_SHARED_LIBS` does not create alternate V1 product personalities.
 
-Convenience wrapper for Qt Quick applications. It must reuse the same Core/session implementation instead of implementing a separate remote path.
+## 3. Embedded C++ contract
 
-Conceptual API:
+The normal C++ consumer contract is:
+
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
+target_link_libraries(MyApp PRIVATE HyRemote::RemoteAccess)
+```
+
+```cpp
+#include <HyRemote/RemoteAccess.h>
+
+HyRemote::RemoteAccess remote(&window);
+remote.start();
+```
+
+Construction is inert. The default listener is `127.0.0.1:5900`; remote input is disabled by default.
+
+Configuration is mutable while the runtime is `Stopped`. Policy changes use an explicit:
+
+```text
+stop -> configure -> start
+```
+
+There is no hidden live authorization/control channel in V1.
+
+## 4. Declarative QML contract
+
+The QML layer is intentionally thin:
 
 ```qml
+import HyRemote
+
 RemoteAccess {
-    target: window
+    target: mainWindow
     enabled: true
 }
 ```
 
-### 2.3 Zero-code platform proxy
+`enabled: true` is applied only after component completion. QML does not create a second Core, Session, transport or error state machine. Target, state, error and client-count observations reflect the same underlying C++ facade.
 
-Optional compatibility mode for applications that cannot be modified. It may use Qt private/QPA APIs but must remain isolated from stable public interfaces.
+## 5. Transparent QPA contract
 
-The proxy is an adapter, not the architecture core.
-
-## 3. Layer model
+Transparent QPA is selected at process start:
 
 ```text
-Application
-   │
-Target Adapter / facade
-   │
-CaptureSource
-   │
-RemoteFrame
-   │
-Bounded Core mailbox
-   │
-Transport
-   │
-Viewer
-
-Viewer
-   │
-Transport Input
-   │
-Input Adapter
-   │
-Qt Application
+MyApp -platform hyremote
 ```
 
-### 3.1 Target Adapter
+Applications remain Qt-only. Deployment uses:
 
-Describes what is being shared and the application semantics required to reach it.
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
+hyremote_deploy(TARGET MyApp QPA)
+```
 
-Initial target families:
+The V1 reference native delegates are:
 
-- QWidget/raster Widgets;
-- QQuickWindow;
-- QOpenGLWidget;
-- QQuickWidget;
-- Quick3D/mixed Quick content.
+- Windows: `qwindows`;
+- Linux x86_64: `qxcb`.
 
-A target adapter does not own the network protocol.
+`qhyremote` creates/decorates native platform objects through the matching Qt private ABI and preserves native local display/input as authoritative. It must not silently fall back to an offscreen/minimal/qvnc-style replacement platform.
 
-### 3.2 Capture Backend / CaptureSource
+V1 QPA is qualified against **Qt 6.8.3 exactly**. Public C++/QML API compatibility with another 6.8.x patch does not broaden the private-ABI QPA support claim.
 
-Produces `RemoteFrame` completions from a target and obeys target thread affinity.
+Remote-input policy for QPA is startup/relaunch policy (for example `hyremote-input=true`). Returning to view-only may require relaunch. V1 does not add a hidden live QPA authorization service.
 
-Validated/current candidate classes include:
+## 6. Target adapters and capture
 
-- QWidget public raster capture baseline;
-- native QQuickWindow public asynchronous baseline candidate using `contentItem()->grabToImage()`;
-- synchronous GL/widget fallbacks where public async capture does not exist;
-- future optimized GL/readback or external-buffer paths only when measured evidence justifies them.
+The shared runtime selects internal target components for supported Qt targets. The stable application API does not expose capture backend classes.
 
-Capture sources expose capability metadata so the Session can select/fail early without assuming that every QWidget is raster-only or every Qt Quick target is OpenGL-only.
+V1 correctness paths are:
 
-### 3.3 RemoteFrame
+- qualified QWidget top levels through Qt public widget rendering into owned CPU-readable storage;
+- qualified QQuickWindow targets through public asynchronous Quick capture (`contentItem()->grabToImage()`).
 
-Transport-neutral immutable frame metadata plus owned storage lifetime.
+Transparent QPA composes qualified application-owned top-level QWidget/QQuickWindow surfaces into the remote application view while preserving the native delegate.
 
-The semantic contract includes:
+Arbitrary foreign/native `QWindow` capture is not a V1 support claim.
 
-- geometry/size and pixel/storage description;
-- owned CPU or external storage lifetime;
-- content PTS whose source is explicit;
-- optional request/completion diagnostics;
-- damage as `Unknown`, `FullFrame`, or `Regions`;
-- backend-neutral capability metadata.
+## 7. RemoteFrame and Core boundary
 
-A borrowed raw pointer is not a standalone frame contract. Request time is not content PTS. See ADR-0002.
+`RemoteFrame` is transport-neutral immutable frame metadata plus owned storage lifetime. The contract includes:
 
-### 3.4 Backpressure
+- geometry and pixel/storage description;
+- owned CPU/external storage lifetime;
+- explicit content timing;
+- request/completion diagnostics where available;
+- damage represented as `Unknown`, `FullFrame` or regions;
+- backend-neutral capabilities.
 
-Capture completion never calls the transport directly. Frames cross a bounded Core mailbox before transport dispatch.
+Borrowed raw memory is not a standalone frame contract.
 
-The default near-live policy is `DropOldest / LatestFrameWins`; producer-throttle is a separate explicit policy. Transport implementations additionally own per-client queue/backpressure. See ADR-0003.
+`hyremote-core` remains ordinary C++17 and must not depend on Qt Widgets/Quick/QML, Qt private/QPA, RFB implementation types, graphics-platform APIs or SoC-specific acceleration libraries. Concrete adapters and integrations stay outside Core.
 
-### 3.5 Transport
+## 8. Scheduling and backpressure
 
-Consumes `RemoteFrame` objects and manages remote clients.
+Capture completion does not call the network transport directly. Frames cross a bounded Core mailbox before dispatch.
 
-The first transport is VNC/RFB using NeatVNC as the preferred candidate. RFB/AML implementation details must not leak into target, capture or Core interfaces.
+The near-live default is `DropOldest / LatestFrameWins`. Producer throttling is an explicit separate policy. A slow viewer must not block the Qt GUI/render path or create unbounded frame ownership.
 
-Future transports may include WebRTC or other low-latency transports without replacing the capture architecture.
+Transport implementations own their own bounded client/protocol state in addition to Core frame backpressure.
 
-### 3.6 Input Adapter
+## 9. V1 transport boundary
 
-Converts transport-normalized input into application input and marshals it to the target's required thread.
+The V1 Windows/Linux correctness transport is HyRemote's **bounded internal C++ RFB 3.8 implementation** behind the private transport seam.
 
-The preferred Qt application path is direct Qt event delivery. Linux `uinput` may be offered later as an optional system-level backend but is not the default architecture.
+RFB is not an application-facing API. A future accepted transport can reuse the stable facade/Core boundaries without changing normal C++/QML/QPA integration.
 
-### 3.7 Hardware Encoder
+Historical NeatVNC/rustvncserver work is research evidence only. Rust/Cargo is not a normal V1 build or consumer dependency. LibVNCServer is not the default V1 backend.
 
-Optional acceleration used by transports/codecs that need encoded video.
+The current RFB baseline negotiates **SecurityType None**. V1 therefore provides no transport authentication or encryption and must not be exposed directly to the public Internet.
 
-Conceptual implementations may include:
+## 10. Input model and lifecycle
 
-- RKMPP;
-- V4L2 M2M;
-- VA-API;
-- other platform backends.
+Transport input is normalized before it reaches the Qt target adapter. The V1 model distinguishes pointer motion/buttons, wheel, key/modifier state and committed text where protocol information is sufficient.
 
-Encoding is not a mandatory stage in the Core pipeline. No SoC-specific encoder belongs in `hyremote-core`.
+Recognized held state has two cleanup boundaries:
 
-## 4. Dependency rules
+1. **abrupt viewer disconnect** — transport-owned per-viewer state is released without affecting another viewer's still-held contribution;
+2. **explicit HyRemote stop/policy transition** — Session/transport callbacks are first quiesced, then the target `InputSink` performs terminal cleanup, dropping undelivered input and balancing supported held state already delivered to Qt.
 
-`hyremote-core` must not expose or require:
+Simultaneous viewers contribute to one shared logical Qt input device. Per-viewer held state remains private, while the transport reference-counts normalized key/button holders so one viewer cannot release another viewer's hold.
 
-- NeatVNC/AML types;
-- QWidget/QQuickWindow/QML types;
-- EGLFS private implementation details;
-- Rockchip MPP;
-- GBM/DRM concrete types;
-- Qt private/QPA headers.
+Widgets and Quick use the same bounded protected-release mailbox admission. Input overload may reject new ordinary input, but it must not discard the final release for a hold the adapter already accepted.
 
-Concrete adapters may depend on these technologies.
+V1 does not use desktop-wide `uinput`/virtual-HID injection as the normal path.
 
-The Core contract uses ordinary C++17 value/interface types at its boundary. Internal implementation may use QtCore later if useful, provided Qt GUI/private/protocol/platform semantics do not leak into Core public types.
+## 11. Runtime state and diagnostics
 
-## 5. Threading principles
+The public facade state model is:
 
-The implementation does not assume that capture, encoding, network I/O and Qt GUI work occur on the same thread.
+```text
+Stopped -> Starting -> Running
+                    \-> Faulted
+Running  -> Faulted
+Running/Faulted -> explicit stop -> Stopped
+```
 
-Frozen principles:
+`Running` means the listener/runtime is active, not that a viewer is authenticated or connected.
 
-- target adapters marshal Qt-affine operations to the appropriate Qt thread;
-- capture completion performs only bounded hand-off work;
-- a Core dispatch worker separates capture from transport runtime;
-- transport owns its event loop/thread and client-specific queues;
-- remote input is marshalled back to the Qt GUI/target thread;
-- storage implementations own any thread-affine recycle/release behavior;
-- slow clients do not block capture/render by default.
+`connectedClientCount()` is operational diagnostics only.
 
-See ADR-0003 for the detailed sequence.
+A non-recoverable runtime failure remains observable as `Faulted` until explicit `stop()` performs cleanup. Configuration remains immutable while active/Faulted and reopens only after `Stopped`.
 
-## 6. Compatibility model
+`clearError()` may acknowledge a recoverable runtime diagnostic. Unrelated viewer/capture/transport activity must not resurrect the same acknowledged occurrence; a genuinely new occurrence becomes visible again. `clearError()` cannot hide an active fatal Faulted diagnostic.
 
-HyRemote publishes a compatibility matrix instead of making blanket claims.
+## 12. Threading and callback ownership
 
-Initial cases:
+HyRemote does not assume capture, transport and Qt GUI work execute on one thread.
 
-| Application type | Baseline target |
-|---|---|
-| QWidget/raster | required |
-| QWidget with custom QPainter | required |
-| QQuickWindow 2D | required |
-| QOpenGLWidget | synchronous public baseline; async gap recorded |
-| QQuickWidget | parent QWidget whole-window baseline; embedded Quick async only |
-| Quick3D | host public-async evidence accepted; EGLFS unverified |
-| custom QQuickFramebufferObject | host public-async evidence accepted; EGLFS unverified |
-| multiple native GL windows | not promised |
+Frozen rules include:
 
-## 7. v0.1 architecture constraints
+- Qt-affine target operations are marshalled to the required Qt thread;
+- capture completion performs bounded handoff work;
+- Core scheduler/dispatch workers are independent from transport/client work;
+- transport owns its runtime/client callbacks;
+- remote input is marshalled to the target Qt thread;
+- Session callback gates are closed and drained before owned runtime objects are torn down;
+- component/runtime stop is idempotent and must not depend on a remote peer responding.
 
-v0.1 should prove correctness before advanced optimization:
+## 13. Packaging and deployment
 
-1. a Widgets example can be viewed and controlled remotely;
-2. a Qt Quick/EGLFS example can be viewed and controlled remotely;
-3. both use the same Session/Core semantics;
-4. local rendering and local input continue to work;
-5. the transport is replaceable;
-6. no Qt private API is required by the stable Core;
-7. frame lifetime, PTS and backpressure are explicit/testable;
-8. performance data is collected before PBO, DMA-BUF or hardware encoding becomes a requirement.
+`hyremote_deploy()` is the single HyRemote-owned deployment entry point:
 
-## 8. Evidence/deferred decisions
+```cmake
+hyremote_deploy(TARGET MyCppApp)
+hyremote_deploy(TARGET MyQmlApp QML)
+hyremote_deploy(TARGET ExistingQtApp QPA)
+hyremote_deploy(TARGET ExistingQmlApp QML QPA)
+```
 
-Still intentionally open:
+Source/add-subdirectory and installed-SDK acquisition expose the same product model. A consumer configure uses one HyRemote acquisition source; source and installed metadata must not be mixed.
 
-- exact production C++ names/ABI for the proposal under `docs/proposals/`;
-- concrete external-buffer/native-handle/fence descriptor (#17);
-- final EGLFS capture backend/default tuning (#18);
-- exact QPA proxy implementation;
-- RKMPP integration model;
-- H.264-in-RFB versus another transport for high-motion content;
-- normalized keyboard symbol schema;
-- project license.
+Optional QML/QPA payload selection is fail-closed. Deployment must not silently recover missing/corrupt optional payloads from another SDK/build tree.
 
-These open items may refine adapters/defaults without violating the Core invariants frozen by ARCH-01.
+## 14. Compatibility and release evidence
+
+The V1 GA reference target is Windows x86_64 + Linux x86_64, exact Qt 6.8.3 for the integrated all-modes qualification. Compatibility is evidence-based; Candidate/Experimental rows are not Supported claims.
+
+Hosted/Xvfb automation proves correctness that can be automated. It does not replace the separate physical/native local-display/local-input plus remote coexistence gate required by #109.
+
+No release branch/tag is authorized until the release authorities recorded by #33 are accepted.
+
+## 15. Post-V1 extension seams
+
+The architecture intentionally leaves optimization behind private/internal seams. Post-V1 work may add or replace:
+
+- optimized GL/PBO capture;
+- DMA-BUF/GBM/external-buffer paths;
+- hardware encoding such as RKMPP/V4L2/VA-API;
+- authenticated/encrypted transports;
+- additional platform delegates/targets;
+- richer per-client authorization/control.
+
+Such work must preserve the V1 application model unless a later release deliberately changes the public contract. Platform optimization must not force ordinary applications to understand Core, capture, transport, graphics-backend or SoC-specific implementation details.
+
+## 16. Repository ownership mapping
+
+The canonical repository layout mirrors these responsibilities:
+
+```text
+src/core/                 internal Core
+src/remoteaccess/         one shared public C++ runtime/facade
+integrations/qml/         declarative payload
+integrations/qpa/         exact-Qt Transparent QPA payload
+tests/                    cross-module/consumer/release evidence
+examples/                 product examples
+research/                 non-product architecture evidence
+assets/branding/          non-build branding assets
+cmake/                    package/deployment/build modules
+docs/                     product and maintainer documentation
+```
+
+The V1 release-readiness repository-layout gate prevents the historical root-level module layout or a second runtime dependency graph from returning.
