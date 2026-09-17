@@ -234,6 +234,46 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
+    # Generator-shape coverage: the deploy-helper fixture must accept both generator shapes
+    # deterministically, so neither the single-configuration single-script expectation nor the
+    # multi-configuration per-configuration set can regress silently. The hosted jobs exercise the
+    # platform default generator (Visual Studio multi-config on Windows, single-configuration
+    # elsewhere) with the registrations above; these two pin both shapes explicitly so a
+    # configuration-dependent regression is caught on any host that has ninja. The ninja executable is
+    # pinned into the sub-configure so the pinned generator does not depend on the test process PATH.
+    find_program(HYREMOTE_DEPLOY_FIXTURE_NINJA ninja)
+    if(HYREMOTE_DEPLOY_FIXTURE_NINJA)
+        add_test(
+            NAME hyremote-qpa-deploy-helper-single-config-generator
+            COMMAND ${CMAKE_COMMAND}
+                -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+                -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-single-config-generator
+                -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+                -DFIXTURE_GENERATOR=Ninja
+                -DFIXTURE_MAKE_PROGRAM=${HYREMOTE_DEPLOY_FIXTURE_NINJA}
+                -DFIXTURE_BUILD_TYPE=Release
+                -DFIXTURE_EXPECTED_CONFIG=Release
+                -DTEST_QML=OFF
+                -P ${_hyremote_qpa_deploy_runner}
+        )
+        add_test(
+            NAME hyremote-qpa-deploy-helper-multi-config-generator
+            COMMAND ${CMAKE_COMMAND}
+                -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+                -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-multi-config-generator
+                -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+                "-DFIXTURE_GENERATOR=Ninja Multi-Config"
+                -DFIXTURE_MAKE_PROGRAM=${HYREMOTE_DEPLOY_FIXTURE_NINJA}
+                -DFIXTURE_EXPECTED_CONFIG=Release
+                -DTEST_QML=OFF
+                -P ${_hyremote_qpa_deploy_runner}
+        )
+    else()
+        message(STATUS
+            "ninja was not found: the explicit single-config/multi-config deploy-helper generator "
+            "coverage is provided by the hosted jobs' platform default generator")
+    endif()
+
     if(UNIX AND NOT APPLE)
         add_test(
             NAME hyremote-qpa-source-payload-relocation

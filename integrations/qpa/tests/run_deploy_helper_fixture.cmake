@@ -41,24 +41,53 @@ endif()
 if(NOT DEFINED EXPECT_FAILURE_FRAGMENT)
     set(EXPECT_FAILURE_FRAGMENT "")
 endif()
+# Generator-shape coverage knobs. FIXTURE_GENERATOR pins the sub-configure generator (empty keeps the
+# platform default, which is what the hosted jobs exercise); FIXTURE_BUILD_TYPE pins the single-config
+# build type; FIXTURE_EXPECTED_CONFIG pins which configuration's script carries the deep assertions;
+# FIXTURE_MAKE_PROGRAM pins the generator's build tool so a pinned generator does not depend on the test
+# process PATH.
+if(NOT DEFINED FIXTURE_GENERATOR)
+    set(FIXTURE_GENERATOR "")
+endif()
+if(NOT DEFINED FIXTURE_BUILD_TYPE)
+    set(FIXTURE_BUILD_TYPE "")
+endif()
+if(NOT DEFINED FIXTURE_EXPECTED_CONFIG)
+    set(FIXTURE_EXPECTED_CONFIG "")
+endif()
+if(NOT DEFINED FIXTURE_MAKE_PROGRAM)
+    set(FIXTURE_MAKE_PROGRAM "")
+endif()
+
+set(_fixture_configure_args
+    -S "${FIXTURE_SOURCE_DIR}"
+    -B "${FIXTURE_BINARY_DIR}"
+    "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+    "-DTEST_QML=${TEST_QML}"
+    "-DTEST_DEPLOY_QPA=${TEST_DEPLOY_QPA}"
+    "-DTEST_QML_AVAILABLE=${TEST_QML_AVAILABLE}"
+    "-DTEST_QML_IMPORT_PATH_EXISTS=${TEST_QML_IMPORT_PATH_EXISTS}"
+    "-DTEST_QML_MODULE_DIR_EXISTS=${TEST_QML_MODULE_DIR_EXISTS}"
+    "-DTEST_STALE_QML_METADATA=${TEST_STALE_QML_METADATA}"
+    "-DTEST_QPA_AVAILABLE=${TEST_QPA_AVAILABLE}"
+    "-DTEST_STALE_QPA_METADATA=${TEST_STALE_QPA_METADATA}"
+    "-DTEST_STALE_QPA_NEGATIVE_METADATA=${TEST_STALE_QPA_NEGATIVE_METADATA}"
+    "-DTEST_QT_VERSION=${TEST_QT_VERSION}"
+    "-DTEST_INSTALLED_PAYLOAD=${TEST_INSTALLED_PAYLOAD}"
+)
+if(FIXTURE_GENERATOR)
+    list(APPEND _fixture_configure_args -G "${FIXTURE_GENERATOR}")
+endif()
+if(FIXTURE_MAKE_PROGRAM)
+    list(APPEND _fixture_configure_args "-DCMAKE_MAKE_PROGRAM=${FIXTURE_MAKE_PROGRAM}")
+endif()
+if(FIXTURE_BUILD_TYPE)
+    list(APPEND _fixture_configure_args "-DCMAKE_BUILD_TYPE=${FIXTURE_BUILD_TYPE}")
+endif()
 
 file(REMOVE_RECURSE "${FIXTURE_BINARY_DIR}")
 execute_process(
-    COMMAND "${CMAKE_COMMAND}"
-        -S "${FIXTURE_SOURCE_DIR}"
-        -B "${FIXTURE_BINARY_DIR}"
-        "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
-        "-DTEST_QML=${TEST_QML}"
-        "-DTEST_DEPLOY_QPA=${TEST_DEPLOY_QPA}"
-        "-DTEST_QML_AVAILABLE=${TEST_QML_AVAILABLE}"
-        "-DTEST_QML_IMPORT_PATH_EXISTS=${TEST_QML_IMPORT_PATH_EXISTS}"
-        "-DTEST_QML_MODULE_DIR_EXISTS=${TEST_QML_MODULE_DIR_EXISTS}"
-        "-DTEST_STALE_QML_METADATA=${TEST_STALE_QML_METADATA}"
-        "-DTEST_QPA_AVAILABLE=${TEST_QPA_AVAILABLE}"
-        "-DTEST_STALE_QPA_METADATA=${TEST_STALE_QPA_METADATA}"
-        "-DTEST_STALE_QPA_NEGATIVE_METADATA=${TEST_STALE_QPA_NEGATIVE_METADATA}"
-        "-DTEST_QT_VERSION=${TEST_QT_VERSION}"
-        "-DTEST_INSTALLED_PAYLOAD=${TEST_INSTALLED_PAYLOAD}"
+    COMMAND "${CMAKE_COMMAND}" ${_fixture_configure_args}
     RESULT_VARIABLE configure_result
     OUTPUT_VARIABLE configure_stdout
     ERROR_VARIABLE configure_stderr
@@ -98,22 +127,108 @@ if(NOT configure_result EQUAL 0)
 endif()
 
 if(TEST_DEPLOY_QPA)
-    file(GLOB generated_scripts
-        "${FIXTURE_BINARY_DIR}/hyremote-qpa-deploy-deploy-probe-*.cmake")
     set(_script_kind "QPA")
+    set(_script_prefix "${FIXTURE_BINARY_DIR}/hyremote-qpa-deploy-deploy-probe")
 else()
-    file(GLOB generated_scripts
-        "${FIXTURE_BINARY_DIR}/hyremote-runtime-deploy-deploy-probe-*.cmake")
     set(_script_kind "runtime")
+    set(_script_prefix "${FIXTURE_BINARY_DIR}/hyremote-runtime-deploy-deploy-probe")
 endif()
+# The fixture's own CMake_CURRENT_BINARY_DIR is always absolute, so resolve the expectation the same way
+# before comparing it against glob results.
+get_filename_component(_script_prefix "${_script_prefix}" ABSOLUTE)
+file(GLOB generated_scripts "${_script_prefix}-*.cmake")
+
+# The production helper names its script `.../$<CONFIG>.cmake` and file(GENERATE) expands that once per
+# configuration, so the contract below is the generated configuration **set**, not a fixed count. A
+# multi-config generator legitimately produces one script per configuration (each referencing that
+# configuration's own payload locations); a single-config generator produces exactly one.
+set(_fixture_cache "${FIXTURE_BINARY_DIR}/CMakeCache.txt")
+if(NOT EXISTS "${_fixture_cache}")
+    message(FATAL_ERROR "deploy fixture did not produce a CMake cache at ${_fixture_cache}")
+endif()
+file(STRINGS "${_fixture_cache}" _configuration_types_line REGEX "^CMAKE_CONFIGURATION_TYPES:")
+file(STRINGS "${_fixture_cache}" _build_type_line REGEX "^CMAKE_BUILD_TYPE:")
+string(REGEX REPLACE "^[^=]*=" "" declared_configurations "${_configuration_types_line}")
+string(REGEX REPLACE "^[^=]*=" "" declared_build_type "${_build_type_line}")
+# file(STRINGS) escapes the cache value's list separators, so split the declared configuration names out
+# of the escaped value instead of treating it as a single element.
+string(REGEX MATCHALL "[^;\\\\]+" declared_configurations "${declared_configurations}")
+list(LENGTH declared_configurations declared_configuration_count)
 
 list(LENGTH generated_scripts generated_count)
-if(NOT generated_count EQUAL 1)
-    message(FATAL_ERROR
-        "expected exactly one generated ${_script_kind} deploy script, found ${generated_count}: ${generated_scripts}")
-endif()
+if(declared_configuration_count GREATER 0)
+    if(NOT generated_count EQUAL declared_configuration_count)
+        message(FATAL_ERROR
+            "expected one generated ${_script_kind} deploy script per declared configuration "
+            "(${declared_configuration_count}: ${declared_configurations}), found ${generated_count}: "
+            "${generated_scripts}")
+    endif()
+    # This runner executes in `cmake -P` script mode, where policy CMP0057 stays OLD, so membership is
+    # tested with list(FIND) rather than the IN_LIST operator.
+    if(FIXTURE_EXPECTED_CONFIG)
+        list(FIND declared_configurations "${FIXTURE_EXPECTED_CONFIG}" _expected_configuration_pos)
+        if(_expected_configuration_pos EQUAL -1)
+            message(FATAL_ERROR
+                "FIXTURE_EXPECTED_CONFIG='${FIXTURE_EXPECTED_CONFIG}' is not a declared configuration: "
+                "${declared_configurations}")
+        endif()
+        set(_selected_configuration "${FIXTURE_EXPECTED_CONFIG}")
+    else()
+        list(GET declared_configurations 0 _selected_configuration)
+    endif()
+    foreach(_declared_configuration IN LISTS declared_configurations)
+        set(_expected_script "${_script_prefix}-${_declared_configuration}.cmake")
+        list(FIND generated_scripts "${_expected_script}" _expected_script_pos)
+        if(_expected_script_pos EQUAL -1)
+            message(FATAL_ERROR
+                "multi-config deploy generated no script for declared configuration "
+                "'${_declared_configuration}': ${generated_scripts}")
+        endif()
+    endforeach()
+    set(generated_script "${_script_prefix}-${_selected_configuration}.cmake")
 
-list(GET generated_scripts 0 generated_script)
+    # Internal consistency of the generated set: every configuration's script must either reference its
+    # own configuration location (the normal per-configuration layout) or none may, because a mixed set
+    # would mean some configuration deploys another configuration's payload.
+    set(_per_configuration_scripts 0)
+    foreach(_declared_configuration IN LISTS declared_configurations)
+        file(READ "${_script_prefix}-${_declared_configuration}.cmake" _candidate_content)
+        string(FIND "${_candidate_content}" "/${_declared_configuration}/" _configuration_dir_pos)
+        if(NOT _configuration_dir_pos EQUAL -1)
+            math(EXPR _per_configuration_scripts "${_per_configuration_scripts} + 1")
+        endif()
+    endforeach()
+    if(_per_configuration_scripts GREATER 0 AND
+       NOT _per_configuration_scripts EQUAL declared_configuration_count)
+        message(FATAL_ERROR
+            "multi-config deploy set is internally inconsistent: only ${_per_configuration_scripts} of "
+            "${declared_configuration_count} configuration scripts reference their own configuration "
+            "location, so at least one configuration deploys another configuration's payload")
+    endif()
+else()
+    if(NOT generated_count EQUAL 1)
+        message(FATAL_ERROR
+            "expected exactly one generated ${_script_kind} deploy script, found ${generated_count}: "
+            "${generated_scripts}")
+    endif()
+    list(GET generated_scripts 0 generated_script)
+    if(FIXTURE_EXPECTED_CONFIG)
+        string(FIND "${generated_script}" "-${FIXTURE_EXPECTED_CONFIG}.cmake" _expected_suffix_pos)
+        if(_expected_suffix_pos EQUAL -1)
+            message(FATAL_ERROR
+                "single-config deploy script does not name the expected configuration "
+                "'${FIXTURE_EXPECTED_CONFIG}': ${generated_script}")
+        endif()
+    elseif(NOT declared_build_type STREQUAL "")
+        # Single-config: $<CONFIG> is the configured build type, so the generated script must name it.
+        string(FIND "${generated_script}" "-${declared_build_type}.cmake" _declared_suffix_pos)
+        if(_declared_suffix_pos EQUAL -1)
+            message(FATAL_ERROR
+                "single-config deploy script does not name the configured build type "
+                "'${declared_build_type}': ${generated_script}")
+        endif()
+    endif()
+endif()
 file(READ "${generated_script}" generated_content)
 
 foreach(required_fragment IN ITEMS
@@ -125,6 +240,25 @@ foreach(required_fragment IN ITEMS
             "generated ${_script_kind} deploy script is missing '${required_fragment}':\n${generated_content}")
     endif()
 endforeach()
+
+# Multi-config: assert the universal fragments for every generated configuration, so a regression that
+# only affects one configuration of a multi-config generator cannot pass silently.
+if(declared_configuration_count GREATER 0)
+    foreach(_declared_configuration IN LISTS declared_configurations)
+        set(_candidate_script "${_script_prefix}-${_declared_configuration}.cmake")
+        file(READ "${_candidate_script}" _candidate_content)
+        foreach(required_fragment IN ITEMS
+                "qt_deploy_runtime_dependencies"
+                "ADDITIONAL_LIBRARIES")
+            string(FIND "${_candidate_content}" "${required_fragment}" _candidate_fragment_pos)
+            if(_candidate_fragment_pos EQUAL -1)
+                message(FATAL_ERROR
+                    "generated ${_script_kind} deploy script for configuration "
+                    "'${_declared_configuration}' is missing '${required_fragment}':\n${_candidate_content}")
+            endif()
+        endforeach()
+    endforeach()
+endif()
 
 if(TEST_INSTALLED_PAYLOAD)
     set(_expected_runtime "HyRemoteRemoteAccess")
