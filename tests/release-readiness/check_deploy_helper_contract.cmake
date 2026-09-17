@@ -9,6 +9,7 @@ set(required_files
     "cmake/HyRemoteConfig.cmake.in"
     "cmake/HyRemoteInstall.cmake"
     "cmake/HyRemoteDeploy.cmake"
+    "remoteaccess/CMakeLists.txt"
     "qpa/CMakeLists.txt"
     "qpa/tests/deploy_helper_fixture/CMakeLists.txt"
     "qpa/tests/run_deploy_helper_fixture.cmake")
@@ -33,20 +34,53 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" package_config)
 foreach(required_token
+        [=[set(_hyremote_package_prefix "${PACKAGE_PREFIX_DIR}")]=]
+        [=[HYREMOTE_INSTALLED_PACKAGE_PREFIX]=]
+        [=[refusing a second installed prefix]=]
+        [=[find_package(HyRemote) cannot be combined with]=]
         [=[if(@HYREMOTE_PACKAGE_WITH_QML@)]=]
-        [=[set(HyRemote_QML_IMPORT_PATH "${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")]=]
-        [=[set(HyRemote_QML_IMPORT_PATH "")]=])
+        [=[set(HyRemote_QML_IMPORT_PATH "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")]=]
+        [=[set(HyRemote_QML_IMPORT_PATH "")]=]
+        [=["${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR@/@HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME@"]=])
     string(FIND "${package_config}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deploy-helper-contract: installed QML import metadata drifted: ${required_token}")
+            "deploy-helper-contract: installed package acquisition/prefix metadata drifted: ${required_token}")
     endif()
 endforeach()
+
+# CMake 3.21-3.29 dependency discovery may overwrite PACKAGE_PREFIX_DIR. HyRemote must snapshot its
+# own prefix before find_dependency(Qt6), then use only the snapshot for package-owned payload paths.
+string(FIND "${package_config}" [=[set(_hyremote_package_prefix "${PACKAGE_PREFIX_DIR}")]=] prefix_snapshot_pos)
+string(FIND "${package_config}" [=[find_dependency(Qt6 6.8 COMPONENTS Core Network)]=] dependency_pos)
+if(prefix_snapshot_pos EQUAL -1 OR dependency_pos EQUAL -1 OR prefix_snapshot_pos GREATER dependency_pos)
+    message(FATAL_ERROR
+        "deploy-helper-contract: HyRemote package prefix must be preserved before Qt dependency discovery")
+endif()
+string(FIND "${package_config}" [=[${PACKAGE_PREFIX_DIR}/@HYREMOTE_PACKAGE_]=] unstable_prefix_use)
+if(NOT unstable_prefix_use EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: optional installed payloads must not use mutable PACKAGE_PREFIX_DIR after dependency discovery")
+endif()
 string(FIND "${package_config}" "HyRemote_QML_AVAILABLE" leaked_qml_api)
 if(NOT leaked_qml_api EQUAL -1)
     message(FATAL_ERROR
         "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
 endif()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/remoteaccess/CMakeLists.txt" remoteaccess_cmake)
+foreach(required_token
+        [=[if(TARGET HyRemote::RemoteAccess)]=]
+        [=[source acquisition conflict]=]
+        [=[do not combine]=]
+        [=[find_package(HyRemote)]=]
+        [=[add_subdirectory(HyRemote)]=])
+    string(FIND "${remoteaccess_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: source acquisition no longer rejects an existing installed runtime target: ${required_token}")
+    endif()
+endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteInstall.cmake" install_rules)
 foreach(required_token
@@ -219,4 +253,4 @@ endforeach()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(four public shapes remain distinct; negative fixtures bind their intended semantic reason; installed QML/QPA roots/modules/platform files fail closed; source/installed optional payloads remain isolated)")
+    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
