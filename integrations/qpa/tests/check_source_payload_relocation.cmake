@@ -51,15 +51,28 @@ if(ldd_output MATCHES "not found")
 endif()
 
 file(REAL_PATH "${deployed_remoteaccess}" expected_remoteaccess)
-string(REGEX MATCH
-    "libHyRemoteRemoteAccess\\.so[^ ]*[ \\t]+=>[ \\t]+([^ \\t\\n]+)"
-    remoteaccess_match
-    "${ldd_output}")
-if(NOT remoteaccess_match)
+
+# Parse ldd one line at a time. A POSIX character-class-style regex containing `\n` is unsafe in
+# CMake's regex engine: the escape can be interpreted as the literal `n`, truncating ordinary paths
+# such as /home/runner to /home/ru and creating a false relocation failure. Line splitting makes the
+# dependency boundary explicit and keeps the assertion about the resolved ELF path, not regex quirks.
+set(remoteaccess_path "")
+string(REPLACE "\n" ";" ldd_lines "${ldd_output}")
+foreach(ldd_line IN LISTS ldd_lines)
+    if(ldd_line MATCHES "libHyRemoteRemoteAccess\\.so")
+        string(REPLACE "\t" " " ldd_line "${ldd_line}")
+        string(REGEX REPLACE ".*=>[ ]*" "" remoteaccess_path "${ldd_line}")
+        string(REGEX REPLACE "[ ]*\\(.*$" "" remoteaccess_path "${remoteaccess_path}")
+        string(STRIP "${remoteaccess_path}" remoteaccess_path)
+        break()
+    endif()
+endforeach()
+if(remoteaccess_path STREQUAL "")
     message(FATAL_ERROR
         "relocated qhyremote did not report its shared RemoteAccess dependency:\n${ldd_output}")
 endif()
-file(REAL_PATH "${CMAKE_MATCH_1}" resolved_remoteaccess)
+
+file(REAL_PATH "${remoteaccess_path}" resolved_remoteaccess)
 if(NOT resolved_remoteaccess STREQUAL expected_remoteaccess)
     message(FATAL_ERROR
         "relocated qhyremote escaped deployment tree: expected ${expected_remoteaccess}, got ${resolved_remoteaccess}\n${ldd_output}")
