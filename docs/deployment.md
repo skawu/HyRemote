@@ -88,7 +88,7 @@ On Linux, qhyremote carries a bounded origin-relative relocation anchor to the s
 
 For source/add_subdirectory consumption, qhyremote remains an internal build target and is kept inside the HyRemote sub-build rather than writing into the host application's top-level plugin build directory. The deploy helper resolves the target file directly, so this build isolation does not change application usage.
 
-See `docs/getting-started/qpa-proxy.md` and `docs/source-consumption.md`.
+See `docs/getting-started/qpa-proxy.md` and `docs/guide/install.md`.
 
 ## QML + QPA
 
