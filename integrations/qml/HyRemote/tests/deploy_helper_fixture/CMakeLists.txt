@@ -14,11 +14,15 @@ set_property(TARGET deploy-probe PROPERTY QT_QML_IMPORT_PATH "${_app_import_root
 set(HyRemote_QML_IMPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/installed-sdk/lib/qml")
 
 # QML deployment is fail-closed against the installed package layout. This positive fixture models a
-# complete installed QML payload, so create the stable import root/URI directory before invoking the
-# public helper. Negative missing-root/module-directory behavior is covered by the dedicated QPA
-# deploy-helper rejection fixtures and must not be weakened here.
+# complete installed QML payload: stable URI import root plus the private backing shared library that
+# the module plugin loads at runtime. Keep the backing file as internal absolute payload metadata;
+# the public product surface remains `import HyRemote`, not a second C++ link target.
 if(TEST_QML)
     file(MAKE_DIRECTORY "${HyRemote_QML_IMPORT_PATH}/HyRemote")
+    set(HyRemote_QML_BACKING_FILE
+        "${CMAKE_CURRENT_BINARY_DIR}/installed-sdk/lib/${CMAKE_SHARED_LIBRARY_PREFIX}hyremote-qml${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/installed-sdk/lib")
+    file(WRITE "${HyRemote_QML_BACKING_FILE}" "fixture")
 endif()
 
 # These deterministic test doubles verify HyRemote's dispatch contract. The product helper must
