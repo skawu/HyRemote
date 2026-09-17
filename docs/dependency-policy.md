@@ -14,6 +14,19 @@ HyRemote V1 is **C++ first**:
 
 Python tools used by repository CI/product-fit are test tooling, not runtime dependencies.
 
+### Repository test/CI-only tools
+
+These tools are pinned/used by repository automation and acceptance harnesses. They are not installed as HyRemote runtime payloads and do not become downstream application dependencies merely by consuming the SDK.
+
+| Tool | V1 repository use | License |
+| --- | --- | --- |
+| `aqtinstall` | fetch exact Qt packages for CI qualification | MIT |
+| `vncdotool==1.3.0` | maintained VNC client used by product-fit | MIT |
+| Pillow | image/pixel checks used by product-fit | HPND |
+| Ninja | CI build executor | Apache-2.0 |
+
+Their own upstream licenses remain authoritative; this table records why they do not alter HyRemote's shipped Apache-2.0 product surface.
+
 ## Required review for every new dependency
 
 Record before adding a dependency:
@@ -78,7 +91,7 @@ A future reconsideration would require a measured benefit large enough to justif
 - Windows/Linux and future cross-build burden is explicitly qualified;
 - lifecycle, backpressure, input and security behavior meet or improve the accepted product contract.
 
-Source under `spikes/` may remain as historical research and does not constitute a production dependency.
+Source under `research/` may remain as historical research and does not constitute a production dependency.
 
 ### NeatVNC
 
