@@ -188,6 +188,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
     )
+    add_test(
+        NAME hyremote-release-readiness-ci-environment-baseline
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
+    )
 
     # Source deployment truth must come from a source graph that actually provides qhyremote. Focused
     # C++/Widgets/Quick/QML test graphs intentionally leave QPA disabled and must not manufacture a
