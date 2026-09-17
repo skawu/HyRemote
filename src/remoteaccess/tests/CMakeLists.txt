@@ -15,6 +15,22 @@ target_include_directories(hyremote-remoteaccess-test
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
 
+add_executable(hyremote-remoteaccess-target-loss-test
+    test_remote_access_target_loss.cpp
+)
+target_link_libraries(hyremote-remoteaccess-target-loss-test
+    PRIVATE
+        hyremote-remoteaccess
+        HyRemote::Core
+        Qt6::Core
+)
+target_include_directories(hyremote-remoteaccess-target-loss-test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+add_test(NAME hyremote-remoteaccess-target-loss-test COMMAND hyremote-remoteaccess-target-loss-test)
+set_tests_properties(hyremote-remoteaccess-target-loss-test PROPERTIES TIMEOUT 15)
+
 add_executable(hyremote-target-component-provider-test
     test_target_component_provider.cpp
 )
