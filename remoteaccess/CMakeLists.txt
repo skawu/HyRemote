@@ -1,6 +1,15 @@
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 
+# V1 is one runtime acquisition per consumer configure. If a parent already loaded an installed
+# HyRemote package, adding the source tree as a second acquisition would otherwise collide at the
+# namespace alias and could leave optional package metadata from a different SDK in scope.
+if(TARGET HyRemote::RemoteAccess)
+    message(FATAL_ERROR
+        "HyRemote source acquisition conflict: HyRemote::RemoteAccess already exists; do not combine "
+        "find_package(HyRemote) with add_subdirectory(HyRemote) in the same configure")
+endif()
+
 # V1 primary product artifact: applications link one HyRemote shared library and use the public
 # C++ facade. Core is statically composed behind this boundary and is not a second installed product
 # target; QPA reuses this same runtime through its platform MODULE.
@@ -15,12 +24,6 @@ set_target_properties(hyremote-remoteaccess PROPERTIES
     POSITION_INDEPENDENT_CODE ON
 )
 
-# Installed/deployed Linux applications place the shared facade and Qt runtime libraries in the same
-# lib directory. Give both the installed artifact and the source/build artifact an origin-local
-# lookup entry: hyremote_deploy() deliberately supports add_subdirectory() consumption and may copy
-# the build-tree facade directly into a clean deployment. CMake may append Qt/toolchain lookup paths
-# needed while running from the build tree; BUILD_RPATH_USE_ORIGIN keeps paths that point back into
-# this build tree relative instead of baking the HyRemote build directory into the product artifact.
 if(UNIX AND NOT APPLE)
     set_property(TARGET hyremote-remoteaccess PROPERTY BUILD_RPATH "$ORIGIN")
     set_property(TARGET hyremote-remoteaccess PROPERTY BUILD_RPATH_USE_ORIGIN TRUE)
@@ -46,9 +49,6 @@ target_link_libraries(hyremote-remoteaccess
         HyRemote::Core
 )
 
-# V0.0.1 correctness transport. It is intentionally an internal implementation detail of
-# RemoteAccess rather than a public application target. The backend uses Qt Network, which is
-# already part of the facade dependency surface, and introduces no protocol type into Core/API.
 if(HYREMOTE_WITH_VNC)
     target_sources(hyremote-remoteaccess PRIVATE
         src/transport/rfb_transport.cpp
