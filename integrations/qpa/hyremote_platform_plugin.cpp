@@ -5,8 +5,13 @@
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
 #include <QtGui/QIcon>
+#include <QtGui/QPalette>
 #include <QtGui/private/qguiapplication_p.h>
-#include <QtGui/private/qplatformintegrationfactory_p.h>
+// Qt 6.8.3 ships this header under QtGui/qpa/, not QtGui/private/: the factory lives in the QPA
+// header set (compare qplatformintegration.h / qplatformintegrationplugin.h below, which are already
+// included in the qpa/ form). The private/ path does not exist in the exact qualified Qt build, so the
+// QPA module failed to compile on every platform while the rest of the graph linked normally.
+#include <qpa/qplatformintegrationfactory_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformintegrationplugin.h>
 #include <qpa/qplatformkeymapper.h>
