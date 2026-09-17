@@ -67,11 +67,29 @@ The example contains a button and a text field so pointer, keyboard, and text de
 
 `--remote-input` is deliberately explicit; it is not the product default.
 
+## Stopped-runtime policy transition
+
+The V1 application contract does not require an application restart to change C++ view/control policy. The application keeps running while the HyRemote runtime follows:
+
+```cpp
+remote.stop();
+remote.setRemoteInputEnabled(true);
+remote.start();
+```
+
+Repository product-fit exercises that exact public-API sequence in the same `widgets-basic` process. The acceptance-only helper below starts from the normal view-only default; the first viewer disconnect triggers the transition, while the timer is only a watchdog fallback:
+
+```sh
+hyremote-widgets-basic --port 5901 --policy-transition-ms 15000 --test-seconds 24
+```
+
+The helper adds no alternate runtime or private control path. Normal users do not need it; it exists so automated and later physical acceptance can prove the frozen stopped-runtime policy contract using the real E1 application.
+
 ## Reconnect
 
 Disconnect the viewer while the application remains running, then connect again to the same address/port. A normal disconnect must not require restarting the target application or recreating `RemoteAccess`.
 
-The V1 acceptance harness also verifies that `RemoteAccess::stop()` releases the listener.
+The V1 product-fit additionally proves a viewer can reconnect after the same-process view-only -> control `stop -> configure -> start` transition. Final `RemoteAccess::stop()` must release the listener.
 
 ## Input and geometry evidence
 
@@ -84,7 +102,8 @@ The current V1 candidate implements and tests:
 - Shift/Ctrl/Alt modifier propagation;
 - text commit as a separate semantic path from key delivery;
 - view-only input rejection;
-- disconnect/reconnect;
+- same-process stopped-runtime transition from view-only to explicit control;
+- disconnect/reconnect before/after that transition;
 - stop/listener release;
 - balancing releases when a viewer disappears with recognized keys/buttons still held.
 
@@ -94,7 +113,7 @@ Precise DPR/edge-coordinate normalization is additionally covered by determinist
 
 The application is a normal visible Qt Widgets window and HyRemote's Embedded C++ design is additive to that local UI. However, hosted offscreen CI is **not** evidence that a physical monitor and local keyboard/mouse remained usable while a real remote viewer was attached.
 
-That physical local-visible/local-input coexistence check is tracked by #109 and remains a final #30/#33 acceptance item.
+That physical local-visible/local-input coexistence check is tracked by #109 and remains a final #30/#33 acceptance item. The physical run reuses this same application/public facade lifecycle; it must not introduce a test-only product API.
 
 ## Connected-viewer status
 
