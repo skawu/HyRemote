@@ -39,7 +39,7 @@ int main(int argc, char **argv)
                                      QStringLiteral("0"));
     QCommandLineOption transitionOption(
         QStringLiteral("policy-transition-ms"),
-        QStringLiteral("After N ms, stop the QML RemoteAccess runtime, enable remote input, and restart it (CI/product-fit helper)."),
+        QStringLiteral("In CI/product-fit mode, transition to remote input after the first viewer disconnect; N ms is the watchdog fallback."),
         QStringLiteral("milliseconds"),
         QStringLiteral("0"));
     parser.addOption(portOption);
