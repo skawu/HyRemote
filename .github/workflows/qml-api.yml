@@ -132,6 +132,6 @@ jobs:
           dir /b "%CD%\qml-consumer-install\qml\HyRemote\*.dll" >nul 2>nul || exit /b 1
           set "QML2_IMPORT_PATH="
           set "QML_IMPORT_PATH="
-          set "QT_QPA_PLATFORM=offscreen"
+          set "QT_QPA_PLATFORM=windows"
           set "PATH=%CD%\qml-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\qml-consumer-install\bin\hyremote-installed-qml-consumer.exe"
