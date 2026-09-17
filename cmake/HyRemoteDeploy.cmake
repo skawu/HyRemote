@@ -86,6 +86,34 @@ endforeach()
     set(${output_var} "${_bootstrap}" PARENT_SCOPE)
 endfunction()
 
+# Resolve the declarative module's backing shared library without creating a public C++ package target.
+# Source acquisition names the concrete local qt_add_qml_module backing target; installed acquisition
+# consumes absolute package metadata. Applications still consume only the stable `import HyRemote` URI.
+function(_hyremote_resolve_qml_backing_payload file_var name_var)
+    if(TARGET hyremote-qml)
+        set(${file_var} "$<TARGET_FILE:hyremote-qml>" PARENT_SCOPE)
+        set(${name_var} "$<TARGET_FILE_NAME:hyremote-qml>" PARENT_SCOPE)
+        return()
+    endif()
+
+    if(DEFINED HyRemote_QML_BACKING_FILE AND NOT "${HyRemote_QML_BACKING_FILE}" STREQUAL "")
+        if(NOT IS_ABSOLUTE "${HyRemote_QML_BACKING_FILE}")
+            message(FATAL_ERROR "HyRemote_QML_BACKING_FILE must be an absolute installed payload path")
+        endif()
+        if(NOT EXISTS "${HyRemote_QML_BACKING_FILE}")
+            message(FATAL_ERROR
+                "installed HyRemote QML backing payload is missing: ${HyRemote_QML_BACKING_FILE}")
+        endif()
+        get_filename_component(_qml_backing_name "${HyRemote_QML_BACKING_FILE}" NAME)
+        set(${file_var} "${HyRemote_QML_BACKING_FILE}" PARENT_SCOPE)
+        set(${name_var} "${_qml_backing_name}" PARENT_SCOPE)
+        return()
+    endif()
+
+    message(FATAL_ERROR
+        "hyremote_deploy QML backing payload is unavailable; install/build HyRemote with HYREMOTE_BUILD_QML_API=ON")
+endfunction()
+
 function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
@@ -98,15 +126,27 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
 
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
     _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
+
+    set(_qml_backing_install "")
+    set(_qml_additional_library "")
+    if(HYREMOTE_DEPLOY_QML)
+        _hyremote_resolve_qml_backing_payload(_qml_backing_file _qml_backing_name)
+        set(_qml_backing_install
+"file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"${_qml_backing_file}\")\n")
+        set(_qml_additional_library
+"\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
+    endif()
+
     set(_runtime_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-runtime-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_runtime_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
+${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
-    ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+    ADDITIONAL_LIBRARIES
+    \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )
 ")
     set(${output_var} "${_runtime_script}" PARENT_SCOPE)
@@ -180,6 +220,16 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
     _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
 
+    set(_qml_backing_install "")
+    set(_qml_additional_library "")
+    if(HYREMOTE_DEPLOY_QML)
+        _hyremote_resolve_qml_backing_payload(_qml_backing_file _qml_backing_name)
+        set(_qml_backing_install
+"file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"${_qml_backing_file}\")\n")
+        set(_qml_additional_library
+"\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
+    endif()
+
     set(_linux_plugin_rpath_rewrite "")
     if(UNIX AND NOT APPLE)
         set(_linux_plugin_rpath_rewrite
@@ -197,10 +247,11 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"${_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
+${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
-    ADDITIONAL_LIBRARIES \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+    ADDITIONAL_LIBRARIES
+    \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )
 ")
 
@@ -250,6 +301,11 @@ function(hyremote_deploy)
                 "hyremote_deploy: HyRemote QML module directory does not exist under import root: "
                 "${HyRemote_QML_IMPORT_PATH}/HyRemote")
         endif()
+
+        # Fail closed on a damaged installed SDK before generating Qt deployment scripts. Source
+        # acquisition is validated by the concrete local backing target; installed acquisition is
+        # validated through absolute package payload metadata without adding a public QML link target.
+        _hyremote_resolve_qml_backing_payload(_hyremote_qml_backing_probe _hyremote_qml_backing_name_probe)
     endif()
 
     if(HYREMOTE_DEPLOY_QPA AND _hyremote_source_acquisition AND NOT TARGET HyRemote::QpaPlatform)
