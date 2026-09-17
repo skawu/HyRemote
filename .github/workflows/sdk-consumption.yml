@@ -113,7 +113,8 @@ jobs:
           test -f deploy-source/lib/libHyRemoteRemoteAccess.so
           env -u LD_LIBRARY_PATH deploy-source/bin/hyremote-source-consumer
 
-          # Source shape 2/4: Declarative QML only.
+          # Source shape 2/4: Declarative QML only. Exercise the clean deployed native Linux Qt
+          # platform under Xvfb instead of assuming the non-product offscreen plugin is bundled.
           cmake -S tests/consumer-installed-qml -B build-consumer-source-qml -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -124,9 +125,8 @@ jobs:
           test -f deploy-source-qml/bin/hyremote-installed-qml-consumer
           test -f deploy-source-qml/qml/HyRemote/qmldir
           test -f deploy-source-qml/lib/libHyRemoteRemoteAccess.so
-          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
-            QT_QPA_PLATFORM=offscreen \
-            deploy-source-qml/bin/hyremote-installed-qml-consumer
+          env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH -u QT_QPA_PLATFORM \
+            xvfb-run -a deploy-source-qml/bin/hyremote-installed-qml-consumer
 
           # Source shape 3/4: Transparent QPA using the exact E4 Qt-only source.
           cmake -S tests/consumer-installed-qpa -B build-consumer-source-qpa -G Ninja \
