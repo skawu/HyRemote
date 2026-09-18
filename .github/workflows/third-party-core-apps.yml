@@ -61,6 +61,13 @@ jobs:
           aqt install-qt "${{ matrix.host }}" desktop 6.8.3 "${{ matrix.arch }}" \
             --archives qtbase qtdeclarative qttools --modules qt5compat --outputdir "$RUNNER_TEMP/Qt"
 
+      - name: Prepare SQLiteBrowser generated translations in disposable source
+        shell: bash
+        run: |
+          python tools/third_party/prepare_sqlitebrowser.py \
+            --source "$RUNNER_TEMP/sqlitebrowser-src" \
+            --qt-prefix "$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         shell: bash
@@ -145,7 +152,7 @@ jobs:
             -DHYREMOTE_THIRD_PARTY_SOURCE="%RUNNER_TEMP%\sqlitebrowser-src"
           cmake --build "%RUNNER_TEMP%\sqlitebrowser-build" --parallel
           cmake --install "%RUNNER_TEMP%\sqlitebrowser-build"
-          if not exist "%RUNNER_TEMP%\sqlitebrowser-install\sqlitebrowser.exe" exit /b 1
+          if not exist "%RUNNER_TEMP%\sqlitebrowser-install\DB Browser for SQLite.exe" exit /b 1
 
       - name: Real RFB framebuffer/reconnect probe — Linux
         if: runner.os == 'Linux'
@@ -161,7 +168,7 @@ jobs:
         shell: pwsh
         run: |
           python tests/third_party/scenarios/qpa_framebuffer_probe.py `
-            --app "$env:RUNNER_TEMP\sqlitebrowser-install\sqlitebrowser.exe" `
+            --app "$env:RUNNER_TEMP\sqlitebrowser-install\DB Browser for SQLite.exe" `
             --prefix "$env:RUNNER_TEMP\sqlitebrowser-install" --port 5994
 
       - name: Final pristine-upstream assertion
