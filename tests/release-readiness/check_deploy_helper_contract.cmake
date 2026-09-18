@@ -117,6 +117,24 @@ foreach(required_token
         message(FATAL_ERROR "deploy-helper-contract: public helper lost required dispatch/acquisition isolation: ${required_token}")
     endif()
 endforeach()
+
+# Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV} without
+# preserving argument boundaries, which breaks legitimate executable output names containing spaces.
+# HyRemote is Qt-6-only, so both supplemental deploy shapes must call the Qt 6 implementation directly.
+string(REGEX MATCHALL "qt6_deploy_runtime_dependencies\\(" qt6_runtime_deploy_calls "${deploy_helper}")
+list(LENGTH qt6_runtime_deploy_calls qt6_runtime_deploy_call_count)
+if(NOT qt6_runtime_deploy_call_count EQUAL 2)
+    message(FATAL_ERROR
+        "deploy-helper-contract: expected exactly two direct Qt6 runtime deploy calls (ordinary/QML + QPA), found ${qt6_runtime_deploy_call_count}")
+endif()
+string(FIND "${deploy_helper}"
+    [=[${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(]=]
+    versionless_runtime_deploy_call)
+if(NOT versionless_runtime_deploy_call EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: versionless Qt runtime deploy wrapper returned; paths with spaces would split on Qt 6.8.3")
+endif()
+
 string(FIND "${deploy_helper}" "HyRemote_QML_AVAILABLE" leaked_helper_api)
 if(NOT leaked_helper_api EQUAL -1)
     message(FATAL_ERROR "deploy-helper-contract: QML source availability must remain internal target/build metadata")
@@ -271,4 +289,4 @@ endif()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
+    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; Qt6 deploy argument boundaries preserved; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
