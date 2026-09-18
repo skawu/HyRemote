@@ -35,6 +35,11 @@ ui_*.h
 *.user
 *.user.*
 
+# Python / local tooling caches
+__pycache__/
+*.py[cod]
+.cache/
+
 # OS
 .DS_Store
 Thumbs.db
