@@ -465,9 +465,14 @@ private:
 
         ::HyRemote::detail::TargetComponents components = state->resolver(target, false);
         if (!components.supported || !components.capture) {
+            // "No built-in adapter supports this surface" is a build/configuration property, not a transient
+            // condition. Reporting it as recoverable let the session stay Running and ship transparent frames
+            // for a surface it can never capture, with no diagnostic. Report it as unrecoverable so Core faults
+            // instead of silently claiming to serve the application.
             publishEvent(state,
-                         hyremote::CaptureEventCode::TemporarilyUnavailable,
-                         "no built-in capture adapter supports a composite child surface");
+                         hyremote::CaptureEventCode::BackendFailure,
+                         "no built-in capture adapter supports a composite child surface",
+                         /*recoverable=*/false);
             return {};
         }
 
@@ -678,21 +683,14 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget)
 {
     ::HyRemote::detail::TargetComponents result;
-    // Fail closed when the build has no capture adapter: without one the composite can only ever produce
-    // transparent frames, so claiming support would bypass Core's "no qualified adapter" gate and let the
-    // session report itself active while serving nothing. The macros are set by
-    // integrations/qpa/CMakeLists.txt from the adapter options, not from Qt module presence, precisely so
-    // that this check reflects what the build can capture.
-#if defined(HYREMOTE_QPA_HAS_WIDGETS) || defined(HYREMOTE_QPA_HAS_QUICK)
+    // `supported` describes whether this target can be captured at all, and it stays true even in a build whose
+    // adapter options are off: the composite is captured through whatever resolver the caller supplies, which is
+    // exactly how the composite tests exercise it. Whether a *particular* surface can be captured is a runtime
+    // property and is reported per surface in ensureChild() - claiming support there would be wrong in both
+    // directions, and failing closed here overrode the caller's own resolver.
     result.supported = true;
-#else
-    result.supported = false;
-    result.error = QStringLiteral(
-        "QPA composite target requires at least one capture adapter: rebuild with "
-        "HYREMOTE_BUILD_WIDGETS_ADAPTER or HYREMOTE_BUILD_QUICK_ADAPTER enabled");
-#endif
     result.capture = std::make_unique<CompositeCaptureSource>(this, resolveBuiltinTarget);
-    if (result.supported && remoteInputEnabled) {
+    if (remoteInputEnabled) {
         result.error = QStringLiteral(
             "QPA multi-surface remote input is not enabled until the composite input-routing gate is present");
     }
