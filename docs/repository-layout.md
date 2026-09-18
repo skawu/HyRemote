@@ -158,6 +158,18 @@ means cleaning first (`clean.cmd`); if `build/` holds a different mode's configu
 prints the exact `--clean --mode <new-mode>` command. This keeps the repository root free of build files and stops a
 stale generator, compiler or cache from being reused silently.
 
+> **Known defect in the printed command (tracked by #141).** The mode guard is evaluated **before** the clean, so the
+> command the script prints - `compile.cmd --clean --mode <mode>` - is itself rejected. Until the ordering is fixed
+> (deferred to the first post-GA change, because fixing it moves the frozen candidate), the usable sequence is
+> **clean first, then configure in the new mode**:
+>
+> ```text
+> Windows:  clean.cmd  &&  compile.cmd --mode <mode> --qt-prefix <qt-prefix>
+> Linux:    sh clean.cmd && sh compile.cmd --mode <mode> --qt-prefix <qt-prefix>
+> ```
+>
+> `docs/guide/cross-compilation.md` and its English mirror carry the same sequence for users.
+
 Cross-compilation toolchain files live under the existing `cmake/` root:
 
 ```text
