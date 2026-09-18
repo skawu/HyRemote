@@ -33,6 +33,10 @@ protected:
         if (!widget || !m_root || (widget != m_root && !m_root->isAncestorOf(widget)))
             return false;
 
+        // This probe is the acceptance instrument: one line must mean one delivery. Returning true for
+        // the events it records stops Qt from propagating an accepted-but-unhandled event to the parent,
+        // which would otherwise log the same key twice (the example's widgets are non-interactive, so
+        // consuming does not change what the application does).
         switch (event->type()) {
         case QEvent::MouseButtonPress: {
             const auto *mouse = static_cast<QMouseEvent *>(event);
@@ -63,9 +67,9 @@ protected:
             break;
         }
         default:
-            break;
+            return false;
         }
-        return false;
+        return true;
     }
 
 private:
