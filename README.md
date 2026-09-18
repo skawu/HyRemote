@@ -154,7 +154,7 @@ Maintainers/CI enable repository validation explicitly:
 -DHYREMOTE_BUILD_EXAMPLES=ON
 ```
 
-See the Windows/Linux guides for reference test commands. Build-tree runtime path overrides are development details, not deployment requirements.
+See the install guide ([中文](docs/guide/install.md) ｜ [English](docs/en/guide/install.md)) for reference test commands. Build-tree runtime path overrides are development details, not deployment requirements.
 
 ## Repository layout
 
@@ -221,10 +221,8 @@ Choose the application mode first:
 
 Reference/setup and delivery guides:
 
-- [`docs/getting-started/windows.md`](docs/getting-started/windows.md) — Windows x86_64
-- [`docs/getting-started/linux.md`](docs/getting-started/linux.md) — Linux x86_64
-- [`docs/sdk-installation.md`](docs/sdk-installation.md) — installed/prebuilt SDK
-- [`docs/source-consumption.md`](docs/source-consumption.md) — vendored/source consumption
+- [`docs/guide/install.md`](docs/guide/install.md) — build, platform setup, installed SDK and source consumption (中文; [English](docs/en/guide/install.md))
+- [`docs/README.md`](docs/README.md) — documentation index (中文 ｜ [English](docs/en/README.md))
 - [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
 - [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
 - [`docs/repository-layout.md`](docs/repository-layout.md) — canonical repository ownership/layout

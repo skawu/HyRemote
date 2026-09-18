@@ -4,7 +4,7 @@ This guide covers the V1 Embedded C++, Declarative QML and Transparent QPA paths
 
 ## `find_package(HyRemote)` cannot find the package
 
-`find_package(HyRemote CONFIG REQUIRED)` is for an installed HyRemote prefix. Add that prefix to `CMAKE_PREFIX_PATH` or use the source-consumption path from `docs/source-consumption.md`.
+`find_package(HyRemote CONFIG REQUIRED)` is for an installed HyRemote prefix. Add that prefix to `CMAKE_PREFIX_PATH` or use the source-consumption path from `docs/guide/install.md`.
 
 Do not combine `add_subdirectory(HyRemote)` with an assumption that an installed `HyRemoteConfig.cmake` has been generated.
 
