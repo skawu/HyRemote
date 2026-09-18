@@ -122,7 +122,7 @@ Hosted/offscreen E2E verifies protocol-to-application correctness; it does not r
 
 ## Next steps
 
-- platform setup: `docs/getting-started/windows.md` or `docs/getting-started/linux.md`;
+- platform setup: `docs/guide/install.md` (中文) or `docs/en/guide/install.md` (English);
 - viewer workflow: `docs/viewer-connection.md`;
 - deployment: `docs/deployment.md`;
 - troubleshooting: `docs/troubleshooting.md`;

@@ -134,7 +134,7 @@ Because `EXCLUDE_FROM_ALL` does not itself build optional payload targets, the h
 
 The SDK-consumption acceptance matrix configures the same clean fixture in source mode for both QML-only and QML+QPA. QML-only remains a separate required execution path because it uses the normal shared-runtime supplemental script instead of the QPA supplemental script.
 
-See `docs/source-consumption.md` for the complete source acquisition matrix.
+See `docs/guide/install.md` for the complete source acquisition matrix.
 
 ## 8. Error and lifecycle semantics
 

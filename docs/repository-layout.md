@@ -12,8 +12,10 @@ HyRemote/
 ├─ integrations/
 │  ├─ qml/HyRemote/          # Declarative QML payload over the same RemoteAccess runtime
 │  └─ qpa/                   # Transparent QPA platform MODULE payload
-├─ tests/                    # cross-module, consumer, product-E2E and release-readiness evidence
-├─ examples/                 # product examples E1-E5
+├─ tests/                    # unit and integration tests: module-colocated units, cross-module/consumer/
+│                            # product-E2E suites and the release-readiness gates
+├─ examples/                 # user-facing usage examples E1-E6, including examples that combine HyRemote
+│                            # with third-party open-source applications
 ├─ research/                 # non-product spikes/architecture evidence; opt-in only
 ├─ assets/
 │  └─ branding/              # repository/product branding assets; never part of the build graph
@@ -49,13 +51,19 @@ Integration payloads may depend on the product runtime. Product Core must not de
 
 ### `tests/`
 
-Root `tests/` is for evidence that crosses a module boundary or validates the repository as a delivered product: clean consumers, installed/source SDK tests, product E2E and release-readiness gates.
+`tests/` holds unit tests and integration test cases.
 
-Tests that need private implementation details remain colocated under the module they qualify, for example `src/remoteaccess/tests` and `integrations/qpa/tests`. They are not installed.
+- Root `tests/` carries the suites that cross a module boundary or validate the repository as a delivered product: clean consumers, installed/source SDK tests, product E2E and the release-readiness gates.
+- Unit tests that need private implementation details remain colocated under the module they qualify, for example `src/remoteaccess/tests` and `integrations/qpa/tests`. They are not installed.
+- Recorded review or acceptance **evidence** is not a test case and does not belong here; it is documentation and lives under `docs/acceptance/`.
 
 ### `examples/`
 
-`examples/` contains user-visible examples only. It must not become a second implementation location for product logic.
+`examples/` contains user-facing usage examples only.
+
+- The acceptance suite is E1-E6: `widgets-basic`, `quick-basic`, `qml-basic`, `qpa-proxy-existing-app`, `remote-support-showcase`, and the installed/source SDK consumers.
+- Usage examples that combine HyRemote with a **third-party open-source application** belong here too: they are the documented way a user reproduces an integration on their own machine, so their README carries the exact application version, the exact HyRemote candidate, the Qt version and the launch/deployment commands, together with the caveat that they are verification examples and not a support claim.
+- Such an example must be opt-in (its own CMake option, OFF by default), must never vendor third-party sources into this repository (fetch them at a recorded commit into an ignored build directory instead), must not enter the default build or the acceptance graph, and must never become an implementation location for product logic.
 
 ### `research/`
 
@@ -77,6 +85,42 @@ add_subdirectory(integrations/qpa qpa)
 ```
 
 This keeps existing CI/deployment artifact locations such as `build/remoteaccess`, `build/qml/HyRemote` and `build/plugins/platforms` stable while making repository ownership clear.
+
+## Extension points and forward compatibility
+
+The canonical axes above are the repository's permanent growth surface. New work lands inside them; a new
+top-level directory is a structural decision carrying the same authority as a migration, not a review detail.
+Naming rules for anything added here are in [`naming-conventions.md`](naming-conventions.md).
+
+- **`src/` grows by product module.** A new transport, capture implementation, target adapter or platform
+  backend that is part of the normal product belongs below the product module that owns it (`src/remoteaccess`
+  today), never at the repository root. A future module that is not an adapter of the shared runtime is added as
+  `src/<module>/` with its own `add_subdirectory(<source> <stable-binary-dir>)` mapping, and Core stays Qt-free
+  and platform-free.
+- **`integrations/` grows by payload, one directory per payload.** Every payload reuses the same shared runtime,
+  may not link Core directly and may not compile a second `RemoteAccess` facade - the rules the gate already
+  enforces for QML and QPA, and which apply to any `integrations/*` payload. Expected later payloads (embedded
+  EGLFS or DRM/GBM platform support) are added as `integrations/<payload>/` and registered with an explicit
+  `add_subdirectory(<source> <stable-binary-dir>)`; the stable binary directory is part of the contract, so a
+  payload never relocates an existing artifact.
+- **Version-qualified payloads.** The Transparent QPA payload is coupled to the exact Qt private ABI it was
+  qualified against (Qt 6.8.3 for V1). A future Qt LTS line is served by a new payload directory named for that
+  line (`integrations/qpa-<qt-line>/`), not by widening the existing one: `integrations/qpa` keeps its path,
+  target and artifact names, and each payload stays qualified against exactly one Qt line.
+- **`tests/` grows by test scope, not by module.** Unit and integration suites follow the rules in the ownership
+  section above; a new platform adds tests in the same shape rather than a new root.
+- **Recorded evidence grows under `docs/`.** Physical-acceptance and review evidence for a candidate is
+  documentation: a directory per candidate or version under `docs/acceptance/`, next to the runbook that
+  produced it (`docs/v1-physical-acceptance.md`), so evidence never mixes with test code.
+- **`examples/` grows by integration mode and usage scenario.** The E-numbering continues, one directory per
+  example, and examples that combine HyRemote with third-party open-source applications are opt-in, unfetched
+  by default and never an implementation location for product logic (see the ownership section above).
+- **`assets/` holds non-code material only** (`assets/branding` today; packaging icons or desktop-entry
+  material for a future platform are sibling directories under `assets/`).
+- **`cmake/` owns build, package and deployment modules.** Platform-specific deployment is an additional module
+  here, never code inside product sources.
+- **`research/` stays opt-in.** A successful experiment becomes product code only through an explicit
+  architecture decision and a migration into `src/` or `integrations/`.
 
 ## Forbidden legacy root directories
 
