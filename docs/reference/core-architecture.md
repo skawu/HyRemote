@@ -215,7 +215,7 @@ The Core should select/fail early rather than silently reinterpret an unsupporte
 
 ## 10. API ownership
 
-The design-level header is [`proposals/hyremote_core.hpp`](proposals/hyremote_core.hpp).
+The design-level header is [`proposals/hyremote_core.hpp`](../proposals/hyremote_core.hpp).
 
 It is **not** the frozen public include tree. #6/#7 implementation may refine names/signatures while preserving the architectural invariants:
 

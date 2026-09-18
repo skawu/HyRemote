@@ -7,12 +7,12 @@ HyRemote is a Qt remote-access framework for existing Qt Widgets and Qt Quick ap
 This document is the canonical top-level architecture for V1. Detailed contracts are refined by:
 
 - [`core-architecture.md`](core-architecture.md);
-- [`ADR-0001 Core Boundaries`](adr/0001-core-boundaries.md);
-- [`ADR-0002 RemoteFrame Ownership, Damage and Timestamp Contract`](adr/0002-remoteframe-lifetime-timestamps.md);
-- [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md);
-- [`ADR-0004 QPA delegate scope for EGLFS/Wayland-class targets`](adr/0004-qpa-eglfs-delegate-scope.md);
+- [`ADR-0001 Core Boundaries`](../adr/0001-core-boundaries.md);
+- [`ADR-0002 RemoteFrame Ownership, Damage and Timestamp Contract`](../adr/0002-remoteframe-lifetime-timestamps.md);
+- [`ADR-0003 Threading, Scheduling and Backpressure`](../adr/0003-threading-backpressure.md);
+- [`ADR-0004 QPA delegate scope for EGLFS/Wayland-class targets`](../adr/0004-qpa-eglfs-delegate-scope.md);
 - [`input-model.md`](input-model.md);
-- [`deployment.md`](deployment.md);
+- [`deployment.md`](../deployment.md);
 - [`security-model.md`](security-model.md).
 
 ## 1. Frozen V1 product model

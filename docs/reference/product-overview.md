@@ -9,7 +9,7 @@ repository front page so that the [README](../README.md) stays a short entry poi
 Related authorities:
 
 - [`versioning.md`](versioning.md) - product versions and milestone semantics;
-- [`development-roadmap.md`](development-roadmap.md) - execution ordering toward V1.0.0.0;
+- [`development-roadmap.md`](../development-roadmap.md) - execution ordering toward V1.0.0.0;
 - [`architecture.md`](architecture.md) - top-level boundaries and integration modes;
 - [`sdk-consumption.md`](sdk-consumption.md) - the user-facing consumption contract;
 - [`security-model.md`](security-model.md) - security requirements for the framework and adapters.
@@ -195,7 +195,7 @@ Major.Minor.Feature.Maintenance
 
 The version number represents product capability and compatibility, not the internal technical work
 breakdown. The canonical rules are in [`versioning.md`](versioning.md); execution ordering is in
-[`development-roadmap.md`](development-roadmap.md).
+[`development-roadmap.md`](../development-roadmap.md).
 
 ### 7.1 x86_64 reference platform - Windows + Linux
 
