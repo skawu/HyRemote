@@ -15,7 +15,7 @@ conventions live elsewhere - see the "Internal documents" section of [`docs/READ
 | Compilers | Windows: MSVC x64 (C++17); Linux: GCC x86_64 (C++17) |
 | Integration modes | (1) Embedded C++ (one shared library), (2) Declarative QML (`import HyRemote`), (3) Transparent QPA Proxy (`-platform hyremote`) |
 | QPA constraint | Transparent QPA is exactly coupled to the Qt 6.8.3 private QPA ABI; it preserves the native `qwindows` / `qxcb` delegate |
-| Viewer | Any standard VNC client, default `127.0.0.1:5900` |
+| Viewer | Any standard VNC client, default `127.0.0.1:5921` |
 
 > **Product status:** V1.0.0.0 acceptance is pending. The candidate implementation is not a **Supported** claim
 > until the required hosted and physical evidence actually passes. Current status:
@@ -155,7 +155,7 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-Defaults are the safe defaults: loopback listener, port 5900, remote input disabled. Setters are optional policy
+Defaults are the safe defaults: loopback listener, port 5921, remote input disabled. Setters are optional policy
 controls, not mandatory setup. For Qt Quick, request the application's normal Qt Quick components and keep the
 same HyRemote product target; `find_package(HyRemote)` does not force an application to resolve Widgets, Quick or
 QML modules it does not use.

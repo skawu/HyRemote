@@ -28,7 +28,7 @@ int main()
         if (!check(parseRemoteConfig(parameters, config, error), "default config parses")
             || !check(error.isEmpty(), "default config has no error")
             || !check(config.listenAddress == QHostAddress::LocalHost, "default address is loopback")
-            || !check(config.port == 5900, "default port is 5900")
+            || !check(config.port == 5921, "default port is 5921")
             || !check(!config.remoteInputEnabled, "remote input defaults off")
             || !check(parameters == QStringList{QStringLiteral("delegate=xcb"), QStringLiteral("display=:99")},
                       "native delegate parameters are preserved")) {

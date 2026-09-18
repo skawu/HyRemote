@@ -150,7 +150,7 @@ struct RemoteAccess::Impl
 
     QPointer<QObject> target;
     QHostAddress listenAddress = QHostAddress::LocalHost;
-    quint16 port = 5900;
+    quint16 port = 5921;
     bool remoteInputEnabled = false;
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;

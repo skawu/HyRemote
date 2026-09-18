@@ -37,7 +37,7 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5900, and remote input is disabled.
+That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5921, and remote input is disabled.
 
 Enable remote control only when required:
 

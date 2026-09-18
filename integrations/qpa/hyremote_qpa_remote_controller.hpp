@@ -23,7 +23,7 @@ class InteractiveCompositeTarget;
 struct RemoteConfig
 {
     QHostAddress listenAddress = QHostAddress::LocalHost;
-    quint16 port = 5900;
+    quint16 port = 5921;
     bool remoteInputEnabled = false;
 };
 
