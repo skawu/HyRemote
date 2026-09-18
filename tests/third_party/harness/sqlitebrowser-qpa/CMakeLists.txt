@@ -23,6 +23,16 @@ if(NOT TARGET sqlitebrowser)
     message(FATAL_ERROR "Expected pristine upstream target 'sqlitebrowser'")
 endif()
 
+# SQLiteBrowser's Linux install is distribution-oriented and leaves the executable
+# with an empty install RPATH. This harness intentionally turns the installed test
+# tree into a relocatable/private Qt bundle, so the application binary must be able
+# to find Qt libraries deployed beside that bundle. This is packaging glue owned by
+# the disposable test wrapper, not a HyRemote product/API behavior and not an edit
+# to the pristine upstream source tree.
+if(UNIX AND NOT APPLE)
+    set_property(TARGET sqlitebrowser PROPERTY INSTALL_RPATH "$ORIGIN/../lib")
+endif()
+
 # This is deliberately the only HyRemote-specific operation. The application
 # remains Qt-only and is not linked to a HyRemote C++ target.
 hyremote_deploy(TARGET sqlitebrowser QPA)
