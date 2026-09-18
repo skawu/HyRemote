@@ -1,0 +1,11 @@
+{
+  "id": "qbittorrent",
+  "upstream": "https://github.com/qbittorrent/qBittorrent.git",
+  "branch": "master",
+  "tracking_commit": "9b0e9311f3e8aa511e46605d7e1a156e101adac9",
+  "build_system": "cmake",
+  "qt_family": "widgets",
+  "upstream_qt_note": "Current upstream declares minQt6Version 6.6.0; Qt >= 6.10 additionally requests Qt CorePrivate, so every lane still requires an actual build proof.",
+  "integration": {"embedded_cpp": "throwaway-overlay", "qml": "n/a", "qpa": "pristine-upstream"},
+  "recipe_status": "bootstrap"
+}

@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "authority_issue": 134,
+  "reference_hyremote_sha": "4281db23387780d0b246711438d6b8b134a787d3",
+  "minimum_public_qt": "6.8.0",
+  "v1_qpa_exact_qt": "6.8.3",
+  "qt_lanes": [
+    {
+      "id": "qt68-ref",
+      "version": "6.8.3",
+      "distribution": "open-source",
+      "public_api": "required",
+      "qpa": "qualified-v1",
+      "blocking": "v1-reference"
+    },
+    {
+      "id": "qt68-lts-latest",
+      "version": "6.8.9",
+      "distribution": "commercial-lts",
+      "public_api": "observation",
+      "qpa": "not-qualified",
+      "blocking": "never-if-sdk-unavailable"
+    },
+    {
+      "id": "qt610",
+      "version": "6.10.3",
+      "distribution": "open-source",
+      "public_api": "forward-compatibility",
+      "qpa": "not-qualified",
+      "blocking": "non-v1"
+    },
+    {
+      "id": "qt611",
+      "version": "6.11.2",
+      "distribution": "open-source",
+      "public_api": "forward-compatibility",
+      "qpa": "not-qualified",
+      "blocking": "non-v1"
+    },
+    {
+      "id": "qt612-preview",
+      "version": "preview",
+      "distribution": "open-source-preview",
+      "public_api": "canary",
+      "qpa": "not-qualified",
+      "blocking": "never"
+    }
+  ],
+  "applications": [
+    {
+      "id": "sqlitebrowser",
+      "path": "tests/third_party/apps/sqlitebrowser",
+      "url": "https://github.com/sqlitebrowser/sqlitebrowser.git",
+      "branch": "master",
+      "tracking_commit": "388288007c324adb9c9524e23dfb0298f662753f",
+      "tier": "L1",
+      "family": "widgets",
+      "modes": {"embedded_cpp": "primary", "qml": "n/a", "qpa": "required"},
+      "lane_refs": {"qt68-ref": "tracking", "qt68-lts-latest": "tracking", "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
+    },
+    {
+      "id": "qbittorrent",
+      "path": "tests/third_party/apps/qbittorrent",
+      "url": "https://github.com/qbittorrent/qBittorrent.git",
+      "branch": "master",
+      "tracking_commit": "9b0e9311f3e8aa511e46605d7e1a156e101adac9",
+      "tier": "L1",
+      "family": "widgets",
+      "modes": {"embedded_cpp": "required", "qml": "n/a", "qpa": "primary"},
+      "lane_refs": {"qt68-ref": "tracking", "qt68-lts-latest": "tracking", "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
+    },
+    {
+      "id": "musescore",
+      "path": "tests/third_party/apps/musescore",
+      "url": "https://github.com/musescore/MuseScore.git",
+      "branch": "main",
+      "tracking_commit": "0765eb0d7ac6a9a6c7b8d71b4578e4ae77dc5df0",
+      "tier": "L2",
+      "family": "quick-qml",
+      "modes": {"embedded_cpp": "observation", "qml": "primary", "qpa": "observation"},
+      "lane_refs": {"qt68-ref": null, "qt68-lts-latest": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+    },
+    {
+      "id": "shotcut",
+      "path": "tests/third_party/apps/shotcut",
+      "url": "https://github.com/mltframework/shotcut.git",
+      "branch": "master",
+      "tracking_commit": "57d4fb963d68ec68421e2878395eba1acaa19b14",
+      "tier": "L2",
+      "family": "widgets-quick-qml-multimedia",
+      "modes": {"embedded_cpp": "observation", "qml": "required", "qpa": "observation"},
+      "lane_refs": {"qt68-ref": null, "qt68-lts-latest": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+    },
+    {
+      "id": "obs-studio",
+      "path": "tests/third_party/apps/obs-studio",
+      "url": "https://github.com/obsproject/obs-studio.git",
+      "branch": "master",
+      "tracking_commit": "cba17c1d8107e8e3cd88d742c7aceb38815b77eb",
+      "tier": "L3",
+      "family": "widgets-graphics-video-native",
+      "modes": {"embedded_cpp": "n/a", "qml": "n/a", "qpa": "stress-observation"},
+      "lane_refs": {"qt68-ref": null, "qt68-lts-latest": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+[submodule "third-party/qbittorrent"]
+	path = tests/third_party/apps/qbittorrent
+	url = https://github.com/qbittorrent/qBittorrent.git
+	branch = master
+	shallow = true
+[submodule "third-party/sqlitebrowser"]
+	path = tests/third_party/apps/sqlitebrowser
+	url = https://github.com/sqlitebrowser/sqlitebrowser.git
+	branch = master
+	shallow = true
+[submodule "third-party/shotcut"]
+	path = tests/third_party/apps/shotcut
+	url = https://github.com/mltframework/shotcut.git
+	branch = master
+	shallow = true
+[submodule "third-party/musescore"]
+	path = tests/third_party/apps/musescore
+	url = https://github.com/musescore/MuseScore.git
+	branch = main
+	shallow = true
+[submodule "third-party/obs-studio"]
+	path = tests/third_party/apps/obs-studio
+	url = https://github.com/obsproject/obs-studio.git
+	branch = master
+	shallow = true

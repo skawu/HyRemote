@@ -1,0 +1,60 @@
+name: Third-party real-world contract
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+      - feature/104-v1-ga-acceptance-matrix
+    paths:
+      - '.gitmodules'
+      - 'tests/third_party/**'
+      - 'tools/third_party/**'
+      - '.github/workflows/third-party-*.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate version/application contract
+        run: python tools/third_party/validate_matrix.py
+
+  core-submodules:
+    name: Core upstream cleanliness / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Initialize core upstream applications only
+        shell: bash
+        run: |
+          git submodule sync -- tests/third_party/apps/qbittorrent tests/third_party/apps/sqlitebrowser
+          git submodule update --init --depth 1 -- tests/third_party/apps/qbittorrent tests/third_party/apps/sqlitebrowser
+      - name: Verify pristine upstream checkouts
+        run: python tools/third_party/verify_clean.py --apps qbittorrent sqlitebrowser
+      - name: Prove version-aware materialization without patching submodules
+        shell: bash
+        run: |
+          python tools/third_party/materialize.py --app qbittorrent --lane qt68-ref --dest "$RUNNER_TEMP/hyremote-qbittorrent-qt68"
+          python tools/third_party/materialize.py --app sqlitebrowser --lane qt68-ref --dest "$RUNNER_TEMP/hyremote-sqlitebrowser-qt68"
+      - name: Verify upstream still pristine after materialization
+        run: python tools/third_party/verify_clean.py --apps qbittorrent sqlitebrowser

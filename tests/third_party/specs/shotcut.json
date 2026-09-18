@@ -1,0 +1,11 @@
+{
+  "id": "shotcut",
+  "upstream": "https://github.com/mltframework/shotcut.git",
+  "branch": "master",
+  "tracking_commit": "57d4fb963d68ec68421e2878395eba1acaa19b14",
+  "build_system": "cmake",
+  "qt_family": "widgets-quick-qml-multimedia",
+  "upstream_qt_note": "The tracked tree includes Qt Quick/QML filter UI and multimedia dependencies; each Qt lane is qualified independently.",
+  "integration": {"embedded_cpp": "observation-overlay", "qml": "throwaway-overlay", "qpa": "pristine-upstream-observation"},
+  "recipe_status": "bootstrap"
+}

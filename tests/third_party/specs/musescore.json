@@ -1,0 +1,11 @@
+{
+  "id": "musescore",
+  "upstream": "https://github.com/musescore/MuseScore.git",
+  "branch": "main",
+  "tracking_commit": "0765eb0d7ac6a9a6c7b8d71b4578e4ae77dc5df0",
+  "build_system": "cmake",
+  "qt_family": "quick-qml",
+  "upstream_qt_note": "The tracked tree contains substantial Qt Quick/QML UI. Historical Qt-lane refs remain unresolved until built against that lane.",
+  "integration": {"embedded_cpp": "observation-overlay", "qml": "throwaway-overlay", "qpa": "pristine-upstream-observation"},
+  "recipe_status": "bootstrap"
+}

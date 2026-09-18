@@ -1,0 +1,53 @@
+name: Third-party upstream update proposal
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Show upstream drift
+        run: python tools/third_party/check_updates.py
+      - name: Move disposable working-tree submodules to upstream tracking heads
+        run: |
+          git submodule sync
+          git submodule update --init --remote --depth 1
+          python tools/third_party/sync_tracking_commits.py
+      - name: Create reviewed update PR when gitlinks changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- tests/third_party/apps tests/third_party/matrix.json tests/third_party/specs; then
+            echo 'No upstream changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B automation/third-party-updates
+          git add tests/third_party/apps tests/third_party/matrix.json tests/third_party/specs
+          git commit -m 'chore(test): propose third-party upstream updates'
+          python tools/third_party/validate_matrix.py
+          python tools/third_party/verify_clean.py
+          git push --force-with-lease origin HEAD:automation/third-party-updates
+          if gh pr list --head automation/third-party-updates --base develop --state open --json number --jq 'length' | grep -q '^0$'; then
+            gh pr create --base develop --head automation/third-party-updates \
+              --title 'chore(test): update real-world upstream applications' \
+              --body 'Automated upstream gitlink proposal for #134. No upstream source is patched. Merge only after the applicable HyRemote compatibility matrix passes.'
+          else
+            echo 'Existing update PR refreshed.'
+          fi
