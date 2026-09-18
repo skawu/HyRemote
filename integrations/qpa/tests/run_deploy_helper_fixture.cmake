@@ -232,7 +232,7 @@ endif()
 file(READ "${generated_script}" generated_content)
 
 foreach(required_fragment IN ITEMS
-        "qt_deploy_runtime_dependencies"
+        "qt6_deploy_runtime_dependencies"
         "ADDITIONAL_LIBRARIES")
     string(FIND "${generated_content}" "${required_fragment}" fragment_pos)
     if(fragment_pos EQUAL -1)
@@ -248,7 +248,7 @@ if(declared_configuration_count GREATER 0)
         set(_candidate_script "${_script_prefix}-${_declared_configuration}.cmake")
         file(READ "${_candidate_script}" _candidate_content)
         foreach(required_fragment IN ITEMS
-                "qt_deploy_runtime_dependencies"
+                "qt6_deploy_runtime_dependencies"
                 "ADDITIONAL_LIBRARIES")
             string(FIND "${_candidate_content}" "${required_fragment}" _candidate_fragment_pos)
             if(_candidate_fragment_pos EQUAL -1)
