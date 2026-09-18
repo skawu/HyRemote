@@ -82,15 +82,22 @@ A partial/headless-only record cannot mark an OS/mode Supported.
 
 Run on both Windows x86_64 and Linux x86_64 using the normal E1 Widgets application and only the public `HyRemote::RemoteAccess` integration contract.
 
+> **Carrier for steps 6 and 9 (product ruling, 2026-09-18).** The E1 Widgets application offers exactly one policy
+> transition and it is reachable **only from the view-only state**, so "trigger `stop()` while remote input is already
+> enabled, with the application still running" and "transition back to view-only" are **structurally unreachable** on it.
+> Those two steps are therefore taken on `examples/remote-support-showcase`, which carries the same public contract and
+> can stop and re-enable remote access without exiting. Any record of them must name the carrier and state that
+> deviation from the wording above. Everything else in this section stays on the normal E1 Widgets application.
+
 1. Launch the target application on the native platform and prove visible local rendering plus local pointer, keyboard and text input before a remote viewer connects.
 2. Start HyRemote in the default view-only policy and connect the standard viewer. Prove local input remains authoritative/responsive and attempted remote input is not delivered.
-3. Keep the target application running. Stop the **HyRemote remote runtime only**, set `remoteInputEnabled=true` while Stopped, then start HyRemote again. Reconnect the viewer as needed. This is the frozen `stop -> configure -> start` policy transition; do not introduce a hidden live policy channel.
+3. Keep the target application running. Stop the **HyRemote remote runtime only**, set `remoteInputEnabled=true` while Stopped, then start HyRemote again. Reconnect the viewer as needed. This is the frozen `stop -> configure -> start` policy transition; do not introduce a hidden live policy channel. The showcase's deterministic entries - the application-wide **Ctrl+I** shortcut and **`--toggle-input-at-ms <ms,ms,...>`** - are **entries into this same frozen transition**, not a bypass of it: they toggle the same "Allow remote control" control a person clicks, whose handler stops the runtime, applies the policy and starts it again. They exist so the boundary can be driven deterministically and headlessly; a record may use them and should say so.
 4. Prove remote pointer/keyboard/text reaches the same still-running application while local input continues to work.
 5. Abrupt-disconnect case: hold a supported remote modifier and/or mouse button, terminate/disconnect the viewer, and prove the target returns to neutral input state; reconnect and prove the next viewer begins clean.
 6. Explicit-stop case: during control mode hold a supported remote modifier and/or button, call/trigger `RemoteAccess::stop()` while the application keeps running, and prove delivered held state is balanced.
 7. Immediately after explicit stop, interact locally and observe long enough to prove no previously queued remote key/button is delivered late. Restart the remote runtime and prove clean input state.
 8. Disconnect/reconnect again without restarting the target application.
-9. Stop HyRemote and confirm the local UI remains normally usable. Where practical, transition back to view-only via `stop -> configure -> start` and repeat the terminal-input-cleanup observation.
+9. Stop HyRemote and confirm the local UI remains normally usable. Where practical, transition back to view-only via `stop -> configure -> start` and repeat the terminal-input-cleanup observation. On the showcase carrier this is the second deterministic toggle (`Ctrl+I` again, or a second `--toggle-input-at-ms` time), and the view-only boundary must be re-proved after it, not assumed.
 10. Under a deliberately slow/stalled remote viewer within the existing product path, confirm remote activity does not indefinitely stall the native UI/render loop.
 
 Record per OS:
