@@ -24,21 +24,23 @@ HyRemote has two different compatibility problems and the test matrix keeps them
 
 ### Public C++ / QML API lanes
 
-The product requires Qt 6.8 or newer. Public-API build/behavior probes therefore run on multiple Qt 6 lines:
+The product requires Qt 6.8 or newer. Public-API build/behavior probes therefore cover the whole supported floor and successive stable minor lines rather than testing only one patch:
 
-- `qt68-ref`: **6.8.3 exact**, the frozen V1 reference and release evidence line;
-- `qt68-lts-latest`: latest available Qt 6.8 commercial LTS patch (currently recorded as 6.8.9); run only where a licensed SDK is available;
-- `qt610`: Qt 6.10.3 forward-compatibility line;
-- `qt611`: Qt 6.11.2 current stable forward-compatibility line;
+- `qt68-min`: **6.8.0**, minimum public-API floor;
+- `qt68-ref`: **6.8.3 exact**, frozen V1 reference and release-evidence line;
+- `qt68-lts-latest`: latest available Qt 6.8 commercial LTS patch (currently recorded as 6.8.9), only where a licensed SDK is available;
+- `qt69`: **6.9.3**, final Qt 6.9 patch line;
+- `qt610`: **6.10.3**, final Qt 6.10 patch line;
+- `qt611`: **6.11.2**, current stable forward-compatibility line;
 - `qt612-preview`: optional preview canary, never release-blocking.
 
-Qt < 6.8 is outside the product minimum and is not turned into a compatibility promise merely for test breadth.
+Qt < 6.8 is outside the product minimum and is not turned into a compatibility promise merely for test breadth. An unavailable non-V1 SDK is reported as `SKIP/unavailable`, never as `PASS` and never as a HyRemote product failure.
 
 ### QPA lanes
 
 QPA uses Qt private ABI. A `qhyremote` built against one Qt patch/minor **must never be reused as evidence for another Qt version**.
 
-For V1, only Qt **6.8.3 exact** is qualified. A future QPA lane for 6.8.9, 6.10.3, 6.11.2 or later must build `qhyremote` against that exact SDK/private headers and remains Experimental/Unverified until a compatibility authority explicitly promotes it. The multi-version public-API workflows intentionally keep QPA disabled outside 6.8.3.
+For V1, only Qt **6.8.3 exact** is qualified. A future QPA lane for 6.8.0, 6.8.9, 6.9.3, 6.10.3, 6.11.2 or later must build `qhyremote` against that exact SDK/private headers and remains Experimental/Unverified until a compatibility authority explicitly promotes it. The multi-version public-API workflow intentionally keeps QPA disabled outside 6.8.3.
 
 ## Upstream cleanliness contract
 
@@ -57,9 +59,10 @@ A single upstream HEAD is **not** assumed to build with every Qt lane. `matrix.j
 
 1. keep the submodule checkout at the superproject gitlink;
 2. fetch a required historical/tagged ref into the submodule object database when needed;
-3. use `tools/third_party/materialize.py` to archive that ref into a disposable source directory;
-4. apply HyRemote overlays only to that disposable directory;
-5. leave the submodule checkout unchanged and clean.
+3. materialize that ref into a disposable source directory;
+4. if the upstream owns nested submodules, use an independent disposable clone plus recursive-submodule initialization rather than silently losing nested sources through `git archive`;
+5. apply HyRemote overlays only to the disposable tree;
+6. leave the tracked submodule checkout unchanged and clean.
 
 Scheduled update automation may move tracking gitlinks only in a reviewable PR. It never auto-merges an upstream update.
 
@@ -67,11 +70,11 @@ Scheduled update automation may move tracking gitlinks only in a reviewable PR. 
 
 ### L1 — core / PR
 
-SQLiteBrowser + qBittorrent, Windows x86_64 + Linux x86_64, Qt 6.8.3. These are the first third-party rows to become blocking once their actual build/view/input recipes are accepted.
+SQLiteBrowser + qBittorrent, Windows x86_64 + Linux x86_64, exact Qt 6.8.3 for V1 QPA and the selected public-API version lanes. These are the first third-party rows to become blocking once their actual build/view/input recipes are accepted.
 
 ### L2 — version matrix / RC
 
-Public C++/QML product compile probes across 6.8.3, 6.10.3 and 6.11.2; then application scenarios for core apps plus MuseScore and Shotcut on version/app combinations explicitly marked applicable in the specs.
+Public C++/QML product compile probes cover 6.8.0, 6.8.3, 6.9.3, 6.10.3 and 6.11.2; application scenarios then run on core apps plus MuseScore and Shotcut for version/app combinations explicitly marked applicable in the specs.
 
 ### L3 — heavy / nightly-weekly + RC
 
@@ -87,6 +90,6 @@ Required application rows eventually cover: clean build/deploy, native local bas
 
 ## Current bootstrap state
 
-The initial #134 implementation establishes submodules, version/application manifests, clean materialization, cross-version HyRemote build probes and update automation. Application-specific dependency/build recipes and physical viewer scenarios are added only after each upstream ref/Qt-lane pair is actually proven; the manifest uses `unresolved` rather than inventing compatibility.
+#134 establishes submodules, version/application manifests, clean materialization, cross-version HyRemote build probes, real pristine-application QPA probes and update automation. Application-specific dependency/build recipes and physical scenarios are enabled only after each upstream-ref/Qt-lane pair is actually proven; unresolved combinations remain explicit rather than inventing compatibility.
 
 The existing self-owned E1-E4 acceptance surface remains normative for V1 product semantics. This suite increases real-world confidence without silently certifying the five named applications.

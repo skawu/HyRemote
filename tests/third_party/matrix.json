@@ -6,6 +6,14 @@
   "v1_qpa_exact_qt": "6.8.3",
   "qt_lanes": [
     {
+      "id": "qt68-min",
+      "version": "6.8.0",
+      "distribution": "open-source",
+      "public_api": "minimum-floor",
+      "qpa": "not-qualified",
+      "blocking": "compatibility-floor"
+    },
+    {
       "id": "qt68-ref",
       "version": "6.8.3",
       "distribution": "open-source",
@@ -20,6 +28,14 @@
       "public_api": "observation",
       "qpa": "not-qualified",
       "blocking": "never-if-sdk-unavailable"
+    },
+    {
+      "id": "qt69",
+      "version": "6.9.3",
+      "distribution": "open-source",
+      "public_api": "forward-compatibility",
+      "qpa": "not-qualified",
+      "blocking": "non-v1"
     },
     {
       "id": "qt610",
@@ -56,7 +72,7 @@
       "tier": "L1",
       "family": "widgets",
       "modes": {"embedded_cpp": "primary", "qml": "n/a", "qpa": "required"},
-      "lane_refs": {"qt68-ref": "tracking", "qt68-lts-latest": "tracking", "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": "tracking", "qt68-ref": "tracking", "qt68-lts-latest": "tracking", "qt69": "tracking", "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
     },
     {
       "id": "qbittorrent",
@@ -67,7 +83,7 @@
       "tier": "L1",
       "family": "widgets",
       "modes": {"embedded_cpp": "required", "qml": "n/a", "qpa": "primary"},
-      "lane_refs": {"qt68-ref": "tracking", "qt68-lts-latest": "tracking", "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": "tracking", "qt68-ref": "tracking", "qt68-lts-latest": "tracking", "qt69": "tracking", "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
     },
     {
       "id": "musescore",
@@ -78,7 +94,7 @@
       "tier": "L2",
       "family": "quick-qml",
       "modes": {"embedded_cpp": "observation", "qml": "primary", "qpa": "observation"},
-      "lane_refs": {"qt68-ref": null, "qt68-lts-latest": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
     },
     {
       "id": "shotcut",
@@ -89,7 +105,7 @@
       "tier": "L2",
       "family": "widgets-quick-qml-multimedia",
       "modes": {"embedded_cpp": "observation", "qml": "required", "qpa": "observation"},
-      "lane_refs": {"qt68-ref": null, "qt68-lts-latest": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
     },
     {
       "id": "obs-studio",
@@ -100,7 +116,7 @@
       "tier": "L3",
       "family": "widgets-graphics-video-native",
       "modes": {"embedded_cpp": "n/a", "qml": "n/a", "qpa": "stress-observation"},
-      "lane_refs": {"qt68-ref": null, "qt68-lts-latest": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
     }
   ]
 }
