@@ -54,12 +54,12 @@ jobs:
           python tools/third_party/verify_clean.py --apps sqlitebrowser
           python tools/third_party/materialize.py --app sqlitebrowser --lane qt68-ref --dest "$RUNNER_TEMP/sqlitebrowser-src"
 
-      - name: Install exact Qt 6.8.3 + required Qt archives/modules
+      - name: Install exact Qt 6.8.3 product/app dependency closure
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.host }}" desktop 6.8.3 "${{ matrix.arch }}" \
-            --archives qtbase qttools --modules qt5compat --outputdir "$RUNNER_TEMP/Qt"
+            --archives qtbase qtdeclarative qttools --modules qt5compat --outputdir "$RUNNER_TEMP/Qt"
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
