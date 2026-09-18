@@ -136,3 +136,29 @@ logo/
 ```
 
 The release-readiness repository-layout gate enforces this boundary. Do not add compatibility copies, symlinks, or forwarding directories at the old locations; update source references to the canonical layout instead.
+
+## Build entry points and toolchains
+
+Two additive entry points sit at the root, alongside the CMake project. They are **build conveniences, not product
+artifacts**, and they do not change any CMake default - the frozen V1 option defaults in
+`cmake/HyRemoteProjectOptions.cmake` remain authoritative:
+
+```text
+compile.cmd         build entry point - valid POSIX shell script *and* Windows batch file
+clean.cmd           removes a mode's build tree, or the whole build tree with --all
+```
+
+Their layout mirrors the 4diac-fbe build environment: a single script per action that runs on both operating systems,
+a named build configuration selected with `--mode` (default `qpa`, overridable in the script or on the command line),
+output under `build/<mode>/`, and one log file per phase.
+
+Cross-compilation toolchain files live under the existing `cmake/` root:
+
+```text
+cmake/toolchains/*.cmake       CMake toolchain files for embedded targets
+cmake/toolchains/README.md     how to use and add one
+```
+
+`cmake/toolchains/` grows by target; adding a toolchain file is not a structural decision, while adding a new
+top-level directory still is. User-facing instructions live in `docs/guide/cross-compilation.md` with its English
+mirror.
