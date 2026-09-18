@@ -42,16 +42,13 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-
-          # Current repository settings do not provide pre-push branch protection. This job is an
-          # after-the-fact audit only: it cannot undo a direct push and must never be described as
-          # equivalent to protected-branch enforcement. It records a red governance signal whenever
-          # the new main/develop head is not associated with a merged PR into that same branch.
+          # This is an after-the-fact audit only; it cannot undo a direct push and must never be
+          # described as branch protection when repository policy cannot enforce that before push.
           merged_prs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
             --jq ".[] | select(.merged_at != null and .base.ref == \"${BRANCH}\") | .number")"
           if [[ -z "${merged_prs}" ]]; then
             echo "mainline direct-push audit failed: ${GITHUB_SHA} has no merged PR into ${BRANCH}" >&2
-            echo "Repository branch protection is not currently available/enabled; treat this as governance evidence, not rollback." >&2
+            echo "This is governance evidence only; the workflow cannot roll back the push." >&2
             exit 1
           fi
           echo "mainline push audit passed for ${BRANCH}: merged PR(s) ${merged_prs//$'\n'/, }"
@@ -72,40 +69,21 @@ jobs:
         run: |
           set -euo pipefail
           echo "head=${HEAD_REF} base=${BASE_REF}"
-
           case "${HEAD_REF}" in
             feature/*)
-              test "${BASE_REF}" = "develop" || {
-                echo "feature/* PRs must target develop" >&2
-                exit 1
-              }
+              test "${BASE_REF}" = "develop" || { echo "feature/* PRs must target develop" >&2; exit 1; }
               ;;
             release/v*)
-              test "${BASE_REF}" = "main" || {
-                echo "release/v* PRs must target main" >&2
-                exit 1
-              }
+              test "${BASE_REF}" = "main" || { echo "release/v* PRs must target main" >&2; exit 1; }
               ;;
             backmerge/v*)
-              test "${BASE_REF}" = "develop" || {
-                echo "backmerge/v* PRs must target develop" >&2
-                exit 1
-              }
+              test "${BASE_REF}" = "develop" || { echo "backmerge/v* PRs must target develop" >&2; exit 1; }
               ;;
             hotfix/*)
-              case "${BASE_REF}" in
-                main|develop) ;;
-                *)
-                  echo "hotfix/* PRs may target only main or develop" >&2
-                  exit 1
-                  ;;
-              esac
+              case "${BASE_REF}" in main|develop) ;; *) echo "hotfix/* PRs may target only main or develop" >&2; exit 1;; esac
               ;;
             *)
-              test "${BASE_REF}" = "develop" || {
-                echo "only release/v* or hotfix/* may target main" >&2
-                exit 1
-              }
+              test "${BASE_REF}" = "develop" || { echo "only release/v* or hotfix/* may target main" >&2; exit 1; }
               ;;
           esac
 
@@ -113,25 +91,14 @@ jobs:
         if: github.base_ref == 'develop'
         shell: python
         run: |
-          import pathlib
-          import re
-
+          import pathlib, re
           text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
-          match = re.search(
-              r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){2,3})",
-              text,
-              re.S,
-          )
+          match = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){2,3})", text, re.S)
           if not match:
               raise SystemExit("root project(VERSION ...) is missing or malformed")
-
           version = match.group(1)
           if version != "0.0.0":
-              raise SystemExit(
-                  f"PRs targeting develop must keep the development version sentinel 0.0.0; found {version}. "
-                  "Milestone versions exist only on release/v* -> main and released main commits."
-              )
-
+              raise SystemExit(f"PRs targeting develop must keep version sentinel 0.0.0; found {version}")
           print("develop version sentinel gate passed: 0.0.0")
 
       - name: Validate release candidate version before main merge
@@ -141,46 +108,21 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          import os
-          import pathlib
-          import re
-
+          import os, pathlib, re
           head = os.environ["HEAD_REF"]
-          base = os.environ["BASE_REF"]
-          if base != "main":
+          if os.environ["BASE_REF"] != "main":
               raise SystemExit("release/v* candidates must target main")
-
           match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
           if not match:
               raise SystemExit("release branches must use release/vMajor.Minor.Feature.Maintenance")
-          branch_version = match.group(1)
-
-          allowed_milestones = {
-              "0.0.1.0",
-              "0.0.2.0",
-              "0.0.3.0",
-              "1.0.0.0",
-          }
-          if branch_version not in allowed_milestones:
-              raise SystemExit(
-                  f"release/{branch_version} is not a currently authorized HyRemote milestone; "
-                  "maintenance releases require an explicit release-policy update"
-              )
-
+          version = match.group(1)
+          if version not in {"0.0.1.0", "0.0.2.0", "0.0.3.0", "1.0.0.0"}:
+              raise SystemExit(f"release/{version} is not an authorized milestone")
           text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
-          cmake = re.search(
-              r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})",
-              text,
-              re.S,
-          )
-          if not cmake:
-              raise SystemExit("root project(VERSION ...) must contain a four-part release version")
-          if cmake.group(1) != branch_version:
-              raise SystemExit(
-                  f"release branch version {branch_version} does not match root CMake project version {cmake.group(1)}"
-              )
-
-          print(f"release candidate version gate passed for v{branch_version}")
+          cmake = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
+          if not cmake or cmake.group(1) != version:
+              raise SystemExit(f"release branch version {version} must equal root CMake four-part version")
+          print(f"release candidate version gate passed for v{version}")
 
       - name: Require accepted milestone authorities before release PR
         if: startsWith(github.head_ref, 'release/v')
@@ -191,29 +133,25 @@ jobs:
         run: |
           set -euo pipefail
           version="${HEAD_REF#release/v}"
-
           case "${version}" in
-            0.0.1.0)
-              required_issues=(30)
-              ;;
-            0.0.2.0)
-              required_issues=(30 31)
-              ;;
-            0.0.3.0)
-              required_issues=(30 31 32)
-              ;;
+            0.0.1.0) required_issues=(30) ;;
+            0.0.2.0) required_issues=(30 31) ;;
+            0.0.3.0) required_issues=(30 31 32) ;;
             1.0.0.0)
-              required_issues=(30 31 32 39 41 101 104 107 109 33)
+              authority_file=".github/release/v1-mandatory-issues.json"
+              test -f "${authority_file}" || { echo "missing ${authority_file}" >&2; exit 1; }
+              test "$(jq -r '.version' "${authority_file}")" = "${version}" || {
+                echo "${authority_file} version does not match release/v${version}" >&2
+                exit 1
+              }
+              mapfile -t required_issues < <(jq -r '.required_issue_numbers[]' "${authority_file}")
+              test "${#required_issues[@]}" -gt 0 || { echo "V1 mandatory authority list is empty" >&2; exit 1; }
               ;;
-            *)
-              echo "no release-authority mapping for ${version}" >&2
-              exit 1
-              ;;
+            *) echo "no release-authority mapping for ${version}" >&2; exit 1 ;;
           esac
 
           for issue in "${required_issues[@]}"; do
-            response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" \
-              --jq '[.state, (.state_reason // "")] | @tsv')"
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq '[.state, (.state_reason // "")] | @tsv')"
             IFS=$'\t' read -r state reason <<< "${response}"
             if [[ "${state}" != "closed" || "${reason}" == "not_planned" ]]; then
               echo "release/v${version} is not authorized: issue #${issue} state=${state} reason=${reason:-none}" >&2
@@ -221,7 +159,6 @@ jobs:
             fi
             echo "authority #${issue}: closed (${reason:-unspecified})"
           done
-
           echo "release authority gate passed for v${version}"
 
       - name: Validate milestone release-note state
@@ -231,10 +168,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           PR_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
-          import os
-          import pathlib
-          import re
-
+          import os, pathlib, re
           head = os.environ["HEAD_REF"]
           match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
           if not match:
@@ -243,27 +177,17 @@ jobs:
           notes = pathlib.Path(f"docs/releases/v{version}.md")
           if not notes.is_file():
               raise SystemExit(f"release branch {head} requires {notes}")
-
           text = notes.read_text(encoding="utf-8")
-          for required in (f"v{version}", f"release/v{version}", "SecurityType None"):
+          for required in (f"v{version}", f"release/v{version}", "## Security boundary"):
               if required not in text:
-                  raise SystemExit(f"{notes} is missing required release fact: {required}")
-
+                  raise SystemExit(f"{notes} is missing required release fact/section: {required}")
           marker = "Status: **candidate / acceptance pending**"
           is_draft = os.environ.get("PR_DRAFT", "true").lower() == "true"
-          if is_draft:
-              if marker not in text:
-                  raise SystemExit(
-                      f"Draft release PR {head} must keep the explicit candidate marker until acceptance is complete"
-                  )
-              print(f"release note candidate-state gate passed for draft {head}")
-          else:
-              if marker in text:
-                  raise SystemExit(
-                      f"release PR {head} is ready for review but {notes} still says acceptance pending; "
-                      "complete acceptance and remove the candidate status before merge"
-                  )
-              print(f"release note finalization gate passed for {head}")
+          if is_draft and marker not in text:
+              raise SystemExit(f"Draft release PR {head} must keep the candidate marker")
+          if not is_draft and marker in text:
+              raise SystemExit(f"ready release PR {head} still says acceptance pending")
+          print(f"release-note state gate passed for {head}")
 
       - name: Validate released-history backmerge
         if: startsWith(github.head_ref, 'backmerge/v')
@@ -272,37 +196,16 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           set -euo pipefail
-
           version="${HEAD_REF#backmerge/v}"
-          case "${version}" in
-            0.0.1.0|0.0.2.0|0.0.3.0|1.0.0.0) ;;
-            *)
-              echo "backmerge branch is not an authorized current milestone: ${HEAD_REF}" >&2
-              exit 1
-              ;;
-          esac
-
+          case "${version}" in 0.0.1.0|0.0.2.0|0.0.3.0|1.0.0.0) ;; *) echo "unauthorized backmerge milestone ${version}" >&2; exit 1;; esac
           tag="v${version}"
           git fetch origin main "refs/tags/${tag}:refs/tags/${tag}" --force
           git fetch origin "${HEAD_REF}:refs/remotes/origin/${HEAD_REF}" --force
-
-          tag_type="$(git cat-file -t "refs/tags/${tag}")"
-          test "${tag_type}" = "tag" || {
-            echo "backmerge requires the already-published annotated release tag ${tag}" >&2
-            exit 1
-          }
-
+          test "$(git cat-file -t "refs/tags/${tag}")" = "tag" || { echo "backmerge requires annotated ${tag}" >&2; exit 1; }
           tagged_commit="$(git rev-parse "refs/tags/${tag}^{commit}")"
-          git merge-base --is-ancestor "${tagged_commit}" origin/main || {
-            echo "release tag ${tag} is not part of current main release history" >&2
-            exit 1
-          }
-          git merge-base --is-ancestor "${tagged_commit}" "origin/${HEAD_REF}" || {
-            echo "backmerge branch ${HEAD_REF} does not contain released commit ${tagged_commit}" >&2
-            exit 1
-          }
-
-          echo "backmerge gate passed for ${tag}; develop sentinel is checked separately"
+          git merge-base --is-ancestor "${tagged_commit}" origin/main || { echo "${tag} not in current main history" >&2; exit 1; }
+          git merge-base --is-ancestor "${tagged_commit}" "origin/${HEAD_REF}" || { echo "${HEAD_REF} lacks ${tagged_commit}" >&2; exit 1; }
+          echo "backmerge gate passed for ${tag}"
 
   release-tag:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -315,86 +218,55 @@ jobs:
       - name: Validate four-part authorized milestone tag
         shell: python
         run: |
-          import os
-          import re
-
+          import os, re
           tag = os.environ["GITHUB_REF_NAME"]
           match = re.fullmatch(r"v([0-9]+(?:\.[0-9]+){3})", tag)
           if not match:
               raise SystemExit("HyRemote release tags must use vMajor.Minor.Feature.Maintenance")
-
-          version = match.group(1)
-          allowed_milestones = {
-              "0.0.1.0",
-              "0.0.2.0",
-              "0.0.3.0",
-              "1.0.0.0",
-          }
-          if version not in allowed_milestones:
-              raise SystemExit(
-                  f"tag {tag} is not a currently authorized HyRemote milestone; "
-                  "maintenance releases require an explicit release-policy update"
-              )
+          if match.group(1) not in {"0.0.1.0", "0.0.2.0", "0.0.3.0", "1.0.0.0"}:
+              raise SystemExit(f"tag {tag} is not an authorized milestone")
 
       - name: Require annotated tag on exact main release head
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
-
-          tag_type="$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")"
-          test "${tag_type}" = "tag" || {
-            echo "release tag ${GITHUB_REF_NAME} must be an annotated tag, not a lightweight tag" >&2
+          test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = "tag" || {
+            echo "release tag ${GITHUB_REF_NAME} must be annotated" >&2
             exit 1
           }
-
           tagged_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
           main_head="$(git rev-parse origin/main)"
           test "${tagged_commit}" = "${main_head}" || {
-            echo "release tag ${GITHUB_REF_NAME} must point to the exact current main release head" >&2
-            echo "tagged=${tagged_commit} main=${main_head}" >&2
+            echo "release tag ${GITHUB_REF_NAME} must point to exact current main HEAD" >&2
             exit 1
           }
 
       - name: Require CMake version to match tag
         shell: python
         run: |
-          import pathlib
-          import re
-          import os
-
+          import os, pathlib, re
           text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
           match = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
           if not match:
               raise SystemExit("root project(VERSION ...) must contain a four-part release version")
-
-          cmake_version = match.group(1)
-          tag_version = os.environ["GITHUB_REF_NAME"][1:]
-          if cmake_version != tag_version:
-              raise SystemExit(
-                  f"tag {tag_version} does not match root CMake project version {cmake_version}"
-              )
+          if match.group(1) != os.environ["GITHUB_REF_NAME"][1:]:
+              raise SystemExit("release tag does not match root CMake project version")
 
       - name: Require finalized milestone release notes
         shell: python
         run: |
-          import os
-          import pathlib
-
+          import os, pathlib
           tag = os.environ["GITHUB_REF_NAME"]
-          version = tag[1:]
           notes = pathlib.Path(f"docs/releases/{tag}.md")
           if not notes.is_file():
               raise SystemExit(f"release tag {tag} requires {notes}")
-
           text = notes.read_text(encoding="utf-8")
-          marker = "Status: **candidate / acceptance pending**"
-          if marker in text:
-              raise SystemExit(f"tagged release {tag} still contains the candidate acceptance marker")
-          for required in (tag, f"release/{tag}", "SecurityType None"):
+          if "Status: **candidate / acceptance pending**" in text:
+              raise SystemExit(f"tagged release {tag} still contains the candidate marker")
+          for required in (tag, f"release/{tag}", "## Security boundary"):
               if required not in text:
-                  raise SystemExit(f"{notes} is missing required release fact: {required}")
-
+                  raise SystemExit(f"{notes} is missing required release fact/section: {required}")
           print(f"final release-note gate passed for {tag}")
 
       - name: Audit release tag fact
