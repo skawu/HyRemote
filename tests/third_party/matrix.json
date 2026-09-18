@@ -94,7 +94,7 @@
       "tier": "L2",
       "family": "quick-qml",
       "modes": {"embedded_cpp": "observation", "qml": "primary", "qpa": "observation"},
-      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": "tracking", "qt611": null, "qt612-preview": null}
     },
     {
       "id": "shotcut",
@@ -105,7 +105,7 @@
       "tier": "L2",
       "family": "widgets-quick-qml-multimedia",
       "modes": {"embedded_cpp": "observation", "qml": "required", "qpa": "observation"},
-      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": null, "qt611": "tracking", "qt612-preview": null}
+      "lane_refs": {"qt68-min": null, "qt68-ref": null, "qt68-lts-latest": null, "qt69": null, "qt610": "tracking", "qt611": "tracking", "qt612-preview": null}
     },
     {
       "id": "obs-studio",
