@@ -109,6 +109,12 @@ def main() -> int:
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--prefix", required=True, type=Path)
     parser.add_argument("--port", type=int, default=5994)
+    parser.add_argument(
+        "--app-arg",
+        action="append",
+        default=[],
+        help="Extra application argument inserted before the Qt -platform option; repeatable.",
+    )
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -120,8 +126,9 @@ def main() -> int:
     for key in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QT_QPA_PLATFORM", "LD_LIBRARY_PATH"):
         env.pop(key, None)
 
+    command = [str(app), *args.app_arg, "-platform", f"hyremote:hyremote-port={args.port}"]
     process = subprocess.Popen(
-        [str(app), "-platform", f"hyremote:hyremote-port={args.port}"],
+        command,
         cwd=str(app.parent),
         env=env,
         stdout=subprocess.PIPE,
