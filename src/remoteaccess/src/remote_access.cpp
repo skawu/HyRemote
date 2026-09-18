@@ -326,6 +326,19 @@ bool RemoteAccess::start()
         return false;
     }
 
+    // Fail closed until issue #143 delivers authenticated and encrypted transport. This listener speaks RFB
+    // SecurityType None, so a non-loopback bind would publish an unauthenticated remote-control surface to the
+    // network. Rather than warn and proceed, refuse to start: the default loopback listener is unaffected, and
+    // #143 removes this gate by providing real authentication rather than by relaxing it.
+    if (!m_impl->listenAddress.isLoopback()) {
+        m_impl->setError(
+            RemoteAccessErrorCode::InvalidConfiguration,
+            QStringLiteral("refusing to listen on '%1' without authentication: only a loopback address is "
+                           "supported until authenticated transport exists (issue #143)")
+                .arg(m_impl->listenAddress.toString()));
+        return false;
+    }
+
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
 

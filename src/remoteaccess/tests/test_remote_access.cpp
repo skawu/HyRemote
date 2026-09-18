@@ -201,6 +201,18 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(remote.listenAddress() == QHostAddress(QHostAddress::LocalHost));
     CHECK(remote.port() == 5900);
+
+    // Fail-closed security posture: a non-loopback listener is refused outright until #143 provides
+    // authenticated transport, and the address is left unchanged afterwards so a loopback start still works.
+    remote.setListenAddress(QHostAddress::Any);
+    CHECK(!remote.start());
+    const auto refused = remote.lastError();
+    CHECK(refused.has_value());
+    if (refused) {
+        CHECK(refused->code == RemoteAccessErrorCode::InvalidConfiguration);
+        CHECK(refused->message.contains(QStringLiteral("without authentication")));
+    }
+    remote.setListenAddress(QHostAddress::LocalHost);
     CHECK(!remote.remoteInputEnabled());
     CHECK(remote.connectedClientCount() == 0);
     CHECK(counters->targetFactoryCalls.load() == 0);
