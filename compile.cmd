@@ -110,6 +110,14 @@ if not exist "%BUILD_DIR%\CMakeCache.txt" echo Configure did not complete - see 
 cmake --build "%BUILD_DIR%" %J_ARG% > "%BUILD_DIR%.build.log" 2>&1
 if errorlevel 1 echo Build failed. See %BUILD_DIR%.build.log & exit /b 4
 echo Build succeeded. Logs: %BUILD_DIR%.configure.log , %BUILD_DIR%.build.log
+if "%TESTS%"=="ON" (
+    echo.
+    echo To run the tests on Windows the Qt and MinGW runtime DLLs must be findable, otherwise every
+    echo test dies with 0xc0000135 ^(DLL not found^). Use:
+    echo   set "PATH=%%CD%%\%BUILD_DIR%\remoteaccess;%%CD%%\%BUILD_DIR%\qml\HyRemote;%QT_PREFIX%\bin;%%PATH%%"
+    echo   set "QT_PLUGIN_PATH=%%CD%%\%BUILD_DIR%\plugins"
+    echo   ctest --test-dir %BUILD_DIR% --output-on-failure
+)
 exit /b 0
 
 :configure_verbose
@@ -221,5 +229,12 @@ else
     cmake --build "$BUILD_DIR" $J_ARG > "$BUILD_DIR.build.log" 2>&1 \
         || { echo "Build failed. See $BUILD_DIR.build.log"; exit 4; }
     echo "Build succeeded. Logs: $BUILD_DIR.configure.log , $BUILD_DIR.build.log"
+    if [ "$TESTS" = "ON" ]; then
+        echo
+        echo "To run the tests:"
+        echo "  export PATH=\"\$PWD/$BUILD_DIR/remoteaccess:\$PWD/$BUILD_DIR/qml/HyRemote:${QT_PREFIX}/bin:\$PATH\""
+        echo "  export QT_PLUGIN_PATH=\"\$PWD/$BUILD_DIR/plugins\""
+        echo "  ctest --test-dir $BUILD_DIR --output-on-failure"
+    fi
 fi
 exit 0
