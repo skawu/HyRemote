@@ -38,3 +38,49 @@ hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-
 `--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
 
 The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
+
+## Build
+
+```text
+cmake -S . -B build/ga -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<QtRoot> \
+  -DHYREMOTE_BUILD_TESTS=ON -DHYREMOTE_BUILD_EXAMPLES=ON
+cmake --build build/ga
+```
+
+The showcase links `HyRemote::RemoteAccess` and is part of the default examples graph (`HYREMOTE_BUILD_EXAMPLES`),
+like the other Embedded C++ examples.
+
+## Run on Windows and Linux
+
+The same product path on both: the local window stays visible and interactive, a viewer connects to the selected
+port, and remote input follows the explicit policy described above.
+
+```text
+# Windows (Developer PowerShell) - the runtime DLL directories must be on PATH
+$env:PATH = "<QtRoot>\bin;<build>\remoteaccess;<build>;" + $env:PATH
+<build>\examples\remote-support-showcase\hyremote-remote-support-showcase.exe
+
+# Linux - the build tree carries the runtime RPATH, so no path overrides are needed
+<build>/examples/remote-support-showcase/hyremote-remote-support-showcase
+```
+
+## Deployment
+
+```text
+cmake --install <build> --prefix <install-prefix>
+```
+
+A consumer links `HyRemote::RemoteAccess` and deploys through the SDK helper `hyremote_deploy(...)`, which owns the
+shared runtime and its private Qt runtime closure. Details: `docs/deployment.md`, `docs/sdk-installation.md`.
+
+## Troubleshooting
+
+| Symptom | Cause / action |
+| --- | --- |
+| A viewer connects but cannot control anything | Expected by default: the example starts **view-only**. Enable control explicitly with `--remote-input` or through the operator policy. |
+| The application exits immediately on Windows with no output | Add Qt's `bin` and the build's `remoteaccess` directory to `PATH`. |
+| `--auto-start` runs but the service is unreachable from another machine | The listener binds loopback by default; an externally reachable address is an explicit policy decision, not a default. |
+| The local window is unaffected while a viewer is connected | That is the documented local + remote coexistence model. |
+| The listener never starts | The port is in use; choose another `--port`. |
+
+More: `docs/troubleshooting.md`, `docs/known-limitations.md`.

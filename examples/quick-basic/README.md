@@ -122,6 +122,38 @@ Physical local display and local input coexistence is tracked by #109 and remain
 
 The connect/disconnect/reconnect count transitions are part of the product-fit gate; they remain acceptance-pending until the reference jobs execute.
 
+## Deployment
+
+This is a normal Qt Quick application that links the installed SDK, so it deploys like any other application:
+
+```text
+cmake --install build/ga --prefix <install-prefix>
+```
+
+A consumer that links `HyRemote::RemoteAccess` deploys through the SDK's own helper, which owns the shared runtime
+and its private Qt runtime closure; do not assemble Qt libraries, QML modules or plug-ins by hand:
+
+```cmake
+find_package(HyRemote REQUIRED)
+hyremote_deploy(TARGETS hyremote-quick-basic ...)
+```
+
+What a deployment must contain, and how to run the deployed application from a clean directory with the path
+overrides removed, is in `docs/deployment.md` and `docs/sdk-installation.md`.
+
+## Troubleshooting
+
+| Symptom | Cause / action |
+| --- | --- |
+| The window opens but a viewer cannot type or click | Expected by default: the example starts **view-only**. Pass `--remote-input`. |
+| `RemoteAccessState::Running` but no viewer appears connected | Lifecycle `Running` means the listener runs. Read `connectedClientCount()`, which is what this example displays. |
+| The application exits immediately on Windows with no output | The shared runtime DLLs are not on `PATH`: add Qt's `bin` and the build's `remoteaccess` directory. |
+| The scene renders blank in the remote view | The Quick path captures the window's content item; a window that has not been shown has nothing to capture. Show the window first, as this example does. |
+| Resize or DPR changes are not reflected | The Quick capture path is full-frame; allow the next frame after the resize rather than expecting a partial update. |
+| A viewer connects but no picture appears | The viewer must speak the RFB 3.8 baseline without authentication, which is the current V1 transport; see `docs/viewer-connection.md`. |
+
+More: `docs/troubleshooting.md`, `docs/known-limitations.md`.
+
 ## Related documentation
 
 Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/security.md`, `docs/compatibility.md`, and `docs/known-limitations.md`. Keep all support statements aligned with recorded evidence.

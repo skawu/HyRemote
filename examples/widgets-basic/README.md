@@ -119,7 +119,39 @@ That physical local-visible/local-input coexistence check is tracked by #109 and
 
 Lifecycle `Running` means the remote runtime/listener is running; it does **not** mean that a viewer is connected. The current V1 candidate exposes backend-neutral `RemoteAccess::connectedClientCount()` and this example displays the real client count rather than deriving a fake connected state from lifecycle status.
 
-The connect/disconnect/reconnect count transitions are part of the product-fit gate; they remain acceptance-pending until the reference jobs execute.
+The connect/disconnect/reconnect count transitions are part of the product-fit gate, which now executes in the reference jobs on both Windows and Linux. Executing a gate is not a support claim: the compatibility rows stay `Candidate` until the physical local-display/local-input evidence required by the V1 acceptance gate exists.
+
+## Deployment
+
+This is a normal Qt Widgets application that links the installed SDK, so it deploys like any other application:
+
+```text
+cmake --install build/ga --prefix <install-prefix>
+```
+
+A consumer that links `HyRemote::RemoteAccess` deploys through the SDK's own helper, which owns the shared runtime
+and its private Qt runtime closure; do not assemble Qt libraries or plug-ins by hand:
+
+```cmake
+find_package(HyRemote REQUIRED)
+hyremote_deploy(TARGETS hyremote-widgets-basic ...)
+```
+
+What a deployment must contain, and how to run the deployed application from a clean directory with the path
+overrides removed, is in `docs/deployment.md` and `docs/sdk-installation.md`.
+
+## Troubleshooting
+
+| Symptom | Cause / action |
+| --- | --- |
+| The window opens but a viewer cannot type or click | Expected by default: the example starts **view-only**. Pass `--remote-input`. |
+| `RemoteAccessState::Running` but no viewer appears connected | Lifecycle `Running` means the listener runs. Read `connectedClientCount()`, which is what this example displays, instead of deriving a connected state from lifecycle status. |
+| The application exits immediately on Windows with no output | The shared runtime DLLs are not on `PATH`: add Qt's `bin`, the build's `remoteaccess` directory (and `qml/HyRemote` for the QML modes). |
+| The listener never starts | The port is already in use; pass another `--port`. The default bind is loopback-only. |
+| A viewer connects but no picture appears | The viewer must speak the RFB 3.8 baseline without authentication, which is the current V1 transport; see `docs/viewer-connection.md`. |
+| `libpng warning: iCCP: known incorrect sRGB profile` on startup | Benign: it comes from the example's bundled PNG asset. |
+
+More: `docs/troubleshooting.md`, `docs/known-limitations.md`.
 
 ## Related documentation
 

@@ -16,6 +16,7 @@ This directory is the canonical example matrix for the V1.0.0.0 product surface.
 - E1, E2 and E5 use the public `HyRemote::RemoteAccess` facade only. They must not assemble Core, Session, CaptureSource, InputSink, Transport, RFB or platform-backend objects.
 - E3 uses the declarative `HyRemote` module over the same runtime; it must not create a second QML-specific transport/session stack.
 - E4 application source remains ordinary Qt-only code. Transparent QPA is a deployed platform-plugin/runtime concern, not an application link dependency.
+- `examples/third-party/qbittorrent/` is an optional **third-party verification example**: an unmodified GPL application running on the deployed `-platform hyremote` path. It is not part of the acceptance suite, is not registered in the build graph, changes no compatibility row or support statement, and must never become a release blocker.
 - E6 validates the installed SDK from a clean consumer and remains the canonical external-consumer fixture from #43 / PR #46.
 - Construction remains inert for Embedded C++/QML, listener defaults remain loopback-safe, and remote input remains disabled until explicitly enabled.
 - `SecurityType None` is a correctness baseline only; examples must not present it as authenticated, encrypted or Internet-safe.

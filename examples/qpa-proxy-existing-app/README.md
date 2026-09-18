@@ -183,6 +183,8 @@ V1 QPA support is adapter-scoped, not arbitrary desktop/window-server capture. C
 
 The current #106 candidate contains deterministic deployment-helper tests, source-target and installed-payload resolution tests, and a clean installed-SDK Qt-only QPA consumer. The clean consumer must deploy the application, remove plugin/runtime path overrides, launch `-platform hyremote`, and establish/re-establish an RFB connection on both exact reference operating systems.
 
-#74 currently blocks GitHub-hosted jobs before runner assignment. Until those Windows/Linux jobs actually execute and pass, this is implemented/candidate evidence rather than a `Supported` release claim.
+The reference Windows/Linux jobs now execute and pass for this payload (#74 was closed as restored), so this is executed evidence on the current candidate. It is still not a `Supported` release claim: the compatibility rows stay `Candidate` until the physical local-display/local-input evidence required by the V1 acceptance gate exists.
+
+Cross-mode troubleshooting for the other integration modes is in `docs/troubleshooting.md`.
 
 Physical local-visible + remote coexistence remains #109/#32 and is not replaced by hosted execution.

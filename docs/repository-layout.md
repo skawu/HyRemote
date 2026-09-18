@@ -63,7 +63,7 @@ Integration payloads may depend on the product runtime. Product Core must not de
 
 - The acceptance suite is E1-E6: `widgets-basic`, `quick-basic`, `qml-basic`, `qpa-proxy-existing-app`, `remote-support-showcase`, and the installed/source SDK consumers.
 - Usage examples that combine HyRemote with a **third-party open-source application** belong here too: they are the documented way a user reproduces an integration on their own machine, so their README carries the exact application version, the exact HyRemote candidate, the Qt version and the launch/deployment commands, together with the caveat that they are verification examples and not a support claim.
-- Such an example must be opt-in (its own CMake option, OFF by default), must never vendor third-party sources into this repository (fetch them at a recorded commit into an ignored build directory instead), must not enter the default build or the acceptance graph, and must never become an implementation location for product logic.
+- Such an example must stay out of the default build and the acceptance graph: it is not registered in `examples/CMakeLists.txt`, and if it ever does participate in the build it must be behind its own option that is OFF by default. It must never vendor third-party sources into this repository (fetch them at a recorded commit into an ignored build directory instead) and must never become an implementation location for product logic.
 
 ### `research/`
 

@@ -83,6 +83,19 @@ See `docs/security.md`.
 
 The repository contains product-fit coverage for view/input/text/reconnect/client-count behavior and clean installed-QML deployment. Windows/Linux hosted acceptance remains pending because #74 prevents runner assignment. Physical local-visible/local-input coexistence is separately tracked by #109 and cannot be inferred from offscreen execution.
 
+## Troubleshooting
+
+| Symptom | Cause / action |
+| --- | --- |
+| The window opens but a viewer cannot type or click | Expected by default: this example starts **view-only**. Use the explicit-control launch below. |
+| `import HyRemote` cannot be resolved | Run the example from the build tree or make the module's import path visible; the deployed layout handles this automatically, a hand-assembled one does not. |
+| The application exits immediately on Windows with no output | Add Qt's `bin`, the build's `remoteaccess` directory and the build's `qml/HyRemote` directory to `PATH`. |
+| The remote view is blank while the local window renders | The QML path captures the window's content item; a window that has not been shown has nothing to capture. |
+| A stale QML metadata directory is present | It is rejected rather than silently used - the deployment helper refuses stale QML module metadata, so remove the stale directory instead of patching around it. |
+| A viewer connects but no picture appears | The viewer must speak the RFB 3.8 baseline without authentication, which is the current V1 transport; see `docs/viewer-connection.md`. |
+
+More: `docs/troubleshooting.md`, `docs/known-limitations.md`.
+
 Related guides:
 
 - `docs/getting-started/qml.md`
