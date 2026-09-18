@@ -176,6 +176,12 @@ public:
         m_remote.stop();
     }
 
+    // Deterministic policy entry shared by Ctrl+I, the physical runbook and the headless product-fit harness.
+    void toggleRemoteInputPolicy()
+    {
+        m_input->setChecked(!m_input->isChecked());
+    }
+
     bool startRemoteAccess()
     {
         m_remote.clearError();
@@ -295,10 +301,16 @@ int main(int argc, char **argv)
                                      QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
                                      QStringLiteral("seconds"),
                                      QStringLiteral("0"));
+    QCommandLineOption toggleInputOption(
+        QStringLiteral("toggle-input-at-ms"),
+        QStringLiteral("Toggle remote input at the given times (comma-separated milliseconds from start). "
+                       "Deterministic entry for the physical acceptance runbook and the product-fit harness."),
+        QStringLiteral("milliseconds"));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     parser.addOption(autoStartOption);
     parser.addOption(secondsOption);
+    parser.addOption(toggleInputOption);
     parser.process(app);
 
     const int parsedPort = readPositiveInt(parser, portOption, 5900);
@@ -310,6 +322,14 @@ int main(int argc, char **argv)
     const int testSeconds = readPositiveInt(parser, secondsOption, 0);
     SupportWindow window(static_cast<quint16>(parsedPort), parser.isSet(inputOption));
     window.show();
+
+    for (const QString &token : parser.value(toggleInputOption).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        bool ok = false;
+        const int at = token.trimmed().toInt(&ok);
+        if (!ok || at <= 0)
+            continue;
+        QTimer::singleShot(at, &window, [&window] { window.toggleRemoteInputPolicy(); });
+    }
 
     if (parser.isSet(autoStartOption)) {
         QTimer::singleShot(0, &window, [&window] {
