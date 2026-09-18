@@ -122,9 +122,11 @@ public:
 
 }  // namespace
 
+#include <QIcon>
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/hyremote/branding/huayan-logo-single.png")));
     QCoreApplication::setApplicationName(QStringLiteral("Existing Qt Operations Console"));
 
     // This is an ordinary application-owned command-line option, not a HyRemote integration API.

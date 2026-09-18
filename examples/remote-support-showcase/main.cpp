@@ -1,4 +1,5 @@
 #include <HyRemote/RemoteAccess.h>
+#include <QShortcut>
 
 #include <QApplication>
 #include <QCheckBox>
@@ -153,6 +154,15 @@ public:
             applyRemoteInputPolicy(enabled);
         });
 
+        // Deterministic local policy entry, used by the physical acceptance runbook as well as by a person: an
+        // application-wide shortcut fires no matter which child widget holds focus, and it drives the checkbox
+        // itself, so the policy path is the same one a mouse click takes.
+        auto *inputPolicyShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+I")), this);
+        inputPolicyShortcut->setContext(Qt::ApplicationShortcut);
+        QObject::connect(inputPolicyShortcut, &QShortcut::activated, this, [this] {
+            m_input->setChecked(!m_input->isChecked());
+        });
+
         auto *timer = new QTimer(this);
         timer->setInterval(100);
         timer->setTimerType(Qt::CoarseTimer);
@@ -164,6 +174,12 @@ public:
     ~SupportWindow() override
     {
         m_remote.stop();
+    }
+
+    // Deterministic policy entry shared by Ctrl+I, the physical runbook and the headless product-fit harness.
+    void toggleRemoteInputPolicy()
+    {
+        m_input->setChecked(!m_input->isChecked());
     }
 
     bool startRemoteAccess()
@@ -263,9 +279,11 @@ private:
 
 }  // namespace
 
+#include <QIcon>
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/hyremote/branding/huayan-logo-single.png")));
     QCoreApplication::setApplicationName(QStringLiteral("HyRemote Remote Support Showcase"));
 
     QCommandLineParser parser;
@@ -283,10 +301,16 @@ int main(int argc, char **argv)
                                      QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
                                      QStringLiteral("seconds"),
                                      QStringLiteral("0"));
+    QCommandLineOption toggleInputOption(
+        QStringLiteral("toggle-input-at-ms"),
+        QStringLiteral("Toggle remote input at the given times (comma-separated milliseconds from start). "
+                       "Deterministic entry for the physical acceptance runbook and the product-fit harness."),
+        QStringLiteral("milliseconds"));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     parser.addOption(autoStartOption);
     parser.addOption(secondsOption);
+    parser.addOption(toggleInputOption);
     parser.process(app);
 
     const int parsedPort = readPositiveInt(parser, portOption, 5900);
@@ -298,6 +322,14 @@ int main(int argc, char **argv)
     const int testSeconds = readPositiveInt(parser, secondsOption, 0);
     SupportWindow window(static_cast<quint16>(parsedPort), parser.isSet(inputOption));
     window.show();
+
+    for (const QString &token : parser.value(toggleInputOption).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        bool ok = false;
+        const int at = token.trimmed().toInt(&ok);
+        if (!ok || at <= 0)
+            continue;
+        QTimer::singleShot(at, &window, [&window] { window.toggleRemoteInputPolicy(); });
+    }
 
     if (parser.isSet(autoStartOption)) {
         QTimer::singleShot(0, &window, [&window] {

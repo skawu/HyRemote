@@ -33,13 +33,13 @@ endfunction()
 # The package manifest is the release-facing source-tree inventory. Keep its physical paths aligned
 # with docs/repository-layout.md instead of allowing the old root-level module names to become facts
 # again. Conceptual prose such as "Core" or "architecture research" is intentionally not forbidden.
-require_doc_token("docs/release-package-manifest.md" "`src/core/` low-level implementation headers and tests"
+require_doc_token("docs/reference/release-package-manifest.md" "`src/core/` low-level implementation headers and tests"
                   "canonical Core source path")
-require_doc_token("docs/release-package-manifest.md" "architecture research/evidence under `research/`"
+require_doc_token("docs/reference/release-package-manifest.md" "architecture research/evidence under `research/`"
                   "canonical research/evidence path")
-forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implementation headers and tests"
+forbid_doc_token("docs/reference/release-package-manifest.md" "`core/` low-level implementation headers and tests"
                  "legacy root Core path")
-forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
+forbid_doc_token("docs/reference/release-package-manifest.md" "architecture spikes under `spikes/`"
                  "legacy root spikes path")
 
 # Historical engineering documents must still point at paths that exist after the canonical repository
@@ -77,11 +77,11 @@ forbid_doc_token("docs/x86-vnc-transport-evaluation.md" "`spikes/vnc-transport-r
 
 # ARCH-01 remains useful historical design input, but it must not compete with the frozen V1 architecture.
 # Pin the authority statement rather than rewriting proposal-era diagrams into fake present-day evidence.
-require_doc_token("docs/core-architecture.md" "Status: **ARCH-01 proposal (proposal-era design input)**"
+require_doc_token("docs/reference/core-architecture.md" "Status: **ARCH-01 proposal (proposal-era design input)**"
                   "proposal-era Core architecture status")
-require_doc_token("docs/core-architecture.md" "Canonical authority: `docs/architecture.md` is the frozen V1 architecture"
+require_doc_token("docs/reference/core-architecture.md" "Canonical authority: `docs/reference/architecture.md` is the frozen V1 architecture"
                   "frozen architecture authority")
-require_doc_token("docs/core-architecture.md" "`research/` trees stay non-production"
+require_doc_token("docs/reference/core-architecture.md" "`research/` trees stay non-production"
                   "canonical research path in Core architecture history")
 
 require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.cmake enforces the include/declaration/link part"
@@ -89,15 +89,15 @@ require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.c
 
 # Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
 # the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
-require_doc_token("docs/dependency-policy.md" "Source under `research/` may remain as historical research"
+require_doc_token("docs/reference/dependency-policy.md" "Source under `research/` may remain as historical research"
                   "canonical research path in dependency policy")
-forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
+forbid_doc_token("docs/reference/dependency-policy.md" "Source under `spikes/`"
                  "legacy spikes path in dependency policy")
-require_doc_token("docs/dependency-policy.md" "### Repository test/CI-only tools"
+require_doc_token("docs/reference/dependency-policy.md" "### Repository test/CI-only tools"
                   "CI-only tooling boundary")
-require_doc_token("docs/dependency-policy.md" "`vncdotool==1.3.0`"
+require_doc_token("docs/reference/dependency-policy.md" "`vncdotool==1.3.0`"
                   "pinned maintained VNC test client")
-require_doc_token("docs/dependency-policy.md" "These tools are pinned/used by repository automation and acceptance harnesses"
+require_doc_token("docs/reference/dependency-policy.md" "These tools are pinned/used by repository automation and acceptance harnesses"
                   "CI tools are not runtime payloads")
 
 # User-facing entry points must identify the canonical layout document so repository contributors do

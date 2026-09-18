@@ -38,3 +38,9 @@ hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-
 `--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
 
 The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
+
+- **Ctrl+I** toggles remote control (the "Allow remote control" checkbox) from anywhere in the window; the application reports the change as `REMOTE_INPUT enabled` / `REMOTE_INPUT disabled`.
+
+- **`--toggle-input-at-ms <ms,ms,...>`** toggles remote control automatically at the given millisecond
+  offsets from start (for example `--toggle-input-at-ms 8000,20000`). It drives the same checkbox as
+  **Ctrl+I**, so scripted and headless runs exercise the same policy path as a person clicking it.
