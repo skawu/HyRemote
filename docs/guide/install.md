@@ -17,7 +17,7 @@
 | 查看器 | 任意标准 VNC 客户端，默认连接 `127.0.0.1:5900` |
 
 > **产品状态**：V1.0.0.0 验收尚未完成。候选实现只有在必需的可执行证据与物理证据实际通过后，才构成 **Supported** 声明；
-> 在此之前请把它当作候选版本看待。当前状态见 [`docs/compatibility.md`](../compatibility.md)。
+> 在此之前请把它当作候选版本看待。当前状态见 [`docs/reference/compatibility.md`](../reference/compatibility.md)。
 
 ## 2. 两种获取方式：一次配置只能选一种
 
@@ -236,14 +236,14 @@ E1/E2 使用同一个公开门面 `HyRemote::RemoteAccess`，默认**仅观看**
 ## 10. 安全与支持边界
 
 当前 Bounded RFB 正确性传输使用 **SecurityType None**：既无传输认证，也无传输加密。
-默认绑定回环地址、远程输入默认关闭——不要把该基线直接暴露到不可信网络或公网。详见 [`docs/security.md`](../security.md) 与 [`SECURITY.md`](../../SECURITY.md)。
+默认绑定回环地址、远程输入默认关闭——不要把该基线直接暴露到不可信网络或公网。详见 [`docs/reference/security.md`](../reference/security.md) 与 [`SECURITY.md`](../../SECURITY.md)。
 
 支持边界以证据为准：托管/离屏构建本身不构成"本地可见显示/输入与远程共存"的证明。
-未通过验收的能力不会被宣称为 Supported，明确限制见 [`docs/known-limitations.md`](../known-limitations.md)。
+未通过验收的能力不会被宣称为 Supported，明确限制见 [`docs/reference/known-limitations.md`](../reference/known-limitations.md)。
 
 ## 11. 相关文档
 
 - 集成方式（选择其一）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)（迁移至 `guide/` 后路径会同步更新）
 - 部署与打包：[`deployment.md`](../deployment.md)
-- 兼容与限制：[`compatibility.md`](../compatibility.md) ｜ [`known-limitations.md`](../known-limitations.md)
+- 兼容与限制：[`compatibility.md`](../reference/compatibility.md) ｜ [`known-limitations.md`](../reference/known-limitations.md)
 - 排错：[`troubleshooting.md`](../troubleshooting.md)

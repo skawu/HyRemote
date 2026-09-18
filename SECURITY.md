@@ -12,7 +12,7 @@ The current bounded internal RFB 3.8 correctness transport negotiates **Security
 
 The listener defaults to loopback (`127.0.0.1`) and remote input is disabled by default, but those safe defaults are not authentication or encryption. Do not expose the current HyRemote listener directly to the public Internet or an otherwise untrusted network. Use an appropriate trusted network boundary, VPN or separately managed secure tunnel when remote reachability is required.
 
-The complete security architecture and release gate are documented in [`docs/security-model.md`](docs/security-model.md). The concise deployment guidance is in [`docs/security.md`](docs/security.md).
+The complete security architecture and release gate are documented in [`docs/reference/security-model.md`](docs/reference/security-model.md). The concise deployment guidance is in [`docs/reference/security.md`](docs/reference/security.md).
 
 ## Security-sensitive areas
 

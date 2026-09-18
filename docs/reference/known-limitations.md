@@ -1,6 +1,6 @@
 # Known Limitations
 
-This file separates implemented repository behavior from released support claims. `docs/compatibility.md` remains the per-configuration evidence matrix.
+This file separates implemented repository behavior from released support claims. `docs/reference/compatibility.md` remains the per-configuration evidence matrix.
 
 ## V1 x86 milestone boundary
 
@@ -94,6 +94,8 @@ Embedded C++/QML do not gain a blanket arbitrary-native-window claim. Transparen
 Qt does not guarantee QPA source/binary compatibility. The current V1 QPA package is qualified specifically for **Qt 6.8.3** and delegates to `qwindows` on Windows and `qxcb` on the Linux reference path.
 
 Do not infer compatibility with another Qt patch/minor, Wayland, EGLFS or a different native delegate. QPA package deployment enforces the exact qualified Qt version.
+
+**An EGLFS/Wayland-class Linux target has no delegate at all, which is a stronger statement than "unverified".** The mode works by decorating an existing qualified native platform plugin, so where no such plugin exists `-platform hyremote` cannot start an application - and no amount of validation on such a board would change that, because there is nothing to decorate. Products on those targets use Embedded C++ or Declarative QML. The decision, its consequences and the planned `V1.x` QEGLFS/Wayland-style delegate are recorded in [`../adr/0004-qpa-eglfs-delegate-scope.md`](../adr/0004-qpa-eglfs-delegate-scope.md) and [`../adr/0005-documentation-zones-and-repository-structure.md`](../adr/0005-documentation-zones-and-repository-structure.md) covers the zone this file lives in.
 
 ### Deployment scope
 

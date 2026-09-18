@@ -2,7 +2,7 @@
 
 // Session: lifecycle, capture scheduling and the bounded completed-frame pipeline.
 //
-// Frozen semantics (docs/core-architecture.md, ADR-0001/0002/0003):
+// Frozen semantics (docs/reference/core-architecture.md, ADR-0001/0002/0003):
 //   - one Session owns one capture source, one transport and one optional input sink;
 //   - a slow transport never blocks capture by default (DropOldest / LatestFrameWins);
 //   - the completed-frame mailbox capacity counts *waiting* frames; the frame currently owned by

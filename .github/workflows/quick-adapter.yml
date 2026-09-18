@@ -7,7 +7,7 @@ on:
       - 'cmake/**'
       - 'src/core/**'
       - 'src/remoteaccess/**'
-      - 'docs/quick-capture.md'
+      - 'docs/reference/quick-capture.md'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/quick-adapter.yml'
   workflow_dispatch:

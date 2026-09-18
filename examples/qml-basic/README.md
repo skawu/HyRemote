@@ -77,7 +77,7 @@ The helper bridges the installed HyRemote QML import root into Qt's normal deplo
 
 The current bounded RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. Keep the default loopback/trusted boundary; do not expose it directly to an untrusted network or the public Internet.
 
-See `docs/security.md`.
+See `docs/reference/security.md`.
 
 ## Evidence boundary
 
@@ -86,8 +86,8 @@ The repository contains product-fit coverage for view/input/text/reconnect/clien
 Related guides:
 
 - `docs/getting-started/qml.md`
-- `docs/qml-consumption.md`
+- `docs/reference/qml-consumption.md`
 - `docs/deployment.md`
 - `docs/viewer-connection.md`
-- `docs/compatibility.md`
-- `docs/known-limitations.md`
+- `docs/reference/compatibility.md`
+- `docs/reference/known-limitations.md`

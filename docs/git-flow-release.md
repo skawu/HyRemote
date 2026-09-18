@@ -1,6 +1,6 @@
 # HyRemote Git Flow, Testing and Release Policy
 
-This is the canonical repository workflow for developing, testing and releasing HyRemote milestones. It complements `docs/versioning.md`; it does not redefine the frozen four-part version semantics.
+This is the canonical repository workflow for developing, testing and releasing HyRemote milestones. It complements `docs/reference/versioning.md`; it does not redefine the frozen four-part version semantics.
 
 Governance mode remains `transitional-explicit` until #14 passes reusable ADS machine acceptance.
 

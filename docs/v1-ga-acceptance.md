@@ -169,8 +169,8 @@ The installed candidate must preserve repository-owned `LICENSE` and `NOTICE.md`
 
 Before GA:
 
-- #101 / `docs/v1-api-stability.md` must be accepted;
-- #107 / `docs/releases/v1.0.0.0.md`, `NOTICE.md` and `docs/release-package-manifest.md` must be accepted as release-readiness metadata.
+- #101 / `docs/reference/v1-api-stability.md` must be accepted;
+- #107 / `docs/releases/v1.0.0.0.md`, `NOTICE.md` and `docs/reference/release-package-manifest.md` must be accepted as release-readiness metadata.
 
 The stable application-facing model remains:
 

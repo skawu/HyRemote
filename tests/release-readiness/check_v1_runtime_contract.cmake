@@ -25,8 +25,8 @@ require_file_token("src/remoteaccess/tests/test_rfb_multi_client_input.cpp" "cou
 require_file_token("src/remoteaccess/tests/test_rfb_multi_client_input.cpp" "countKey(inputs, hyremote::KeyCode::C, false) == 0" "cross-viewer unmatched-release isolation")
 require_file_token("src/remoteaccess/tests/CMakeLists.txt" "hyremote-rfb-multi-client-input-test" "registered concurrent-viewer CTest")
 require_file_token("src/remoteaccess/tests/CMakeLists.txt" "TIMEOUT 15" "bounded concurrent-viewer CTest runtime")
-require_file_token("docs/input-model.md" "reference-counted inside the private transport normalization layer" "canonical concurrent-viewer input model")
-require_file_token("docs/known-limitations.md" "simultaneous viewers as contributors to one shared logical Qt input device" "truthful shared-target multi-viewer boundary")
+require_file_token("docs/reference/input-model.md" "reference-counted inside the private transport normalization layer" "canonical concurrent-viewer input model")
+require_file_token("docs/reference/known-limitations.md" "simultaneous viewers as contributors to one shared logical Qt input device" "truthful shared-target multi-viewer boundary")
 
 # A viewer-disconnect release is part of the held-state lifecycle, not disposable overload traffic.
 # Widgets and Quick share one internal admission state machine: normal input retains the historical
@@ -44,8 +44,8 @@ require_file_token("src/remoteaccess/tests/test_quick_input_backpressure.cpp" "t
 require_file_token("src/remoteaccess/tests/test_rfb_widget_disconnect_backpressure.cpp" "testDisconnectCleanupCrossesSaturatedAdapterMailbox" "RFB -> Session -> Widgets saturation/disconnect composition regression")
 require_file_token("src/remoteaccess/tests/test_rfb_widget_disconnect_backpressure.cpp" "afterDisconnect.inputPostFailures == saturated.inputPostFailures" "disconnect release crosses Session without additional sink post failure")
 require_file_token("src/remoteaccess/tests/CMakeLists.txt" "hyremote-rfb-widget-disconnect-backpressure-test" "registered real disconnect/backpressure composition CTest")
-require_file_token("docs/input-model.md" "bounded protected-release lane" "canonical backpressure/disconnect composition rule")
-require_file_token("docs/input-model.md" "normal backpressure may not prevent the final accepted key/button release" "canonical #90 saturation invariant")
+require_file_token("docs/reference/input-model.md" "bounded protected-release lane" "canonical backpressure/disconnect composition rule")
+require_file_token("docs/reference/input-model.md" "normal backpressure may not prevent the final accepted key/button release" "canonical #90 saturation invariant")
 
 require_file_token("src/remoteaccess/src/remote_access.cpp" "acknowledgedRecoverableError" "recoverable runtime error acknowledgement")
 require_file_token("src/remoteaccess/src/remote_access.cpp" "acknowledgeCurrentRecoverableError()" "clearError live-runtime acknowledgement path")
@@ -55,9 +55,9 @@ require_file_token("src/remoteaccess/tests/CMakeLists.txt" "hyremote-remoteacces
 require_file_token("src/remoteaccess/tests/test_remote_access.cpp" "testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic" "Faulted explicit-stop recovery regression")
 require_file_token("src/remoteaccess/include/HyRemote/RemoteAccess.h" "A non-recoverable runtime failure is observable as" "installed-header Faulted lifecycle contract")
 require_file_token("src/remoteaccess/include/HyRemote/RemoteAccess.h" "Acknowledge/clear product-level and live recoverable diagnostics" "installed-header clearError contract")
-require_file_token("docs/v1-api-stability.md" "a non-recoverable runtime failure remains observable as `Faulted` until the owner explicitly calls `stop()`" "V1 Faulted API freeze")
-require_file_token("docs/v1-api-stability.md" "unrelated viewer/capture/transport activity does not resurrect the same acknowledged occurrence" "V1 clearError occurrence isolation")
-require_file_token("docs/v1-api-stability.md" "a later occurrence must become visible again" "V1 clearError recurrence semantics")
+require_file_token("docs/reference/v1-api-stability.md" "a non-recoverable runtime failure remains observable as `Faulted` until the owner explicitly calls `stop()`" "V1 Faulted API freeze")
+require_file_token("docs/reference/v1-api-stability.md" "unrelated viewer/capture/transport activity does not resurrect the same acknowledged occurrence" "V1 clearError occurrence isolation")
+require_file_token("docs/reference/v1-api-stability.md" "a later occurrence must become visible again" "V1 clearError recurrence semantics")
 
 # Target lifetime must remain one facade/runtime state machine. Concrete adapters report TargetLost,
 # the public facade remains Faulted until explicit stop, and QML only observes the same facade target

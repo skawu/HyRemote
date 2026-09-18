@@ -744,7 +744,7 @@ and platform notes.
 
 ## 14. Compatibility matrix
 
-The status column uses the definitions of [`docs/compatibility.md`](compatibility.md).
+The status column uses the definitions of [`docs/reference/compatibility.md`](reference/compatibility.md).
 The same host rows are recorded there; every embedded row stays `Unverified`.
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Status | Notes |

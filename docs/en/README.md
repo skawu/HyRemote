@@ -33,16 +33,16 @@ internal zone, or to the research evidence under `research/`.
 
 | Document | Content |
 | --- | --- |
-| [`../architecture.md`](../architecture.md) | Layer model, dependency rules, threading principles |
-| [`../v1-api-stability.md`](../v1-api-stability.md) | V1 public API stability contract (stable and non-stable surfaces) |
-| [`../compatibility.md`](../compatibility.md) | Exact evidence/status matrix |
-| [`../known-limitations.md`](../known-limitations.md) | Explicit V1 limitations |
-| [`../security.md`](../security.md) | Implemented security boundary |
-| [`../security-model.md`](../security-model.md) | Threat model and release security gate |
-| [`../versioning.md`](../versioning.md) | Versioning and milestone policy |
-| [`../release-package-manifest.md`](../release-package-manifest.md) | V1 release package manifest (installed payload contract) |
-| [`../dependency-policy.md`](../dependency-policy.md) | Dependency policy, including optional build-time dependencies |
-| [`../widgets-capture.md`](../widgets-capture.md) · [`../quick-capture.md`](../quick-capture.md) · [`../input-model.md`](../input-model.md) | Capture and input model |
+| [`../architecture.md`](../reference/architecture.md) | Layer model, dependency rules, threading principles |
+| [`../v1-api-stability.md`](../reference/v1-api-stability.md) | V1 public API stability contract (stable and non-stable surfaces) |
+| [`../compatibility.md`](../reference/compatibility.md) | Exact evidence/status matrix |
+| [`../known-limitations.md`](../reference/known-limitations.md) | Explicit V1 limitations |
+| [`../security.md`](../reference/security.md) | Implemented security boundary |
+| [`../security-model.md`](../reference/security-model.md) | Threat model and release security gate |
+| [`../versioning.md`](../reference/versioning.md) | Versioning and milestone policy |
+| [`../release-package-manifest.md`](../reference/release-package-manifest.md) | V1 release package manifest (installed payload contract) |
+| [`../dependency-policy.md`](../reference/dependency-policy.md) | Dependency policy, including optional build-time dependencies |
+| [`../widgets-capture.md`](../reference/widgets-capture.md) · [`../quick-capture.md`](../reference/quick-capture.md) · [`../input-model.md`](../reference/input-model.md) | Capture and input model |
 
 ## 4. Internal / release documents (not user documentation)
 

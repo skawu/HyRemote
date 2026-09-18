@@ -52,7 +52,7 @@ Transparent QPA keeps zero-source-change policy in launch configuration:
 -platform hyremote:hyremote-input=true     # remote control
 ```
 
-Unsupported key/IME behavior remains a documented limitation rather than being approximated silently. See `docs/input-model.md` and `docs/known-limitations.md`.
+Unsupported key/IME behavior remains a documented limitation rather than being approximated silently. See `docs/reference/input-model.md` and `docs/reference/known-limitations.md`.
 
 ## Disconnect and reconnect
 
@@ -80,4 +80,4 @@ That cross-mode physical evidence envelope is tracked by #109 and is separate fr
 
 The current RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. It is suitable for loopback/trusted test use, not direct untrusted-network exposure.
 
-Read [`security.md`](security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](security-model.md) is broader future threat-model context, not a claim that authentication/encryption already exists.
+Read [`security.md`](reference/security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](reference/security-model.md) is broader future threat-model context, not a claim that authentication/encryption already exists.

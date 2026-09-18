@@ -123,4 +123,4 @@ The connect/disconnect/reconnect count transitions are part of the product-fit g
 
 ## Related documentation
 
-Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/security.md`, `docs/compatibility.md`, and `docs/known-limitations.md`. Support claims remain evidence-driven.
+Use the V1 user guides under `docs/getting-started/`, `docs/viewer-connection.md`, `docs/reference/security.md`, `docs/reference/compatibility.md`, and `docs/reference/known-limitations.md`. Support claims remain evidence-driven.

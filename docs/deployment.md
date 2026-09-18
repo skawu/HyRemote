@@ -56,7 +56,7 @@ Both installed and source acquisition publish an absolute `HyRemote_QML_IMPORT_P
 
 If the selected HyRemote build/package has no QML payload, `hyremote_deploy(... QML)` fails during configuration. It does not silently generate a deployment without `import HyRemote`.
 
-See `docs/qml-consumption.md` and `docs/getting-started/qml.md`.
+See `docs/reference/qml-consumption.md` and `docs/getting-started/qml.md`.
 
 ## Transparent QPA deployment
 
@@ -111,7 +111,7 @@ Deployment does not weaken product defaults:
 - remote input is disabled by default;
 - the current RFB SecurityType None baseline provides neither viewer authentication nor transport encryption.
 
-If an application intentionally changes the bind address, its operator/deployment documentation must describe the resulting trust boundary. See `docs/security.md`.
+If an application intentionally changes the bind address, its operator/deployment documentation must describe the resulting trust boundary. See `docs/reference/security.md`.
 
 ## Acceptance boundary
 
