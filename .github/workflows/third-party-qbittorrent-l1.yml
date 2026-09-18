@@ -110,7 +110,9 @@ jobs:
           tar.exe -xf $boostArchive -C $env:RUNNER_TEMP
           Rename-Item "$env:RUNNER_TEMP\boost_1_91_0" "$env:RUNNER_TEMP\boost"
           Push-Location "$env:RUNNER_TEMP\boost"
-          C:\vcpkg\installed\$triplet\tools\boost-build\b2.exe stage toolset=msvc --stagedir=. --with-headers
+          $b2 = "C:\vcpkg\installed\$triplet\tools\boost-build\b2.exe"
+          & $b2 stage toolset=msvc --stagedir=. --with-headers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
 
       - name: Build libtorrent 2.0.14 — Windows / MSVC x64
