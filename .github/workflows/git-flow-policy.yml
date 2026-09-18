@@ -42,8 +42,8 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # This is an after-the-fact audit only; it cannot undo a direct push and must never be
-          # described as branch protection when repository policy cannot enforce that before push.
+          # This is an after-the-fact audit only; it cannot undo a direct push and it
+          # must never be described as branch protection when repository policy cannot enforce that before push.
           merged_prs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
             --jq ".[] | select(.merged_at != null and .base.ref == \"${BRANCH}\") | .number")"
           if [[ -z "${merged_prs}" ]]; then
