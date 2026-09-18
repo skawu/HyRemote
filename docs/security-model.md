@@ -173,9 +173,9 @@ The QPA path does not add a hidden credential system or dynamic policy service. 
 
 ## 10. Future transport-security requirements
 
-Authenticated/encrypted transport support is a post-baseline capability unless separately accepted into a later release.
+Authenticated and encrypted transport is a **V1.0.0.0 requirement, not a `V1.x` track**: `[SEC-01]` #143 is x86 work, sequenced design -> authentication -> encryption -> per-client authorization/audit. This supersedes the earlier statement that it was a post-baseline capability accepted into some later release, which contradicted the release roadmap.
 
-A future transport may add, behind the stable application model:
+It is added behind the stable application model:
 
 - password or stronger authentication;
 - TLS or equivalent encryption;
@@ -186,6 +186,40 @@ A future transport may add, behind the stable application model:
 
 Such work must preserve backend-neutral public boundaries and must not force backend-specific types/toolchains on normal application consumers. A historical NeatVNC/rustvncserver investigation is research evidence only; it is not the selected V1 transport or a current security promise.
 
+### 10.1 Design frozen before implementation (2026-09-19)
+
+**Nothing here changes today's product statement.** Until the authentication step actually lands, the stream remains
+unauthenticated and unencrypted, and no user-facing document may claim otherwise.
+
+**Authentication step.** RFB VNC authentication (security type 2), including the RFB 3.8 challenge/response and its
+blinding variant, because that is what the mainstream viewers already implement. `SecurityType None` stays available
+but only as an **explicitly selected** mode: a client that does not select the configured type is rejected and the
+failure is reported, never downgraded.
+
+**Encryption step.** Kept separate and later, so that viewer interoperability is not a precondition for the first
+authentication evidence. Until it lands, the release notes and the compatibility statements keep saying the stream
+is unauthenticated and unencrypted.
+
+**Primitives and dependency.** VNC authentication needs DES and SHA-1, and the encryption step needs TLS. These come
+from **OpenSSL** deliberately, rather than from code written in this repository: a hand-written DES is a security
+anti-pattern. This is the repository's first third-party security dependency, carrying the obligations the release
+readiness authority already anticipates - `package`, `LICENSE`, `NOTICE` and the deployed payload list are updated
+in the change that lands the dependency, never in advance.
+
+**Bind policy.** A non-loopback listener stays fail-closed until an authentication mode is actually enabled: with
+authentication enabled a non-loopback bind may be accepted; with authentication disabled it is still rejected. The
+construction and listener defaults do not change (no implicit listener, loopback, remote input off), and
+authentication is not remote input - view-only remains the default input policy.
+
+**Failure semantics.** Authentication failure closes the connection after a bounded number of attempts, with a
+bounded challenge/response exchange and no unbounded buffering, and is reported through the transport event already
+reserved for it (`TransportEventCode::AuthenticationRejected`) instead of being silently tolerated. Authentication is
+not authorization: an authenticated connection still has no licence to control input.
+
+**Documentation and gate consequence.** `SecurityType None` is currently pinned as a required phrase by
+`tests/release-readiness/check_release_metadata.cmake` and by the release-policy workflow, and is stated in roughly
+twenty user-facing documents. Landing authentication is therefore a coordinated, separately reviewed change: the
+gates that pin the current baseline move in the same change that lands the capability.
 ## 11. Non-goals
 
 HyRemote V1 does not provide:
