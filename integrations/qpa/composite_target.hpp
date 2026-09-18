@@ -9,6 +9,7 @@
 #include <QRect>
 #include <QVector>
 
+#include <functional>
 #include <optional>
 
 namespace HyRemote::Qpa {
@@ -41,6 +42,8 @@ struct CompositeRoutedPoint
 class CompositeTarget : public QObject, public ::HyRemote::detail::TargetComponentProvider
 {
 public:
+    using SurfaceUnavailableHandler = std::function<void(SurfaceId)>;
+
     explicit CompositeTarget(QObject *parent = nullptr);
 
     void upsertSurface(SurfaceId id, QObject *target, const QRect &globalGeometry, bool visible);
@@ -56,14 +59,25 @@ public:
     std::optional<CompositeSurfaceSnapshot> activeSurface() const;
     std::optional<CompositeRoutedPoint> routeCanvasPoint(const QPoint &canvasPosition) const;
 
+    // Internal capture-orchestration hook. A surface leaving the visible composite must release
+    // any already-admitted composite request that was waiting for that child. This does not stop or
+    // recreate RemoteAccess/Session/Transport; it only changes the child expectation of in-flight
+    // composite capture work.
+    quint64 addSurfaceUnavailableHandler(SurfaceUnavailableHandler handler);
+    void removeSurfaceUnavailableHandler(quint64 token);
+
     ::HyRemote::detail::TargetComponents createTargetComponents(
         bool remoteInputEnabled,
         const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget) override;
 
 private:
+    void notifySurfaceUnavailable(SurfaceId id);
+
     ApplicationSurfaceModel m_model;
     QHash<SurfaceId, QPointer<QObject>> m_targets;
     std::optional<SurfaceId> m_activeSurface;
+    QHash<quint64, SurfaceUnavailableHandler> m_surfaceUnavailableHandlers;
+    quint64 m_nextSurfaceUnavailableHandler = 1;
 };
 
 }  // namespace HyRemote::Qpa

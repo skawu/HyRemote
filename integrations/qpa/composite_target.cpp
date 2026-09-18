@@ -69,18 +69,30 @@ public:
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
+
+        const std::weak_ptr<State> weakState = m_state;
+        m_state->surfaceUnavailableHandler = m_state->target->addSurfaceUnavailableHandler(
+            [weakState](SurfaceId id) {
+                if (const auto state = weakState.lock())
+                    markSurfaceUnavailable(state, id);
+            });
         return true;
     }
 
     void stop() noexcept override
     {
         std::vector<std::shared_ptr<ChildRuntime>> children;
+        QPointer<CompositeTarget> target;
+        quint64 surfaceUnavailableHandler = 0;
         {
             std::unique_lock<std::mutex> lock(m_state->mutex);
             m_state->active = false;
             m_state->onFrame = {};
             m_state->onEvent = {};
             m_state->pending.clear();
+            target = m_state->target;
+            surfaceUnavailableHandler = m_state->surfaceUnavailableHandler;
+            m_state->surfaceUnavailableHandler = 0;
 
             m_state->cv.wait(lock, [state = m_state] {
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
@@ -91,6 +103,9 @@ public:
                 children.push_back(std::move(entry.second));
             m_state->children.clear();
         }
+
+        if (target && surfaceUnavailableHandler != 0)
+            target->removeSurfaceUnavailableHandler(surfaceUnavailableHandler);
 
         for (const auto &child : children) {
             if (child && child->capture)
@@ -142,6 +157,7 @@ private:
         bool active = false;
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
+        quint64 surfaceUnavailableHandler = 0;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
@@ -385,6 +401,8 @@ private:
         std::vector<hyremote::CaptureRequestId> mayComplete;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active)
+                return;
             for (auto &entry : state->pending) {
                 if (entry.second.expected.erase(id) > 0)
                     mayComplete.push_back(entry.first);
@@ -557,6 +575,33 @@ CompositeTarget::CompositeTarget(QObject *parent)
 {
 }
 
+quint64 CompositeTarget::addSurfaceUnavailableHandler(SurfaceUnavailableHandler handler)
+{
+    if (!handler)
+        return 0;
+    const quint64 token = m_nextSurfaceUnavailableHandler++;
+    m_surfaceUnavailableHandlers.insert(token, std::move(handler));
+    return token;
+}
+
+void CompositeTarget::removeSurfaceUnavailableHandler(quint64 token)
+{
+    if (token != 0)
+        m_surfaceUnavailableHandlers.remove(token);
+}
+
+void CompositeTarget::notifySurfaceUnavailable(SurfaceId id)
+{
+    // Invoke a snapshot so a handler can unregister itself as part of capture teardown without
+    // invalidating this iteration. Surface/model mutations and capture orchestration are GUI-thread
+    // owned in QPA mode; handler state itself remains guarded by the capture source.
+    const auto handlers = m_surfaceUnavailableHandlers.values();
+    for (const SurfaceUnavailableHandler &handler : handlers) {
+        if (handler)
+            handler(id);
+    }
+}
+
 void CompositeTarget::upsertSurface(SurfaceId id,
                                     QObject *target,
                                     const QRect &globalGeometry,
@@ -567,17 +612,22 @@ void CompositeTarget::upsertSurface(SurfaceId id,
     else
         m_targets.remove(id);
     m_model.upsert(id, globalGeometry, visible);
+    if (!target || !visible)
+        notifySurfaceUnavailable(id);
 }
 
 void CompositeTarget::removeSurface(SurfaceId id)
 {
     m_targets.remove(id);
     m_model.remove(id);
+    notifySurfaceUnavailable(id);
 }
 
 void CompositeTarget::setSurfaceVisible(SurfaceId id, bool visible)
 {
     m_model.setVisible(id, visible);
+    if (!visible)
+        notifySurfaceUnavailable(id);
 }
 
 void CompositeTarget::setSurfaceGeometry(SurfaceId id, const QRect &globalGeometry)

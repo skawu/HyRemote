@@ -20,6 +20,7 @@ struct Counters
     int starts = 0;
     int stops = 0;
     int requests = 0;
+    bool holdRequests = false;
 };
 
 class SolidCapture final : public hyremote::CaptureSource
@@ -58,6 +59,8 @@ public:
         ++m_counters->requests;
         if (!m_onFrame)
             return false;
+        if (m_counters->holdRequests)
+            return true;
 
         constexpr int width = 2;
         constexpr int height = 2;
@@ -113,6 +116,15 @@ bool waitForFrameCount(std::vector<hyremote::RemoteFrame> &frames, std::size_t c
     while (frames.size() < count && timer.elapsed() < 2000)
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     return frames.size() >= count;
+}
+
+bool waitForRequestCount(const std::shared_ptr<Counters> &counters, int count)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (counters->requests < count && timer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    return counters->requests >= count;
 }
 
 QImage imageView(const hyremote::RemoteFrame &frame)
@@ -204,28 +216,56 @@ int main(int argc, char **argv)
         return 6;
     }
 
-    // Removing one surface retires only that child adapter; the composite capture source remains
-    // started and immediately serves the remaining application surface.
-    composite.removeSurface(1);
+    // Reproduce the Quick visibility race deterministically: one child accepts request #3 but does
+    // not complete it. When that surface leaves the visible composite, the already-admitted parent
+    // request must stop waiting for it. The composite runtime stays started, releases Core's
+    // in-flight slot, and the next request observes the contracted secondary-only canvas.
+    leftCounters->holdRequests = true;
     hyremote::CaptureRequest request3{3, hyremote::Clock::now()};
-    if (!check(components.capture->requestFrame(request3), "surface-removal request is accepted")
-        || !check(waitForFrameCount(frames, 3), "surface-removal frame arrives")) {
+    if (!check(components.capture->requestFrame(request3), "pending child request is accepted")
+        || !check(waitForRequestCount(leftCounters, 3), "left child accepted the pending request")
+        || !check(waitForRequestCount(rightCounters, 3), "right child accepted the pending request")
+        || !check(frames.size() == 2, "composite waits while a visible child request is outstanding")) {
         return 7;
     }
 
-    QImage third = imageView(frames[2]);
-    if (!check(third.size() == QSize(2, 2), "canvas contracts to the remaining surface")
-        || !check(third.pixelColor(0, 0) == QColor(0, 255, 0, 255), "remaining surface stays live")
+    // RemoteController uses upsertSurface(..., visible=false) for a hidden QQuickWindow, so exercise
+    // that exact path rather than a test-only removal shortcut.
+    composite.upsertSurface(1, &leftTarget, QRect(-2, 0, 2, 2), false);
+    if (!check(waitForFrameCount(frames, 3),
+               "hiding an expected child releases the pending composite request")) {
+        return 8;
+    }
+
+    QImage released = imageView(frames[2]);
+    if (!check(released.size() == QSize(6, 2),
+               "the released request retains its original snapshot geometry")
+        || !check(released.pixelColor(0, 0).alpha() == 0,
+                  "the hidden child is omitted from the released request")
+        || !check(released.pixelColor(5, 0) == QColor(0, 255, 0, 255),
+                  "the completed child remains in the released request")) {
+        return 9;
+    }
+
+    hyremote::CaptureRequest request4{4, hyremote::Clock::now()};
+    if (!check(components.capture->requestFrame(request4), "post-hide request is accepted")
+        || !check(waitForFrameCount(frames, 4), "post-hide frame arrives")) {
+        return 10;
+    }
+
+    QImage contracted = imageView(frames[3]);
+    if (!check(contracted.size() == QSize(2, 2), "canvas contracts to the remaining visible surface")
+        || !check(contracted.pixelColor(0, 0) == QColor(0, 255, 0, 255), "remaining surface stays live")
         || !check(leftCounters->starts == 1 && leftCounters->stops >= 1,
-                  "removed child adapter is stopped without stopping the composite source")
+                  "hidden child adapter is retired without stopping the composite source")
         || !check(rightCounters->starts == 1,
                   "unchanged child adapter is reused across dynamic canvas frames")) {
-        return 8;
+        return 11;
     }
 
     components.capture->stop();
     if (!check(rightCounters->stops >= 1, "composite stop drains the remaining child adapter"))
-        return 9;
+        return 12;
 
     std::cout << "PASS: one composite CaptureSource follows multi-surface canvas churn\n";
     return 0;
