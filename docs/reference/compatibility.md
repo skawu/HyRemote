@@ -58,7 +58,7 @@ Detailed evidence remains in:
 
 - `docs/capture-spike.md`;
 - `docs/async-capture-spike.md`;
-- `docs/widgets-capture.md`;
+- `docs/reference/widgets-capture.md`;
 - `docs/qpa-capture-classification-qt-6.8.3.md`.
 
 Important V1 limits:
@@ -82,6 +82,7 @@ The following are important next-platform candidates but are **not V1.0.0.0 GA a
 
 | Qt / target | Platform direction | Application types | Status | Notes |
 | --- | --- | --- | --- | --- |
+| 6.8.3 | Embedded Linux / EGLFS/OpenGL ES (and Wayland-class) | **Transparent QPA** | **no delegate** | **not available** | **Not a verification gap**: Transparent QPA decorates a qualified native platform plugin (the V1 delegates are `qwindows` and `qxcb`), and an EGLFS/Wayland-class target ships none - `-platform hyremote` **cannot start the application** there. Use Embedded C++ or Declarative QML. A QEGLFS/Wayland-style delegate is **planned with the embedded platform-family expansion (ADR-0004)**, not in V1.0.0.0 |
 | Qt 6.8.x / RK3588 | Embedded Linux / EGLFS/OpenGL ES | Widgets + Quick | Unverified | high-priority post-V1 target; validate on actual BSP/display/input stack |
 | Qt 6.8.x / NXP i.MX class | Embedded Linux | Widgets + Quick | Unverified | high-priority post-V1 platform family |
 | future qualified line | OpenHarmony | Widgets/Quick feasibility | Unverified | longer-term direction, not V1 gate |

@@ -19,7 +19,7 @@ conventions live elsewhere - see the "Internal documents" section of [`docs/READ
 
 > **Product status:** V1.0.0.0 acceptance is pending. The candidate implementation is not a **Supported** claim
 > until the required hosted and physical evidence actually passes. Current status:
-> [`docs/compatibility.md`](../../compatibility.md).
+> [`docs/reference/compatibility.md`](../../reference/compatibility.md).
 
 ## 2. Two acquisition paths: exactly one per CMake configure
 
@@ -259,16 +259,16 @@ option is for controlled test environments only. Viewer connection:
 
 The current bounded RFB correctness transport uses **SecurityType None**: no transport authentication and no
 transport encryption. The listener defaults to loopback and remote input is off by default - do not expose that
-baseline to an untrusted network or the public Internet. See [`docs/security.md`](../../security.md) and
+baseline to an untrusted network or the public Internet. See [`docs/reference/security.md`](../../reference/security.md) and
 [`SECURITY.md`](../../../SECURITY.md).
 
 The support boundary follows evidence: a hosted/offscreen build is not by itself proof of local-visible
 display/input coexistence with remote access. A capability that has not passed acceptance is not described as
-Supported; explicit limitations are in [`docs/known-limitations.md`](../../known-limitations.md).
+Supported; explicit limitations are in [`docs/reference/known-limitations.md`](../../reference/known-limitations.md).
 
 ## 11. Related documents
 
 - Integration modes (choose one): [Embedded C++](../../getting-started/cpp.md) | [Declarative QML](../../getting-started/qml.md) | [Transparent QPA](../../getting-started/qpa-proxy.md) (these move into `guide/` with the rest of the migration)
 - Deployment and packaging: [`deployment.md`](../../deployment.md)
-- Compatibility and limits: [`compatibility.md`](../../compatibility.md) | [`known-limitations.md`](../../known-limitations.md)
+- Compatibility and limits: [`compatibility.md`](../../reference/compatibility.md) | [`known-limitations.md`](../../reference/known-limitations.md)
 - Troubleshooting: [`troubleshooting.md`](../../troubleshooting.md)

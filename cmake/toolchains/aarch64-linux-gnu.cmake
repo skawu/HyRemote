@@ -38,7 +38,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 # HyRemote specifics for an embedded target:
 #   * the QPA payload uses Qt's private QPA ABI, so the target Qt must be the exact same
-#     version as the host-side expectations (6.8.3) - see docs/compatibility.md;
+#     version as the host-side expectations (6.8.3) - see docs/reference/compatibility.md;
 #   * EGLFS/embedded Linux is an unverified platform family today: cross-compiling proves the
 #     build, not the runtime behaviour. Runtime evidence requires the target hardware.
 set(HYREMOTE_CROSS_TARGET "aarch64-linux-gnu" CACHE STRING "Informational cross target name")

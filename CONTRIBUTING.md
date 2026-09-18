@@ -34,7 +34,7 @@ Branches are temporary work cursors. Follow [`docs/branch-lifecycle.md`](docs/br
 
 ## Product milestones and technical WBS
 
-HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/versioning.md`](docs/versioning.md).
+HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/reference/versioning.md`](docs/reference/versioning.md).
 
 Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable.
 
@@ -123,23 +123,30 @@ Everything else should be marked experimental, planned, or unverified.
 
 ## Documentation and comment language
 
-Documentation is organised by **reader intent**, not by development stage, and it is bilingual. The
-user-facing zone is Chinese-primary; the release/internal zone stays English because the release-readiness
-documentation gate pins exact tokens in those files (translate them only together with the gate).
+Documentation is organised by **reader intent**, not by development stage, and it is bilingual where its
+readers are. The `guide/` zone is Chinese-primary; the `reference/` zone is **English-canonical** because its
+contracts are read by integrators through the SDK, QPA and compatibility surface and are pinned by the
+release-readiness gate; the release/internal zone stays English because that gate pins exact tokens in those
+files (translate them only together with the gate).
 
 | Zone | Paths | Language | Content rule |
 | --- | --- | --- | --- |
 | User guide | `docs/guide/**` | Chinese primary + `docs/en/guide/**` mirror | Final shape only: install, integrate, deploy, troubleshoot |
-| Reference | `docs/reference/**` | Chinese primary + `docs/en/reference/**` mirror | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
+| Reference | `docs/reference/**` | **English canonical**; Chinese mirror optional at `docs/en/reference/**` | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
+| Evidence | `docs/acceptance/**` | English | Recorded acceptance/review evidence, one directory per candidate; documentation, never test code |
 | Internal / release | rest of `docs/`, `docs/adr/`, `docs/releases/`, `docs/proposals/` | English | Acceptance runbooks, repository administration, layout authority, milestone records |
 
 Rules for the user-facing zones:
 
-- **Bilingual pairs**: the Chinese primary document lives at `docs/<path>`; the English mirror lives at
-  `docs/en/<path>`. A document that enters `guide/` or `reference/` must have its mirror at the same relative
-  path, carries a one-line language switch at the top, and changes in both languages in the same change.
-  Legacy documents that have not moved into those zones yet are not required to be mirrored while the
-  migration is in progress.
+- **Bilingual pairs apply to `guide/`**: the Chinese primary document lives at `docs/<path>`; the English mirror lives
+  at `docs/en/<path>`, at the same relative path. A document that enters `guide/` must have its mirror, carries a
+  one-line language switch at the top, and changes in both languages in the same change. Documents that have not
+  moved into `guide/` are not required to be mirrored while the migration is in progress.
+- **`reference/` is English-canonical**: the contract documents live in `docs/reference/**` in English. A Chinese
+  mirror at `docs/en/reference/<path>` is optional; when one exists it carries the same one-line language switch and
+  moves in the same change as the English document. The English document remains the authority.
+- **Evidence lives in `docs/acceptance/`**: recorded acceptance and review evidence is documentation - one directory
+  per candidate, next to the runbook that produced it - and never test code.
 - **One document per intent**: merge by what the reader wants to do. A single detailed document beats several
   that each cover a fragment; repository documents are not a place to record the path that produced them.
 - **No process content**: issue numbers and tracking, acceptance scheduling/status, milestone chronicles,

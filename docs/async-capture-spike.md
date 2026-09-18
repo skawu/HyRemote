@@ -673,7 +673,7 @@ list.
 
 ## 11. Compatibility matrix rows
 
-The status column uses the definitions of [`docs/compatibility.md`](compatibility.md).
+The status column uses the definitions of [`docs/reference/compatibility.md`](reference/compatibility.md).
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Status | Notes |
 |---|---|---|---|---|---|---|

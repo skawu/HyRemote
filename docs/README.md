@@ -21,8 +21,9 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 
 | 区 | 面向 | 语言 | 内容要求 |
 | --- | --- | --- | --- |
-| `docs/guide/**` | 最终用户 | 中文为主 + `docs/en/**` 英文镜像 | 只讲最终形态：怎么装、怎么接、怎么部署、怎么排错。**不含**过程内容 |
-| `docs/reference/**` | 产品最终态契约 | 同上 | 架构、采集/输入模型、API 稳定性、兼容矩阵、安全边界、版本策略 |
+| `docs/guide/**` | 最终用户 | 中文为主 + `docs/en/guide/**` 英文镜像（**强制**） | 只讲最终形态：怎么装、怎么接、怎么部署、怎么排错。**不含**过程内容 |
+| `docs/reference/**` | 产品最终态契约 | **英文为准**；`docs/en/reference/**` 中文镜像**可选** | 架构、采集/输入模型、API 稳定性、兼容矩阵、安全边界、版本策略 |
+| `docs/acceptance/**` | 验收/评审证据 | 英文 | 每个候选一个目录的证据记录；**是文档，不是测试代码** |
 | `docs/` 其余 + `adr/` `releases/` `proposals/` | 维护者/发布 | 英文（发布门禁冻结） | 验收 runbook、仓库管理、布局权威、里程碑记录 |
 
 **"过程文档"的定义**（用户文档中禁止出现）：issue 编号与追踪、验收排期与状态看板、里程碑编年史、调查/实验过程记录、
@@ -32,16 +33,16 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 
 | 文档 | 内容 |
 | --- | --- |
-| [`architecture.md`](architecture.md) | 分层模型、依赖规则、线程原则 |
-| [`v1-api-stability.md`](v1-api-stability.md) | V1 公开 API 稳定性契约（稳定面与非稳定面） |
-| [`compatibility.md`](compatibility.md) | 精确证据/状态矩阵 |
-| [`known-limitations.md`](known-limitations.md) | 明确的 V1 限制 |
-| [`security.md`](security.md) | 已实现的安全边界 |
-| [`security-model.md`](security-model.md) | 威胁模型与发布安全门槛 |
-| [`versioning.md`](versioning.md) | 版本与里程碑策略 |
-| [`release-package-manifest.md`](release-package-manifest.md) | V1 发布包清单（安装载荷契约） |
-| [`dependency-policy.md`](dependency-policy.md) | 依赖政策（含可选的构建期依赖） |
-| [`widgets-capture.md`](widgets-capture.md) ｜ [`quick-capture.md`](quick-capture.md) ｜ [`input-model.md`](input-model.md) | 采集与输入模型 |
+| [`architecture.md`](reference/architecture.md) | 分层模型、依赖规则、线程原则 |
+| [`v1-api-stability.md`](reference/v1-api-stability.md) | V1 公开 API 稳定性契约（稳定面与非稳定面） |
+| [`compatibility.md`](reference/compatibility.md) | 精确证据/状态矩阵 |
+| [`known-limitations.md`](reference/known-limitations.md) | 明确的 V1 限制 |
+| [`security.md`](reference/security.md) | 已实现的安全边界 |
+| [`security-model.md`](reference/security-model.md) | 威胁模型与发布安全门槛 |
+| [`versioning.md`](reference/versioning.md) | 版本与里程碑策略 |
+| [`release-package-manifest.md`](reference/release-package-manifest.md) | V1 发布包清单（安装载荷契约） |
+| [`dependency-policy.md`](reference/dependency-policy.md) | 依赖政策（含可选的构建期依赖） |
+| [`widgets-capture.md`](reference/widgets-capture.md) ｜ [`quick-capture.md`](reference/quick-capture.md) ｜ [`input-model.md`](reference/input-model.md) | 采集与输入模型 |
 
 ## 4. 内部 / 发布文档（非用户文档）
 

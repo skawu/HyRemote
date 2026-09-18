@@ -6,9 +6,9 @@ This document records why several transport candidates were investigated. It is 
 
 Current product truth is in:
 
-- `docs/dependency-policy.md`;
-- `docs/architecture.md` / transport contracts;
-- `docs/security.md`;
+- `docs/reference/dependency-policy.md`;
+- `docs/reference/architecture.md` / transport contracts;
+- `docs/reference/security.md`;
 - the current C++ RFB implementation and product-fit gates.
 
 ## Current V1 decision

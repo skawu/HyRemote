@@ -50,7 +50,7 @@ Remote input is disabled by default.
 - QML: set `remoteInputEnabled: true` before enabling;
 - QPA: relaunch with `-platform hyremote:hyremote-input=true`.
 
-If only specific keys/compositions fail, consult `docs/input-model.md` and `docs/known-limitations.md`; V1 does not claim full IME/dead-key/international-layout parity.
+If only specific keys/compositions fail, consult `docs/reference/input-model.md` and `docs/reference/known-limitations.md`; V1 does not claim full IME/dead-key/international-layout parity.
 
 ## Pointer coordinates are wrong
 
@@ -62,7 +62,7 @@ For QPA, also record which top-level surface was active and the composite canvas
 
 The public async Quick correctness path depends on a capturable Qt Quick scene/window. Hidden/minimized behavior has explicit handling/limits and is not equivalent to a compositor-level desktop capture service.
 
-Check `docs/compatibility.md`, `docs/known-limitations.md` and the QPA capture classification before broadening the issue into a generic graphics-support claim.
+Check `docs/reference/compatibility.md`, `docs/reference/known-limitations.md` and the QPA capture classification before broadening the issue into a generic graphics-support claim.
 
 ## QPA deploy says the package is unavailable
 
@@ -116,4 +116,4 @@ The Core frame mailbox, RFB frame handoff, GUI input delivery and incomplete-han
 
 ## Security warning
 
-The current RFB SecurityType None baseline is unauthenticated and unencrypted. Do not expose a listener directly to an untrusted/public network merely to test connectivity. See `docs/security.md`.
+The current RFB SecurityType None baseline is unauthenticated and unencrypted. Do not expose a listener directly to an untrusted/public network merely to test connectivity. See `docs/reference/security.md`.

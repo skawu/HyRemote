@@ -8,11 +8,11 @@ set(required_files
     "LICENSE"
     "NOTICE.md"
     "README.md"
-    "docs/versioning.md"
+    "docs/reference/versioning.md"
     "docs/git-flow-release.md"
     "docs/repository-layout.md"
     "docs/release-candidate-checklist.md"
-    "docs/release-package-manifest.md"
+    "docs/reference/release-package-manifest.md"
     "docs/releases/v0.0.1.0.md"
     "docs/releases/v0.0.2.0.md"
     "docs/releases/v0.0.3.0.md"
@@ -23,15 +23,15 @@ set(required_files
     "docs/getting-started/qml.md"
     "docs/getting-started/qpa-proxy.md"
     "docs/deployment.md"
-    "docs/qml-consumption.md"
-    "docs/input-model.md"
-    "docs/security.md"
-    "docs/security-model.md"
+    "docs/reference/qml-consumption.md"
+    "docs/reference/input-model.md"
+    "docs/reference/security.md"
+    "docs/reference/security-model.md"
     "docs/viewer-connection.md"
     "docs/troubleshooting.md"
-    "docs/compatibility.md"
-    "docs/known-limitations.md"
-    "docs/v1-api-stability.md"
+    "docs/reference/compatibility.md"
+    "docs/reference/known-limitations.md"
+    "docs/reference/v1-api-stability.md"
     "docs/v1-ga-acceptance.md"
     "examples/README.md"
     "examples/CMakeLists.txt"
@@ -253,10 +253,10 @@ foreach(required_link
         "docs/deployment.md"
         "docs/repository-layout.md"
         "docs/viewer-connection.md"
-        "docs/security.md"
+        "docs/reference/security.md"
         "docs/troubleshooting.md"
-        "docs/compatibility.md"
-        "docs/known-limitations.md")
+        "docs/reference/compatibility.md"
+        "docs/reference/known-limitations.md")
     string(FIND "${readme_text}" "${required_link}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -405,8 +405,8 @@ endforeach()
 foreach(doc_check
         "docs/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
         "docs/releases/v1.0.0.0.md|explicit HyRemote runtime stop/policy transition"
-        "docs/compatibility.md|explicit HyRemote stop/policy transition"
-        "docs/known-limitations.md|explicit HyRemote runtime stop")
+        "docs/reference/compatibility.md|explicit HyRemote stop/policy transition"
+        "docs/reference/known-limitations.md|explicit HyRemote runtime stop")
     string(REPLACE "|" ";" doc_parts "${doc_check}")
     list(GET doc_parts 0 doc_path)
     list(GET doc_parts 1 required_phrase)

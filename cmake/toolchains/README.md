@@ -57,9 +57,9 @@ and `cmake` still run on the host.
 ## Constraints worth knowing before cross-compiling
 
 - **The Transparent QPA payload uses Qt's private QPA ABI**, so the target Qt must be the same exact version as the
-  qualified line (6.8.3). See `docs/compatibility.md`.
+  qualified line (6.8.3). See `docs/reference/compatibility.md`.
 - **Cross-compiling proves the build, not the runtime behaviour.** Embedded Linux/EGLFS is an **unverified** platform
-  family in this project (`docs/compatibility.md` marks RK3588 / EGLFS + OpenGL ES as *Unverified*), so a successful
+  family in this project (`docs/reference/compatibility.md` marks RK3588 / EGLFS + OpenGL ES as *Unverified*), so a successful
   cross build produces a binary to try on hardware - it is not a compatibility or support claim, and runtime evidence
   requires the target board, display and input stack.
 - **A cross build is not a release artifact** for the V1 x86 reference platforms; it does not change what V1 claims.

@@ -128,6 +128,9 @@ No current milestone is taggable while mandatory Windows/Linux evidence is unexe
 ## Post-GA
 
 - `V1.x.0.0`: formal embedded platform-family expansion, Embedded Linux first;
+- **planned with that expansion**: a QEGLFS/Wayland-style Transparent QPA delegate, so `-platform hyremote`
+  becomes possible on an EGLFS/Wayland-class target. **Not a V1.0.0.0 item** - until it exists those targets use
+  Embedded C++ or Declarative QML (ADR-0004, `docs/reference/compatibility.md`);
 - Rockchip and NXP i.MX remain high-priority platform families;
 - **security** - authenticated and encrypted transport behind the stable application model - is a committed `V1.x`
   track, not a future note: `[SEC-01]` #143, sequenced design -> authentication -> encryption -> per-client
@@ -139,7 +142,7 @@ No current milestone is taggable while mandatory Windows/Linux evidence is unexe
 
 These expansions must preserve the same application-facing model rather than exposing platform/backend mechanics to users.
 
-**Statement rule for both tracks.** `docs/known-limitations.md` and `docs/compatibility.md` are edited only in the change
+**Statement rule for both tracks.** `docs/reference/known-limitations.md` and `docs/reference/compatibility.md` are edited only in the change
 that lands a capability, never in advance and never to imply progress. Until then the V1 statements stand exactly as
 written, and nothing in these tracks is a V1 blocker or may widen the V1 GA declaration.
 

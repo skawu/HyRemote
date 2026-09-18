@@ -6,7 +6,7 @@ HyRemote's reference integration is a small C++ facade delivered as one shared l
 
 ## Prerequisites
 
-The current V1 reference line is Qt 6.8.x; automated product work targets Qt 6.8.3 on Windows x86_64 and Linux x86_64. Other Qt versions are not implied to be supported unless recorded in `docs/compatibility.md`.
+The current V1 reference line is Qt 6.8.x; automated product work targets Qt 6.8.3 on Windows x86_64 and Linux x86_64. Other Qt versions are not implied to be supported unless recorded in `docs/reference/compatibility.md`.
 
 Choose either:
 
@@ -110,7 +110,7 @@ See `docs/deployment.md`.
 
 ## Security baseline
 
-The current RFB SecurityType None correctness transport is unauthenticated and unencrypted. Do not expose it directly to untrusted networks. Loopback is the default bind and remote input is disabled by default. See `docs/security.md` and `docs/known-limitations.md`.
+The current RFB SecurityType None correctness transport is unauthenticated and unencrypted. Do not expose it directly to untrusted networks. Loopback is the default bind and remote input is disabled by default. See `docs/reference/security.md` and `docs/reference/known-limitations.md`.
 
 ## Examples and evidence
 
@@ -126,4 +126,4 @@ Hosted/offscreen E2E verifies protocol-to-application correctness; it does not r
 - viewer workflow: `docs/viewer-connection.md`;
 - deployment: `docs/deployment.md`;
 - troubleshooting: `docs/troubleshooting.md`;
-- exact support status: `docs/compatibility.md` and `docs/known-limitations.md`.
+- exact support status: `docs/reference/compatibility.md` and `docs/reference/known-limitations.md`.

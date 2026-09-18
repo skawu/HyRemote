@@ -4,7 +4,7 @@ Status: **ARCH-01 proposal (proposal-era design input)**
 
 Issue: #5
 
-Canonical authority: `docs/architecture.md` is the frozen V1 architecture (three integration modes over one
+Canonical authority: `docs/reference/architecture.md` is the frozen V1 architecture (three integration modes over one
 shared runtime). This document is kept as the ARCH-01 design input that connected ADR-0001/0002/0003; where it
 disagrees with the frozen architecture or the ADRs - for example the NeatVNC transport rows below, which
 predate the bounded internal RFB 3.8 baseline - the frozen architecture and the ADRs win.

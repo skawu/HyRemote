@@ -1,6 +1,6 @@
 # Known Limitations
 
-This file separates implemented repository behavior from released support claims. `docs/compatibility.md` remains the per-configuration evidence matrix.
+This file separates implemented repository behavior from released support claims. `docs/reference/compatibility.md` remains the per-configuration evidence matrix.
 
 ## V1 x86 milestone boundary
 
