@@ -177,6 +177,42 @@ function(_hyremote_resolve_qpa_payload file_var name_var)
         "Transparent QPA payload is unavailable; install/build HyRemote with HYREMOTE_WITH_QPA_PROXY=ON")
 endfunction()
 
+# qhyremote dynamically delegates to the native Qt platform plugin, so the native delegate is not a
+# link dependency of either the application or the proxy module. Qt 6 publishes platform plugins as
+# individual CMake packages below Qt6Gui_DIR. Resolve the exact reference delegate explicitly so one
+# hyremote_deploy(... QPA) call owns the complete transparent platform chain in both source and installed
+# SDK consumption without exposing a plugin target to the application link interface.
+function(_hyremote_resolve_native_qpa_delegate_payload file_var name_var)
+    if(WIN32)
+        set(_native_qpa_target "Qt6::QWindowsIntegrationPlugin")
+        set(_native_qpa_package "Qt6QWindowsIntegrationPlugin")
+        set(_native_qpa_key "windows")
+    elseif(UNIX AND NOT APPLE)
+        set(_native_qpa_target "Qt6::QXcbIntegrationPlugin")
+        set(_native_qpa_package "Qt6QXcbIntegrationPlugin")
+        set(_native_qpa_key "xcb")
+    else()
+        message(FATAL_ERROR
+            "hyremote_deploy QPA native delegate is supported only for the V1 Windows/Linux reference platforms")
+    endif()
+
+    if(NOT TARGET "${_native_qpa_target}")
+        if(NOT DEFINED Qt6Gui_DIR OR "${Qt6Gui_DIR}" STREQUAL "")
+            message(FATAL_ERROR
+                "hyremote_deploy QPA cannot locate Qt6Gui_DIR for native '${_native_qpa_key}' delegate")
+        endif()
+        find_package(${_native_qpa_package} QUIET PATHS "${Qt6Gui_DIR}")
+    endif()
+
+    if(NOT TARGET "${_native_qpa_target}")
+        message(FATAL_ERROR
+            "hyremote_deploy QPA requires the Qt 6.8.3 native '${_native_qpa_key}' platform plugin package (${_native_qpa_package})")
+    endif()
+
+    set(${file_var} "$<TARGET_FILE:${_native_qpa_target}>" PARENT_SCOPE)
+    set(${name_var} "$<TARGET_FILE_NAME:${_native_qpa_target}>" PARENT_SCOPE)
+endfunction()
+
 function(_hyremote_generate_qpa_deploy_script target output_var)
     if(APPLE OR (NOT WIN32 AND NOT UNIX))
         message(FATAL_ERROR
@@ -217,6 +253,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     endif()
 
     _hyremote_resolve_qpa_payload(_qpa_plugin_file _qpa_plugin_name)
+    _hyremote_resolve_native_qpa_delegate_payload(_native_qpa_plugin_file _native_qpa_plugin_name)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
     _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
 
@@ -245,11 +282,15 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
         OUTPUT "${_qpa_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES \"${_qpa_plugin_file}\")
+file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+    \"${_qpa_plugin_file}\"
+    \"${_native_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
-    ADDITIONAL_MODULES \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
+    ADDITIONAL_MODULES
+    \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
+    \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_qpa_plugin_name}\"
     ADDITIONAL_LIBRARIES
     \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )

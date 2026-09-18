@@ -78,6 +78,27 @@ else()
     set(HyRemote_QPA_QT_VERSION "6.8.3")
 endif()
 
+# Qt 6 platform plugins are separate CMake packages/targets. The fixture has no real Qt package,
+# so model the imported native delegate explicitly while keeping it outside the application's local
+# build dependency set. Production deployment resolves the matching target from Qt6Gui_DIR.
+if(TEST_DEPLOY_QPA)
+    if(WIN32)
+        set(_fixture_native_qpa_target Qt6::QWindowsIntegrationPlugin)
+        set(_fixture_native_qpa_payload
+            "${CMAKE_CURRENT_BINARY_DIR}/qwindows${CMAKE_SHARED_MODULE_SUFFIX}")
+    elseif(UNIX AND NOT APPLE)
+        set(_fixture_native_qpa_target Qt6::QXcbIntegrationPlugin)
+        set(_fixture_native_qpa_payload
+            "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_MODULE_PREFIX}qxcb${CMAKE_SHARED_MODULE_SUFFIX}")
+    endif()
+    if(DEFINED _fixture_native_qpa_target)
+        file(WRITE "${_fixture_native_qpa_payload}" "fixture")
+        add_library(${_fixture_native_qpa_target} MODULE IMPORTED GLOBAL)
+        set_target_properties(${_fixture_native_qpa_target}
+            PROPERTIES IMPORTED_LOCATION "${_fixture_native_qpa_payload}")
+    endif()
+endif()
+
 if(TEST_INSTALLED_PAYLOAD)
     set(_fixture_remoteaccess "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}HyRemoteRemoteAccess${CMAKE_SHARED_LIBRARY_SUFFIX}")
     file(WRITE "${_fixture_remoteaccess}" "fixture")

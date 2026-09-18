@@ -36,7 +36,15 @@ def wait_for_rfb(port: int, process: subprocess.Popen[str]) -> bytes:
     raise RuntimeError(f"deployed QPA listener did not become ready: {last_error}")
 
 
-def verify_linux_dependency_origins(app: Path) -> None:
+def require_native_platform_plugin(app: Path) -> Path:
+    prefix = app.parent.parent
+    plugin_name = "qwindows.dll" if os.name == "nt" else "libqxcb.so"
+    plugin = prefix / "plugins" / "platforms" / plugin_name
+    require(plugin.is_file(), f"deployed native QPA delegate is missing: {plugin}")
+    return plugin
+
+
+def verify_linux_dependency_origins(app: Path, native_platform_plugin: Path) -> None:
     if os.name == "nt":
         return
 
@@ -44,7 +52,7 @@ def verify_linux_dependency_origins(app: Path) -> None:
     qpa_plugins = sorted((prefix / "plugins" / "platforms").glob("*qhyremote*.so*"))
     require(len(qpa_plugins) == 1, f"expected one deployed qhyremote ELF under {prefix}, got {qpa_plugins}")
 
-    artifacts = [app, qpa_plugins[0]]
+    artifacts = [app, qpa_plugins[0], native_platform_plugin]
     qml_dir = prefix / "qml" / "HyRemote"
     if qml_dir.is_dir():
         artifacts.extend(sorted(path for path in qml_dir.glob("*.so*") if path.is_file()))
@@ -76,7 +84,8 @@ def main() -> int:
 
     app = args.app.resolve()
     require(app.exists(), f"deployed consumer not found: {app}")
-    verify_linux_dependency_origins(app)
+    native_platform_plugin = require_native_platform_plugin(app)
+    verify_linux_dependency_origins(app, native_platform_plugin)
 
     env = os.environ.copy()
     # Product-fit must prove the deployed tree is self-contained with respect to HyRemote/Qt SDK
@@ -128,7 +137,7 @@ def main() -> int:
         output = process.stdout.read() if process.stdout is not None else ""
         require(result == 0, f"deployed QPA consumer exited with {result}: {output}")
         print(
-            "PASS: deployed consumer -> qhyremote + shared RemoteAccess -> "
+            "PASS: deployed consumer -> qhyremote + native QPA delegate + shared RemoteAccess -> "
             "RFB reconnect without SDK/plugin/QML/runtime-path overrides"
         )
         return 0
