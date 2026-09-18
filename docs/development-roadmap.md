@@ -129,10 +129,19 @@ No current milestone is taggable while mandatory Windows/Linux evidence is unexe
 
 - `V1.x.0.0`: formal embedded platform-family expansion, Embedded Linux first;
 - Rockchip and NXP i.MX remain high-priority platform families;
-- zero-copy/DMA-BUF/hardware encoding are optional backend optimizations unless a measured requirement promotes them;
+- **security** - authenticated and encrypted transport behind the stable application model - is a committed `V1.x`
+  track, not a future note: `[SEC-01]` #143, sequenced design -> authentication -> encryption -> per-client
+  authorization/audit;
+- **bandwidth and acceleration** are committed `V1.x` tracks rather than optional optimizations: `[BW-01]` #144
+  sequences the RFB encoding strategy first, then damage-aware incremental delivery (#9), then low-copy buffer
+  ownership (#17), then hardware encoding with the embedded target (#10);
 - OpenHarmony remains longer-term and does not block x86 GA.
 
 These expansions must preserve the same application-facing model rather than exposing platform/backend mechanics to users.
+
+**Statement rule for both tracks.** `docs/known-limitations.md` and `docs/compatibility.md` are edited only in the change
+that lands a capability, never in advance and never to imply progress. Until then the V1 statements stand exactly as
+written, and nothing in these tracks is a V1 blocker or may widen the V1 GA declaration.
 
 ## Execution rule
 
