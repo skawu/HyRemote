@@ -82,7 +82,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Resolve and install requested Qt SDK
+      - name: Install requested Qt SDK
         id: qt_sdk
         shell: bash
         run: |
@@ -90,27 +90,27 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja
 
           set +e
-          AVAILABLE="$(aqt list-qt "${{ matrix.host }}" desktop --spec "${{ matrix.qt }}" 2>/dev/null)"
-          LIST_STATUS=$?
+          aqt install-qt "${{ matrix.host }}" desktop "${{ matrix.qt }}" "${{ matrix.arch }}" --outputdir "$RUNNER_TEMP/Qt"
+          INSTALL_STATUS=$?
           set -e
 
-          if [ "$LIST_STATUS" -ne 0 ] || ! printf '%s\n' "$AVAILABLE" | tr ' ' '\n' | grep -Fxq "${{ matrix.qt }}"; then
+          if [ "$INSTALL_STATUS" -ne 0 ]; then
             if [ "${{ matrix.required }}" = "true" ]; then
-              echo "Required Qt ${{ matrix.qt }} SDK is not currently available for ${{ matrix.host }}." >&2
-              exit 1
+              echo "Required Qt ${{ matrix.qt }} SDK installation failed for ${{ matrix.host }}." >&2
+              exit "$INSTALL_STATUS"
             fi
             echo "available=false" >> "$GITHUB_OUTPUT"
             {
               echo "### Qt SDK unavailable — explicit observation skip"
               echo "- platform: ${{ matrix.host }}"
               echo "- requested Qt: ${{ matrix.qt }}"
-              echo "- policy: non-V1 forward-compatibility lane; SDK unavailability is SKIP, not PASS and not a HyRemote failure"
+              echo "- install status: $INSTALL_STATUS"
+              echo "- policy: non-V1 forward-compatibility lane; provider/install unavailability is SKIP, not PASS and not a HyRemote failure"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           echo "available=true" >> "$GITHUB_OUTPUT"
-          aqt install-qt "${{ matrix.host }}" desktop "${{ matrix.qt }}" "${{ matrix.arch }}" --outputdir "$RUNNER_TEMP/Qt"
 
       - name: Install Linux Qt desktop host dependencies
         if: runner.os == 'Linux' && steps.qt_sdk.outputs.available == 'true'
