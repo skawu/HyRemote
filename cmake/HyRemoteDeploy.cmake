@@ -41,11 +41,15 @@ function(_hyremote_add_local_build_dependency consumer dependency)
 endfunction()
 
 # The installed shared facade intentionally exposes only Qt Core/Network through its CMake link interface,
-# even when the runtime itself was built with private Widgets/Quick adapters. On Linux, Qt's generic deploy
-# helper cannot resolve those private DT_NEEDED entries from a relocated HyRemote SDK because the installed
-# facade correctly carries only an $ORIGIN RPATH. Bootstrap just those runtime dependencies from the consumer's
-# own Qt prefix before handing control back to Qt's normal deploy helper. This keeps the public target surface
-# minimal and keeps the deployed tree independent of both the HyRemote SDK and the Qt SDK locations.
+# even when the runtime itself was built with private Widgets/Quick adapters. The Linux native qxcb delegate
+# likewise carries a private Qt runtime dependency that is not discoverable merely from the consuming
+# executable. Bootstrap those private Qt dependencies from the consumer's own exact Qt prefix before handing
+# control back to Qt's normal deploy helper. This keeps the public target surface minimal and keeps the deployed
+# tree independent of both the HyRemote SDK and the Qt SDK locations.
+#
+# The optional third argument is the already-selected native QPA plugin filename. Ordinary C++/QML deployment
+# scans only RemoteAccess; QPA deployment scans RemoteAccess plus that native delegate so both source and
+# installed-SDK acquisition receive the same self-contained Linux runtime closure.
 function(_hyremote_linux_private_runtime_bootstrap runtime_deploy_dir output_var)
     if(NOT UNIX OR APPLE)
         set(${output_var} "" PARENT_SCOPE)
@@ -63,9 +67,17 @@ function(_hyremote_linux_private_runtime_bootstrap runtime_deploy_dir output_var
         return()
     endif()
 
+    set(_hyremote_bootstrap_libraries
+"    \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"")
+    if(ARGC GREATER 2 AND NOT "${ARGV2}" STREQUAL "")
+        string(APPEND _hyremote_bootstrap_libraries
+"\n    \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${ARGV2}\"")
+    endif()
+
     set(_bootstrap
 "file(GET_RUNTIME_DEPENDENCIES
-    LIBRARIES \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+    LIBRARIES
+${_hyremote_bootstrap_libraries}
     DIRECTORIES \"$<TARGET_FILE_DIR:Qt6::Core>\"
     RESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_dependencies
     UNRESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_unresolved
@@ -255,7 +267,8 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     _hyremote_resolve_qpa_payload(_qpa_plugin_file _qpa_plugin_name)
     _hyremote_resolve_native_qpa_delegate_payload(_native_qpa_plugin_file _native_qpa_plugin_name)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
-    _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
+    _hyremote_linux_private_runtime_bootstrap(
+        "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_qpa_plugin_name}")
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
