@@ -52,6 +52,32 @@ if(HYREMOTE_BUILD_CORE)
     add_subdirectory(src/core core)
 endif()
 
+# A top-level configure that was told where Qt lives, or that was asked for the repository's own harnesses,
+# must not quietly succeed with the Qt product missing. Measured on the current head: configuring against a
+# Qt 5.15.2 prefix reported "Build succeeded" while `Qt6_DIR` was `Qt6_DIR-NOTFOUND` (nothing looks for Qt5)
+# and the build had silently degraded to the Qt-free Core - 8 targets, no library, **zero examples**. A false
+# green in a qualification attempt is worse than a failure, so this gate makes the intent explicit.
+#
+# It is deliberately scoped to PROJECT_IS_TOP_LEVEL: an add_subdirectory() consumer that only wants
+# HyRemote::Core is a legitimate Qt-less build and must keep working, and so must building Core alone here.
+if(PROJECT_IS_TOP_LEVEL
+   AND (CMAKE_PREFIX_PATH OR HYREMOTE_BUILD_EXAMPLES OR HYREMOTE_BUILD_TESTS))
+    if(NOT TARGET Qt6::Core)
+        find_package(Qt6 QUIET COMPONENTS Core)
+    endif()
+    if(NOT TARGET Qt6::Core)
+        message(FATAL_ERROR
+            "This top-level configure expects Qt and did not find it.\n"
+            "  CMAKE_PREFIX_PATH          : '${CMAKE_PREFIX_PATH}'\n"
+            "  HYREMOTE_BUILD_EXAMPLES    : ${HYREMOTE_BUILD_EXAMPLES}\n"
+            "  HYREMOTE_BUILD_TESTS       : ${HYREMOTE_BUILD_TESTS}\n"
+            "Qt 6.8+ is the only qualified line today; Qt 5.15 qualification is tracked by issue #57 and is not\n"
+            "implemented, so a Qt 5.15 prefix cannot configure this product yet.\n"
+            "Pass a Qt 6.8.3 prefix, or build Core alone on purpose with -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF\n"
+            "-DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+    endif()
+endif()
+
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
     if(NOT TARGET HyRemote::Core)
         message(FATAL_ERROR "HyRemote::RemoteAccess requires HYREMOTE_BUILD_CORE=ON")
