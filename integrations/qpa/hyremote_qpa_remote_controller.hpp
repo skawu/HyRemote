@@ -23,7 +23,8 @@ class InteractiveCompositeTarget;
 struct RemoteConfig
 {
     QHostAddress listenAddress = QHostAddress::LocalHost;
-    quint16 port = 5921;
+    // The configured product default; see HYREMOTE_DEFAULT_PORT in cmake/HyRemoteProjectOptions.cmake.
+    quint16 port = static_cast<quint16>(HYREMOTE_DEFAULT_PORT);
     bool remoteInputEnabled = false;
 };
 

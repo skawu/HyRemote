@@ -98,9 +98,9 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
     if (!object)
         return;
 
-    CHECK(object->property("port").toInt() == 5921);
+    CHECK(object->property("port").toInt() == HYREMOTE_DEFAULT_PORT);
     CHECK(object->setProperty("port", 0));
-    CHECK(object->property("port").toInt() == 5921);
+    CHECK(object->property("port").toInt() == HYREMOTE_DEFAULT_PORT);
     CHECK(object->property("errorCode").toInt() == 1); // InvalidConfiguration
     CHECK(!object->property("errorString").toString().isEmpty());
 

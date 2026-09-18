@@ -17,6 +17,12 @@ conventions live elsewhere - see the "Internal documents" section of [`docs/READ
 | QPA constraint | Transparent QPA is exactly coupled to the Qt 6.8.3 private QPA ABI; it preserves the native `qwindows` / `qxcb` delegate |
 | Viewer | Any standard VNC client, default `127.0.0.1:5921` |
 
+The default port is a configure-time value an integrator can define:
+`cmake -DHYREMOTE_DEFAULT_PORT=<port>` (omitted, it is `5921`). All three integration modes share that one default -
+the Embedded C++ API and the declarative QML API start from the Core default, and the QPA proxy uses the same number
+when the platform string carries no `hyremote-port`. It stays overridable per process at run time through
+`RemoteAccess::setPort()`, the QML `port` property, or `-platform "hyremote:hyremote-port=<port>"`.
+
 > **Product status:** V1.0.0.0 acceptance is pending. The candidate implementation is not a **Supported** claim
 > until the required hosted and physical evidence actually passes. Current status:
 > [`docs/compatibility.md`](../../compatibility.md).

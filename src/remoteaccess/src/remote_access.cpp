@@ -150,7 +150,8 @@ struct RemoteAccess::Impl
 
     QPointer<QObject> target;
     QHostAddress listenAddress = QHostAddress::LocalHost;
-    quint16 port = 5921;
+    // The configured product default; see HYREMOTE_DEFAULT_PORT in cmake/HyRemoteProjectOptions.cmake.
+    quint16 port = static_cast<quint16>(HYREMOTE_DEFAULT_PORT);
     bool remoteInputEnabled = false;
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;

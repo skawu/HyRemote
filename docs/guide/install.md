@@ -148,6 +148,8 @@ remote.start();
 ```
 
 默认值即安全默认值：监听回环地址、端口 5921、远程输入关闭。各项 setter 是**可选策略控制**，不是必需的初始化步骤。
+
+默认端口可由集成方在**构建期**定义：配置时传 `-DHYREMOTE_DEFAULT_PORT=<端口>`（不传即 `5921`）。三种接入方式共用这一个默认值——C++ 与 QML 都从 Core 的默认值起步，QPA 代理在平台串未给出 `hyremote-port` 时也使用同一数字；运行期仍可逐进程覆盖：`RemoteAccess::setPort()`、QML 的 `port` 属性、`-platform "hyremote:hyremote-port=<端口>"`。
 使用 Qt Quick 时，按应用自身需要请求 Qt Quick 组件，HyRemote 目标保持不变；`find_package(HyRemote)` 不会强迫应用解析它并不使用的 Widgets/Quick/QML 模块。
 
 ### 4.3 `find_package(HyRemote)` 的语义
