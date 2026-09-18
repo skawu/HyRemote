@@ -54,7 +54,7 @@ The canonical repository execution/evidence template for #109 is `docs/v1-physic
 
 - Windows/Linux E1/E2/E3/E4 physical cells use the **same RC-FROZEN SHA**;
 - native local display and local input must coexist with remote view/control as required;
-- abrupt-disconnect held-state cleanup, reconnect, stop/policy transition and no-late-input behavior are retained;
+- abrupt-disconnect held-state cleanup, reconnect, explicit HyRemote runtime stop/policy transition and no-late-input behavior are retained;
 - hosted/Xvfb evidence cannot substitute for physical local-display/local-input evidence;
 - physical evidence cannot substitute for hosted build/install/deploy gates.
 
