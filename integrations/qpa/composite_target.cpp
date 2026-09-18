@@ -196,7 +196,8 @@ private:
 
     static void publishEvent(const std::shared_ptr<State> &state,
                              hyremote::CaptureEventCode code,
-                             std::string message)
+                             std::string message,
+                             bool recoverable = true)
     {
         hyremote::CaptureEventHandler callback;
         {
@@ -212,8 +213,9 @@ private:
             event.code = code;
             event.message = std::move(message);
             // Loss/unavailability of one application-owned surface is not loss of the composite
-            // application target. The model can continue with the remaining surfaces.
-            event.recoverable = true;
+            // application target, so the default is recoverable. Callers that forward a child's own
+            // event pass its recoverability through instead of overriding it.
+            event.recoverable = recoverable;
             callback(event);
         } catch (...) {
         }
@@ -438,9 +440,15 @@ private:
                              const hyremote::CaptureEvent &event)
     {
         markSurfaceUnavailable(state, id);
+        // Propagate the child's own recoverability. Losing one application-owned surface is recoverable -
+        // the composite continues with the remaining surfaces - but a child that reports an unrecoverable
+        // failure (a destroyed target, a backend that cannot capture at all) must reach Core as
+        // unrecoverable, otherwise the session stays Running and silently serves stale or transparent
+        // frames with no diagnostic.
         publishEvent(state,
                      event.code,
-                     std::string("composite child surface: ") + event.message);
+                     std::string("composite child surface: ") + event.message,
+                     event.recoverable);
     }
 
     static std::shared_ptr<ChildRuntime> ensureChild(
@@ -670,9 +678,21 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget)
 {
     ::HyRemote::detail::TargetComponents result;
+    // Fail closed when the build has no capture adapter: without one the composite can only ever produce
+    // transparent frames, so claiming support would bypass Core's "no qualified adapter" gate and let the
+    // session report itself active while serving nothing. The macros are set by
+    // integrations/qpa/CMakeLists.txt from the adapter options, not from Qt module presence, precisely so
+    // that this check reflects what the build can capture.
+#if defined(HYREMOTE_QPA_HAS_WIDGETS) || defined(HYREMOTE_QPA_HAS_QUICK)
     result.supported = true;
+#else
+    result.supported = false;
+    result.error = QStringLiteral(
+        "QPA composite target requires at least one capture adapter: rebuild with "
+        "HYREMOTE_BUILD_WIDGETS_ADAPTER or HYREMOTE_BUILD_QUICK_ADAPTER enabled");
+#endif
     result.capture = std::make_unique<CompositeCaptureSource>(this, resolveBuiltinTarget);
-    if (remoteInputEnabled) {
+    if (result.supported && remoteInputEnabled) {
         result.error = QStringLiteral(
             "QPA multi-surface remote input is not enabled until the composite input-routing gate is present");
     }
