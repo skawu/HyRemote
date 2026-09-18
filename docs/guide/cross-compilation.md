@@ -27,16 +27,24 @@ Linux:    sh compile.cmd --mode qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 | `--mode minimal` | 最小构建（不开示例/测试/QML/QPA） |
 | `--toolchain <file>.cmake` | **指定交叉编译工具链文件** |
 | `--qt-prefix <path>` | 目标平台的 Qt 6.8.3 安装前缀 |
-| `--build-dir <dir>` | 构建根目录（默认 `build/`，实际目录为 `<dir>/<mode>`） |
 | `--build-type Release\|Debug` | 构建类型（默认 Release） |
 | `--tests` | 同时构建测试 |
 | `--no-examples` | 不构建示例 |
-| `--clean` | 先删除该模式的构建目录 |
-| `-v` | 详细输出（默认把日志写入 `build.<mode>.log` 文件） |
+| `--clean` | 先删除构建目录再重新配置 |
+| `-v` | 详细输出（默认把日志写入 `build/configure.log` 与 `build/build.log`） |
 
 两种写法都可用：`--mode qpa` 与 `--mode=qpa`。
 
-清理：`clean.cmd`（`--all` 删除整个构建树，`--mode X` 只删某个模式）。
+### 只允许一个构建目录
+
+本项目**只保留一个构建目录 `build/`**（它是 `.gitignore` 忽略的目录）：
+
+- 构建产物一律落在 `build/`，**不再按模式分子目录**，日志也写在 `build/` 内，仓库根目录不会出现构建文件；
+- **换接入方式或需要重新构建时，先清理**：`clean.cmd` 会删除整个 `build/`；
+- 若 `build/` 里已存在另一种模式的配置，脚本会**拒绝混用**并提示确切命令（`compile.cmd --clean --mode <新模式>`），
+  而不是悄悄复用可能已失效的缓存。
+
+清理入口：`clean.cmd`（删除 `build/`）。
 
 ## 2. 指定交叉编译工具链
 

@@ -29,16 +29,25 @@ arguments override it:
 | `--mode minimal` | Minimal build (no examples/tests/QML/QPA) |
 | `--toolchain <file>.cmake` | **Select the cross-compilation toolchain file** |
 | `--qt-prefix <path>` | Target Qt 6.8.3 installation prefix |
-| `--build-dir <dir>` | Build root (default `build/`; the real directory is `<dir>/<mode>`) |
 | `--build-type Release\|Debug` | Build type (default Release) |
 | `--tests` | Also build tests |
 | `--no-examples` | Do not build examples |
-| `--clean` | Delete this mode's build directory first |
-| `-v` | Verbose output (otherwise logs go to `build.<mode>.log`) |
+| `--clean` | Delete the build directory and reconfigure |
+| `-v` | Verbose output (otherwise logs go to `build/configure.log` and `build/build.log`) |
 
 Both spellings work: `--mode qpa` and `--mode=qpa`.
 
-Cleaning: `clean.cmd` (`--all` removes the whole build tree, `--mode X` only one mode).
+### Exactly one build directory
+
+This project keeps **one** build directory, `build/` (git-ignored):
+
+- every artifact lands in `build/`, with no per-mode subdirectory, and the logs live inside it too, so no build file
+  appears in the repository root;
+- **switching integration mode or rebuilding means cleaning first**: `clean.cmd` removes the whole `build/`;
+- if `build/` already holds a configuration for a different mode, the script **refuses to mix** and prints the exact
+  command (`compile.cmd --clean --mode <new-mode>`) instead of silently reusing a possibly stale cache.
+
+Cleaning entry point: `clean.cmd` (removes `build/`).
 
 ## 2. Selecting a cross-compilation toolchain
 

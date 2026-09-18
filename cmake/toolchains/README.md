@@ -22,12 +22,15 @@ sh compile.cmd --mode=qpa --toolchain=cmake/toolchains/aarch64-linux-gnu.cmake -
 or directly with CMake:
 
 ```text
-cmake -S . -B build/qpa-cross -G Ninja \
+cmake -S . -B build -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/aarch64-linux-gnu.cmake \
   -DCMAKE_PREFIX_PATH=/opt/qt-6.8.3-aarch64 \
   -DHYREMOTE_WITH_QPA_PROXY=ON
-cmake --build build/qpa-cross
+cmake --build build
 ```
+
+The project keeps **one** build directory, `build/`. Remove it (`clean.cmd`) before configuring for a different target
+or mode, rather than creating a second tree - two trees silently mix generators, compilers and stale caches.
 
 Point the compiler prefix at a non-default location when your toolchain is not on `PATH` under its default name:
 

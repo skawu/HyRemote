@@ -36,11 +36,9 @@ if /i "%ARG%"=="-v" ( set "VERBOSE=1" & shift & goto :parse )
 rem Space-separated form first: some Windows shells and wrappers split an argument at its '='.
 if /i "%ARG%"=="--mode" ( set "MODE=%~2" & shift & shift & goto :parse )
 if /i "%ARG%"=="--build-type" ( set "BUILD_TYPE=%~2" & shift & shift & goto :parse )
-if /i "%ARG%"=="--build-dir" ( set "BUILD_ROOT=%~2" & shift & shift & goto :parse )
 if /i "%ARG%"=="--qt-prefix" ( set "QT_PREFIX=%~2" & shift & shift & goto :parse )
 if /i "%ARG%"=="--toolchain" ( set "TOOLCHAIN=%~2" & shift & shift & goto :parse )
 if /i "%ARG%"=="-j" ( set "JOBS=%~2" & shift & shift & goto :parse )
-if /i "%ARG:~0,12%"=="--build-dir=" ( set "BUILD_ROOT=%ARG:~12%" & shift & goto :parse )
 if /i "%ARG:~0,12%"=="--qt-prefix=" ( set "QT_PREFIX=%ARG:~12%" & shift & goto :parse )
 if /i "%ARG:~0,12%"=="--toolchain=" ( set "TOOLCHAIN=%ARG:~12%" & shift & goto :parse )
 if /i "%ARG:~0,13%"=="--build-type=" ( set "BUILD_TYPE=%ARG:~13%" & shift & goto :parse )
@@ -49,9 +47,21 @@ if /i "%ARG:~0,2%"=="-j" ( set "JOBS=%ARG:~2%" & shift & goto :parse )
 echo Unknown option: %ARG% & call :usage & exit /b 2
 
 :parsed
-set "BUILD_DIR=%BUILD_ROOT%\%MODE%"
-if not exist "%BUILD_ROOT%" mkdir "%BUILD_ROOT%"
-if "%CLEAN%"=="1" if exist "%BUILD_DIR%" rmdir /s /q "%BUILD_DIR%"
+rem Exactly one build directory. A second one silently mixes generators, compilers and stale caches, so
+rem switching mode or reconfiguring requires an explicit clean instead of quietly reusing the tree.
+set "BUILD_DIR=build"
+set "PREVIOUS_MODE="
+if exist "build\.hyremote-mode" for /f "usebackq delims=" %%M in ("build\.hyremote-mode") do set "PREVIOUS_MODE=%%M"
+if not "!PREVIOUS_MODE!"=="" if /i not "!PREVIOUS_MODE!"=="!MODE!" (
+    echo build\ already holds a !PREVIOUS_MODE! configuration; refusing to mix modes in one build directory.
+    echo   compile.cmd --clean --mode !MODE!
+    exit /b 2
+)
+if "%CLEAN%"=="1" if exist "build" rmdir /s /q "build"
+if not exist "build" mkdir "build"
+> "build\.hyremote-mode" echo %MODE%
+set "CONFIGURE_LOG=build\configure.log"
+set "BUILD_LOG=build\build.log"
 
 where cmake >nul 2>&1
 if errorlevel 1 if exist "C:\Qt\Tools\CMake_64\bin\cmake.exe" set "PATH=C:\Qt\Tools\CMake_64\bin;%PATH%"
@@ -104,12 +114,12 @@ echo    examples    : %EXAMPLES%
 echo.
 
 if "%VERBOSE%"=="1" goto :configure_verbose
-cmake -S . -B "%BUILD_DIR%" -G "%GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% %QT_ARG% %TC_ARG% %MODE_FLAGS% -DHYREMOTE_BUILD_TESTS=%TESTS% -DHYREMOTE_BUILD_EXAMPLES=%EXAMPLES% > "%BUILD_DIR%.configure.log" 2>&1
-if errorlevel 1 echo Configure failed. See %BUILD_DIR%.configure.log & exit /b 3
-if not exist "%BUILD_DIR%\CMakeCache.txt" echo Configure did not complete - see %BUILD_DIR%.configure.log & exit /b 3
-cmake --build "%BUILD_DIR%" %J_ARG% > "%BUILD_DIR%.build.log" 2>&1
-if errorlevel 1 echo Build failed. See %BUILD_DIR%.build.log & exit /b 4
-echo Build succeeded. Logs: %BUILD_DIR%.configure.log , %BUILD_DIR%.build.log
+cmake -S . -B "%BUILD_DIR%" -G "%GENERATOR%" -DCMAKE_BUILD_TYPE=%BUILD_TYPE% %QT_ARG% %TC_ARG% %MODE_FLAGS% -DHYREMOTE_BUILD_TESTS=%TESTS% -DHYREMOTE_BUILD_EXAMPLES=%EXAMPLES% > "%CONFIGURE_LOG%" 2>&1
+if errorlevel 1 echo Configure failed. See %CONFIGURE_LOG% & exit /b 3
+if not exist "%BUILD_DIR%\CMakeCache.txt" echo Configure did not complete - see %CONFIGURE_LOG% & exit /b 3
+cmake --build "%BUILD_DIR%" %J_ARG% > "%BUILD_LOG%" 2>&1
+if errorlevel 1 echo Build failed. See %BUILD_LOG% & exit /b 4
+echo Build succeeded. Logs: %CONFIGURE_LOG% , %BUILD_LOG%
 if "%TESTS%"=="ON" (
     echo.
     echo To run the tests on Windows the Qt and MinGW runtime DLLs must be findable, otherwise every
@@ -139,10 +149,11 @@ echo Unknown mode: %~1 (expected qpa, cpp, qml, all or minimal) & exit /b 1
 
 :usage
 echo Usage: compile.cmd [--mode=qpa^|cpp^|qml^|all^|minimal] [--build-type=Release^|Debug]
-echo                    [--build-dir=DIR] [--qt-prefix=PATH] [--toolchain=FILE.cmake]
+echo                    [--qt-prefix=PATH] [--toolchain=FILE.cmake]
 echo                    [--tests] [--no-examples] [--clean] [-v] [-jN]
 echo.
-echo Defaults: mode=qpa (see HYREMOTE_DEFAULT_MODE in this file), Release, build/^<mode^>.
+echo Defaults: mode=qpa (see HYREMOTE_DEFAULT_MODE in this file), Release, output in build\.
+echo The project keeps exactly one build directory: use --clean before switching mode or rebuilding.
 echo Cross-compilation: pass --toolchain=cmake/toolchains/^<file^>.cmake (see that directory).
 exit /b 0
 HYREMOTE_BATCH
@@ -153,7 +164,6 @@ HYREMOTE_BATCH
 HYREMOTE_DEFAULT_MODE="qpa"
 MODE="$HYREMOTE_DEFAULT_MODE"
 BUILD_TYPE="Release"
-BUILD_ROOT="build"
 QT_PREFIX=""
 TOOLCHAIN=""
 TESTS="OFF"
@@ -163,10 +173,11 @@ JOBS=""
 usage() {
     cat <<'EOF'
 Usage: sh compile.cmd [--mode=qpa|cpp|qml|all|minimal] [--build-type=Release|Debug]
-                      [--build-dir=DIR] [--qt-prefix=PATH] [--toolchain=FILE.cmake]
+                      [--qt-prefix=PATH] [--toolchain=FILE.cmake]
                       [--tests] [--no-examples] [--clean] [-v] [-jN]
 
-Defaults: mode=qpa (see HYREMOTE_DEFAULT_MODE in this file), Release, build/<mode>.
+Defaults: mode=qpa (see HYREMOTE_DEFAULT_MODE in this file), Release, output in build/.
+The project keeps exactly one build directory: use --clean before switching mode or rebuilding.
 Cross-compilation: pass --toolchain=cmake/toolchains/<file>.cmake (see that directory).
 EOF
 }
@@ -176,7 +187,6 @@ for arg in "$@"; do
         --help) usage; exit 0 ;;
         --mode=*) MODE="${arg#--mode=}" ;;
         --build-type=*) BUILD_TYPE="${arg#--build-type=}" ;;
-        --build-dir=*) BUILD_ROOT="${arg#--build-dir=}" ;;
         --qt-prefix=*) QT_PREFIX="${arg#--qt-prefix=}" ;;
         --toolchain=*) TOOLCHAIN="${arg#--toolchain=}" ;;
         --tests) TESTS="ON" ;;
@@ -197,9 +207,18 @@ case "$MODE" in
     *) echo "Unknown mode: $MODE (expected qpa, cpp, qml, all or minimal)"; exit 2 ;;
 esac
 
-BUILD_DIR="$BUILD_ROOT/$MODE"
+# Exactly one build directory: refuse to mix modes in it instead of silently reusing a stale tree.
+BUILD_DIR="build"
+if [ -f "build/.hyremote-mode" ] && [ "$(cat build/.hyremote-mode)" != "$MODE" ]; then
+    echo "build/ already holds a $(cat build/.hyremote-mode) configuration; refusing to mix modes in one build directory."
+    echo "  sh compile.cmd --clean --mode $MODE"
+    exit 2
+fi
 [ "${CLEAN:-0}" = "1" ] && rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_ROOT"
+mkdir -p "$BUILD_DIR"
+printf '%s\n' "$MODE" > "build/.hyremote-mode"
+CONFIGURE_LOG="build/configure.log"
+BUILD_LOG="build/build.log"
 
 command -v cmake >/dev/null 2>&1 || { echo "cmake was not found on PATH."; exit 2; }
 QT_ARG=""; [ -n "$QT_PREFIX" ] && QT_ARG="-DCMAKE_PREFIX_PATH=$QT_PREFIX"
@@ -222,13 +241,13 @@ if [ "${VERBOSE:-0}" = "1" ]; then
     cmake --build "$BUILD_DIR" $J_ARG || { echo "Build failed."; exit 4; }
 else
     cmake -S . -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $QT_ARG $TC_ARG $MODE_FLAGS \
-        -DHYREMOTE_BUILD_TESTS="$TESTS" -DHYREMOTE_BUILD_EXAMPLES="$EXAMPLES" > "$BUILD_DIR.configure.log" 2>&1 \
-        || { echo "Configure failed. See $BUILD_DIR.configure.log"; exit 3; }
+        -DHYREMOTE_BUILD_TESTS="$TESTS" -DHYREMOTE_BUILD_EXAMPLES="$EXAMPLES" > "$CONFIGURE_LOG" 2>&1 \
+        || { echo "Configure failed. See $CONFIGURE_LOG"; exit 3; }
     [ -f "$BUILD_DIR/CMakeCache.txt" ] \
-        || { echo "Configure did not complete - see $BUILD_DIR.configure.log"; exit 3; }
-    cmake --build "$BUILD_DIR" $J_ARG > "$BUILD_DIR.build.log" 2>&1 \
-        || { echo "Build failed. See $BUILD_DIR.build.log"; exit 4; }
-    echo "Build succeeded. Logs: $BUILD_DIR.configure.log , $BUILD_DIR.build.log"
+        || { echo "Configure did not complete - see $CONFIGURE_LOG"; exit 3; }
+    cmake --build "$BUILD_DIR" $J_ARG > "$BUILD_LOG" 2>&1 \
+        || { echo "Build failed. See $BUILD_LOG"; exit 4; }
+    echo "Build succeeded. Logs: $CONFIGURE_LOG , $BUILD_LOG"
     if [ "$TESTS" = "ON" ]; then
         echo
         echo "To run the tests:"

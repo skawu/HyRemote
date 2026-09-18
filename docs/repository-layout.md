@@ -150,7 +150,13 @@ clean.cmd           removes a mode's build tree, or the whole build tree with --
 
 Their layout mirrors the 4diac-fbe build environment: a single script per action that runs on both operating systems,
 a named build configuration selected with `--mode` (default `qpa`, overridable in the script or on the command line),
-output under `build/<mode>/`, and one log file per phase.
+and one log file per phase.
+
+**Exactly one build directory.** All output, and the `build/configure.log` / `build/build.log` logs, go to the
+git-ignored `build/` - there is no per-mode subdirectory and no second tree anywhere. Switching mode or rebuilding
+means cleaning first (`clean.cmd`); if `build/` holds a different mode's configuration the script refuses to mix and
+prints the exact `--clean --mode <new-mode>` command. This keeps the repository root free of build files and stops a
+stale generator, compiler or cache from being reused silently.
 
 Cross-compilation toolchain files live under the existing `cmake/` root:
 
