@@ -44,10 +44,17 @@ target_link_libraries(hyremote-qpa-platform
 
 if(TARGET Qt6::Widgets)
     target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Widgets)
+endif()
+if(HYREMOTE_BUILD_WIDGETS_ADAPTER AND TARGET Qt6::Widgets)
+    # This macro means "this build can actually capture Widgets surfaces", not merely "the Qt module is
+    # present". Surface qualification and the composite target's fail-closed support claim both read it, and
+    # with the adapter disabled the payload could only ever serve transparent frames.
     target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
 endif()
 if(TARGET Qt6::Quick)
     target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Quick)
+endif()
+if(HYREMOTE_BUILD_QUICK_ADAPTER AND TARGET Qt6::Quick)
     target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_QUICK=1)
 endif()
 

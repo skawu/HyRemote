@@ -196,7 +196,8 @@ private:
 
     static void publishEvent(const std::shared_ptr<State> &state,
                              hyremote::CaptureEventCode code,
-                             std::string message)
+                             std::string message,
+                             bool recoverable = true)
     {
         hyremote::CaptureEventHandler callback;
         {
@@ -212,8 +213,9 @@ private:
             event.code = code;
             event.message = std::move(message);
             // Loss/unavailability of one application-owned surface is not loss of the composite
-            // application target. The model can continue with the remaining surfaces.
-            event.recoverable = true;
+            // application target, so the default is recoverable. Callers that forward a child's own
+            // event pass its recoverability through instead of overriding it.
+            event.recoverable = recoverable;
             callback(event);
         } catch (...) {
         }
@@ -438,9 +440,15 @@ private:
                              const hyremote::CaptureEvent &event)
     {
         markSurfaceUnavailable(state, id);
+        // Propagate the child's own recoverability. Losing one application-owned surface is recoverable -
+        // the composite continues with the remaining surfaces - but a child that reports an unrecoverable
+        // failure (a destroyed target, a backend that cannot capture at all) must reach Core as
+        // unrecoverable, otherwise the session stays Running and silently serves stale or transparent
+        // frames with no diagnostic.
         publishEvent(state,
                      event.code,
-                     std::string("composite child surface: ") + event.message);
+                     std::string("composite child surface: ") + event.message,
+                     event.recoverable);
     }
 
     static std::shared_ptr<ChildRuntime> ensureChild(
@@ -457,9 +465,14 @@ private:
 
         ::HyRemote::detail::TargetComponents components = state->resolver(target, false);
         if (!components.supported || !components.capture) {
+            // "No built-in adapter supports this surface" is a build/configuration property, not a transient
+            // condition. Reporting it as recoverable let the session stay Running and ship transparent frames
+            // for a surface it can never capture, with no diagnostic. Report it as unrecoverable so Core faults
+            // instead of silently claiming to serve the application.
             publishEvent(state,
-                         hyremote::CaptureEventCode::TemporarilyUnavailable,
-                         "no built-in capture adapter supports a composite child surface");
+                         hyremote::CaptureEventCode::BackendFailure,
+                         "no built-in capture adapter supports a composite child surface",
+                         /*recoverable=*/false);
             return {};
         }
 
@@ -670,6 +683,11 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget)
 {
     ::HyRemote::detail::TargetComponents result;
+    // `supported` describes whether this target can be captured at all, and it stays true even in a build whose
+    // adapter options are off: the composite is captured through whatever resolver the caller supplies, which is
+    // exactly how the composite tests exercise it. Whether a *particular* surface can be captured is a runtime
+    // property and is reported per surface in ensureChild() - claiming support there would be wrong in both
+    // directions, and failing closed here overrode the caller's own resolver.
     result.supported = true;
     result.capture = std::make_unique<CompositeCaptureSource>(this, resolveBuiltinTarget);
     if (remoteInputEnabled) {

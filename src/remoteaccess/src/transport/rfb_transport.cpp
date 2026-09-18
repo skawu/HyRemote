@@ -536,8 +536,27 @@ private:
     void protocolFailure(ClientState &client, const char *message)
     {
         publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
-        if (client.socket)
-            client.socket->abort();
+        if (!client.socket)
+            return;
+
+        // A socket abort dispatches disconnected() synchronously, and that handler erases the ClientState
+        // from m_clients. Aborting here therefore destroyed the client from inside its own user: the caller
+        // still holds the reference (processClient) or is iterating the map (frameAvailable), which turned a
+        // protocol failure into a use-after-free. shutdown() suppresses the same re-entrancy by disconnecting
+        // the socket first; for a failing client the equivalent fix is to defer the abort to a clean
+        // event-loop turn, so the erase never happens inside another call frame.
+        QPointer<QTcpSocket> guardedSocket(client.socket);
+        QMetaObject::invokeMethod(
+            this,
+            [this, guardedSocket] {
+                QTcpSocket *socket = guardedSocket.data();
+                if (!socket)
+                    return;
+                if (m_clients.find(socket) == m_clients.end())
+                    return;
+                socket->abort();
+            },
+            Qt::QueuedConnection);
     }
 
     void readClient(QTcpSocket *socket)
