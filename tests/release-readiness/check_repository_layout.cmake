@@ -76,6 +76,10 @@ if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
 
+if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/naming-conventions.md")
+    message(FATAL_ERROR "repository-layout: naming conventions document is missing")
+endif()
+
 read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]
@@ -99,21 +103,28 @@ if(research_guard EQUAL -1 OR research_path EQUAL -1 OR research_path LESS resea
     message(FATAL_ERROR "repository-layout: research sources escaped their explicit opt-in guard")
 endif()
 
-read_repo_file("integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
-require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"
-                    "QML integration stopped linking the shared RemoteAccess runtime")
-forbid_link_target("${qml_cmake}" "HyRemote::Core"
-                   "QML integration must not link Core directly")
-forbid_token("${qml_cmake}" "remote_access.cpp"
-             "QML integration must not compile a second RemoteAccess facade")
-
-read_repo_file("integrations/qpa/CMakeLists.txt" qpa_cmake)
-require_link_target("${qpa_cmake}" "HyRemote::RemoteAccess"
-                    "QPA integration stopped linking the shared RemoteAccess runtime")
-forbid_link_target("${qpa_cmake}" "HyRemote::Core"
-                   "QPA platform payload must not link Core directly")
-forbid_token("${qpa_cmake}" "remote_access.cpp"
-             "QPA platform payload must not compile a second RemoteAccess facade")
+# The three payload rules are enforced for every integration payload, not just the two that exist today:
+# a payload added later under integrations/ must reuse the shared runtime, must not link Core directly and must
+# not compile a second RemoteAccess facade. Globbing here is deliberate - it keeps the contract attached to new
+# payloads (for example a future integrations/qpa-<qt-line>/) without requiring a gate change, so an additive
+# payload cannot quietly escape it.
+file(GLOB _integration_payload_cmakes
+    "${HYREMOTE_SOURCE_DIR}/integrations/*/CMakeLists.txt"
+    "${HYREMOTE_SOURCE_DIR}/integrations/*/*/CMakeLists.txt")
+foreach(payload_cmake IN LISTS _integration_payload_cmakes)
+    # Colocated test directories (for example integrations/qpa/tests) are not payloads: a payload's own tests
+    # may legitimately reference Core, while the payload itself may not link it.
+    if(payload_cmake MATCHES "/tests?/")
+        continue()
+    endif()
+    file(READ "${payload_cmake}" payload_text)
+    require_link_target("${payload_text}" "HyRemote::RemoteAccess"
+                        "integration payload stopped linking the shared RemoteAccess runtime (${payload_cmake})")
+    forbid_link_target("${payload_text}" "HyRemote::Core"
+                       "integration payload must not link Core directly (${payload_cmake})")
+    forbid_token("${payload_text}" "remote_access.cpp"
+                 "integration payload must not compile a second RemoteAccess facade (${payload_cmake})")
+endforeach()
 
 foreach(module_cmake IN ITEMS
         "src/core/CMakeLists.txt"
