@@ -1,0 +1,5 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/hyremote/branding">
+    <file alias="huayan-logo-single.png">../../assets/branding/huayan-logo-single.png</file>
+</qresource>
+</RCC>

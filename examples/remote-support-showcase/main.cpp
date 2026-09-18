@@ -263,9 +263,11 @@ private:
 
 }  // namespace
 
+#include <QIcon>
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/hyremote/branding/huayan-logo-single.png")));
     QCoreApplication::setApplicationName(QStringLiteral("HyRemote Remote Support Showcase"));
 
     QCommandLineParser parser;

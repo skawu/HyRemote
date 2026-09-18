@@ -41,9 +41,11 @@ void acceptanceMessageHandler(QtMsgType type,
 
 }  // namespace
 
+#include <QIcon>
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/hyremote/branding/huayan-logo-single.png")));
     QCoreApplication::setApplicationName(QStringLiteral("HyRemote QML Basic"));
 
     QCommandLineParser parser;
