@@ -177,7 +177,7 @@ That is the safe default. Relaunch with `hyremote-input=true` only when remote c
 
 ### A custom/native surface is missing
 
-V1 QPA support is adapter-scoped, not arbitrary desktop/window-server capture. Check `docs/qpa-capture-classification-qt-6.8.3.md` and `docs/compatibility.md` before treating it as a regression.
+V1 QPA support is adapter-scoped, not arbitrary desktop/window-server capture. Check `docs/qpa-capture-classification-qt-6.8.3.md` and `docs/reference/compatibility.md` before treating it as a regression.
 
 ## 12. Evidence status
 

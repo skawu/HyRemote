@@ -223,14 +223,14 @@ Reference/setup and delivery guides:
 
 - [`docs/guide/install.md`](docs/guide/install.md) — build, platform setup, installed SDK and source consumption (中文; [English](docs/en/guide/install.md))
 - [`docs/README.md`](docs/README.md) — documentation index (中文 ｜ [English](docs/en/README.md))
-- [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
+- [`docs/reference/qml-consumption.md`](docs/reference/qml-consumption.md) — installed QML module
 - [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
 - [`docs/repository-layout.md`](docs/repository-layout.md) — canonical repository ownership/layout
 - [`docs/viewer-connection.md`](docs/viewer-connection.md) — viewer/control/reconnect
-- [`docs/security.md`](docs/security.md) — implemented security boundary
+- [`docs/reference/security.md`](docs/reference/security.md) — implemented security boundary
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — product-level diagnosis
-- [`docs/compatibility.md`](docs/compatibility.md) — exact evidence/status matrix
-- [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
+- [`docs/reference/compatibility.md`](docs/reference/compatibility.md) — exact evidence/status matrix
+- [`docs/reference/known-limitations.md`](docs/reference/known-limitations.md) — explicit V1 limitations
 - [`docs/v1-ga-acceptance.md`](docs/v1-ga-acceptance.md) — GA release gate
 
 Internal Core/capture/transport/QPA implementation documents under `docs/` and `research/` are maintainer material; ordinary users do not need them to integrate HyRemote.
@@ -239,7 +239,7 @@ Internal Core/capture/transport/QPA implementation documents under `docs/` and `
 
 The current bounded RFB correctness transport uses **SecurityType None**: no transport authentication and no transport encryption. Loopback is the default bind and remote input is off by default.
 
-Do **not** expose the current baseline directly to an untrusted network or the public Internet. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
+Do **not** expose the current baseline directly to an untrusted network or the public Internet. See [`docs/reference/security.md`](docs/reference/security.md) and [`SECURITY.md`](SECURITY.md).
 
 ## V1 release discipline
 
