@@ -95,6 +95,8 @@ Qt does not guarantee QPA source/binary compatibility. The current V1 QPA packag
 
 Do not infer compatibility with another Qt patch/minor, Wayland, EGLFS or a different native delegate. QPA package deployment enforces the exact qualified Qt version.
 
+**An EGLFS/Wayland-class Linux target has no delegate at all, which is a stronger statement than "unverified".** The mode works by decorating an existing qualified native platform plugin, so where no such plugin exists `-platform hyremote` cannot start an application - and no amount of validation on such a board would change that, because there is nothing to decorate. Products on those targets use Embedded C++ or Declarative QML. The decision, its consequences and the planned `V1.x` QEGLFS/Wayland-style delegate are recorded in [`../adr/0004-qpa-eglfs-delegate-scope.md`](../adr/0004-qpa-eglfs-delegate-scope.md) and [`../adr/0005-documentation-zones-and-repository-structure.md`](../adr/0005-documentation-zones-and-repository-structure.md) covers the zone this file lives in.
+
 ### Deployment scope
 
 Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemoteRemoteAccess` runtime. Transparent QPA uses the same helper to carry that runtime plus the package-owned `qhyremote` payload. Applications do not link a QPA CMake target.
