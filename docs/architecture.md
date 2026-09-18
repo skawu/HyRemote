@@ -238,16 +238,18 @@ Hosted/Xvfb automation proves correctness that can be automated. It does not rep
 
 No release branch/tag is authorized until the release authorities recorded by #33 are accepted.
 
-## 15. Post-V1 extension seams
+## 15. Extension seams: what is V1 and what is genuinely post-V1
 
-The architecture intentionally leaves optimization behind private/internal seams. Post-V1 work may add or replace:
+The architecture intentionally leaves this work behind private/internal seams. The boundary is platform dependency, not topic: work that can be done on x86 belongs to **V1.0.0.0**, and only work that must run on an embedded platform stays post-V1.
 
-- optimized GL/PBO capture;
-- DMA-BUF/GBM/external-buffer paths;
-- hardware encoding such as RKMPP/V4L2/VA-API;
-- authenticated/encrypted transports;
-- additional platform delegates/targets;
-- richer per-client authorization/control.
+- optimized GL/PBO capture (#9) - x86 work, so a **V1.0.0.0** requirement;
+- authenticated/encrypted transports and richer per-client authorization/control (#143) - x86 work, so a **V1.0.0.0**
+  requirement;
+- the RFB encoding strategy and damage-aware incremental delivery (#144) - x86 work, so a **V1.0.0.0** requirement;
+- DMA-BUF/GBM/external-buffer paths (#17) - needs the embedded graphics stack, post-V1;
+- hardware encoding such as RKMPP/V4L2 on the embedded target, and VA-API where a platform provides it (#10) -
+  hardware-bound, post-V1;
+- additional platform delegates/targets - embedded platform-family expansion, post-V1.
 
 Such work must preserve the V1 application model unless a later release deliberately changes the public contract. Platform optimization must not force ordinary applications to understand Core, capture, transport, graphics-backend or SoC-specific implementation details.
 

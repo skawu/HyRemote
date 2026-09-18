@@ -119,4 +119,7 @@ Newer exact-candidate runs can still remain queued with no step execution. Such 
 
 Qt 6.8.x is the current public V1 reference line for public-API modes; current automated product work uses Qt 6.8.3. Transparent QPA is more narrowly exact-version-coupled to Qt 6.8.3.
 
-Issue #57 tracks post-V1 qualification of Qt 5.15 and additional Qt LTS lines. A newly released Qt version enters qualification; it is not automatically a supported HyRemote configuration.
+Issue #57 tracks the qualification of Qt 5.15 and additional Qt LTS lines. That is x86 work, so it is a **V1.0.0.0**
+requirement rather than a post-V1 one: only work that must run on an embedded platform may stay outside V1, because
+embedded platforms are far less debuggable than x86. A newly released Qt version enters qualification; it is not
+automatically a supported HyRemote configuration.
