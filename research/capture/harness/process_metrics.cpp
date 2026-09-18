@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "harness/process_metrics.h"
 
 #ifdef Q_OS_WIN

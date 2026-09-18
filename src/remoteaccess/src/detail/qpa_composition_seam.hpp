@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // Source-private composition seam between the Transparent QPA payload and the shared RemoteAccess runtime.

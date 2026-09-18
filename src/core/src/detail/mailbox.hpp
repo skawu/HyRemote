@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // Internal implementation detail of hyremote-core: the bounded completed-frame mailbox.

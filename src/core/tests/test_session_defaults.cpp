@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // ADR-0003 documents the defaults a fresh SessionConfig starts from. These are deliberately tunable,
 // but a change must update both the implementation and the documented contract rather than drift silently.
 

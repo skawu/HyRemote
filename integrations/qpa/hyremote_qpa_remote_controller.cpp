@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "hyremote_qpa_remote_controller.hpp"
 
 #include "interactive_composite_target.hpp"

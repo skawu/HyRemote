@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C1 - frame lifetime.
 //
 // Proves that ownership, not a naked pointer, carries the frame lifetime, and that the final

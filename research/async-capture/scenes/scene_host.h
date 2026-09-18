@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // Async capture spike throwaway scene host (issue #16).

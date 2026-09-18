@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C2 - damage semantics: Unknown | FullFrame | Regions, with empty Regions explicitly not
 // Unknown, and frame/root coordinates preserved by Core.
 

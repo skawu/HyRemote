@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // HyRemote SPIKE-01 capture harness (issue #3).
 //
 // This program is throwaway spike code. It drives the capture cases listed in

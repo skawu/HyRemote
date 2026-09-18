@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // HyRemote ARCH-01 header-level proposal.

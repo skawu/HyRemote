@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // SPIKE-01 throwaway Quick3D scene (issue #3, case E).
 //
 // Quick3D renders through its own renderer inside the scene graph, so this scene

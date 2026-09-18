@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "custom_fbo_item.h"
 
 #include <QOpenGLFramebufferObject>

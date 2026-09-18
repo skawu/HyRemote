@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "samples/quick3d_sample.h"
 
 namespace hyremote {

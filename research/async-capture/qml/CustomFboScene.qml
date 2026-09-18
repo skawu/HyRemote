@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Async capture spike custom QQuickFramebufferObject scene (issue #16).
 //
 // The custom FBO renderer encodes its own render counter in its clear color, so a

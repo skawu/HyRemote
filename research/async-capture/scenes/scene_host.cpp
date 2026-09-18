@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "scenes/scene_host.h"
 
 #include "scenes/custom_fbo_item.h"

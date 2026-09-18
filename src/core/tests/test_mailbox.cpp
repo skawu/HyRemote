@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C4 - bounded completed-frame mailbox, drop policy and ownership accounting.
 
 #include <atomic>

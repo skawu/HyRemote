@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "rfb_test_client.hpp"
 
 #include <QColor>

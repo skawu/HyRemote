@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // SPIKE-01 throwaway Qt Quick capture case (issue #3, cases B/D/E, reused for

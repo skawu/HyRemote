@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // SPIKE-01 throwaway custom QQuickFramebufferObject item (issue #3, case E).

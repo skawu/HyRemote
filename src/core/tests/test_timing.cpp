@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C3 - timestamp model.
 //
 // The rule under test: a capture request time is never implicitly promoted to a content PTS,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // CaptureSource: the backend-facing half of the Core contract.

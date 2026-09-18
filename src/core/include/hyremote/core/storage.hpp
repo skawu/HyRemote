@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // Frame storage: the Core lifetime anchor for frame pixels and resources.

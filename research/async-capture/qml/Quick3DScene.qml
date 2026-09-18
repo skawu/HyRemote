@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Async capture spike Quick3D scene (issue #16).
 //
 // Same structure as AsyncScene.qml: a Quick3D viewport plus 2D QML content in the

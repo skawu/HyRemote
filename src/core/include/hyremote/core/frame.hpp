@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // RemoteFrame: immutable metadata plus shared ownership of immutable-for-the-frame storage.

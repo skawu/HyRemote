@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C7 - input routing boundary.
 //
 // Protocol-specific input is normalized before it reaches Core. Core forwards that value object to

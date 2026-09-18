@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // Capture/consumer capability description and the compatibility check that must succeed before

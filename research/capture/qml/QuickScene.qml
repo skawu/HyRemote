@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // SPIKE-01 throwaway Qt Quick 2D scene (issue #3, case B).
 //
 // Deliberately mixes a continuously animated region with static chrome so that

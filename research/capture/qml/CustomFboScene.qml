@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // SPIKE-01 throwaway custom QQuickFramebufferObject scene (issue #3, case E).
 //
 // The CustomFboItem type comes from the same QML module, so it is available

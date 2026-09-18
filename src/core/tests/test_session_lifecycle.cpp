@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C6 - Session lifecycle, failure escalation and deterministic stop.
 //
 // The state sequence under test is:

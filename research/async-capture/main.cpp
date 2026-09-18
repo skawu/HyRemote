@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // HyRemote asynchronous capture spike (issue #16).
 //
 // This program is throwaway spike code. It evaluates the public asynchronous

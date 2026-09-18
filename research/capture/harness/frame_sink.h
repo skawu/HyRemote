@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // SPIKE-01 throwaway frame hand-off probe (see spike_types.h).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // C5 - transport hand-off.
 //
 // Proves that the transport is only ever called from the Core dispatch path, that frame ownership

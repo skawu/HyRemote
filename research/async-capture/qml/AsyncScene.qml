@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Async capture spike scene (issue #16).
 //
 // The harness drives `tick` from C++, so every captured image carries the scene

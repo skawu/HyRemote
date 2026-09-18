@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // B3/B4 - callback lifetime and the input boundary.
 //
 // Proves the frozen rule: `CaptureSource::stop()` / `Transport::stop()` must not return until their

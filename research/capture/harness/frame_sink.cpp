@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "harness/frame_sink.h"
 
 #include "harness/spike_types.h"

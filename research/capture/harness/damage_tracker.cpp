@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "harness/damage_tracker.h"
 
 #include <QCoreApplication>

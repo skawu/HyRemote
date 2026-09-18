@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // SPIKE-01 throwaway QQuickWidget capture case (issue #3, case D).

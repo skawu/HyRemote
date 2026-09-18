@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "quick/quick_target.hpp"
 
 #include <QCoreApplication>

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "harness/async_probe.h"
 
 #include <QCoreApplication>

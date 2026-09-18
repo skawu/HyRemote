@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "samples/custom_fbo_sample.h"
 
 #include "samples/custom_fbo_item.h"

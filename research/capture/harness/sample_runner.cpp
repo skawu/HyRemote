@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "harness/sample_runner.h"
 
 #include "harness/damage_tracker.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "samples/opengl_widget_sample.h"
 
 #include <QCoreApplication>

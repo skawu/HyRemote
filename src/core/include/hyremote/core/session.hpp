@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #pragma once
 
 // Session: lifecycle, capture scheduling and the bounded completed-frame pipeline.
