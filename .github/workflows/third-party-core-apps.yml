@@ -59,7 +59,7 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check aqtinstall ninja
           aqt install-qt "${{ matrix.host }}" desktop 6.8.3 "${{ matrix.arch }}" \
-            --archives qtbase qtdeclarative qttools --modules qt5compat --outputdir "$RUNNER_TEMP/Qt"
+            --modules qt5compat --outputdir "$RUNNER_TEMP/Qt"
 
       - name: Prepare SQLiteBrowser generated translations in disposable source
         shell: bash
