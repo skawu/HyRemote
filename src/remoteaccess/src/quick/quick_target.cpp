@@ -282,11 +282,15 @@ private:
         }
 
         const qreal dpr = window->devicePixelRatio();
-        const QSize pixelSize(qMax(1, qCeil(window->width() * dpr)),
-                              qMax(1, qCeil(window->height() * dpr)));
+        // grabToImage() takes its size in item (logical) coordinates and applies the device pixel ratio
+        // itself. Multiplying by dpr here applied it a second time: a 1.5 display produced 2.25x the
+        // logical frame. The logical size is the contract; the ratio is not applied twice
+        // (docs/input-model.md, docs/quick-capture.md, docs/widgets-capture.md).
+        const QSize logicalSize(qMax(1, qCeil(window->width())),
+                               qMax(1, qCeil(window->height())));
 
         const auto attempt = std::make_shared<GrabAttempt>();
-        attempt->result = content->grabToImage(pixelSize);
+        attempt->result = content->grabToImage(logicalSize);
         if (attempt->result.isNull()) {
             retryLater(state, request, 100);
             return;

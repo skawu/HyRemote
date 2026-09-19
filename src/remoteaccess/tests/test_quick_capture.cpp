@@ -190,6 +190,33 @@ void testQuickFactoryAndOwnedFrame()
         CHECK(received->requestId.value() == 21);
         CHECK(received->geometry.size.width > 0);
         CHECK(received->geometry.size.height > 0);
+
+        // #162 criterion 4, Quick half: the same "DPR applied exactly once" contract as the Widgets test.
+        // Registered a second time with QT_SCALE_FACTOR=1.5 + HYREMOTE_EXPECT_DPR=1.5; the gate keeps a
+        // plugin that silently stays at 1.0 from turning these assertions into decoration.
+        const qreal dpr = window.devicePixelRatio();
+        const QString expectedDpr = qEnvironmentVariable("HYREMOTE_EXPECT_DPR");
+        if (!expectedDpr.isEmpty()) {
+            CHECK(qAbs(dpr - expectedDpr.toDouble()) < 0.01);
+        }
+        CHECK(received->geometry.size.width == qRound(160.0 * dpr));
+        CHECK(received->geometry.size.height == qRound(90.0 * dpr));
+
+        // Resize transition on the DPR in force.
+        window.resize(320, 180);
+        content.setWidth(320);
+        content.setHeight(180);
+        QCoreApplication::processEvents();
+        received.reset();
+        hyremote::CaptureRequest resizedRequest{22, hyremote::Clock::now()};
+        CHECK(components.capture->requestFrame(resizedRequest));
+        CHECK(pumpUntil([&] { return received.has_value(); }));
+        if (received) {
+            CHECK(received->requestId.has_value());
+            CHECK(received->requestId.value() == 22);
+            CHECK(received->geometry.size.width == qRound(320.0 * dpr));
+            CHECK(received->geometry.size.height == qRound(180.0 * dpr));
+        }
         CHECK(received->geometry.pixelFormat == hyremote::PixelFormat::Rgba8888);
         CHECK(received->geometry.alphaMode == hyremote::AlphaMode::Premultiplied);
         CHECK(received->geometry.planeCount == 1);

@@ -107,6 +107,14 @@ In addition to the E1 evidence, include:
 - text focus/input on a real Quick control;
 - native resize behavior;
 - a display/DPR interaction relevant to the physical host;
+
+The **semantics** behind the resize/DPR and routing expectations are already covered deterministically, so this cell is a
+host-specific observation rather than the first place they are discovered: `hyremote-widgets-capture-test-dpr150` and
+`hyremote-quick-capture-test-dpr150` pin the "device pixel ratio applied exactly once" contract at a non-1 ratio (the
+`HYREMOTE_EXPECT_DPR` gate keeps that coverage from being vacuous), and `hyremote-widgets-input-routing-test` /
+`hyremote-quick-input-routing-test` pin nested, transparent and disabled child routing, the held drag grab, and
+item-level focus/text delivery. What remains genuinely physical here is how the host's own compositor and display report
+and apply the scale while a viewer is attached.
 - abrupt-disconnect held-input cleanup;
 - explicit-stop held-input cleanup;
 - no late queued remote input after stop;
