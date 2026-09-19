@@ -42,6 +42,50 @@ bool parseBoolean(const QString &text, bool &value)
     return false;
 }
 
+bool parseSecurityProfile(const QString &text, SecurityProfile &profile)
+{
+    const QString normalized = text.trimmed().toLower();
+    if (normalized == QStringLiteral("insecure")) {
+        profile = SecurityProfile::Insecure;
+        return true;
+    }
+    if (normalized == QStringLiteral("authenticated")) {
+        profile = SecurityProfile::Authenticated;
+        return true;
+    }
+    if (normalized == QStringLiteral("authenticated-encrypted")) {
+        profile = SecurityProfile::AuthenticatedEncrypted;
+        return true;
+    }
+    return false;
+}
+
+::HyRemote::RemoteSecurityProfile runtimeSecurityProfile(SecurityProfile profile)
+{
+    switch (profile) {
+    case SecurityProfile::Insecure:
+        return ::HyRemote::RemoteSecurityProfile::Insecure;
+    case SecurityProfile::Authenticated:
+        return ::HyRemote::RemoteSecurityProfile::Authenticated;
+    case SecurityProfile::AuthenticatedEncrypted:
+        return ::HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted;
+    }
+    return ::HyRemote::RemoteSecurityProfile::Insecure;
+}
+
+const char *securityProfileName(SecurityProfile profile)
+{
+    switch (profile) {
+    case SecurityProfile::Insecure:
+        return "insecure";
+    case SecurityProfile::Authenticated:
+        return "authenticated";
+    case SecurityProfile::AuthenticatedEncrypted:
+        return "authenticated-encrypted";
+    }
+    return "unknown";
+}
+
 bool isEligibleWindowType(Qt::WindowType type)
 {
     // HyRemote is an application remote-access framework, not an OS desktop server. Foreign/native
@@ -101,16 +145,22 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
-        if (key == QStringLiteral("hyremote-auth")) {
-            // Enabling only. A password is never accepted here on purpose: -platform values are visible in
-            // the process command line to other processes, so the host application supplies the password
-            // through the API instead.
-            bool enabled = false;
-            if (separator < 0 || !parseBoolean(value, enabled)) {
-                error = QStringLiteral("hyremote-auth must be one of 0/1, false/true, off/on or no/yes");
+        if (key == QStringLiteral("hyremote-security")) {
+            if (separator < 0 || !parseSecurityProfile(value, parsed.securityProfile)) {
+                error = QStringLiteral(
+                    "hyremote-security must be insecure, authenticated or authenticated-encrypted");
                 return false;
             }
-            parsed.authenticationEnabled = enabled;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        if (key == QStringLiteral("hyremote-security-config")) {
+            if (separator < 0 || value.isEmpty()) {
+                error = QStringLiteral("hyremote-security-config requires a non-empty descriptor path");
+                return false;
+            }
+            parsed.securityConfigFile = value;
             it = parameters.erase(it);
             continue;
         }
@@ -285,7 +335,9 @@ bool RemoteController::ensureRuntimeStarted()
     auto access = std::make_unique<::HyRemote::RemoteAccess>(m_compositeTarget.get());
     if (!access->setListenAddress(m_config.listenAddress)
         || !access->setPort(m_config.port)
-        || !access->setRemoteInputEnabled(m_config.remoteInputEnabled)) {
+        || !access->setRemoteInputEnabled(m_config.remoteInputEnabled)
+        || !access->setSecurityProfile(runtimeSecurityProfile(m_config.securityProfile))
+        || !access->setSecurityConfigFile(m_config.securityConfigFile)) {
         const auto error = access->lastError();
         qWarning() << "HyRemote QPA Proxy rejected its remote configuration:"
                    << (error ? error->message : QStringLiteral("unknown configuration error"));
@@ -302,7 +354,8 @@ bool RemoteController::ensureRuntimeStarted()
     m_access = std::move(access);
     qInfo() << "HyRemote QPA application remote access active on"
             << m_config.listenAddress.toString() << m_config.port
-            << "remote input:" << m_config.remoteInputEnabled;
+            << "remote input:" << m_config.remoteInputEnabled
+            << "security profile:" << securityProfileName(m_config.securityProfile);
     return true;
 }
 
