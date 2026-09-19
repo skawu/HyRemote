@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/skawu/HyRemote/security/advisories/new
+    about: Do not open a public issue for security problems. Follow SECURITY.md and use private reporting.
+  - name: Contribution rules
+    url: https://github.com/skawu/HyRemote/blob/main/CONTRIBUTING.md
+    about: Repository layout, branch lifecycle, Core boundaries, integration modes and validation expectations.

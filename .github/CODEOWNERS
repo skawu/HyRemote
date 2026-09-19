@@ -1,0 +1,6 @@
+# Default repository owner.
+#
+# This file requests review; actual required-code-owner enforcement depends on repository protection
+# settings and additional maintainers. It does not replace the V1 release-authority gates.
+
+* @skawu

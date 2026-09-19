@@ -2,7 +2,7 @@
 
 Issue: #29
 
-This document fixes the first transport-neutral input vocabulary used by the V0.0.1.0 Embedded C++ product path. It refines the input boundary left intentionally open by ARCH-01 without introducing Qt, VNC, Windows or Linux protocol values into Core.
+This document fixes the first transport-neutral input vocabulary used by the V0.0.1.0 Embedded C++ product path and reused by the V1 QML/QPA paths. It refines the input boundary left intentionally open by ARCH-01 without introducing Qt, VNC, Windows or Linux protocol values into Core.
 
 ## Boundary
 
@@ -41,11 +41,32 @@ Pointer `x`/`y` are expressed in the exact pixel grid described by `InputViewpor
 
 Invalid/zero source geometry, invalid target geometry, non-finite coordinates and non-pointer event kinds fail mapping explicitly with `std::nullopt`.
 
-## Threading and security
+## Threading and terminal lifecycle
 
 The existing ARCH-01 threading rule remains unchanged: `InputSink::post()` is called from the transport runtime path and the sink must enqueue/marshal to the target UI thread without synchronously blocking transport execution.
 
-View and input authorization remain separate product controls. A target adapter must drop events when input is disabled/not Running, drop late events after stop, and must not log typed text by default.
+View and input authorization remain separate product controls. A target adapter must drop events when input is disabled/not Running and must not log typed text by default.
+
+There are two distinct cleanup boundaries and they must not be conflated:
+
+1. **Viewer disconnect cleanup belongs to the transport.** A transport that tracks protocol-specific held keys/buttons balances the recognized state for that viewer before its client state is discarded. This prevents one vanished viewer from leaking protocol-held state into the shared normalized stream.
+2. **HyRemote runtime/target teardown cleanup belongs to the target `InputSink`.** After the shared Session has quiesced transport/Core callbacks, terminal sink shutdown discards normalized input still pending in the target adapter and balances supported key/button state that was already delivered into the Qt target. This prevents an explicit `RemoteAccess::stop()` or QML/QPA teardown from leaving the still-running local application with a synthetic remote press held down.
+
+When multiple RFB viewers are connected at the same time, their protocol bookkeeping remains per-client but they still feed one shared Qt target. Overlapping holds of the **same logical key or pointer button** are therefore reference-counted inside the private transport normalization layer: the first holder produces the target press, another viewer holding the same logical input does not create a second physical held-state transition, one viewer disconnecting/releasing removes only its own contribution, and the target release is emitted only when the final holder releases or disconnects. Shared-target modifier masks reflect the aggregate remote held-modifier state. Same-viewer repeated key-down behavior remains available as repeat input. This arbitration is internal correctness behavior; it does not create a public per-client authorization/control-owner API.
+
+Transport-side disconnect cleanup and target-adapter backpressure must compose safely. Widgets and Quick therefore distinguish the ordinary bounded input lane from a **bounded protected-release lane**. A recognized key/button press establishes adapter-side accepted held state only after that press enters the ordinary mailbox. Its matching release is then admitted through the protected lane even when ordinary input is saturated. Conversely, if a press was rejected by ordinary backpressure, its later release is unmatched from the adapter's perspective and is dropped rather than consuming protected capacity or synthesizing a Qt release for a press Qt never accepted. The protected bound is derived from the finite V1 logical-key/button vocabulary plus the ordinary pending budget and is machine-checked; this remains bounded overload handling, not an unbounded priority queue.
+
+This distinction is required for #90 disconnect correctness: a slow/stalled GUI may reject additional remote input as a recoverable overload condition, but normal backpressure may not prevent the final accepted key/button release from reaching the target adapter. Thus an abrupt viewer disconnect cannot turn mailbox saturation into a persistent synthetic remote hold.
+
+The second cleanup rule is intentionally an internal composition contract. It does not add an application-facing input-reset API. Repeated terminal shutdown is idempotent and may not synthesize duplicate releases.
+
+For Qt target adapters, “pending” and “delivered” are therefore materially different states:
+
+- events accepted into the bounded sink mailbox but not yet processed on the GUI thread are dropped at terminal shutdown;
+- adapter-side **accepted held state** exists only to protect a future matching release from ordinary mailbox saturation; it is not a claim that the GUI has already processed the press;
+- held buttons/keys recorded only after actual Qt delivery are balanced on the GUI thread during terminal shutdown;
+- a QWidget press/release lifecycle retains the concrete child receiver where required so terminal release does not jump to a different child merely because focus/hit-testing changed;
+- QPA composite teardown propagates terminal shutdown to each qualified child target before the child adapter is retired.
 
 ## Deferred to target/protocol adapters
 
@@ -56,6 +77,7 @@ The Core model intentionally does not decide:
 - QWidget vs QQuickWindow focus delivery;
 - platform-wide virtual input (`uinput`, virtual HID);
 - IME/dead-key full parity;
-- transport disconnect key-release synthesis policy.
+- transport disconnect key-release synthesis policy;
+- framework-specific delivery bookkeeping used by terminal target-input shutdown.
 
-Those are validated by #27, #6 and #28 while preserving this normalized boundary.
+Those are validated by the transport, Widgets, Quick and QPA product paths while preserving this normalized boundary.

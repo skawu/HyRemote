@@ -5,10 +5,14 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
-      - 'core/**'
-      - 'remoteaccess/**'
+      - 'src/core/**'
+      - 'src/remoteaccess/**'
       - '.github/workflows/rfb-transport.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   product-fit:
@@ -18,12 +22,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / Qt 6.8.3 / maintained VNC client
+          - name: Windows x86_64 / Qt 6.8.3 / maintained VNC client / shared RemoteAccess
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt 6.8.3 / maintained VNC client
+          - name: Linux x86_64 / Qt 6.8.3 / maintained VNC client / shared RemoteAccess
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -59,9 +63,10 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=OFF \
             -DHYREMOTE_WITH_VNC=ON
           cmake --build build-rfb --parallel
+          test -f build-rfb/remoteaccess/libHyRemoteRemoteAccess.so
           ctest --test-dir build-rfb --output-on-failure
-          LD_LIBRARY_PATH="$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
-            python remoteaccess/tests/rfb_product_fit.py \
+          LD_LIBRARY_PATH="$QT_PREFIX/lib:$PWD/build-rfb/remoteaccess:${LD_LIBRARY_PATH:-}" \
+            python src/remoteaccess/tests/rfb_product_fit.py \
               build-rfb/remoteaccess/tests/hyremote-rfb-test-server
 
       - name: Configure, build, unit test and product-fit — Windows / MSVC x64
@@ -71,7 +76,7 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          set "PATH=%QT_PREFIX%\bin;%CD%\build-rfb\remoteaccess;%PATH%"
           cmake -S . -B build-rfb -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
@@ -84,5 +89,6 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=OFF ^
             -DHYREMOTE_WITH_VNC=ON
           cmake --build build-rfb --parallel
+          if not exist "%CD%\build-rfb\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
           ctest --test-dir build-rfb --output-on-failure
-          python remoteaccess\tests\rfb_product_fit.py build-rfb\remoteaccess\tests\hyremote-rfb-test-server.exe
+          python src\remoteaccess\tests\rfb_product_fit.py build-rfb\remoteaccess\tests\hyremote-rfb-test-server.exe
