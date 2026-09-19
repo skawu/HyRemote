@@ -18,7 +18,7 @@ set(required_option_tokens
     [=[option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)]=]
     [=[option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)]=]
     [=[option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)]=]
-    [=[option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (requires OpenSSL 4)" OFF)]=]
+    [=[option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (OpenSSL from your environment, or the project source tree)" OFF)]=]
     # The OpenSSL provider choice is part of the consumer contract: the user's own environment first, the
     # project's own source tree last, and a valid build with the capability reported unavailable when neither
     # is there. Pinning the default and the three accepted settings keeps that order from drifting.

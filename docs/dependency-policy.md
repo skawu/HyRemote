@@ -35,11 +35,13 @@ build that does not request it, and the project never installs a library onto th
 When a build does ask for one, the provider is chosen in this order, and the choice is a consumer-facing build
 setting rather than an internal detail:
 
-1. **The user's own environment.** An installation already present on the machine is used, or selected explicitly
-   with `-DOPENSSL_ROOT_DIR=<prefix>`. Check the version before relying on a toolkit bundled with a Qt SDK: it is
-   built for the Qt it ships with and is often older than the line this capability requires, so it may be found and
-   still rejected. A found-and-too-old OpenSSL is reported as such rather than as "not found", because the two need
-   different remedies.
+1. **The user's own environment.** An OpenSSL already present on the machine is used, or selected explicitly with
+   `-DOPENSSL_ROOT_DIR=<prefix>`. **No version is dictated**: whatever that environment provides is accepted as it
+   is, including one that ships with a Qt SDK, and the version actually found is reported at configure time. The
+   version this tree is verified against is recorded in `cmake/HyRemoteProjectOptions.cmake` as information rather
+   than as a gate, so a consumer who already has a working OpenSSL is never blocked by a line they did not choose.
+   A system provider also has to be reachable at run time: as with Qt, its runtime directory belongs on the loader
+   path (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux) for the application, and for the repository's own tests.
 2. **The project's own source tree.** When the repository carries the dependency as a submodule, the build may
    compile it from source. This stays last on purpose: it is the heaviest path, it needs the submodule checked out
    and that project's own build prerequisites, and it must remain trimmable rather than becoming mandatory.
@@ -50,7 +52,8 @@ setting rather than an internal detail:
 
 For the authenticated/encrypted transport this is `HYREMOTE_WITH_TRANSPORT_SECURITY` (OFF by default, so a build
 that does not ask for the capability acquires nothing) together with `HYREMOTE_OPENSSL_PROVIDER` (`AUTO`, `SYSTEM`
-or `BUNDLED`). The version line those providers must satisfy is recorded in `cmake/HyRemoteProjectOptions.cmake`.
+or `BUNDLED`). The provider's version is deliberately **not** enforced; the version this tree is verified against is
+recorded in `cmake/HyRemoteProjectOptions.cmake`.
 
 ## Required review for every new dependency
 

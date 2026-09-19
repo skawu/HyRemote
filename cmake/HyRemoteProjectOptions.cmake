@@ -28,7 +28,7 @@ option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mod
 # build that does not ask for the capability never acquires the dependency, which also matches the release
 # profile: the authenticated/encrypted transport mode is not released before v1.0.0.0, so a pre-1.0 milestone
 # build that turns this on is rejected as an unreleased mode rather than silently accepted.
-option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (requires OpenSSL 4)" OFF)
+option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (OpenSSL from your environment, or the project source tree)" OFF)
 
 # Where that OpenSSL comes from, in the owner's third-party order: the environment the user already has first,
 # the project's own pinned source tree last, and - when neither is there - no capability at all rather than a
@@ -48,19 +48,16 @@ set(HYREMOTE_OPENSSL_PROVIDER_USED "none")
 
 if(HYREMOTE_WITH_TRANSPORT_SECURITY)
     if(HYREMOTE_OPENSSL_PROVIDER STREQUAL "AUTO" OR HYREMOTE_OPENSSL_PROVIDER STREQUAL "SYSTEM")
-        # The qualified provider is the OpenSSL 4 line - 4.0.2 is the version this tree is verified against -
-        # and the requirement is a version floor rather than a pinned patch, so a provider's own security
-        # update does not invalidate an otherwise qualified build.
-        find_package(OpenSSL 4 QUIET COMPONENTS Crypto SSL)
+        # The owner's ruling (2026-09-19): the provider's version is **not enforced**. Whatever the user's
+        # environment provides is used as it is - 1.1.1x, 3.x or 4.x - because dictating a line would leave a
+        # consumer who already has a working OpenSSL unable to build the capability at all. 4.0.2 is the version
+        # this tree is verified against, recorded as information rather than as a gate, and the project's own
+        # source tree pins the newest line when that provider is the one in use.
+        find_package(OpenSSL QUIET COMPONENTS Crypto SSL)
         if(OpenSSL_FOUND)
             set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE ON)
             set(HYREMOTE_OPENSSL_PROVIDER_USED "system")
             set(HYREMOTE_OPENSSL_LINK_TARGETS OpenSSL::Crypto OpenSSL::SSL)
-        elseif(DEFINED OPENSSL_VERSION AND NOT OPENSSL_VERSION STREQUAL "")
-            # The module reads the version from the header before it applies the requested one, so a failure
-            # here can still say what was actually found. "Something is installed but too old" and "nothing is
-            # installed" are different problems with different remedies, and the message below reports which.
-            set(HYREMOTE_OPENSSL_FOUND_VERSION "${OPENSSL_VERSION}")
         endif()
     endif()
 
@@ -89,27 +86,21 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
             set(_hyremote_openssl_bundled_state
                 "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is not present")
         endif()
-        if(HYREMOTE_OPENSSL_FOUND_VERSION)
-            set(_hyremote_openssl_found
-                "An OpenSSL ${HYREMOTE_OPENSSL_FOUND_VERSION} is installed, but this build requires the OpenSSL 4 line.")
-        else()
-            set(_hyremote_openssl_found
-                "No OpenSSL development files were found.")
-        endif()
         message(WARNING
             "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON asks for authenticated/encrypted transport, but no "
-            "OpenSSL 4 (Crypto + SSL) was found for provider '${HYREMOTE_OPENSSL_PROVIDER}', so this build does "
-            "not include the security capability. ${_hyremote_openssl_found} Provide OpenSSL 4 from your own "
-            "environment with -DOPENSSL_ROOT_DIR=<prefix> - note that an OpenSSL bundled with the Qt SDK is built "
-            "for the Qt it ships with and is usually older than 4, so check its version before relying on it - or "
-            "select the project's own source tree with -DHYREMOTE_OPENSSL_PROVIDER=BUNDLED "
-            "(${_hyremote_openssl_bundled_state}). Everything else in HyRemote builds normally.")
+            "OpenSSL with the Crypto and SSL components was found for provider '${HYREMOTE_OPENSSL_PROVIDER}', so "
+            "this build does not include the security capability. No version is required: whatever OpenSSL your "
+            "environment provides is used as it is, including one that ships with the Qt SDK. Provide it with "
+            "-DOPENSSL_ROOT_DIR=<prefix>, or select the project's own source tree with "
+            "-DHYREMOTE_OPENSSL_PROVIDER=BUNDLED (${_hyremote_openssl_bundled_state}). Everything else in "
+            "HyRemote builds normally.")
         unset(_hyremote_openssl_bundled_state)
-        unset(_hyremote_openssl_found)
     else()
+        # FindOpenSSL publishes the detected version as OPENSSL_VERSION (upper case); naming it here makes the
+        # configure report which provider version was accepted, which matters because no version is enforced.
         message(STATUS
             "HyRemote: authenticated/encrypted transport available from the ${HYREMOTE_OPENSSL_PROVIDER_USED} "
-            "provider (${HYREMOTE_OPENSSL_PROVIDER_USED} OpenSSL reported version ${OpenSSL_VERSION})")
+            "provider (OpenSSL ${OPENSSL_VERSION})")
     endif()
 endif()
 
