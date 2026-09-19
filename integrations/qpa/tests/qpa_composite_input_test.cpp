@@ -4,8 +4,10 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 
+#include <atomic>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 #include "hyremote/core/input.hpp"
@@ -28,13 +30,21 @@ public:
 
     void post(const hyremote::InputEvent &event) override
     {
+        if (m_failNextPost.exchange(false)) {
+            // Models a child adapter that rejects one event; the composite must treat this as a deferred error
+            // rather than a delivery.
+            throw std::runtime_error("recording sink rejected one event");
+        }
         m_recorded->events.push_back(event);
     }
 
     void shutdown() noexcept override { ++m_recorded->shutdownCalls; }
 
+    void failNextPost() { m_failNextPost.store(true); }
+
 private:
     std::shared_ptr<RecordedInput> m_recorded;
+    std::atomic<bool> m_failNextPost{false};
 };
 
 bool check(bool condition, const char *message)
@@ -95,6 +105,10 @@ int main(int argc, char **argv)
     composite.upsertSurface(1, &leftTarget, QRect(-50, 0, 100, 100), true);
     composite.upsertSurface(2, &rightTarget, QRect(0, 0, 100, 100), true);
 
+    // Held by the test as well as by the composite, so a case can make one child adapter reject an event.
+    auto leftSink = std::make_shared<RecordingSink>(left);
+    auto rightSink = std::make_shared<RecordingSink>(right);
+
     const HyRemote::detail::BuiltinTargetResolver resolver =
         [&](QObject *target, bool remoteInputEnabled) {
             HyRemote::detail::TargetComponents result;
@@ -102,10 +116,10 @@ int main(int argc, char **argv)
                 return result;
             if (target == &leftTarget) {
                 result.supported = true;
-                result.input = std::make_shared<RecordingSink>(left);
+                result.input = leftSink;
             } else if (target == &rightTarget) {
                 result.supported = true;
-                result.input = std::make_shared<RecordingSink>(right);
+                result.input = rightSink;
             }
             return result;
         };
@@ -207,6 +221,48 @@ int main(int argc, char **argv)
         || !check(right->events.size() == 5 && right->events.back().kind == hyremote::InputEventKind::Key,
                   "keyboard routing resumes only after explicit active-surface update")) {
         return 9;
+    }
+
+    // #164 acceptance 3, deterministic multi-child failure: a child adapter that rejects an event must not leave
+    // that event half-delivered, the failure must surface on the next post() with that call's own event rejected,
+    // and the composite must stay usable afterwards.
+    const std::size_t leftBeforeFailure = left->events.size();
+    const std::size_t rightBeforeFailure = right->events.size();
+
+    rightSink->failNextPost();
+    components.input->post(pointerEvent(hyremote::InputEventKind::PointerMove, 60, 20));
+    drainEvents(200);
+    if (!check(right->events.size() == rightBeforeFailure,
+               "a rejected child event is not recorded as delivered")
+        || !check(left->events.size() == leftBeforeFailure,
+                  "a rejected child event does not fall through to another child")) {
+        return 12;
+    }
+
+    bool deferredFailureReported = false;
+    std::string deferredFailureMessage;
+    try {
+        components.input->post(pointerEvent(hyremote::InputEventKind::PointerMove, 70, 25));
+    } catch (const std::exception &error) {
+        deferredFailureReported = true;
+        deferredFailureMessage = error.what();
+    }
+    drainEvents(200);
+    if (!check(deferredFailureReported,
+               "the deferred child failure surfaces on the next post instead of being swallowed")
+        || !check(deferredFailureMessage.find("child input adapter rejected an event") != std::string::npos,
+                  "the deferred failure names the rejecting child adapter")
+        || !check(left->events.size() == leftBeforeFailure && right->events.size() == rightBeforeFailure,
+                  "the post that reports the deferred failure does not accept its own event")) {
+        return 13;
+    }
+
+    components.input->post(pointerEvent(hyremote::InputEventKind::PointerMove, 60, 20));
+    if (!check(waitForCount(left, right, leftBeforeFailure + rightBeforeFailure + 1),
+               "the composite accepts input again once the deferred failure has been reported")
+        || !check(right->events.size() == rightBeforeFailure + 1,
+                  "the recovery delivery reaches the previously failing child exactly once")) {
+        return 14;
     }
 
     components.input->shutdown();

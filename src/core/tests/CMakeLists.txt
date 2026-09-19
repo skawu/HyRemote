@@ -24,6 +24,7 @@ hyremote_add_core_test(hyremote-core-test-session-defaults test_session_defaults
 hyremote_add_core_test(hyremote-core-test-input-routing test_input_routing.cpp)
 hyremote_add_core_test(hyremote-core-test-input-normalization test_input_normalization.cpp)
 hyremote_add_core_test(hyremote-core-test-callback-lifetime test_callback_lifetime.cpp)
+hyremote_add_core_test(hyremote-core-test-callback-exception-boundary test_callback_exception_boundary.cpp)
 
 # The dependency rule of ADR-0001 is testable: no Core source may include or declare a Qt GUI/private,
 # protocol or platform dependency, and the Core target may not link a Qt target.
