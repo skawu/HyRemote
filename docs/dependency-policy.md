@@ -35,8 +35,11 @@ build that does not request it, and the project never installs a library onto th
 When a build does ask for one, the provider is chosen in this order, and the choice is a consumer-facing build
 setting rather than an internal detail:
 
-1. **The user's own environment.** An installation already present on the machine is used, selected explicitly
-   with `-DOPENSSL_ROOT_DIR=<prefix>`, or supplied through the Qt SDK's "OpenSSL Toolkit" component.
+1. **The user's own environment.** An installation already present on the machine is used, or selected explicitly
+   with `-DOPENSSL_ROOT_DIR=<prefix>`. Check the version before relying on a toolkit bundled with a Qt SDK: it is
+   built for the Qt it ships with and is often older than the line this capability requires, so it may be found and
+   still rejected. A found-and-too-old OpenSSL is reported as such rather than as "not found", because the two need
+   different remedies.
 2. **The project's own source tree.** When the repository carries the dependency as a submodule, the build may
    compile it from source. This stays last on purpose: it is the heaviest path, it needs the submodule checked out
    and that project's own build prerequisites, and it must remain trimmable rather than becoming mandatory.

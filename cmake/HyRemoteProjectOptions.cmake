@@ -56,6 +56,11 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
             set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE ON)
             set(HYREMOTE_OPENSSL_PROVIDER_USED "system")
             set(HYREMOTE_OPENSSL_LINK_TARGETS OpenSSL::Crypto OpenSSL::SSL)
+        elseif(DEFINED OPENSSL_VERSION AND NOT OPENSSL_VERSION STREQUAL "")
+            # The module reads the version from the header before it applies the requested one, so a failure
+            # here can still say what was actually found. "Something is installed but too old" and "nothing is
+            # installed" are different problems with different remedies, and the message below reports which.
+            set(HYREMOTE_OPENSSL_FOUND_VERSION "${OPENSSL_VERSION}")
         endif()
     endif()
 
@@ -84,14 +89,23 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
             set(_hyremote_openssl_bundled_state
                 "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is not present")
         endif()
+        if(HYREMOTE_OPENSSL_FOUND_VERSION)
+            set(_hyremote_openssl_found
+                "An OpenSSL ${HYREMOTE_OPENSSL_FOUND_VERSION} is installed, but this build requires the OpenSSL 4 line.")
+        else()
+            set(_hyremote_openssl_found
+                "No OpenSSL development files were found.")
+        endif()
         message(WARNING
             "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON asks for authenticated/encrypted transport, but no "
             "OpenSSL 4 (Crypto + SSL) was found for provider '${HYREMOTE_OPENSSL_PROVIDER}', so this build does "
-            "not include the security capability. Provide OpenSSL 4 from your own environment - an existing "
-            "installation through -DOPENSSL_ROOT_DIR=<prefix>, or the Qt Maintenance Tool's \"OpenSSL Toolkit\" "
-            "component - or select the project's own source tree with -DHYREMOTE_OPENSSL_PROVIDER=BUNDLED "
+            "not include the security capability. ${_hyremote_openssl_found} Provide OpenSSL 4 from your own "
+            "environment with -DOPENSSL_ROOT_DIR=<prefix> - note that an OpenSSL bundled with the Qt SDK is built "
+            "for the Qt it ships with and is usually older than 4, so check its version before relying on it - or "
+            "select the project's own source tree with -DHYREMOTE_OPENSSL_PROVIDER=BUNDLED "
             "(${_hyremote_openssl_bundled_state}). Everything else in HyRemote builds normally.")
         unset(_hyremote_openssl_bundled_state)
+        unset(_hyremote_openssl_found)
     else()
         message(STATUS
             "HyRemote: authenticated/encrypted transport available from the ${HYREMOTE_OPENSSL_PROVIDER_USED} "
