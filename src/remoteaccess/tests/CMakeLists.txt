@@ -105,7 +105,7 @@ if(HYREMOTE_WITH_VNC)
             PRIVATE
                 hyremote-remoteaccess
                 Qt6::Core
-                ${HYREMOTE_OPENSSL_LINK_TARGETS}
+                OpenSSL::Crypto
         )
         target_include_directories(hyremote-vnc-auth-test
             PRIVATE

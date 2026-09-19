@@ -27,33 +27,25 @@ These tools are pinned/used by repository automation and acceptance harnesses. T
 
 Their own upstream licenses remain authoritative; this table records why they do not alter HyRemote's shipped Apache-2.0 product surface.
 
-## Provider selection (user environment first, project source last)
+## Optional build-time dependencies
 
 A third-party dependency is used only when a build asks for the capability it serves. Nothing is acquired for a
-build that does not request it, and the project never installs a library onto the host machine.
+build that does not request it; the project **never installs a library onto the host machine, and never carries one
+as a submodule**, so the provider is always the environment the user already has.
 
-When a build does ask for one, the provider is chosen in this order, and the choice is a consumer-facing build
-setting rather than an internal detail:
+For the authenticated/encrypted transport the single setting is `HYREMOTE_WITH_TRANSPORT_SECURITY` (OFF by default,
+so a build that does not ask for the capability acquires nothing). An OpenSSL already present on the machine is
+used, or one selected explicitly with `-DOPENSSL_ROOT_DIR=<prefix>`. **No version is dictated**: whatever that
+environment provides is accepted as it is, including one that ships with a Qt SDK, and the version actually found
+is reported at configure time; the version this tree is verified against is recorded in
+`cmake/HyRemoteProjectOptions.cmake` as information rather than as a gate. A provider also has to be reachable at
+run time: as with Qt, its runtime directory belongs on the loader path (`PATH` on Windows, `LD_LIBRARY_PATH` on
+Linux) for the application and for the repository's own tests.
 
-1. **The user's own environment.** An OpenSSL already present on the machine is used, or selected explicitly with
-   `-DOPENSSL_ROOT_DIR=<prefix>`. **No version is dictated**: whatever that environment provides is accepted as it
-   is, including one that ships with a Qt SDK, and the version actually found is reported at configure time. The
-   version this tree is verified against is recorded in `cmake/HyRemoteProjectOptions.cmake` as information rather
-   than as a gate, so a consumer who already has a working OpenSSL is never blocked by a line they did not choose.
-   A system provider also has to be reachable at run time: as with Qt, its runtime directory belongs on the loader
-   path (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux) for the application, and for the repository's own tests.
-2. **The project's own source tree.** When the repository carries the dependency as a submodule, the build may
-   compile it from source. This stays last on purpose: it is the heaviest path, it needs the submodule checked out
-   and that project's own build prerequisites, and it must remain trimmable rather than becoming mandatory.
-3. **Nothing at all.** If neither provider can supply it, the build is still valid. The capability is reported
-   unavailable with one actionable message and is not compiled in, which is neither a hard failure that leaves the
-   user without a build nor a silent downgrade: a runtime asked to use a capability the build does not contain
-   refuses to start instead of quietly proceeding without it.
-
-For the authenticated/encrypted transport this is `HYREMOTE_WITH_TRANSPORT_SECURITY` (OFF by default, so a build
-that does not ask for the capability acquires nothing) together with `HYREMOTE_OPENSSL_PROVIDER` (`AUTO`, `SYSTEM`
-or `BUNDLED`). The provider's version is deliberately **not** enforced; the version this tree is verified against is
-recorded in `cmake/HyRemoteProjectOptions.cmake`.
+When none is found the build is still valid. The capability is reported unavailable with one actionable message and
+is not compiled in, which is neither a hard failure that leaves the user without a build nor a silent downgrade: a
+runtime asked to use a capability the build does not contain refuses to start instead of quietly proceeding
+without it.
 
 ## Required review for every new dependency
 
