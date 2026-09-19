@@ -70,6 +70,11 @@ if(HYREMOTE_WITH_VNC)
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE ${HYREMOTE_OPENSSL_LINK_TARGETS})
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
+        if(HYREMOTE_OPENSSL_BUILD_TARGET)
+            # The bundled provider is compiled during this build, so this target must wait for it before it links
+            # against the libraries that build produces.
+            add_dependencies(hyremote-remoteaccess ${HYREMOTE_OPENSSL_BUILD_TARGET})
+        endif()
     endif()
 endif()
 

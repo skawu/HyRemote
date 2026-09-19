@@ -44,7 +44,19 @@ setting rather than an internal detail:
    path (`PATH` on Windows, `LD_LIBRARY_PATH` on Linux) for the application, and for the repository's own tests.
 2. **The project's own source tree.** When the repository carries the dependency as a submodule, the build may
    compile it from source. This stays last on purpose: it is the heaviest path, it needs the submodule checked out
-   and that project's own build prerequisites, and it must remain trimmable rather than becoming mandatory.
+   and that project's own build prerequisites, and it must remain trimmable rather than becoming mandatory. For the
+   pinned OpenSSL - `third_party/openssl`, the `openssl-4.0.2` release commit - those prerequisites are **Perl**
+   and **GNU make**, because OpenSSL 4 is configured by its own Perl `Configure` script rather than by CMake;
+   `nmake` is not accepted, since it drives a Visual C++ build. The build is configured with `no-shared no-asm
+   no-tests no-apps no-docs`, so no assembler is needed and the provider stays static, and a missing prerequisite
+   is reported by name instead of failing the configure. `HYREMOTE_OPENSSL_BUILD_JOBS` raises the parallel job count
+   of that build, because a provider built from source is long.
+   **This path has not been exercised end to end.** What *is* measured: with a Perl and a `make` on `PATH`, the
+   configure step runs, the external build is created, Perl is invoked with the absolute path to OpenSSL's
+   `Configure`, and OpenSSL's own prerequisite check is what stops it - on the maintainer host the only Perl is the
+   minimal MSYS one inside Git for Windows, which lacks `Locale::Maketext::Simple`. So the integration is proven up
+   to OpenSSL's own gate, and producing libraries needs a **complete** Perl distribution (Strawberry Perl or a
+   distribution package), which no host used so far has provided.
 3. **Nothing at all.** If neither provider can supply it, the build is still valid. The capability is reported
    unavailable with one actionable message and is not compiled in, which is neither a hard failure that leaves the
    user without a build nor a silent downgrade: a runtime asked to use a capability the build does not contain

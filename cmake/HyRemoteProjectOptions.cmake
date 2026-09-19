@@ -43,6 +43,11 @@ set_property(CACHE HYREMOTE_OPENSSL_PROVIDER PROPERTY STRINGS AUTO SYSTEM BUNDLE
 set(HYREMOTE_OPENSSL_BUNDLED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/openssl" CACHE PATH
     "Directory of the project's own OpenSSL source tree, used when HYREMOTE_OPENSSL_PROVIDER selects it")
 
+# A source build of a cryptography provider is long, so it is parallelised on request. 1 is the safe default:
+# a provider built by an unrelated job count is a worse trade than a slower first build.
+set(HYREMOTE_OPENSSL_BUILD_JOBS "1" CACHE STRING
+    "Parallel make jobs for the project's own OpenSSL source build")
+
 set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE OFF)
 set(HYREMOTE_OPENSSL_PROVIDER_USED "none")
 
@@ -63,12 +68,81 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
 
     if(NOT HYREMOTE_TRANSPORT_SECURITY_AVAILABLE
        AND (HYREMOTE_OPENSSL_PROVIDER STREQUAL "AUTO" OR HYREMOTE_OPENSSL_PROVIDER STREQUAL "BUNDLED"))
-        # The bundled provider is the project's own source tree, built as part of this configure. Compiling a
-        # third-party cryptography provider from source is its own increment, so selecting it is honoured -
-        # and reported as not yet available - rather than silently ignored. The preset facts are checked here
-        # so the message can say which of the two situations applies.
-        if(EXISTS "${HYREMOTE_OPENSSL_BUNDLED_DIR}/CMakeLists.txt")
+        # The bundled provider is the project's own pinned source tree, compiled during this build. OpenSSL 4
+        # ships its own Perl-driven build system - `Configure`, `config`, `build.info`, `Configurations/` - and
+        # not a CMake build, and it generates `include/openssl/opensslv.h` at configure time, so the tree is
+        # recognised by that build system rather than by a CMakeLists.txt it does not have.
+        if(EXISTS "${HYREMOTE_OPENSSL_BUNDLED_DIR}/Configure"
+           AND EXISTS "${HYREMOTE_OPENSSL_BUNDLED_DIR}/build.info")
             set(HYREMOTE_OPENSSL_BUNDLED_PRESENT ON)
+
+            # Perl and make are prerequisites of this provider and of nothing else, so they are looked for only
+            # when it is actually selected. nmake is deliberately not accepted: it drives a Visual C++ build,
+            # which cannot produce libraries for the MinGW build this project is configured for.
+            find_package(Perl QUIET)
+            find_program(HYREMOTE_OPENSSL_MAKE_EXECUTABLE NAMES make mingw32-make gmake
+                DOC "make used to build the project's own OpenSSL source tree")
+
+            set(_hyremote_openssl_missing)
+            if(NOT PERL_FOUND)
+                list(APPEND _hyremote_openssl_missing "Perl")
+            endif()
+            if(NOT HYREMOTE_OPENSSL_MAKE_EXECUTABLE)
+                list(APPEND _hyremote_openssl_missing "GNU make")
+            endif()
+            set(HYREMOTE_OPENSSL_BUNDLED_MISSING "${_hyremote_openssl_missing}")
+
+            if(NOT _hyremote_openssl_missing)
+                include(ExternalProject)
+                set(_hyremote_openssl_build "${CMAKE_CURRENT_BINARY_DIR}/hyremote-openssl")
+                set(_hyremote_openssl_install "${_hyremote_openssl_build}/install")
+
+                # no-shared keeps the provider static, so nothing has to be deployed beside the runtime; no-asm
+                # keeps an assembler out of the prerequisite list; no-tests/no-apps/no-docs keep the build to
+                # the two libraries this capability links. --libdir=lib pins the install layout the imported
+                # targets below name, because OpenSSL's own default differs between its targets.
+                if(WIN32)
+                    set(_hyremote_openssl_target "mingw64")
+                else()
+                    set(_hyremote_openssl_target "linux-x86_64")
+                endif()
+
+                ExternalProject_Add(hyremote-openssl-bundled
+                    SOURCE_DIR "${HYREMOTE_OPENSSL_BUNDLED_DIR}"
+                    BINARY_DIR "${_hyremote_openssl_build}/build"
+                    # The Configure script is run by absolute path because ExternalProject's configure step
+                    # executes in BINARY_DIR, which is deliberately outside the source tree.
+                    CONFIGURE_COMMAND "${PERL_EXECUTABLE}" "${HYREMOTE_OPENSSL_BUNDLED_DIR}/Configure"
+                        "${_hyremote_openssl_target}" no-shared no-asm no-tests no-apps no-docs
+                        "--prefix=${_hyremote_openssl_install}"
+                        "--openssldir=${_hyremote_openssl_install}/ssl"
+                        "--libdir=lib"
+                    BUILD_COMMAND "${HYREMOTE_OPENSSL_MAKE_EXECUTABLE}" "-j${HYREMOTE_OPENSSL_BUILD_JOBS}"
+                    INSTALL_COMMAND "${HYREMOTE_OPENSSL_MAKE_EXECUTABLE}" install_sw
+                    BUILD_BYPRODUCTS
+                        "${_hyremote_openssl_install}/lib/libcrypto.a"
+                        "${_hyremote_openssl_install}/lib/libssl.a"
+                    UPDATE_COMMAND "")
+
+                # Imported targets for the libraries the external project will produce. The include directory has
+                # to exist at configure time because CMake validates interface include directories then, even
+                # though the headers themselves only arrive during the build.
+                file(MAKE_DIRECTORY "${_hyremote_openssl_install}/include")
+                foreach(_hyremote_openssl_component IN ITEMS Crypto SSL)
+                    string(TOLOWER "${_hyremote_openssl_component}" _hyremote_openssl_lower)
+                    add_library(HyRemoteOpenSSL::${_hyremote_openssl_component} STATIC IMPORTED GLOBAL)
+                    set_target_properties(HyRemoteOpenSSL::${_hyremote_openssl_component} PROPERTIES
+                        IMPORTED_LOCATION "${_hyremote_openssl_install}/lib/lib${_hyremote_openssl_lower}.a"
+                        INTERFACE_INCLUDE_DIRECTORIES "${_hyremote_openssl_install}/include")
+                endforeach()
+
+                set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE ON)
+                set(HYREMOTE_OPENSSL_PROVIDER_USED "bundled")
+                set(HYREMOTE_OPENSSL_LINK_TARGETS HyRemoteOpenSSL::Crypto HyRemoteOpenSSL::SSL)
+                # A consumer linking those imported libraries has to wait for the external build, and
+                # add_dependencies cannot express that transitively through an imported target.
+                set(HYREMOTE_OPENSSL_BUILD_TARGET hyremote-openssl-bundled)
+            endif()
         else()
             set(HYREMOTE_OPENSSL_BUNDLED_PRESENT OFF)
         endif()
@@ -79,12 +153,15 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
         # provide it still gets a valid build, with the capability reported unavailable. The runtime refuses
         # to start with authentication enabled in that build (see RemoteAccess), so this is not a silent
         # downgrade either - it is a build that says what it does not have.
-        if(HYREMOTE_OPENSSL_BUNDLED_PRESENT)
+        if(NOT HYREMOTE_OPENSSL_BUNDLED_PRESENT)
             set(_hyremote_openssl_bundled_state
-                "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is present, but building OpenSSL from source is not implemented yet")
+                "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is not checked out; `git submodule update --init third_party/openssl` fetches it")
+        elseif(HYREMOTE_OPENSSL_BUNDLED_MISSING)
+            set(_hyremote_openssl_bundled_state
+                "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is present, but building it needs ${HYREMOTE_OPENSSL_BUNDLED_MISSING}, which was not found")
         else()
             set(_hyremote_openssl_bundled_state
-                "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is not present")
+                "the project source tree at ${HYREMOTE_OPENSSL_BUNDLED_DIR} is present and Perl and make were found, but that does not guarantee the build succeeds: OpenSSL's Configure needs a complete Perl distribution, and the minimal one bundled with Git for Windows is not enough (it lacks Locale::Maketext::Simple). Their own output names the reason if it fails")
         endif()
         message(WARNING
             "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON asks for authenticated/encrypted transport, but no "
@@ -96,11 +173,18 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
             "HyRemote builds normally.")
         unset(_hyremote_openssl_bundled_state)
     else()
-        # FindOpenSSL publishes the detected version as OPENSSL_VERSION (upper case); naming it here makes the
-        # configure report which provider version was accepted, which matters because no version is enforced.
-        message(STATUS
-            "HyRemote: authenticated/encrypted transport available from the ${HYREMOTE_OPENSSL_PROVIDER_USED} "
-            "provider (OpenSSL ${OPENSSL_VERSION})")
+        # FindOpenSSL publishes the detected version as OPENSSL_VERSION (upper case). It is only known for the
+        # system provider, so the version clause is omitted rather than printed empty elsewhere - a version is
+        # reported when one was actually detected, which matters because none is enforced.
+        if(HYREMOTE_OPENSSL_PROVIDER_USED STREQUAL "system")
+            message(STATUS
+                "HyRemote: authenticated/encrypted transport available from the system provider "
+                "(OpenSSL ${OPENSSL_VERSION})")
+        else()
+            message(STATUS
+                "HyRemote: authenticated/encrypted transport available from the ${HYREMOTE_OPENSSL_PROVIDER_USED} "
+                "provider (the version follows that source tree)")
+        endif()
     endif()
 endif()
 
