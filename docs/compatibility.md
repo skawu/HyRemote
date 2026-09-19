@@ -89,7 +89,7 @@ through `127.0.0.1`), `0.0.0.0` is reachable through `127.0.0.1`, and both a rej
 before `Running` with the state still `Stopped`. The Linux column is pending #109 and must not be inferred from the
 Windows one. See `known-limitations.md` for the IPv6-only boundary and the current non-actionable failure message.
 
-The current production correctness transport is bounded RFB 3.8 with SecurityType None. It is intended to establish remote-view/input correctness and standard VNC interoperability, not Internet-safe security.
+The production correctness transport is bounded RFB 3.8: SecurityType None unless an authenticated profile is configured, and then RFB VNC authentication (security type 2), which mainstream viewers already implement. It is intended to establish remote-view/input correctness and standard VNC interoperability, not Internet-safe security: the stream is not encrypted.
 
 The V1 automated product path uses maintained `vncdotool` plus raw protocol checks. Additional viewer products such as TigerVNC can be added to the compatibility matrix only after versioned acceptance evidence exists.
 

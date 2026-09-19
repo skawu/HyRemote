@@ -45,7 +45,7 @@ Safe defaults match C++:
 - port 5921;
 - remote input disabled;
 - explicit `enabled: true` required;
-- current RFB correctness baseline uses SecurityType None and is unauthenticated/unencrypted.
+- the RFB correctness baseline defaults to SecurityType None (unauthenticated/unencrypted and refused beyond loopback); a configured authenticated profile adds RFB VNC authentication but no encryption.
 
 ## Optional configuration
 
@@ -121,7 +121,7 @@ See `../viewer-connection.md` for viewer behavior.
 
 ## Security boundary
 
-The current correctness baseline negotiates RFB SecurityType None. Do not expose it directly to an untrusted/public network. View-only is an input policy, not authentication, and the stream is not encrypted.
+The correctness baseline negotiates RFB SecurityType None unless an authenticated profile is configured, which authenticates the viewer with RFB VNC authentication. Do not expose a listener directly to an untrusted/public network. View-only is an input policy, not authentication, and the stream is not encrypted.
 
 See `../security.md`.
 
