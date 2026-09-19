@@ -53,11 +53,33 @@ int main()
         }
     }
 
+    {
+        // Authentication is opt-in through the platform string, but only as enable/disable: a password is
+        // deliberately not accepted here because -platform values are visible in the process command line.
+        QStringList parameters{QStringLiteral("hyremote-auth=on")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "hyremote-auth=on parses")
+            || !check(config.authenticationEnabled, "authentication can be explicitly enabled")
+            || !check(parameters.isEmpty(), "the authentication parameter is consumed")) {
+            return 4;
+        }
+
+        QStringList offParameters{QStringLiteral("hyremote-auth=off")};
+        RemoteConfig offConfig;
+        if (!check(parseRemoteConfig(offParameters, offConfig, error), "hyremote-auth=off parses")
+            || !check(!offConfig.authenticationEnabled, "authentication stays off when explicitly disabled")) {
+            return 5;
+        }
+    }
+
     const QStringList invalidParameters{
         QStringLiteral("hyremote-address=not-an-address"),
         QStringLiteral("hyremote-port=0"),
         QStringLiteral("hyremote-port=65536"),
         QStringLiteral("hyremote-input=maybe"),
+        QStringLiteral("hyremote-auth=maybe"),
+        QStringLiteral("hyremote-auth"),
     };
     for (const QString &parameter : invalidParameters) {
         QStringList parameters{parameter};

@@ -24,6 +24,11 @@ struct RemoteConfig
 {
     QHostAddress listenAddress = QHostAddress::LocalHost;
     quint16 port = 5900;
+    // Configuration only, mirroring RemoteAccess::setAuthenticationEnabled(). The QPA plugin deliberately
+    // does not accept a password on the platform string: process command lines are visible to other
+    // processes on the same machine, so a host that wants authentication supplies the password through
+    // its own code path or an environment variable, never through -platform.
+    bool authenticationEnabled = false;
     bool remoteInputEnabled = false;
 };
 

@@ -97,6 +97,49 @@ QObject *QmlRemoteAccess::target() const noexcept
     return m_access ? m_access->target() : nullptr;
 }
 
+bool QmlRemoteAccess::authenticationEnabled() const noexcept
+{
+    return m_authenticationEnabled;
+}
+
+bool QmlRemoteAccess::setAuthenticationEnabled(bool enabled)
+{
+    if (!m_access) {
+        setLocalError(InvalidConfiguration, QStringLiteral("remote access is not available"));
+        return false;
+    }
+    if (!m_access->setAuthenticationEnabled(enabled)) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("authentication can only be changed while remote access is stopped"));
+        return false;
+    }
+
+    if (m_authenticationEnabled != enabled) {
+        m_authenticationEnabled = enabled;
+        emit authenticationEnabledChanged();
+    }
+    clearLocalError();
+    return true;
+}
+
+bool QmlRemoteAccess::setPassword(const QString &password)
+{
+    if (!m_access) {
+        setLocalError(InvalidConfiguration, QStringLiteral("remote access is not available"));
+        return false;
+    }
+    if (!m_access->setPassword(password)) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("the password can only be changed while remote access is stopped"));
+        return false;
+    }
+
+    // Intentionally no signal and no property: the password is never readable back through QML. The local
+    // error is cleared so a stale message cannot suggest the value was rejected.
+    clearLocalError();
+    return true;
+}
+
 void QmlRemoteAccess::setTarget(QObject *targetObject)
 {
     if (!m_access || targetObject == target())

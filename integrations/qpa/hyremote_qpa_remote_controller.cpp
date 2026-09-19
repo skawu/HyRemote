@@ -101,6 +101,20 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
+        if (key == QStringLiteral("hyremote-auth")) {
+            // Enabling only. A password is never accepted here on purpose: -platform values are visible in
+            // the process command line to other processes, so the host application supplies the password
+            // through the API instead.
+            bool enabled = false;
+            if (separator < 0 || !parseBoolean(value, enabled)) {
+                error = QStringLiteral("hyremote-auth must be one of 0/1, false/true, off/on or no/yes");
+                return false;
+            }
+            parsed.authenticationEnabled = enabled;
+            it = parameters.erase(it);
+            continue;
+        }
+
         ++it;
     }
 

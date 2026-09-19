@@ -107,6 +107,17 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
     CHECK(QMetaObject::invokeMethod(object.get(), "clearError"));
     CHECK(object->property("errorCode").toInt() == 0);
     CHECK(object->property("errorString").toString().isEmpty());
+
+    // Authentication configuration surface (#143 S2): a read-only property plus invokable setters, so the
+    // password is never readable back through QML.
+    CHECK(!object->property("authenticationEnabled").toBool());
+    CHECK(QMetaObject::invokeMethod(object.get(), "setAuthenticationEnabled", Q_ARG(bool, true)));
+    CHECK(object->property("authenticationEnabled").toBool());
+    CHECK(QMetaObject::invokeMethod(object.get(), "setPassword", Q_ARG(QString, QStringLiteral("s3cret"))));
+    CHECK(object->property("errorCode").toInt() == 0);
+    CHECK(!object->property("password").isValid());
+    CHECK(QMetaObject::invokeMethod(object.get(), "setAuthenticationEnabled", Q_ARG(bool, false)));
+    CHECK(!object->property("authenticationEnabled").toBool());
 }
 
 void testEnabledStartFailureIsTransactional()
