@@ -109,7 +109,7 @@ Deployment does not weaken product defaults:
 - QPA listener creation follows the documented platform-plugin lifecycle;
 - loopback is the default bind;
 - remote input is disabled by default;
-- the current RFB SecurityType None baseline provides neither viewer authentication nor transport encryption.
+- bare RFB SecurityType None provides no viewer authentication (a configured authenticated profile provides RFB VNC authentication instead), and no configuration provides transport encryption yet.
 
 If an application intentionally changes the bind address, its operator/deployment documentation must describe the resulting trust boundary. See `docs/security.md`.
 

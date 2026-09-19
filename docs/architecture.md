@@ -166,7 +166,7 @@ RFB is not an application-facing API. A future accepted transport can reuse the 
 
 Historical NeatVNC/rustvncserver work is research evidence only. Rust/Cargo is not a normal V1 build or consumer dependency. LibVNCServer is not the default V1 backend.
 
-The current RFB baseline negotiates **SecurityType None**. V1 therefore provides no transport authentication or encryption and must not be exposed directly to the public Internet.
+The RFB baseline negotiates **SecurityType None** unless an authenticated profile and a credential are configured, in which case the viewer is authenticated with **RFB VNC authentication** (security type 2). No transport encryption is provided yet - TLS is a separate, later step - so a listener beyond loopback must not be exposed directly to the public Internet.
 
 ## 10. Input model and lifecycle
 
