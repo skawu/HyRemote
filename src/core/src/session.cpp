@@ -943,8 +943,14 @@ bool Session::start()
                           },
                           [gate](const CaptureEvent &event) {
                               GateGuard guard(gate);
+                              // Captured by reference, not by value: a copy of an event carrying a long message
+                              // allocates, and a closure that is materialised before the call would perform that
+                              // allocation outside the boundary - so an allocation failure would escape into the
+                              // backend stack instead of being contained, which is the contract this boundary
+                              // exists to hold. The boundary invokes the callable synchronously, so the reference
+                              // is valid for the whole call.
                               if (auto *target = static_cast<Impl *>(guard.enter()))
-                                  Impl::atCallbackBoundary(*target, [target, event] {
+                                  Impl::atCallbackBoundary(*target, [target, &event] {
                                       Impl::onCaptureEvent(*target, event);
                                   });
                           });
@@ -1078,14 +1084,16 @@ bool Session::start()
             transport->start([gate](const InputEvent &event) {
                                  GateGuard guard(gate);
                                  if (auto *target = static_cast<Impl *>(guard.enter()))
-                                     Impl::atCallbackBoundary(*target, [target, event] {
+                                     // By reference for the same reason as the capture-event path: the copy would
+                                     // allocate before the boundary, where nothing can contain the failure.
+                                     Impl::atCallbackBoundary(*target, [target, &event] {
                                          Impl::onInput(*target, event);
                                      });
                              },
                              [gate](const TransportEvent &event) {
                                  GateGuard guard(gate);
                                  if (auto *target = static_cast<Impl *>(guard.enter()))
-                                     Impl::atCallbackBoundary(*target, [target, event] {
+                                     Impl::atCallbackBoundary(*target, [target, &event] {
                                          Impl::onTransportEvent(*target, event);
                                      });
                              });
