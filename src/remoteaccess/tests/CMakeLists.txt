@@ -94,22 +94,24 @@ add_test(NAME hyremote-input-mailbox-admission-test COMMAND hyremote-input-mailb
 set_tests_properties(hyremote-input-mailbox-admission-test PROPERTIES TIMEOUT 15)
 
 if(HYREMOTE_WITH_VNC)
-    add_executable(hyremote-vnc-auth-test
-        test_vnc_auth.cpp
-        ../src/transport/vnc_auth.cpp
-    )
-    target_link_libraries(hyremote-vnc-auth-test
-        PRIVATE
-            hyremote-remoteaccess
-            Qt6::Core
-            OpenSSL::Crypto
-    )
-    target_include_directories(hyremote-vnc-auth-test
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
-    )
-    add_test(NAME hyremote-vnc-auth-test COMMAND hyremote-vnc-auth-test)
-    set_tests_properties(hyremote-vnc-auth-test PROPERTIES TIMEOUT 15)
+    if(HYREMOTE_WITH_TRANSPORT_SECURITY)
+        add_executable(hyremote-vnc-auth-test
+            test_vnc_auth.cpp
+            ../src/transport/vnc_auth.cpp
+        )
+        target_link_libraries(hyremote-vnc-auth-test
+            PRIVATE
+                hyremote-remoteaccess
+                Qt6::Core
+                OpenSSL::Crypto
+        )
+        target_include_directories(hyremote-vnc-auth-test
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        )
+        add_test(NAME hyremote-vnc-auth-test COMMAND hyremote-vnc-auth-test)
+        set_tests_properties(hyremote-vnc-auth-test PROPERTIES TIMEOUT 15)
+    endif()
 
     # Network interoperability harness used by the dual-OS maintained-client workflow. It links the
     # same private factory as RemoteAccess; it is not installed and is not part of the public SDK.
