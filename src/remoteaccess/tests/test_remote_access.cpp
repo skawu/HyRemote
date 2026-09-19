@@ -202,6 +202,8 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(remote.listenAddress() == QHostAddress(QHostAddress::LocalHost));
     CHECK(remote.port() == 5900);
     CHECK(!remote.remoteInputEnabled());
+    CHECK(remote.securityProfile() == HyRemote::RemoteSecurityProfile::Insecure);
+    CHECK(remote.securityConfigFile().isEmpty());
     CHECK(remote.connectedClientCount() == 0);
     CHECK(counters->targetFactoryCalls.load() == 0);
     CHECK(counters->transportFactoryCalls.load() == 0);
@@ -209,41 +211,45 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(counters->transportStarts.load() == 0);
     CHECK(counters->inputShutdowns.load() == 0);
 
-    // Second phase: the authentication configuration surface (#143 S2, configuration-only step). It must
-    // never be a switch that silently does nothing - with authentication enabled, start() refuses rather
-    // than serving an unauthenticated SecurityType None listener, and no error may contain the password.
-    CHECK(!remote.authenticationEnabled());
-    CHECK(remote.setAuthenticationEnabled(true));
+    // #170 security configuration is frozen before the real #143 transport step: a selected secure
+    // profile must fail before any target/transport/listener is composed, never downgrade to None.
+    CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
     CHECK(!remote.start());
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(counters->targetFactoryCalls.load() == 0);
     CHECK(counters->transportFactoryCalls.load() == 0);
-    if (const auto error = remote.lastError()) {
-        CHECK(error->code == HyRemote::RemoteAccessErrorCode::AuthenticationUnavailable);
-        CHECK(error->message.contains(QStringLiteral("without a password")));
-    } else {
-        CHECK(false);
-    }
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+    CHECK(remote.lastError()->message.contains(QStringLiteral("descriptor")));
 
-    const QString secret = QStringLiteral("s3cret-do-not-echo");
-    CHECK(remote.setPassword(secret));
+    const QString descriptor = QStringLiteral("support-security.conf");
+    CHECK(remote.setSecurityConfigFile(descriptor));
     CHECK(!remote.start());
-    if (const auto error = remote.lastError()) {
-        CHECK(error->code == HyRemote::RemoteAccessErrorCode::AuthenticationUnavailable);
-        CHECK(!error->message.contains(secret));
-    } else {
-        CHECK(false);
-    }
+    CHECK(counters->transportFactoryCalls.load() == 0);
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+    CHECK(!remote.lastError()->message.contains(descriptor));
 
-    // Configuration is mutable only while Stopped, and disabling authentication restores normal operation.
-    CHECK(remote.setAuthenticationEnabled(false));
+    // Insecure compatibility mode is loopback-only. This absorbs the former #153 guard without
+    // changing the normal default listener or pretending an unavailable secure transport exists.
+    CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Insecure));
+    CHECK(remote.setListenAddress(QHostAddress::AnyIPv4));
+    CHECK(!remote.start());
+    CHECK(counters->targetFactoryCalls.load() == 0);
+    CHECK(counters->transportFactoryCalls.load() == 0);
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
+    CHECK(remote.lastError()->message.contains(QStringLiteral("non-loopback")));
+    CHECK(remote.setListenAddress(QHostAddress::LocalHost));
+
     CHECK(remote.start());
     CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
-    CHECK(!remote.setAuthenticationEnabled(true));
-    CHECK(!remote.setPassword(secret));
+    CHECK(!remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
+    CHECK(!remote.setSecurityConfigFile(QStringLiteral("other.conf")));
     remote.stop();
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
-    CHECK(remote.setAuthenticationEnabled(true));
-    CHECK(remote.setPassword(QString()));
+    CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted));
+    CHECK(remote.setSecurityConfigFile(QString()));
 }
 
 void testMissingTargetAndMissingAdapterFailCleanly()
@@ -277,7 +283,6 @@ void testProductLifecycleAndConfigurationForwarding()
     CHECK(remote.setListenAddress(QHostAddress(QStringLiteral("127.0.0.2"))));
     CHECK(remote.setPort(5999));
     CHECK(remote.setRemoteInputEnabled(true));
-
     CHECK(remote.start());
     CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
     CHECK(remote.connectedClientCount() == 0);
@@ -292,6 +297,8 @@ void testProductLifecycleAndConfigurationForwarding()
     CHECK(!remote.setPort(5901));
     CHECK(!remote.setTarget(nullptr));
     CHECK(!remote.setRemoteInputEnabled(false));
+    CHECK(!remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
+    CHECK(!remote.setSecurityConfigFile(QStringLiteral("support.conf")));
 
     remote.stop();
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
@@ -307,6 +314,8 @@ void testProductLifecycleAndConfigurationForwarding()
     // Configuration becomes mutable again after stop.
     CHECK(remote.setPort(5901));
     CHECK(remote.setRemoteInputEnabled(false));
+    CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
+    CHECK(remote.setSecurityConfigFile(QStringLiteral("support.conf")));
 }
 
 void testMoveTransfersOwnershipAndQuiescesReplacedRuntime()
