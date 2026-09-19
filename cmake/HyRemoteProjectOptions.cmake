@@ -25,9 +25,12 @@ option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API w
 option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)
 
 # Transport security is a V1.0.0.0 product requirement, not an optional extra, so its dependency belongs to the
-# standard product build. Consumers that cannot provide OpenSSL 3 can turn the mode off explicitly, and the build
-# fails closed rather than silently downgrading when it is on and the dependency is missing.
-option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (requires OpenSSL 3)" ON)
+# standard product build. The qualified line is OpenSSL 4 - 4.0.2 is the exact version this tree is verified
+# against - and the requirement is written as "4 or newer" rather than as a pinned patch, so a provider's own
+# security update does not invalidate an otherwise qualified build. Consumers that cannot provide OpenSSL 4 can
+# turn the mode off explicitly, and the build fails closed rather than silently downgrading when it is on and the
+# dependency is missing.
+option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (requires OpenSSL 4)" ON)
 
 # Development/architecture assets are never part of a normal product build unless explicitly asked.
 option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)

@@ -64,8 +64,22 @@ if(HYREMOTE_WITH_VNC)
         # Security ON is an explicit product-security intent. Missing crypto/TLS support must stop
         # configuration rather than silently producing a weaker runtime. OpenSSL remains a private
         # implementation dependency of the one HyRemoteRemoteAccess runtime and is never exported as
-        # an application-facing SDK target.
-        find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto SSL)
+        # an application-facing SDK target. The requirement is the OpenSSL 4 line - 4.0.2 is the exact
+        # version this tree is verified against - and it is a version floor, so a provider's own
+        # security update does not invalidate an otherwise qualified build.
+        find_package(OpenSSL 4 QUIET COMPONENTS Crypto SSL)
+        if(NOT OpenSSL_FOUND)
+            # Deliberately not a bare REQUIRED: CMake's own message points at OPENSSL_ROOT_DIR only, while
+            # the remedy a consumer most often wants - building without the capability on purpose - is an
+            # explicit product decision this option already sanctions, so it belongs in the message.
+            message(FATAL_ERROR
+                "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL 4 or newer with the Crypto and "
+                "SSL components, and no such OpenSSL was found, so configuration stops here rather than "
+                "producing a runtime without the security capability. Provide it from your own environment "
+                "(the Qt Maintenance Tool's \"OpenSSL Toolkit\" component, or -DOPENSSL_ROOT_DIR=<prefix>), or "
+                "configure with -DHYREMOTE_WITH_TRANSPORT_SECURITY=OFF to build without authenticated or "
+                "encrypted transport.")
+        endif()
         target_sources(hyremote-remoteaccess PRIVATE
             src/transport/vnc_auth.cpp
         )
