@@ -51,7 +51,66 @@ bool isEligibleWindowType(Qt::WindowType type)
            && type != Qt::ForeignWindow;
 }
 
+// A Qt runtime may decorate its version string (distribution or pre-release builds), so the version
+// triple is read from the leading digits of the first three components. Any component without a
+// leading digit makes the string unusable rather than approximately matched.
+QString leadingDigits(const QString &text)
+{
+    int length = 0;
+    while (length < text.size() && text.at(length).isDigit())
+        ++length;
+    return text.left(length);
+}
+
 }  // namespace
+
+QString runtimeIdentityError(const QString &runningVersion,
+                             int expectedMajor,
+                             int expectedMinor,
+                             int expectedPatch)
+{
+    const QString expected = QStringLiteral("%1.%2.%3")
+                                 .arg(expectedMajor)
+                                 .arg(expectedMinor)
+                                 .arg(expectedPatch);
+    const QString requirement = QStringLiteral("HyRemote Transparent QPA Proxy requires the exact Qt %1 "
+                                               "private ABI at run time").arg(expected);
+    const QString remedy = QStringLiteral("Install a payload qualified for the running Qt, or run the Qt "
+                                          "this payload was built for.");
+
+    const QStringList components = runningVersion.trimmed().split(QLatin1Char('.'));
+    if (components.size() >= 3) {
+        int actual[3] = {0, 0, 0};
+        bool parsed = true;
+        for (int index = 0; index < 3; ++index) {
+            bool ok = false;
+            actual[index] = leadingDigits(components.at(index)).toInt(&ok);
+            if (!ok) {
+                parsed = false;
+                break;
+            }
+        }
+
+        if (parsed && actual[0] == expectedMajor && actual[1] == expectedMinor
+            && actual[2] == expectedPatch) {
+            return {};
+        }
+
+        if (parsed) {
+            return requirement
+                   + QStringLiteral(", but this process is running Qt %1 (%2). %3")
+                         .arg(QStringLiteral("%1.%2.%3").arg(actual[0]).arg(actual[1]).arg(actual[2]),
+                              runningVersion.trimmed(),
+                              remedy);
+        }
+    }
+
+    // Fail closed on a version string this build cannot read: a version it cannot parse is not a
+    // version it can claim to be qualified for.
+    return requirement
+           + QStringLiteral(", but the running Qt reported the unusable version '%1'. %2")
+                 .arg(runningVersion.trimmed(), remedy);
+}
 
 bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &error)
 {
@@ -99,6 +158,15 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             parsed.remoteInputEnabled = enabled;
             it = parameters.erase(it);
             continue;
+        }
+
+        // Anything else in the HyRemote namespace is a configuration error rather than something to hand to
+        // the native delegate: a misspelled option would otherwise be silently ignored, which hides exactly
+        // the kind of mistake the operator cannot see at run time. Parameters not owned by HyRemote keep
+        // their pass-through behaviour, because those belong to the delegate.
+        if (key.startsWith(QStringLiteral("hyremote-"))) {
+            error = QStringLiteral("unknown HyRemote platform parameter: %1").arg(key);
+            return false;
         }
 
         ++it;

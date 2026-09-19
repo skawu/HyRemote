@@ -1,7 +1,10 @@
 #include "hyremote_qpa_interception.hpp"
 #include "hyremote_qpa_remote_controller.hpp"
 
+#include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
+#include <QtCore/QDir>
+#include <QtCore/QLibraryInfo>
 #include <QtCore/QStringList>
 #include <QtCore/QVariant>
 #include <QtGui/QIcon>
@@ -332,12 +335,18 @@ protected:
 private:
     void ensureRemoteControllerStarted() const
     {
-        if (m_remoteController)
+        if (m_remoteController || m_remoteArmRefused)
             return;
 
         auto controller = std::make_unique<::HyRemote::Qpa::RemoteController>(m_remoteConfig);
         if (!controller->start()) {
-            qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition";
+            // This is reached from window events (show, resize, move, activate, ...), so without the
+            // latch the same unstartable controller would be rebuilt - and the same warning reissued -
+            // on every window change. Report once and stop: the conditions that made it fail are not
+            // changed by another attempt.
+            m_remoteArmRefused = true;
+            qWarning() << "HyRemote QPA Proxy could not arm automatic RemoteAccess composition; "
+                          "this is reported once and not retried";
             return;
         }
         m_remoteController = std::move(controller);
@@ -350,6 +359,8 @@ private:
     mutable ::HyRemote::Qpa::Internal::InterceptionSeam m_interception;
     ::HyRemote::Qpa::RemoteConfig m_remoteConfig;
     mutable std::unique_ptr<::HyRemote::Qpa::RemoteController> m_remoteController;
+    // Latches a failed arming attempt so later window events cannot retry it indefinitely.
+    mutable bool m_remoteArmRefused = false;
 };
 
 class HyRemotePlatformIntegrationPlugin final : public QPlatformIntegrationPlugin
@@ -366,6 +377,19 @@ public:
         if (key.compare(QStringLiteral("hyremote"), Qt::CaseInsensitive) != 0)
             return nullptr;
 
+        // Runtime identity first: this payload is qualified for one exact Qt private ABI, so a runtime that
+        // is not that exact version is rejected here - before a delegate is created, and long before the
+        // shared RemoteAccess runtime can be armed by the first visible window.
+        const QString identityError =
+            ::HyRemote::Qpa::runtimeIdentityError(QString::fromLatin1(qVersion()),
+                                                 HYREMOTE_QPA_QT_VERSION_MAJOR,
+                                                 HYREMOTE_QPA_QT_VERSION_MINOR,
+                                                 HYREMOTE_QPA_QT_VERSION_PATCH);
+        if (!identityError.isEmpty()) {
+            qCritical().noquote() << identityError;
+            return nullptr;
+        }
+
         QStringList delegateParameters = paramList;
         ::HyRemote::Qpa::RemoteConfig remoteConfig;
         QString remoteConfigError;
@@ -376,8 +400,16 @@ public:
 
         const QString delegateName = requestedDelegate(delegateParameters);
         if (delegateName.isEmpty()) {
-            qWarning() << "HyRemote QPA Proxy rejected delegate; this build only permits"
-                       << referenceNativeDelegate();
+            // One actionable diagnostic. The accepted set is not broadened and there is no fallback to
+            // another delegate: a rejected delegate ends this process's platform setup.
+            qCritical().noquote()
+                << QStringLiteral("HyRemote QPA Proxy rejected the requested platform delegate; this payload only "
+                                  "decorates '%1' for the exact Qt %2.%3.%4 private ABI, and never falls back to "
+                                  "another delegate.")
+                       .arg(referenceNativeDelegate())
+                       .arg(HYREMOTE_QPA_QT_VERSION_MAJOR)
+                       .arg(HYREMOTE_QPA_QT_VERSION_MINOR)
+                       .arg(HYREMOTE_QPA_QT_VERSION_PATCH);
             return nullptr;
         }
 
@@ -387,7 +419,18 @@ public:
                                                 argc,
                                                 argv));
         if (!delegate) {
-            qWarning() << "HyRemote QPA Proxy could not create native delegate" << delegateName;
+            // One actionable diagnostic: the delegate that was required, where Qt looked for platform
+            // plugins, and the exact Qt this payload requires.
+            qCritical().noquote()
+                << QStringLiteral("HyRemote QPA Proxy could not create the native delegate '%1' required for the "
+                                  "exact Qt %2.%3.%4 private ABI; platform plugin path '%5'; library paths: %6.")
+                       .arg(delegateName)
+                       .arg(HYREMOTE_QPA_QT_VERSION_MAJOR)
+                       .arg(HYREMOTE_QPA_QT_VERSION_MINOR)
+                       .arg(HYREMOTE_QPA_QT_VERSION_PATCH)
+                       .arg(QDir::toNativeSeparators(
+                           QLibraryInfo::path(QLibraryInfo::PluginsPath)),
+                            QCoreApplication::libraryPaths().join(QStringLiteral(", ")));
             return nullptr;
         }
 
