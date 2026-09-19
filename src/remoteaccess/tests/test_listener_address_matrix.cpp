@@ -20,7 +20,7 @@
 #include <iostream>
 #include <optional>
 
-#include "hyremote/RemoteAccess.h"
+#include <HyRemote/RemoteAccess.h>
 
 namespace {
 
