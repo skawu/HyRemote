@@ -76,6 +76,8 @@ void testDeclarativeImportAndSafeDefaults()
     CHECK(object->property("listenAddress").toString() == QStringLiteral("127.0.0.1"));
     CHECK(object->property("port").toInt() == 5901);
     CHECK(object->property("remoteInputEnabled").toBool());
+    CHECK(object->property("securityProfile").toInt() == 0); // Insecure compatibility profile
+    CHECK(object->property("securityConfigFile").toString().isEmpty());
     CHECK(object->property("errorCode").toInt() == 0); // NoError
 
     CHECK(!object->setProperty("connectedClientCount", QVariant::fromValue<qulonglong>(1)));
@@ -108,16 +110,17 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
     CHECK(object->property("errorCode").toInt() == 0);
     CHECK(object->property("errorString").toString().isEmpty());
 
-    // Authentication configuration surface (#143 S2): a read-only property plus invokable setters, so the
-    // password is never readable back through QML.
-    CHECK(!object->property("authenticationEnabled").toBool());
-    CHECK(QMetaObject::invokeMethod(object.get(), "setAuthenticationEnabled", Q_ARG(bool, true)));
-    CHECK(object->property("authenticationEnabled").toBool());
-    CHECK(QMetaObject::invokeMethod(object.get(), "setPassword", Q_ARG(QString, QStringLiteral("s3cret"))));
-    CHECK(object->property("errorCode").toInt() == 0);
+    // #170 freezes one transport-neutral profile and a non-secret descriptor path. Raw secret
+    // values are intentionally absent from the QML object model.
+    CHECK(object->setProperty("securityProfile", 1)); // Authenticated
+    CHECK(object->property("securityProfile").toInt() == 1);
+    CHECK(object->setProperty("securityConfigFile", QStringLiteral("support-security.conf")));
+    CHECK(object->property("securityConfigFile").toString()
+          == QStringLiteral("support-security.conf"));
     CHECK(!object->property("password").isValid());
-    CHECK(QMetaObject::invokeMethod(object.get(), "setAuthenticationEnabled", Q_ARG(bool, false)));
-    CHECK(!object->property("authenticationEnabled").toBool());
+    CHECK(!object->property("authenticationEnabled").isValid());
+    CHECK(object->setProperty("securityProfile", 0));
+    CHECK(object->property("securityProfile").toInt() == 0);
 }
 
 void testEnabledStartFailureIsTransactional()
