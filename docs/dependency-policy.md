@@ -27,6 +27,28 @@ These tools are pinned/used by repository automation and acceptance harnesses. T
 
 Their own upstream licenses remain authoritative; this table records why they do not alter HyRemote's shipped Apache-2.0 product surface.
 
+## Provider selection (user environment first, project source last)
+
+A third-party dependency is used only when a build asks for the capability it serves. Nothing is acquired for a
+build that does not request it, and the project never installs a library onto the host machine.
+
+When a build does ask for one, the provider is chosen in this order, and the choice is a consumer-facing build
+setting rather than an internal detail:
+
+1. **The user's own environment.** An installation already present on the machine is used, selected explicitly
+   with `-DOPENSSL_ROOT_DIR=<prefix>`, or supplied through the Qt SDK's "OpenSSL Toolkit" component.
+2. **The project's own source tree.** When the repository carries the dependency as a submodule, the build may
+   compile it from source. This stays last on purpose: it is the heaviest path, it needs the submodule checked out
+   and that project's own build prerequisites, and it must remain trimmable rather than becoming mandatory.
+3. **Nothing at all.** If neither provider can supply it, the build is still valid. The capability is reported
+   unavailable with one actionable message and is not compiled in, which is neither a hard failure that leaves the
+   user without a build nor a silent downgrade: a runtime asked to use a capability the build does not contain
+   refuses to start instead of quietly proceeding without it.
+
+For the authenticated/encrypted transport this is `HYREMOTE_WITH_TRANSPORT_SECURITY` (OFF by default, so a build
+that does not ask for the capability acquires nothing) together with `HYREMOTE_OPENSSL_PROVIDER` (`AUTO`, `SYSTEM`
+or `BUNDLED`). The version line those providers must satisfy is recorded in `cmake/HyRemoteProjectOptions.cmake`.
+
 ## Required review for every new dependency
 
 Record before adding a dependency:

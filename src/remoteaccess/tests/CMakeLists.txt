@@ -94,7 +94,9 @@ add_test(NAME hyremote-input-mailbox-admission-test COMMAND hyremote-input-mailb
 set_tests_properties(hyremote-input-mailbox-admission-test PROPERTIES TIMEOUT 15)
 
 if(HYREMOTE_WITH_VNC)
-    if(HYREMOTE_WITH_TRANSPORT_SECURITY)
+    # The auth test belongs to the capability, not to the request for it: it is built when a provider actually
+    # supplied OpenSSL, which is the same condition that compiles the implementation it exercises.
+    if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
         add_executable(hyremote-vnc-auth-test
             test_vnc_auth.cpp
             ../src/transport/vnc_auth.cpp
@@ -103,7 +105,7 @@ if(HYREMOTE_WITH_VNC)
             PRIVATE
                 hyremote-remoteaccess
                 Qt6::Core
-                OpenSSL::Crypto
+                ${HYREMOTE_OPENSSL_LINK_TARGETS}
         )
         target_include_directories(hyremote-vnc-auth-test
             PRIVATE
