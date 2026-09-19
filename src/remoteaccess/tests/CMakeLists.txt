@@ -151,6 +151,31 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
 
+    # #174: listener-address contract rows that need a real socket. Every port in the test is chosen by the
+    # operating system (a probe binds port 0 and reports what it got), so no fixed port is required and the
+    # rows cannot collide with a developer's machine.
+    if(HYREMOTE_WITH_VNC)
+        add_executable(hyremote-listener-address-matrix-test
+            test_listener_address_matrix.cpp
+        )
+        target_link_libraries(hyremote-listener-address-matrix-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Widgets
+                Qt6::Network
+        )
+        target_include_directories(hyremote-listener-address-matrix-test
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        )
+        add_test(NAME hyremote-listener-address-matrix-test COMMAND hyremote-listener-address-matrix-test)
+        set_tests_properties(hyremote-listener-address-matrix-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            TIMEOUT 30
+        )
+    endif()
+
     if(HYREMOTE_WITH_VNC)
         # Real composition proof for #90: RFB disconnect cleanup must cross Session and a saturated
         # Widgets mailbox without dropping the final accepted key/button releases.
