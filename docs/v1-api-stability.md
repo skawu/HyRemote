@@ -45,7 +45,7 @@ Frozen behavioral invariants:
 - configuration is mutable only while Stopped;
 - `start()` / `stop()` are explicit lifecycle operations;
 - loopback is the default listener address;
-- port 5900 is the default listener port;
+- port 5921 is the default listener port;
 - remote input is disabled by default;
 - view and input policy remain independent;
 - errors/diagnostics use HyRemote product types rather than backend objects;

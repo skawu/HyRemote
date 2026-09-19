@@ -52,7 +52,9 @@ Changing the bind address is an explicit application decision:
 remote.setListenAddress(QHostAddress(QStringLiteral("192.0.2.10")));
 ```
 
-Do not use a wildcard or externally reachable address merely to make viewer setup easier. First decide which network security layer is responsible for restricting access.
+Do not use a wildcard or externally reachable address merely to make viewer setup easier. Which addresses the listener
+actually accepts - including that the IPv6 wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack
+one - is measured in [`known-limitations.md`](known-limitations.md#listener-address-family-and-reachability). First decide which network security layer is responsible for restricting access.
 
 The same rule applies to QML `listenAddress` and Transparent QPA `hyremote-address`: changing away from loopback widens the network trust boundary; it does not add authentication.
 

@@ -16,6 +16,18 @@ HyRemote does not infer support from API similarity or from a different operatin
 
 The integrated GA workflow qualifies exact Qt 6.8.3 on both reference operating systems. The public C++/QML direction is the Qt 6.8 LTS line, but a different 6.8.x patch is not automatically Supported merely because the public API compiles.
 
+### Qt line policy: LTS only, adaptive otherwise
+
+HyRemote targets **Qt LTS lines only**. The qualified reference line is **6.8.3 (Qt 6.8 LTS)**, and the public C++/QML direction is that same LTS line.
+
+The build detects the Qt it is given and adapts instead of refusing:
+
+- an **LTS line** (5.15, 6.2, 6.5, 6.8) is reported as such during configure;
+- a **non-LTS line** produces one actionable warning and then **builds anyway**, against the **6.8 API baseline** that every feature search in this repository already asks for - the most compatible configuration available for a line this project has not qualified - so a user on a newer Qt is never blocked;
+- a Qt **below 6.8** cannot configure the product targets at all, and the configure error says so and names the supported way to build Core alone on purpose.
+
+The **Transparent QPA payload is not part of that adaptation**: it is qualified against **exactly Qt 6.8.3 private ABI** and is skipped unless that exact SDK is present, because a public-API-compatible Qt is not a private-ABI-compatible one. Qualifying any other line is owned by #57, which carries the Supported / Experimental / Unsupported conclusion for non-reference lines.
+
 | Qt | OS / architecture | Mode | Native/QPA path | Application scope | Status | Required evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | 6.8.3 | Windows x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Windows acceptance + #109 physical coexistence |
@@ -69,6 +81,13 @@ Important V1 limits:
 - QPA claims are exact-Qt/private-ABI qualified, not generic `Qt 6.8+` promises.
 
 ## V1 transport/viewer boundary
+
+The listener **address-family** answer is part of this boundary and is measured, not described:
+`src/remoteaccess/tests/test_listener_address_matrix.cpp` pins loopback, an unassigned address, an occupied port, `0.0.0.0`,
+`::1` and `::`. On Windows x86_64 / Qt 6.8.3 the wildcard `::` is an **IPv6-only** listener (reachable through `::1`, not
+through `127.0.0.1`), `0.0.0.0` is reachable through `127.0.0.1`, and both a rejected address and an occupied port fail
+before `Running` with the state still `Stopped`. The Linux column is pending #109 and must not be inferred from the
+Windows one. See `known-limitations.md` for the IPv6-only boundary and the current non-actionable failure message.
 
 The current production correctness transport is bounded RFB 3.8 with SecurityType None. It is intended to establish remote-view/input correctness and standard VNC interoperability, not Internet-safe security.
 

@@ -504,6 +504,19 @@ private:
         if (!receiver)
             receiver = root;
 
+        // Qt's implicit mouse grab: once a widget accepted a press, it keeps receiving pointer moves - and
+        // the release - until that button is released, even while the pointer is outside it. Re-resolving a
+        // held move with childAt() broke a drag mid-gesture as soon as the pointer left the widget. This
+        // extends the existing per-button receiver bookkeeping rather than adding a second routing model.
+        if (event.kind == hyremote::InputEventKind::PointerMove && state->buttons != Qt::NoButton) {
+            for (const QPointer<QWidget> &remembered : state->buttonReceivers) {
+                if (remembered) {
+                    receiver = remembered.data();
+                    break;
+                }
+            }
+        }
+
         const Qt::KeyboardModifiers modifiers = toQtModifiers(event.modifiers);
         state->modifiers = modifiers;
         state->lastRootPoint = rootPoint;

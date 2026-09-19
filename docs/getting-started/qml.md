@@ -42,7 +42,7 @@ ApplicationWindow {
 Safe defaults match C++:
 
 - loopback listener;
-- port 5900;
+- port 5921;
 - remote input disabled;
 - explicit `enabled: true` required;
 - current RFB correctness baseline uses SecurityType None and is unauthenticated/unencrypted.
@@ -115,7 +115,7 @@ This still reuses one shared runtime; it does not create a fourth integration ar
 
 ## Viewer workflow
 
-With defaults, connect a standard RFB/VNC viewer to `127.0.0.1:5900`. Close the viewer and reconnect without restarting the Qt application. The listener remains active and `connectedClientCount` returns to zero between clients.
+With defaults, connect a standard RFB/VNC viewer to `127.0.0.1:5921`. Close the viewer and reconnect without restarting the Qt application. The listener remains active and `connectedClientCount` returns to zero between clients.
 
 See `../viewer-connection.md` for viewer behavior.
 

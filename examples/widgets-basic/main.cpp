@@ -98,7 +98,7 @@ int main(int argc, char **argv)
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Loopback VNC port."),
                                   QStringLiteral("port"),
-                                  QStringLiteral("5900"));
+                                  QStringLiteral("5921"));
     QCommandLineOption inputOption(QStringLiteral("remote-input"),
                                    QStringLiteral("Explicitly enable remote input. Default is view-only."));
     QCommandLineOption secondsOption(QStringLiteral("test-seconds"),
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     parser.addOption(policyTransitionOption);
     parser.process(app);
 
-    const int port = readPositiveInt(parser, portOption, 5900);
+    const int port = readPositiveInt(parser, portOption, 5921);
     if (port > 65535) {
         std::cerr << "invalid port" << std::endl;
         return 64;

@@ -18,7 +18,7 @@ It does not construct or reference Core `Session`, capture, input, transport, RF
 Normal launch keeps the product defaults:
 
 - listener address: loopback (`127.0.0.1`);
-- port: `5900` unless changed with `--port`;
+- port: `5921` unless changed with `--port`;
 - remote viewing: available after the explicit `remote.start()` in the example;
 - remote input: **disabled by default**;
 - construction of `RemoteAccess` alone never opens a listener.

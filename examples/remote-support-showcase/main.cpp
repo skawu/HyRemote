@@ -250,7 +250,7 @@ private:
     }
 
     HyRemote::RemoteAccess m_remote;
-    quint16 m_port = 5900;
+    quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
     QLabel *m_state = nullptr;
     QLabel *m_endpoint = nullptr;
@@ -274,7 +274,7 @@ int main(int argc, char **argv)
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Loopback VNC port."),
                                   QStringLiteral("port"),
-                                  QStringLiteral("5900"));
+                                  QStringLiteral("5921"));
     QCommandLineOption inputOption(QStringLiteral("remote-input"),
                                    QStringLiteral("Enable remote input when remote access starts."));
     QCommandLineOption autoStartOption(QStringLiteral("auto-start"),
@@ -289,7 +289,7 @@ int main(int argc, char **argv)
     parser.addOption(secondsOption);
     parser.process(app);
 
-    const int parsedPort = readPositiveInt(parser, portOption, 5900);
+    const int parsedPort = readPositiveInt(parser, portOption, 5921);
     if (parsedPort > 65535) {
         std::cerr << "invalid port" << std::endl;
         return 64;

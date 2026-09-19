@@ -16,6 +16,7 @@ endif()
 add_library(hyremote-remoteaccess SHARED
     src/remote_access.cpp
     src/detail/component_factories.cpp
+    src/detail/security_descriptor.cpp
     # Source-private composition seam for the Transparent QPA payload. It carries the Core-owned operations
     # the QPA composite path needs, so the payload never links Core directly (see the repository-layout gate).
     # The header is not installed; only the export symbols live in this shared runtime.
@@ -58,6 +59,18 @@ if(HYREMOTE_WITH_VNC)
         src/transport/rfb_transport.cpp
     )
     target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_RFB_TRANSPORT=1)
+
+    if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+        # The capability is here because a configured provider supplied OpenSSL 4. HyRemoteProjectOptions.cmake
+        # owns that choice - user environment first, project source tree last - and reports it once, without
+        # failing the configure, when neither provider can supply it. OpenSSL stays a private implementation
+        # dependency of the one HyRemoteRemoteAccess runtime and is never exported as an SDK target.
+        target_sources(hyremote-remoteaccess PRIVATE
+            src/transport/vnc_auth.cpp
+        )
+        target_link_libraries(hyremote-remoteaccess PRIVATE ${HYREMOTE_OPENSSL_LINK_TARGETS})
+        target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
+    endif()
 endif()
 
 set(HYREMOTE_REMOTEACCESS_WITH_WIDGETS FALSE CACHE INTERNAL

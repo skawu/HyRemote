@@ -45,7 +45,7 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-That is the normal integration. Construction is inert, the listener defaults to `127.0.0.1:5900`, and remote input is disabled by default.
+That is the normal integration. Construction is inert, the listener defaults to `127.0.0.1:5921`, and remote input is disabled by default.
 
 The same facade supports qualified `QWidget` and `QQuickWindow` targets. Applications do not assemble Core, Session, capture, input, transport or RFB objects.
 

@@ -37,7 +37,7 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5900, and remote input is disabled.
+That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5921, and remote input is disabled. That default port is configure-time selectable for integrators via `-DHYREMOTE_DEFAULT_PORT=<port>` (see the install guide), and it remains overridable per process with `setPort()`.
 
 Enable remote control only when required:
 
@@ -68,6 +68,11 @@ remote.start();
 Widgets and Quick share the same public facade. Capture/input implementation selection remains internal.
 
 ## Optional configuration
+
+`setListenAddress()` accepts a **numeric** address only. The default is loopback `127.0.0.1`; an address that is not
+assigned to any interface, or a port already in use, fails before `Running` and leaves nothing listening; and the IPv6
+wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack one. The measured per-address table is in
+[`../known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability).
 
 Configuration changes are made while stopped:
 
