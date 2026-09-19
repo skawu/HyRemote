@@ -27,6 +27,7 @@ hyremote_validate_release_profile(
     VERSION "${PROJECT_VERSION}"
     QML_ENABLED "${HYREMOTE_BUILD_QML_API}"
     QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"
+    SECURITY_ENABLED "${HYREMOTE_WITH_TRANSPORT_SECURITY}"
 )
 
 # A normal add_subdirectory(HyRemote) consumer must not acquire CTest/BUILD_TESTING side effects just
@@ -43,6 +44,7 @@ message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
 message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
+message(STATUS "  Transport security:  ${HYREMOTE_WITH_TRANSPORT_SECURITY}")
 message(STATUS "  Build research:      ${HYREMOTE_BUILD_SPIKES}")
 
 # Repository layout is product-architecture aligned. Explicit binary directories deliberately retain
@@ -100,6 +102,12 @@ if(HYREMOTE_WITH_QPA_PROXY)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
             "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a usable HyRemote::RemoteAccess target")
+
+    if(HYREMOTE_WITH_TRANSPORT_SECURITY AND NOT HYREMOTE_BUILD_REMOTE_ACCESS)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON: the security mode is a "
+            "capability of the public RemoteAccess facade, not a standalone artifact.")
+    endif()
     endif()
 
     # Transparent QPA is itself responsible for discovering both qualified V1 application surface
@@ -225,7 +233,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         )
     endif()
 
-    function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled expect_reject)
+    function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled security_enabled expect_reject)
         add_test(
             NAME "${test_name}"
             COMMAND "${CMAKE_COMMAND}"
@@ -233,6 +241,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
                 -DHYREMOTE_TEST_VERSION=${version}
                 -DHYREMOTE_TEST_QML=${qml_enabled}
                 -DHYREMOTE_TEST_QPA=${qpa_enabled}
+                -DHYREMOTE_TEST_SECURITY=${security_enabled}
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
         )
         if(expect_reject)
@@ -240,12 +249,15 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         endif()
     endfunction()
 
-    hyremote_add_release_profile_test(hyremote-release-profile-develop-all-modes 0.0.0 ON ON FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-cpp-only 0.0.1.0 OFF OFF FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qml 0.0.1.0 ON OFF TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qpa 0.0.1.0 OFF ON TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v002-qml 0.0.2.0 ON OFF FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-qpa 0.0.2.0 ON ON TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v003-all-modes 0.0.3.0 ON ON FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v100-all-modes 1.0.0.0 ON ON FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-develop-all-modes 0.0.0 ON ON ON FALSE)
+hyremote_add_release_profile_test(hyremote-release-profile-v001-cpp-only 0.0.1.0 OFF OFF OFF FALSE)
+hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qml 0.0.1.0 ON OFF OFF TRUE)
+hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qpa 0.0.1.0 OFF ON OFF TRUE)
+hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-security 0.0.1.0 OFF OFF ON TRUE)
+hyremote_add_release_profile_test(hyremote-release-profile-v002-qml 0.0.2.0 ON OFF OFF FALSE)
+hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-qpa 0.0.2.0 ON ON OFF TRUE)
+hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-security 0.0.2.0 ON OFF ON TRUE)
+hyremote_add_release_profile_test(hyremote-release-profile-v003-all-modes 0.0.3.0 ON ON OFF FALSE)
+hyremote_add_release_profile_test(hyremote-release-profile-v003-reject-security 0.0.3.0 ON ON ON TRUE)
+hyremote_add_release_profile_test(hyremote-release-profile-v100-all-modes 1.0.0.0 ON ON ON FALSE)
 endif()
