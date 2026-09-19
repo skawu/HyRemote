@@ -80,6 +80,31 @@ if(PROJECT_IS_TOP_LEVEL
     endif()
 endif()
 
+# The project targets Qt LTS lines. The reference line is 6.8 LTS, the public C++/QML path accepts newer 6.8+
+# releases, and the Transparent QPA payload stays exactly 6.8.3 (see docs/architecture.md and docs/compatibility.md).
+#
+# A non-LTS Qt is not a reason to refuse to build - the user must not be blocked - but it must never be silent
+# either. The build reports the line, and proceeds on the **6.8 API baseline** the rest of the configure already
+# enforces (every feature search below asks for Qt 6.8), which is the most compatible configuration available for a
+# line this project has not qualified.
+if(TARGET Qt6::Core)
+    set(HYREMOTE_QT_LTS_LINES 5.15 6.2 6.5 6.8)
+    set(HYREMOTE_QT_LINE "${Qt6_VERSION_MAJOR}.${Qt6_VERSION_MINOR}")
+    if(HYREMOTE_QT_LINE IN_LIST HYREMOTE_QT_LTS_LINES)
+        message(STATUS "  Qt ${Qt6_VERSION} detected (LTS line ${HYREMOTE_QT_LINE})")
+    else()
+        message(WARNING
+            "HyRemote: Qt ${Qt6_VERSION} is not an LTS line. This project targets Qt LTS lines "
+            "(${HYREMOTE_QT_LTS_LINES}) and the qualified reference line is 6.8.3.\n"
+            "  The build continues against the 6.8 API baseline and the public C++/QML surface, so the user is not "
+            "blocked, but this Qt version is not qualified by this project.\n"
+            "  The Transparent QPA payload is unaffected by this choice: it still requires exactly Qt 6.8.3 private "
+            "ABI, and is skipped unless that exact SDK is present.\n"
+            "  Use an LTS Qt (6.8.x recommended) for anything that has to be supported.")
+    endif()
+    unset(HYREMOTE_QT_LINE)
+endif()
+
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
     if(NOT TARGET HyRemote::Core)
         message(FATAL_ERROR "HyRemote::RemoteAccess requires HYREMOTE_BUILD_CORE=ON")

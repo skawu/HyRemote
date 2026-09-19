@@ -212,8 +212,14 @@ public:
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_onFrame = std::move(onFrame);
-            m_onEvent = std::move(onEvent);
+            // Held behind a shared_ptr so that delivering a frame or an event never allocates: the handler
+            // object is built here, once, and the delivery path only copies a pointer. The std::function copy
+            // this replaces was a heap allocation on the backend's callback path, and - worse for a test
+            // double - a platform-dependent one, which made any allocation-position assertion aimed at the
+            // product's callback land in this harness instead. The object is const after construction, so a
+            // reader keeps invoking the handler it captured even if a later start() replaces it.
+            m_onFrame = std::make_shared<const FrameReadyHandler>(std::move(onFrame));
+            m_onEvent = std::make_shared<const CaptureEventHandler>(std::move(onEvent));
             m_started = true;
             m_outstanding = 0;
             m_maxOutstanding = 0;
@@ -316,7 +322,7 @@ public:
 private:
     bool deliverInternal(RemoteFrame frame, bool force)
     {
-        FrameReadyHandler handler;
+        std::shared_ptr<const FrameReadyHandler> handler;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             if (!force && !m_started)
@@ -327,13 +333,14 @@ private:
                 --m_outstanding;
             handler = m_onFrame;
         }
-        handler(std::move(frame));
+        if (handler)
+            (*handler)(std::move(frame));
         return true;
     }
 
     void reportEventInternal(const CaptureEvent &event, bool force)
     {
-        CaptureEventHandler handler;
+        std::shared_ptr<const CaptureEventHandler> handler;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             if (!force && !m_started)
@@ -341,14 +348,14 @@ private:
             handler = m_onEvent;
         }
         if (handler)
-            handler(event);
+            (*handler)(event);
     }
 
 private:
     mutable std::mutex m_mutex;
     CaptureCapabilities m_capabilities;
-    FrameReadyHandler m_onFrame;
-    CaptureEventHandler m_onEvent;
+    std::shared_ptr<const FrameReadyHandler> m_onFrame;
+    std::shared_ptr<const CaptureEventHandler> m_onEvent;
     std::vector<CaptureRequest> m_requests;
     bool m_started = false;
     bool m_rejectRequests = false;

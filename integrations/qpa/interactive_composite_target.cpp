@@ -36,6 +36,19 @@ public:
 
     ~CompositeInputSink() override { shutdown(); }
 
+    // Exactly-once acceptance contract (#164 acceptance 3):
+    //
+    //   * `post` accepts an event only if it can be queued for the GUI thread. On acceptance the caller gets no
+    //     error, and the event is delivered to exactly one child - the routed surface, or the surface holding the
+    //     pointer grab for a button lifecycle.
+    //   * If the bounded mailbox cannot take the event (pointer-motion coalescing exhausted and no stale motion
+    //     to replace, or the full bound reached), the event is rejected by throwing and nothing is queued: there
+    //     is no state in which an event is both half-delivered and reported as rejected.
+    //   * A child adapter that rejects an event during the drain is recorded as a deferred error and **surfaces on
+    //     the next `post`**, which then throws **without accepting its own event** - so a caller always learns
+    //     about a failed delivery before its next event is taken, and never after.
+    //   * Acceptance covers the queued batch, not the child delivery: if queueing the drain itself fails, the
+    //     queued events are discarded and the call throws, because they can no longer be delivered.
     void post(const hyremote::InputEvent &event) override
     {
         QObject *dispatcher = QCoreApplication::instance();

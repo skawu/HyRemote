@@ -20,11 +20,22 @@ namespace HyRemote::Qpa {
 
 class InteractiveCompositeTarget;
 
+enum class SecurityProfile {
+    Insecure,
+    Authenticated,
+    AuthenticatedEncrypted,
+};
+
 struct RemoteConfig
 {
     QHostAddress listenAddress = QHostAddress::LocalHost;
-    quint16 port = 5900;
+    // The configured product default; see HYREMOTE_DEFAULT_PORT in cmake/HyRemoteProjectOptions.cmake.
+    quint16 port = static_cast<quint16>(HYREMOTE_DEFAULT_PORT);
     bool remoteInputEnabled = false;
+    SecurityProfile securityProfile = SecurityProfile::Insecure;
+    // A non-secret descriptor path is allowed at process start. The descriptor references secret
+    // files; raw passwords/private keys are never accepted in the -platform argument string.
+    QString securityConfigFile;
 };
 
 // Removes HyRemote-owned platform parameters from `parameters` while leaving native delegate

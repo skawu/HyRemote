@@ -13,7 +13,7 @@ int main()
         return 2;
     if (remote.listenAddress() != QHostAddress(QHostAddress::LocalHost))
         return 3;
-    if (remote.port() != 5900)
+    if (remote.port() != 5921)
         return 4;
     if (remote.remoteInputEnabled())
         return 5;

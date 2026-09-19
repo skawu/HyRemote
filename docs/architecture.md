@@ -71,7 +71,7 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-Construction is inert. The default listener is `127.0.0.1:5900`; remote input is disabled by default.
+Construction is inert. The default listener is `127.0.0.1:5921`; remote input is disabled by default.
 
 Configuration is mutable while the runtime is `Stopped`. Policy changes use an explicit:
 

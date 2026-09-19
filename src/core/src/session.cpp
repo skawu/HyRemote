@@ -180,8 +180,13 @@ private:
 struct Session::Impl
 {
     SessionConfig config;
-    std::unique_ptr<CaptureSource> source;
-    std::unique_ptr<Transport> transport;
+    // Shared ownership so that start(), the workers and teardown can hold a strong pin across their
+    // unlocked component calls. A concurrent stop() may return the Session to Stopped (which re-allows the
+    // public setters) while an in-flight start() is still calling into these objects; with unique ownership
+    // that setter destroyed the object the other thread was using. The public setter signatures stay
+    // unchanged - an incoming unique_ptr is converted here (#159).
+    std::shared_ptr<CaptureSource> source;
+    std::shared_ptr<Transport> transport;
     std::shared_ptr<InputSink> sink;
 
     // Guards state, in-flight accounting, counters and stop coordination.
@@ -275,6 +280,37 @@ struct Session::Impl
 
         const std::size_t waiting = impl.mailbox->stats().waiting;
         return waiting + impl.inFlight < impl.config.frameQueue.capacity;
+    }
+
+    // Callback boundary for the three backend-invoked callbacks below. The backend calls them from its
+    // own stack - a capture thread, a transport runtime - so an exception allowed to escape would unwind
+    // into code HyRemote does not own, and a backend that is not exception-aware would terminate the
+    // process. The realistic source is allocation inside the bounded bookkeeping below (a mailbox push, a
+    // rejection reason string), so the handler itself must not allocate: the failure may well have been
+    // bad_alloc, and formatting a message here would throw out of a noexcept boundary.
+    //
+    // The failure is reported through the existing error model, following the established input path (see
+    // onInput): it is recoverable, because a single lost frame does not invalidate the session, and the
+    // reporting is best effort because the alternative is terminating the process in the caller's stack.
+    static void reportCallbackFailure(Impl &impl, const char *message) noexcept
+    {
+        try {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            impl.lastError = SessionError{SessionErrorCode::ComponentFailure, message, true};
+        } catch (...) {
+            // Best effort by design; see above.
+        }
+        impl.cv.notify_all();
+    }
+
+    template <typename Callback>
+    static void atCallbackBoundary(Impl &impl, Callback &&callback) noexcept
+    {
+        try {
+            std::forward<Callback>(callback)();
+        } catch (...) {
+            reportCallbackFailure(impl, "core callback threw from a backend invocation");
+        }
     }
 
     // Capture callback path. May run on a backend-defined thread; performs bounded
@@ -396,6 +432,36 @@ struct Session::Impl
 
         std::lock_guard<std::mutex> lock(impl.mutex);
         ++impl.stats.inputEventsPosted;
+    }
+
+    // Worker threads are std::thread entry points, so an exception escaping one terminates the process -
+    // forbidden for an avoidable internal allocation or formatting failure (#164 criterion 2). The guard sits
+    // at the launch site so it covers the whole thread function: the startup handshake, every bookkeeping step
+    // and the transport call, not only the piece that already had a local catch.
+    //
+    // A worker that dies cannot make progress, because nothing drains the mailbox, so the failure is reported
+    // as a non-recoverable ComponentFailure and the session faults instead of staying `Running` with a dead
+    // worker. Returning normally is also what lets the owning thread join and a later stop() finish rather than
+    // block forever.
+    static void atWorkerBoundary(Impl &impl, void (*worker)(Impl &), const char *label) noexcept
+    {
+        try {
+            worker(impl);
+        } catch (...) {
+            reportWorkerFailure(impl, label);
+        }
+    }
+
+    static void reportWorkerFailure(Impl &impl, const char *label) noexcept
+    {
+        try {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            setFaultedLocked(impl, SessionErrorCode::ComponentFailure, label);
+        } catch (...) {
+            // Best effort by design: the alternative is terminating the process, which is exactly what this
+            // boundary exists to prevent. The label is a static string, so only the guarded scope allocates.
+        }
+        impl.cv.notify_all();
     }
 
     // Owns capture admission and request issuing.
@@ -609,6 +675,22 @@ struct Session::Impl
 
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.mailbox) {
+                // Fold the mailbox-owned per-run values into impl.stats before the mailbox is destroyed.
+                // stats() can only overlay them while the mailbox exists, so without this a post-stop query
+                // silently reported zeros for a run that really did drop or reject frames, the maximum
+                // mailbox depth and the last frame id - contradicting the header contract that cumulative
+                // counters keep their run value until the next start() reset (#159).
+                const detail::MailboxStats finalMailbox = impl.mailbox->stats();
+                impl.stats.maxMailboxWaitingObserved = finalMailbox.maxWaitingObserved;
+                impl.stats.maxMailboxOwnedObserved = finalMailbox.maxOwnedObserved;
+                impl.stats.framesDroppedByPolicy = finalMailbox.droppedOldest;
+                impl.stats.framesRejectedOverflow = finalMailbox.rejectedOverflow;
+                impl.stats.lastFrameId = finalMailbox.lastFrameId;
+                // The gauges (mailboxWaiting / mailboxDispatcherOwned) are deliberately not folded: an empty
+                // mailbox after stop is the truthful current value, whereas the maxima and counters above are
+                // historical facts about the run that just ended.
+            }
             impl.mailbox.reset();
             impl.inFlight = 0;
             impl.stats.inFlight = 0;
@@ -694,7 +776,9 @@ bool Session::setCaptureSource(std::unique_ptr<CaptureSource> source)
     if (m_impl->state != SessionState::Stopped)
         return false;  // never destroy a component that a worker or callback may still be using
 
-    m_impl->source = std::move(source);
+    // Converting to shared ownership does not release the previous component here if an in-flight start()
+    // is still holding a pin; it is destroyed when that pin goes away, which is the whole point.
+    m_impl->source = std::shared_ptr<CaptureSource>(std::move(source));
     return true;
 }
 
@@ -704,7 +788,7 @@ bool Session::setTransport(std::unique_ptr<Transport> transport)
     if (m_impl->state != SessionState::Stopped)
         return false;
 
-    m_impl->transport = std::move(transport);
+    m_impl->transport = std::shared_ptr<Transport>(std::move(transport));
     return true;
 }
 
@@ -717,6 +801,12 @@ void Session::setInputSink(std::shared_ptr<InputSink> sink)
 bool Session::start()
 {
     Impl &impl = *m_impl;
+
+    // Strong pins to the run's components, assigned under the lock below and held until this call returns
+    // (including every failure path). They are what keeps the objects alive while start() calls into them
+    // without the mutex, even if a concurrent stop() plus a public setter replaces them (#159).
+    std::shared_ptr<CaptureSource> sourcePin;
+    std::shared_ptr<Transport> transportPin;
 
     // Generation of the run this call is establishing; every startup boundary re-checks it.
     std::uint64_t generation = 0;
@@ -797,11 +887,18 @@ bool Session::start()
         generation = ++impl.runGeneration;
         impl.gate = gate;
         impl.state = SessionState::Starting;
+
+        // Pin both components under the lock for the whole duration of this start(). A concurrent stop()
+        // can return the Session to Stopped and re-allow the public setters, so without a strong pin the
+        // object behind these raw pointers could be destroyed while this call is still using it. The pins
+        // are released when start() returns, including on every failure path (#159).
+        sourcePin = impl.source;
+        transportPin = impl.transport;
     }
     impl.cv.notify_all();
 
-    CaptureSource *source = impl.source.get();
-    Transport *transport = impl.transport.get();
+    CaptureSource *source = sourcePin.get();
+    Transport *transport = transportPin.get();
 
     // ---- boundary 1: capture source start ------------------------------------------------
     bool sourceStarted = false;
@@ -811,12 +908,16 @@ bool Session::start()
             source->start([gate](RemoteFrame frame) {
                               GateGuard guard(gate);
                               if (auto *target = static_cast<Impl *>(guard.enter()))
-                                  Impl::onFrameReady(*target, std::move(frame));
+                                  Impl::atCallbackBoundary(*target, [target, frame = std::move(frame)]() mutable {
+                                      Impl::onFrameReady(*target, std::move(frame));
+                                  });
                           },
                           [gate](const CaptureEvent &event) {
                               GateGuard guard(gate);
                               if (auto *target = static_cast<Impl *>(guard.enter()))
-                                  Impl::onCaptureEvent(*target, event);
+                                  Impl::atCallbackBoundary(*target, [target, event] {
+                                      Impl::onCaptureEvent(*target, event);
+                                  });
                           });
     } catch (const std::exception &error) {
         // A throwing start may have left partial state behind, so the component is stopped again
@@ -895,8 +996,12 @@ bool Session::start()
                 // Set before creating the threads so that a partial failure still hands the
                 // existing thread to the teardown.
                 impl.workersCreated = true;
-                impl.schedulerThread = std::thread([&impl] { Impl::runScheduler(impl); });
-                impl.dispatcherThread = std::thread([&impl] { Impl::runDispatcher(impl); });
+                impl.schedulerThread = std::thread([&impl] {
+                    Impl::atWorkerBoundary(impl, Impl::runScheduler, "core scheduler worker threw");
+                });
+                impl.dispatcherThread = std::thread([&impl] {
+                    Impl::atWorkerBoundary(impl, Impl::runDispatcher, "core dispatch worker threw");
+                });
             } catch (const std::exception &error) {
                 workerMessage = std::string("failed to create a Core worker thread: ") + error.what();
             } catch (...) {
@@ -944,12 +1049,16 @@ bool Session::start()
             transport->start([gate](const InputEvent &event) {
                                  GateGuard guard(gate);
                                  if (auto *target = static_cast<Impl *>(guard.enter()))
-                                     Impl::onInput(*target, event);
+                                     Impl::atCallbackBoundary(*target, [target, event] {
+                                         Impl::onInput(*target, event);
+                                     });
                              },
                              [gate](const TransportEvent &event) {
                                  GateGuard guard(gate);
                                  if (auto *target = static_cast<Impl *>(guard.enter()))
-                                     Impl::onTransportEvent(*target, event);
+                                     Impl::atCallbackBoundary(*target, [target, event] {
+                                         Impl::onTransportEvent(*target, event);
+                                     });
                              });
     } catch (const std::exception &error) {
         transportMessage = std::string("transport threw from start(): ") + error.what();

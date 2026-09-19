@@ -21,7 +21,7 @@ Do not infer support for another Qt patch/minor, Wayland, EGLFS, OpenHarmony or 
 ## Safe defaults
 
 - listener address: loopback;
-- port: 5900;
+- port: 5921;
 - remote input: disabled;
 - local display/input: native platform delegate remains authoritative;
 - current bounded RFB correctness baseline: `SecurityType None`, therefore unauthenticated and unencrypted.
@@ -107,13 +107,13 @@ Expected behavior:
 
 - the native delegate still owns local display/input;
 - supported application surfaces form one remote session;
-- listener remains loopback:5900 by default;
+- listener remains loopback:5921 by default;
 - remote input remains disabled;
 - supported secondary windows/dialogs may enter and leave the remote canvas without restarting the listener.
 
 ## 5. Viewer connect/reconnect
 
-Connect an RFB/VNC viewer to `127.0.0.1:5900`. Close it and connect again. Normal viewer disconnect/reconnect must not require an application restart.
+Connect an RFB/VNC viewer to `127.0.0.1:5921`. Close it and connect again. Normal viewer disconnect/reconnect must not require an application restart.
 
 The shared transport correctness gate also requires held remote keys/buttons to be balanced after abrupt disconnect.
 
@@ -146,7 +146,7 @@ hyremote-input=<0|1|false|true|off|on|no|yes>
 Example:
 
 ```text
--platform "hyremote:hyremote-address=127.0.0.1:hyremote-port=5900:hyremote-input=false"
+-platform "hyremote:hyremote-address=127.0.0.1:hyremote-port=5921:hyremote-input=false"
 ```
 
 Invalid HyRemote values fail closed.

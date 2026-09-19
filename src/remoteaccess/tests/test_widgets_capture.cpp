@@ -165,6 +165,52 @@ void testWidgetsFactoryAndOwnedFrame()
         }
     }
 
+    // #162 criterion 4: DPR must be applied to the captured pixel dimensions exactly once, and the logical
+    // geometry must stay the authoritative mapping input. This binary is registered a second time in
+    // CMakeLists.txt with QT_SCALE_FACTOR=1.5, so a double application of DPR or a silently ignored DPR
+    // fails here deterministically instead of only being visible on a scaled physical display.
+    const qreal dpr = target.devicePixelRatioF();
+    // The non-1 DPR registration sets HYREMOTE_EXPECT_DPR. Without this gate a platform plugin that silently
+    // keeps the ratio at 1.0 would make every assertion below vacuously true, which is worse than no test.
+    const QString expectedDpr = qEnvironmentVariable("HYREMOTE_EXPECT_DPR");
+    if (!expectedDpr.isEmpty()) {
+        CHECK(qAbs(dpr - expectedDpr.toDouble()) < 0.01);
+    }
+    if (received) {
+        CHECK(received->geometry.size.width == qRound(160.0 * dpr));
+        CHECK(received->geometry.size.height == qRound(90.0 * dpr));
+    }
+
+    // Resize transition: the same relation must hold for the new logical size, on the DPR in force.
+    target.resize(320, 180);
+    QCoreApplication::processEvents();
+    received.reset();
+    hyremote::CaptureRequest resized{11, hyremote::Clock::now()};
+    CHECK(components.capture->requestFrame(resized));
+    CHECK(pumpUntil([&] { return received.has_value(); }));
+    if (received) {
+        CHECK(received->requestId.has_value());
+        CHECK(received->requestId.value() == 11);
+        CHECK(received->geometry.size.width == qRound(320.0 * dpr));
+        CHECK(received->geometry.size.height == qRound(180.0 * dpr));
+    }
+
+    // Pointer delivery must stay in logical coordinates: a remote point expressed at the logical centre is
+    // delivered as that logical point, never multiplied by dpr a second time.
+    InputProbeWidget probe;
+    probe.resize(200, 100);
+    probe.show();
+    QCoreApplication::processEvents();
+    const QPointF logicalCentre(100.0, 50.0);
+    const QPointF globalCentre = probe.mapToGlobal(logicalCentre);
+    QMouseEvent move(QEvent::MouseMove, logicalCentre, globalCentre, Qt::NoButton, Qt::NoButton,
+                     Qt::NoModifier);
+    QCoreApplication::sendEvent(&probe, &move);
+    CHECK(qAbs(probe.lastMousePosition.x() - logicalCentre.x()) < 0.5);
+    CHECK(qAbs(probe.lastMousePosition.y() - logicalCentre.y()) < 0.5);
+    CHECK(qAbs(probe.devicePixelRatioF() - dpr) < 0.01);
+    probe.close();
+
     components.capture->stop();
 }
 
