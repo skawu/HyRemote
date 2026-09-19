@@ -555,6 +555,75 @@ void testInvalidPublicConfigurationIsProductLevel()
 
 }  // namespace
 
+// The notifier exists so an Embedded C++ consumer does not have to poll. It is driven by real events - the facade's
+// own transitions, the transport's connection events and Core's asynchronous failures - and never by a timer. This
+// case pins both directions: a signal for every real change, and no signal when nothing changed.
+void testNotifierReportsRealChanges()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+    CHECK(remote.notifier() != nullptr);
+
+    int stateChanges = 0;
+    int countChanges = 0;
+    int errorChanges = 0;
+    QObject::connect(remote.notifier(), &HyRemote::RemoteAccessNotifier::stateChanged, &target, [&] { ++stateChanges; });
+    QObject::connect(remote.notifier(),
+                     &HyRemote::RemoteAccessNotifier::clientCountChanged,
+                     &target,
+                     [&] { ++countChanges; });
+    QObject::connect(remote.notifier(), &HyRemote::RemoteAccessNotifier::errorChanged, &target, [&] { ++errorChanges; });
+
+    // A rejected configuration is a diagnostic, and is reported as one straight away.
+    CHECK(!remote.setPort(0));
+    CHECK(errorChanges == 1);
+    CHECK(remote.lastError().has_value());
+
+    remote.clearError();
+    CHECK(errorChanges == 2);
+    CHECK(remote.connectedClientCount() == 0);
+
+    // No change, no signal. A notifier that fired on every call would be a poll with extra steps.
+    const int statesBeforeStart = stateChanges;
+    const int countsBeforeStart = countChanges;
+    remote.stop();
+    CHECK(stateChanges == statesBeforeStart);
+    CHECK(countChanges == countsBeforeStart);
+
+    CHECK(remote.start());
+    CHECK(stateChanges == statesBeforeStart + 1);
+
+    // Viewer connection and disconnection are transport events, so the consumer sees them without asking. The
+    // baseline is taken here rather than assumed: how many count publications a start() needs is not part of the
+    // contract, only that a connection and a disconnection each report exactly one change.
+    const int countsRunning = countChanges;
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientConnected);
+    CHECK(remote.connectedClientCount() == 1);
+    CHECK(countChanges == countsRunning + 1);
+
+    emitTransportEvent(counters, hyremote::TransportEventCode::ClientDisconnected);
+    CHECK(remote.connectedClientCount() == 0);
+    CHECK(countChanges == countsRunning + 2);
+
+    const int statesRunning = stateChanges;
+    remote.stop();
+    // Running -> Stopping -> Stopped is two real transitions, so the notifier reports two: it says what happened
+    // rather than collapsing a documented intermediate state into "one stop".
+    CHECK(stateChanges > statesRunning);
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+
+    // Nothing changed since, so nothing more is reported.
+    const int statesStopped = stateChanges;
+    remote.stop();
+    CHECK(stateChanges == statesStopped);
+
+    HyRemote::detail::resetFactories();
+}
+
 int main()
 {
     testSafeDefaultsAndNoConstructionSideEffect();
@@ -567,6 +636,7 @@ int main()
     testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic();
     testBackendStartFailureIsMappedAndCleanedUp();
     testInvalidPublicConfigurationIsProductLevel();
+    testNotifierReportsRealChanges();
 
     HyRemote::detail::resetFactories();
     if (failures != 0) {

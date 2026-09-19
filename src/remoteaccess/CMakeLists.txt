@@ -23,6 +23,15 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/qpa_composition_seam.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
+
+# The facade's change notifier is a QObject, so the library needs its own meta-object compilation. It stays scoped
+# to this target: nothing else in HyRemote requires moc.
+set_target_properties(hyremote-remoteaccess PROPERTIES AUTOMOC ON)
+
+# AUTOMOC only compiles the meta-object of a header that belongs to the target, so the one public header carrying a
+# Q_OBJECT - the facade's change notifier - has to be listed. Listing it changes nothing about how it is installed or
+# consumed; it is what lets moc see it.
+target_sources(hyremote-remoteaccess PRIVATE include/HyRemote/RemoteAccess.h)
 set_target_properties(hyremote-remoteaccess PROPERTIES
     EXPORT_NAME RemoteAccess
     OUTPUT_NAME HyRemoteRemoteAccess

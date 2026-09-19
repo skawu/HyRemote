@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QPointer>
 
+#include <functional>
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -79,9 +81,11 @@ class ClientCountingTransport final : public hyremote::Transport
 {
 public:
     ClientCountingTransport(std::unique_ptr<hyremote::Transport> transport,
-                            std::shared_ptr<std::atomic<std::size_t>> connectedClients)
+                            std::shared_ptr<std::atomic<std::size_t>> connectedClients,
+                            std::function<void()> onClientCountChanged)
         : m_transport(std::move(transport))
         , m_connectedClients(std::move(connectedClients))
+        , m_onClientCountChanged(std::move(onClientCountChanged))
     {
     }
 
@@ -96,7 +100,12 @@ public:
         const auto connectedClients = m_connectedClients;
         const bool started = m_transport->start(
             std::move(onInput),
-            [connectedClients, onEvent = std::move(onEvent)](const hyremote::TransportEvent &event) mutable {
+            [this, connectedClients, onEvent = std::move(onEvent)](const hyremote::TransportEvent &event) mutable {
+                // The session sees the event first: a notification that fires from here must let its observer read
+                // the post-event state and diagnostic, not the values from before the event.
+                if (onEvent)
+                    onEvent(event);
+
                 switch (event.code) {
                 case hyremote::TransportEventCode::ClientConnected:
                     connectedClients->fetch_add(1, std::memory_order_relaxed);
@@ -110,8 +119,10 @@ public:
                     break;
                 }
 
-                if (onEvent)
-                    onEvent(event);
+                // Every connection event is reported and the facade decides whether the count really moved, so a
+                // disconnect for a client that was never counted cannot turn into a signal that reports no change.
+                if (m_onClientCountChanged)
+                    m_onClientCountChanged();
             });
         if (!started)
             m_connectedClients->store(0, std::memory_order_relaxed);
@@ -124,6 +135,8 @@ public:
         // Transport::stop() is quiescent by contract. Once it returns no late connection callback
         // may race this reset, so Stopped always exposes zero connected clients.
         m_connectedClients->store(0, std::memory_order_relaxed);
+        if (m_onClientCountChanged)
+            m_onClientCountChanged();
     }
 
     void enqueueFrame(hyremote::RemoteFrame frame) override
@@ -134,6 +147,7 @@ public:
 private:
     std::unique_ptr<hyremote::Transport> m_transport;
     std::shared_ptr<std::atomic<std::size_t>> m_connectedClients;
+    std::function<void()> m_onClientCountChanged;
 };
 
 }  // namespace
@@ -163,7 +177,97 @@ struct RemoteAccess::Impl
     std::shared_ptr<std::atomic<std::size_t>> connectedClients =
         std::make_shared<std::atomic<std::size_t>>(0);
 
+    // Owned by the runtime, so it travels with a move-assigned facade: the destination adopts the source's Impl,
+    // notifier included, and the notifier of the runtime it replaced is destroyed after that runtime is quiesced.
+    std::unique_ptr<RemoteAccessNotifier> notifier = std::make_unique<RemoteAccessNotifier>();
+
+    // What has already been reported. Everything is compared against a freshly derived value rather than a value
+    // cached at write time, so there is one source of truth for what a consumer can observe.
+    std::optional<RemoteAccessState> publishedState;
+    std::optional<std::size_t> publishedClientCount;
+    std::optional<RemoteAccessError> publishedError;
+
     ~Impl() { shutdownRuntime(); }
+
+    RemoteAccessState derivedState() const
+    {
+        if (!session)
+            return RemoteAccessState::Stopped;
+        return mapState(session->state());
+    }
+
+    std::optional<RemoteAccessError> derivedError() const
+    {
+        if (session) {
+            if (const std::optional<hyremote::SessionError> coreError = session->lastError()) {
+                if (!isAcknowledgedRecoverableError(*coreError))
+                    return mapError(*coreError);
+            }
+        }
+        return error;
+    }
+
+    static bool sameError(const std::optional<RemoteAccessError> &lhs,
+                          const std::optional<RemoteAccessError> &rhs)
+    {
+        if (lhs.has_value() != rhs.has_value())
+            return false;
+        if (!lhs)
+            return true;
+        return lhs->code == rhs->code && lhs->message == rhs->message && lhs->recoverable == rhs->recoverable;
+    }
+
+    void publishStateAndError(RemoteAccessState currentState, bool diagnosticWritten,
+                              const std::optional<RemoteAccessError> &currentError)
+    {
+        if (!notifier)
+            return;
+
+        if (!publishedState || *publishedState != currentState) {
+            publishedState = currentState;
+            notifier->stateChanged();
+        }
+
+        if (diagnosticWritten || !sameError(publishedError, currentError)) {
+            publishedError = currentError;
+            notifier->errorChanged();
+        }
+    }
+
+    // Called by Core while it holds its state lock, with the values it already has. Nothing here may query the
+    // Session: every getter takes that same non-recursive lock, so doing so deadlocks. An earlier revision of this
+    // change did exactly that and the facade tests hung until their timeouts exposed it.
+    void publishFromCore(bool diagnosticWritten, RemoteAccessState currentState,
+                         const std::optional<RemoteAccessError> &currentError)
+    {
+        publishStateAndError(currentState, diagnosticWritten, currentError);
+    }
+
+    // Called on a transport connection event. Reads only the count this facade owns, for the same reason.
+    void publishClientCount()
+    {
+        if (!notifier)
+            return;
+
+        const std::size_t currentClients = connectedClients ? connectedClients->load(std::memory_order_relaxed) : 0;
+        if (!publishedClientCount || *publishedClientCount != currentClients) {
+            publishedClientCount = currentClients;
+            notifier->clientCountChanged();
+        }
+    }
+
+    // Report whatever really changed. `diagnosticWritten` is set when Core says the diagnostic was written rather
+    // than merely re-read, so a recurrence of the same error is still reported even though the derived value is
+    // unchanged - an observer that acknowledged the first occurrence has to see the second one.
+    void publishChanges(bool diagnosticWritten = false)
+    {
+        if (!notifier)
+            return;
+
+        // Safe here and only here: these run from a call the owner made, where the Session is not being held by Core.
+        publishStateAndError(derivedState(), diagnosticWritten, derivedError());
+        publishClientCount();
+    }
 
     bool isConfigurable() const
     {
@@ -173,6 +277,7 @@ struct RemoteAccess::Impl
     void setError(RemoteAccessErrorCode code, QString message, bool recoverable = false)
     {
         error = RemoteAccessError{code, std::move(message), recoverable};
+        publishChanges(true);
     }
 
     SessionErrorRevision currentSessionErrorRevision() const
@@ -230,6 +335,9 @@ struct RemoteAccess::Impl
         // that was already delivered to the still-running local Qt application. This is deliberately
         // below the public API and shared by C++, QML and Transparent QPA through RemoteAccess.
         session->stop();
+        // Once the runtime is being torn down no further Core notification is wanted; the facade publishes the final
+        // state itself, from the call that asked for the teardown.
+        session->setChangeCallback({});
         if (inputSink)
             inputSink->shutdown();
         session.reset();
@@ -237,6 +345,16 @@ struct RemoteAccess::Impl
         resetErrorAcknowledgement();
     }
 };
+
+RemoteAccessNotifier::RemoteAccessNotifier(QObject *parent)
+    : QObject(parent)
+{
+}
+
+RemoteAccessNotifier *RemoteAccess::notifier() const noexcept
+{
+    return m_impl ? m_impl->notifier.get() : nullptr;
+}
 
 RemoteAccess::RemoteAccess(QObject *target)
     : m_impl(std::make_unique<Impl>())
@@ -419,8 +537,11 @@ bool RemoteAccess::start()
         return false;
     }
 
+    // The decorator only observes connection events and the notifier travels with the runtime, so capturing the Impl
+    // here is sound: the transport lives inside the session this Impl owns and is torn down before the Impl is.
+    Impl *const impl = m_impl.get();
     transport.transport = std::make_unique<ClientCountingTransport>(
-        std::move(transport.transport), m_impl->connectedClients);
+        std::move(transport.transport), m_impl->connectedClients, [impl] { impl->publishChanges(); });
 
     auto session = std::make_unique<hyremote::Session>();
     if (!session->setCaptureSource(std::move(targetComponents.capture))
@@ -445,11 +566,28 @@ bool RemoteAccess::start()
         // Product-level semantics are simpler than Core's partial-start observability: a failed
         // public start() cleans itself up and returns to Stopped. The error remains queryable.
         session->stop();
+        // Published here rather than only on the success path: this start() wrote the diagnostic itself and no Core
+        // change callback has been installed yet, so nothing else would report it.
+        m_impl->publishChanges(true);
         return false;
     }
 
     m_impl->inputSink = std::move(inputSink);
     m_impl->session = std::move(session);
+
+    // Core pushes the changes this facade cannot infer from its own calls: a fault raised by a worker, a transport
+    // event, a capture target disappearing. They arrive on the thread that caused them with Core's lock held, so the
+    // callback takes the values Core hands it and only maps and emits. Everything the facade causes itself is
+    // published after the call that caused it.
+    m_impl->session->setChangeCallback(
+        [impl](hyremote::Session::Change change, hyremote::SessionState state,
+               std::optional<hyremote::SessionError> coreError) {
+            const std::optional<RemoteAccessError> mappedError =
+                coreError ? std::make_optional(mapError(*coreError)) : std::nullopt;
+            impl->publishFromCore(change == hyremote::Session::Change::Diagnostic, mapState(state), mappedError);
+        });
+
+    m_impl->publishChanges();
     return true;
 }
 
@@ -464,6 +602,9 @@ void RemoteAccess::stop() noexcept
     }
 
     m_impl->shutdownRuntime();
+
+    // Publish after the teardown, not before: the values a consumer reads from the slot are the final ones.
+    m_impl->publishChanges();
 }
 
 RemoteAccessState RemoteAccess::state() const
@@ -505,6 +646,7 @@ void RemoteAccess::clearError()
     // later occurrence of that recoverable Core error advances its occurrence counter and makes it
     // visible again. Unrelated viewer/capture/transport activity must not resurrect the old error.
     m_impl->acknowledgeCurrentRecoverableError();
+    m_impl->publishChanges(true);
 }
 
 }  // namespace HyRemote

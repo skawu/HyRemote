@@ -37,6 +37,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -203,6 +204,27 @@ public:
     Session &operator=(const Session &) = delete;
     Session(Session &&) = delete;
     Session &operator=(Session &&) = delete;
+
+    // What an observer is being told about. Two values, and no payload: an adapter that compares the values it
+    // derives cannot miss a change, and Core does not have to promise an atomic per-field event.
+    enum class Change {
+        State,       // state() changed
+        Diagnostic,  // lastError() was written, including a recurrence of the same error
+    };
+
+    // Change notification for adapters that must react instead of polling.
+    //
+    // Core calls the installed callback when a change is caused by something other than the caller's own start()/
+    // stop() - a component failing on its own thread, a transport event, a capture target disappearing - on the
+    // thread that caused it, with Core's state lock held. Owner-driven transitions are deliberately not notified:
+    // the caller is already inside the call that caused them and can re-read the state when it returns. Install
+    // `{}` to remove the callback.
+    //
+    // The new state and diagnostic are passed in rather than left to be queried, because the callback runs with the
+    // state lock held and every getter takes that non-recursive lock: an observer that called state() or
+    // lastError() from here would deadlock instead of reporting anything. Reading anything else from the Session is
+    // ruled out for the same reason, exactly as it already is for adapter callbacks.
+    void setChangeCallback(std::function<void(Change, SessionState, std::optional<SessionError>)> callback);
 
     // Installs or replaces the capture source. Only allowed while the Session is `Stopped`:
     // returns false for every other state and leaves the active component untouched (the rejected
