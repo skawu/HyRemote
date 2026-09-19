@@ -21,15 +21,23 @@ enum class RemoteAccessState {
     Faulted,
 };
 
+// Stable product-level security intent. Protocol/security-type selection stays private to the
+// runtime. The final V1 GA secure profile is AuthenticatedEncrypted; Insecure remains an explicit
+// loopback/trusted-test compatibility mode and is never silently selected as a downgrade.
+enum class RemoteSecurityProfile {
+    Insecure,
+    Authenticated,
+    AuthenticatedEncrypted,
+};
+
 enum class RemoteAccessErrorCode {
     InvalidConfiguration,
     TargetAdapterUnavailable,
     TransportUnavailable,
     RemoteInputUnavailable,
-    // Authentication was configured but cannot be honoured: either no password was set, or the
-    // authenticated transport step is not available in this build. Reported instead of silently
-    // opening an unauthenticated listener.
-    AuthenticationUnavailable,
+    // A non-insecure profile was configured but its descriptor/material or implementation cannot
+    // be honoured. Reported instead of silently opening a weaker listener.
+    SecurityUnavailable,
     StartFailed,
     RuntimeFailure,
     Cancelled,
@@ -45,13 +53,14 @@ struct RemoteAccessError
 // Product-level Embedded C++ API.
 //
 // Normal applications attach one RemoteAccess instance to a top-level Qt target and explicitly
-// start/stop remote access. Session/CaptureSource/Transport/InputSink and concrete VNC backends are
-// implementation details and intentionally absent from this header.
+// start/stop remote access. Session/CaptureSource/Transport/InputSink and concrete RFB/TLS backends
+// are implementation details and intentionally absent from this header.
 //
 // Safe defaults:
 //   - construction never opens a listener;
 //   - listen address defaults to loopback;
 //   - remote input defaults to disabled;
+//   - security defaults to explicit Insecure compatibility mode;
 //   - configuration is mutable only while Stopped.
 class HYREMOTE_REMOTEACCESS_EXPORT RemoteAccess
 {
@@ -76,17 +85,15 @@ public:
     bool remoteInputEnabled() const noexcept;
     bool setRemoteInputEnabled(bool enabled);
 
-    // Authentication configuration. This is configuration only: the authenticated transport step
-    // (RFB security type 2) is frozen in docs/security-model.md 10.1 but not implemented yet, so
-    // start() currently refuses when authentication is enabled rather than silently serving an
-    // unauthenticated SecurityType None listener. The password is never included in errors,
-    // diagnostics or logs, and enabling without a password is never accepted at start().
-    bool authenticationEnabled() const noexcept;
-    bool setAuthenticationEnabled(bool enabled);
+    RemoteSecurityProfile securityProfile() const noexcept;
+    bool setSecurityProfile(RemoteSecurityProfile profile);
 
-    // Stores the password used by the authentication step. Pass an empty string to clear it.
-    // Rejected unless the runtime is Stopped, and the value is never echoed back in any error.
-    bool setPassword(const QString &password);
+    // Path to the non-secret V1 security descriptor. The descriptor refers to secret material by
+    // file path; raw passwords/private keys are never accepted as command-line/QML diagnostics and
+    // are never readable back through this API. Relative material paths are resolved by the runtime
+    // against the descriptor directory. Configuration changes are accepted only while Stopped.
+    QString securityConfigFile() const;
+    bool setSecurityConfigFile(const QString &path);
 
     // Explicit lifecycle. start() owns creation of the target adapter, input path and default
     // transport behind the facade. On startup failure, RemoteAccess returns to Stopped and preserves
@@ -98,9 +105,9 @@ public:
     RemoteAccessState state() const;
 
     // Backend-neutral product diagnostic. Running with zero connected clients means the listener is
-    // available but no viewer is currently attached. Concrete transport/client objects never cross
-    // this API boundary. A Faulted runtime remains owned until explicit stop(), so this diagnostic
-    // may remain nonzero until that cleanup completes.
+    // available but no viewer is currently attached. This is aggregate diagnostics only: it is not
+    // identity, authentication or authorization. Concrete transport/client objects never cross this
+    // API boundary.
     std::size_t connectedClientCount() const noexcept;
 
     std::optional<RemoteAccessError> lastError() const;
