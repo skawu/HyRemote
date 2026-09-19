@@ -126,58 +126,71 @@ struct SessionError
 
 // Counters and gauges owned by Core. Cumulative counters are reset by `start()` so that a
 // repeated start/stop cycle is observable and deterministic.
+//
+// Two kinds of field live here, and the difference is part of the contract:
+//
+//   * **Cumulative per run** - a counter or an observed maximum that describes the run that is
+//     currently in progress or that most recently ran. It keeps its value after `stop()` so that
+//     post-stop diagnostics and acceptance evidence can still read it, and it is reset by the next
+//     `start()`. Counting starts when the run does, so a value of 0 after a stop means the run
+//     genuinely did not produce that event, not that the number was lost during teardown.
+//   * **Gauge** - a current instantaneous value. Reading 0 after `stop()` is the truthful answer,
+//     because nothing is queued or in flight once the run has been torn down.
+//
+// `lastFrameRejection` follows the cumulative rule as a string: it holds the most recent rejection
+// reason of the run, and is cleared by the next `start()`.
 struct SessionStats
 {
     // Capture scheduling.
-    std::uint64_t captureRequestsIssued = 0;
-    std::uint64_t captureRequestsRejected = 0;   // requestFrame() returned false
-    std::size_t inFlight = 0;
-    std::size_t maxInFlightObserved = 0;
+    std::uint64_t captureRequestsIssued = 0;      // cumulative
+    std::uint64_t captureRequestsRejected = 0;    // cumulative; requestFrame() returned false
+    std::size_t inFlight = 0;                     // gauge: requests issued but not yet completed
+    std::size_t maxInFlightObserved = 0;          // cumulative maximum
 
     // Events reported by the backends.
-    std::uint64_t captureEvents = 0;
-    std::uint64_t captureEventsNonRecoverable = 0;
-    std::uint64_t transportEvents = 0;
-    std::uint64_t transportEventsFatal = 0;
+    std::uint64_t captureEvents = 0;              // cumulative
+    std::uint64_t captureEventsNonRecoverable = 0;// cumulative
+    std::uint64_t transportEvents = 0;            // cumulative
+    std::uint64_t transportEventsFatal = 0;       // cumulative
 
     // Frame acceptance.
-    std::uint64_t framesAccepted = 0;            // assigned a FrameId and stored in the mailbox
-    std::uint64_t framesRejectedInvalid = 0;     // missing storage anchor / unusable geometry
-    std::uint64_t framesRejectedTiming = 0;      // no content PTS and none can be derived
-    std::uint64_t framesArrivedAfterStop = 0;    // completion delivered outside a running Session
-    std::uint64_t lastFrameId = 0;
-    std::string lastFrameRejection;
+    std::uint64_t framesAccepted = 0;            // cumulative; assigned a FrameId and stored in the mailbox
+    std::uint64_t framesRejectedInvalid = 0;     // cumulative; missing storage anchor / unusable geometry
+    std::uint64_t framesRejectedTiming = 0;      // cumulative; no content PTS and none can be derived
+    std::uint64_t framesArrivedAfterStop = 0;    // cumulative; completion delivered outside a running Session
+    std::uint64_t lastFrameId = 0;               // cumulative: the run's last assigned id, kept after stop
+    std::string lastFrameRejection;              // cumulative: the run's most recent rejection reason
 
     // Mailbox.
-    std::size_t mailboxWaiting = 0;
-    std::size_t mailboxDispatcherOwned = 0;
-    std::size_t maxMailboxWaitingObserved = 0;
-    std::size_t maxMailboxOwnedObserved = 0;
-    std::uint64_t framesDroppedByPolicy = 0;     // DropOldest removed a waiting frame
-    std::uint64_t framesRejectedOverflow = 0;    // ProducerThrottle anomaly (backend over-produced)
+    std::size_t mailboxWaiting = 0;              // gauge: queued right now
+    std::size_t mailboxDispatcherOwned = 0;      // gauge: held by the dispatch worker right now
+    std::size_t maxMailboxWaitingObserved = 0;   // cumulative maximum
+    std::size_t maxMailboxOwnedObserved = 0;     // cumulative maximum
+    std::uint64_t framesDroppedByPolicy = 0;     // cumulative; DropOldest removed a waiting frame
+    std::uint64_t framesRejectedOverflow = 0;    // cumulative; ProducerThrottle anomaly (backend over-produced)
 
     // Transport.
-    std::uint64_t framesDispatched = 0;             // handed to Transport::enqueueFrame()
-    std::uint64_t transportEnqueueFailures = 0;     // a transport threw from enqueueFrame()
+    std::uint64_t framesDispatched = 0;             // cumulative; handed to Transport::enqueueFrame()
+    std::uint64_t transportEnqueueFailures = 0;     // cumulative; a transport threw from enqueueFrame()
 
     // Input.
-    std::uint64_t inputEventsPosted = 0;         // delivered to an InputSink without an exception
-    std::uint64_t inputEventsDropped = 0;        // no InputSink installed, or not Running
-    std::uint64_t inputPostFailures = 0;         // InputSink::post() threw
+    std::uint64_t inputEventsPosted = 0;         // cumulative; delivered to an InputSink without an exception
+    std::uint64_t inputEventsDropped = 0;        // cumulative; no InputSink installed, or not Running
+    std::uint64_t inputPostFailures = 0;         // cumulative; InputSink::post() threw
 
     // Callback gate: callbacks that arrived after stop() was entered and were therefore ignored.
-    std::uint64_t callbacksIgnoredAfterStop = 0;
+    std::uint64_t callbacksIgnoredAfterStop = 0; // cumulative; also readable after stop
 
     // Core workers that have begun executing (scheduler + dispatch worker, so 2 in a running
     // Session). Diagnostic for the startup handshake: a worker that never appears here means thread
     // creation failed, and one that appears but issues nothing did not survive the transition to
     // `Running`.
-    std::size_t workersStarted = 0;
+    std::size_t workersStarted = 0;              // cumulative per run
 
     // Ordered teardowns actually performed for the current run. It must be exactly 1 for a run:
     // concurrent stop() callers wait for the owner and return without touching the run's components
     // or workers again.
-    std::uint64_t teardownsPerformed = 0;
+    std::uint64_t teardownsPerformed = 0;        // cumulative per run
 };
 
 class Session
