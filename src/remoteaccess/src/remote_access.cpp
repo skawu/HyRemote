@@ -152,8 +152,8 @@ struct RemoteAccess::Impl
     QHostAddress listenAddress = QHostAddress::LocalHost;
     quint16 port = 5900;
     bool remoteInputEnabled = false;
-    bool authenticationEnabled = false;
-    QString password;
+    RemoteSecurityProfile securityProfile = RemoteSecurityProfile::Insecure;
+    QString securityConfigFile;
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;
     std::optional<RemoteAccessError> error;
@@ -317,27 +317,29 @@ bool RemoteAccess::setRemoteInputEnabled(bool enabled)
     return true;
 }
 
-bool RemoteAccess::authenticationEnabled() const noexcept
+RemoteSecurityProfile RemoteAccess::securityProfile() const noexcept
 {
-    return m_impl && m_impl->authenticationEnabled;
+    return m_impl ? m_impl->securityProfile : RemoteSecurityProfile::Insecure;
 }
 
-bool RemoteAccess::setAuthenticationEnabled(bool enabled)
+bool RemoteAccess::setSecurityProfile(RemoteSecurityProfile profile)
 {
     if (!m_impl || !m_impl->isConfigurable())
         return false;
-    m_impl->authenticationEnabled = enabled;
+    m_impl->securityProfile = profile;
     return true;
 }
 
-bool RemoteAccess::setPassword(const QString &password)
+QString RemoteAccess::securityConfigFile() const
+{
+    return m_impl ? m_impl->securityConfigFile : QString{};
+}
+
+bool RemoteAccess::setSecurityConfigFile(const QString &path)
 {
     if (!m_impl || !m_impl->isConfigurable())
         return false;
-
-    // Deliberately no validation message echoes the value, and an empty string is the documented way to
-    // clear it. The password itself is never put into an error, a diagnostic or a log line.
-    m_impl->password = password;
+    m_impl->securityConfigFile = path;
     return true;
 }
 
@@ -355,16 +357,29 @@ bool RemoteAccess::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
 
-    // Authentication is configuration-only until the authenticated transport step (RFB security type 2,
-    // docs/security-model.md 10.1) is implemented. A configured authentication mode must never be
-    // downgraded to an unauthenticated SecurityType None listener, so start() refuses instead of opening
-    // one. No branch of this message ever contains the password.
-    if (m_impl->authenticationEnabled) {
-        m_impl->setError(RemoteAccessErrorCode::AuthenticationUnavailable,
-                         m_impl->password.isEmpty()
-                             ? QStringLiteral("authentication was enabled without a password; refusing to start")
-                             : QStringLiteral("authentication was enabled but the authenticated transport is not "
-                                              "available yet; refusing to open an unauthenticated listener"));
+    // The explicit insecure compatibility profile must never publish a SecurityType None listener
+    // beyond loopback. This absorbs the #153 guard while keeping the normal default path unchanged.
+    // A secure profile must never silently downgrade if its descriptor/capability is unavailable.
+    if (m_impl->securityProfile == RemoteSecurityProfile::Insecure) {
+        if (!m_impl->listenAddress.isLoopback()) {
+            m_impl->setError(
+                RemoteAccessErrorCode::InvalidConfiguration,
+                QStringLiteral("refusing a non-loopback listener with the Insecure security profile"));
+            return false;
+        }
+    } else {
+        if (m_impl->securityConfigFile.trimmed().isEmpty()) {
+            m_impl->setError(RemoteAccessErrorCode::SecurityUnavailable,
+                             QStringLiteral("the selected security profile requires a security descriptor"));
+            return false;
+        }
+
+        // Configuration is frozen before the authenticated transport implementation lands. Refuse
+        // before target/transport composition so no listener can be opened and no weaker security
+        // mode can be substituted. The next #143 increment replaces this guard with descriptor
+        // validation and the real authenticated/encrypted transport path.
+        m_impl->setError(RemoteAccessErrorCode::SecurityUnavailable,
+                         QStringLiteral("the selected security profile is not available yet; refusing to open a weaker listener"));
         return false;
     }
 
