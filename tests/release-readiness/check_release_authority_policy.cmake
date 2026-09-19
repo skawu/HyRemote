@@ -33,7 +33,7 @@ if(NOT scope_authority STREQUAL "157" OR NOT freeze_authority STREQUAL "165")
 endif()
 
 set(expected_v1_issues
-    9 30 31 32 33 39 41 57 101 104 107 109 143 144 157 158 159 162 163 164 165)
+    9 30 31 32 33 39 41 57 101 104 107 109 143 144 157 158 159 162 163 164 165 170 174 175 176)
 string(JSON authority_count LENGTH "${authority_json}" required_issue_numbers)
 math(EXPR authority_last "${authority_count} - 1")
 set(actual_v1_issues)
@@ -49,6 +49,50 @@ if(NOT "${actual_v1_issues}" STREQUAL "${expected_v1_issues}")
 endif()
 
 set(expected_embedded_deferred 7 10 17 18)
+
+set(expected_classified_referenced 14 74 90 91 95 106 134 147 156 166)
+string(JSON classified_count LENGTH "${authority_json}" classified_referenced_issue_numbers)
+math(EXPR classified_last "${classified_count} - 1")
+set(actual_classified_referenced)
+foreach(index RANGE 0 ${classified_last})
+    string(JSON issue GET "${authority_json}" classified_referenced_issue_numbers ${index})
+    list(APPEND actual_classified_referenced "${issue}")
+endforeach()
+if(NOT "${actual_classified_referenced}" STREQUAL "${expected_classified_referenced}")
+    message(FATAL_ERROR
+        "release-authority-policy: classified-reference list drifted. "
+        "expected='${expected_classified_referenced}' actual='${actual_classified_referenced}'")
+endif()
+
+# Anti-leak: every issue number mentioned by an in-tree release authority must be classified, so a
+# future V1-labelled blocker cannot silently exist outside the mandatory manifest.
+set(declared_authority_documents
+    docs/release-candidate-checklist.md
+    docs/v1-ga-acceptance.md
+    docs/development-roadmap.md
+    docs/known-limitations.md
+    docs/compatibility.md
+    docs/v1-physical-acceptance.md
+    docs/security-model.md)
+set(known_issue_numbers ${expected_v1_issues} ${expected_embedded_deferred} ${expected_classified_referenced})
+foreach(document IN LISTS declared_authority_documents)
+    set(document_path "${HYREMOTE_SOURCE_DIR}/${document}")
+    if(NOT EXISTS "${document_path}")
+        message(FATAL_ERROR "release-authority-policy: declared authority document is missing: ${document}")
+    endif()
+    file(READ "${document_path}" document_text)
+    string(REGEX MATCHALL "#[0-9]+" mentioned "${document_text}")
+    foreach(token IN LISTS mentioned)
+        string(REGEX REPLACE "#" "" number "${token}")
+        if(NOT number IN_LIST known_issue_numbers)
+            message(FATAL_ERROR
+                "release-authority-policy: unclassified issue reference #${number} in ${document}; "
+                "either add it to the mandatory set or classify it in "
+                ".github/release/v1-mandatory-issues.json")
+        endif()
+    endforeach()
+endforeach()
+
 string(JSON deferred_count LENGTH "${authority_json}" embedded_deferred_issue_numbers)
 math(EXPR deferred_last "${deferred_count} - 1")
 set(actual_embedded_deferred)
