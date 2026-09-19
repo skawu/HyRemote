@@ -282,6 +282,37 @@ struct Session::Impl
         return waiting + impl.inFlight < impl.config.frameQueue.capacity;
     }
 
+    // Callback boundary for the three backend-invoked callbacks below. The backend calls them from its
+    // own stack - a capture thread, a transport runtime - so an exception allowed to escape would unwind
+    // into code HyRemote does not own, and a backend that is not exception-aware would terminate the
+    // process. The realistic source is allocation inside the bounded bookkeeping below (a mailbox push, a
+    // rejection reason string), so the handler itself must not allocate: the failure may well have been
+    // bad_alloc, and formatting a message here would throw out of a noexcept boundary.
+    //
+    // The failure is reported through the existing error model, following the established input path (see
+    // onInput): it is recoverable, because a single lost frame does not invalidate the session, and the
+    // reporting is best effort because the alternative is terminating the process in the caller's stack.
+    static void reportCallbackFailure(Impl &impl, const char *message) noexcept
+    {
+        try {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            impl.lastError = SessionError{SessionErrorCode::ComponentFailure, message, true};
+        } catch (...) {
+            // Best effort by design; see above.
+        }
+        impl.cv.notify_all();
+    }
+
+    template <typename Callback>
+    static void atCallbackBoundary(Impl &impl, Callback &&callback) noexcept
+    {
+        try {
+            std::forward<Callback>(callback)();
+        } catch (...) {
+            reportCallbackFailure(impl, "core callback threw from a backend invocation");
+        }
+    }
+
     // Capture callback path. May run on a backend-defined thread; performs bounded
     // bookkeeping/enqueue work only and never touches the transport.
     static void onFrameReady(Impl &impl, RemoteFrame frame)
@@ -847,12 +878,16 @@ bool Session::start()
             source->start([gate](RemoteFrame frame) {
                               GateGuard guard(gate);
                               if (auto *target = static_cast<Impl *>(guard.enter()))
-                                  Impl::onFrameReady(*target, std::move(frame));
+                                  Impl::atCallbackBoundary(*target, [target, frame = std::move(frame)]() mutable {
+                                      Impl::onFrameReady(*target, std::move(frame));
+                                  });
                           },
                           [gate](const CaptureEvent &event) {
                               GateGuard guard(gate);
                               if (auto *target = static_cast<Impl *>(guard.enter()))
-                                  Impl::onCaptureEvent(*target, event);
+                                  Impl::atCallbackBoundary(*target, [target, event] {
+                                      Impl::onCaptureEvent(*target, event);
+                                  });
                           });
     } catch (const std::exception &error) {
         // A throwing start may have left partial state behind, so the component is stopped again
@@ -980,12 +1015,16 @@ bool Session::start()
             transport->start([gate](const InputEvent &event) {
                                  GateGuard guard(gate);
                                  if (auto *target = static_cast<Impl *>(guard.enter()))
-                                     Impl::onInput(*target, event);
+                                     Impl::atCallbackBoundary(*target, [target, event] {
+                                         Impl::onInput(*target, event);
+                                     });
                              },
                              [gate](const TransportEvent &event) {
                                  GateGuard guard(gate);
                                  if (auto *target = static_cast<Impl *>(guard.enter()))
-                                     Impl::onTransportEvent(*target, event);
+                                     Impl::atCallbackBoundary(*target, [target, event] {
+                                         Impl::onTransportEvent(*target, event);
+                                     });
                              });
     } catch (const std::exception &error) {
         transportMessage = std::string("transport threw from start(): ") + error.what();
