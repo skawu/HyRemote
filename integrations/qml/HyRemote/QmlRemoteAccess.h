@@ -32,6 +32,10 @@ class QmlRemoteAccess : public QObject, public QQmlParserStatus
     Q_PROPERTY(QString listenAddress READ listenAddress WRITE setListenAddress NOTIFY listenAddressChanged)
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY portChanged)
     Q_PROPERTY(bool remoteInputEnabled READ remoteInputEnabled WRITE setRemoteInputEnabled NOTIFY remoteInputEnabledChanged)
+    Q_PROPERTY(SecurityProfile securityProfile READ securityProfile WRITE setSecurityProfile NOTIFY securityProfileChanged)
+    // This is a descriptor path, not secret material. Password/private-key contents are deliberately
+    // absent from the QML surface and can never be read back through a binding.
+    Q_PROPERTY(QString securityConfigFile READ securityConfigFile WRITE setSecurityConfigFile NOTIFY securityConfigFileChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(quint64 connectedClientCount READ connectedClientCount NOTIFY connectedClientCountChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorChanged)
@@ -48,12 +52,20 @@ public:
     };
     Q_ENUM(State)
 
+    enum SecurityProfile {
+        Insecure,
+        Authenticated,
+        AuthenticatedEncrypted,
+    };
+    Q_ENUM(SecurityProfile)
+
     enum ErrorCode {
         NoError,
         InvalidConfiguration,
         TargetAdapterUnavailable,
         TransportUnavailable,
         RemoteInputUnavailable,
+        SecurityUnavailable,
         StartFailed,
         RuntimeFailure,
         Cancelled,
@@ -81,6 +93,12 @@ public:
     bool remoteInputEnabled() const noexcept;
     void setRemoteInputEnabled(bool enabled);
 
+    SecurityProfile securityProfile() const noexcept;
+    void setSecurityProfile(SecurityProfile profile);
+
+    QString securityConfigFile() const;
+    void setSecurityConfigFile(const QString &path);
+
     State state() const noexcept;
     quint64 connectedClientCount() const noexcept;
     QString errorString() const;
@@ -95,6 +113,8 @@ signals:
     void listenAddressChanged();
     void portChanged();
     void remoteInputEnabledChanged();
+    void securityProfileChanged();
+    void securityConfigFileChanged();
     void stateChanged();
     void connectedClientCountChanged();
     void errorChanged();

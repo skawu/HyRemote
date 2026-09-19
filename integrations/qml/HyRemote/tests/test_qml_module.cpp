@@ -76,6 +76,8 @@ void testDeclarativeImportAndSafeDefaults()
     CHECK(object->property("listenAddress").toString() == QStringLiteral("127.0.0.1"));
     CHECK(object->property("port").toInt() == 5901);
     CHECK(object->property("remoteInputEnabled").toBool());
+    CHECK(object->property("securityProfile").toInt() == 0); // Insecure compatibility profile
+    CHECK(object->property("securityConfigFile").toString().isEmpty());
     CHECK(object->property("errorCode").toInt() == 0); // NoError
 
     CHECK(!object->setProperty("connectedClientCount", QVariant::fromValue<qulonglong>(1)));
@@ -107,6 +109,18 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
     CHECK(QMetaObject::invokeMethod(object.get(), "clearError"));
     CHECK(object->property("errorCode").toInt() == 0);
     CHECK(object->property("errorString").toString().isEmpty());
+
+    // #170 freezes one transport-neutral profile and a non-secret descriptor path. Raw secret
+    // values are intentionally absent from the QML object model.
+    CHECK(object->setProperty("securityProfile", 1)); // Authenticated
+    CHECK(object->property("securityProfile").toInt() == 1);
+    CHECK(object->setProperty("securityConfigFile", QStringLiteral("support-security.conf")));
+    CHECK(object->property("securityConfigFile").toString()
+          == QStringLiteral("support-security.conf"));
+    CHECK(!object->property("password").isValid());
+    CHECK(!object->property("authenticationEnabled").isValid());
+    CHECK(object->setProperty("securityProfile", 0));
+    CHECK(object->property("securityProfile").toInt() == 0);
 }
 
 void testEnabledStartFailureIsTransactional()

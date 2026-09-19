@@ -27,6 +27,32 @@ QmlRemoteAccess::State mapState(::HyRemote::RemoteAccessState state)
     return QmlRemoteAccess::Faulted;
 }
 
+::HyRemote::RemoteSecurityProfile mapSecurityProfile(QmlRemoteAccess::SecurityProfile profile)
+{
+    switch (profile) {
+    case QmlRemoteAccess::Insecure:
+        return ::HyRemote::RemoteSecurityProfile::Insecure;
+    case QmlRemoteAccess::Authenticated:
+        return ::HyRemote::RemoteSecurityProfile::Authenticated;
+    case QmlRemoteAccess::AuthenticatedEncrypted:
+        return ::HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted;
+    }
+    return ::HyRemote::RemoteSecurityProfile::Insecure;
+}
+
+QmlRemoteAccess::SecurityProfile mapSecurityProfile(::HyRemote::RemoteSecurityProfile profile)
+{
+    switch (profile) {
+    case ::HyRemote::RemoteSecurityProfile::Insecure:
+        return QmlRemoteAccess::Insecure;
+    case ::HyRemote::RemoteSecurityProfile::Authenticated:
+        return QmlRemoteAccess::Authenticated;
+    case ::HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted:
+        return QmlRemoteAccess::AuthenticatedEncrypted;
+    }
+    return QmlRemoteAccess::Insecure;
+}
+
 QmlRemoteAccess::ErrorCode mapErrorCode(::HyRemote::RemoteAccessErrorCode code)
 {
     switch (code) {
@@ -38,6 +64,8 @@ QmlRemoteAccess::ErrorCode mapErrorCode(::HyRemote::RemoteAccessErrorCode code)
         return QmlRemoteAccess::TransportUnavailable;
     case ::HyRemote::RemoteAccessErrorCode::RemoteInputUnavailable:
         return QmlRemoteAccess::RemoteInputUnavailable;
+    case ::HyRemote::RemoteAccessErrorCode::SecurityUnavailable:
+        return QmlRemoteAccess::SecurityUnavailable;
     case ::HyRemote::RemoteAccessErrorCode::StartFailed:
         return QmlRemoteAccess::StartFailed;
     case ::HyRemote::RemoteAccessErrorCode::RuntimeFailure:
@@ -246,6 +274,42 @@ void QmlRemoteAccess::setRemoteInputEnabled(bool enabledValue)
     }
     clearLocalError();
     emit remoteInputEnabledChanged();
+}
+
+QmlRemoteAccess::SecurityProfile QmlRemoteAccess::securityProfile() const noexcept
+{
+    return m_access ? mapSecurityProfile(m_access->securityProfile()) : Insecure;
+}
+
+void QmlRemoteAccess::setSecurityProfile(SecurityProfile profile)
+{
+    if (!m_access || profile == securityProfile())
+        return;
+    if (!m_access->setSecurityProfile(mapSecurityProfile(profile))) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("securityProfile can only be changed while remote access is stopped"));
+        return;
+    }
+    clearLocalError();
+    emit securityProfileChanged();
+}
+
+QString QmlRemoteAccess::securityConfigFile() const
+{
+    return m_access ? m_access->securityConfigFile() : QString{};
+}
+
+void QmlRemoteAccess::setSecurityConfigFile(const QString &path)
+{
+    if (!m_access || path == securityConfigFile())
+        return;
+    if (!m_access->setSecurityConfigFile(path)) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("securityConfigFile can only be changed while remote access is stopped"));
+        return;
+    }
+    clearLocalError();
+    emit securityConfigFileChanged();
 }
 
 QmlRemoteAccess::State QmlRemoteAccess::state() const noexcept

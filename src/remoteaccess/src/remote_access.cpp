@@ -152,6 +152,8 @@ struct RemoteAccess::Impl
     QHostAddress listenAddress = QHostAddress::LocalHost;
     quint16 port = 5900;
     bool remoteInputEnabled = false;
+    RemoteSecurityProfile securityProfile = RemoteSecurityProfile::Insecure;
+    QString securityConfigFile;
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;
     std::optional<RemoteAccessError> error;
@@ -315,6 +317,32 @@ bool RemoteAccess::setRemoteInputEnabled(bool enabled)
     return true;
 }
 
+RemoteSecurityProfile RemoteAccess::securityProfile() const noexcept
+{
+    return m_impl ? m_impl->securityProfile : RemoteSecurityProfile::Insecure;
+}
+
+bool RemoteAccess::setSecurityProfile(RemoteSecurityProfile profile)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+    m_impl->securityProfile = profile;
+    return true;
+}
+
+QString RemoteAccess::securityConfigFile() const
+{
+    return m_impl ? m_impl->securityConfigFile : QString{};
+}
+
+bool RemoteAccess::setSecurityConfigFile(const QString &path)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+    m_impl->securityConfigFile = path;
+    return true;
+}
+
 bool RemoteAccess::start()
 {
     if (!m_impl)
@@ -328,6 +356,32 @@ bool RemoteAccess::start()
 
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
+
+    // The explicit insecure compatibility profile must never publish a SecurityType None listener
+    // beyond loopback. This absorbs the #153 guard while keeping the normal default path unchanged.
+    // A secure profile must never silently downgrade if its descriptor/capability is unavailable.
+    if (m_impl->securityProfile == RemoteSecurityProfile::Insecure) {
+        if (!m_impl->listenAddress.isLoopback()) {
+            m_impl->setError(
+                RemoteAccessErrorCode::InvalidConfiguration,
+                QStringLiteral("refusing a non-loopback listener with the Insecure security profile"));
+            return false;
+        }
+    } else {
+        if (m_impl->securityConfigFile.trimmed().isEmpty()) {
+            m_impl->setError(RemoteAccessErrorCode::SecurityUnavailable,
+                             QStringLiteral("the selected security profile requires a security descriptor"));
+            return false;
+        }
+
+        // Configuration is frozen before the authenticated transport implementation lands. Refuse
+        // before target/transport composition so no listener can be opened and no weaker security
+        // mode can be substituted. The next #143 increment replaces this guard with descriptor
+        // validation and the real authenticated/encrypted transport path.
+        m_impl->setError(RemoteAccessErrorCode::SecurityUnavailable,
+                         QStringLiteral("the selected security profile is not available yet; refusing to open a weaker listener"));
+        return false;
+    }
 
     QObject *targetObject = m_impl->target.data();
     if (targetObject == nullptr) {
