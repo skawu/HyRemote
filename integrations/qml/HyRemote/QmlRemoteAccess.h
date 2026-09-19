@@ -32,10 +32,10 @@ class QmlRemoteAccess : public QObject, public QQmlParserStatus
     Q_PROPERTY(QString listenAddress READ listenAddress WRITE setListenAddress NOTIFY listenAddressChanged)
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY portChanged)
     Q_PROPERTY(bool remoteInputEnabled READ remoteInputEnabled WRITE setRemoteInputEnabled NOTIFY remoteInputEnabledChanged)
-    // Read-only, and configured through the invokable methods below: the password must never be readable
-    // back through a property binding. Enabling authentication is configuration only until the
-    // authenticated transport step lands, and start() refuses rather than downgrading silently.
-    Q_PROPERTY(bool authenticationEnabled READ authenticationEnabled NOTIFY authenticationEnabledChanged)
+    Q_PROPERTY(SecurityProfile securityProfile READ securityProfile WRITE setSecurityProfile NOTIFY securityProfileChanged)
+    // This is a descriptor path, not secret material. Password/private-key contents are deliberately
+    // absent from the QML surface and can never be read back through a binding.
+    Q_PROPERTY(QString securityConfigFile READ securityConfigFile WRITE setSecurityConfigFile NOTIFY securityConfigFileChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(quint64 connectedClientCount READ connectedClientCount NOTIFY connectedClientCountChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorChanged)
@@ -52,12 +52,20 @@ public:
     };
     Q_ENUM(State)
 
+    enum SecurityProfile {
+        Insecure,
+        Authenticated,
+        AuthenticatedEncrypted,
+    };
+    Q_ENUM(SecurityProfile)
+
     enum ErrorCode {
         NoError,
         InvalidConfiguration,
         TargetAdapterUnavailable,
         TransportUnavailable,
         RemoteInputUnavailable,
+        SecurityUnavailable,
         StartFailed,
         RuntimeFailure,
         Cancelled,
@@ -85,12 +93,11 @@ public:
     bool remoteInputEnabled() const noexcept;
     void setRemoteInputEnabled(bool enabled);
 
-    bool authenticationEnabled() const noexcept;
-    // Configuration is exposed through invokable methods rather than a writable property so that the
-    // password can never be read back by a QML binding. Both return false and set a local error when the
-    // runtime is not Stopped, and enabling without a password makes start() refuse rather than downgrade.
-    Q_INVOKABLE bool setAuthenticationEnabled(bool enabled);
-    Q_INVOKABLE bool setPassword(const QString &password);
+    SecurityProfile securityProfile() const noexcept;
+    void setSecurityProfile(SecurityProfile profile);
+
+    QString securityConfigFile() const;
+    void setSecurityConfigFile(const QString &path);
 
     State state() const noexcept;
     quint64 connectedClientCount() const noexcept;
@@ -106,7 +113,8 @@ signals:
     void listenAddressChanged();
     void portChanged();
     void remoteInputEnabledChanged();
-    void authenticationEnabledChanged();
+    void securityProfileChanged();
+    void securityConfigFileChanged();
     void stateChanged();
     void connectedClientCountChanged();
     void errorChanged();
@@ -125,9 +133,6 @@ private:
     State m_state = Stopped;
     quint64 m_connectedClientCount = 0;
     ErrorCode m_errorCode = NoError;
-    // Mirror of the facade's authentication flag for the read-only property. The password is deliberately
-    // not mirrored: it stays inside the facade and is never readable from QML.
-    bool m_authenticationEnabled = false;
     QString m_errorString;
     bool m_recoverableError = false;
 };
