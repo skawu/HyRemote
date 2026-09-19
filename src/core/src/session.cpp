@@ -203,6 +203,29 @@ struct Session::Impl
     std::optional<SessionError> lastError;
     bool stopRequested = false;
 
+    // Adapter change notification; see Session::setChangeCallback(). Called while `mutex` is held, so it is handed
+    // the values instead of being allowed to query them - state() and lastError() take the same non-recursive lock.
+    std::function<void(Session::Change, SessionState, std::optional<SessionError>)> changeCallback;
+
+    void notifyLocked(Session::Change change)
+    {
+        if (changeCallback)
+            changeCallback(change, state, lastError);
+    }
+
+    // Every asynchronous change funnels through here: a component failing on its own thread, a capture target
+    // disappearing, a transport event. Owner-driven transitions (start/stop) deliberately do not notify - the caller
+    // is already inside the call that caused them - so this stays small.
+    void notifyStateLocked()
+    {
+        notifyLocked(Session::Change::State);
+    }
+
+    void notifyDiagnosticLocked()
+    {
+        notifyLocked(Session::Change::Diagnostic);
+    }
+
     // Lifecycle ownership (all guarded by `mutex`).
     //
     // `teardownStarted` is the single teardown claim of a run: it is acquired *while holding the
@@ -232,6 +255,10 @@ struct Session::Impl
     {
         impl.state = SessionState::Faulted;
         impl.lastError = SessionError{code, message, false};
+        // A fault is exactly the transition an adapter cannot infer by driving the Session itself: it arrives from a
+        // worker thread, a transport callback or a capture callback, so it is notified from here.
+        impl.notifyStateLocked();
+        impl.notifyDiagnosticLocked();
     }
 
     // Worker startup handshake.
@@ -297,6 +324,7 @@ struct Session::Impl
         try {
             std::lock_guard<std::mutex> lock(impl.mutex);
             impl.lastError = SessionError{SessionErrorCode::ComponentFailure, message, true};
+            impl.notifyDiagnosticLocked();
         } catch (...) {
             // Best effort by design; see above.
         }
@@ -427,6 +455,7 @@ struct Session::Impl
             ++impl.stats.inputPostFailures;
             impl.lastError = SessionError{SessionErrorCode::ComponentFailure,
                                           "input sink threw from post()", true};
+            impl.notifyDiagnosticLocked();
             return;
         }
 
@@ -1179,6 +1208,12 @@ SessionState Session::state() const
 {
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     return m_impl->state;
+}
+
+void Session::setChangeCallback(std::function<void(Change, SessionState, std::optional<SessionError>)> callback)
+{
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    m_impl->changeCallback = std::move(callback);
 }
 
 std::optional<SessionError> Session::lastError() const

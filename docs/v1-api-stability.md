@@ -36,7 +36,8 @@ The V1 public C++ surface consists of:
 - `HyRemote::RemoteAccessState`;
 - `HyRemote::RemoteAccessErrorCode`;
 - `HyRemote::RemoteAccessError`;
-- the methods declared by `HyRemote/RemoteAccess.h` at the accepted V1 release commit.
+- the methods declared by `HyRemote/RemoteAccess.h` at the accepted V1 release commit;
+- `HyRemote::RemoteAccessNotifier`, the change-notification object reached through `RemoteAccess::notifier()`.
 
 Frozen behavioral invariants:
 
@@ -68,6 +69,11 @@ This artifact decision is a usability boundary: ordinary applications link one H
 `RemoteAccess` remains non-copyable and movable. The PIMPL boundary is intentional: backend/session/capture/input/QPA implementation types do not enter its installed header.
 
 A 1.x release must not silently make `RemoteAccess` copyable, remove move support, or change ownership semantics in a way that invalidates existing normal application use.
+
+`RemoteAccess` therefore stays a plain value type, and its change notifications live on the separate
+`HyRemote::RemoteAccessNotifier` reached through `RemoteAccess::notifier()`. 1.x must not fold that notifier into the
+facade: deriving `RemoteAccess` from `QObject` would remove move support, which is precisely the ownership-semantics
+change this paragraph forbids.
 
 ### Additive evolution
 

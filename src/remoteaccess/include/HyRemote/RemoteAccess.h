@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHostAddress>
+#include <QObject>
 #include <QString>
 
 #include <cstddef>
@@ -8,8 +9,6 @@
 #include <optional>
 
 #include <HyRemote/RemoteAccessExport.h>
-
-class QObject;
 
 namespace HyRemote {
 
@@ -48,6 +47,39 @@ struct RemoteAccessError
     RemoteAccessErrorCode code = RemoteAccessErrorCode::RuntimeFailure;
     QString message;
     bool recoverable = false;
+};
+
+// Change notifications for Embedded C++ consumers.
+//
+// RemoteAccess itself stays a plain, movable value type - docs/v1-api-stability.md freezes that - so its
+// notifications live on a separate object reached through RemoteAccess::notifier():
+//
+//     QObject::connect(remote.notifier(), &HyRemote::RemoteAccessNotifier::clientCountChanged, ...);
+//
+// Every signal reports something that actually happened, and none of it is produced by polling: stateChanged() is
+// emitted for the transitions the facade causes (start/stop) and for the ones it is told about (a runtime fault,
+// including a capture target disappearing), clientCountChanged() comes from the transport's own connection events,
+// and errorChanged() is emitted whenever the diagnostic behind lastError() is written or cleared - including a
+// recurrence of the same error, which is why an observer should compare what it cares about rather than assume
+// silence means "nothing new".
+//
+// Signals are emitted on the thread that caused the change; for an asynchronous failure that is a Core worker or a
+// transport callback thread, which is where the facade's own calls already run. The notifier is owned by the facade
+// and destroyed with it, after the runtime has been quiesced, so Qt tears down the connections for you.
+class HYREMOTE_REMOTEACCESS_EXPORT RemoteAccessNotifier : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit RemoteAccessNotifier(QObject *parent = nullptr);
+
+Q_SIGNALS:
+    // state() changed.
+    void stateChanged();
+    // connectedClientCount() changed.
+    void clientCountChanged();
+    // The diagnostic reported by lastError() was written or cleared.
+    void errorChanged();
 };
 
 // Product-level Embedded C++ API.
@@ -109,6 +141,10 @@ public:
     // identity, authentication or authorization. Concrete transport/client objects never cross this
     // API boundary.
     std::size_t connectedClientCount() const noexcept;
+
+    // Change notifications for consumers that would otherwise poll; see RemoteAccessNotifier. Returns nullptr for a
+    // moved-from facade. The object lives as long as the facade (or the move target that adopted its runtime).
+    RemoteAccessNotifier *notifier() const noexcept;
 
     std::optional<RemoteAccessError> lastError() const;
 

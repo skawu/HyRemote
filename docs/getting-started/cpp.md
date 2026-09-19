@@ -67,6 +67,20 @@ remote.start();
 
 Widgets and Quick share the same public facade. Capture/input implementation selection remains internal.
 
+## Reacting to changes
+
+`RemoteAccess` stays a plain, movable value type, so its signals live on a notifier object rather than on the facade:
+
+```cpp
+QObject::connect(remote.notifier(), &HyRemote::RemoteAccessNotifier::clientCountChanged, &window, [&] {
+    status->setText(QStringLiteral("clients: %1").arg(remote.connectedClientCount()));
+});
+```
+
+`stateChanged()`, `clientCountChanged()` and `errorChanged()` report what really happened - a viewer connecting is a
+transport event, not a poll - so no timer is needed. `errorChanged()` also fires when the same diagnostic recurs, so
+compare what you care about instead of assuming silence means nothing is new.
+
 ## Optional configuration
 
 `setListenAddress()` accepts a **numeric** address only. The default is loopback `127.0.0.1`; an address that is not
