@@ -18,7 +18,7 @@ There is no second Quick-specific session/transport API and no Core/backend obje
 Normal launch preserves the product defaults:
 
 - loopback listener (`127.0.0.1`);
-- port `5900` unless overridden;
+- port `5921` unless overridden;
 - construction alone is inert;
 - remote input is disabled unless explicitly requested.
 

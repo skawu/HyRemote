@@ -29,6 +29,22 @@ option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mod
 # fails closed rather than silently downgrading when it is on and the dependency is missing.
 option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (requires OpenSSL 3)" ON)
 
+# The default listener port, shared by every integration mode: the Core default is what the Embedded C++
+# API and the declarative QML API start from, and the QPA proxy uses the same number when the platform
+# string carries no port. An integrator that needs a different default sets it at configure time
+# (-DHYREMOTE_DEFAULT_PORT=<port>) instead of patching the library. Tests and examples inherit the same
+# value through the definition below, so such a build stays self-consistent. At run time the port is still
+# overridable per process: RemoteAccess::setPort(), the QML `port` property, and the QPA `hyremote-port`
+# platform parameter.
+set(HYREMOTE_DEFAULT_PORT 5921 CACHE STRING "Default loopback listener port shared by all integration modes")
+if(NOT HYREMOTE_DEFAULT_PORT MATCHES "^[0-9]+$"
+   OR HYREMOTE_DEFAULT_PORT LESS 1
+   OR HYREMOTE_DEFAULT_PORT GREATER 65535)
+    message(FATAL_ERROR
+        "HYREMOTE_DEFAULT_PORT must be a TCP port between 1 and 65535, got '${HYREMOTE_DEFAULT_PORT}'")
+endif()
+add_compile_definitions(HYREMOTE_DEFAULT_PORT=${HYREMOTE_DEFAULT_PORT})
+
 # Development/architecture assets are never part of a normal product build unless explicitly asked.
 option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)
 

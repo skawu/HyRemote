@@ -14,7 +14,7 @@
 | 编译器 | Windows：MSVC x64（C++17）；Linux：GCC x86_64（C++17） |
 | 集成方式 | ① Embedded C++（唯一共享库）② Declarative QML（`import HyRemote`）③ Transparent QPA Proxy（`-platform hyremote`） |
 | QPA 约束 | Transparent QPA 与 Qt 6.8.3 的私有 QPA ABI 精确耦合；Windows 复用 `qwindows`、Linux 复用 `qxcb` 原生委托 |
-| 查看器 | 任意标准 VNC 客户端，默认连接 `127.0.0.1:5900` |
+| 查看器 | 任意标准 VNC 客户端，默认连接 `127.0.0.1:5921` |
 
 > **产品状态**：V1.0.0.0 验收尚未完成。候选实现只有在必需的可执行证据与物理证据实际通过后，才构成 **Supported** 声明；
 > 在此之前请把它当作候选版本看待。当前状态见 [`docs/compatibility.md`](../compatibility.md)。
@@ -147,7 +147,9 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-默认值即安全默认值：监听回环地址、端口 5900、远程输入关闭。各项 setter 是**可选策略控制**，不是必需的初始化步骤。
+默认值即安全默认值：监听回环地址、端口 5921、远程输入关闭。各项 setter 是**可选策略控制**，不是必需的初始化步骤。
+
+默认端口可由集成方在**构建期**定义：配置时传 `-DHYREMOTE_DEFAULT_PORT=<端口>`（不传即 `5921`）。三种接入方式共用这一个默认值——C++ 与 QML 都从 Core 的默认值起步，QPA 代理在平台串未给出 `hyremote-port` 时也使用同一数字；运行期仍可逐进程覆盖：`RemoteAccess::setPort()`、QML 的 `port` 属性、`-platform "hyremote:hyremote-port=<端口>"`。
 使用 Qt Quick 时，按应用自身需要请求 Qt Quick 组件，HyRemote 目标保持不变；`find_package(HyRemote)` 不会强迫应用解析它并不使用的 Widgets/Quick/QML 模块。
 
 ### 4.3 `find_package(HyRemote)` 的语义

@@ -29,7 +29,7 @@ int main()
         if (!check(parseRemoteConfig(parameters, config, error), "default config parses")
             || !check(error.isEmpty(), "default config has no error")
             || !check(config.listenAddress == QHostAddress::LocalHost, "default address is loopback")
-            || !check(config.port == 5900, "default port is 5900")
+            || !check(config.port == HYREMOTE_DEFAULT_PORT, "default port is the configured HYREMOTE_DEFAULT_PORT")
             || !check(!config.remoteInputEnabled, "remote input defaults off")
             || !check(config.securityProfile == SecurityProfile::Insecure,
                       "security defaults to explicit insecure compatibility profile")

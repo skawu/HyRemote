@@ -200,7 +200,7 @@ void testSafeDefaultsAndNoConstructionSideEffect()
 
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(remote.listenAddress() == QHostAddress(QHostAddress::LocalHost));
-    CHECK(remote.port() == 5900);
+    CHECK(remote.port() == HYREMOTE_DEFAULT_PORT);
     CHECK(!remote.remoteInputEnabled());
     CHECK(remote.securityProfile() == HyRemote::RemoteSecurityProfile::Insecure);
     CHECK(remote.securityConfigFile().isEmpty());
