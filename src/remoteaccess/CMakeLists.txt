@@ -55,9 +55,15 @@ target_link_libraries(hyremote-remoteaccess
 )
 
 if(HYREMOTE_WITH_VNC)
+    # V1 authenticated transport deliberately uses audited crypto primitives instead of shipping a
+    # home-grown DES implementation. OpenSSL remains a private implementation dependency of the one
+    # HyRemoteRemoteAccess runtime; it does not become a normal application-facing SDK target.
+    find_package(OpenSSL REQUIRED COMPONENTS Crypto)
     target_sources(hyremote-remoteaccess PRIVATE
         src/transport/rfb_transport.cpp
+        src/transport/vnc_auth.cpp
     )
+    target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto)
     target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_RFB_TRANSPORT=1)
 endif()
 
