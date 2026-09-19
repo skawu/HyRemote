@@ -142,3 +142,21 @@ endif()
 if(HYREMOTE_WITH_RKMPP AND NOT HYREMOTE_WITH_GBM)
     message(STATUS "HYREMOTE_WITH_RKMPP enabled without GBM; the final buffer path is not yet frozen")
 endif()
+
+# The consumer's choice is which integration modes to build; the rest are ours. These stay in the cache because tests
+# and CI drive them, but presenting them to someone who wants a remote-viewable application is noise: the
+# consumer-simplicity contract is that a consumer names HyRemote::RemoteAccess and selects nothing else. This belongs
+# at the end of the file, because mark_as_advanced() has no effect on an option that has not been declared yet. The
+# hidden entries remain reachable with `cmake -LA` and by passing them explicitly.
+mark_as_advanced(
+    HYREMOTE_BUILD_TESTS
+    HYREMOTE_BUILD_EXAMPLES
+    HYREMOTE_BUILD_CORE
+    HYREMOTE_BUILD_REMOTE_ACCESS
+    HYREMOTE_BUILD_WIDGETS_ADAPTER
+    HYREMOTE_BUILD_QUICK_ADAPTER
+    HYREMOTE_WITH_VNC
+    HYREMOTE_BUILD_SPIKES
+    HYREMOTE_WITH_GBM
+    HYREMOTE_WITH_RKMPP
+)

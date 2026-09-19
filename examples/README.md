@@ -11,6 +11,10 @@ This directory is the canonical example matrix for the V1.0.0.0 product surface.
 | E5 | `remote-support-showcase` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | Production-like operator workflow and explicit policy controls for V1.0.0.0 |
 | E6 | `../tests/consumer-installed-sdk` | Installed SDK consumer | `find_package(HyRemote)` + exported targets / `hyremote_deploy()` | External clean-consumer SDK contract; intentionally not duplicated under `examples/` |
 
+`hello-remote` is deliberately **not** part of that matrix: it is an onboarding example, roughly thirty lines, whose
+only job is to show the four lines a consumer actually writes. It carries no release role, no acceptance protocol and
+no fixture, and its success or failure is not release evidence.
+
 ## Frozen rules
 
 - E1, E2 and E5 use the public `HyRemote::RemoteAccess` facade only. They must not assemble Core, Session, CaptureSource, InputSink, Transport, RFB or platform-backend objects.
