@@ -8,6 +8,7 @@
 
 #include <HyRemote/RemoteAccessExport.h>
 
+#include "detail/transport_security.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/transport.hpp"
@@ -44,6 +45,10 @@ HYREMOTE_REMOTEACCESS_EXPORT TargetComponents createTargetComponents(QObject *ta
 HYREMOTE_REMOTEACCESS_EXPORT TransportComponent createDefaultTransport(
     const QHostAddress &listenAddress,
     quint16 port);
+HYREMOTE_REMOTEACCESS_EXPORT TransportComponent createDefaultTransport(
+    const QHostAddress &listenAddress,
+    quint16 port,
+    TransportSecurityConfiguration security);
 
 HYREMOTE_REMOTEACCESS_EXPORT void setTargetFactory(TargetFactory factory);
 HYREMOTE_REMOTEACCESS_EXPORT void setTransportFactory(TransportFactory factory);
