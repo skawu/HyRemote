@@ -1,0 +1,37 @@
+# Line-ending policy.
+#
+# The repository is developed on Windows and built on Windows and Linux, so text files are pinned to LF in
+# both the index and the working tree: a checkout on either platform then produces the same bytes, which is
+# what keeps diffs, patches and acceptance evidence comparable between the two.
+#
+# Nothing here uses `text=auto`. A blanket normalization would also rewrite files that are deliberately
+# byte-exact, and a policy change must not silently turn into a repository-wide diff.
+#
+# Deliberately NOT listed: `*.cmd`. `compile.cmd` and `clean.cmd` are single files that are both a POSIX
+# shell script and a Windows batch file, so the two halves want opposite line endings - the shell half
+# breaks with CRLF, and batch files are happiest with it. Today the index holds LF and a Windows checkout
+# gets CRLF, which is exactly what makes both halves work; pinning either way would break one of them.
+
+*.c             text eol=lf
+*.cc            text eol=lf
+*.cpp           text eol=lf
+*.h             text eol=lf
+*.hpp           text eol=lf
+*.cmake         text eol=lf
+*.cmake.in      text eol=lf
+CMakeLists.txt  text eol=lf
+*.qml           text eol=lf
+*.qrc           text eol=lf
+*.ui            text eol=lf
+*.py            text eol=lf
+*.sh            text eol=lf
+*.md            text eol=lf
+*.txt           text eol=lf
+*.json          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.in            text eol=lf
+
+# Recorded measurements are evidence: they must stay byte-exact, so no conversion is applied to them at
+# all. A line-ending change inside a recorded host measurement would be a silent alteration of data.
+/research/capture/evidence/*.json  -text -eol
