@@ -68,7 +68,7 @@ if(HYREMOTE_WITH_VNC)
         target_sources(hyremote-remoteaccess PRIVATE
             src/transport/vnc_auth.cpp
         )
-        target_link_libraries(hyremote-remoteaccess PRIVATE ${HYREMOTE_OPENSSL_LINK_TARGETS})
+        target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto OpenSSL::SSL)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
     endif()
 endif()
