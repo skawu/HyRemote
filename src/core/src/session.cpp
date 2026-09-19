@@ -609,6 +609,22 @@ struct Session::Impl
 
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.mailbox) {
+                // Fold the mailbox-owned per-run values into impl.stats before the mailbox is destroyed.
+                // stats() can only overlay them while the mailbox exists, so without this a post-stop query
+                // silently reported zeros for a run that really did drop or reject frames, the maximum
+                // mailbox depth and the last frame id - contradicting the header contract that cumulative
+                // counters keep their run value until the next start() reset (#159).
+                const detail::MailboxStats finalMailbox = impl.mailbox->stats();
+                impl.stats.maxMailboxWaitingObserved = finalMailbox.maxWaitingObserved;
+                impl.stats.maxMailboxOwnedObserved = finalMailbox.maxOwnedObserved;
+                impl.stats.framesDroppedByPolicy = finalMailbox.droppedOldest;
+                impl.stats.framesRejectedOverflow = finalMailbox.rejectedOverflow;
+                impl.stats.lastFrameId = finalMailbox.lastFrameId;
+                // The gauges (mailboxWaiting / mailboxDispatcherOwned) are deliberately not folded: an empty
+                // mailbox after stop is the truthful current value, whereas the maxima and counters above are
+                // historical facts about the run that just ended.
+            }
             impl.mailbox.reset();
             impl.inFlight = 0;
             impl.stats.inFlight = 0;
