@@ -411,6 +411,83 @@ HYR_TEST(r2b2_stop_while_the_capture_source_start_is_in_progress)
     HYR_CHECK_EQ(running.session->stats().teardownsPerformed, 1);
 }
 
+// #159 criterion 1: the destructive interleaving that unique ownership could not survive. `r2b2_*` already
+// covers stop() winning while start() is in progress, but not the step that follows it: a concurrent stop()
+// returns the Session to Stopped, which re-allows the public setters, so a setter can run while the in-flight
+// start() is still inside the component it is about to replace. With unique ownership that setter destroyed the
+// object the other thread was using; with the strong pin start() now takes, the component survives until that
+// call returns.
+class LifetimeTrackingCaptureSource final : public FakeCaptureSource
+{
+public:
+    explicit LifetimeTrackingCaptureSource(std::shared_ptr<std::atomic<bool>> alive)
+        : m_alive(std::move(alive))
+    {
+        m_alive->store(true);
+    }
+
+    ~LifetimeTrackingCaptureSource() override { m_alive->store(false); }
+
+private:
+    std::shared_ptr<std::atomic<bool>> m_alive;
+};
+
+HYR_TEST(r2b3_a_setter_replacing_a_component_during_start_is_safe)
+{
+    EnqueueGate gate;
+    gate.close();
+
+    auto alive = std::make_shared<std::atomic<bool>>(false);
+
+    RunningSession running;
+    running.prepare();
+
+    // Install the tracking source through the public setter (the harness only prepares its own fakes), and keep
+    // a local pointer instead of the harness's `source`, which would dangle once the component is replaced.
+    auto trackingOwner = std::make_unique<LifetimeTrackingCaptureSource>(alive);
+    LifetimeTrackingCaptureSource *tracking = trackingOwner.get();
+    HYR_CHECK(running.session->setCaptureSource(std::move(trackingOwner)));
+    tracking->startGate = &gate;
+
+    bool started = true;
+    std::thread starter([&] { started = running.session->start(); });
+
+    HYR_CHECK(gate.waitForEntered(1));
+    HYR_CHECK_EQ(running.session->state(), SessionState::Starting);
+    HYR_CHECK(alive->load());
+
+    // stop() wins and returns the Session to Stopped, which is exactly what re-allows the public setter.
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+
+    // The destructive step: replacing the component must not destroy the object start() is still inside.
+    auto replacement = std::make_unique<FakeCaptureSource>();
+    FakeCaptureSource *newSource = replacement.get();
+    HYR_CHECK(running.session->setCaptureSource(std::move(replacement)));
+    HYR_CHECK(alive->load());  // without the pin this is false and the running start() is already dangling
+
+    gate.open();
+    starter.join();
+
+    // The in-flight start() observed the cancellation deterministically and never published Running.
+    HYR_CHECK(!started);
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+    HYR_CHECK(running.session->lastError().has_value());
+    HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::StartCancelled);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, 1);
+
+    // Once start() returned, the pin is gone and the replaced component is finally destroyed.
+    HYR_CHECK(!alive->load());
+
+    // The replacement is untouched by the run that was cancelled, and the Session stays usable.
+    HYR_CHECK_EQ(newSource->stopCalls(), 0);
+    HYR_CHECK_EQ(newSource->requestCalls(), 0);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK_EQ(running.session->state(), SessionState::Running);
+    running.session->stop();
+    HYR_CHECK_EQ(running.session->state(), SessionState::Stopped);
+}
+
 HYR_TEST(r2b2_stop_while_the_transport_start_is_in_progress)
 {
     EnqueueGate gate;
