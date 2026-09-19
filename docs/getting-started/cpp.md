@@ -69,6 +69,11 @@ Widgets and Quick share the same public facade. Capture/input implementation sel
 
 ## Optional configuration
 
+`setListenAddress()` accepts a **numeric** address only. The default is loopback `127.0.0.1`; an address that is not
+assigned to any interface, or a port already in use, fails before `Running` and leaves nothing listening; and the IPv6
+wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack one. The measured per-address table is in
+[`../known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability).
+
 Configuration changes are made while stopped:
 
 - `setTarget(QObject *)`;
