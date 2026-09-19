@@ -208,6 +208,42 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(counters->captureStarts.load() == 0);
     CHECK(counters->transportStarts.load() == 0);
     CHECK(counters->inputShutdowns.load() == 0);
+
+    // Second phase: the authentication configuration surface (#143 S2, configuration-only step). It must
+    // never be a switch that silently does nothing - with authentication enabled, start() refuses rather
+    // than serving an unauthenticated SecurityType None listener, and no error may contain the password.
+    CHECK(!remote.authenticationEnabled());
+    CHECK(remote.setAuthenticationEnabled(true));
+    CHECK(!remote.start());
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(counters->transportFactoryCalls.load() == 0);
+    if (const auto error = remote.lastError()) {
+        CHECK(error->code == HyRemote::RemoteAccessErrorCode::AuthenticationUnavailable);
+        CHECK(error->message.contains(QStringLiteral("without a password")));
+    } else {
+        CHECK(false);
+    }
+
+    const QString secret = QStringLiteral("s3cret-do-not-echo");
+    CHECK(remote.setPassword(secret));
+    CHECK(!remote.start());
+    if (const auto error = remote.lastError()) {
+        CHECK(error->code == HyRemote::RemoteAccessErrorCode::AuthenticationUnavailable);
+        CHECK(!error->message.contains(secret));
+    } else {
+        CHECK(false);
+    }
+
+    // Configuration is mutable only while Stopped, and disabling authentication restores normal operation.
+    CHECK(remote.setAuthenticationEnabled(false));
+    CHECK(remote.start());
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
+    CHECK(!remote.setAuthenticationEnabled(true));
+    CHECK(!remote.setPassword(secret));
+    remote.stop();
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(remote.setAuthenticationEnabled(true));
+    CHECK(remote.setPassword(QString()));
 }
 
 void testMissingTargetAndMissingAdapterFailCleanly()

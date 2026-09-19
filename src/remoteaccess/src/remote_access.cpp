@@ -152,6 +152,8 @@ struct RemoteAccess::Impl
     QHostAddress listenAddress = QHostAddress::LocalHost;
     quint16 port = 5900;
     bool remoteInputEnabled = false;
+    bool authenticationEnabled = false;
+    QString password;
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;
     std::optional<RemoteAccessError> error;
@@ -315,6 +317,30 @@ bool RemoteAccess::setRemoteInputEnabled(bool enabled)
     return true;
 }
 
+bool RemoteAccess::authenticationEnabled() const noexcept
+{
+    return m_impl && m_impl->authenticationEnabled;
+}
+
+bool RemoteAccess::setAuthenticationEnabled(bool enabled)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+    m_impl->authenticationEnabled = enabled;
+    return true;
+}
+
+bool RemoteAccess::setPassword(const QString &password)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+
+    // Deliberately no validation message echoes the value, and an empty string is the documented way to
+    // clear it. The password itself is never put into an error, a diagnostic or a log line.
+    m_impl->password = password;
+    return true;
+}
+
 bool RemoteAccess::start()
 {
     if (!m_impl)
@@ -328,6 +354,19 @@ bool RemoteAccess::start()
 
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
+
+    // Authentication is configuration-only until the authenticated transport step (RFB security type 2,
+    // docs/security-model.md 10.1) is implemented. A configured authentication mode must never be
+    // downgraded to an unauthenticated SecurityType None listener, so start() refuses instead of opening
+    // one. No branch of this message ever contains the password.
+    if (m_impl->authenticationEnabled) {
+        m_impl->setError(RemoteAccessErrorCode::AuthenticationUnavailable,
+                         m_impl->password.isEmpty()
+                             ? QStringLiteral("authentication was enabled without a password; refusing to start")
+                             : QStringLiteral("authentication was enabled but the authenticated transport is not "
+                                              "available yet; refusing to open an unauthenticated listener"));
+        return false;
+    }
 
     QObject *targetObject = m_impl->target.data();
     if (targetObject == nullptr) {

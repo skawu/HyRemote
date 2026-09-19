@@ -26,6 +26,10 @@ enum class RemoteAccessErrorCode {
     TargetAdapterUnavailable,
     TransportUnavailable,
     RemoteInputUnavailable,
+    // Authentication was configured but cannot be honoured: either no password was set, or the
+    // authenticated transport step is not available in this build. Reported instead of silently
+    // opening an unauthenticated listener.
+    AuthenticationUnavailable,
     StartFailed,
     RuntimeFailure,
     Cancelled,
@@ -71,6 +75,18 @@ public:
 
     bool remoteInputEnabled() const noexcept;
     bool setRemoteInputEnabled(bool enabled);
+
+    // Authentication configuration. This is configuration only: the authenticated transport step
+    // (RFB security type 2) is frozen in docs/security-model.md 10.1 but not implemented yet, so
+    // start() currently refuses when authentication is enabled rather than silently serving an
+    // unauthenticated SecurityType None listener. The password is never included in errors,
+    // diagnostics or logs, and enabling without a password is never accepted at start().
+    bool authenticationEnabled() const noexcept;
+    bool setAuthenticationEnabled(bool enabled);
+
+    // Stores the password used by the authentication step. Pass an empty string to clear it.
+    // Rejected unless the runtime is Stopped, and the value is never echoed back in any error.
+    bool setPassword(const QString &password);
 
     // Explicit lifecycle. start() owns creation of the target adapter, input path and default
     // transport behind the facade. On startup failure, RemoteAccess returns to Stopped and preserves
