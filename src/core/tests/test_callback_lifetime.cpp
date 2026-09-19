@@ -36,6 +36,12 @@ HYR_TEST(late_frame_and_event_callbacks_are_ignored)
     running.session->stop();
     const SessionStats before = running.session->stats();
 
+    // #159: the mailbox-owned per-run values must survive teardown. Before the counters were folded into
+    // the snapshot, these read zero here even though the run had accepted a frame, which contradicted the
+    // header contract that cumulative counters keep their run value until the next start() reset.
+    HYR_CHECK(before.lastFrameId != 0);
+    HYR_CHECK(before.maxMailboxOwnedObserved != 0);
+
     // An adapter that violates the quiescence rule: Core must ignore the callback instead of
     // touching a torn-down run.
     HYR_CHECK(running.source->forceDeliver(makeFrame(16, 8)));

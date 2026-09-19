@@ -180,8 +180,13 @@ private:
 struct Session::Impl
 {
     SessionConfig config;
-    std::unique_ptr<CaptureSource> source;
-    std::unique_ptr<Transport> transport;
+    // Shared ownership so that start(), the workers and teardown can hold a strong pin across their
+    // unlocked component calls. A concurrent stop() may return the Session to Stopped (which re-allows the
+    // public setters) while an in-flight start() is still calling into these objects; with unique ownership
+    // that setter destroyed the object the other thread was using. The public setter signatures stay
+    // unchanged - an incoming unique_ptr is converted here (#159).
+    std::shared_ptr<CaptureSource> source;
+    std::shared_ptr<Transport> transport;
     std::shared_ptr<InputSink> sink;
 
     // Guards state, in-flight accounting, counters and stop coordination.
@@ -609,6 +614,22 @@ struct Session::Impl
 
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
+            if (impl.mailbox) {
+                // Fold the mailbox-owned per-run values into impl.stats before the mailbox is destroyed.
+                // stats() can only overlay them while the mailbox exists, so without this a post-stop query
+                // silently reported zeros for a run that really did drop or reject frames, the maximum
+                // mailbox depth and the last frame id - contradicting the header contract that cumulative
+                // counters keep their run value until the next start() reset (#159).
+                const detail::MailboxStats finalMailbox = impl.mailbox->stats();
+                impl.stats.maxMailboxWaitingObserved = finalMailbox.maxWaitingObserved;
+                impl.stats.maxMailboxOwnedObserved = finalMailbox.maxOwnedObserved;
+                impl.stats.framesDroppedByPolicy = finalMailbox.droppedOldest;
+                impl.stats.framesRejectedOverflow = finalMailbox.rejectedOverflow;
+                impl.stats.lastFrameId = finalMailbox.lastFrameId;
+                // The gauges (mailboxWaiting / mailboxDispatcherOwned) are deliberately not folded: an empty
+                // mailbox after stop is the truthful current value, whereas the maxima and counters above are
+                // historical facts about the run that just ended.
+            }
             impl.mailbox.reset();
             impl.inFlight = 0;
             impl.stats.inFlight = 0;
@@ -694,7 +715,9 @@ bool Session::setCaptureSource(std::unique_ptr<CaptureSource> source)
     if (m_impl->state != SessionState::Stopped)
         return false;  // never destroy a component that a worker or callback may still be using
 
-    m_impl->source = std::move(source);
+    // Converting to shared ownership does not release the previous component here if an in-flight start()
+    // is still holding a pin; it is destroyed when that pin goes away, which is the whole point.
+    m_impl->source = std::shared_ptr<CaptureSource>(std::move(source));
     return true;
 }
 
@@ -704,7 +727,7 @@ bool Session::setTransport(std::unique_ptr<Transport> transport)
     if (m_impl->state != SessionState::Stopped)
         return false;
 
-    m_impl->transport = std::move(transport);
+    m_impl->transport = std::shared_ptr<Transport>(std::move(transport));
     return true;
 }
 
@@ -717,6 +740,12 @@ void Session::setInputSink(std::shared_ptr<InputSink> sink)
 bool Session::start()
 {
     Impl &impl = *m_impl;
+
+    // Strong pins to the run's components, assigned under the lock below and held until this call returns
+    // (including every failure path). They are what keeps the objects alive while start() calls into them
+    // without the mutex, even if a concurrent stop() plus a public setter replaces them (#159).
+    std::shared_ptr<CaptureSource> sourcePin;
+    std::shared_ptr<Transport> transportPin;
 
     // Generation of the run this call is establishing; every startup boundary re-checks it.
     std::uint64_t generation = 0;
@@ -797,11 +826,18 @@ bool Session::start()
         generation = ++impl.runGeneration;
         impl.gate = gate;
         impl.state = SessionState::Starting;
+
+        // Pin both components under the lock for the whole duration of this start(). A concurrent stop()
+        // can return the Session to Stopped and re-allow the public setters, so without a strong pin the
+        // object behind these raw pointers could be destroyed while this call is still using it. The pins
+        // are released when start() returns, including on every failure path (#159).
+        sourcePin = impl.source;
+        transportPin = impl.transport;
     }
     impl.cv.notify_all();
 
-    CaptureSource *source = impl.source.get();
-    Transport *transport = impl.transport.get();
+    CaptureSource *source = sourcePin.get();
+    Transport *transport = transportPin.get();
 
     // ---- boundary 1: capture source start ------------------------------------------------
     bool sourceStarted = false;
