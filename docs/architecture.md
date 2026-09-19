@@ -10,6 +10,7 @@ This document is the canonical top-level architecture for V1. Detailed contracts
 - [`ADR-0001 Core Boundaries`](adr/0001-core-boundaries.md);
 - [`ADR-0002 RemoteFrame Ownership, Damage and Timestamp Contract`](adr/0002-remoteframe-lifetime-timestamps.md);
 - [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md);
+- [`ADR-0006 Authenticated and Encrypted Transport Design`](adr/0006-authenticated-transport-design.md);
 - [`input-model.md`](input-model.md);
 - [`deployment.md`](deployment.md);
 - [`security-model.md`](security-model.md).
