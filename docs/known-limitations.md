@@ -25,6 +25,35 @@ The current bounded RFB correctness transport uses **SecurityType None**. It pro
 
 See [`security.md`](security.md) for the implemented V1 security boundary. [`security-model.md`](security-model.md) is broader architecture/threat-model context and includes future authentication/encryption requirements that are not current product capabilities.
 
+### Listener address family and reachability
+
+**V1 is IPv4-first, and the IPv6 rows below are measured rather than promised.** The contract is pinned by
+`src/remoteaccess/tests/test_listener_address_matrix.cpp`, which chooses every port through the operating system, so the
+rows are deterministic and need no fixed port.
+
+Measured on **Windows x86_64 / Qt 6.8.3** (the Linux column is still pending #109 - it must not be inferred from this
+one):
+
+| What the application asks for | Measured behaviour |
+|---|---|
+| default (no address configured) | `127.0.0.1` - loopback, unchanged |
+| `127.0.0.1` | binds; `stop()` releases the endpoint, so the same port is immediately rebindable |
+| an address not assigned to any interface | fails before `Running`; the state stays `Stopped` and nothing is left listening |
+| a port already in use | fails before `Running`; the state stays `Stopped` and nothing is left listening |
+| `0.0.0.0` | binds; reachable through `127.0.0.1` |
+| `::1` | binds; reachable |
+| `::` | binds and is reachable through `::1`, but **not** through `127.0.0.1` |
+
+**The `::` row is an explicit V1 boundary: it is an IPv6-only listener on this platform, not a dual-stack one.** An
+application that needs both families should listen for them deliberately rather than rely on a wildcard being
+dual-stack. Hostnames and DNS names are **not** accepted - V1 is numeric-address only - and there is no silent fallback:
+a rejected address never broadens to a wildcard scope.
+
+Two further limits apply to every row: a rejected bind currently reports only "transport failed to start", which does not
+name the address or the port (so treat a failed start as needing the configuration to be inspected rather than the message
+alone); and all of the above is an **address-family** statement, not a security one - a non-loopback listener is still an
+explicit widening of the trust boundary, as `security-model.md` and `security.md` describe.
+
 ### Capture coverage
 
 - Widgets: the production correctness baseline uses Qt public widget rendering/capture behavior.

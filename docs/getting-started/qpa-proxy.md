@@ -131,6 +131,12 @@ There is intentionally no private QPA control object for application code. Appli
 
 ## 7. Optional address and port parameters
 
+`hyremote-address` takes a **numeric** address only, and the measured per-address behaviour - including that the IPv6
+wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack one, and that an unassigned address or an
+occupied port fails before `Running` and leaves nothing listening - is in
+[`../known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability). The QPA parameter path
+resolves to the same shared listener semantics as the C++ and QML integrations.
+
 ```text
 hyremote-address=<numeric-ip-address>
 hyremote-port=<1..65535>

@@ -24,6 +24,12 @@ The default product configuration in every mode listens on loopback port 5921 an
 
 ## Connect
 
+Which interface the listener is actually on is part of the connection answer, so state it before connecting: the default
+is loopback `127.0.0.1`, V1 takes a **numeric** address only (no hostnames or DNS names), and the measured per-address
+behaviour - including that the IPv6 wildcard `::` is an IPv6-only listener here rather than a dual-stack one - is listed in
+[`known-limitations.md`](known-limitations.md#listener-address-family-and-reachability). A non-loopback address is an
+explicit widening of the trust boundary; see `security.md` before choosing one.
+
 With the default configuration, point a standard VNC/RFB client at:
 
 ```text

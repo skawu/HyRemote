@@ -82,6 +82,13 @@ Important V1 limits:
 
 ## V1 transport/viewer boundary
 
+The listener **address-family** answer is part of this boundary and is measured, not described:
+`src/remoteaccess/tests/test_listener_address_matrix.cpp` pins loopback, an unassigned address, an occupied port, `0.0.0.0`,
+`::1` and `::`. On Windows x86_64 / Qt 6.8.3 the wildcard `::` is an **IPv6-only** listener (reachable through `::1`, not
+through `127.0.0.1`), `0.0.0.0` is reachable through `127.0.0.1`, and both a rejected address and an occupied port fail
+before `Running` with the state still `Stopped`. The Linux column is pending #109 and must not be inferred from the
+Windows one. See `known-limitations.md` for the IPv6-only boundary and the current non-actionable failure message.
+
 The current production correctness transport is bounded RFB 3.8 with SecurityType None. It is intended to establish remote-view/input correctness and standard VNC interoperability, not Internet-safe security.
 
 The V1 automated product path uses maintained `vncdotool` plus raw protocol checks. Additional viewer products such as TigerVNC can be added to the compatibility matrix only after versioned acceptance evidence exists.
