@@ -434,6 +434,36 @@ struct Session::Impl
         ++impl.stats.inputEventsPosted;
     }
 
+    // Worker threads are std::thread entry points, so an exception escaping one terminates the process -
+    // forbidden for an avoidable internal allocation or formatting failure (#164 criterion 2). The guard sits
+    // at the launch site so it covers the whole thread function: the startup handshake, every bookkeeping step
+    // and the transport call, not only the piece that already had a local catch.
+    //
+    // A worker that dies cannot make progress, because nothing drains the mailbox, so the failure is reported
+    // as a non-recoverable ComponentFailure and the session faults instead of staying `Running` with a dead
+    // worker. Returning normally is also what lets the owning thread join and a later stop() finish rather than
+    // block forever.
+    static void atWorkerBoundary(Impl &impl, void (*worker)(Impl &), const char *label) noexcept
+    {
+        try {
+            worker(impl);
+        } catch (...) {
+            reportWorkerFailure(impl, label);
+        }
+    }
+
+    static void reportWorkerFailure(Impl &impl, const char *label) noexcept
+    {
+        try {
+            std::lock_guard<std::mutex> lock(impl.mutex);
+            setFaultedLocked(impl, SessionErrorCode::ComponentFailure, label);
+        } catch (...) {
+            // Best effort by design: the alternative is terminating the process, which is exactly what this
+            // boundary exists to prevent. The label is a static string, so only the guarded scope allocates.
+        }
+        impl.cv.notify_all();
+    }
+
     // Owns capture admission and request issuing.
     static void runScheduler(Impl &impl)
     {
@@ -966,8 +996,12 @@ bool Session::start()
                 // Set before creating the threads so that a partial failure still hands the
                 // existing thread to the teardown.
                 impl.workersCreated = true;
-                impl.schedulerThread = std::thread([&impl] { Impl::runScheduler(impl); });
-                impl.dispatcherThread = std::thread([&impl] { Impl::runDispatcher(impl); });
+                impl.schedulerThread = std::thread([&impl] {
+                    Impl::atWorkerBoundary(impl, Impl::runScheduler, "core scheduler worker threw");
+                });
+                impl.dispatcherThread = std::thread([&impl] {
+                    Impl::atWorkerBoundary(impl, Impl::runDispatcher, "core dispatch worker threw");
+                });
             } catch (const std::exception &error) {
                 workerMessage = std::string("failed to create a Core worker thread: ") + error.what();
             } catch (...) {
