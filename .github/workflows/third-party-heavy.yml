@@ -1,0 +1,31 @@
+name: Third-party heavy source watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 4 * * 6'
+
+jobs:
+  heavy-upstream-cleanliness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Initialize L2/L3 source inputs
+        run: |
+          git submodule sync -- tests/third_party/apps/musescore tests/third_party/apps/shotcut tests/third_party/apps/obs-studio
+          git submodule update --init --depth 1 -- tests/third_party/apps/musescore tests/third_party/apps/shotcut tests/third_party/apps/obs-studio
+      - name: Validate contract and pristine heavy inputs
+        run: |
+          python tools/third_party/validate_matrix.py
+          python tools/third_party/verify_clean.py --apps musescore shotcut obs-studio
+      - name: Materialize currently enabled current-Qt refs
+        run: |
+          python tools/third_party/materialize.py --app musescore --lane qt611 --dest "$RUNNER_TEMP/musescore"
+          python tools/third_party/materialize.py --app shotcut --lane qt611 --dest "$RUNNER_TEMP/shotcut"
+          python tools/third_party/materialize.py --app obs-studio --lane qt611 --dest "$RUNNER_TEMP/obs-studio"
+          python tools/third_party/verify_clean.py --apps musescore shotcut obs-studio

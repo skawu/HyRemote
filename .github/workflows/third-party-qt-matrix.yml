@@ -1,0 +1,183 @@
+name: Third-party Qt-version substrate
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * 3'
+  pull_request:
+    branches:
+      - feature/104-v1-ga-acceptance-matrix
+      - develop
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'src/**'
+      - 'integrations/qml/**'
+      - 'integrations/qpa/**'
+      - 'tests/third_party/**'
+      - 'tools/third_party/**'
+      - '.github/workflows/third-party-qt-matrix.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-api-forward-build:
+    name: ${{ matrix.os }} / Qt ${{ matrix.qt }} / QPA=${{ matrix.qpa }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            qt: 6.8.0
+            host: windows
+            arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+            qpa: OFF
+            required: true
+          - os: ubuntu-24.04
+            qt: 6.8.0
+            host: linux
+            arch: linux_gcc_64
+            qt_dir: gcc_64
+            qpa: OFF
+            required: true
+          - os: windows-2022
+            qt: 6.8.3
+            host: windows
+            arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+            qpa: ON
+            required: true
+          - os: ubuntu-24.04
+            qt: 6.8.3
+            host: linux
+            arch: linux_gcc_64
+            qt_dir: gcc_64
+            qpa: ON
+            required: true
+          - os: windows-2022
+            qt: 6.9.3
+            host: windows
+            arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+            qpa: OFF
+            required: false
+          - os: ubuntu-24.04
+            qt: 6.9.3
+            host: linux
+            arch: linux_gcc_64
+            qt_dir: gcc_64
+            qpa: OFF
+            required: false
+          - os: windows-2022
+            qt: 6.10.3
+            host: windows
+            arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+            qpa: OFF
+            required: false
+          - os: ubuntu-24.04
+            qt: 6.10.3
+            host: linux
+            arch: linux_gcc_64
+            qt_dir: gcc_64
+            qpa: OFF
+            required: false
+          - os: windows-2022
+            qt: 6.11.2
+            host: windows
+            arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+            qpa: OFF
+            required: false
+          - os: ubuntu-24.04
+            qt: 6.11.2
+            host: linux
+            arch: linux_gcc_64
+            qt_dir: gcc_64
+            qpa: OFF
+            required: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install requested Qt SDK
+        id: qt_sdk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+
+          set +e
+          aqt install-qt "${{ matrix.host }}" desktop "${{ matrix.qt }}" "${{ matrix.arch }}" --outputdir "$RUNNER_TEMP/Qt"
+          INSTALL_STATUS=$?
+          set -e
+
+          if [ "$INSTALL_STATUS" -ne 0 ]; then
+            if [ "${{ matrix.required }}" = "true" ]; then
+              echo "Required Qt ${{ matrix.qt }} SDK installation failed for ${{ matrix.host }}." >&2
+              exit "$INSTALL_STATUS"
+            fi
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Qt SDK unavailable — explicit observation skip"
+              echo "- platform: ${{ matrix.host }}"
+              echo "- requested Qt: ${{ matrix.qt }}"
+              echo "- install status: $INSTALL_STATUS"
+              echo "- policy: non-V1 observation/forward-compatibility lane; SDK unavailability is SKIP, not PASS and not a HyRemote failure"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux Qt desktop host dependencies
+        if: runner.os == 'Linux' && steps.qt_sdk.outputs.available == 'true'
+        shell: bash
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
+
+      - name: Configure public API compatibility build — Linux
+        if: runner.os == 'Linux' && steps.qt_sdk.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_PREFIX="$RUNNER_TEMP/Qt/${{ matrix.qt }}/${{ matrix.qt_dir }}"
+          cmake -S . -B build-third-party-qt -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_BUILD_QML_API=ON \
+            -DHYREMOTE_BUILD_TESTS=OFF \
+            -DHYREMOTE_BUILD_EXAMPLES=ON \
+            -DHYREMOTE_WITH_QPA_PROXY=${{ matrix.qpa }}
+          cmake --build build-third-party-qt --parallel
+
+      - name: Configure public API compatibility build — Windows / MSVC x64
+        if: runner.os == 'Windows' && steps.qt_sdk.outputs.available == 'true'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          if not defined VSINSTALL exit /b 1
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\${{ matrix.qt }}\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%PATH%"
+          cmake -S . -B build-third-party-qt -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DHYREMOTE_BUILD_QML_API=ON ^
+            -DHYREMOTE_BUILD_TESTS=OFF ^
+            -DHYREMOTE_BUILD_EXAMPLES=ON ^
+            -DHYREMOTE_WITH_QPA_PROXY=${{ matrix.qpa }}
+          cmake --build build-third-party-qt --parallel
+
+      - name: Re-assert matrix contract
+        if: always()
+        run: python tools/third_party/validate_matrix.py

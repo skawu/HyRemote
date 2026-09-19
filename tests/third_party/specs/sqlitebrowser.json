@@ -1,0 +1,11 @@
+{
+  "id": "sqlitebrowser",
+  "upstream": "https://github.com/sqlitebrowser/sqlitebrowser.git",
+  "branch": "master",
+  "tracking_commit": "388288007c324adb9c9524e23dfb0298f662753f",
+  "build_system": "cmake",
+  "qt_family": "widgets",
+  "upstream_qt_note": "Qt 6 build uses Core5Compat; exact minimum is established by the lane probe rather than assumed here.",
+  "integration": {"embedded_cpp": "throwaway-overlay", "qml": "n/a", "qpa": "pristine-upstream"},
+  "recipe_status": "bootstrap"
+}

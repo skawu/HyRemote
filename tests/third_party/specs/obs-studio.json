@@ -1,0 +1,11 @@
+{
+  "id": "obs-studio",
+  "upstream": "https://github.com/obsproject/obs-studio.git",
+  "branch": "master",
+  "tracking_commit": "cba17c1d8107e8e3cd88d742c7aceb38815b77eb",
+  "build_system": "cmake",
+  "qt_family": "widgets-graphics-video-native",
+  "upstream_qt_note": "Heavy stress target. Results must distinguish already-supported QWidget/Quick behavior from foreign-native/video/OpenGL surfaces outside the frozen claim.",
+  "integration": {"embedded_cpp": "n/a", "qml": "n/a", "qpa": "pristine-upstream-stress"},
+  "recipe_status": "bootstrap"
+}
