@@ -1,6 +1,7 @@
 #include "detail/mailbox.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 namespace hyremote::detail {
@@ -22,6 +23,8 @@ void Mailbox::updateOwnedLocked()
 PushResult Mailbox::push(RemoteFrame frame)
 {
     PushResult result = PushResult::Stored;
+    // Holds the frame that DropOldest displaces, until the new frame is safely in the queue.
+    std::optional<RemoteFrame> dropped;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_closed) {
@@ -40,15 +43,33 @@ PushResult Mailbox::push(RemoteFrame frame)
             }
 
             // DropOldest / LatestFrameWins: the oldest waiting frame loses its ownership and the
-            // newest content survives.
+            // newest content survives. The frame that lost its ownership is only released once the new frame is
+            // actually in the queue: if storing the new frame throws, a mailbox that had already dropped the old
+            // one would be left holding less than it did before the call, which is a weaker post-state than the
+            // call's own pre-state and would silently shrink the bounded pipeline under allocation pressure.
+            dropped = std::move(m_queue.front());
             m_queue.pop_front();
-            ++m_stats.droppedOldest;
             result = PushResult::StoredAfterDroppingOldest;
         }
 
         frame.id = m_nextFrameId++;
         m_stats.lastFrameId = frame.id;
-        m_queue.push_back(std::move(frame));
+        try {
+            m_queue.push_back(std::move(frame));
+        } catch (...) {
+            if (dropped) {
+                // Give the displaced frame its place back. The node that held it was released moments ago, so this
+                // is a reuse of freed storage in practice; if even that fails there is nothing better to do than to
+                // keep the original failure and report the mailbox as lossless-but-short, which is what the caller's
+                // counter will say.
+                m_queue.push_front(std::move(*dropped));
+            }
+            --m_nextFrameId;
+            throw;
+        }
+
+        if (result == PushResult::StoredAfterDroppingOldest)
+            ++m_stats.droppedOldest;
         ++m_stats.stored;
         updateOwnedLocked();
     }
