@@ -50,18 +50,18 @@ using namespace hyremote::test;
 // allocation throws wherever it occurs. Every position has to be contained, so the test cannot pass by
 // happening to arm the one position that is already safe.
 //
-// Position 0 is excluded because it is the harness's own handler copy inside `FakeCaptureSource`
-// (`support/fakes.hpp`, `handler = m_onFrame;`), which does allocate on this toolchain; a throw there is
-// a test-support failure, not a product one.
+// Position 0 is the first allocation the delivery itself can make, because the harness contributes none:
+// FakeCaptureSource builds its handler once, in start(), and copies only a pointer per delivery. The test
+// used to assume a platform-independent harness cost instead, and Linux CI disproved it - libstdc++ allocated
+// for the harness's own `std::function` copy, so the injection never reached the callback at all.
 //
-// Measured while writing this: the frame callback path allocates **nothing** for a valid frame and, for an
-// invalid one, the rejection reason is short enough to stay inside the small-string buffer. So this case
-// proves the contract that matters here - no internal exception escapes at any allocation position the
-// callback can be reached from - while the capture-event case below is the one that proves the boundary is
-// what caught a failure, because its fault path allocates a message by construction.
+// Measured: the frame path allocates nothing for a valid frame, and an invalid frame carries only a short
+// rejection reason, so this case proves the contract that matters here - nothing escapes at any allocation
+// position the callback can be reached from. The capture-event case below is the one that also proves the
+// boundary reports what it caught, because its fault path copies a long message by construction.
 HYR_TEST(coreCallbackContainsAllocationFailure)
 {
-    constexpr int firstCallbackAllocation = 1;
+    constexpr int firstCallbackAllocation = 0;
     constexpr int allocationPositions = 64;
 
     for (int position = firstCallbackAllocation; position < allocationPositions; ++position) {
@@ -74,10 +74,10 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
                                                    : std::string("no diagnostic reported")));
         }
 
-        // An invalid frame, built before arming so its own construction cannot consume the countdown. The
-        // rejection path assigns a reason longer than the small-string buffer, so the callback allocates
-        // deterministically inside the boundary - which is what makes the injection land there. A valid
-        // frame turns out to be allocation-free on this path, so it could not prove the boundary at all.
+        // An invalid frame, built before arming so its own construction cannot consume the countdown. Its
+        // rejection reason turned out to be short enough for the small-string buffer, so this path may
+        // allocate nothing at all and every position may pass without the injection landing anywhere - which
+        // is why the reporting half of the contract is asserted by the capture-event case, not here.
         RemoteFrame frame;
 
         bool escaped = false;
@@ -116,8 +116,9 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
 
 HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 {
-    // Same harness exclusion as above, same reason.
-    constexpr int firstCallbackAllocation = 1;
+    // Same starting point as above, for the same measured reason: the harness costs no allocation per
+    // delivery, so position 0 is the callback's own first allocation.
+    constexpr int firstCallbackAllocation = 0;
     constexpr int allocationPositions = 32;
 
     for (int position = firstCallbackAllocation; position < allocationPositions; ++position) {
@@ -161,11 +162,11 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
         }
     }
 
-    // Measured while writing this: one delivery on this path performs exactly one allocation, and it is the
-    // harness's handler copy, so no swept position lies inside the callback body - which is why this case
-    // claims no more than it can prove, namely that nothing escapes at any reachable position. The case
-    // that proves the boundary reports what it catches is the input one below, where a throwing sink is the
-    // deterministic trigger.
+    // This case asserts the half it can actually reach: nothing escapes at any allocation position the
+    // callback can be reached from. Measured on this platform, the capture-event path allocates nothing
+    // inside the callback (even a faulting event stores a fixed diagnostic), so no swept position injects
+    // there and the case cannot also show the boundary reporting what it caught. The case that proves the
+    // reporting half is the input one below, where a throwing sink is the deterministic trigger.
 }
 
 // A sink that throws is the deterministic way to prove the *reporting* half of the boundary: the failure
