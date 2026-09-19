@@ -3,6 +3,9 @@
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
     add_subdirectory(widgets-basic)
     add_subdirectory(remote-support-showcase)
+    # Onboarding example: the same public facade with none of the acceptance instrumentation. It carries no
+    # release role and is not part of the E1-E6 evidence matrix.
+    add_subdirectory(hello-remote)
 else()
     message(STATUS "  Widgets examples skipped: Widgets adapter/Qt Widgets unavailable")
 endif()

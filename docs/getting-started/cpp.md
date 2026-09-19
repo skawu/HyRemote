@@ -39,6 +39,10 @@ remote.start();
 
 That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5921, and remote input is disabled. That default port is configure-time selectable for integrators via `-DHYREMOTE_DEFAULT_PORT=<port>` (see the install guide), and it remains overridable per process with `setPort()`.
 
+A complete runnable version of exactly this is [`examples/hello-remote`](../../examples/hello-remote) - about thirty
+lines, no acceptance scaffolding - and the richer release-evidence examples are in
+[`examples/README.md`](../../examples/README.md).
+
 Enable remote control only when required:
 
 ```cpp
