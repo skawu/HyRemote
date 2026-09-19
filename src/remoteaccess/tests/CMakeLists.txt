@@ -15,6 +15,23 @@ target_include_directories(hyremote-remoteaccess-test
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
 
+add_executable(hyremote-security-descriptor-test
+    test_security_descriptor.cpp
+    ../src/detail/security_descriptor.cpp
+)
+target_link_libraries(hyremote-security-descriptor-test
+    PRIVATE
+        hyremote-remoteaccess
+        Qt6::Core
+        Qt6::Network
+)
+target_include_directories(hyremote-security-descriptor-test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+add_test(NAME hyremote-security-descriptor-test COMMAND hyremote-security-descriptor-test)
+set_tests_properties(hyremote-security-descriptor-test PROPERTIES TIMEOUT 15)
+
 add_executable(hyremote-remoteaccess-error-ack-test
     test_remote_access_error_ack.cpp
 )
