@@ -1,3 +1,4 @@
+include(GenerateExportHeader)
 include(GNUInstallDirs)
 
 # Common product runtime for all HyRemote integration frontends.
@@ -37,7 +38,17 @@ endif()
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
+# Export visibility belongs to the Common Runtime because AccessInstance/Automatic services are
+# consumed by multiple plugin frontends even when the Embedded C++ API is disabled.
+generate_export_header(hyremote-remoteaccess
+    BASE_NAME HYREMOTE_REMOTEACCESS
+    EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h
+)
+
 target_include_directories(hyremote-remoteaccess
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     # Runtime-private declarations are shared with sibling integration frontends in the build tree only.
@@ -157,4 +168,9 @@ install(
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/HyRemote"
 )
