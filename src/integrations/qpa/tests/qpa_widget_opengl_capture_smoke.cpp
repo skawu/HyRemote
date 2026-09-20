@@ -2,6 +2,9 @@
 
 #include <QApplication>
 #include <QColor>
+#include <QDir>
+#include <QFileInfo>
+#include <QIcon>
 #include <QOpenGLFunctions>
 #include <QPalette>
 #include <QTimer>
@@ -13,6 +16,13 @@
 namespace {
 
 constexpr quint16 kPort = 5994;
+
+QIcon hyRemoteTestIcon()
+{
+    const QDir testSourceDir(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath());
+    return QIcon(testSourceDir.absoluteFilePath(
+        QStringLiteral("../../../../logo/huayan-logo-single.png")));
+}
 
 class SolidOpenGLWidget final : public QOpenGLWidget, protected QOpenGLFunctions
 {
@@ -51,9 +61,11 @@ bool isRasterPatch(const QColor &color)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QApplication::setWindowIcon(hyRemoteTestIcon());
 
     QWidget parent;
     parent.setWindowTitle(QStringLiteral("HyRemote QWidget + QOpenGLWidget capture qualification"));
+    parent.setWindowIcon(hyRemoteTestIcon());
     parent.resize(360, 220);
     parent.move(120, 120);
 
