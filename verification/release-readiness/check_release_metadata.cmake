@@ -46,12 +46,12 @@ set(required_files
     "examples/qpa-proxy-existing-app/README.md"
     "examples/remote-support-showcase/CMakeLists.txt"
     "examples/remote-support-showcase/README.md"
-    "tests/consumer-installed-sdk/CMakeLists.txt"
-    "tests/consumer-source/CMakeLists.txt"
-    "tests/consumer-installed-qml/CMakeLists.txt"
-    "tests/consumer-installed-qpa/CMakeLists.txt"
-    "tests/consumer-installed-qpa/product_fit.py"
-    "tests/public-api-contract/CMakeLists.txt"
+    "verification/consumer-installed-sdk/CMakeLists.txt"
+    "verification/consumer-source/CMakeLists.txt"
+    "verification/consumer-installed-qml/CMakeLists.txt"
+    "verification/consumer-installed-qpa/CMakeLists.txt"
+    "verification/consumer-installed-qpa/product_fit.py"
+    "verification/public-api-contract/CMakeLists.txt"
     "src/embedded/tests/test_remote_access.cpp"
     "src/embedded/tests/test_widgets_input_backpressure.cpp"
     "src/embedded/tests/test_quick_input_backpressure.cpp"
@@ -300,7 +300,7 @@ foreach(forbidden_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" clean_qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-installed-qpa/CMakeLists.txt" clean_qpa_cmake)
 foreach(required_token
         "examples/qpa-proxy-existing-app/main.cpp"
         "target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)"
@@ -311,7 +311,7 @@ foreach(required_token
             "release-readiness: clean installed-QPA E4 evidence is not bound to the real example: ${required_token}")
     endif()
 endforeach()
-if(EXISTS "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/main.cpp")
+if(EXISTS "${HYREMOTE_SOURCE_DIR}/verification/consumer-installed-qpa/main.cpp")
     message(FATAL_ERROR
         "release-readiness: clean installed-QPA fixture must not maintain a duplicate E4 application source")
 endif()

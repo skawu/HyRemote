@@ -13,7 +13,7 @@ set(required_files
     "src/transparent/CMakeLists.txt"
     "src/transparent/tests/deploy_helper_fixture/CMakeLists.txt"
     "src/transparent/tests/run_deploy_helper_fixture.cmake"
-    "tests/release-readiness/check_package_acquisition_isolation.cmake")
+    "verification/release-readiness/check_package_acquisition_isolation.cmake")
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
         message(FATAL_ERROR "deploy-helper-contract: missing evidence file: ${path}")
@@ -276,7 +276,7 @@ endforeach()
 execute_process(
     COMMAND "${CMAKE_COMMAND}"
         -DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}
-        -P "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
+        -P "${HYREMOTE_SOURCE_DIR}/verification/release-readiness/check_package_acquisition_isolation.cmake"
     RESULT_VARIABLE package_probe_result
     OUTPUT_VARIABLE package_probe_stdout
     ERROR_VARIABLE package_probe_stderr

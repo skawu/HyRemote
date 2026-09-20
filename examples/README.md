@@ -9,7 +9,7 @@ This directory is the canonical example matrix for the V1.0.0.0 product surface.
 | E3 | `qml-basic` | Declarative QML | `import HyRemote` over the shared runtime | Declarative product E2E for V0.0.2.0 |
 | E4 | `qpa-proxy-existing-app` | Transparent QPA Proxy | Ordinary Qt app; HyRemote supplied by deployed QPA package | Existing-app / zero application-code integration evidence for V0.0.3.0 |
 | E5 | `remote-support-showcase` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | Production-like operator workflow and explicit policy controls for V1.0.0.0 |
-| E6 | `../tests/consumer-installed-sdk` | Installed SDK consumer | `find_package(HyRemote)` + exported targets / `hyremote_deploy()` | External clean-consumer SDK contract; intentionally not duplicated under `examples/` |
+| E6 | `../verification/consumer-installed-sdk` | Installed SDK consumer | `find_package(HyRemote)` + exported targets / `hyremote_deploy()` | External clean-consumer SDK contract; intentionally not duplicated under `examples/` |
 
 ## Frozen rules
 

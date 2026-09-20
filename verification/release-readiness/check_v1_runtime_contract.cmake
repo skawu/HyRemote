@@ -86,9 +86,9 @@ foreach(example_source IN ITEMS
     require_file_token("${example_source}" "remote.setRemoteInputEnabled(true)" "E1/E2 stopped remote-input configuration")
     require_file_token("${example_source}" "POLICY_RESTART_REQUESTED" "E1/E2 public facade restart evidence")
 endforeach()
-require_file_token("tests/product-e2e/example_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E1/E2 bounded transition watchdog")
-require_file_token("tests/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "E1/E2 lifecycle-driven policy transition")
-require_file_token("tests/product-e2e/example_product_fit.py" "public stop/configure/start" "E1/E2 same-process acceptance result")
+require_file_token("verification/product-e2e/example_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E1/E2 bounded transition watchdog")
+require_file_token("verification/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "E1/E2 lifecycle-driven policy transition")
+require_file_token("verification/product-e2e/example_product_fit.py" "public stop/configure/start" "E1/E2 same-process acceptance result")
 
 # E3 must exercise the same stopped-runtime policy transition without a wall-clock race. The first
 # viewer disconnect is observable through the public QML connected-client diagnostic and triggers
@@ -97,8 +97,8 @@ require_file_token("examples/qml-basic/Main.qml" "property bool acceptanceSawVie
 require_file_token("examples/qml-basic/Main.qml" "function applyAcceptancePolicyTransition()" "E3 public-QML policy transition helper")
 require_file_token("examples/qml-basic/Main.qml" "window.applyAcceptancePolicyTransition()" "E3 disconnect-driven policy transition")
 require_file_token("examples/qml-basic/Main.qml" "policyTransitionTimer.stop()" "E3 watchdog cancellation after lifecycle trigger")
-require_file_token("tests/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E3 bounded policy-transition watchdog")
-require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "E3 product-fit binds policy transition to viewer lifecycle")
+require_file_token("verification/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E3 bounded policy-transition watchdog")
+require_file_token("verification/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "E3 product-fit binds policy transition to viewer lifecycle")
 
 require_file_token("src/transparent/tests/qpa_remote_failure_native_survival_smoke.cpp" "class PortReservation final" "deterministic occupied-port QPA failure setup")
 require_file_token("src/transparent/tests/qpa_remote_failure_native_survival_smoke.cpp" "SO_EXCLUSIVEADDRUSE" "deterministic Windows occupied-port ownership")

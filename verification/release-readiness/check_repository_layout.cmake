@@ -47,6 +47,7 @@ set(required_directories
     "src/declarative"
     "src/transparent"
     "tests"
+    "verification"
     "examples"
     "assets/logo"
     "cmake"

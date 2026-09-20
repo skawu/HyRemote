@@ -87,7 +87,7 @@ foreach(forbidden_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-source/CMakeLists.txt" source_consumer)
+file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-source/CMakeLists.txt" source_consumer)
 foreach(forbidden_token
         "set(HYREMOTE_BUILD_TESTS"
         "set(HYREMOTE_BUILD_EXAMPLES"
@@ -195,7 +195,7 @@ if(NOT undocumented_readelf EQUAL -1)
         "consumer-simplicity: deployment must not depend on CMake's undocumented READ_ELF mode")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/CMakeLists.txt" qml_consumer)
+file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-installed-qml/CMakeLists.txt" qml_consumer)
 foreach(required_token
         "HYREMOTE_CONSUMER_SOURCE_DIR"
         "HYREMOTE_CONSUMER_WITH_QPA"
@@ -212,7 +212,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" qpa_consumer)
+file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-installed-qpa/CMakeLists.txt" qpa_consumer)
 foreach(required_token
         "HYREMOTE_CONSUMER_SOURCE_DIR"
         "set(HYREMOTE_WITH_QPA_PROXY ON"
@@ -226,7 +226,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qml/main.cpp" qml_consumer_main)
+file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-installed-qml/main.cpp" qml_consumer_main)
 foreach(required_token
         "contractOk"
         "--test-seconds"

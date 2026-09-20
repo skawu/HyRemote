@@ -14,7 +14,7 @@ tell you which of those you are looking at.
 
 - **One runtime, three ways in.** `embedded`, `declarative` and `transparent` are access modes over the same shared
   runtime in `embedded/`; a payload may depend on the runtime, and the runtime (and `core/`) must never depend on a
-  payload. `tests/release-readiness/check_repository_layout.cmake` enforces this, including that neither payload links
+  payload. `verification/release-readiness/check_repository_layout.cmake` enforces this, including that neither payload links
   `HyRemote::Core` or compiles a second `RemoteAccess` facade.
 - **`core/` is not a link target.** It is composed statically behind the facade and is never installed; applications
   and payloads use `HyRemote::RemoteAccess` only.

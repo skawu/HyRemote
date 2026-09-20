@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate
-# (tests/release-readiness/check_release_metadata.cmake) matches it with a regex whose character classes
+# (verification/release-readiness/check_release_metadata.cmake) matches it with a regex whose character classes
 # cover spaces and tabs but not newlines, so the previous multi-line form was rejected as
 # "project(VERSION ...) is missing or malformed" and the gate could never pass. This is the only change to
 # the declaration besides the #111 description.
@@ -204,61 +204,61 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_release_metadata.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-runtime-contract
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_v1_runtime_contract.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_v1_runtime_contract.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-deployment-relocation
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deployment_relocation.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_deployment_relocation.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-deploy-helper-contract
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deploy_helper_contract.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_deploy_helper_contract.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-release-authority-policy
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_authority_policy.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_release_authority_policy.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-consumer-simplicity
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_consumer_simplicity.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-repository-layout
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_repository_layout.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_repository_layout.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-release-documentation-layout
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_documentation_layout.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_release_documentation_layout.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-package-acquisition-isolation
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_package_acquisition_isolation.cmake"
     )
     add_test(
         NAME hyremote-release-readiness-ci-environment-baseline
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_ci_environment_baseline.cmake"
     )
 
     # Source deployment truth must come from a source graph that actually provides qhyremote. Focused
@@ -287,7 +287,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
                 -DHYREMOTE_TEST_QML=${qml_enabled}
                 -DHYREMOTE_TEST_QPA=${qpa_enabled}
                 -DHYREMOTE_TEST_SECURITY=${security_enabled}
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/verification/release-readiness/check_release_profile.cmake"
         )
         if(expect_reject)
             set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)

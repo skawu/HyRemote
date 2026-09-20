@@ -143,11 +143,11 @@ hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 
 The exact SDK produced from the integrated tree is consumed by:
 
-- `tests/public-api-contract` — V1 public C++ type/ownership/default contract;
-- E6 `tests/consumer-installed-sdk` — installed package / shared `HyRemote::RemoteAccess` consumer;
-- `tests/consumer-source` — source/add_subdirectory consumer with the same public target/deployment call;
-- `tests/consumer-installed-qml` — installed QML module and shared-runtime deployment path;
-- `tests/consumer-installed-qpa` — Qt-only application deployed with `hyremote_deploy(... QPA)`.
+- `verification/public-api-contract` — V1 public C++ type/ownership/default contract;
+- E6 `verification/consumer-installed-sdk` — installed package / shared `HyRemote::RemoteAccess` consumer;
+- `verification/consumer-source` — source/add_subdirectory consumer with the same public target/deployment call;
+- `verification/consumer-installed-qml` — installed QML module and shared-runtime deployment path;
+- `verification/consumer-installed-qpa` — Qt-only application deployed with `hyremote_deploy(... QPA)`.
 
 Required deployment evidence:
 

@@ -13,7 +13,7 @@ on:
       - 'src/declarative/**'
       - 'src/transparent/**'
       - 'examples/**'
-      - 'tests/**'
+      - 'verification/**'
       - 'docs/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/v1-ga-acceptance.yml'
@@ -106,12 +106,12 @@ jobs:
           export LD_LIBRARY_PATH="$PWD/build-ga/remoteaccess:$PWD/build-ga/qml/HyRemote:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}"
           python src/embedded/tests/rfb_product_fit.py \
             build-ga/remoteaccess/tests/hyremote-rfb-test-server | tee ga-rfb-product-fit.log
-          python tests/product-e2e/example_product_fit.py \
+          python verification/product-e2e/example_product_fit.py \
             --widgets build-ga/examples/widgets-basic/hyremote-widgets-basic \
             --quick build-ga/examples/quick-basic/hyremote-quick-basic | tee ga-e1-e2.log
-          python tests/product-e2e/qml_product_fit.py \
+          python verification/product-e2e/qml_product_fit.py \
             --qml build-ga/examples/qml-basic/hyremote-qml-basic | tee ga-e3.log
-          python tests/product-e2e/showcase_product_fit.py \
+          python verification/product-e2e/showcase_product_fit.py \
             --showcase build-ga/examples/remote-support-showcase/hyremote-remote-support-showcase | tee ga-e5.log
 
       - name: Install integrated SDK and assert public package — Linux
@@ -131,13 +131,13 @@ jobs:
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           PREFIX="$QT_PREFIX;$PWD/staged-sdk"
-          cmake -S tests/public-api-contract -B consumer-public-api -G Ninja \
+          cmake -S verification/public-api-contract -B consumer-public-api -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX"
           cmake --build consumer-public-api --parallel
           LD_LIBRARY_PATH="$PWD/staged-sdk/lib:$QT_PREFIX/lib" \
             ./consumer-public-api/hyremote-public-api-contract
 
-          cmake -S tests/consumer-installed-sdk -B consumer-installed -G Ninja \
+          cmake -S verification/consumer-installed-sdk -B consumer-installed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/consumer-installed-install"
           cmake --build consumer-installed --parallel
@@ -146,7 +146,7 @@ jobs:
           test -f "$PWD/consumer-installed-install/lib/libHyRemoteRemoteAccess.so"
           env -u LD_LIBRARY_PATH "$PWD/consumer-installed-install/bin/hyremote-installed-consumer"
 
-          cmake -S tests/consumer-source -B consumer-source -G Ninja \
+          cmake -S verification/consumer-source -B consumer-source -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/consumer-source-install" \
             -DHYREMOTE_SOURCE_DIR="$GITHUB_WORKSPACE"
@@ -156,7 +156,7 @@ jobs:
           test -f "$PWD/consumer-source-install/lib/libHyRemoteRemoteAccess.so"
           env -u LD_LIBRARY_PATH "$PWD/consumer-source-install/bin/hyremote-source-consumer"
 
-          cmake -S tests/consumer-installed-qml -B consumer-qml -G Ninja \
+          cmake -S verification/consumer-installed-qml -B consumer-qml -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/consumer-qml-install"
           cmake --build consumer-qml --parallel
@@ -172,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          cmake -S tests/consumer-installed-qpa -B consumer-qpa -G Ninja \
+          cmake -S verification/consumer-installed-qpa -B consumer-qpa -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX;$PWD/staged-sdk" \
             -DCMAKE_INSTALL_PREFIX="$PWD/consumer-qpa-install"
@@ -181,7 +181,7 @@ jobs:
           test -f "$PWD/consumer-qpa-install/plugins/platforms/libqhyremote.so"
           test -f "$PWD/consumer-qpa-install/lib/libHyRemoteRemoteAccess.so"
           env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
-            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
+            xvfb-run -a python verification/consumer-installed-qpa/product_fit.py \
               --app "$PWD/consumer-qpa-install/bin/hyremote-installed-qpa-consumer" \
               --port 5992 | tee ga-qpa-consumer.log
 
@@ -192,7 +192,7 @@ jobs:
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
           PREFIX="$QT_PREFIX;$PWD/staged-sdk"
-          cmake -S tests/consumer-installed-qml -B consumer-qml-qpa -G Ninja \
+          cmake -S verification/consumer-installed-qml -B consumer-qml-qpa -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/consumer-qml-qpa-install" \
             -DHYREMOTE_CONSUMER_WITH_QPA=ON
@@ -203,7 +203,7 @@ jobs:
           test -f "$PWD/consumer-qml-qpa-install/lib/libHyRemoteRemoteAccess.so"
           env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
               -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
-            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
+            xvfb-run -a python verification/consumer-installed-qpa/product_fit.py \
               --app "$PWD/consumer-qml-qpa-install/bin/hyremote-installed-qml-consumer" \
               --port 5993 | tee ga-qml-qpa-consumer.log
 

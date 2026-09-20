@@ -8,7 +8,7 @@ on:
       - 'src/core/**'
       - 'src/embedded/**'
       - 'src/declarative/**'
-      - 'tests/consumer-installed-qml/**'
+      - 'verification/consumer-installed-qml/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/qml-api.yml'
   workflow_dispatch:
@@ -80,7 +80,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cmake -S tests/consumer-installed-qml -B qml-consumer -G Ninja \
+          cmake -S verification/consumer-installed-qml -B qml-consumer -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }};$PWD/staged-sdk" \
             -DCMAKE_INSTALL_PREFIX="$PWD/qml-consumer-install"

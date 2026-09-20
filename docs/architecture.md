@@ -263,7 +263,8 @@ src/core/                 internal Core
 src/embedded/         one shared public C++ runtime/facade
 src/declarative/         declarative payload
 src/transparent/         exact-Qt Transparent QPA payload
-tests/                    cross-module/consumer/release evidence
+tests/                    tests only: cross-module integration
+verification/             consumers, E2E, contract, third-party matrix, release gates
 examples/                 product examples
 assets/logo/          non-build branding assets
 cmake/                    package/deployment/build modules

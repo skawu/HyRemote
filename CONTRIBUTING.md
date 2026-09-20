@@ -23,7 +23,9 @@ Repository paths are architecture boundaries, not arbitrary folders. Follow [`do
 
 - `src/` contains the normal product implementation;
 - `src/` contains QML/QPA integration payloads over the same runtime;
-- root `tests/` contains cross-module/consumer/release evidence;
+- `tests/` holds tests only (cross-module integration; unit tests stay with their module), and `verification/` holds
+  everything that consumes the delivered product - clean consumers, product E2E, the surface contract, the third-party
+  matrix and the release gates;
 - module-private tests stay with their module;
 - there is no separate research tree: an experiment's conclusion is recorded under `docs/internal/**`, and a runnable
   experiment either becomes product code in `src/` or leaves only its conclusion;
