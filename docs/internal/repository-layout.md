@@ -32,9 +32,8 @@ HyRemote/
 │  └─ transparent/               #   ACCESS MODE 3 - Transparent QPA: `qhyremote`, Qt 6.8.3-qualified
 │     └─ tests/                  #     QPA smoke / native-semantics / interception / relocation tests
 │
-├─ tests/                        # TESTS ONLY: cross-module integration tests (unit tests live with their module)
-│  └─ README.md                  #   the rule that keeps this directory tests-only
-├─ verification/                 # VERIFICATION OF THE DELIVERED PRODUCT: consumes it the way a user would
+├─ tests/                        # TESTS AND PRODUCT VERIFICATION: nothing here is a unit test, because a unit
+│  │                             #   test stays with the module it qualifies (src/*/tests/)
 │  ├─ consumer-installed-sdk/    #   an independent CMake project consuming the installed SDK
 │  ├─ consumer-installed-qml/    #   the same, for the installed QML payload
 │  ├─ consumer-installed-qpa/    #   the same, for the installed QPA payload
@@ -62,14 +61,13 @@ HyRemote/
 │  ├─ adr/                       #   architecture decision records (what was decided and on what evidence)
 │  ├─ releases/                  #   per-milestone release notes (the record of what each release did)
 │  ├─ proposals/                 #   proposal-era design input; explicitly not present-day truth
-│  └─ acceptance/                #   recorded acceptance evidence, one directory per candidate or version
+│  ├─ acceptance/                #   recorded acceptance evidence, one directory per candidate or version
+│  └─ assets/logo/               #   the product mark used by documentation and the UI; never in the build graph
 │
 ├─ cmake/                        # build, package and deployment modules
 │  ├─ HyRemoteProjectOptions.cmake   #   the frozen option defaults (the consumer-visible contract)
 │  ├─ HyRemoteInstall.cmake / HyRemoteConfig.cmake.in / HyRemoteDeploy.cmake / HyRemoteReleaseProfile.cmake
 │  └─ toolchains/                #   cross-compilation toolchain files
-│
-├─ assets/logo/              # the product logo, used in documentation and the UI; never part of the build graph
 │
 └─ .github/                      # CI and repository governance
    ├─ workflows/                 #   one workflow per integration/acceptance surface
@@ -93,7 +91,8 @@ either behind it or beside it.
 **Technical architecture - build graph, dependency direction, artifacts.** The root `CMakeLists.txt` maps each source
 directory to a *stable binary directory* (`add_subdirectory(<source> <binary>)`), so a source reorganisation never
 relocates an artifact a CI job, installer or deployment script depends on. Dependencies point one way only:
-`core -> remoteaccess -> {qml, qpa}`, and a payload may never link `Core` directly or compile a second facade. Tests
+`core -> embedded -> {declarative, transparent}`, and a payload may never link `Core` directly or compile a second
+facade. Tests
 live where they qualify: private-detail unit tests are colocated under the module they qualify, and `tests/` holds only
 what crosses a boundary or validates the delivered product. `cmake/` owns build/packaging/deployment modules and never
 product code.
@@ -105,7 +104,7 @@ because they have different audiences, different lifetimes and different review 
 | --- | --- | --- |
 | What is this product and how do I use it? | `README.md`, `docs/guide/**`, `docs/getting-started/**`, `examples/**` | application developers, evaluators |
 | What is contractually promised, and until when? | `docs/*.md` (final-state contracts), `NOTICE.md`, `LICENSE`, `SECURITY.md` | integrators, legal/security review |
-| How is it built, released and administered? | `cmake/**`, `.github/**`, `docs/internal/**`, `verification/release-readiness/**` | maintainers, release managers |
+| How is it built, released and administered? | `cmake/**`, `.github/**`, `docs/internal/**`, `tests/release-readiness/**` | maintainers, release managers |
 | Why is it like this? | `docs/adr/**`, `docs/internal/**` (evaluation records) | maintainers, future contributors |
 | Was it actually accepted? | `docs/acceptance/**` (evidence), `docs/releases/**` (what shipped) | release owners, auditors |
 
@@ -122,7 +121,7 @@ because they have different audiences, different lifetimes and different review 
 | A decision that must outlive the chat that produced it | `docs/adr/**` | decisions are evidence, and they are cited by the gates |
 | Acceptance evidence for a candidate | `docs/acceptance/<candidate>/` | evidence is not a test case |
 | A cross-module integration test | `tests/` | unit tests stay colocated with the module they qualify |
-| A clean consumer, product E2E, surface contract or release gate | `verification/<kind>/` | it consumes the delivered product the way a user would; it is not a test |
+| A clean consumer, product E2E, surface contract or release gate | `tests/<kind>/` | it consumes the delivered product the way a user would; it is not a test |
 | A measurement or spike that produced a decision | the conclusion as an evaluation record under `docs/internal/**`, with the runnable evidence cited from git history | evidence is kept, unattached code is not |
 
 ## V1 layout freeze
@@ -174,20 +173,20 @@ Integration payloads may depend on the product runtime. Product Core must not de
   `src/embedded/tests` and `src/transparent/tests`. They are never installed.
 - Nothing that exercises the product *the way a user would* lives here. A clean consumer project, a product
   end-to-end script, a public-surface contract or a release gate is **verification of the delivered product**, not a
-  test, and it belongs in `verification/`.
+  test, and it belongs in `tests/`.
 - Recorded review or acceptance **evidence** is not a test case either; it is documentation and lives under
   `docs/acceptance/`.
 
-### `verification/`
+### `tests/`
 
-`verification/` validates the **delivered product** by consuming it from outside the internal target graph:
+`tests/` validates the **delivered product** by consuming it from outside the internal target graph:
 
 - `consumer-installed-sdk`, `consumer-installed-qml`, `consumer-installed-qpa` and `consumer-source` are independent
   CMake projects - installed-prefix and `add_subdirectory` consumers - that use `HyRemote::RemoteAccess` only and know
   nothing about Core, transport or backend internals.
 - `product-e2e` drives the built product end to end, and `public-api-contract` pins the public surface at compile time.
 - `third_party` is the real-world open-source application matrix (issue #134): pristine upstream applications, with all
-  integration living under `verification/third_party/**` and nothing ever committed inside an upstream submodule.
+  integration living under `tests/third_party/**` and nothing ever committed inside an upstream submodule.
 - `release-readiness` holds the release gates.
 
 Verification builds against the product rather than inside it, so no verification target is ever a product dependency,
@@ -207,14 +206,15 @@ There is deliberately **no `research/` directory**. An experiment's value is the
 documented, not left as unattached code: the measurement and its conclusion are recorded under `docs/internal/**`
 (evaluation records) and the runnable evidence is retrievable from git history at the commit that removed it, cited by
 the document that needed it. A successful experiment becomes product code only through an explicit architecture/product
-decision and a migration into `src/`; until then it leaves a conclusion, not a directory. `verification/release-readiness/check_repository_layout.cmake`
+decision and a migration into `src/`; until then it leaves a conclusion, not a directory. `tests/release-readiness/check_repository_layout.cmake`
 fails the build if a `research/` root or an `add_subdirectory(research/...)` mapping ever returns.
 
-### `assets/`
+### Branding assets live under `docs/`
 
-`assets/logo` contains the product mark itself - the logo files used in documentation and in the UI. It is not a
-developer material drop: anything that is not the product's own non-code identity does not belong here. Assets never
-participate in product compilation or package dependency discovery.
+There is deliberately **no root `assets/` directory**. The product mark itself - the logo files used in documentation
+and in the UI - lives at `docs/assets/logo/`, because documentation is its only consumer: nothing in `src/`, `cmake/`
+or the build graph may reference it, and the layout gate fails if a module does. Anything that is not the product's own
+non-code identity does not belong there at all.
 
 ## Source paths versus build paths
 
@@ -250,18 +250,18 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
   qualified against (Qt 6.8.3 for V1). A future Qt LTS line is served by a new payload directory named for that
   line (`src/transparent-<qt-line>/`), not by widening the existing one: `src/transparent` keeps its path,
   target and artifact names, and each payload stays qualified against exactly one Qt line.
-- **`tests/` grows by test scope, not by module, and `verification/` grows by what it verifies.** Unit tests stay
-  colocated; a cross-module integration test is added to `tests/`; a new clean consumer, product E2E script, surface
-  contract, third-party lane or release gate is added under `verification/<kind>/`.
+- **`tests/` grows by scope, never by module.** A unit test stays colocated with the module it qualifies; a
+  cross-module integration test is added directly under `tests/`; a new clean consumer, product E2E script, surface
+  contract, third-party lane or release gate is added under `tests/<kind>/`.
 - **Recorded evidence grows under `docs/`.** Physical-acceptance and review evidence for a candidate is
   documentation: a directory per candidate or version under `docs/acceptance/`, next to the runbook that
   produced it (`docs/internal/v1-physical-acceptance.md`), so evidence never mixes with test code.
 - **`examples/` grows by integration mode and usage scenario.** The E-numbering continues, one directory per
   example, and examples that combine HyRemote with third-party open-source applications are opt-in, unfetched
   by default and never an implementation location for product logic (see the ownership section above).
-- **`assets/` holds the product's non-code identity only.** `assets/logo/` is the mark used by documentation and the
-  UI; packaging icons or desktop-entry material for a future platform are sibling directories under `assets/`, each
-  named for what it is rather than for a generic "asset" role.
+- **Branding lives under `docs/`, not at the root.** `docs/assets/logo/` is the mark used by documentation and the UI;
+  packaging icons or desktop-entry material for a future platform become sibling directories under `docs/assets/`, each
+  named for what it is rather than for a generic "asset" role, and none of them may enter the build graph.
 - **`cmake/` owns build, package and deployment modules.** Platform-specific deployment is an additional module
   here, never code inside product sources.
 - **Research leaves a conclusion, not a directory.** A successful experiment becomes product code only through an
@@ -277,6 +277,9 @@ remoteaccess/
 qml/
 qpa/
 integrations/
+verification/
+assets/
+research/
 spikes/
 logo/
 ```

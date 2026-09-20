@@ -8,7 +8,7 @@ on:
       - 'src/core/**'
       - 'src/embedded/**'
       - 'src/transparent/**'
-      - 'verification/consumer-installed-qpa/**'
+      - 'tests/consumer-installed-qpa/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/qpa-proxy.yml'
   workflow_dispatch:
@@ -86,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          cmake -S verification/consumer-installed-qpa -B qpa-consumer -G Ninja \
+          cmake -S tests/consumer-installed-qpa -B qpa-consumer -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX;$PWD/staged-sdk" \
             -DCMAKE_INSTALL_PREFIX="$PWD/qpa-consumer-install"
@@ -95,7 +95,7 @@ jobs:
           test -f "$PWD/qpa-consumer-install/plugins/platforms/libqhyremote.so"
           test -f "$PWD/qpa-consumer-install/lib/libHyRemoteRemoteAccess.so"
           env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
-            xvfb-run -a python verification/consumer-installed-qpa/product_fit.py \
+            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
               --app "$PWD/qpa-consumer-install/bin/hyremote-installed-qpa-consumer" \
               --port 5992
 

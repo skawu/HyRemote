@@ -47,9 +47,8 @@ set(required_directories
     "src/declarative"
     "src/transparent"
     "tests"
-    "verification"
     "examples"
-    "assets/logo"
+    "docs/assets/logo"
     "cmake"
     "docs"
     ".github")
@@ -67,6 +66,8 @@ set(forbidden_root_directories
     "spikes"
     "logo"
     "integrations"
+    "verification"
+    "assets"
     "research")
 foreach(path IN LISTS forbidden_root_directories)
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
@@ -133,7 +134,7 @@ foreach(module_cmake IN ITEMS
     read_repo_file("${module_cmake}" module_text)
     forbid_token("${module_text}" "research/"
                  "product/integration module depends on non-product research (${module_cmake})")
-    forbid_token("${module_text}" "assets/logo"
+    forbid_token("${module_text}" "docs/assets/logo"
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
@@ -184,4 +185,4 @@ endforeach()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across integrations + research/assets isolated + bounded/cancellable workflow fan-out + shared Linux Qt desktop CI baseline)")
+    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across every access mode + retired non-product trees + branding outside the build graph + bounded/cancellable workflow fan-out + shared Linux Qt desktop CI baseline)")

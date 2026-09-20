@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+  <img src="docs/assets/logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
 </p>
 
 <h1 align="center">HyRemote</h1>
@@ -163,16 +163,16 @@ one question - does it ship?:
 
 ```text
 src/                 the shipping tree: everything built and delivered, one directory per deliverable
-  core/                internal static library (not installed, not linkable)
-  remoteaccess/        the one shared library: HyRemote::RemoteAccess
-  qml/HyRemote/        the `import HyRemote` payload
-  qpa/                 the `qhyremote` Qt platform plugin payload
+  core/                BASE       internal static library; not installed, not linkable by a payload
+  embedded/            MODE 1     Embedded C++: the shared runtime and its public facade
+  declarative/         MODE 2     Declarative QML: provides `import HyRemote`
+  transparent/         MODE 3     Transparent QPA: provides `qhyremote`, Qt 6.8.3-qualified
+tests/               tests and product verification: clean consumers, product E2E, the public-surface contract,
+                     the third-party matrix and the release gates. Unit tests live with the module they
+                     qualify, in src/*/tests/, so they are never here.
 examples/            usage examples E1-E6; not shipped
-docs/                documentation, zoned by reader (see docs/README.md)
-tests/               tests only: cross-module integration (unit tests live with their module)
-verification/        verification of the delivered product: consumers, E2E, contract, third-party matrix, release gates
+docs/                documentation, zoned by reader (see docs/README.md); the product mark is docs/assets/logo/
 cmake/               build, package and deployment modules
-assets/logo/         the product logo, used in documentation and the UI
 .github/             CI and repository governance
 ```
 
@@ -205,7 +205,7 @@ The V1 candidate contains:
 - `examples/qml-basic` — Declarative QML;
 - `examples/qpa-proxy-existing-app` — ordinary Qt application + Transparent QPA;
 - `examples/remote-support-showcase` — operator-controlled remote-support workflow;
-- clean installed/source consumer fixtures under `verification/` for SDK acceptance.
+- clean installed/source consumer fixtures under `tests/` for SDK acceptance.
 
 `-DHYREMOTE_BUILD_EXAMPLES=ON` builds the examples for product modes enabled in the current configuration. The standard C++ configuration therefore builds the C++ Widgets/Quick examples without requiring QML or QPA.
 

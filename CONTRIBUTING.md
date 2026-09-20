@@ -21,17 +21,16 @@ Architecture-affecting changes should be discussed and recorded before implement
 
 Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
-- `src/` contains the normal product implementation;
-- `src/` contains QML/QPA integration payloads over the same runtime;
-- `tests/` holds tests only (cross-module integration; unit tests stay with their module), and `verification/` holds
-  everything that consumes the delivered product - clean consumers, product E2E, the surface contract, the third-party
-  matrix and the release gates;
-- module-private tests stay with their module;
+- `src/` is the shipping tree: one directory per deliverable (`core/` is the internal base, then `embedded/`,
+  `declarative/` and `transparent/` for the three access modes), and every payload reuses the same shared runtime;
+- `tests/` holds what a unit test is not: cross-module integration, clean consumers, product E2E, the public-surface
+  contract, the third-party matrix and the release gates;
+- module-private tests stay with their module (`src/*/tests/`) and are never moved here;
 - there is no separate research tree: an experiment's conclusion is recorded under `docs/internal/**`, and a runnable
   experiment either becomes product code in `src/` or leaves only its conclusion;
-- `assets/` contains non-code assets.
+- branding is not a root directory: the product mark lives at `docs/assets/logo/`.
 
-Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `spikes/` or `logo/` directories as compatibility copies.
+Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `integrations/`, `verification/`, `assets/`, `research/`, `spikes/` or `logo/` directories as compatibility copies.
 
 Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`](docs/internal/branch-lifecycle.md) and [`docs/internal/git-flow-release.md`](docs/internal/git-flow-release.md): normally only `main`, `develop` and current open-PR heads remain visible. Historical auditability belongs to Issues, PRs, commits and release tags rather than stale branch refs.
 

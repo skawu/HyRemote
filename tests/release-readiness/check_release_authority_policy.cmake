@@ -158,7 +158,7 @@ foreach(required_phrase
         [=[RC-FROZEN]=]
         [=[PHYSICAL-ACCEPTANCE]=]
         [=[Editing release notes or toggling PR Draft state cannot substitute for authority closure]=]
-        [=[release branch is therefore a versioned verification/finalization line]=]
+        [=[release branch is therefore a versioned tests/finalization line]=]
         [=[after-the-fact direct-push audit]=]
         [=[cannot undo a push]=]
         [=[must not be described as branch protection]=]

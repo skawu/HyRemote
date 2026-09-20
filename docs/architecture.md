@@ -264,9 +264,9 @@ src/embedded/         one shared public C++ runtime/facade
 src/declarative/         declarative payload
 src/transparent/         exact-Qt Transparent QPA payload
 tests/                    tests only: cross-module integration
-verification/             consumers, E2E, contract, third-party matrix, release gates
+tests/             consumers, E2E, contract, third-party matrix, release gates
 examples/                 product examples
-assets/logo/          non-build branding assets
+docs/assets/logo/          non-build branding assets
 cmake/                    package/deployment/build modules
 docs/                     product and maintainer documentation
 ```

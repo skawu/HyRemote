@@ -99,7 +99,7 @@ Once #33 records the accepted evidence envelope and the authority manifest is sa
 
 Editing release notes or toggling PR Draft state cannot substitute for authority closure.
 
-The release branch is therefore a versioned verification/finalization line, not a place to finish missing product work.
+The release branch is therefore a versioned tests/finalization line, not a place to finish missing product work.
 
 ## 6. Finalize, merge to `main`, and tag
 

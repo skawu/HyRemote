@@ -85,7 +85,7 @@ The following remain repository development or acceptance assets unless a releas
 - `src/core/` low-level implementation headers and tests;
 - the source-tree/internal `HyRemote::Core` and `HyRemote::QpaPlatform` aliases;
 - `examples/`;
-- `verification/` and product-fit harnesses;
+- `tests/` and product-fit harnesses;
 - `.github/workflows/`;
 - aqtinstall, vncdotool, Pillow, Ninja and GitHub Actions tooling;
 - maintainer documentation under `docs/internal/` (evaluation records, runbooks);

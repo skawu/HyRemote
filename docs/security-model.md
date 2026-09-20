@@ -217,7 +217,7 @@ reserved for it (`TransportEventCode::AuthenticationRejected`) instead of being 
 not authorization: an authenticated connection still has no licence to control input.
 
 **Documentation and gate consequence.** `SecurityType None` is currently pinned as a required phrase by
-`verification/release-readiness/check_release_metadata.cmake` and by the release-policy workflow, and is stated in roughly
+`tests/release-readiness/check_release_metadata.cmake` and by the release-policy workflow, and is stated in roughly
 twenty user-facing documents. Landing authentication is therefore a coordinated, separately reviewed change: the
 gates that pin the current baseline move in the same change that lands the capability.
 ## 11. Non-goals

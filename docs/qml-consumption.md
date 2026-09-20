@@ -107,7 +107,7 @@ HyRemote does not require copying its QML module into the user's Qt SDK tree or 
 
 ## 6. Installed clean-consumer acceptance fixture
 
-`verification/consumer-installed-qml` is first configured against an installed HyRemote package for package acceptance. It:
+`tests/consumer-installed-qml` is first configured against an installed HyRemote package for package acceptance. It:
 
 - uses `find_package(HyRemote CONFIG REQUIRED)` in installed mode;
 - imports `HyRemote` from QML;

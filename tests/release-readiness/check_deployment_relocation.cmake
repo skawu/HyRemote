@@ -10,9 +10,9 @@ set(required_files
     "src/transparent/CMakeLists.txt"
     "src/transparent/tests/check_source_payload_relocation.cmake"
     "cmake/HyRemoteDeploy.cmake"
-    "verification/consumer-source/main.cpp"
-    "verification/consumer-installed-qpa/product_fit.py"
-    "verification/release-readiness/verify_linux_dependency_origin.py")
+    "tests/consumer-source/main.cpp"
+    "tests/consumer-installed-qpa/product_fit.py"
+    "tests/release-readiness/verify_linux_dependency_origin.py")
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
         message(FATAL_ERROR "deployment-relocation: missing required evidence file: ${path}")
@@ -106,7 +106,7 @@ endforeach()
 
 # Runtime evidence must prove where libraries were actually loaded from, not merely that the app can
 # start while the original Qt SDK/build tree still exists on the runner.
-file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-source/main.cpp" source_consumer_main)
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-source/main.cpp" source_consumer_main)
 foreach(required_token
         "loadedProductLibrariesComeFromDeployment"
         "dl_iterate_phdr"
@@ -119,7 +119,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/verification/release-readiness/verify_linux_dependency_origin.py" origin_verifier)
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/verify_linux_dependency_origin.py" origin_verifier)
 foreach(required_token
         [=[PRODUCT_PREFIXES = ("libHyRemote", "libhyremote-qml", "libQt6")]=]
         [=[env.pop("LD_LIBRARY_PATH", None)]=]
@@ -131,7 +131,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/verification/consumer-installed-qpa/product_fit.py" qpa_product_fit)
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py" qpa_product_fit)
 foreach(required_token
         "verify_linux_dependency_origins"
         "verify_linux_dependency_origin.py"

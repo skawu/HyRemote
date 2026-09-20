@@ -10,12 +10,12 @@ on:
       - 'src/declarative/**'
       - 'src/transparent/**'
       - 'examples/qpa-proxy-existing-app/**'
-      - 'verification/consumer-installed-sdk/**'
-      - 'verification/consumer-installed-qml/**'
-      - 'verification/consumer-installed-qpa/**'
-      - 'verification/consumer-source/**'
-      - 'verification/public-api-contract/**'
-      - 'verification/release-readiness/**'
+      - 'tests/consumer-installed-sdk/**'
+      - 'tests/consumer-installed-qml/**'
+      - 'tests/consumer-installed-qpa/**'
+      - 'tests/consumer-source/**'
+      - 'tests/public-api-contract/**'
+      - 'tests/release-readiness/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/sdk-consumption.yml'
   workflow_dispatch:
@@ -83,7 +83,7 @@ jobs:
           test -f "$SDK_PREFIX/lib/libHyRemoteRemoteAccess.so"
           test -z "$(find "$SDK_PREFIX/lib" -maxdepth 1 -type f -name 'libhyremote-core*' -print -quit)"
 
-          cmake -S verification/consumer-installed-sdk -B build-consumer-installed -G Ninja \
+          cmake -S tests/consumer-installed-sdk -B build-consumer-installed -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/deploy-installed"
@@ -93,7 +93,7 @@ jobs:
           test -f deploy-installed/lib/libHyRemoteRemoteAccess.so
           env -u LD_LIBRARY_PATH deploy-installed/bin/hyremote-installed-consumer
 
-          cmake -S verification/public-api-contract -B build-public-api-contract -G Ninja \
+          cmake -S tests/public-api-contract -B build-public-api-contract -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX;$SDK_PREFIX"
           cmake --build build-public-api-contract --parallel
@@ -101,7 +101,7 @@ jobs:
             ./build-public-api-contract/hyremote-public-api-contract
 
           # Source shape 1/4: Embedded C++.
-          cmake -S verification/consumer-source -B build-consumer-source -G Ninja \
+          cmake -S tests/consumer-source -B build-consumer-source -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/deploy-source" \
@@ -114,7 +114,7 @@ jobs:
 
           # Source shape 2/4: Declarative QML only. Exercise the clean deployed native Linux Qt
           # platform under Xvfb instead of assuming the non-product offscreen plugin is bundled.
-          cmake -S verification/consumer-installed-qml -B build-consumer-source-qml -G Ninja \
+          cmake -S tests/consumer-installed-qml -B build-consumer-source-qml -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/deploy-source-qml" \
@@ -128,7 +128,7 @@ jobs:
             xvfb-run -a deploy-source-qml/bin/hyremote-installed-qml-consumer
 
           # Source shape 3/4: Transparent QPA using the exact E4 Qt-only source.
-          cmake -S verification/consumer-installed-qpa -B build-consumer-source-qpa -G Ninja \
+          cmake -S tests/consumer-installed-qpa -B build-consumer-source-qpa -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/deploy-source-qpa" \
@@ -139,12 +139,12 @@ jobs:
           test -f deploy-source-qpa/plugins/platforms/libqhyremote.so
           test -f deploy-source-qpa/lib/libHyRemoteRemoteAccess.so
           env -u LD_LIBRARY_PATH -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
-            xvfb-run -a python verification/consumer-installed-qpa/product_fit.py \
+            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
               --app "$PWD/deploy-source-qpa/bin/hyremote-installed-qpa-consumer" \
               --port 5994
 
           # Source shape 4/4: QML + QPA using the same clean declarative application fixture.
-          cmake -S verification/consumer-installed-qml -B build-consumer-source-qml-qpa -G Ninja \
+          cmake -S tests/consumer-installed-qml -B build-consumer-source-qml-qpa -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DCMAKE_INSTALL_PREFIX="$PWD/deploy-source-qml-qpa" \
@@ -158,7 +158,7 @@ jobs:
           test -f deploy-source-qml-qpa/lib/libHyRemoteRemoteAccess.so
           env -u LD_LIBRARY_PATH -u QML2_IMPORT_PATH -u QML_IMPORT_PATH \
               -u QT_PLUGIN_PATH -u QT_QPA_PLATFORM_PLUGIN_PATH -u QT_QPA_PLATFORM \
-            xvfb-run -a python verification/consumer-installed-qpa/product_fit.py \
+            xvfb-run -a python tests/consumer-installed-qpa/product_fit.py \
               --app "$PWD/deploy-source-qml-qpa/bin/hyremote-installed-qml-consumer" \
               --port 5995
 
