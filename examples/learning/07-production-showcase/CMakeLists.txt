@@ -2,9 +2,16 @@ cmake_minimum_required(VERSION 3.21)
 
 project(HyRemoteProductionShowcase LANGUAGES CXX)
 
-add_executable(hyremote-remote-support-showcase
+set(CMAKE_AUTOMOC ON)
+
+qt_add_executable(hyremote-remote-support-showcase
     main.cpp
-    input_probe.cpp
+)
+
+qt_add_qml_module(hyremote-remote-support-showcase
+    URI HyRemoteShowcase
+    VERSION 1.0
+    QML_FILES Main.qml
 )
 
 include("${CMAKE_CURRENT_LIST_DIR}/../../common/HyRemoteExampleBranding.cmake")
@@ -13,9 +20,13 @@ hyremote_example_enable_branding(hyremote-remote-support-showcase)
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
 target_link_libraries(hyremote-remote-support-showcase
     PRIVATE
-        Qt6::Widgets
-        HyRemote::RemoteAccess
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Quick
 )
+add_dependencies(hyremote-remote-support-showcase hyremote-qml hyremote-qmlplugin)
 
-# This target is retained only while the final Qt Quick/QML production-showcase rewrite is completed
-# in #217. Do not treat the temporary Widgets implementation as the final V1 showcase architecture.
+target_compile_definitions(hyremote-remote-support-showcase PRIVATE
+    HYREMOTE_BUILD_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml"
+)

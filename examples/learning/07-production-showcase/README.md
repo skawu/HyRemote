@@ -1,40 +1,38 @@
-# HyRemote remote support showcase
+# 07 - Production Showcase
 
-This example demonstrates the V1.0 production-facing remote-support workflow through the public `HyRemote::RemoteAccess` facade only.
+This is the final product-level HyRemote-authored demonstration for V1. It intentionally uses **Qt Quick/QML UI + HyRemote QML API** so it is visibly different from the small teaching examples while still sharing the same `HyRemoteRemoteAccess` runtime.
 
-## Product behavior
+## What it demonstrates
 
-- The local Qt Widgets application starts normally and remains the authoritative UI.
-- Remote access is **off initially**. The local operator must press **Start remote access**.
-- The listener uses HyRemote's loopback-safe default and the configured port is displayed locally.
-- Listener/runtime state and viewer connection state are distinct: **Running does not mean a viewer is connected**. The local status panel displays the backend-neutral `connectedClientCount()` from the public facade.
-- Remote input is disabled by default, so the initial policy is view-only.
-- The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
-- Stop releases the listener while the local application continues running.
-- The local status panel shows stopped/running/faulted state, endpoint, connected-client count, current policy and the latest product-level error.
-- Viewer disconnect/reconnect updates the client count without recreating the local application.
-- The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
+- root-project branding from `logo/`;
+- `import HyRemote` and `RemoteAccess { ... }`;
+- explicit start/stop lifecycle;
+- loopback endpoint and connected-viewer status;
+- view-only safe default and opt-in remote input;
+- V1 security-profile selection and descriptor path;
+- runtime error visibility;
+- a normal local Qt Quick application remaining usable alongside remote access.
 
-## Security boundary
+It does **not** invent Session UI before #170 lands. Session lists/termination are added only after the public Session API is real.
 
-The current bounded RFB correctness baseline uses `SecurityType None`. This example therefore does **not** present the connection as authenticated or encrypted. Keep the listener on loopback or another explicitly trusted/protected network path until production authentication/encryption capabilities exist.
+## Relationship to 04
 
-The safe startup policy is therefore two-dimensional: the service is explicitly started, and remote control remains independently opt-in. A connected-client count is operational diagnostics only; it is not an authenticated identity count.
-
-## Run
-
-Build the normal examples graph with `HYREMOTE_BUILD_EXAMPLES=ON`, then run:
+`04-quick-qml` is the small teaching example. This showcase deliberately adds product presentation and operational controls, but it does not create another transport, session stack or QML-specific runtime.
 
 ```text
-hyremote-remote-support-showcase
+04: learn the QML API
+07: see the same QML API in a production-style application
 ```
 
-Optional acceptance helpers are explicit and do not change normal safe defaults:
+## Acceptance helpers
 
-```text
-hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-seconds 30
-```
+The existing product-fit contract is preserved:
 
-`--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
+- `--port <n>`
+- `--remote-input`
+- `--auto-start`
+- `--test-seconds <n>`
 
-The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
+Acceptance mode emits the existing machine-readable markers `REMOTE_STARTED`, `SHOWCASE_CLIENTS`, `SHOWCASE_POINTER` and `SHOWCASE_KEY` so the current V1 GA harness can continue validating framebuffer/reconnect/input behavior while the UI implementation is now Qt Quick/QML.
+
+Refs: #41 #109 #170 #209.
