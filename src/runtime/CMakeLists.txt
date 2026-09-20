@@ -10,6 +10,7 @@ if(TARGET hyremote-remoteaccess OR TARGET HyRemote::RemoteAccess)
 endif()
 
 add_library(hyremote-remoteaccess SHARED
+    src/access_instance.cpp
     src/detail/component_factories.cpp
     src/detail/security_descriptor.cpp
     # Transitional bridge for the current QPA composite implementation. It disappears when the
