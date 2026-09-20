@@ -82,9 +82,6 @@ if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/internal/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
 
-# Shared implementation lives at src/core + src/runtime. Application integration technologies are
-# grouped below src/integrations. Legacy flat frontend roots and historical quality/artifact names must
-# not return as compatibility copies, symlinks or forwarding directories.
 foreach(stale_src IN ITEMS
         "src/cpp"
         "src/qml"
@@ -130,14 +127,16 @@ endforeach()
 read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]
-        [=[add_subdirectory(src/runtime remoteaccess)]=]
-        [=[add_subdirectory(src/integrations/cpp remoteaccess/cpp)]=]
+        [=[add_subdirectory(src/runtime runtime)]=]
+        [=[add_subdirectory(src/integrations/cpp integrations/cpp)]=]
         [=[add_subdirectory(src/integrations/qml qml/HyRemote)]=]
         [=[add_subdirectory(src/integrations/generic generic)]=]
         [=[add_subdirectory(src/integrations/qpa qpa)]=])
     require_token("${root_cmake}" "${required_token}"
-                  "root build graph lost canonical-source / stable-binary mapping")
+                  "root build graph lost canonical ownership mapping")
 endforeach()
+forbid_token("${root_cmake}" "add_subdirectory(src/runtime remoteaccess)"
+             "root build graph must not preserve the historical runtime binary-directory alias")
 forbid_token("${root_cmake}" "add_subdirectory(src/cpp "
              "root build graph must not use the legacy flat C++ frontend path")
 forbid_token("${root_cmake}" "add_subdirectory(src/qml "
@@ -166,7 +165,6 @@ require_token("${root_cmake}" "NAME hyremote-release-readiness-package-acquisiti
               "package-acquisition isolation gate is not registered in CTest")
 require_token("${root_cmake}" "check_package_acquisition_isolation.cmake"
               "package-acquisition isolation gate lost its executable script")
-
 forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
              "retired spike harness switch returned to the root build")
 forbid_token("${root_cmake}" "add_subdirectory(research/"
@@ -212,17 +210,15 @@ foreach(module_cmake IN ITEMS
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
-# New consolidated CI owns product validation. Legacy per-slice workflows must not be required by the
-# architecture gate; when present during migration they remain subject to their own policy checks.
-if(EXISTS "${HYREMOTE_SOURCE_DIR}/.github/workflows/ci.yml")
-    read_repo_file(".github/workflows/ci.yml" ci_workflow)
-    require_token("${ci_workflow}" "concurrency:"
-                  "ci.yml lost the superseded-run concurrency guard")
-    require_token("${ci_workflow}" "cancel-in-progress: true"
-                  "ci.yml stopped cancelling superseded runs")
-    require_token("${ci_workflow}" "--integrations=cpp,qml,generic,qpa"
-                  "consolidated CI stopped exercising all four integration frontends")
-endif()
+# Consolidated PR CI must select the affected frontend union rather than hard-coding all four for
+# every product edit. Common/runtime/build edits still resolve to all four in the classifier.
+read_repo_file(".github/workflows/ci.yml" ci_workflow)
+require_token("${ci_workflow}" "cancel-in-progress: true"
+              "ci.yml stopped cancelling superseded runs")
+require_token("${ci_workflow}" "integrations: ${{ steps.scope.outputs.integrations }}"
+              "ci.yml lost capability-scoped integration output")
+require_token("${ci_workflow}" [=[--integrations="$INTEGRATIONS"]=]
+              "consolidated CI stopped building the classifier-selected frontend union")
 
 if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/.github/scripts/install-linux-qt-desktop-deps.sh")
     message(FATAL_ERROR "repository-layout: shared Linux Qt desktop dependency script is missing")
@@ -230,4 +226,4 @@ endif()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(UI-neutral Core + root-owned common runtime + grouped peer integration frontends + stable binary mapping + retired legacy trees)")
+    "(UI-neutral Core + root-owned Common Runtime + grouped peer integration frontends + retired legacy trees)")
