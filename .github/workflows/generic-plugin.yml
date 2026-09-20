@@ -1,0 +1,90 @@
+name: Generic Plugin
+
+on:
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'src/core/**'
+      - 'src/runtime/**'
+      - 'src/integrations/cpp/**'
+      - 'src/integrations/generic/**'
+      - 'tests/release-readiness/**'
+      - '.github/scripts/install-linux-qt-desktop-deps.sh'
+      - '.github/workflows/generic-plugin.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x86_64 / Qt 6.8.3 / native QPA preserved
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+          - name: Linux x86_64 / Qt 6.8.3 / native QPA preserved
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt and Ninja
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
+
+      - name: Install Linux Qt desktop host dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
+
+      - name: Configure, build and test — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" \
+            -DHYREMOTE_WITH_GENERIC_PLUGIN=ON \
+            -DHYREMOTE_BUILD_TESTS=ON \
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+          test -f build/remoteaccess/libHyRemoteRemoteAccess.so
+          test -n "$(find build/plugins/generic -maxdepth 1 -type f -name '*qhyremote*.so' -print -quit)"
+          ctest --test-dir build --output-on-failure
+
+      - name: Configure, build and test — Windows / MSVC x64
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
+          set "PATH=%QT_PREFIX%\bin;%CD%\build\remoteaccess;%PATH%"
+          cmake -S . -B build -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DHYREMOTE_WITH_GENERIC_PLUGIN=ON ^
+            -DHYREMOTE_BUILD_TESTS=ON ^
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+          if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
+          dir /b "%CD%\build\plugins\generic\*qhyremote*.dll" >nul 2>nul || exit /b 1
+          ctest --test-dir build --output-on-failure
