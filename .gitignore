@@ -54,3 +54,7 @@ __pycache__/
 # removal can still have the directory on disk, and plain `git add -A` used to stage it back as an embedded
 # repository, so it is ignored rather than left to chance.
 /third_party/
+
+# `aqt install-qt`, which the CI matrix and a local setup both run, writes its installer log into the working directory.
+# It is 300 lines of installer output rather than a repository artifact, and a plain `git add -A` committed it once.
+aqtinstall.log
