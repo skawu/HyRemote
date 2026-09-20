@@ -22,7 +22,11 @@ public:
     AccessController(AccessController &&) noexcept;
     AccessController &operator=(AccessController &&) noexcept;
 
-    bool start();
+    // Generic Plugin is loaded after native GUI initialization and may request an initial refresh.
+    // QPA is created earlier: it arms observation with scheduleInitialRefresh=false so platform
+    // factory creation never depends on a timer/event dispatcher; later real window events trigger
+    // the same refresh path after the native integration is established.
+    bool start(bool scheduleInitialRefresh = true);
     void stop() noexcept;
 
 private:
