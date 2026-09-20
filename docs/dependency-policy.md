@@ -35,17 +35,18 @@ as a submodule**, so the provider is always the environment the user already has
 
 For the authenticated/encrypted transport the single setting is `HYREMOTE_WITH_TRANSPORT_SECURITY` (OFF by default,
 so a build that does not ask for the capability acquires nothing). An OpenSSL already present on the machine is
-used, or one selected explicitly with `-DOPENSSL_ROOT_DIR=<prefix>`. **No version is dictated**: whatever that
-environment provides is accepted as it is, including one that ships with a Qt SDK, and the version actually found
-is reported at configure time; the version this tree is verified against is recorded in
-`cmake/HyRemoteProjectOptions.cmake` as information rather than as a gate. A provider also has to be reachable at
-run time: as with Qt, its runtime directory belongs on the loader path (`PATH` on Windows, `LD_LIBRARY_PATH` on
-Linux) for the application and for the repository's own tests.
+used, or one selected explicitly with `-DOPENSSL_ROOT_DIR=<prefix>`. There is no HyRemote provider selector and no
+bundled OpenSSL build path. The provider/version actually used by an official release is recorded in the release
+manifest rather than exposed as another product personality.
 
-When none is found the build is still valid. The capability is reported unavailable with one actionable message and
-is not compiled in, which is neither a hard failure that leaves the user without a build nor a silent downgrade: a
-runtime asked to use a capability the build does not contain refuses to start instead of quietly proceeding
-without it.
+If `HYREMOTE_WITH_TRANSPORT_SECURITY=ON`, both OpenSSL Crypto and SSL are required at configure time. If they cannot
+be found, configuration fails with an actionable diagnostic. HyRemote never converts an explicit secure-capability
+request into a build that silently lacks that capability. A build that does not need transport security configures
+with `HYREMOTE_WITH_TRANSPORT_SECURITY=OFF` and therefore has no OpenSSL requirement.
+
+At run time, a dynamically linked provider must of course be deployable alongside the application according to the
+platform loader rules. Official V1 binary SDK assets record and qualify one exact provider/version per platform and
+carry any required redistribution/notices through the release packaging contract.
 
 ## Required review for every new dependency
 
@@ -93,7 +94,7 @@ This is now the product baseline because it provides the required cross-platform
 
 This decision does **not** make RFB an application-facing API. `HyRemote::RemoteAccess`, QML and QPA remain transport-neutral at their public boundary, so a future accepted transport backend can replace or supplement the internal implementation without changing normal application integration.
 
-The baseline uses **SecurityType None** unless an authenticated profile is configured, which authenticates the viewer with **RFB VNC authentication** and still provides no transport encryption. That boundary is product/security policy, not a reason to leak backend configuration into the public API.
+The current baseline uses **SecurityType None** unless an authenticated profile is configured. `Authenticated` offers only **RFB VNC authentication (security type 2)** and therefore authenticates the viewer but still does **not encrypt** the transport. `AuthenticatedEncrypted` remains unavailable until the later #143 TLS/VeNCrypt increment lands; no profile silently falls back to a weaker security type. This boundary is product/security policy, not a reason to leak backend configuration into the public API.
 
 ## Historical / future transport candidates
 
