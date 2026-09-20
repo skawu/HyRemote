@@ -4,27 +4,27 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
-# V1 normal use is deliberately small: one shared C++ facade or the qhyremote plugin. A plain source
-# configure builds the product, not repository tests/examples/research, and an add_subdirectory()
-# consumer must not need to know internal component switches to obtain the standard C++ runtime.
+# Normal source consumption remains small: the shared runtime plus one application-facing frontend.
+# Frontend grouping and the fourth Generic mode must not force consumers to select internal Core/adapters.
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteProjectOptions.cmake" options_text)
 set(required_option_tokens
     [=[option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" OFF)]=]
     [=[option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" OFF)]=]
     [=[option(HYREMOTE_BUILD_CORE "Build the internal hyremote-core session/frame/dispatch library" ON)]=]
-    [=[option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the public HyRemote::RemoteAccess C++ facade when Qt is available" ON)]=]
+    [=[option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the shared HyRemote runtime and public C++ RemoteAccess facade when Qt is available" ON)]=]
     [=[option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)]=]
     [=[option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)]=]
     [=[option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)]=]
-    [=[option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)]=]
-    [=[option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)]=]
+    [=[option(HYREMOTE_BUILD_QML_API "Build the 'import HyRemote' QML API when Qt Qml is available" OFF)]=]
+    [=[option(HYREMOTE_WITH_GENERIC_PLUGIN "Enable the QGenericPlugin zero-code integration frontend" OFF)]=]
+    [=[option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA zero-code integration frontend" OFF)]=]
     [=[option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (uses the OpenSSL from your environment)" OFF)]=]
 )
 foreach(required_token IN LISTS required_option_tokens)
     string(FIND "${options_text}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: required V1 option/default contract missing: ${required_token}")
+            "consumer-simplicity: required option/default contract missing: ${required_token}")
     endif()
 endforeach()
 
@@ -45,15 +45,18 @@ set(required_root_tokens
     [=[hyremote_validate_release_profile(]=]
     [=[VERSION "${PROJECT_VERSION}"]=]
     [=[QML_ENABLED "${HYREMOTE_BUILD_QML_API}"]=]
+    [=[GENERIC_ENABLED "${HYREMOTE_WITH_GENERIC_PLUGIN}"]=]
     [=[QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"]=]
     [=[if(HYREMOTE_BUILD_TESTS)
     include(CTest)]=]
     [=[if(HYREMOTE_BUILD_REMOTE_ACCESS)]=]
+    [=[if(HYREMOTE_WITH_GENERIC_PLUGIN)]=]
     [=[if(HYREMOTE_WITH_QPA_PROXY)]=]
     [=[add_subdirectory(src/core core)]=]
-    [=[add_subdirectory(src/cpp remoteaccess)]=]
-    [=[add_subdirectory(src/qml qml/HyRemote)]=]
-    [=[add_subdirectory(src/qpa qpa)]=]
+    [=[add_subdirectory(src/integrations/cpp remoteaccess)]=]
+    [=[add_subdirectory(src/integrations/qml qml/HyRemote)]=]
+    [=[add_subdirectory(src/integrations/generic generic)]=]
+    [=[add_subdirectory(src/integrations/qpa qpa)]=]
     [=[hyremote-release-profile-v001-reject-qml]=]
     [=[hyremote-release-profile-v002-reject-qpa]=]
     [=[hyremote-release-profile-v100-all-modes]=]
@@ -70,7 +73,8 @@ file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteReleaseProfile.cmake" release_pr
 foreach(required_token
         [=[HYREMOTE_PROFILE_VERSION STREQUAL "0.0.0"]=]
         [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "0.0.2.0" AND HYREMOTE_PROFILE_QML_ENABLED]=]
-        [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_PROFILE_QPA_ENABLED]=])
+        [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "0.0.3.0" AND HYREMOTE_PROFILE_QPA_ENABLED]=]
+        [=[if(HYREMOTE_PROFILE_GENERIC_ENABLED)]=])
     string(FIND "${release_profile}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -111,7 +115,7 @@ foreach(required_token IN LISTS required_source_tokens)
     string(FIND "${source_consumer}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "consumer-simplicity: source fixture no longer proves the simple V1 path: ${required_token}")
+            "consumer-simplicity: source fixture no longer proves the simple product path: ${required_token}")
     endif()
 endforeach()
 
@@ -141,10 +145,7 @@ foreach(required_token
     endif()
 endforeach()
 
-# Source and installed QML acquisition publish the same abstract import-root input to the one deploy
-# helper. Source payload targets are internal build metadata: they may become build-only dependencies
-# of the consumer target, but never application link targets or installed SDK choices.
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qml/CMakeLists.txt" qml_cmake)
 foreach(required_token
         "_hyremote_qml_build_import_root"
         "HyRemote_QML_IMPORT_PATH"
@@ -159,7 +160,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
@@ -252,8 +253,6 @@ foreach(required_token
     endif()
 endforeach()
 
-# #39 source-consumption evidence must execute all four public deployment call shapes, not infer QML
-# from the QML+QPA case because those paths use different supplemental deployment scripts.
 file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/sdk-consumption.yml" sdk_workflow)
 foreach(required_token
         "Source shape 1/4: Embedded C++"
@@ -275,4 +274,4 @@ endforeach()
 
 message(STATUS
     "HyRemote consumer-simplicity gate: PASS "
-    "(product-only defaults, canonical repository layout, one public C++ target, four deployment shapes, build-only source payload wiring, installed/source QML+QPA acquisition, executable version-derived milestone profiles)")
+    "(product-only defaults, grouped integration layout, one shared runtime, peer frontends, build-only source payload wiring and executable version-derived release profiles)")
