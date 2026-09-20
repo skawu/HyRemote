@@ -4,6 +4,11 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
+# A Windows caller may hand us a backslash path (`F:\...`). The fixtures are *generated CMake code* and this gate writes
+# absolute paths into them, where a backslash inside a string literal is a syntax error ("Invalid character escape
+# '\\w'"). Normalise once, at the entrance, so both slash forms behave identically.
+file(TO_CMAKE_PATH "${HYREMOTE_SOURCE_DIR}" HYREMOTE_SOURCE_DIR)
+
 include(CMakePackageConfigHelpers)
 
 # Where the fixture world goes. This gate runs in script mode (`cmake -P`), where CMAKE_CURRENT_BINARY_DIR is **empty**,
@@ -16,6 +21,7 @@ if(DEFINED HYREMOTE_GATE_SCRATCH_DIR)
 else()
     set(_scratch_root "${HYREMOTE_SOURCE_DIR}/build")
 endif()
+file(TO_CMAKE_PATH "${_scratch_root}" _scratch_root)
 set(test_root "${_scratch_root}/hyremote-package-acquisition-isolation")
 
 # A fixture tree in the source root can only come from the bug above (or from a checkout made before it was fixed), and it
