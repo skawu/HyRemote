@@ -20,7 +20,7 @@
 #include "detail/qpa_composition_seam.hpp"
 #include "hyremote/core/input.hpp"
 
-namespace HyRemote::Qpa {
+namespace HyRemote::Runtime::Automatic {
 namespace {
 
 class CompositeInputSink final : public hyremote::InputSink
@@ -85,7 +85,7 @@ public:
                             state->pending.erase(staleMove);
                     }
                     if (state->pending.size() >= kMaxPendingInputEvents)
-                        throw std::runtime_error("bounded QPA composite input mailbox is full");
+                        throw std::runtime_error("bounded automatic composite input mailbox is full");
                     state->pending.push_back(event);
                 }
 
@@ -108,7 +108,7 @@ public:
             std::lock_guard<std::mutex> lock(state->mutex);
             state->drainScheduled = false;
             state->pending.clear();
-            throw std::runtime_error("failed to queue QPA composite input drain to the Qt GUI thread");
+            throw std::runtime_error("failed to queue automatic composite input drain to the Qt GUI thread");
         }
     }
 
@@ -210,7 +210,7 @@ private:
         ::HyRemote::detail::TargetComponents components = state->resolver(target, true);
         if (!components.supported || !components.input) {
             deferError(state,
-                       "a QPA composite child surface has no built-in remote-input adapter");
+                       "an automatic composite child surface has no built-in remote-input adapter");
             return {};
         }
 
@@ -314,10 +314,10 @@ private:
             sink->post(event);
         } catch (const std::exception &error) {
             deferError(state,
-                       std::string("QPA composite child input adapter rejected an event: ")
+                       std::string("automatic composite child input adapter rejected an event: ")
                            + error.what());
         } catch (...) {
-            deferError(state, "QPA composite child input adapter rejected an event");
+            deferError(state, "automatic composite child input adapter rejected an event");
         }
     }
 
@@ -442,4 +442,4 @@ private:
     return result;
 }
 
-}  // namespace HyRemote::Qpa
+}  // namespace HyRemote::Runtime::Automatic
