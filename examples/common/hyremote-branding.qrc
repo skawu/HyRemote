@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/hyremote/branding">
+    <file alias="logo.png">../../logo/huayan-logo-single.png</file>
+  </qresource>
+</RCC>

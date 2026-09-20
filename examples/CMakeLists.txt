@@ -1,17 +1,21 @@
 # V1 product examples consume only the intended public surface for their integration mode.
 
-if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND (TARGET Qt6::Widgets OR TARGET Qt5::Widgets))
+    add_subdirectory(learning/01-widgets-basic)
     add_subdirectory(learning/02-widgets-control)
     add_subdirectory(learning/07-production-showcase)
 else()
     message(STATUS "  Widgets learning examples skipped: Widgets adapter/Qt Widgets unavailable")
 endif()
 
-if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND TARGET Qt6::Quick)
-    if(NOT TARGET Qt6::Qml)
+if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND (TARGET Qt6::Quick OR TARGET Qt5::Quick))
+    if(TARGET Qt6::Quick AND NOT TARGET Qt6::Qml)
         find_package(Qt6 6.8 QUIET COMPONENTS Qml)
+    elseif(TARGET Qt5::Quick AND NOT TARGET Qt5::Qml)
+        find_package(Qt5 5.15 QUIET COMPONENTS Qml)
     endif()
-    if(TARGET Qt6::Qml)
+
+    if((TARGET Qt6::Qml) OR (TARGET Qt5::Qml))
         add_subdirectory(learning/03-quick-cpp)
     else()
         message(STATUS "  03-quick-cpp skipped: Qt Qml unavailable")
@@ -20,15 +24,19 @@ else()
     message(STATUS "  03-quick-cpp skipped: Quick adapter unavailable")
 endif()
 
-if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml AND TARGET Qt6::Qml AND TARGET Qt6::Quick)
+if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml
+   AND ((TARGET Qt6::Qml AND TARGET Qt6::Quick) OR (TARGET Qt5::Qml AND TARGET Qt5::Quick)))
     add_subdirectory(learning/04-quick-qml)
 else()
     message(STATUS "  04-quick-qml skipped: HyRemote QML API unavailable")
 endif()
 
-# QPA remains exact-Qt/private-ABI qualified. The fixture is an ordinary Qt-only application.
-if(HYREMOTE_WITH_QPA_PROXY AND TARGET Qt6::Widgets)
-    add_subdirectory(learning/05-qpa-existing-app/widgets-app)
+# QPA is exact-patch/private-ABI qualified. The fixtures themselves remain ordinary Qt-only apps.
+if(HYREMOTE_WITH_QPA_PROXY)
+    add_subdirectory(learning/05-qpa-existing-app)
 else()
-    message(STATUS "  05 QPA Widgets fixture skipped: QPA mode unavailable")
+    message(STATUS "  05 QPA fixtures skipped: QPA mode unavailable")
 endif()
+
+# 06-session-security is enabled once the #170 public session surface exists. Do not ship a fake
+# example against APIs that are not yet part of the product header.
