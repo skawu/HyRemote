@@ -2,6 +2,7 @@ set(CMAKE_AUTOMOC ON)
 
 qt_add_executable(hyremote-qml-basic
     main.cpp
+    ../hyremote-branding.qrc
 )
 
 qt_add_qml_module(hyremote-qml-basic
