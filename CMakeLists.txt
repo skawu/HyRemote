@@ -196,6 +196,10 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         NAME hyremote-release-readiness-deploy-helper-contract
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
+            -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deploy_helper_contract.cmake"
     )
     add_test(
@@ -233,6 +237,10 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -DHYREMOTE_GATE_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/gate-scratch
+            -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
+            -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
     )
     add_test(

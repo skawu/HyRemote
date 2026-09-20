@@ -144,14 +144,23 @@ forbid_token("${root_cmake}" "add_subdirectory(src/qml "
 forbid_token("${root_cmake}" "add_subdirectory(src/qpa "
              "root build graph must not use the legacy flat QPA frontend path")
 
-# Runtime is a first-class shared implementation layer. No integration frontend may create/enter it.
+# Runtime is a first-class shared implementation layer. No integration frontend may create or enter it, and no
+# frontend may take an implementation dependency on another frontend. A frontend owning its own tests directory is
+# normal, so the edges below are named instead of forbidding every add_subdirectory().
 read_repo_file("src/integrations/cpp/CMakeLists.txt" cpp_cmake)
-forbid_token("${cpp_cmake}" "add_subdirectory("
-             "Embedded C++ frontend must not enter another product layer")
-forbid_token("${cpp_cmake}" "add_library(hyremote-remoteaccess SHARED"
-             "Embedded C++ frontend must not own the shared runtime target")
+foreach(forbidden_frontend_edge IN ITEMS
+        "add_subdirectory(src/"
+        "add_subdirectory(../"
+        "add_subdirectory(../../"
+        "add_library(hyremote-remoteaccess SHARED"
+        "target_link_libraries(hyremote-qml"
+        "target_link_libraries(hyremote-generic"
+        "target_link_libraries(hyremote-qpa")
+    forbid_token("${cpp_cmake}" "${forbidden_frontend_edge}"
+                 "the C++ frontend must not enter the shared runtime or another frontend")
+endforeach()
 require_token("${cpp_cmake}" "src/remote_access.cpp"
-              "Embedded C++ frontend lost its RemoteAccess facade")
+              "the C++ frontend lost its RemoteAccess facade")
 
 read_repo_file("src/runtime/CMakeLists.txt" runtime_cmake)
 require_token("${runtime_cmake}" "add_library(hyremote-remoteaccess SHARED"
@@ -215,7 +224,7 @@ endforeach()
 read_repo_file(".github/workflows/ci.yml" ci_workflow)
 require_token("${ci_workflow}" "cancel-in-progress: true"
               "ci.yml stopped cancelling superseded runs")
-require_token("${ci_workflow}" "integrations: ${{ steps.scope.outputs.integrations }}"
+require_token("${ci_workflow}" [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
               "ci.yml lost capability-scoped integration output")
 require_token("${ci_workflow}" [=[--integrations="$INTEGRATIONS"]=]
               "consolidated CI stopped building the classifier-selected frontend union")

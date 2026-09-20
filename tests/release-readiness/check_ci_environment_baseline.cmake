@@ -55,7 +55,7 @@ read_required(".github/workflows/ci.yml" ci)
 foreach(token IN ITEMS
         "cancel-in-progress: true"
         "Resolve affected capabilities"
-        "integrations: ${{ steps.scope.outputs.integrations }}"
+        [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
         "src/core/"
         "src/runtime/"
         "src/integrations/cpp/"
@@ -82,7 +82,7 @@ forbid_token("${ci}" ".hyremote-complete-"
 
 read_required(".github/scripts/install-linux-qt-desktop-deps.sh" deps)
 foreach(token IN ITEMS
-        "profile=\"${1:-public}\""
+        [=[profile="${1:-public}"]=]
         "public"
         "qpa"
         "dpkg-query"
