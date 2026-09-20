@@ -12,8 +12,6 @@ add_library(hyremote-remoteaccess SHARED
     src/access_instance.cpp
     src/detail/component_factories.cpp
     src/detail/security_descriptor.cpp
-    # Transitional bridge for the current QPA composite implementation. It disappears when the
-    # QPA payload switches fully to the runtime-owned automatic composition path.
     src/detail/qpa_composition_seam.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
@@ -42,9 +40,8 @@ target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 target_include_directories(hyremote-remoteaccess
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    # Transitional build-tree seam for the current QPA implementation. QPA still consumes private
-    # runtime declarations until it switches to AccessController. Nothing under src/runtime/src is
-    # exposed by the installed SDK.
+    # Runtime-private declarations are shared with sibling integration frontends in the build tree only.
+    # Nothing under src/runtime/src is installed as an application-facing SDK header.
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
@@ -148,6 +145,10 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
         message(FATAL_ERROR
             "HyRemote zero-code integration requires Qt 6.8+ Gui for application-surface discovery")
     endif()
+endif()
+
+if(HYREMOTE_BUILD_TESTS AND HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+    add_subdirectory(tests)
 endif()
 
 install(
