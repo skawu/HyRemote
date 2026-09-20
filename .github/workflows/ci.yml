@@ -31,7 +31,7 @@ jobs:
         shell: python
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           import os, pathlib, subprocess
@@ -133,6 +133,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/Qt
           key: hyremote-qt-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+          save-always: true
 
       - name: Install build tools and Qt on cache miss
         shell: bash
@@ -171,8 +172,15 @@ jobs:
           runtime_lib="$(find build -type f -name 'libHyRemoteRemoteAccess.so' -print -quit)"
           test -n "$runtime_lib"
           runtime_dir="$(dirname "$runtime_lib")"
-          LD_LIBRARY_PATH="$runtime_dir:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
-            ctest --test-dir build --output-on-failure --parallel 4
+          if [[ "${{ needs.classify.outputs.qpa }}" == "ON" ]]; then
+            LD_LIBRARY_PATH="$runtime_dir:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+              xvfb-run -a ctest --test-dir build --output-on-failure --parallel 4 \
+                -E '^hyremote-release-readiness-'
+          else
+            LD_LIBRARY_PATH="$runtime_dir:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+              ctest --test-dir build --output-on-failure --parallel 4 \
+                -E '^hyremote-release-readiness-'
+          fi
 
       - name: Configure and build — Windows
         if: runner.os == 'Windows'
@@ -204,7 +212,7 @@ jobs:
         shell: cmd
         run: |
           set "PATH=%RUNTIME_DIR%;%QT_PREFIX%\bin;%PATH%"
-          ctest --test-dir build --output-on-failure --parallel 4
+          ctest --test-dir build --output-on-failure --parallel 4 -E "^hyremote-release-readiness-"
 
       - name: CI timing summary
         if: always()
@@ -221,6 +229,7 @@ jobs:
             echo "- QML payload: ${{ needs.classify.outputs.qml }}"
             echo "- Generic payload: ${{ needs.classify.outputs.generic }}"
             echo "- QPA payload: ${{ needs.classify.outputs.qpa }}"
+            echo "- focused daily CI excludes release-readiness gates; SDK/GA/release own those checks"
             echo "- product job elapsed: ${elapsed}s"
             echo "- target budget: warm-cache PR job <= 12 minutes"
           } >> "$GITHUB_STEP_SUMMARY"
