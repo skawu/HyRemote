@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Classify changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      product: ${{ steps.scope.outputs.product }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scope
+        name: Decide whether product CI is needed
+        shell: python
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          import os, pathlib, subprocess
+          if os.environ["EVENT_NAME"] == "pull_request":
+              changed = subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{os.environ['BASE_SHA']}...{os.environ['HEAD_SHA']}"],
+                  text=True,
+              ).splitlines()
+          else:
+              changed = ["CMakeLists.txt"]
+          product_files = {"CMakeLists.txt", "compile.cmd", "build.yml", ".github/workflows/ci.yml"}
+          product_prefixes = ("src/", "cmake/", "tests/", "examples/", ".github/scripts/")
+          product = any(p in product_files or p.startswith(product_prefixes) for p in changed)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"product={'true' if product else 'false'}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("## CI scope\n\n")
+              f.write(f"- changed files: {len(changed)}\n")
+              f.write(f"- product build: {'yes' if product else 'no — documentation/governance only'}\n")
+
+  product:
+    name: ${{ matrix.name }}
+    needs: classify
+    if: needs.classify.outputs.product == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: Linux x86_64 / Qt 6.8.3
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+          - name: Windows x86_64 / Qt 6.8.3
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: qt-cache
+        name: Restore exact Qt SDK
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v3-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+
+      - name: Prepare Qt and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          MARKER="$RUNNER_TEMP/Qt/.hyremote-complete-6.8.3-${{ matrix.aqt_arch }}"
+          if [[ "${{ steps.qt-cache.outputs.cache-hit }}" == "true" && ! -f "$MARKER" ]]; then
+            echo "Cached Qt SDK is incomplete; rebuilding it instead of accepting a poisoned cache."
+            rm -rf "$RUNNER_TEMP/Qt"
+          fi
+          if [[ ! -f "$MARKER" ]]; then
+            python -m pip install --disable-pip-version-check aqtinstall
+            aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
+            test -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake"
+            mkdir -p "$RUNNER_TEMP/Qt"
+            touch "$MARKER"
+          fi
+          if ! command -v ninja >/dev/null 2>&1; then
+            python -m pip install --disable-pip-version-check ninja
+          fi
+          echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+
+      - name: Install missing Linux Qt host dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
+
+      - name: Build and test through HyRemote build system — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./compile.cmd \
+            --integrations=cpp,qml,generic,qpa \
+            --qt-prefix="$QT_PREFIX" \
+            --build-dir=build-ci \
+            --tests --run-tests --no-examples \
+            --test-exclude='^hyremote-release-readiness-' \
+            --xvfb --clean -j4 \
+            --env=QT_QUICK_BACKEND=software
+
+      - name: Build and test through HyRemote build system — Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          call compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix="%QT_PREFIX%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=^hyremote-release-readiness-" --clean -j4
+
+      - name: Save exact Qt SDK
+        if: always() && steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v3-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+
+      - name: Timing summary
+        if: always()
+        shell: bash
+        run: |
+          now="$(date +%s)"
+          start="${CI_STARTED:-$now}"
+          {
+            echo "## CI timing"
+            echo
+            echo "- runner: ${{ matrix.name }}"
+            echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
+            echo "- build entry: compile.cmd + build.yml + command-line overrides"
+            echo "- elapsed after environment start: $((now-start))s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  no-product-change:
+    name: No product CI needed
+    needs: classify
+    if: needs.classify.outputs.product != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - run: echo "Documentation/governance-only change; Qt runner intentionally skipped."
