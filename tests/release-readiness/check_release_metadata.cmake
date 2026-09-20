@@ -185,16 +185,32 @@ if(NOT core_install EQUAL -1)
     message(FATAL_ERROR "release-readiness: V1 Core must not be installed/exported as a second product target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" remoteaccess_cmake)
+# #219 moved ownership of the single delivered shared runtime out of the Embedded C++ frontend.
+# Preserve the binary/export contract while validating its new owner explicitly.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
         "add_library(hyremote-remoteaccess SHARED"
         "OUTPUT_NAME HyRemoteRemoteAccess"
         "EXPORT_NAME RemoteAccess")
     string(FIND "${remoteaccess_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "release-readiness: RemoteAccess shared facade contract missing: ${required_token}")
+        message(FATAL_ERROR "release-readiness: RemoteAccess shared runtime contract missing: ${required_token}")
     endif()
 endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" cpp_cmake)
+foreach(required_token
+        "src/remote_access.cpp"
+        "RemoteAccessExport.h")
+    string(FIND "${cpp_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "release-readiness: Embedded C++ facade contract missing: ${required_token}")
+    endif()
+endforeach()
+string(FIND "${cpp_cmake}" "add_library(hyremote-remoteaccess SHARED" cpp_owns_runtime)
+if(NOT cpp_owns_runtime EQUAL -1)
+    message(FATAL_ERROR "release-readiness: Embedded C++ frontend must not re-own the common shared runtime")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
 string(FIND "${qml_cmake}" "TARGETS hyremote-qml\n    EXPORT HyRemoteTargets" qml_export)
