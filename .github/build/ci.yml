@@ -1,0 +1,23 @@
+# CI uses the same HyRemote build entry point and configuration model as developers.
+# Runner-specific Qt locations are supplied as a one-off CLI override by ci.yml.
+version: 1
+
+build:
+  type: Release
+  directory: build
+  generator: Ninja
+  jobs: 4
+  examples: false
+
+integrations:
+  - cpp
+  - qml
+  - generic
+  - qpa
+
+tests:
+  build: true
+  run: true
+  parallel: 4
+  exclude: "^hyremote-release-readiness-"
+  xvfb: true
