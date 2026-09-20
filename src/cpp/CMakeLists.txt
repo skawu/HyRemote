@@ -7,9 +7,14 @@ include(GNUInstallDirs)
 #
 # A consumer configure must still acquire HyRemote only once. If an installed HyRemote package was
 # already loaded, adding this source tree would collide at the public alias and could mix SDK metadata.
-if(TARGET HyRemote::RemoteAccess OR TARGET hyremote-remoteaccess)
+if(TARGET HyRemote::RemoteAccess)
     message(FATAL_ERROR
         "HyRemote source acquisition conflict: HyRemote::RemoteAccess already exists; do not combine "
+        "find_package(HyRemote) with add_subdirectory(HyRemote) in the same configure")
+endif()
+if(TARGET hyremote-remoteaccess)
+    message(FATAL_ERROR
+        "HyRemote source acquisition conflict: hyremote-remoteaccess already exists; do not combine "
         "find_package(HyRemote) with add_subdirectory(HyRemote) in the same configure")
 endif()
 
