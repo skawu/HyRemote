@@ -1,7 +1,5 @@
 name: Mainline validation
 
-# Post-merge verification of the exact commit that reached `main`. This is intentionally a composed
-# default-product smoke, not a replacement for the V1 all-modes GA matrix on the release candidate.
 on:
   push:
     branches:
@@ -24,12 +22,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64 / Qt 6.8.3 / default product
+          - name: Windows x86_64 / Qt 6.8.3 / four frontends
             os: windows-2022
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt 6.8.3 / default product
+          - name: Linux x86_64 / Qt 6.8.3 / four frontends
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64
@@ -50,10 +48,10 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja 'vncdotool==1.3.0'
           aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
 
-      - name: Install Linux Qt desktop host dependencies
+      - name: Install Linux QPA qualification dependencies
         if: runner.os == 'Linux'
         shell: bash
-        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
 
       - name: Record exact merged commit
         shell: bash
@@ -61,36 +59,31 @@ jobs:
           echo "verified commit $(git rev-parse HEAD) $(git log -1 --pretty=%s)"
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
-      - name: Configure build test and product-fit — Linux
+      - name: Build, test and product-fit — Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          cmake -S . -B build-mainline -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
-            -DHYREMOTE_BUILD_TESTS=ON \
-            -DHYREMOTE_BUILD_EXAMPLES=OFF \
-          cmake --build build-mainline --parallel
-          xvfb-run -a ctest --test-dir build-mainline --output-on-failure
-          LD_LIBRARY_PATH="$PWD/build-mainline/remoteaccess:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
-            python src/cpp/tests/rfb_product_fit.py \
-              build-mainline/remoteaccess/tests/hyremote-rfb-test-server
+          sh ./compile.cmd \
+            --integrations=cpp,qml,generic,qpa \
+            --qt-prefix="$QT_PREFIX" \
+            --build-dir=build-mainline \
+            --tests --run-tests --no-examples \
+            --xvfb --clean -j4 \
+            --env=QT_QUICK_BACKEND=software
 
-      - name: Configure build test and product-fit — Windows / MSVC x64
+          LD_LIBRARY_PATH="$PWD/build-mainline/runtime:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
+            python src/integrations/cpp/tests/rfb_product_fit.py \
+              build-mainline/integrations/cpp/tests/hyremote-rfb-test-server
+
+      - name: Build, test and product-fit — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
-          set "PATH=%QT_PREFIX%\bin;%CD%\build-mainline\remoteaccess;%PATH%"
-          cmake -S . -B build-mainline -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
-            -DHYREMOTE_BUILD_TESTS=ON ^
-            -DHYREMOTE_BUILD_EXAMPLES=OFF ^
-          cmake --build build-mainline --parallel
-          ctest --test-dir build-mainline --output-on-failure
-          python src\cpp\tests\rfb_product_fit.py build-mainline\remoteaccess\tests\hyremote-rfb-test-server.exe
+          call compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix="%QT_PREFIX%" --build-dir=build-mainline --tests --run-tests --no-examples --clean -j4
+          set "PATH=%QT_PREFIX%\bin;%CD%\build-mainline\runtime;%PATH%"
+          python src\integrations\cpp\tests\rfb_product_fit.py build-mainline\integrations\cpp\tests\hyremote-rfb-test-server.exe
