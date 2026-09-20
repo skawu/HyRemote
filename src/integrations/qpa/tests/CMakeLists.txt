@@ -53,7 +53,7 @@ target_compile_features(hyremote-qpa-remote-config-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-remote-config-test
     PRIVATE
         ..
-        ${_hyremote_root_dir}/src/cpp/src
+        ${_hyremote_root_dir}/src/runtime/src
 )
 target_link_libraries(hyremote-qpa-remote-config-test
     PRIVATE
@@ -99,9 +99,6 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 15
     )
 
-    # Transparent QPA is additive to the native application. A remote listener bind failure must
-    # never turn into a native-window/event-loop failure. The test reserves an ephemeral loopback
-    # port before QApplication construction and asks HyRemote to bind the occupied port.
     add_executable(hyremote-qpa-remote-failure-native-survival-smoke
         qpa_remote_failure_native_survival_smoke.cpp
     )
@@ -211,10 +208,8 @@ add_executable(hyremote-qpa-composite-capture-test
 )
 target_compile_features(hyremote-qpa-composite-capture-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-capture-test
-    PRIVATE .. ${_hyremote_root_dir}/src/cpp/src
+    PRIVATE .. ${_hyremote_root_dir}/src/runtime/src
 )
-# Same reason as hyremote-qpa-composite-input-test: the compiled sources include the RemoteAccess
-# private component-factory declarations, so the product target provides their include directories.
 target_link_libraries(hyremote-qpa-composite-capture-test
     PRIVATE Qt6::Core Qt6::Gui HyRemote::Core HyRemote::RemoteAccess
 )
@@ -231,12 +226,8 @@ add_executable(hyremote-qpa-composite-input-test
 )
 target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-composite-input-test
-    PRIVATE .. ${_hyremote_root_dir}/src/cpp/src
+    PRIVATE .. ${_hyremote_root_dir}/src/runtime/src
 )
-# This target compiles the interactive composite target and the RemoteAccess private component-factory
-# declarations, which reference QHostAddress and the generated RemoteAccess export header. Linking the
-# product target (as hyremote-qpa-remote-config-test above already does) supplies the public include
-# directory, the generated header directory and Qt6::Network transitively.
 target_link_libraries(hyremote-qpa-composite-input-test
     PRIVATE Qt6::Core Qt6::Gui HyRemote::Core HyRemote::RemoteAccess
 )

@@ -6,10 +6,10 @@ endif()
 
 set(required_files
     "src/runtime/CMakeLists.txt"
-    "src/cpp/CMakeLists.txt"
-    "src/qml/CMakeLists.txt"
-    "src/qpa/CMakeLists.txt"
-    "src/qpa/tests/check_source_payload_relocation.cmake"
+    "src/integrations/cpp/CMakeLists.txt"
+    "src/integrations/qml/CMakeLists.txt"
+    "src/integrations/qpa/CMakeLists.txt"
+    "src/integrations/qpa/tests/check_source_payload_relocation.cmake"
     "cmake/HyRemoteDeploy.cmake"
     "tests/consumer-source/main.cpp"
     "tests/consumer-installed-qpa/product_fit.py"
@@ -23,7 +23,7 @@ endforeach()
 # The shared runtime may be copied directly from an add_subdirectory() build. It must therefore have
 # an origin-local build lookup as well as the installed one; otherwise a clean source deployment can
 # accidentally depend on the original Qt/build path embedded by CMake. #219 moved target ownership
-# from the Embedded C++ frontend to src/runtime without changing the delivered binary contract.
+# out of the Embedded C++ frontend into src/runtime without changing the delivered binary contract.
 file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN"]=]
@@ -39,7 +39,7 @@ endforeach()
 # QML has two relocatable shared layers: the backing library lives in the runtime lib directory and
 # its plugin lives in qml/HyRemote. Both source/build and installed variants must carry paths usable
 # after Qt copies them into a deployed application tree.
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qml/CMakeLists.txt" qml_cmake)
 foreach(required_token
         [=[set_property(TARGET hyremote-qml PROPERTY BUILD_RPATH "$ORIGIN")]=]
         [=[set_property(TARGET hyremote-qml PROPERTY BUILD_RPATH_USE_ORIGIN TRUE)]=]
@@ -57,7 +57,7 @@ endforeach()
 # trailing `/.` is semantically neutral in the SDK/build layout but reserves enough ELF RUNPATH string
 # capacity for the deployed plugins/platforms -> lib replacement. The helper must rewrite exactly
 # this package-owned segment without an undocumented ELF parser or external patching prerequisite.
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
@@ -93,7 +93,7 @@ foreach(forbidden_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/check_source_payload_relocation.cmake" source_qpa_relocation)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/tests/check_source_payload_relocation.cmake" source_qpa_relocation)
 foreach(required_token
         [=[OLD_RPATH "$ORIGIN/../../../."]=]
         [=[NEW_RPATH "$ORIGIN/../../lib"]=]

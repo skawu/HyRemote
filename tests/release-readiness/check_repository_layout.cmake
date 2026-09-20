@@ -44,9 +44,11 @@ endfunction()
 set(required_directories
     "src/core"
     "src/runtime"
-    "src/cpp"
-    "src/qml"
-    "src/qpa"
+    "src/integrations"
+    "src/integrations/cpp"
+    "src/integrations/qml"
+    "src/integrations/generic"
+    "src/integrations/qpa"
     "tests"
     "examples"
     "logo"
@@ -80,10 +82,19 @@ if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/internal/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
 
-# Access-mode payload directories are named for their integration technology. `src/runtime` is the
-# one shared product-runtime implementation layer and is not an integration frontend. Historical
-# access-quality/artifact names must not return.
-foreach(stale_src IN ITEMS "src/remoteaccess" "src/embedded" "src/declarative" "src/transparent" "docs/assets")
+# Shared implementation lives at src/core + src/runtime. Application integration technologies are
+# grouped below src/integrations. Legacy flat frontend roots and historical quality/artifact names must
+# not return as compatibility copies, symlinks or forwarding directories.
+foreach(stale_src IN ITEMS
+        "src/cpp"
+        "src/qml"
+        "src/generic"
+        "src/qpa"
+        "src/remoteaccess"
+        "src/embedded"
+        "src/declarative"
+        "src/transparent"
+        "docs/assets")
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${stale_src}")
         message(FATAL_ERROR "repository-layout: stale directory must not return: ${stale_src}")
     endif()
@@ -96,16 +107,22 @@ file(GLOB_RECURSE _layout_drivers RELATIVE "${HYREMOTE_SOURCE_DIR}"
      "${HYREMOTE_SOURCE_DIR}/.github/scripts/*.sh"
      "${HYREMOTE_SOURCE_DIR}/cmake/*.cmake"
      "${HYREMOTE_SOURCE_DIR}/src/*/CMakeLists.txt"
+     "${HYREMOTE_SOURCE_DIR}/src/integrations/*/CMakeLists.txt"
      "${HYREMOTE_SOURCE_DIR}/examples/*/CMakeLists.txt")
 list(APPEND _layout_drivers "CMakeLists.txt")
 foreach(_driver IN LISTS _layout_drivers)
     file(READ "${HYREMOTE_SOURCE_DIR}/${_driver}" _driver_text)
     string(REPLACE "\\" "/" _driver_text "${_driver_text}")
-    foreach(stale_src IN ITEMS "src/remoteaccess" "src/embedded" "src/declarative" "src/transparent" "docs/assets/logo")
+    foreach(stale_src IN ITEMS
+            "src/remoteaccess"
+            "src/embedded"
+            "src/declarative"
+            "src/transparent"
+            "docs/assets/logo")
         if(_driver_text MATCHES "${stale_src}")
             message(FATAL_ERROR
-                "repository-layout: ${_driver} still refers to the stale source path ${stale_src}; canonical "
-                "ownership is src/runtime plus peer src/cpp, src/qml and src/qpa frontends")
+                "repository-layout: ${_driver} still refers to stale path ${stale_src}; canonical ownership is "
+                "src/core + src/runtime + peer src/integrations/* frontends")
         endif()
     endforeach()
 endforeach()
@@ -113,18 +130,24 @@ endforeach()
 read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]
-        [=[add_subdirectory(src/cpp remoteaccess)]=]
-        [=[add_subdirectory(src/qml qml/HyRemote)]=]
-        [=[add_subdirectory(src/qpa qpa)]=])
+        [=[add_subdirectory(src/integrations/cpp remoteaccess)]=]
+        [=[add_subdirectory(src/integrations/qml qml/HyRemote)]=]
+        [=[add_subdirectory(src/integrations/qpa qpa)]=])
     require_token("${root_cmake}" "${required_token}"
                   "root build graph lost canonical-source / stable-binary mapping")
 endforeach()
+forbid_token("${root_cmake}" "add_subdirectory(src/cpp "
+             "root build graph must not use the legacy flat C++ frontend path")
+forbid_token("${root_cmake}" "add_subdirectory(src/qml "
+             "root build graph must not use the legacy flat QML frontend path")
+forbid_token("${root_cmake}" "add_subdirectory(src/qpa "
+             "root build graph must not use the legacy flat QPA frontend path")
 
 # The current migration keeps the stable `remoteaccess` binary directory by entering runtime from the
-# C++ frontend directory. Pin that ownership explicitly until the later root-level mapping is changed in
-# a dedicated, evidence-backed step.
-read_repo_file("src/cpp/CMakeLists.txt" cpp_cmake)
-require_token("${cpp_cmake}" [=[add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")]=]
+# Embedded C++ frontend directory. Pin that ownership until a later root-level runtime mapping is changed
+# in a dedicated evidence-backed step.
+read_repo_file("src/integrations/cpp/CMakeLists.txt" cpp_cmake)
+require_token("${cpp_cmake}" [=[add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")]=]
               "Embedded C++ frontend stopped composing the common runtime migration target")
 forbid_token("${cpp_cmake}" "add_library(hyremote-remoteaccess SHARED"
              "Embedded C++ frontend must not own the shared runtime target")
@@ -149,28 +172,39 @@ forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
 forbid_token("${root_cmake}" "add_subdirectory(research/"
              "root build graph includes non-product research again")
 
-read_repo_file("src/qml/CMakeLists.txt" qml_cmake)
+read_repo_file("src/integrations/qml/CMakeLists.txt" qml_cmake)
 require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"
-                    "QML integration stopped linking the shared RemoteAccess runtime")
+                    "QML integration stopped linking the shared runtime payload")
 forbid_link_target("${qml_cmake}" "HyRemote::Core"
                    "QML integration must not link Core directly")
 forbid_token("${qml_cmake}" "remote_access.cpp"
              "QML integration must not compile a second RemoteAccess facade")
 
-read_repo_file("src/qpa/CMakeLists.txt" qpa_cmake)
+read_repo_file("src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 require_link_target("${qpa_cmake}" "HyRemote::RemoteAccess"
-                    "QPA integration stopped linking the shared RemoteAccess runtime")
+                    "QPA integration stopped linking the shared runtime payload")
 forbid_link_target("${qpa_cmake}" "HyRemote::Core"
                    "QPA platform payload must not link Core directly")
 forbid_token("${qpa_cmake}" "remote_access.cpp"
              "QPA platform payload must not compile a second RemoteAccess facade")
 
+# Generic is an accepted first-class frontend location even before its payload implementation lands.
+# Once it has a CMakeLists, it is subject to the same no-Core/no-QPA-private ownership rule through
+# dedicated Generic integration tests and this product-level layout contract.
+if(EXISTS "${HYREMOTE_SOURCE_DIR}/src/integrations/generic/CMakeLists.txt")
+    read_repo_file("src/integrations/generic/CMakeLists.txt" generic_cmake)
+    forbid_link_target("${generic_cmake}" "HyRemote::Core"
+                       "Generic Plugin must not link Core directly")
+    forbid_token("${generic_cmake}" "GuiPrivate"
+                 "Generic Plugin must not depend on Qt private/QPA APIs")
+endif()
+
 foreach(module_cmake IN ITEMS
         "src/core/CMakeLists.txt"
         "src/runtime/CMakeLists.txt"
-        "src/cpp/CMakeLists.txt"
-        "src/qml/CMakeLists.txt"
-        "src/qpa/CMakeLists.txt")
+        "src/integrations/cpp/CMakeLists.txt"
+        "src/integrations/qml/CMakeLists.txt"
+        "src/integrations/qpa/CMakeLists.txt")
     read_repo_file("${module_cmake}" module_text)
     forbid_token("${module_text}" "research/"
                  "product/integration module depends on non-product research (${module_cmake})")
@@ -217,4 +251,4 @@ endforeach()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(UI-neutral Core + one common runtime + peer integration frontends + stable binary mapping + one shared RemoteAccess runtime + retired non-product trees + bounded/cancellable workflow fan-out)")
+    "(UI-neutral Core + one common runtime + grouped peer integration frontends + stable binary mapping + one shared runtime + retired legacy trees + bounded/cancellable workflow fan-out)")
