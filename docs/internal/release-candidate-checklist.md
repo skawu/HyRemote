@@ -139,3 +139,18 @@ Merged topic branches should auto-delete. Residual unowned branches are audited 
 Under #147/#157, only inherently embedded/platform/hardware work stays outside the x86 V1 mandatory set, including #17 GBM/DMA-BUF, #10 RK3588/RKMPP and the embedded EGLFS/platform evidence line. Post-V1 governance improvement #166 also does not block V1.
 
 Qualification infrastructure such as #134 may continue independently but cannot silently move the RC-FROZEN candidate or broaden support claims.
+
+## 10. Executable release evidence
+
+Static gates are not evidence. The deployment and consumption evidence is produced by the release evidence runner,
+which installs the product into a clean prefix, acquires HyRemote the way each fixture declares (installed package or
+source tree, never both), builds and installs the consumer, executes it or its product-fit harness under an explicitly
+constructed runtime search environment, and records command, exit code, identity and result per cell:
+```text
+cmake -DHYREMOTE_SOURCE_DIR=<src> -DHYREMOTE_BUILD_DIR=<build> \
+      -P tests/release-readiness/run_release_evidence.cmake
+```
+Run it on each #109 reference operating system. Every record is bound to the exact `SOURCE_SHA` it was produced from
+and cannot serve as acceptance evidence for a different frozen candidate; a cell that was skipped or failed is not
+evidence. Output belongs to the build tree (`<build>/evidence/<run>/`) and is never committed, and the test environment
+keeps that tree off the runtime search path so a test process always resolves the artifacts under test.
