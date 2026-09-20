@@ -6,47 +6,35 @@ include_guard(GLOBAL)
 option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" OFF)
 option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" OFF)
 
-# Normal product path. These defaults intentionally produce the single shared
-# HyRemote::RemoteAccess runtime with both public Qt UI-family adapters and the bounded RFB transport
-# when a suitable Qt SDK is available. Applications do not select internal Core/adapters/backends
-# merely to get the standard C++ API.
+# Shared implementation layers. Core and Runtime are product implementation, not integration
+# frontends. Frontend selection below must never change this ownership relationship.
 option(HYREMOTE_BUILD_CORE "Build the internal hyremote-core session/frame/dispatch library" ON)
-option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the shared HyRemote runtime and public C++ RemoteAccess facade when Qt is available" ON)
+option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the shared HyRemote common runtime when Qt is available" ON)
 option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)
 option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)
 option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)
 
-# QML is one application integration frontend over the same runtime. Keep it opt-in so the default
-# C++ path has no QtQml requirement.
-option(HYREMOTE_BUILD_QML_API "Build the 'import HyRemote' QML API when Qt Qml is available" OFF)
+# Four peer application integration frontends over the same Common Runtime.
+# Embedded C++ supports both Widgets and Qt Quick targets; Widgets/Quick are Runtime adapter
+# dimensions and are deliberately not represented as frontend choices.
+option(HYREMOTE_BUILD_CPP_API "Build the Embedded C++ HyRemote::RemoteAccess frontend" ON)
+option(HYREMOTE_BUILD_QML_API "Build the 'import HyRemote' QML frontend when Qt Qml is available" OFF)
+option(HYREMOTE_WITH_GENERIC_PLUGIN "Enable the QGenericPlugin zero-code frontend" OFF)
+option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA Factory-Trampoline zero-code frontend" OFF)
 
-# Generic Plugin is the public-Qt zero-code integration frontend introduced by the final V1
-# technical route. It must preserve the application's normal native QPA/platform selection and must
-# not acquire Qt private/QPA APIs. It is opt-in because it installs an additional Qt plugin payload.
-option(HYREMOTE_WITH_GENERIC_PLUGIN "Enable the QGenericPlugin zero-code integration frontend" OFF)
-
-# QPA is the exact-private-ABI zero-code frontend. It remains separately opt-in because it installs
-# a platform plugin payload and must be rebuilt/qualified for the exact Qt private ABI.
-option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA zero-code integration frontend" OFF)
-
-# Transport security is used only when the consumer explicitly asks for authenticated/encrypted access, and
-# it uses the OpenSSL already supplied by that environment: no provider selector, no bundled crypto toolchain,
-# and no hidden downgrade. A build that does not request the capability acquires nothing.
+# Transport security is a Common Runtime capability shared by every frontend. It uses the OpenSSL
+# already supplied by the environment: no provider selector, bundled crypto toolchain or hidden
+# downgrade.
 option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (uses the OpenSSL from your environment)" OFF)
 
 set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE OFF)
 
 if(HYREMOTE_WITH_TRANSPORT_SECURITY)
-    # No provider choice is exposed. The exact provider/version used for an official release is recorded by the
-    # release manifest, while source/SDK consumers may point CMake at their qualified installation through the
-    # normal FindOpenSSL inputs such as OPENSSL_ROOT_DIR.
     find_package(OpenSSL QUIET COMPONENTS Crypto SSL)
     if(OpenSSL_FOUND)
         set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE ON)
         message(STATUS "HyRemote: authenticated/encrypted transport available (OpenSSL ${OPENSSL_VERSION})")
     else()
-        # Explicit capability requests fail closed at configure time. Succeeding here would create a build whose
-        # requested product profile and compiled capability set disagree, which is exactly the ambiguity V1 avoids.
         message(FATAL_ERROR
             "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL with the Crypto and SSL components, "
             "but none was found. Provide one from your environment (for example with "
@@ -56,8 +44,7 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
 endif()
 
 # The default listener port is shared by every integration frontend. C++ and QML configure the same
-# AccessInstance runtime directly; Generic and QPA bootstrap the same automatic controller/runtime and
-# therefore inherit the same default when no frontend-specific startup parameter overrides it.
+# AccessInstance runtime directly; Generic and QPA bootstrap the same automatic controller/runtime.
 set(HYREMOTE_DEFAULT_PORT 5921 CACHE STRING "Default loopback listener port shared by all integration modes")
 if(NOT HYREMOTE_DEFAULT_PORT MATCHES "^[0-9]+$"
    OR HYREMOTE_DEFAULT_PORT LESS 1
