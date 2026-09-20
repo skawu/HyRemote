@@ -158,18 +158,26 @@ See the install guide ([中文](docs/guide/install.md) ｜ [English](docs/en/gui
 
 ## Repository layout
 
-The repository is organized by product responsibility rather than historical feature branches:
+The repository is organized by product responsibility rather than historical feature branches. Read the top level as
+one question - does it ship?:
 
 ```text
-src/                 product implementation (Core + RemoteAccess)
-src/        QML and QPA integration payloads
-tests/               cross-module/consumer/release evidence
-examples/            product examples
-research/            non-product spikes and architecture evidence
-assets/branding/     branding assets
-cmake/               build/package/deployment modules
-docs/                product and maintainer documentation
+src/                 the shipping tree: everything built and delivered, one directory per deliverable
+  core/                internal static library (not installed, not linkable)
+  remoteaccess/        the one shared library: HyRemote::RemoteAccess
+  qml/HyRemote/        the `import HyRemote` payload
+  qpa/                 the `qhyremote` Qt platform plugin payload
+examples/            usage examples E1-E6; not shipped
+docs/                documentation, zoned by reader (see docs/README.md)
+tests/               cross-module, consumer and release-readiness suites
+cmake/               build, package and deployment modules
+assets/branding/     branding assets; never built
+research/            non-product architecture evidence; never built
+.github/             CI and repository governance
 ```
+
+The full specification - every directory, what it is for, and where new work belongs - is
+[`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
 
 The source move does not intentionally change build-tree artifact paths; CMake maps canonical source directories onto the established `build/core`, `build/remoteaccess`, `build/qml/HyRemote` and QPA output locations. See [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
 
