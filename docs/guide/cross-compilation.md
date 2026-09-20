@@ -77,7 +77,7 @@ sh compile.cmd --mode qpa \
 ## 4. 部署与运行
 
 交叉编译产物包含共享运行时、`qhyremote` 平台插件与原生 delegate 的依赖关系，需按与桌面相同的部署契约摆放
-（见 `docs/deployment.md` 与 `hyremote_deploy()`）。QPA 接入在目标板上的启动方式与桌面一致：
+（见 `docs/guide/deployment.md` 与 `hyremote_deploy()`）。QPA 接入在目标板上的启动方式与桌面一致：
 
 ```text
 MyApp -platform hyremote

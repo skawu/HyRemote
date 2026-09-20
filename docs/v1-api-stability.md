@@ -173,6 +173,6 @@ This freeze document does not itself make any configuration Supported. `v1.0.0.0
 
 #74 is currently intermittent rather than a continuous no-runner state: some PR #106 jobs have received hosted runners and reached real configure/build/test failures, while newer candidates can still remain queued with no executable steps. Only actual step-level execution is product evidence; queued/no-step jobs are neither pass nor product failure and cannot authorize a release branch or tag.
 
-Milestone and GA tags are created only from accepted commits merged to `main` through the release process in `docs/git-flow-release.md`.
+Milestone and GA tags are created only from accepted commits merged to `main` through the release process in `docs/internal/git-flow-release.md`.
 
 Governance mode: `transitional-explicit`.

@@ -34,4 +34,3 @@ CMakeLists.txt  text eol=lf
 
 # Recorded measurements are evidence: they must stay byte-exact, so no conversion is applied to them at
 # all. A line-ending change inside a recorded host measurement would be a silent alteration of data.
-/research/capture/evidence/*.json  -text -eol

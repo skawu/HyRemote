@@ -112,7 +112,7 @@ A future reconsideration would require a measured benefit large enough to justif
 - Windows/Linux and future cross-build burden is explicitly qualified;
 - lifecycle, backpressure, input and security behavior meet or improve the accepted product contract.
 
-Source under `research/` may remain as historical research and does not constitute a production dependency.
+Historical experiments are recorded as documents under `docs/internal/`; their source is not kept in the tree, so nothing experimental can become a production dependency.
 
 ### NeatVNC
 

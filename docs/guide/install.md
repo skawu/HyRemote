@@ -206,7 +206,7 @@ hyremote_deploy(TARGET MyApp)
 
 助手负责所选载荷的落地（共享运行时、Qt 依赖、QML 插件文件、`qhyremote`）。
 应用**不要**手工复制 DLL/SO、`qmldir`、插件文件，也不要设置 SDK 专用的 `QT_PLUGIN_PATH` / `QT_QPA_PLATFORM_PLUGIN_PATH` / `LD_LIBRARY_PATH` 覆盖。
-完整部署契约见 [`docs/deployment.md`](../deployment.md)。
+完整部署契约见 [`docs/guide/deployment.md`](deployment.md)。
 
 ## 7. 干净部署要求
 
@@ -233,7 +233,7 @@ Windows 上的干净运行检查会把 `PATH` 收窄到部署目录加必需的�
 `qpa-proxy-existing-app`、`remote-support-showcase`（按已启用的集成包构建）。
 
 E1/E2 使用同一个公开门面 `HyRemote::RemoteAccess`，默认**仅观看**；只有受控测试环境才使用显式的远程输入选项。
-查看器连接见 [`docs/viewer-connection.md`](../viewer-connection.md)。
+查看器连接见 [`viewer-connection.md`](viewer-connection.md)。
 
 ## 10. 安全与支持边界
 
@@ -245,7 +245,7 @@ Bounded RFB 正确性传输默认使用 **SecurityType None**：既无传输认�
 
 ## 11. 相关文档
 
-- 集成方式（选择其一）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)（迁移至 `guide/` 后路径会同步更新）
-- 部署与打包：[`deployment.md`](../deployment.md)
+- 集成方式（选择其一，每篇的英文镜像位于 `docs/en/` 下的同一路径）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)
+- 部署与打包：[`deployment.md`](deployment.md)
 - 兼容与限制：[`compatibility.md`](../compatibility.md) ｜ [`known-limitations.md`](../known-limitations.md)
-- 排错：[`troubleshooting.md`](../troubleshooting.md)
+- 排错：[`troubleshooting.md`](troubleshooting.md)

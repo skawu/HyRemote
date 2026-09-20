@@ -46,7 +46,7 @@ instead of pairing one runtime target with QML/QPA metadata from another HyRemot
 ### 3.1 Plain product build
 
 A plain configure is intentionally product-only: it builds the standard C++
-`HyRemote::RemoteAccess` path and does not build repository tests, examples or research code.
+`HyRemote::RemoteAccess` path and does not build the repository's tests or examples.
 
 Windows (x64 MSVC developer environment):
 
@@ -189,7 +189,7 @@ add_executable(MyApp main.cpp)
 target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
 ```
 
-When HyRemote is included as a subproject, its own tests, examples and research spikes default to **OFF**
+When HyRemote is included as a subproject, its own tests and examples default to **OFF**, and there is no experimental tree in the build at all
 automatically; applications do not need to know or override those developer-only switches.
 `add_subdirectory(... EXCLUDE_FROM_ALL)` is supported: HyRemote's source-tree payloads remain internal build
 targets, the deployment helper adds only the local build dependencies needed to materialize the selected payload,
@@ -228,7 +228,7 @@ hyremote_deploy(TARGET MyApp)
 The helper owns placement of the selected payload (shared runtime, Qt dependencies, QML plugin files,
 `qhyremote`). Applications must **not** manually copy DLL/SO, `qmldir` or plugin files, and must not set
 SDK-specific `QT_PLUGIN_PATH` / `QT_QPA_PLATFORM_PLUGIN_PATH` / `LD_LIBRARY_PATH` overrides. Full contract:
-[`docs/deployment.md`](../../deployment.md).
+[`docs/guide/deployment.md`](../../guide/deployment.md).
 
 ## 7. Clean deployment requirement
 
@@ -259,7 +259,7 @@ With `-DHYREMOTE_BUILD_EXAMPLES=ON` the V1 candidate contains `widgets-basic`, `
 
 E1/E2 use the same public `HyRemote::RemoteAccess` facade and are view-only by default; the explicit remote-input
 option is for controlled test environments only. Viewer connection:
-[`docs/viewer-connection.md`](../../viewer-connection.md).
+[`docs/guide/viewer-connection.md`](../../guide/viewer-connection.md).
 
 ## 10. Security and support boundary
 
@@ -275,7 +275,7 @@ Supported; explicit limitations are in [`docs/known-limitations.md`](../../known
 
 ## 11. Related documents
 
-- Integration modes (choose one): [Embedded C++](../../getting-started/cpp.md) | [Declarative QML](../../getting-started/qml.md) | [Transparent QPA](../../getting-started/qpa-proxy.md) (these move into `guide/` with the rest of the migration)
-- Deployment and packaging: [`deployment.md`](../../deployment.md)
+- Integration modes (choose one, each with its Chinese primary at the same path under `docs/`): [Embedded C++](../getting-started/cpp.md) | [Declarative QML](../getting-started/qml.md) | [Transparent QPA](../getting-started/qpa-proxy.md)
+- Deployment and packaging: [`deployment.md`](../../guide/deployment.md)
 - Compatibility and limits: [`compatibility.md`](../../compatibility.md) | [`known-limitations.md`](../../known-limitations.md)
-- Troubleshooting: [`troubleshooting.md`](../../troubleshooting.md)
+- Troubleshooting: [`troubleshooting.md`](../../guide/troubleshooting.md)

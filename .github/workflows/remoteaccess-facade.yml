@@ -6,7 +6,7 @@ on:
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'src/core/**'
-      - 'src/remoteaccess/**'
+      - 'src/embedded/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/remoteaccess-facade.yml'
   workflow_dispatch:
@@ -80,7 +80,6 @@ jobs:
             -DHYREMOTE_BUILD_CORE=ON \
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
             -DHYREMOTE_BUILD_TESTS=ON \
-            -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
           test -f build/remoteaccess/libHyRemoteRemoteAccess.so
@@ -150,7 +149,6 @@ jobs:
             -DHYREMOTE_BUILD_CORE=ON ^
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
             -DHYREMOTE_BUILD_TESTS=ON ^
-            -DHYREMOTE_BUILD_SPIKES=OFF ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build --parallel
           if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1

@@ -1,7 +1,5 @@
 # HyRemote Product Overview
 
-Status: **pre-alpha**.
-
 This is the canonical long-form description of the product: what it is for, how applications consume
 it, what the V1.0 targets are, and what HyRemote deliberately does not do. It is kept out of the
 repository front page so that the [README](../README.md) stays a short entry point.
@@ -9,7 +7,7 @@ repository front page so that the [README](../README.md) stays a short entry poi
 Related authorities:
 
 - [`versioning.md`](versioning.md) - product versions and milestone semantics;
-- [`development-roadmap.md`](development-roadmap.md) - execution ordering toward V1.0.0.0;
+- [`internal/development-roadmap.md`](internal/development-roadmap.md) - execution ordering toward V1.0.0.0;
 - [`architecture.md`](architecture.md) - top-level boundaries and integration modes;
 - [`sdk-consumption.md`](sdk-consumption.md) - the user-facing consumption contract;
 - [`security-model.md`](security-model.md) - security requirements for the framework and adapters.
@@ -160,7 +158,7 @@ RFB by default. A backend is selected only when it satisfies protocol, security,
 packaging and downstream toolchain requirements without leaking complexity into the public product API.
 
 The implementation-level boundaries are recorded in [`architecture.md`](architecture.md),
-[`core-architecture.md`](core-architecture.md) and `docs/adr/`.
+[`internal/core-architecture.md`](internal/core-architecture.md) and `docs/adr/`.
 
 ## 6. Design principles
 
@@ -195,7 +193,7 @@ Major.Minor.Feature.Maintenance
 
 The version number represents product capability and compatibility, not the internal technical work
 breakdown. The canonical rules are in [`versioning.md`](versioning.md); execution ordering is in
-[`development-roadmap.md`](development-roadmap.md).
+[`internal/development-roadmap.md`](internal/development-roadmap.md).
 
 ### 7.1 x86_64 reference platform - Windows + Linux
 

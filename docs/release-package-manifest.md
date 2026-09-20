@@ -88,7 +88,7 @@ The following remain repository development or acceptance assets unless a releas
 - `tests/` and product-fit harnesses;
 - `.github/workflows/`;
 - aqtinstall, vncdotool, Pillow, Ninja and GitHub Actions tooling;
-- architecture research/evidence under `research/`;
+- maintainer documentation under `docs/internal/` (evaluation records, runbooks);
 - QPA test clients and test-only RFB decoders;
 - private Widgets/Quick adapters and QPA interception/composite/controller/provider classes.
 

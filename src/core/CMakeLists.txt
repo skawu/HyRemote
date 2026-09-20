@@ -2,7 +2,7 @@
 #
 # The frozen semantics live in docs/adr/0001-core-boundaries.md,
 # docs/adr/0002-remoteframe-lifetime-timestamps.md and
-# docs/adr/0003-threading-backpressure.md; docs/core-architecture.md connects them.
+# docs/adr/0003-threading-backpressure.md; docs/internal/core-architecture.md connects them.
 #
 # Dependency rule (ADR-0001): this target must not link or include Qt Widgets, Qt Quick,
 # Qt QML, Qt private/QPA, NeatVNC/AML, DRM/GBM/DMA-BUF or RKMPP/V4L2/VA-API types.

@@ -67,7 +67,7 @@ endif()
 add_compile_definitions(HYREMOTE_DEFAULT_PORT=${HYREMOTE_DEFAULT_PORT})
 
 # Development/architecture assets are never part of a normal product build unless explicitly asked.
-option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)
+
 
 # Platform/hardware optimization work is post-V1 unless a real release blocker promotes it.
 option(HYREMOTE_WITH_GBM "Enable GBM/DMA-BUF-oriented experimental backends" OFF)

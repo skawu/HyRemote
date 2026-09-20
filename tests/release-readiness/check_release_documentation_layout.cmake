@@ -31,66 +31,62 @@ function(forbid_doc_token relative_path token description)
 endfunction()
 
 # The package manifest is the release-facing source-tree inventory. Keep its physical paths aligned
-# with docs/repository-layout.md instead of allowing the old root-level module names to become facts
+# with docs/internal/repository-layout.md instead of allowing the old root-level module names to become facts
 # again. Conceptual prose such as "Core" or "architecture research" is intentionally not forbidden.
 require_doc_token("docs/release-package-manifest.md" "`src/core/` low-level implementation headers and tests"
                   "canonical Core source path")
-require_doc_token("docs/release-package-manifest.md" "architecture research/evidence under `research/`"
-                  "canonical research/evidence path")
+require_doc_token("docs/release-package-manifest.md" "maintainer documentation under `docs/internal/`"
+                  "maintainer documentation path")
 forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implementation headers and tests"
                  "legacy root Core path")
 forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
                  "legacy root spikes path")
 
 # Historical engineering documents must still point at paths that exist after the canonical repository
-# layout migration. Keep this list intentionally narrow: docs/repository-layout.md itself is allowed to
+# layout migration. Keep this list intentionally narrow: docs/internal/repository-layout.md itself is allowed to
 # mention legacy build-directory names when explaining the migration, but reproduction/source links may
 # not silently regress to removed root-level directories.
-require_doc_token("docs/capture-spike.md" "[`research/capture/`](../research/capture/)"
-                  "canonical capture research source path")
-require_doc_token("docs/capture-spike.md" "cmake -S research/capture -B build/spike-capture"
-                  "canonical capture reproducer path")
-forbid_doc_token("docs/capture-spike.md" "../spikes/capture/"
-                 "removed capture spike source path")
+require_doc_token("docs/internal/capture-spike.md" "**Retired.**"
+                  "retired capture harness status")
+forbid_doc_token("docs/internal/capture-spike.md" "cmake -S research/capture"
+                 "reproducer command for a removed capture harness")
 
-require_doc_token("docs/async-capture-spike.md" "[`research/async-capture/`](../research/async-capture/)"
-                  "canonical async-capture research source path")
-require_doc_token("docs/async-capture-spike.md" "cmake -S research/async-capture -B build/async-spike"
-                  "canonical async-capture reproducer path")
-forbid_doc_token("docs/async-capture-spike.md" "../spikes/async-capture/"
-                 "removed async-capture spike source path")
+require_doc_token("docs/internal/async-capture-spike.md" "**Retired.**"
+                  "retired async-capture harness status")
+forbid_doc_token("docs/internal/async-capture-spike.md" "cmake -S research/async-capture"
+                 "reproducer command for a removed async-capture harness")
 
-require_doc_token("docs/qpa-capture-classification-qt-6.8.3.md"
-                  "`src/remoteaccess/src/widgets/widget_target.cpp`"
+require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
+                  "`src/embedded/src/widgets/widget_target.cpp`"
                   "canonical Widgets target source citation")
-require_doc_token("docs/qpa-capture-classification-qt-6.8.3.md"
-                  "`src/remoteaccess/src/quick/quick_target.cpp`"
+require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
+                  "`src/embedded/src/quick/quick_target.cpp`"
                   "canonical Quick target source citation")
-forbid_doc_token("docs/qpa-capture-classification-qt-6.8.3.md"
+forbid_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
                  "`remoteaccess/src/"
                  "removed root RemoteAccess source citation")
 
-require_doc_token("docs/x86-vnc-transport-evaluation.md" "`research/vnc-transport-rust-ffi/`"
-                  "canonical historical Rust research path")
-forbid_doc_token("docs/x86-vnc-transport-evaluation.md" "`spikes/vnc-transport-rust-ffi/`"
+require_doc_token("docs/internal/x86-vnc-transport-evaluation.md" "retrievable from git history at commit `3e6e191`"
+                  "retired Rust spike recovery pointer")
+forbid_doc_token("docs/internal/x86-vnc-transport-evaluation.md" "`spikes/vnc-transport-rust-ffi/`"
                  "removed historical Rust spike path")
 
 # ARCH-01 remains useful historical design input, but it must not compete with the frozen V1 architecture.
 # Pin the authority statement rather than rewriting proposal-era diagrams into fake present-day evidence.
-require_doc_token("docs/core-architecture.md" "Status: **ARCH-01 proposal (proposal-era design input)**"
+require_doc_token("docs/internal/core-architecture.md" "Status: **ARCH-01 proposal (proposal-era design input)**"
                   "proposal-era Core architecture status")
-require_doc_token("docs/core-architecture.md" "Canonical authority: `docs/architecture.md` is the frozen V1 architecture"
+require_doc_token("docs/internal/core-architecture.md" "Canonical authority: `docs/architecture.md` is the frozen V1 architecture"
                   "frozen architecture authority")
-require_doc_token("docs/core-architecture.md" "`research/` trees stay non-production"
-                  "canonical research path in Core architecture history")
+require_doc_token("docs/internal/core-architecture.md" "No experimental tree is kept in the repository"
+                  "retired research-tree statement in Core architecture history")
 
 require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.cmake enforces the include/declaration/link part"
                   "canonical Core dependency-guard path and scope")
 
 # Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
 # the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
-require_doc_token("docs/dependency-policy.md" "Source under `research/` may remain as historical research"
-                  "canonical research path in dependency policy")
+require_doc_token("docs/dependency-policy.md" "Historical experiments are recorded as documents under `docs/internal/`"
+                  "retired experiment-tree policy in dependency policy")
 forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
                  "legacy spikes path in dependency policy")
 require_doc_token("docs/dependency-policy.md" "### Repository test/CI-only tools"
@@ -102,14 +98,14 @@ require_doc_token("docs/dependency-policy.md" "These tools are pinned/used by re
 
 # User-facing entry points must identify the canonical layout document so repository contributors do
 # not infer module ownership from historical root names.
-require_doc_token("README.md" "docs/repository-layout.md" "repository-layout documentation link")
-require_doc_token("CONTRIBUTING.md" "docs/repository-layout.md" "contributor layout authority")
-require_doc_token("CONTRIBUTING.md" "docs/branch-lifecycle.md" "contributor branch-lifecycle authority")
+require_doc_token("README.md" "docs/internal/repository-layout.md" "repository-layout documentation link")
+require_doc_token("CONTRIBUTING.md" "docs/internal/repository-layout.md" "contributor layout authority")
+require_doc_token("CONTRIBUTING.md" "docs/internal/branch-lifecycle.md" "contributor branch-lifecycle authority")
 
 # Repository administration is a release-preparation gate, not product acceptance. Keep the exact
 # recovery/cleanup entry points versioned so workflow state, security reporting and branch hygiene do
 # not become chat-only release knowledge.
-set(admin_doc "docs/v1-repository-admin.md")
+set(admin_doc "docs/internal/v1-repository-admin.md")
 foreach(required_token
         "repository preparation / administration gate; not product acceptance evidence"
         "pwsh .github/scripts/drain-superseded-v1-runs.ps1"
@@ -145,7 +141,7 @@ require_doc_token(".github/scripts/drain-superseded-v1-runs.ps1"
 # #109 cannot be reduced to a chat-only checklist. Keep a versioned runbook with the exact V1
 # lifecycle boundaries ready before physical execution begins. This gate proves preparation only;
 # it deliberately also pins the statement that the document itself is NOT acceptance evidence.
-set(physical_doc "docs/v1-physical-acceptance.md")
+set(physical_doc "docs/internal/v1-physical-acceptance.md")
 foreach(required_token
         "repository preparation only — this document is not physical acceptance evidence"
         "Candidate commit SHA: `<required>`"
@@ -168,4 +164,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(canonical source/research paths + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
+    "(canonical source layout + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")

@@ -19,18 +19,20 @@ Architecture-affecting changes should be discussed and recorded before implement
 
 ## Repository and branch ownership
 
-Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/repository-layout.md`](docs/repository-layout.md):
+Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
-- `src/` contains the normal product implementation;
-- `integrations/` contains QML/QPA integration payloads over the same runtime;
-- root `tests/` contains cross-module/consumer/release evidence;
-- module-private tests stay with their module;
-- `research/` contains opt-in non-product experiments/evidence;
-- `assets/` contains non-code assets.
+- `src/` is the shipping tree: one directory per deliverable (`core/` is the internal base, then `embedded/`,
+  `declarative/` and `transparent/` for the three access modes), and every payload reuses the same shared runtime;
+- `tests/` holds what a unit test is not: cross-module integration, clean consumers, product E2E, the public-surface
+  contract, the third-party matrix and the release gates;
+- module-private tests stay with their module (`src/*/tests/`) and are never moved here;
+- there is no separate research tree: an experiment's conclusion is recorded under `docs/internal/**`, and a runnable
+  experiment either becomes product code in `src/` or leaves only its conclusion;
+- branding is not a root directory: the product mark lives at `docs/assets/logo/`.
 
-Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `spikes/` or `logo/` directories as compatibility copies.
+Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `integrations/`, `verification/`, `assets/`, `research/`, `spikes/` or `logo/` directories as compatibility copies.
 
-Branches are temporary work cursors. Follow [`docs/branch-lifecycle.md`](docs/branch-lifecycle.md) and [`docs/git-flow-release.md`](docs/git-flow-release.md): normally only `main`, `develop` and current open-PR heads remain visible. Historical auditability belongs to Issues, PRs, commits and release tags rather than stale branch refs.
+Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`](docs/internal/branch-lifecycle.md) and [`docs/internal/git-flow-release.md`](docs/internal/git-flow-release.md): normally only `main`, `develop` and current open-PR heads remain visible. Historical auditability belongs to Issues, PRs, commits and release tags rather than stale branch refs.
 
 ## Product milestones and technical WBS
 
@@ -130,13 +132,13 @@ documentation gate pins exact tokens in those files (translate them only togethe
 | Zone | Paths | Language | Content rule |
 | --- | --- | --- | --- |
 | User guide | `docs/guide/**` | Chinese primary + `docs/en/guide/**` mirror | Final shape only: install, integrate, deploy, troubleshoot |
-| Reference | `docs/reference/**` | Chinese primary + `docs/en/reference/**` mirror | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
-| Internal / release | rest of `docs/`, `docs/adr/`, `docs/releases/`, `docs/proposals/` | English | Acceptance runbooks, repository administration, layout authority, milestone records |
+| Reference | the product final-state contracts at the top level of `docs/` | Chinese primary, English mirror beside them under `docs/en/` | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
+| Internal / release | `docs/internal/**`, `docs/adr/`, `docs/releases/`, `docs/proposals/`, `docs/acceptance/**` | English | Acceptance runbooks, repository administration, layout authority, milestone records, research/evaluation records, recorded acceptance evidence |
 
 Rules for the user-facing zones:
 
 - **Bilingual pairs**: the Chinese primary document lives at `docs/<path>`; the English mirror lives at
-  `docs/en/<path>`. A document that enters `guide/` or `reference/` must have its mirror at the same relative
+  `docs/en/<path>`. A document that enters `guide/` must have its mirror at the same relative
   path, carries a one-line language switch at the top, and changes in both languages in the same change.
   Legacy documents that have not moved into those zones yet are not required to be mirrored while the
   migration is in progress.
@@ -144,7 +146,7 @@ Rules for the user-facing zones:
   that each cover a fragment; repository documents are not a place to record the path that produced them.
 - **No process content**: issue numbers and tracking, acceptance scheduling/status, milestone chronicles,
   investigation logs and one-off checklists do not belong to the user-facing zones. Keep them in the internal
-  zone, or as evidence under `research/` where they actually belong.
+  zone, or as an evaluation record under `docs/internal/**` where it actually belongs.
 - **Moves update references**: when a document moves, update every reference in the repository in the same
   change. Do not leave forwarding copies - with one deliberate exception: a path that a release-readiness gate
   still lists may keep a short pointer file until the gate's path list is updated. Such pointers carry no

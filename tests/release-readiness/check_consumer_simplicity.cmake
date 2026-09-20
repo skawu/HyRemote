@@ -19,7 +19,6 @@ set(required_option_tokens
     [=[option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)]=]
     [=[option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)]=]
     [=[option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (uses the OpenSSL from your environment)" OFF)]=]
-    [=[option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)]=]
 )
 foreach(required_token IN LISTS required_option_tokens)
     string(FIND "${options_text}" "${required_token}" found)
@@ -52,9 +51,9 @@ set(required_root_tokens
     [=[if(HYREMOTE_BUILD_REMOTE_ACCESS)]=]
     [=[if(HYREMOTE_WITH_QPA_PROXY)]=]
     [=[add_subdirectory(src/core core)]=]
-    [=[add_subdirectory(src/remoteaccess remoteaccess)]=]
-    [=[add_subdirectory(integrations/qml/HyRemote qml/HyRemote)]=]
-    [=[add_subdirectory(integrations/qpa qpa)]=]
+    [=[add_subdirectory(src/embedded remoteaccess)]=]
+    [=[add_subdirectory(src/declarative qml/HyRemote)]=]
+    [=[add_subdirectory(src/transparent qpa)]=]
     [=[hyremote-release-profile-v001-reject-qml]=]
     [=[hyremote-release-profile-v002-reject-qpa]=]
     [=[hyremote-release-profile-v100-all-modes]=]
@@ -92,7 +91,6 @@ file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-source/CMakeLists.txt" source_c
 foreach(forbidden_token
         "set(HYREMOTE_BUILD_TESTS"
         "set(HYREMOTE_BUILD_EXAMPLES"
-        "set(HYREMOTE_BUILD_SPIKES"
         "set(HYREMOTE_BUILD_CORE"
         "set(HYREMOTE_BUILD_REMOTE_ACCESS"
         "set(HYREMOTE_BUILD_WIDGETS_ADAPTER"
@@ -146,7 +144,7 @@ endforeach()
 # Source and installed QML acquisition publish the same abstract import-root input to the one deploy
 # helper. Source payload targets are internal build metadata: they may become build-only dependencies
 # of the consumer target, but never application link targets or installed SDK choices.
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/declarative/CMakeLists.txt" qml_cmake)
 foreach(required_token
         "_hyremote_qml_build_import_root"
         "HyRemote_QML_IMPORT_PATH"
@@ -161,7 +159,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/transparent/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]

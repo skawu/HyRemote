@@ -6,13 +6,13 @@ HyRemote is a Qt remote-access framework for existing Qt Widgets and Qt Quick ap
 
 This document is the canonical top-level architecture for V1. Detailed contracts are refined by:
 
-- [`core-architecture.md`](core-architecture.md);
+- [`internal/core-architecture.md`](internal/core-architecture.md);
 - [`ADR-0001 Core Boundaries`](adr/0001-core-boundaries.md);
 - [`ADR-0002 RemoteFrame Ownership, Damage and Timestamp Contract`](adr/0002-remoteframe-lifetime-timestamps.md);
 - [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md);
 - [`ADR-0006 Authenticated and Encrypted Transport Design`](adr/0006-authenticated-transport-design.md);
 - [`input-model.md`](input-model.md);
-- [`deployment.md`](deployment.md);
+- [`deployment.md`](guide/deployment.md);
 - [`security-model.md`](security-model.md).
 
 ## 1. Frozen V1 product model
@@ -148,7 +148,7 @@ Arbitrary foreign/native `QWindow` capture is not a V1 support claim.
 
 Borrowed raw memory is not a standalone frame contract.
 
-`hyremote-core` remains ordinary C++17 and must not depend on Qt Widgets/Quick/QML, Qt private/QPA, RFB implementation types, graphics-platform APIs or SoC-specific acceleration libraries. Concrete adapters and integrations stay outside Core.
+`hyremote-core` remains ordinary C++17 and must not depend on Qt Widgets/Quick/QML, Qt private/QPA, RFB implementation types, graphics-platform APIs or SoC-specific acceleration libraries. Concrete adapters and integration payloads stay outside Core.
 
 ## 8. Scheduling and backpressure
 
@@ -260,13 +260,13 @@ The canonical repository layout mirrors these responsibilities:
 
 ```text
 src/core/                 internal Core
-src/remoteaccess/         one shared public C++ runtime/facade
-integrations/qml/         declarative payload
-integrations/qpa/         exact-Qt Transparent QPA payload
-tests/                    cross-module/consumer/release evidence
+src/embedded/         one shared public C++ runtime/facade
+src/declarative/         declarative payload
+src/transparent/         exact-Qt Transparent QPA payload
+tests/                    tests only: cross-module integration
+tests/             consumers, E2E, contract, third-party matrix, release gates
 examples/                 product examples
-research/                 non-product architecture evidence
-assets/branding/          non-build branding assets
+docs/assets/logo/          non-build branding assets
 cmake/                    package/deployment/build modules
 docs/                     product and maintainer documentation
 ```

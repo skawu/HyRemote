@@ -68,10 +68,10 @@ Historical Windows Qt 6.8.3 spike evidence exists for QWidget raster, QOpenGLWid
 
 Detailed evidence remains in:
 
-- `docs/capture-spike.md`;
-- `docs/async-capture-spike.md`;
+- `docs/internal/capture-spike.md`;
+- `docs/internal/async-capture-spike.md`;
 - `docs/widgets-capture.md`;
-- `docs/qpa-capture-classification-qt-6.8.3.md`.
+- `docs/internal/qpa-capture-classification-qt-6.8.3.md`.
 
 Important V1 limits:
 
@@ -83,7 +83,7 @@ Important V1 limits:
 ## V1 transport/viewer boundary
 
 The listener **address-family** answer is part of this boundary and is measured, not described:
-`src/remoteaccess/tests/test_listener_address_matrix.cpp` pins loopback, an unassigned address, an occupied port, `0.0.0.0`,
+`src/embedded/tests/test_listener_address_matrix.cpp` pins loopback, an unassigned address, an occupied port, `0.0.0.0`,
 `::1` and `::`. On Windows x86_64 / Qt 6.8.3 the wildcard `::` is an **IPv6-only** listener (reachable through `::1`, not
 through `127.0.0.1`), `0.0.0.0` is reachable through `127.0.0.1`, and both a rejected address and an occupied port fail
 before `Running` with the state still `Stopped`. The Linux column is pending #109 and must not be inferred from the

@@ -5,7 +5,7 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
 endif()
 
 set(workflow_path "${HYREMOTE_SOURCE_DIR}/.github/workflows/git-flow-policy.yml")
-set(checklist_path "${HYREMOTE_SOURCE_DIR}/docs/release-candidate-checklist.md")
+set(checklist_path "${HYREMOTE_SOURCE_DIR}/docs/internal/release-candidate-checklist.md")
 set(authority_path "${HYREMOTE_SOURCE_DIR}/.github/release/v1-mandatory-issues.json")
 
 foreach(required_file "${workflow_path}" "${checklist_path}" "${authority_path}")
@@ -67,12 +67,12 @@ endif()
 # Anti-leak: every issue number mentioned by an in-tree release authority must be classified, so a
 # future V1-labelled blocker cannot silently exist outside the mandatory manifest.
 set(declared_authority_documents
-    docs/release-candidate-checklist.md
-    docs/v1-ga-acceptance.md
-    docs/development-roadmap.md
+    docs/internal/release-candidate-checklist.md
+    docs/internal/v1-ga-acceptance.md
+    docs/internal/development-roadmap.md
     docs/known-limitations.md
     docs/compatibility.md
-    docs/v1-physical-acceptance.md
+    docs/internal/v1-physical-acceptance.md
     docs/security-model.md)
 set(known_issue_numbers ${expected_v1_issues} ${expected_embedded_deferred} ${expected_classified_referenced})
 foreach(document IN LISTS declared_authority_documents)
@@ -158,11 +158,11 @@ foreach(required_phrase
         [=[RC-FROZEN]=]
         [=[PHYSICAL-ACCEPTANCE]=]
         [=[Editing release notes or toggling PR Draft state cannot substitute for authority closure]=]
-        [=[release branch is therefore a versioned verification/finalization line]=]
+        [=[release branch is therefore a versioned tests/finalization line]=]
         [=[after-the-fact direct-push audit]=]
         [=[cannot undo a push]=]
         [=[must not be described as branch protection]=]
-        [=[The canonical repository execution/evidence template for #109 is `docs/v1-physical-acceptance.md`]=]
+        [=[The canonical repository execution/evidence template for #109 is `docs/internal/v1-physical-acceptance.md`]=]
         [=[same RC-FROZEN SHA]=]
         [=[## Security boundary]=])
     string(FIND "${checklist}" "${required_phrase}" found)

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+  <img src="docs/assets/logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
 </p>
 
 <h1 align="center">HyRemote</h1>
@@ -118,7 +118,7 @@ The installed SDK does **not** expose `HyRemote::QpaPlatform` as an application 
 
 ## Build
 
-A plain source build is intentionally product-only: tests, examples and architecture research are not built unless explicitly requested.
+A plain source build is intentionally product-only: tests and examples are not built unless explicitly requested.
 
 ```bash
 cmake -S . -B build -G Ninja \
@@ -158,20 +158,28 @@ See the install guide ([中文](docs/guide/install.md) ｜ [English](docs/en/gui
 
 ## Repository layout
 
-The repository is organized by product responsibility rather than historical feature branches:
+The repository is organized by product responsibility rather than historical feature branches. Read the top level as
+one question - does it ship?:
 
 ```text
-src/                 product implementation (Core + RemoteAccess)
-integrations/        QML and QPA integration payloads
-tests/               cross-module/consumer/release evidence
-examples/            product examples
-research/            non-product spikes and architecture evidence
-assets/branding/     branding assets
-cmake/               build/package/deployment modules
-docs/                product and maintainer documentation
+src/                 the shipping tree: everything built and delivered, one directory per deliverable
+  core/                BASE       internal static library; not installed, not linkable by a payload
+  embedded/            MODE 1     Embedded C++: the shared runtime and its public facade
+  declarative/         MODE 2     Declarative QML: provides `import HyRemote`
+  transparent/         MODE 3     Transparent QPA: provides `qhyremote`, Qt 6.8.3-qualified
+tests/               tests and product verification: clean consumers, product E2E, the public-surface contract,
+                     the third-party matrix and the release gates. Unit tests live with the module they
+                     qualify, in src/*/tests/, so they are never here.
+examples/            usage examples E1-E6; not shipped
+docs/                documentation, zoned by reader (see docs/README.md); the product mark is docs/assets/logo/
+cmake/               build, package and deployment modules
+.github/             CI and repository governance
 ```
 
-The source move does not intentionally change build-tree artifact paths; CMake maps canonical source directories onto the established `build/core`, `build/remoteaccess`, `build/qml/HyRemote` and QPA output locations. See [`docs/repository-layout.md`](docs/repository-layout.md).
+The full specification - every directory, what it is for, and where new work belongs - is
+[`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
+
+The source move does not intentionally change build-tree artifact paths; CMake maps canonical source directories onto the established `build/core`, `build/remoteaccess`, `build/qml/HyRemote` and QPA output locations. See [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
 
 ## Deployment
 
@@ -186,7 +194,7 @@ hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 
 Normal deployed applications should not manually copy HyRemote DLL/SO/plugin files or set SDK-specific `QT_PLUGIN_PATH` / `LD_LIBRARY_PATH` overrides.
 
-See [`docs/deployment.md`](docs/deployment.md).
+See [`docs/guide/deployment.md`](docs/guide/deployment.md).
 
 ## Examples
 
@@ -224,16 +232,16 @@ Reference/setup and delivery guides:
 - [`docs/guide/install.md`](docs/guide/install.md) — build, platform setup, installed SDK and source consumption (中文; [English](docs/en/guide/install.md))
 - [`docs/README.md`](docs/README.md) — documentation index (中文 ｜ [English](docs/en/README.md))
 - [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
-- [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
-- [`docs/repository-layout.md`](docs/repository-layout.md) — canonical repository ownership/layout
-- [`docs/viewer-connection.md`](docs/viewer-connection.md) — viewer/control/reconnect
+- [`docs/guide/deployment.md`](docs/guide/deployment.md) — packaging/deployment
+- [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md) — canonical repository ownership/layout
+- [`docs/guide/viewer-connection.md`](docs/guide/viewer-connection.md) — viewer/control/reconnect
 - [`docs/security.md`](docs/security.md) — implemented security boundary
-- [`docs/troubleshooting.md`](docs/troubleshooting.md) — product-level diagnosis
+- [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) — product-level diagnosis
 - [`docs/compatibility.md`](docs/compatibility.md) — exact evidence/status matrix
 - [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
-- [`docs/v1-ga-acceptance.md`](docs/v1-ga-acceptance.md) — GA release gate
+- [`docs/internal/v1-ga-acceptance.md`](docs/internal/v1-ga-acceptance.md) — GA release gate
 
-Internal Core/capture/transport/QPA implementation documents under `docs/` and `research/` are maintainer material; ordinary users do not need them to integrate HyRemote.
+Maintainer material under `docs/internal/**` (implementation history, evaluation records, runbooks) is not needed to integrate HyRemote.
 
 ## Security
 

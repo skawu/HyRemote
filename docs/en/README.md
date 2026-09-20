@@ -10,26 +10,30 @@ integration payloads. This index is organised by reader intent rather than by de
 | I want to | Read |
 | --- | --- |
 | Install, build and integrate HyRemote | [English](guide/install.md) · [中文](../guide/install.md) |
-| Integrate with the Embedded C++ API | [`../getting-started/cpp.md`](../getting-started/cpp.md) |
-| Integrate with Declarative QML | [`../getting-started/qml.md`](../getting-started/qml.md) |
+| Integrate with the Embedded C++ API | [`getting-started/cpp.md`](getting-started/cpp.md) |
+| Integrate with Declarative QML | [`getting-started/qml.md`](getting-started/qml.md) |
 | Use Transparent QPA without touching application source | [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md) |
-| Package and deploy | [`../deployment.md`](../deployment.md) |
-| Run and connect a viewer | [`../viewer-connection.md`](../viewer-connection.md) |
-| Diagnose a problem | [`../troubleshooting.md`](../troubleshooting.md) |
+| Package and deploy | [`../deployment.md`](../guide/deployment.md) |
+| Run and connect a viewer | [`../viewer-connection.md`](../guide/viewer-connection.md) |
+| Diagnose a problem | [`../troubleshooting.md`](../guide/troubleshooting.md) |
 
 ## 2. Three zones
 
 | Zone | For | Language | Content rule |
 | --- | --- | --- | --- |
 | `docs/guide/**` | End users | Chinese primary + `docs/en/**` mirror | Final shape only: install, integrate, deploy, troubleshoot. **No process content** |
-| `docs/reference/**` | Product final-state contracts | Same | Architecture, capture/input model, API stability, compatibility, security boundary, versioning |
-| Remainder of `docs/` plus `adr/`, `releases/`, `proposals/` | Maintainers / release | English (frozen by release gates) | Acceptance runbooks, repository administration, layout authority, milestone records |
+| The product final-state contracts at the top level of `docs/` | Product final-state contracts | Same | Architecture, capture/input model, API stability, compatibility, security boundary, versioning (`architecture.md`, `widgets-capture.md`, `quick-capture.md`, `input-model.md`, `v1-api-stability.md`, `compatibility.md`, `security.md`, `versioning.md`, ...) |
+| `docs/internal/**` plus `docs/adr/`, `docs/releases/`, `docs/proposals/` | Maintainers / release | English (frozen by release gates) | Acceptance runbooks, repository administration, layout authority, milestone records, research/evaluation records |
 
 **Process content** - issue numbers and tracking, acceptance scheduling and status boards, milestone chronicles,
 investigation logs and one-off checklists - is excluded from the user-facing zone by definition. It belongs to the
-internal zone, or to the research evidence under `research/`.
+internal zone, or to an evaluation record under `docs/internal/`.
 
 ## 3. Reference (product final state)
+
+Start with the product definition, which sets the boundary every contract below assumes:
+[`../product-overview.md`](../product-overview.md) (what the product is for, the three access modes, the V1
+differentiation target, and the non-goals).
 
 | Document | Content |
 | --- | --- |
@@ -46,26 +50,29 @@ internal zone, or to the research evidence under `research/`.
 
 ## 4. Internal / release documents (not user documentation)
 
-[`../repository-layout.md`](../repository-layout.md) (layout authority), [`../branch-lifecycle.md`](../branch-lifecycle.md),
-[`../git-flow-release.md`](../git-flow-release.md), [`../v1-ga-acceptance.md`](../v1-ga-acceptance.md),
-[`../v1-physical-acceptance.md`](../v1-physical-acceptance.md), [`../v1-repository-admin.md`](../v1-repository-admin.md),
-[`../release-candidate-checklist.md`](../release-candidate-checklist.md), [`../adr/`](../adr/), [`../releases/`](../releases/),
-[`../development-roadmap.md`](../development-roadmap.md), and the research/evaluation records
-(`capture-spike.md`, `async-capture-spike.md`, `neatvnc-evaluation.md`, `x86-vnc-transport-evaluation.md`,
-`qpa-*-qt-6.8.3.md`, [`../proposals/`](../proposals/)).
+[`../internal/repository-layout.md`](../internal/repository-layout.md) (layout authority),
+[`../internal/branch-lifecycle.md`](../internal/branch-lifecycle.md), [`../internal/git-flow-release.md`](../internal/git-flow-release.md),
+[`../internal/v1-ga-acceptance.md`](../internal/v1-ga-acceptance.md), [`../internal/v1-physical-acceptance.md`](../internal/v1-physical-acceptance.md),
+[`../internal/v1-repository-admin.md`](../internal/v1-repository-admin.md), [`../internal/release-candidate-checklist.md`](../internal/release-candidate-checklist.md),
+[`../internal/development-roadmap.md`](../internal/development-roadmap.md), [`../internal/naming-conventions.md`](../internal/naming-conventions.md),
+and the research/evaluation records ([`../internal/capture-spike.md`](../internal/capture-spike.md),
+[`../internal/async-capture-spike.md`](../internal/async-capture-spike.md), [`../internal/neatvnc-evaluation.md`](../internal/neatvnc-evaluation.md),
+[`../internal/x86-vnc-transport-evaluation.md`](../internal/x86-vnc-transport-evaluation.md), `internal/qpa-*-qt-6.8.3.md`),
+[`../adr/`](../adr/), [`../releases/`](../releases/), [`../proposals/`](../proposals/).
 
 Ordinary integration work does not require this zone.
 
 ## 5. Navigation root and writing conventions
 
 This file is the **bilingual navigation root**; its Chinese counterpart is [`../README.md`](../README.md). The
-mirrored zones are `docs/guide/**` and `docs/reference/**`; everything else is the internal/release zone and
+mirrored zones are `docs/guide/**` and the product final-state contracts at the top level of `docs/`; everything else is the internal/release zone and
 stays English.
 
 - **Bilingual mirror**: the Chinese primary document lives at `docs/<path>` and the English mirror at
-  `docs/en/<path>`. Files that **enter `guide/` or `reference/`** must correspond one-to-one (same relative
-  path), carry a one-line language switch at the top, and change in both languages in the same change. Legacy
-  documents that have not moved into those zones yet are not required to be mirrored while the migration runs.
+  `docs/en/<path>`. Files that **enter `guide/`** must correspond one-to-one (same relative path), carry a
+  one-line language switch at the top, and change in both languages in the same change. Legacy documents that
+  have not moved into that zone yet are not required to be mirrored while the migration runs. The product
+  final-state contracts and the `internal/` zone are English-only and are not mirrored.
 - **One document per intent**: user documentation is consolidated by reader intent, not split by development
   stage. Prefer one detailed document over five that each cover a fragment.
 - **Source comments**: follow the style already in the file. New or substantially edited comments prioritize

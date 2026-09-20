@@ -45,7 +45,6 @@ message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
 message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Transport security:  ${HYREMOTE_WITH_TRANSPORT_SECURITY}")
-message(STATUS "  Build research:      ${HYREMOTE_BUILD_SPIKES}")
 
 # Repository layout is product-architecture aligned. Explicit binary directories deliberately retain
 # the historical build-tree layout so this source-tree refactor does not change deployment/test
@@ -115,7 +114,7 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 
     if(TARGET Qt6::Core AND TARGET Qt6::Network)
-        add_subdirectory(src/remoteaccess remoteaccess)
+        add_subdirectory(src/embedded remoteaccess)
     elseif(PROJECT_IS_TOP_LEVEL)
         message(STATUS "  RemoteAccess target skipped: Qt 6.8+ Core/Network not found")
     else()
@@ -138,7 +137,7 @@ if(HYREMOTE_BUILD_QML_API)
         endif()
 
         if(TARGET Qt6::Qml)
-            add_subdirectory(integrations/qml/HyRemote qml/HyRemote)
+            add_subdirectory(src/declarative qml/HyRemote)
         elseif(PROJECT_IS_TOP_LEVEL)
             message(STATUS "  QML API skipped: Qt 6.8+ Qml not found")
         else()
@@ -171,13 +170,13 @@ if(HYREMOTE_WITH_QPA_PROXY)
         message(FATAL_ERROR
             "HYREMOTE_WITH_QPA_PROXY=ON requires the exact Qt 6.8.3 private Gui development target (Qt6::GuiPrivate)")
     endif()
-    add_subdirectory(integrations/qpa qpa)
+    add_subdirectory(src/transparent qpa)
 endif()
 
 if(HYREMOTE_BUILD_EXAMPLES)
     # examples/CMakeLists.txt selects each example with directory-scoped TARGET checks such as
-    # `if(TARGET Qt6::Widgets)`. Those imported targets are created inside src/remoteaccess and
-    # integrations/qml, so they are not visible from this sibling scope: without resolving the same Qt
+    # `if(TARGET Qt6::Widgets)`. Those imported targets are created inside src/embedded and
+    # src/declarative, so they are not visible from this sibling scope: without resolving the same Qt
     # components here, a configure with HYREMOTE_BUILD_EXAMPLES=ON silently produces no example target at
     # all (verified on the current head: build/examples contained no example directory). Resolving them
     # here is what makes the enable flag mean what it says; it does not enable any Qt component by itself.
@@ -190,11 +189,6 @@ if(HYREMOTE_BUILD_EXAMPLES)
         message(FATAL_ERROR
             "HYREMOTE_BUILD_EXAMPLES=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a supported Qt SDK")
     endif()
-endif()
-
-if(HYREMOTE_BUILD_SPIKES)
-    add_subdirectory(research/capture spikes/capture)
-    add_subdirectory(research/async-capture spikes/async-capture)
 endif()
 
 if(TARGET hyremote-remoteaccess)
@@ -255,6 +249,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_documentation_layout.cmake"
     )
     add_test(
+        NAME hyremote-release-readiness-documentation-paths
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_documentation_paths.cmake"
+    )
+    add_test(
         NAME hyremote-release-readiness-package-acquisition-isolation
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
@@ -275,12 +275,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         add_test(
             NAME hyremote-release-readiness-source-qpa-authority
             COMMAND "${CMAKE_COMMAND}"
-                -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/deploy_helper_fixture
+                -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/src/transparent/tests/deploy_helper_fixture
                 -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-readiness-source-qpa-authority
                 -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                 -DTEST_QML=OFF
                 -DTEST_STALE_QPA_NEGATIVE_METADATA=ON
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/src/transparent/tests/run_deploy_helper_fixture.cmake"
         )
     endif()
 

@@ -43,13 +43,12 @@ endfunction()
 
 set(required_directories
     "src/core"
-    "src/remoteaccess"
-    "integrations/qml/HyRemote"
-    "integrations/qpa"
+    "src/embedded"
+    "src/declarative"
+    "src/transparent"
     "tests"
     "examples"
-    "research"
-    "assets/branding"
+    "docs/assets/logo"
     "cmake"
     "docs"
     ".github")
@@ -65,25 +64,61 @@ set(forbidden_root_directories
     "qml"
     "qpa"
     "spikes"
-    "logo")
+    "logo"
+    "integrations"
+    "verification"
+    "assets"
+    "research")
 foreach(path IN LISTS forbidden_root_directories)
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
         message(FATAL_ERROR "repository-layout: legacy root directory must not return: ${path}")
     endif()
 endforeach()
 
-if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/repository-layout.md")
+if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/internal/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
+
+# The access-mode naming is load-bearing: a payload directory that goes back to being named after an artifact
+# (`qml/`, `qpa/`) or after the runtime (`remoteaccess/`) stops telling a reader which integration mode it serves.
+foreach(stale_src IN ITEMS "src/remoteaccess" "src/qml" "src/qpa")
+    if(EXISTS "${HYREMOTE_SOURCE_DIR}/${stale_src}")
+        message(FATAL_ERROR "repository-layout: stale source directory must not return: ${stale_src}")
+    endif()
+endforeach()
+
+# Checking that the directory has not come back is not enough: a CI step, script or build file can keep *naming* the old
+# source path long after the directory moved, and that is invisible until the job runs - which is exactly how three
+# Windows steps kept invoking `src\remoteaccess\tests\rfb_product_fit.py` after the access-mode rename and failed the
+# VNC-client jobs. Backslashes are normalized first, because the Windows steps write paths that way and a forward-slash
+# search cannot see them.
+file(GLOB_RECURSE _layout_drivers RELATIVE "${HYREMOTE_SOURCE_DIR}"
+     "${HYREMOTE_SOURCE_DIR}/.github/workflows/*.yml"
+     "${HYREMOTE_SOURCE_DIR}/.github/workflows/*.yaml"
+     "${HYREMOTE_SOURCE_DIR}/.github/scripts/*.ps1"
+     "${HYREMOTE_SOURCE_DIR}/.github/scripts/*.sh"
+     "${HYREMOTE_SOURCE_DIR}/cmake/*.cmake"
+     "${HYREMOTE_SOURCE_DIR}/src/*/CMakeLists.txt"
+     "${HYREMOTE_SOURCE_DIR}/examples/*/CMakeLists.txt")
+list(APPEND _layout_drivers "CMakeLists.txt")
+foreach(_driver IN LISTS _layout_drivers)
+    file(READ "${HYREMOTE_SOURCE_DIR}/${_driver}" _driver_text)
+    string(REPLACE "\\" "/" _driver_text "${_driver_text}")
+    foreach(stale_src IN ITEMS "src/remoteaccess" "src/qml" "src/qpa")
+        if(_driver_text MATCHES "${stale_src}")
+            message(FATAL_ERROR
+                "repository-layout: ${_driver} still refers to the stale source path ${stale_src}; the canonical "
+                "directory is src/embedded, src/declarative or src/transparent")
+        endif()
+    endforeach()
+endforeach()
 
 read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]
-        [=[add_subdirectory(src/remoteaccess remoteaccess)]=]
-        [=[add_subdirectory(integrations/qml/HyRemote qml/HyRemote)]=]
-        [=[add_subdirectory(integrations/qpa qpa)]=]
-        [=[add_subdirectory(research/capture spikes/capture)]=]
-        [=[add_subdirectory(research/async-capture spikes/async-capture)]=])
+        [=[add_subdirectory(src/embedded remoteaccess)]=]
+        [=[add_subdirectory(src/declarative qml/HyRemote)]=]
+        [=[add_subdirectory(src/transparent qpa)]=])
     require_token("${root_cmake}" "${required_token}"
                   "root build graph lost canonical-source / stable-binary mapping")
 endforeach()
@@ -93,13 +128,15 @@ require_token("${root_cmake}" "NAME hyremote-release-readiness-package-acquisiti
 require_token("${root_cmake}" "check_package_acquisition_isolation.cmake"
               "package-acquisition isolation gate lost its executable script")
 
-string(FIND "${root_cmake}" "if(HYREMOTE_BUILD_SPIKES)" research_guard)
-string(FIND "${root_cmake}" "add_subdirectory(research/capture spikes/capture)" research_path)
-if(research_guard EQUAL -1 OR research_path EQUAL -1 OR research_path LESS research_guard)
-    message(FATAL_ERROR "repository-layout: research sources escaped their explicit opt-in guard")
-endif()
+# `research/` is evidence, not a build input: once the capture spike harnesses were retired the root build stopped
+# including it, and the developer-only switch that used to gate them is gone with them. Neither may come back, or the
+# directory quietly becomes a second build graph again.
+forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
+             "retired spike harness switch returned to the root build")
+forbid_token("${root_cmake}" "add_subdirectory(research/"
+             "root build graph includes non-product research again")
 
-read_repo_file("integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
+read_repo_file("src/declarative/CMakeLists.txt" qml_cmake)
 require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"
                     "QML integration stopped linking the shared RemoteAccess runtime")
 forbid_link_target("${qml_cmake}" "HyRemote::Core"
@@ -107,7 +144,7 @@ forbid_link_target("${qml_cmake}" "HyRemote::Core"
 forbid_token("${qml_cmake}" "remote_access.cpp"
              "QML integration must not compile a second RemoteAccess facade")
 
-read_repo_file("integrations/qpa/CMakeLists.txt" qpa_cmake)
+read_repo_file("src/transparent/CMakeLists.txt" qpa_cmake)
 require_link_target("${qpa_cmake}" "HyRemote::RemoteAccess"
                     "QPA integration stopped linking the shared RemoteAccess runtime")
 forbid_link_target("${qpa_cmake}" "HyRemote::Core"
@@ -117,13 +154,13 @@ forbid_token("${qpa_cmake}" "remote_access.cpp"
 
 foreach(module_cmake IN ITEMS
         "src/core/CMakeLists.txt"
-        "src/remoteaccess/CMakeLists.txt"
-        "integrations/qml/HyRemote/CMakeLists.txt"
-        "integrations/qpa/CMakeLists.txt")
+        "src/embedded/CMakeLists.txt"
+        "src/declarative/CMakeLists.txt"
+        "src/transparent/CMakeLists.txt")
     read_repo_file("${module_cmake}" module_text)
     forbid_token("${module_text}" "research/"
                  "product/integration module depends on non-product research (${module_cmake})")
-    forbid_token("${module_text}" "assets/branding"
+    forbid_token("${module_text}" "docs/assets/logo"
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
@@ -174,4 +211,4 @@ endforeach()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across integrations + research/assets isolated + bounded/cancellable workflow fan-out + shared Linux Qt desktop CI baseline)")
+    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across every access mode + retired non-product trees + branding outside the build graph + bounded/cancellable workflow fan-out + shared Linux Qt desktop CI baseline)")
