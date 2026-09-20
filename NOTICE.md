@@ -10,6 +10,8 @@ This notice classifies external dependencies and tooling used to build, test, de
 
 HyRemote is designed for Qt applications and uses Qt at build time and, for Qt-facing product modes, at runtime. Qt is not relicensed by HyRemote. The adopter is responsible for complying with the license terms of the Qt distribution they use, including any applicable LGPL, GPL, or commercial-license obligations.
 
+Qt is linked dynamically, from the adopter's own Qt installation; this repository never fetches, builds, patches or statically links Qt. A deployed application tree produced by `hyremote_deploy()` carries the Qt runtime that the application was built against, so **whoever distributes that tree must also distribute Qt's licence material for that exact Qt build**: the LGPL-3 text, Qt's copyright notice, and the source-availability or written-offer statement the license requires. HyRemote installs its own `LICENSE` and `NOTICE.md` into the SDK's `licenses` directory; the Qt side of the same tree is the adopter's responsibility until the deployment step carries it, and it must never be replaced by pointing at Qt's public website instead of shipping the text.
+
 HyRemote does not copy the user's Qt SDK into this repository and does not claim that the Apache-2.0 license covers Qt.
 
 The Transparent QPA Proxy additionally depends on exact Qt private QPA interfaces for the qualified build line. Those interfaces remain Qt-owned and version-coupled.
