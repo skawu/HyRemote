@@ -50,6 +50,19 @@ foreach(workflow IN LISTS required_workflows)
         message(FATAL_ERROR
             "ci-baseline: ${workflow} does not retrigger when the shared host dependency baseline changes")
     endif()
+
+    # Concurrency cancels superseded runs, but nothing stops a hung job from holding a runner for the platform's default
+    # six hours, so every job must state its own bound. The repository-layout gate claims "bounded/cancellable workflow
+    # fan-out"; this is the half of that claim which does not enforce itself.
+    string(REGEX MATCHALL "runs-on:" _runs_on_declarations "${workflow_text}")
+    string(REGEX MATCHALL "timeout-minutes:" _timeout_declarations "${workflow_text}")
+    list(LENGTH _runs_on_declarations _job_count)
+    list(LENGTH _timeout_declarations _timeout_count)
+    if(_timeout_count LESS _job_count)
+        message(FATAL_ERROR
+            "ci-baseline: ${workflow} declares ${_job_count} job(s) but only ${_timeout_count} timer(s); every job "
+            "must bound its own runtime with timeout-minutes")
+    endif()
 endforeach()
 
 # Windows clean-deployment runtime evidence must not inherit the Qt SDK's bin directory. Build and
