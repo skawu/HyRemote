@@ -43,6 +43,11 @@ target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 target_include_directories(hyremote-remoteaccess
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    # Transitional build-tree seam for the current QPA implementation. QPA still consumes private
+    # runtime factories/composition declarations until its application-level automatic code is moved
+    # into this target. Nothing under src/runtime/src is exposed by the installed SDK.
+    INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 
 target_link_libraries(hyremote-remoteaccess
