@@ -5,11 +5,9 @@ include(GNUInstallDirs)
 # with the C++/QML/Generic integration frontends.
 get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 
+# Application surface discovery/composition/input routing is owned by src/runtime. The QPA payload
+# contains only QPA-specific bootstrap/interception/configuration code and links the one shared runtime.
 add_library(hyremote-qpa-platform MODULE
-    application_surface_model.cpp
-    composite_target.cpp
-    composite_target_routing.cpp
-    interactive_composite_target.cpp
     hyremote_platform_plugin.cpp
     hyremote_qpa_interception.cpp
     hyremote_qpa_remote_controller.cpp
@@ -32,9 +30,8 @@ endif()
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform PRIVATE
     "${_hyremote_root_dir}/src/runtime/src"
-    # QPA currently consumes source-private runtime declarations while #219 moves automatic access
-    # ownership fully into src/runtime. This is deliberately not a HyRemote::Core link dependency;
-    # qhyremote still reuses the single shared runtime and Core remains internal/static composition.
+    # QPA consumes only source-private runtime bootstrap declarations here. It does not link Core
+    # directly; qhyremote reuses the single shared runtime and Core remains internal/static composition.
     "${_hyremote_root_dir}/src/core/include"
 )
 target_link_libraries(hyremote-qpa-platform
@@ -45,9 +42,6 @@ if(TARGET Qt6::Widgets)
     target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Widgets)
 endif()
 if(HYREMOTE_BUILD_WIDGETS_ADAPTER AND TARGET Qt6::Widgets)
-    # This macro means "this build can actually capture Widgets surfaces", not merely "the Qt module is
-    # present". Surface qualification and the composite target's fail-closed support claim both read it, and
-    # with the adapter disabled the payload could only ever serve transparent frames.
     target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
 endif()
 if(TARGET Qt6::Quick)
@@ -141,10 +135,6 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
-    # Negative deployment fixtures use the same canonical knobs that the runner forwards into the
-    # sub-configure. Error fragments encode spaces with underscores; the runner restores/folds
-    # whitespace before matching so CMake diagnostic wrapping cannot turn the intended failure into
-    # a false negative.
     add_test(
         NAME hyremote-qpa-deploy-helper-reject-missing-qml
         COMMAND ${CMAKE_COMMAND}
@@ -240,13 +230,6 @@ if(HYREMOTE_BUILD_TESTS)
             -P ${_hyremote_qpa_deploy_runner}
     )
 
-    # Generator-shape coverage: the deploy-helper fixture must accept both generator shapes
-    # deterministically, so neither the single-configuration single-script expectation nor the
-    # multi-configuration per-configuration set can regress silently. The hosted jobs exercise the
-    # platform default generator (Visual Studio multi-config on Windows, single-configuration
-    # elsewhere) with the registrations above; these two pin both shapes explicitly so a
-    # configuration-dependent regression is caught on any host that has ninja. The ninja executable is
-    # pinned into the sub-configure so the pinned generator does not depend on the test process PATH.
     find_program(HYREMOTE_DEPLOY_FIXTURE_NINJA ninja)
     if(HYREMOTE_DEPLOY_FIXTURE_NINJA)
         add_test(
@@ -281,10 +264,6 @@ if(HYREMOTE_BUILD_TESTS)
     endif()
 
     if(UNIX AND NOT APPLE)
-        # The relocation script takes the two source payloads by path and builds its own deployed tree
-        # under TEST_ROOT, so the registration must pass exactly the variables it declares. Passing other
-        # names made it fail at its own argument check before any relocation assertion could run, which is
-        # why this Linux-only gate reported a failure on every job instead of testing the contract.
         add_test(
             NAME hyremote-qpa-source-payload-relocation
             COMMAND ${CMAKE_COMMAND}
