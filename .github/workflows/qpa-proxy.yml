@@ -28,6 +28,7 @@ jobs:
         github.ref_name != 'release/v0.0.1.0' && github.ref_name != 'release/v0.0.2.0')
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
