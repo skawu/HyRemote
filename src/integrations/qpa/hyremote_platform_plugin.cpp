@@ -1,4 +1,4 @@
-#include "hyremote_qpa_remote_controller.hpp"
+#include "qpa_config.hpp"
 
 #include "automatic/automatic_access_config.hpp"
 #include "automatic/automatic_access_controller.hpp"
