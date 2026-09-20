@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-# The declaration is kept on one line on purpose: the release-readiness metadata gate
-# (tests/release-readiness/check_release_metadata.cmake) matches it with a regex whose character classes
-# cover spaces and tabs but not newlines, so the previous multi-line form was rejected as
-# "project(VERSION ...) is missing or malformed" and the gate could never pass. This is the only change to
-# the declaration besides the #111 description.
+# The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
 project(HyRemote VERSION 0.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -14,15 +10,15 @@ include(HyRemoteDeploy)
 
 # Source/add_subdirectory QML deployment metadata is configure-local truth even though the import
 # root is carried through CMake's internal cache so a child module can publish it back to the
-# consumer directory. Clear any value left by an earlier configure before deciding whether the
-# current source build actually provides the optional QML payload.
+# consumer directory.
 unset(HyRemote_QML_IMPORT_PATH CACHE)
 set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")
 
-# Development may integrate future frontends behind explicit options, while formal versions remain
-# release facts. A later integration may exist on develop without becoming part of an earlier tag.
+# Release versions identify coherent product states. Frontends are peer capability dimensions and
+# must never be sequenced through version digits.
 hyremote_validate_release_profile(
     VERSION "${PROJECT_VERSION}"
+    CPP_ENABLED "${HYREMOTE_BUILD_CPP_API}"
     QML_ENABLED "${HYREMOTE_BUILD_QML_API}"
     GENERIC_ENABLED "${HYREMOTE_WITH_GENERIC_PLUGIN}"
     QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"
@@ -35,17 +31,18 @@ endif()
 
 message(STATUS "Configuring HyRemote ${PROJECT_VERSION}")
 message(STATUS "  Build core:          ${HYREMOTE_BUILD_CORE}")
-message(STATUS "  Build RemoteAccess:  ${HYREMOTE_BUILD_REMOTE_ACCESS}")
-message(STATUS "  Build QML API:       ${HYREMOTE_BUILD_QML_API}")
+message(STATUS "  Build runtime:       ${HYREMOTE_BUILD_REMOTE_ACCESS}")
+message(STATUS "  C++ API frontend:    ${HYREMOTE_BUILD_CPP_API}")
+message(STATUS "  QML API frontend:    ${HYREMOTE_BUILD_QML_API}")
+message(STATUS "  Generic Plugin:      ${HYREMOTE_WITH_GENERIC_PLUGIN}")
+message(STATUS "  QPA frontend:        ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
-message(STATUS "  Generic Plugin:      ${HYREMOTE_WITH_GENERIC_PLUGIN}")
-message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Transport security:  ${HYREMOTE_WITH_TRANSPORT_SECURITY}")
 
-# Shared implementation stays in src/core and src/runtime; application-facing frontends are grouped
-# under src/integrations. Explicit binary directories preserve established artifact locations.
+# Shared implementation stays in src/core and src/runtime; application-facing frontends are peer
+# siblings under src/integrations.
 if(HYREMOTE_BUILD_CORE)
     add_subdirectory(src/core core)
 endif()
@@ -77,17 +74,15 @@ if(TARGET Qt6::Core)
         message(WARNING
             "HyRemote: Qt ${Qt6_VERSION} is not an LTS line. This project targets Qt LTS lines "
             "(${HYREMOTE_QT_LTS_LINES}) and the qualified reference line is 6.8.3.\n"
-            "  The build continues against the 6.8 API baseline and public-Qt integration surfaces, so the user is not "
-            "blocked, but this Qt version is not qualified by this project.\n"
-            "  The QPA payload remains separately exact-private-ABI qualified.\n"
-            "  Use an LTS Qt (6.8.x recommended) for anything that has to be supported.")
+            "  The build continues against the public-Qt API baseline but is not a qualified product combination.\n"
+            "  The QPA payload remains separately exact-private-ABI qualified.")
     endif()
     unset(HYREMOTE_QT_LINE)
 endif()
 
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
     if(NOT TARGET HyRemote::Core)
-        message(FATAL_ERROR "HyRemote::RemoteAccess requires HYREMOTE_BUILD_CORE=ON")
+        message(FATAL_ERROR "HyRemote Common Runtime requires HYREMOTE_BUILD_CORE=ON")
     endif()
 
     if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::Network)
@@ -95,23 +90,23 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 
     if(TARGET Qt6::Core AND TARGET Qt6::Network)
-        # Shared runtime is a first-class implementation layer, not a child of any integration frontend.
-        # Keep the historical `remoteaccess` binary directory so existing artifact/deployment paths do not move.
-        add_subdirectory(src/runtime remoteaccess)
-        add_subdirectory(src/integrations/cpp remoteaccess/cpp)
+        add_subdirectory(src/runtime runtime)
+        if(HYREMOTE_BUILD_CPP_API)
+            add_subdirectory(src/integrations/cpp integrations/cpp)
+        endif()
     elseif(PROJECT_IS_TOP_LEVEL)
-        message(STATUS "  RemoteAccess target skipped: Qt 6.8+ Core/Network not found")
+        message(STATUS "  Common Runtime skipped: Qt 6.8+ Core/Network not found")
     else()
         message(FATAL_ERROR
             "HYREMOTE_BUILD_REMOTE_ACCESS=ON requires Qt 6.8+ Core and Network. "
-            "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the product target explicitly.")
+            "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the runtime explicitly.")
     endif()
 endif()
 
 if(HYREMOTE_BUILD_QML_API)
     if(NOT TARGET hyremote-remoteaccess)
         if(PROJECT_IS_TOP_LEVEL)
-            message(STATUS "  QML API skipped: HyRemote::RemoteAccess is unavailable")
+            message(STATUS "  QML API skipped: Common Runtime is unavailable")
         else()
             message(FATAL_ERROR "HYREMOTE_BUILD_QML_API=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON")
         endif()
@@ -133,32 +128,24 @@ if(HYREMOTE_BUILD_QML_API)
 endif()
 
 if(HYREMOTE_WITH_GENERIC_PLUGIN)
-    if(NOT TARGET HyRemote::RemoteAccess)
+    if(NOT TARGET hyremote-remoteaccess)
         message(FATAL_ERROR
-            "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and the common HyRemote runtime")
+            "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and the Common Runtime")
     endif()
     if(NOT HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
         message(FATAL_ERROR
             "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires the common automatic-access runtime")
     endif()
 
-    # Generic Plugin keeps the native QPA untouched but still promises the same Widgets + Quick
-    # application-surface model as the other automatic mode. Resolve both public Qt families in this
-    # sibling scope so plugin tests/capability do not depend on configure order.
+    # Generic preserves the application's native QPA and uses public Qt APIs only.
     find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Quick)
     add_subdirectory(src/integrations/generic generic)
 endif()
 
 if(HYREMOTE_WITH_QPA_PROXY)
-    if(NOT TARGET HyRemote::RemoteAccess)
+    if(NOT TARGET hyremote-remoteaccess)
         message(FATAL_ERROR
-            "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a usable HyRemote::RemoteAccess target")
-    endif()
-
-    if(HYREMOTE_WITH_TRANSPORT_SECURITY AND NOT HYREMOTE_BUILD_REMOTE_ACCESS)
-        message(FATAL_ERROR
-            "HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON: the security mode is a "
-            "capability of the shared runtime, not a standalone artifact.")
+            "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and the Common Runtime")
     endif()
 
     find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Widgets Quick)
@@ -171,10 +158,10 @@ endif()
 
 if(HYREMOTE_BUILD_EXAMPLES)
     find_package(Qt6 6.8 QUIET COMPONENTS Widgets Quick Qml)
-    if(TARGET HyRemote::RemoteAccess)
+    if(TARGET hyremote-remoteaccess)
         add_subdirectory(examples)
     elseif(PROJECT_IS_TOP_LEVEL)
-        message(STATUS "  Product examples skipped: HyRemote::RemoteAccess is unavailable")
+        message(STATUS "  Product examples skipped: Common Runtime is unavailable")
     else()
         message(FATAL_ERROR
             "HYREMOTE_BUILD_EXAMPLES=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a supported Qt SDK")
@@ -268,13 +255,16 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         )
     endif()
 
-    function(hyremote_add_release_profile_test test_name version qml_enabled qpa_enabled security_enabled expect_reject)
+    function(hyremote_add_release_profile_test
+             test_name version cpp_enabled qml_enabled generic_enabled qpa_enabled security_enabled expect_reject)
         add_test(
             NAME "${test_name}"
             COMMAND "${CMAKE_COMMAND}"
                 -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                 -DHYREMOTE_TEST_VERSION=${version}
+                -DHYREMOTE_TEST_CPP=${cpp_enabled}
                 -DHYREMOTE_TEST_QML=${qml_enabled}
+                -DHYREMOTE_TEST_GENERIC=${generic_enabled}
                 -DHYREMOTE_TEST_QPA=${qpa_enabled}
                 -DHYREMOTE_TEST_SECURITY=${security_enabled}
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
@@ -284,15 +274,25 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         endif()
     endfunction()
 
-    hyremote_add_release_profile_test(hyremote-release-profile-develop-all-modes 0.0.0 ON ON ON FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-cpp-only 0.0.1.0 OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qml 0.0.1.0 ON OFF OFF TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qpa 0.0.1.0 OFF ON OFF TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-security 0.0.1.0 OFF OFF ON TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v002-qml 0.0.2.0 ON OFF OFF FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-qpa 0.0.2.0 ON ON OFF TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-security 0.0.2.0 ON OFF ON TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v003-all-modes 0.0.3.0 ON ON OFF FALSE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v003-reject-security 0.0.3.0 ON ON ON TRUE)
-    hyremote_add_release_profile_test(hyremote-release-profile-v100-all-modes 1.0.0.0 ON ON ON FALSE)
+    # Development sentinel accepts arbitrary capability combinations while V1 converges.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-develop-all 0.0.0 ON ON ON ON ON FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-develop-runtime-only 0.0.0 OFF OFF OFF OFF OFF FALSE)
+
+    # Historical V0 labels are planning references only and must never become release profiles again.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-retire-v001 0.0.1.0 ON OFF OFF OFF OFF TRUE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-retire-v002 0.0.2.0 ON ON OFF OFF OFF TRUE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-retire-v003 0.0.3.0 ON ON OFF ON OFF TRUE)
+
+    # V1 is the first formal release line. Frontend subsets do not encode version semantics.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v100-all 1.0.0.0 ON ON ON ON ON FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v100-cpp-only 1.0.0.0 ON OFF OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v100-generic-only 1.0.0.0 OFF OFF ON OFF OFF FALSE)
 endif()
