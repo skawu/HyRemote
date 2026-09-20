@@ -13,7 +13,6 @@
 
 #include <atomic>
 #include <cstdlib>
-#include <iostream>
 #include <new>
 #include <optional>
 #include <string>
@@ -124,22 +123,6 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
         const bool delivered = run.source->deliver(std::move(next));
         const hyremote::SessionStats stats = run.session->stats();
 
-        // TEMPORARY DIAGNOSTIC: which stage loses the frame after a contained failure. Removed once answered.
-        if (!(stats.framesAccepted >= 1)) {
-            std::cerr << "DIAG position=" << position << " delivered=" << delivered
-                      << " state=" << static_cast<int>(run.session->state()) << " accepted=" << stats.framesAccepted
-                      << " droppedPolicy=" << stats.framesDroppedByPolicy
-                      << " rejectedOverflow=" << stats.framesRejectedOverflow
-                      << " waiting=" << stats.mailboxWaiting
-                      << " dispatcherOwned=" << stats.mailboxDispatcherOwned << " escapedFirst=" << escaped
-                      << " ignoredAfterStop=" << stats.callbacksIgnoredAfterStop << std::endl;
-            if (const std::optional<SessionError> probeError = run.session->lastError()) {
-                std::cerr << "DIAG lastError code=" << static_cast<int>(probeError->code)
-                          << " recoverable=" << probeError->recoverable << " message=" << probeError->message
-                          << std::endl;
-            }
-        }
-
         HYR_CHECK(delivered);
         HYR_CHECK(stats.framesAccepted >= 1);
     }
@@ -165,8 +148,7 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 
         // Either the event was processed (non-recoverable, so the session faults) or the injected failure
         // landed and the boundary reported it as recoverable instead. Both are acceptable here; what is
-        // not acceptable is an escape, and the case's final check requires that the boundary did report at
-        // least once, so this cannot silently pass without the boundary doing its job.
+        // not acceptable is an escape.
         const SessionState state = run.session->state();
         HYR_CHECK(state == SessionState::Running || state == SessionState::Faulted);
 
@@ -184,24 +166,6 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
         }
         t_remainingAllocations = -1;
 
-        // TEMPORARY DIAGNOSTIC for the capture-event case: whether Core saw the event at all. If every counter is
-        // still zero, the allocation that failed happened before the boundary was entered (harness or entry side);
-        // if they moved, the failure was inside and the boundary failed to contain it. Removed once answered.
-        if (escaped) {
-            const hyremote::SessionStats captureStats = run.session->stats();
-            std::cerr << "DIAG-CAPTURE position=" << position << " what=" << escapedWhat
-                      << " state=" << static_cast<int>(run.session->state())
-                      << " captureEvents=" << captureStats.captureEvents
-                      << " nonRecoverable=" << captureStats.captureEventsNonRecoverable
-                      << " accepted=" << captureStats.framesAccepted
-                      << " ignoredAfterStop=" << captureStats.callbacksIgnoredAfterStop << std::endl;
-            if (const std::optional<SessionError> probeError = run.session->lastError()) {
-                std::cerr << "DIAG-CAPTURE lastError code=" << static_cast<int>(probeError->code)
-                          << " recoverable=" << probeError->recoverable << " message=" << probeError->message
-                          << std::endl;
-            }
-        }
-
         HYR_CHECK_MSG(!escaped,
                       "an internal exception escaped the capture event boundary at allocation position "
                           + std::to_string(position) + ": " + escapedWhat);
@@ -214,8 +178,8 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
     // This case asserts the half it can actually reach: nothing escapes at any allocation position the
     // callback can be reached from. Measured on this platform, the capture-event path allocates nothing
     // inside the callback (even a faulting event stores a fixed diagnostic), so no swept position injects
-    // there and the case cannot also show the boundary reporting what it caught. The case that proves the
-    // reporting half is the input one below, where a throwing sink is the deterministic trigger.
+    // there and the case cannot also show the boundary reporting what it caught. The input case covers a
+    // deterministic throwing sink separately.
 }
 
 // The two cases above only test what they claim while the injection belongs to the thread that armed it. This
@@ -257,7 +221,7 @@ HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
     while (!workerDone.load(std::memory_order_acquire))
         std::this_thread::yield();
 
-    // ...the injection is still waiting for the thread that armed it, so this allocation - made here - is the
+    // The injection is still waiting for the thread that armed it, so this allocation - made here - is the
     // one that throws, which is exactly what the two cases above depend on.
     const bool otherThreadAllocated = workerAllocated.load(std::memory_order_acquire);
     bool injected = false;
