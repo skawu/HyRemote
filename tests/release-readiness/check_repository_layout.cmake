@@ -43,6 +43,7 @@ endfunction()
 
 set(required_directories
     "src/core"
+    "src/runtime"
     "src/cpp"
     "src/qml"
     "src/qpa"
@@ -60,6 +61,7 @@ endforeach()
 
 set(forbidden_root_directories
     "core"
+    "runtime"
     "remoteaccess"
     "qml"
     "qpa"
@@ -78,21 +80,15 @@ if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/internal/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
 
-# The payload directories are named for the integration technology they serve, using the same words the product uses
-# everywhere else: C++, QML and QPA (owner ruling, 2026-09-20). The names this replaced - the artifact name
-# (`remoteaccess`) and the access-mode qualities (`embedded`, `declarative`, `transparent`) - must not come back, and
-# neither must the documentation-owned copy of the branding asset, which now lives at the repository root.
+# Access-mode payload directories are named for their integration technology. `src/runtime` is the
+# one shared product-runtime implementation layer and is not an integration frontend. Historical
+# access-quality/artifact names must not return.
 foreach(stale_src IN ITEMS "src/remoteaccess" "src/embedded" "src/declarative" "src/transparent" "docs/assets")
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${stale_src}")
         message(FATAL_ERROR "repository-layout: stale directory must not return: ${stale_src}")
     endif()
 endforeach()
 
-# Checking that the directory has not come back is not enough: a CI step, script or build file can keep *naming* the old
-# source path long after the directory moved, and that is invisible until the job runs - which is exactly how three
-# Windows steps kept invoking `src\remoteaccess\tests\rfb_product_fit.py` after the access-mode rename and failed the
-# VNC-client jobs. Backslashes are normalized first, because the Windows steps write paths that way and a forward-slash
-# search cannot see them.
 file(GLOB_RECURSE _layout_drivers RELATIVE "${HYREMOTE_SOURCE_DIR}"
      "${HYREMOTE_SOURCE_DIR}/.github/workflows/*.yml"
      "${HYREMOTE_SOURCE_DIR}/.github/workflows/*.yaml"
@@ -108,8 +104,8 @@ foreach(_driver IN LISTS _layout_drivers)
     foreach(stale_src IN ITEMS "src/remoteaccess" "src/embedded" "src/declarative" "src/transparent" "docs/assets/logo")
         if(_driver_text MATCHES "${stale_src}")
             message(FATAL_ERROR
-                "repository-layout: ${_driver} still refers to the stale source path ${stale_src}; the canonical "
-                "directory is src/cpp, src/qml or src/qpa")
+                "repository-layout: ${_driver} still refers to the stale source path ${stale_src}; canonical "
+                "ownership is src/runtime plus peer src/cpp, src/qml and src/qpa frontends")
         endif()
     endforeach()
 endforeach()
@@ -124,14 +120,30 @@ foreach(required_token
                   "root build graph lost canonical-source / stable-binary mapping")
 endforeach()
 
+# The current migration keeps the stable `remoteaccess` binary directory by entering runtime from the
+# C++ frontend directory. Pin that ownership explicitly until the later root-level mapping is changed in
+# a dedicated, evidence-backed step.
+read_repo_file("src/cpp/CMakeLists.txt" cpp_cmake)
+require_token("${cpp_cmake}" [=[add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")]=]
+              "Embedded C++ frontend stopped composing the common runtime migration target")
+forbid_token("${cpp_cmake}" "add_library(hyremote-remoteaccess SHARED"
+             "Embedded C++ frontend must not own the shared runtime target")
+require_token("${cpp_cmake}" "src/remote_access.cpp"
+              "Embedded C++ frontend lost its RemoteAccess facade")
+
+read_repo_file("src/runtime/CMakeLists.txt" runtime_cmake)
+require_token("${runtime_cmake}" "add_library(hyremote-remoteaccess SHARED"
+              "common runtime no longer owns the shared RemoteAccess target")
+require_link_target("${runtime_cmake}" "HyRemote::Core"
+                    "common runtime stopped composing the shared Core implementation")
+forbid_token("${runtime_cmake}" "remote_access.cpp"
+             "common runtime must not own the Embedded C++ facade")
+
 require_token("${root_cmake}" "NAME hyremote-release-readiness-package-acquisition-isolation"
               "package-acquisition isolation gate is not registered in CTest")
 require_token("${root_cmake}" "check_package_acquisition_isolation.cmake"
               "package-acquisition isolation gate lost its executable script")
 
-# `research/` is evidence, not a build input: once the capture spike harnesses were retired the root build stopped
-# including it, and the developer-only switch that used to gate them is gone with them. Neither may come back, or the
-# directory quietly becomes a second build graph again.
 forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
              "retired spike harness switch returned to the root build")
 forbid_token("${root_cmake}" "add_subdirectory(research/"
@@ -155,6 +167,7 @@ forbid_token("${qpa_cmake}" "remote_access.cpp"
 
 foreach(module_cmake IN ITEMS
         "src/core/CMakeLists.txt"
+        "src/runtime/CMakeLists.txt"
         "src/cpp/CMakeLists.txt"
         "src/qml/CMakeLists.txt"
         "src/qpa/CMakeLists.txt")
@@ -165,9 +178,6 @@ foreach(module_cmake IN ITEMS
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
-# Every continuously triggered workflow must cancel superseded runs on the same ref. Without this,
-# rapid convergence commits can create a backlog in which the current candidate never reaches a runner.
-# Mainline validation uses the same rule so multiple main pushes cannot queue stale post-merge evidence.
 foreach(workflow IN ITEMS
         "git-flow-policy.yml"
         "qml-api.yml"
@@ -188,11 +198,6 @@ foreach(workflow IN ITEMS
                   "${workflow} lost its per-workflow/per-ref concurrency identity")
 endforeach()
 
-# Every workflow that builds the default facade graph or explicit Qt GUI/Widgets/Quick/QML/QPA code
-# on the Ubuntu reference runner must use the same repository-owned host dependency baseline.
-# Focused and integrated GA jobs must not carry subtly different XCB/OpenGL provisioning, otherwise
-# CI failures become workflow-specific noise rather than product evidence. The RFB-only workflow is
-# intentionally excluded because it disables Widgets/Quick and exercises only Core/Network paths.
 if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/.github/scripts/install-linux-qt-desktop-deps.sh")
     message(FATAL_ERROR "repository-layout: shared Linux Qt desktop dependency script is missing")
 endif()
@@ -212,4 +217,4 @@ endforeach()
 
 message(STATUS
     "HyRemote repository layout gate: PASS "
-    "(canonical source layout + stable binary mapping + executable acquisition gate + one shared RemoteAccess runtime across every access mode + retired non-product trees + branding outside the build graph + bounded/cancellable workflow fan-out + shared Linux Qt desktop CI baseline)")
+    "(UI-neutral Core + one common runtime + peer integration frontends + stable binary mapping + one shared RemoteAccess runtime + retired non-product trees + bounded/cancellable workflow fan-out)")
