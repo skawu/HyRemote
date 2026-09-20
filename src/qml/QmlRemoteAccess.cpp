@@ -1,6 +1,6 @@
 #include "QmlRemoteAccess.h"
 
-#include <HyRemote/RemoteAccess.h>
+#include "access_instance.hpp"
 
 #include <QHostAddress>
 
@@ -10,67 +10,67 @@
 namespace HyRemote::Qml {
 namespace {
 
-QmlRemoteAccess::State mapState(::HyRemote::RemoteAccessState state)
+QmlRemoteAccess::State mapState(::HyRemote::Runtime::AccessState state)
 {
     switch (state) {
-    case ::HyRemote::RemoteAccessState::Stopped:
+    case ::HyRemote::Runtime::AccessState::Stopped:
         return QmlRemoteAccess::Stopped;
-    case ::HyRemote::RemoteAccessState::Starting:
+    case ::HyRemote::Runtime::AccessState::Starting:
         return QmlRemoteAccess::Starting;
-    case ::HyRemote::RemoteAccessState::Running:
+    case ::HyRemote::Runtime::AccessState::Running:
         return QmlRemoteAccess::Running;
-    case ::HyRemote::RemoteAccessState::Stopping:
+    case ::HyRemote::Runtime::AccessState::Stopping:
         return QmlRemoteAccess::Stopping;
-    case ::HyRemote::RemoteAccessState::Faulted:
+    case ::HyRemote::Runtime::AccessState::Faulted:
         return QmlRemoteAccess::Faulted;
     }
     return QmlRemoteAccess::Faulted;
 }
 
-::HyRemote::RemoteSecurityProfile mapSecurityProfile(QmlRemoteAccess::SecurityProfile profile)
+::HyRemote::Runtime::SecurityProfile mapSecurityProfile(QmlRemoteAccess::SecurityProfile profile)
 {
     switch (profile) {
     case QmlRemoteAccess::Insecure:
-        return ::HyRemote::RemoteSecurityProfile::Insecure;
+        return ::HyRemote::Runtime::SecurityProfile::Insecure;
     case QmlRemoteAccess::Authenticated:
-        return ::HyRemote::RemoteSecurityProfile::Authenticated;
+        return ::HyRemote::Runtime::SecurityProfile::Authenticated;
     case QmlRemoteAccess::AuthenticatedEncrypted:
-        return ::HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted;
+        return ::HyRemote::Runtime::SecurityProfile::AuthenticatedEncrypted;
     }
-    return ::HyRemote::RemoteSecurityProfile::Insecure;
+    return ::HyRemote::Runtime::SecurityProfile::Insecure;
 }
 
-QmlRemoteAccess::SecurityProfile mapSecurityProfile(::HyRemote::RemoteSecurityProfile profile)
+QmlRemoteAccess::SecurityProfile mapSecurityProfile(::HyRemote::Runtime::SecurityProfile profile)
 {
     switch (profile) {
-    case ::HyRemote::RemoteSecurityProfile::Insecure:
+    case ::HyRemote::Runtime::SecurityProfile::Insecure:
         return QmlRemoteAccess::Insecure;
-    case ::HyRemote::RemoteSecurityProfile::Authenticated:
+    case ::HyRemote::Runtime::SecurityProfile::Authenticated:
         return QmlRemoteAccess::Authenticated;
-    case ::HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted:
+    case ::HyRemote::Runtime::SecurityProfile::AuthenticatedEncrypted:
         return QmlRemoteAccess::AuthenticatedEncrypted;
     }
     return QmlRemoteAccess::Insecure;
 }
 
-QmlRemoteAccess::ErrorCode mapErrorCode(::HyRemote::RemoteAccessErrorCode code)
+QmlRemoteAccess::ErrorCode mapErrorCode(::HyRemote::Runtime::ErrorCode code)
 {
     switch (code) {
-    case ::HyRemote::RemoteAccessErrorCode::InvalidConfiguration:
+    case ::HyRemote::Runtime::ErrorCode::InvalidConfiguration:
         return QmlRemoteAccess::InvalidConfiguration;
-    case ::HyRemote::RemoteAccessErrorCode::TargetAdapterUnavailable:
+    case ::HyRemote::Runtime::ErrorCode::TargetAdapterUnavailable:
         return QmlRemoteAccess::TargetAdapterUnavailable;
-    case ::HyRemote::RemoteAccessErrorCode::TransportUnavailable:
+    case ::HyRemote::Runtime::ErrorCode::TransportUnavailable:
         return QmlRemoteAccess::TransportUnavailable;
-    case ::HyRemote::RemoteAccessErrorCode::RemoteInputUnavailable:
+    case ::HyRemote::Runtime::ErrorCode::RemoteInputUnavailable:
         return QmlRemoteAccess::RemoteInputUnavailable;
-    case ::HyRemote::RemoteAccessErrorCode::SecurityUnavailable:
+    case ::HyRemote::Runtime::ErrorCode::SecurityUnavailable:
         return QmlRemoteAccess::SecurityUnavailable;
-    case ::HyRemote::RemoteAccessErrorCode::StartFailed:
+    case ::HyRemote::Runtime::ErrorCode::StartFailed:
         return QmlRemoteAccess::StartFailed;
-    case ::HyRemote::RemoteAccessErrorCode::RuntimeFailure:
+    case ::HyRemote::Runtime::ErrorCode::RuntimeFailure:
         return QmlRemoteAccess::RuntimeFailure;
-    case ::HyRemote::RemoteAccessErrorCode::Cancelled:
+    case ::HyRemote::Runtime::ErrorCode::Cancelled:
         return QmlRemoteAccess::Cancelled;
     }
     return QmlRemoteAccess::RuntimeFailure;
@@ -80,9 +80,9 @@ QmlRemoteAccess::ErrorCode mapErrorCode(::HyRemote::RemoteAccessErrorCode code)
 
 QmlRemoteAccess::QmlRemoteAccess(QObject *parent)
     : QObject(parent)
-    , m_access(std::make_unique<::HyRemote::RemoteAccess>())
+    , m_access(std::make_unique<::HyRemote::Runtime::AccessInstance>())
 {
-    // RemoteAccess construction is deliberately inert. QML may request enabled=true during object
+    // Runtime construction is deliberately inert. QML may request enabled=true during object
     // creation, but the wrapper defers the actual start until componentComplete() so initial target
     // and policy bindings can settle first.
     m_pollTimer.setInterval(100);
@@ -141,9 +141,6 @@ void QmlRemoteAccess::setTarget(QObject *targetObject)
     if (targetObject) {
         m_targetDestroyedConnection =
             connect(targetObject, &QObject::destroyed, this, [this](QObject *) {
-                // RemoteAccess owns the authoritative QPointer. By the time QObject::destroyed is
-                // emitted that weak pointer is null; this signal simply makes the QML property
-                // binding re-read the same facade state rather than maintaining a second target.
                 m_targetDestroyedConnection = {};
                 emit targetChanged();
             });
@@ -180,8 +177,6 @@ void QmlRemoteAccess::setEnabled(bool enabledValue)
         return;
 
     if (!m_componentComplete) {
-        // During QML construction this is a request only. This preserves inert construction and
-        // avoids depending on target/property assignment order.
         m_enabled = enabledValue;
         emit enabledChanged();
         return;
@@ -189,7 +184,6 @@ void QmlRemoteAccess::setEnabled(bool enabledValue)
 
     if (enabledValue) {
         if (!startRuntime()) {
-            // Transactional semantics: a failed start leaves enabled=false.
             emit enabledChanged();
             return;
         }
@@ -363,7 +357,7 @@ void QmlRemoteAccess::refreshRuntimeSnapshot()
         emit connectedClientCountChanged();
     }
 
-    const std::optional<::HyRemote::RemoteAccessError> runtimeError = m_access->lastError();
+    const std::optional<::HyRemote::Runtime::Error> runtimeError = m_access->lastError();
     if (!runtimeError)
         return;
 
