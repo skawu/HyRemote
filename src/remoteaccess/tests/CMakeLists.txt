@@ -93,6 +93,13 @@ target_include_directories(hyremote-input-mailbox-admission-test
 add_test(NAME hyremote-input-mailbox-admission-test COMMAND hyremote-input-mailbox-admission-test)
 set_tests_properties(hyremote-input-mailbox-admission-test PROPERTIES TIMEOUT 15)
 
+if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+    # The capability definition is private to the runtime, but a test that asserts what a secure profile does has to
+    # know whether the mechanism exists in this build. It is derived from the same CMake decision as the library's
+    # own definition, so the two can never disagree.
+    target_compile_definitions(hyremote-remoteaccess-test PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
+endif()
+
 if(HYREMOTE_WITH_VNC)
     # The auth test belongs to the capability, not to the request for it: it is built when a provider actually
     # supplied OpenSSL, which is the same condition that compiles the implementation it exercises.
@@ -113,6 +120,31 @@ if(HYREMOTE_WITH_VNC)
         )
         add_test(NAME hyremote-vnc-auth-test COMMAND hyremote-vnc-auth-test)
         set_tests_properties(hyremote-vnc-auth-test PROPERTIES TIMEOUT 15)
+    endif()
+
+    # #143: the handshake itself is measured over a real socket - what is offered, what is verified, what is
+    # refused and what is bounded. It links the same private factory as RemoteAccess, and only exists when the
+    # capability does.
+    if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+        add_executable(hyremote-rfb-vnc-auth-handshake-test
+            test_rfb_vnc_auth_handshake.cpp
+            ../src/transport/vnc_auth.cpp
+        )
+        target_link_libraries(hyremote-rfb-vnc-auth-handshake-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Network
+                OpenSSL::Crypto
+        )
+        target_include_directories(hyremote-rfb-vnc-auth-handshake-test
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        )
+        add_test(NAME hyremote-rfb-vnc-auth-handshake-test
+                 COMMAND hyremote-rfb-vnc-auth-handshake-test)
+        set_tests_properties(hyremote-rfb-vnc-auth-handshake-test PROPERTIES TIMEOUT 60)
     endif()
 
     # Network interoperability harness used by the dual-OS maintained-client workflow. It links the
