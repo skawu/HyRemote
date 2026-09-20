@@ -71,7 +71,7 @@ struct AccessController::Impl final : QObject
 
     ~Impl() override { stop(); }
 
-    bool start()
+    bool start(bool scheduleInitialRefresh)
     {
         if (started)
             return true;
@@ -87,7 +87,8 @@ struct AccessController::Impl final : QObject
 
         application->installEventFilter(this);
         started = true;
-        scheduleRefresh();
+        if (scheduleInitialRefresh)
+            scheduleRefresh();
         return true;
     }
 
@@ -362,9 +363,9 @@ AccessController::~AccessController()
 AccessController::AccessController(AccessController &&) noexcept = default;
 AccessController &AccessController::operator=(AccessController &&) noexcept = default;
 
-bool AccessController::start()
+bool AccessController::start(bool scheduleInitialRefresh)
 {
-    return m_impl && m_impl->start();
+    return m_impl && m_impl->start(scheduleInitialRefresh);
 }
 
 void AccessController::stop() noexcept
