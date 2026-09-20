@@ -17,17 +17,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     outputs:
-      code: ${{ steps.changes.outputs.code }}
-      qml: ${{ steps.changes.outputs.qml }}
-      generic: ${{ steps.changes.outputs.generic }}
-      qpa: ${{ steps.changes.outputs.qpa }}
+      product: ${{ steps.changes.outputs.product }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - id: changes
-        name: Decide the smallest useful product build
+        name: Decide whether product CI is required
         shell: python
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -42,62 +39,31 @@ jobs:
                   text=True,
               ).splitlines()
           else:
-              changed = ["CMakeLists.txt"]
+              changed = ["compile.cmd"]
 
           changed = [p.strip() for p in changed if p.strip()]
-          ci_self = {".github/workflows/ci.yml"}
-          code_prefixes = (
-              "src/", "cmake/", "tests/", "examples/", ".github/scripts/", ".github/actions/",
+          product_roots = (
+              "src/", "cmake/", "tests/", "examples/", ".github/scripts/", ".github/build/",
           )
-          broad_prefixes = (
-              "cmake/", "src/core/", "src/runtime/", "tests/release-readiness/",
-              ".github/scripts/", ".github/actions/",
-          )
-
-          def has_prefix(path, prefixes):
-              return any(path.startswith(prefix) for prefix in prefixes)
-
-          code = any(
-              path == "CMakeLists.txt" or path in ci_self or has_prefix(path, code_prefixes)
-              for path in changed
-          )
-          broad = any(
-              path == "CMakeLists.txt" or path in ci_self or has_prefix(path, broad_prefixes)
+          product_files = {"CMakeLists.txt", "compile.cmd", "build.yml", ".github/workflows/ci.yml"}
+          product = any(
+              path in product_files or any(path.startswith(prefix) for prefix in product_roots)
               for path in changed
           )
 
-          qml_changed = any(path.startswith("src/integrations/qml/") for path in changed)
-          qpa_changed = any(path.startswith("src/integrations/qpa/") for path in changed)
-          generic_changed = any(path.startswith("src/integrations/generic/") for path in changed)
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as f:
+              f.write(f"product={'true' if product else 'false'}\n")
 
-          qml = broad or qml_changed or any(path.startswith("examples/") for path in changed)
-          qpa = broad or qpa_changed or any(path.startswith("examples/") for path in changed)
-          generic_ready = pathlib.Path("src/integrations/generic/CMakeLists.txt").is_file()
-          generic_requested = broad or generic_changed or any(path.startswith("examples/") for path in changed)
-          generic = generic_ready and generic_requested
-
-          output = pathlib.Path(os.environ["GITHUB_OUTPUT"])
-          with output.open("a", encoding="utf-8") as f:
-              f.write(f"code={'true' if code else 'false'}\n")
-              f.write(f"qml={'ON' if qml else 'OFF'}\n")
-              f.write(f"generic={'ON' if generic else 'OFF'}\n")
-              f.write(f"qpa={'ON' if qpa else 'OFF'}\n")
-
-          summary = pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"])
-          with summary.open("a", encoding="utf-8") as f:
+          with pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as f:
               f.write("## CI change classification\n\n")
               f.write(f"- changed files: {len(changed)}\n")
-              f.write(f"- product build: {'yes' if code else 'no (docs/governance only)'}\n")
-              f.write(f"- QML payload: {'on' if qml else 'off'}\n")
-              f.write(f"- Generic payload: {'on' if generic else 'off'}\n")
-              f.write(f"- QPA payload: {'on' if qpa else 'off'}\n")
-              if generic_requested and not generic_ready:
-                  f.write("- Generic frontend: technical route present, build target not implemented yet; not counted as verified\n")
+              f.write(f"- product build: {'yes' if product else 'no (docs/governance only)'}\n")
+              f.write("- build authority: `compile.cmd` + `.github/build/ci.yml`\n")
 
   product:
     name: ${{ matrix.os_name }} / Qt 6.8.3
     needs: classify
-    if: needs.classify.outputs.code == 'true'
+    if: needs.classify.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -127,7 +93,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/Qt
-          key: hyremote-qt-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+          key: hyremote-qt-v2-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
 
       - name: Install build tools and Qt on cache miss
         shell: bash
@@ -141,79 +107,48 @@ jobs:
           fi
           echo "QT_PREFIX=$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}" >> "$GITHUB_ENV"
 
+      - name: Validate Qt SDK cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          qt="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+          test -f "$qt/lib/cmake/Qt6/Qt6Config.cmake"
+          test -f "$qt/lib/cmake/Qt6Qml/Qt6QmlConfig.cmake"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            test -f "$qt/qml/Qt/labs/platform/labsplatformplugind.dll"
+          else
+            test -f "$qt/lib/libQt6Core.so.6"
+          fi
+
+      - name: Save validated Qt SDK cache
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v2-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+
       - name: Install Linux Qt host dependencies
         if: runner.os == 'Linux'
         shell: bash
         run: bash .github/scripts/install-linux-qt-desktop-deps.sh
 
-      - name: Configure, build and test — Linux
+      - name: Build and test through HyRemote build system — Linux
         if: runner.os == 'Linux'
         shell: bash
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QT_QUICK_BACKEND: software
         run: |
           set -euo pipefail
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
-            -DHYREMOTE_BUILD_TESTS=ON \
-            -DHYREMOTE_BUILD_EXAMPLES=OFF \
-            -DHYREMOTE_BUILD_QML_API=${{ needs.classify.outputs.qml }} \
-            -DHYREMOTE_WITH_GENERIC_PLUGIN=${{ needs.classify.outputs.generic }} \
-            -DHYREMOTE_WITH_QPA_PROXY=${{ needs.classify.outputs.qpa }}
-          cmake --build build --parallel 4
-          runtime_lib="$(find build -type f -name 'libHyRemoteRemoteAccess.so' -print -quit)"
-          test -n "$runtime_lib"
-          runtime_dir="$(dirname "$runtime_lib")"
-          if [[ "${{ needs.classify.outputs.qpa }}" == "ON" ]]; then
-            LD_LIBRARY_PATH="$runtime_dir:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
-              xvfb-run -a ctest --test-dir build --output-on-failure --parallel 4 \
-                -E '^hyremote-release-readiness-'
-          else
-            LD_LIBRARY_PATH="$runtime_dir:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
-              ctest --test-dir build --output-on-failure --parallel 4 \
-                -E '^hyremote-release-readiness-'
-          fi
+          sh ./compile.cmd \
+            --config=.github/build/ci.yml \
+            --qt-prefix="$QT_PREFIX" \
+            -v
 
-      - name: Configure and build — Windows
+      - name: Build and test through HyRemote build system — Windows
         if: runner.os == 'Windows'
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          set "PATH=%QT_PREFIX%\bin;%PATH%"
-          cmake -S . -B build -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
-            -DHYREMOTE_BUILD_TESTS=ON ^
-            -DHYREMOTE_BUILD_EXAMPLES=OFF ^
-            -DHYREMOTE_BUILD_QML_API=${{ needs.classify.outputs.qml }} ^
-            -DHYREMOTE_WITH_GENERIC_PLUGIN=${{ needs.classify.outputs.generic }} ^
-            -DHYREMOTE_WITH_QPA_PROXY=${{ needs.classify.outputs.qpa }}
-          cmake --build build --parallel 4
-
-      - name: Locate shared runtime — Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $runtime = Get-ChildItem -Path build -Recurse -Filter HyRemoteRemoteAccess.dll | Select-Object -First 1
-          if (-not $runtime) { throw 'HyRemoteRemoteAccess.dll was not produced' }
-          "RUNTIME_DIR=$($runtime.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Test — Windows
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          set "PATH=%RUNTIME_DIR%;%QT_PREFIX%\bin;%PATH%"
-          ctest --test-dir build --output-on-failure --parallel 4 -E "^hyremote-release-readiness-"
-
-      - name: Save Qt SDK cache
-        if: always() && steps.qt-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ runner.temp }}/Qt
-          key: hyremote-qt-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+          call compile.cmd --config=.github/build/ci.yml --qt-prefix="%QT_PREFIX%" -v
 
       - name: CI timing summary
         if: always()
@@ -227,9 +162,9 @@ jobs:
             echo
             echo "- runner: ${{ matrix.os_name }}"
             echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
-            echo "- QML payload: ${{ needs.classify.outputs.qml }}"
-            echo "- Generic payload: ${{ needs.classify.outputs.generic }}"
-            echo "- QPA payload: ${{ needs.classify.outputs.qpa }}"
+            echo "- build entry: compile.cmd"
+            echo "- build config: .github/build/ci.yml"
+            echo "- integration payload: cpp + qml + generic + qpa"
             echo "- focused daily CI excludes release-readiness gates; SDK/GA/release own those checks"
             echo "- product job elapsed: ${elapsed}s"
             echo "- target budget: warm-cache PR job <= 12 minutes"
@@ -238,7 +173,7 @@ jobs:
   no-product-change:
     name: No product CI needed
     needs: classify
-    if: needs.classify.outputs.code != 'true'
+    if: needs.classify.outputs.product != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
