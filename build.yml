@@ -20,11 +20,17 @@ compiler:
   cxx: ""
   toolchain: ""
 
-# C++ is the shared-runtime baseline. Optional frontends add payloads over it.
-# Available values: cpp, qml, generic, qpa.
+# Four peer application integration frontends over the same Common Runtime.
+# No frontend implies or enables another frontend.
 integrations:
-  - cpp
-  - qpa
+  cpp: true
+  qml: true
+  generic: true
+  qpa: true
+
+# Transport security is a Common Runtime capability, not an integration mode.
+transport:
+  security: false
 
 tests:
   build: false
@@ -41,5 +47,5 @@ cmake:
 
 # Optional environment values are applied consistently to configure/build/test.
 # Example:
-# environment:
+# env:
 #   PKG_CONFIG_PATH: /opt/sysroot/usr/lib/pkgconfig
