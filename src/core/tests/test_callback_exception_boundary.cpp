@@ -3,8 +3,8 @@
 // so the handler cannot afford to format a message by allocating.
 //
 // The injection needs no test-only hook in production code: this binary replaces the global allocation
-// function and throws std::bad_alloc at an armed position. The fakes deliver from the calling thread, so
-// anything that escaped the boundary would surface in this test's own stack.
+// function and throws std::bad_alloc at an armed position on the thread that armed it. The fakes deliver from
+// the calling thread, so anything that escaped the boundary would surface in this test's own stack.
 
 #include "fakes.hpp"
 #include "test_support.hpp"
@@ -16,23 +16,33 @@
 #include <new>
 #include <optional>
 #include <string>
+#include <thread>
 
 namespace {
 
-// -1 disarmed. A value of k means: the (k+1)-th allocation from now throws, then the counter disarms.
-std::atomic<int> g_remainingAllocations{-1};
+// -1 disarmed. A value of k means: the (k+1)-th allocation made by the thread that armed it throws, then the
+// counter disarms for that thread only.
+//
+// Thread scoped on purpose, and measured rather than assumed. This used to be a process-wide counter, while a
+// Session really does run a scheduler thread and a dispatcher thread of its own. Any allocation one of those
+// workers happened to make while the counter was armed spent the injection, so the boundary path under test was
+// never reached and the binary failed rarely, differently from run to run - "frames accepted" one time,
+// "escaped at position 0" another - which is how it arrived as an intermittent CI failure on branches that do
+// not touch Core at all (1 failure in 30 local runs). A worker must never be injected into: a failure there is
+// that thread's problem, not the callback contract this file exists to prove.
+thread_local int t_remainingAllocations = -1;
 
 }  // namespace
 
 // Replaces the global allocation function for this test binary only. Disarmed (-1) reproduces the
-// default behaviour, so the harness, the fakes and the rest of Core are unaffected.
+// default behaviour, so the harness, the fakes and the rest of Core are unaffected, and a thread that never
+// armed the counter is never injected into.
 void *operator new(std::size_t size)
 {
-    const int remaining = g_remainingAllocations.load(std::memory_order_relaxed);
-    if (remaining > 0) {
-        g_remainingAllocations.store(remaining - 1, std::memory_order_relaxed);
-    } else if (remaining == 0) {
-        g_remainingAllocations.store(-1, std::memory_order_relaxed);
+    if (t_remainingAllocations > 0) {
+        --t_remainingAllocations;
+    } else if (t_remainingAllocations == 0) {
+        t_remainingAllocations = -1;
         throw std::bad_alloc();
     }
 
@@ -58,7 +68,8 @@ using namespace hyremote::test;
 // Measured: the frame path allocates nothing for a valid frame, and an invalid frame carries only a short
 // rejection reason, so this case proves the contract that matters here - nothing escapes at any allocation
 // position the callback can be reached from. The capture-event case below is the one that also proves the
-// boundary reports what it caught, because its fault path copies a long message by construction.
+// boundary reports what it caught, because its fault path copies a long message by construction. Both cases
+// depend on the injection belonging to this thread alone; the case after them pins that down.
 HYR_TEST(coreCallbackContainsAllocationFailure)
 {
     constexpr int firstCallbackAllocation = 0;
@@ -82,7 +93,7 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
 
         bool escaped = false;
         std::string escapedWhat;
-        g_remainingAllocations.store(position, std::memory_order_relaxed);
+        t_remainingAllocations = position;
         try {
             run.source->deliver(std::move(frame));
         } catch (const std::exception &error) {
@@ -92,7 +103,7 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
             escaped = true;
             escapedWhat = "non-std exception";
         }
-        g_remainingAllocations.store(-1, std::memory_order_relaxed);
+        t_remainingAllocations = -1;
 
         HYR_CHECK_MSG(!escaped,
                       "an internal exception escaped the frame callback boundary at allocation position "
@@ -109,8 +120,11 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
 
         // Frame delivery keeps working after a contained callback failure.
         RemoteFrame next = makeFrame();
-        HYR_CHECK(run.source->deliver(std::move(next)));
-        HYR_CHECK(run.session->stats().framesAccepted >= 1);
+        const bool delivered = run.source->deliver(std::move(next));
+        const hyremote::SessionStats stats = run.session->stats();
+
+        HYR_CHECK(delivered);
+        HYR_CHECK(stats.framesAccepted >= 1);
     }
 }
 
@@ -134,14 +148,13 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 
         // Either the event was processed (non-recoverable, so the session faults) or the injected failure
         // landed and the boundary reported it as recoverable instead. Both are acceptable here; what is
-        // not acceptable is an escape, and the case's final check requires that the boundary did report at
-        // least once, so this cannot silently pass without the boundary doing its job.
+        // not acceptable is an escape.
         const SessionState state = run.session->state();
         HYR_CHECK(state == SessionState::Running || state == SessionState::Faulted);
 
         bool escaped = false;
         std::string escapedWhat;
-        g_remainingAllocations.store(position, std::memory_order_relaxed);
+        t_remainingAllocations = position;
         try {
             run.source->reportEvent(event);
         } catch (const std::exception &error) {
@@ -151,7 +164,7 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
             escaped = true;
             escapedWhat = "non-std exception";
         }
-        g_remainingAllocations.store(-1, std::memory_order_relaxed);
+        t_remainingAllocations = -1;
 
         HYR_CHECK_MSG(!escaped,
                       "an internal exception escaped the capture event boundary at allocation position "
@@ -165,46 +178,67 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
     // This case asserts the half it can actually reach: nothing escapes at any allocation position the
     // callback can be reached from. Measured on this platform, the capture-event path allocates nothing
     // inside the callback (even a faulting event stores a fixed diagnostic), so no swept position injects
-    // there and the case cannot also show the boundary reporting what it caught. The case that proves the
-    // reporting half is the input one below, where a throwing sink is the deterministic trigger.
+    // there and the case cannot also show the boundary reporting what it caught. The input case covers a
+    // deterministic throwing sink separately.
 }
 
-// A sink that throws is the deterministic way to prove the *reporting* half of the boundary: the failure
-// has to become an existing error-model entry, the session has to stay usable, and nothing may escape.
-class ThrowingInputSink final : public InputSink
+// The two cases above only test what they claim while the injection belongs to the thread that armed it. This
+// case pins that down with the situation that broke it: a started Session, which really runs a scheduler thread
+// and a dispatcher thread, and another thread allocating inside the armed window. A process-wide counter fails
+// here every time; a thread-scoped one keeps the injection waiting for the thread it was armed for.
+//
+// Every allocation this case needs is made outside the armed window - including the thread object, because
+// constructing one allocates - and every assertion is deferred until after disarming, because formatting a
+// failure message allocates too. What happens inside the window is only atomic loads, which do not. The probe
+// allocates through the replaced function directly: a `std::string` built from a constant size can be folded
+// away entirely, which is how an earlier revision of this case passed without ever allocating.
+HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
 {
-public:
-    void post(const InputEvent &) override { throw std::runtime_error("throwing input sink"); }
-};
+    constexpr std::size_t probeBytes = 64;
 
-HYR_TEST(coreInputCallbackReportsInsteadOfEscaping)
-{
     RunningSession run;
     run.prepare();
-    run.setInputSink(std::make_shared<ThrowingInputSink>());
     HYR_CHECK(run.start());
 
-    InputEvent event;
-    bool escaped = false;
-    std::string escapedWhat;
+    std::atomic<bool> startWorker{false};
+    std::atomic<bool> workerDone{false};
+    std::atomic<bool> workerAllocated{false};
+    std::thread worker([&startWorker, &workerDone, &workerAllocated, probeBytes] {
+        while (!startWorker.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        try {
+            void *block = ::operator new(probeBytes);
+            workerAllocated.store(block != nullptr, std::memory_order_release);
+            ::operator delete(block);
+        } catch (...) {
+            workerAllocated.store(false, std::memory_order_release);
+        }
+        workerDone.store(true, std::memory_order_release);
+    });
+
+    t_remainingAllocations = 0;
+    startWorker.store(true, std::memory_order_release);
+    while (!workerDone.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    // The injection is still waiting for the thread that armed it, so this allocation - made here - is the
+    // one that throws, which is exactly what the two cases above depend on.
+    const bool otherThreadAllocated = workerAllocated.load(std::memory_order_acquire);
+    bool injected = false;
+    void *block = nullptr;
     try {
-        run.transport->deliverInput(event);
-    } catch (const std::exception &error) {
-        escaped = true;
-        escapedWhat = error.what();
-    } catch (...) {
-        escaped = true;
-        escapedWhat = "non-std exception";
+        block = ::operator new(probeBytes);
+    } catch (const std::bad_alloc &) {
+        injected = true;
     }
+    t_remainingAllocations = -1;
+    worker.join();
+    ::operator delete(block);
 
-    HYR_CHECK_MSG(!escaped, "an exception escaped the input callback boundary: " + escapedWhat);
-
-    const std::optional<SessionError> error = run.session->lastError();
-    HYR_CHECK_MSG(error.has_value(), "the contained failure was not reported through the error model");
-    HYR_CHECK_EQ(error->code, SessionErrorCode::ComponentFailure);
-    HYR_CHECK_MSG(error->recoverable, "an input sink failure must not make the session terminal");
-    HYR_CHECK(run.session->stats().inputPostFailures >= 1);
-    HYR_CHECK(run.session->state() == SessionState::Running);
+    HYR_CHECK_MSG(otherThreadAllocated,
+                  "the injection armed for this thread was spent by another thread's allocation");
+    HYR_CHECK_MSG(injected,
+                  "the injection did not remain armed for the thread that set it");
 }
 
 }  // namespace
