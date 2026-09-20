@@ -1,25 +1,7 @@
 #include "hyremote_qpa_remote_controller.hpp"
 
-#include "interactive_composite_target.hpp"
-
-#include <HyRemote/RemoteAccess.h>
-
-#include <QCoreApplication>
-#include <QDebug>
-#include <QEvent>
-#include <QGuiApplication>
-#include <QPoint>
-#include <QTimer>
-#include <QWindow>
-
-#ifdef HYREMOTE_QPA_HAS_WIDGETS
-#include <QApplication>
-#include <QWidget>
-#endif
-
-#ifdef HYREMOTE_QPA_HAS_QUICK
-#include <QtQuick/QQuickWindow>
-#endif
+#include "automatic/automatic_access_config.hpp"
+#include "automatic/automatic_access_controller.hpp"
 
 #include <utility>
 
@@ -60,50 +42,36 @@ bool parseSecurityProfile(const QString &text, SecurityProfile &profile)
     return false;
 }
 
-::HyRemote::RemoteSecurityProfile runtimeSecurityProfile(SecurityProfile profile)
+Runtime::SecurityProfile runtimeSecurityProfile(SecurityProfile profile)
 {
     switch (profile) {
     case SecurityProfile::Insecure:
-        return ::HyRemote::RemoteSecurityProfile::Insecure;
+        return Runtime::SecurityProfile::Insecure;
     case SecurityProfile::Authenticated:
-        return ::HyRemote::RemoteSecurityProfile::Authenticated;
+        return Runtime::SecurityProfile::Authenticated;
     case SecurityProfile::AuthenticatedEncrypted:
-        return ::HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted;
+        return Runtime::SecurityProfile::AuthenticatedEncrypted;
     }
-    return ::HyRemote::RemoteSecurityProfile::Insecure;
+    return Runtime::SecurityProfile::Insecure;
 }
 
-const char *securityProfileName(SecurityProfile profile)
-{
-    switch (profile) {
-    case SecurityProfile::Insecure:
-        return "insecure";
-    case SecurityProfile::Authenticated:
-        return "authenticated";
-    case SecurityProfile::AuthenticatedEncrypted:
-        return "authenticated-encrypted";
-    }
-    return "unknown";
-}
-
-bool isEligibleWindowType(Qt::WindowType type)
-{
-    // HyRemote is an application remote-access framework, not an OS desktop server. Foreign/native
-    // handles and transient presentation-only shells that are not meaningful application content
-    // are deliberately excluded. Real application Popup/Tool/Dialog windows remain eligible.
-    return type != Qt::Desktop && type != Qt::SplashScreen && type != Qt::ToolTip
-           && type != Qt::ForeignWindow;
-}
-
-// A Qt runtime may decorate its version string (distribution or pre-release builds), so the version
-// triple is read from the leading digits of the first three components. Any component without a
-// leading digit makes the string unusable rather than approximately matched.
 QString leadingDigits(const QString &text)
 {
     int length = 0;
     while (length < text.size() && text.at(length).isDigit())
         ++length;
     return text.left(length);
+}
+
+Runtime::Automatic::AccessConfig automaticConfig(RemoteConfig config)
+{
+    Runtime::Automatic::AccessConfig result;
+    result.listenAddress = std::move(config.listenAddress);
+    result.port = config.port;
+    result.remoteInputEnabled = config.remoteInputEnabled;
+    result.securityProfile = runtimeSecurityProfile(config.securityProfile);
+    result.securityConfigFile = std::move(config.securityConfigFile);
+    return result;
 }
 
 }  // namespace
@@ -149,8 +117,6 @@ QString runtimeIdentityError(const QString &runningVersion,
         }
     }
 
-    // Fail closed on a version string this build cannot read: a version it cannot parse is not a
-    // version it can claim to be qualified for.
     return requirement
            + QStringLiteral(", but the running Qt reported the unusable version '%1'. %2")
                  .arg(runningVersion.trimmed(), remedy);
@@ -204,8 +170,6 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
-        // The security profile parameters come before the namespace guard below, which would otherwise
-        // classify these known keys as unknown HyRemote parameters.
         if (key == QStringLiteral("hyremote-security")) {
             if (separator < 0 || !parseSecurityProfile(value, parsed.securityProfile)) {
                 error = QStringLiteral(
@@ -226,10 +190,6 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
-        // Anything else in the HyRemote namespace is a configuration error rather than something to hand to
-        // the native delegate: a misspelled option would otherwise be silently ignored, which hides exactly
-        // the kind of mistake the operator cannot see at run time. Parameters not owned by HyRemote keep
-        // their pass-through behaviour, because those belong to the delegate.
         if (key.startsWith(QStringLiteral("hyremote-"))) {
             error = QStringLiteral("unknown HyRemote platform parameter: %1").arg(key);
             return false;
@@ -238,14 +198,14 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
         ++it;
     }
 
-    config = parsed;
+    config = std::move(parsed);
     error.clear();
     return true;
 }
 
-RemoteController::RemoteController(RemoteConfig config, QObject *parent)
-    : QObject(parent)
-    , m_config(std::move(config))
+RemoteController::RemoteController(RemoteConfig config)
+    : m_controller(std::make_unique<Runtime::Automatic::AccessController>(
+          automaticConfig(std::move(config))))
 {
 }
 
@@ -256,277 +216,13 @@ RemoteController::~RemoteController()
 
 bool RemoteController::start()
 {
-    if (m_started)
-        return true;
-
-    QCoreApplication *application = QCoreApplication::instance();
-    if (!application) {
-        qWarning() << "HyRemote QPA remote controller cannot start before QCoreApplication exists";
-        return false;
-    }
-
-    if (!m_compositeTarget)
-        m_compositeTarget = std::make_unique<InteractiveCompositeTarget>();
-
-    application->installEventFilter(this);
-    m_started = true;
-    scheduleRefresh();
-    return true;
+    return m_controller && m_controller->start();
 }
 
 void RemoteController::stop() noexcept
 {
-    if (!m_started && !m_access && !m_compositeTarget)
-        return;
-
-    if (QCoreApplication *application = QCoreApplication::instance())
-        application->removeEventFilter(this);
-
-    m_started = false;
-    m_refreshQueued = false;
-    m_raisePending.clear();
-    stopCurrent();
-}
-
-bool RemoteController::eventFilter(QObject *watched, QEvent *event)
-{
-    switch (event->type()) {
-    case QEvent::Show:
-    case QEvent::Hide:
-    case QEvent::Close:
-    case QEvent::Destroy:
-    case QEvent::Move:
-    case QEvent::Resize:
-    case QEvent::WindowStateChange:
-    case QEvent::ParentChange:
-    case QEvent::WindowDeactivate:
-        scheduleRefresh();
-        break;
-    case QEvent::WindowActivate:
-    case QEvent::ZOrderChange:
-        // Record only identity. refresh() validates that this object is still an eligible live
-        // top-level application surface before applying a raise.
-        m_raisePending.insert(watched);
-        scheduleRefresh();
-        break;
-    default:
-        break;
-    }
-    return false;
-}
-
-void RemoteController::scheduleRefresh()
-{
-    if (!m_started || m_refreshQueued)
-        return;
-    m_refreshQueued = true;
-    QTimer::singleShot(0, this, [this] {
-        m_refreshQueued = false;
-        refresh();
-    });
-}
-
-void RemoteController::refresh()
-{
-    if (!m_started || !m_compositeTarget)
-        return;
-
-    const QList<SurfaceCandidate> surfaces = candidateSurfaces();
-    QSet<QObject *> liveTargets;
-    bool haveVisibleSurface = false;
-
-    for (const SurfaceCandidate &surface : surfaces) {
-        QObject *target = surface.target.data();
-        if (!target)
-            continue;
-
-        liveTargets.insert(target);
-        quint64 id = m_surfaceIds.value(target, 0);
-        if (id == 0) {
-            id = m_nextSurfaceId++;
-            m_surfaceIds.insert(target, id);
-        }
-
-        m_compositeTarget->upsertSurface(id, target, surface.globalGeometry, surface.visible);
-        if (surface.visible)
-            haveVisibleSurface = true;
-
-        if (surface.visible && m_raisePending.contains(target))
-            m_compositeTarget->raiseSurface(id);
-    }
-
-    // Remove only objects that no longer exist as eligible application-owned top levels. Hidden or
-    // minimized windows remain tracked with visible=false so re-show preserves identity and does
-    // not imply a transport or RemoteAccess restart.
-    for (auto it = m_surfaceIds.begin(); it != m_surfaceIds.end();) {
-        if (!liveTargets.contains(it.key())) {
-            const quint64 removedId = it.value();
-            m_compositeTarget->removeSurface(removedId);
-            if (m_activeSurfaceId && *m_activeSurfaceId == removedId) {
-                m_activeSurfaceId.reset();
-                m_compositeTarget->clearActiveSurface();
-            }
-            it = m_surfaceIds.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    m_raisePending.clear();
-
-    // Keyboard/text follows actual Qt application activation. Never infer focus from z-order.
-    QObject *activeTarget = activeSurfaceTarget(surfaces);
-    if (activeTarget) {
-        const quint64 activeId = m_surfaceIds.value(activeTarget, 0);
-        if (activeId != 0) {
-            if (!m_activeSurfaceId || *m_activeSurfaceId != activeId)
-                m_compositeTarget->raiseSurface(activeId);
-            m_activeSurfaceId = activeId;
-            m_compositeTarget->setActiveSurface(activeId);
-        }
-    } else {
-        m_activeSurfaceId.reset();
-        m_compositeTarget->clearActiveSurface();
-    }
-
-    // Listener construction remains inert until the application has real visible content. Once
-    // started, surface churn — including a temporary zero-visible-surface interval — never stops or
-    // recreates RemoteAccess. The runtime ends only when the controller/application itself stops.
-    if (!m_access && haveVisibleSurface)
-        ensureRuntimeStarted();
-}
-
-bool RemoteController::ensureRuntimeStarted()
-{
-    if (m_access)
-        return true;
-    if (!m_compositeTarget)
-        return false;
-
-    auto access = std::make_unique<::HyRemote::RemoteAccess>(m_compositeTarget.get());
-    if (!access->setListenAddress(m_config.listenAddress)
-        || !access->setPort(m_config.port)
-        || !access->setRemoteInputEnabled(m_config.remoteInputEnabled)
-        || !access->setSecurityProfile(runtimeSecurityProfile(m_config.securityProfile))
-        || !access->setSecurityConfigFile(m_config.securityConfigFile)) {
-        const auto error = access->lastError();
-        qWarning() << "HyRemote QPA Proxy rejected its remote configuration:"
-                   << (error ? error->message : QStringLiteral("unknown configuration error"));
-        return false;
-    }
-
-    if (!access->start()) {
-        const auto error = access->lastError();
-        qWarning() << "HyRemote QPA Proxy could not start the composite RemoteAccess runtime:"
-                   << (error ? error->message : QStringLiteral("unknown runtime error"));
-        return false;
-    }
-
-    m_access = std::move(access);
-    qInfo() << "HyRemote QPA application remote access active on"
-            << m_config.listenAddress.toString() << m_config.port
-            << "remote input:" << m_config.remoteInputEnabled
-            << "security profile:" << securityProfileName(m_config.securityProfile);
-    return true;
-}
-
-void RemoteController::stopCurrent() noexcept
-{
-    if (m_access)
-        m_access->stop();
-    m_access.reset();
-
-    m_activeSurfaceId.reset();
-    m_surfaceIds.clear();
-    m_compositeTarget.reset();
-    m_nextSurfaceId = 1;
-}
-
-QList<RemoteController::SurfaceCandidate> RemoteController::candidateSurfaces() const
-{
-    QList<SurfaceCandidate> result;
-    QSet<QWindow *> widgetWindowHandles;
-
-#ifdef HYREMOTE_QPA_HAS_WIDGETS
-    if (qobject_cast<QApplication *>(QCoreApplication::instance())) {
-        const QWidgetList widgets = QApplication::topLevelWidgets();
-        for (QWidget *widget : widgets) {
-            if (!widget || !widget->isWindow() || !isEligibleWindowType(widget->windowType()))
-                continue;
-
-            QWindow *handle = widget->windowHandle();
-            if (handle)
-                widgetWindowHandles.insert(handle);
-
-            const bool visible = widget->isVisible() && !widget->isMinimized()
-                                 && widget->width() > 0 && widget->height() > 0;
-            const QRect geometry(widget->mapToGlobal(QPoint(0, 0)), widget->size());
-            result.push_back(SurfaceCandidate{widget, geometry, visible});
-        }
-    }
-#endif
-
-#ifdef HYREMOTE_QPA_HAS_QUICK
-    const QWindowList windows = QGuiApplication::topLevelWindows();
-    for (QWindow *window : windows) {
-        if (!window || widgetWindowHandles.contains(window) || !isEligibleWindowType(window->type()))
-            continue;
-
-        // The V1 product surface is Widgets + Qt Quick. A generic/foreign QWindow that is not a
-        // QQuickWindow has no qualified built-in target adapter and is therefore not silently
-        // represented as remotely supported.
-        auto *quickWindow = qobject_cast<QQuickWindow *>(window);
-        if (!quickWindow)
-            continue;
-
-        const bool visible = quickWindow->isVisible()
-                             && quickWindow->visibility() != QWindow::Minimized
-                             && quickWindow->width() > 0 && quickWindow->height() > 0;
-        result.push_back(SurfaceCandidate{quickWindow, quickWindow->geometry(), visible});
-    }
-#endif
-
-    return result;
-}
-
-QObject *RemoteController::activeSurfaceTarget(const QList<SurfaceCandidate> &surfaces) const
-{
-    const auto liveVisible = [&surfaces](QObject *target) {
-        if (!target)
-            return false;
-        for (const SurfaceCandidate &surface : surfaces) {
-            if (surface.target.data() == target)
-                return surface.visible;
-        }
-        return false;
-    };
-
-#ifdef HYREMOTE_QPA_HAS_WIDGETS
-    if (qobject_cast<QApplication *>(QCoreApplication::instance())) {
-        if (QWidget *popup = QApplication::activePopupWidget(); liveVisible(popup))
-            return popup;
-        if (QWidget *active = QApplication::activeWindow(); liveVisible(active))
-            return active;
-    }
-#endif
-
-    QWindow *focusWindow = QGuiApplication::focusWindow();
-    if (!focusWindow)
-        return nullptr;
-
-#ifdef HYREMOTE_QPA_HAS_WIDGETS
-    for (const SurfaceCandidate &surface : surfaces) {
-        auto *widget = qobject_cast<QWidget *>(surface.target.data());
-        if (widget && surface.visible && widget->windowHandle() == focusWindow)
-            return widget;
-    }
-#endif
-
-#ifdef HYREMOTE_QPA_HAS_QUICK
-    if (liveVisible(focusWindow) && qobject_cast<QQuickWindow *>(focusWindow))
-        return focusWindow;
-#endif
-
-    return nullptr;
+    if (m_controller)
+        m_controller->stop();
 }
 
 }  // namespace HyRemote::Qpa
