@@ -72,10 +72,21 @@ if(remoteaccess_path STREQUAL "")
         "relocated qhyremote did not report its shared RemoteAccess dependency:\n${ldd_output}")
 endif()
 
-file(REAL_PATH "${remoteaccess_path}" resolved_remoteaccess)
+# The loader reports the runtime path it actually used, and for a relocated module that is the anchor form written
+# into the plugin's RUNPATH (`$ORIGIN/../../lib/...`), so the reported path legitimately contains `..` segments.
+# Comparing it directly against a resolved path is wrong, and resolving it with file(REAL_PATH) is not dependable
+# either: REAL_PATH keeps the input unchanged - CMake only warns - when the path does not resolve, which turns a
+# spelling difference into a false failure. Normalize textually, so the assertion stays about *which* file the
+# loader selected (the contract under test), and assert existence separately so a truncated or genuinely wrong
+# capture is still reported precisely.
+cmake_path(NORMAL_PATH remoteaccess_path OUTPUT_VARIABLE resolved_remoteaccess)
+if(NOT EXISTS "${resolved_remoteaccess}")
+    message(FATAL_ERROR
+        "relocated qhyremote reported a RemoteAccess path that does not exist: [${remoteaccess_path}]\n${ldd_output}")
+endif()
 if(NOT resolved_remoteaccess STREQUAL expected_remoteaccess)
     message(FATAL_ERROR
-        "relocated qhyremote escaped deployment tree: expected ${expected_remoteaccess}, got ${resolved_remoteaccess}\n${ldd_output}")
+        "relocated qhyremote escaped deployment tree: expected [${expected_remoteaccess}], reported [${remoteaccess_path}], normalized [${resolved_remoteaccess}]\n${ldd_output}")
 endif()
 
 message(STATUS
