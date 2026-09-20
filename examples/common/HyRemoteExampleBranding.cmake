@@ -5,6 +5,7 @@ function(hyremote_example_enable_branding target)
 
     target_sources(${target} PRIVATE
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/hyremote-branding.qrc"
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/hyremote-example-branding.cpp"
     )
     set_property(TARGET ${target} PROPERTY AUTORCC ON)
 endfunction()

@@ -8,15 +8,18 @@ add_executable(hyremote-qpa-proxy-existing-app
     main.cpp
 )
 
+include("${CMAKE_CURRENT_LIST_DIR}/../../../common/HyRemoteExampleBranding.cmake")
+hyremote_example_enable_branding(hyremote-qpa-proxy-existing-app)
+
 target_compile_features(hyremote-qpa-proxy-existing-app PRIVATE cxx_std_17)
 target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)
 
 # The application target always remains Qt-only. For an ordinary native build no HyRemote package
-# is needed at all. Installed Transparent-QPA deployment is an opt-in packaging concern: enabling
-# this option locates HyRemote solely for its package-owned deploy helper/module metadata and never
-# adds a HyRemote link dependency to the executable.
+# is needed at all. Installed QPA deployment is an opt-in packaging concern: enabling this option
+# locates HyRemote solely for its package-owned deploy helper/module metadata and never adds a
+# HyRemote application/runtime link dependency to the executable.
 option(HYREMOTE_EXAMPLE_DEPLOY_QPA
-    "Install/deploy this ordinary Qt application with the HyRemote Transparent QPA package"
+    "Install/deploy this ordinary Qt application with the HyRemote QPA package"
     OFF)
 
 if(HYREMOTE_EXAMPLE_DEPLOY_QPA)

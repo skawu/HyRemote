@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "musescore",
+  "upstream": "https://github.com/musescore/MuseScore.git",
+  "tag": "v4.3.2",
+  "revision": "22b46f27e224cd38a0100be44409e648575d1931",
+  "ui_family": "quick-qml",
+  "qt": {
+    "family": "5.15",
+    "exact_patch": "to-be-frozen-by-issue-57",
+    "qpa_exact_patch_required": true
+  },
+  "hyremote_integration": "qpa",
+  "source_policy": "pristine-external",
+  "branding_policy": "upstream",
+  "status": "pending-qt5-qpa-product-lane-from-issue-57",
+  "support_claim": false
+}

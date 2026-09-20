@@ -2,7 +2,6 @@
 
 #include <QApplication>
 #include <QCoreApplication>
-#include <QIcon>
 #include <QLabel>
 #include <QMainWindow>
 #include <QStatusBar>
@@ -11,7 +10,6 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("HyRemote Widgets Basic"));
-    QApplication::setWindowIcon(QIcon(QStringLiteral(":/hyremote/branding/logo.png")));
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("HyRemote - Widgets Basic"));

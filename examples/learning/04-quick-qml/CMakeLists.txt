@@ -10,6 +10,9 @@ qt_add_qml_module(hyremote-qml-basic
     QML_FILES Main.qml
 )
 
+include("${CMAKE_CURRENT_LIST_DIR}/../../common/HyRemoteExampleBranding.cmake")
+hyremote_example_enable_branding(hyremote-qml-basic)
+
 target_compile_features(hyremote-qml-basic PRIVATE cxx_std_17)
 target_link_libraries(hyremote-qml-basic PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 add_dependencies(hyremote-qml-basic hyremote-qml hyremote-qmlplugin)
