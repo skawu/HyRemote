@@ -255,6 +255,12 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_documentation_paths.cmake"
     )
     add_test(
+        NAME hyremote-release-readiness-licensing-boundary
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_licensing_boundary.cmake"
+    )
+    add_test(
         NAME hyremote-release-readiness-package-acquisition-isolation
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
