@@ -1,6 +1,7 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QtLogging>
@@ -45,6 +46,8 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     QCoreApplication::setApplicationName(QStringLiteral("HyRemote QML Basic"));
+    QGuiApplication::setWindowIcon(
+        QIcon(QStringLiteral(":/hyremote/branding/huayan-logo-single.png")));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("HyRemote Declarative QML API example"));
