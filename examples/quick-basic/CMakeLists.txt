@@ -4,6 +4,7 @@ project(HyRemoteQuickBasic LANGUAGES CXX)
 
 qt_add_executable(hyremote-quick-basic
     main.cpp
+    ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
 
