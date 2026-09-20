@@ -7,14 +7,14 @@
 
 #include <memory>
 
-namespace HyRemote {
-class RemoteAccess;
+namespace HyRemote::Runtime {
+class AccessInstance;
 }
 
 namespace HyRemote::Qml {
 
-// Thin declarative wrapper over the same HyRemote::RemoteAccess product runtime used by C++ apps.
-// It owns no capture, transport, input or Session implementation of its own.
+// Thin declarative frontend over the shared HyRemote runtime. It owns no capture, transport, input
+// or Session implementation of its own and does not depend on the Embedded C++ frontend.
 //
 // QQmlParserStatus lets `enabled: true` remain a simple declarative request without racing QML's
 // initial target/property construction order. The shared runtime is started only after componentComplete().
@@ -33,8 +33,6 @@ class QmlRemoteAccess : public QObject, public QQmlParserStatus
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY portChanged)
     Q_PROPERTY(bool remoteInputEnabled READ remoteInputEnabled WRITE setRemoteInputEnabled NOTIFY remoteInputEnabledChanged)
     Q_PROPERTY(SecurityProfile securityProfile READ securityProfile WRITE setSecurityProfile NOTIFY securityProfileChanged)
-    // This is a descriptor path, not secret material. Password/private-key contents are deliberately
-    // absent from the QML surface and can never be read back through a binding.
     Q_PROPERTY(QString securityConfigFile READ securityConfigFile WRITE setSecurityConfigFile NOTIFY securityConfigFileChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(quint64 connectedClientCount READ connectedClientCount NOTIFY connectedClientCountChanged)
@@ -125,7 +123,7 @@ private:
     void setLocalError(ErrorCode code, QString message, bool recoverable = false);
     void clearLocalError();
 
-    std::unique_ptr<::HyRemote::RemoteAccess> m_access;
+    std::unique_ptr<::HyRemote::Runtime::AccessInstance> m_access;
     QTimer m_pollTimer;
     QMetaObject::Connection m_targetDestroyedConnection;
     bool m_componentComplete = false;
