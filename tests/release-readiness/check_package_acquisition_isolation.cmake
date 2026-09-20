@@ -6,7 +6,27 @@ endif()
 
 include(CMakePackageConfigHelpers)
 
-set(test_root "${CMAKE_CURRENT_BINARY_DIR}/hyremote-package-acquisition-isolation")
+# Where the fixture world goes. This gate runs in script mode (`cmake -P`), where CMAKE_CURRENT_BINARY_DIR is **empty**,
+# so the original `${CMAKE_CURRENT_BINARY_DIR}/...` collapsed to a bare relative name and resolved against whatever
+# working directory the caller happened to have: running the gate by hand from the repository root wrote a 51-file
+# fixture tree into the source tree. CTest passes the real binary directory; a manual run falls back to the project's one
+# documented build directory, and either way the fixtures stay out of the source root.
+if(DEFINED HYREMOTE_GATE_SCRATCH_DIR)
+    set(_scratch_root "${HYREMOTE_GATE_SCRATCH_DIR}")
+else()
+    set(_scratch_root "${HYREMOTE_SOURCE_DIR}/build")
+endif()
+set(test_root "${_scratch_root}/hyremote-package-acquisition-isolation")
+
+# A fixture tree in the source root can only come from the bug above (or from a checkout made before it was fixed), and it
+# is what made a stray directory appear next to the sources. Fail with the remedy instead of silently ignoring it.
+if(EXISTS "${HYREMOTE_SOURCE_DIR}/hyremote-package-acquisition-isolation")
+    message(FATAL_ERROR
+        "package-acquisition-isolation: a fixture tree is sitting in the source root "
+        "(${HYREMOTE_SOURCE_DIR}/hyremote-package-acquisition-isolation). Nothing creates it there any more; delete it, "
+        "and pass -DHYREMOTE_GATE_SCRATCH_DIR=<build directory> if you want the fixtures somewhere explicit.")
+endif()
+
 file(REMOVE_RECURSE "${test_root}")
 file(MAKE_DIRECTORY "${test_root}")
 
