@@ -5,6 +5,7 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
 endif()
 
 set(required_files
+    "src/runtime/CMakeLists.txt"
     "src/cpp/CMakeLists.txt"
     "src/qml/CMakeLists.txt"
     "src/qpa/CMakeLists.txt"
@@ -19,10 +20,11 @@ foreach(path IN LISTS required_files)
     endif()
 endforeach()
 
-# The shared facade may be copied directly from an add_subdirectory() build. It must therefore have
+# The shared runtime may be copied directly from an add_subdirectory() build. It must therefore have
 # an origin-local build lookup as well as the installed one; otherwise a clean source deployment can
-# accidentally depend on the original Qt/build path embedded by CMake.
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" remoteaccess_cmake)
+# accidentally depend on the original Qt/build path embedded by CMake. #219 moved target ownership
+# from the Embedded C++ frontend to src/runtime without changing the delivered binary contract.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN"]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
