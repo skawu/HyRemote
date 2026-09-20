@@ -42,7 +42,6 @@ jobs:
                   text=True,
               ).splitlines()
           else:
-              # Manual dispatch is deliberately a full product smoke.
               changed = ["CMakeLists.txt"]
 
           changed = [p.strip() for p in changed if p.strip()]
@@ -73,10 +72,6 @@ jobs:
 
           qml = broad or qml_changed or any(path.startswith("examples/") for path in changed)
           qpa = broad or qpa_changed or any(path.startswith("examples/") for path in changed)
-
-          # Generic is part of the final technical route, but the pilot must not create a false green while
-          # the frontend contains only design material. It automatically joins the product build the moment
-          # its real CMake target exists on the tested commit.
           generic_ready = pathlib.Path("src/integrations/generic/CMakeLists.txt").is_file()
           generic_requested = broad or generic_changed or any(path.startswith("examples/") for path in changed)
           generic = generic_ready and generic_requested
@@ -129,11 +124,10 @@ jobs:
 
       - id: qt-cache
         name: Restore Qt SDK cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/Qt
           key: hyremote-qt-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
-          save-always: true
 
       - name: Install build tools and Qt on cache miss
         shell: bash
@@ -213,6 +207,13 @@ jobs:
         run: |
           set "PATH=%RUNTIME_DIR%;%QT_PREFIX%\bin;%PATH%"
           ctest --test-dir build --output-on-failure --parallel 4 -E "^hyremote-release-readiness-"
+
+      - name: Save Qt SDK cache
+        if: always() && steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
 
       - name: CI timing summary
         if: always()
