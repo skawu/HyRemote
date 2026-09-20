@@ -12,7 +12,7 @@ add_library(hyremote-remoteaccess SHARED
     src/access_instance.cpp
     src/detail/component_factories.cpp
     src/detail/security_descriptor.cpp
-    src/detail/qpa_composition_seam.cpp
+    src/detail/composition_support.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 
