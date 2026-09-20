@@ -1,10 +1,10 @@
 # V1 product examples consume only the intended public surface for their integration mode.
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
-    add_subdirectory(widgets-basic)
-    add_subdirectory(remote-support-showcase)
+    add_subdirectory(learning/02-widgets-control)
+    add_subdirectory(learning/07-production-showcase)
 else()
-    message(STATUS "  Widgets examples skipped: Widgets adapter/Qt Widgets unavailable")
+    message(STATUS "  Widgets learning examples skipped: Widgets adapter/Qt Widgets unavailable")
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND TARGET Qt6::Quick)
@@ -12,26 +12,23 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND TARGET Qt6::Quick)
         find_package(Qt6 6.8 QUIET COMPONENTS Qml)
     endif()
     if(TARGET Qt6::Qml)
-        add_subdirectory(quick-basic)
+        add_subdirectory(learning/03-quick-cpp)
     else()
-        message(STATUS "  quick-basic example skipped: Qt Qml unavailable")
+        message(STATUS "  03-quick-cpp skipped: Qt Qml unavailable")
     endif()
 else()
-    message(STATUS "  quick-basic example skipped: Quick adapter unavailable")
+    message(STATUS "  03-quick-cpp skipped: Quick adapter unavailable")
 endif()
 
 if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml AND TARGET Qt6::Qml AND TARGET Qt6::Quick)
-    add_subdirectory(qml-basic)
+    add_subdirectory(learning/04-quick-qml)
 else()
-    message(STATUS "  qml-basic example skipped: declarative HyRemote module unavailable")
+    message(STATUS "  04-quick-qml skipped: HyRemote QML API unavailable")
 endif()
 
-# E4 belongs to the Transparent QPA milestone and intentionally carries the exact Qt 6.8.3
-# qualification boundary. Do not let that private-ABI version coupling narrow Embedded C++ or QML
-# example builds when the QPA mode is not selected. The ordinary Qt-only example remains independently
-# buildable from its own directory for source inspection/demo purposes.
+# QPA remains exact-Qt/private-ABI qualified. The fixture is an ordinary Qt-only application.
 if(HYREMOTE_WITH_QPA_PROXY AND TARGET Qt6::Widgets)
-    add_subdirectory(qpa-proxy-existing-app)
+    add_subdirectory(learning/05-qpa-existing-app/widgets-app)
 else()
-    message(STATUS "  qpa-proxy-existing-app example skipped: Transparent QPA mode unavailable")
+    message(STATUS "  05 QPA Widgets fixture skipped: QPA mode unavailable")
 endif()

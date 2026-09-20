@@ -1,45 +1,66 @@
 # HyRemote V1 examples
 
-This directory is the canonical example matrix for the V1.0.0.0 product surface. Examples are release evidence, not alternate product architectures.
+The V1 example system has two responsibilities:
 
-| ID | Example / fixture | Integration mode | Product surface | Release role |
-| --- | --- | --- | --- | --- |
-| E1 | `widgets-basic` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | Basic Widgets attach/view/input/reconnect evidence for V0.0.1.0 |
-| E2 | `quick-basic` | Embedded C++ / Qt Quick | `HyRemote::RemoteAccess` | Basic Quick attach/view/input/reconnect evidence for V0.0.1.0 |
-| E3 | `qml-basic` | Declarative QML | `import HyRemote` over the shared runtime | Declarative product E2E for V0.0.2.0 |
-| E4 | `qpa-proxy-existing-app` | Transparent QPA Proxy | Ordinary Qt app; HyRemote supplied by deployed QPA package | Existing-app / zero application-code integration evidence for V0.0.3.0 |
-| E5 | `remote-support-showcase` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | Production-like operator workflow and explicit policy controls for V1.0.0.0 |
-| E6 | `../tests/consumer-installed-sdk` | Installed SDK consumer | `find_package(HyRemote)` + exported targets / `hyremote_deploy()` | External clean-consumer SDK contract; intentionally not duplicated under `examples/` |
+1. **Learning examples** teach the supported HyRemote integration paths from beginner to advanced.
+2. **Real-world verification examples** demonstrate low-intrusion integration with representative high-star Qt applications while keeping upstream source and branding pristine.
 
-## Frozen rules
+Qt Widgets and Qt Quick are the two UI technology families. QML is the primary declarative language for Qt Quick and is also HyRemote's declarative API surface. Therefore `03-quick-cpp` and `04-quick-qml` use the same Qt Quick/QML UI family but different HyRemote APIs.
 
-- E1, E2 and E5 use the public `HyRemote::RemoteAccess` facade only. They must not assemble Core, Session, CaptureSource, InputSink, Transport, RFB or platform-backend objects.
-- E3 uses the declarative `HyRemote` module over the same runtime; it must not create a second QML-specific transport/session stack.
-- E4 application source remains ordinary Qt-only code. Transparent QPA is a deployed platform-plugin/runtime concern, not an application link dependency.
-- E6 validates the installed SDK from a clean consumer and remains the canonical external-consumer fixture from #43 / PR #46.
-- Construction remains inert for Embedded C++/QML, listener defaults remain loopback-safe, and remote input remains disabled until explicitly enabled.
-- `SecurityType None` is a correctness baseline only; examples must not present it as authenticated, encrypted or Internet-safe.
-- Hosted/headless viewer tests do not prove physical local-display/local-input coexistence. Where a milestone requires that evidence, the milestone stays open until the real acceptance run exists.
+## Learning path
 
-## Build graph
+```text
+learning/
+  01-widgets-basic/               # Qt Widgets + C++ API, minimal onboarding
+  02-widgets-control/             # Qt Widgets + C++ API, input/reconnect/lifecycle
+  03-quick-cpp/                   # Qt Quick/QML UI + C++ API
+  04-quick-qml/                   # Qt Quick/QML UI + QML API
+  05-qpa-existing-app/
+    widgets-app/                  # ordinary Qt Widgets app + -platform hyremote
+    quick-app/                    # ordinary Qt Quick app + -platform hyremote
+  06-session-security/            # security profiles, sessions, bind policy
+  07-production-showcase/         # polished product-level showcase
+```
 
-With a suitable Qt SDK, configure HyRemote with `HYREMOTE_BUILD_EXAMPLES=ON`. Optional product modes remain explicit:
+All HyRemote-authored GUI examples use the canonical project mark from the root `logo/` directory through the supported resource/deployment mechanism. No example owns a copied logo file.
 
-- `HYREMOTE_BUILD_QML_API=ON` enables E3;
-- `HYREMOTE_WITH_QPA_PROXY=ON` builds the Transparent QPA runtime, while E4 itself remains an ordinary Qt application;
-- E4's installed-package deployment path is enabled in that example with `HYREMOTE_EXAMPLE_DEPLOY_QPA=ON`.
+The controlled learning examples carry the Qt compatibility responsibility:
+- Qt 5.15 LTS where applicable;
+- Qt 6.8 LTS where applicable;
+- Qt 6.8.3 as the complete primary GA/reference candidate;
+- QPA exact-patch/private-ABI qualification.
 
-A missing optional mode causes only its dependent example to be skipped. It does not silently substitute another integration path.
+Do not create parallel `examples-qt5` / `examples-qt6` trees.
 
-## Acceptance and tags
+## Real-world verification
 
-These examples participate in milestone acceptance but do not authorize a release by themselves. Git Flow release order is:
+```text
+realworld/
+  qbittorrent/    # Qt Widgets representative
+  musescore/      # Qt Quick/QML representative
+```
 
-1. accepted feature work converges into `develop`;
-2. after every gate for the milestone is satisfied, cut `release/vMajor.Minor.Feature.Maintenance` from the accepted `develop` integration point;
-3. run release-candidate build/test/acceptance without adding unrelated features;
-4. merge the accepted release branch into `main`;
-5. create the matching `vMajor.Minor.Feature.Maintenance` tag on that accepted `main` commit;
-6. merge the release result back into `develop` before later feature work diverges.
+These directories contain HyRemote-owned manifests, instructions and bounded integration harnesses only. They do not vendor the upstream projects.
 
-Do not create a milestone tag while executable evidence is blocked or while required physical acceptance is missing.
+Rules:
+- upstream source remains pristine;
+- upstream branding remains unchanged;
+- QPA/low-intrusion integration is preferred;
+- results are labelled **third-party verification example — not a HyRemote compatibility/support claim**;
+- qBittorrent reuses the proven #137 path;
+- MuseScore reuses #138 build knowledge where useful and receives a bounded Qt 6.8 verification lane.
+
+Qt 5.15 support is proven by the controlled learning examples and compatibility tests, not by forcing current third-party applications onto historical Qt versions.
+
+## Release evidence mapping
+
+- E1 -> `01-widgets-basic` + `02-widgets-control`;
+- E2 -> `03-quick-cpp`;
+- E3 -> `04-quick-qml`;
+- E4 -> both `05-qpa-existing-app` fixtures;
+- E5 -> `06-session-security` / `07-production-showcase` as applicable;
+- E6 -> `../tests/consumer-installed-sdk`, intentionally not duplicated here.
+
+Examples are evidence and education surfaces, not alternate runtimes. They consume only the public HyRemote application surfaces appropriate to their integration mode.
+
+Refs: #33 #41 #57 #109 #134 #137 #138 #176 #209.
