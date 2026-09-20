@@ -2,20 +2,19 @@ include(GNUInstallDirs)
 
 # Common product runtime for all HyRemote integration frontends.
 #
-# This migration intentionally preserves the existing HyRemoteRemoteAccess binary/target identity while
-# moving ownership away from the Embedded C++ frontend. Source files still physically located under
-# ../cpp are consumed here during the first migration step; subsequent #219 commits relocate them into
-# src/runtime without changing this target again.
+# The delivered HyRemoteRemoteAccess binary/target identity stays stable while implementation ownership
+# moves out of the Embedded C++ frontend. `src/cpp` contributes only the public facade; shared Qt target,
+# transport, security and composition implementation lives here.
 if(TARGET hyremote-remoteaccess OR TARGET HyRemote::RemoteAccess)
     message(FATAL_ERROR "HyRemote common runtime target already exists")
 endif()
 
 add_library(hyremote-remoteaccess SHARED
-    ../cpp/src/detail/component_factories.cpp
-    ../cpp/src/detail/security_descriptor.cpp
+    src/detail/component_factories.cpp
+    src/detail/security_descriptor.cpp
     # Transitional bridge for the current QPA composite implementation. It disappears when the
-    # automatic/composite implementation is moved from src/qpa into the common runtime.
-    ../cpp/src/detail/qpa_composition_seam.cpp
+    # automatic/composite implementation is moved from src/qpa into this common runtime.
+    src/detail/qpa_composition_seam.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 
@@ -43,7 +42,7 @@ target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
 target_include_directories(hyremote-remoteaccess
     PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../cpp/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
 target_link_libraries(hyremote-remoteaccess
@@ -64,13 +63,13 @@ endif()
 
 if(HYREMOTE_WITH_VNC)
     target_sources(hyremote-remoteaccess PRIVATE
-        ../cpp/src/transport/rfb_transport.cpp
+        src/transport/rfb_transport.cpp
     )
     target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_RFB_TRANSPORT=1)
 
     if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
         target_sources(hyremote-remoteaccess PRIVATE
-            ../cpp/src/transport/vnc_auth.cpp
+            src/transport/vnc_auth.cpp
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto OpenSSL::SSL)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
@@ -86,7 +85,7 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
 
     if(TARGET Qt6::Widgets)
         target_sources(hyremote-remoteaccess PRIVATE
-            ../cpp/src/widgets/widget_target.cpp
+            src/widgets/widget_target.cpp
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Widgets)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_WIDGETS_ADAPTER=1)
@@ -106,7 +105,7 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
 
     if(TARGET Qt6::Quick)
         target_sources(hyremote-remoteaccess PRIVATE
-            ../cpp/src/quick/quick_target.cpp
+            src/quick/quick_target.cpp
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
