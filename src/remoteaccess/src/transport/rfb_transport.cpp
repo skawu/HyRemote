@@ -308,7 +308,7 @@ std::string utf8ForKeysym(std::uint32_t keysym)
     } else if (cp <= 0xffffU) {
         out.push_back(static_cast<char>(0xe0U | (cp >> 12U)));
         out.push_back(static_cast<char>(0x80U | ((cp >> 6U) & 0x3fU)));
-        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU)));
+        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU));
     } else {
         out.push_back(static_cast<char>(0xf0U | (cp >> 18U)));
         out.push_back(static_cast<char>(0x80U | ((cp >> 12U) & 0x3fU)));
@@ -547,18 +547,15 @@ private:
         }
     }
 
-    void protocolFailure(ClientState &client, const char *message)
+    void deferClientAbort(ClientState &client)
     {
-        publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
         if (!client.socket)
             return;
 
         // A socket abort dispatches disconnected() synchronously, and that handler erases the ClientState
-        // from m_clients. Aborting here therefore destroyed the client from inside its own user: the caller
-        // still holds the reference (processClient) or is iterating the map (frameAvailable), which turned a
-        // protocol failure into a use-after-free. shutdown() suppresses the same re-entrancy by disconnecting
-        // the socket first; for a failing client the equivalent fix is to defer the abort to a clean
-        // event-loop turn, so the erase never happens inside another call frame.
+        // from m_clients. Aborting from processClient() would therefore destroy the state while its caller still
+        // holds a reference. Every handshake/protocol rejection uses the same deferred disconnect primitive so
+        // the event classification is independent from the lifetime/UAF protection.
         QPointer<QTcpSocket> guardedSocket(client.socket);
         QMetaObject::invokeMethod(
             this,
@@ -571,6 +568,20 @@ private:
                 socket->abort();
             },
             Qt::QueuedConnection);
+    }
+
+    void protocolFailure(ClientState &client, const char *message)
+    {
+        publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
+        deferClientAbort(client);
+    }
+
+    void authenticationRejected(ClientState &client, const char *message)
+    {
+        // Authentication policy/credential refusal is one transport event, not a generic protocol failure plus a
+        // second rejection. #170 consumes this exact event class for session/operator observability later.
+        publishEvent(hyremote::TransportEventCode::AuthenticationRejected, message);
+        deferClientAbort(client);
     }
 
     void readClient(QTcpSocket *socket)
@@ -624,8 +635,10 @@ private:
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
                 if (m_security.vncAuthenticationRequired) {
                     if (selected != 2) {
-                        // Never downgrade: the configured type was not selected, so this connection ends here.
-                        protocolFailure(client, "RFB client did not select the configured security type");
+                        // Never downgrade: a connection refusing the only configured authentication type is an
+                        // authentication rejection, not a generic protocol diagnostic.
+                        authenticationRejected(client,
+                                               "RFB client did not select the configured authentication type");
                         return;
                     }
                     QString challengeError;
@@ -670,11 +683,9 @@ private:
                         client.socket->flush();
                         client.socket->waitForBytesWritten(kHandshakeFlushMs);
                     }
-                    // Reported through the event reserved for it, and the abort is deferred exactly as
-                    // protocolFailure does it so the client state is never erased inside its own call frame.
-                    publishEvent(hyremote::TransportEventCode::AuthenticationRejected,
-                                 "RFB client failed the configured authentication");
-                    protocolFailure(client, "RFB client failed authentication");
+                    client.authChallenge.clear();
+                    authenticationRejected(client,
+                                           "RFB client failed the configured authentication");
                     return;
                 }
 
