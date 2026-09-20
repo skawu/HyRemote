@@ -52,11 +52,11 @@ set(required_files
     "tests/consumer-installed-qpa/CMakeLists.txt"
     "tests/consumer-installed-qpa/product_fit.py"
     "tests/public-api-contract/CMakeLists.txt"
-    "src/cpp/tests/test_remote_access.cpp"
-    "src/cpp/tests/test_widgets_input_backpressure.cpp"
-    "src/cpp/tests/test_quick_input_backpressure.cpp"
-    "src/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
-    "src/qpa/tests/qpa_composite_input_test.cpp"
+    "src/integrations/cpp/tests/test_remote_access.cpp"
+    "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp"
+    "src/integrations/cpp/tests/test_quick_input_backpressure.cpp"
+    "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
+    "src/integrations/qpa/tests/qpa_composite_input_test.cpp"
 )
 
 foreach(path IN LISTS required_files)
@@ -119,12 +119,6 @@ foreach(milestone_version
         "1.0.0.0")
     set(release_note_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v${milestone_version}.md")
     file(READ "${release_note_path}" milestone_notes)
-    # The security-boundary statement must describe what that milestone actually contains. The three pre-release
-    # milestones shipped the unauthenticated correctness transport and their notes are the record of what they did,
-    # so they keep saying so. v1.0.0.0 is the milestone that carries the RFB VNC authentication capability, so its
-    # note has to state that authentication and must not claim encryption - TLS is a separate later step (#143).
-    # Pinning a phrase that no longer describes the release would be exactly the "transient implementation
-    # limitation hard-coded as a permanent release invariant" that docs/release-candidate-checklist.md forbids.
     if(milestone_version VERSION_LESS "1.0.0.0")
         set(required_security_phrases "SecurityType None")
     else()
@@ -198,7 +192,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" cpp_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/CMakeLists.txt" cpp_cmake)
 foreach(required_token
         "src/remote_access.cpp"
         "RemoteAccessExport.h")
@@ -212,14 +206,14 @@ if(NOT cpp_owns_runtime EQUAL -1)
     message(FATAL_ERROR "release-readiness: Embedded C++ frontend must not re-own the common shared runtime")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qml/CMakeLists.txt" qml_cmake)
 string(FIND "${qml_cmake}" "TARGETS hyremote-qml\n    EXPORT HyRemoteTargets" qml_export)
 if(NOT qml_export EQUAL -1)
     message(FATAL_ERROR
         "release-readiness: declarative QML backing library must not become a second C++ SDK target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module)
 if(qpa_module EQUAL -1)
     message(FATAL_ERROR "release-readiness: Transparent QPA must remain a platform MODULE")
@@ -350,17 +344,18 @@ if(input_shutdown_contract EQUAL -1)
         "release-readiness: internal InputSink terminal shutdown contract was removed")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/src/remote_access.cpp" remoteaccess_source)
+# The shared AccessInstance now owns runtime teardown; the Embedded C++ facade only maps public API.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/src/access_instance.cpp" remoteaccess_source)
 string(FIND "${remoteaccess_source}" "session->stop();" session_stop_pos)
 string(FIND "${remoteaccess_source}" "inputSink->shutdown();" input_shutdown_pos)
 if(session_stop_pos EQUAL -1 OR input_shutdown_pos EQUAL -1 OR input_shutdown_pos LESS session_stop_pos)
     message(FATAL_ERROR
-        "release-readiness: RemoteAccess must quiesce Session before terminal target-input shutdown")
+        "release-readiness: common runtime must quiesce Session before terminal target-input shutdown")
 endif()
 
 foreach(adapter_file
-        "src/cpp/src/widgets/widget_target.cpp"
-        "src/cpp/src/quick/quick_target.cpp")
+        "src/runtime/src/widgets/widget_target.cpp"
+        "src/runtime/src/quick/quick_target.cpp")
     file(READ "${HYREMOTE_SOURCE_DIR}/${adapter_file}" adapter_source)
     foreach(required_token
             "void shutdown() noexcept override"
@@ -375,7 +370,9 @@ foreach(adapter_file
     endforeach()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/interactive_composite_target.cpp" qpa_input_source)
+# QPA still carries the V1 composite copy until #219 switches it to Runtime::Automatic. Pin the current
+# qualified behavior at its canonical frontend path during that transition.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/interactive_composite_target.cpp" qpa_input_source)
 foreach(required_token
         "void shutdown() noexcept override"
         "sink->shutdown()"
@@ -388,11 +385,11 @@ foreach(required_token
 endforeach()
 
 foreach(test_entry
-        "src/cpp/tests/test_remote_access.cpp|inputShutdowns"
-        "src/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
-        "src/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
+        "src/integrations/cpp/tests/test_remote_access.cpp|inputShutdowns"
+        "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/integrations/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
+        "src/integrations/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
     string(REPLACE "|" ";" test_parts "${test_entry}")
     list(GET test_parts 0 test_path)
     list(GET test_parts 1 required_token)
