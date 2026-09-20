@@ -87,6 +87,32 @@ foreach(stale_src IN ITEMS "src/remoteaccess" "src/qml" "src/qpa")
     endif()
 endforeach()
 
+# Checking that the directory has not come back is not enough: a CI step, script or build file can keep *naming* the old
+# source path long after the directory moved, and that is invisible until the job runs - which is exactly how three
+# Windows steps kept invoking `src\remoteaccess\tests\rfb_product_fit.py` after the access-mode rename and failed the
+# VNC-client jobs. Backslashes are normalized first, because the Windows steps write paths that way and a forward-slash
+# search cannot see them.
+file(GLOB_RECURSE _layout_drivers RELATIVE "${HYREMOTE_SOURCE_DIR}"
+     "${HYREMOTE_SOURCE_DIR}/.github/workflows/*.yml"
+     "${HYREMOTE_SOURCE_DIR}/.github/workflows/*.yaml"
+     "${HYREMOTE_SOURCE_DIR}/.github/scripts/*.ps1"
+     "${HYREMOTE_SOURCE_DIR}/.github/scripts/*.sh"
+     "${HYREMOTE_SOURCE_DIR}/cmake/*.cmake"
+     "${HYREMOTE_SOURCE_DIR}/src/*/CMakeLists.txt"
+     "${HYREMOTE_SOURCE_DIR}/examples/*/CMakeLists.txt")
+list(APPEND _layout_drivers "CMakeLists.txt")
+foreach(_driver IN LISTS _layout_drivers)
+    file(READ "${HYREMOTE_SOURCE_DIR}/${_driver}" _driver_text)
+    string(REPLACE "\\" "/" _driver_text "${_driver_text}")
+    foreach(stale_src IN ITEMS "src/remoteaccess" "src/qml" "src/qpa")
+        if(_driver_text MATCHES "${stale_src}")
+            message(FATAL_ERROR
+                "repository-layout: ${_driver} still refers to the stale source path ${stale_src}; the canonical "
+                "directory is src/embedded, src/declarative or src/transparent")
+        endif()
+    endforeach()
+endforeach()
+
 read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]

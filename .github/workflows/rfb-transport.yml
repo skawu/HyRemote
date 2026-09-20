@@ -89,4 +89,4 @@ jobs:
           cmake --build build-rfb --parallel
           if not exist "%CD%\build-rfb\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
           ctest --test-dir build-rfb --output-on-failure
-          python src\remoteaccess\tests\rfb_product_fit.py build-rfb\remoteaccess\tests\hyremote-rfb-test-server.exe
+          python src\embedded\tests\rfb_product_fit.py build-rfb\remoteaccess\tests\hyremote-rfb-test-server.exe

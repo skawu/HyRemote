@@ -93,4 +93,4 @@ jobs:
             -DHYREMOTE_BUILD_EXAMPLES=OFF ^
           cmake --build build-mainline --parallel
           ctest --test-dir build-mainline --output-on-failure
-          python src\remoteaccess\tests\rfb_product_fit.py build-mainline\remoteaccess\tests\hyremote-rfb-test-server.exe
+          python src\embedded\tests\rfb_product_fit.py build-mainline\remoteaccess\tests\hyremote-rfb-test-server.exe
