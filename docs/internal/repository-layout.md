@@ -23,13 +23,13 @@ HyRemote/
 │  │  ├─ include/hyremote/       #     internal headers: Session, frame, storage, normalized input, capabilities
 │  │  ├─ src/                    #     implementation (session/frame/storage/input/types/capabilities + detail/)
 │  │  └─ tests/                  #     colocated unit tests + the Core dependency guard
-│  ├─ embedded/                  #   ACCESS MODE 1 - Embedded C++: the shared runtime and its public facade
+│  ├─ cpp/                       #   ACCESS MODE 1 - C++ API integration: the shared runtime and its public facade
 │  │  ├─ include/                #     the one public API header (HyRemote::RemoteAccess)
 │  │  ├─ src/                    #     facade implementation: detail/, transport/, widgets/, quick/
 │  │  └─ tests/                  #     colocated unit/integration tests for the facade
-│  ├─ declarative/               #   ACCESS MODE 2 - Declarative QML: provides `import HyRemote`
+│  ├─ qml/                       #   ACCESS MODE 2 - QML API integration: provides `import HyRemote`
 │  │  └─ tests/                  #     QML module tests + the deploy-helper fixture
-│  └─ transparent/               #   ACCESS MODE 3 - Transparent QPA: `qhyremote`, Qt 6.8.3-qualified
+│  └─ qpa/                       #   ACCESS MODE 3 - QPA platform integration: `qhyremote`, Qt 6.8.3-qualified
 │     └─ tests/                  #     QPA smoke / native-semantics / interception / relocation tests
 │
 ├─ tests/                        # TESTS AND PRODUCT VERIFICATION: nothing here is a unit test, because a unit
@@ -61,8 +61,10 @@ HyRemote/
 │  ├─ adr/                       #   architecture decision records (what was decided and on what evidence)
 │  ├─ releases/                  #   per-milestone release notes (the record of what each release did)
 │  ├─ proposals/                 #   proposal-era design input; explicitly not present-day truth
-│  ├─ acceptance/                #   recorded acceptance evidence, one directory per candidate or version
-│  └─ assets/logo/               #   the product mark used by documentation and the UI; never in the build graph
+│  └─ acceptance/                #   recorded acceptance evidence, one directory per candidate or version
+│
+├─ logo/                         # the product mark, referenced by documentation and the examples (never built,
+│                                #   never a build input; see the branding section below)
 │
 ├─ cmake/                        # build, package and deployment modules
 │  ├─ HyRemoteProjectOptions.cmake   #   the frozen option defaults (the consumer-visible contract)
@@ -83,16 +85,15 @@ either behind it or beside it.
 
 | Delivered artifact | Directory | What the user gets |
 | --- | --- | --- |
-| Shared runtime | `src/embedded` (+ `src/core` composed statically behind it) | `HyRemote::RemoteAccess`, one C++ library, no backend types in the API |
-| Declarative payload | `src/declarative` | `import HyRemote` for QML applications |
-| Transparent payload | `src/transparent` | `qhyremote`, a Qt platform plugin that proxies an unmodified application |
+| Shared runtime | `src/cpp` (+ `src/core` composed statically behind it) | `HyRemote::RemoteAccess`, one C++ library, no backend types in the API |
+| Declarative payload | `src/qml` | `import HyRemote` for QML applications |
+| Transparent payload | `src/qpa` | `qhyremote`, a Qt platform plugin that proxies an unmodified application |
 | Nothing | `src/core` | internal only: not installed, not linkable, no stability promise |
 
 **Technical architecture - build graph, dependency direction, artifacts.** The root `CMakeLists.txt` maps each source
 directory to a *stable binary directory* (`add_subdirectory(<source> <binary>)`), so a source reorganisation never
 relocates an artifact a CI job, installer or deployment script depends on. Dependencies point one way only:
-`core -> embedded -> {declarative, transparent}`, and a payload may never link `Core` directly or compile a second
-facade. Tests
+`core -> cpp -> {qml, qpa}`, and a payload may never link `Core` directly or compile a second facade. Tests
 live where they qualify: private-detail unit tests are colocated under the module they qualify, and `tests/` holds only
 what crosses a boundary or validates the delivered product. `cmake/` owns build/packaging/deployment modules and never
 product code.
@@ -112,7 +113,7 @@ because they have different audiences, different lifetimes and different review 
 
 | New thing | Placement | Why |
 | --- | --- | --- |
-| A transport, capture implementation or platform backend of the product | under the module that owns it (`src/embedded/src/<area>/`) | it is implementation, not a new deliverable |
+| A transport, capture implementation or platform backend of the product | under the module that owns it (`src/cpp/src/<area>/`) | it is implementation, not a new deliverable |
 | A new payload installed into a host application | `src/<payload>/` + an explicit `add_subdirectory(<source> <binary>)` | siblings of the existing payloads; the binary directory is part of the contract |
 | A new integration payload generation (for example another Qt line) | `src/<payload>-<qualifier>/`, never by widening the qualified payload | each payload stays qualified against exactly one line |
 | A user-facing guide | `docs/guide/**` (Chinese primary) + the mirror in `docs/en/guide/**`, same relative path | the user zone is bilingual, one document per reader intent |
@@ -148,10 +149,10 @@ The release-readiness repository-layout gate enforces the physical layout and mo
 `src/` is the **shipping tree**: everything below it is built and delivered, one directory per deliverable, and nothing that is not shipped belongs here.
 
 - `src/core` remains an internal STATIC composition target and is not an installed application SDK target.
-- `src/embedded` owns the single shared `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` runtime and its Widgets/Quick target adapters.
-- `src/declarative` is the Declarative QML payload: it provides `import HyRemote`, it is installed into the consuming application's QML import tree, and it is not a second C++ product runtime.
-- `src/transparent` is the Transparent QPA payload: it provides `qhyremote`, it is a platform MODULE installed into the application's Qt plugin tree, and it is not an application link target.
-- A new transport, capture implementation, or target adapter that is part of the normal product belongs below the product module that owns it (`src/embedded` today), not at repository root.
+- `src/cpp` owns the single shared `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` runtime and its Widgets/Quick target adapters.
+- `src/qml` is the Declarative QML payload: it provides `import HyRemote`, it is installed into the consuming application's QML import tree, and it is not a second C++ product runtime.
+- `src/qpa` is the Transparent QPA payload: it provides `qhyremote`, it is a platform MODULE installed into the application's Qt plugin tree, and it is not an application link target.
+- A new transport, capture implementation, or target adapter that is part of the normal product belongs below the product module that owns it (`src/cpp` today), not at repository root.
 - A new payload that is delivered into a host application is a sibling deliverable under `src/`, registered with an explicit `add_subdirectory(<source> <stable-binary-dir>)`.
 
 Payloads may depend on the product runtime. The shared runtime and Core must never depend on a payload - the direction the layout gate enforces.
@@ -160,8 +161,8 @@ Payloads may depend on the product runtime. The shared runtime and Core must nev
 
 `src/` contains application-integration payloads that reuse the same shared runtime.
 
-- `src/declarative` provides `import HyRemote`; it is not a second C++ product runtime.
-- `src/transparent` provides `qhyremote`; it is a platform MODULE and is not an application link target.
+- `src/qml` provides `import HyRemote`; it is not a second C++ product runtime.
+- `src/qpa` provides `qhyremote`; it is a platform MODULE and is not an application link target.
 
 Integration payloads may depend on the product runtime. Product Core must not depend on an integration payload.
 
@@ -170,7 +171,7 @@ Integration payloads may depend on the product runtime. Product Core must not de
 `tests/` holds **tests only**: cross-module integration tests, which belong to no single module.
 
 - Unit tests that need private implementation detail stay colocated under the module they qualify, for example
-  `src/embedded/tests` and `src/transparent/tests`. They are never installed.
+  `src/cpp/tests` and `src/qpa/tests`. They are never installed.
 - Nothing that exercises the product *the way a user would* lives here. A clean consumer project, a product
   end-to-end script, a public-surface contract or a release gate is **verification of the delivered product**, not a
   test, and it belongs in `tests/`.
@@ -212,7 +213,7 @@ fails the build if a `research/` root or an `add_subdirectory(research/...)` map
 ### Branding assets live under `docs/`
 
 There is deliberately **no root `assets/` directory**. The product mark itself - the logo files used in documentation
-and in the UI - lives at `docs/assets/logo/`, because documentation is its only consumer: nothing in `src/`, `cmake/`
+and in the UI - lives at `logo/`, because documentation is its only consumer: nothing in `src/`, `cmake/`
 or the build graph may reference it, and the layout gate fails if a module does. Anything that is not the product's own
 non-code identity does not belong there at all.
 
@@ -222,9 +223,9 @@ The source layout was normalized without intentionally changing established buil
 
 ```cmake
 add_subdirectory(src/core core)
-add_subdirectory(src/embedded remoteaccess)
-add_subdirectory(src/declarative qml/HyRemote)
-add_subdirectory(src/transparent qpa)
+add_subdirectory(src/cpp remoteaccess)
+add_subdirectory(src/qml qml/HyRemote)
+add_subdirectory(src/qpa qpa)
 ```
 
 This keeps existing CI/deployment artifact locations such as `build/remoteaccess`, `build/qml/HyRemote` and `build/plugins/platforms` stable while making repository ownership clear.
@@ -236,7 +237,7 @@ top-level directory is a structural decision carrying the same authority as a mi
 Naming rules for anything added here are in [`naming-conventions.md`](naming-conventions.md).
 
 - **`src/` grows by product module.** A new transport, capture implementation, target adapter or platform
-  backend that is part of the normal product belongs below the product module that owns it (`src/embedded`
+  backend that is part of the normal product belongs below the product module that owns it (`src/cpp`
   today), never at the repository root. A future module that is not an adapter of the shared runtime is added as
   `src/<module>/` with its own `add_subdirectory(<source> <stable-binary-dir>)` mapping, and Core stays Qt-free
   and platform-free.
@@ -248,7 +249,7 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
   payload never relocates an existing artifact.
 - **Version-qualified payloads.** The Transparent QPA payload is coupled to the exact Qt private ABI it was
   qualified against (Qt 6.8.3 for V1). A future Qt LTS line is served by a new payload directory named for that
-  line (`src/transparent-<qt-line>/`), not by widening the existing one: `src/transparent` keeps its path,
+  line (`src/qpa-<qt-line>/`), not by widening the existing one: `src/qpa` keeps its path,
   target and artifact names, and each payload stays qualified against exactly one Qt line.
 - **`tests/` grows by scope, never by module.** A unit test stays colocated with the module it qualifies; a
   cross-module integration test is added directly under `tests/`; a new clean consumer, product E2E script, surface
@@ -259,9 +260,9 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
 - **`examples/` grows by integration mode and usage scenario.** The E-numbering continues, one directory per
   example, and examples that combine HyRemote with third-party open-source applications are opt-in, unfetched
   by default and never an implementation location for product logic (see the ownership section above).
-- **Branding lives under `docs/`, not at the root.** `docs/assets/logo/` is the mark used by documentation and the UI;
-  packaging icons or desktop-entry material for a future platform become sibling directories under `docs/assets/`, each
-  named for what it is rather than for a generic "asset" role, and none of them may enter the build graph.
+- **Branding grows inside the root `logo/`.** `logo/` holds the product mark itself; packaging icons or desktop-entry
+  material for a future platform are added there as siblings, each named for what it is rather than for a generic
+  "asset" role, and none of them may become a build input or a module dependency.
 - **`cmake/` owns build, package and deployment modules.** Platform-specific deployment is an additional module
   here, never code inside product sources.
 - **Research leaves a conclusion, not a directory.** A successful experiment becomes product code only through an
@@ -281,7 +282,18 @@ verification/
 assets/
 research/
 spikes/
-logo/
+```
+
+The payload directories under `src/` are named for the integration technology they serve - `cpp/`, `qml/`, `qpa/` -
+because those are the words the product uses everywhere else, and the prototype product uses them too. The names they
+replaced must not return, at any level:
+
+```text
+src/remoteaccess/    # the runtime's artifact name, not an integration technology
+src/embedded/        # "embedded" is reserved for future embedded-system/platform payloads
+src/declarative/     # a quality, not the technology a user integrates
+src/transparent/     # a quality, not the technology a user integrates
+docs/assets/         # branding is not documentation-owned
 ```
 
 The release-readiness repository-layout gate enforces this boundary. Do not add compatibility copies, symlinks, or forwarding directories at the old locations; update source references to the canonical layout instead.

@@ -43,12 +43,12 @@ endfunction()
 
 set(required_directories
     "src/core"
-    "src/embedded"
-    "src/declarative"
-    "src/transparent"
+    "src/cpp"
+    "src/qml"
+    "src/qpa"
     "tests"
     "examples"
-    "docs/assets/logo"
+    "logo"
     "cmake"
     "docs"
     ".github")
@@ -64,7 +64,6 @@ set(forbidden_root_directories
     "qml"
     "qpa"
     "spikes"
-    "logo"
     "integrations"
     "verification"
     "assets"
@@ -79,11 +78,13 @@ if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/internal/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
 
-# The access-mode naming is load-bearing: a payload directory that goes back to being named after an artifact
-# (`qml/`, `qpa/`) or after the runtime (`remoteaccess/`) stops telling a reader which integration mode it serves.
-foreach(stale_src IN ITEMS "src/remoteaccess" "src/qml" "src/qpa")
+# The payload directories are named for the integration technology they serve, using the same words the product uses
+# everywhere else: C++, QML and QPA (owner ruling, 2026-09-20). The names this replaced - the artifact name
+# (`remoteaccess`) and the access-mode qualities (`embedded`, `declarative`, `transparent`) - must not come back, and
+# neither must the documentation-owned copy of the branding asset, which now lives at the repository root.
+foreach(stale_src IN ITEMS "src/remoteaccess" "src/embedded" "src/declarative" "src/transparent" "docs/assets")
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${stale_src}")
-        message(FATAL_ERROR "repository-layout: stale source directory must not return: ${stale_src}")
+        message(FATAL_ERROR "repository-layout: stale directory must not return: ${stale_src}")
     endif()
 endforeach()
 
@@ -104,11 +105,11 @@ list(APPEND _layout_drivers "CMakeLists.txt")
 foreach(_driver IN LISTS _layout_drivers)
     file(READ "${HYREMOTE_SOURCE_DIR}/${_driver}" _driver_text)
     string(REPLACE "\\" "/" _driver_text "${_driver_text}")
-    foreach(stale_src IN ITEMS "src/remoteaccess" "src/qml" "src/qpa")
+    foreach(stale_src IN ITEMS "src/remoteaccess" "src/embedded" "src/declarative" "src/transparent" "docs/assets/logo")
         if(_driver_text MATCHES "${stale_src}")
             message(FATAL_ERROR
                 "repository-layout: ${_driver} still refers to the stale source path ${stale_src}; the canonical "
-                "directory is src/embedded, src/declarative or src/transparent")
+                "directory is src/cpp, src/qml or src/qpa")
         endif()
     endforeach()
 endforeach()
@@ -116,9 +117,9 @@ endforeach()
 read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]
-        [=[add_subdirectory(src/embedded remoteaccess)]=]
-        [=[add_subdirectory(src/declarative qml/HyRemote)]=]
-        [=[add_subdirectory(src/transparent qpa)]=])
+        [=[add_subdirectory(src/cpp remoteaccess)]=]
+        [=[add_subdirectory(src/qml qml/HyRemote)]=]
+        [=[add_subdirectory(src/qpa qpa)]=])
     require_token("${root_cmake}" "${required_token}"
                   "root build graph lost canonical-source / stable-binary mapping")
 endforeach()
@@ -136,7 +137,7 @@ forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
 forbid_token("${root_cmake}" "add_subdirectory(research/"
              "root build graph includes non-product research again")
 
-read_repo_file("src/declarative/CMakeLists.txt" qml_cmake)
+read_repo_file("src/qml/CMakeLists.txt" qml_cmake)
 require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"
                     "QML integration stopped linking the shared RemoteAccess runtime")
 forbid_link_target("${qml_cmake}" "HyRemote::Core"
@@ -144,7 +145,7 @@ forbid_link_target("${qml_cmake}" "HyRemote::Core"
 forbid_token("${qml_cmake}" "remote_access.cpp"
              "QML integration must not compile a second RemoteAccess facade")
 
-read_repo_file("src/transparent/CMakeLists.txt" qpa_cmake)
+read_repo_file("src/qpa/CMakeLists.txt" qpa_cmake)
 require_link_target("${qpa_cmake}" "HyRemote::RemoteAccess"
                     "QPA integration stopped linking the shared RemoteAccess runtime")
 forbid_link_target("${qpa_cmake}" "HyRemote::Core"
@@ -154,13 +155,13 @@ forbid_token("${qpa_cmake}" "remote_access.cpp"
 
 foreach(module_cmake IN ITEMS
         "src/core/CMakeLists.txt"
-        "src/embedded/CMakeLists.txt"
-        "src/declarative/CMakeLists.txt"
-        "src/transparent/CMakeLists.txt")
+        "src/cpp/CMakeLists.txt"
+        "src/qml/CMakeLists.txt"
+        "src/qpa/CMakeLists.txt")
     read_repo_file("${module_cmake}" module_text)
     forbid_token("${module_text}" "research/"
                  "product/integration module depends on non-product research (${module_cmake})")
-    forbid_token("${module_text}" "docs/assets/logo"
+    forbid_token("${module_text}" "logo/"
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 

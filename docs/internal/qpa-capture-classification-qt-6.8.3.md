@@ -20,7 +20,7 @@ The composite QPA target converts child frames into the logical application canv
 
 ### Production QWidget path
 
-`src/embedded/src/widgets/widget_target.cpp` creates owned CPU `RemoteFrame` storage, wraps it in a `QImage` with `QImage::Format_RGBA8888_Premultiplied`, sets the target DPR, clears it, and calls:
+`src/cpp/src/widgets/widget_target.cpp` creates owned CPU `RemoteFrame` storage, wraps it in a `QImage` with `QImage::Format_RGBA8888_Premultiplied`, sets the target DPR, clears it, and calls:
 
 ```cpp
 target->render(&image);
@@ -30,7 +30,7 @@ The work is marshalled to the Qt GUI thread. The result is CPU-readable RGBA wit
 
 ### Production QQuickWindow path
 
-`src/embedded/src/quick/quick_target.cpp` resolves `QQuickWindow::contentItem()` and calls:
+`src/cpp/src/quick/quick_target.cpp` resolves `QQuickWindow::contentItem()` and calls:
 
 ```cpp
 content->grabToImage(pixelSize);

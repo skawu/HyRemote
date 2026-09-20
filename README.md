@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+  <img src="logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
 </p>
 
 <h1 align="center">HyRemote</h1>
@@ -164,14 +164,15 @@ one question - does it ship?:
 ```text
 src/                 the shipping tree: everything built and delivered, one directory per deliverable
   core/                BASE       internal static library; not installed, not linkable by a payload
-  embedded/            MODE 1     Embedded C++: the shared runtime and its public facade
-  declarative/         MODE 2     Declarative QML: provides `import HyRemote`
-  transparent/         MODE 3     Transparent QPA: provides `qhyremote`, Qt 6.8.3-qualified
+  cpp/                 MODE 1     C++ API: the shared runtime and its public facade
+  qml/                 MODE 2     QML API: provides `import HyRemote`
+  qpa/                 MODE 3     QPA platform integration: provides `qhyremote`, Qt 6.8.3-qualified
 tests/               tests and product verification: clean consumers, product E2E, the public-surface contract,
                      the third-party matrix and the release gates. Unit tests live with the module they
                      qualify, in src/*/tests/, so they are never here.
 examples/            usage examples E1-E6; not shipped
-docs/                documentation, zoned by reader (see docs/README.md); the product mark is docs/assets/logo/
+docs/                documentation, zoned by reader (see docs/README.md)
+logo/                the product mark, referenced by the documentation and the examples; never built
 cmake/               build, package and deployment modules
 .github/             CI and repository governance
 ```

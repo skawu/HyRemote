@@ -10,9 +10,9 @@ The previously implemented and verified project-logo work in PR #160 used:
 assets/branding/huayan-logo-single.png
 ```
 
-That PR was closed during V1 scope convergence and was not merged, which is why the current `develop` tree does not contain `assets/` today. The V1 #209/example migration must **restore this existing project-logo asset provenance** rather than inventing a new example-specific logo.
+That PR was closed during V1 scope convergence and was not merged, which is why the pre-ruling tree carried no branding asset at all. The asset has since been **restored from this provenance** rather than invented for the examples: it is the product mark at the repository root, `logo/huayan-logo-single.png`.
 
-Unless the #209 final asset-layout migration deliberately renames the shared branding asset once, `assets/branding/huayan-logo-single.png` is the canonical source to restore. If a final path rename is needed, it must be a single repository-wide move with no duplicate legacy copy left behind.
+The single repository-wide move this document called for has been performed: the historical `assets/branding/huayan-logo-single.png` became `logo/huayan-logo-single.png`, with no duplicate, no documentation-owned copy and no per-example copy left behind.
 
 ## Consumption contract
 

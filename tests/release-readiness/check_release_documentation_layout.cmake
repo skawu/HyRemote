@@ -57,10 +57,10 @@ forbid_doc_token("docs/internal/async-capture-spike.md" "cmake -S research/async
                  "reproducer command for a removed async-capture harness")
 
 require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
-                  "`src/embedded/src/widgets/widget_target.cpp`"
+                  "`src/cpp/src/widgets/widget_target.cpp`"
                   "canonical Widgets target source citation")
 require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
-                  "`src/embedded/src/quick/quick_target.cpp`"
+                  "`src/cpp/src/quick/quick_target.cpp`"
                   "canonical Quick target source citation")
 forbid_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
                  "`remoteaccess/src/"

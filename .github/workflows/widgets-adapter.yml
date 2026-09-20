@@ -6,7 +6,7 @@ on:
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'src/core/**'
-      - 'src/embedded/**'
+      - 'src/cpp/**'
       - 'docs/widgets-capture.md'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/widgets-adapter.yml'
