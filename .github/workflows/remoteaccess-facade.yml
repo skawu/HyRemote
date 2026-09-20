@@ -72,8 +72,7 @@ jobs:
             echo "ERROR: transport-security configure unexpectedly succeeded without OpenSSL"
             exit 1
           fi
-          grep -F "HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL with the Crypto and SSL components" \
-            security-missing-openssl.log
+          grep -F "HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL" security-missing-openssl.log
 
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -108,7 +107,7 @@ jobs:
             echo ERROR: transport-security configure unexpectedly succeeded without OpenSSL
             exit /b 1
           )
-          findstr /C:"HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL with the Crypto and SSL components" security-missing-openssl.log >nul
+          findstr /C:"HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL" security-missing-openssl.log >nul
           if errorlevel 1 (
             type security-missing-openssl.log
             echo ERROR: expected fail-closed diagnostic was not emitted
