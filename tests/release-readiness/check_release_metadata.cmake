@@ -35,17 +35,41 @@ set(required_files
     "docs/internal/v1-ga-acceptance.md"
     "examples/README.md"
     "examples/CMakeLists.txt"
-    "examples/widgets-basic/CMakeLists.txt"
-    "examples/widgets-basic/README.md"
-    "examples/quick-basic/CMakeLists.txt"
-    "examples/quick-basic/README.md"
-    "examples/qml-basic/CMakeLists.txt"
-    "examples/qml-basic/README.md"
-    "examples/qpa-proxy-existing-app/CMakeLists.txt"
-    "examples/qpa-proxy-existing-app/main.cpp"
-    "examples/qpa-proxy-existing-app/README.md"
-    "examples/remote-support-showcase/CMakeLists.txt"
-    "examples/remote-support-showcase/README.md"
+    "examples/common/HyRemoteExampleBranding.cmake"
+    "examples/common/hyremote-branding.qrc"
+    "examples/common/hyremote-example-branding.cpp"
+    "examples/learning/01-widgets-basic/CMakeLists.txt"
+    "examples/learning/01-widgets-basic/main.cpp"
+    "examples/learning/01-widgets-basic/README.md"
+    "examples/learning/02-widgets-control/CMakeLists.txt"
+    "examples/learning/02-widgets-control/main.cpp"
+    "examples/learning/02-widgets-control/README.md"
+    "examples/learning/03-quick-cpp/CMakeLists.txt"
+    "examples/learning/03-quick-cpp/main.cpp"
+    "examples/learning/03-quick-cpp/Main.qml"
+    "examples/learning/03-quick-cpp/README.md"
+    "examples/learning/04-quick-qml/CMakeLists.txt"
+    "examples/learning/04-quick-qml/main.cpp"
+    "examples/learning/04-quick-qml/Main.qml"
+    "examples/learning/04-quick-qml/README.md"
+    "examples/learning/05-qpa-existing-app/CMakeLists.txt"
+    "examples/learning/05-qpa-existing-app/widgets-app/CMakeLists.txt"
+    "examples/learning/05-qpa-existing-app/widgets-app/main.cpp"
+    "examples/learning/05-qpa-existing-app/widgets-app/README.md"
+    "examples/learning/05-qpa-existing-app/quick-app/CMakeLists.txt"
+    "examples/learning/05-qpa-existing-app/quick-app/main.cpp"
+    "examples/learning/05-qpa-existing-app/quick-app/Main.qml"
+    "examples/learning/05-qpa-existing-app/quick-app/README.md"
+    "examples/learning/07-production-showcase/CMakeLists.txt"
+    "examples/learning/07-production-showcase/main.cpp"
+    "examples/learning/07-production-showcase/Main.qml"
+    "examples/learning/07-production-showcase/README.md"
+    "examples/realworld/README.md"
+    "examples/realworld/qbittorrent/README.md"
+    "examples/realworld/qbittorrent/manifest.json"
+    "examples/realworld/musescore/README.md"
+    "examples/realworld/musescore/manifest.json"
+    "logo/huayan-logo-single.png"
     "tests/consumer-installed-sdk/CMakeLists.txt"
     "tests/consumer-source/CMakeLists.txt"
     "tests/consumer-installed-qml/CMakeLists.txt"
@@ -275,56 +299,105 @@ foreach(required_link
     endif()
 endforeach()
 
+# The V1 examples graph itself is a release contract: one progressive source taxonomy with no legacy
+# binary-directory aliases. 06-session-security is added with #170 once its real public API exists.
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
+        "add_subdirectory(learning/01-widgets-basic)"
+        "add_subdirectory(learning/02-widgets-control)"
+        "add_subdirectory(learning/03-quick-cpp)"
+        "add_subdirectory(learning/04-quick-qml)"
+        "add_subdirectory(learning/05-qpa-existing-app)"
+        "add_subdirectory(learning/07-production-showcase)")
+    string(FIND "${examples_cmake}" "${required_example}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: progressive V1 examples graph missing required example: ${required_example}")
+    endif()
+endforeach()
+foreach(forbidden_legacy_example
         "add_subdirectory(widgets-basic)"
         "add_subdirectory(quick-basic)"
         "add_subdirectory(qml-basic)"
         "add_subdirectory(qpa-proxy-existing-app)"
         "add_subdirectory(remote-support-showcase)")
-    string(FIND "${examples_cmake}" "${required_example}" found)
-    if(found EQUAL -1)
+    string(FIND "${examples_cmake}" "${forbidden_legacy_example}" found)
+    if(NOT found EQUAL -1)
         message(FATAL_ERROR
-            "release-readiness: common V1 examples graph missing required example: ${required_example}")
+            "release-readiness: legacy example taxonomy returned to the build graph: ${forbidden_legacy_example}")
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/examples/qpa-proxy-existing-app/CMakeLists.txt" e4_cmake)
+# Both QPA teaching fixtures are ordinary Qt applications. HyRemote is package/deployment metadata only;
+# neither application may link a HyRemote application/runtime target.
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/learning/05-qpa-existing-app/widgets-app/CMakeLists.txt" qpa_widgets_cmake)
 foreach(required_token
-        "target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)"
+        "target_link_libraries(hyremote-example-qpa-existing-widgets PRIVATE Qt6::Widgets)"
         "HYREMOTE_EXAMPLE_DEPLOY_QPA"
         "find_package(HyRemote CONFIG REQUIRED)"
-        "hyremote_deploy(TARGET hyremote-qpa-proxy-existing-app QPA)")
-    string(FIND "${e4_cmake}" "${required_token}" found)
+        "hyremote_deploy(TARGET hyremote-example-qpa-existing-widgets QPA)")
+    string(FIND "${qpa_widgets_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "release-readiness: E4 ordinary-Qt/deployment contract missing: ${required_token}")
+            "release-readiness: 05 Widgets QPA ordinary-Qt/deployment contract missing: ${required_token}")
     endif()
 endforeach()
-foreach(forbidden_token
-        "HyRemote::RemoteAccess"
-        "HyRemote::QpaPlatform")
-    string(FIND "${e4_cmake}" "${forbidden_token}" found)
-    if(NOT found EQUAL -1)
+
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/learning/05-qpa-existing-app/quick-app/CMakeLists.txt" qpa_quick_cmake)
+foreach(required_token
+        "target_link_libraries(hyremote-example-qpa-existing-quick PRIVATE Qt6::Quick Qt6::Qml)"
+        "HYREMOTE_EXAMPLE_DEPLOY_QPA"
+        "find_package(HyRemote CONFIG REQUIRED)"
+        "hyremote_deploy(TARGET hyremote-example-qpa-existing-quick QPA)")
+    string(FIND "${qpa_quick_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
         message(FATAL_ERROR
-            "release-readiness: E4 application project leaked a HyRemote link target: ${forbidden_token}")
+            "release-readiness: 05 Quick QPA ordinary-Qt/deployment contract missing: ${required_token}")
     endif()
+endforeach()
+foreach(qpa_fixture IN ITEMS qpa_widgets_cmake qpa_quick_cmake)
+    foreach(forbidden_token
+            "HyRemote::RemoteAccess"
+            "HyRemote::QpaPlatform")
+        string(FIND "${${qpa_fixture}}" "${forbidden_token}" found)
+        if(NOT found EQUAL -1)
+            message(FATAL_ERROR
+                "release-readiness: 05 QPA application project leaked a HyRemote link target: ${forbidden_token}")
+        endif()
+    endforeach()
+endforeach()
+
+# Real-world verification is deliberately bounded to one Widgets and one Quick/QML representative.
+# The manifests are repository-owned pins; upstream application source/branding stays external and pristine.
+foreach(realworld_manifest
+        "examples/realworld/qbittorrent/manifest.json"
+        "examples/realworld/musescore/manifest.json")
+    file(READ "${HYREMOTE_SOURCE_DIR}/${realworld_manifest}" manifest_text)
+    foreach(required_token
+            "\"source_policy\": \"pristine-external\""
+            "\"support_claim\": false")
+        string(FIND "${manifest_text}" "${required_token}" found)
+        if(found EQUAL -1)
+            message(FATAL_ERROR
+                "release-readiness: real-world example manifest lost pristine/non-support boundary: ${realworld_manifest}")
+        endif()
+    endforeach()
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" clean_qpa_cmake)
 foreach(required_token
-        "examples/qpa-proxy-existing-app/main.cpp"
+        "examples/learning/05-qpa-existing-app/widgets-app/main.cpp"
         "target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)"
         "hyremote_deploy(TARGET hyremote-installed-qpa-consumer QPA)")
     string(FIND "${clean_qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "release-readiness: clean installed-QPA E4 evidence is not bound to the real example: ${required_token}")
+            "release-readiness: clean installed-QPA evidence is not bound to the real 05 Widgets example: ${required_token}")
     endif()
 endforeach()
 if(EXISTS "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/main.cpp")
     message(FATAL_ERROR
-        "release-readiness: clean installed-QPA fixture must not maintain a duplicate E4 application source")
+        "release-readiness: clean installed-QPA fixture must not maintain a duplicate 05 application source")
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/src/core/include/hyremote/core/input.hpp" input_contract)
@@ -431,4 +504,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release-readiness metadata gate: PASS "
-    "(project ${source_project_version}, canonical repository layout + milestone notes + minimal SDK surface + complete V1 user entry points)")
+    "(project ${source_project_version}, canonical repository layout + milestone notes + minimal SDK surface + progressive V1 examples + bounded real-world verification)")
