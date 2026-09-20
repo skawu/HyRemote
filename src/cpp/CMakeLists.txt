@@ -18,6 +18,17 @@ endif()
 # turning an ownership refactor into an SDK/deployment break.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 
+# Qt imported targets are directory scoped. The common runtime resolves optional Widgets/Quick targets
+# in its own child scope, but Embedded C++ tests are configured from this directory and need the same
+# targets visible here. Re-resolve only the capabilities the runtime actually enabled; this does not
+# change the compiled product profile.
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND NOT TARGET Qt6::Widgets)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
+endif()
+if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND NOT TARGET Qt6::Quick)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
+endif()
+
 # Embedded C++ facade only. The implementation delegates target/transport construction to the common
 # runtime and continues to own the public application-facing RemoteAccess ABI.
 target_sources(hyremote-remoteaccess PRIVATE
