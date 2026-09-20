@@ -26,7 +26,7 @@ Do not infer support for another Qt patch/minor, Wayland, EGLFS, OpenHarmony or 
 - port: 5921;
 - remote input: disabled;
 - local display/input: native platform delegate remains authoritative;
-- current bounded RFB correctness baseline: `SecurityType None`, therefore unauthenticated and unencrypted.
+- bounded RFB correctness baseline: `SecurityType None` and unauthenticated unless an authenticated profile is configured, which enables RFB VNC authentication; unencrypted in either case.
 
 ## 1. Build and install HyRemote with QPA
 
@@ -155,7 +155,7 @@ Invalid HyRemote values fail closed.
 
 ## 8. Security boundary
 
-The current RFB baseline advertises `SecurityType None`. Do not bind the current V1 correctness baseline directly to an untrusted network or the public Internet and do not describe it as authenticated/encrypted remote support.
+The current RFB baseline advertises `SecurityType None` unless an authenticated profile is configured, which selects RFB VNC authentication. Do not bind the current V1 correctness baseline directly to an untrusted network or the public Internet, and do not describe it as encrypted remote support - authentication is not encryption.
 
 ## 9. Multi-window behavior
 

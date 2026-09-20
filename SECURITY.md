@@ -8,7 +8,7 @@ No released version is currently supported for production security updates. V1.0
 
 ## Current transport security state
 
-The current bounded internal RFB 3.8 correctness transport negotiates **SecurityType None over plaintext**. HyRemote V1 therefore provides **no transport authentication and no transport encryption**.
+The bounded internal RFB 3.8 correctness transport negotiates **SecurityType None over plaintext** unless an authenticated profile is configured, in which case the viewer is authenticated with **RFB VNC authentication** (security type 2) and a client that does not select that type is rejected rather than downgraded. HyRemote V1 provides **no transport encryption**: TLS is a separate, later step, and the stream must not be described as encrypted.
 
 The listener defaults to loopback (`127.0.0.1`) and remote input is disabled by default, but those safe defaults are not authentication or encryption. Do not expose the current HyRemote listener directly to the public Internet or an otherwise untrusted network. Use an appropriate trusted network boundary, VPN or separately managed secure tunnel when remote reachability is required.
 

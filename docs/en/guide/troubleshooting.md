@@ -114,4 +114,4 @@ The Core frame mailbox, RFB frame handoff, GUI input delivery and incomplete-han
 
 ## Security warning
 
-The current RFB SecurityType None baseline is unauthenticated and unencrypted. Do not expose a listener directly to an untrusted/public network merely to test connectivity. See `docs/security.md`.
+The RFB SecurityType None baseline is unauthenticated and unencrypted; a configured authenticated profile adds RFB VNC authentication but still no encryption. Do not expose a listener directly to an untrusted/public network merely to test connectivity. See `docs/security.md`.

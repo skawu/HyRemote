@@ -214,7 +214,8 @@ void testConcurrentViewerHeldStateIsolation()
         return;
 
     Recorder recorder;
-    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port);
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
     CHECK(transport != nullptr);
     if (!transport)
         return;

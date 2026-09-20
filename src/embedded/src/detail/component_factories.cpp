@@ -87,7 +87,9 @@ TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled
     return createBuiltinTargetComponents(target, remoteInputEnabled);
 }
 
-TransportComponent createDefaultTransport(const QHostAddress &listenAddress, quint16 port)
+TransportComponent createDefaultTransport(const QHostAddress &listenAddress,
+                                          quint16 port,
+                                          const RfbSecurityConfig &security)
 {
     TransportFactory factory;
     {
@@ -98,11 +100,11 @@ TransportComponent createDefaultTransport(const QHostAddress &listenAddress, qui
     // Tests/custom compositions retain an explicit override seam, but normal product code never
     // registers/selects a protocol backend itself.
     if (factory)
-        return factory(listenAddress, port);
+        return factory(listenAddress, port, security);
 
 #ifdef HYREMOTE_HAS_RFB_TRANSPORT
     TransportComponent result;
-    result.transport = createRfbTransport(listenAddress, port);
+    result.transport = createRfbTransport(listenAddress, port, security);
     if (!result.transport)
         result.error = QStringLiteral("failed to construct the built-in HyRemote RFB transport");
     return result;

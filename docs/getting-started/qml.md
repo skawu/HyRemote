@@ -48,7 +48,7 @@ ApplicationWindow {
 - 端口 5921；
 - 远程输入关闭；
 - 必须显式 `enabled: true`；
-- 当前 RFB 正确性基线使用 SecurityType None，未认证、未加密。
+- 当前 RFB 正确性基线默认 SecurityType None（未认证、未加密，且回环之外被拒绝）；配置认证档后增加 RFB VNC 认证，但仍不加密。
 
 ## 可选配置
 
@@ -129,8 +129,8 @@ hyremote_deploy(TARGET MyQmlApp QML QPA)
 
 ## 安全边界
 
-当前正确性基线协商的是 RFB SecurityType None。不要把它直接暴露到不可信/公网网络。"只看"是**输入策略**，不是认证；
-而且数据流**未加密**。
+当前正确性基线在未配置认证档时协商 RFB SecurityType None；配置了认证档则用 RFB VNC 认证对查看端做认证。不要把它直接暴露到
+不可信/公网网络。"只看"是**输入策略**，不是认证；而且数据流**未加密**。
 
 见 [`security.md`](../security.md)。
 

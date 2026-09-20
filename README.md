@@ -245,7 +245,7 @@ Maintainer material under `docs/internal/**` (implementation history, evaluation
 
 ## Security
 
-The current bounded RFB correctness transport uses **SecurityType None**: no transport authentication and no transport encryption. Loopback is the default bind and remote input is off by default.
+The bounded RFB correctness transport uses **SecurityType None** unless an authenticated profile is configured: `SecurityType None` carries no transport authentication and is refused beyond loopback, while a configured authenticated profile authenticates the viewer with **RFB VNC authentication** (security type 2). Transport encryption is not provided - TLS is a separate, later step - so a listener beyond loopback still belongs behind an appropriate trusted access boundary. Loopback is the default bind and remote input is off by default.
 
 Do **not** expose the current baseline directly to an untrusted network or the public Internet. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
 

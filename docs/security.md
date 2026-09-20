@@ -27,7 +27,7 @@ Implemented defaults and controls:
 
 The current transport negotiates **RFB SecurityType None**.
 
-That means HyRemote currently provides **no transport authentication and no transport encryption**. Anyone who can reach a non-loopback listener may be able to view the exposed application, subject to network controls outside HyRemote. If remote input is enabled, an unauthorized reachable viewer may also be able to control the target application.
+That means HyRemote provides **no transport encryption**, and provides **no viewer authentication unless an authenticated security profile is configured**. Anyone who can reach a listener that does not authenticate may be able to view the exposed application, subject to network controls outside HyRemote. If remote input is enabled, an unauthorized reachable viewer may also be able to control the target application.
 
 Therefore:
 
@@ -123,7 +123,7 @@ The current RFB baseline includes bounded behavior such as:
 - bounded/latest-frame-oriented Core and transport handoff;
 - bounded/coalescing GUI input delivery.
 
-These controls reduce accidental/unbounded resource growth. They do **not** turn an unauthenticated listener into a safe hostile-Internet service.
+These controls reduce accidental/unbounded resource growth. They do **not** turn a listener into a safe hostile-Internet service, with or without viewer authentication.
 
 ## Secrets and logging
 
@@ -139,7 +139,7 @@ Use the default loopback listener. Enable remote input only when intentionally t
 
 ### Controlled lab or trusted maintenance network
 
-Prefer a specific bind address and apply network-level access restrictions. Treat the RFB payload itself as unauthenticated and unencrypted. Document the external protection used by the deployment; it is not a HyRemote transport-security feature.
+Prefer a specific bind address and apply network-level access restrictions. Treat the RFB payload itself as unencrypted, and as unauthenticated unless an authenticated profile is configured. Document the external protection used by the deployment; it is not a HyRemote transport-security feature.
 
 ### Public Internet
 
@@ -169,4 +169,4 @@ A V1 guide, example, release note, compatibility row, or UI must never imply str
 
 Until authenticated/encrypted transport support is implemented and separately accepted, the concise user-facing statement is:
 
-> HyRemote V1 uses an unauthenticated, unencrypted RFB correctness transport. It defaults to loopback and remote input off. Keep it behind an appropriate trusted access boundary; do not expose it directly to the public Internet.
+> HyRemote V1 authenticates the viewer when an authenticated security profile is configured (RFB VNC authentication) and does not encrypt the stream. It defaults to loopback with remote input off. Keep a listener behind an appropriate trusted access boundary; do not expose it directly to the public Internet.

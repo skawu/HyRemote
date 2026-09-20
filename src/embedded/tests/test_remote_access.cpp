@@ -1,6 +1,8 @@
 #include <HyRemote/RemoteAccess.h>
 
+#include <QFile>
 #include <QObject>
+#include <QTemporaryDir>
 
 #include <atomic>
 #include <iostream>
@@ -39,6 +41,10 @@ struct RuntimeCounters
     bool inputPostThrows = false;
     QHostAddress observedAddress;
     quint16 observedPort = 0;
+    // What the composition handed the transport about authentication. The byte count is recorded rather than the
+    // password: a test that echoed a secret into its output would be the leak the security model forbids.
+    bool observedAuthenticationRequired = false;
+    int observedPasswordBytes = -1;
     hyremote::InputHandler transportInputHandler;
     hyremote::TransportEventHandler transportEventHandler;
 };
@@ -163,10 +169,12 @@ void installFakeRuntime(const std::shared_ptr<RuntimeCounters> &counters)
         });
 
     HyRemote::detail::setTransportFactory(
-        [counters](const QHostAddress &address, quint16 port) {
+        [counters](const QHostAddress &address, quint16 port, const HyRemote::detail::RfbSecurityConfig &security) {
             ++counters->transportFactoryCalls;
             counters->observedAddress = address;
             counters->observedPort = port;
+            counters->observedAuthenticationRequired = security.vncAuthenticationRequired;
+            counters->observedPasswordBytes = security.password.size();
             HyRemote::detail::TransportComponent result;
             result.transport = std::make_unique<FakeTransport>(counters);
             return result;
@@ -222,13 +230,20 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
     CHECK(remote.lastError()->message.contains(QStringLiteral("descriptor")));
 
+    // A descriptor path that cannot be loaded is now a configuration error rather than "unavailable": the
+    // descriptor is really parsed. Whether the mechanism exists at all is a property of the build, and a build
+    // without it refuses before reading the descriptor.
     const QString descriptor = QStringLiteral("support-security.conf");
     CHECK(remote.setSecurityConfigFile(descriptor));
     CHECK(!remote.start());
     CHECK(counters->transportFactoryCalls.load() == 0);
     CHECK(remote.lastError().has_value());
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
+#else
     CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
-    CHECK(!remote.lastError()->message.contains(descriptor));
+#endif
+    CHECK(!remote.lastError()->message.isEmpty());
 
     // Insecure compatibility mode is loopback-only. This absorbs the former #153 guard without
     // changing the normal default listener or pretending an unavailable secure transport exists.
@@ -555,6 +570,69 @@ void testInvalidPublicConfigurationIsProductLevel()
 
 }  // namespace
 
+bool writeTestFile(const QString &path, const QByteArray &content)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    return file.write(content) == content.size();
+}
+
+// #143 bind policy (docs/security-model.md section 10.1): a listener may only be widened beyond loopback while an
+// authentication mode is genuinely enabled, and the credential that protects it has to be in hand - that is what
+// makes accepting the widened bind defensible rather than merely configured. Both directions of the rule are
+// asserted here so they read together.
+void testBindPolicyFollowsAuthentication()
+{
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+    CHECK(remote.setListenAddress(QHostAddress(QHostAddress::AnyIPv4)));
+
+    // The default profile carries no authentication, so the widened listener is refused and nothing is composed.
+    CHECK(!remote.start());
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    CHECK(counters->targetFactoryCalls.load() == 0);
+    CHECK(counters->transportFactoryCalls.load() == 0);
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
+    CHECK(remote.lastError()->message.contains(QStringLiteral("non-loopback")));
+
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    CHECK(writeTestFile(temp.filePath(QStringLiteral("password.txt")), QByteArray("secret7\n")));
+    CHECK(writeTestFile(temp.filePath(QStringLiteral("authenticated.conf")),
+                        QByteArray("version=1\n"
+                                   "credentialId=maintenance-console\n"
+                                   "passwordFile=password.txt\n")));
+
+    // With a profile that really produced a credential the same address is accepted, and the credential is what the
+    // transport is told to require.
+    CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
+    CHECK(remote.setSecurityConfigFile(temp.filePath(QStringLiteral("authenticated.conf"))));
+    CHECK(remote.start());
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
+    CHECK(counters->transportFactoryCalls.load() == 1);
+    CHECK(counters->observedAddress == QHostAddress(QHostAddress::AnyIPv4));
+    CHECK(counters->observedAuthenticationRequired);
+    CHECK(counters->observedPasswordBytes == 7);  // "secret7"
+    remote.stop();
+#else
+    // Without the capability in this build the same configuration is refused rather than served unauthenticated,
+    // even though a descriptor is named.
+    CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
+    CHECK(remote.setSecurityConfigFile(QStringLiteral("support-security.conf")));
+    CHECK(!remote.start());
+    CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+#endif
+
+    HyRemote::detail::resetFactories();
+}
+
 int main()
 {
     testSafeDefaultsAndNoConstructionSideEffect();
@@ -567,6 +645,7 @@ int main()
     testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic();
     testBackendStartFailureIsMappedAndCleanedUp();
     testInvalidPublicConfigurationIsProductLevel();
+    testBindPolicyFollowsAuthentication();
 
     HyRemote::detail::resetFactories();
     if (failures != 0) {

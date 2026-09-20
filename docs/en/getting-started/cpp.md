@@ -115,7 +115,7 @@ See `docs/guide/deployment.md`.
 
 ## Security baseline
 
-The current RFB SecurityType None correctness transport is unauthenticated and unencrypted. Do not expose it directly to untrusted networks. Loopback is the default bind and remote input is disabled by default. See `docs/security.md` and `docs/known-limitations.md`.
+The current RFB SecurityType None correctness transport is unauthenticated and unencrypted and is refused beyond loopback; a configured authenticated profile authenticates the viewer with RFB VNC authentication but still leaves the stream unencrypted. Do not expose it directly to untrusted networks. Loopback is the default bind and remote input is disabled by default. See [`../../security.md`](../../security.md) and [`../../known-limitations.md`](../../known-limitations.md).
 
 ## Examples and evidence
 

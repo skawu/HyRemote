@@ -117,7 +117,8 @@ hyremote_deploy(TARGET MyApp)
 
 ## 安全基线
 
-当前 RFB SecurityType None 正确性传输**未认证、未加密**。不要把它直接暴露到不可信网络。默认绑定回环，远程输入默认关闭。
+当前 RFB SecurityType None 正确性传输**未认证、未加密**，且在回环之外会被直接拒绝；配置了认证档时，查看端会先经 RFB VNC
+认证，但数据流**仍未加密**。不要把它直接暴露到不可信网络。默认绑定回环，远程输入默认关闭。
 见 [`security.md`](../security.md) 与 [`known-limitations.md`](../known-limitations.md)。
 
 ## 示例

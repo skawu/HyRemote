@@ -237,8 +237,8 @@ E1/E2 使用同一个公开门面 `HyRemote::RemoteAccess`，默认**仅观看**
 
 ## 10. 安全与支持边界
 
-当前 Bounded RFB 正确性传输使用 **SecurityType None**：既无传输认证，也无传输加密。
-默认绑定回环地址、远程输入默认关闭——不要把该基线直接暴露到不可信网络或公网。详见 [`docs/security.md`](../security.md) 与 [`SECURITY.md`](../../SECURITY.md)。
+Bounded RFB 正确性传输默认使用 **SecurityType None**：既无传输认证（且非回环地址一律拒绝），也无传输加密；配置认证 profile 后改用 **RFB VNC 认证**（RFB 安全类型 2）认证查看端，但仍不提供传输加密。
+默认绑定回环地址、远程输入默认关闭——不要把监听器直接暴露到不可信网络或公网。详见 [`docs/security.md`](../security.md) 与 [`SECURITY.md`](../../SECURITY.md)。
 
 支持边界以证据为准：托管/离屏构建本身不构成"本地可见显示/输入与远程共存"的证明。
 未通过验收的能力不会被宣称为 Supported，明确限制见 [`docs/known-limitations.md`](../known-limitations.md)。

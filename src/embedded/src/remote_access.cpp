@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "detail/component_factories.hpp"
+#include "detail/security_descriptor.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote {
@@ -358,29 +359,49 @@ bool RemoteAccess::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
 
-    // The explicit insecure compatibility profile must never publish a SecurityType None listener
-    // beyond loopback. This absorbs the #153 guard while keeping the normal default path unchanged.
-    // A secure profile must never silently downgrade if its descriptor/capability is unavailable.
-    if (m_impl->securityProfile == RemoteSecurityProfile::Insecure) {
-        if (!m_impl->listenAddress.isLoopback()) {
-            m_impl->setError(
-                RemoteAccessErrorCode::InvalidConfiguration,
-                QStringLiteral("refusing a non-loopback listener with the Insecure security profile"));
-            return false;
-        }
-    } else {
+    // Bind policy (#143, docs/security-model.md section 10.1): a non-loopback listener stays fail-closed until an
+    // authentication mode is actually enabled. The two halves are decided in one place, after the credential is in
+    // hand, because a widened listener is only defensible when the credential that protects it exists - and the
+    // listener must never be published on the strength of a configured profile that then failed to produce one.
+    detail::RfbSecurityConfig transportSecurity;
+    bool authenticationEnabled = false;
+    if (m_impl->securityProfile != RemoteSecurityProfile::Insecure) {
         if (m_impl->securityConfigFile.trimmed().isEmpty()) {
             m_impl->setError(RemoteAccessErrorCode::SecurityUnavailable,
                              QStringLiteral("the selected security profile requires a security descriptor"));
             return false;
         }
 
-        // Configuration is frozen before the authenticated transport implementation lands. Refuse
-        // before target/transport composition so no listener can be opened and no weaker security
-        // mode can be substituted. The next #143 increment replaces this guard with descriptor
-        // validation and the real authenticated/encrypted transport path.
+#ifndef HYREMOTE_HAS_TRANSPORT_SECURITY
+        // The mechanism itself is absent from this build. Refusing here is the same "never a weaker listener"
+        // rule: no listener is opened, so nothing can be served without the configured authentication. This is
+        // decided before the descriptor is read, because no descriptor would make the mechanism exist.
         m_impl->setError(RemoteAccessErrorCode::SecurityUnavailable,
-                         QStringLiteral("the selected security profile is not available yet; refusing to open a weaker listener"));
+                         QStringLiteral("the selected security profile needs the transport-security capability, "
+                                        "which is not compiled into this build"));
+        return false;
+#else
+        QString descriptorError;
+        std::optional<detail::SecurityDescriptor> descriptor =
+            detail::loadSecurityDescriptor(m_impl->securityConfigFile, m_impl->securityProfile, descriptorError);
+        if (!descriptor) {
+            m_impl->setError(RemoteAccessErrorCode::InvalidConfiguration,
+                             descriptorError.isEmpty()
+                                 ? QStringLiteral("the security descriptor could not be loaded")
+                                 : descriptorError);
+            return false;
+        }
+
+        authenticationEnabled = true;
+        transportSecurity.vncAuthenticationRequired = true;
+        transportSecurity.password = descriptor->password;
+#endif
+    }
+
+    if (!authenticationEnabled && !m_impl->listenAddress.isLoopback()) {
+        m_impl->setError(
+            RemoteAccessErrorCode::InvalidConfiguration,
+            QStringLiteral("refusing a non-loopback listener while no authentication mode is enabled"));
         return false;
     }
 
@@ -410,7 +431,7 @@ bool RemoteAccess::start()
     }
 
     detail::TransportComponent transport =
-        detail::createDefaultTransport(m_impl->listenAddress, m_impl->port);
+        detail::createDefaultTransport(m_impl->listenAddress, m_impl->port, transportSecurity);
     if (!transport.transport) {
         const QString message = transport.error.isEmpty()
                                     ? QStringLiteral("no default HyRemote transport is available")

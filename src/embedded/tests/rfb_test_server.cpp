@@ -51,8 +51,10 @@ int main(int argc, char **argv)
     if (!ok || parsedPort <= 0 || parsedPort > 65535)
         return 64;
 
+    // This fixture exercises the insecure profile's explicit None handshake, so it asks for no authentication.
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost,
-                                                           static_cast<quint16>(parsedPort));
+                                                          static_cast<quint16>(parsedPort),
+                                                          HyRemote::detail::RfbSecurityConfig{});
     if (!transport)
         return 65;
 

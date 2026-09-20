@@ -25,11 +25,20 @@
 
 #include "hyremote/core/storage.hpp"
 
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+// The VNC challenge/response primitive is compiled only when the transport-security capability is available, so the
+// handshake includes it under the same condition: without OpenSSL the transport simply has no authentication to
+// offer, and RemoteAccess refuses a secure profile before a listener is opened.
+#include "vnc_auth.hpp"
+#endif
+
 namespace HyRemote::detail {
 namespace {
 
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
+// How long a failing handshake waits for its final SecurityResult to reach the client before the socket is aborted.
+constexpr int kHandshakeFlushMs = 1000;
 constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
 constexpr std::uint16_t kMaxEncodings = 1024;
 constexpr std::uint32_t kMaxCutTextBytes = 64 * 1024;
@@ -319,6 +328,7 @@ struct SharedFrameState
 enum class ClientPhase {
     AwaitVersion,
     AwaitSecurityChoice,
+    AwaitAuthResponse,
     AwaitClientInit,
     AwaitInitialFrame,
     Normal,
@@ -329,6 +339,8 @@ struct ClientState
     QPointer<QTcpSocket> socket;
     ClientPhase phase = ClientPhase::AwaitVersion;
     QByteArray input;
+    // The fresh random challenge this connection was given, kept only until its response is verified.
+    QByteArray authChallenge;
     PixelSpec pixels = nativePixelSpec();
     bool supportsDesktopSize = false;
     bool updateRequested = false;
@@ -366,11 +378,13 @@ class RfbWorker final : public QObject
 public:
     RfbWorker(QHostAddress address,
               quint16 port,
+              RfbSecurityConfig security,
               std::shared_ptr<SharedFrameState> frames,
               hyremote::InputHandler onInput,
               hyremote::TransportEventHandler onEvent)
         : m_address(std::move(address))
         , m_port(port)
+        , m_security(std::move(security))
         , m_frames(std::move(frames))
         , m_onInput(std::move(onInput))
         , m_onEvent(std::move(onEvent))
@@ -533,18 +547,15 @@ private:
         }
     }
 
-    void protocolFailure(ClientState &client, const char *message)
+    void deferClientAbort(ClientState &client)
     {
-        publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
         if (!client.socket)
             return;
 
         // A socket abort dispatches disconnected() synchronously, and that handler erases the ClientState
-        // from m_clients. Aborting here therefore destroyed the client from inside its own user: the caller
-        // still holds the reference (processClient) or is iterating the map (frameAvailable), which turned a
-        // protocol failure into a use-after-free. shutdown() suppresses the same re-entrancy by disconnecting
-        // the socket first; for a failing client the equivalent fix is to defer the abort to a clean
-        // event-loop turn, so the erase never happens inside another call frame.
+        // from m_clients. Aborting from processClient() would therefore destroy the state while its caller still
+        // holds a reference. Every handshake/protocol rejection uses the same deferred disconnect primitive so
+        // the event classification is independent from the lifetime/UAF protection.
         QPointer<QTcpSocket> guardedSocket(client.socket);
         QMetaObject::invokeMethod(
             this,
@@ -557,6 +568,20 @@ private:
                 socket->abort();
             },
             Qt::QueuedConnection);
+    }
+
+    void protocolFailure(ClientState &client, const char *message)
+    {
+        publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
+        deferClientAbort(client);
+    }
+
+    void authenticationRejected(ClientState &client, const char *message)
+    {
+        // Authentication policy/credential refusal is one transport event, not a generic protocol failure plus a
+        // second rejection. #170 consumes this exact event class for session/operator observability later.
+        publishEvent(hyremote::TransportEventCode::AuthenticationRejected, message);
+        deferClientAbort(client);
     }
 
     void readClient(QTcpSocket *socket)
@@ -589,7 +614,14 @@ private:
                     protocolFailure(client, "RFB client protocol version is unsupported; 3.7/3.8 required");
                     return;
                 }
-                const char security[] = {1, 1};  // one type: None
+                // Exactly one type is offered, and it is the configured one: a client is never invited to pick a
+                // weaker mode, and 'None' is only ever offered when the insecure profile asked for it explicitly.
+                // The RFB 3.8 form is a count followed by the type values.
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+                const char security[] = {1, m_security.vncAuthenticationRequired ? char(2) : char(1)};
+#else
+                const char security[] = {1, 1};  // one type: None; this build has no authentication to offer
+#endif
                 client.socket->write(security, 2);
                 client.phase = ClientPhase::AwaitSecurityChoice;
                 continue;
@@ -600,6 +632,25 @@ private:
                     return;
                 const std::uint8_t selected = byteAt(client.input, 0);
                 client.input.remove(0, 1);
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+                if (m_security.vncAuthenticationRequired) {
+                    if (selected != 2) {
+                        // Never downgrade: a connection refusing the only configured authentication type is an
+                        // authentication rejection, not a generic protocol diagnostic.
+                        authenticationRejected(client,
+                                               "RFB client did not select the configured authentication type");
+                        return;
+                    }
+                    QString challengeError;
+                    if (!generateVncAuthChallenge(client.authChallenge, challengeError)) {
+                        protocolFailure(client, "the authentication challenge could not be generated");
+                        return;
+                    }
+                    client.socket->write(client.authChallenge);
+                    client.phase = ClientPhase::AwaitAuthResponse;
+                    return;
+                }
+#endif
                 if (selected != 1) {
                     protocolFailure(client, "RFB client rejected the supported security type");
                     return;
@@ -610,6 +661,42 @@ private:
                 client.phase = ClientPhase::AwaitClientInit;
                 continue;
             }
+
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+            if (client.phase == ClientPhase::AwaitAuthResponse) {
+                // Bounded by construction: one challenge per connection, no retry, and the 16-byte read is the
+                // only thing this phase waits for - the handshake timeout closes a client that stalls.
+                if (client.input.size() < kVncAuthChallengeBytes)
+                    return;
+                const QByteArray response = client.input.left(kVncAuthChallengeBytes);
+                client.input.remove(0, kVncAuthChallengeBytes);
+
+                QString verifyError;
+                if (!verifyVncAuthResponse(m_security.password, client.authChallenge, response, verifyError)) {
+                    QByteArray failed;
+                    appendU32(failed, 1);  // SecurityResult failed: the client is told, and not asked to retry
+                    if (client.socket) {
+                        client.socket->write(failed);
+                        // The result has to reach the client before the connection goes away, or the peer sees an
+                        // abrupt reset instead of the protocol's own failure answer. Bounded, and only on the
+                        // failure path, which ends this connection anyway.
+                        client.socket->flush();
+                        client.socket->waitForBytesWritten(kHandshakeFlushMs);
+                    }
+                    client.authChallenge.clear();
+                    authenticationRejected(client,
+                                           "RFB client failed the configured authentication");
+                    return;
+                }
+
+                client.authChallenge.clear();
+                QByteArray result;
+                appendU32(result, 0);  // SecurityResult OK
+                client.socket->write(result);
+                client.phase = ClientPhase::AwaitClientInit;
+                continue;
+            }
+#endif
 
             if (client.phase == ClientPhase::AwaitClientInit) {
                 if (client.input.size() < 1)
@@ -1071,6 +1158,7 @@ private:
 
     QHostAddress m_address;
     quint16 m_port = 0;
+    RfbSecurityConfig m_security;
     std::shared_ptr<SharedFrameState> m_frames;
     hyremote::InputHandler m_onInput;
     hyremote::TransportEventHandler m_onEvent;
@@ -1084,9 +1172,10 @@ private:
 class RfbTransport final : public hyremote::Transport
 {
 public:
-    RfbTransport(QHostAddress address, quint16 port)
+    RfbTransport(QHostAddress address, quint16 port, RfbSecurityConfig security)
         : m_address(std::move(address))
         , m_port(port)
+        , m_security(std::move(security))
         , m_frames(std::make_shared<SharedFrameState>())
     {
     }
@@ -1108,7 +1197,7 @@ public:
             return false;
 
         auto thread = std::make_unique<QThread>();
-        auto *worker = new RfbWorker(m_address, m_port, m_frames, std::move(onInput), std::move(onEvent));
+        auto *worker = new RfbWorker(m_address, m_port, m_security, m_frames, std::move(onInput), std::move(onEvent));
         worker->moveToThread(thread.get());
         QObject::connect(thread.get(), &QThread::finished, worker, &QObject::deleteLater);
         thread->start();
@@ -1175,6 +1264,7 @@ public:
 private:
     QHostAddress m_address;
     quint16 m_port = 0;
+    RfbSecurityConfig m_security;
     std::shared_ptr<SharedFrameState> m_frames;
     std::mutex m_lifecycleMutex;
     std::unique_ptr<QThread> m_thread;
@@ -1184,11 +1274,12 @@ private:
 }  // namespace
 
 std::unique_ptr<hyremote::Transport> createRfbTransport(const QHostAddress &listenAddress,
-                                                        quint16 port)
+                                                        quint16 port,
+                                                        const RfbSecurityConfig &security)
 {
     if (listenAddress.isNull() || port == 0)
         return {};
-    return std::make_unique<RfbTransport>(listenAddress, port);
+    return std::make_unique<RfbTransport>(listenAddress, port, security);
 }
 
 }  // namespace HyRemote::detail
