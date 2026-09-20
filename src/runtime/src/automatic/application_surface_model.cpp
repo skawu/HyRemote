@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace HyRemote::Qpa {
+namespace HyRemote::Runtime::Automatic {
 
 void ApplicationSurfaceModel::upsert(SurfaceId id, const QRect &globalGeometry, bool visible)
 {
@@ -127,8 +127,6 @@ const SurfaceRecord *ApplicationSurfaceModel::find(SurfaceId id) const
 
 quint64 ApplicationSurfaceModel::nextStackSerial()
 {
-    // Wraparound is practically unreachable, but keeping 0 reserved for never-visible records makes
-    // behavior deterministic even if an extreme synthetic stress test reaches the integer limit.
     if (m_nextStackSerial == std::numeric_limits<quint64>::max()) {
         QVector<SurfaceRecord> ordered = visibleBackToFront();
         quint64 serial = 1;
@@ -141,4 +139,4 @@ quint64 ApplicationSurfaceModel::nextStackSerial()
     return m_nextStackSerial++;
 }
 
-}  // namespace HyRemote::Qpa
+}  // namespace HyRemote::Runtime::Automatic
