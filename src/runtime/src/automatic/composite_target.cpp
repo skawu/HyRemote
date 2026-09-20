@@ -23,7 +23,7 @@
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
 
-namespace HyRemote::Qpa {
+namespace HyRemote::Runtime::Automatic {
 namespace {
 
 struct SurfacePlacement
@@ -465,10 +465,6 @@ private:
 
         ::HyRemote::detail::TargetComponents components = state->resolver(target, false);
         if (!components.supported || !components.capture) {
-            // "No built-in adapter supports this surface" is a build/configuration property, not a transient
-            // condition. Reporting it as recoverable let the session stay Running and ship transparent frames
-            // for a surface it can never capture, with no diagnostic. Report it as unrecoverable so Core faults
-            // instead of silently claiming to serve the application.
             publishEvent(state,
                          hyremote::CaptureEventCode::BackendFailure,
                          "no built-in capture adapter supports a composite child surface",
@@ -607,7 +603,7 @@ void CompositeTarget::notifySurfaceUnavailable(SurfaceId id)
 {
     // Invoke a snapshot so a handler can unregister itself as part of capture teardown without
     // invalidating this iteration. Surface/model mutations and capture orchestration are GUI-thread
-    // owned in QPA mode; handler state itself remains guarded by the capture source.
+    // owned by the shared automatic runtime; handler state itself remains guarded by the capture source.
     const auto handlers = m_surfaceUnavailableHandlers.values();
     for (const SurfaceUnavailableHandler &handler : handlers) {
         if (handler)
@@ -692,9 +688,9 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     result.capture = std::make_unique<CompositeCaptureSource>(this, resolveBuiltinTarget);
     if (remoteInputEnabled) {
         result.error = QStringLiteral(
-            "QPA multi-surface remote input is not enabled until the composite input-routing gate is present");
+            "multi-surface remote input is not enabled until the composite input-routing gate is present");
     }
     return result;
 }
 
-}  // namespace HyRemote::Qpa
+}  // namespace HyRemote::Runtime::Automatic
