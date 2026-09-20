@@ -95,7 +95,10 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 
     if(TARGET Qt6::Core AND TARGET Qt6::Network)
-        add_subdirectory(src/integrations/cpp remoteaccess)
+        # Shared runtime is a first-class implementation layer, not a child of any integration frontend.
+        # Keep the historical `remoteaccess` binary directory so existing artifact/deployment paths do not move.
+        add_subdirectory(src/runtime remoteaccess)
+        add_subdirectory(src/integrations/cpp remoteaccess/cpp)
     elseif(PROJECT_IS_TOP_LEVEL)
         message(STATUS "  RemoteAccess target skipped: Qt 6.8+ Core/Network not found")
     else()
