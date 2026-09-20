@@ -27,7 +27,7 @@ integration payloads. This index is organised by reader intent rather than by de
 
 **Process content** - issue numbers and tracking, acceptance scheduling and status boards, milestone chronicles,
 investigation logs and one-off checklists - is excluded from the user-facing zone by definition. It belongs to the
-internal zone, or to the research evidence under `research/`.
+internal zone, or to an evaluation record under `docs/internal/`.
 
 ## 3. Reference (product final state)
 

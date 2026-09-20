@@ -75,6 +75,6 @@ backmerge/vX.Y.Z.W
 hotfix/<issue>-<topic>
 ```
 
-Temporary spike branches may be used for bounded experiments, but once their evidence is recorded under `research/` and the related PR/Issue is closed, the branch ref is deleted under the same lifecycle rule.
+Temporary spike branches may be used for bounded experiments, but once the conclusion is recorded as an evaluation record under `docs/internal/` and the related PR/Issue is closed, the branch ref is deleted under the same lifecycle rule.
 
 Do not create long-lived branches named after architectural layers (`core/*`, `qpa/*`, `qml/*`, etc.) as permanent parallel product lines. Product architecture is represented by repository modules; work sequencing is represented by Issues/PRs.

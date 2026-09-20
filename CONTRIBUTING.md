@@ -25,7 +25,8 @@ Repository paths are architecture boundaries, not arbitrary folders. Follow [`do
 - `src/` contains QML/QPA integration payloads over the same runtime;
 - root `tests/` contains cross-module/consumer/release evidence;
 - module-private tests stay with their module;
-- `research/` contains non-product experiments/evidence; it is never part of a build;
+- there is no separate research tree: an experiment's conclusion is recorded under `docs/internal/**`, and a runnable
+  experiment either becomes product code in `src/` or leaves only its conclusion;
 - `assets/` contains non-code assets.
 
 Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `spikes/` or `logo/` directories as compatibility copies.
@@ -144,7 +145,7 @@ Rules for the user-facing zones:
   that each cover a fragment; repository documents are not a place to record the path that produced them.
 - **No process content**: issue numbers and tracking, acceptance scheduling/status, milestone chronicles,
   investigation logs and one-off checklists do not belong to the user-facing zones. Keep them in the internal
-  zone, or as evidence under `research/` where they actually belong.
+  zone, or as an evaluation record under `docs/internal/**` where it actually belongs.
 - **Moves update references**: when a document moves, update every reference in the repository in the same
   change. Do not leave forwarding copies - with one deliberate exception: a path that a release-readiness gate
   still lists may keep a short pointer file until the gate's path list is updated. Such pointers carry no

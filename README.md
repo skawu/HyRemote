@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+  <img src="assets/logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
 </p>
 
 <h1 align="center">HyRemote</h1>
@@ -118,7 +118,7 @@ The installed SDK does **not** expose `HyRemote::QpaPlatform` as an application 
 
 ## Build
 
-A plain source build is intentionally product-only: tests and examples are not built unless explicitly requested, and `research/` is never built at all.
+A plain source build is intentionally product-only: tests and examples are not built unless explicitly requested.
 
 ```bash
 cmake -S . -B build -G Ninja \
@@ -171,8 +171,7 @@ examples/            usage examples E1-E6; not shipped
 docs/                documentation, zoned by reader (see docs/README.md)
 tests/               cross-module, consumer and release-readiness suites
 cmake/               build, package and deployment modules
-assets/branding/     branding assets; never built
-research/            non-product architecture evidence; never built
+assets/logo/         the product logo, used in documentation and the UI
 .github/             CI and repository governance
 ```
 
@@ -241,7 +240,7 @@ Reference/setup and delivery guides:
 - [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
 - [`docs/internal/v1-ga-acceptance.md`](docs/internal/v1-ga-acceptance.md) — GA release gate
 
-Internal Core/capture/transport/QPA implementation documents under `docs/` and `research/` are maintainer material; ordinary users do not need them to integrate HyRemote.
+Maintainer material under `docs/internal/**` (implementation history, evaluation records, runbooks) is not needed to integrate HyRemote.
 
 ## Security
 

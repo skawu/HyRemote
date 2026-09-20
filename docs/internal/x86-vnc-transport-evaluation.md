@@ -56,7 +56,7 @@ Recorded run `34920869266` exercised the bridge on both reference desktop OS fam
 
 That result proved **FFI feasibility only**. It never established that Rust should become the product backend or that SDK consumers should install Rust/Cargo.
 
-The Rust spike source may remain under `research/vnc-transport-rust-ffi/` for historical/future research. Its dedicated GitHub Actions workflows have been retired from the active V1 CI surface.
+The Rust spike source was removed from the repository once this decision was recorded; it remains retrievable from git history at commit `3e6e191`. Its dedicated GitHub Actions workflows had already been retired from the active V1 CI surface. This document is the record that matters: the evaluation, its measurements and why the bounded C++ RFB transport was chosen instead.
 
 ## Historical rustvncserver blockers
 

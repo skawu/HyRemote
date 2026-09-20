@@ -35,8 +35,8 @@ endfunction()
 # again. Conceptual prose such as "Core" or "architecture research" is intentionally not forbidden.
 require_doc_token("docs/release-package-manifest.md" "`src/core/` low-level implementation headers and tests"
                   "canonical Core source path")
-require_doc_token("docs/release-package-manifest.md" "architecture research/evidence under `research/`"
-                  "canonical research/evidence path")
+require_doc_token("docs/release-package-manifest.md" "maintainer documentation under `docs/internal/`"
+                  "maintainer documentation path")
 forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implementation headers and tests"
                  "legacy root Core path")
 forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
@@ -66,8 +66,8 @@ forbid_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
                  "`remoteaccess/src/"
                  "removed root RemoteAccess source citation")
 
-require_doc_token("docs/internal/x86-vnc-transport-evaluation.md" "`research/vnc-transport-rust-ffi/`"
-                  "canonical historical Rust research path")
+require_doc_token("docs/internal/x86-vnc-transport-evaluation.md" "retrievable from git history at commit `3e6e191`"
+                  "retired Rust spike recovery pointer")
 forbid_doc_token("docs/internal/x86-vnc-transport-evaluation.md" "`spikes/vnc-transport-rust-ffi/`"
                  "removed historical Rust spike path")
 
@@ -77,16 +77,16 @@ require_doc_token("docs/internal/core-architecture.md" "Status: **ARCH-01 propos
                   "proposal-era Core architecture status")
 require_doc_token("docs/internal/core-architecture.md" "Canonical authority: `docs/architecture.md` is the frozen V1 architecture"
                   "frozen architecture authority")
-require_doc_token("docs/internal/core-architecture.md" "`research/` trees stay non-production"
-                  "canonical research path in Core architecture history")
+require_doc_token("docs/internal/core-architecture.md" "No experimental tree is kept in the repository"
+                  "retired research-tree statement in Core architecture history")
 
 require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.cmake enforces the include/declaration/link part"
                   "canonical Core dependency-guard path and scope")
 
 # Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
 # the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
-require_doc_token("docs/dependency-policy.md" "Source under `research/` may remain as historical research"
-                  "canonical research path in dependency policy")
+require_doc_token("docs/dependency-policy.md" "Historical experiments are recorded as documents under `docs/internal/`"
+                  "retired experiment-tree policy in dependency policy")
 forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
                  "legacy spikes path in dependency policy")
 require_doc_token("docs/dependency-policy.md" "### Repository test/CI-only tools"
@@ -164,4 +164,4 @@ endforeach()
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
-    "(canonical source/research paths + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
+    "(canonical source layout + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")

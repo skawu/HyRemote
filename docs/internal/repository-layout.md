@@ -61,15 +61,12 @@ HyRemote/
 │  ├─ proposals/                 #   proposal-era design input; explicitly not present-day truth
 │  └─ acceptance/                #   recorded acceptance evidence, one directory per candidate or version
 │
-├─ research/                     # non-product architecture evidence; never built, never packaged, never linked
-│  └─ vnc-transport-rust-ffi/    #   the Rust FFI transport evaluation (evaluated, not adopted for V1)
-│
 ├─ cmake/                        # build, package and deployment modules
 │  ├─ HyRemoteProjectOptions.cmake   #   the frozen option defaults (the consumer-visible contract)
 │  ├─ HyRemoteInstall.cmake / HyRemoteConfig.cmake.in / HyRemoteDeploy.cmake / HyRemoteReleaseProfile.cmake
 │  └─ toolchains/                #   cross-compilation toolchain files
 │
-├─ assets/branding/              # repository/product branding; never part of the build graph
+├─ assets/logo/              # the product logo, used in documentation and the UI; never part of the build graph
 │
 └─ .github/                      # CI and repository governance
    ├─ workflows/                 #   one workflow per integration/acceptance surface
@@ -89,7 +86,6 @@ either behind it or beside it.
 | Declarative payload | `src/qml/HyRemote` | `import HyRemote` for QML applications |
 | Transparent payload | `src/qpa` | `qhyremote`, a Qt platform plugin that proxies an unmodified application |
 | Nothing | `src/core` | internal only: not installed, not linkable, no stability promise |
-| Nothing | `research/` | evidence; it never appears in a package |
 
 **Technical architecture - build graph, dependency direction, artifacts.** The root `CMakeLists.txt` maps each source
 directory to a *stable binary directory* (`add_subdirectory(<source> <binary>)`), so a source reorganisation never
@@ -107,7 +103,7 @@ because they have different audiences, different lifetimes and different review 
 | What is this product and how do I use it? | `README.md`, `docs/guide/**`, `docs/getting-started/**`, `examples/**` | application developers, evaluators |
 | What is contractually promised, and until when? | `docs/*.md` (final-state contracts), `NOTICE.md`, `LICENSE`, `SECURITY.md` | integrators, legal/security review |
 | How is it built, released and administered? | `cmake/**`, `.github/**`, `docs/internal/**`, `tests/release-readiness/**` | maintainers, release managers |
-| Why is it like this? | `docs/adr/**`, `docs/internal/**` (evaluation records), `research/**` | maintainers, future contributors |
+| Why is it like this? | `docs/adr/**`, `docs/internal/**` (evaluation records) | maintainers, future contributors |
 | Was it actually accepted? | `docs/acceptance/**` (evidence), `docs/releases/**` (what shipped) | release owners, auditors |
 
 ### Where does new work go?
@@ -123,7 +119,7 @@ because they have different audiences, different lifetimes and different review 
 | A decision that must outlive the chat that produced it | `docs/adr/**` | decisions are evidence, and they are cited by the gates |
 | Acceptance evidence for a candidate | `docs/acceptance/<candidate>/` | evidence is not a test case |
 | A cross-module or product-level test | `tests/<scope>/` | module-private tests stay colocated |
-| A measurement or spike that produced a decision | `research/**`, plus its conclusion in `docs/internal/` | evidence is kept, build inputs are not |
+| A measurement or spike that produced a decision | the conclusion as an evaluation record under `docs/internal/**`, with the runnable evidence cited from git history | evidence is kept, unattached code is not |
 
 ## V1 layout freeze
 
@@ -182,13 +178,20 @@ Integration payloads may depend on the product runtime. Product Core must not de
 - Usage examples that combine HyRemote with a **third-party open-source application** belong here too: they are the documented way a user reproduces an integration on their own machine, so their README carries the exact application version, the exact HyRemote candidate, the Qt version and the launch/deployment commands, together with the caveat that they are verification examples and not a support claim.
 - Such an example must be opt-in (its own CMake option, OFF by default), must never vendor third-party sources into this repository (fetch them at a recorded commit into an ignored build directory instead), must not enter the default build or the acceptance graph, and must never become an implementation location for product logic. This is the rule for **examples**: a third-party **dependency** the product links is a different case, governed by `dependency-policy.md`, where the project may carry it as a submodule at a pinned release when the user's own environment cannot provide it.
 
-### `research/`
+### Research: conclusions are kept, orphan experiment trees are not
 
-`research/` holds non-product architecture evidence: the measurements and decisions that are worth keeping as an audit trail. It is not a V1 release dependency, no CI workflow builds it and no product module may reference it. A successful experiment becomes product code only through an explicit architecture/product decision and a migration into `src/`.
+There is deliberately **no `research/` directory**. An experiment's value is the decision it produced, and decisions are
+documented, not left as unattached code: the measurement and its conclusion are recorded under `docs/internal/**`
+(evaluation records) and the runnable evidence is retrievable from git history at the commit that removed it, cited by
+the document that needed it. A successful experiment becomes product code only through an explicit architecture/product
+decision and a migration into `src/`; until then it leaves a conclusion, not a directory. `tests/release-readiness/check_repository_layout.cmake`
+fails the build if a `research/` root or an `add_subdirectory(research/...)` mapping ever returns.
 
 ### `assets/`
 
-`assets/branding` contains non-code branding material. Assets do not participate in normal product compilation or package dependency discovery.
+`assets/logo` contains the product mark itself - the logo files used in documentation and in the UI. It is not a
+developer material drop: anything that is not the product's own non-code identity does not belong here. Assets never
+participate in product compilation or package dependency discovery.
 
 ## Source paths versus build paths
 
@@ -232,12 +235,13 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
 - **`examples/` grows by integration mode and usage scenario.** The E-numbering continues, one directory per
   example, and examples that combine HyRemote with third-party open-source applications are opt-in, unfetched
   by default and never an implementation location for product logic (see the ownership section above).
-- **`assets/` holds non-code material only** (`assets/branding` today; packaging icons or desktop-entry
-  material for a future platform are sibling directories under `assets/`).
+- **`assets/` holds the product's non-code identity only.** `assets/logo/` is the mark used by documentation and the
+  UI; packaging icons or desktop-entry material for a future platform are sibling directories under `assets/`, each
+  named for what it is rather than for a generic "asset" role.
 - **`cmake/` owns build, package and deployment modules.** Platform-specific deployment is an additional module
   here, never code inside product sources.
-- **`research/` stays non-product.** A successful experiment becomes product code only through an explicit
-  architecture decision and a migration into `src/`.
+- **Research leaves a conclusion, not a directory.** A successful experiment becomes product code only through an
+  explicit architecture decision and a migration into `src/`; otherwise its record goes under `docs/internal/**`.
 
 ## Forbidden legacy root directories
 

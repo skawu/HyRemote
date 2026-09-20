@@ -265,8 +265,7 @@ src/qml/         declarative payload
 src/qpa/         exact-Qt Transparent QPA payload
 tests/                    cross-module/consumer/release evidence
 examples/                 product examples
-research/                 non-product architecture evidence
-assets/branding/          non-build branding assets
+assets/logo/          non-build branding assets
 cmake/                    package/deployment/build modules
 docs/                     product and maintainer documentation
 ```

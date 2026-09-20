@@ -35,7 +35,7 @@ transports and encoding remain out of scope.
 
 Build: `HYREMOTE_BUILD_CORE` (ON by default) with `HYREMOTE_BUILD_TESTS`; the library is
 `hyremote-core` with the `HyRemote::Core` alias and headers under `hyremote/core/`. The
-`research/` trees stay non-production and are not linked by Core.
+No experimental tree is kept in the repository, so Core links nothing but its own sources.
 
 ## 1. Canonical pipeline
 

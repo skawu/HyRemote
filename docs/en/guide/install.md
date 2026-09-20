@@ -46,7 +46,7 @@ instead of pairing one runtime target with QML/QPA metadata from another HyRemot
 ### 3.1 Plain product build
 
 A plain configure is intentionally product-only: it builds the standard C++
-`HyRemote::RemoteAccess` path and does not build repository tests, examples or research code.
+`HyRemote::RemoteAccess` path and does not build the repository's tests or examples.
 
 Windows (x64 MSVC developer environment):
 
@@ -189,7 +189,7 @@ add_executable(MyApp main.cpp)
 target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
 ```
 
-When HyRemote is included as a subproject, its own tests and examples default to **OFF**, and nothing under `research/` is ever part of the build
+When HyRemote is included as a subproject, its own tests and examples default to **OFF**, and there is no experimental tree in the build at all
 automatically; applications do not need to know or override those developer-only switches.
 `add_subdirectory(... EXCLUDE_FROM_ALL)` is supported: HyRemote's source-tree payloads remain internal build
 targets, the deployment helper adds only the local build dependencies needed to materialize the selected payload,

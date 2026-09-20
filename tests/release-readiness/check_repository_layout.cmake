@@ -48,8 +48,7 @@ set(required_directories
     "src/qpa"
     "tests"
     "examples"
-    "research"
-    "assets/branding"
+    "assets/logo"
     "cmake"
     "docs"
     ".github")
@@ -66,7 +65,8 @@ set(forbidden_root_directories
     "qpa"
     "spikes"
     "logo"
-    "integrations")
+    "integrations"
+    "research")
 foreach(path IN LISTS forbidden_root_directories)
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
         message(FATAL_ERROR "repository-layout: legacy root directory must not return: ${path}")
@@ -124,7 +124,7 @@ foreach(module_cmake IN ITEMS
     read_repo_file("${module_cmake}" module_text)
     forbid_token("${module_text}" "research/"
                  "product/integration module depends on non-product research (${module_cmake})")
-    forbid_token("${module_text}" "assets/branding"
+    forbid_token("${module_text}" "assets/logo"
                  "product/integration module depends on branding assets (${module_cmake})")
 endforeach()
 
