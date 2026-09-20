@@ -1,16 +1,15 @@
 include(GNUInstallDirs)
 
-# Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
+# Transparent QPA — exact Qt 6.8.3 private-ABI package.
 # Private QPA types remain isolated here while the payload reuses the common HyRemote runtime shared
 # with the C++/QML/Generic integration frontends.
 get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 
 # Application surface discovery/composition/input routing is owned by src/runtime. The QPA payload
-# contains only QPA-specific bootstrap/interception/configuration code and links the one shared runtime.
+# contains only QPA-specific Factory Trampoline bootstrap/configuration code and links the one shared runtime.
 add_library(hyremote-qpa-platform MODULE
     hyremote_platform_plugin.cpp
-    hyremote_qpa_interception.cpp
-    hyremote_qpa_remote_controller.cpp
+    qpa_config.cpp
 )
 add_library(HyRemote::QpaPlatform ALIAS hyremote-qpa-platform)
 
@@ -30,26 +29,10 @@ endif()
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform PRIVATE
     "${_hyremote_root_dir}/src/runtime/src"
-    # QPA consumes only source-private runtime bootstrap declarations here. It does not link Core
-    # directly; qhyremote reuses the single shared runtime and Core remains internal/static composition.
-    "${_hyremote_root_dir}/src/core/include"
 )
 target_link_libraries(hyremote-qpa-platform
     PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate HyRemote::RemoteAccess
 )
-
-if(TARGET Qt6::Widgets)
-    target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Widgets)
-endif()
-if(HYREMOTE_BUILD_WIDGETS_ADAPTER AND TARGET Qt6::Widgets)
-    target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
-endif()
-if(TARGET Qt6::Quick)
-    target_link_libraries(hyremote-qpa-platform PRIVATE Qt6::Quick)
-endif()
-if(HYREMOTE_BUILD_QUICK_ADAPTER AND TARGET Qt6::Quick)
-    target_compile_definitions(hyremote-qpa-platform PRIVATE HYREMOTE_QPA_HAS_QUICK=1)
-endif()
 
 target_compile_definitions(hyremote-qpa-platform PRIVATE
     HYREMOTE_QPA_QT_VERSION_MAJOR=6
