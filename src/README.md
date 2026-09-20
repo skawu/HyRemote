@@ -14,7 +14,7 @@ The directory names intentionally describe architectural ownership rather than h
 
 `core` and `runtime` are shared implementation layers. `integrations/cpp`, `integrations/qml`, `integrations/generic` and `integrations/qpa` are **four peer integration frontends**.
 
-The target dependency direction is:
+The dependency direction is:
 
 ```text
 integrations/cpp --------\
@@ -23,7 +23,7 @@ integrations/generic ----/
 integrations/qpa --------/
 ```
 
-No frontend may depend on another frontend as an architectural requirement.
+The build graph follows the same ownership: the repository root creates `core` and `runtime` first, then adds each enabled `integrations/*` frontend as a peer consumer. No integration frontend creates, enters or owns the shared runtime layer, and no frontend may depend on another frontend as an architectural requirement.
 
 ## Core boundary
 
@@ -86,9 +86,9 @@ HyRemote does not create Rockchip/NXP/TI-specific QPA product personalities. QPA
 
 ## Stable binary/build paths
 
-Source ownership and build artifact paths are separate concerns. The root build continues to map each source directory to an explicit binary directory so an ownership migration does not accidentally relocate installed/deployment artifacts.
+Source ownership and build artifact paths are separate concerns. The root build maps `src/runtime` to the established `remoteaccess` binary directory, while the Embedded C++ frontend uses a nested binary directory for generated facade artifacts. The `HyRemoteRemoteAccess` library name and installed C++ API remain stable; moving source ownership does not imply an artifact/API rename.
 
-The architecture migration for #219 may preserve existing artifact names while source and target ownership are corrected. Artifact/API changes require their own explicit compatibility decision; they are not implied by moving implementation code.
+The architecture migration for #219 preserves existing artifact names while source and target ownership are corrected. Artifact/API changes require their own explicit compatibility decision.
 
 ## Repository ownership
 
