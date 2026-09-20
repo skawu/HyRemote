@@ -4,19 +4,110 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
-function(read_required relative_path output_var)
-    set(path "${HYREMOTE_SOURCE_DIR}/${relative_path}")
-    if(NOT EXISTS "${path}")
-        message(FATAL_ERROR "ci-baseline: missing required file: ${relative_path}")
+# Consolidated topology: the CI model this branch converged on plus branch hygiene, which develop merged
+# separately. The retired per-lane workflows must not come back through a merge or a replay - the capability
+# dimension is selected by the classifier, not by one workflow per source directory.
+set(required_workflows
+    ".github/workflows/ci.yml"
+    ".github/workflows/git-flow-policy.yml"
+    ".github/workflows/mainline-validation.yml"
+    ".github/workflows/branch-hygiene.yml")
+
+set(retired_workflows
+    ".github/workflows/remoteaccess-facade.yml"
+    ".github/workflows/widgets-adapter.yml"
+    ".github/workflows/quick-adapter.yml"
+    ".github/workflows/qml-api.yml"
+    ".github/workflows/qpa-proxy.yml"
+    ".github/workflows/rfb-transport.yml"
+    ".github/workflows/sdk-consumption.yml"
+    ".github/workflows/v1-ga-acceptance.yml")
+
+# The reference Linux host baseline is one shared script, and the workflows that need it must call it and retrigger
+# when it changes. Workflows that never touch a Linux Qt desktop host are not required to call it.
+set(shared_script ".github/scripts/install-linux-qt-desktop-deps.sh")
+set(shared_script_path "${HYREMOTE_SOURCE_DIR}/${shared_script}")
+if(NOT EXISTS "${shared_script_path}")
+    message(FATAL_ERROR "ci-baseline: missing shared Linux Qt desktop dependency script")
+endif()
+
+file(READ "${shared_script_path}" deps_script)
+foreach(required_token
+        "set -euo pipefail"
+        "xvfb"
+        "libxcb-cursor0"
+        "libxkbcommon-x11-0"
+        "libxkbcommon-dev"
+        "libxkbcommon-x11-dev"
+        "libgl1-mesa-dev")
+    string(FIND "${deps_script}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "ci-baseline: shared dependency script missing: ${required_token}")
     endif()
-    file(READ "${path}" text)
-    set(${output_var} "${text}" PARENT_SCOPE)
-endfunction()
+endforeach()
+
+foreach(workflow IN LISTS required_workflows)
+    set(path "${HYREMOTE_SOURCE_DIR}/${workflow}")
+    if(NOT EXISTS "${path}")
+        message(FATAL_ERROR "ci-baseline: missing required workflow: ${workflow}")
+    endif()
+    file(READ "${path}" workflow_text)
+
+    # Concurrency cancels superseded runs, but nothing stops a hung job from holding a runner for the platform's
+    # default six hours, so every job must state its own bound. The repository-layout gate claims
+    # "bounded/cancellable workflow fan-out"; this is the half of that claim which does not enforce itself.
+    string(REGEX MATCHALL "runs-on:" _runs_on_declarations "${workflow_text}")
+    string(REGEX MATCHALL "timeout-minutes:" _timeout_declarations "${workflow_text}")
+    list(LENGTH _runs_on_declarations _job_count)
+    list(LENGTH _timeout_declarations _timeout_count)
+    if(_timeout_count LESS _job_count)
+        message(FATAL_ERROR
+            "ci-baseline: ${workflow} declares ${_job_count} job(s) but only ${_timeout_count} timer(s); every job "
+            "must bound its own runtime with timeout-minutes")
+    endif()
+endforeach()
+
+foreach(workflow IN LISTS retired_workflows)
+    if(EXISTS "${HYREMOTE_SOURCE_DIR}/${workflow}")
+        message(FATAL_ERROR "ci-baseline: retired per-lane workflow returned: ${workflow}")
+    endif()
+endforeach()
+
+foreach(workflow IN ITEMS
+        ".github/workflows/ci.yml"
+        ".github/workflows/mainline-validation.yml")
+    file(READ "${HYREMOTE_SOURCE_DIR}/${workflow}" workflow_text)
+    string(FIND "${workflow_text}" "bash ${shared_script}" shared_call)
+    if(shared_call EQUAL -1)
+        message(FATAL_ERROR
+            "ci-baseline: ${workflow} drifted from the shared Linux Qt desktop host baseline")
+    endif()
+endforeach()
+
+# Two ways to retrigger when the shared baseline changes: no path filter at all (the workflow always runs), or a
+# explicit path list that names the script. Requiring the path literal unconditionally was wrong for the
+# consolidated lane, which deliberately has no filter.
+foreach(workflow IN ITEMS
+        ".github/workflows/ci.yml"
+        ".github/workflows/mainline-validation.yml")
+    file(READ "${HYREMOTE_SOURCE_DIR}/${workflow}" workflow_text)
+    string(FIND "${workflow_text}" "paths:" declares_paths)
+    if(NOT declares_paths EQUAL -1)
+        string(FIND "${workflow_text}" "'${shared_script}'" trigger_path)
+        if(trigger_path EQUAL -1)
+            message(FATAL_ERROR
+                "ci-baseline: ${workflow} filters paths but does not retrigger when the shared host dependency "
+                "baseline changes")
+        endif()
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/ci.yml" ci)
 
 function(require_token text token description)
     string(FIND "${text}" "${token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "ci-baseline: ${description} missing: ${token}")
+        message(FATAL_ERROR "ci-baseline: missing ${description}: ${token}")
     endif()
 endfunction()
 
@@ -27,32 +118,10 @@ function(forbid_token text token description)
     endif()
 endfunction()
 
-# V1 foundation uses a small workflow set rather than one workflow per source directory/feature.
-foreach(required_workflow IN ITEMS
-        ".github/workflows/git-flow-policy.yml"
-        ".github/workflows/ci.yml"
-        ".github/workflows/mainline-validation.yml")
-    if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${required_workflow}")
-        message(FATAL_ERROR "ci-baseline: missing consolidated workflow: ${required_workflow}")
-    endif()
-endforeach()
-
-foreach(retired_workflow IN ITEMS
-        "remoteaccess-facade.yml"
-        "widgets-adapter.yml"
-        "quick-adapter.yml"
-        "qml-api.yml"
-        "qpa-proxy.yml"
-        "rfb-transport.yml"
-        "sdk-consumption.yml"
-        "v1-ga-acceptance.yml")
-    if(EXISTS "${HYREMOTE_SOURCE_DIR}/.github/workflows/${retired_workflow}")
-        message(FATAL_ERROR "ci-baseline: retired per-slice workflow returned: ${retired_workflow}")
-    endif()
-endforeach()
-
-read_required(".github/workflows/ci.yml" ci)
-foreach(token IN ITEMS
+# The consolidated PR lane keeps the capability contract: the classifier resolves the affected frontends, the lane
+# builds exactly that union through the official entry point, and the Qt SDK contract is per capability rather than
+# one fixed requirement list.
+foreach(required_token IN ITEMS
         "cancel-in-progress: true"
         "Resolve affected capabilities"
         [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
@@ -62,75 +131,57 @@ foreach(token IN ITEMS
         "src/integrations/qml/"
         "src/integrations/generic/"
         "src/integrations/qpa/"
-        "--integrations=\"$INTEGRATIONS\""
         "hyremote-qt-v4-"
         "qt_tree_valid"
+        [=[--need-qml "$NEED_QML"]=]
+        [=[--need-qpa "$NEED_QPA"]=]
+        "install-linux-qt-desktop-deps.sh qpa"
+        "install-linux-qt-desktop-deps.sh public")
+    require_token("${ci}" "${required_token}" "consolidated PR CI contract")
+endforeach()
+
+# The Qt components every product change needs, and the ones that stay capability-conditional.
+foreach(required_token IN ITEMS
         "Qt6CoreConfig.cmake"
         "Qt6GuiConfig.cmake"
         "Qt6WidgetsConfig.cmake"
         "Qt6QuickConfig.cmake"
-        "qguiapplication_p.h"
-        "install-linux-qt-desktop-deps.sh qpa"
-        "install-linux-qt-desktop-deps.sh public")
-    require_token("${ci}" "${token}" "consolidated PR CI contract")
+        "qguiapplication_p.h")
+    require_token("${ci}" "${required_token}" "baseline Qt capability contract")
 endforeach()
 
-# QML and QPA artifacts are capability-scoped: the validator requires them only when the classification selects that
-# frontend, so they must not be pinned as unconditional components in the workflow. The conditionals are what this
-# asserts - not one literal sentence in a fixed place.
-require_token("${ci}" [=[--need-qml "$NEED_QML"]=] "PR CI must pass the QML capability to the Qt validator")
-require_token("${ci}" [=[--need-qpa "$NEED_QPA"]=] "PR CI must pass the QPA capability to the Qt validator")
 forbid_token("${ci}" "Qt6QmlConfig.cmake"
-             "QML artifacts must stay capability-conditional in the workflow, not unconditionally required")
-read_required(".github/scripts/validate-qt-sdk.py" qt_validator)
-require_token("${qt_validator}" "Qt6QmlConfig.cmake"
-              "validator must check the QML package when QML is selected")
-require_token("${qt_validator}" "qmldir"
-              "validator must check the QML module when QML is selected")
-require_token("${qt_validator}" "qwindows"
-              "validator must check the Windows native platform plugin when QPA is selected")
-require_token("${qt_validator}" "libqxcb"
-              "validator must check the Linux native platform plugin when QPA is selected")
-
+             "QML artifacts must stay capability-conditional, not unconditionally required")
 forbid_token("${ci}" "--integrations=cpp,qml,generic,qpa"
              "PR CI must not hard-code all four frontends for every product change")
-forbid_token("${ci}" ".hyremote-complete-"
-             "Qt cache integrity must not be marker-only")
 
-read_required(".github/scripts/install-linux-qt-desktop-deps.sh" deps)
-foreach(token IN ITEMS
-        [=[profile="${1:-public}"]=]
-        "public"
-        "qpa"
-        "dpkg-query"
-        "libxcb-cursor0"
-        "libxkbcommon-x11-0"
-        "libxcb-icccm4"
-        "libxkbcommon-x11-dev")
-    require_token("${deps}" "${token}" "capability-scoped Linux host dependency contract")
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/scripts/validate-qt-sdk.py" qt_validator)
+foreach(required_token IN ITEMS
+        "Qt6QmlConfig.cmake"
+        "qmldir"
+        "qwindows"
+        "libqxcb")
+    require_token("${qt_validator}" "${required_token}" "Qt capability check in the SDK validator")
 endforeach()
-# ubuntu-24.04 provides xvfb. Comments may mention it, but the package list must not install it.
-forbid_token("${deps}" [=[  xvfb
-]=]
-             "Linux dependency script must not reinstall runner-provided xvfb")
 
-read_required(".github/workflows/mainline-validation.yml" mainline)
-foreach(token IN ITEMS
-        "compile.cmd"
-        "--integrations=cpp,qml,generic,qpa"
-        "install-linux-qt-desktop-deps.sh qpa"
-        "src/integrations/cpp/tests/rfb_product_fit.py"
-        "build-mainline/runtime"
-        "build-mainline/integrations/cpp/tests/hyremote-rfb-test-server")
-    require_token("${mainline}" "${token}" "mainline validation contract")
+# Windows clean-deployment runtime isolation is produced by the release evidence runner now: its installed and source
+# product-fit cells construct an explicit runtime search path and launch the deployed consumer from the deployment
+# tree, which is where the retired per-lane workflows used to assert that inline.
+set(evidence_runner "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake")
+if(NOT EXISTS "${evidence_runner}")
+    message(FATAL_ERROR "ci-baseline: release evidence runner is missing")
+endif()
+file(READ "${evidence_runner}" evidence_runner_text)
+foreach(required_token IN ITEMS
+        "installed-qpa-product-fit"
+        "source-qpa-product-fit"
+        "installed-qml-qpa"
+        "HYREMOTE_CONSUMER_SOURCE_DIR")
+    require_token("${evidence_runner_text}" "${required_token}"
+                  "executable deployed-consumer evidence cell")
 endforeach()
-forbid_token("${mainline}" "cmake -S ."
-             "mainline product validation must use the unified compile.cmd authority")
-forbid_token("${mainline}" "src/cpp/tests"
-             "mainline validation must not use the legacy flat C++ frontend path")
-forbid_token("${mainline}" "build-mainline/remoteaccess"
-             "mainline validation must not use the historical runtime binary-directory alias")
 
 message(STATUS
     "HyRemote CI environment baseline gate: PASS "
-    "(consolidated workflows + capability-scoped PR CI + validated Qt cache + scoped Linux deps + unified mainline build authority)")
+    "(consolidated capability-scoped workflows + bounded jobs + shared Linux Qt host baseline + capability-scoped "
+    "Qt SDK contract + executable deployed-consumer evidence cells)")

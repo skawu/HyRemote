@@ -126,6 +126,19 @@ LibVNCServer remains **NO-GO as the default linked HyRemote backend** for the Ap
 
 Do not create a permanent HyRemote fork merely to avoid contributing a generally useful change upstream. A temporary pinned patch must document why upstream cannot currently be used unchanged, the exact patch/upstream issue or PR, and deletion criteria.
 
+Two consequences are absolute rather than advisory, because they decide whether an Apache-2.0 product line can be distributed at all:
+
+- **Qt is linked dynamically and consumed from the user's installation.** A static Qt, a patched Qt, or a Qt acquired by
+  this build would change the relinking and source-availability story for every binary produced here, so the repository
+  never fetches Qt and never builds it. The Transparent QPA payload is the one place coupled to Qt internals, through
+  the exact private QPA interfaces of its qualified line; its own source is available under this project's licence,
+  which is what keeps that coupling distributable.
+- **Nothing third-party is vendored.** A dependency is consumed from the environment or from an explicitly selected
+  prefix, and third-party applications used as verification examples are fetched at a recorded commit into an ignored
+  build directory. `tests/release-readiness/check_licensing_boundary.cmake` fails the build on a submodule, a vendored
+  dependency tree, an upstream source tree under the third-party lane, or any attempt to acquire Qt or OpenSSL with
+  `FetchContent`/`ExternalProject`.
+
 ## Platform libraries
 
 GBM, DRM, RKMPP, V4L2, VA-API and similar hardware/platform libraries remain optional evidence-driven acceleration dependencies unless a product requirement explicitly promotes one.

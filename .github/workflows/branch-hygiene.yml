@@ -1,15 +1,22 @@
 name: Branch hygiene
 
-# The steady-state remote branch set is main, develop and heads of open pull requests. GitHub's
-# delete_branch_on_merge handles merged PRs; this scheduled/on-demand job also covers PRs closed
-# without merging. It fails closed whenever repository facts are ambiguous.
+# The remote branch set is supposed to be `main`, `develop` and the heads of open pull requests
+# (docs/internal/branch-lifecycle.md). `delete_branch_on_merge` now covers merged PRs automatically, but a PR that is
+# closed without merging still leaves its head ref behind - which is how the 2026-09-20 audit found twenty-one refs
+# where six belonged. This workflow applies the documented deletion rule on a schedule instead of relying on somebody
+# remembering to run the prune script with a local PowerShell 7.
+#
+# The rule it applies is the policy's, verbatim: delete a head ref whose pull request is merged or closed, provided the
+# branch is not the head of another open pull request. It fails closed on anything it cannot prove: no pull request at
+# all, an unknown state, a protected or lifecycle name, the default branch, or the API refusing to answer.
+
 on:
   schedule:
     - cron: '0 3 * * 1'
   workflow_dispatch:
     inputs:
       execute:
-        description: 'Delete stale refs (false = dry run)'
+        description: 'Delete the stale refs (leave false for a dry run)'
         type: boolean
         default: false
 
@@ -26,7 +33,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Apply documented branch deletion rule
+      - name: Apply the documented branch deletion rule
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -34,6 +41,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Lifecycle and long-lived names the policy never treats as short-lived task refs.
           protected() {
             case "$1" in
               main|develop|HEAD) return 0 ;;
@@ -53,6 +61,7 @@ jobs:
               continue
             fi
 
+            # The policy decides on pull-request facts, never on commit ids.
             prs=$(gh api "repos/${REPO}/pulls?state=all&head=${REPO%%/*}:${branch}&per_page=100" \
                     --jq '[.[] | {number: .number, state: .state, merged: (.merged_at != null)}]')
             count=$(printf '%s' "$prs" | jq 'length')
@@ -80,7 +89,7 @@ jobs:
               continue
             fi
 
-            echo "keep   ${branch}  (fail closed: no closed pull-request state)"
+            echo "keep   ${branch}  (fail closed: no merged or closed pull request state)"
             kept=$((kept + 1))
           done
 
