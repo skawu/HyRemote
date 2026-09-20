@@ -13,9 +13,9 @@ integration payloads. This index is organised by reader intent rather than by de
 | Integrate with the Embedded C++ API | [`../getting-started/cpp.md`](../getting-started/cpp.md) |
 | Integrate with Declarative QML | [`../getting-started/qml.md`](../getting-started/qml.md) |
 | Use Transparent QPA without touching application source | [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md) |
-| Package and deploy | [`../deployment.md`](../deployment.md) |
-| Run and connect a viewer | [`../viewer-connection.md`](../viewer-connection.md) |
-| Diagnose a problem | [`../troubleshooting.md`](../troubleshooting.md) |
+| Package and deploy | [`../deployment.md`](../guide/deployment.md) |
+| Run and connect a viewer | [`../viewer-connection.md`](../guide/viewer-connection.md) |
+| Diagnose a problem | [`../troubleshooting.md`](../guide/troubleshooting.md) |
 
 ## 2. Three zones
 

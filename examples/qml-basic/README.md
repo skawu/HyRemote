@@ -87,7 +87,7 @@ Related guides:
 
 - `docs/getting-started/qml.md`
 - `docs/qml-consumption.md`
-- `docs/deployment.md`
-- `docs/viewer-connection.md`
+- `docs/guide/deployment.md`
+- `docs/guide/viewer-connection.md`
 - `docs/compatibility.md`
 - `docs/known-limitations.md`

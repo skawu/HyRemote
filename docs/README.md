@@ -13,9 +13,9 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 | 用 Embedded C++ API 集成 | [`getting-started/cpp.md`](getting-started/cpp.md) |
 | 用 Declarative QML 集成 | [`getting-started/qml.md`](getting-started/qml.md) |
 | 不改应用源码，走 Transparent QPA | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) |
-| 部署与打包 | [`deployment.md`](deployment.md) |
-| 运行与查看器 | [`viewer-connection.md`](viewer-connection.md) |
-| 出问题时的诊断 | [`troubleshooting.md`](troubleshooting.md) |
+| 部署与打包 | [`deployment.md`](guide/deployment.md) |
+| 运行与查看器 | [`viewer-connection.md`](guide/viewer-connection.md) |
+| 出问题时的诊断 | [`troubleshooting.md`](guide/troubleshooting.md) |
 
 ## 2. 三区结构
 

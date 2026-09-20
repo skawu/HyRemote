@@ -12,7 +12,7 @@ This document is the canonical top-level architecture for V1. Detailed contracts
 - [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md);
 - [`ADR-0006 Authenticated and Encrypted Transport Design`](adr/0006-authenticated-transport-design.md);
 - [`input-model.md`](input-model.md);
-- [`deployment.md`](deployment.md);
+- [`deployment.md`](guide/deployment.md);
 - [`security-model.md`](security-model.md).
 
 ## 1. Frozen V1 product model

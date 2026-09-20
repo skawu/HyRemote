@@ -1,5 +1,7 @@
 # Deployment
 
+> Language / 语言: **English** | [中文](../../guide/deployment.md)
+
 HyRemote owns deployment of its product runtime and integration payloads instead of requiring application developers to discover internal backend files manually.
 
 ## One deployment entry point
@@ -113,10 +115,8 @@ Deployment does not weaken product defaults:
 
 If an application intentionally changes the bind address, its operator/deployment documentation must describe the resulting trust boundary. See `docs/security.md`.
 
-## Acceptance boundary
+## Deployment verification boundary
 
-V1 release evidence must prove clean installed and declared source-consumption applications can run from their deployed tree without depending on the original HyRemote SDK/build runtime path. The four deployment call shapes are exercised independently where applicable; QML-only is not inferred from QML+QPA because they select different supplemental deployment paths.
+Normal V1 deployment requires that clean installed and declared source-consumption applications can run from their deployed tree without depending on the original HyRemote SDK/build runtime path. The four deployment call shapes are exercised independently where applicable; QML-only is not inferred from QML+QPA because they select different supplemental deployment paths.
 
-Required reference environments are Windows x86_64 and Linux x86_64 with the exact Qt matrix defined by the milestone.
-
-Hosted runner failure under #74 is infrastructure evidence only; it is not a product pass and cannot authorize a milestone tag.
+The reference environments are Windows x86_64 and Linux x86_64 with the exact Qt matrix defined by the milestone.

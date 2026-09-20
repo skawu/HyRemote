@@ -186,7 +186,7 @@ hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 
 Normal deployed applications should not manually copy HyRemote DLL/SO/plugin files or set SDK-specific `QT_PLUGIN_PATH` / `LD_LIBRARY_PATH` overrides.
 
-See [`docs/deployment.md`](docs/deployment.md).
+See [`docs/guide/deployment.md`](docs/guide/deployment.md).
 
 ## Examples
 
@@ -224,11 +224,11 @@ Reference/setup and delivery guides:
 - [`docs/guide/install.md`](docs/guide/install.md) — build, platform setup, installed SDK and source consumption (中文; [English](docs/en/guide/install.md))
 - [`docs/README.md`](docs/README.md) — documentation index (中文 ｜ [English](docs/en/README.md))
 - [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
-- [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
+- [`docs/guide/deployment.md`](docs/guide/deployment.md) — packaging/deployment
 - [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md) — canonical repository ownership/layout
-- [`docs/viewer-connection.md`](docs/viewer-connection.md) — viewer/control/reconnect
+- [`docs/guide/viewer-connection.md`](docs/guide/viewer-connection.md) — viewer/control/reconnect
 - [`docs/security.md`](docs/security.md) — implemented security boundary
-- [`docs/troubleshooting.md`](docs/troubleshooting.md) — product-level diagnosis
+- [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) — product-level diagnosis
 - [`docs/compatibility.md`](docs/compatibility.md) — exact evidence/status matrix
 - [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
 - [`docs/internal/v1-ga-acceptance.md`](docs/internal/v1-ga-acceptance.md) — GA release gate

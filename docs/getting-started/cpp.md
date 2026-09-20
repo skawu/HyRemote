@@ -111,7 +111,7 @@ hyremote_deploy(TARGET MyApp)
 
 The helper composes with Qt's supported deployment tooling and adds the HyRemote shared facade automatically. Applications should not copy HyRemote libraries by filename.
 
-See `docs/deployment.md`.
+See `docs/guide/deployment.md`.
 
 ## Security baseline
 
@@ -128,7 +128,7 @@ Hosted/offscreen E2E verifies protocol-to-application correctness; it does not r
 ## Next steps
 
 - platform setup: `docs/guide/install.md` (中文) or `docs/en/guide/install.md` (English);
-- viewer workflow: `docs/viewer-connection.md`;
-- deployment: `docs/deployment.md`;
-- troubleshooting: `docs/troubleshooting.md`;
+- viewer workflow: `docs/guide/viewer-connection.md`;
+- deployment: `docs/guide/deployment.md`;
+- troubleshooting: `docs/guide/troubleshooting.md`;
 - exact support status: `docs/compatibility.md` and `docs/known-limitations.md`.

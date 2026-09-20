@@ -82,7 +82,7 @@ run on the host.
 ## 4. Deploying and running
 
 The cross build needs the same deployment contract as the desktop build - shared runtime, the `qhyremote` platform
-plugin and its native delegate dependency (see `docs/deployment.md` and `hyremote_deploy()`). On the target the QPA
+plugin and its native delegate dependency (see `docs/guide/deployment.md` and `hyremote_deploy()`). On the target the QPA
 launch is identical to the desktop:
 
 ```text

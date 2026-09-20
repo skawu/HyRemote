@@ -1,5 +1,7 @@
 # Viewer Connection and Remote Control
 
+> Language / 语言: **English** | [中文](../../guide/viewer-connection.md)
+
 HyRemote V1 uses one bounded internal RFB correctness transport behind all three integration modes. The protocol backend is not part of the application-facing API.
 
 ## Start the target application
@@ -27,8 +29,8 @@ The default product configuration in every mode listens on loopback port 5921 an
 Which interface the listener is actually on is part of the connection answer, so state it before connecting: the default
 is loopback `127.0.0.1`, V1 takes a **numeric** address only (no hostnames or DNS names), and the measured per-address
 behaviour - including that the IPv6 wildcard `::` is an IPv6-only listener here rather than a dual-stack one - is listed in
-[`known-limitations.md`](known-limitations.md#listener-address-family-and-reachability). A non-loopback address is an
-explicit widening of the trust boundary; see `security.md` before choosing one.
+[`known-limitations.md`](../../known-limitations.md#listener-address-family-and-reachability). A non-loopback address
+is an explicit widening of the trust boundary; see [`security.md`](../../security.md) before choosing one.
 
 With the default configuration, point a standard VNC/RFB client at:
 
@@ -66,7 +68,7 @@ A viewer may disconnect and reconnect without recreating the target application.
 
 `RemoteAccess::stop()` tears down the Embedded C++/QML session/listener and returns the facade to Stopped. Transparent QPA retains its one application session across supported surface churn and normal viewer reconnects until the plugin/controller lifecycle ends.
 
-The #90 held-key/button disconnect correction is already absorbed into the V1 candidate: recognized remote pressed state is balanced when a viewer disappears abruptly. Exact dual-OS acceptance remains pending because #74 prevents the reference product-fit jobs from executing.
+Recognized remote pressed state is balanced when a viewer disappears abruptly, so no pressed key or button is left held.
 
 ## Listening versus connected
 
@@ -80,10 +82,10 @@ Transparent QPA does not expose a second application diagnostics API to an other
 
 Hosted/offscreen/Xvfb viewer tests prove only the path they execute. V1 additionally requires physical native local display/input to remain usable while the remote viewer is active where the integration mode claims coexistence.
 
-That cross-mode physical evidence envelope is tracked by #109 and is separate from standard-viewer interoperability.
+That cross-mode physical evidence is separate from standard-viewer interoperability, and headless tests do not prove it.
 
 ## Security boundary
 
 The current RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. It is suitable for loopback/trusted test use, not direct untrusted-network exposure.
 
-Read [`security.md`](security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](security-model.md) is broader future threat-model context, not a claim that authentication/encryption already exists.
+Read [`security.md`](../../security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](../../security-model.md) is broader future threat-model context, not a claim that authentication/encryption already exists.

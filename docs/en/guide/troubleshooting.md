@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> Language / 语言: **English** | [中文](../../guide/troubleshooting.md)
+
 This guide covers the V1 Embedded C++, Declarative QML and Transparent QPA paths. Start with product-level errors, package metadata and documented policy before investigating internal implementation layers.
 
 ## `find_package(HyRemote)` cannot find the package
@@ -102,13 +104,9 @@ Using Qt/build output directories in `LD_LIBRARY_PATH` can be appropriate for di
 
 Headless CI proves only the behavior it actually executes. It does not upgrade local-visible coexistence or a desktop QPA/graphics combination to Supported.
 
-Physical local-display/local-input + remote acceptance is tracked separately by #109.
-
 ## Viewer disconnect leaves input apparently held
 
-The V1 candidate includes #90 disconnect balancing for recognized pressed key/button state. If a current candidate still reproduces held input after abrupt viewer loss, capture the exact event sequence and treat it as a regression.
-
-Do not infer acceptance merely because the implementation exists: dual-OS product-fit execution is still blocked by #74 until jobs actually receive runners.
+Recognized pressed key/button state is balanced when a viewer disappears abruptly. If a build still reproduces held input after an abrupt viewer loss, capture the exact event sequence and treat it as a regression.
 
 ## Slow or malicious clients
 
