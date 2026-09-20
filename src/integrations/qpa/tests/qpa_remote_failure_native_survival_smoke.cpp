@@ -30,8 +30,12 @@ std::atomic_bool gRemoteStartFailureSeen{false};
 
 void captureRemoteFailure(QtMsgType, const QMessageLogContext &, const QString &message)
 {
+    // Automatic application access is runtime-owned and shared by Generic + QPA. The QPA smoke
+    // therefore observes the frontend-neutral runtime diagnostic rather than a historical QPA-only
+    // controller string. This still proves that the QPA bootstrap attempted remote startup and that
+    // the native delegate survived the forced listener failure.
     if (message.contains(
-            QStringLiteral("HyRemote QPA Proxy could not start the composite RemoteAccess runtime"))) {
+            QStringLiteral("HyRemote automatic access could not start the composite runtime"))) {
         gRemoteStartFailureSeen.store(true, std::memory_order_relaxed);
     }
 
@@ -162,8 +166,8 @@ int main(int argc, char **argv)
                                 + QByteArray::number(blockedPort);
     qputenv("QT_QPA_PLATFORM", platform);
 
-    // Capturing the established controller diagnostic prevents a false pass where the native app is
-    // healthy only because the QPA controller never attempted to start the remote runtime.
+    // Capturing the shared automatic-access diagnostic prevents a false pass where the native app is
+    // healthy only because the QPA bootstrap never attempted to start the remote runtime.
     const QtMessageHandler previousHandler = qInstallMessageHandler(captureRemoteFailure);
 
     QApplication app(argc, argv);
@@ -197,7 +201,7 @@ int main(int argc, char **argv)
         }
         if (!gRemoteStartFailureSeen.load(std::memory_order_relaxed)) {
             std::fprintf(stderr,
-                         "FAIL: QPA controller did not report the forced remote listener startup failure\n");
+                         "FAIL: shared automatic-access runtime did not report the forced listener startup failure\n");
             app.quit();
             return;
         }
