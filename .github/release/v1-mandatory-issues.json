@@ -28,7 +28,8 @@
     170,
     174,
     175,
-    176
+    176,
+    209
   ],
   "embedded_deferred_issue_numbers": [7, 10, 17, 18],
   "classified_referenced_issue_numbers": [
@@ -51,6 +52,7 @@
     "170": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
     "174": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
     "175": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
-    "176": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19."
+    "176": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+    "209": "V1.0.0.0 must freeze repository, documentation, build/package and release infrastructure so post-V1 work does not repeatedly repair foundational structure."
   }
 }
