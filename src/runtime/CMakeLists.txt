@@ -3,8 +3,7 @@ include(GNUInstallDirs)
 # Common product runtime for all HyRemote integration frontends.
 #
 # The delivered HyRemoteRemoteAccess binary/target identity stays stable while implementation ownership
-# moves out of the Embedded C++ frontend. `src/cpp` contributes only the public facade; shared Qt target,
-# transport, security and composition implementation lives here.
+# lives here. Integration frontends contribute only their entry/facade sources and consume this runtime.
 if(TARGET hyremote-remoteaccess OR TARGET HyRemote::RemoteAccess)
     message(FATAL_ERROR "HyRemote common runtime target already exists")
 endif()
@@ -19,19 +18,18 @@ add_library(hyremote-remoteaccess SHARED
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 
-# Preserve the established output location even though target ownership moved into src/runtime.
-get_filename_component(_hyremote_runtime_output_dir "${CMAKE_CURRENT_BINARY_DIR}/.." ABSOLUTE)
+# The root build maps src/runtime to the historical `remoteaccess` binary directory, so the shared
+# artifact keeps its established build-tree location while source ownership is now explicit.
 set_target_properties(hyremote-remoteaccess PROPERTIES
     EXPORT_NAME RemoteAccess
     OUTPUT_NAME HyRemoteRemoteAccess
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
-    ARCHIVE_OUTPUT_DIRECTORY "${_hyremote_runtime_output_dir}"
-    LIBRARY_OUTPUT_DIRECTORY "${_hyremote_runtime_output_dir}"
-    RUNTIME_OUTPUT_DIRECTORY "${_hyremote_runtime_output_dir}"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
-unset(_hyremote_runtime_output_dir)
 
 if(UNIX AND NOT APPLE)
     set_property(TARGET hyremote-remoteaccess PROPERTY BUILD_RPATH "$ORIGIN")
