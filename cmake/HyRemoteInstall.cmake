@@ -26,7 +26,7 @@ if(TARGET hyremote-qml)
         "${CMAKE_SHARED_LIBRARY_PREFIX}hyremote-qml${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endif()
 
-# Transparent QPA is package payload, not a C++ link target. Export only availability, exact Qt ABI
+# QPA is package payload, not a C++ link target. Export only availability, exact Qt ABI
 # metadata and the installed plugin location used internally by hyremote_deploy(... QPA). V1 has one
 # fixed shared RemoteAccess runtime, so no static/shared QPA personality flag is published.
 set(HYREMOTE_PACKAGE_WITH_QPA FALSE)

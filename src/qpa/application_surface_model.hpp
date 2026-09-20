@@ -25,7 +25,7 @@ struct RoutedPoint
     QPoint localPosition;
 };
 
-// Deterministic application-surface geometry/stacking model for Transparent QPA Proxy mode.
+// Deterministic application-surface geometry/stacking model for QPA Proxy mode.
 //
 // The model knows nothing about RFB, capture backends, QPA private types or transport lifecycle. It
 // converts the set of visible application-owned top-level surfaces into one logical remote canvas

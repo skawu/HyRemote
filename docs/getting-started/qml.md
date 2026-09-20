@@ -1,8 +1,8 @@
-# Declarative QML 接入
+# QML API 接入
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/qml.md)
 
-HyRemote 的 Declarative QML 方式，是 C++ 所使用的**同一份**共享 `HyRemote::RemoteAccess` 运行时之上的薄声明层。
+HyRemote 的 QML API 方式，是 C++ 所使用的**同一份**共享 `HyRemote::RemoteAccess` 运行时之上的薄声明层。
 它**不会**创建第二套 Session、采集、传输或输入栈。
 
 ## 前置条件
@@ -112,7 +112,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 QML 模块是**导入载荷**，不是第二个 C++ SDK 目标。应用开发者不链接 `HyRemote::Qml` 目标，也不需要手工拷贝后端库、
 插件、`qmldir`、共享门面或传输文件。
 
-当应用有意把声明式 API 与 Transparent QPA 打包组合时，可用 `QML QPA`：
+当应用有意把声明式 API 与 QPA 打包组合时，可用 `QML QPA`：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML QPA)

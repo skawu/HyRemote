@@ -69,7 +69,7 @@ ApplicationWindow {
         spacing: 12
 
         Label {
-            text: "HyRemote · Declarative QML API"
+            text: "HyRemote · QML API"
             color: "#f2f4f8"
             font.pixelSize: 19
         }

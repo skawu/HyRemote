@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Installed-SDK Transparent QPA deployment product-fit."""
+"""Installed-SDK QPA deployment product-fit."""
 
 from __future__ import annotations
 

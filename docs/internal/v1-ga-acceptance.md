@@ -52,9 +52,9 @@ One release-like source tree is configured with all V1 product paths enabled at 
 - shared `HyRemote::RemoteAccess`;
 - Widgets adapter;
 - Quick adapter;
-- declarative QML module;
+- QML API module;
 - bounded RFB transport;
-- Transparent QPA Proxy;
+- QPA Proxy;
 - tests;
 - E1–E5 examples;
 - V1 release-readiness metadata.
@@ -88,7 +88,7 @@ SecurityType None remains only the current correctness baseline. Passing this ga
 
 ## 5. Integration-mode product E2E
 
-### Embedded C++
+### C++ API
 
 E1 `widgets-basic` and E2 `quick-basic` must prove through the public `HyRemote::RemoteAccess` facade:
 
@@ -101,11 +101,11 @@ E1 `widgets-basic` and E2 `quick-basic` must prove through the public `HyRemote:
 - explicit stop/listener release;
 - explicit stop/policy transition cannot leave delivered remote key/button state held and cannot inject queued remote input after stop.
 
-### Declarative QML
+### QML API
 
 E3 `qml-basic` must prove the same shared runtime through `import HyRemote`, including live `connectedClientCount` lifecycle. QML must not expose or construct backend/session/client objects. Disabling/stopping the QML wrapper uses the same terminal input-cleanup semantics as the C++ facade; QML does not own a second input stack.
 
-### Transparent QPA
+### QPA
 
 The QPA CTest/product chain must prove the exact Qt 6.8.3 qualified proxy behavior:
 
@@ -122,7 +122,7 @@ The QPA CTest/product chain must prove the exact Qt 6.8.3 qualified proxy behavi
 
 An invalid `hyremote-*` startup parameter is different: the QPA plugin must reject that invalid configuration before silently starting some other remote policy. The native-survival rule above applies to a valid transparent-QPA configuration whose remote runtime subsequently fails to start.
 
-E4 remains an ordinary Qt application. Its executable may not acquire HyRemote application-link dependencies merely to use Transparent QPA.
+E4 remains an ordinary Qt application. Its executable may not acquire HyRemote application-link dependencies merely to use QPA.
 
 ### Remote support showcase
 
@@ -174,9 +174,9 @@ Before GA:
 
 The stable application-facing model remains:
 
-- Embedded C++: one shared `HyRemote::RemoteAccess` facade;
+- C++ API: one shared `HyRemote::RemoteAccess` facade;
 - QML: `import HyRemote` / `RemoteAccess` over the same runtime;
-- Transparent QPA: exact-version package/launch/deployment mode, not a generic private-QPA C++ API;
+- QPA: exact-version package/launch/deployment mode, not a generic private-QPA C++ API;
 - Core/Session/transport/capture/input composition types are not a second normal application path.
 
 The target-input shutdown hook is an internal composition contract and is not an additional stable application API. Release-readiness must reject a candidate that removes the hook, reverses the required `Session::stop()` then input-shutdown ordering, drops Widgets/Quick/QPA propagation, or removes the deterministic tests that pin these semantics.

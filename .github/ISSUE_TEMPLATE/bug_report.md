@@ -11,7 +11,7 @@ labels: bug
 | Item | Value |
 |---|---|
 | Layer | `src/core` / `src/cpp` / `src/qml` / `src/qpa` / `cmake` / docs |
-| Integration mode | Embedded C++ / Declarative QML / Transparent QPA |
+| Integration mode | C++ API / QML API / QPA |
 | OS and graphics stack | |
 | Qt version | |
 | Commit | `git rev-parse HEAD` |

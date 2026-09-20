@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     int result = 1;
     QTimer::singleShot(250, &app, [&] {
         if (!waitForRfbBanner()) {
-            std::cerr << "FAIL: transparent QPA mode did not auto-compose RemoteAccess\n";
+            std::cerr << "FAIL: QPA mode did not auto-compose RemoteAccess\n";
             app.quit();
             return;
         }

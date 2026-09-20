@@ -1,6 +1,6 @@
 #pragma once
 
-// Source-private composition seam between the Transparent QPA payload and the shared RemoteAccess runtime.
+// Source-private composition seam between the QPA payload and the shared RemoteAccess runtime.
 //
 // The QPA platform MODULE must not link Core directly - the release-readiness repository-layout gate enforces
 // "QPA platform payload must not link Core directly", because Core stays static composition behind the

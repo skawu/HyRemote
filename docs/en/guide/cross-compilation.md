@@ -22,9 +22,9 @@ arguments override it:
 
 | Argument | Meaning |
 | --- | --- |
-| `--mode qpa` (default) | Transparent QPA proxy (`-platform hyremote`) |
-| `--mode cpp` | Embedded C++ only (`HyRemote::RemoteAccess`) |
-| `--mode qml` | Declarative QML (`import HyRemote`) |
+| `--mode qpa` (default) | QPA proxy (`-platform hyremote`) |
+| `--mode cpp` | C++ API only (`HyRemote::RemoteAccess`) |
+| `--mode qml` | QML API (`import HyRemote`) |
 | `--mode all` | All three integration modes |
 | `--mode minimal` | Minimal build (no examples/tests/QML/QPA) |
 | `--toolchain <file>.cmake` | **Select the cross-compilation toolchain file** |

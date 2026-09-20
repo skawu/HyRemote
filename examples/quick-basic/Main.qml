@@ -13,7 +13,7 @@ Rectangle {
         y: 18
         width: 320
         height: 32
-        text: "HyRemote · Embedded C++ / Qt Quick"
+        text: "HyRemote · C++ API / Qt Quick"
         color: "#f2f4f8"
         font.pixelSize: 18
     }

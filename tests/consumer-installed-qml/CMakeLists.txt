@@ -5,7 +5,7 @@ project(HyRemoteInstalledQmlConsumer LANGUAGES CXX)
 # The same clean external QML application is reused across acquisition/deployment combinations.
 # Default: installed SDK + QML. GA also configures installed QML+QPA, source QML, and source QML+QPA
 # without duplicating application source or inventing another integration surface.
-option(HYREMOTE_CONSUMER_WITH_QPA "Exercise combined QML + Transparent QPA deployment" OFF)
+option(HYREMOTE_CONSUMER_WITH_QPA "Exercise combined QML + QPA deployment" OFF)
 set(HYREMOTE_CONSUMER_SOURCE_DIR "" CACHE PATH
     "Optional HyRemote source tree; when set, exercise add_subdirectory() instead of find_package()")
 
@@ -56,7 +56,7 @@ else()
     if(HYREMOTE_CONSUMER_WITH_QPA)
         if(NOT DEFINED HyRemote_QPA_AVAILABLE OR NOT HyRemote_QPA_AVAILABLE)
             message(FATAL_ERROR
-                "Combined QML+QPA consumer requires an installed HyRemote package with Transparent QPA")
+                "Combined QML+QPA consumer requires an installed HyRemote package with QPA")
         endif()
     endif()
 endif()

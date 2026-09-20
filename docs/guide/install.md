@@ -12,8 +12,8 @@
 | 操作系统 | Windows x86_64、Linux x86_64（桌面）。嵌入式 Linux/EGLFS **不在** V1 支持范围内 |
 | Qt | **精确 Qt 6.8.3** 为参考版本；Bounded RFB 传输与三类集成方式均以该版本为验收基线 |
 | 编译器 | Windows：MSVC x64（C++17）；Linux：GCC x86_64（C++17） |
-| 集成方式 | ① Embedded C++（唯一共享库）② Declarative QML（`import HyRemote`）③ Transparent QPA Proxy（`-platform hyremote`） |
-| QPA 约束 | Transparent QPA 与 Qt 6.8.3 的私有 QPA ABI 精确耦合；Windows 复用 `qwindows`、Linux 复用 `qxcb` 原生委托 |
+| 集成方式 | ① C++ API（唯一共享库）② QML API（`import HyRemote`）③ QPA Proxy（`-platform hyremote`） |
+| QPA 约束 | QPA 与 Qt 6.8.3 的私有 QPA ABI 精确耦合；Windows 复用 `qwindows`、Linux 复用 `qxcb` 原生委托 |
 | 查看器 | 任意标准 VNC 客户端，默认连接 `127.0.0.1:5921` |
 
 > **产品状态**：V1.0.0.0 验收尚未完成。候选实现只有在必需的可执行证据与物理证据实际通过后，才构成 **Supported** 声明；
@@ -73,7 +73,7 @@ cmake --install build-hyremote
 
 ### 3.3 可选集成包
 
-QML 与 Transparent QPA 是**可选载荷**，按需开启：
+QML 与 QPA 是**可选载荷**，按需开启：
 
 ```text
 -DHYREMOTE_BUILD_QML_API=ON      # 提供 import HyRemote
@@ -122,7 +122,7 @@ V1 已安装 SDK 只暴露**一个正常的 C++ 产品目标**：`HyRemote::Remo
 
 - Core 静态组合在门面之后，**不作为 SDK 目标安装/导出**；
 - QML 模块通过 `import HyRemote` 消费，其支撑库不是第二个 C++ SDK 目标；
-- Transparent QPA 通过 `hyremote_deploy(... QPA)` 消费，**不是应用链接目标**（安装的 SDK 不导出 `HyRemote::QpaPlatform`）。
+- QPA 通过 `hyremote_deploy(... QPA)` 消费，**不是应用链接目标**（安装的 SDK 不导出 `HyRemote::QpaPlatform`）。
 
 应用代码不需要、也不应该逐个发现或链接 Core/传输/采集/输入/QPA 内部目标。
 
@@ -174,7 +174,7 @@ target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
 
 作为子项目被引入时，HyRemote 自身的测试、示例与研究代码**自动默认为 OFF**，应用不需要知道或覆盖这些仅开发者使用的开关。
 `add_subdirectory(... EXCLUDE_FROM_ALL)` 同样受支持：HyRemote 的源码产物保持内部构建目标，部署助手只为落地所选载荷添加必要的本地构建依赖，
-**不会**把它们变成应用的链接依赖（Transparent QPA 应用即使从源码构建 `qhyremote` 与 `HyRemoteRemoteAccess`，其自身仍只链接 Qt）。
+**不会**把它们变成应用的链接依赖（QPA 应用即使从源码构建 `qhyremote` 与 `HyRemoteRemoteAccess`，其自身仍只链接 Qt）。
 
 按需开启可选集成包：
 
@@ -193,9 +193,9 @@ add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
 部署由 HyRemote 拥有的**唯一入口**负责：
 
 ```cmake
-hyremote_deploy(TARGET MyCppApp)          # Embedded C++
-hyremote_deploy(TARGET MyQmlApp QML)      # Declarative QML
-hyremote_deploy(TARGET ExistingQtApp QPA) # Transparent QPA
+hyremote_deploy(TARGET MyCppApp)          # C++ API
+hyremote_deploy(TARGET MyQmlApp QML)      # QML API
+hyremote_deploy(TARGET ExistingQtApp QPA) # QPA
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)  # QML + QPA 组合
 ```
 
@@ -245,7 +245,7 @@ Bounded RFB 正确性传输默认使用 **SecurityType None**：既无传输认�
 
 ## 11. 相关文档
 
-- 集成方式（选择其一，每篇的英文镜像位于 `docs/en/` 下的同一路径）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)
+- 集成方式（选择其一，每篇的英文镜像位于 `docs/en/` 下的同一路径）：[C++ API](../getting-started/cpp.md) ｜ [QML API](../getting-started/qml.md) ｜ [QPA](../getting-started/qpa-proxy.md)
 - 部署与打包：[`deployment.md`](deployment.md)
 - 兼容与限制：[`compatibility.md`](../compatibility.md) ｜ [`known-limitations.md`](../known-limitations.md)
 - 排错：[`troubleshooting.md`](troubleshooting.md)

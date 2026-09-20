@@ -20,7 +20,7 @@ option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)
 # opt-in so the default C++ path remains one shared library with no QtQml requirement.
 option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)
 
-# Transparent QPA is an exact-private-ABI package and therefore remains explicitly opt-in. Enabling
+# QPA is an exact-private-ABI package and therefore remains explicitly opt-in. Enabling
 # it does not change the application's C++ link contract; it produces the qhyremote plugin payload.
 option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)
 
@@ -50,8 +50,8 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
     endif()
 endif()
 
-# The default listener port, shared by every integration mode: the Core default is what the Embedded C++
-# API and the declarative QML API start from, and the QPA proxy uses the same number when the platform
+# The default listener port, shared by every integration mode: the Core default is what the C++ API
+# API and the QML API start from, and the QPA proxy uses the same number when the platform
 # string carries no port. An integrator that needs a different default sets it at configure time
 # (-DHYREMOTE_DEFAULT_PORT=<port>) instead of patching the library. Tests and examples inherit the same
 # value through the definition below, so such a build stays self-consistent. At run time the port is still

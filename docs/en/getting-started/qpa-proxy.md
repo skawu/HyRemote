@@ -1,16 +1,16 @@
-# Getting started — Transparent QPA Proxy
+# Getting started — QPA Proxy
 
 > Language / 语言: **English** | [中文](../../getting-started/qpa-proxy.md)
 
 This guide is for an existing Qt application that should gain HyRemote remote access with **zero or minimal application-source changes**.
 
-Transparent QPA is the third mandatory HyRemote V1 integration mode. It is not a replacement-only/headless VNC platform: HyRemote delegates normal platform behavior to the native Qt platform integration and adds the same shared remote-access runtime alongside it.
+QPA is the third mandatory HyRemote V1 integration mode. It is not a replacement-only/headless VNC platform: HyRemote delegates normal platform behavior to the native Qt platform integration and adds the same shared remote-access runtime alongside it.
 
 For a complete ordinary application, see `examples/qpa-proxy-existing-app`.
 
 ## V1 qualified reference line
 
-Transparent QPA is deliberately version-coupled to Qt private APIs:
+QPA is deliberately version-coupled to Qt private APIs:
 
 - Qt: **6.8.3 exactly**;
 - Windows x86_64 delegate: `qwindows`;
@@ -159,7 +159,7 @@ The current RFB baseline advertises `SecurityType None` unless an authenticated 
 
 ## 9. Multi-window behavior
 
-Transparent QPA represents one Qt application as one logical remote session, not one listener per window. Supported application-owned top-level surfaces are composed into that session; opening, closing or moving a supported dialog, tool window, QWidget popup/menu or second QQuickWindow must not itself restart the listener.
+QPA represents one Qt application as one logical remote session, not one listener per window. Supported application-owned top-level surfaces are composed into that session; opening, closing or moving a supported dialog, tool window, QWidget popup/menu or second QQuickWindow must not itself restart the listener.
 
 Qt Quick content inside one QQuickWindow remains part of that window's scene rather than becoming a duplicate remote surface. Arbitrary foreign/native OS windows are outside V1 scope.
 

@@ -1,6 +1,6 @@
 include(GNUInstallDirs)
 
-# Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
+# QPA Proxy — exact Qt 6.8.3 private-ABI package.
 # Private QPA types and interception/composition remain isolated here while the plugin reuses the
 # same shared HyRemote::RemoteAccess runtime as the C++ and QML modes.
 get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
@@ -237,7 +237,7 @@ if(HYREMOTE_BUILD_TESTS)
             -DTEST_INSTALLED_PAYLOAD=ON
             -DTEST_QPA_AVAILABLE=OFF
             -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA
+            -DEXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_QPA
             -P ${_hyremote_qpa_deploy_runner}
     )
 

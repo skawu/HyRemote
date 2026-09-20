@@ -32,12 +32,12 @@ if(HYREMOTE_CONSUMER_SOURCE_DIR)
         message(FATAL_ERROR "source HyRemote QPA selection did not create its internal qhyremote target")
     endif()
 else()
-    # Installed Transparent QPA remains an ordinary Qt application at the source/link layer.
+    # Installed QPA remains an ordinary Qt application at the source/link layer.
     # HyRemote is found only for package/deployment metadata; the executable links Qt Widgets only.
     find_package(HyRemote CONFIG REQUIRED)
 
     if(NOT HyRemote_QPA_AVAILABLE)
-        message(FATAL_ERROR "installed HyRemote SDK does not contain the Transparent QPA package")
+        message(FATAL_ERROR "installed HyRemote SDK does not contain the QPA package")
     endif()
     if(TARGET HyRemote::QpaPlatform)
         message(FATAL_ERROR
@@ -72,7 +72,7 @@ get_target_property(_consumer_links hyremote-installed-qpa-consumer LINK_LIBRARI
 foreach(_consumer_link IN LISTS _consumer_links)
     if(_consumer_link MATCHES "^HyRemote::")
         message(FATAL_ERROR
-            "Transparent QPA consumer must not link HyRemote application/runtime targets: ${_consumer_links}")
+            "QPA consumer must not link HyRemote application/runtime targets: ${_consumer_links}")
     endif()
 endforeach()
 

@@ -25,7 +25,7 @@ Normal V1 deployment is intentionally simple:
 
 - `HyRemote::RemoteAccess` is one shared C++ product library;
 - Core is statically composed behind that facade and is not a separate runtime payload;
-- `qhyremote` is one Qt platform MODULE for Transparent QPA;
+- `qhyremote` is one Qt platform MODULE for QPA;
 - the QML module is a thin wrapper over the same shared `RemoteAccess` runtime.
 
 `BUILD_SHARED_LIBS` does not switch the normal product between static and shared personalities.
@@ -60,7 +60,7 @@ If the selected HyRemote build/package has no QML payload, `hyremote_deploy(... 
 
 See `docs/qml-consumption.md` and `docs/getting-started/qml.md`.
 
-## Transparent QPA deployment
+## QPA deployment
 
 The application remains Qt-only at the source/link layer:
 
@@ -106,7 +106,7 @@ hyremote_deploy(TARGET MyQmlApp QML QPA)
 
 Deployment does not weaken product defaults:
 
-- Embedded C++ construction is inert;
+- C++ API construction is inert;
 - QML remains disabled until explicitly enabled by application policy;
 - QPA listener creation follows the documented platform-plugin lifecycle;
 - loopback is the default bind;

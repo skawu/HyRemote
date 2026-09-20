@@ -229,7 +229,7 @@ struct RemoteAccess::Impl
         // Session::stop() first closes/drains Core's callback gate and makes the transport
         // quiescent. Only then may the target adapter discard queued remote input and balance state
         // that was already delivered to the still-running local Qt application. This is deliberately
-        // below the public API and shared by C++, QML and Transparent QPA through RemoteAccess.
+        // below the public API and shared by C++, QML and QPA through RemoteAccess.
         session->stop();
         if (inputSink)
             inputSink->shutdown();

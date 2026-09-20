@@ -4,7 +4,7 @@ This file separates implemented repository behavior from released support claims
 
 ## V1 x86 milestone boundary
 
-HyRemote V1 targets supported `QWidget` and `QQuickWindow` application paths on Windows x86_64 and Linux x86_64 through Embedded C++, Declarative QML and Transparent QPA Proxy. Milestone issues #30, #31 and #32 remain open until their required executable/reference-environment evidence is complete.
+HyRemote V1 targets supported `QWidget` and `QQuickWindow` application paths on Windows x86_64 and Linux x86_64 through C++ API, QML API and QPA Proxy. Milestone issues #30, #31 and #32 remain open until their required executable/reference-environment evidence is complete.
 
 Implementation in Draft PR #106 is not itself a released support claim.
 
@@ -14,7 +14,7 @@ V1 intentionally fixes the normal installed surface to keep consumption simple:
 
 - Core is a static source/internal composition component and is **not installed/exported** as a V1 SDK target;
 - `HyRemote::RemoteAccess` is the one shared C++ product library and the one exported normal CMake target;
-- `qhyremote` is a Transparent QPA platform MODULE payload selected through the deployment helper and is **not** an installed consumer link target;
+- `qhyremote` is a QPA platform MODULE payload selected through the deployment helper and is **not** an installed consumer link target;
 - QML is a thin declarative payload over the same shared runtime; its backing library is not a second C++ SDK target.
 
 Static `RemoteAccess` consumption is not a second V1 product personality. `BUILD_SHARED_LIBS` must not be interpreted as a supported switch between two normal application distribution models.
@@ -58,9 +58,9 @@ explicit widening of the trust boundary, as `security-model.md` and `security.md
 
 - Widgets: the production correctness baseline uses Qt public widget rendering/capture behavior.
 - Quick: the production correctness baseline uses public asynchronous item capture.
-- Transparent QPA has a separately qualified multi-surface composition path and exact capture-family matrix.
+- QPA has a separately qualified multi-surface composition path and exact capture-family matrix.
 - `QOpenGLWidget`, Quick3D, custom FBO/OpenGL and `QQuickWidget` evidence is configuration-specific and must not be generalized across all modes/backends.
-- Generic `QWindow`, `QOpenGLWindow` and arbitrary foreign/native OS windows without a qualified adapter are not V1 Transparent QPA claims.
+- Generic `QWindow`, `QOpenGLWindow` and arbitrary foreign/native OS windows without a qualified adapter are not V1 QPA claims.
 - Desktop x86 evidence does not imply Embedded Linux/EGLFS/OpenHarmony support.
 
 See the QPA capture-classification document and `compatibility.md` for exact status.
@@ -116,9 +116,9 @@ Those remain replaceable implementation/backend concerns and may not alter the s
 
 HyRemote targets a Qt application, not an arbitrary whole operating-system desktop.
 
-Embedded C++/QML do not gain a blanket arbitrary-native-window claim. Transparent QPA has a dedicated multi-surface/composite path for supported application-owned QWidget and QQuickWindow families, including dialog/popup/window churn, while unsupported foreign/native families remain explicit.
+C++ API/QML do not gain a blanket arbitrary-native-window claim. QPA has a dedicated multi-surface/composite path for supported application-owned QWidget and QQuickWindow families, including dialog/popup/window churn, while unsupported foreign/native families remain explicit.
 
-### Transparent QPA private ABI
+### QPA private ABI
 
 Qt does not guarantee QPA source/binary compatibility. The current V1 QPA package is qualified specifically for **Qt 6.8.3** and delegates to `qwindows` on Windows and `qxcb` on the Linux reference path.
 
@@ -126,7 +126,7 @@ Do not infer compatibility with another Qt patch/minor, Wayland, EGLFS or a diff
 
 ### Deployment scope
 
-Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemoteRemoteAccess` runtime. Transparent QPA uses the same helper to carry that runtime plus the package-owned `qhyremote` payload. Applications do not link a QPA CMake target.
+Normal C++/QML deployment uses `hyremote_deploy()` to carry the shared `HyRemoteRemoteAccess` runtime. QPA uses the same helper to carry that runtime plus the package-owned `qhyremote` payload. Applications do not link a QPA CMake target.
 
 A deployment that only works because the original HyRemote SDK/build tree is still on `PATH`, `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` or `QT_QPA_PLATFORM_PLUGIN_PATH` does not satisfy the V1 product contract.
 
@@ -146,7 +146,7 @@ Newer exact-candidate runs can still remain queued with no step execution. Such 
 
 ## Qt version envelope
 
-Qt 6.8.x is the current public V1 reference line for public-API modes; current automated product work uses Qt 6.8.3. Transparent QPA is more narrowly exact-version-coupled to Qt 6.8.3.
+Qt 6.8.x is the current public V1 reference line for public-API modes; current automated product work uses Qt 6.8.3. QPA is more narrowly exact-version-coupled to Qt 6.8.3.
 
 Issue #57 tracks the qualification of Qt 5.15 and additional Qt LTS lines. That is x86 work, so it is a **V1.0.0.0**
 requirement rather than a post-V1 one: only work that must run on an embedded platform may stay outside V1, because

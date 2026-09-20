@@ -56,7 +56,7 @@ QString runtimeIdentityError(const QString &runningVersion,
                              int expectedMinor,
                              int expectedPatch);
 
-// QPA-04 controller for Transparent QPA mode.
+// QPA-04 controller for QPA mode.
 //
 // One long-lived InteractiveCompositeTarget represents the current Qt application's eligible
 // top-level surfaces. RemoteAccess is started at most once after the first visible surface appears;

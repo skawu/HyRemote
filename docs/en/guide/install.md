@@ -13,13 +13,13 @@ conventions live elsewhere - see the "Internal documents" section of [`docs/READ
 | Operating systems | Windows x86_64 and Linux x86_64 (desktop). Embedded Linux/EGLFS is **outside** the V1 support claim |
 | Qt | **Exact Qt 6.8.3** is the reference version and the acceptance baseline for the bounded RFB transport and all three integration modes; the required acceptance evidence for the current candidate is still pending |
 | Compilers | Windows: MSVC x64 (C++17); Linux: GCC x86_64 (C++17) |
-| Integration modes | (1) Embedded C++ (one shared library), (2) Declarative QML (`import HyRemote`), (3) Transparent QPA Proxy (`-platform hyremote`) |
-| QPA constraint | Transparent QPA is exactly coupled to the Qt 6.8.3 private QPA ABI; it preserves the native `qwindows` / `qxcb` delegate |
+| Integration modes | (1) C++ API (one shared library), (2) QML API (`import HyRemote`), (3) QPA Proxy (`-platform hyremote`) |
+| QPA constraint | QPA is exactly coupled to the Qt 6.8.3 private QPA ABI; it preserves the native `qwindows` / `qxcb` delegate |
 | Viewer | Any standard VNC client, default `127.0.0.1:5921` |
 
 The default port is a configure-time value an integrator can define:
 `cmake -DHYREMOTE_DEFAULT_PORT=<port>` (omitted, it is `5921`). All three integration modes share that one default -
-the Embedded C++ API and the declarative QML API start from the Core default, and the QPA proxy uses the same number
+the C++ API and the QML API start from the Core default, and the QPA proxy uses the same number
 when the platform string carries no `hyremote-port`. It stays overridable per process at run time through
 `RemoteAccess::setPort()`, the QML `port` property, or `-platform "hyremote:hyremote-port=<port>"`.
 
@@ -81,7 +81,7 @@ The resulting prefix is consumed with `find_package(HyRemote CONFIG REQUIRED)` a
 
 ### 3.3 Optional integration packages
 
-QML and Transparent QPA are optional payloads:
+QML and QPA are optional payloads:
 
 ```text
 -DHYREMOTE_BUILD_QML_API=ON      # provides import HyRemote
@@ -135,7 +135,7 @@ The V1 installed SDK exposes **one normal C++ product target**: `HyRemote::Remot
 
 - Core is statically composed behind the facade and is **not installed/exported** as a V1 SDK target;
 - the QML module is consumed through `import HyRemote`; its backing library is not a second C++ SDK target;
-- Transparent QPA is consumed through `hyremote_deploy(... QPA)` and is **not** an application link target (the
+- QPA is consumed through `hyremote_deploy(... QPA)` and is **not** an application link target (the
   installed SDK does not export `HyRemote::QpaPlatform`).
 
 Application code does not discover or link internal Core/transport/capture/input/QPA targets individually.
@@ -193,7 +193,7 @@ When HyRemote is included as a subproject, its own tests and examples default to
 automatically; applications do not need to know or override those developer-only switches.
 `add_subdirectory(... EXCLUDE_FROM_ALL)` is supported: HyRemote's source-tree payloads remain internal build
 targets, the deployment helper adds only the local build dependencies needed to materialize the selected payload,
-and it does **not** turn those targets into application link dependencies - a Transparent QPA application remains
+and it does **not** turn those targets into application link dependencies - a QPA application remains
 Qt-only even when `qhyremote` and `HyRemoteRemoteAccess` are built from source.
 
 Opt into extra integration packages only when needed:
@@ -214,9 +214,9 @@ they must not introduce a second project-specific build system or a more complex
 One HyRemote-owned entry point owns deployment:
 
 ```cmake
-hyremote_deploy(TARGET MyCppApp)          # Embedded C++
-hyremote_deploy(TARGET MyQmlApp QML)      # Declarative QML
-hyremote_deploy(TARGET ExistingQtApp QPA) # Transparent QPA
+hyremote_deploy(TARGET MyCppApp)          # C++ API
+hyremote_deploy(TARGET MyQmlApp QML)      # QML API
+hyremote_deploy(TARGET ExistingQtApp QPA) # QPA
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)  # QML + QPA composition
 ```
 
@@ -275,7 +275,7 @@ Supported; explicit limitations are in [`docs/known-limitations.md`](../../known
 
 ## 11. Related documents
 
-- Integration modes (choose one, each with its Chinese primary at the same path under `docs/`): [Embedded C++](../getting-started/cpp.md) | [Declarative QML](../getting-started/qml.md) | [Transparent QPA](../getting-started/qpa-proxy.md)
+- Integration modes (choose one, each with its Chinese primary at the same path under `docs/`): [C++ API](../getting-started/cpp.md) | [QML API](../getting-started/qml.md) | [QPA](../getting-started/qpa-proxy.md)
 - Deployment and packaging: [`deployment.md`](../../guide/deployment.md)
 - Compatibility and limits: [`compatibility.md`](../../compatibility.md) | [`known-limitations.md`](../../known-limitations.md)
 - Troubleshooting: [`troubleshooting.md`](../../guide/troubleshooting.md)

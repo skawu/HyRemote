@@ -117,7 +117,7 @@ QString runtimeIdentityError(const QString &runningVersion,
                                  .arg(expectedMajor)
                                  .arg(expectedMinor)
                                  .arg(expectedPatch);
-    const QString requirement = QStringLiteral("HyRemote Transparent QPA Proxy requires the exact Qt %1 "
+    const QString requirement = QStringLiteral("HyRemote QPA Proxy requires the exact Qt %1 "
                                                "private ABI at run time").arg(expected);
     const QString remedy = QStringLiteral("Install a payload qualified for the running Qt, or run the Qt "
                                           "this payload was built for.");

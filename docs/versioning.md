@@ -44,15 +44,15 @@ The concrete platform ordering is a product-roadmap decision and must be based o
 
 For platform support lines, the three integration modes are the primary Feature increments:
 
-1. Embedded C++ API;
-2. Declarative QML API;
-3. Transparent QPA Proxy.
+1. C++ API;
+2. QML API;
+3. QPA Proxy.
 
 Example for a platform line `V1.1.x.0`:
 
-- `V1.1.1.0` — Embedded C++ API supported on the platform;
-- `V1.1.2.0` — Declarative QML API supported on the platform;
-- `V1.1.3.0` — Transparent QPA Proxy supported on the platform.
+- `V1.1.1.0` — C++ API supported on the platform;
+- `V1.1.2.0` — QML API supported on the platform;
+- `V1.1.3.0` — QPA Proxy supported on the platform.
 
 ### Maintenance — defect fixes and small-scope optimization
 
@@ -95,9 +95,9 @@ Each formally supported embedded platform family starts a new Minor line:
 
 ```text
 V1.x.0.0   Platform family enters formal support
-V1.x.1.0   Embedded C++ API
-V1.x.2.0   Declarative QML API
-V1.x.3.0   Transparent QPA Proxy
+V1.x.1.0   C++ API
+V1.x.2.0   QML API
+V1.x.3.0   QPA Proxy
 ```
 
 The near-term embedded operating-system baseline is **Embedded Linux**. Rockchip and NXP i.MX are current high-priority platform candidates because they are relevant to industrial Linux/Qt deployments, but the final ordering of platform Minor lines remains a product-roadmap decision until separately frozen.

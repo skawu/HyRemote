@@ -1,6 +1,6 @@
 # HyRemote Widgets Basic
 
-`widgets-basic` is the minimum **Embedded C++ API + Qt Widgets** product example for HyRemote V1.
+`widgets-basic` is the minimum **C++ API + Qt Widgets** product example for HyRemote V1.
 
 The application uses only the public product facade:
 
@@ -111,7 +111,7 @@ Precise DPR/edge-coordinate normalization is additionally covered by determinist
 
 ## Local + remote coexistence boundary
 
-The application is a normal visible Qt Widgets window and HyRemote's Embedded C++ design is additive to that local UI. However, hosted offscreen CI is **not** evidence that a physical monitor and local keyboard/mouse remained usable while a real remote viewer was attached.
+The application is a normal visible Qt Widgets window and HyRemote's C++ API design is additive to that local UI. However, hosted offscreen CI is **not** evidence that a physical monitor and local keyboard/mouse remained usable while a real remote viewer was attached.
 
 That physical local-visible/local-input coexistence check is tracked by #109 and remains a final #30/#33 acceptance item. The physical run reuses this same application/public facade lifecycle; it must not introduce a test-only product API.
 

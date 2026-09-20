@@ -150,8 +150,8 @@ The release-readiness repository-layout gate enforces the physical layout and mo
 
 - `src/core` remains an internal STATIC composition target and is not an installed application SDK target.
 - `src/cpp` owns the single shared `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` runtime and its Widgets/Quick target adapters.
-- `src/qml` is the Declarative QML payload: it provides `import HyRemote`, it is installed into the consuming application's QML import tree, and it is not a second C++ product runtime.
-- `src/qpa` is the Transparent QPA payload: it provides `qhyremote`, it is a platform MODULE installed into the application's Qt plugin tree, and it is not an application link target.
+- `src/qml` is the QML API payload: it provides `import HyRemote`, it is installed into the consuming application's QML import tree, and it is not a second C++ product runtime.
+- `src/qpa` is the QPA payload: it provides `qhyremote`, it is a platform MODULE installed into the application's Qt plugin tree, and it is not an application link target.
 - A new transport, capture implementation, or target adapter that is part of the normal product belongs below the product module that owns it (`src/cpp` today), not at repository root.
 - A new payload that is delivered into a host application is a sibling deliverable under `src/`, registered with an explicit `add_subdirectory(<source> <stable-binary-dir>)`.
 
@@ -247,7 +247,7 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
   EGLFS or DRM/GBM platform support) are added as `src/<payload>/` and registered with an explicit
   `add_subdirectory(<source> <stable-binary-dir>)`; the stable binary directory is part of the contract, so a
   payload never relocates an existing artifact.
-- **Version-qualified payloads.** The Transparent QPA payload is coupled to the exact Qt private ABI it was
+- **Version-qualified payloads.** The QPA payload is coupled to the exact Qt private ABI it was
   qualified against (Qt 6.8.3 for V1). A future Qt LTS line is served by a new payload directory named for that
   line (`src/qpa-<qt-line>/`), not by widening the existing one: `src/qpa` keeps its path,
   target and artifact names, and each payload stays qualified against exactly one Qt line.

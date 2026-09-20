@@ -7,7 +7,7 @@ HyRemote is licensed under the **Apache License 2.0** and is intended for reuse 
 HyRemote V1 is **C++ first**:
 
 - the normal application SDK is the shared C++ `HyRemote::RemoteAccess` library;
-- Transparent QPA is a Qt platform MODULE using the same C++ runtime;
+- QPA is a Qt platform MODULE using the same C++ runtime;
 - QML is a thin wrapper over the same runtime;
 - the normal Windows/Linux SDK consumer does **not** install Rust, Cargo, Go, Node, Python or another backend-specific toolchain to use HyRemote;
 - implementation experiments may use other languages only behind an optional/research boundary and must not change the public application API, deployment contract or required consumer toolchain.
@@ -139,7 +139,7 @@ A temporary pinned patch may be maintained when necessary, but it must document:
 
 HyRemote's Core remains Qt-free. Product adapters use Qt public APIs wherever practical.
 
-Qt private/QPA APIs are allowed only inside the isolated Transparent QPA package with an exact-version support statement and acceptance evidence. The V1 QPA package is qualified specifically for Qt 6.8.3; public C++/QML API similarity does not broaden that private-ABI claim.
+Qt private/QPA APIs are allowed only inside the isolated QPA package with an exact-version support statement and acceptance evidence. The V1 QPA package is qualified specifically for Qt 6.8.3; public C++/QML API similarity does not broaden that private-ABI claim.
 
 Qt itself is an external dependency and remains subject to the Qt license selected by the downstream build/deployment. HyRemote's Apache-2.0 license does not alter Qt licensing obligations.
 
@@ -147,7 +147,7 @@ Two consequences are absolute rather than advisory, because they decide whether 
 
 - **Qt is linked dynamically and consumed from the user's installation.** A static Qt, a patched Qt, or a Qt acquired by
   this build would change the relinking and source-availability story for every binary produced here, so the repository
-  never fetches Qt and never builds it. The Transparent QPA payload is the one place coupled to Qt internals, through
+  never fetches Qt and never builds it. The QPA payload is the one place coupled to Qt internals, through
   the exact private QPA interfaces of its qualified line; its own source is available under this project's licence,
   which is what keeps that coupling distributable.
 - **Nothing third-party is vendored.** A dependency is consumed from the environment or from an explicitly selected

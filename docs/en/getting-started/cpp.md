@@ -1,4 +1,4 @@
-# Embedded C++ Getting Started
+# C++ API Getting Started
 
 > Language / 语言: **English** | [中文](../../getting-started/cpp.md)
 

@@ -11,7 +11,7 @@ labels: enhancement
 | Item | Value |
 |---|---|
 | Milestone | `V0.0.1.0` / `V0.0.2.0` / `V0.0.3.0` / `V1.0.0.0` |
-| Integration mode(s) | Embedded C++ / Declarative QML / Transparent QPA |
+| Integration mode(s) | C++ API / QML API / QPA |
 | Layer(s) | `src/core` / `src/cpp` / `src/qml` / `src/qpa` / packaging / docs / CI |
 
 ## Scope boundary

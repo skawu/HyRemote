@@ -73,7 +73,7 @@ A 1.x release must not silently make `RemoteAccess` copyable, remove move suppor
 
 Within 1.x, new enum values, read-only diagnostics, overloads or optional capabilities may be added only when they preserve source compatibility and the frozen product model. Existing meanings may not be repurposed to expose backend-specific composition.
 
-## 2. Declarative QML stable surface
+## 2. QML API stable surface
 
 The stable declarative application contract is:
 
@@ -126,9 +126,9 @@ Normal getting-started material must not instruct developers to assemble `Sessio
 
 Future low-level developer packaging, if ever introduced, must be a deliberate separately reviewed product decision and must not silently expand the V1 normal application surface.
 
-## 5. Transparent QPA compatibility category
+## 5. QPA compatibility category
 
-Transparent QPA is a mandatory V1 product mode but not a generic stable Qt-private C++ ABI surface.
+QPA is a mandatory V1 product mode but not a generic stable Qt-private C++ ABI surface.
 
 The V1 QPA package is deliberately coupled to exact Qt 6.8.3 private QPA APIs. Stable application-facing commitments are:
 

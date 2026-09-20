@@ -19,9 +19,9 @@ This document is the canonical top-level architecture for V1. Detailed contracts
 
 V1 has exactly three first-class application integration modes:
 
-1. **Embedded C++ API** — applications link the one shared `HyRemote::RemoteAccess` library;
-2. **Declarative QML API** — applications `import HyRemote`; the QML `RemoteAccess` item is a thin wrapper over that same C++ runtime;
-3. **Transparent QPA Proxy** — existing applications remain Qt-only and launch through `-platform hyremote`; the package-owned `qhyremote` module decorates the qualified native platform and uses the same shared runtime.
+1. **C++ API** — applications link the one shared `HyRemote::RemoteAccess` library;
+2. **QML API** — applications `import HyRemote`; the QML `RemoteAccess` item is a thin wrapper over that same C++ runtime;
+3. **QPA Proxy** — existing applications remain Qt-only and launch through `-platform hyremote`; the package-owned `qhyremote` module decorates the qualified native platform and uses the same shared runtime.
 
 Qt Widgets and Qt Quick are first-class peers. One mode is not implemented by adapting the application into another UI framework.
 
@@ -30,9 +30,9 @@ V1 does **not** expose the internal Core/Session/transport graph as the normal a
 ## 2. Runtime and artifact ownership
 
 ```text
-Embedded C++ app -----------+
+C++ API app -----------+
                             |
-Declarative QML wrapper ----+----> HyRemoteRemoteAccess (one SHARED runtime)
+QML API wrapper ----+----> HyRemoteRemoteAccess (one SHARED runtime)
                             |                 |
 Transparent qhyremote ------+                 v
                                       internal target adapters
@@ -55,7 +55,7 @@ The installed V1 artifact rules are fixed:
 - the installed SDK does not export `HyRemote::Core` or `HyRemote::QpaPlatform`;
 - `BUILD_SHARED_LIBS` does not create alternate V1 product personalities.
 
-## 3. Embedded C++ contract
+## 3. C++ API contract
 
 The normal C++ consumer contract is:
 
@@ -81,7 +81,7 @@ stop -> configure -> start
 
 There is no hidden live authorization/control channel in V1.
 
-## 4. Declarative QML contract
+## 4. QML API contract
 
 The QML layer is intentionally thin:
 
@@ -96,9 +96,9 @@ RemoteAccess {
 
 `enabled: true` is applied only after component completion. QML does not create a second Core, Session, transport or error state machine. Target, state, error and client-count observations reflect the same underlying C++ facade.
 
-## 5. Transparent QPA contract
+## 5. QPA contract
 
-Transparent QPA is selected at process start:
+QPA is selected at process start:
 
 ```text
 MyApp -platform hyremote
@@ -131,7 +131,7 @@ V1 correctness paths are:
 - qualified QWidget top levels through Qt public widget rendering into owned CPU-readable storage;
 - qualified QQuickWindow targets through public asynchronous Quick capture (`contentItem()->grabToImage()`).
 
-Transparent QPA composes qualified application-owned top-level QWidget/QQuickWindow surfaces into the remote application view while preserving the native delegate.
+QPA composes qualified application-owned top-level QWidget/QQuickWindow surfaces into the remote application view while preserving the native delegate.
 
 Arbitrary foreign/native `QWindow` capture is not a V1 support claim.
 
@@ -262,7 +262,7 @@ The canonical repository layout mirrors these responsibilities:
 src/core/                 internal Core
 src/cpp/         one shared public C++ runtime/facade
 src/qml/         declarative payload
-src/qpa/         exact-Qt Transparent QPA payload
+src/qpa/         exact-Qt QPA payload
 tests/                    tests only: cross-module integration
 tests/             consumers, E2E, contract, third-party matrix, release gates
 examples/                 product examples

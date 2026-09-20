@@ -58,11 +58,11 @@ Such dependencies belong behind adapters/backends.
 
 HyRemote intentionally supports three product integration styles. A contribution must not remove another mode merely to simplify one implementation:
 
-- Embedded C++ API;
-- Declarative QML API;
-- Transparent QPA Proxy.
+- C++ API;
+- QML API;
+- QPA Proxy.
 
-The Embedded C++ API is the stable reference integration. The QML API wraps the same core. The QPA Proxy is optional and may have stronger Qt-version constraints.
+The C++ API is the stable reference integration. The QML API wraps the same core. The QPA Proxy is optional and may have stronger Qt-version constraints.
 
 ## Qt application types
 

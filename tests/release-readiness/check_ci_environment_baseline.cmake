@@ -100,7 +100,7 @@ require_workflow_token(".github/workflows/qpa-proxy.yml"
           "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
     "installed-QPA PATH isolation immediately before product-fit")
 
-# SDK source/installed shapes: Embedded C++, QML, QPA and QML+QPA.
+# SDK source/installed shapes: C++ API, QML, QPA and QML+QPA.
 require_workflow_token(".github/workflows/sdk-consumption.yml"
     [=[set "PATH=%CD%\deploy-installed\bin;%SystemRoot%\System32;%SystemRoot%"
           "%CD%\deploy-installed\bin\hyremote-installed-consumer.exe"]=]

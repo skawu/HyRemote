@@ -1,11 +1,11 @@
-# E4 — Transparent QPA Proxy for an existing Qt application
+# E4 — QPA Proxy for an existing Qt application
 
 This example is intentionally an **ordinary Qt Widgets application**. Its C++ source does not include, call or link any HyRemote application API.
 
 The same application is used in two modes:
 
 1. native Qt platform only — normal local application;
-2. HyRemote Transparent QPA Proxy — native local platform remains the delegate while HyRemote adds remote view/control.
+2. HyRemote QPA Proxy — native local platform remains the delegate while HyRemote adds remote view/control.
 
 This is the V1 E4 example required by #41/#32. Packaging uses the same public `hyremote_deploy()` entry point as the other HyRemote modes.
 
@@ -13,13 +13,13 @@ This is the V1 E4 example required by #41/#32. Packaging uses the same public `h
 
 The UI contains text input, a spin box, slider/progress state, checkbox, menu, operator notes and an independent diagnostics top-level window. These are ordinary Qt controls chosen so local and remote input plus multi-window behavior are observable.
 
-There is deliberately no HyRemote status/control widget or backend selector inside the application source. Transparent QPA policy is process-launch configuration.
+There is deliberately no HyRemote status/control widget or backend selector inside the application source. QPA policy is process-launch configuration.
 
 The executable target always links **only `Qt6::Widgets`**. The optional HyRemote CMake package integration below is packaging metadata only; it never adds `HyRemote::RemoteAccess`, Core, transport or QPA-private types to application code or link libraries.
 
 ## 2. Reference compatibility boundary
 
-The V1 Transparent QPA reference package is version-coupled to **Qt 6.8.3 exactly**:
+The V1 QPA reference package is version-coupled to **Qt 6.8.3 exactly**:
 
 - Windows x86_64 -> native `qwindows` delegate;
 - Linux x86_64 -> native `qxcb` delegate.

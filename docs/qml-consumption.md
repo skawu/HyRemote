@@ -1,10 +1,10 @@
-# Declarative QML consumption and deployment
+# QML API consumption and deployment
 
 Status: **V0.0.2.0 installed/source contract; executable dual-OS evidence pending #74**
 
 Issues: #31, #69, #39, #41.
 
-HyRemote's QML API is a thin declarative surface over the same `HyRemote::RemoteAccess` runtime used by Embedded C++. It does not introduce a second Session, capture stack, input implementation or transport, and its backing library is not a second C++ SDK target.
+HyRemote's QML API is a thin declarative surface over the same `HyRemote::RemoteAccess` runtime used by C++ API. It does not introduce a second Session, capture stack, input implementation or transport, and its backing library is not a second C++ SDK target.
 
 ## 1. Installed SDK
 

@@ -12,7 +12,7 @@ using BuiltinTargetResolver =
     std::function<TargetComponents(QObject *target, bool remoteInputEnabled)>;
 
 // Private, per-target composition seam used by product-internal adapters such as the
-// Transparent QPA multi-surface target. It is deliberately not part of the installed
+// QPA multi-surface target. It is deliberately not part of the installed
 // HyRemote public API.
 //
 // Unlike setTargetFactory(), this interface is scoped to one QObject instance and therefore

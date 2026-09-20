@@ -39,13 +39,13 @@ V1 must preserve these boundaries:
 - the normal bind default is loopback-only;
 - remote viewing and remote control are separate policies;
 - remote input is opt-in;
-- Embedded C++/QML policy changes use explicit stopped-runtime configuration;
-- Transparent QPA remote-input policy is explicit startup/relaunch policy;
+- C++ API/QML policy changes use explicit stopped-runtime configuration;
+- QPA remote-input policy is explicit startup/relaunch policy;
 - `Running` and `connectedClientCount()` are operational state, not authentication/authorization;
 - protocol/frame/client/input state remains bounded;
 - recognized held remote input is balanced on abrupt viewer disconnect and explicit runtime shutdown;
 - no password/TLS/authenticated-identity capability is implied by the current V1 API;
-- native local display/input remains authoritative in the Transparent QPA path.
+- native local display/input remains authoritative in the QPA path.
 
 ## Reporting a vulnerability
 

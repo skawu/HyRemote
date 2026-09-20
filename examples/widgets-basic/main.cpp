@@ -93,7 +93,7 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("HyRemote Widgets Basic"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("HyRemote Embedded C++ API / Qt Widgets example"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote C++ API / Qt Widgets example"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Loopback VNC port."),
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
                                         "QPushButton { background: #3977d5; color: white; border: 0; }"
                                         "QLineEdit { background: #ffffff; color: #202733; padding: 4px; }"));
 
-    auto *title = new QLabel(QStringLiteral("HyRemote · Embedded C++ / Widgets"), &window);
+    auto *title = new QLabel(QStringLiteral("HyRemote · C++ API / Widgets"), &window);
     title->setGeometry(20, 18, 320, 32);
 
     auto *button = new QPushButton(QStringLiteral("Remote click target"), &window);

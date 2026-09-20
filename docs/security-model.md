@@ -10,14 +10,14 @@ A requirement described as **future** here is not a V1 product claim.
 
 ## 1. V1 security baseline
 
-The current V1 candidate uses HyRemote's bounded internal RFB 3.8 correctness transport across Embedded C++, Declarative QML and Transparent QPA.
+The current V1 candidate uses HyRemote's bounded internal RFB 3.8 correctness transport across C++ API, QML API and QPA.
 
 The implemented V1 security boundary is deliberately narrow and explicit:
 
 - constructing `HyRemote::RemoteAccess` does **not** open a listener;
-- Embedded C++ starts remote access only through explicit `start()`;
+- C++ API starts remote access only through explicit `start()`;
 - QML starts only after an explicit `enabled: true` request is applied after component completion;
-- Transparent QPA starts only when the process is deliberately launched through `-platform hyremote`;
+- QPA starts only when the process is deliberately launched through `-platform hyremote`;
 - the default listener address is loopback (`127.0.0.1`);
 - remote input is disabled by default;
 - the current RFB transport negotiates **SecurityType None**;
@@ -45,7 +45,7 @@ These facts are release constraints. Documentation, examples and compatibility c
        remote viewer
 ```
 
-Transparent QPA additionally delegates native display/input behavior to the qualified native Qt platform plugin (`qwindows` or `qxcb` on the V1 reference line). HyRemote must remain additive to that native path rather than replacing local operation.
+QPA additionally delegates native display/input behavior to the qualified native Qt platform plugin (`qwindows` or `qxcb` on the V1 reference line). HyRemote must remain additive to that native path rather than replacing local operation.
 
 External boundaries may be placed around HyRemote, for example host/network ACLs, a VPN or another separately managed secure tunnel. Those controls are deployment infrastructure, not HyRemote V1 transport-security features.
 
@@ -61,7 +61,7 @@ At minimum, V1 design and documentation must account for:
 - stale input state after abrupt viewer disconnect;
 - sensitive information leaking through diagnostics;
 - remote input escaping the intended Qt application/surface boundary;
-- local display/input being disrupted by Transparent QPA operation;
+- local display/input being disrupted by QPA operation;
 - future transport-security configuration being mistaken for already implemented V1 capability.
 
 ## 4. Secure-default requirements
@@ -86,8 +86,8 @@ Remote input is disabled by default and must be explicitly enabled.
 
 For the frozen V1 application contract:
 
-- Embedded C++ and QML remote-input configuration is mutable while the runtime is stopped; changing it for an active service uses the explicit `stop -> configure -> start` lifecycle;
-- Transparent QPA uses an explicit startup policy (`hyremote-input=true`); returning to view-only requires relaunch without that option;
+- C++ API and QML remote-input configuration is mutable while the runtime is stopped; changing it for an active service uses the explicit `stop -> configure -> start` lifecycle;
+- QPA uses an explicit startup policy (`hyremote-input=true`); returning to view-only requires relaunch without that option;
 - V1 does **not** invent a hidden runtime authorization/control channel solely to avoid this lifecycle;
 - local native input remains independent from remote-input policy.
 
@@ -159,7 +159,7 @@ A separately managed secure tunnel may constrain who can reach the HyRemote list
 
 Do not expose a SecurityType None listener directly to the public Internet or rely on a non-default port/viewer password UI as protection.
 
-## 9. Transparent QPA security boundary
+## 9. QPA security boundary
 
 Zero/minimal-source-change integration must not weaken defaults.
 

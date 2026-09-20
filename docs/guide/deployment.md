@@ -25,7 +25,7 @@ hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 
 - `HyRemote::RemoteAccess` 是**唯一的共享 C++ 产品库**；
 - Core 静态组合在该门面之后，**不是**独立的运行期载荷；
-- `qhyremote` 是用于 Transparent QPA 的**一个 Qt platform MODULE**；
+- `qhyremote` 是用于 QPA 的**一个 Qt platform MODULE**；
 - QML 模块是同一份共享 `RemoteAccess` 运行时之上的薄封装。
 
 `BUILD_SHARED_LIBS` **不会**在静态与共享形态之间切换产品。
@@ -60,7 +60,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 另见 [`qml-consumption.md`](../qml-consumption.md) 与 [`getting-started/qml.md`](../getting-started/qml.md)。
 
-## Transparent QPA 部署
+## QPA 部署
 
 应用在源码/链接层面保持**纯 Qt**：
 
@@ -106,7 +106,7 @@ hyremote_deploy(TARGET MyQmlApp QML QPA)
 
 部署**不会**削弱产品默认值：
 
-- Embedded C++ 的构造本身是惰性的；
+- C++ API 的构造本身是惰性的；
 - QML 在应用策略显式启用之前保持禁用；
 - QPA 的监听器创建遵循已文档化的平台插件生命周期；
 - 默认绑定回环地址；

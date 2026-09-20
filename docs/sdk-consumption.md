@@ -101,7 +101,7 @@ target_link_libraries(MyApp PRIVATE
 
 `HyRemote::RemoteAccess` is the normal product-level aggregate target. Internal implementation targets may exist, but getting-started documentation must not require application developers to manually compose Core, capture, input or VNC targets.
 
-## 4. Public Embedded C++ facade
+## 4. Public C++ API facade
 
 The common path for Widgets and Quick must stay concise.
 
@@ -219,7 +219,7 @@ Before V0.0.1.0 completion the repository/release must provide:
 2. Linux getting started;
 3. prebuilt SDK installation and `find_package(HyRemote)`;
 4. source consumption (`add_subdirectory` and supported acquisition workflow);
-5. Embedded C++ API reference/getting-started usage;
+5. C++ API reference/getting-started usage;
 6. runtime deployment;
 7. VNC viewer connect/view/control walkthrough;
 8. safe listener and remote-input defaults;

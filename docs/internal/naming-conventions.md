@@ -18,7 +18,7 @@ each is correct **only** in its own context:
 | `hyremote` | C++ namespace `hyremote`, internal source file names, and lower-case identifiers that never leave the library |
 | `HYREMOTE_` | CMake options and preprocessor macros |
 | `hyremote-` | CMake targets, library and test target names |
-| `qhyremote` | The Transparent QPA platform module, per Qt's own platform-plugin naming convention |
+| `qhyremote` | The QPA platform module, per Qt's own platform-plugin naming convention |
 
 A new globally exposed C-style symbol or macro carries the `HYREMOTE_` prefix. Public C++ types inside
 `HyRemote::` keep normal PascalCase names and are **not** additionally prefixed (no `HYRemoteAccess`-style

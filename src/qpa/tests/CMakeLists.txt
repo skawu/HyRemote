@@ -99,7 +99,7 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 15
     )
 
-    # Transparent QPA is additive to the native application. A remote listener bind failure must
+    # QPA is additive to the native application. A remote listener bind failure must
     # never turn into a native-window/event-loop failure. The test reserves an ephemeral loopback
     # port before QApplication construction and asks HyRemote to bind the occupied port.
     add_executable(hyremote-qpa-remote-failure-native-survival-smoke

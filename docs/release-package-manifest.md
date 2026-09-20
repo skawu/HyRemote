@@ -21,12 +21,12 @@ V1 deliberately avoids a user-visible static/shared or backend-target matrix:
 
 - `HyRemote::RemoteAccess` is the normal **shared** C++ product library;
 - `hyremote-core` is a **static source/internal composition library** behind `RemoteAccess` and is **not installed/exported** in the normal V1 SDK;
-- `qhyremote` is a Qt platform **MODULE payload** when Transparent QPA is enabled; the installed SDK **does not export `HyRemote::QpaPlatform`** as a consumer CMake target;
+- `qhyremote` is a Qt platform **MODULE payload** when QPA is enabled; the installed SDK **does not export `HyRemote::QpaPlatform`** as a consumer CMake target;
 - the `HyRemote` QML module is a thin declarative layer over the same shared `RemoteAccess` runtime and its backing library is not a second consumer C++ target.
 
 `BUILD_SHARED_LIBS` does not change the normal V1 application artifact contract.
 
-## Embedded C++ product facade
+## C++ API product facade
 
 The installed SDK exports:
 
@@ -44,7 +44,7 @@ hyremote_deploy(TARGET MyApp)
 
 The helper owns placement of the shared facade and its Qt dependencies.
 
-## Declarative QML payload
+## QML API payload
 
 When the QML API is enabled, the package additionally contains the normal Qt QML module payload for URI `HyRemote`. That module wraps the same shared C++ runtime; it is not a separate backend stack or a separately selected C++ library.
 
@@ -56,7 +56,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 The consumer should not copy `qmldir`, QML plugin files or `HyRemoteRemoteAccess` manually.
 
-## Transparent QPA payload
+## QPA payload
 
 When the exact-version QPA package is enabled, the SDK contains the qualified `qhyremote` platform plugin and package metadata required by:
 
@@ -74,7 +74,7 @@ The application does not link a HyRemote QPA target. `find_package(HyRemote)` pu
 
 The deployed HyRemote payload is intentionally bounded to the QPA module plus the same shared `RemoteAccess` runtime. QPA is version-coupled to the qualified Qt private ABI and must not imply generic Qt-private compatibility. Native `qwindows` / `qxcb` deployment remains Qt-owned. Normal deployed applications must not require manually configured `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH` or SDK-specific runtime search paths.
 
-The combined `QML QPA` form is a first-class deployment composition, not a fourth runtime architecture and not something release verification may infer from two independent successful consumers. The clean combined fixture must load the deployed `HyRemote` QML module while the transparent QPA plugin owns the one active remote listener/runtime, and must do so without SDK/plugin/QML path overrides.
+The combined `QML QPA` form is a first-class deployment composition, not a fourth runtime architecture and not something release verification may infer from two independent successful consumers. The clean combined fixture must load the deployed `HyRemote` QML module while the QPA plugin owns the one active remote listener/runtime, and must do so without SDK/plugin/QML path overrides.
 
 ## Source-tree internal architecture is not an installed product API
 

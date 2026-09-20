@@ -5,7 +5,7 @@ Status: production integration slice for #28 / V0.0.1.0 on the path to V1.0.0.0.
 ## Product boundary
 
 Normal applications attach a `QQuickWindow` to `HyRemote::RemoteAccess`. They do not construct a
-capture source or input sink. The same public Embedded C++ API is used for Widgets and Quick.
+capture source or input sink. The same public C++ API is used for Widgets and Quick.
 
 The installed HyRemote package declares Qt Quick as a dependency only when the built package
 contains this adapter.

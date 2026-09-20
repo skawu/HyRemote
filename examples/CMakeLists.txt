@@ -26,12 +26,12 @@ else()
     message(STATUS "  qml-basic example skipped: declarative HyRemote module unavailable")
 endif()
 
-# E4 belongs to the Transparent QPA milestone and intentionally carries the exact Qt 6.8.3
-# qualification boundary. Do not let that private-ABI version coupling narrow Embedded C++ or QML
+# E4 belongs to the QPA milestone and intentionally carries the exact Qt 6.8.3
+# qualification boundary. Do not let that private-ABI version coupling narrow C++ API or QML
 # example builds when the QPA mode is not selected. The ordinary Qt-only example remains independently
 # buildable from its own directory for source inspection/demo purposes.
 if(HYREMOTE_WITH_QPA_PROXY AND TARGET Qt6::Widgets)
     add_subdirectory(qpa-proxy-existing-app)
 else()
-    message(STATUS "  qpa-proxy-existing-app example skipped: Transparent QPA mode unavailable")
+    message(STATUS "  qpa-proxy-existing-app example skipped: QPA mode unavailable")
 endif()

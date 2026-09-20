@@ -10,9 +10,9 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 | 我要做什么 | 读这篇 |
 | --- | --- |
 | 安装、构建、把 HyRemote 接进应用 | [`guide/install.md`](guide/install.md) ｜ [English](en/guide/install.md) |
-| 用 Embedded C++ API 集成 | [`getting-started/cpp.md`](getting-started/cpp.md) |
-| 用 Declarative QML 集成 | [`getting-started/qml.md`](getting-started/qml.md) |
-| 不改应用源码，走 Transparent QPA | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) |
+| 用 C++ API 集成 | [`getting-started/cpp.md`](getting-started/cpp.md) |
+| 用 QML API 集成 | [`getting-started/qml.md`](getting-started/qml.md) |
+| 不改应用源码，走 QPA | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) |
 | 部署与打包 | [`deployment.md`](guide/deployment.md) |
 | 运行与查看器 | [`viewer-connection.md`](guide/viewer-connection.md) |
 | 出问题时的诊断 | [`troubleshooting.md`](guide/troubleshooting.md) |

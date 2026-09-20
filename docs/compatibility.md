@@ -26,16 +26,16 @@ The build detects the Qt it is given and adapts instead of refusing:
 - a **non-LTS line** produces one actionable warning and then **builds anyway**, against the **6.8 API baseline** that every feature search in this repository already asks for - the most compatible configuration available for a line this project has not qualified - so a user on a newer Qt is never blocked;
 - a Qt **below 6.8** cannot configure the product targets at all, and the configure error says so and names the supported way to build Core alone on purpose.
 
-The **Transparent QPA payload is not part of that adaptation**: it is qualified against **exactly Qt 6.8.3 private ABI** and is skipped unless that exact SDK is present, because a public-API-compatible Qt is not a private-ABI-compatible one. Qualifying any other line is owned by #57, which carries the Supported / Experimental / Unsupported conclusion for non-reference lines.
+The **QPA payload is not part of that adaptation**: it is qualified against **exactly Qt 6.8.3 private ABI** and is skipped unless that exact SDK is present, because a public-API-compatible Qt is not a private-ABI-compatible one. Qualifying any other line is owned by #57, which carries the Supported / Experimental / Unsupported conclusion for non-reference lines.
 
 | Qt | OS / architecture | Mode | Native/QPA path | Application scope | Status | Required evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| 6.8.3 | Windows x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Windows acceptance + #109 physical coexistence |
-| 6.8.3 | Linux x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Linux acceptance + #109 physical coexistence |
-| 6.8.3 | Windows x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Windows acceptance + #109 physical coexistence |
-| 6.8.3 | Linux x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Linux acceptance + #109 physical coexistence |
-| 6.8.3 | Windows x86_64 | Transparent QPA | `hyremote` -> native `qwindows` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
-| 6.8.3 | Linux x86_64 | Transparent QPA | `hyremote` -> native `qxcb` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
+| 6.8.3 | Windows x86_64 | C++ API | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Windows acceptance + #109 physical coexistence |
+| 6.8.3 | Linux x86_64 | C++ API | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Linux acceptance + #109 physical coexistence |
+| 6.8.3 | Windows x86_64 | QML API | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Windows acceptance + #109 physical coexistence |
+| 6.8.3 | Linux x86_64 | QML API | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Linux acceptance + #109 physical coexistence |
+| 6.8.3 | Windows x86_64 | QPA | `hyremote` -> native `qwindows` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
+| 6.8.3 | Linux x86_64 | QPA | `hyremote` -> native `qxcb` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
 
 #74 currently makes hosted runner assignment intermittent. Some PR #106 jobs on 2026-09-17 received real Windows/Linux runners and produced valid configure/build/test evidence, while newer exact-candidate jobs can still remain queued with no executed steps. No row is upgraded to Supported until the required current-candidate #104 Windows/Linux pass and distinct #109 physical/native evidence are complete.
 
@@ -75,7 +75,7 @@ Detailed evidence remains in:
 
 Important V1 limits:
 
-- arbitrary generic/foreign native `QWindow` capture is not a Transparent QPA claim;
+- arbitrary generic/foreign native `QWindow` capture is not a QPA claim;
 - a working QWidget raster case does not imply every QOpenGLWidget/QQuickWidget configuration;
 - a working Quick 2D case does not imply every Quick3D/custom-FBO/backend combination;
 - QPA claims are exact-Qt/private-ABI qualified, not generic `Qt 6.8+` promises.
@@ -135,4 +135,4 @@ Record at minimum:
 4. public Qt API compatibility does not imply QPA private-ABI compatibility.
 5. graphics-family evidence is configuration-specific unless an acceptance matrix explicitly broadens it.
 6. hardware acceleration support is independent of the stable application-facing product contract.
-7. V1 usability remains one exported shared C++ facade, a declarative QML payload, or the QPA plugin launch path; platform optimization must stay behind that boundary.
+7. V1 usability remains one exported shared C++ facade, a QML API payload, or the QPA plugin launch path; platform optimization must stay behind that boundary.

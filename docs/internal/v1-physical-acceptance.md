@@ -78,7 +78,7 @@ For every E1–E4 OS/mode cell, record:
 
 A partial/headless-only record cannot mark an OS/mode Supported.
 
-## E1 — Embedded C++ / Widgets
+## E1 — C++ API / Widgets
 
 Run on both Windows x86_64 and Linux x86_64 using the normal E1 Widgets application and only the public `HyRemote::RemoteAccess` integration contract.
 
@@ -98,7 +98,7 @@ Record per OS:
 - Windows E1: `<PASS/FAIL + evidence links>`
 - Linux E1: `<PASS/FAIL + evidence links>`
 
-## E2 — Embedded C++ / Qt Quick
+## E2 — C++ API / Qt Quick
 
 Repeat the E1 lifecycle on both operating systems with the normal `QQuickWindow` path.
 
@@ -126,7 +126,7 @@ Record per OS:
 - Windows E2: `<PASS/FAIL + evidence links>`
 - Linux E2: `<PASS/FAIL + evidence links>`
 
-## E3 — Declarative QML
+## E3 — QML API
 
 Run on both operating systems using only `import HyRemote` and the QML `RemoteAccess` type over the same shared runtime.
 
@@ -143,7 +143,7 @@ Record per OS:
 - Windows E3: `<PASS/FAIL + evidence links>`
 - Linux E3: `<PASS/FAIL + evidence links>`
 
-## E4 — Transparent QPA Proxy / existing Qt-only application
+## E4 — QPA Proxy / existing Qt-only application
 
 This is the defining physical proof that HyRemote is a native-delegate-preserving proxy rather than replacement-only `qvnc` usage. Run on both operating systems using the ordinary Qt-only E4 application deployed through the installed SDK/QPA path.
 

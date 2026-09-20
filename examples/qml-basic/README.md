@@ -1,6 +1,6 @@
 # HyRemote QML Basic
 
-`qml-basic` is the minimum **Declarative QML API** example for HyRemote V1. It uses the same shared `HyRemote::RemoteAccess` runtime as the C++ examples; QML is a thin integration layer, not a second capture/transport/input stack.
+`qml-basic` is the minimum **QML API** example for HyRemote V1. It uses the same shared `HyRemote::RemoteAccess` runtime as the C++ examples; QML is a thin integration layer, not a second capture/transport/input stack.
 
 ## Minimal use
 
@@ -48,7 +48,7 @@ The local UI displays the actual runtime state and `connectedClientCount`; `Runn
 
 The example's acceptance launcher can explicitly enable the shared `remoteInputEnabled` policy for trusted control testing. This is opt-in and preserves the same view/control separation as the C++ facade.
 
-QML does not expose RFB/backend-specific types or create a second input path. Pointer, key and committed-text delivery is performed by the same normalized runtime/Quick adapter path used by Embedded C++.
+QML does not expose RFB/backend-specific types or create a second input path. Pointer, key and committed-text delivery is performed by the same normalized runtime/Quick adapter path used by C++ API.
 
 ## Reconnect and stop
 

@@ -14,7 +14,7 @@ Qt is linked dynamically, from the adopter's own Qt installation; this repositor
 
 HyRemote does not copy the user's Qt SDK into this repository and does not claim that the Apache-2.0 license covers Qt.
 
-The Transparent QPA Proxy additionally depends on exact Qt private QPA interfaces for the qualified build line. Those interfaces remain Qt-owned and version-coupled.
+The QPA Proxy additionally depends on exact Qt private QPA interfaces for the qualified build line. Those interfaces remain Qt-owned and version-coupled.
 
 ### OpenSSL
 

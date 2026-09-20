@@ -26,10 +26,10 @@ layers.
 
 HyRemote V1.0 is productized through **three mandatory integration modes**:
 
-1. **Embedded C++ API** - stable, explicit integration for maximum control and performance.
-2. **Declarative QML API** - convenient integration for Qt Quick applications using the same core
+1. **C++ API** - stable, explicit integration for maximum control and performance.
+2. **QML API** - convenient integration for Qt Quick applications using the same core
    semantics.
-3. **Transparent QPA Proxy** - low/zero-source-change integration for supported exact Qt/platform
+3. **QPA Proxy** - low/zero-source-change integration for supported exact Qt/platform
    combinations, with the product goal of preserving local display/input while adding remote
    view/control simultaneously.
 
@@ -56,7 +56,7 @@ target_link_libraries(MyApp PRIVATE
 )
 ```
 
-The target Embedded C++ application experience is intentionally small:
+The target C++ API application experience is intentionally small:
 
 ```cpp
 #include <HyRemote/RemoteAccess.h>
@@ -100,7 +100,7 @@ HyRemote does not treat "stronger than Qt VNC Server" as an unverified marketing
 target is to provide evidence-backed product advantages where HyRemote deliberately extends the
 baseline model:
 
-- **three integration modes**: Embedded C++, Declarative QML and Transparent QPA Proxy;
+- **three integration modes**: C++ API, QML API and QPA Proxy;
 - **Qt Widgets and Qt Quick** as first-class application targets;
 - **local + remote coexistence** in every supported integration mode;
 - **Windows + Linux** as the x86 reference platform;
@@ -113,7 +113,7 @@ baseline model:
 - **richer examples and documentation**, including deployment, reconnect, diagnostics, security
   boundaries, troubleshooting and exact compatibility claims.
 
-The example suite is expected to cover, at minimum, Widgets C++, Quick C++, declarative QML,
+The example suite is expected to cover, at minimum, Widgets C++, Quick C++, QML API,
 zero/minimal-change QPA Proxy, a production-like remote-support showcase, and a clean external
 installed-SDK consumer. Examples must not imply capabilities that have not been implemented and
 validated.
@@ -166,7 +166,7 @@ The implementation-level boundaries are recorded in [`architecture.md`](architec
   business logic.
 - **Qt-like consumption experience.** After acquiring HyRemote once, users should integrate it through
   normal CMake/QML mechanisms instead of assembling internal subsystems.
-- **Three mandatory product integration modes for V1.0.** C++ API, QML API and Transparent QPA Proxy
+- **Three mandatory product integration modes for V1.0.** C++ API, QML API and QPA Proxy
   are distinct user-facing capabilities.
 - **Qt Widgets and Qt Quick are peers.** Neither is treated as a compatibility afterthought.
 - **Local + remote coexistence.** Supported modes must preserve normal local behavior while remote
@@ -215,9 +215,9 @@ Within that line, independently deliverable integration modes use `V1.x.y.0`:
 
 ```text
 V1.x.0.0   platform family enters formal support
-V1.x.1.0   Embedded C++ API
-V1.x.2.0   Declarative QML API
-V1.x.3.0   Transparent QPA Proxy
+V1.x.1.0   C++ API
+V1.x.2.0   QML API
+V1.x.3.0   QPA Proxy
 ```
 
 The near-term embedded operating-system baseline is **Embedded Linux**. Platform ordering is a product

@@ -6,15 +6,15 @@ HyRemote V1 在三种集成方式背后使用**同一个**有界内部 RFB 正�
 
 ## 启动目标应用
 
-### Embedded C++
+### C++ API
 
 应用显式调用 `RemoteAccess::start()`。
 
-### Declarative QML
+### QML API
 
 应用通过 `enabled: true` 显式请求启动；封装层会在 QML 组件构造完成之后应用该请求。
 
-### Transparent QPA
+### QPA
 
 应用被有意地通过 `hyremote` 平台插件启动，例如：
 
@@ -41,7 +41,7 @@ MyApp -platform hyremote
 
 远程查看与远程输入是**两项独立策略**。安全的产品默认是只看。
 
-Embedded C++ 在启动前显式开启控制：
+C++ API 在启动前显式开启控制：
 
 ```cpp
 remote.setRemoteInputEnabled(true);
@@ -50,7 +50,7 @@ remote.start();
 
 QML 在停止状态下暴露等价的 `remoteInputEnabled` 策略。
 
-Transparent QPA 把"零源码改动"的策略放在启动配置里：
+QPA 把"零源码改动"的策略放在启动配置里：
 
 ```text
 -platform hyremote                         # 只看
@@ -63,7 +63,7 @@ Transparent QPA 把"零源码改动"的策略放在启动配置里：
 
 查看端可以在**不重建**目标应用的前提下断开并重连。远端客户端生命周期由共享传输拥有；Qt 目标与本机应用各自独立继续运行。
 
-`RemoteAccess::stop()` 拆除 Embedded C++/QML 的会话与监听器，并把门面回到 `Stopped`。Transparent QPA 则在受支持的 surface 变动与正常的查看端重连之间，保留它的**同一个应用会话**，直到插件/控制器生命周期结束。
+`RemoteAccess::stop()` 拆除 C++ API/QML 的会话与监听器，并把门面回到 `Stopped`。QPA 则在受支持的 surface 变动与正常的查看端重连之间，保留它的**同一个应用会话**，直到插件/控制器生命周期结束。
 
 查看端异常消失时，已识别到的远端按下状态会被平衡（不残留按住）。
 
@@ -73,7 +73,7 @@ Transparent QPA 把"零源码改动"的策略放在启动配置里：
 
 当前产品门面/QML 封装暴露后端中立的 `connectedClientCount()` 诊断值。E1/E2/E3/E5 的产品适配使用期望的 `0 → 1 → 0 → 1 → 0` 生命周期覆盖连接、断开与重连。
 
-Transparent QPA **不会**为了让一个本来未改动的应用镜像这个值，而额外暴露第二套应用诊断 API。
+QPA **不会**为了让一个本来未改动的应用镜像这个值，而额外暴露第二套应用诊断 API。
 
 ## 本机与远端并存
 

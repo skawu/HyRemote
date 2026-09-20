@@ -1,8 +1,8 @@
-# Declarative QML Getting Started
+# QML API Getting Started
 
 > Language / 语言: **English** | [中文](../../getting-started/qml.md)
 
-HyRemote's Declarative QML mode is a thin declarative surface over the same shared `HyRemote::RemoteAccess` runtime used by C++. It does not create a second Session, capture, transport or input stack.
+HyRemote's QML API mode is a thin declarative surface over the same shared `HyRemote::RemoteAccess` runtime used by C++. It does not create a second Session, capture, transport or input stack.
 
 ## Prerequisites
 
@@ -105,7 +105,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 The QML module is an import payload, not a second C++ SDK target. Application developers do not link a `HyRemote::Qml` target or manually copy the backing library, plugin, `qmldir`, shared facade, or transport files.
 
-`QML QPA` is available when an application deliberately combines declarative API use with Transparent QPA packaging:
+`QML QPA` is available when an application deliberately combines declarative API use with QPA packaging:
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML QPA)

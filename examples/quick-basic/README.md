@@ -1,6 +1,6 @@
 # HyRemote Quick Basic
 
-`quick-basic` is the minimum **Embedded C++ API + Qt Quick/QQuickWindow** product example for HyRemote V1.
+`quick-basic` is the minimum **C++ API + Qt Quick/QQuickWindow** product example for HyRemote V1.
 
 The application uses the same public product facade as the Widgets path:
 
@@ -66,7 +66,7 @@ The scene contains a pointer target and `TextInput`. Product E2E verifies that n
 
 ## Stopped-runtime policy transition
 
-Embedded C++ / Quick uses the same stopped-runtime contract as Widgets. The application and `QQuickWindow` remain alive while only HyRemote is restarted:
+C++ API / Quick uses the same stopped-runtime contract as Widgets. The application and `QQuickWindow` remain alive while only HyRemote is restarted:
 
 ```cpp
 remote.stop();
@@ -112,7 +112,7 @@ The production Quick adapter uses the public `QQuickWindow::contentItem()->grabT
 
 ## Local + remote coexistence boundary
 
-HyRemote's Embedded C++ mode leaves the native Quick application as the normal local application. Hosted E2E currently runs with offscreen/software Quick for repeatability, so it proves remote protocol→Quick behavior but **does not prove a physical monitor/local input path**.
+HyRemote's C++ API mode leaves the native Quick application as the normal local application. Hosted E2E currently runs with offscreen/software Quick for repeatability, so it proves remote protocol→Quick behavior but **does not prove a physical monitor/local input path**.
 
 Physical local display and local input coexistence is tracked by #109 and remains a final #30/#33 acceptance item. The physical run reuses this same application/public facade lifecycle; it must not introduce a test-only product API.
 

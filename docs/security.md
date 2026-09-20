@@ -8,14 +8,14 @@ This page describes security behavior implemented in the current V1 candidate. [
 
 ## Current V1 baseline
 
-The current correctness transport is HyRemote's bounded internal RFB transport shared by Embedded C++, Declarative QML and Transparent QPA.
+The current correctness transport is HyRemote's bounded internal RFB transport shared by C++ API, QML API and QPA.
 
 Implemented defaults and controls:
 
 - constructing C++ `HyRemote::RemoteAccess` does **not** open a listener;
-- Embedded C++ requires explicit `start()`;
+- C++ API requires explicit `start()`;
 - QML requires an explicit `enabled: true` request, applied after component completion;
-- Transparent QPA starts only when the application is deliberately launched through the `hyremote` platform path;
+- QPA starts only when the application is deliberately launched through the `hyremote` platform path;
 - the default listener is loopback (`127.0.0.1`);
 - remote input is disabled by default;
 - remote viewing and remote input policy remain distinct;
@@ -39,7 +39,7 @@ Therefore:
 
 ## Listener exposure
 
-Embedded C++ defaults to loopback:
+C++ API defaults to loopback:
 
 ```cpp
 HyRemote::RemoteAccess remote(&window);
@@ -56,18 +56,18 @@ Do not use a wildcard or externally reachable address merely to make viewer setu
 actually accepts - including that the IPv6 wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack
 one - is measured in [`known-limitations.md`](known-limitations.md#listener-address-family-and-reachability). First decide which network security layer is responsible for restricting access.
 
-The same rule applies to QML `listenAddress` and Transparent QPA `hyremote-address`: changing away from loopback widens the network trust boundary; it does not add authentication.
+The same rule applies to QML `listenAddress` and QPA `hyremote-address`: changing away from loopback widens the network trust boundary; it does not add authentication.
 
 ## Remote viewing versus control
 
-The safe default is view-only. For Embedded C++, remote control must be enabled explicitly while stopped:
+The safe default is view-only. For C++ API, remote control must be enabled explicitly while stopped:
 
 ```cpp
 remote.setRemoteInputEnabled(true);
 remote.start();
 ```
 
-The Declarative QML API mirrors the same product policy. A normal compact start can remain view-only:
+The QML API mirrors the same product policy. A normal compact start can remain view-only:
 
 ```qml
 RemoteAccess {
@@ -76,7 +76,7 @@ RemoteAccess {
 }
 ```
 
-Transparent QPA uses explicit startup policy rather than inventing an application control API for an otherwise unmodified program:
+QPA uses explicit startup policy rather than inventing an application control API for an otherwise unmodified program:
 
 ```text
 -platform hyremote                         # view-only default
@@ -95,7 +95,7 @@ Exact Windows/Linux viewer lifecycle acceptance remains pending while #74 preven
 
 ## Input safety boundary
 
-Embedded C++ and Declarative QML inject normalized input only into the attached Qt application target through the Qt adapter path. Transparent QPA routes remote input through the same normalized product semantics to qualified application surfaces while native local input remains owned by the native delegate.
+C++ API and QML API inject normalized input only into the attached Qt application target through the Qt adapter path. QPA routes remote input through the same normalized product semantics to qualified application surfaces while native local input remains owned by the native delegate.
 
 HyRemote does not use Linux `uinput`, a Windows virtual-HID driver, or desktop-wide OS input injection as the V1 default.
 

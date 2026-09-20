@@ -18,9 +18,9 @@ V1 reference platforms: Windows x86_64 and Linux x86_64.</p>
 
 HyRemote keeps the application-facing model deliberately small. V1 has three mandatory integration modes:
 
-1. **Embedded C++ API:** link one shared library, `HyRemote::RemoteAccess`;
-2. **Declarative QML API:** `import HyRemote` and use the thin `RemoteAccess` wrapper over the same C++ runtime;
-3. **Transparent QPA Proxy:** keep the application Qt-only and launch it with `-platform hyremote`.
+1. **C++ API:** link one shared library, `HyRemote::RemoteAccess`;
+2. **QML API:** `import HyRemote` and use the thin `RemoteAccess` wrapper over the same C++ runtime;
+3. **QPA Proxy:** keep the application Qt-only and launch it with `-platform hyremote`.
 
 Qt Widgets and Qt Quick are first-class peers. The three integration modes share one remote-access runtime architecture rather than creating separate Session/transport stacks.
 
@@ -58,7 +58,7 @@ hyremote_deploy(TARGET MyApp)
 
 The helper carries the shared `HyRemoteRemoteAccess` runtime and its Qt runtime dependencies.
 
-## Declarative QML
+## QML API
 
 ```qml
 import HyRemote
@@ -79,7 +79,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 The QML backing library is payload, not another consumer C++ target.
 
-## Transparent QPA — zero HyRemote application linkage
+## QPA — zero HyRemote application linkage
 
 An existing Qt application remains Qt-only:
 
@@ -111,7 +111,7 @@ The installed SDK does **not** expose `HyRemote::QpaPlatform` as an application 
 | --- | --- |
 | `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` | **Shared library**; the one normal C++ product target |
 | `HyRemote` QML module | Thin declarative payload over the same shared runtime |
-| `qhyremote` | Qt platform **MODULE payload**; Transparent QPA entry point |
+| `qhyremote` | Qt platform **MODULE payload**; QPA entry point |
 | `hyremote-core` | Internal static source component; not installed/exported as an application SDK target |
 
 `BUILD_SHARED_LIBS` does not create alternate V1 product personalities.
@@ -145,7 +145,7 @@ Optional V1 integration packages:
 -DHYREMOTE_WITH_QPA_PROXY=ON
 ```
 
-Transparent QPA requires exact Qt 6.8.3 and the matching private Gui development package. Normal C++ use does not.
+QPA requires exact Qt 6.8.3 and the matching private Gui development package. Normal C++ use does not.
 
 Maintainers/CI enable repository validation explicitly:
 
@@ -201,10 +201,10 @@ See [`docs/guide/deployment.md`](docs/guide/deployment.md).
 
 The V1 candidate contains:
 
-- `examples/widgets-basic` — Embedded C++ / Widgets;
-- `examples/quick-basic` — Embedded C++ / Quick;
-- `examples/qml-basic` — Declarative QML;
-- `examples/qpa-proxy-existing-app` — ordinary Qt application + Transparent QPA;
+- `examples/widgets-basic` — C++ API / Widgets;
+- `examples/quick-basic` — C++ API / Quick;
+- `examples/qml-basic` — QML API;
+- `examples/qpa-proxy-existing-app` — ordinary Qt application + QPA;
 - `examples/remote-support-showcase` — operator-controlled remote-support workflow;
 - clean installed/source consumer fixtures under `tests/` for SDK acceptance.
 
@@ -224,9 +224,9 @@ Formal pre-GA release versions enforce their cumulative milestone profile and re
 
 Choose the application mode first:
 
-- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — Embedded C++
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — Declarative QML
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — Transparent QPA
+- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — C++ API
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — QML API
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — QPA
 
 Reference/setup and delivery guides:
 

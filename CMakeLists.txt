@@ -80,7 +80,7 @@ if(PROJECT_IS_TOP_LEVEL
 endif()
 
 # The project targets Qt LTS lines. The reference line is 6.8 LTS, the public C++/QML path accepts newer 6.8+
-# releases, and the Transparent QPA payload stays exactly 6.8.3 (see docs/architecture.md and docs/compatibility.md).
+# releases, and the QPA payload stays exactly 6.8.3 (see docs/architecture.md and docs/compatibility.md).
 #
 # A non-LTS Qt is not a reason to refuse to build - the user must not be blocked - but it must never be silent
 # either. The build reports the line, and proceeds on the **6.8 API baseline** the rest of the configure already
@@ -97,7 +97,7 @@ if(TARGET Qt6::Core)
             "(${HYREMOTE_QT_LTS_LINES}) and the qualified reference line is 6.8.3.\n"
             "  The build continues against the 6.8 API baseline and the public C++/QML surface, so the user is not "
             "blocked, but this Qt version is not qualified by this project.\n"
-            "  The Transparent QPA payload is unaffected by this choice: it still requires exactly Qt 6.8.3 private "
+            "  The QPA payload is unaffected by this choice: it still requires exactly Qt 6.8.3 private "
             "ABI, and is skipped unless that exact SDK is present.\n"
             "  Use an LTS Qt (6.8.x recommended) for anything that has to be supported.")
     endif()
@@ -160,7 +160,7 @@ if(HYREMOTE_WITH_QPA_PROXY)
     endif()
     endif()
 
-    # Transparent QPA is itself responsible for discovering both qualified V1 application surface
+    # QPA is itself responsible for discovering both qualified V1 application surface
     # families. Imported Qt targets created while building RemoteAccess live in that child directory
     # scope and are not reliable sibling-scope inputs here. Re-resolve the exact Qt package with
     # Widgets + Quick so qhyremote never changes capability merely because examples/QML happened to

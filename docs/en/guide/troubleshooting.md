@@ -2,7 +2,7 @@
 
 > Language / 语言: **English** | [中文](../../guide/troubleshooting.md)
 
-This guide covers the V1 Embedded C++, Declarative QML and Transparent QPA paths. Start with product-level errors, package metadata and documented policy before investigating internal implementation layers.
+This guide covers the V1 C++ API, QML API and QPA paths. Start with product-level errors, package metadata and documented policy before investigating internal implementation layers.
 
 ## `find_package(HyRemote)` cannot find the package
 
@@ -42,7 +42,7 @@ Verify the integration mode actually started the service:
 
 Also verify the viewer uses the configured loopback address/port, another process is not occupying the port, the process is still running, and a firewall/security product is not interfering with the intended local/trusted connection.
 
-Construction alone never opens the Embedded C++ listener; merely importing the QML module also does not start it.
+Construction alone never opens the C++ API listener; merely importing the QML module also does not start it.
 
 ## Viewer sees the application but input does nothing
 
@@ -78,7 +78,7 @@ The installed SDK must have been built with:
 
 ## QPA deploy rejects the Qt version
 
-Transparent QPA is private-ABI coupled to **exact Qt 6.8.3** in V1. The application/deployment configure must resolve the same exact Qt version as the qualified QPA payload.
+QPA is private-ABI coupled to **exact Qt 6.8.3** in V1. The application/deployment configure must resolve the same exact Qt version as the qualified QPA payload.
 
 Do not bypass this guard by editing package files or manually copying `qhyremote`; qualify another Qt line explicitly instead.
 

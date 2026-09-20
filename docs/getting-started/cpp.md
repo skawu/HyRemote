@@ -1,4 +1,4 @@
-# Embedded C++ 接入（Qt Widgets / Qt Quick）
+# C++ API 接入（Qt Widgets / Qt Quick）
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/cpp.md)
 

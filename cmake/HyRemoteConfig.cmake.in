@@ -49,7 +49,7 @@ else()
     set(HyRemote_QML_BACKING_FILE "")
 endif()
 
-# Transparent QPA is a package-owned plugin payload. There is no consumer link target and no
+# QPA is a package-owned plugin payload. There is no consumer link target and no
 # static/shared personality switch in V1: qhyremote always reuses the one shared RemoteAccess runtime.
 set(HyRemote_QPA_AVAILABLE @HYREMOTE_PACKAGE_WITH_QPA@)
 if(HyRemote_QPA_AVAILABLE)

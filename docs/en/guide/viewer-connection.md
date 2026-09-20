@@ -6,15 +6,15 @@ HyRemote V1 uses one bounded internal RFB correctness transport behind all three
 
 ## Start the target application
 
-### Embedded C++
+### C++ API
 
 The application explicitly calls `RemoteAccess::start()`.
 
-### Declarative QML
+### QML API
 
 The application explicitly requests start through `enabled: true`; the wrapper applies that request after QML component completion.
 
-### Transparent QPA
+### QPA
 
 The application is deliberately launched through the `hyremote` platform plugin, for example:
 
@@ -44,7 +44,7 @@ Viewer syntax varies. The automated product-fit suite uses maintained `vncdotool
 
 Remote viewing and remote input are separate policies. The safe product default is view-only.
 
-Embedded C++ explicitly enables control before start:
+C++ API explicitly enables control before start:
 
 ```cpp
 remote.setRemoteInputEnabled(true);
@@ -53,7 +53,7 @@ remote.start();
 
 QML exposes the equivalent `remoteInputEnabled` policy while stopped.
 
-Transparent QPA keeps zero-source-change policy in launch configuration:
+QPA keeps zero-source-change policy in launch configuration:
 
 ```text
 -platform hyremote                         # view-only
@@ -66,7 +66,7 @@ Unsupported key/IME behavior remains a documented limitation rather than being a
 
 A viewer may disconnect and reconnect without recreating the target application. Remote client lifetime is owned by the shared transport; the Qt target and local application continue independently.
 
-`RemoteAccess::stop()` tears down the Embedded C++/QML session/listener and returns the facade to Stopped. Transparent QPA retains its one application session across supported surface churn and normal viewer reconnects until the plugin/controller lifecycle ends.
+`RemoteAccess::stop()` tears down the C++ API/QML session/listener and returns the facade to Stopped. QPA retains its one application session across supported surface churn and normal viewer reconnects until the plugin/controller lifecycle ends.
 
 Recognized remote pressed state is balanced when a viewer disappears abruptly, so no pressed key or button is left held.
 
@@ -76,7 +76,7 @@ Recognized remote pressed state is balanced when a viewer disappears abruptly, s
 
 The current product facade/QML wrapper exposes backend-neutral `connectedClientCount()` diagnostics. E1/E2/E3/E5 product-fit uses the expected `0 → 1 → 0 → 1 → 0` lifecycle across connect, disconnect and reconnect. Those commands are implemented but are not accepted support evidence until the reference jobs actually run.
 
-Transparent QPA does not expose a second application diagnostics API to an otherwise unmodified application merely to mirror this value.
+QPA does not expose a second application diagnostics API to an otherwise unmodified application merely to mirror this value.
 
 ## Local + remote coexistence
 

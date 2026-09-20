@@ -189,7 +189,7 @@ function(_hyremote_resolve_qpa_payload file_var name_var)
     endif()
 
     message(FATAL_ERROR
-        "Transparent QPA payload is unavailable; install/build HyRemote with HYREMOTE_WITH_QPA_PROXY=ON")
+        "QPA payload is unavailable; install/build HyRemote with HYREMOTE_WITH_QPA_PROXY=ON")
 endfunction()
 
 # qhyremote dynamically delegates to the native Qt platform plugin, so the native delegate is not a
@@ -392,7 +392,7 @@ function(hyremote_deploy)
         if(NOT _hyremote_source_acquisition
            AND DEFINED HyRemote_QPA_AVAILABLE AND NOT HyRemote_QPA_AVAILABLE)
             message(FATAL_ERROR
-                "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QPA) requested an SDK that was built without Transparent QPA")
+                "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} QPA) requested an SDK that was built without QPA")
         endif()
         _hyremote_generate_qpa_deploy_script(
             "${HYREMOTE_DEPLOY_TARGET}" _hyremote_supplemental_deploy_script)

@@ -17,7 +17,7 @@ add_library(hyremote-remoteaccess SHARED
     src/remote_access.cpp
     src/detail/component_factories.cpp
     src/detail/security_descriptor.cpp
-    # Source-private composition seam for the Transparent QPA payload. It carries the Core-owned operations
+    # Source-private composition seam for the QPA payload. It carries the Core-owned operations
     # the QPA composite path needs, so the payload never links Core directly (see the repository-layout gate).
     # The header is not installed; only the three explicitly annotated bridge symbols live in this shared runtime.
     src/detail/qpa_composition_seam.cpp

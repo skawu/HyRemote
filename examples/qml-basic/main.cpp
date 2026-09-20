@@ -47,7 +47,7 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("HyRemote QML Basic"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("HyRemote Declarative QML API example"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote QML API example"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Loopback VNC port."),

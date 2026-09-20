@@ -1,17 +1,17 @@
-# Transparent QPA Proxy 接入
+# QPA Proxy 接入
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/qpa-proxy.md)
 
 本文面向**已存在的 Qt 应用**：希望以**零改动或最小改动**获得 HyRemote 远程访问能力的场景。
 
-Transparent QPA 是 HyRemote V1 三种必备接入方式中的第三种。它**不是**"只做替换/无头"的 VNC 平台：HyRemote 把正常的
+QPA 是 HyRemote V1 三种必备接入方式中的第三种。它**不是**"只做替换/无头"的 VNC 平台：HyRemote 把正常的
 平台行为继续交给原生 Qt 平台集成，并**在其旁**加上同一份共享远程访问运行时。
 
 一个完整的普通应用示例见 [`examples/qpa-proxy-existing-app`](../../examples/qpa-proxy-existing-app)。
 
 ## V1 限定参考线
 
-Transparent QPA 是**有意**与 Qt 私有 API 版本耦合的：
+QPA 是**有意**与 Qt 私有 API 版本耦合的：
 
 - Qt：**精确 6.8.3**；
 - Windows x86_64 委托平台：`qwindows`；
@@ -171,7 +171,7 @@ hyremote-input=<0|1|false|true|off|on|no|yes>
 
 ## 9. 多窗口行为
 
-Transparent QPA 把一个 Qt 应用表示成**一个逻辑远程会话**，而不是"每窗口一个监听器"。受支持的应用自有顶层 surface 会被
+QPA 把一个 Qt 应用表示成**一个逻辑远程会话**，而不是"每窗口一个监听器"。受支持的应用自有顶层 surface 会被
 组合进该会话；打开、关闭或移动受支持的对话框、工具窗口、`QWidget` 弹出菜单或第二个 `QQuickWindow`，**本身不得**
 重启监听器。
 

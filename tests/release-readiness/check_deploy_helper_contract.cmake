@@ -145,7 +145,7 @@ foreach(required_phrase
         [=[QML import root does not exist]=]
         [=[QML module directory does not exist]=]
         [=[requires the current HyRemote source build]=]
-        [=[requested an SDK that was built without Transparent QPA]=]
+        [=[requested an SDK that was built without QPA]=]
         [=[requires exact Qt]=])
     string(FIND "${deploy_helper}" "${required_phrase}" found)
     if(found EQUAL -1)
@@ -227,7 +227,7 @@ foreach(required_token
         [=[EXPECT_FAILURE_FRAGMENT=QML_module_directory_does_not_exist]=]
         [=[EXPECT_FAILURE_FRAGMENT=requires_the_current_HyRemote_source_build]=]
         [=[EXPECT_FAILURE_FRAGMENT=requires_exact_Qt_6.8.3]=]
-        [=[EXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA]=])
+        [=[EXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_QPA]=])
     string(FIND "${qpa_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR "deploy-helper-contract: deterministic deploy test lost canonical semantic rejection wiring: ${required_token}")

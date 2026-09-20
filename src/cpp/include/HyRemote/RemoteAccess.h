@@ -50,7 +50,7 @@ struct RemoteAccessError
     bool recoverable = false;
 };
 
-// Product-level Embedded C++ API.
+// Product-level C++ API.
 //
 // Normal applications attach one RemoteAccess instance to a top-level Qt target and explicitly
 // start/stop remote access. Session/CaptureSource/Transport/InputSink and concrete RFB/TLS backends

@@ -20,9 +20,9 @@ Linux:    sh compile.cmd --mode qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 
 | 参数 | 含义 |
 | --- | --- |
-| `--mode qpa`（默认） | 透明 QPA 代理接入（`-platform hyremote`） |
-| `--mode cpp` | 仅嵌入式 C++（`HyRemote::RemoteAccess`） |
-| `--mode qml` | 声明式 QML（`import HyRemote`） |
+| `--mode qpa`（默认） | QPA 代理接入（`-platform hyremote`） |
+| `--mode cpp` | 仅C++ API（`HyRemote::RemoteAccess`） |
+| `--mode qml` | QML API（`import HyRemote`） |
 | `--mode all` | 三种接入方式全部构建 |
 | `--mode minimal` | 最小构建（不开示例/测试/QML/QPA） |
 | `--toolchain <file>.cmake` | **指定交叉编译工具链文件** |
