@@ -187,7 +187,7 @@ Release notes stay candidate/pending until the final release branch is accepted.
 
 The integrated workflow is necessary but not sufficient for `v1.0.0.0`.
 
-Physical/native evidence is tracked by #109. The repository execution runbook and evidence template is `docs/v1-physical-acceptance.md`; it versions the exact candidate/environment/cell record but **does not itself authorize or prove physical acceptance**. #109 remains the acceptance authority.
+Physical/native evidence is tracked by #109. The repository execution runbook and evidence template is `docs/internal/v1-physical-acceptance.md`; it versions the exact candidate/environment/cell record but **does not itself authorize or prove physical acceptance**. #109 remains the acceptance authority.
 
 On the claimed Windows and Linux reference environments it must prove the applicable E1/E2/E3/E4 local-behavior cells, including:
 
@@ -222,7 +222,7 @@ If either reference OS job does not actually execute, the GA workflow is **unexe
 - #91 connected-client diagnostics accepted;
 - #101 API/artifact freeze accepted;
 - #107 release-readiness metadata accepted;
-- #109 required cross-mode physical/native evidence accepted, including explicit-stop/policy-transition input cleanup, with the exact-candidate record completed through `docs/v1-physical-acceptance.md`;
+- #109 required cross-mode physical/native evidence accepted, including explicit-stop/policy-transition input cleanup, with the exact-candidate record completed through `docs/internal/v1-physical-acceptance.md`;
 - #104 integrated GA workflow has actually passed on both reference OSes;
 - clean deployed C++/source/QML/QPA consumers have passed the no-SDK-runtime-path gate;
 - compatibility/known-limitations/security documentation matches the candidate;

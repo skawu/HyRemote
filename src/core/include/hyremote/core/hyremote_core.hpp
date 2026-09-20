@@ -6,7 +6,7 @@
 //   docs/adr/0001-core-boundaries.md
 //   docs/adr/0002-remoteframe-lifetime-timestamps.md
 //   docs/adr/0003-threading-backpressure.md
-//   docs/core-architecture.md
+//   docs/internal/core-architecture.md
 //
 // The design-level proposal in docs/proposals/hyremote_core.hpp was the input to this
 // implementation; names and signatures may be refined here as long as those invariants hold.

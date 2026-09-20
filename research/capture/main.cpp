@@ -2,7 +2,7 @@
 //
 // This program is throwaway spike code. It drives the capture cases listed in
 // issue #3, measures them with identical scenes and identical timing rules, and
-// emits the evidence recorded in docs/capture-spike.md.
+// emits the evidence recorded in docs/internal/capture-spike.md.
 //
 // It intentionally does not define, link against, or freeze any HyRemote public
 // API, and it contains no transport code.

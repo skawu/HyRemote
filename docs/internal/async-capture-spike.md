@@ -668,12 +668,12 @@ cmake --build build/async-spike
 ctest --test-dir build/async-spike --output-on-failure
 ```
 
-See [`research/async-capture/README.md`](../research/async-capture/README.md) for the full option
+See [`research/async-capture/README.md`](../../research/async-capture/README.md) for the full option
 list.
 
 ## 11. Compatibility matrix rows
 
-The status column uses the definitions of [`docs/compatibility.md`](compatibility.md).
+The status column uses the definitions of [`docs/compatibility.md`](../compatibility.md).
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Status | Notes |
 |---|---|---|---|---|---|---|

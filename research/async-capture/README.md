@@ -2,7 +2,7 @@
 
 Throwaway, non-production code for
 [issue #16](https://github.com/skawu/HyRemote/issues/16). The results live in
-[`docs/async-capture-spike.md`](../../docs/async-capture-spike.md).
+[`docs/internal/async-capture-spike.md`](../../docs/internal/async-capture-spike.md).
 
 Nothing in this directory is a HyRemote public API. It defines no HyRemote target, contains
 no transport code, and is expected to be deleted once the asynchronous capture design is
@@ -70,7 +70,7 @@ Every QML scene contains two deterministic landmarks:
 ## Build and run
 
 ```bash
-cmake -S spikes/async-capture -B build/async-spike -G Ninja \
+cmake -S research/async-capture -B build/async-spike -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<toolchain>
 cmake --build build/async-spike
@@ -150,7 +150,7 @@ missing. On Windows the Qt `bin` directory must be on `PATH`.
   whole run including the drain. `delivered + dropped == completed` holds in every
   configuration.
 - The synchronous baseline is executed in the same session because the Direct3D 11
-  `grabWindow()` behaviour is host-dependent (see `docs/capture-spike.md` section 8.2).
+  `grabWindow()` behaviour is host-dependent (see `docs/internal/capture-spike.md` section 8.2).
 - The hidden-window synchronous grab runs in a child process because it can stall.
 
 ## Known limitations of the harness

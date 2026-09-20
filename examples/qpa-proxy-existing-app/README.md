@@ -24,7 +24,7 @@ The V1 Transparent QPA reference package is version-coupled to **Qt 6.8.3 exactl
 - Windows x86_64 -> native `qwindows` delegate;
 - Linux x86_64 -> native `qxcb` delegate.
 
-Current production-path capture classification is documented in `docs/qpa-capture-classification-qt-6.8.3.md`.
+Current production-path capture classification is documented in `docs/internal/qpa-capture-classification-qt-6.8.3.md`.
 
 Do not generalize this example to arbitrary Qt versions, Wayland, EGLFS, foreign/native windows or unsupported custom surfaces without separate compatibility evidence.
 
@@ -177,7 +177,7 @@ That is the safe default. Relaunch with `hyremote-input=true` only when remote c
 
 ### A custom/native surface is missing
 
-V1 QPA support is adapter-scoped, not arbitrary desktop/window-server capture. Check `docs/qpa-capture-classification-qt-6.8.3.md` and `docs/compatibility.md` before treating it as a regression.
+V1 QPA support is adapter-scoped, not arbitrary desktop/window-server capture. Check `docs/internal/qpa-capture-classification-qt-6.8.3.md` and `docs/compatibility.md` before treating it as a regression.
 
 ## 12. Evidence status
 

@@ -72,7 +72,7 @@ foreach(path IN LISTS forbidden_root_directories)
     endif()
 endforeach()
 
-if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/repository-layout.md")
+if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/docs/internal/repository-layout.md")
     message(FATAL_ERROR "repository-layout: canonical layout documentation is missing")
 endif()
 

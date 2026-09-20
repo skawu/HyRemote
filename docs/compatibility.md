@@ -68,10 +68,10 @@ Historical Windows Qt 6.8.3 spike evidence exists for QWidget raster, QOpenGLWid
 
 Detailed evidence remains in:
 
-- `docs/capture-spike.md`;
-- `docs/async-capture-spike.md`;
+- `docs/internal/capture-spike.md`;
+- `docs/internal/async-capture-spike.md`;
 - `docs/widgets-capture.md`;
-- `docs/qpa-capture-classification-qt-6.8.3.md`.
+- `docs/internal/qpa-capture-classification-qt-6.8.3.md`.
 
 Important V1 limits:
 

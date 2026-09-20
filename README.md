@@ -171,7 +171,7 @@ cmake/               build/package/deployment modules
 docs/                product and maintainer documentation
 ```
 
-The source move does not intentionally change build-tree artifact paths; CMake maps canonical source directories onto the established `build/core`, `build/remoteaccess`, `build/qml/HyRemote` and QPA output locations. See [`docs/repository-layout.md`](docs/repository-layout.md).
+The source move does not intentionally change build-tree artifact paths; CMake maps canonical source directories onto the established `build/core`, `build/remoteaccess`, `build/qml/HyRemote` and QPA output locations. See [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
 
 ## Deployment
 
@@ -225,13 +225,13 @@ Reference/setup and delivery guides:
 - [`docs/README.md`](docs/README.md) — documentation index (中文 ｜ [English](docs/en/README.md))
 - [`docs/qml-consumption.md`](docs/qml-consumption.md) — installed QML module
 - [`docs/deployment.md`](docs/deployment.md) — packaging/deployment
-- [`docs/repository-layout.md`](docs/repository-layout.md) — canonical repository ownership/layout
+- [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md) — canonical repository ownership/layout
 - [`docs/viewer-connection.md`](docs/viewer-connection.md) — viewer/control/reconnect
 - [`docs/security.md`](docs/security.md) — implemented security boundary
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — product-level diagnosis
 - [`docs/compatibility.md`](docs/compatibility.md) — exact evidence/status matrix
 - [`docs/known-limitations.md`](docs/known-limitations.md) — explicit V1 limitations
-- [`docs/v1-ga-acceptance.md`](docs/v1-ga-acceptance.md) — GA release gate
+- [`docs/internal/v1-ga-acceptance.md`](docs/internal/v1-ga-acceptance.md) — GA release gate
 
 Internal Core/capture/transport/QPA implementation documents under `docs/` and `research/` are maintainer material; ordinary users do not need them to integrate HyRemote.
 

@@ -2,7 +2,7 @@
 
 HyRemote treats Git branches as **temporary work cursors**, not permanent archive objects. Durable history lives in Issues, Pull Requests, commits, release tags and acceptance evidence.
 
-This policy complements `docs/git-flow-release.md` and does not change the release topology defined there.
+This policy complements `docs/internal/git-flow-release.md` and does not change the release topology defined there.
 
 ## Retained branches
 
@@ -66,7 +66,7 @@ The cleanup is intentionally one operation, not a manual branch-by-branch checkl
 
 ## New branch discipline
 
-Use only the branch families defined by `docs/git-flow-release.md`:
+Use only the branch families defined by `docs/internal/git-flow-release.md`:
 
 ```text
 feature/<issue>-<topic>

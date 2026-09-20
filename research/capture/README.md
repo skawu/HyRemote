@@ -2,7 +2,7 @@
 
 Throwaway, non-production code for
 [issue #3](https://github.com/skawu/HyRemote/issues/3). The results live in
-[`docs/capture-spike.md`](../../docs/capture-spike.md).
+[`docs/internal/capture-spike.md`](../../docs/internal/capture-spike.md).
 
 Nothing in this directory is a HyRemote public API. It defines no HyRemote target,
 contains no transport code, and is expected to be deleted once the capture
@@ -55,7 +55,7 @@ The harness is not part of the default root build. Configure it directly, or ena
 `-DHYREMOTE_BUILD_SPIKES=ON` in the root build.
 
 ```bash
-cmake -S spikes/capture -B build/spike-capture -G Ninja \
+cmake -S research/capture -B build/spike-capture -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<toolchain>
 cmake --build build/spike-capture

@@ -38,7 +38,7 @@ content->grabToImage(pixelSize);
 
 Completion is asynchronous. The adapter retains the bounded Core capture request, converts the completed image to owned RGBA `RemoteFrame` storage, timestamps on completion, and retries temporary hidden/minimized/null-grab cases without inventing a private RHI path.
 
-This is the same public Qt capture mechanism evaluated in #16 / `docs/async-capture-spike.md`.
+This is the same public Qt capture mechanism evaluated in #16 / `docs/internal/async-capture-spike.md`.
 
 ## 2. V1 capture-class matrix
 

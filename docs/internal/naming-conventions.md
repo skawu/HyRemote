@@ -2,7 +2,7 @@
 
 This document codifies the naming conventions HyRemote **already** uses. It exists so that the conventions are
 written down for contributors instead of having to be inferred from the tree. It introduces no rename: see
-"What V1 does not do" at the end, and [`v1-api-stability.md`](v1-api-stability.md) for the frozen public surface.
+"What V1 does not do" at the end, and [`v1-api-stability.md`](../v1-api-stability.md) for the frozen public surface.
 
 Placement rules (which directory a new thing belongs in) live in
 [`repository-layout.md`](repository-layout.md), together with the extension points for future work.

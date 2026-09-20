@@ -13,7 +13,7 @@ project(
 # This project is deliberately independent from the HyRemote core build graph
 # and from spikes/capture: it defines no public HyRemote API, links no HyRemote
 # target, and contains no transport code. It exists only to produce the evidence
-# recorded in docs/async-capture-spike.md.
+# recorded in docs/internal/async-capture-spike.md.
 #
 # It is also not part of the default root build. Enable it explicitly with
 # -DHYREMOTE_BUILD_SPIKES=ON, or configure this directory directly.

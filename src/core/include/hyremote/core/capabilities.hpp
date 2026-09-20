@@ -1,7 +1,7 @@
 #pragma once
 
 // Capture/consumer capability description and the compatibility check that must succeed before
-// a Session is allowed to reach `Running` (docs/core-architecture.md section 9).
+// a Session is allowed to reach `Running` (docs/internal/core-architecture.md section 9).
 //
 // The check is intentionally narrow: it only answers "can this capture source feed this
 // consumer without a converter?". Core fails early instead of silently reinterpreting an

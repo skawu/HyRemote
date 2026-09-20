@@ -9,9 +9,9 @@ set(required_files
     "NOTICE.md"
     "README.md"
     "docs/versioning.md"
-    "docs/git-flow-release.md"
-    "docs/repository-layout.md"
-    "docs/release-candidate-checklist.md"
+    "docs/internal/git-flow-release.md"
+    "docs/internal/repository-layout.md"
+    "docs/internal/release-candidate-checklist.md"
     "docs/release-package-manifest.md"
     "docs/releases/v0.0.1.0.md"
     "docs/releases/v0.0.2.0.md"
@@ -32,7 +32,7 @@ set(required_files
     "docs/compatibility.md"
     "docs/known-limitations.md"
     "docs/v1-api-stability.md"
-    "docs/v1-ga-acceptance.md"
+    "docs/internal/v1-ga-acceptance.md"
     "examples/README.md"
     "examples/CMakeLists.txt"
     "examples/widgets-basic/CMakeLists.txt"
@@ -251,7 +251,7 @@ foreach(required_link
         "docs/getting-started/qpa-proxy.md"
         "docs/guide/install.md"
         "docs/deployment.md"
-        "docs/repository-layout.md"
+        "docs/internal/repository-layout.md"
         "docs/viewer-connection.md"
         "docs/security.md"
         "docs/troubleshooting.md"
@@ -377,7 +377,7 @@ foreach(test_entry
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/docs/v1-ga-acceptance.md" ga_acceptance)
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/internal/v1-ga-acceptance.md" ga_acceptance)
 foreach(required_phrase
         "terminal remote-input lifecycle boundary"
         "discard remote input accepted into its pending mailbox"
@@ -403,7 +403,7 @@ foreach(required_phrase
 endforeach()
 
 foreach(doc_check
-        "docs/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
+        "docs/internal/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
         "docs/releases/v1.0.0.0.md|explicit HyRemote runtime stop/policy transition"
         "docs/compatibility.md|explicit HyRemote stop/policy transition"
         "docs/known-limitations.md|explicit HyRemote runtime stop")

@@ -19,7 +19,7 @@ Architecture-affecting changes should be discussed and recorded before implement
 
 ## Repository and branch ownership
 
-Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/repository-layout.md`](docs/repository-layout.md):
+Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
 - `src/` contains the normal product implementation;
 - `integrations/` contains QML/QPA integration payloads over the same runtime;
@@ -30,7 +30,7 @@ Repository paths are architecture boundaries, not arbitrary folders. Follow [`do
 
 Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `spikes/` or `logo/` directories as compatibility copies.
 
-Branches are temporary work cursors. Follow [`docs/branch-lifecycle.md`](docs/branch-lifecycle.md) and [`docs/git-flow-release.md`](docs/git-flow-release.md): normally only `main`, `develop` and current open-PR heads remain visible. Historical auditability belongs to Issues, PRs, commits and release tags rather than stale branch refs.
+Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`](docs/internal/branch-lifecycle.md) and [`docs/internal/git-flow-release.md`](docs/internal/git-flow-release.md): normally only `main`, `develop` and current open-PR heads remain visible. Historical auditability belongs to Issues, PRs, commits and release tags rather than stale branch refs.
 
 ## Product milestones and technical WBS
 
@@ -130,13 +130,13 @@ documentation gate pins exact tokens in those files (translate them only togethe
 | Zone | Paths | Language | Content rule |
 | --- | --- | --- | --- |
 | User guide | `docs/guide/**` | Chinese primary + `docs/en/guide/**` mirror | Final shape only: install, integrate, deploy, troubleshoot |
-| Reference | `docs/reference/**` | Chinese primary + `docs/en/reference/**` mirror | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
-| Internal / release | rest of `docs/`, `docs/adr/`, `docs/releases/`, `docs/proposals/` | English | Acceptance runbooks, repository administration, layout authority, milestone records |
+| Reference | the product final-state contracts at the top level of `docs/` | Chinese primary, English mirror beside them under `docs/en/` | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
+| Internal / release | `docs/internal/**`, `docs/adr/`, `docs/releases/`, `docs/proposals/`, `docs/acceptance/**` | English | Acceptance runbooks, repository administration, layout authority, milestone records, research/evaluation records, recorded acceptance evidence |
 
 Rules for the user-facing zones:
 
 - **Bilingual pairs**: the Chinese primary document lives at `docs/<path>`; the English mirror lives at
-  `docs/en/<path>`. A document that enters `guide/` or `reference/` must have its mirror at the same relative
+  `docs/en/<path>`. A document that enters `guide/` must have its mirror at the same relative
   path, carries a one-line language switch at the top, and changes in both languages in the same change.
   Legacy documents that have not moved into those zones yet are not required to be mirrored while the
   migration is in progress.

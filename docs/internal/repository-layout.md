@@ -20,7 +20,16 @@ HyRemote/
 ├─ assets/
 │  └─ branding/              # repository/product branding assets; never part of the build graph
 ├─ cmake/                    # package, deployment and build-system modules
-├─ docs/                     # user, architecture, acceptance and release documentation
+├─ docs/                     # documentation, physically zoned by reader
+│  ├─ guide/                 # user guide, Chinese primary with docs/en/guide/ mirror
+│  ├─ getting-started/       # user entry points by API shape (C++ / QML / QPA)
+│  ├─ internal/              # maintainer/release zone: runbooks, layout authority, roadmap,
+│  │                         # research and evaluation records
+│  ├─ acceptance/            # recorded acceptance evidence, one directory per candidate
+│  ├─ adr/ releases/ proposals/
+│  ├─ en/                    # English mirror of the user zone plus the English index
+│  └─ *.md                   # product final-state contracts (architecture, security,
+│                            # compatibility, API stability, capture/input, versioning)
 └─ .github/                  # CI and repository governance
 ```
 
@@ -28,7 +37,16 @@ HyRemote/
 
 The V1 repository layout is now frozen. Work toward V1.0.0.0 may fix implementation, packaging, tests, documentation and CI defects, but it must not introduce another structural repository migration unless a release-blocking architecture defect proves the canonical ownership model itself is wrong.
 
-The release-readiness repository-layout gate enforces the physical layout and module boundaries. The CI-environment-baseline gate separately requires the Widgets, Quick, QML, QPA, SDK-consumption and integrated V1 GA Linux jobs to use the same repository-owned Qt desktop host dependency authority.
+**Documentation zoning.** Inside `docs/`, the reader-intent zones are physical directories, not prose: `docs/guide/**`
+and `docs/getting-started/**` are the user-facing zone (Chinese primary, `docs/en/**` mirror), the product final-state
+contracts stay at the top level of `docs/`, and everything written for maintainers or the release process lives in
+`docs/internal/**` (plus the long-standing `docs/adr/`, `docs/releases/` and `docs/proposals/`). The zone rules and the
+writer-facing conventions are in [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) and the indexes
+[`../README.md`](../README.md) / [`../en/README.md`](../en/README.md). This zoning is a documentation reorganisation
+inside an existing top-level section: it does not change product-module ownership, the build graph, or any canonical
+source path, so the V1 layout freeze above still holds for everything it describes.
+
+The release-readiness repository-layout gate enforces the physical layout and module boundaries. The CI-environment-baseline gate separately requires The CI-environment-baseline gate separately requires the Widgets, Quick, QML, QPA, SDK-consumption and integrated V1 GA Linux jobs to use the same repository-owned Qt desktop host dependency authority.
 
 ## Ownership rules
 
@@ -111,7 +129,7 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
   section above; a new platform adds tests in the same shape rather than a new root.
 - **Recorded evidence grows under `docs/`.** Physical-acceptance and review evidence for a candidate is
   documentation: a directory per candidate or version under `docs/acceptance/`, next to the runbook that
-  produced it (`docs/v1-physical-acceptance.md`), so evidence never mixes with test code.
+  produced it (`docs/internal/v1-physical-acceptance.md`), so evidence never mixes with test code.
 - **`examples/` grows by integration mode and usage scenario.** The E-numbering continues, one directory per
   example, and examples that combine HyRemote with third-party open-source applications are opt-in, unfetched
   by default and never an implementation location for product logic (see the ownership section above).

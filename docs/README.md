@@ -22,8 +22,8 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 | 区 | 面向 | 语言 | 内容要求 |
 | --- | --- | --- | --- |
 | `docs/guide/**` | 最终用户 | 中文为主 + `docs/en/**` 英文镜像 | 只讲最终形态：怎么装、怎么接、怎么部署、怎么排错。**不含**过程内容 |
-| `docs/reference/**` | 产品最终态契约 | 同上 | 架构、采集/输入模型、API 稳定性、兼容矩阵、安全边界、版本策略 |
-| `docs/` 其余 + `adr/` `releases/` `proposals/` | 维护者/发布 | 英文（发布门禁冻结） | 验收 runbook、仓库管理、布局权威、里程碑记录 |
+| `docs/` 顶层的产品最终态契约 | 产品最终态契约 | 同上 | 架构、采集/输入模型、API 稳定性、兼容矩阵、安全边界、版本策略（`architecture.md`、`widgets-capture.md`、`quick-capture.md`、`input-model.md`、`v1-api-stability.md`、`compatibility.md`、`security.md`、`versioning.md` 等） |
+| `docs/internal/**` + `docs/adr/` `docs/releases/` `docs/proposals/` | 维护者/发布 | 英文（发布门禁冻结） | 验收 runbook、仓库管理、布局权威、里程碑记录、研究/评估记录 |
 
 **"过程文档"的定义**（用户文档中禁止出现）：issue 编号与追踪、验收排期与状态看板、里程碑编年史、调查/实验过程记录、
 一次性检查清单。这类内容属于内部区，或属于 `research/` 的研究证据。
@@ -45,23 +45,25 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 
 ## 4. 内部 / 发布文档（非用户文档）
 
-[`repository-layout.md`](repository-layout.md)（仓库布局权威）、[`branch-lifecycle.md`](branch-lifecycle.md)、
-[`git-flow-release.md`](git-flow-release.md)、[`v1-ga-acceptance.md`](v1-ga-acceptance.md)、
-[`v1-physical-acceptance.md`](v1-physical-acceptance.md)、[`v1-repository-admin.md`](v1-repository-admin.md)、
-[`release-candidate-checklist.md`](release-candidate-checklist.md)、[`adr/`](adr/)、[`releases/`](releases/)、
-[`development-roadmap.md`](development-roadmap.md)、研究/评估记录（`capture-spike.md`、`async-capture-spike.md`、
-`neatvnc-evaluation.md`、`x86-vnc-transport-evaluation.md`、`qpa-*-qt-6.8.3.md`、[`proposals/`](proposals/)）。
+[`internal/repository-layout.md`](internal/repository-layout.md)（仓库布局权威）、
+[`internal/branch-lifecycle.md`](internal/branch-lifecycle.md)、[`internal/git-flow-release.md`](internal/git-flow-release.md)、
+[`internal/v1-ga-acceptance.md`](internal/v1-ga-acceptance.md)、[`internal/v1-physical-acceptance.md`](internal/v1-physical-acceptance.md)、
+[`internal/v1-repository-admin.md`](internal/v1-repository-admin.md)、[`internal/release-candidate-checklist.md`](internal/release-candidate-checklist.md)、
+[`internal/development-roadmap.md`](internal/development-roadmap.md)、[`internal/naming-conventions.md`](internal/naming-conventions.md)、
+研究/评估记录（[`internal/capture-spike.md`](internal/capture-spike.md)、[`internal/async-capture-spike.md`](internal/async-capture-spike.md)、
+[`internal/neatvnc-evaluation.md`](internal/neatvnc-evaluation.md)、[`internal/x86-vnc-transport-evaluation.md`](internal/x86-vnc-transport-evaluation.md)、
+`internal/qpa-*-qt-6.8.3.md`）、[`adr/`](adr/)、[`releases/`](releases/)、[`proposals/`](proposals/)。
 
 普通用户集成 HyRemote **不需要**读这一区。
 
 ## 5. 导航根与编写约定
 
 本文件是**双语文档导航根**，英文镜像为 [`en/README.md`](en/README.md)。双语镜像区是 `docs/guide/**` 与
-`docs/reference/**`；其余文档属于内部/发布区，保持英文。
+`docs/` 顶层的产品最终态契约；其余文档属于内部/发布区，保持英文。
 
-- **双语镜像**：中文为主文档位于 `docs/<路径>`，英文镜像位于 `docs/en/<路径>`。**进入 `guide/` 或 `reference/`
-  的文件**必须一一对应（同一相对路径），每篇顶部一行语言切换，且两种语言在同一次改动里同步；尚未迁入这两个区的
-  既有文档在迁移完成前不要求镜像。
+- **双语镜像**：中文为主文档位于 `docs/<路径>`，英文镜像位于 `docs/en/<路径>`。**进入 `guide/` 的文件**必须
+  一一对应（同一相对路径），每篇顶部一行语言切换，且两种语言在同一次改动里同步；尚未迁入该区的既有文档在迁移
+  完成前不要求镜像。产品最终态契约与 `internal/` 区为英文单语，不要求镜像。
 - **一对一份额**：用户文档按"读者意图"合并，不按开发阶段拆分；宁可一篇详尽，不要五篇各说一半。
 - **源码注释**：沿用各文件既有风格；新写或修改的注释以清晰、与相邻代码一致为先，中英双语在确实有助维护时允许使用，
   但**不是强制要求**，也不做批量注释迁移。

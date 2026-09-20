@@ -50,7 +50,7 @@ Do not begin final #109 evidence on a moving candidate.
 
 ## 3. Execute physical/native acceptance on the frozen SHA
 
-The canonical repository execution/evidence template for #109 is `docs/v1-physical-acceptance.md`. The runbook is preparation/evidence structure, while #109 remains the acceptance authority.
+The canonical repository execution/evidence template for #109 is `docs/internal/v1-physical-acceptance.md`. The runbook is preparation/evidence structure, while #109 remains the acceptance authority.
 
 - Windows/Linux E1/E2/E3/E4 physical cells use the **same RC-FROZEN SHA**;
 - native local display and local input must coexist with remote view/control as required;

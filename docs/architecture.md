@@ -6,7 +6,7 @@ HyRemote is a Qt remote-access framework for existing Qt Widgets and Qt Quick ap
 
 This document is the canonical top-level architecture for V1. Detailed contracts are refined by:
 
-- [`core-architecture.md`](core-architecture.md);
+- [`internal/core-architecture.md`](internal/core-architecture.md);
 - [`ADR-0001 Core Boundaries`](adr/0001-core-boundaries.md);
 - [`ADR-0002 RemoteFrame Ownership, Damage and Timestamp Contract`](adr/0002-remoteframe-lifetime-timestamps.md);
 - [`ADR-0003 Threading, Scheduling and Backpressure`](adr/0003-threading-backpressure.md);

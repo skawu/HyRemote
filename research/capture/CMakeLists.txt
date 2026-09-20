@@ -13,7 +13,7 @@ project(
 # This project is deliberately independent from the HyRemote core build graph:
 # it defines no public HyRemote API, links no HyRemote target, and contains no
 # transport code. It exists only to produce the evidence recorded in
-# docs/capture-spike.md and is expected to be deleted once the capture
+# docs/internal/capture-spike.md and is expected to be deleted once the capture
 # architecture decision is implemented for real.
 #
 # It is also not part of the default root build. Enable it explicitly with

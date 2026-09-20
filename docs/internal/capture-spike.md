@@ -739,12 +739,12 @@ cmake --build build/spike-capture
 ctest --test-dir build/spike-capture --output-on-failure
 ```
 
-See [`research/capture/README.md`](../research/capture/README.md) for the full option list
+See [`research/capture/README.md`](../../research/capture/README.md) for the full option list
 and platform notes.
 
 ## 14. Compatibility matrix
 
-The status column uses the definitions of [`docs/compatibility.md`](compatibility.md).
+The status column uses the definitions of [`docs/compatibility.md`](../compatibility.md).
 The same host rows are recorded there; every embedded row stays `Unverified`.
 
 | Qt | OS / target | QPA / graphics | Application type | Capture backend | Status | Notes |

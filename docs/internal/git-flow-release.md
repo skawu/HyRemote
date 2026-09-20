@@ -72,7 +72,7 @@ Remove that marker only after the complete milestone gate passes and before the 
 - include bounded implementation/tests/docs in the same line when practical;
 - delete the branch ref after its PR is merged, superseded or closed, provided it is not the head of another open PR.
 
-Historical Issue/PR/commit evidence is durable audit history; a stale branch ref is not. Do not force-push historical refs merely to make ancestry look linear, but do prune refs whose work line is no longer active. See `docs/branch-lifecycle.md`.
+Historical Issue/PR/commit evidence is durable audit history; a stale branch ref is not. Do not force-push historical refs merely to make ancestry look linear, but do prune refs whose work line is no longer active. See `docs/internal/branch-lifecycle.md`.
 
 ### `release/vX.Y.Z.W`
 
@@ -240,4 +240,4 @@ This policy was introduced after substantial V1 work already existed in historic
 - the one-time V1 cleanup is SHA-locked and fail-closed in `.github/scripts/prune-stale-branches.ps1`;
 - do not create retroactive tags for milestones that have not passed current acceptance.
 
-See `docs/branch-lifecycle.md` for the retention/deletion procedure. This preserves auditability while preventing stale task refs from masquerading as parallel product lines.
+See `docs/internal/branch-lifecycle.md` for the retention/deletion procedure. This preserves auditability while preventing stale task refs from masquerading as parallel product lines.

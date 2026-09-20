@@ -107,7 +107,7 @@ require_file_token("integrations/qpa/tests/qpa_remote_failure_native_survival_sm
 require_file_token("integrations/qpa/tests/CMakeLists.txt" "hyremote-qpa-remote-failure-native-survival-smoke" "registered QPA native-survival CTest")
 require_file_token("integrations/qpa/tests/CMakeLists.txt" "PRIVATE ws2_32" "Windows native socket support for QPA failure smoke")
 require_file_token("integrations/qpa/hyremote_qpa_remote_controller.cpp" "HyRemote QPA Proxy could not start the composite RemoteAccess runtime" "QPA remote-start failure remains diagnostic rather than native-fatal")
-require_file_token("docs/v1-ga-acceptance.md" "remote-capability failure only" "canonical GA native-survival rule for QPA remote startup failure")
+require_file_token("docs/internal/v1-ga-acceptance.md" "remote-capability failure only" "canonical GA native-survival rule for QPA remote startup failure")
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
