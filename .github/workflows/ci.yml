@@ -18,19 +18,24 @@ jobs:
     timeout-minutes: 2
     outputs:
       product: ${{ steps.scope.outputs.product }}
+      integrations: ${{ steps.scope.outputs.integrations }}
+      qpa: ${{ steps.scope.outputs.qpa }}
+      qml: ${{ steps.scope.outputs.qml }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - id: scope
-        name: Decide whether product CI is needed
+        name: Resolve affected capabilities
         shell: python
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          import os, pathlib, subprocess
+          import os, subprocess
+
           if os.environ["EVENT_NAME"] == "pull_request":
               changed = subprocess.check_output(
                   ["git", "diff", "--name-only", f"{os.environ['BASE_SHA']}...{os.environ['HEAD_SHA']}"],
@@ -38,18 +43,69 @@ jobs:
               ).splitlines()
           else:
               changed = ["CMakeLists.txt"]
-          product_files = {"CMakeLists.txt", "compile.cmd", "build.yml", ".github/workflows/ci.yml"}
-          product_prefixes = ("src/", "cmake/", "tests/", "examples/", ".github/scripts/")
-          product = any(p in product_files or p.startswith(product_prefixes) for p in changed)
+
+          peers = ["cpp", "qml", "generic", "qpa"]
+          selected = set()
+
+          common_files = {
+              "CMakeLists.txt",
+              "compile.cmd",
+              "build.yml",
+              ".github/workflows/ci.yml",
+          }
+          common_prefixes = (
+              "src/core/",
+              "src/runtime/",
+              "cmake/",
+              "tests/build-authority/",
+              "tests/release-readiness/",
+              ".github/scripts/",
+          )
+          frontend_prefixes = {
+              "cpp": ("src/integrations/cpp/", "tests/consumer-installed-sdk/"),
+              "qml": ("src/integrations/qml/", "tests/consumer-installed-qml/"),
+              "generic": ("src/integrations/generic/", "tests/consumer-installed-generic/"),
+              "qpa": ("src/integrations/qpa/", "tests/consumer-installed-qpa/"),
+          }
+
+          for path in changed:
+              if path in common_files or path.startswith(common_prefixes):
+                  selected.update(peers)
+                  continue
+
+              matched = False
+              for peer, prefixes in frontend_prefixes.items():
+                  if path.startswith(prefixes):
+                      selected.add(peer)
+                      matched = True
+              if matched:
+                  continue
+
+              # Controlled examples, product-level E2E/SDK/package tests and canonical branding can
+              # exercise multiple frontends, so keep their PR signal integrated.
+              if path.startswith(("examples/", "tests/product-e2e/", "tests/public-api-contract/", "logo/")):
+                  selected.update(peers)
+              elif path.startswith("tests/"):
+                  selected.update(peers)
+
+          ordered = [peer for peer in peers if peer in selected]
+          integrations = ",".join(ordered)
+          product = bool(ordered)
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"product={'true' if product else 'false'}\n")
+              f.write(f"integrations={integrations}\n")
+              f.write(f"qpa={'true' if 'qpa' in selected else 'false'}\n")
+              f.write(f"qml={'true' if 'qml' in selected else 'false'}\n")
+
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
               f.write("## CI scope\n\n")
               f.write(f"- changed files: {len(changed)}\n")
-              f.write(f"- product build: {'yes' if product else 'no — documentation/governance only'}\n")
+              f.write(f"- integrations: {integrations or 'none'}\n")
+              f.write(f"- Qt build: {'yes' if product else 'no — documentation/governance only'}\n")
 
   product:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }}
     needs: classify
     if: needs.classify.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
@@ -68,6 +124,7 @@ jobs:
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
+
     steps:
       - uses: actions/checkout@v4
 
@@ -76,26 +133,63 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/Qt
-          key: hyremote-qt-v3-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+          key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
 
-      - name: Prepare Qt and build tools
+      - name: Validate or install exact Qt SDK
         shell: bash
+        env:
+          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
+          NEED_QML: ${{ needs.classify.outputs.qml }}
+          NEED_QPA: ${{ needs.classify.outputs.qpa }}
         run: |
           set -euo pipefail
           echo "CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
-          QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          MARKER="$RUNNER_TEMP/Qt/.hyremote-complete-6.8.3-${{ matrix.aqt_arch }}"
-          if [[ "${{ steps.qt-cache.outputs.cache-hit }}" == "true" && ! -f "$MARKER" ]]; then
-            echo "Cached Qt SDK is incomplete; rebuilding it instead of accepting a poisoned cache."
-            rm -rf "$RUNNER_TEMP/Qt"
-          fi
-          if [[ ! -f "$MARKER" ]]; then
+          QT_ROOT="$RUNNER_TEMP/Qt"
+          QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
+
+          qt_tree_valid() {
+            [[ -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake" ]] || return 1
+            [[ -f "$QT_PREFIX/lib/cmake/Qt6Core/Qt6CoreConfig.cmake" ]] || return 1
+            [[ -f "$QT_PREFIX/lib/cmake/Qt6Gui/Qt6GuiConfig.cmake" ]] || return 1
+            [[ -f "$QT_PREFIX/lib/cmake/Qt6Network/Qt6NetworkConfig.cmake" ]] || return 1
+            [[ -f "$QT_PREFIX/lib/cmake/Qt6Widgets/Qt6WidgetsConfig.cmake" ]] || return 1
+            [[ -f "$QT_PREFIX/lib/cmake/Qt6Quick/Qt6QuickConfig.cmake" ]] || return 1
+            compgen -G "$QT_PREFIX/bin/qtpaths*" >/dev/null || return 1
+            compgen -G "$QT_PREFIX/bin/qmake*" >/dev/null || return 1
+
+            if [[ "$NEED_QML" == "true" ]]; then
+              [[ -f "$QT_PREFIX/lib/cmake/Qt6Qml/Qt6QmlConfig.cmake" ]] || return 1
+              [[ -f "$QT_PREFIX/qml/QtQml/qmldir" ]] || return 1
+            fi
+
+            if [[ "$NEED_QPA" == "true" ]]; then
+              [[ -f "$QT_PREFIX/include/QtGui/6.8.3/QtGui/private/qguiapplication_p.h" ]] || return 1
+              if [[ "${{ runner.os }}" == "Linux" ]]; then
+                compgen -G "$QT_PREFIX/plugins/platforms/libqxcb*" >/dev/null || return 1
+              else
+                compgen -G "$QT_PREFIX/plugins/platforms/qwindows*" >/dev/null || return 1
+              fi
+            fi
+          }
+
+          if ! qt_tree_valid; then
+            if [[ "${{ steps.qt-cache.outputs.cache-hit }}" == "true" ]]; then
+              echo "Restored Qt cache failed integrity validation; rebuilding the local tree."
+            else
+              echo "Qt cache miss; installing exact SDK."
+            fi
+            rm -rf "$QT_ROOT"
             python -m pip install --disable-pip-version-check aqtinstall
-            aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$RUNNER_TEMP/Qt"
-            test -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake"
-            mkdir -p "$RUNNER_TEMP/Qt"
-            touch "$MARKER"
+            aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+            qt_tree_valid || {
+              echo "Fresh Qt installation failed integrity validation." >&2
+              exit 1
+            }
+            echo "QT_TREE_REBUILT=true" >> "$GITHUB_ENV"
+          else
+            echo "QT_TREE_REBUILT=false" >> "$GITHUB_ENV"
           fi
+
           if ! command -v ninja >/dev/null 2>&1; then
             python -m pip install --disable-pip-version-check ninja
           fi
@@ -104,15 +198,24 @@ jobs:
       - name: Install missing Linux Qt host dependencies
         if: runner.os == 'Linux'
         shell: bash
-        run: bash .github/scripts/install-linux-qt-desktop-deps.sh
+        env:
+          NEED_QPA: ${{ needs.classify.outputs.qpa }}
+        run: |
+          if [[ "$NEED_QPA" == "true" ]]; then
+            bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+          else
+            bash .github/scripts/install-linux-qt-desktop-deps.sh public
+          fi
 
       - name: Build and test through HyRemote build system — Linux
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
         run: |
           set -euo pipefail
           sh ./compile.cmd \
-            --integrations=cpp,qml,generic,qpa \
+            --integrations="$INTEGRATIONS" \
             --qt-prefix="$QT_PREFIX" \
             --build-dir=build-ci \
             --tests --run-tests --no-examples \
@@ -123,17 +226,19 @@ jobs:
       - name: Build and test through HyRemote build system — Windows
         if: runner.os == 'Windows'
         shell: cmd
+        env:
+          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix="%QT_PREFIX%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=^hyremote-release-readiness-" --clean -j4
+          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=^hyremote-release-readiness-" --clean -j4
 
-      - name: Save exact Qt SDK
-        if: always() && steps.qt-cache.outputs.cache-hit != 'true'
+      - name: Save verified exact Qt SDK
+        if: always() && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/Qt
-          key: hyremote-qt-v3-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+          key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
 
       - name: Timing summary
         if: always()
@@ -145,7 +250,9 @@ jobs:
             echo "## CI timing"
             echo
             echo "- runner: ${{ matrix.name }}"
+            echo "- integrations: ${{ needs.classify.outputs.integrations }}"
             echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
+            echo "- Qt tree rebuilt: ${QT_TREE_REBUILT:-unknown}"
             echo "- build entry: compile.cmd + build.yml + command-line overrides"
             echo "- elapsed after environment start: $((now-start))s"
           } >> "$GITHUB_STEP_SUMMARY"
