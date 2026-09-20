@@ -13,7 +13,7 @@ set_tests_properties(hyremote-qpa-proxy-smoke PROPERTIES
     TIMEOUT 15
 )
 
-# QPA-02 native-semantics qualification remains mandatory in every successor branch.
+# Native-semantics qualification remains mandatory for the exact Qt private-ABI QPA payload.
 add_executable(hyremote-qpa-native-semantics
     qpa_native_semantics.cpp
 )
@@ -28,48 +28,15 @@ set_tests_properties(hyremote-qpa-native-semantics PROPERTIES
     TIMEOUT 15
 )
 
-add_executable(hyremote-qpa-interception-test
-    qpa_interception_test.cpp
-    ../hyremote_qpa_interception.cpp
-)
-target_compile_features(hyremote-qpa-interception-test PRIVATE cxx_std_17)
-target_link_libraries(hyremote-qpa-interception-test PRIVATE Qt6::Core Qt6::Gui)
-
-add_test(NAME hyremote-qpa-interception-test COMMAND hyremote-qpa-interception-test)
-set_tests_properties(hyremote-qpa-interception-test PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    TIMEOUT 15
-)
-
+# QPA owns only launch/configuration vocabulary. Application-surface composition is tested by
+# src/runtime/tests and must not be rebuilt through QPA-owned predecessor sources.
 add_executable(hyremote-qpa-remote-config-test
     qpa_remote_config_test.cpp
-    ../application_surface_model.cpp
-    ../composite_target.cpp
-    ../composite_target_routing.cpp
-    ../interactive_composite_target.cpp
-    ../hyremote_qpa_remote_controller.cpp
+    ../qpa_config.cpp
 )
 target_compile_features(hyremote-qpa-remote-config-test PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-remote-config-test
-    PRIVATE
-        ..
-        ${_hyremote_root_dir}/src/runtime/src
-)
-target_link_libraries(hyremote-qpa-remote-config-test
-    PRIVATE
-        Qt6::Core
-        Qt6::Gui
-        HyRemote::Core
-        HyRemote::RemoteAccess
-)
-if(TARGET Qt6::Widgets)
-    target_link_libraries(hyremote-qpa-remote-config-test PRIVATE Qt6::Widgets)
-    target_compile_definitions(hyremote-qpa-remote-config-test PRIVATE HYREMOTE_QPA_HAS_WIDGETS=1)
-endif()
-if(TARGET Qt6::Quick)
-    target_link_libraries(hyremote-qpa-remote-config-test PRIVATE Qt6::Quick)
-    target_compile_definitions(hyremote-qpa-remote-config-test PRIVATE HYREMOTE_QPA_HAS_QUICK=1)
-endif()
+target_include_directories(hyremote-qpa-remote-config-test PRIVATE ..)
+target_link_libraries(hyremote-qpa-remote-config-test PRIVATE Qt6::Core Qt6::Network)
 
 add_test(NAME hyremote-qpa-remote-config-test COMMAND hyremote-qpa-remote-config-test)
 set_tests_properties(hyremote-qpa-remote-config-test PROPERTIES TIMEOUT 15)
@@ -150,9 +117,7 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 25
     )
 
-    # QPA-05 production capture classification. Qt's own 6.8.3 tests cover QWidget::render() with
-    # QOpenGLWidget, but HyRemote must qualify its actual end-to-end adapter/transport path rather
-    # than inheriting that support claim. Discover OpenGLWidgets only for this bounded test.
+    # Production capture classification for QWidget + QOpenGLWidget through the real sidecar path.
     find_package(Qt6 6.8.3 EXACT QUIET COMPONENTS OpenGLWidgets)
     if(TARGET Qt6::OpenGLWidgets)
         add_executable(hyremote-qpa-widget-opengl-capture-smoke
@@ -190,47 +155,3 @@ if(TARGET Qt6::Quick)
         TIMEOUT 30
     )
 endif()
-
-add_executable(hyremote-qpa-application-surface-model-test
-    qpa_application_surface_model_test.cpp
-    ../application_surface_model.cpp
-)
-target_compile_features(hyremote-qpa-application-surface-model-test PRIVATE cxx_std_17)
-target_link_libraries(hyremote-qpa-application-surface-model-test PRIVATE Qt6::Core)
-
-add_test(NAME hyremote-qpa-application-surface-model-test COMMAND hyremote-qpa-application-surface-model-test)
-set_tests_properties(hyremote-qpa-application-surface-model-test PROPERTIES TIMEOUT 15)
-
-add_executable(hyremote-qpa-composite-capture-test
-    qpa_composite_capture_test.cpp
-    ../application_surface_model.cpp
-    ../composite_target.cpp
-)
-target_compile_features(hyremote-qpa-composite-capture-test PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-composite-capture-test
-    PRIVATE .. ${_hyremote_root_dir}/src/runtime/src
-)
-target_link_libraries(hyremote-qpa-composite-capture-test
-    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core HyRemote::RemoteAccess
-)
-
-add_test(NAME hyremote-qpa-composite-capture-test COMMAND hyremote-qpa-composite-capture-test)
-set_tests_properties(hyremote-qpa-composite-capture-test PROPERTIES TIMEOUT 15)
-
-add_executable(hyremote-qpa-composite-input-test
-    qpa_composite_input_test.cpp
-    ../application_surface_model.cpp
-    ../composite_target.cpp
-    ../composite_target_routing.cpp
-    ../interactive_composite_target.cpp
-)
-target_compile_features(hyremote-qpa-composite-input-test PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-composite-input-test
-    PRIVATE .. ${_hyremote_root_dir}/src/runtime/src
-)
-target_link_libraries(hyremote-qpa-composite-input-test
-    PRIVATE Qt6::Core Qt6::Gui HyRemote::Core HyRemote::RemoteAccess
-)
-
-add_test(NAME hyremote-qpa-composite-input-test COMMAND hyremote-qpa-composite-input-test)
-set_tests_properties(hyremote-qpa-composite-input-test PROPERTIES TIMEOUT 15)
