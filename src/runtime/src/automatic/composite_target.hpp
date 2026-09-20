@@ -12,7 +12,7 @@
 #include <functional>
 #include <optional>
 
-namespace HyRemote::Qpa {
+namespace HyRemote::Runtime::Automatic {
 
 struct CompositeSurfaceSnapshot
 {
@@ -33,12 +33,9 @@ struct CompositeRoutedPoint
     QPoint localPosition;
 };
 
-// QPA-private QObject target presented to the normal RemoteAccess facade.
-//
-// It is not a public application target type. RemoteAccess discovers the private
-// TargetComponentProvider interface and obtains one composite CaptureSource/InputSink while still
-// owning the normal Session/Transport lifecycle. The target/model may change while that Session
-// stays alive.
+// Runtime-private QObject target shared by the zero-code integration frontends.
+// TargetComponentProvider yields one composite CaptureSource/InputSink while the target/model may
+// change without replacing the underlying Session or transport listener.
 class CompositeTarget : public QObject, public ::HyRemote::detail::TargetComponentProvider
 {
 public:
@@ -59,10 +56,6 @@ public:
     std::optional<CompositeSurfaceSnapshot> activeSurface() const;
     std::optional<CompositeRoutedPoint> routeCanvasPoint(const QPoint &canvasPosition) const;
 
-    // Internal capture-orchestration hook. A surface leaving the visible composite must release
-    // any already-admitted composite request that was waiting for that child. This does not stop or
-    // recreate RemoteAccess/Session/Transport; it only changes the child expectation of in-flight
-    // composite capture work.
     quint64 addSurfaceUnavailableHandler(SurfaceUnavailableHandler handler);
     void removeSurfaceUnavailableHandler(quint64 token);
 
@@ -80,4 +73,4 @@ private:
     quint64 m_nextSurfaceUnavailableHandler = 1;
 };
 
-}  // namespace HyRemote::Qpa
+}  // namespace HyRemote::Runtime::Automatic
