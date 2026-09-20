@@ -61,14 +61,13 @@ if(HYREMOTE_WITH_VNC)
     target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_RFB_TRANSPORT=1)
 
     if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
-        # The capability is here because a configured provider supplied OpenSSL 4. HyRemoteProjectOptions.cmake
-        # owns that choice - user environment first, project source tree last - and reports it once, without
-        # failing the configure, when neither provider can supply it. OpenSSL stays a private implementation
-        # dependency of the one HyRemoteRemoteAccess runtime and is never exported as an SDK target.
+        # Transport security is a private implementation capability of the one shared RemoteAccess runtime.
+        # The consumer supplies OpenSSL through the normal CMake environment; HyRemote exposes no provider
+        # selector or bundled crypto toolchain and never exports OpenSSL as an SDK application target.
         target_sources(hyremote-remoteaccess PRIVATE
             src/transport/vnc_auth.cpp
         )
-        target_link_libraries(hyremote-remoteaccess PRIVATE ${HYREMOTE_OPENSSL_LINK_TARGETS})
+        target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto OpenSSL::SSL)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
     endif()
 endif()
