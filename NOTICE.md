@@ -10,19 +10,21 @@ This notice classifies external dependencies and tooling used to build, test, de
 
 HyRemote is designed for Qt applications and uses Qt at build time and, for Qt-facing product modes, at runtime. Qt is not relicensed by HyRemote. The adopter is responsible for complying with the license terms of the Qt distribution they use, including any applicable LGPL, GPL, or commercial-license obligations.
 
+Qt is linked dynamically from the adopter's own Qt installation; this repository never fetches, builds, patches or statically links Qt. A deployed application tree produced by `hyremote_deploy()` carries the Qt runtime that the application was built against, so **whoever distributes that tree must also distribute Qt's licence material for that exact Qt build**: the applicable licence text, Qt copyright notices, and source-availability/written-offer material required by that Qt distribution. HyRemote installs its own `LICENSE` and `NOTICE.md`; Qt's obligations remain the distributor's responsibility and must not be replaced by a web link.
+
 HyRemote does not copy the user's Qt SDK into this repository and does not claim that the Apache-2.0 license covers Qt.
 
-The Transparent QPA Proxy additionally depends on exact Qt private QPA interfaces for the qualified build line. Those interfaces remain Qt-owned and version-coupled.
+The QPA integration frontend additionally depends on exact Qt private QPA interfaces for each qualified build line. Those interfaces remain Qt-owned and version-coupled. The Generic Plugin frontend intentionally uses public Qt APIs and does not broaden that private-ABI dependency.
 
 ### OpenSSL
 
-HyRemote's V1 authenticated/encrypted RFB implementation uses OpenSSL cryptographic primitives as a **private implementation dependency** of the single `HyRemoteRemoteAccess` runtime. OpenSSL is not part of the public C++/QML/QPA API and downstream applications are not given an `OpenSSL` SDK target through HyRemote.
+HyRemote's authenticated/encrypted RFB implementation uses OpenSSL cryptographic primitives as a **private implementation dependency** of the single `HyRemoteRemoteAccess` Common Runtime. OpenSSL is not part of the public C++/QML/Generic/QPA API and downstream applications are not given an `OpenSSL` SDK target through HyRemote.
 
 The HyRemote source tree does not vendor or relicense OpenSSL. Source builds use the OpenSSL installation selected by CMake on the qualified build host. The OpenSSL project's own license terms therefore continue to apply.
 
 If a HyRemote binary release asset redistributes OpenSSL runtime binaries, that release asset must also carry the OpenSSL license/notice material required for that exact redistributed version. Release-readiness evidence must record the exact OpenSSL runtime version and prove that a clean extracted SDK runs without relying on an undeclared build-workspace copy. Conversely, a platform build that intentionally relies on an operating-system supplied OpenSSL runtime must document that runtime prerequisite instead of silently bundling a different copy.
 
-The legacy VNC-authentication DES primitive is used only for protocol interoperability in the explicit `Authenticated` compatibility profile. It is **not** the V1 GA encrypted-security claim; `AuthenticatedEncrypted` remains the required secure release profile and must fail closed if its TLS capability or material cannot be established.
+The legacy VNC-authentication DES primitive is used only for protocol interoperability in the explicit `Authenticated` compatibility profile. It is **not** the encrypted-security claim; `AuthenticatedEncrypted` must fail closed if its TLS capability or material cannot be established.
 
 ## Development and CI tooling
 
