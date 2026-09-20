@@ -68,10 +68,24 @@ ApplicationWindow {
         anchors.margins: 20
         spacing: 12
 
-        Label {
-            text: "HyRemote · Declarative QML API"
-            color: "#f2f4f8"
-            font.pixelSize: 19
+        Row {
+            spacing: 10
+            height: 28
+
+            Image {
+                width: 28
+                height: 28
+                source: "qrc:/hyremote/branding/huayan-logo-single.png"
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
+
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "HyRemote · Declarative QML API"
+                color: "#f2f4f8"
+                font.pixelSize: 19
+            }
         }
 
         Rectangle {
