@@ -1,9 +1,9 @@
 include(GNUInstallDirs)
 
 # Transparent QPA Proxy — exact Qt 6.8.3 private-ABI package.
-# Private QPA types and interception/composition remain isolated here while the plugin reuses the
-# same shared HyRemote::RemoteAccess runtime as the C++ and QML modes.
-get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+# Private QPA types remain isolated here while the payload reuses the common HyRemote runtime shared
+# with the C++/QML/Generic integration frontends.
+get_filename_component(_hyremote_root_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 
 add_library(hyremote-qpa-platform MODULE
     application_surface_model.cpp
@@ -31,11 +31,10 @@ endif()
 
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform PRIVATE
-    "${_hyremote_root_dir}/src/cpp/src"
-    # QPA consumes RemoteAccess private component-factory declarations. Those declarations use
-    # Core public value/interface types, so the integration needs their headers for compilation only.
-    # This is deliberately not a HyRemote::Core link dependency; qhyremote still reuses the single
-    # shared HyRemote::RemoteAccess runtime and Core remains internal/static composition.
+    "${_hyremote_root_dir}/src/runtime/src"
+    # QPA currently consumes source-private runtime declarations while #219 moves automatic access
+    # ownership fully into src/runtime. This is deliberately not a HyRemote::Core link dependency;
+    # qhyremote still reuses the single shared runtime and Core remains internal/static composition.
     "${_hyremote_root_dir}/src/core/include"
 )
 target_link_libraries(hyremote-qpa-platform
