@@ -31,6 +31,10 @@ internal zone, or to an evaluation record under `docs/internal/`.
 
 ## 3. Reference (product final state)
 
+Start with the product definition, which sets the boundary every contract below assumes:
+[`../product-overview.md`](../product-overview.md) (what the product is for, the three access modes, the V1
+differentiation target, and the non-goals).
+
 | Document | Content |
 | --- | --- |
 | [`../architecture.md`](../architecture.md) | Layer model, dependency rules, threading principles |

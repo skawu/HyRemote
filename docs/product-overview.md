@@ -1,7 +1,5 @@
 # HyRemote Product Overview
 
-Status: **pre-alpha**.
-
 This is the canonical long-form description of the product: what it is for, how applications consume
 it, what the V1.0 targets are, and what HyRemote deliberately does not do. It is kept out of the
 repository front page so that the [README](../README.md) stays a short entry point.
