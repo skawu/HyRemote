@@ -1,6 +1,6 @@
 # `src/` - the shipping tree
 
-`src/` contains HyRemote's shared implementation layers and the four application integration technologies exposed by the product.
+`src/` contains HyRemote's two shared implementation layers and one grouped integration-frontend layer.
 
 The directory names intentionally describe architectural ownership rather than historical implementation order.
 
@@ -8,24 +8,19 @@ The directory names intentionally describe architectural ownership rather than h
 | --- | --- | --- | --- | --- |
 | `core/` | shared core implementation | internal | session, frame/storage lifetime, normalized input, bounded scheduling/backpressure, capabilities | ordinary C++ / UI-neutral / protocol-neutral |
 | `runtime/` | shared product runtime | internal runtime payload | Qt target adapters, concrete transport/security, factories, automatic application composition | Qt public API + product implementation |
-| `cpp/` | **Embedded C++ integration** | yes | public `HyRemote::RemoteAccess` C++ facade | public C++ / Qt public API |
-| `qml/` | **QML integration** | yes | `import HyRemote` frontend | Qt/QML public API |
-| `generic/` | **Generic Plugin integration** | yes | `QGenericPlugin` zero-code payload (`-plugin hyremote`) | Qt public Generic Plugin API |
-| `qpa/` | **QPA integration** | yes | `qhyremote` zero-code platform payload (`-platform hyremote`) | Qt private QPA ABI; qualified per supported Qt/QPA unit |
+| `integrations/` | grouped application integration frontends | payload-dependent | C++, QML, Generic Plugin and QPA entry technologies | frontend-specific |
 
 ## Architectural meaning
 
-`core` and `runtime` are shared implementation layers. `cpp`, `qml`, `generic` and `qpa` are **four peer integration frontends**.
-
-`src/cpp` is not the common implementation parent of the other modes. It is specifically the Embedded C++ integration surface. Likewise, application-level automatic access logic is not inherently QPA logic and must not remain owned by `src/qpa` once it is shared by Generic Plugin and QPA modes.
+`core` and `runtime` are shared implementation layers. `integrations/cpp`, `integrations/qml`, `integrations/generic` and `integrations/qpa` are **four peer integration frontends**.
 
 The target dependency direction is:
 
 ```text
-cpp --------\
-qml ---------> runtime -> core
-generic ----/
-qpa --------/
+integrations/cpp --------\
+integrations/qml ---------> runtime -> core
+integrations/generic ----/
+integrations/qpa --------/
 ```
 
 No frontend may depend on another frontend as an architectural requirement.
@@ -57,23 +52,33 @@ Runtime may depend on Qt public APIs and Core. It must not depend on any integra
 
 ## Four integration frontends
 
-### `cpp/` — Embedded C++
+### `integrations/cpp/` — Embedded C++
 
-Owns the public `HyRemote::RemoteAccess` C++ facade and Embedded C++ lifecycle/configuration surface. Product work is delegated to Runtime/Core.
+Owns the public `HyRemote::RemoteAccess` C++ facade and Embedded C++ lifecycle/configuration surface. It supports both Widgets and Qt Quick targets through Runtime adapters; it is not a Widgets-only frontend. Product work is delegated to Runtime/Core.
 
-### `qml/` — QML
+### `integrations/qml/` — QML
 
 Owns `import HyRemote` and the QML property/lifecycle facade. It does not own a separate Session, capture, input or transport architecture.
 
-### `generic/` — Generic Plugin
+### `integrations/generic/` — Generic Plugin
 
 Owns the `QGenericPlugin` payload for zero-code integration while keeping the application's native Qt platform integration unchanged. Generic Plugin uses Qt public APIs and bootstraps the shared automatic runtime.
 
-### `qpa/` — QPA
+### `integrations/qpa/` — QPA
 
 Owns only the Qt private/QPA compatibility boundary and QPA-specific process bootstrap/configuration. The long-term design is a Factory Trampoline that creates and returns the qualified native Qt platform integration while using the same automatic runtime as Generic Plugin.
 
-Only `src/qpa/` may include/link Qt private QPA interfaces for these four integration modes.
+Only `src/integrations/qpa/` may include/link Qt private QPA interfaces for these four integration modes.
+
+## Why the frontends are grouped
+
+Names such as `src/cpp`, `src/qml` or `src/qpa` at the shipping-tree root make language or framework technology look like a common implementation layer. Grouping all four under `src/integrations/` makes the architecture explicit:
+
+- `src/core` = shared core semantics;
+- `src/runtime` = shared product runtime;
+- `src/integrations/*` = ways an application enters that runtime.
+
+Widgets and Quick therefore remain Runtime adapter dimensions, not integration-directory dimensions.
 
 ## Platform rule
 
