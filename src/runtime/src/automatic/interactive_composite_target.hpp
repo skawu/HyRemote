@@ -2,11 +2,10 @@
 
 #include "composite_target.hpp"
 
-namespace HyRemote::Qpa {
+namespace HyRemote::Runtime::Automatic {
 
-// QPA-04 specialization that adds normalized remote-input routing to the existing composite
-// capture target. It remains private to the platform plugin and does not alter the installed
-// RemoteAccess target API.
+// Runtime-private composite specialization that adds normalized remote-input routing to the shared
+// composite capture target used by Generic Plugin and QPA zero-code integration.
 class InteractiveCompositeTarget final : public CompositeTarget
 {
 public:
@@ -17,4 +16,4 @@ public:
         const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget) override;
 };
 
-}  // namespace HyRemote::Qpa
+}  // namespace HyRemote::Runtime::Automatic
