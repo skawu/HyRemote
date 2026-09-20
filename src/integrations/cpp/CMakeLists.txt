@@ -2,24 +2,15 @@ include(GenerateExportHeader)
 include(GNUInstallDirs)
 
 # `src/integrations/cpp` is the Embedded C++ integration frontend. The common HyRemote product runtime is owned
-# by `src/runtime`; this directory contributes the public RemoteAccess facade and its tests/headers to
-# that existing shared target instead of creating a second runtime personality.
+# by `src/runtime`; this directory contributes only the public RemoteAccess facade and its tests/headers to
+# the already-created shared target instead of creating or entering the runtime layer itself.
 #
 # A consumer configure must still acquire HyRemote only once. If an installed HyRemote package was
 # already loaded, adding this source tree would collide at the public alias and could mix SDK metadata.
-if(TARGET HyRemote::RemoteAccess)
+if(NOT TARGET hyremote-remoteaccess OR NOT TARGET HyRemote::RemoteAccess)
     message(FATAL_ERROR
-        "HyRemote source acquisition conflict: HyRemote::RemoteAccess already exists; do not combine "
-        "find_package(HyRemote) with add_subdirectory(HyRemote) in the same configure")
+        "Embedded C++ integration requires the root build to create the common HyRemote runtime first")
 endif()
-if(TARGET hyremote-remoteaccess)
-    message(FATAL_ERROR
-        "HyRemote source acquisition conflict: hyremote-remoteaccess already exists; do not combine "
-        "find_package(HyRemote) with add_subdirectory(HyRemote) in the same configure")
-endif()
-
-# The common runtime owns the shared target; this frontend contributes the public C++ facade.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 
 # Qt imported targets are directory scoped. The common runtime resolves optional Widgets/Quick targets
 # in its own child scope, but Embedded C++ tests are configured from this directory and need the same
