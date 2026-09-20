@@ -98,8 +98,25 @@ function(run_configure name source_text expect_success expected_fragment)
     file(MAKE_DIRECTORY "${source_dir}")
     file(WRITE "${source_dir}/CMakeLists.txt" "${source_text}")
 
+    # One case adds the project source tree, so the nested configure must use the same generator and toolchain as the
+    # build under test. Without that it inherited whatever the host prefers - it chose MSVC NMake here - and the gate
+    # failed inside compiler identification instead of reaching the acquisition conflict it exists to verify.
+    set(configure_toolchain "")
+    if(DEFINED HYREMOTE_GATE_GENERATOR AND NOT HYREMOTE_GATE_GENERATOR STREQUAL "")
+        list(APPEND configure_toolchain -G "${HYREMOTE_GATE_GENERATOR}")
+    endif()
+    if(DEFINED HYREMOTE_GATE_MAKE_PROGRAM AND NOT HYREMOTE_GATE_MAKE_PROGRAM STREQUAL "")
+        list(APPEND configure_toolchain "-DCMAKE_MAKE_PROGRAM=${HYREMOTE_GATE_MAKE_PROGRAM}")
+    endif()
+    if(DEFINED HYREMOTE_GATE_C_COMPILER AND NOT HYREMOTE_GATE_C_COMPILER STREQUAL "")
+        list(APPEND configure_toolchain "-DCMAKE_C_COMPILER=${HYREMOTE_GATE_C_COMPILER}")
+    endif()
+    if(DEFINED HYREMOTE_GATE_CXX_COMPILER AND NOT HYREMOTE_GATE_CXX_COMPILER STREQUAL "")
+        list(APPEND configure_toolchain "-DCMAKE_CXX_COMPILER=${HYREMOTE_GATE_CXX_COMPILER}")
+    endif()
+
     execute_process(
-        COMMAND "${CMAKE_COMMAND}" -S "${source_dir}" -B "${binary_dir}"
+        COMMAND "${CMAKE_COMMAND}" -S "${source_dir}" -B "${binary_dir}" ${configure_toolchain}
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr
@@ -163,8 +180,9 @@ string(CONCAT source_then_package "${common_prefix_setup}"
 run_configure("source-then-installed" "${source_then_package}" FALSE "source/add_subdirectory")
 
 # The reverse order must fail closed too. Load the fake installed package first, then add the actual
-# HyRemote source tree with optional modes disabled. The source RemoteAccess guard must reject the
-# already-imported public runtime before a second product runtime can be created.
+# HyRemote source tree with optional modes disabled. The runtime ownership guard rejects the attempt to
+# create a second product runtime, which is the current wording of this contract; the expected fragment
+# must follow the guard that actually produces it.
 string(CONCAT package_then_source "${common_prefix_setup}"
 "find_package(HyRemote CONFIG REQUIRED PATHS \"${first_prefix}/lib/cmake/HyRemote\" NO_DEFAULT_PATH)\n"
 "set(HYREMOTE_BUILD_CORE ON CACHE BOOL \"\" FORCE)\n"
@@ -174,7 +192,7 @@ string(CONCAT package_then_source "${common_prefix_setup}"
 "set(HYREMOTE_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\n"
 "set(HYREMOTE_BUILD_EXAMPLES OFF CACHE BOOL \"\" FORCE)\n"
 "add_subdirectory(\"${HYREMOTE_SOURCE_DIR}\" hyremote-source EXCLUDE_FROM_ALL)\n")
-run_configure("installed-then-source" "${package_then_source}" FALSE "add_subdirectory(HyRemote)")
+run_configure("installed-then-source" "${package_then_source}" FALSE "runtime target already exists")
 
 message(STATUS
     "HyRemote package acquisition isolation: PASS "

@@ -56,7 +56,9 @@ set(required_files
     "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp"
     "src/integrations/cpp/tests/test_quick_input_backpressure.cpp"
     "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
-    "src/integrations/qpa/tests/qpa_composite_input_test.cpp"
+    "src/runtime/tests/automatic_composite_input_test.cpp"
+    "src/runtime/tests/automatic_composite_capture_test.cpp"
+    "src/runtime/tests/automatic_application_surface_model_test.cpp"
 )
 
 foreach(path IN LISTS required_files)
@@ -192,15 +194,28 @@ foreach(required_token
     endif()
 endforeach()
 
+# The delivered export header is generated and installed by the shared runtime that owns the target, and the public
+# facade includes it by its documented name. The frontend CMakeLists no longer names the generated file, so the
+# contract is asserted where it is defined rather than where it used to be spelled out.
 file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/CMakeLists.txt" cpp_cmake)
+string(FIND "${cpp_cmake}" "src/remote_access.cpp" found)
+if(found EQUAL -1)
+    message(FATAL_ERROR "release-readiness: the C++ facade lost its RemoteAccess implementation")
+endif()
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt" runtime_export_cmake)
 foreach(required_token
-        "src/remote_access.cpp"
-        "RemoteAccessExport.h")
-    string(FIND "${cpp_cmake}" "${required_token}" found)
+        "generate_export_header(hyremote-remoteaccess"
+        "generated/HyRemote/RemoteAccessExport.h")
+    string(FIND "${runtime_export_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "release-readiness: Embedded C++ facade contract missing: ${required_token}")
+        message(FATAL_ERROR "release-readiness: shared runtime export contract missing: ${required_token}")
     endif()
 endforeach()
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/include/HyRemote/RemoteAccess.h" facade_header)
+string(FIND "${facade_header}" "HyRemote/RemoteAccessExport.h" found)
+if(found EQUAL -1)
+    message(FATAL_ERROR "release-readiness: the public C++ facade must include its generated export header")
+endif()
 string(FIND "${cpp_cmake}" "add_library(hyremote-remoteaccess SHARED" cpp_owns_runtime)
 if(NOT cpp_owns_runtime EQUAL -1)
     message(FATAL_ERROR "release-readiness: Embedded C++ frontend must not re-own the common shared runtime")
@@ -370,9 +385,9 @@ foreach(adapter_file
     endforeach()
 endforeach()
 
-# QPA still carries the V1 composite copy until #219 switches it to Runtime::Automatic. Pin the current
-# qualified behavior at its canonical frontend path during that transition.
-file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/interactive_composite_target.cpp" qpa_input_source)
+# The composite target is runtime-owned now: #219 finished moving it out of the QPA frontend, so the terminal
+# child-input behavior is pinned at the canonical Runtime::Automatic path instead of the retired frontend copy.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/src/automatic/interactive_composite_target.cpp" qpa_input_source)
 foreach(required_token
         "void shutdown() noexcept override"
         "sink->shutdown()"
@@ -389,7 +404,7 @@ foreach(test_entry
         "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
         "src/integrations/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
         "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
-        "src/integrations/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
+        "src/runtime/tests/automatic_composite_input_test.cpp|shutdownCalls")
     string(REPLACE "|" ";" test_parts "${test_entry}")
     list(GET test_parts 0 test_path)
     list(GET test_parts 1 required_token)

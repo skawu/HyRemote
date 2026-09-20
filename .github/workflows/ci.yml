@@ -111,7 +111,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - name: Linux x86_64 / Qt 6.8.3
@@ -144,32 +144,32 @@ jobs:
         run: |
           set -euo pipefail
           echo "CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
-          QT_ROOT="$RUNNER_TEMP/Qt"
+          # RUNNER_TEMP is a native path, so on Windows it carries backslashes (D:\a\_temp). Normalize to forward
+          # slashes once, here, so bash, Python, CMake and the installer all address the same tree directly.
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
           QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
+          case "${{ runner.os }}" in
+            Linux) QT_PLATFORM=linux ;;
+            *)     QT_PLATFORM=windows ;;
+          esac
+          echo "RUNNER_TEMP_RAW=$RUNNER_TEMP"
+          echo "QT_ROOT_VALIDATION_PATH=$QT_ROOT"
+          echo "QT_PREFIX_VALIDATION_PATH=$QT_PREFIX"
 
+          # The artifact contract is verified by the validator, which resolves real native paths on either operating
+          # system and reports [PASS]/[MISSING] per artifact. Bash file predicates are no longer asked to interpret a
+          # Windows path, which is what made a fresh installation report one unactionable "integrity" failure; no Qt
+          # artifact is exempted and both platforms keep the same capability requirements.
           qt_tree_valid() {
-            [[ -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake" ]] || return 1
-            [[ -f "$QT_PREFIX/lib/cmake/Qt6Core/Qt6CoreConfig.cmake" ]] || return 1
-            [[ -f "$QT_PREFIX/lib/cmake/Qt6Gui/Qt6GuiConfig.cmake" ]] || return 1
-            [[ -f "$QT_PREFIX/lib/cmake/Qt6Network/Qt6NetworkConfig.cmake" ]] || return 1
-            [[ -f "$QT_PREFIX/lib/cmake/Qt6Widgets/Qt6WidgetsConfig.cmake" ]] || return 1
-            [[ -f "$QT_PREFIX/lib/cmake/Qt6Quick/Qt6QuickConfig.cmake" ]] || return 1
-            compgen -G "$QT_PREFIX/bin/qtpaths*" >/dev/null || return 1
-            compgen -G "$QT_PREFIX/bin/qmake*" >/dev/null || return 1
-
-            if [[ "$NEED_QML" == "true" ]]; then
-              [[ -f "$QT_PREFIX/lib/cmake/Qt6Qml/Qt6QmlConfig.cmake" ]] || return 1
-              [[ -f "$QT_PREFIX/qml/QtQml/qmldir" ]] || return 1
-            fi
-
-            if [[ "$NEED_QPA" == "true" ]]; then
-              [[ -f "$QT_PREFIX/include/QtGui/6.8.3/QtGui/private/qguiapplication_p.h" ]] || return 1
-              if [[ "${{ runner.os }}" == "Linux" ]]; then
-                compgen -G "$QT_PREFIX/plugins/platforms/libqxcb*" >/dev/null || return 1
-              else
-                compgen -G "$QT_PREFIX/plugins/platforms/qwindows*" >/dev/null || return 1
-              fi
-            fi
+            python .github/scripts/validate-qt-sdk.py \
+              --prefix "$QT_PREFIX" \
+              --qt-version 6.8.3 \
+              --platform "$QT_PLATFORM" \
+              --need-qml "$NEED_QML" \
+              --need-qpa "$NEED_QPA" \
+              --cmake-components Qt6CoreConfig.cmake Qt6GuiConfig.cmake Qt6NetworkConfig.cmake \
+                                 Qt6WidgetsConfig.cmake Qt6QuickConfig.cmake \
+              --private-headers qguiapplication_p.h
           }
 
           if ! qt_tree_valid; then

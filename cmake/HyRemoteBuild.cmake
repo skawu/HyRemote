@@ -53,6 +53,11 @@ function(hyb_bool input output context)
 endfunction()
 
 function(hyb_append_pair variable key value)
+    # Both consumers expand these entries unquoted into a command line (`cmake -E env` for the environment and `-D`
+    # arguments for the cache), where an unescaped semicolon inside a value - a Windows PATH, for example - is read
+    # as a list separator: the pair would become several arguments, and `cmake -E env` would try to execute a value
+    # fragment as the command. Escaping keeps the value inside its own argument; CMake unescapes it on expansion.
+    string(REPLACE ";" "\\;" value "${value}")
     set(items "${${variable}}")
     list(APPEND items "${key}=${value}")
     set(${variable} "${items}" PARENT_SCOPE)
@@ -651,36 +656,45 @@ endif()
 if(HYB_TESTS_RUN)
     set(test_env ${HYB_ENV_ENTRIES})
     if(WIN32)
-        file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE "${HYB_BUILD_DIR}/HyRemoteRemoteAccess.dll")
-        if(runtime_candidates)
-            list(GET runtime_candidates 0 runtime_file)
-            get_filename_component(runtime_dir "${runtime_file}" DIRECTORY)
-        else()
-            set(runtime_dir "")
-        endif()
+        # The runtime library is named after its target's OUTPUT_NAME, and its prefix and suffix belong to the
+        # toolchain: MinGW emits libHyRemoteRemoteAccess.dll where MSVC emits HyRemoteRemoteAccess.dll. Matching only
+        # the toolchain-independent part, and only directories the build tree itself produced, keeps a test process
+        # resolving the runtime under test. Looking for one spelling and taking the first hit did neither: under
+        # MinGW it matched only copies installed by the deployment fixtures, and the directory the tests load from
+        # never reached PATH, so every test loading the runtime exited with 0xc0000135.
+        file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE
+            "${HYB_BUILD_DIR}/*HyRemoteRemoteAccess.dll")
+        # Release evidence deploys the product under <build>/evidence/<run>/ (checklist section 10). A deployed
+        # layout carries its own plugins beside its own library, so those directories must stay off PATH: with them
+        # present the tests resolved a foreign copy and the whole Widgets/Quick family failed with 0xc0000602.
+        list(FILTER runtime_candidates EXCLUDE REGEX "[/\\\\]evidence[/\\\\]")
         set(test_path "$ENV{PATH}")
         if(NOT HYB_QT_PREFIX STREQUAL "")
             string(PREPEND test_path "${HYB_QT_PREFIX}/bin;")
         endif()
-        if(NOT runtime_dir STREQUAL "")
+        foreach(runtime_candidate IN LISTS runtime_candidates)
+            get_filename_component(runtime_dir "${runtime_candidate}" DIRECTORY)
             string(PREPEND test_path "${runtime_dir};")
-        endif()
+        endforeach()
+        # test_env is expanded unquoted into `cmake -E env`, so this PATH has to keep its semicolons inside one
+        # argument. Unescaped, the list separator split it and the first PATH fragment was executed as the command,
+        # which failed as "no such file or directory" and made --run-tests unusable on Windows.
+        string(REPLACE ";" "\\;" test_path "${test_path}")
         list(APPEND test_env "PATH=${test_path}")
     elseif(UNIX)
-        file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE "${HYB_BUILD_DIR}/libHyRemoteRemoteAccess.so")
-        if(runtime_candidates)
-            list(GET runtime_candidates 0 runtime_file)
-            get_filename_component(runtime_dir "${runtime_file}" DIRECTORY)
-        else()
-            set(runtime_dir "")
-        endif()
+        # Same rule as the Windows branch: match the toolchain-independent part and keep every directory the build
+        # tree produced, so the tests load the runtime under test rather than a deployed copy.
+        file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE
+            "${HYB_BUILD_DIR}/*HyRemoteRemoteAccess.so*")
+        list(FILTER runtime_candidates EXCLUDE REGEX "[/\\\\]evidence[/\\\\]")
         set(test_ld "$ENV{LD_LIBRARY_PATH}")
         if(NOT HYB_QT_PREFIX STREQUAL "")
             string(PREPEND test_ld "${HYB_QT_PREFIX}/lib:")
         endif()
-        if(NOT runtime_dir STREQUAL "")
+        foreach(runtime_candidate IN LISTS runtime_candidates)
+            get_filename_component(runtime_dir "${runtime_candidate}" DIRECTORY)
             string(PREPEND test_ld "${runtime_dir}:")
-        endif()
+        endforeach()
         list(APPEND test_env "LD_LIBRARY_PATH=${test_ld}")
     endif()
 

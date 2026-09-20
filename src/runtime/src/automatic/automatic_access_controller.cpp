@@ -83,7 +83,7 @@ struct AccessController::Impl final : QObject
         }
 
         if (!compositeTarget)
-            compositeTarget = std::make_unique<::HyRemote::Qpa::InteractiveCompositeTarget>();
+            compositeTarget = std::make_unique<::HyRemote::Runtime::Automatic::InteractiveCompositeTarget>();
 
         application->installEventFilter(this);
         started = true;
@@ -341,7 +341,7 @@ private:
 
     AccessConfig config;
     std::unique_ptr<Runtime::AccessInstance> access;
-    std::unique_ptr<::HyRemote::Qpa::InteractiveCompositeTarget> compositeTarget;
+    std::unique_ptr<::HyRemote::Runtime::Automatic::InteractiveCompositeTarget> compositeTarget;
     QHash<QObject *, quint64> surfaceIds;
     QSet<QObject *> raisePending;
     quint64 nextSurfaceId = 1;
