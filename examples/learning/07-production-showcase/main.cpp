@@ -93,7 +93,8 @@ int main(int argc, char **argv)
                      [] { QCoreApplication::exit(65); },
                      Qt::QueuedConnection);
 
-    engine.loadFromModule(QStringLiteral("HyRemoteShowcase"), QStringLiteral("Main"));
+    engine.loadFromModule(QStringLiteral("HyRemote.Examples.ProductionShowcase"),
+                          QStringLiteral("Main"));
     if (engine.rootObjects().isEmpty())
         return 65;
 

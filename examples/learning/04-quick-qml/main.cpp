@@ -44,10 +44,10 @@ void acceptanceMessageHandler(QtMsgType type,
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("HyRemote QML Basic"));
+    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Quick QML"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("HyRemote Declarative QML API example"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote QML API / Qt Quick example"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Loopback VNC port."),
@@ -94,7 +94,7 @@ int main(int argc, char **argv)
                      [] { QCoreApplication::exit(65); },
                      Qt::QueuedConnection);
 
-    engine.loadFromModule(QStringLiteral("HyRemoteExample"), QStringLiteral("Main"));
+    engine.loadFromModule(QStringLiteral("HyRemote.Examples.QuickQml"), QStringLiteral("Main"));
     if (engine.rootObjects().isEmpty())
         return 65;
 

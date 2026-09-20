@@ -84,10 +84,10 @@ int readPositiveInt(const QCommandLineParser &parser,
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Quick Basic"));
+    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Quick C++"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("HyRemote Embedded C++ API / Qt Quick example"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote C++ API / Qt Quick example"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Loopback VNC port."),
@@ -120,11 +120,11 @@ int main(int argc, char **argv)
     const bool remoteInput = parser.isSet(inputOption);
 
     QQuickView view;
-    view.setTitle(QStringLiteral("HyRemote Quick Basic"));
+    view.setTitle(QStringLiteral("HyRemote - Qt Quick + C++ API"));
     view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.resize(360, 220);
     view.setInitialProperties({{QStringLiteral("remoteControlEnabled"), remoteInput}});
-    view.setSource(QUrl(QStringLiteral("qrc:/hyremote/quick-basic/Main.qml")));
+    view.setSource(QUrl(QStringLiteral("qrc:/hyremote/examples/quick-cpp/Main.qml")));
     if (view.status() == QQuickView::Error) {
         for (const QQmlError &error : view.errors())
             std::cerr << error.toString().toStdString() << std::endl;
