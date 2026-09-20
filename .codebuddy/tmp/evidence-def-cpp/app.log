@@ -1,0 +1,428 @@
+CLIENT_COUNT 0
+READY 5921
+CLIENT_COUNT 1
+CLIENT_COUNT 0
+CLIENT_COUNT 0
+POLICY_STOPPED
+POLICY_INPUT true
+POLICY_RESTART_REQUESTED
+READY 5921
+CLIENT_COUNT 1
+APP_POINTER button=1 x=200 y=20
+APP_POINTER button=1 x=98 y=19
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=87 shift=0 ctrl=0 alt=0
+APP_TEXT text=w
+APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP_TEXT text=e
+APP_POINTER button=1 x=95 y=21
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP_TEXT text=e
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=82 shift=0 ctrl=0 alt=0
+APP_TEXT text=r
+APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP_TEXT text=e
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_POINTER button=1 x=95 y=21
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_POINTER button=1 x=116 y=115
+APP_POINTER button=1 x=100 y=17
+APP_POINTER button=1 x=100 y=17
+CLIENT_COUNT 2
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=92 y=15
+APP_POINTER button=1 x=92 y=15
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+APP_KEY key=50 shift=0 ctrl=0 alt=0
+APP_TEXT text=2
+APP_KEY key=51 shift=0 ctrl=0 alt=0
+APP_TEXT text=3
+APP_KEY key=52 shift=0 ctrl=0 alt=0
+APP_TEXT text=4
+APP_KEY key=52 shift=0 ctrl=0 alt=0
+APP_TEXT text=4
+APP_KEY key=53 shift=0 ctrl=0 alt=0
+APP_TEXT text=5
+APP_KEY key=53 shift=0 ctrl=0 alt=0
+APP_TEXT text=5
+APP_KEY key=52 shift=0 ctrl=0 alt=0
+APP_TEXT text=4
+APP_KEY key=54 shift=0 ctrl=0 alt=0
+APP_TEXT text=6
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_POINTER button=1 x=92 y=15
+APP_POINTER button=1 x=40 y=22
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=86 shift=0 ctrl=0 alt=0
+APP_TEXT text=V
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP_TEXT text=z
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP_TEXT text=E
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=92 y=15
+CLIENT_COUNT 1
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP_TEXT text=z
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=71 shift=0 ctrl=0 alt=0
+APP_TEXT text=g
+APP_POINTER button=1 x=92 y=15
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=92 y=15
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_POINTER button=1 x=201 y=14
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=201 y=14
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+CLIENT_COUNT 2
+APP_KEY key=16777248 shift=0 ctrl=0 alt=0
+CLIENT_COUNT 1
+APP_POINTER button=1 x=112 y=4
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=120 y=173
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_POINTER button=1 x=120 y=173
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_POINTER button=1 x=93 y=35
+APP_POINTER button=1 x=93 y=35
+APP_POINTER button=1 x=93 y=8
+APP_POINTER button=1 x=93 y=8
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+CLIENT_COUNT 2
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_POINTER button=1 x=269 y=25
+libpng warning: iCCP: known incorrect sRGB profile
+APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP_TEXT text=z
+CLIENT_COUNT 1
+APP_TEXT text=鑼冨痉钀ㄥ彂鐢熷ぇ
+APP_POINTER button=1 x=107 y=6
+APP_TEXT text=鑼冨痉钀ㄥ彂
+APP_POINTER button=1 x=55 y=21
+APP_CLICKED
+APP_POINTER button=1 x=55 y=21
+APP_POINTER button=1 x=69 y=5
+APP_POINTER button=1 x=72 y=20
+APP_TEXT text=鑼冨痉钀ㄥ彂
+CLIENT_COUNT 2
+APP_POINTER button=1 x=251 y=54
+APP_POINTER button=1 x=182 y=11
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_KEY key=83 shift=0 ctrl=0 alt=0
+APP_TEXT text=s
+APP_KEY key=68 shift=0 ctrl=0 alt=0
+APP_TEXT text=d
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=70 shift=0 ctrl=0 alt=0
+APP_TEXT text=f
+APP_POINTER button=1 x=97 y=26
+APP_TEXT text=娉曟拻鏃︽槸
+CLIENT_COUNT 1
+APP_KEY key=89 shift=0 ctrl=0 alt=0
+APP_TEXT text=y

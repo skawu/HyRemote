@@ -274,7 +274,7 @@ Supported; explicit limitations are in [`docs/known-limitations.md`](../../known
 
 ## 11. Related documents
 
-- Integration modes (choose one): [Embedded C++](../../getting-started/cpp.md) | [Declarative QML](../../getting-started/qml.md) | [Transparent QPA](../../getting-started/qpa-proxy.md) (these move into `guide/` with the rest of the migration)
+- Integration modes (choose one, each with its Chinese primary at the same path under `docs/`): [Embedded C++](../getting-started/cpp.md) | [Declarative QML](../getting-started/qml.md) | [Transparent QPA](../getting-started/qpa-proxy.md)
 - Deployment and packaging: [`deployment.md`](../../guide/deployment.md)
 - Compatibility and limits: [`compatibility.md`](../../compatibility.md) | [`known-limitations.md`](../../known-limitations.md)
 - Troubleshooting: [`troubleshooting.md`](../../guide/troubleshooting.md)

@@ -1,0 +1,55 @@
+[16:21:18] start: build\examples\widgets-basic\hyremote-widgets-basic.exe --port 5951 --test-seconds 150 --policy-transition-ms 9000
+[16:21:18] PHASE 1 window start, then LOCAL input before any viewer
+[16:21:18] wait -> 'READY' (budget 12s)
+APP| CLIENT_COUNT 0
+APP| READY 5951
+[16:21:19] local click at (321,123) - no viewer is connected yet
+[16:21:20] local click visible in the application log: False
+[16:21:20] PHASE 2 view-only viewer
+[16:21:20] wait -> 'CLIENT_COUNT 1' (budget 5s)
+APP| CLIENT_COUNT 1
+[16:21:20] capture e1r2-viewonly.png 7963 B
+[16:21:20] PHASE 3 documented disconnect trigger
+[16:21:20] wait -> 'POLICY_RESTART_REQUESTED' (budget 12s)
+APP| CLIENT_COUNT 0
+APP| CLIENT_COUNT 0
+APP| POLICY_STOPPED
+APP| POLICY_INPUT true
+APP| POLICY_RESTART_REQUESTED
+APP| READY 5951
+[16:21:20] wait -> 'READY' (budget 12s)
+[16:21:20] PHASE 4 control viewer: remote input while LOCAL input stays authoritative
+[16:21:20] wait -> 'CLIENT_COUNT 1' (budget 6s)
+APP| APP_POINTER button=1 x=40 y=22
+APP| APP_POINTER button=1 x=60 y=40
+APP| CLIENT_COUNT 1
+APP| APP_KEY key=86 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=V
+APP| APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=1
+APP| APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=E
+APP| APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=1
+[16:21:22] capture e1r2-control.png 7907 B
+[16:21:22] local click at (432,234) with the remote viewer connected
+[16:21:23] local click during remote control visible: False
+[16:21:23] capture e1r2-localduringcontrol.png 7907 B
+[16:21:23] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[16:21:23] PHASE 5 abrupt disconnect, modifier held by a killed viewer
+[16:21:23] wait -> 'APP_KEY key=16777248' (budget 12s)
+APP| CLIENT_COUNT 0
+APP| CLIENT_COUNT 1
+APP| APP_KEY key=16777248 shift=0 ctrl=0 alt=0
+[16:21:24] Shift observed held: True
+[16:21:24] helper killed with Shift still held, no balanced release
+[16:21:24] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[16:21:24] PHASE 6 fresh viewer after the abrupt disconnect
+[16:21:24] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[16:21:32] wait -> 'APP_KEY key=90' (budget 8s)
+APP| APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=z
+[16:21:32] capture e1r2-afterheld.png 7907 B
+[16:21:32] PHASE 7 bounded termination (driver-initiated: no teardown claim)
+[16:21:32] window exit rc=1; log lines=25
+[16:21:32] no PASS claimed by this driver: the evidence is the logs and frames above

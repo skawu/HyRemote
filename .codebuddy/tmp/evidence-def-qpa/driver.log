@@ -1,0 +1,44 @@
+[17:21:31] start: build\examples\qpa-proxy-existing-app\hyremote-qpa-proxy-existing-app.exe -platform hyremote --test-seconds 150
+[17:21:31] hard watchdog armed at 120s (window lifetime 150s)
+[17:21:31] PHASE 1 window start
+[17:21:31] wait -> 'READY' (budget 2s)
+[17:21:33] no 'READY' within 2s -> continue anyway
+[17:21:33] PHASE 3 view-only viewer, remote input must not be delivered
+[17:21:33] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:21:38] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:21:38] lines produced by the view-only viewer: 0 (expect none)
+[17:21:38] capture def-qpa-viewonly.png 16800 B
+[17:21:38] PHASE 4 skipped: this application has no stop -> configure -> start policy transition
+[17:21:38] PHASE 5 control viewer: pointer, keys, text
+[17:21:38] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:21:43] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:21:45] capture def-qpa-control.png 16800 B
+[17:21:45] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:21:50] no 'CLIENT_COUNT 0' within 5s -> continue anyway
+[17:21:50] PHASE 6 held-Shift viewer killed without a release
+[17:21:50] wait -> 'APP_KEY key=16777248' (budget 2s)
+[17:21:52] no 'APP_KEY key=16777248' within 2s -> continue anyway
+[17:21:52] Shift observed in the application log: False
+[17:21:52] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[17:22:00] no 'CLIENT_COUNT 0' within 8s -> continue anyway
+[17:22:00] PHASE 7 fresh viewer: the first key must arrive with shift=0
+[17:22:00] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:22:05] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:22:05] wait -> 'APP_KEY key=90' (budget 8s)
+[17:22:13] no 'APP_KEY key=90' within 8s -> continue anyway
+[17:22:13] capture def-qpa-afterheld.png 16782 B
+[17:22:13] PHASE 8 mid-control reconnect
+[17:22:13] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:22:18] no 'CLIENT_COUNT 0' within 5s -> continue anyway
+[17:22:18] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[17:22:26] no 'CLIENT_COUNT 1' within 8s -> continue anyway
+[17:22:26] wait -> 'APP_KEY key=89' (budget 8s)
+[17:22:34] no 'APP_KEY key=89' within 8s -> continue anyway
+[17:22:34] capture def-qpa-reconnect.png 16800 B
+[17:22:34] frame diff viewonly -> control: 0 changed pixels, bbox None
+[17:22:34] frame diff viewonly -> afterheld: 15 changed pixels, bbox (206, 66, 207, 81)
+[17:22:34] frame diff viewonly -> reconnect: 0 changed pixels, bbox None
+[17:22:34] PHASE 10 bounded termination (driver-initiated, so no teardown claim)
+[17:22:34] window exit rc=1 (driver-terminated); log lines=2
+[17:22:34] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.
+[17:22:34] DRIVER DONE: exiting hard; all evidence above is flushed to disk

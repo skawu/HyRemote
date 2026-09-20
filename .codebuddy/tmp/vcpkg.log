@@ -1,0 +1,19 @@
+Downloading https://github.com/microsoft/vcpkg-tool/releases/download/2026-07-27/vcpkg.exe -> C:\vcpkg\vcpkg.exe...While calling Windows API function WinHttpSendRequest got error 0x00002EE2:
+操作超时
+
+
+C:\vcpkg\scripts\bootstrap.ps1 : Downloading vcpkg.exe failed. Please check your internet connection, or consider downl
+oading a recent vcpkg.exe from https://github.com/microsoft/vcpkg-tool with a browser.
+At line:1 char:4
++ & {& "C:\vcpkg\scripts\bootstrap.ps1" -disableMetrics}
++    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,bootstrap.ps1
+ 
+ScriptHalted
+At C:\vcpkg\scripts\bootstrap.ps1:63 char:5
++     throw
++     ~~~~~
+    + CategoryInfo          : OperationStopped: (:) [], RuntimeException
+    + FullyQualifiedErrorId : ScriptHalted
+ 

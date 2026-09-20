@@ -1,0 +1,226 @@
+INFO    : aqtinstall(aqt) v3.3.0 on Python 3.13.12 [CPython MSC v.1944 64 bit (AMD64)]
+INFO    : Downloading qtsvg...
+INFO    : Downloading qttranslations...
+INFO    : Downloading qtbase...
+INFO    : Downloading qtactiveqt...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtsvg-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 5.08700850
+INFO    : Downloading qtdeclarative...
+INFO    : Finished installation of qttranslations-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 7.31051870
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Downloading qtgraphicaleffects...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtgraphicaleffects-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 7.54357940
+INFO    : Finished installation of qtactiveqt-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 15.96028660
+INFO    : Downloading qtwinextras...
+INFO    : Downloading qtmultimedia...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtwinextras-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 4.91749730
+INFO    : Downloading qtimageformats...
+INFO    : Finished installation of qtmultimedia-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 7.29731880
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtimageformats-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 6.64835810
+INFO    : Downloading qttools...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Downloading qtsensors...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtsensors-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 7.31954490
+INFO    : Finished installation of qtdeclarative-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 28.79956960
+INFO    : Downloading qtwebsockets...
+INFO    : Downloading qtwebchannel...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtwebsockets-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 6.19940620
+INFO    : Finished installation of qtwebchannel-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 6.66254830
+INFO    : Downloading qtserialport...
+INFO    : Downloading qtlocation...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtserialport-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 5.50429450
+INFO    : Downloading qtquickcontrols...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtlocation-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 14.47637340
+INFO    : Finished installation of qtquickcontrols-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 10.26711350
+INFO    : Downloading qtquickcontrols2...
+INFO    : Downloading qtserialbus...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtserialbus-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 8.10622150
+INFO    : Downloading qtscxml...
+INFO    : Finished installation of qtquickcontrols2-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 12.65515180
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Downloading qt3d...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtscxml-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 7.32597110
+INFO    : Downloading qtgamepad...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtgamepad-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 4.99551050
+INFO    : Downloading qtspeech...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qt3d-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 14.96206620
+INFO    : Finished installation of qtspeech-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 5.93406570
+INFO    : Downloading qtremoteobjects...
+INFO    : Downloading d3dcompiler_47...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtremoteobjects-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 6.87762600
+INFO    : Finished installation of qttools-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 67.02749100
+INFO    : Downloading x86_64...
+INFO    : Downloading qtxmlpatterns...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of d3dcompiler_47-x64.7z in 11.10673750
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Downloading opengl32sw...
+INFO    : Finished installation of x86_64-8.1.0-release-posix-seh-rt_v6-rev0-runtime.7z in 6.88121880
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtbase-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 98.05756500
+INFO    : Finished installation of qtxmlpatterns-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 8.61593600
+INFO    : Downloading qtconnectivity...
+INFO    : Redirected: mirrors.sau.edu.cn
+INFO    : Finished installation of qtconnectivity-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 5.94679910
+INFO    : Finished installation of opengl32sw-64-mesa_12_0_rc2.7z in 18.03777410
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\bin\qmake.exe
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DAnimation.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DCore.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DExtras.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DInput.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DLogic.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DQuick.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DQuickAnimation.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DQuickExtras.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DQuickInput.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DQuickRender.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DQuickScene2D.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt53DRender.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5AxBase.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5AxContainer.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5AxServer.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Bluetooth.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Concurrent.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Core.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5DBus.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Designer.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Gamepad.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Gui.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Help.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Location.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Multimedia.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5MultimediaWidgets.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Network.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Nfc.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5OpenGL.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5OpenGLExtensions.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Positioning.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5PositioningQuick.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5PrintSupport.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Qml.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5QmlModels.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5QmlWorkerScript.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Quick.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5QuickControls2.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5QuickTemplates2.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5QuickTest.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5QuickWidgets.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5RemoteObjects.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Scxml.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Sensors.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5SerialBus.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5SerialPort.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Sql.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Svg.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Test.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5TextToSpeech.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5UiTools.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5WebChannel.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5WebSockets.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Widgets.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5WinExtras.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5Xml.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\pkgconfig\Qt5XmlPatterns.pc
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\libEGL.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\libGLESv2.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DAnimation.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DCore.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DExtras.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DInput.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DLogic.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DQuick.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DQuickAnimation.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DQuickExtras.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DQuickInput.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DQuickRender.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DQuickScene2D.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt53DRender.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5AccessibilitySupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5AxBase.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5AxContainer.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5AxServer.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Bluetooth.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Bootstrap.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Concurrent.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Core.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5DBus.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Designer.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5DesignerComponents.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5DeviceDiscoverySupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5EdidSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5EglSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5EventDispatcherSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5FbSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5FontDatabaseSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Gamepad.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Gui.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Help.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Location.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Multimedia.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5MultimediaQuick.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5MultimediaWidgets.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Network.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Nfc.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5OpenGL.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5OpenGLExtensions.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5PacketProtocol.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5PlatformCompositorSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Positioning.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5PositioningQuick.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5PrintSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Qml.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QmlDebug.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QmlDevTools.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QmlModels.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QmlWorkerScript.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Quick.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QuickControls2.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QuickParticles.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QuickShapes.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QuickTemplates2.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QuickTest.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5QuickWidgets.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5RemoteObjects.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Scxml.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Sensors.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5SerialBus.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5SerialPort.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Sql.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Svg.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Test.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5TextToSpeech.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5ThemeSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5UiTools.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5VulkanSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5WebChannel.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5WebSockets.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Widgets.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5WindowsUIAutomationSupport.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5WinExtras.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5Xml.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\Qt5XmlPatterns.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\qtfreetype.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\qtlibpng.prl
+INFO    : Patching C:\Qt\5.15.2\mingw81_64\lib\qtmain.prl
+INFO    : Finished installation
+INFO    : Time elapsed: 118.62883730 second

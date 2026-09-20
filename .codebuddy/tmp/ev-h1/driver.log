@@ -1,0 +1,71 @@
+[17:35:19] start: build\examples\widgets-basic\hyremote-widgets-basic.exe --test-seconds 150 --policy-transition-ms 45000
+[17:35:19] hard watchdog armed at 120s (window lifetime 150s)
+[17:35:19] PHASE 1 window start
+[17:35:19] wait -> 'READY' (budget 12s)
+[17:35:19] PHASE 2 local input to the native window, before any viewer
+[17:35:19]   window hwnd=5574314 376x259 class='Qt683QWindowIcon' title='HyRemote Widgets Basic'
+[17:35:19] selected application window hwnd=5574314
+[17:35:20] foreground confirmed: injecting real local input (keybd_event)
+[17:35:20] wait -> 'APP_KEY key=72' (budget 12s)
+[17:35:32] no 'APP_KEY key=72' within 12s -> continue anyway
+[17:35:32] no local key line from that method - retrying with posted window messages
+[17:35:33] wait -> 'APP_KEY key=72' (budget 12s)
+[17:35:33] local input delivered to the application before any viewer: True
+[17:35:33] local input method that delivered: keybd_event (real OS-level local input) + posted window messages
+[17:35:33] display: primary display 1920x1080, system/window DPI 96 => scale 1.00x
+[17:35:33] PHASE 3 view-only viewer, remote input must not be delivered
+[17:35:33] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:35:34] lines produced by the view-only viewer: 0 (expect none)
+[17:35:34] capture h1-viewonly.png 7961 B
+[17:35:34] PHASE 4 documented disconnect trigger, same-process stop/configure/start
+[17:35:34] wait -> 'POLICY_RESTART_REQUESTED' (budget 12s)
+[17:35:34] wait -> 'READY' (budget 12s)
+[17:35:46] no 'READY' within 12s -> continue anyway
+[17:35:46] PHASE 5 control viewer: pointer, keys, text
+[17:35:46] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:35:48] capture h1-control.png 7923 B
+[17:35:48] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:35:48] PHASE 6 held-Shift viewer killed without a release
+[17:35:48] wait -> 'APP_KEY key=16777248' (budget 12s)
+[17:35:49] Shift observed in the application log: True
+[17:35:49] helper killed rc=None, no balanced release sent
+[17:35:49] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[17:35:49] PHASE 7 fresh viewer: the first key must arrive with shift=0
+[17:35:49] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:35:49] wait -> 'APP_KEY key=90' (budget 8s)
+[17:35:49] capture h1-afterheld.png 7923 B
+[17:35:49] PHASE 8 mid-control reconnect
+[17:35:49] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:35:49] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[17:35:50] wait -> 'APP_KEY key=89' (budget 8s)
+[17:35:50] capture h1-reconnect.png 7923 B
+[17:35:50] PHASE 9 deliberately stalled viewer: the native loop must stay responsive
+[17:35:50] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[17:35:58] no 'CLIENT_COUNT 1' within 8s -> continue anyway
+[17:35:58] wait -> 'APP_KEY key=65' (budget 8s)
+[17:35:58] capture h1-slowviewer-before.png 7923 B
+[17:35:58] attaching the stalled viewer: real RFB handshake, then it never reads the socket
+[17:35:58] wait -> 'CLIENT_COUNT 2' (budget 12s)
+[17:35:58] stalled viewer registered with the server: True
+[17:35:58] holding the stall for 10s while the normal viewer keeps driving the application
+[17:36:00] capture h1-slowviewer-00.png 7941 B
+[17:36:02] capture h1-slowviewer-01.png 7941 B
+[17:36:04] capture h1-slowviewer-02.png 7941 B
+[17:36:06] capture h1-slowviewer-03.png 7941 B
+[17:36:08] capture h1-slowviewer-04.png 7941 B
+[17:36:08] during the 10.0s stall the application produced 11 log lines while the stalled viewer never read
+[17:36:08] normal-viewer frame capture times during the stall: [0.01, 0.01, 0.0, 0.0, 0.0]
+[17:36:08] frame diff viewonly -> control: 669 changed pixels, bbox (27, 141, 218, 198)
+[17:36:08] frame diff viewonly -> afterheld: 669 changed pixels, bbox (27, 141, 218, 198)
+[17:36:08] frame diff viewonly -> reconnect: 669 changed pixels, bbox (27, 141, 218, 198)
+[17:36:08] frame diff viewonly -> slowviewer-before: 669 changed pixels, bbox (27, 141, 218, 198)
+[17:36:08] frame diff viewonly -> slowviewer-00: 695 changed pixels, bbox (116, 93, 230, 198)
+[17:36:08] frame diff viewonly -> slowviewer-01: 695 changed pixels, bbox (116, 93, 230, 198)
+[17:36:08] frame diff viewonly -> slowviewer-02: 695 changed pixels, bbox (116, 93, 230, 198)
+[17:36:08] frame diff viewonly -> slowviewer-03: 695 changed pixels, bbox (116, 93, 230, 198)
+[17:36:08] frame diff viewonly -> slowviewer-04: 695 changed pixels, bbox (116, 93, 230, 198)
+[17:36:08] stalled viewer socket closed
+[17:36:08] PHASE 10 bounded termination (driver-initiated, so no teardown claim)
+[17:36:08] window exit rc=1 (driver-terminated); log lines=48
+[17:36:08] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.
+[17:36:08] DRIVER DONE: exiting hard; all evidence above is flushed to disk

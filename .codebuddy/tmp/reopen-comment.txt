@@ -1,0 +1,18 @@
+## Reopened: this issue was closed before the mandatory-set correction landed
+
+I closed this as completed on 2026-09-19 after verifying the five acceptance criteria as they stood. The product-owner
+cycle then added a further required correction (comment `5737767879`): the single machine-readable V1 mandatory manifest,
+and every release authority that repeats it, must include **#170 #174 #175 #176**, plus a regression check so a future
+V1-labelled blocking authority cannot silently exist outside the manifest.
+
+Closing was therefore premature relative to that requirement, and the issue is reopened so the correction is applied
+against it rather than left to drift. The earlier verification of the five criteria still stands; what changed is the
+scope the criteria are measured against.
+
+Order of work now being applied:
+
+1. add #170/#174/#175/#176 to `.github/release/v1-mandatory-issues.json` and to the pinned expected list in
+   `tests/release-readiness/check_release_authority_policy.cmake`, then re-run the release-readiness gates locally;
+2. sync the prose authorities that repeat the set (#33/#95/#107/#106/#156) and the in-tree release documents;
+3. add the regression check the review asks for, so a number asserted as a V1 blocker in the authorities cannot be
+   absent from the manifest.

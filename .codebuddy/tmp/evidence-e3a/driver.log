@@ -1,0 +1,51 @@
+[17:00:11] start: build\examples\qml-basic\hyremote-qml-basic.exe --port 5954 --test-seconds 150 --policy-transition-ms 45000
+[17:00:11] hard watchdog armed at 120s (window lifetime 150s)
+[17:00:11] PHASE 1 window start
+[17:00:11] wait -> 'READY' (budget 12s)
+[17:00:11] PHASE 3 view-only viewer, remote input must not be delivered
+[17:00:11] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:00:12] lines produced by the view-only viewer: 0 (expect none)
+[17:00:12] capture e3a-viewonly.png 15400 B
+[17:00:12] PHASE 4 documented disconnect trigger, same-process stop/configure/start
+[17:00:12] wait -> 'POLICY_RESTART_REQUESTED' (budget 12s)
+[17:00:12] wait -> 'READY' (budget 12s)
+[17:00:25] no 'READY' within 12s -> continue anyway
+[17:00:25] PHASE 5 control viewer: pointer, keys, text
+[17:00:25] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:00:26] capture e3a-control.png 13479 B
+[17:00:26] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:00:26] PHASE 6 held-Shift viewer killed without a release
+[17:00:26] wait -> 'APP_KEY key=16777248' (budget 12s)
+[17:00:27] Shift observed in the application log: True
+[17:00:28] helper killed rc=None, no balanced release sent
+[17:00:28] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[17:00:28] PHASE 7 fresh viewer: the first key must arrive with shift=0
+[17:00:28] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:00:28] wait -> 'APP_KEY key=90' (budget 8s)
+[17:00:28] capture e3a-afterheld.png 13624 B
+[17:00:28] PHASE 8 mid-control reconnect
+[17:00:28] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:00:28] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[17:00:28] wait -> 'APP_KEY key=89' (budget 8s)
+[17:00:28] capture e3a-reconnect.png 13808 B
+[17:00:28] PHASE 9 deliberately stalled viewer: the native loop must stay responsive
+[17:00:28] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[17:00:36] no 'CLIENT_COUNT 1' within 8s -> continue anyway
+[17:00:36] wait -> 'APP_KEY key=65' (budget 8s)
+[17:00:36] capture e3a-slowviewer-before.png 13979 B
+[17:00:36] attaching the stalled viewer: real RFB handshake, then it never reads the socket
+[17:00:36] wait -> 'CLIENT_COUNT 2' (budget 12s)
+[17:00:37] stalled viewer registered with the server: True
+[17:00:37] holding the stall for 10s while the normal viewer keeps driving the application
+[17:00:39] capture e3a-slowviewer-00.png 14029 B
+[17:00:41] capture e3a-slowviewer-01.png 14024 B
+[17:00:43] capture e3a-slowviewer-02.png 14026 B
+[17:00:45] capture e3a-slowviewer-03.png 14026 B
+[17:00:47] capture e3a-slowviewer-04.png 14032 B
+[17:00:47] during the 10.0s stall the application produced 11 log lines while the stalled viewer never read
+[17:00:47] normal-viewer frame capture times during the stall: [0.01, 0.01, 0.01, 0.01, 0.01]
+[17:00:47] stalled viewer socket closed
+[17:00:47] PHASE 10 bounded termination (driver-initiated, so no teardown claim)
+[17:00:47] window exit rc=1 (driver-terminated); log lines=41
+[17:00:47] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.
+[17:00:47] DRIVER DONE: exiting hard; all evidence above is flushed to disk

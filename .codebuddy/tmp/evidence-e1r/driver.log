@@ -1,0 +1,47 @@
+[16:54:38] start: build\examples\widgets-basic\hyremote-widgets-basic.exe --port 5950 --test-seconds 150 --policy-transition-ms 9000
+[16:54:38] hard watchdog armed at 120s (window lifetime 150s)
+[16:54:38] PHASE 1 window start
+[16:54:38] wait -> 'READY' (budget 12s)
+[16:54:39] PHASE 2 local input to the native window, before any viewer
+[16:54:39] could not take the foreground for the application window - SKIPPING local input rather than typing into whatever window the operator has focused
+[16:54:39] PHASE 3 view-only viewer, remote input must not be delivered
+[16:54:39] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[16:54:40] lines produced by the view-only viewer: 0 (expect none)
+[16:54:40] capture e1r-viewonly.png 7992 B
+[16:54:40] PHASE 4 documented disconnect trigger, same-process stop/configure/start
+[16:54:40] wait -> 'POLICY_RESTART_REQUESTED' (budget 12s)
+[16:54:40] wait -> 'READY' (budget 12s)
+[16:54:40] PHASE 5 control viewer: pointer, keys, text
+[16:54:40] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[16:54:41] capture e1r-control.png 7938 B
+[16:54:41] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[16:54:41] PHASE 6 held-Shift viewer killed without a release
+[16:54:41] wait -> 'APP_KEY key=16777248' (budget 12s)
+[16:54:42] Shift observed in the application log: True
+[16:54:43] helper killed rc=None, no balanced release sent
+[16:54:43] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[16:54:43] PHASE 7 fresh viewer: the first key must arrive with shift=0
+[16:54:43] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[16:54:43] wait -> 'APP_KEY key=90' (budget 8s)
+[16:54:43] capture e1r-afterheld.png 7938 B
+[16:54:43] PHASE 8 mid-control reconnect
+[16:54:43] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[16:54:43] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[16:54:51] no 'CLIENT_COUNT 1' within 8s -> continue anyway
+[16:54:51] wait -> 'APP_KEY key=89' (budget 8s)
+[16:54:51] capture e1r-reconnect.png 7921 B
+[16:54:51] PHASE 9 deliberately stalled viewer, then prove the app is still responsive
+[16:54:51] wait -> 'CLIENT_COUNT 1' (budget 12s)
+[16:55:03] no 'CLIENT_COUNT 1' within 12s -> continue anyway
+[16:55:03] stalled viewer registered: False
+[16:55:07] stalled viewer is attached and not reading; connecting a normal viewer
+[16:55:07] wait -> 'CLIENT_COUNT 2' (budget 8s)
+[16:55:07] normal viewer counted while the stalled one is attached: True
+[16:55:07] capture e1r-slowviewer.png 7954 B
+[16:55:07] frame captured with the stalled viewer attached in 0.00s
+[16:55:08] capture e1r-slowviewer2.png 7954 B
+[16:55:08] stalled viewer socket closed
+[16:55:08] PHASE 10 bounded termination (driver-initiated, so no teardown claim)
+[16:55:08] window exit rc=1 (driver-terminated); log lines=27
+[16:55:08] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.
+[16:55:08] DRIVER DONE: exiting hard; all evidence above is flushed to disk

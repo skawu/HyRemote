@@ -1,0 +1,26 @@
+CLIENT_COUNT 0
+READY 5943
+CLIENT_COUNT 1
+CLIENT_COUNT 0
+CLIENT_COUNT 0
+POLICY_STOPPED
+POLICY_INPUT true
+POLICY_RESTART_REQUESTED
+READY 5943
+APP_POINTER button=1 x=60 y=40
+CLIENT_COUNT 1
+APP_KEY key=86 shift=0 ctrl=0 alt=0
+APP_TEXT text=V
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP_TEXT text=E
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=16777248 shift=0 ctrl=0 alt=0
+APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP_TEXT text=z
+APP_KEY key=89 shift=0 ctrl=0 alt=0
+APP_TEXT text=y

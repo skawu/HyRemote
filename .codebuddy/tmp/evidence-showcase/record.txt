@@ -1,0 +1,28 @@
+launching: build\examples\remote-support-showcase\hyremote-remote-support-showcase.exe --port 5962 --remote-input --auto-start --test-seconds 150
+control mode requested at startup (--remote-input) and remote access auto-started
+REMOTE_STARTED observed: True
+  window hwnd=27924414 796x619 class='Qt683QWindowIcon' title='HyRemote Remote Support Showcase'
+selected application window hwnd=27924414
+viewer attached: SHOWCASE_CLIENTS 1 observed: True
+capture before stop: showcase-before-stop.png 36081 B
+(this capture is the proof that the viewer was being served while remote input is on)
+holding a modifier remotely and NOT releasing it, then stopping locally
+Shift is held by the viewer; the holder will never send the release
+foreground taken for the local stop: True
+attempt 1: local space sent (physical)
+explicit stop observed while control mode was active: True
+application control lines: ['SHOWCASE_CLIENTS 1', 'SHOWCASE_KEY key=16777248', 'SHOWCASE_KEY key=16777248', 'SHOWCASE_KEY key=16777248', 'SHOWCASE_KEY key=32', 'SHOWCASE_CLIENTS 0', 'SHOWCASE_CLIENTS 0', 'REMOTE_STOPPED']
+application still running after the stop: True
+application window still present: True
+new viewer attempt after the stop failed as expected: ConnectionRefusedError - the listener really is closed
+restarting locally to prove the application is still functional, not merely alive
+application restarted remote access after the stop (still functional): True
+=== E1 step 6 status ===
+  control mode active before the stop: True (--remote-input, remote start)
+  modifier held by the viewer at the moment of the stop: True (never released)
+  explicit stop while controlled: True
+  application alive after the stop: True
+  listener closed: True (fresh connection attempt failed)
+  application still functional (restart observed): True
+  held-state balance: NOT instrumented on this payload - the showcase has no key probe and the product side ruled out adding one to the frozen candidate; that claim stays with the basic examples' held-holder path
+showcase terminated

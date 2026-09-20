@@ -1,0 +1,44 @@
+=== hyremote-quick-basic on port 5965, extra args: --test-seconds 150 --policy-transition-ms 12000 ===
+launched PID=40392 (detached; this command is not held open by the payload)
+  connected on attempt 1
+session 1 (expected view-only unless the payload starts with input enabled); before={'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0}
+after session 1: {'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 1, 'POLICY_STOPPED': 1, 'POLICY_RESTART': 1, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0} (log lines 9)
+waiting 14 s so the payload's own policy-transition helper can run its stop -> configure -> start
+after the transition window: {'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 1, 'POLICY_STOPPED': 1, 'POLICY_RESTART': 1, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0} (log lines 9)
+  connected on attempt 1
+session 2 (after the transition); before={'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 1, 'POLICY_STOPPED': 1, 'POLICY_RESTART': 1, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0}
+after session 2: {'KEY': 1, 'POINTER': 1, 'TEXT': 1, 'POLICY_INPUT': 1, 'POLICY_STOPPED': 1, 'POLICY_RESTART': 1, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0} (log lines 14)
+delta session1 KEY=0 POINTER=0 | session2 KEY=1 POINTER=1
+--- full log of this instance ---
+CLIENT_COUNT 0
+READY 5965
+CLIENT_COUNT 1
+CLIENT_COUNT 0
+CLIENT_COUNT 0
+POLICY_STOPPED
+POLICY_INPUT true
+POLICY_RESTART_REQUESTED
+READY 5965
+CLIENT_COUNT 1
+APP_KEY key=81 shift=0 ctrl=0 alt=0
+APP_TEXT text=q
+APP_POINTER button=1 x=200 y=150
+CLIENT_COUNT 0
+
+=== hyremote-qml-basic on port 5966, extra args: --test-seconds 150 --policy-transition-ms 12000 ===
+launched PID=35496 (detached; this command is not held open by the payload)
+  connected on attempt 1
+session 1 (expected view-only unless the payload starts with input enabled); before={'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0}
+=== hyremote-qml-basic on port 5966, extra args: --test-seconds 150 --policy-transition-ms 12000 ===
+launched PID=31440 (detached; this command is not held open by the payload)
+  connected on attempt 1
+session 1 (expected view-only unless the payload starts with input enabled); before={'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0}
+after session 1: {'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0} (log lines 0)
+waiting 14 s so the payload's own policy-transition helper can run its stop -> configure -> start
+after the transition window: {'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0} (log lines 0)
+  connected on attempt 1
+session 2 (after the transition); before={'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0}
+after session 2: {'KEY': 0, 'POINTER': 0, 'TEXT': 0, 'POLICY_INPUT': 0, 'POLICY_STOPPED': 0, 'POLICY_RESTART': 0, 'REMOTE_STARTED': 0, 'REMOTE_STOPPED': 0, 'REMOTE_INPUT enabled': 0, 'REMOTE_INPUT disabled': 0, 'CLIENTS': 0, 'ERROR': 0, 'FAIL': 0} (log lines 0)
+delta session1 KEY=0 POINTER=0 | session2 KEY=0 POINTER=0
+--- full log of this instance ---
+

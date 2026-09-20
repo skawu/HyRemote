@@ -10,8 +10,8 @@ integration payloads. This index is organised by reader intent rather than by de
 | I want to | Read |
 | --- | --- |
 | Install, build and integrate HyRemote | [English](guide/install.md) · [中文](../guide/install.md) |
-| Integrate with the Embedded C++ API | [`../getting-started/cpp.md`](../getting-started/cpp.md) |
-| Integrate with Declarative QML | [`../getting-started/qml.md`](../getting-started/qml.md) |
+| Integrate with the Embedded C++ API | [`getting-started/cpp.md`](getting-started/cpp.md) |
+| Integrate with Declarative QML | [`getting-started/qml.md`](getting-started/qml.md) |
 | Use Transparent QPA without touching application source | [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md) |
 | Package and deploy | [`../deployment.md`](../guide/deployment.md) |
 | Run and connect a viewer | [`../viewer-connection.md`](../guide/viewer-connection.md) |

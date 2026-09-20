@@ -245,7 +245,7 @@ E1/E2 使用同一个公开门面 `HyRemote::RemoteAccess`，默认**仅观看**
 
 ## 11. 相关文档
 
-- 集成方式（选择其一）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)（迁移至 `guide/` 后路径会同步更新）
+- 集成方式（选择其一，每篇的英文镜像位于 `docs/en/` 下的同一路径）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)
 - 部署与打包：[`deployment.md`](deployment.md)
 - 兼容与限制：[`compatibility.md`](../compatibility.md) ｜ [`known-limitations.md`](../known-limitations.md)
 - 排错：[`troubleshooting.md`](troubleshooting.md)

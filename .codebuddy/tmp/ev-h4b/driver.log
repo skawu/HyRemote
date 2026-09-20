@@ -1,0 +1,32 @@
+[17:42:20] start: build\examples\qpa-proxy-existing-app\hyremote-qpa-proxy-existing-app.exe -platform hyremote:hyremote-input=true --test-seconds 150
+[17:42:20] hard watchdog armed at 120s (window lifetime 150s)
+[17:42:20] PHASE 1 window start
+[17:42:20] wait -> 'READY' (budget 2s)
+[17:42:22] no 'READY' within 2s -> continue anyway
+[17:42:22] PHASE 3 view-only viewer, remote input must not be delivered
+[17:42:22] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:42:27] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:42:28] lines produced by the view-only viewer: 0 (expect none)
+[17:42:28] capture h4b-viewonly.png 20002 B
+[17:42:28] PHASE 4 skipped: this application has no stop -> configure -> start policy transition
+[17:42:28] PHASE 5 control viewer: pointer, keys, text
+[17:42:28] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:42:33] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:42:34] capture h4b-control.png 20002 B
+[17:42:34] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:42:39] no 'CLIENT_COUNT 0' within 5s -> continue anyway
+[17:42:39] PHASE 6 held-Shift viewer killed without a release
+[17:42:39] wait -> 'APP_KEY key=16777248' (budget 2s)
+[17:42:41] no 'APP_KEY key=16777248' within 2s -> continue anyway
+[17:42:41] Shift observed in the application log: False
+[17:42:41] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[17:42:50] no 'CLIENT_COUNT 0' within 8s -> continue anyway
+[17:42:50] PHASE 7 fresh viewer: the first key must arrive with shift=0
+[17:42:50] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:42:55] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:42:55] DRIVER ERROR: ConnectionRefusedError: Connection was refused by other side: 10061: 由于目标计算机积极拒绝，无法连接。.
+[17:42:55] frame diff viewonly -> control: 0 changed pixels, bbox None
+[17:42:55] PHASE 10 bounded termination (driver-initiated, so no teardown claim)
+[17:42:55] window exit rc=1 (driver-terminated); log lines=5
+[17:42:55] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.
+[17:42:55] DRIVER DONE: exiting hard; all evidence above is flushed to disk

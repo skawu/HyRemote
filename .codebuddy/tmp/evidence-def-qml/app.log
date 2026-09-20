@@ -1,0 +1,106 @@
+READY 5921
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+CLIENT_COUNT 0
+POLICY_STOPPED
+POLICY_INPUT true
+READY 5921
+POLICY_RESTART_REQUESTED
+CLIENT_COUNT 1
+APP_KEY key=70
+APP_TEXT text=f
+APP_KEY key=83
+APP_TEXT text=fs
+APP_KEY key=68
+APP_TEXT text=fsd
+CLIENT_COUNT 2
+APP_KEY key=32
+APP_TEXT text=fsd 
+APP_KEY key=70
+APP_TEXT text=fsd f
+APP_KEY key=83
+APP_TEXT text=fsd fs
+APP_KEY key=68
+APP_TEXT text=fsd fsd
+APP_KEY key=32
+APP_TEXT text=fsd fsd 
+APP_KEY key=70
+APP_TEXT text=fsd fsd f
+APP_KEY key=68
+APP_TEXT text=fsd fsd fd
+APP_KEY key=83
+APP_TEXT text=fsd fsd fds
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds 
+APP_KEY key=70
+APP_TEXT text=fsd fsd fds f
+APP_KEY key=83
+APP_TEXT text=fsd fsd fds fs
+APP_KEY key=68
+APP_TEXT text=fsd fsd fds fsd
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds fsd 
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds fsd  
+APP_KEY key=70
+APP_TEXT text=fsd fsd fds fsd  f
+APP_KEY key=68
+APP_TEXT text=fsd fsd fds fsd  fd
+APP_KEY key=83
+APP_TEXT text=fsd fsd fds fsd  fds
+APP_KEY key=70
+APP_TEXT text=fsd fsd fds fsd  fdsf
+APP_KEY key=83
+APP_TEXT text=fsd fsd fds fsd  fdsfs
+APP_KEY key=68
+APP_TEXT text=fsd fsd fds fsd  fdsfsd
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds fsd  fdsfsd 
+APP_POINTER x=99 y=24
+APP_CLICKED
+APP_POINTER x=99 y=24
+APP_CLICKED
+APP_POINTER x=99 y=24
+APP_CLICKED
+APP_POINTER x=99 y=24
+APP_CLICKED
+APP_POINTER x=99 y=24
+APP_CLICKED
+APP_POINTER x=99 y=24
+APP_CLICKED
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  
+APP_KEY key=83
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  s
+APP_KEY key=68
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd 
+APP_KEY key=70
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd f
+APP_KEY key=83
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fs
+APP_KEY key=68
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd
+APP_KEY key=32
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd 
+APP_KEY key=86
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd V
+APP_KEY key=49
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd V1
+APP_KEY key=69
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd V1E
+APP_KEY key=49
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd V1E1
+CLIENT_COUNT 1
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=16777248
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=90
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd V1E1z
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=89
+APP_TEXT text=fsd fsd fds fsd  fdsfsd  sd fsd V1E1zy

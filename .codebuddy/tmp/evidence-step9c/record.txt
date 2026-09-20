@@ -1,0 +1,21 @@
+--- phase 1: control mode (started with --remote-input --auto-start) ---
+before viewer: {"SHOWCASE_KEY": 0, "SHOWCASE_POINTER": 0, "SHOWCASE_CLIENTS": 1, "REMOTE_INPUT disabled": 0, "REMOTE_INPUT enabled": 0, "REMOTE_STARTED": 1, "REMOTE_STOPPED": 0, "total_lines": 2}
+--- phase 1: control mode (started with --remote-input --auto-start) ---
+before viewer: {"SHOWCASE_KEY": 3, "SHOWCASE_POINTER": 2, "SHOWCASE_CLIENTS": 3, "REMOTE_INPUT disabled": 0, "REMOTE_INPUT enabled": 0, "REMOTE_STARTED": 1, "REMOTE_STOPPED": 0, "total_lines": 9}
+after viewer : {"SHOWCASE_KEY": 6, "SHOWCASE_POINTER": 4, "SHOWCASE_CLIENTS": 5, "REMOTE_INPUT disabled": 0, "REMOTE_INPUT enabled": 0, "REMOTE_STARTED": 1, "REMOTE_STOPPED": 0, "total_lines": 16}
+delta SHOWCASE_KEY=3 delta SHOWCASE_POINTER=2
+phase1 verdict: control mode delivered remote input = True (both criteria: key=True pointer=True)
+--- phase 2: after the local policy change back to view-only ---
+before viewer: {"SHOWCASE_KEY": 6, "SHOWCASE_POINTER": 4, "SHOWCASE_CLIENTS": 5, "REMOTE_INPUT disabled": 0, "REMOTE_INPUT enabled": 0, "REMOTE_STARTED": 1, "REMOTE_STOPPED": 0, "total_lines": 16}
+after viewer : {"SHOWCASE_KEY": 0, "SHOWCASE_POINTER": 0, "SHOWCASE_CLIENTS": 4, "REMOTE_INPUT disabled": 1, "REMOTE_INPUT enabled": 0, "REMOTE_STARTED": 2, "REMOTE_STOPPED": 0, "total_lines": 7}
+delta SHOWCASE_KEY=-6 delta SHOWCASE_POINTER=-4 delta SHOWCASE_CLIENTS=-1
+policy line seen: REMOTE_INPUT disabled count=1
+phase2 verdict: view-only again blocked remote input = False (no key and no pointer delta)
+--- A half: startup policy is view-only (launched without --remote-input) ---
+before {'KEY': 0, 'POINTER': 0, 'CLIENTS': 1, 'lines': 2} after {'KEY': 0, 'POINTER': 0, 'CLIENTS': 3, 'lines': 4}
+delta KEY=0 POINTER=0 CLIENTS=2 verdict_blocked=True
+REMOTE_STARTED 5963
+SHOWCASE_CLIENTS 0
+SHOWCASE_CLIENTS 1
+SHOWCASE_CLIENTS 0
+

@@ -1,0 +1,48 @@
+CLIENT_COUNT 0
+READY 5921
+libpng warning: iCCP: known incorrect sRGB profile
+APP_KEY key=72 shift=0 ctrl=0 alt=0
+APP_KEY key=0 shift=0 ctrl=0 alt=0
+APP_KEY key=74 shift=0 ctrl=0 alt=0
+APP_KEY key=0 shift=0 ctrl=0 alt=0
+CLIENT_COUNT 1
+CLIENT_COUNT 0
+CLIENT_COUNT 0
+POLICY_STOPPED
+POLICY_INPUT true
+POLICY_RESTART_REQUESTED
+READY 5921
+CLIENT_COUNT 1
+APP_POINTER button=1 x=40 y=22
+APP_KEY key=86 shift=0 ctrl=0 alt=0
+APP_TEXT text=V
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP_TEXT text=E
+APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP_TEXT text=1
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=16777248 shift=0 ctrl=0 alt=0
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP_TEXT text=z
+CLIENT_COUNT 0
+CLIENT_COUNT 1
+APP_KEY key=89 shift=0 ctrl=0 alt=0
+APP_TEXT text=y
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+CLIENT_COUNT 2
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a
+APP_KEY key=65 shift=0 ctrl=0 alt=0
+APP_TEXT text=a

@@ -1,0 +1,44 @@
+[17:47:13] start: build\examples\qpa-proxy-existing-app\hyremote-qpa-proxy-existing-app.exe -platform hyremote:hyremote-input=true --test-seconds 150
+[17:47:13] hard watchdog armed at 120s (window lifetime 150s)
+[17:47:13] PHASE 1 window start
+[17:47:13] wait -> 'READY' (budget 2s)
+[17:47:15] no 'READY' within 2s -> continue anyway
+[17:47:15] PHASE 3 view-only viewer, remote input must not be delivered
+[17:47:15] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:47:20] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:47:20] lines produced by the view-only viewer: 0 (expect none)
+[17:47:20] capture h4d-viewonly.png 16842 B
+[17:47:20] PHASE 4 skipped: this application has no stop -> configure -> start policy transition
+[17:47:20] PHASE 5 control viewer: pointer, keys, text
+[17:47:20] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:47:25] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:47:27] capture h4d-control.png 17036 B
+[17:47:27] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:47:32] no 'CLIENT_COUNT 0' within 5s -> continue anyway
+[17:47:32] PHASE 6 held-Shift viewer killed without a release
+[17:47:32] wait -> 'APP_KEY key=16777248' (budget 2s)
+[17:47:34] no 'APP_KEY key=16777248' within 2s -> continue anyway
+[17:47:34] Shift observed in the application log: False
+[17:47:34] helper killed rc=None (held=False), no balanced release sent
+[17:47:34] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[17:47:42] no 'CLIENT_COUNT 0' within 8s -> continue anyway
+[17:47:42] PHASE 7 fresh viewer: the first key must arrive with shift=0
+[17:47:42] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[17:47:47] no 'CLIENT_COUNT 1' within 5s -> continue anyway
+[17:47:47] wait -> 'APP_KEY key=90' (budget 8s)
+[17:47:55] no 'APP_KEY key=90' within 8s -> continue anyway
+[17:47:55] capture h4d-afterheld.png 17083 B
+[17:47:55] PHASE 8 mid-control reconnect
+[17:47:55] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[17:48:00] no 'CLIENT_COUNT 0' within 5s -> continue anyway
+[17:48:00] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[17:48:08] no 'CLIENT_COUNT 1' within 8s -> continue anyway
+[17:48:08] wait -> 'APP_KEY key=89' (budget 8s)
+[17:48:11] early exit rc=4294967295
+[17:48:21] DRIVER ERROR: TimeoutError: Timeout while waiting for client response
+[17:48:21] frame diff viewonly -> control: 142 changed pixels, bbox (214, 66, 244, 81)
+[17:48:21] frame diff viewonly -> afterheld: 151 changed pixels, bbox (214, 69, 249, 78)
+[17:48:21] PHASE 10 bounded termination (driver-initiated, so no teardown claim)
+[17:48:21] window exit rc=4294967295 (driver-terminated); log lines=2
+[17:48:21] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.
+[17:48:21] DRIVER DONE: exiting hard; all evidence above is flushed to disk

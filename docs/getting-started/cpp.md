@@ -1,21 +1,23 @@
-# Embedded C++ Getting Started
+# Embedded C++ 接入（Qt Widgets / Qt Quick）
 
-Status: V0.0.1.0 user guide. The release gate remains issue #30.
+> 语言 / Language：**中文** ｜ [English](../en/getting-started/cpp.md)
 
-HyRemote's reference integration is a small C++ facade delivered as one shared library. Existing Qt Widgets and Qt Quick applications link only `HyRemote::RemoteAccess`; they do not assemble Core sessions, capture sources, transports, input sinks, or RFB objects.
+HyRemote 的参考接入方式是一个很小的 C++ 门面，以**一个共享库**交付。既有的 Qt Widgets 与 Qt Quick 应用只链接
+`HyRemote::RemoteAccess`；它们**不**组装 Core 会话、采集源、传输、输入汇或 RFB 对象。
 
-## Prerequisites
+## 前置条件
 
-The current V1 reference line is Qt 6.8.x; automated product work targets Qt 6.8.3 on Windows x86_64 and Linux x86_64. Other Qt versions are not implied to be supported unless recorded in `docs/compatibility.md`.
+V1 参考线是 **Qt 6.8.x**；自动化产品工作在 Windows x86_64 与 Linux x86_64 上针对 **Qt 6.8.3**。其它 Qt 版本不会因此
+被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。
 
-Choose either:
+二选一获取方式：
 
-- installed SDK: `find_package(HyRemote CONFIG REQUIRED)`;
-- source/vendored: `add_subdirectory(path/to/HyRemote hyremote)`.
+- 已安装 SDK：`find_package(HyRemote CONFIG REQUIRED)`；
+- 源码 / vendored：`add_subdirectory(path/to/HyRemote hyremote)`。
 
-Both expose the same application target: `HyRemote::RemoteAccess`.
+两者暴露**同一个**应用目标：`HyRemote::RemoteAccess`。
 
-## Minimal Widgets use
+## Widgets 最小用法
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
@@ -37,9 +39,10 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5921, and remote input is disabled. That default port is configure-time selectable for integrators via `-DHYREMOTE_DEFAULT_PORT=<port>` (see the install guide), and it remains overridable per process with `setPort()`.
+这就是正常基线：**构造是惰性的**，`start()` 才打开服务。默认地址是回环，默认端口是 **5921**，远程输入**默认关闭**。
+该默认端口可在配置期由集成方通过 `-DHYREMOTE_DEFAULT_PORT=<port>` 选择（见安装指南），并且仍可用 `setPort()` 按进程覆盖。
 
-Enable remote control only when required:
+只有在需要时才启用远程控制：
 
 ```cpp
 HyRemote::RemoteAccess remote(&window);
@@ -47,7 +50,7 @@ remote.setRemoteInputEnabled(true);
 remote.start();
 ```
 
-## Minimal Qt Quick use
+## Qt Quick 最小用法
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
@@ -65,25 +68,24 @@ HyRemote::RemoteAccess remote(window);
 remote.start();
 ```
 
-Widgets and Quick share the same public facade. Capture/input implementation selection remains internal.
+Widgets 与 Quick 共用**同一个**公开门面；采集/输入的实现选择属于内部细节。
 
-## Optional configuration
+## 可选配置
 
-`setListenAddress()` accepts a **numeric** address only. The default is loopback `127.0.0.1`; an address that is not
-assigned to any interface, or a port already in use, fails before `Running` and leaves nothing listening; and the IPv6
-wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack one. The measured per-address table is in
-[`../known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability).
+`setListenAddress()` **只接受数字地址**。默认是回环 `127.0.0.1`；不属于任何接口的地址、或已被占用的端口，会在到达
+`Running` **之前**失败，并且不会留下任何监听；IPv6 通配地址 `::` 在本平台上是**仅 IPv6** 监听，而非双栈。逐地址的
+实测表见 [`known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability)。
 
-Configuration changes are made while stopped:
+配置在**停止状态**下进行：
 
-- `setTarget(QObject *)`;
-- `setListenAddress(const QHostAddress &)`;
-- `setPort(quint16)`;
-- `setRemoteInputEnabled(bool)`;
-- `start()` / `stop()`;
-- `state()` / `connectedClientCount()` / `lastError()` / `clearError()`.
+- `setTarget(QObject *)`；
+- `setListenAddress(const QHostAddress &)`；
+- `setPort(quint16)`；
+- `setRemoteInputEnabled(bool)`；
+- `start()` / `stop()`；
+- `state()` / `connectedClientCount()` / `lastError()` / `clearError()`。
 
-A non-default example:
+一个非默认示例：
 
 ```cpp
 HyRemote::RemoteAccess remote(&window);
@@ -92,43 +94,44 @@ remote.setRemoteInputEnabled(true);
 
 if (!remote.start()) {
     const auto error = remote.lastError();
-    // Report the product-level error.
+    // 报告产品级错误。
 }
 ```
 
-Normal applications do not select transport/backend/capture classes.
+正常应用**不会**去选择传输/后端/采集类。
 
-## Deployment
+## 部署
 
-The V1 C++ runtime artifact is the shared `HyRemoteRemoteAccess` library. Core is statically composed behind it, so users do not deploy a second HyRemote Core runtime.
+V1 的 C++ 运行期产物是共享库 `HyRemoteRemoteAccess`。Core 静态组合在它之后，所以用户**不需要**再部署第二个 HyRemote Core 运行时。
 
-Use the one package helper:
+使用唯一那个包助手：
 
 ```cmake
 install(TARGETS MyApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyApp)
 ```
 
-The helper composes with Qt's supported deployment tooling and adds the HyRemote shared facade automatically. Applications should not copy HyRemote libraries by filename.
+该助手与 Qt 支持的部署工具链配合，并自动带上 HyRemote 的共享门面。应用**不应**按文件名拷贝 HyRemote 的库。
 
-See `docs/guide/deployment.md`.
+详见 [`guide/deployment.md`](../guide/deployment.md)。
 
-## Security baseline
+## 安全基线
 
-The current RFB SecurityType None correctness transport is unauthenticated and unencrypted. Do not expose it directly to untrusted networks. Loopback is the default bind and remote input is disabled by default. See `docs/security.md` and `docs/known-limitations.md`.
+当前 RFB SecurityType None 正确性传输**未认证、未加密**。不要把它直接暴露到不可信网络。默认绑定回环，远程输入默认关闭。
+见 [`security.md`](../security.md) 与 [`known-limitations.md`](../known-limitations.md)。
 
-## Examples and evidence
+## 示例
 
-- `examples/widgets-basic`
-- `examples/quick-basic`
-- `examples/remote-support-showcase`
+- [`examples/widgets-basic`](../../examples/widgets-basic)
+- [`examples/quick-basic`](../../examples/quick-basic)
+- [`examples/remote-support-showcase`](../../examples/remote-support-showcase)
 
-Hosted/offscreen E2E verifies protocol-to-application correctness; it does not replace required physical local-display/local-input coexistence evidence.
+无头/offscreen 的 E2E 验证的是"协议到应用"的正确性；它**不能替代**物理本机显示/本地输入的并存证据。
 
-## Next steps
+## 下一步
 
-- platform setup: `docs/guide/install.md` (中文) or `docs/en/guide/install.md` (English);
-- viewer workflow: `docs/guide/viewer-connection.md`;
-- deployment: `docs/guide/deployment.md`;
-- troubleshooting: `docs/guide/troubleshooting.md`;
-- exact support status: `docs/compatibility.md` and `docs/known-limitations.md`.
+- 平台准备：[`guide/install.md`](../guide/install.md)（中文）或 [`en/guide/install.md`](../en/guide/install.md)（English）；
+- 查看端流程：[`guide/viewer-connection.md`](../guide/viewer-connection.md)；
+- 部署：[`guide/deployment.md`](../guide/deployment.md)；
+- 排错：[`guide/troubleshooting.md`](../guide/troubleshooting.md)；
+- 精确支持状态：[`compatibility.md`](../compatibility.md) 与 [`known-limitations.md`](../known-limitations.md)。

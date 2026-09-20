@@ -1,0 +1,58 @@
+[14:58:42] start: build-acceptance\examples\quick-basic\hyremote-quick-basic.exe --port 5945 --test-seconds 120 --policy-transition-ms 9000
+[14:58:42] hard watchdog armed at 90s (window lifetime 120s)
+[14:58:42] PHASE 1 window start
+[14:58:42] wait -> 'READY' (budget 12s)
+APP| CLIENT_COUNT 0
+APP| READY 5945
+[14:58:42] PHASE 2 view-only viewer
+[14:58:42] wait -> 'CLIENT_COUNT 1' (budget 5s)
+APP| CLIENT_COUNT 1
+[14:58:42] capture e2f-viewonly.png 12350 B
+[14:58:42] PHASE 3 documented disconnect trigger, same-process stop/configure/start
+[14:58:42] wait -> 'POLICY_RESTART_REQUESTED' (budget 12s)
+APP| CLIENT_COUNT 0
+APP| CLIENT_COUNT 0
+APP| POLICY_STOPPED
+APP| POLICY_INPUT true
+APP| POLICY_RESTART_REQUESTED
+APP| READY 5945
+[14:58:42] wait -> 'READY' (budget 12s)
+[14:58:42] PHASE 4 control viewer
+[14:58:42] wait -> 'CLIENT_COUNT 1' (budget 5s)
+APP| APP_POINTER button=1 x=60 y=40
+APP| CLIENT_COUNT 1
+APP| APP_KEY key=86 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=V
+APP| APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=1
+APP| APP_KEY key=69 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=E
+APP| APP_KEY key=49 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=1
+[14:58:44] capture e2f-control.png 12813 B
+[14:58:44] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[14:58:44] PHASE 5 held-Shift viewer killed without a release
+[14:58:44] wait -> 'APP_KEY key=16777248' (budget 12s)
+APP| CLIENT_COUNT 0
+APP| CLIENT_COUNT 1
+APP| APP_KEY key=16777248 shift=0 ctrl=0 alt=0
+[14:58:45] Shift observed in the application log: True
+[14:58:45] helper killed rc=None, no balanced release sent
+[14:58:45] wait -> 'CLIENT_COUNT 0' (budget 8s)
+[14:58:45] PHASE 6 fresh viewer: the first key must arrive with shift=0
+[14:58:45] wait -> 'CLIENT_COUNT 1' (budget 5s)
+[14:58:45] wait -> 'APP_KEY key=90' (budget 8s)APP|
+ APP_KEY key=90 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=z
+[14:58:45] capture e2f-afterheld.png 12798 B
+[14:58:45] PHASE 7 mid-control reconnect
+[14:58:45] wait -> 'CLIENT_COUNT 0' (budget 5s)
+[14:58:45] wait -> 'CLIENT_COUNT 1' (budget 8s)
+[14:58:53] no 'CLIENT_COUNT 1' within 8s -> continue anyway
+[14:58:53] wait -> 'APP_KEY key=89' (budget 8s)
+APP| APP_KEY key=89 shift=0 ctrl=0 alt=0
+APP| APP_TEXT text=y
+[14:58:53] capture e2f-reconnect.png 12943 B
+[14:58:53] PHASE 8 bounded termination (driver-initiated, so no teardown claim)
+[14:58:53] window exit rc=1 (driver-terminated); log lines=26
+[14:58:53] VERDICT INPUT: see app.log next to the frames; no PASS claimed by this driver.

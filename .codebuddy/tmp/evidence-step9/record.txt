@@ -1,0 +1,19 @@
+launching with the safe default policy: build\examples\remote-support-showcase\hyremote-remote-support-showcase.exe --port 5966 --auto-start --test-seconds 180
+remote access started by the application itself (--auto-start): True
+application window hwnd=54795414; local input method: physical key events
+step A - starting policy is view-only
+  view-only: remote key reached the application = False
+step B - explicit local enablement of control
+  control enabled: True (physical sequence ending in space)
+  control mode: remote key reached the application = False
+step C - setting the policy back to view-only on the live session
+  view-only re-established: False (not reached)
+application control lines: ['SHOWCASE_KEY key=32', 'SHOWCASE_KEY key=16777217', 'SHOWCASE_KEY key=32', 'SHOWCASE_KEY key=16777217', 'SHOWCASE_KEY key=32', 'SHOWCASE_KEY key=32', 'SHOWCASE_KEY key=16777217', 'SHOWCASE_KEY key=32', 'SHOWCASE_KEY key=16777217', 'SHOWCASE_KEY key=32', 'SHOWCASE_KEY key=16777217', 'SHOWCASE_KEY key=32']
+application still running: True
+=== boundary status ===
+  view-only at start blocked remote input: True
+  explicit enablement delivered remote input: False
+  returning to view-only blocked remote input again: False
+  held-state balance across the transition: NOT instrumented on this payload (no key probe); that
+  claim stays with the basic examples' held-holder path, as with the explicit-stop case
+step 9 / disable run finished

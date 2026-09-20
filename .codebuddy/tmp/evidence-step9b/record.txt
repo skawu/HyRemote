@@ -1,0 +1,66 @@
+launching with the safe default policy: build\examples\remote-support-showcase\hyremote-remote-support-showcase.exe --port 5967 --auto-start --test-seconds 240
+remote access started by the application itself: True
+application window hwnd=64424488; local input method: physical key events
+step A - the starting policy is view-only
+  view-only: opening a fresh viewer
+  view-only: application reported a connected client = True
+  view-only: remote 'a' reached the application = False
+step B - local enablement of control (the payload restarts remote access on a policy change)
+    local probe: REMOTE_INPUT enabled observed on attempt 2 (space)
+  REMOTE_INPUT enabled observed: True; remote access restarted by the payload: True
+  control mode: opening a fresh viewer
+  control mode: application reported a connected client = True
+  control mode: remote 'a' reached the application = False
+step C - policy back to view-only on the live session
+  REMOTE_INPUT disabled observed: False; remote access restarted again: False
+application control lines: ['REMOTE_STARTED 5967', 'SHOWCASE_CLIENTS 0', 'SHOWCASE_CLIENTS 1', 'SHOWCASE_CLIENTS 0', 'REMOTE_INPUT enabled', 'REMOTE_STARTED 5967', 'SHOWCASE_CLIENTS 0', 'SHOWCASE_CLIENTS 1', 'SHOWCASE_CLIENTS 0']
+application still running: True
+=== boundary status ===
+  A view-only blocked remote input: True
+  B control mode delivered remote input: False
+  C returning to view-only blocked remote input again: not reached
+  held-state balance across the transition: NOT instrumented (no key probe on this payload); the claim stays with the basic examples' held-holder path
+second attempt finished
+launching with the safe default policy: build\examples\remote-support-showcase\hyremote-remote-support-showcase.exe --port 5967 --auto-start --test-seconds 240
+remote access started by the application itself: True
+application window hwnd=17570424; local input method: physical key events
+step A - the starting policy is view-only
+  view-only: opening a fresh viewer
+  view-only: application reported a connected client = True
+  view-only: remote pointer reached the application = False (keyboard line seen as well: False)
+step B - local enablement of control (the payload restarts remote access on a policy change)
+  REMOTE_INPUT enabled observed: False; remote access restarted by the payload: False
+step C - policy back to view-only on the live session
+  REMOTE_INPUT disabled observed: False; remote access restarted again: False
+application control lines: ['REMOTE_STARTED 5967', 'SHOWCASE_CLIENTS 0', 'SHOWCASE_CLIENTS 1', 'SHOWCASE_CLIENTS 0']
+application still running: True
+=== boundary status ===
+  A view-only blocked remote input: True
+  B control mode delivered remote input: False
+  C returning to view-only blocked remote input again: not reached
+  held-state balance across the transition: NOT instrumented (no key probe on this payload); the claim stays with the basic examples' held-holder path
+second attempt finished
+launching with the safe default policy: build\examples\remote-support-showcase\hyremote-remote-support-showcase.exe --port 5967 --auto-start --test-seconds 240
+remote access started by the application itself: True
+application window hwnd=18024536; local input method: physical key events
+step A - the starting policy is view-only
+  view-only: opening a fresh viewer
+  view-only: application reported a connected client = True
+  view-only: remote pointer reached the application = False (keyboard line seen as well: False)
+step B - local enablement of control (the payload restarts remote access on a policy change)
+    local Ctrl+I: REMOTE_INPUT enabled observed on attempt 1
+  REMOTE_INPUT enabled observed: True; remote access restarted by the payload: True
+  control mode: opening a fresh viewer
+  control mode: application reported a connected client = True
+  control mode: remote pointer reached the application = False (keyboard line seen as well: True)
+step C - policy back to view-only on the live session
+    local Ctrl+I: REMOTE_INPUT disabled NOT observed in 3 attempts
+  REMOTE_INPUT disabled observed: False; remote access restarted again: False
+application control lines: ['REMOTE_STARTED 5967', 'SHOWCASE_CLIENTS 0', 'SHOWCASE_CLIENTS 1', 'SHOWCASE_CLIENTS 0', 'REMOTE_INPUT enabled', 'REMOTE_STARTED 5967', 'SHOWCASE_CLIENTS 0', 'SHOWCASE_CLIENTS 1', 'SHOWCASE_CLIENTS 0']
+application still running: True
+=== boundary status ===
+  A view-only blocked remote input: True
+  B control mode delivered remote input: False
+  C returning to view-only blocked remote input again: not reached
+  held-state balance across the transition: NOT instrumented (no key probe on this payload); the claim stays with the basic examples' held-holder path
+second attempt finished

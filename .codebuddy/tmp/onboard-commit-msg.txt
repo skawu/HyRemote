@@ -1,0 +1,27 @@
+build(examples): hide maintainer options and add a minimal onboarding example
+
+A product review of the consumer surface found two places where the surface was larger than the
+substance. Both are fixed here without changing a single default.
+
+- Ten configure switches were presented to every consumer: BUILD_TESTS/EXAMPLES, BUILD_CORE,
+  BUILD_REMOTE_ACCESS, BUILD_WIDGETS_ADAPTER, BUILD_QUICK_ADAPTER, WITH_VNC, BUILD_SPIKES,
+  WITH_GBM and WITH_RKMPP. They are maintainer switches, not consumer choices - the
+  consumer-simplicity contract is that a consumer names HyRemote::RemoteAccess and selects nothing
+  else - so they are mark_as_advanced() now. Measured: `cmake -L` lists six HYREMOTE_ options
+  instead of sixteen, and every hidden one stays reachable with `cmake -LA` or by passing it
+  explicitly. The call sits at the end of the file deliberately: mark_as_advanced() has no effect on
+  an option that has not been declared yet, which the first attempt got wrong and the measurement
+  caught.
+
+- The examples are release evidence and read like it: 131-274 lines each, mostly a READY /
+  CLIENT_COUNT / POLICY_* protocol and an input probe, with five to fifteen lines of actual
+  HyRemote use. Someone learning the product had to read the instrumentation to find the four lines
+  that matter. examples/hello-remote is about thirty lines of the normal consumer path, explicitly
+  outside the E1-E6 evidence matrix, and is linked from the C++ getting-started guide so it can
+  actually be found.
+
+The example prints with std::endl rather than '\n' on purpose: its output is redirected to a file by
+a scripted smoke check, and an unflushed line is lost when that check stops the process.
+
+Verified: the example builds and runs - it listens on 127.0.0.1:5921 and says so - the full suite
+passes, and the ten release gates pass with the gate-pinned option lines untouched.
