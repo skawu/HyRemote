@@ -268,6 +268,74 @@ void testDestroyedQuickTargetReportsTargetLost()
     components.capture->stop();
 }
 
+void testUnavailableQuickCaptureHasBoundedRetryAndRecovers()
+{
+    HyRemote::detail::resetFactories();
+
+    QQuickWindow window;
+    window.resize(120, 60);
+    PaintedProbeItem content(window.contentItem());
+    content.setWidth(120);
+    content.setHeight(60);
+    // Intentionally leave the window hidden. The adapter accepts the asynchronous request, but a
+    // permanently unavailable public Quick grab must not retain Core's in-flight slot forever.
+
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+
+    std::optional<hyremote::RemoteFrame> received;
+    std::optional<hyremote::CaptureEvent> lastEvent;
+    int eventCount = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        [&](const hyremote::CaptureEvent &event) {
+            lastEvent = event;
+            ++eventCount;
+        }));
+
+    hyremote::CaptureRequest hiddenRequest{31, hyremote::Clock::now()};
+    CHECK(components.capture->requestFrame(hiddenRequest));
+    CHECK(pumpUntil([&] { return received.has_value() && lastEvent.has_value(); }));
+    CHECK(eventCount == 1);
+    CHECK(lastEvent.has_value());
+    if (lastEvent) {
+        CHECK(lastEvent->code == hyremote::CaptureEventCode::TemporarilyUnavailable);
+        CHECK(lastEvent->recoverable);
+    }
+    CHECK(received.has_value());
+    if (received) {
+        CHECK(received->requestId.has_value());
+        CHECK(received->requestId.value() == 31);
+        CHECK(received->storage == nullptr);
+        CHECK(received->geometry.size.width == 0);
+        CHECK(received->geometry.size.height == 0);
+        CHECK(received->timing.requestTime.has_value());
+        CHECK(received->timing.completionTime.has_value());
+    }
+
+    // A later request must remain usable. Showing the same target after the bounded unavailable
+    // completion proves the adapter did not enter a terminal state or keep retry state across requests.
+    received.reset();
+    lastEvent.reset();
+    eventCount = 0;
+    window.show();
+    QCoreApplication::processEvents();
+    hyremote::CaptureRequest recoveryRequest{32, hyremote::Clock::now()};
+    CHECK(components.capture->requestFrame(recoveryRequest));
+    CHECK(pumpUntil([&] { return received.has_value(); }));
+    CHECK(eventCount == 0);
+    if (received) {
+        CHECK(received->requestId.has_value());
+        CHECK(received->requestId.value() == 32);
+        CHECK(received->storage != nullptr);
+        CHECK(received->geometry.size.width > 0);
+        CHECK(received->geometry.size.height > 0);
+    }
+
+    components.capture->stop();
+}
+
 void testQuickInputIsQueuedToWindow()
 {
     HyRemote::detail::resetFactories();
@@ -368,6 +436,7 @@ int main(int argc, char **argv)
 
     testQuickFactoryAndOwnedFrame();
     testDestroyedQuickTargetReportsTargetLost();
+    testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
     testQuickInputIsQueuedToWindow();
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 

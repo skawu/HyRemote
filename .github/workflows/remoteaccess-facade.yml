@@ -86,6 +86,36 @@ jobs:
           LD_LIBRARY_PATH="$PWD/build/remoteaccess:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
             ctest --test-dir build --output-on-failure
 
+          # #164 release-surface proof. Tests intentionally receive private factory exports so
+          # they can replace composition seams; a real release-like build must not. Build the same
+          # runtime with tests disabled and inspect the actual dynamic symbol table rather than
+          # relying on source convention alone.
+          cmake -S . -B build-export-surface -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_BUILD_CORE=ON \
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
+            -DHYREMOTE_BUILD_TESTS=OFF \
+            -DHYREMOTE_BUILD_SPIKES=OFF \
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build-export-surface --target hyremote-remoteaccess --parallel
+          nm -D -C --defined-only build-export-surface/remoteaccess/libHyRemoteRemoteAccess.so \
+            > remoteaccess-exports.txt
+          grep -F "HyRemote::RemoteAccess::" remoteaccess-exports.txt
+          for symbol in createTargetComponents createDefaultTransport setTargetFactory setTransportFactory resetFactories; do
+            if grep -Fq "$symbol" remoteaccess-exports.txt; then
+              echo "ERROR: source-private test factory leaked from release runtime: $symbol"
+              cat remoteaccess-exports.txt
+              exit 1
+            fi
+          done
+          # Frozen one-runtime QPA architecture needs exactly these source-private bridge entry
+          # points across the module/shared-library boundary. They are not installed headers or
+          # application contracts; checking their presence makes the exception explicit and bounded.
+          for symbol in createWritableCpuFrame writableCpuFrameOf mapPointerToNormalizedTarget; do
+            grep -F "$symbol" remoteaccess-exports.txt
+          done
+
       - name: Configure, build and test — Windows / MSVC x64
         if: runner.os == 'Windows'
         shell: cmd
@@ -124,3 +154,37 @@ jobs:
           if not exist "%CD%\build\remoteaccess\HyRemoteRemoteAccess.dll" exit /b 1
           set "PATH=%CD%\build\remoteaccess;%QT_PREFIX%\bin;%PATH%"
           ctest --test-dir build --output-on-failure
+
+          rem #164 release-surface proof, equivalent to the Linux nm check above.
+          cmake -S . -B build-export-surface -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DHYREMOTE_BUILD_CORE=ON ^
+            -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
+            -DHYREMOTE_BUILD_TESTS=OFF ^
+            -DHYREMOTE_BUILD_SPIKES=OFF ^
+            -DHYREMOTE_BUILD_EXAMPLES=OFF
+          cmake --build build-export-surface --target hyremote-remoteaccess --parallel
+          dumpbin /EXPORTS "%CD%\build-export-surface\remoteaccess\HyRemoteRemoteAccess.dll" > remoteaccess-exports.txt
+          findstr /C:"RemoteAccess@HyRemote" remoteaccess-exports.txt >nul
+          if errorlevel 1 (
+            type remoteaccess-exports.txt
+            echo ERROR: public RemoteAccess ABI was not found in the release runtime
+            exit /b 1
+          )
+          for %%S in (createTargetComponents createDefaultTransport setTargetFactory setTransportFactory resetFactories) do (
+            findstr /C:"%%S" remoteaccess-exports.txt >nul
+            if not errorlevel 1 (
+              type remoteaccess-exports.txt
+              echo ERROR: source-private test factory leaked from release runtime: %%S
+              exit /b 1
+            )
+          )
+          for %%S in (createWritableCpuFrame writableCpuFrameOf mapPointerToNormalizedTarget) do (
+            findstr /C:"%%S" remoteaccess-exports.txt >nul
+            if errorlevel 1 (
+              type remoteaccess-exports.txt
+              echo ERROR: required bounded QPA runtime bridge is missing: %%S
+              exit /b 1
+            )
+          )

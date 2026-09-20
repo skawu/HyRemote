@@ -33,7 +33,7 @@ if(NOT scope_authority STREQUAL "157" OR NOT freeze_authority STREQUAL "165")
 endif()
 
 set(expected_v1_issues
-    9 30 31 32 33 39 41 57 101 104 107 109 143 144 157 158 159 162 163 164 165 170 174 175 176)
+    9 30 31 32 33 39 41 57 101 104 107 109 143 144 157 158 159 162 163 164 165 170 174 175 176 209)
 string(JSON authority_count LENGTH "${authority_json}" required_issue_numbers)
 math(EXPR authority_last "${authority_count} - 1")
 set(actual_v1_issues)

@@ -38,19 +38,27 @@ using TransportFactory = std::function<TransportComponent(const QHostAddress &li
                                                           const RfbSecurityConfig &security)>;
 
 // Internal composition seam. #6/#28/#29/#27 provide the production factories; the public facade
-// never exposes them. Tests replace them deterministically to verify product lifecycle semantics
-// without opening a real network listener. The declarations live only in the source-private tree;
-// exporting the symbols is required for Windows tests against the shared runtime and does not add an
-// installed/public SDK header or application-facing API.
-HYREMOTE_REMOTEACCESS_EXPORT TargetComponents createTargetComponents(QObject *target,
+// never exposes them. Source tests replace them deterministically to verify product lifecycle
+// semantics without opening a real listener. They require cross-DLL visibility on Windows only in
+// a test-enabled build tree. A normal/release build leaves these declarations unannotated, and the
+// runtime's hidden-by-default visibility keeps them out of the installed application ABI.
+#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
+#  define HYREMOTE_PRIVATE_TEST_EXPORT HYREMOTE_REMOTEACCESS_EXPORT
+#else
+#  define HYREMOTE_PRIVATE_TEST_EXPORT
+#endif
+
+HYREMOTE_PRIVATE_TEST_EXPORT TargetComponents createTargetComponents(QObject *target,
                                                                       bool remoteInputEnabled);
-HYREMOTE_REMOTEACCESS_EXPORT TransportComponent createDefaultTransport(
+HYREMOTE_PRIVATE_TEST_EXPORT TransportComponent createDefaultTransport(
     const QHostAddress &listenAddress,
     quint16 port,
     const RfbSecurityConfig &security);
 
-HYREMOTE_REMOTEACCESS_EXPORT void setTargetFactory(TargetFactory factory);
-HYREMOTE_REMOTEACCESS_EXPORT void setTransportFactory(TransportFactory factory);
-HYREMOTE_REMOTEACCESS_EXPORT void resetFactories();
+HYREMOTE_PRIVATE_TEST_EXPORT void setTargetFactory(TargetFactory factory);
+HYREMOTE_PRIVATE_TEST_EXPORT void setTransportFactory(TransportFactory factory);
+HYREMOTE_PRIVATE_TEST_EXPORT void resetFactories();
+
+#undef HYREMOTE_PRIVATE_TEST_EXPORT
 
 }  // namespace HyRemote::detail

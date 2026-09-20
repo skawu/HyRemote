@@ -1,5 +1,6 @@
 #include "detail/qpa_composition_seam.hpp"
 
+#include <limits>
 #include <utility>
 
 namespace HyRemote::detail {
@@ -19,17 +20,50 @@ WritableCpuFrame createWritableCpuFrame(std::size_t bytesPerLine, std::size_t he
 WritableCpuFrame writableCpuFrameOf(const hyremote::RemoteFrame &frame)
 {
     WritableCpuFrame result;
-    if (!frame.storage)
+    if (!frame.storage
+        || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
+        || frame.geometry.planeCount != 1
+        || frame.geometry.size.width == 0
+        || frame.geometry.size.height == 0) {
         return result;
+    }
 
     // The capture path publishes CPU storages; anything else legitimately has no writable CPU view.
     auto storage = std::dynamic_pointer_cast<hyremote::CpuFrameStorage>(
         std::const_pointer_cast<hyremote::FrameStorage>(frame.storage));
-    if (!storage)
+    if (!storage || storage->planeCount() != 1)
         return result;
 
-    result.data = storage->mutablePlane(0);
-    result.bytesPerLine = static_cast<std::size_t>(frame.geometry.size.width) * 4U;
+    const auto &layout = storage->layout();
+    if (layout.size() != 1)
+        return result;
+
+    constexpr std::size_t bytesPerPixel = 4;
+    const std::size_t width = static_cast<std::size_t>(frame.geometry.size.width);
+    const std::size_t height = static_cast<std::size_t>(frame.geometry.size.height);
+    if (width > std::numeric_limits<std::size_t>::max() / bytesPerPixel)
+        return result;
+
+    const std::size_t minimumStride = width * bytesPerPixel;
+    const std::size_t actualStride = layout[0].bytesPerLine;
+    if (actualStride < minimumStride || actualStride == 0)
+        return result;
+    if (height > std::numeric_limits<std::size_t>::max() / actualStride)
+        return result;
+
+    const std::size_t requiredBytes = actualStride * height;
+    if (layout[0].bytes < requiredBytes)
+        return result;
+
+    std::byte *data = storage->mutablePlane(0);
+    if (!data)
+        return result;
+
+    // The storage layout is authoritative. A padded CPU plane is valid and must not be silently
+    // reinterpreted as width*4; conversely a short stride/buffer is rejected before QImage or another
+    // composer can walk beyond the owned allocation.
+    result.data = data;
+    result.bytesPerLine = actualStride;
     result.storage = std::move(storage);
     return result;
 }
