@@ -1,7 +1,7 @@
 include(GenerateExportHeader)
 include(GNUInstallDirs)
 
-# `src/cpp` is the Embedded C++ integration frontend. The common HyRemote product runtime is owned
+# `src/integrations/cpp` is the Embedded C++ integration frontend. The common HyRemote product runtime is owned
 # by `src/runtime`; this directory contributes the public RemoteAccess facade and its tests/headers to
 # that existing shared target instead of creating a second runtime personality.
 #
@@ -18,10 +18,8 @@ if(TARGET hyremote-remoteaccess)
         "find_package(HyRemote) with add_subdirectory(HyRemote) in the same configure")
 endif()
 
-# First migration step for #219: runtime target ownership moves now, while common implementation files
-# are physically relocated in subsequent commits. Keeping target identity and output names stable avoids
-# turning an ownership refactor into an SDK/deployment break.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
+# The common runtime owns the shared target; this frontend contributes the public C++ facade.
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 
 # Qt imported targets are directory scoped. The common runtime resolves optional Widgets/Quick targets
 # in its own child scope, but Embedded C++ tests are configured from this directory and need the same
