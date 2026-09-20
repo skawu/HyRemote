@@ -458,9 +458,18 @@ void RemoteAccess::stop() noexcept
     if (!m_impl || !m_impl->session)
         return;
 
-    if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError()) {
-        if (!m_impl->isAcknowledgedRecoverableError(*coreError))
-            m_impl->error = mapError(*coreError);
+    // Preserving a Core diagnostic is best effort during a noexcept teardown. lastError() copies a
+    // std::string and mapError() constructs a QString, so either may allocate. An allocation failure
+    // must never turn the public noexcept contract into std::terminate or prevent the runtime from
+    // becoming quiescent. The teardown below is therefore unconditional even if diagnostics cannot
+    // be retained under memory pressure.
+    try {
+        if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError()) {
+            if (!m_impl->isAcknowledgedRecoverableError(*coreError))
+                m_impl->error = mapError(*coreError);
+        }
+    } catch (...) {
+        // Best effort only. Do not allocate another fallback diagnostic from this catch path.
     }
 
     m_impl->shutdownRuntime();
