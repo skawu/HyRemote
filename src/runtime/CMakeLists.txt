@@ -14,7 +14,7 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/component_factories.cpp
     src/detail/security_descriptor.cpp
     # Transitional bridge for the current QPA composite implementation. It disappears when the
-    # automatic/composite implementation is moved from src/qpa into this common runtime.
+    # QPA payload switches fully to the runtime-owned automatic composition path.
     src/detail/qpa_composition_seam.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
@@ -45,8 +45,8 @@ target_include_directories(hyremote-remoteaccess
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     # Transitional build-tree seam for the current QPA implementation. QPA still consumes private
-    # runtime factories/composition declarations until its application-level automatic code is moved
-    # into this target. Nothing under src/runtime/src is exposed by the installed SDK.
+    # runtime declarations until it switches to AccessController. Nothing under src/runtime/src is
+    # exposed by the installed SDK.
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
@@ -119,6 +119,36 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
             "Common runtime was built with the Qt Quick target adapter" FORCE)
     else()
         message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
+    endif()
+endif()
+
+# Application-level zero-code composition is part of the common runtime, but a Core/Network-only
+# RFB build must remain valid. Compile this layer only when a GUI adapter is actually present or a
+# zero-code frontend explicitly requests it.
+set(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE FALSE CACHE INTERNAL
+    "Common runtime contains the application-level automatic access controller" FORCE)
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
+   OR HYREMOTE_REMOTEACCESS_WITH_QUICK
+   OR HYREMOTE_WITH_GENERIC_PLUGIN
+   OR HYREMOTE_WITH_QPA_PROXY)
+    if(NOT TARGET Qt6::Gui)
+        find_package(Qt6 6.8 QUIET COMPONENTS Gui)
+    endif()
+
+    if(TARGET Qt6::Gui)
+        target_sources(hyremote-remoteaccess PRIVATE
+            src/automatic/application_surface_model.cpp
+            src/automatic/composite_target.cpp
+            src/automatic/composite_target_routing.cpp
+            src/automatic/interactive_composite_target.cpp
+            src/automatic/automatic_access_controller.cpp
+        )
+        target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Gui)
+        set(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE TRUE CACHE INTERNAL
+            "Common runtime contains the application-level automatic access controller" FORCE)
+    elseif(HYREMOTE_WITH_GENERIC_PLUGIN OR HYREMOTE_WITH_QPA_PROXY)
+        message(FATAL_ERROR
+            "HyRemote zero-code integration requires Qt 6.8+ Gui for application-surface discovery")
     endif()
 endif()
 
