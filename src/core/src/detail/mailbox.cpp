@@ -29,26 +29,37 @@ PushResult Mailbox::push(RemoteFrame frame)
             return PushResult::RejectedClosed;
         }
 
-        if (m_queue.size() >= m_capacity) {
-            if (m_policy == BackpressurePolicy::ProducerThrottle) {
-                // Admission control is supposed to make this unreachable: it counts waiting plus
-                // in-flight frames against the capacity. If a backend still over-produces, the
-                // frame is refused and counted instead of silently turning into DropOldest.
-                ++m_stats.rejectedOverflow;
-                updateOwnedLocked();
-                return PushResult::RejectedOverflow;
-            }
+        const bool dropOldest = m_queue.size() >= m_capacity;
+        if (dropOldest && m_policy == BackpressurePolicy::ProducerThrottle) {
+            // Admission control is supposed to make this unreachable: it counts waiting plus
+            // in-flight frames against the capacity. If a backend still over-produces, the
+            // frame is refused and counted instead of silently turning into DropOldest.
+            ++m_stats.rejectedOverflow;
+            updateOwnedLocked();
+            return PushResult::RejectedOverflow;
+        }
 
-            // DropOldest / LatestFrameWins: the oldest waiting frame loses its ownership and the
-            // newest content survives.
+        const FrameId assignedId = m_nextFrameId;
+        frame.id = assignedId;
+
+        // For DropOldest, store the replacement before releasing the current oldest entry. This gives
+        // the operation a strong failure post-state without an allocating rollback path: if deque growth
+        // throws, the existing bounded queue is untouched and the exception can be contained by the
+        // Session callback boundary. On success the temporary queue depth is at most capacity + 1 inside
+        // this critical section; the old entry is removed before statistics are published or waiters are
+        // notified. The incoming RemoteFrame storage was already owned by this call, so this does not add a
+        // second frame payload to the pipeline merely to recover from allocation failure.
+        m_queue.push_back(std::move(frame));
+
+        ++m_nextFrameId;
+        m_stats.lastFrameId = assignedId;
+
+        if (dropOldest) {
             m_queue.pop_front();
             ++m_stats.droppedOldest;
             result = PushResult::StoredAfterDroppingOldest;
         }
 
-        frame.id = m_nextFrameId++;
-        m_stats.lastFrameId = frame.id;
-        m_queue.push_back(std::move(frame));
         ++m_stats.stored;
         updateOwnedLocked();
     }
