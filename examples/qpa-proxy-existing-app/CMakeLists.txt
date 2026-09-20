@@ -6,6 +6,7 @@ find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Widgets)
 
 add_executable(hyremote-qpa-proxy-existing-app
     main.cpp
+    ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
 
