@@ -308,7 +308,7 @@ std::string utf8ForKeysym(std::uint32_t keysym)
     } else if (cp <= 0xffffU) {
         out.push_back(static_cast<char>(0xe0U | (cp >> 12U)));
         out.push_back(static_cast<char>(0x80U | ((cp >> 6U) & 0x3fU)));
-        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU));
+        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU)));
     } else {
         out.push_back(static_cast<char>(0xf0U | (cp >> 18U)));
         out.push_back(static_cast<char>(0x80U | ((cp >> 12U) & 0x3fU)));
