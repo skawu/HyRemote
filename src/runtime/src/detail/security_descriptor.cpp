@@ -117,11 +117,11 @@ void SecurityDescriptor::clearSecret() noexcept
 }
 
 std::optional<SecurityDescriptor> loadSecurityDescriptor(const QString &descriptorFile,
-                                                         RemoteSecurityProfile profile,
+                                                         Runtime::SecurityProfile profile,
                                                          QString &error)
 {
     error.clear();
-    if (profile == RemoteSecurityProfile::Insecure) {
+    if (profile == Runtime::SecurityProfile::Insecure) {
         error = QStringLiteral("the Insecure profile does not consume a security descriptor");
         return std::nullopt;
     }
@@ -198,7 +198,7 @@ std::optional<SecurityDescriptor> loadSecurityDescriptor(const QString &descript
     if (!loadPassword(passwordPath, descriptor.password, error))
         return std::nullopt;
 
-    if (profile == RemoteSecurityProfile::AuthenticatedEncrypted) {
+    if (profile == Runtime::SecurityProfile::AuthenticatedEncrypted) {
         const QString certificateValue = values.value(QStringLiteral("certificateFile"));
         const QString privateKeyValue = values.value(QStringLiteral("privateKeyFile"));
         if (certificateValue.isEmpty() || privateKeyValue.isEmpty()) {
