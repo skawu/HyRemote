@@ -19,19 +19,16 @@ include(HyRemoteDeploy)
 unset(HyRemote_QML_IMPORT_PATH CACHE)
 set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")
 
-# Development integrates all V1 modes behind explicit options, but a milestone tag is a release fact:
-# an earlier tagged product must not let users opt into a later, not-yet-accepted integration mode
-# merely because its source already exists on develop. No extra user-facing release-profile option is
-# introduced; the four-part project version itself defines the allowed released product surface.
+# Development may integrate future frontends behind explicit options, while formal versions remain
+# release facts. A later integration may exist on develop without becoming part of an earlier tag.
 hyremote_validate_release_profile(
     VERSION "${PROJECT_VERSION}"
     QML_ENABLED "${HYREMOTE_BUILD_QML_API}"
+    GENERIC_ENABLED "${HYREMOTE_WITH_GENERIC_PLUGIN}"
     QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"
     SECURITY_ENABLED "${HYREMOTE_WITH_TRANSPORT_SECURITY}"
 )
 
-# A normal add_subdirectory(HyRemote) consumer must not acquire CTest/BUILD_TESTING side effects just
-# by using the library. HyRemote's own tests are a developer concern and are explicitly opt-in.
 if(HYREMOTE_BUILD_TESTS)
     include(CTest)
 endif()
@@ -47,22 +44,12 @@ message(STATUS "  Generic Plugin:      ${HYREMOTE_WITH_GENERIC_PLUGIN}")
 message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Transport security:  ${HYREMOTE_WITH_TRANSPORT_SECURITY}")
 
-# Repository layout is product-architecture aligned. Shared implementation stays in src/core and
-# src/runtime; application-facing integration frontends are grouped under src/integrations.
-# Explicit binary directories deliberately retain the historical build-tree layout so this source-tree
-# refactor does not change deployment/test artifact locations or create a second product personality.
+# Shared implementation stays in src/core and src/runtime; application-facing frontends are grouped
+# under src/integrations. Explicit binary directories preserve established artifact locations.
 if(HYREMOTE_BUILD_CORE)
     add_subdirectory(src/core core)
 endif()
 
-# A top-level configure that was told where Qt lives, or that was asked for the repository's own harnesses,
-# must not quietly succeed with the Qt product missing. Measured on the current head: configuring against a
-# Qt 5.15.2 prefix reported "Build succeeded" while `Qt6_DIR` was `Qt6_DIR-NOTFOUND` (nothing looks for Qt5)
-# and the build had silently degraded to the Qt-free Core - 8 targets, no library, **zero examples**. A false
-# green in a qualification attempt is worse than a failure, so this gate makes the intent explicit.
-#
-# It is deliberately scoped to PROJECT_IS_TOP_LEVEL: an add_subdirectory() consumer that only wants
-# HyRemote::Core is a legitimate Qt-less build and must keep working, and so must building Core alone here.
 if(PROJECT_IS_TOP_LEVEL
    AND (CMAKE_PREFIX_PATH OR HYREMOTE_BUILD_EXAMPLES OR HYREMOTE_BUILD_TESTS))
     if(NOT TARGET Qt6::Core)
@@ -81,13 +68,6 @@ if(PROJECT_IS_TOP_LEVEL
     endif()
 endif()
 
-# The project targets Qt LTS lines. The reference line is 6.8 LTS, the public C++/QML path accepts newer 6.8+
-# releases, and the Transparent QPA payload stays exactly 6.8.3 (see docs/architecture.md and docs/compatibility.md).
-#
-# A non-LTS Qt is not a reason to refuse to build - the user must not be blocked - but it must never be silent
-# either. The build reports the line, and proceeds on the **6.8 API baseline** the rest of the configure already
-# enforces (every feature search below asks for Qt 6.8), which is the most compatible configuration available for a
-# line this project has not qualified.
 if(TARGET Qt6::Core)
     set(HYREMOTE_QT_LTS_LINES 5.15 6.2 6.5 6.8)
     set(HYREMOTE_QT_LINE "${Qt6_VERSION_MAJOR}.${Qt6_VERSION_MINOR}")
@@ -97,10 +77,9 @@ if(TARGET Qt6::Core)
         message(WARNING
             "HyRemote: Qt ${Qt6_VERSION} is not an LTS line. This project targets Qt LTS lines "
             "(${HYREMOTE_QT_LTS_LINES}) and the qualified reference line is 6.8.3.\n"
-            "  The build continues against the 6.8 API baseline and the public C++/QML surface, so the user is not "
+            "  The build continues against the 6.8 API baseline and public-Qt integration surfaces, so the user is not "
             "blocked, but this Qt version is not qualified by this project.\n"
-            "  The Transparent QPA payload is unaffected by this choice: it still requires exactly Qt 6.8.3 private "
-            "ABI, and is skipped unless that exact SDK is present.\n"
+            "  The QPA payload remains separately exact-private-ABI qualified.\n"
             "  Use an LTS Qt (6.8.x recommended) for anything that has to be supported.")
     endif()
     unset(HYREMOTE_QT_LINE)
@@ -150,23 +129,35 @@ if(HYREMOTE_BUILD_QML_API)
     endif()
 endif()
 
+if(HYREMOTE_WITH_GENERIC_PLUGIN)
+    if(NOT TARGET HyRemote::RemoteAccess)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and the common HyRemote runtime")
+    endif()
+    if(NOT HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires the common automatic-access runtime")
+    endif()
+
+    # Generic Plugin keeps the native QPA untouched but still promises the same Widgets + Quick
+    # application-surface model as the other automatic mode. Resolve both public Qt families in this
+    # sibling scope so plugin tests/capability do not depend on configure order.
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Quick)
+    add_subdirectory(src/integrations/generic generic)
+endif()
+
 if(HYREMOTE_WITH_QPA_PROXY)
     if(NOT TARGET HyRemote::RemoteAccess)
         message(FATAL_ERROR
             "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a usable HyRemote::RemoteAccess target")
+    endif()
 
     if(HYREMOTE_WITH_TRANSPORT_SECURITY AND NOT HYREMOTE_BUILD_REMOTE_ACCESS)
         message(FATAL_ERROR
             "HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON: the security mode is a "
-            "capability of the public RemoteAccess facade, not a standalone artifact.")
-    endif()
+            "capability of the shared runtime, not a standalone artifact.")
     endif()
 
-    # Transparent QPA is itself responsible for discovering both qualified V1 application surface
-    # families. Imported Qt targets created while building RemoteAccess live in that child directory
-    # scope and are not reliable sibling-scope inputs here. Re-resolve the exact Qt package with
-    # Widgets + Quick so qhyremote never changes capability merely because examples/QML happened to
-    # be enabled first. This keeps Widgets and Quick equal first-class surfaces in every QPA build.
     find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Widgets Quick)
     if(NOT TARGET Qt6::GuiPrivate)
         message(FATAL_ERROR
@@ -176,10 +167,6 @@ if(HYREMOTE_WITH_QPA_PROXY)
 endif()
 
 if(HYREMOTE_BUILD_EXAMPLES)
-    # examples/CMakeLists.txt selects each example with directory-scoped TARGET checks such as
-    # `if(TARGET Qt6::Widgets)`. Those imported targets are created inside the integration child scopes,
-    # so they are not visible from this sibling scope: without resolving the same Qt components here,
-    # a configure with HYREMOTE_BUILD_EXAMPLES=ON silently produces no example target at all.
     find_package(Qt6 6.8 QUIET COMPONENTS Widgets Quick Qml)
     if(TARGET HyRemote::RemoteAccess)
         add_subdirectory(examples)
@@ -195,9 +182,6 @@ if(TARGET hyremote-remoteaccess)
     include(HyRemoteInstall)
 endif()
 
-# Release metadata, simple consumer behavior and milestone product surfaces are repository-owned and
-# must stay valid on development and release-candidate trees. Branch/version authorization is enforced
-# separately by the Git Flow policy workflow.
 if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     add_test(
         NAME hyremote-release-readiness-metadata
@@ -268,10 +252,6 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
     )
 
-    # Source deployment truth must come from a source graph that actually provides qhyremote. Focused
-    # C++/Widgets/Quick/QML test graphs intentionally leave QPA disabled and must not manufacture a
-    # false failure for metadata that cannot participate in that configure. The integrated/QPA jobs
-    # create HyRemote::QpaPlatform and therefore execute this authority check.
     if(TARGET HyRemote::QpaPlatform)
         add_test(
             NAME hyremote-release-readiness-source-qpa-authority
@@ -302,14 +282,14 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     endfunction()
 
     hyremote_add_release_profile_test(hyremote-release-profile-develop-all-modes 0.0.0 ON ON ON FALSE)
-hyremote_add_release_profile_test(hyremote-release-profile-v001-cpp-only 0.0.1.0 OFF OFF OFF FALSE)
-hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qml 0.0.1.0 ON OFF OFF TRUE)
-hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qpa 0.0.1.0 OFF ON OFF TRUE)
-hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-security 0.0.1.0 OFF OFF ON TRUE)
-hyremote_add_release_profile_test(hyremote-release-profile-v002-qml 0.0.2.0 ON OFF OFF FALSE)
-hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-qpa 0.0.2.0 ON ON OFF TRUE)
-hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-security 0.0.2.0 ON OFF ON TRUE)
-hyremote_add_release_profile_test(hyremote-release-profile-v003-all-modes 0.0.3.0 ON ON OFF FALSE)
-hyremote_add_release_profile_test(hyremote-release-profile-v003-reject-security 0.0.3.0 ON ON ON TRUE)
-hyremote_add_release_profile_test(hyremote-release-profile-v100-all-modes 1.0.0.0 ON ON ON FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-cpp-only 0.0.1.0 OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qml 0.0.1.0 ON OFF OFF TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-qpa 0.0.1.0 OFF ON OFF TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v001-reject-security 0.0.1.0 OFF OFF ON TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v002-qml 0.0.2.0 ON OFF OFF FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-qpa 0.0.2.0 ON ON OFF TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v002-reject-security 0.0.2.0 ON OFF ON TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v003-all-modes 0.0.3.0 ON ON OFF FALSE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v003-reject-security 0.0.3.0 ON ON ON TRUE)
+    hyremote_add_release_profile_test(hyremote-release-profile-v100-all-modes 1.0.0.0 ON ON ON FALSE)
 endif()
