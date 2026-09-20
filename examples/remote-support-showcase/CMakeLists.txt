@@ -5,6 +5,7 @@ project(HyRemoteRemoteSupportShowcase LANGUAGES CXX)
 add_executable(hyremote-remote-support-showcase
     main.cpp
     input_probe.cpp
+    ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
 
