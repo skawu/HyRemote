@@ -58,6 +58,22 @@ jobs:
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
+
+          # #198 fail-closed proof: an explicit request for transport security must never
+          # produce a build that silently lacks OpenSSL. Disable package discovery
+          # deterministically even on a hosted image that already has OpenSSL installed.
+          if cmake -S . -B build-security-missing -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_WITH_TRANSPORT_SECURITY=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE \
+            > security-missing-openssl.log 2>&1; then
+            cat security-missing-openssl.log
+            echo "ERROR: transport-security configure unexpectedly succeeded without OpenSSL"
+            exit 1
+          fi
+          grep -F "HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL" security-missing-openssl.log
+
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
@@ -78,6 +94,25 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
           set "PATH=%QT_PREFIX%\bin;%PATH%"
+
+          rem #198 fail-closed proof, with FindOpenSSL disabled even if the hosted image provides it.
+          cmake -S . -B build-security-missing -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
+            -DHYREMOTE_WITH_TRANSPORT_SECURITY=ON ^
+            -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE > security-missing-openssl.log 2>&1
+          if not errorlevel 1 (
+            type security-missing-openssl.log
+            echo ERROR: transport-security configure unexpectedly succeeded without OpenSSL
+            exit /b 1
+          )
+          findstr /C:"HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL" security-missing-openssl.log >nul
+          if errorlevel 1 (
+            type security-missing-openssl.log
+            echo ERROR: expected fail-closed diagnostic was not emitted
+            exit /b 1
+          )
+
           cmake -S . -B build -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
