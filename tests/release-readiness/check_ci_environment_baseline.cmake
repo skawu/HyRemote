@@ -69,12 +69,29 @@ foreach(token IN ITEMS
         "Qt6GuiConfig.cmake"
         "Qt6WidgetsConfig.cmake"
         "Qt6QuickConfig.cmake"
-        "Qt6QmlConfig.cmake"
         "qguiapplication_p.h"
         "install-linux-qt-desktop-deps.sh qpa"
         "install-linux-qt-desktop-deps.sh public")
     require_token("${ci}" "${token}" "consolidated PR CI contract")
 endforeach()
+
+# QML and QPA artifacts are capability-scoped: the validator requires them only when the classification selects that
+# frontend, so they must not be pinned as unconditional components in the workflow. The conditionals are what this
+# asserts - not one literal sentence in a fixed place.
+require_token("${ci}" [=[--need-qml "$NEED_QML"]=] "PR CI must pass the QML capability to the Qt validator")
+require_token("${ci}" [=[--need-qpa "$NEED_QPA"]=] "PR CI must pass the QPA capability to the Qt validator")
+forbid_token("${ci}" "Qt6QmlConfig.cmake"
+             "QML artifacts must stay capability-conditional in the workflow, not unconditionally required")
+read_required(".github/scripts/validate-qt-sdk.py" qt_validator)
+require_token("${qt_validator}" "Qt6QmlConfig.cmake"
+              "validator must check the QML package when QML is selected")
+require_token("${qt_validator}" "qmldir"
+              "validator must check the QML module when QML is selected")
+require_token("${qt_validator}" "qwindows"
+              "validator must check the Windows native platform plugin when QPA is selected")
+require_token("${qt_validator}" "libqxcb"
+              "validator must check the Linux native platform plugin when QPA is selected")
+
 forbid_token("${ci}" "--integrations=cpp,qml,generic,qpa"
              "PR CI must not hard-code all four frontends for every product change")
 forbid_token("${ci}" ".hyremote-complete-"

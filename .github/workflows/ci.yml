@@ -168,7 +168,7 @@ jobs:
               --need-qml "$NEED_QML" \
               --need-qpa "$NEED_QPA" \
               --cmake-components Qt6CoreConfig.cmake Qt6GuiConfig.cmake Qt6NetworkConfig.cmake \
-                                 Qt6WidgetsConfig.cmake Qt6QuickConfig.cmake Qt6QmlConfig.cmake \
+                                 Qt6WidgetsConfig.cmake Qt6QuickConfig.cmake \
               --private-headers qguiapplication_p.h
           }
 
