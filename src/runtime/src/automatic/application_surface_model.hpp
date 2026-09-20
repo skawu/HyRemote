@@ -7,7 +7,7 @@
 
 #include <optional>
 
-namespace HyRemote::Qpa {
+namespace HyRemote::Runtime::Automatic {
 
 using SurfaceId = quint64;
 
@@ -25,7 +25,7 @@ struct RoutedPoint
     QPoint localPosition;
 };
 
-// Deterministic application-surface geometry/stacking model for Transparent QPA Proxy mode.
+// Deterministic application-surface geometry/stacking model shared by zero-code integration modes.
 //
 // The model knows nothing about RFB, capture backends, QPA private types or transport lifecycle. It
 // converts the set of visible application-owned top-level surfaces into one logical remote canvas
@@ -56,4 +56,4 @@ private:
     quint64 m_nextStackSerial = 1;
 };
 
-}  // namespace HyRemote::Qpa
+}  // namespace HyRemote::Runtime::Automatic
