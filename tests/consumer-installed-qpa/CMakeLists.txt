@@ -5,9 +5,9 @@ project(HyRemoteInstalledQpaConsumer LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # This is one clean external Qt-only application fixture with two acquisition paths. By default it
-# consumes the installed HyRemote SDK. V1 GA also configures the exact same E4 source against a
-# vendored/add_subdirectory HyRemote tree so source consumption cannot silently diverge from the
-# installed deployment contract.
+# consumes the installed HyRemote SDK. V1 GA also configures the exact same 05 Widgets QPA source
+# against a vendored/add_subdirectory HyRemote tree so source consumption cannot silently diverge
+# from the installed deployment contract.
 set(HYREMOTE_CONSUMER_SOURCE_DIR "" CACHE PATH
     "Optional HyRemote source tree; when set, exercise add_subdirectory() instead of find_package()")
 
@@ -32,12 +32,12 @@ if(HYREMOTE_CONSUMER_SOURCE_DIR)
         message(FATAL_ERROR "source HyRemote QPA selection did not create its internal qhyremote target")
     endif()
 else()
-    # Installed Transparent QPA remains an ordinary Qt application at the source/link layer.
-    # HyRemote is found only for package/deployment metadata; the executable links Qt Widgets only.
+    # Installed QPA remains an ordinary Qt application at the source/link layer. HyRemote is found
+    # only for package/deployment metadata; the executable links Qt Widgets only.
     find_package(HyRemote CONFIG REQUIRED)
 
     if(NOT HyRemote_QPA_AVAILABLE)
-        message(FATAL_ERROR "installed HyRemote SDK does not contain the Transparent QPA package")
+        message(FATAL_ERROR "installed HyRemote SDK does not contain the QPA package")
     endif()
     if(TARGET HyRemote::QpaPlatform)
         message(FATAL_ERROR
@@ -52,18 +52,18 @@ else()
     endif()
 endif()
 
-# Do not maintain a second toy application for package/source acceptance. Compile the exact E4
-# `qpa-proxy-existing-app` source through this clean external project. The E4 source stays Qt-only;
-# this fixture contributes only HyRemote acquisition/deployment and a bounded executable name used
-# by the product-fit harness.
-set(_hyremote_e4_source
-    "${CMAKE_CURRENT_LIST_DIR}/../../examples/qpa-proxy-existing-app/main.cpp")
-if(NOT EXISTS "${_hyremote_e4_source}")
-    message(FATAL_ERROR "E4 source is missing: ${_hyremote_e4_source}")
+# Do not maintain a second toy application for package/source acceptance. Compile the exact
+# `05-qpa-existing-app/widgets-app` source through this clean external project. The application
+# source stays Qt-only; this fixture contributes only HyRemote acquisition/deployment and a bounded
+# executable name used by the product-fit harness.
+set(_hyremote_qpa_widgets_source
+    "${CMAKE_CURRENT_LIST_DIR}/../../examples/learning/05-qpa-existing-app/widgets-app/main.cpp")
+if(NOT EXISTS "${_hyremote_qpa_widgets_source}")
+    message(FATAL_ERROR "05 QPA Widgets source is missing: ${_hyremote_qpa_widgets_source}")
 endif()
 
 add_executable(hyremote-installed-qpa-consumer
-    "${_hyremote_e4_source}"
+    "${_hyremote_qpa_widgets_source}"
 )
 target_compile_features(hyremote-installed-qpa-consumer PRIVATE cxx_std_17)
 target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)
@@ -72,7 +72,7 @@ get_target_property(_consumer_links hyremote-installed-qpa-consumer LINK_LIBRARI
 foreach(_consumer_link IN LISTS _consumer_links)
     if(_consumer_link MATCHES "^HyRemote::")
         message(FATAL_ERROR
-            "Transparent QPA consumer must not link HyRemote application/runtime targets: ${_consumer_links}")
+            "QPA consumer must not link HyRemote application/runtime targets: ${_consumer_links}")
     endif()
 endforeach()
 
