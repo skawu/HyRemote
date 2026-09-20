@@ -6,23 +6,28 @@ include_guard(GLOBAL)
 option(HYREMOTE_BUILD_TESTS "Build HyRemote tests" OFF)
 option(HYREMOTE_BUILD_EXAMPLES "Build HyRemote examples" OFF)
 
-# Normal C++ product path. These defaults intentionally produce the single shared
-# HyRemote::RemoteAccess facade with both public Qt UI families and the bounded RFB correctness
-# transport when a suitable Qt SDK is available. Users do not select internal Core/adapters/backends
-# merely to get the standard C++ library.
+# Normal product path. These defaults intentionally produce the single shared
+# HyRemote::RemoteAccess runtime with both public Qt UI-family adapters and the bounded RFB transport
+# when a suitable Qt SDK is available. Applications do not select internal Core/adapters/backends
+# merely to get the standard C++ API.
 option(HYREMOTE_BUILD_CORE "Build the internal hyremote-core session/frame/dispatch library" ON)
-option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the public HyRemote::RemoteAccess C++ facade when Qt is available" ON)
+option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the shared HyRemote runtime and public C++ RemoteAccess facade when Qt is available" ON)
 option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)
 option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)
 option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)
 
-# QML is a product integration mode, not an implicit dependency of every C++ consumer. Keep it
-# opt-in so the default C++ path remains one shared library with no QtQml requirement.
-option(HYREMOTE_BUILD_QML_API "Build the declarative 'import HyRemote' QML API when Qt Qml is available" OFF)
+# QML is one application integration frontend over the same runtime. Keep it opt-in so the default
+# C++ path has no QtQml requirement.
+option(HYREMOTE_BUILD_QML_API "Build the 'import HyRemote' QML API when Qt Qml is available" OFF)
 
-# Transparent QPA is an exact-private-ABI package and therefore remains explicitly opt-in. Enabling
-# it does not change the application's C++ link contract; it produces the qhyremote plugin payload.
-option(HYREMOTE_WITH_QPA_PROXY "Enable the Transparent QPA Proxy integration mode" OFF)
+# Generic Plugin is the public-Qt zero-code integration frontend introduced by the final V1
+# technical route. It must preserve the application's normal native QPA/platform selection and must
+# not acquire Qt private/QPA APIs. It is opt-in because it installs an additional Qt plugin payload.
+option(HYREMOTE_WITH_GENERIC_PLUGIN "Enable the QGenericPlugin zero-code integration frontend" OFF)
+
+# QPA is the exact-private-ABI zero-code frontend. It remains separately opt-in because it installs
+# a platform plugin payload and must be rebuilt/qualified for the exact Qt private ABI.
+option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA zero-code integration frontend" OFF)
 
 # Transport security is used only when the consumer explicitly asks for authenticated/encrypted access, and
 # it uses the OpenSSL already supplied by that environment: no provider selector, no bundled crypto toolchain,
@@ -50,13 +55,9 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
     endif()
 endif()
 
-# The default listener port, shared by every integration mode: the Core default is what the Embedded C++
-# API and the declarative QML API start from, and the QPA proxy uses the same number when the platform
-# string carries no port. An integrator that needs a different default sets it at configure time
-# (-DHYREMOTE_DEFAULT_PORT=<port>) instead of patching the library. Tests and examples inherit the same
-# value through the definition below, so such a build stays self-consistent. At run time the port is still
-# overridable per process: RemoteAccess::setPort(), the QML `port` property, and the QPA `hyremote-port`
-# platform parameter.
+# The default listener port is shared by every integration frontend. C++ and QML configure the same
+# AccessInstance runtime directly; Generic and QPA bootstrap the same automatic controller/runtime and
+# therefore inherit the same default when no frontend-specific startup parameter overrides it.
 set(HYREMOTE_DEFAULT_PORT 5921 CACHE STRING "Default loopback listener port shared by all integration modes")
 if(NOT HYREMOTE_DEFAULT_PORT MATCHES "^[0-9]+$"
    OR HYREMOTE_DEFAULT_PORT LESS 1
@@ -66,10 +67,8 @@ if(NOT HYREMOTE_DEFAULT_PORT MATCHES "^[0-9]+$"
 endif()
 add_compile_definitions(HYREMOTE_DEFAULT_PORT=${HYREMOTE_DEFAULT_PORT})
 
-# Development/architecture assets are never part of a normal product build unless explicitly asked.
-
-
-# Platform/hardware optimization work is post-V1 unless a real release blocker promotes it.
+# Platform/hardware optimization work is outside this desktop V1 foundation split unless a measured
+# release blocker deliberately promotes it.
 option(HYREMOTE_WITH_GBM "Enable GBM/DMA-BUF-oriented experimental backends" OFF)
 option(HYREMOTE_WITH_RKMPP "Enable Rockchip MPP experimental encoder backend" OFF)
 
