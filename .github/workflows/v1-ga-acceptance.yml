@@ -107,12 +107,12 @@ jobs:
           python src/cpp/tests/rfb_product_fit.py \
             build-ga/remoteaccess/tests/hyremote-rfb-test-server | tee ga-rfb-product-fit.log
           python tests/product-e2e/example_product_fit.py \
-            --widgets build-ga/examples/widgets-basic/hyremote-widgets-basic \
-            --quick build-ga/examples/quick-basic/hyremote-quick-basic | tee ga-e1-e2.log
+            --widgets build-ga/examples/learning/02-widgets-control/hyremote-example-widgets-control \
+            --quick build-ga/examples/learning/03-quick-cpp/hyremote-example-quick-cpp | tee ga-e1-e2.log
           python tests/product-e2e/qml_product_fit.py \
-            --qml build-ga/examples/qml-basic/hyremote-qml-basic | tee ga-e3.log
+            --qml build-ga/examples/learning/04-quick-qml/hyremote-example-quick-qml | tee ga-e3.log
           python tests/product-e2e/showcase_product_fit.py \
-            --showcase build-ga/examples/remote-support-showcase/hyremote-remote-support-showcase | tee ga-e5.log
+            --showcase build-ga/examples/learning/07-production-showcase/hyremote-example-production-showcase | tee ga-e5.log
 
       - name: Install integrated SDK and assert public package — Linux
         if: runner.os == 'Linux'
@@ -240,14 +240,14 @@ jobs:
           python src\cpp\tests\rfb_product_fit.py build-ga\remoteaccess\tests\hyremote-rfb-test-server.exe > ga-rfb-product-fit.log 2>&1 || (type ga-rfb-product-fit.log & exit /b 1)
           type ga-rfb-product-fit.log
           python tests\product-e2e\example_product_fit.py ^
-            --widgets build-ga\examples\widgets-basic\hyremote-widgets-basic.exe ^
-            --quick build-ga\examples\quick-basic\hyremote-quick-basic.exe > ga-e1-e2.log 2>&1 || (type ga-e1-e2.log & exit /b 1)
+            --widgets build-ga\examples\learning\02-widgets-control\hyremote-example-widgets-control.exe ^
+            --quick build-ga\examples\learning\03-quick-cpp\hyremote-example-quick-cpp.exe > ga-e1-e2.log 2>&1 || (type ga-e1-e2.log & exit /b 1)
           type ga-e1-e2.log
           python tests\product-e2e\qml_product_fit.py ^
-            --qml build-ga\examples\qml-basic\hyremote-qml-basic.exe > ga-e3.log 2>&1 || (type ga-e3.log & exit /b 1)
+            --qml build-ga\examples\learning\04-quick-qml\hyremote-example-quick-qml.exe > ga-e3.log 2>&1 || (type ga-e3.log & exit /b 1)
           type ga-e3.log
           python tests\product-e2e\showcase_product_fit.py ^
-            --showcase build-ga\examples\remote-support-showcase\hyremote-remote-support-showcase.exe > ga-e5.log 2>&1 || (type ga-e5.log & exit /b 1)
+            --showcase build-ga\examples\learning\07-production-showcase\hyremote-example-production-showcase.exe > ga-e5.log 2>&1 || (type ga-e5.log & exit /b 1)
           type ga-e5.log
 
       - name: Install SDK and validate deployed C++ source QML consumers — Windows
