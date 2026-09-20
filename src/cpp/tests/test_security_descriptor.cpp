@@ -27,7 +27,7 @@ bool check(bool condition, const char *message)
 
 int main()
 {
-    using HyRemote::RemoteSecurityProfile;
+    using HyRemote::Runtime::SecurityProfile;
     using HyRemote::detail::loadSecurityDescriptor;
 
     QTemporaryDir temp;
@@ -48,7 +48,7 @@ int main()
 
     QString error;
     auto descriptor = loadSecurityDescriptor(authenticatedPath,
-                                             RemoteSecurityProfile::Authenticated,
+                                             SecurityProfile::Authenticated,
                                              error);
     if (!check(descriptor.has_value(), "valid authenticated descriptor loads")
         || !check(error.isEmpty(), "valid descriptor has no error")
@@ -74,7 +74,7 @@ int main()
         return 6;
     error.clear();
     if (!check(!loadSecurityDescriptor(longDescriptorPath,
-                                       RemoteSecurityProfile::Authenticated,
+                                       SecurityProfile::Authenticated,
                                        error),
                "VNC password longer than eight bytes is rejected")
         || !check(error.contains(QStringLiteral("8-byte")),
@@ -92,7 +92,7 @@ int main()
         return 8;
     error.clear();
     if (!check(!loadSecurityDescriptor(unknownPath,
-                                       RemoteSecurityProfile::Authenticated,
+                                       SecurityProfile::Authenticated,
                                        error),
                "inline password/unknown keys are rejected")
         || !check(!error.contains(QStringLiteral("must-never-be-accepted-inline")),
@@ -109,7 +109,7 @@ int main()
         return 10;
     error.clear();
     if (!check(!loadSecurityDescriptor(encryptedPath,
-                                       RemoteSecurityProfile::AuthenticatedEncrypted,
+                                       SecurityProfile::AuthenticatedEncrypted,
                                        error),
                "encrypted profile without certificate/private key fails closed")
         || !check(error.contains(QStringLiteral("certificateFile"))
@@ -128,7 +128,7 @@ int main()
         return 12;
     error.clear();
     if (!check(!loadSecurityDescriptor(duplicatePath,
-                                       RemoteSecurityProfile::Authenticated,
+                                       SecurityProfile::Authenticated,
                                        error),
                "duplicate keys are rejected deterministically")) {
         return 13;
