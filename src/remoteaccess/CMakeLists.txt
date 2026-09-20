@@ -19,7 +19,7 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/security_descriptor.cpp
     # Source-private composition seam for the Transparent QPA payload. It carries the Core-owned operations
     # the QPA composite path needs, so the payload never links Core directly (see the repository-layout gate).
-    # The header is not installed; only the export symbols live in this shared runtime.
+    # The header is not installed; only the three explicitly annotated bridge symbols live in this shared runtime.
     src/detail/qpa_composition_seam.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
@@ -27,6 +27,11 @@ set_target_properties(hyremote-remoteaccess PROPERTIES
     EXPORT_NAME RemoteAccess
     OUTPUT_NAME HyRemoteRemoteAccess
     POSITION_INDEPENDENT_CODE ON
+    # #164: the installed shared runtime is an explicit-export ABI. Unannotated implementation
+    # symbols stay local on ELF/Mach-O, matching Windows' default DLL behaviour. The public facade
+    # and the unavoidable source-private QPA payload bridge are annotated deliberately.
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
 )
 
 if(UNIX AND NOT APPLE)
@@ -53,6 +58,16 @@ target_link_libraries(hyremote-remoteaccess
     PRIVATE
         HyRemote::Core
 )
+
+# Source tests replace private factories so they can exercise lifecycle/error paths deterministically
+# without opening real listeners. Export those functions only in a test-enabled build tree; the
+# BUILD_INTERFACE definition is never present in an installed SDK, and a normal/release build with
+# HYREMOTE_BUILD_TESTS=OFF therefore cannot advertise these seams from the shared library.
+if(HYREMOTE_BUILD_TESTS)
+    target_compile_definitions(hyremote-remoteaccess
+        PUBLIC $<BUILD_INTERFACE:HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS=1>
+    )
+endif()
 
 if(HYREMOTE_WITH_VNC)
     target_sources(hyremote-remoteaccess PRIVATE

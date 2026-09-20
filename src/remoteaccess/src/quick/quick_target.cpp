@@ -102,11 +102,13 @@ public:
         const std::shared_ptr<State> state = m_state;
         return QMetaObject::invokeMethod(
             dispatcher,
-            [state, request] { attemptGrabOnGuiThread(state, request); },
+            [state, request] { attemptGrabOnGuiThread(state, request, 1U); },
             Qt::QueuedConnection);
     }
 
 private:
+    static constexpr unsigned int kMaxGrabAttempts = 3U;
+
     struct State
     {
         std::mutex mutex;
@@ -173,21 +175,51 @@ private:
         publishCallback(state, &State::onEvent, std::move(event));
     }
 
+    static void completeUnavailable(const std::shared_ptr<State> &state,
+                                    const hyremote::CaptureRequest &request)
+    {
+        // An accepted Core request must eventually complete or stop() must tear it down. When public
+        // Quick capture stays unavailable beyond the bounded retry budget, report the condition through
+        // the existing recoverable event model and publish one intentionally invalid completion carrying
+        // the same request id. Core rejects that frame but, critically, releases the accepted in-flight
+        // slot so a later request can recover normally instead of wedging the Session forever.
+        publishEvent(state,
+                     hyremote::CaptureEventCode::TemporarilyUnavailable,
+                     "Qt Quick capture remained unavailable after the bounded retry budget",
+                     true);
+        if (!isActive(state))
+            return;
+
+        hyremote::RemoteFrame completion;
+        completion.timing.ptsSource = hyremote::PtsSource::Completion;
+        completion.timing.requestTime = request.requestTime;
+        completion.timing.completionTime = hyremote::Clock::now();
+        completion.requestId = request.id;
+        publishCallback(state, &State::onFrame, std::move(completion));
+    }
+
     static void retryLater(const std::shared_ptr<State> &state,
                            const hyremote::CaptureRequest &request,
+                           unsigned int attempt,
                            int delayMs)
     {
         QObject *dispatcher = QCoreApplication::instance();
         if (!dispatcher || !isActive(state))
             return;
 
-        QTimer::singleShot(delayMs, dispatcher, [state, request] {
-            attemptGrabOnGuiThread(state, request);
+        if (attempt >= kMaxGrabAttempts) {
+            completeUnavailable(state, request);
+            return;
+        }
+
+        QTimer::singleShot(delayMs, dispatcher, [state, request, attempt] {
+            attemptGrabOnGuiThread(state, request, attempt + 1U);
         });
     }
 
     static void publishImage(const std::shared_ptr<State> &state,
                              const hyremote::CaptureRequest &request,
+                             unsigned int attempt,
                              const QImage &grabbed)
     {
         if (!isActive(state))
@@ -201,15 +233,14 @@ private:
         }
         if (grabbed.isNull()) {
             // A public Quick grab can become unavailable while a window is hidden/minimized. Keep
-            // ownership of the Core in-flight slot and retry asynchronously rather than blocking a
-            // render/transport thread or leaking the slot.
-            retryLater(state, request, 100);
+            // ownership of the Core in-flight slot only within this request's bounded retry budget.
+            retryLater(state, request, attempt, 100);
             return;
         }
 
         const QImage image = grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
-            retryLater(state, request, 100);
+            retryLater(state, request, attempt, 100);
             return;
         }
 
@@ -249,7 +280,8 @@ private:
     }
 
     static void attemptGrabOnGuiThread(const std::shared_ptr<State> &state,
-                                       const hyremote::CaptureRequest &request)
+                                       const hyremote::CaptureRequest &request,
+                                       unsigned int attempt)
     {
         if (!isActive(state))
             return;
@@ -263,12 +295,12 @@ private:
             return;
         }
 
-        // Accepted requests are retained across a temporary hidden/minimized interval. This is the
-        // public-API equivalent of suspending capture: Core's bounded maxInFlight limit prevents an
-        // unbounded queue, and showing the same window resumes the outstanding requests.
+        // Accepted requests are retained across a temporary hidden/minimized interval, but only for
+        // this request's bounded retry budget. A persistent hidden target completes recoverably so
+        // Core can release the in-flight slot and make a later recovery attempt.
         if (!window->isVisible() || window->visibility() == QWindow::Minimized
             || window->width() <= 0 || window->height() <= 0) {
-            retryLater(state, request, 250);
+            retryLater(state, request, attempt, 250);
             return;
         }
 
@@ -282,6 +314,7 @@ private:
         }
 
         const qreal dpr = window->devicePixelRatio();
+        Q_UNUSED(dpr);
         // grabToImage() takes its size in item (logical) coordinates and applies the device pixel ratio
         // itself. Multiplying by dpr here applied it a second time: a 1.5 display produced 2.25x the
         // logical frame. The logical size is the contract; the ratio is not applied twice
@@ -289,10 +322,10 @@ private:
         const QSize logicalSize(qMax(1, qCeil(window->width())),
                                qMax(1, qCeil(window->height())));
 
-        const auto attempt = std::make_shared<GrabAttempt>();
-        attempt->result = content->grabToImage(logicalSize);
-        if (attempt->result.isNull()) {
-            retryLater(state, request, 100);
+        const auto grab = std::make_shared<GrabAttempt>();
+        grab->result = content->grabToImage(logicalSize);
+        if (grab->result.isNull()) {
+            retryLater(state, request, attempt, 100);
             return;
         }
 
@@ -300,29 +333,28 @@ private:
         if (!dispatcher)
             return;
 
-        attempt->readyConnection = QObject::connect(
-            attempt->result.data(),
+        grab->readyConnection = QObject::connect(
+            grab->result.data(),
             &QQuickItemGrabResult::ready,
             dispatcher,
-            [state, request, attempt] {
-                if (attempt->finished)
+            [state, request, attempt, grab] {
+                if (grab->finished)
                     return;
-                attempt->finished = true;
-                QObject::disconnect(attempt->readyConnection);
-                const QImage image = attempt->result ? attempt->result->image() : QImage();
-                attempt->result.clear();  // break the result/connection/context lifetime cycle
-                publishImage(state, request, image);
+                grab->finished = true;
+                QObject::disconnect(grab->readyConnection);
+                const QImage image = grab->result ? grab->result->image() : QImage();
+                grab->result.clear();  // break the result/connection/context lifetime cycle
+                publishImage(state, request, attempt, image);
             });
 
-        // #16 observed that a public async grab may fail to complete when visibility changes at the
-        // wrong moment. Bound that condition: release the result connection and retry the *same*
-        // Core request instead of permanently consuming its in-flight slot.
-        QTimer::singleShot(2000, dispatcher, [state, request, attempt] {
-            if (attempt->finished)
+        // A public async grab may fail to complete when visibility changes at the wrong moment.
+        // Release the result connection and retry the same Core request within the same finite budget.
+        QTimer::singleShot(2000, dispatcher, [state, request, attempt, grab] {
+            if (grab->finished)
                 return;
-            attempt->finished = true;
-            QObject::disconnect(attempt->readyConnection);
-            attempt->result.clear();
+            grab->finished = true;
+            QObject::disconnect(grab->readyConnection);
+            grab->result.clear();
             if (!isActive(state))
                 return;
             if (state->target.isNull()) {
@@ -332,7 +364,7 @@ private:
                              false);
                 return;
             }
-            retryLater(state, request, 100);
+            retryLater(state, request, attempt, 100);
         });
     }
 
