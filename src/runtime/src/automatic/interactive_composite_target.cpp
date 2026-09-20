@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-#include "detail/qpa_composition_seam.hpp"
+#include "detail/composition_support.hpp"
 #include "hyremote/core/input.hpp"
 
 namespace HyRemote::Runtime::Automatic {

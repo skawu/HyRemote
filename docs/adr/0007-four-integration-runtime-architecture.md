@@ -118,7 +118,7 @@ Generic Plugin and QPA must use the same automatic controller and surface/compos
 
 ## QPA composition seam
 
-The current source-private `qpa_composition_seam.*` exists because QPA-owned composite code needs Core-owned frame/input operations while QPA is forbidden from linking Core directly. After composite/automatic code is fully owned by Common Runtime, this indirection is no longer architecturally necessary and is removed rather than renamed into another frontend-specific seam.
+The source-private `qpa_composition_seam.*` existed because QPA-owned composite code needed Core-owned frame/input operations while QPA is forbidden from linking Core directly. Once composite/automatic code was fully owned by Common Runtime this indirection stopped being architecturally necessary, and it was removed rather than renamed into another frontend-specific seam; the runtime-owned composition sources now include `detail/composition_support.hpp` directly.
 
 ## QPA platform strategy
 

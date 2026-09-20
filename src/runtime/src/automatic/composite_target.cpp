@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "detail/qpa_composition_seam.hpp"
+#include "detail/composition_support.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
