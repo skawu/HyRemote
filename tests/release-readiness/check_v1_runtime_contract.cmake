@@ -74,31 +74,31 @@ require_file_token("src/qml/QmlRemoteAccess.cpp" "emit targetChanged();" "QML de
 require_file_token("src/qml/tests/test_qml_module.cpp" "testTargetDestructionNotifiesDeclarativeProperty" "QML target destruction regression")
 require_file_token("src/qml/tests/CMakeLists.txt" "hyremote-qml-module-test" "registered QML module lifecycle CTest")
 
-# E1/E2 use the same public C++ facade lifecycle required by the physical gate. Product-fit begins
-# from view-only in one application process; the first viewer disconnect triggers stop -> configure
-# -> start, and control/reconnect continues without relaunching the target application. The timer is
-# only a bounded watchdog so acceptance is tied to an observed viewer lifecycle rather than a race.
+# The acceptance-heavy controlled examples use the same public C++ facade lifecycle required by the
+# physical gate. 02 covers Widgets control/lifecycle while 03 proves the same contract for Qt Quick.
+# Product-fit begins view-only in one application process; the first viewer disconnect triggers
+# stop -> configure -> start, and control/reconnect continues without relaunching the target app.
 foreach(example_source IN ITEMS
-        "examples/widgets-basic/main.cpp"
-        "examples/quick-basic/main.cpp")
-    require_file_token("${example_source}" "policy-transition-ms" "E1/E2 stopped-runtime acceptance helper")
-    require_file_token("${example_source}" "remote.stop();" "E1/E2 public facade stop during policy transition")
-    require_file_token("${example_source}" "remote.setRemoteInputEnabled(true)" "E1/E2 stopped remote-input configuration")
-    require_file_token("${example_source}" "POLICY_RESTART_REQUESTED" "E1/E2 public facade restart evidence")
+        "examples/learning/02-widgets-control/main.cpp"
+        "examples/learning/03-quick-cpp/main.cpp")
+    require_file_token("${example_source}" "policy-transition-ms" "Widgets/Quick stopped-runtime acceptance helper")
+    require_file_token("${example_source}" "remote.stop();" "Widgets/Quick public facade stop during policy transition")
+    require_file_token("${example_source}" "remote.setRemoteInputEnabled(true)" "Widgets/Quick stopped remote-input configuration")
+    require_file_token("${example_source}" "POLICY_RESTART_REQUESTED" "Widgets/Quick public facade restart evidence")
 endforeach()
-require_file_token("tests/product-e2e/example_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E1/E2 bounded transition watchdog")
-require_file_token("tests/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "E1/E2 lifecycle-driven policy transition")
-require_file_token("tests/product-e2e/example_product_fit.py" "public stop/configure/start" "E1/E2 same-process acceptance result")
+require_file_token("tests/product-e2e/example_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "Widgets/Quick bounded transition watchdog")
+require_file_token("tests/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "Widgets/Quick lifecycle-driven policy transition")
+require_file_token("tests/product-e2e/example_product_fit.py" "public stop/configure/start" "Widgets/Quick same-process acceptance result")
 
-# E3 must exercise the same stopped-runtime policy transition without a wall-clock race. The first
-# viewer disconnect is observable through the public QML connected-client diagnostic and triggers
-# stop -> configure -> start; a bounded timer remains only as a watchdog fallback.
-require_file_token("examples/qml-basic/Main.qml" "property bool acceptanceSawViewer" "E3 first-viewer lifecycle observation")
-require_file_token("examples/qml-basic/Main.qml" "function applyAcceptancePolicyTransition()" "E3 public-QML policy transition helper")
-require_file_token("examples/qml-basic/Main.qml" "window.applyAcceptancePolicyTransition()" "E3 disconnect-driven policy transition")
-require_file_token("examples/qml-basic/Main.qml" "policyTransitionTimer.stop()" "E3 watchdog cancellation after lifecycle trigger")
-require_file_token("tests/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E3 bounded policy-transition watchdog")
-require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "E3 product-fit binds policy transition to viewer lifecycle")
+# 04-quick-qml must exercise the same stopped-runtime policy transition without a wall-clock race.
+# The first viewer disconnect is observable through the public QML connected-client diagnostic and
+# triggers stop -> configure -> start; a bounded timer remains only as a watchdog fallback.
+require_file_token("examples/learning/04-quick-qml/Main.qml" "property bool acceptanceSawViewer" "QML first-viewer lifecycle observation")
+require_file_token("examples/learning/04-quick-qml/Main.qml" "function applyAcceptancePolicyTransition()" "QML public policy transition helper")
+require_file_token("examples/learning/04-quick-qml/Main.qml" "window.applyAcceptancePolicyTransition()" "QML disconnect-driven policy transition")
+require_file_token("examples/learning/04-quick-qml/Main.qml" "policyTransitionTimer.stop()" "QML watchdog cancellation after lifecycle trigger")
+require_file_token("tests/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "QML bounded policy-transition watchdog")
+require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "QML product-fit binds policy transition to viewer lifecycle")
 
 require_file_token("src/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "class PortReservation final" "deterministic occupied-port QPA failure setup")
 require_file_token("src/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "SO_EXCLUSIVEADDRUSE" "deterministic Windows occupied-port ownership")
@@ -111,4 +111,4 @@ require_file_token("docs/internal/v1-ga-acceptance.md" "remote-capability failur
 
 message(STATUS
     "HyRemote V1 runtime behavior contract gate: PASS "
-    "(multi-viewer isolation + protected disconnect releases under backpressure + target-loss/QML lifetime parity + error/Faulted semantics + Widgets/Quick parity + same-process E1/E2/E3 policy lifecycle + observed QPA remote-failure native survival)")
+    "(multi-viewer isolation + protected disconnect releases under backpressure + target-loss/QML lifetime parity + error/Faulted semantics + Widgets/Quick parity + same-process controlled-example policy lifecycle + observed QPA remote-failure native survival)")
