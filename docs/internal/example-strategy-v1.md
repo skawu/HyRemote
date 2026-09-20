@@ -37,7 +37,7 @@ examples/
     musescore/
 ```
 
-The physical migration lands once with #209. Do not keep old and new example taxonomies in parallel.
+The layout half of this plan has landed: the one-time #208/#209 foundation change gave the source tree `src/core`, `src/cpp`, `src/qml`, `src/qpa` and the root `logo/`. The example-directory migration itself lands in one further step, and it must not keep an old and a new example taxonomy in parallel.
 
 ## Self-authored learning path
 
@@ -109,7 +109,7 @@ Rules:
 - packaging/deployment must allow self-authored examples to resolve the canonical logo without depending on the source tree;
 - qBittorrent and MuseScore retain upstream branding and are never rewritten with HyRemote assets.
 
-The current files under `docs/assets/logo/` are migration sources only. #209 performs one history-preserving move to root `logo/` and removes the stale documentation-owned copies.
+The move is done: `logo/` at the repository root is the single canonical copy, produced by one history-preserving rename, and no documentation-owned or per-example copy exists.
 
 ## Release evidence mapping
 
@@ -124,6 +124,6 @@ R1/R2 real-world verification complement but do not replace #109 controlled phys
 
 ## Foundation rule
 
-The source-directory terminology, example topology and logo ownership are part of the one-time #209 V1 foundation migration. After that migration, do not reopen the basic repository architecture merely to add a platform, Qt LTS family or product feature.
+The source-directory terminology and logo ownership were settled by the one-time #208/#209 V1 foundation change (`src/core`, `src/cpp`, `src/qml`, `src/qpa`, root `logo/`); the example topology is the part of this plan still to land. Once it has landed, do not reopen the basic repository architecture merely to add a platform, Qt LTS family or product feature.
 
 Refs: #33 #41 #57 #109 #134 #137 #138 #160 #165 #176 #209.

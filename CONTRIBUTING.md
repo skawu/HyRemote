@@ -21,16 +21,18 @@ Architecture-affecting changes should be discussed and recorded before implement
 
 Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
-- `src/` is the shipping tree: one directory per deliverable (`core/` is the internal base, then `embedded/`,
-  `declarative/` and `transparent/` for the three access modes), and every payload reuses the same shared runtime;
+- `src/` is the shipping tree: one directory per deliverable (`core/` is the internal base, then `cpp/`, `qml/` and
+  `qpa/` for the three integration technologies - the same words the product uses on every user-facing surface), and
+  every payload reuses the same shared runtime;
 - `tests/` holds what a unit test is not: cross-module integration, clean consumers, product E2E, the public-surface
   contract, the third-party matrix and the release gates;
 - module-private tests stay with their module (`src/*/tests/`) and are never moved here;
 - there is no separate research tree: an experiment's conclusion is recorded under `docs/internal/**`, and a runnable
   experiment either becomes product code in `src/` or leaves only its conclusion;
-- branding is not a root directory: the product mark lives at `docs/assets/logo/`.
+- branding is a root directory of its own and nothing else: the product mark lives at `logo/`, examples reference it
+  instead of copying it, and no module may depend on it.
 
-Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `integrations/`, `verification/`, `assets/`, `research/`, `spikes/` or `logo/` directories as compatibility copies.
+Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `integrations/`, `verification/`, `assets/`, `research/` or `spikes/` directories as compatibility copies, and do not bring back the pre-ruling source names `src/embedded/`, `src/declarative/`, `src/transparent/` or the documentation-owned `docs/assets/` copy of the mark.
 
 Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`](docs/internal/branch-lifecycle.md) and [`docs/internal/git-flow-release.md`](docs/internal/git-flow-release.md): normally only `main`, `develop` and current open-PR heads remain visible. Historical auditability belongs to Issues, PRs, commits and release tags rather than stale branch refs.
 

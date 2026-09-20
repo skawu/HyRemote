@@ -31,7 +31,7 @@ endif()
 
 target_compile_features(hyremote-qpa-platform PRIVATE cxx_std_17)
 target_include_directories(hyremote-qpa-platform PRIVATE
-    "${_hyremote_root_dir}/src/embedded/src"
+    "${_hyremote_root_dir}/src/cpp/src"
     # QPA consumes RemoteAccess private component-factory declarations. Those declarations use
     # Core public value/interface types, so the integration needs their headers for compilation only.
     # This is deliberately not a HyRemote::Core link dependency; qhyremote still reuses the single

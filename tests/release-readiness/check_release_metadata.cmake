@@ -52,11 +52,11 @@ set(required_files
     "tests/consumer-installed-qpa/CMakeLists.txt"
     "tests/consumer-installed-qpa/product_fit.py"
     "tests/public-api-contract/CMakeLists.txt"
-    "src/embedded/tests/test_remote_access.cpp"
-    "src/embedded/tests/test_widgets_input_backpressure.cpp"
-    "src/embedded/tests/test_quick_input_backpressure.cpp"
-    "src/embedded/tests/test_rfb_widget_disconnect_backpressure.cpp"
-    "src/transparent/tests/qpa_composite_input_test.cpp"
+    "src/cpp/tests/test_remote_access.cpp"
+    "src/cpp/tests/test_widgets_input_backpressure.cpp"
+    "src/cpp/tests/test_quick_input_backpressure.cpp"
+    "src/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
+    "src/qpa/tests/qpa_composite_input_test.cpp"
 )
 
 foreach(path IN LISTS required_files)
@@ -185,7 +185,7 @@ if(NOT core_install EQUAL -1)
     message(FATAL_ERROR "release-readiness: V1 Core must not be installed/exported as a second product target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/embedded/CMakeLists.txt" remoteaccess_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
         "add_library(hyremote-remoteaccess SHARED"
         "OUTPUT_NAME HyRemoteRemoteAccess"
@@ -196,14 +196,14 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/declarative/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
 string(FIND "${qml_cmake}" "TARGETS hyremote-qml\n    EXPORT HyRemoteTargets" qml_export)
 if(NOT qml_export EQUAL -1)
     message(FATAL_ERROR
         "release-readiness: declarative QML backing library must not become a second C++ SDK target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/transparent/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
 string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module)
 if(qpa_module EQUAL -1)
     message(FATAL_ERROR "release-readiness: Transparent QPA must remain a platform MODULE")
@@ -334,7 +334,7 @@ if(input_shutdown_contract EQUAL -1)
         "release-readiness: internal InputSink terminal shutdown contract was removed")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/embedded/src/remote_access.cpp" remoteaccess_source)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/src/remote_access.cpp" remoteaccess_source)
 string(FIND "${remoteaccess_source}" "session->stop();" session_stop_pos)
 string(FIND "${remoteaccess_source}" "inputSink->shutdown();" input_shutdown_pos)
 if(session_stop_pos EQUAL -1 OR input_shutdown_pos EQUAL -1 OR input_shutdown_pos LESS session_stop_pos)
@@ -343,8 +343,8 @@ if(session_stop_pos EQUAL -1 OR input_shutdown_pos EQUAL -1 OR input_shutdown_po
 endif()
 
 foreach(adapter_file
-        "src/embedded/src/widgets/widget_target.cpp"
-        "src/embedded/src/quick/quick_target.cpp")
+        "src/cpp/src/widgets/widget_target.cpp"
+        "src/cpp/src/quick/quick_target.cpp")
     file(READ "${HYREMOTE_SOURCE_DIR}/${adapter_file}" adapter_source)
     foreach(required_token
             "void shutdown() noexcept override"
@@ -359,7 +359,7 @@ foreach(adapter_file
     endforeach()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/transparent/interactive_composite_target.cpp" qpa_input_source)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/interactive_composite_target.cpp" qpa_input_source)
 foreach(required_token
         "void shutdown() noexcept override"
         "sink->shutdown()"
@@ -372,11 +372,11 @@ foreach(required_token
 endforeach()
 
 foreach(test_entry
-        "src/embedded/tests/test_remote_access.cpp|inputShutdowns"
-        "src/embedded/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/embedded/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/embedded/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
-        "src/transparent/tests/qpa_composite_input_test.cpp|shutdownCalls")
+        "src/cpp/tests/test_remote_access.cpp|inputShutdowns"
+        "src/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
+        "src/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
     string(REPLACE "|" ";" test_parts "${test_entry}")
     list(GET test_parts 0 test_path)
     list(GET test_parts 1 required_token)

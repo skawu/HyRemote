@@ -11,7 +11,7 @@
 //   - normalized pointer mapping, as used by composite input routing.
 //
 // This header is reachable only through the source-private include directory of the runtime
-// (src/embedded/src). It is not installed as a public SDK header, it is not an application-facing API and
+// (src/cpp/src). It is not installed as a public SDK header, it is not an application-facing API and
 // it must not be documented as one; the symbols are private runtime exports so that a DLL build can be
 // consumed by the QPA payload on Windows.
 

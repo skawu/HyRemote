@@ -10,7 +10,7 @@ labels: bug
 
 | Item | Value |
 |---|---|
-| Layer | `src/core` / `src/embedded` / `src/declarative` / `src/transparent` / `cmake` / docs |
+| Layer | `src/core` / `src/cpp` / `src/qml` / `src/qpa` / `cmake` / docs |
 | Integration mode | Embedded C++ / Declarative QML / Transparent QPA |
 | OS and graphics stack | |
 | Qt version | |

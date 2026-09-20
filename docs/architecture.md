@@ -260,13 +260,13 @@ The canonical repository layout mirrors these responsibilities:
 
 ```text
 src/core/                 internal Core
-src/embedded/         one shared public C++ runtime/facade
-src/declarative/         declarative payload
-src/transparent/         exact-Qt Transparent QPA payload
+src/cpp/         one shared public C++ runtime/facade
+src/qml/         declarative payload
+src/qpa/         exact-Qt Transparent QPA payload
 tests/                    tests only: cross-module integration
 tests/             consumers, E2E, contract, third-party matrix, release gates
 examples/                 product examples
-docs/assets/logo/          non-build branding assets
+logo/          non-build branding assets
 cmake/                    package/deployment/build modules
 docs/                     product and maintainer documentation
 ```

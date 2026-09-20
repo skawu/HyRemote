@@ -51,9 +51,9 @@ set(required_root_tokens
     [=[if(HYREMOTE_BUILD_REMOTE_ACCESS)]=]
     [=[if(HYREMOTE_WITH_QPA_PROXY)]=]
     [=[add_subdirectory(src/core core)]=]
-    [=[add_subdirectory(src/embedded remoteaccess)]=]
-    [=[add_subdirectory(src/declarative qml/HyRemote)]=]
-    [=[add_subdirectory(src/transparent qpa)]=]
+    [=[add_subdirectory(src/cpp remoteaccess)]=]
+    [=[add_subdirectory(src/qml qml/HyRemote)]=]
+    [=[add_subdirectory(src/qpa qpa)]=]
     [=[hyremote-release-profile-v001-reject-qml]=]
     [=[hyremote-release-profile-v002-reject-qpa]=]
     [=[hyremote-release-profile-v100-all-modes]=]
@@ -144,7 +144,7 @@ endforeach()
 # Source and installed QML acquisition publish the same abstract import-root input to the one deploy
 # helper. Source payload targets are internal build metadata: they may become build-only dependencies
 # of the consumer target, but never application link targets or installed SDK choices.
-file(READ "${HYREMOTE_SOURCE_DIR}/src/declarative/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
 foreach(required_token
         "_hyremote_qml_build_import_root"
         "HyRemote_QML_IMPORT_PATH"
@@ -159,7 +159,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/transparent/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[BUILD_RPATH "$ORIGIN/../../../."]=]
         [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
