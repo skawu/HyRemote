@@ -9,10 +9,10 @@ set(required_files
     "cmake/HyRemoteConfig.cmake.in"
     "cmake/HyRemoteInstall.cmake"
     "cmake/HyRemoteDeploy.cmake"
-    "src/cpp/CMakeLists.txt"
-    "src/qpa/CMakeLists.txt"
-    "src/qpa/tests/deploy_helper_fixture/CMakeLists.txt"
-    "src/qpa/tests/run_deploy_helper_fixture.cmake"
+    "src/integrations/cpp/CMakeLists.txt"
+    "src/integrations/qpa/CMakeLists.txt"
+    "src/integrations/qpa/tests/deploy_helper_fixture/CMakeLists.txt"
+    "src/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
     "tests/release-readiness/check_package_acquisition_isolation.cmake")
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
@@ -62,7 +62,7 @@ if(NOT leaked_qml_api EQUAL -1)
     message(FATAL_ERROR "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" remoteaccess_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
         [=[if(TARGET HyRemote::RemoteAccess)]=]
         [=[source acquisition conflict]=]
@@ -118,9 +118,6 @@ foreach(required_token
     endif()
 endforeach()
 
-# Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV} without
-# preserving argument boundaries, which breaks legitimate executable output names containing spaces.
-# HyRemote is Qt-6-only, so both supplemental deploy shapes must call the Qt 6 implementation directly.
 string(REGEX MATCHALL "qt6_deploy_runtime_dependencies\\(" qt6_runtime_deploy_calls "${deploy_helper}")
 list(LENGTH qt6_runtime_deploy_calls qt6_runtime_deploy_call_count)
 if(NOT qt6_runtime_deploy_call_count EQUAL 2)
@@ -153,7 +150,7 @@ foreach(required_phrase
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/deploy_helper_fixture/CMakeLists.txt" fixture)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/tests/deploy_helper_fixture/CMakeLists.txt" fixture)
 foreach(required_token
         [=[TEST_DEPLOY_QPA]=]
         [=[TEST_QML_AVAILABLE]=]
@@ -186,7 +183,7 @@ if(NOT leaked_fixture_api EQUAL -1)
     message(FATAL_ERROR "deploy-helper-contract: deterministic fixture must not rely on a new QML package API")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/run_deploy_helper_fixture.cmake" runner)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/tests/run_deploy_helper_fixture.cmake" runner)
 foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_QML_IMPORT_PATH_EXISTS]=]
@@ -211,7 +208,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
@@ -270,9 +267,6 @@ foreach(required_test
     endif()
 endforeach()
 
-# Execute the package-config behavior probe, not just textual assertions. It intentionally uses a
-# fake Qt config that overwrites PACKAGE_PREFIX_DIR to model the CMake 3.21-3.29 hazard, then checks
-# same-prefix rediscovery and mixed installed/source acquisition rejection.
 execute_process(
     COMMAND "${CMAKE_COMMAND}"
         -DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}
@@ -289,4 +283,4 @@ endif()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; Qt6 deploy argument boundaries preserved; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
+    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; Qt6 deploy argument boundaries preserved; established V1 deploy shapes stay distinct while source ownership is grouped)")
