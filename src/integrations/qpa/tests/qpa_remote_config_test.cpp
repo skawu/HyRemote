@@ -1,4 +1,4 @@
-#include "../hyremote_qpa_remote_controller.hpp"
+#include "../qpa_config.hpp"
 
 #include <QHostAddress>
 #include <QStringList>
@@ -87,8 +87,6 @@ int main()
         QStringLiteral("hyremote-security"),
         QStringLiteral("hyremote-security-config"),
         QStringLiteral("hyremote-security-config="),
-        // #163 acceptance 4: anything in the HyRemote namespace that HyRemote does not own is a
-        // deterministic configuration error, so a misspelling cannot be silently passed to the delegate.
         QStringLiteral("hyremote-typo=1"),
         QStringLiteral("hyremote-portt=5921"),
         QStringLiteral("hyremote-"),
@@ -103,9 +101,6 @@ int main()
         }
     }
 
-    // #163 acceptance 1 and 2: the exact qualified Qt runtime is accepted unchanged, while a mismatched
-    // or unreadable runtime is rejected deterministically. This is the equivalent fixture the issue allows
-    // instead of a second Qt installation - the check is a pure function over the running version string.
     if (!check(runtimeIdentityError(QStringLiteral("6.8.3"), 6, 8, 3).isEmpty(),
                "exact runtime identity is accepted")) {
         return 4;
@@ -140,8 +135,6 @@ int main()
         return 6;
     }
 
-    // The requirement follows the values the payload was built with rather than a hardcoded triple: an
-    // exact 6.8.4 build accepts 6.8.4 and rejects 6.8.3.
     if (!check(runtimeIdentityError(QStringLiteral("6.8.4"), 6, 8, 4).isEmpty(),
                "requirement follows the built expectation")
         || !check(!runtimeIdentityError(QStringLiteral("6.8.3"), 6, 8, 4).isEmpty(),
@@ -149,8 +142,6 @@ int main()
         return 7;
     }
 
-    // A decorated runtime string is read as its version triple, so a distribution-suffixed exact version
-    // stays accepted while a decorated mismatch stays rejected.
     if (!check(runtimeIdentityError(QStringLiteral("6.8.3-debian"), 6, 8, 3).isEmpty(),
                "decorated exact runtime is accepted")
         || !check(!runtimeIdentityError(QStringLiteral("6.8.4-debian"), 6, 8, 3).isEmpty(),
@@ -158,8 +149,6 @@ int main()
         return 8;
     }
 
-    // One message for the whole case: the security overrides develop added and the runtime identity checks
-    // this branch adds are both part of what the case now asserts.
-    std::cout << "PASS: QPA remote config safe defaults, explicit security overrides and exact runtime identity\n";
+    std::cout << "PASS: QPA config safe defaults, explicit security overrides and exact runtime identity\n";
     return 0;
 }
