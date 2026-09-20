@@ -150,7 +150,7 @@ The declarative `RemoteAccess` surface preserves product semantics rather than h
 
 ## 9. Security boundary
 
-The current RFB correctness baseline uses SecurityType None. QML does not weaken or override the common safe defaults:
+The RFB correctness baseline uses SecurityType None unless an authenticated profile is configured, and provides no encryption either way. QML does not weaken or override the common safe defaults:
 
 - loopback listener by default;
 - remote input disabled by default;

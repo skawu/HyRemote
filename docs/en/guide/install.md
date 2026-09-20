@@ -263,10 +263,11 @@ option is for controlled test environments only. Viewer connection:
 
 ## 10. Security and support boundary
 
-The current bounded RFB correctness transport uses **SecurityType None**: no transport authentication and no
-transport encryption. The listener defaults to loopback and remote input is off by default - do not expose that
-baseline to an untrusted network or the public Internet. See [`docs/security.md`](../../security.md) and
-[`SECURITY.md`](../../../SECURITY.md).
+The bounded RFB correctness transport uses **SecurityType None** unless an authenticated profile is configured: no
+transport authentication with `SecurityType None` (which is refused beyond loopback), RFB VNC authentication when
+such a profile is configured, and no transport encryption in either case. The listener defaults to loopback and
+remote input is off by default - do not expose a listener to an untrusted network or the public Internet. See
+[`docs/security.md`](../../security.md) and [`SECURITY.md`](../../../SECURITY.md).
 
 The support boundary follows evidence: a hosted/offscreen build is not by itself proof of local-visible
 display/input coexistence with remote access. A capability that has not passed acceptance is not described as

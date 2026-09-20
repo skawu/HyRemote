@@ -133,7 +133,8 @@ void installRuntime(const std::shared_ptr<RuntimeState> &state)
         return result;
     });
 
-    HyRemote::detail::setTransportFactory([state](const QHostAddress &, quint16) {
+    HyRemote::detail::setTransportFactory([state](const QHostAddress &, quint16,
+                                                  const HyRemote::detail::RfbSecurityConfig &) {
         HyRemote::detail::TransportComponent result;
         result.transport = std::make_unique<FakeTransport>(state);
         return result;

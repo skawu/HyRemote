@@ -21,7 +21,7 @@ The implemented V1 security boundary is deliberately narrow and explicit:
 - the default listener address is loopback (`127.0.0.1`);
 - remote input is disabled by default;
 - the current RFB transport negotiates **SecurityType None**;
-- V1 provides **no transport authentication and no transport encryption**;
+- V1 authenticates the viewer when an authenticated security profile is configured, and provides **no transport encryption** in any configuration;
 - passwords, TLS certificates/private keys, authenticated identities, roles and per-client authorization are not part of the V1 public product surface.
 
 These facts are release constraints. Documentation, examples and compatibility claims must not imply stronger security.
@@ -40,7 +40,7 @@ These facts are release constraints. Documentation, examples and compatibility c
 | bounded internal RFB transport                                |
 +----------+----------------------------------------------------+
            |
-           | unauthenticated / unencrypted network boundary
+           | unencrypted; unauthenticated unless a profile is set
            v
        remote viewer
 ```
@@ -97,7 +97,7 @@ A future additive API may support live authorization downgrade or per-client con
 
 `Running` means the remote runtime/listener is active. `connectedClientCount()` is an operational connection diagnostic. Neither is an authentication or authorization result.
 
-Because V1 uses SecurityType None, a reachable viewer is not authenticated by HyRemote.
+With SecurityType None - the mode in use when no authenticated profile is configured - a reachable viewer is not authenticated by HyRemote. A configured authenticated profile does authenticate it (RFB VNC authentication), which is still not encryption.
 
 ## 5. Input safety
 
@@ -111,7 +111,7 @@ Recognized held remote key/button state must be balanced when a viewer disconnec
 
 ## 6. Resource and denial-of-service boundaries
 
-V1 must remain bounded even though the transport is unauthenticated.
+V1 must remain bounded whether or not the transport authenticates the viewer.
 
 The current architecture includes or requires bounded behavior for:
 
@@ -127,7 +127,7 @@ The current architecture includes or requires bounded behavior for:
 
 A slow or malformed client must not create unbounded memory growth or indefinitely block the Qt GUI/render path.
 
-These resource controls reduce failure/DoS exposure. They do **not** make SecurityType None safe for a hostile public network.
+These resource controls reduce failure/DoS exposure. They do **not** make SecurityType None safe for a hostile public network, and viewer authentication alone does not either.
 
 ## 7. Diagnostics and sensitive data
 
@@ -147,7 +147,7 @@ Use the default loopback listener. Enable remote input only when intentionally t
 
 ### Controlled lab / industrial maintenance network
 
-Use a specific bind address and an external trusted access boundary appropriate to the deployment. Treat the HyRemote RFB payload itself as unauthenticated and unencrypted.
+Use a specific bind address and an external trusted access boundary appropriate to the deployment. Treat the HyRemote RFB payload itself as unencrypted, and as unauthenticated unless an authenticated profile is configured.
 
 ### VPN / separately secured maintenance tunnel
 
@@ -188,17 +188,24 @@ Such work must preserve backend-neutral public boundaries and must not force bac
 
 ### 10.1 Design frozen before implementation (2026-09-19)
 
-**Nothing here changes today's product statement.** Until the authentication step actually lands, the stream remains
-unauthenticated and unencrypted, and no user-facing document may claim otherwise.
+**Status: the authentication step has landed; the encryption step has not.** The product statement is therefore
+"authenticated when an authenticated profile and a credential are configured, and not encrypted in any
+configuration". No user-facing document may claim transport encryption, and none may claim authentication for a
+build or profile that does not actually provide it - a build without the capability, or without a usable credential,
+refuses the authenticated profiles rather than serving them unauthenticated.
 
-**Authentication step.** RFB VNC authentication (security type 2), including the RFB 3.8 challenge/response and its
-blinding variant, because that is what the mainstream viewers already implement. `SecurityType None` stays available
-but only as an **explicitly selected** mode: a client that does not select the configured type is rejected and the
-failure is reported, never downgraded.
+**Authentication step.** RFB VNC authentication (security type 2) with the RFB 3.8 challenge/response: the server
+sends a random 16-byte challenge and the client returns the DES-encrypted response, because that is what the
+mainstream viewers already implement. An earlier revision of this section called this "the blinding variant"; the RFB
+specification defines no such variant - security type 2 is simply VNC Authentication - so that unsupported wording is
+removed rather than implemented. What the standard exchange does require, and what this implementation relies on, is
+that each connection gets a freshly random challenge. `SecurityType None` stays available but only as an
+**explicitly selected** mode: a client that does not select the configured type is rejected and the failure is
+reported, never downgraded.
 
 **Encryption step.** Kept separate and later, so that viewer interoperability is not a precondition for the first
-authentication evidence. Until it lands, the release notes and the compatibility statements keep saying the stream
-is unauthenticated and unencrypted.
+authentication evidence. Until it lands, the release notes and the compatibility statements say the stream is
+**authenticated but not encrypted**, and no document may describe it as encrypted.
 
 **Primitives and dependency.** VNC authentication needs DES and SHA-1, and the encryption step needs TLS. These come
 from **OpenSSL** deliberately, rather than from code written in this repository: a hand-written DES is a security
@@ -254,4 +261,4 @@ A GitHub Actions job that never receives a runner is neither passing security ev
 
 The concise V1 user-facing statement remains:
 
-> HyRemote V1 uses an unauthenticated, unencrypted RFB correctness transport. It defaults to loopback and remote input off. Keep it behind an appropriate trusted access boundary; do not expose it directly to the public Internet.
+> HyRemote V1 authenticates the viewer when an authenticated security profile is configured (RFB VNC authentication) and does not encrypt the stream. It defaults to loopback with remote input off. Keep a listener behind an appropriate trusted access boundary; do not expose it directly to the public Internet.

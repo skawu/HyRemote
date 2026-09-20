@@ -21,7 +21,7 @@ Static `RemoteAccess` consumption is not a second V1 product personality. `BUILD
 
 ### Transport security
 
-The current bounded RFB correctness transport uses **SecurityType None**. It provides neither transport authentication nor transport encryption for direct public/untrusted-network exposure. Loopback is the safe default; remote input is opt-in.
+The bounded RFB correctness transport uses **SecurityType None** unless an authenticated profile is configured: `SecurityType None` provides no transport authentication and is refused beyond loopback, while a configured authenticated profile authenticates the viewer with **RFB VNC authentication** (security type 2). Neither provides transport encryption, so direct public/untrusted-network exposure remains unsupported. Loopback is the safe default; remote input is opt-in.
 
 See [`security.md`](security.md) for the implemented V1 security boundary. [`security-model.md`](security-model.md) is broader architecture/threat-model context and includes future authentication/encryption requirements that are not current product capabilities.
 

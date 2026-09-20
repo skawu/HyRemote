@@ -94,7 +94,7 @@ This is now the product baseline because it provides the required cross-platform
 
 This decision does **not** make RFB an application-facing API. `HyRemote::RemoteAccess`, QML and QPA remain transport-neutral at their public boundary, so a future accepted transport backend can replace or supplement the internal implementation without changing normal application integration.
 
-The current baseline uses **SecurityType None** and therefore provides no transport authentication or encryption. That limitation is product/security policy, not a reason to leak backend configuration into the public API.
+The current baseline uses **SecurityType None** unless an authenticated profile is configured. `Authenticated` offers only **RFB VNC authentication (security type 2)** and therefore authenticates the viewer but still does **not encrypt** the transport. `AuthenticatedEncrypted` remains unavailable until the later #143 TLS/VeNCrypt increment lands; no profile silently falls back to a weaker security type. This boundary is product/security policy, not a reason to leak backend configuration into the public API.
 
 ## Historical / future transport candidates
 

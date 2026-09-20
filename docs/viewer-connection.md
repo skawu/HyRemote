@@ -84,6 +84,6 @@ That cross-mode physical evidence envelope is tracked by #109 and is separate fr
 
 ## Security boundary
 
-The current RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. It is suitable for loopback/trusted test use, not direct untrusted-network exposure.
+The RFB correctness baseline uses **SecurityType None** unless an authenticated profile is configured: `SecurityType None` carries no transport authentication, and a configured profile uses **RFB VNC authentication** (security type 2). Neither provides transport encryption. It is suitable for loopback/trusted test use, or for a listener behind an appropriate access boundary, not direct untrusted-network exposure.
 
 Read [`security.md`](security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](security-model.md) is broader future threat-model context, not a claim that authentication/encryption already exists.

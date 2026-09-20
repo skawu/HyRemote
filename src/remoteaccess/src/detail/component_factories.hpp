@@ -12,6 +12,8 @@
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/transport.hpp"
 
+#include "transport/rfb_transport.hpp"
+
 class QObject;
 
 namespace HyRemote::detail {
@@ -31,8 +33,9 @@ struct TransportComponent
 };
 
 using TargetFactory = std::function<TargetComponents(QObject *target, bool remoteInputEnabled)>;
-using TransportFactory =
-    std::function<TransportComponent(const QHostAddress &listenAddress, quint16 port)>;
+using TransportFactory = std::function<TransportComponent(const QHostAddress &listenAddress,
+                                                          quint16 port,
+                                                          const RfbSecurityConfig &security)>;
 
 // Internal composition seam. #6/#28/#29/#27 provide the production factories; the public facade
 // never exposes them. Tests replace them deterministically to verify product lifecycle semantics
@@ -43,7 +46,8 @@ HYREMOTE_REMOTEACCESS_EXPORT TargetComponents createTargetComponents(QObject *ta
                                                                       bool remoteInputEnabled);
 HYREMOTE_REMOTEACCESS_EXPORT TransportComponent createDefaultTransport(
     const QHostAddress &listenAddress,
-    quint16 port);
+    quint16 port,
+    const RfbSecurityConfig &security);
 
 HYREMOTE_REMOTEACCESS_EXPORT void setTargetFactory(TargetFactory factory);
 HYREMOTE_REMOTEACCESS_EXPORT void setTransportFactory(TransportFactory factory);

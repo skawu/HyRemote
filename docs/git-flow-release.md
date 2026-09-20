@@ -187,7 +187,7 @@ For V1.0.0.0, at minimum verify:
 - Widgets + Quick paths;
 - remote view/input and reconnect;
 - bounded backpressure/lifecycle/protocol/input behavior;
-- safe loopback/input defaults and current SecurityType None limitation;
+- safe loopback/input defaults and the current security boundary (SecurityType None unless an authenticated profile provides RFB VNC authentication; no encryption);
 - local + remote coexistence where claimed;
 - clean installed SDK and source consumer;
 - one deployment-helper contract;

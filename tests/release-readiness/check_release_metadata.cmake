@@ -119,9 +119,20 @@ foreach(milestone_version
         "1.0.0.0")
     set(release_note_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v${milestone_version}.md")
     file(READ "${release_note_path}" milestone_notes)
+    # The security-boundary statement must describe what that milestone actually contains. The three pre-release
+    # milestones shipped the unauthenticated correctness transport and their notes are the record of what they did,
+    # so they keep saying so. v1.0.0.0 is the milestone that carries the RFB VNC authentication capability, so its
+    # note has to state that authentication and must not claim encryption - TLS is a separate later step (#143).
+    # Pinning a phrase that no longer describes the release would be exactly the "transient implementation
+    # limitation hard-coded as a permanent release invariant" that docs/release-candidate-checklist.md forbids.
+    if(milestone_version VERSION_LESS "1.0.0.0")
+        set(required_security_phrases "SecurityType None")
+    else()
+        set(required_security_phrases "VNC authentication" "not encrypted")
+    endif()
     foreach(required_phrase
             "v${milestone_version}"
-            "SecurityType None"
+            ${required_security_phrases}
             "release/v${milestone_version}")
         string(FIND "${milestone_notes}" "${required_phrase}" found)
         if(found EQUAL -1)
