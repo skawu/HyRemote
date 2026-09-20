@@ -38,3 +38,13 @@ target_link_libraries(hyremote-runtime-automatic-composite-input-test
 add_test(NAME hyremote-runtime-automatic-composite-input-test
          COMMAND hyremote-runtime-automatic-composite-input-test)
 set_tests_properties(hyremote-runtime-automatic-composite-input-test PROPERTIES TIMEOUT 15)
+
+# Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
+# available in the current all-frontends CI profile without introducing another product target.
+add_test(
+    NAME hyremote-build-authority-selftest
+    COMMAND "${CMAKE_COMMAND}"
+        -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
+)
+set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
