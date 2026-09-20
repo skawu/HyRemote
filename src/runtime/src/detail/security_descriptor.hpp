@@ -1,6 +1,6 @@
 #pragma once
 
-#include <HyRemote/RemoteAccess.h>
+#include "access_types.hpp"
 
 #include <QByteArray>
 #include <QString>
@@ -9,9 +9,9 @@
 
 namespace HyRemote::detail {
 
-// Private material loaded from the V1 security descriptor. Secret bytes never cross the public
-// RemoteAccess/QML/QPA surfaces. The object is move-only so password storage is not accidentally
-// shared/copied, and destruction overwrites the in-memory password buffer before release.
+// Private material loaded from the security descriptor. Secret bytes never cross integration
+// frontend surfaces. The object is move-only so password storage is not accidentally shared/copied,
+// and destruction overwrites the in-memory password buffer before release.
 struct SecurityDescriptor
 {
     QString credentialId;
@@ -29,11 +29,10 @@ struct SecurityDescriptor
     void clearSecret() noexcept;
 };
 
-// Loads and validates the descriptor and every material file required by the selected product
-// profile. The parser is deliberately strict and bounded. On failure, `error` contains only
-// non-secret configuration diagnostics; password/private-key contents are never included.
+// Loads and validates the descriptor and every material file required by the selected internal
+// runtime profile. Public/front-end profile enums are mapped before entering this layer.
 std::optional<SecurityDescriptor> loadSecurityDescriptor(const QString &descriptorFile,
-                                                         RemoteSecurityProfile profile,
+                                                         Runtime::SecurityProfile profile,
                                                          QString &error);
 
 }  // namespace HyRemote::detail
