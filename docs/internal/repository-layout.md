@@ -15,7 +15,7 @@ HyRemote/
 │                            # product-E2E suites and the release-readiness gates
 ├─ examples/                 # user-facing usage examples E1-E6, including examples that combine HyRemote
 │                            # with third-party open-source applications
-├─ research/                 # non-product spikes/architecture evidence; opt-in only
+├─ research/                 # non-product architecture evidence; never part of a build
 ├─ assets/
 │  └─ branding/              # repository/product branding assets; never part of the build graph
 ├─ cmake/                    # package, deployment and build-system modules

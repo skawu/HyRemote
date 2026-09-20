@@ -109,7 +109,7 @@ Default product shape:
 - `HyRemote::RemoteAccess`: ON, shared product facade;
 - Widgets/Quick adapters: ON when the matching Qt modules exist;
 - bounded C++ RFB correctness transport: ON;
-- tests/examples/research spikes: OFF;
+- tests/examples: OFF, and `research/` is never built;
 - QML API: opt-in;
 - Transparent QPA: opt-in and exact-private-ABI qualified.
 

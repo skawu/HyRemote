@@ -12,7 +12,7 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network)
 
 # Do not preconfigure HyRemote's developer-only switches here. This fixture intentionally proves
 # that a normal add_subdirectory() consumer gets the product facade without inheriting HyRemote's
-# own tests/examples/spikes into the application build.
+# own tests or examples into the application build.
 add_subdirectory("${HYREMOTE_SOURCE_DIR}" hyremote EXCLUDE_FROM_ALL)
 
 if(HYREMOTE_BUILD_TESTS)
@@ -20,9 +20,6 @@ if(HYREMOTE_BUILD_TESTS)
 endif()
 if(HYREMOTE_BUILD_EXAMPLES)
     message(FATAL_ERROR "source consumer unexpectedly inherited HyRemote examples")
-endif()
-if(HYREMOTE_BUILD_SPIKES)
-    message(FATAL_ERROR "source consumer unexpectedly inherited HyRemote spike harnesses")
 endif()
 if(NOT TARGET HyRemote::RemoteAccess)
     message(FATAL_ERROR "source consumption must provide the HyRemote::RemoteAccess product target")

@@ -45,7 +45,6 @@ message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
 message(STATUS "  QPA Proxy:           ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Transport security:  ${HYREMOTE_WITH_TRANSPORT_SECURITY}")
-message(STATUS "  Build research:      ${HYREMOTE_BUILD_SPIKES}")
 
 # Repository layout is product-architecture aligned. Explicit binary directories deliberately retain
 # the historical build-tree layout so this source-tree refactor does not change deployment/test
@@ -190,11 +189,6 @@ if(HYREMOTE_BUILD_EXAMPLES)
         message(FATAL_ERROR
             "HYREMOTE_BUILD_EXAMPLES=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a supported Qt SDK")
     endif()
-endif()
-
-if(HYREMOTE_BUILD_SPIKES)
-    add_subdirectory(research/capture spikes/capture)
-    add_subdirectory(research/async-capture spikes/async-capture)
 endif()
 
 if(TARGET hyremote-remoteaccess)

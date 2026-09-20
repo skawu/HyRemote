@@ -25,7 +25,7 @@ Repository paths are architecture boundaries, not arbitrary folders. Follow [`do
 - `src/` contains QML/QPA integration payloads over the same runtime;
 - root `tests/` contains cross-module/consumer/release evidence;
 - module-private tests stay with their module;
-- `research/` contains opt-in non-product experiments/evidence;
+- `research/` contains non-product experiments/evidence; it is never part of a build;
 - `assets/` contains non-code assets.
 
 Do not recreate the historical root `core/`, `remoteaccess/`, `qml/`, `qpa/`, `spikes/` or `logo/` directories as compatibility copies.

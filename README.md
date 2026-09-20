@@ -118,7 +118,7 @@ The installed SDK does **not** expose `HyRemote::QpaPlatform` as an application 
 
 ## Build
 
-A plain source build is intentionally product-only: tests, examples and architecture research are not built unless explicitly requested.
+A plain source build is intentionally product-only: tests and examples are not built unless explicitly requested, and `research/` is never built at all.
 
 ```bash
 cmake -S . -B build -G Ninja \

@@ -82,9 +82,7 @@ foreach(required_token
         [=[add_subdirectory(src/core core)]=]
         [=[add_subdirectory(src/remoteaccess remoteaccess)]=]
         [=[add_subdirectory(src/qml/HyRemote qml/HyRemote)]=]
-        [=[add_subdirectory(src/qpa qpa)]=]
-        [=[add_subdirectory(research/capture spikes/capture)]=]
-        [=[add_subdirectory(research/async-capture spikes/async-capture)]=])
+        [=[add_subdirectory(src/qpa qpa)]=])
     require_token("${root_cmake}" "${required_token}"
                   "root build graph lost canonical-source / stable-binary mapping")
 endforeach()
@@ -94,11 +92,13 @@ require_token("${root_cmake}" "NAME hyremote-release-readiness-package-acquisiti
 require_token("${root_cmake}" "check_package_acquisition_isolation.cmake"
               "package-acquisition isolation gate lost its executable script")
 
-string(FIND "${root_cmake}" "if(HYREMOTE_BUILD_SPIKES)" research_guard)
-string(FIND "${root_cmake}" "add_subdirectory(research/capture spikes/capture)" research_path)
-if(research_guard EQUAL -1 OR research_path EQUAL -1 OR research_path LESS research_guard)
-    message(FATAL_ERROR "repository-layout: research sources escaped their explicit opt-in guard")
-endif()
+# `research/` is evidence, not a build input: once the capture spike harnesses were retired the root build stopped
+# including it, and the developer-only switch that used to gate them is gone with them. Neither may come back, or the
+# directory quietly becomes a second build graph again.
+forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
+             "retired spike harness switch returned to the root build")
+forbid_token("${root_cmake}" "add_subdirectory(research/"
+             "root build graph includes non-product research again")
 
 read_repo_file("src/qml/HyRemote/CMakeLists.txt" qml_cmake)
 require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"

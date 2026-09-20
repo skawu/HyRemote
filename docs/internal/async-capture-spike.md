@@ -2,10 +2,16 @@
 
 Status: **public asynchronous path evaluated; no lower-level path implemented**
 
+> **Retired.** The harness this document was produced with was removed from the mainline once its conclusions had been
+> frozen into the product: the public asynchronous path and its bounds are implemented in Quick capture
+> (`docs/quick-capture.md`), with ADR-0002 and ADR-0003 carrying the ownership, timestamp and backpressure rules. This
+> document stays as the record of what was measured and decided. The harness and its recorded evidence files are
+> retrievable from history: `git show 3e6e191:research/async-capture/README.md` (the removal commit's parent).
+
 Issue: [#16 [ARCH] Asynchronous GL/PBO capture path for Widgets and Quick targets](https://github.com/skawu/HyRemote/issues/16)
 
-This document records the evidence produced by the throwaway harness in
-[`research/async-capture/`](../research/async-capture/). It answers the questions of issue #16
+This document records the evidence produced by the throwaway harness that used to live in
+`research/async-capture/` (retired; see the notice above). It answers the questions of issue #16
 in the order the issue prescribes: the **public asynchronous path is evaluated first**,
 requirement by requirement, and lower-level mechanisms (GL/PBO, render-thread, RHI,
 version-specific adapters) are **not implemented** here. Section 6 states exactly which
@@ -607,8 +613,9 @@ capture", not "make the Quick path faster".
 
 ## 10. Evidence index and reproduction
 
-Evidence files live in
-[`research/async-capture/evidence/`](../research/async-capture/evidence/) and each report contains
+The evidence files were produced by that retired harness and are no longer in the working tree; retrieve any of them
+from the same historical commit (`3e6e191`), for example
+`git show 3e6e191:research/async-capture/evidence/host-windows-rhi-default-quick2d-all.json`. Each report contains
 the raw probe data (`composition.overlayPresence`, `fidelity[]`, `pipeline.*`,
 `pipeline.content.*`, `syncBaseline`, `failureModes[]`, `sceneInfo`).
 
@@ -645,31 +652,15 @@ no reader has to guess:
 | `consumer.frameAge*Ms` | completion-to-service wall-clock age inside the serial consumer |
 | `consumer.staleFrames*` | **request-sequence age** (`producedSoFar - frame index`): how many later requests had completed before this frame was serviced. Not visual content age |
 
-Build and run:
+Build and run (historical). The harness is retired, so these commands no longer work from a checkout; the harness
+documentation - including the full option list, the scene/mode names and the consumer-model flags - is retrievable
+from history:
 
 ```bash
-cmake -S research/async-capture -B build/async-spike -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH=<qt-install>
-cmake --build build/async-spike
-./build/async-spike/hyremote-async-spike --list
-./build/async-spike/hyremote-async-spike --scene quick2d --mode all --requests 60 --max-inflight 4 --json /tmp/quick2d.json
-./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 240 --max-inflight 8 --json /tmp/k8.json
-./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 240 --dry-run --interval-ms 32 --json /tmp/control.json
-# single serial 10 fps consumer, unbounded completed queue
-./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 60 --max-inflight 4 \
-    --consumer-service-ms 100 --json /tmp/consumer-unbounded.json
-# single serial 10 fps consumer, bounded queue of 2 with latest-frame-wins
-./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 240 --max-inflight 4 \
-    --consumer-service-ms 100 --completed-queue-capacity 2 --backpressure drop-oldest --json /tmp/consumer-dropoldest.json
-# same bound, but the producer is throttled instead of dropping
-./build/async-spike/hyremote-async-spike --scene quick2d --mode pipeline --requests 60 --max-inflight 4 \
-    --consumer-service-ms 100 --completed-queue-capacity 2 --backpressure producer-throttle --json /tmp/consumer-throttle.json
-ctest --test-dir build/async-spike --output-on-failure
+git show 3e6e191:research/async-capture/README.md        # option list, scenes, consumer model
+git show 3e6e191:research/async-capture/CMakeLists.txt   # the build entry those commands configured
+git log --diff-filter=D --name-only -- research/async-capture   # every file that was removed
 ```
-
-See [`research/async-capture/README.md`](../../research/async-capture/README.md) for the full option
-list.
 
 ## 11. Compatibility matrix rows
 

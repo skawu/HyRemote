@@ -46,19 +46,15 @@ forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `
 # layout migration. Keep this list intentionally narrow: docs/internal/repository-layout.md itself is allowed to
 # mention legacy build-directory names when explaining the migration, but reproduction/source links may
 # not silently regress to removed root-level directories.
-require_doc_token("docs/internal/capture-spike.md" "[`research/capture/`](../research/capture/)"
-                  "canonical capture research source path")
-require_doc_token("docs/internal/capture-spike.md" "cmake -S research/capture -B build/spike-capture"
-                  "canonical capture reproducer path")
-forbid_doc_token("docs/internal/capture-spike.md" "../spikes/capture/"
-                 "removed capture spike source path")
+require_doc_token("docs/internal/capture-spike.md" "**Retired.**"
+                  "retired capture harness status")
+forbid_doc_token("docs/internal/capture-spike.md" "cmake -S research/capture"
+                 "reproducer command for a removed capture harness")
 
-require_doc_token("docs/internal/async-capture-spike.md" "[`research/async-capture/`](../research/async-capture/)"
-                  "canonical async-capture research source path")
-require_doc_token("docs/internal/async-capture-spike.md" "cmake -S research/async-capture -B build/async-spike"
-                  "canonical async-capture reproducer path")
-forbid_doc_token("docs/internal/async-capture-spike.md" "../spikes/async-capture/"
-                 "removed async-capture spike source path")
+require_doc_token("docs/internal/async-capture-spike.md" "**Retired.**"
+                  "retired async-capture harness status")
+forbid_doc_token("docs/internal/async-capture-spike.md" "cmake -S research/async-capture"
+                 "reproducer command for a removed async-capture harness")
 
 require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
                   "`src/remoteaccess/src/widgets/widget_target.cpp`"

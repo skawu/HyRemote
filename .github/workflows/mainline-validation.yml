@@ -72,7 +72,6 @@ jobs:
             -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
             -DHYREMOTE_BUILD_TESTS=ON \
             -DHYREMOTE_BUILD_EXAMPLES=OFF \
-            -DHYREMOTE_BUILD_SPIKES=OFF
           cmake --build build-mainline --parallel
           xvfb-run -a ctest --test-dir build-mainline --output-on-failure
           LD_LIBRARY_PATH="$PWD/build-mainline/remoteaccess:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
@@ -92,7 +91,6 @@ jobs:
             -DCMAKE_PREFIX_PATH="%QT_PREFIX%" ^
             -DHYREMOTE_BUILD_TESTS=ON ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF ^
-            -DHYREMOTE_BUILD_SPIKES=OFF
           cmake --build build-mainline --parallel
           ctest --test-dir build-mainline --output-on-failure
           python src\remoteaccess\tests\rfb_product_fit.py build-mainline\remoteaccess\tests\hyremote-rfb-test-server.exe

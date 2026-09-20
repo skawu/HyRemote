@@ -189,7 +189,7 @@ add_executable(MyApp main.cpp)
 target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
 ```
 
-When HyRemote is included as a subproject, its own tests, examples and research spikes default to **OFF**
+When HyRemote is included as a subproject, its own tests and examples default to **OFF**, and nothing under `research/` is ever part of the build
 automatically; applications do not need to know or override those developer-only switches.
 `add_subdirectory(... EXCLUDE_FROM_ALL)` is supported: HyRemote's source-tree payloads remain internal build
 targets, the deployment helper adds only the local build dependencies needed to materialize the selected payload,

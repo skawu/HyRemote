@@ -147,7 +147,6 @@ string(CONCAT package_then_source "${common_prefix_setup}"
 "set(HYREMOTE_WITH_QPA_PROXY OFF CACHE BOOL \"\" FORCE)\n"
 "set(HYREMOTE_BUILD_TESTS OFF CACHE BOOL \"\" FORCE)\n"
 "set(HYREMOTE_BUILD_EXAMPLES OFF CACHE BOOL \"\" FORCE)\n"
-"set(HYREMOTE_BUILD_SPIKES OFF CACHE BOOL \"\" FORCE)\n"
 "add_subdirectory(\"${HYREMOTE_SOURCE_DIR}\" hyremote-source EXCLUDE_FROM_ALL)\n")
 run_configure("installed-then-source" "${package_then_source}" FALSE "add_subdirectory(HyRemote)")
 

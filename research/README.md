@@ -1,40 +1,43 @@
 # `research/` — non-product research evidence
 
-## What this directory is for
+## What this directory is
 
-`research/` holds the **spikes** that produced architecture evidence, plus the harnesses that made the measurements
-reproducible. It is evidence for a decision, not product code:
+`research/` holds **non-product architecture evidence**: what was measured, and what was decided from it. Nothing here
+is built, installed, packaged or covered by the V1 API stability contract.
 
-- nothing here is part of the default build (`HYREMOTE_BUILD_SPIKES` is `OFF` by default, `cmake/HyRemoteProjectOptions.cmake`);
-- **no CI workflow builds or runs any of it** (every workflow passes `-DHYREMOTE_BUILD_SPIKES=OFF` explicitly);
-- no product or integration module may reference it - `tests/release-readiness/check_repository_layout.cmake` forbids
-  `src/core`, `src/remoteaccess`, `src/qml/HyRemote` and `src/qpa` from doing so;
-- nothing here is installed, packaged or covered by the V1 API stability contract
-  (`docs/release-package-manifest.md`).
+- **Nothing under `research/` is part of any build graph.** The root build does not include it, and the
+  developer-only spike switch that used to exist was removed with the harnesses it gated
+  (`tests/release-readiness/check_repository_layout.cmake` now fails the build if either comes back).
+- **No CI workflow builds or runs anything here.**
+- **No product or integration module may reference it** - the layout gate forbids `src/core`, `src/remoteaccess`,
+  `src/qml/HyRemote` and `src/qpa` from doing so.
+- The authoritative statement of its role is `docs/internal/repository-layout.md`.
 
-The authoritative statement of its role is `docs/repository-layout.md` ("`research/` contains spikes and historical
-architecture evidence... not a V1 release dependency").
+## What is left here
 
-## What is in here, and where each decision landed
+| Directory | What it is | Decision status |
+| --- | --- | --- |
+| `vnc-transport-rust-ffi/` | The Rust FFI transport evaluation (#34/#38): a shim exercising `rustvncserver` through HyRemote's own opaque C ABI, plus an interoperability probe. It has no root-build entry and no CI workflow - the two workflows it once had were retired. | **Evaluated and not adopted for V1**; superseded by the bounded C++ RFB transport. Recorded in `docs/internal/x86-vnc-transport-evaluation.md` and `docs/internal/neatvnc-evaluation.md`. |
 
-| Spike | Question it answered | Decision, recorded in | Status |
-| --- | --- | --- | --- |
-| `capture/` (SPIKE-01, #3) | Which public Qt capture API each target family can actually use, and what each one costs | `docs/capture-spike.md`; frozen into `docs/adr/0001-core-boundaries.md`, `docs/adr/0002-remoteframe-lifetime-timestamps.md`, `docs/adr/0003-threading-backpressure.md`; shipped as `docs/widgets-capture.md` and `docs/quick-capture.md` | **decided and implemented** (Widgets: `QWidget::render()` into caller-owned storage; Quick: `contentItem()->grabToImage()`) |
-| `async-capture/` (SPIKE-02, #16) | Whether the public asynchronous path is sufficient before reaching for lower-level GL/PBO/RHI mechanisms | `docs/async-capture-spike.md`; frozen into ADR-0002/0003 and `docs/quick-capture.md` | **decided** (public path sufficient; bounded in-flight, drop-oldest, latest-frame-wins) |
-| `vnc-transport-rust-ffi/` (#34/#38) | Whether `rustvncserver` could be consumed through HyRemote's own opaque C ABI | `docs/x86-vnc-transport-evaluation.md`, `docs/neatvnc-evaluation.md` | **not adopted for V1** (superseded by the bounded C++ RFB transport); retained as a historical record only |
+## What was removed, and why
 
-## Is it required?
+The two capture harnesses (`research/capture/` from SPIKE-01 and `research/async-capture/` from SPIKE-02) were
+**retired** once the capture architecture decision they produced had been implemented in the product:
 
-Not by the product, and not by the release. The evidence above is why: it is unbuilt, unreferenced by product code,
-absent from CI and absent from the package, while every conclusion it produced is already written down in `docs/` and
-the ADRs. The two capture spikes describe themselves as *throwaway, non-production code* that was *expected to be
-deleted once the capture architecture decision is implemented for real* - and that decision has been implemented.
+- their own READMEs described them as throwaway, non-production code that was *expected to be deleted once the capture
+  architecture decision is implemented for real*;
+- the decision is implemented: Widgets capture (`docs/widgets-capture.md`) and Quick capture
+  (`docs/quick-capture.md`), with the ownership/timestamp/backpressure rules frozen in ADR-0001, ADR-0002 and ADR-0003;
+- every conclusion they produced is already recorded in `docs/internal/capture-spike.md` and
+  `docs/internal/async-capture-spike.md`.
 
-It is kept because it is the **audit trail**: a reviewer asking "on what measurement was `QWidget::render()` chosen" or
-"why was the Rust transport dropped" can see the harness that produced the numbers and re-run it. Deleting it is
-permissible, but it is not a local deletion: `CMakeLists.txt` (`:195-198`), `cmake/HyRemoteProjectOptions.cmake`,
-`tests/release-readiness/check_repository_layout.cmake`, `check_release_documentation_layout.cmake`,
-`check_consumer_simplicity.cmake`, `check_package_acquisition_isolation.cmake`, `tests/consumer-source/CMakeLists.txt`
-and the seven workflows that pass `HYREMOTE_BUILD_SPIKES=OFF` all name it, and several `docs/` pages link to the
-source paths. The trade is therefore "lighter tree" against "reproducible evidence for a past decision", and that is a
-product-owner call rather than a cleanup.
+They were removed in the commit whose parent is **`3e6e191`**. The harness source is still in history and can be
+recovered without a branch or a tag:
+
+```text
+git show 3e6e191:research/capture/README.md
+git log --diff-filter=D --name-only -- research/capture     # the removal commit for each file
+```
+
+Keeping the repository free of a second, never-built build graph is the point: `research/` is evidence a reviewer can
+read, not a tree that has to keep compiling.

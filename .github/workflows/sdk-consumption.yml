@@ -76,7 +76,6 @@ jobs:
             -DHYREMOTE_BUILD_CORE=ON \
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON \
             -DHYREMOTE_BUILD_TESTS=OFF \
-            -DHYREMOTE_BUILD_SPIKES=OFF \
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build-sdk --parallel
           cmake --install build-sdk
@@ -183,7 +182,6 @@ jobs:
             -DHYREMOTE_BUILD_CORE=ON ^
             -DHYREMOTE_BUILD_REMOTE_ACCESS=ON ^
             -DHYREMOTE_BUILD_TESTS=OFF ^
-            -DHYREMOTE_BUILD_SPIKES=OFF ^
             -DHYREMOTE_BUILD_EXAMPLES=OFF
           cmake --build build-sdk --parallel
           cmake --install build-sdk

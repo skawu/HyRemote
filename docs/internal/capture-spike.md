@@ -2,10 +2,17 @@
 
 Status: **host evidence collected (Round-2 corrected); embedded validation outstanding**
 
+> **Retired.** The harness this document was produced with was removed from the mainline once the capture architecture
+> decision it recommends had been implemented in the product: Widgets capture (`docs/widgets-capture.md`) and Quick
+> capture (`docs/quick-capture.md`), with the ownership, timestamp and backpressure rules frozen in ADR-0001, ADR-0002
+> and ADR-0003. This document stays as the record of what was measured and decided. The harness and its recorded
+> evidence files are retrievable from history:
+> `git show 3e6e191:research/capture/README.md` (the removal commit's parent).
+
 Issue: [#3 SPIKE-01 Validate Qt capture paths across Widgets, Quick and EGLFS](https://github.com/skawu/HyRemote/issues/3)
 
-This document records the evidence produced by the throwaway harness in
-[`research/capture/`](../research/capture/). It answers the architecture questions of
+This document records the evidence produced by the throwaway harness that used to live in
+`research/capture/` (retired; see the notice above). It answers the architecture questions of
 issue #3 and recommends the v0.1 capture path for each target family. It does **not**
 freeze any `RemoteFrame` ABI and does not define a public HyRemote API.
 
@@ -700,8 +707,10 @@ tested and remains an open architectural question for a dedicated issue.
 
 ## 13. Evidence index and reproduction
 
-Evidence files (machine-readable, one per invocation) live in
-[`research/capture/evidence/`](../research/capture/evidence/):
+The machine-readable evidence files (one per invocation) were produced by that retired harness. They are no longer in
+the working tree; retrieve any of them from the same historical commit (`3e6e191`), for example
+`git show 3e6e191:research/capture/evidence/host-windows-rhi-default-widgets-and-gl-widgets.json`. The index below is
+kept so a reader can tell which file backs which table:
 
 | File | Content |
 |---|---|
@@ -724,23 +733,15 @@ Every report contains the raw probe data behind the tables: `paths[].storageProb
 `excludedPaintEvents`, and `damageMappingControls[]` with the expected and observed
 rectangles.
 
-Build and run:
+Build and run (historical). The harness is retired, so these commands no longer work from a checkout; the harness
+documentation - including the full option list, the sample names and the platform notes - and the build entry it
+described are retrievable from history:
 
 ```bash
-cmake -S research/capture -B build/spike-capture -G Ninja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH=<qt-install>
-cmake --build build/spike-capture
-./build/spike-capture/hyremote-capture-spike --list
-./build/spike-capture/hyremote-capture-spike \
-      --sample widgets --frames 150 --warmup 20 --json /tmp/widgets.json
-./build/spike-capture/hyremote-capture-spike \
-      --sample widgets --frames 150 --warmup 20 --no-sink --json /tmp/widgets-storage-control.json
-ctest --test-dir build/spike-capture --output-on-failure
+git show 3e6e191:research/capture/README.md        # option list, samples, platform notes
+git show 3e6e191:research/capture/CMakeLists.txt   # the build entry those commands configured
+git log --diff-filter=D --name-only -- research/capture   # every file that was removed
 ```
-
-See [`research/capture/README.md`](../../research/capture/README.md) for the full option list
-and platform notes.
 
 ## 14. Compatibility matrix
 

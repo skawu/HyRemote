@@ -24,7 +24,6 @@ set(required_option_tokens
     # is there. Pinning the default and the three accepted settings keeps that order from drifting.
     [=[set(HYREMOTE_OPENSSL_PROVIDER "AUTO" CACHE STRING]=]
     [=[set_property(CACHE HYREMOTE_OPENSSL_PROVIDER PROPERTY STRINGS AUTO SYSTEM BUNDLED)]=]
-    [=[option(HYREMOTE_BUILD_SPIKES "Build throwaway architecture spike harnesses (non-production)" OFF)]=]
 )
 foreach(required_token IN LISTS required_option_tokens)
     string(FIND "${options_text}" "${required_token}" found)
@@ -97,7 +96,6 @@ file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-source/CMakeLists.txt" source_c
 foreach(forbidden_token
         "set(HYREMOTE_BUILD_TESTS"
         "set(HYREMOTE_BUILD_EXAMPLES"
-        "set(HYREMOTE_BUILD_SPIKES"
         "set(HYREMOTE_BUILD_CORE"
         "set(HYREMOTE_BUILD_REMOTE_ACCESS"
         "set(HYREMOTE_BUILD_WIDGETS_ADAPTER"
