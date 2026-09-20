@@ -1,3 +1,6 @@
+get_filename_component(_hyremote_runtime_src
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/src" ABSOLUTE)
+
 add_executable(hyremote-remoteaccess-test
     test_remote_access.cpp
 )
@@ -10,14 +13,14 @@ target_link_libraries(hyremote-remoteaccess-test
 
 target_include_directories(hyremote-remoteaccess-test
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${_hyremote_runtime_src}
 )
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
 
 add_executable(hyremote-security-descriptor-test
     test_security_descriptor.cpp
-    ../src/detail/security_descriptor.cpp
+    ${_hyremote_runtime_src}/detail/security_descriptor.cpp
 )
 target_link_libraries(hyremote-security-descriptor-test
     PRIVATE
@@ -27,7 +30,7 @@ target_link_libraries(hyremote-security-descriptor-test
 )
 target_include_directories(hyremote-security-descriptor-test
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${_hyremote_runtime_src}
 )
 add_test(NAME hyremote-security-descriptor-test COMMAND hyremote-security-descriptor-test)
 set_tests_properties(hyremote-security-descriptor-test PROPERTIES TIMEOUT 15)
@@ -43,7 +46,7 @@ target_link_libraries(hyremote-remoteaccess-error-ack-test
 )
 target_include_directories(hyremote-remoteaccess-error-ack-test
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${_hyremote_runtime_src}
 )
 add_test(NAME hyremote-remoteaccess-error-ack-test COMMAND hyremote-remoteaccess-error-ack-test)
 set_tests_properties(hyremote-remoteaccess-error-ack-test PROPERTIES TIMEOUT 15)
@@ -59,7 +62,7 @@ target_link_libraries(hyremote-remoteaccess-target-loss-test
 )
 target_include_directories(hyremote-remoteaccess-target-loss-test
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${_hyremote_runtime_src}
 )
 add_test(NAME hyremote-remoteaccess-target-loss-test COMMAND hyremote-remoteaccess-target-loss-test)
 set_tests_properties(hyremote-remoteaccess-target-loss-test PROPERTIES TIMEOUT 15)
@@ -75,7 +78,7 @@ target_link_libraries(hyremote-target-component-provider-test
 )
 target_include_directories(hyremote-target-component-provider-test
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${_hyremote_runtime_src}
 )
 add_test(NAME hyremote-target-component-provider-test COMMAND hyremote-target-component-provider-test)
 
@@ -88,7 +91,7 @@ target_link_libraries(hyremote-input-mailbox-admission-test
 )
 target_include_directories(hyremote-input-mailbox-admission-test
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${_hyremote_runtime_src}
 )
 add_test(NAME hyremote-input-mailbox-admission-test COMMAND hyremote-input-mailbox-admission-test)
 set_tests_properties(hyremote-input-mailbox-admission-test PROPERTIES TIMEOUT 15)
@@ -106,7 +109,7 @@ if(HYREMOTE_WITH_VNC)
     if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
         add_executable(hyremote-vnc-auth-test
             test_vnc_auth.cpp
-            ../src/transport/vnc_auth.cpp
+            ${_hyremote_runtime_src}/transport/vnc_auth.cpp
         )
         target_link_libraries(hyremote-vnc-auth-test
             PRIVATE
@@ -116,7 +119,7 @@ if(HYREMOTE_WITH_VNC)
         )
         target_include_directories(hyremote-vnc-auth-test
             PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+                ${_hyremote_runtime_src}
         )
         add_test(NAME hyremote-vnc-auth-test COMMAND hyremote-vnc-auth-test)
         set_tests_properties(hyremote-vnc-auth-test PROPERTIES TIMEOUT 15)
@@ -128,7 +131,7 @@ if(HYREMOTE_WITH_VNC)
     if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
         add_executable(hyremote-rfb-vnc-auth-handshake-test
             test_rfb_vnc_auth_handshake.cpp
-            ../src/transport/vnc_auth.cpp
+            ${_hyremote_runtime_src}/transport/vnc_auth.cpp
         )
         target_link_libraries(hyremote-rfb-vnc-auth-handshake-test
             PRIVATE
@@ -140,7 +143,7 @@ if(HYREMOTE_WITH_VNC)
         )
         target_include_directories(hyremote-rfb-vnc-auth-handshake-test
             PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+                ${_hyremote_runtime_src}
         )
         add_test(NAME hyremote-rfb-vnc-auth-handshake-test
                  COMMAND hyremote-rfb-vnc-auth-handshake-test)
@@ -161,7 +164,7 @@ if(HYREMOTE_WITH_VNC)
     )
     target_include_directories(hyremote-rfb-test-server
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
 
     # Deterministic transport-level regression for simultaneous viewers sharing one Qt target.
@@ -178,7 +181,7 @@ if(HYREMOTE_WITH_VNC)
     )
     target_include_directories(hyremote-rfb-multi-client-input-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-rfb-multi-client-input-test COMMAND hyremote-rfb-multi-client-input-test)
     set_tests_properties(hyremote-rfb-multi-client-input-test PROPERTIES TIMEOUT 15)
@@ -196,7 +199,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     )
     target_include_directories(hyremote-widgets-capture-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-widgets-capture-test COMMAND hyremote-widgets-capture-test)
     set_tests_properties(hyremote-widgets-capture-test PROPERTIES
@@ -223,7 +226,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     )
     target_include_directories(hyremote-widgets-input-backpressure-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-widgets-input-backpressure-test COMMAND hyremote-widgets-input-backpressure-test)
     set_tests_properties(hyremote-widgets-input-backpressure-test PROPERTIES
@@ -243,7 +246,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     )
     target_include_directories(hyremote-widgets-input-routing-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-widgets-input-routing-test COMMAND hyremote-widgets-input-routing-test)
     set_tests_properties(hyremote-widgets-input-routing-test PROPERTIES
@@ -266,7 +269,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         )
         target_include_directories(hyremote-listener-address-matrix-test
             PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+                ${_hyremote_runtime_src}
         )
         add_test(NAME hyremote-listener-address-matrix-test COMMAND hyremote-listener-address-matrix-test)
         set_tests_properties(hyremote-listener-address-matrix-test PROPERTIES
@@ -291,7 +294,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         )
         target_include_directories(hyremote-rfb-widget-disconnect-backpressure-test
             PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}/../src
+                ${_hyremote_runtime_src}
         )
         add_test(NAME hyremote-rfb-widget-disconnect-backpressure-test
                  COMMAND hyremote-rfb-widget-disconnect-backpressure-test)
@@ -314,7 +317,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     )
     target_include_directories(hyremote-quick-capture-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-quick-capture-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
@@ -340,7 +343,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     )
     target_include_directories(hyremote-quick-input-routing-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-quick-input-routing-test COMMAND hyremote-quick-input-routing-test)
     set_tests_properties(hyremote-quick-input-routing-test PROPERTIES
@@ -358,10 +361,12 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     )
     target_include_directories(hyremote-quick-input-backpressure-test
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../src
+            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-quick-input-backpressure-test COMMAND hyremote-quick-input-backpressure-test)
     set_tests_properties(hyremote-quick-input-backpressure-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
 endif()
+
+unset(_hyremote_runtime_src)
