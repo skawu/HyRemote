@@ -75,7 +75,7 @@ jobs:
           cmake --build build-mainline --parallel
           xvfb-run -a ctest --test-dir build-mainline --output-on-failure
           LD_LIBRARY_PATH="$PWD/build-mainline/remoteaccess:$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" \
-            python src/remoteaccess/tests/rfb_product_fit.py \
+            python src/embedded/tests/rfb_product_fit.py \
               build-mainline/remoteaccess/tests/hyremote-rfb-test-server
 
       - name: Configure build test and product-fit — Windows / MSVC x64

@@ -6,7 +6,7 @@ on:
       - 'CMakeLists.txt'
       - 'cmake/**'
       - 'src/core/**'
-      - 'src/remoteaccess/**'
+      - 'src/embedded/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/remoteaccess-facade.yml'
   workflow_dispatch:

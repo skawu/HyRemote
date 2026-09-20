@@ -260,9 +260,9 @@ The canonical repository layout mirrors these responsibilities:
 
 ```text
 src/core/                 internal Core
-src/remoteaccess/         one shared public C++ runtime/facade
-src/qml/         declarative payload
-src/qpa/         exact-Qt Transparent QPA payload
+src/embedded/         one shared public C++ runtime/facade
+src/declarative/         declarative payload
+src/transparent/         exact-Qt Transparent QPA payload
 tests/                    cross-module/consumer/release evidence
 examples/                 product examples
 assets/logo/          non-build branding assets

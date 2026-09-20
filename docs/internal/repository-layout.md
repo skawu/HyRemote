@@ -18,18 +18,18 @@ HyRemote/
 ├─ SECURITY.md                   # security policy and the current product security statement
 ├─ NOTICE.md / LICENSE           # third-party notices and license terms
 │
-├─ src/                          # SHIPPING TREE - everything built and delivered, one directory per deliverable
-│  ├─ core/                      #   internal static library; NOT installed and NOT an application link target
+├─ src/                          # SHIPPING TREE - named for what it delivers: a base plus the three access modes
+│  ├─ core/                      #   BASE: internal static library; not installed, not linkable by a payload
 │  │  ├─ include/hyremote/       #     internal headers: Session, frame, storage, normalized input, capabilities
 │  │  ├─ src/                    #     implementation (session/frame/storage/input/types/capabilities + detail/)
 │  │  └─ tests/                  #     colocated unit tests + the Core dependency guard
-│  ├─ remoteaccess/              #   the ONE shared runtime: HyRemote::RemoteAccess and its Qt target adapters
-│  │  ├─ include/                #     the facade's single public header
+│  ├─ embedded/                  #   ACCESS MODE 1 - Embedded C++: the shared runtime and its public facade
+│  │  ├─ include/                #     the one public API header (HyRemote::RemoteAccess)
 │  │  ├─ src/                    #     facade implementation: detail/, transport/, widgets/, quick/
 │  │  └─ tests/                  #     colocated unit/integration tests for the facade
-│  ├─ qml/HyRemote/              #   Declarative QML payload -> `import HyRemote` (installed into the app)
+│  ├─ declarative/               #   ACCESS MODE 2 - Declarative QML: provides `import HyRemote`
 │  │  └─ tests/                  #     QML module tests + the deploy-helper fixture
-│  └─ qpa/                       #   Transparent QPA payload -> `qhyremote` (Qt platform MODULE, not a link target)
+│  └─ transparent/               #   ACCESS MODE 3 - Transparent QPA: `qhyremote`, Qt 6.8.3-qualified
 │     └─ tests/                  #     QPA smoke / native-semantics / interception / relocation tests
 │
 ├─ tests/                        # suites that cross a module boundary or validate the delivered product
@@ -82,9 +82,9 @@ either behind it or beside it.
 
 | Delivered artifact | Directory | What the user gets |
 | --- | --- | --- |
-| Shared runtime | `src/remoteaccess` (+ `src/core` composed statically behind it) | `HyRemote::RemoteAccess`, one C++ library, no backend types in the API |
-| Declarative payload | `src/qml/HyRemote` | `import HyRemote` for QML applications |
-| Transparent payload | `src/qpa` | `qhyremote`, a Qt platform plugin that proxies an unmodified application |
+| Shared runtime | `src/embedded` (+ `src/core` composed statically behind it) | `HyRemote::RemoteAccess`, one C++ library, no backend types in the API |
+| Declarative payload | `src/declarative` | `import HyRemote` for QML applications |
+| Transparent payload | `src/transparent` | `qhyremote`, a Qt platform plugin that proxies an unmodified application |
 | Nothing | `src/core` | internal only: not installed, not linkable, no stability promise |
 
 **Technical architecture - build graph, dependency direction, artifacts.** The root `CMakeLists.txt` maps each source
@@ -110,7 +110,7 @@ because they have different audiences, different lifetimes and different review 
 
 | New thing | Placement | Why |
 | --- | --- | --- |
-| A transport, capture implementation or platform backend of the product | under the module that owns it (`src/remoteaccess/src/<area>/`) | it is implementation, not a new deliverable |
+| A transport, capture implementation or platform backend of the product | under the module that owns it (`src/embedded/src/<area>/`) | it is implementation, not a new deliverable |
 | A new payload installed into a host application | `src/<payload>/` + an explicit `add_subdirectory(<source> <binary>)` | siblings of the existing payloads; the binary directory is part of the contract |
 | A new integration payload generation (for example another Qt line) | `src/<payload>-<qualifier>/`, never by widening the qualified payload | each payload stays qualified against exactly one line |
 | A user-facing guide | `docs/guide/**` (Chinese primary) + the mirror in `docs/en/guide/**`, same relative path | the user zone is bilingual, one document per reader intent |
@@ -145,10 +145,10 @@ The release-readiness repository-layout gate enforces the physical layout and mo
 `src/` is the **shipping tree**: everything below it is built and delivered, one directory per deliverable, and nothing that is not shipped belongs here.
 
 - `src/core` remains an internal STATIC composition target and is not an installed application SDK target.
-- `src/remoteaccess` owns the single shared `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` runtime and its Widgets/Quick target adapters.
-- `src/qml/HyRemote` is the Declarative QML payload: it provides `import HyRemote`, it is installed into the consuming application's QML import tree, and it is not a second C++ product runtime.
-- `src/qpa` is the Transparent QPA payload: it provides `qhyremote`, it is a platform MODULE installed into the application's Qt plugin tree, and it is not an application link target.
-- A new transport, capture implementation, or target adapter that is part of the normal product belongs below the product module that owns it (`src/remoteaccess` today), not at repository root.
+- `src/embedded` owns the single shared `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` runtime and its Widgets/Quick target adapters.
+- `src/declarative` is the Declarative QML payload: it provides `import HyRemote`, it is installed into the consuming application's QML import tree, and it is not a second C++ product runtime.
+- `src/transparent` is the Transparent QPA payload: it provides `qhyremote`, it is a platform MODULE installed into the application's Qt plugin tree, and it is not an application link target.
+- A new transport, capture implementation, or target adapter that is part of the normal product belongs below the product module that owns it (`src/embedded` today), not at repository root.
 - A new payload that is delivered into a host application is a sibling deliverable under `src/`, registered with an explicit `add_subdirectory(<source> <stable-binary-dir>)`.
 
 Payloads may depend on the product runtime. The shared runtime and Core must never depend on a payload - the direction the layout gate enforces.
@@ -157,8 +157,8 @@ Payloads may depend on the product runtime. The shared runtime and Core must nev
 
 `src/` contains application-integration payloads that reuse the same shared runtime.
 
-- `src/qml/HyRemote` provides `import HyRemote`; it is not a second C++ product runtime.
-- `src/qpa` provides `qhyremote`; it is a platform MODULE and is not an application link target.
+- `src/declarative` provides `import HyRemote`; it is not a second C++ product runtime.
+- `src/transparent` provides `qhyremote`; it is a platform MODULE and is not an application link target.
 
 Integration payloads may depend on the product runtime. Product Core must not depend on an integration payload.
 
@@ -167,7 +167,7 @@ Integration payloads may depend on the product runtime. Product Core must not de
 `tests/` holds unit tests and integration test cases.
 
 - Root `tests/` carries the suites that cross a module boundary or validate the repository as a delivered product: clean consumers, installed/source SDK tests, product E2E and the release-readiness gates.
-- Unit tests that need private implementation details remain colocated under the module they qualify, for example `src/remoteaccess/tests` and `src/qpa/tests`. They are not installed.
+- Unit tests that need private implementation details remain colocated under the module they qualify, for example `src/embedded/tests` and `src/transparent/tests`. They are not installed.
 - Recorded review or acceptance **evidence** is not a test case and does not belong here; it is documentation and lives under `docs/acceptance/`.
 
 ### `examples/`
@@ -199,9 +199,9 @@ The source layout was normalized without intentionally changing established buil
 
 ```cmake
 add_subdirectory(src/core core)
-add_subdirectory(src/remoteaccess remoteaccess)
-add_subdirectory(src/qml/HyRemote qml/HyRemote)
-add_subdirectory(src/qpa qpa)
+add_subdirectory(src/embedded remoteaccess)
+add_subdirectory(src/declarative qml/HyRemote)
+add_subdirectory(src/transparent qpa)
 ```
 
 This keeps existing CI/deployment artifact locations such as `build/remoteaccess`, `build/qml/HyRemote` and `build/plugins/platforms` stable while making repository ownership clear.
@@ -213,7 +213,7 @@ top-level directory is a structural decision carrying the same authority as a mi
 Naming rules for anything added here are in [`naming-conventions.md`](naming-conventions.md).
 
 - **`src/` grows by product module.** A new transport, capture implementation, target adapter or platform
-  backend that is part of the normal product belongs below the product module that owns it (`src/remoteaccess`
+  backend that is part of the normal product belongs below the product module that owns it (`src/embedded`
   today), never at the repository root. A future module that is not an adapter of the shared runtime is added as
   `src/<module>/` with its own `add_subdirectory(<source> <stable-binary-dir>)` mapping, and Core stays Qt-free
   and platform-free.
@@ -225,7 +225,7 @@ Naming rules for anything added here are in [`naming-conventions.md`](naming-con
   payload never relocates an existing artifact.
 - **Version-qualified payloads.** The Transparent QPA payload is coupled to the exact Qt private ABI it was
   qualified against (Qt 6.8.3 for V1). A future Qt LTS line is served by a new payload directory named for that
-  line (`src/qpa-<qt-line>/`), not by widening the existing one: `src/qpa` keeps its path,
+  line (`src/transparent-<qt-line>/`), not by widening the existing one: `src/transparent` keeps its path,
   target and artifact names, and each payload stays qualified against exactly one Qt line.
 - **`tests/` grows by test scope, not by module.** Unit and integration suites follow the rules in the ownership
   section above; a new platform adds tests in the same shape rather than a new root.

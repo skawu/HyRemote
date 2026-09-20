@@ -28,7 +28,7 @@ See [`security.md`](security.md) for the implemented V1 security boundary. [`sec
 ### Listener address family and reachability
 
 **V1 is IPv4-first, and the IPv6 rows below are measured rather than promised.** The contract is pinned by
-`src/remoteaccess/tests/test_listener_address_matrix.cpp`, which chooses every port through the operating system, so the
+`src/embedded/tests/test_listener_address_matrix.cpp`, which chooses every port through the operating system, so the
 rows are deterministic and need no fixed port.
 
 Measured on **Windows x86_64 / Qt 6.8.3** (the Linux column is still pending #109 - it must not be inferred from this

@@ -33,7 +33,7 @@ duplication). Internal types stay normally scoped inside their own namespace or 
 - Private data members: `m_` followed by camelCase, with the implementation behind a `struct Impl` pimpl in the
   files that use one; member-name style therefore rarely appears in public headers.
 - Public headers: the file name may follow the public type it declares, as in
-  `src/remoteaccess/include/HyRemote/RemoteAccess.h`. This is the one place where a `.h`/PascalCase file name is
+  `src/embedded/include/HyRemote/RemoteAccess.h`. This is the one place where a `.h`/PascalCase file name is
   the convention.
 - New internal source and test files: `snake_case`.
 
@@ -43,7 +43,7 @@ Two forms coexist and both are intentional, not drift:
 
 - `src/core/include/hyremote/core/*.hpp` - lower-case directory and extension, mirroring the internal namespace
   of an internal STATIC target that is not an installed application SDK;
-- `src/remoteaccess/include/HyRemote/RemoteAccess.h` - PascalCase directory and `.h`, matching the installed
+- `src/embedded/include/HyRemote/RemoteAccess.h` - PascalCase directory and `.h`, matching the installed
   public header directory name and the public type.
 
 Keep new headers in whichever of the two forms their module already uses.
@@ -59,7 +59,7 @@ Keep new headers in whichever of the two forms their module already uses.
 ## QML
 
 - Module and URI: `HyRemote`, imported as `import HyRemote`.
-- The module directory must equal the URI, which is why the payload lives at `src/qml/HyRemote`
+- The module directory must equal the URI, which is why the payload lives at `src/declarative`
   rather than in a flat directory; this is required by QML, not a style choice.
 - The element is `QML_NAMED_ELEMENT(RemoteAccess)`: it carries no prefix, because QML imports form one global
   namespace. This is the single real collision risk in the naming surface and it is **accepted for 1.x**;
@@ -68,7 +68,7 @@ Keep new headers in whichever of the two forms their module already uses.
 ## What V1 does not do
 
 - No blanket rename to a unified spelling, and no rename of existing V1 files for style.
-- No rename of `src/remoteaccess`, its target, `HyRemote::RemoteAccess`, its `EXPORT_NAME` or the installed
+- No rename of `src/embedded`, its target, `HyRemote::RemoteAccess`, its `EXPORT_NAME` or the installed
   package contract; the layout, build and package expectations are frozen (see `repository-layout.md` and
   `v1-api-stability.md`).
 - No prefix or alias for the QML element, and no V1.1 pre-commitment about one.
