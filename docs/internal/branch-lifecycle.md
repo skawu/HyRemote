@@ -26,7 +26,9 @@ until another real PR/release branch is opened.
 
 ## Repository setting
 
-GitHub's repository setting **Automatically delete head branches** (`delete_branch_on_merge`) should be enabled. The V1 repository audit found it disabled, which is one direct reason merged task refs can accumulate even when the development flow itself is correct.
+GitHub's repository setting **Automatically delete head branches** (`delete_branch_on_merge`) should be enabled. The V1 repository audit found it disabled, which is one direct reason merged task refs can accumulate even when the development flow itself is correct. It was **enabled on 2026-09-20**, together with the scheduled enforcement below.
+
+The 2026-09-20 cleanup found the setting was doing only half the job: it handles merged pull requests, but a pull request that is *closed without merging* still leaves its head ref behind, and those were the majority of the twenty-one refs that had accumulated where the policy allows six. [`.github/workflows/branch-hygiene.yml`](../../.github/workflows/branch-hygiene.yml) now applies the deletion rule on a weekly schedule (and on demand, dry-run by default), so the rule no longer depends on somebody remembering to run the prune script with a local PowerShell 7.
 
 This setting handles merged Pull Requests automatically. Superseded or abandoned PR heads still follow the explicit deletion rule below.
 
@@ -40,7 +42,9 @@ Never delete or force-move a branch only because its commit IDs differ from a la
 
 ## Current V1 convergence cleanup
 
-The repository contains historical task branches created before the single V1 convergence line was established. Only PR #106 is currently open. Those historical task refs are cleanup candidates rather than parallel V1 development lines.
+The repository contains historical task branches created before the single V1 convergence line was established. Those historical task refs are cleanup candidates rather than parallel V1 development lines.
+
+That one-time pass was executed on 2026-09-20: fourteen refs whose pull requests were merged or closed were deleted, and the visible set came down to `main`, `develop` and the four open pull-request heads. Recurrence is now prevented on both sides - `delete_branch_on_merge` for merges, `branch-hygiene.yml` for closures - and the manifest in this section is history rather than a pending task list.
 
 `.github/scripts/prune-stale-branches.ps1` carries the one-time V1 cleanup manifest. It deliberately:
 
