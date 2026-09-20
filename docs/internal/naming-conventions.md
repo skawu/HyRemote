@@ -59,7 +59,7 @@ Keep new headers in whichever of the two forms their module already uses.
 ## QML
 
 - Module and URI: `HyRemote`, imported as `import HyRemote`.
-- The module directory must equal the URI, which is why the payload lives at `integrations/qml/HyRemote`
+- The module directory must equal the URI, which is why the payload lives at `src/qml/HyRemote`
   rather than in a flat directory; this is required by QML, not a style choice.
 - The element is `QML_NAMED_ELEMENT(RemoteAccess)`: it carries no prefix, because QML imports form one global
   namespace. This is the single real collision risk in the naming surface and it is **accepted for 1.x**;

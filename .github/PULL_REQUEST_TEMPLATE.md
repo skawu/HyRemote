@@ -6,7 +6,7 @@ Issue: #
 
 ## Scope
 
-- [ ] Layers touched: `src/core` / `src/remoteaccess` / `integrations` / `cmake` / `docs` / `.github`
+- [ ] Layers touched: `src/core` / `src/remoteaccess` / `src/qml/HyRemote` / `src/qpa` / `cmake` / `docs` / `.github`
 - [ ] Public API or ABI impact: none, or described above
 - [ ] Core boundary respected (no Qt, protocol or platform types in `src/core`)
 - [ ] Behaviour change is covered by a test that fails without it

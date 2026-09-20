@@ -22,7 +22,7 @@ Architecture-affecting changes should be discussed and recorded before implement
 Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
 - `src/` contains the normal product implementation;
-- `integrations/` contains QML/QPA integration payloads over the same runtime;
+- `src/` contains QML/QPA integration payloads over the same runtime;
 - root `tests/` contains cross-module/consumer/release evidence;
 - module-private tests stay with their module;
 - `research/` contains opt-in non-product experiments/evidence;

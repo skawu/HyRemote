@@ -44,8 +44,8 @@ endfunction()
 set(required_directories
     "src/core"
     "src/remoteaccess"
-    "integrations/qml/HyRemote"
-    "integrations/qpa"
+    "src/qml/HyRemote"
+    "src/qpa"
     "tests"
     "examples"
     "research"
@@ -65,7 +65,8 @@ set(forbidden_root_directories
     "qml"
     "qpa"
     "spikes"
-    "logo")
+    "logo"
+    "integrations")
 foreach(path IN LISTS forbidden_root_directories)
     if(EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
         message(FATAL_ERROR "repository-layout: legacy root directory must not return: ${path}")
@@ -80,8 +81,8 @@ read_repo_file("CMakeLists.txt" root_cmake)
 foreach(required_token
         [=[add_subdirectory(src/core core)]=]
         [=[add_subdirectory(src/remoteaccess remoteaccess)]=]
-        [=[add_subdirectory(integrations/qml/HyRemote qml/HyRemote)]=]
-        [=[add_subdirectory(integrations/qpa qpa)]=]
+        [=[add_subdirectory(src/qml/HyRemote qml/HyRemote)]=]
+        [=[add_subdirectory(src/qpa qpa)]=]
         [=[add_subdirectory(research/capture spikes/capture)]=]
         [=[add_subdirectory(research/async-capture spikes/async-capture)]=])
     require_token("${root_cmake}" "${required_token}"
@@ -99,7 +100,7 @@ if(research_guard EQUAL -1 OR research_path EQUAL -1 OR research_path LESS resea
     message(FATAL_ERROR "repository-layout: research sources escaped their explicit opt-in guard")
 endif()
 
-read_repo_file("integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
+read_repo_file("src/qml/HyRemote/CMakeLists.txt" qml_cmake)
 require_link_target("${qml_cmake}" "HyRemote::RemoteAccess"
                     "QML integration stopped linking the shared RemoteAccess runtime")
 forbid_link_target("${qml_cmake}" "HyRemote::Core"
@@ -107,7 +108,7 @@ forbid_link_target("${qml_cmake}" "HyRemote::Core"
 forbid_token("${qml_cmake}" "remote_access.cpp"
              "QML integration must not compile a second RemoteAccess facade")
 
-read_repo_file("integrations/qpa/CMakeLists.txt" qpa_cmake)
+read_repo_file("src/qpa/CMakeLists.txt" qpa_cmake)
 require_link_target("${qpa_cmake}" "HyRemote::RemoteAccess"
                     "QPA integration stopped linking the shared RemoteAccess runtime")
 forbid_link_target("${qpa_cmake}" "HyRemote::Core"
@@ -118,8 +119,8 @@ forbid_token("${qpa_cmake}" "remote_access.cpp"
 foreach(module_cmake IN ITEMS
         "src/core/CMakeLists.txt"
         "src/remoteaccess/CMakeLists.txt"
-        "integrations/qml/HyRemote/CMakeLists.txt"
-        "integrations/qpa/CMakeLists.txt")
+        "src/qml/HyRemote/CMakeLists.txt"
+        "src/qpa/CMakeLists.txt")
     read_repo_file("${module_cmake}" module_text)
     forbid_token("${module_text}" "research/"
                  "product/integration module depends on non-product research (${module_cmake})")

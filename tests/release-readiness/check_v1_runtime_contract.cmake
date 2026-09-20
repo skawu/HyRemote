@@ -69,10 +69,10 @@ require_file_token("src/remoteaccess/tests/test_widgets_capture.cpp" "testDestro
 require_file_token("src/remoteaccess/tests/test_quick_capture.cpp" "testDestroyedQuickTargetReportsTargetLost" "Quick target-loss parity regression")
 require_file_token("src/remoteaccess/src/widgets/widget_target.cpp" "the QWidget target was destroyed" "Widgets target-loss publication")
 require_file_token("src/remoteaccess/src/quick/quick_target.cpp" "the QQuickWindow target was destroyed" "Quick target-loss publication")
-require_file_token("integrations/qml/HyRemote/QmlRemoteAccess.cpp" "m_targetDestroyedConnection" "QML target lifetime observation")
-require_file_token("integrations/qml/HyRemote/QmlRemoteAccess.cpp" "emit targetChanged();" "QML destroyed target notification")
-require_file_token("integrations/qml/HyRemote/tests/test_qml_module.cpp" "testTargetDestructionNotifiesDeclarativeProperty" "QML target destruction regression")
-require_file_token("integrations/qml/HyRemote/tests/CMakeLists.txt" "hyremote-qml-module-test" "registered QML module lifecycle CTest")
+require_file_token("src/qml/HyRemote/QmlRemoteAccess.cpp" "m_targetDestroyedConnection" "QML target lifetime observation")
+require_file_token("src/qml/HyRemote/QmlRemoteAccess.cpp" "emit targetChanged();" "QML destroyed target notification")
+require_file_token("src/qml/HyRemote/tests/test_qml_module.cpp" "testTargetDestructionNotifiesDeclarativeProperty" "QML target destruction regression")
+require_file_token("src/qml/HyRemote/tests/CMakeLists.txt" "hyremote-qml-module-test" "registered QML module lifecycle CTest")
 
 # E1/E2 use the same public C++ facade lifecycle required by the physical gate. Product-fit begins
 # from view-only in one application process; the first viewer disconnect triggers stop -> configure
@@ -100,13 +100,13 @@ require_file_token("examples/qml-basic/Main.qml" "policyTransitionTimer.stop()" 
 require_file_token("tests/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E3 bounded policy-transition watchdog")
 require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "E3 product-fit binds policy transition to viewer lifecycle")
 
-require_file_token("integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "class PortReservation final" "deterministic occupied-port QPA failure setup")
-require_file_token("integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "SO_EXCLUSIVEADDRUSE" "deterministic Windows occupied-port ownership")
-require_file_token("integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "gRemoteStartFailureSeen" "proof that the QPA remote runtime actually attempted and failed startup")
-require_file_token("integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "forced remote bind failure was observed and the native QPA application remained live" "native-survival assertion after observed remote bind failure")
-require_file_token("integrations/qpa/tests/CMakeLists.txt" "hyremote-qpa-remote-failure-native-survival-smoke" "registered QPA native-survival CTest")
-require_file_token("integrations/qpa/tests/CMakeLists.txt" "PRIVATE ws2_32" "Windows native socket support for QPA failure smoke")
-require_file_token("integrations/qpa/hyremote_qpa_remote_controller.cpp" "HyRemote QPA Proxy could not start the composite RemoteAccess runtime" "QPA remote-start failure remains diagnostic rather than native-fatal")
+require_file_token("src/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "class PortReservation final" "deterministic occupied-port QPA failure setup")
+require_file_token("src/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "SO_EXCLUSIVEADDRUSE" "deterministic Windows occupied-port ownership")
+require_file_token("src/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "gRemoteStartFailureSeen" "proof that the QPA remote runtime actually attempted and failed startup")
+require_file_token("src/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "forced remote bind failure was observed and the native QPA application remained live" "native-survival assertion after observed remote bind failure")
+require_file_token("src/qpa/tests/CMakeLists.txt" "hyremote-qpa-remote-failure-native-survival-smoke" "registered QPA native-survival CTest")
+require_file_token("src/qpa/tests/CMakeLists.txt" "PRIVATE ws2_32" "Windows native socket support for QPA failure smoke")
+require_file_token("src/qpa/hyremote_qpa_remote_controller.cpp" "HyRemote QPA Proxy could not start the composite RemoteAccess runtime" "QPA remote-start failure remains diagnostic rather than native-fatal")
 require_file_token("docs/internal/v1-ga-acceptance.md" "remote-capability failure only" "canonical GA native-survival rule for QPA remote startup failure")
 
 message(STATUS

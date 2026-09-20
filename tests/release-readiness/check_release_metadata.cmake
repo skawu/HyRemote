@@ -56,7 +56,7 @@ set(required_files
     "src/remoteaccess/tests/test_widgets_input_backpressure.cpp"
     "src/remoteaccess/tests/test_quick_input_backpressure.cpp"
     "src/remoteaccess/tests/test_rfb_widget_disconnect_backpressure.cpp"
-    "integrations/qpa/tests/qpa_composite_input_test.cpp"
+    "src/qpa/tests/qpa_composite_input_test.cpp"
 )
 
 foreach(path IN LISTS required_files)
@@ -185,14 +185,14 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qml/HyRemote/CMakeLists.txt" qml_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/HyRemote/CMakeLists.txt" qml_cmake)
 string(FIND "${qml_cmake}" "TARGETS hyremote-qml\n    EXPORT HyRemoteTargets" qml_export)
 if(NOT qml_export EQUAL -1)
     message(FATAL_ERROR
         "release-readiness: declarative QML backing library must not become a second C++ SDK target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
 string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module)
 if(qpa_module EQUAL -1)
     message(FATAL_ERROR "release-readiness: Transparent QPA must remain a platform MODULE")
@@ -348,7 +348,7 @@ foreach(adapter_file
     endforeach()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/interactive_composite_target.cpp" qpa_input_source)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/interactive_composite_target.cpp" qpa_input_source)
 foreach(required_token
         "void shutdown() noexcept override"
         "sink->shutdown()"
@@ -365,7 +365,7 @@ foreach(test_entry
         "src/remoteaccess/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
         "src/remoteaccess/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
         "src/remoteaccess/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
-        "integrations/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
+        "src/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
     string(REPLACE "|" ";" test_parts "${test_entry}")
     list(GET test_parts 0 test_path)
     list(GET test_parts 1 required_token)

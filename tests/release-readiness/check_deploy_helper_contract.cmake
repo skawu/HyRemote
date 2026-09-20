@@ -10,9 +10,9 @@ set(required_files
     "cmake/HyRemoteInstall.cmake"
     "cmake/HyRemoteDeploy.cmake"
     "src/remoteaccess/CMakeLists.txt"
-    "integrations/qpa/CMakeLists.txt"
-    "integrations/qpa/tests/deploy_helper_fixture/CMakeLists.txt"
-    "integrations/qpa/tests/run_deploy_helper_fixture.cmake"
+    "src/qpa/CMakeLists.txt"
+    "src/qpa/tests/deploy_helper_fixture/CMakeLists.txt"
+    "src/qpa/tests/run_deploy_helper_fixture.cmake"
     "tests/release-readiness/check_package_acquisition_isolation.cmake")
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
@@ -153,7 +153,7 @@ foreach(required_phrase
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/tests/deploy_helper_fixture/CMakeLists.txt" fixture)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/deploy_helper_fixture/CMakeLists.txt" fixture)
 foreach(required_token
         [=[TEST_DEPLOY_QPA]=]
         [=[TEST_QML_AVAILABLE]=]
@@ -186,7 +186,7 @@ if(NOT leaked_fixture_api EQUAL -1)
     message(FATAL_ERROR "deploy-helper-contract: deterministic fixture must not rely on a new QML package API")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/tests/run_deploy_helper_fixture.cmake" runner)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/run_deploy_helper_fixture.cmake" runner)
 foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_QML_IMPORT_PATH_EXISTS]=]
@@ -211,7 +211,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/integrations/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]

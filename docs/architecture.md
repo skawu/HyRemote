@@ -148,7 +148,7 @@ Arbitrary foreign/native `QWindow` capture is not a V1 support claim.
 
 Borrowed raw memory is not a standalone frame contract.
 
-`hyremote-core` remains ordinary C++17 and must not depend on Qt Widgets/Quick/QML, Qt private/QPA, RFB implementation types, graphics-platform APIs or SoC-specific acceleration libraries. Concrete adapters and integrations stay outside Core.
+`hyremote-core` remains ordinary C++17 and must not depend on Qt Widgets/Quick/QML, Qt private/QPA, RFB implementation types, graphics-platform APIs or SoC-specific acceleration libraries. Concrete adapters and integration payloads stay outside Core.
 
 ## 8. Scheduling and backpressure
 
@@ -261,8 +261,8 @@ The canonical repository layout mirrors these responsibilities:
 ```text
 src/core/                 internal Core
 src/remoteaccess/         one shared public C++ runtime/facade
-integrations/qml/         declarative payload
-integrations/qpa/         exact-Qt Transparent QPA payload
+src/qml/         declarative payload
+src/qpa/         exact-Qt Transparent QPA payload
 tests/                    cross-module/consumer/release evidence
 examples/                 product examples
 research/                 non-product architecture evidence

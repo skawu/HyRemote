@@ -7,7 +7,7 @@ on:
       - 'cmake/**'
       - 'src/core/**'
       - 'src/remoteaccess/**'
-      - 'integrations/qml/**'
+      - 'src/qml/**'
       - 'tests/consumer-installed-qml/**'
       - '.github/scripts/install-linux-qt-desktop-deps.sh'
       - '.github/workflows/qml-api.yml'

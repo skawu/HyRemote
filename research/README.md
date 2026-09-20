@@ -8,7 +8,7 @@ reproducible. It is evidence for a decision, not product code:
 - nothing here is part of the default build (`HYREMOTE_BUILD_SPIKES` is `OFF` by default, `cmake/HyRemoteProjectOptions.cmake`);
 - **no CI workflow builds or runs any of it** (every workflow passes `-DHYREMOTE_BUILD_SPIKES=OFF` explicitly);
 - no product or integration module may reference it - `tests/release-readiness/check_repository_layout.cmake` forbids
-  `src/core`, `src/remoteaccess`, `integrations/qml/HyRemote` and `integrations/qpa` from doing so;
+  `src/core`, `src/remoteaccess`, `src/qml/HyRemote` and `src/qpa` from doing so;
 - nothing here is installed, packaged or covered by the V1 API stability contract
   (`docs/release-package-manifest.md`).
 

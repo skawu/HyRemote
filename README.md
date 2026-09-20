@@ -162,7 +162,7 @@ The repository is organized by product responsibility rather than historical fea
 
 ```text
 src/                 product implementation (Core + RemoteAccess)
-integrations/        QML and QPA integration payloads
+src/        QML and QPA integration payloads
 tests/               cross-module/consumer/release evidence
 examples/            product examples
 research/            non-product spikes and architecture evidence
