@@ -53,6 +53,8 @@ HyRemote 面向应用的模型刻意保持很小：**一个共享 C++ 库**，�
 [`internal/v1-ga-acceptance.md`](internal/v1-ga-acceptance.md)、[`internal/v1-physical-acceptance.md`](internal/v1-physical-acceptance.md)、
 [`internal/v1-repository-admin.md`](internal/v1-repository-admin.md)、[`internal/release-candidate-checklist.md`](internal/release-candidate-checklist.md)、
 [`internal/development-roadmap.md`](internal/development-roadmap.md)、[`internal/naming-conventions.md`](internal/naming-conventions.md)、
+示例记录（[`internal/example-strategy-v1.md`](internal/example-strategy-v1.md)、
+[`internal/example-branding-contract.md`](internal/example-branding-contract.md)、[`internal/example-matrix-v1.md`](internal/example-matrix-v1.md)）、
 研究/评估记录（[`internal/capture-spike.md`](internal/capture-spike.md)、[`internal/async-capture-spike.md`](internal/async-capture-spike.md)、
 [`internal/neatvnc-evaluation.md`](internal/neatvnc-evaluation.md)、[`internal/x86-vnc-transport-evaluation.md`](internal/x86-vnc-transport-evaluation.md)、
 `internal/qpa-*-qt-6.8.3.md`）、[`adr/`](adr/)、[`releases/`](releases/)、[`proposals/`](proposals/)。
