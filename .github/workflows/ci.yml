@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -21,6 +24,9 @@ jobs:
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
       qml: ${{ steps.scope.outputs.qml }}
+      generic_evidence: ${{ steps.scope.outputs.generic_evidence }}
+      build_type: ${{ steps.scope.outputs.build_type }}
+      test_exclude: ${{ steps.scope.outputs.test_exclude }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,14 +40,19 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          import os, subprocess
+          import os
+          import subprocess
 
-          if os.environ["EVENT_NAME"] == "pull_request":
+          event = os.environ["EVENT_NAME"]
+          full_evidence = event != "pull_request"
+
+          if event == "pull_request":
               changed = subprocess.check_output(
                   ["git", "diff", "--name-only", f"{os.environ['BASE_SHA']}...{os.environ['HEAD_SHA']}"],
                   text=True,
               ).splitlines()
           else:
+              # develop pushes and manual dispatches are integration evidence, never a diff-minimized PR lane.
               changed = ["CMakeLists.txt"]
 
           peers = ["cpp", "qml", "generic", "qpa"]
@@ -81,31 +92,56 @@ jobs:
               if matched:
                   continue
 
-              # Controlled examples, product-level E2E/SDK/package tests and canonical branding can
-              # exercise multiple frontends, so keep their PR signal integrated.
               if path.startswith(("examples/", "tests/product-e2e/", "tests/public-api-contract/", "logo/")):
                   selected.update(peers)
               elif path.startswith("tests/"):
                   selected.update(peers)
 
+          # The clean installed Generic consumers are product/release evidence, not a useful tax on every Runtime PR.
+          # Run them when their contract can have changed, and on every develop/manual full integration run.
+          generic_evidence_paths = (
+              "src/integrations/generic/",
+              "tests/consumer-installed-generic/",
+              "cmake/HyRemoteDeploy.cmake",
+              "cmake/HyRemoteInstall.cmake",
+              "tests/release-readiness/run_release_evidence.cmake",
+          )
+          generic_evidence = full_evidence or any(
+              path.startswith(generic_evidence_paths) for path in changed
+          )
+
           ordered = [peer for peer in peers if peer in selected]
           integrations = ",".join(ordered)
           product = bool(ordered)
+
+          # PRs are compile/correctness feedback and use Debug unless they are validating installed/deployment
+          # evidence. develop/manual runs remain the Release integration proof.
+          build_type = "Release" if (full_evidence or generic_evidence) else "Debug"
+          if generic_evidence:
+              test_exclude = "^hyremote-release-readiness-"
+          else:
+              test_exclude = "^(hyremote-release-readiness-|hyremote-generic-installed-consumers$)"
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"product={'true' if product else 'false'}\n")
               f.write(f"integrations={integrations}\n")
               f.write(f"qpa={'true' if 'qpa' in selected else 'false'}\n")
               f.write(f"qml={'true' if 'qml' in selected else 'false'}\n")
+              f.write(f"generic_evidence={'true' if generic_evidence else 'false'}\n")
+              f.write(f"build_type={build_type}\n")
+              f.write(f"test_exclude={test_exclude}\n")
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
               f.write("## CI scope\n\n")
               f.write(f"- changed files: {len(changed)}\n")
               f.write(f"- integrations: {integrations or 'none'}\n")
               f.write(f"- Qt build: {'yes' if product else 'no — documentation/governance only'}\n")
+              f.write(f"- build type: {build_type}\n")
+              f.write(f"- clean Generic evidence: {'yes' if generic_evidence else 'no'}\n")
+              f.write(f"- lane: {'full integration' if full_evidence else 'PR fast'}\n")
 
   product:
-    name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }}
+    name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / ${{ needs.classify.outputs.build_type }}
     needs: classify
     if: needs.classify.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
@@ -138,28 +174,18 @@ jobs:
       - name: Validate or install exact Qt SDK
         shell: bash
         env:
-          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
           NEED_QML: ${{ needs.classify.outputs.qml }}
           NEED_QPA: ${{ needs.classify.outputs.qpa }}
         run: |
           set -euo pipefail
           echo "CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
-          # RUNNER_TEMP is a native path, so on Windows it carries backslashes (D:\a\_temp). Normalize to forward
-          # slashes once, here, so bash, Python, CMake and the installer all address the same tree directly.
           QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
           QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
           case "${{ runner.os }}" in
             Linux) QT_PLATFORM=linux ;;
             *)     QT_PLATFORM=windows ;;
           esac
-          echo "RUNNER_TEMP_RAW=$RUNNER_TEMP"
-          echo "QT_ROOT_VALIDATION_PATH=$QT_ROOT"
-          echo "QT_PREFIX_VALIDATION_PATH=$QT_PREFIX"
 
-          # The artifact contract is verified by the validator, which resolves real native paths on either operating
-          # system and reports [PASS]/[MISSING] per artifact. Bash file predicates are no longer asked to interpret a
-          # Windows path, which is what made a fresh installation report one unactionable "integrity" failure; no Qt
-          # artifact is exempted and both platforms keep the same capability requirements.
           qt_tree_valid() {
             python .github/scripts/validate-qt-sdk.py \
               --prefix "$QT_PREFIX" \
@@ -212,15 +238,18 @@ jobs:
         shell: bash
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
+          BUILD_TYPE: ${{ needs.classify.outputs.build_type }}
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
         run: |
           set -euo pipefail
           sh ./compile.cmd \
             --integrations="$INTEGRATIONS" \
             --qt-prefix="$QT_PREFIX" \
+            --build-type="$BUILD_TYPE" \
             --build-dir=build-ci \
             --tests --run-tests --no-examples \
-            --test-exclude='^hyremote-release-readiness-' \
-            --xvfb --clean -j4 \
+            --test-exclude="$TEST_EXCLUDE" \
+            --xvfb -j4 \
             --env=QT_QUICK_BACKEND=software
 
       - name: Build and test through HyRemote build system — Windows
@@ -228,10 +257,12 @@ jobs:
         shell: cmd
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
+          BUILD_TYPE: ${{ needs.classify.outputs.build_type }}
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=^hyremote-release-readiness-" --clean -j4
+          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type="%BUILD_TYPE%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
 
       - name: Test evidence summary
         if: always()
@@ -241,6 +272,9 @@ jobs:
           LOG=build-ci/test.log
           {
             echo "## Test evidence — ${{ matrix.name }}"
+            echo
+            echo "- build type: ${{ needs.classify.outputs.build_type }}"
+            echo "- clean Generic evidence requested: ${{ needs.classify.outputs.generic_evidence }}"
             echo
             if [[ ! -f "$LOG" ]]; then
               echo "No \`$LOG\` was produced, so the test phase never ran (build or configuration failure)."
@@ -255,26 +289,24 @@ jobs:
             echo '```text'
             sed -n '/The following tests FAILED/,$p' "$LOG" || true
             echo '```'
-            echo
-            echo "### Required evidence tests"
-            echo '```text'
-            grep -E "hyremote-generic-installed-consumers|hyremote-qpa-widget-popup-connection-smoke" "$LOG" || true
-            echo '```'
-            echo
-            echo "### Generic installed consumers, per cell"
-            for f in build-ci/evidence/*/installed-generic-*/evidence.txt; do
-              [[ -f "$f" ]] || continue
+            if [[ "${{ needs.classify.outputs.generic_evidence }}" == "true" ]]; then
+              echo
+              echo "### Required Generic evidence"
               echo '```text'
-              echo "# $f"
-              grep -E "^(CELL|CONSUMER|GENERIC_PAYLOAD|SOURCE_TREE_DEPENDENCY_COUNT|BUILD_TREE_DEPENDENCY_COUNT|RESULT)=" "$f" || true
+              grep -E "hyremote-generic-installed-consumers" "$LOG" || true
               echo '```'
-            done
-            echo
-            echo "Raw CTest log is attached as the workflow artifact for this platform."
+              for f in build-ci/evidence/*/installed-generic-*/evidence.txt; do
+                [[ -f "$f" ]] || continue
+                echo '```text'
+                echo "# $f"
+                grep -E "^(CELL|CONSUMER|GENERIC_PAYLOAD|SOURCE_TREE_DEPENDENCY_COUNT|BUILD_TREE_DEPENDENCY_COUNT|RESULT)=" "$f" || true
+                echo '```'
+              done
+            fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload test log
-        if: always()
+      - name: Upload diagnostic evidence
+        if: failure() || needs.classify.outputs.generic_evidence == 'true' || github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: hyremote-test-log-${{ runner.os }}-${{ github.sha }}
@@ -304,6 +336,8 @@ jobs:
             echo
             echo "- runner: ${{ matrix.name }}"
             echo "- integrations: ${{ needs.classify.outputs.integrations }}"
+            echo "- build type: ${{ needs.classify.outputs.build_type }}"
+            echo "- clean Generic evidence: ${{ needs.classify.outputs.generic_evidence }}"
             echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
             echo "- Qt tree rebuilt: ${QT_TREE_REBUILT:-unknown}"
             echo "- build entry: compile.cmd + build.yml + command-line overrides"
