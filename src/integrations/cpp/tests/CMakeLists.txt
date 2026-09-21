@@ -159,6 +159,31 @@ if(HYREMOTE_WITH_VNC)
             ${_hyremote_runtime_src}
     )
 
+    # The real-viewer product fit: a standard RFB client drives the production transport end to end - bounded
+    # occupied-port failure, incomplete-handshake slot expiry and recovery, abrupt-disconnect held-input cleanup, a real
+    # framebuffer pixel read back through vncdotool, pointer/buttons/wheel, keyboard/text, reconnect and a clean
+    # listener stop. It is candidate acceptance evidence rather than a regression test, so the classifier keeps it out
+    # of ordinary fast pull requests and requires it in the exact-candidate full gate.
+    #
+    # The registration is deliberately not conditional on the viewer tooling: #229 requires executable product-fit
+    # evidence, so the candidate lane must not be able to pass because the test was quietly never registered. When the
+    # interpreter is absent the test is registered as a failure; when it is present the script itself fails closed on a
+    # missing Pillow/vncdotool import instead of skipping.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-v01-rfb-product-fit
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/rfb_product_fit.py"
+                "$<TARGET_FILE:hyremote-rfb-test-server>"
+        )
+    else()
+        add_test(NAME hyremote-v01-rfb-product-fit COMMAND "${CMAKE_COMMAND}" -E false)
+    endif()
+    set_tests_properties(hyremote-v01-rfb-product-fit PROPERTIES
+        TIMEOUT 900
+        LABELS "candidate-evidence")
+
     # Deterministic transport-level regression for simultaneous viewers sharing one Qt target.
     add_executable(hyremote-rfb-multi-client-input-test
         test_rfb_multi_client_input.cpp
