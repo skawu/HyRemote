@@ -37,7 +37,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          EXECUTE: ${{ inputs.execute || 'false' }}
+          # The scheduled run is the lane that actually prunes. Resolving execute from the input alone forced every
+          # scheduled run into a dry run, so nothing was ever deleted and the stale refs simply accumulated. A manual
+          # run stays a dry run unless the operator explicitly asks for execution, so the default manual action is
+          # never destructive.
+          EXECUTE: ${{ github.event_name == 'schedule' && 'true' || inputs.execute || 'false' }}
         run: |
           set -euo pipefail
 
