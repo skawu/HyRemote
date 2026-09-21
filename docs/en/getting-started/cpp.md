@@ -1,21 +1,35 @@
-# Embedded C++ Getting Started
+# C++ API Getting Started (Qt Widgets / Qt Quick)
 
 > Language / 语言: **English** | [中文](../../getting-started/cpp.md)
 
-HyRemote's reference integration is a small C++ facade delivered as one shared library. Existing Qt Widgets and Qt Quick applications link only `HyRemote::RemoteAccess`; they do not assemble Core sessions, capture sources, transports, input sinks, or RFB objects.
+The C++ API is one of the primary HyRemote V0.1 integration paths. An application links the public `HyRemote::RemoteAccess` target to add remote viewing and optional remote control to a Qt Widgets or Qt Quick top-level window.
 
-## Prerequisites
+Applications do not need to understand Core, Session, RFB, capture backends, or input backends.
 
-The current V1 reference line is Qt 6.8.x; automated product work targets Qt 6.8.3 on Windows x86_64 and Linux x86_64. Other Qt versions are not implied to be supported unless recorded in `docs/compatibility.md`.
+## Who this is for
 
-Choose either:
+Choose the C++ API when your application:
 
-- installed SDK: `find_package(HyRemote CONFIG REQUIRED)`;
-- source/vendored: `add_subdirectory(path/to/HyRemote hyremote)`.
+- can add a small amount of C++ integration code;
+- wants explicit start/stop, target, listener, or input-policy control;
+- uses Qt Widgets, Qt Quick, or a mix of both;
+- may later need richer programmable policy.
 
-Both expose the same application target: `HyRemote::RemoteAccess`.
+If you want a **zero-code application integration**, start with [`generic.md`](generic.md).
 
-## Minimal Widgets use
+## Current reference environment
+
+V0.1 currently references:
+
+- Windows x86_64;
+- Linux x86_64;
+- Qt 6.8.3.
+
+See [`../../compatibility.md`](../../compatibility.md) for the exact status of other Qt versions.
+
+> **TODO V0.4:** qualify planned compatibility lines such as Qt 5.15 LTS before broadening the support statement.
+
+## Minimal Qt Widgets integration
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
@@ -37,17 +51,14 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-That is the normal baseline. Construction is inert; `start()` opens the service. The default address is loopback, the default port is 5921, and remote input is disabled. That default port is configure-time selectable for integrators via `-DHYREMOTE_DEFAULT_PORT=<port>` (see the install guide), and it remains overridable per process with `setPort()`.
+Default behavior:
 
-Enable remote control only when required:
+- constructing `RemoteAccess` does not open a listener;
+- `start()` explicitly starts the Runtime;
+- the default listener is `127.0.0.1:5921`;
+- remote input is disabled by default.
 
-```cpp
-HyRemote::RemoteAccess remote(&window);
-remote.setRemoteInputEnabled(true);
-remote.start();
-```
-
-## Minimal Qt Quick use
+## Minimal Qt Quick integration
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
@@ -65,25 +76,34 @@ HyRemote::RemoteAccess remote(window);
 remote.start();
 ```
 
-Widgets and Quick share the same public facade. Capture/input implementation selection remains internal.
+Widgets and Qt Quick use the same public API and the same Shared Runtime. There is no separate product Runtime for each UI family.
 
-## Optional configuration
+## Enable remote control
 
-`setListenAddress()` accepts a **numeric** address only. The default is loopback `127.0.0.1`; an address that is not
-assigned to any interface, or a port already in use, fails before `Running` and leaves nothing listening; and the IPv6
-wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack one. The measured per-address table is in
-[`../../known-limitations.md`](../../known-limitations.md#listener-address-family-and-reachability).
+The default mode is view-only. Enable remote input only when the application actually needs it:
 
-Configuration changes are made while stopped:
+```cpp
+HyRemote::RemoteAccess remote(&window);
+remote.setRemoteInputEnabled(true);
+remote.start();
+```
+
+Remote input is routed to the attached Qt application target. It is not desktop-wide OS input injection.
+
+## Common configuration
+
+Change configuration while the Runtime is stopped:
 
 - `setTarget(QObject *)`;
 - `setListenAddress(const QHostAddress &)`;
 - `setPort(quint16)`;
 - `setRemoteInputEnabled(bool)`;
 - `start()` / `stop()`;
-- `state()` / `connectedClientCount()` / `lastError()` / `clearError()`.
+- `state()`;
+- `connectedClientCount()`;
+- `lastError()` / `clearError()`.
 
-A non-default example:
+Example:
 
 ```cpp
 HyRemote::RemoteAccess remote(&window);
@@ -92,43 +112,63 @@ remote.setRemoteInputEnabled(true);
 
 if (!remote.start()) {
     const auto error = remote.lastError();
-    // Report the product-level error.
+    // Present the product-level error through your application's normal diagnostics.
 }
 ```
 
-Normal applications do not select transport/backend/capture classes.
+Listener addresses use numeric IP addresses. Binding outside loopback expands the network trust boundary; read [`../../security.md`](../../security.md) before doing so.
+
+## Runtime state
+
+Typical state flow:
+
+```text
+Stopped -> Starting -> Running
+                    \-> Faulted
+Running/Faulted -> stop -> Stopped
+```
+
+`Running` means the Runtime/listener is active. It does not mean a viewer is connected or authenticated.
+
+`connectedClientCount()` reports operational connection count, not identity or authorization role.
 
 ## Deployment
 
-The V1 C++ runtime artifact is the shared `HyRemoteRemoteAccess` library. Core is statically composed behind it, so users do not deploy a second HyRemote Core runtime.
-
-Use the one package helper:
+Use the single deployment helper:
 
 ```cmake
 install(TARGETS MyApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyApp)
 ```
 
-The helper composes with Qt's supported deployment tooling and adds the HyRemote shared facade automatically. Applications should not copy HyRemote libraries by filename.
+`hyremote_deploy()` carries the Shared Runtime and required runtime dependencies. Applications should not copy internal HyRemote libraries by filename.
 
-See `docs/guide/deployment.md`.
+See [`../guide/deployment.md`](../guide/deployment.md).
 
-## Security baseline
+## Security boundary
 
-The current RFB SecurityType None correctness transport is unauthenticated and unencrypted and is refused beyond loopback; a configured authenticated profile authenticates the viewer with RFB VNC authentication but still leaves the stream unencrypted. Do not expose it directly to untrusted networks. Loopback is the default bind and remote input is disabled by default. See [`../../security.md`](../../security.md) and [`../../known-limitations.md`](../../known-limitations.md).
+V0.1 is loopback-first:
 
-## Examples and evidence
+- default bind is `127.0.0.1`;
+- remote input is disabled by default;
+- unauthenticated non-loopback exposure is rejected;
+- `Authenticated` may use RFB VNC authentication, but the stream is currently unencrypted;
+- `AuthenticatedEncrypted` fails closed without opening a listener while the encrypted backend is unavailable.
 
-- `examples/widgets-basic`
-- `examples/quick-basic`
-- `examples/remote-support-showcase`
+Do not expose V0.1 directly to the public Internet. See [`../../security.md`](../../security.md).
 
-Hosted/offscreen E2E verifies protocol-to-application correctness; it does not replace required physical local-display/local-input coexistence evidence.
+## Examples
+
+The new Example curriculum follows a “from zero to real use” journey with dedicated C++ Widgets and C++ Quick onboarding paths.
+
+> **TODO V0.1:** complete the bilingual, branded `examples/learning/01-widgets-cpp` and `examples/learning/02-quick-cpp` product examples.
 
 ## Next steps
 
-- platform setup: [`../../guide/install.md`](../../guide/install.md) (中文) or [`../guide/install.md`](../guide/install.md) (English);
-- viewer workflow: [`../../guide/viewer-connection.md`](../../guide/viewer-connection.md);
-- deployment: [`../../guide/deployment.md`](../../guide/deployment.md);
-- troubleshooting: [`../../guide/troubleshooting.md`](../../guide/troubleshooting.md);
-- exact support status: [`../../compatibility.md`](../../compatibility.md) and [`../../known-limitations.md`](../../known-limitations.md).
+- zero-code integration: [`generic.md`](generic.md);
+- QML API (Preview): [`qml.md`](qml.md);
+- deployment: [`../guide/deployment.md`](../guide/deployment.md);
+- viewer workflow: [`../guide/viewer-connection.md`](../guide/viewer-connection.md);
+- troubleshooting: [`../guide/troubleshooting.md`](../guide/troubleshooting.md);
+- compatibility: [`../../compatibility.md`](../../compatibility.md);
+- known limitations: [`../../known-limitations.md`](../../known-limitations.md).

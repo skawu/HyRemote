@@ -2,116 +2,227 @@
 
 > Language / 语言: **English** | [中文](../../guide/troubleshooting.md)
 
-This guide covers the V1 Embedded C++, Declarative QML and Transparent QPA paths. Start with product-level errors, package metadata and documented policy before investigating internal implementation layers.
+This guide covers all four product paths: C++ API, Generic Plugin, QML API, and QPA. Start with product-level errors, deployed payloads, and the compatibility matrix instead of internal implementation details.
 
 ## `find_package(HyRemote)` cannot find the package
 
-`find_package(HyRemote CONFIG REQUIRED)` is for an installed HyRemote prefix. Add that prefix to `CMAKE_PREFIX_PATH` or use the source-consumption path from `docs/guide/install.md`.
+`find_package(HyRemote CONFIG REQUIRED)` is for an installed SDK.
 
-Do not combine `add_subdirectory(HyRemote)` with an assumption that an installed `HyRemoteConfig.cmake` has been generated.
+Check that:
 
-The installed V1 package exposes one normal C++ target: `HyRemote::RemoteAccess`. Core, the QML backing library and `qhyremote` are not alternate application link targets.
+- the HyRemote install prefix is on `CMAKE_PREFIX_PATH`;
+- the application is not mixing an installed SDK with `add_subdirectory(HyRemote)` in the same configure;
+- the HyRemote SDK matches the intended Qt/toolchain environment.
+
+See [`install.md`](install.md) for source consumption.
 
 ## `RemoteAccess::start()` returns false
 
-Check `lastError()` and verify:
+Inspect `lastError()` and verify:
 
 - the target is a live supported `QWidget` or `QQuickWindow`;
-- configuration was completed while stopped;
-- the selected port is valid and not already occupied;
-- the target adapter required by the built product is present;
-- the internal VNC correctness transport was not explicitly disabled in a custom source build.
+- configuration was completed while the Runtime was stopped;
+- the selected port is valid and not occupied;
+- the listener address is a valid numeric IP address;
+- the selected security profile is configured correctly;
+- `AuthenticatedEncrypted` is not being treated as an implemented V0.1 capability.
 
-The public error surface intentionally does not expose RFB backend types.
+Selecting `AuthenticatedEncrypted` in V0.1 intentionally fails with security unavailable and opens no listener.
 
 ## QML `enabled: true` returns to false
 
-Declarative enable is transactional. During initial QML construction, `enabled: true` is a request; the actual shared-runtime start is deferred until component completion so target/policy bindings can settle.
+QML enablement is an explicit request. If Runtime startup fails, `enabled` returns to false.
 
-If startup then fails, `enabled` returns to false. Inspect `errorCode` / `errorString` and verify the bound target is a supported live Quick target and the configured endpoint is available.
+Check:
 
-Do not add `Component.onCompleted: remote.enabled = true` merely to work around property ordering; normal declarative use should not require that lifecycle glue.
+- the `target` is a valid Quick top-level window;
+- address/port are available;
+- security policy allows startup;
+- product-level `errorCode` / `errorString`.
+
+Normal usage should not require `Component.onCompleted` startup glue.
+
+## Generic Plugin does not activate
+
+First confirm deployment used:
+
+```cmake
+hyremote_deploy(TARGET MyApp GENERIC)
+```
+
+Then activate HyRemote through Qt's generic-plugin mechanism, for example:
+
+```text
+MyApp -plugin hyremote
+```
+
+If the plugin is not loaded, inspect the deployed Generic Plugin directory and Qt plugin search path.
+
+A defining Generic property is that the application's **native Qt platform identity is preserved**. If the application unexpectedly runs on a platform named `hyremote`, that is not the Generic route.
 
 ## Viewer cannot connect
 
-Verify the integration mode actually started the service:
+Verify the selected frontend actually started HyRemote:
 
 - C++: `start()` succeeded;
-- QML: `enabled` remained true and state reached Running;
-- QPA: the deployed application was launched with `-platform hyremote` rather than the native platform directly.
+- Generic: the Generic Plugin loaded successfully;
+- QML: `enabled` remains true and state reaches `Running`;
+- QPA: the application was launched with `-platform hyremote`.
 
-Also verify the viewer uses the configured loopback address/port, another process is not occupying the port, the process is still running, and a firewall/security product is not interfering with the intended local/trusted connection.
+Also check:
 
-Construction alone never opens the Embedded C++ listener; merely importing the QML module also does not start it.
+- viewer address/port;
+- default address is `127.0.0.1:5921`;
+- no other process owns the port;
+- the application is still running;
+- firewall/security software is not blocking the intended connection.
 
-## Viewer sees the application but input does nothing
+## Viewer can see the application but input does nothing
 
 Remote input is disabled by default.
 
-- C++: enable `setRemoteInputEnabled(true)` while stopped, then start;
-- QML: set `remoteInputEnabled: true` before enabling;
-- QPA: relaunch with `-platform hyremote:hyremote-input=true`.
+- C++: `setRemoteInputEnabled(true)`;
+- QML: `remoteInputEnabled: true`;
+- Generic: set `input=true` in the Generic specification;
+- QPA: `-platform "hyremote:hyremote-input=true"`.
 
-If only specific keys/compositions fail, consult `docs/input-model.md` and `docs/known-limitations.md`; V1 does not claim full IME/dead-key/international-layout parity.
+If only specific keys, IME behavior, or shortcuts fail, see [`../../input-model.md`](../../input-model.md) and [`../../known-limitations.md`](../../known-limitations.md).
+
+## Viewer connects but the image is blank or incomplete
+
+Confirm the application target belongs to the current compatibility scope:
+
+- QWidget top-level;
+- QQuickWindow;
+- or a complex combination explicitly listed as compatible.
+
+Do not infer support for QOpenGLWidget, QQuickWidget, Quick3D, custom FBOs, or foreign/native windows from basic Widgets/Quick support.
+
+See [`../../compatibility.md`](../../compatibility.md).
 
 ## Pointer coordinates are wrong
 
-Record target logical size, captured framebuffer size, device-pixel ratio and resize state. Coordinate mapping is based on the remote frame/target geometry; stale or unsupported geometry changes must not be papered over as viewer behavior.
+Record:
 
-For QPA, also record which top-level surface was active and the composite canvas geometry.
+- target logical size;
+- frame pixel size;
+- device-pixel ratio;
+- scaling state;
+- window geometry before/after resize.
 
-## Quick capture is blank or stops while hidden
+For QPA/automatic-surface composition, also inspect the remote canvas and top-level surface geometry.
 
-The public async Quick correctness path depends on a capturable Qt Quick scene/window. Hidden/minimized behavior has explicit handling/limits and is not equivalent to a compositor-level desktop capture service.
+## Input looks stuck after viewer disconnect
 
-Check `docs/compatibility.md`, `docs/known-limitations.md` and the QPA capture classification before broadening the issue into a generic graphics-support claim.
+HyRemote cleans up recognized held key/button state when a remote peer disappears or when the Runtime stops.
 
-## QPA deploy says the package is unavailable
+If the issue is reproducible, record:
 
-The installed SDK must have been built with:
+- viewer and version;
+- key/button sequence;
+- whether disconnect was abrupt;
+- whether a second viewer was connected;
+- application target type.
+
+Treat persistent stuck input as a product defect rather than compensating in application code.
+
+## QPA deployment says the payload is unavailable
+
+Confirm the HyRemote SDK was built with:
 
 ```text
 -DHYREMOTE_WITH_QPA_PROXY=ON
 ```
 
-`hyremote_deploy(TARGET ... QPA)` consumes package-owned availability/version/plugin metadata. The installed SDK intentionally does **not** export `HyRemote::QpaPlatform` for applications to link.
+Also confirm the consumer uses **exact Qt 6.8.3** and the matching private Gui development components.
 
-## QPA deploy rejects the Qt version
+QPA does not export an application link target such as `HyRemote::QpaPlatform`; the application remains Qt-only.
 
-Transparent QPA is private-ABI coupled to **exact Qt 6.8.3** in V1. The application/deployment configure must resolve the same exact Qt version as the qualified QPA payload.
+## QPA rejects the Qt version
 
-Do not bypass this guard by editing package files or manually copying `qhyremote`; qualify another Qt line explicitly instead.
+This is intentional fail-closed behavior.
 
-## Deployed QPA application cannot find `hyremote`
+QPA uses Qt private ABI. The current reference is **Qt 6.8.3 exact**. Do not bypass the version boundary by manually copying `qhyremote` or editing package metadata.
 
-A normal deployed application should contain `qhyremote` under its Qt `plugins/platforms` tree and should not require the original SDK path on `QT_PLUGIN_PATH` or `QT_QPA_PLATFORM_PLUGIN_PATH`.
+Qualify another Qt private-ABI line before using it as a product combination.
 
-If the plugin is present only in the SDK staging prefix, treat that as a deployment defect rather than permanently adding the SDK directory to the environment.
+## Deployed application cannot find a HyRemote plugin/runtime
 
-## Qt-linked tests fail to launch on Windows
+A normal deployment should run from the application's own tree rather than the original SDK.
 
-When running **build-tree** tests, ensure the matching Qt `bin` and build-tree `remoteaccess` directory are discoverable on `PATH`.
+Do not permanently “fix” deployment by:
 
-For an installed/deployed acceptance fixture, the opposite rule applies: remove the original SDK/build path and verify the application runs from its deployment tree.
+- pointing `QT_PLUGIN_PATH` back to the Qt/HyRemote SDK;
+- pointing `QT_QPA_PLATFORM_PLUGIN_PATH` back to a build directory;
+- pointing `LD_LIBRARY_PATH` back to the HyRemote build tree;
+- manually copying internal Core/transport/capture files.
 
-## Linux build-tree test works only with `LD_LIBRARY_PATH`
+Recheck the applicable `hyremote_deploy()` call in [`deployment.md`](deployment.md).
 
-Using Qt/build output directories in `LD_LIBRARY_PATH` can be appropriate for direct build-tree developer tests. It is not acceptable evidence for installed deployment.
+## Windows cannot find Qt/HyRemote DLLs
 
-`hyremote_deploy()` must produce a deployment that resolves the shared facade and plugin/QML payloads without relying on the original HyRemote SDK/build directory.
+Confirm the application was deployed, not merely compiled.
 
-## Linux test works under offscreen/Xvfb but local desktop behavior is unknown
+An installed/deployed application should resolve from its own tree:
 
-Headless CI proves only the behavior it actually executes. It does not upgrade local-visible coexistence or a desktop QPA/graphics combination to Supported.
+- Qt runtime;
+- `HyRemoteRemoteAccess`;
+- the relevant Generic/QPA/QML payload.
 
-## Viewer disconnect leaves input apparently held
+Do not permanently add the developer Qt `bin` directory to the product environment to hide missing deployment files.
 
-Recognized pressed key/button state is balanced when a viewer disappears abruptly. If a build still reproduces held input after an abrupt viewer loss, capture the exact event sequence and treat it as a regression.
+## Linux only runs with `LD_LIBRARY_PATH`
 
-## Slow or malicious clients
+Temporarily using `LD_LIBRARY_PATH` can be useful while debugging a build tree, but a product deployment should not rely on the original HyRemote/Qt SDK path.
 
-The Core frame mailbox, RFB frame handoff, GUI input delivery and incomplete-handshake lifetime are bounded by design. If memory/work still grows without bound, treat it as a product defect and record the exact client traffic/reproduction; do not raise queue capacities as a substitute for fixing ownership/backpressure.
+If the deployed application fails once the build tree is removed, treat it as a deployment problem.
 
-## Security warning
+## Headless/offscreen works but native desktop behavior is unknown
 
-The RFB SecurityType None baseline is unauthenticated and unencrypted; a configured authenticated profile adds RFB VNC authentication but still no encryption. Do not expose a listener directly to an untrusted/public network merely to test connectivity. See `docs/security.md`.
+Headless/offscreen execution proves only the path it actually runs.
+
+It does not automatically prove:
+
+- physical display behavior;
+- local keyboard/mouse behavior;
+- all native QPA delegate behavior;
+- special GPU/rendering paths.
+
+> **TODO V0.4:** complete final physical Windows/Linux local + remote coexistence qualification.
+
+## Slow clients cause resource growth
+
+HyRemote frame handoff, transport, and input paths are designed to be bounded.
+
+If a slow client can make memory, queue depth, or work grow without bound, treat that as a product defect. Do not merely increase queue sizes to hide backpressure/ownership problems.
+
+## Security-related startup problems
+
+V0.1 does not provide encrypted RFB traffic.
+
+If you see:
+
+- non-loopback startup being refused;
+- `AuthenticatedEncrypted` failing to start;
+- viewer password behavior not matching expectations;
+
+read [`../../security.md`](../../security.md) first.
+
+Do not expose the current product directly to the public Internet just to test connectivity.
+
+## Still cannot isolate the problem
+
+Record at least:
+
+- HyRemote version/commit;
+- exact Qt version;
+- OS/architecture;
+- integration frontend;
+- Widgets / Quick target type;
+- viewer and version;
+- startup arguments;
+- `lastError()` / logs;
+- source build or installed SDK;
+- whether `hyremote_deploy()` was used.
+
+This keeps diagnosis at the product boundary before investigating internal modules.

@@ -1,56 +1,46 @@
-# Getting started — Transparent QPA Proxy
+# QPA Getting Started (Preview)
 
 > Language / 语言: **English** | [中文](../../getting-started/qpa-proxy.md)
 
-This guide is for an existing Qt application that should gain HyRemote remote access with **zero or minimal application-source changes**.
+QPA is HyRemote's specialized zero-code integration path. Use it when the application genuinely needs a Qt platform-entry route. If Generic Plugin is sufficient, prefer [`generic.md`](generic.md) because Generic uses public Qt plugin APIs and does not introduce QPA private-ABI coupling.
 
-Transparent QPA is the third mandatory HyRemote V1 integration mode. It is not a replacement-only/headless VNC platform: HyRemote delegates normal platform behavior to the native Qt platform integration and adds the same shared remote-access runtime alongside it.
+Current product status: **Preview**.
 
-For a complete ordinary application, see `examples/qpa-proxy-existing-app`.
+## Product model
 
-## V1 qualified reference line
+QPA does not switch the application to a replacement-only offscreen/qvnc platform. `qhyremote` uses a Factory Trampoline to create and return the native Qt platform integration while attaching the HyRemote Shared Runtime alongside it:
 
-Transparent QPA is deliberately version-coupled to Qt private APIs:
-
-- Qt: **6.8.3 exactly**;
-- Windows x86_64 delegate: `qwindows`;
-- Linux x86_64 delegate: `qxcb`.
-
-The capture-family classification is maintained in `../qpa-capture-classification-qt-6.8.3.md`; the general evidence matrix is `../compatibility.md`.
-
-Do not infer support for another Qt patch/minor, Wayland, EGLFS, OpenHarmony or arbitrary foreign/native windows.
-
-## Safe defaults
-
-- listener address: loopback;
-- port: 5921;
-- remote input: disabled;
-- local display/input: native platform delegate remains authoritative;
-- bounded RFB correctness baseline: `SecurityType None` and unauthenticated unless an authenticated profile is configured, which enables RFB VNC authentication; unencrypted in either case.
-
-## 1. Build and install HyRemote with QPA
-
-Use one coherent Qt 6.8.3 SDK containing the private Gui development target. The normal HyRemote product options already build the shared C++ runtime and its Widgets/Quick adapters; enabling QPA requires one additional product option:
-
-```sh
-cmake -S . -B build-qpa \
-  -DCMAKE_PREFIX_PATH=<qt-6.8.3-prefix> \
-  -DCMAKE_INSTALL_PREFIX=<hyremote-prefix> \
-  -DHYREMOTE_WITH_QPA_PROXY=ON
-cmake --build build-qpa --config Release
-cmake --install build-qpa --config Release
+```text
+MyApp -platform hyremote
+        |
+        v
+qhyremote Factory Trampoline
+        |
+        +--> native qwindows / qxcb platform integration
+        |
+        +--> HyRemote Shared Runtime
 ```
 
-The resulting V1 package has one fixed HyRemote runtime shape for this mode:
+Local display and local input remain owned by the native Qt platform.
 
-- `qhyremote` — Qt platform MODULE;
-- `HyRemoteRemoteAccess` — shared HyRemote runtime used internally by the module.
+## Current reference environment
 
-Core, Session, capture, input and transport objects are not separate QPA deployment choices.
+QPA depends on Qt private ABI, so compatibility is declared per **exact Qt patch**.
 
-## 2. Keep the application ordinary Qt
+Current reference pairs:
 
-The application does not include or link HyRemote. For example:
+- Windows x86_64 + Qt 6.8.3 exact + `qwindows`;
+- Linux x86_64 + Qt 6.8.3 exact + `qxcb`.
+
+Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another native platform from these pairs.
+
+> **TODO V0.3/V0.4:** complete formal productization, additional exact Qt/OS combinations, and physical local+remote coexistence qualification before broadening the QPA support statement.
+
+See [`../../compatibility.md`](../../compatibility.md).
+
+## Keep the application Qt-only
+
+The application itself does not include or link HyRemote:
 
 ```cmake
 find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Widgets)
@@ -59,9 +49,9 @@ add_executable(MyExistingApp main.cpp)
 target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
 ```
 
-Before enabling the proxy, verify the application's native behavior with `-platform windows` or `-platform xcb` as appropriate.
+HyRemote enters through deployment and process startup instead of application linkage.
 
-## 3. Deploy through the one HyRemote helper
+## Deployment
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
@@ -74,22 +64,20 @@ install(TARGETS MyExistingApp
 hyremote_deploy(TARGET MyExistingApp QPA)
 ```
 
-`find_package(HyRemote)` here supplies packaging metadata; it does **not** add a HyRemote link dependency to `MyExistingApp`.
+The deployment helper adds:
 
-Deployment responsibilities remain simple:
+- the `qhyremote` platform plugin;
+- the Shared Runtime;
+- the matching native Qt platform plugin;
+- required Qt runtime dependencies.
 
-1. Qt deploys the application runtime and native `qwindows` / `qxcb` delegate;
-2. HyRemote adds `qhyremote` and the shared `HyRemoteRemoteAccess` runtime required by it.
+The application executable still does not link `HyRemote::RemoteAccess`.
 
-The helper uses Qt's deployment support to resolve runtime dependencies. It does not modify the user's Qt SDK, hard-code its installation path, or require the application to know HyRemote runtime filenames.
+A normal deployment should not depend on SDK-specific `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, or build-tree library paths.
 
-A QML application can use the same helper:
+See [`../guide/deployment.md`](../guide/deployment.md).
 
-```cmake
-hyremote_deploy(TARGET MyQmlApp QML QPA)
-```
-
-## 4. Launch with the safe view-only default
+## Launch
 
 Windows:
 
@@ -103,41 +91,29 @@ Linux:
 ./bin/MyExistingApp -platform hyremote
 ```
 
-No HyRemote-specific environment variable is required for a correctly deployed application. In particular, the normal deployed path must not require `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, or an SDK-specific runtime library path.
+Default behavior:
 
-Expected behavior:
+- the native platform continues to own local display and input;
+- listener defaults to `127.0.0.1:5921`;
+- remote input is disabled by default;
+- supported application top-level surfaces participate in one logical remote session;
+- ordinary viewer disconnect/reconnect does not require restarting the Qt application.
 
-- the native delegate still owns local display/input;
-- supported application surfaces form one remote session;
-- listener remains loopback:5921 by default;
-- remote input remains disabled;
-- supported secondary windows/dialogs may enter and leave the remote canvas without restarting the listener.
+## Enable remote control
 
-## 5. Viewer connect/reconnect
-
-Connect an RFB/VNC viewer to `127.0.0.1:5921`. Close it and connect again. Normal viewer disconnect/reconnect must not require an application restart.
-
-The shared transport correctness gate also requires held remote keys/buttons to be balanced after abrupt disconnect.
-
-## 6. Explicitly enable remote control
-
-Remote input is startup policy in the zero-code QPA mode:
+Remote input is startup policy for the QPA route:
 
 ```text
 -platform "hyremote:hyremote-input=true"
 ```
 
-Local input remains on the native platform path. Omit the parameter to return to view-only behavior.
+Omit the parameter to stay view-only.
 
-There is intentionally no private QPA control object for application code. Applications needing runtime policy controls should use the public C++ or QML product API rather than private platform-plugin internals.
+Applications that need rich runtime policy changes should prefer the public C++ API or QML API instead of depending on private QPA control objects.
 
-## 7. Optional address and port parameters
+## Address and port options
 
-`hyremote-address` takes a **numeric** address only, and the measured per-address behaviour - including that the IPv6
-wildcard `::` is an IPv6-only listener on this platform rather than a dual-stack one, and that an unassigned address or an
-occupied port fails before `Running` and leaves nothing listening - is in
-[`../../known-limitations.md`](../../known-limitations.md#listener-address-family-and-reachability). The QPA parameter path
-resolves to the same shared listener semantics as the C++ and QML integrations.
+QPA uses the same listener semantics as the Shared Runtime:
 
 ```text
 hyremote-address=<numeric-ip-address>
@@ -151,65 +127,66 @@ Example:
 -platform "hyremote:hyremote-address=127.0.0.1:hyremote-port=5921:hyremote-input=false"
 ```
 
-Invalid HyRemote values fail closed.
+Invalid options fail closed.
 
-## 8. Security boundary
+See [`../../known-limitations.md`](../../known-limitations.md) for address-family and platform-specific limits.
 
-The current RFB baseline advertises `SecurityType None` unless an authenticated profile is configured, which selects RFB VNC authentication. Do not bind the current V1 correctness baseline directly to an untrusted network or the public Internet, and do not describe it as encrypted remote support - authentication is not encryption.
+## Multi-window behavior
 
-## 9. Multi-window behavior
+QPA represents one Qt application as one logical remote session rather than one listener per window.
 
-Transparent QPA represents one Qt application as one logical remote session, not one listener per window. Supported application-owned top-level surfaces are composed into that session; opening, closing or moving a supported dialog, tool window, QWidget popup/menu or second QQuickWindow must not itself restart the listener.
+Supported application-owned top-level QWidget / QQuickWindow surfaces may enter and leave the remote canvas. Opening or closing a supported dialog, tool window, or second top-level window should not require restarting the listener.
 
-Qt Quick content inside one QQuickWindow remains part of that window's scene rather than becoming a duplicate remote surface. Arbitrary foreign/native OS windows are outside V1 scope.
+Arbitrary foreign/native OS windows are not automatically part of the QPA support scope.
 
-## 10. Capture-family limits
+## Widgets / Qt Quick
 
-Do not generalize evidence between QWidget, QOpenGLWidget, QQuickWindow, Quick3D, custom FBO and arbitrary native windows. The authoritative production classification is [`../../internal/qpa-capture-classification-qt-6.8.3.md`](../../internal/qpa-capture-classification-qt-6.8.3.md).
+QPA reuses the same Runtime target adapters as the other frontends:
 
-Current boundaries include:
+- QWidget uses the Widgets adapter;
+- QQuickWindow uses the Quick adapter;
+- QOpenGLWidget, QQuickWidget, Quick3D, custom FBOs, and other complex combinations are supported only where explicitly stated by the compatibility matrix.
 
-- QWidget correctness capture uses `QWidget::render()`;
-- QQuickWindow uses public `contentItem()->grabToImage()`;
-- Quick3D/custom Quick FBO evidence is backend-specific;
-- mixed QQuickWidget composition remains configuration-specific;
-- generic QWindow/QOpenGLWindow/foreign-native surfaces without a qualified adapter are not silently claimed.
+See [`../../compatibility.md`](../../compatibility.md).
 
-## 11. Build-tree diagnostics only
+## Security boundary
 
-Manual `QT_PLUGIN_PATH=<hyremote-build-plugin-root>` may be useful when running directly from a development build tree. It is **not** part of the installed product contract. If a deployed application requires it to locate `qhyremote`, treat that as a deployment defect.
+QPA reuses the Shared Runtime security policy:
 
-## 12. Troubleshooting
+- default bind is loopback;
+- remote input is disabled by default;
+- unauthenticated non-loopback exposure is rejected;
+- `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;
+- `AuthenticatedEncrypted` fails closed while the encrypted backend is unavailable.
 
-### Platform plugin missing
+Do not expose the current product directly to the public Internet. See [`../../security.md`](../../security.md).
 
-Confirm deployment used `hyremote_deploy(TARGET ... QPA)` and the installed application contains:
+## Troubleshooting
 
-```text
-plugins/platforms/qhyremote.dll       # Windows
-plugins/platforms/libqhyremote.so     # Linux
+### `qhyremote` is missing
+
+Confirm the application uses:
+
+```cmake
+hyremote_deploy(TARGET MyExistingApp QPA)
 ```
 
-Do not permanently point `QT_PLUGIN_PATH` at the SDK to hide a packaging defect.
+A normal deployed tree should contain `qhyremote` in the platform-plugin directory together with the matching native platform plugin.
 
-### Deployment helper rejects Qt
+### Qt version is rejected
 
-QPA requires the exact qualified Qt 6.8.3 line. A missing QPA package or different consumer Qt version fails explicitly.
+QPA is an exact-private-ABI route. The current reference is Qt 6.8.3; a different patch must not be silently treated as compatible.
 
-### Plugin present but cannot load
+### Viewer can see but cannot control
 
-Verify the deployed tree contains `HyRemoteRemoteAccess` and that the application/proxy/native Qt runtime come from the same qualified Qt line. The user should not need to copy Core or backend libraries.
+That is the default. Enable `hyremote-input=true` only when remote control is deliberately required.
 
-### Viewer connects but cannot control
+### Generic or QPA?
 
-That is the default. Add `hyremote-input=true` only when remote control is deliberately required.
+Prefer Generic when it satisfies the application. Use QPA when platform-entry behavior is actually required.
 
-### Supported window changes disconnect the viewer
+## Examples
 
-That violates the one-session surface-continuity requirement and should be treated as a QPA regression.
+The new Example curriculum teaches Generic and QPA separately so the two zero-code routes remain easy to compare.
 
-## 13. Deployment verification requirement
-
-The clean installed-SDK QPA consumer must prove that an ordinary Qt-only executable can be deployed with the helper, find `qhyremote` from its own application tree, load the shared HyRemote runtime, connect/reconnect an RFB viewer, and do so without SDK/plugin-path overrides.
-
-Hosted/headless CI cannot prove physical native local-display/local-input + remote coexistence. That is a separate requirement that needs a genuine local test environment.
+> **TODO V0.3:** complete the bilingual, branded `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` product examples.

@@ -1,251 +1,276 @@
-# 安装、构建与集成准备
+# 安装、构建与接入准备
 
 > 语言 / Language：**中文** ｜ [English](../en/guide/install.md)
 
-本文档说明如何获得 HyRemote、如何构建它，以及如何把它接入一个 Qt 应用（已安装 SDK 或源码两种方式）。
-面向最终用户与产品最终形态；验收过程、里程碑跟踪与内部工程约定不在此文，见 [`docs/README.md`](../README.md) 的"内部文档"一节。
+本文说明如何构建 HyRemote、生成可安装 SDK，以及如何从应用工程中消费 HyRemote。内容按当前产品形态编写，不包含内部验收过程或开发历史。
 
-## 1. V1 参考支持矩阵
+## 当前产品环境
 
-| 维度 | V1 承诺 |
+V0.1 Developer Preview 当前参考环境：
+
+| 维度 | 当前产品状态 |
 | --- | --- |
-| 操作系统 | Windows x86_64、Linux x86_64（桌面）。嵌入式 Linux/EGLFS **不在** V1 支持范围内 |
-| Qt | **精确 Qt 6.8.3** 为参考版本；Bounded RFB 传输与三类集成方式均以该版本为验收基线 |
-| 编译器 | Windows：MSVC x64（C++17）；Linux：GCC x86_64（C++17） |
-| 集成方式 | ① Embedded C++（唯一共享库）② Declarative QML（`import HyRemote`）③ Transparent QPA Proxy（`-platform hyremote`） |
-| QPA 约束 | Transparent QPA 与 Qt 6.8.3 的私有 QPA ABI 精确耦合；Windows 复用 `qwindows`、Linux 复用 `qxcb` 原生委托 |
-| 查看器 | 任意标准 VNC 客户端，默认连接 `127.0.0.1:5921` |
+| 操作系统 | Windows x86_64、Linux x86_64 |
+| Qt | Qt 6.8.3 reference |
+| C++ API | **V0.1 主路径** |
+| Generic Plugin | **V0.1 主路径** |
+| QML API | **Preview** |
+| QPA | **Preview，Qt 6.8.3 exact private ABI** |
+| Embedded Linux / ARM64 | **TODO V1.1** |
+| Qt 5.15 LTS | **TODO V0.4 qualification** |
 
-> **产品状态**：V1.0.0.0 验收尚未完成。候选实现只有在必需的可执行证据与物理证据实际通过后，才构成 **Supported** 声明；
-> 在此之前请把它当作候选版本看待。当前状态见 [`docs/compatibility.md`](../compatibility.md)。
+精确状态见 [`../compatibility.md`](../compatibility.md)。
 
-## 2. 两种获取方式：一次配置只能选一种
+## 前置工具
 
-HyRemote 提供两条获取路径，二者的**应用 API、产物形态与部署助手完全相同**，但获取步骤不同：
+推荐准备：
 
-| 方式 | 使用场景 | 入口 |
-| --- | --- | --- |
-| **已安装 SDK** | 使用预构建/安装前缀，团队共享一个 SDK | `find_package(HyRemote CONFIG REQUIRED)` |
-| **源码接入** | 随应用一并 vendored、交叉编译、需要改源码 | `add_subdirectory(third_party/HyRemote)` |
+- CMake 3.21+；
+- Ninja；
+- Qt 6.8.3 开发套件；
+- Windows：MSVC x64；
+- Linux：GCC/Clang x86_64。
 
-**硬性约束**：同一次 CMake 配置中只能存在**一个** HyRemote 获取源——要么一个已安装前缀，要么一棵源码树。
-不要在同一次配置里同时 `find_package(HyRemote)` 与 `add_subdirectory(HyRemote)`，也不要混用两个不同的已安装前缀。
-V1 对这类混用**直接失败**，而不是把某一处的运行时与另一处构建出的 QML/QPA 元数据拼在一起。（对同一个已安装前缀重复调用 `find_package` 是允许的。）
+QPA 额外需要与 Qt 6.8.3 **完全匹配**的 Qt private Gui 开发目标。
 
-## 3. 构建 HyRemote 本身
+## 从源码构建 HyRemote
 
-### 3.1 普通产品构建
+仓库统一构建入口是 `compile.cmd`。它在 Windows 和 POSIX shell 上都可运行，并从 `build.yml` 读取配置。
 
-默认配置刻意**只构建产品**：仅构建标准 C++ 路径（`HyRemote::RemoteAccess`），不构建仓库测试、示例与研究代码。
+先查看最终配置：
 
-Windows（x64 MSVC 开发者环境）：
-
-```bat
-cmake -S . -B build -G Ninja ^
-  -DCMAKE_BUILD_TYPE=Release ^
-  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64
-cmake --build build --parallel
+```text
+compile.cmd --show-config
 ```
 
-Linux：
+V0.1 主路径构建：
+
+```text
+compile.cmd --integrations=cpp,generic --qt-prefix=/path/to/Qt/6.8.3/<kit>
+```
+
+开发时需要完整四 frontend：
+
+```text
+compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix=/path/to/Qt/6.8.3/<kit>
+```
+
+需要示例或测试时显式加入：
+
+```text
+compile.cmd --integrations=cpp,generic --examples --tests --run-tests
+```
+
+命令行参数覆盖 `build.yml` 中的对应配置。四个 integration 是独立选择项；选择 Generic、QML 或 QPA 不会把 C++ frontend 当作父实现隐式打开。
+
+## 直接使用 CMake
+
+如果你把 HyRemote 当作普通 CMake 工程构建，也可以直接配置：
 
 ```bash
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<kit> \
+  -DHYREMOTE_BUILD_CPP_API=ON \
+  -DHYREMOTE_WITH_GENERIC_PLUGIN=ON
 cmake --build build --parallel
 ```
 
-### 3.2 生成可安装的 SDK
-
-追加安装前缀并执行安装：
-
-```bash
-cmake -S . -B build-hyremote -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<toolchain> \
-  -DCMAKE_INSTALL_PREFIX=/path/to/hyremote-sdk
-cmake --build build-hyremote --parallel
-cmake --install build-hyremote
-```
-
-生成的安装前缀即可按第 4 节的方式被 `find_package(HyRemote CONFIG REQUIRED)` 消费。
-
-### 3.3 可选集成包
-
-QML 与 Transparent QPA 是**可选载荷**，按需开启：
+可选 frontend：
 
 ```text
--DHYREMOTE_BUILD_QML_API=ON      # 提供 import HyRemote
--DHYREMOTE_WITH_QPA_PROXY=ON     # 提供 qhyremote 平台插件（需精确 Qt 6.8.3 及匹配的私有 Gui 开发包）
+-DHYREMOTE_BUILD_QML_API=ON
+-DHYREMOTE_WITH_GENERIC_PLUGIN=ON
+-DHYREMOTE_WITH_QPA_PROXY=ON
 ```
 
-正常 C++ 使用**不需要**这两个选项，也不需要 Qt 私有开发包。开启可选项不会扩大普通 C++ 应用的链接面。
+QPA 需要 Qt 6.8.3 exact + `Qt6::GuiPrivate`。
 
-### 3.4 维护者/验收构建
+## 生成 installed SDK
 
-仓库自身的验证是显式开启的，不会隐藏在普通产品构建里。下面给出**完整的**配置、构建与测试链（Windows）：
-
-```bat
-cmake -S . -B build-test -G Ninja ^
-  -DCMAKE_BUILD_TYPE=Release ^
-  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 ^
-  -DHYREMOTE_BUILD_TESTS=ON ^
-  -DHYREMOTE_BUILD_EXAMPLES=ON
-cmake --build build-test --parallel
-set PATH=C:\Qt\6.8.3\msvc2022_64\bin;%CD%\build-test\remoteaccess;%PATH%
-ctest --test-dir build-test --output-on-failure
-```
-
-Linux：
+设置安装前缀并执行标准 CMake install：
 
 ```bash
-cmake -S . -B build-test -G Ninja \
+cmake -S . -B build-sdk -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
-  -DHYREMOTE_BUILD_TESTS=ON \
-  -DHYREMOTE_BUILD_EXAMPLES=ON
-cmake --build build-test --parallel
-export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}   # 仅当本地 Qt 套件未提供合适的运行时查找时
-ctest --test-dir build-test --output-on-failure
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<kit> \
+  -DCMAKE_INSTALL_PREFIX=/path/to/hyremote-sdk \
+  -DHYREMOTE_BUILD_CPP_API=ON \
+  -DHYREMOTE_WITH_GENERIC_PLUGIN=ON
+
+cmake --build build-sdk --parallel
+cmake --install build-sdk
 ```
 
-`-DHYREMOTE_BUILD_QML_API=ON` 与 `-DHYREMOTE_WITH_QPA_PROXY=ON` 可按需加入同一次配置，以覆盖 QML/QPA 的验证范围。
+如果需要 QML/QPA payload，在生成 SDK 时按需开启对应 frontend。
 
-上面的 `PATH` / `LD_LIBRARY_PATH` 增补是**构建树测试关注点**，不是部署契约：部署后的应用必须通过部署机制获得 Qt/HyRemote 运行时文件，不得依赖原始 SDK 或构建树。
+安装后的应用通过：
 
-## 4. 消费方式 A：已安装 SDK
-
-### 4.1 契约
-
-V1 已安装 SDK 只暴露**一个正常的 C++ 产品目标**：`HyRemote::RemoteAccess`（共享库）。
-
-- Core 静态组合在门面之后，**不作为 SDK 目标安装/导出**；
-- QML 模块通过 `import HyRemote` 消费，其支撑库不是第二个 C++ SDK 目标；
-- Transparent QPA 通过 `hyremote_deploy(... QPA)` 消费，**不是应用链接目标**（安装的 SDK 不导出 `HyRemote::QpaPlatform`）。
-
-应用代码不需要、也不应该逐个发现或链接 Core/传输/采集/输入/QPA 内部目标。
-
-### 4.2 最小应用
-
-```bash
-cmake -S . -B build \
-  -DCMAKE_PREFIX_PATH="/path/to/Qt/6.8.3/<toolchain>;/path/to/hyremote-sdk"
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
 ```
+
+消费产品，不需要知道 HyRemote 内部目录结构。
+
+## 已安装 SDK：C++ API
+
+Qt Widgets：
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 find_package(HyRemote CONFIG REQUIRED)
 
-target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
+target_link_libraries(MyApp PRIVATE
+    Qt6::Widgets
+    HyRemote::RemoteAccess
+)
 ```
 
-```cpp
-#include <HyRemote/RemoteAccess.h>
+Qt Quick：
 
-HyRemote::RemoteAccess remote(&window);
-remote.start();
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
+find_package(HyRemote CONFIG REQUIRED)
+
+target_link_libraries(MyApp PRIVATE
+    Qt6::Quick
+    HyRemote::RemoteAccess
+)
 ```
 
-默认值即安全默认值：监听回环地址、端口 5921、远程输入关闭。各项 setter 是**可选策略控制**，不是必需的初始化步骤。
+Widgets 与 Quick 使用同一个 `HyRemote::RemoteAccess`。
 
-默认端口可由集成方在**构建期**定义：配置时传 `-DHYREMOTE_DEFAULT_PORT=<端口>`（不传即 `5921`）。三种接入方式共用这一个默认值——C++ 与 QML 都从 Core 的默认值起步，QPA 代理在平台串未给出 `hyremote-port` 时也使用同一数字；运行期仍可逐进程覆盖：`RemoteAccess::setPort()`、QML 的 `port` 属性、`-platform "hyremote:hyremote-port=<端口>"`。
-使用 Qt Quick 时，按应用自身需要请求 Qt Quick 组件，HyRemote 目标保持不变；`find_package(HyRemote)` 不会强迫应用解析它并不使用的 Widgets/Quick/QML 模块。
+详见 [`../getting-started/cpp.md`](../getting-started/cpp.md)。
 
-### 4.3 `find_package(HyRemote)` 的语义
+## 已安装 SDK：Generic Plugin
 
-它解析 `HyRemote::RemoteAccess` 的公开依赖、加载该导出目标、发布可选的 QML/QPA 载荷元数据，并提供 `hyremote_deploy()`。
+Generic 应用保持 Qt-only，不链接任何 HyRemote target：
 
-它**不会**把 Core、QML 支撑库或 `qhyremote` 变成应用可选的链接目标。它由 HyRemote 的安装/导出规则生成，
-**不应**因为某个源码目录被 `add_subdirectory` 进别的项目就假定它存在。
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
+find_package(HyRemote CONFIG REQUIRED)
 
-## 5. 消费方式 B：源码接入
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
 
-源码接入适用于 vendored、交叉编译或需要改源码的场景；它**不要求**为 HyRemote 源码树本身调用 `find_package(HyRemote)`。
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp GENERIC)
+```
+
+运行时通过 Qt generic-plugin 机制激活：
+
+```text
+MyExistingApp -plugin hyremote
+```
+
+详见 [`../getting-started/generic.md`](../getting-started/generic.md)。
+
+## 已安装 SDK：QML API（Preview）
+
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(HyRemote CONFIG REQUIRED)
+```
+
+```qml
+import HyRemote
+
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+部署：
+
+```cmake
+hyremote_deploy(TARGET MyQmlApp QML)
+```
+
+> **TODO V0.3：** 完成正式产品化后再将 QML API 从 Preview 提升为正式路径。
+
+## 已安装 SDK：QPA（Preview）
+
+应用保持 Qt-only：
+
+```cmake
+find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Widgets)
+find_package(HyRemote CONFIG REQUIRED)
+
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
+
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp QPA)
+```
+
+启动：
+
+```text
+MyExistingApp -platform hyremote
+```
+
+QPA 只对明确声明的 exact Qt/private-ABI 组合成立。当前参考是 Qt 6.8.3。
+
+## 源码接入
+
+也可以把 HyRemote 作为源码子项目：
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 
-add_subdirectory(third_party/HyRemote)
+set(HYREMOTE_BUILD_CPP_API ON CACHE BOOL "" FORCE)
+set(HYREMOTE_WITH_GENERIC_PLUGIN ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
 
 add_executable(MyApp main.cpp)
 target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
 ```
 
-作为子项目被引入时，HyRemote 自身的测试、示例与研究代码**自动默认为 OFF**，应用不需要知道或覆盖这些仅开发者使用的开关。
-`add_subdirectory(... EXCLUDE_FROM_ALL)` 同样受支持：HyRemote 的源码产物保持内部构建目标，部署助手只为落地所选载荷添加必要的本地构建依赖，
-**不会**把它们变成应用的链接依赖（Transparent QPA 应用即使从源码构建 `qhyremote` 与 `HyRemoteRemoteAccess`，其自身仍只链接 Qt）。
+源码接入与 installed SDK 使用同一个产品 API 和部署模型。
 
-按需开启可选集成包：
+同一次 CMake configure 中不要混用：
 
-```cmake
-set(HYREMOTE_BUILD_QML_API ON CACHE BOOL "" FORCE)       # import HyRemote
-set(HYREMOTE_WITH_QPA_PROXY ON CACHE BOOL "" FORCE)      # 精确 Qt 6.8.3 的 qhyremote 插件
-add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
+```text
+find_package(HyRemote)
++
+add_subdirectory(HyRemote)
 ```
 
-这些选项**不会**创建平行的 Core/传输栈：QML 仍是薄封装，QPA 仍是插件入口，二者共用同一个共享运行时。
-源码接入继承调用方的编译器、sysroot、CMake 工具链文件与目标 Qt SDK，因此也是未来嵌入式 Linux 家族的扩展路径——
-它不允许引入第二套项目专用构建系统或更复杂的应用 API。
+选择一种 acquisition source 即可。
 
-## 6. 部署：`hyremote_deploy()`
+## 部署
 
-部署由 HyRemote 拥有的**唯一入口**负责：
+HyRemote 的统一部署入口是：
 
 ```cmake
-hyremote_deploy(TARGET MyCppApp)          # Embedded C++
-hyremote_deploy(TARGET MyQmlApp QML)      # Declarative QML
-hyremote_deploy(TARGET ExistingQtApp QPA) # Transparent QPA
-hyremote_deploy(TARGET ExistingQmlApp QML QPA)  # QML + QPA 组合
+hyremote_deploy(TARGET MyCppApp)
+hyremote_deploy(TARGET MyQmlApp QML)
+hyremote_deploy(TARGET ExistingQtApp GENERIC)
+hyremote_deploy(TARGET ExistingQtApp QPA)
 ```
 
-```cmake
-install(TARGETS MyApp RUNTIME DESTINATION bin)
-hyremote_deploy(TARGET MyApp)
-```
+正常部署应从应用自己的部署目录运行，不需要把 `QT_PLUGIN_PATH`、`LD_LIBRARY_PATH` 等变量指回 HyRemote/Qt SDK 或构建树。
 
-助手负责所选载荷的落地（共享运行时、Qt 依赖、QML 插件文件、`qhyremote`）。
-应用**不要**手工复制 DLL/SO、`qmldir`、插件文件，也不要设置 SDK 专用的 `QT_PLUGIN_PATH` / `QT_QPA_PLATFORM_PLUGIN_PATH` / `LD_LIBRARY_PATH` 覆盖。
-完整部署契约见 [`docs/guide/deployment.md`](deployment.md)。
+详见 [`deployment.md`](deployment.md)。
 
-## 7. 干净部署要求
+## 安全默认值
 
-构建成功**不构成**验收证据。部署后的应用必须在自己的部署前缀下运行，不得依赖：HyRemote 构建树、原 SDK 安装前缀，
-或 `PATH`、`LD_LIBRARY_PATH`、`QT_PLUGIN_PATH`、`QT_QPA_PLATFORM_PLUGIN_PATH`、`QML2_IMPORT_PATH`、`QML_IMPORT_PATH` 之类的手工覆盖。
+V0.1 默认：
 
-Linux 上的 V1 夹具还会核对 HyRemote/Qt 共享对象的实际解析来源，避免残留的 SDK/构建树 RUNPATH 伪装成干净部署；
-Windows 上的干净运行检查会把 `PATH` 收窄到部署目录加必需的系统目录。
+- `127.0.0.1:5921`；
+- 远程输入关闭；
+- `Insecure` 仅允许回环监听；
+- `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供 VNC authentication，但流量不加密；
+- 默认 V0.1 build/profile 不代表 authenticated transport 已编译进产品；
+- `AuthenticatedEncrypted` 尚未实现，始终在监听器创建前 fail-closed，且不会降级到较弱 profile。
 
-## 8. 平台要点
+不要把当前产品直接暴露到公网。详见 [`../security.md`](../security.md)。
 
-| 主题 | Windows x86_64 | Linux x86_64 |
-| --- | --- | --- |
-| 参考 Qt | `C:\Qt\6.8.3\msvc2022_64` | `/opt/Qt/6.8.3/gcc_64` |
-| 运行测试的构建树补充 | 把 Qt `bin` 与构建树的 `remoteaccess` 目录加入 `PATH` | 必要时设置 `LD_LIBRARY_PATH` |
-| QPA 原生委托 | `qwindows` | `qxcb` |
-| 离屏/软件渲染 | 可用于验证"协议→应用"路径，**不**构成本地可见显示/输入共存的证据 | 同左（`offscreen` 等） |
+## 下一步
 
-桌面 Linux 的结果**不**推导出嵌入式 Linux/EGLFS 支持。最终平台验收必须记录精确的 Qt/编译器/QPA/查看器配置。
-
-## 9. 运行示例与查看器
-
-开启 `-DHYREMOTE_BUILD_EXAMPLES=ON` 后，V1 候选中包含 `widgets-basic`、`quick-basic`、`qml-basic`、
-`qpa-proxy-existing-app`、`remote-support-showcase`（按已启用的集成包构建）。
-
-E1/E2 使用同一个公开门面 `HyRemote::RemoteAccess`，默认**仅观看**；只有受控测试环境才使用显式的远程输入选项。
-查看器连接见 [`viewer-connection.md`](viewer-connection.md)。
-
-## 10. 安全与支持边界
-
-Bounded RFB 正确性传输默认使用 **SecurityType None**：既无传输认证（且非回环地址一律拒绝），也无传输加密；配置认证 profile 后改用 **RFB VNC 认证**（RFB 安全类型 2）认证查看端，但仍不提供传输加密。
-默认绑定回环地址、远程输入默认关闭——不要把监听器直接暴露到不可信网络或公网。详见 [`docs/security.md`](../security.md) 与 [`SECURITY.md`](../../SECURITY.md)。
-
-支持边界以证据为准：托管/离屏构建本身不构成"本地可见显示/输入与远程共存"的证明。
-未通过验收的能力不会被宣称为 Supported，明确限制见 [`docs/known-limitations.md`](../known-limitations.md)。
-
-## 11. 相关文档
-
-- 集成方式（选择其一，每篇的英文镜像位于 `docs/en/` 下的同一路径）：[Embedded C++](../getting-started/cpp.md) ｜ [Declarative QML](../getting-started/qml.md) ｜ [Transparent QPA](../getting-started/qpa-proxy.md)
-- 部署与打包：[`deployment.md`](deployment.md)
-- 兼容与限制：[`compatibility.md`](../compatibility.md) ｜ [`known-limitations.md`](../known-limitations.md)
-- 排错：[`troubleshooting.md`](troubleshooting.md)
+- C++ API：[`../getting-started/cpp.md`](../getting-started/cpp.md)
+- Generic Plugin：[`../getting-started/generic.md`](../getting-started/generic.md)
+- QML API（Preview）：[`../getting-started/qml.md`](../getting-started/qml.md)
+- QPA（Preview）：[`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
+- 部署：[`deployment.md`](deployment.md)
+- 兼容性：[`../compatibility.md`](../compatibility.md)
+- 已知限制：[`../known-limitations.md`](../known-limitations.md)

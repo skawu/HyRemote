@@ -1,61 +1,108 @@
-# Qt Widgets capture and input baseline
+# Qt Widgets Capture and Input Baseline
 
-Status: production integration slice for #6 / V0.0.1.0.
+This document describes the current HyRemote product behavior for qualified Qt Widgets targets.
+
+Applications attach a `QWidget` through the public HyRemote frontend they selected; they do not construct capture sources or input sinks directly.
 
 ## Product boundary
 
-Normal applications attach a `QWidget` target through `HyRemote::RemoteAccess`; they do not create
-or configure a `CaptureSource` or `InputSink` directly. The built-in adapter is selected internally
-when the attached `QObject` is a `QWidget`.
+For the programmable C++ API, a normal application uses:
 
-When remote input is enabled, the same built-in adapter supplies the normalized QWidget input sink.
-The application-facing API remains `HyRemote::RemoteAccess`; Qt Widgets is an implementation
-dependency of the installed HyRemote package when this adapter is present.
+```cpp
+HyRemote::RemoteAccess remote(&widget);
+remote.start();
+```
+
+Generic Plugin and QPA may discover supported application-owned Widget surfaces automatically through the shared Runtime.
+
+The Widgets adapter is an internal Runtime implementation detail. Applications do not select it explicitly.
 
 ## Capture path
 
+The portable correctness path is conceptually:
+
 ```text
-Core scheduler thread
-    -> WidgetCaptureSource::requestFrame()
-    -> queued invocation on the Qt application / GUI thread
+Core scheduler
+    -> Widgets target adapter
+    -> queued work on the Qt GUI thread
     -> QWidget::render()
-    -> CpuFrameStorage-owned RGBA8888 premultiplied pixels
-    -> RemoteFrame { Completion PTS, FullFrame damage }
-    -> Core bounded mailbox
+    -> owned CPU-readable frame storage
+    -> RemoteFrame
+    -> bounded Core handoff
+    -> transport
 ```
 
-Properties of the baseline:
+Current baseline properties:
 
-- QWidget is touched only on the Qt GUI thread;
-- each published frame owns its pixel storage for the complete `RemoteFrame` lifetime;
-- no borrowed/reused `QImage` pointer is published;
-- DPR is applied to the captured pixel dimensions exactly once;
-- capture request time remains diagnostic; completion time supplies the baseline content PTS;
-- damage is conservatively `FullFrame` until production damage tracking is justified;
-- separate top-level dialogs, menus and popups are not implicitly composited into one QWidget
-  target; that compatibility behavior remains explicit in #6 acceptance evidence;
-- `stop()` suppresses queued-but-not-published frames and waits for any already-entered Core
-  callback to drain.
+- QWidget access occurs on the Qt GUI thread;
+- each published frame owns its pixel storage for the required frame lifetime;
+- no borrowed/reused `QImage` pointer is exposed as a remote frame;
+- device-pixel ratio is applied to captured dimensions once;
+- completion time is used as the safe baseline content timestamp;
+- damage may be conservatively represented as full-frame;
+- capture-to-transport handoff remains bounded;
+- stop/target teardown prevents stale queued capture from being published after the Runtime is no longer active.
+
+This is a correctness baseline, not the final performance ceiling.
 
 ## Remote input path
 
+When remote input is enabled, normalized input follows:
+
 ```text
-transport-specific normalization
-    -> hyremote::InputEvent
-    -> Core InputSink::post()
-    -> queued invocation on the Qt application / GUI thread
+transport normalization
+    -> Core InputEvent routing
+    -> Widgets InputSink
+    -> queued GUI-thread delivery
     -> QWidget / focused descendant
 ```
 
-The V0.0.1.0 baseline supports pointer move, left/middle/right button transitions, logical wheel
-steps, logical key press/release, modifier state, and committed UTF-8 text. Pointer coordinates are
-mapped from the exact captured frame viewport to current QWidget logical coordinates through the
-Core mapping contract; DPR is not applied twice.
+The baseline supports the normalized product input categories documented in [`input-model.md`](input-model.md), including pointer movement/buttons, wheel steps, logical key transitions, modifiers, and committed text where supported by the transport.
 
-`InputSink::post()` only queues GUI work and never waits for QWidget event processing. Queued input
-is dropped if the sink is destroyed before delivery. Text is injected as committed input-method
-text; full IME pre-edit/composition parity remains outside the minimum contract.
+Pointer coordinates are mapped from the remote frame viewport to the current QWidget target geometry without applying DPR twice.
 
-This is the correctness baseline, not the final performance ceiling. Reuse pools, damage-aware
-rendering, GPU paths and external storage can replace the capture implementation later without
-changing `HyRemote::RemoteAccess`.
+Input delivery is asynchronous and bounded. Transport callbacks do not wait synchronously for QWidget event processing.
+
+## Window and surface scope
+
+A single explicit QWidget target does not automatically mean “capture the entire desktop”. HyRemote targets the application.
+
+Depending on the selected frontend, supported top-level dialogs, menus, popups, or additional application windows may be represented through the Runtime's automatic/composite surface model.
+
+Arbitrary foreign/native OS windows are not automatically included.
+
+See [`compatibility.md`](compatibility.md) for the current qualified surface scope.
+
+## Graphics-specific cases
+
+Basic QWidget qualification does not automatically qualify every configuration involving:
+
+- `QOpenGLWidget`;
+- `QQuickWidget` mixed content;
+- native child windows;
+- custom rendering engines;
+- third-party components that bypass normal QWidget rendering assumptions.
+
+These cases require explicit compatibility rows or real-world qualification rather than being inferred from raster Widgets support.
+
+## Performance direction
+
+The current Widgets path favors portable correctness and owned frame lifetime.
+
+Future improvements may introduce:
+
+- reusable frame pools;
+- damage-aware capture;
+- more efficient graphics readback;
+- platform-specific low-copy paths;
+- hardware-assisted conversion/encoding.
+
+Such changes remain behind the Runtime boundary and must not require ordinary applications to replace `HyRemote::RemoteAccess` or select internal capture classes.
+
+## Current status
+
+Widgets through C++ API and Generic Plugin are part of the V0.1 primary product path for the current reference environment.
+
+QPA Widgets support remains subject to its exact Qt private-ABI compatibility boundary.
+
+See [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md) for exact product status.

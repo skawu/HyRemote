@@ -1,138 +1,189 @@
 # HyRemote Compatibility Matrix
 
-Status: **V1.0.0.0 qualification pending; no GA support row may be marked Supported until required evidence actually executes.**
-
-HyRemote does not infer support from API similarity or from a different operating system. The V1 release target is Windows x86_64 + Linux x86_64. Embedded Linux is the next platform expansion and is not a V1 GA blocker unless the x86 implementation exposes a real architectural defect.
+HyRemote compatibility is stated only for environments that have an explicit product status. Similar Qt APIs, a nearby patch version, another operating system, or a comparable graphics backend do not automatically create a support claim.
 
 ## Status definitions
 
-- **Supported** — accepted release evidence exists for the exact claimed environment.
-- **Candidate** — implementation and acceptance coverage exist, but mandatory release evidence is incomplete/unexecuted.
-- **Experimental** — bounded historical or development evidence exists but is not a product compatibility promise.
-- **Unsupported** — known architectural/implementation limitation for the stated combination.
-- **Unverified** — no sufficient evidence; no support claim may be inferred.
+- **Primary** — current product path for the active product line.
+- **Preview** — implemented and usable, but not yet promoted to the same product-support level as the primary path.
+- **TODO** — planned product coverage that is not yet available/qualified.
+- **Unsupported** — outside the stated product contract or known not to work for the stated combination.
 
-## V1.0.0.0 reference matrix
+## Current V0.1 reference matrix
 
-The integrated GA workflow qualifies exact Qt 6.8.3 on both reference operating systems. The public C++/QML direction is the Qt 6.8 LTS line, but a different 6.8.x patch is not automatically Supported merely because the public API compiles.
+The current Developer Preview reference environment is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
 
-### Qt line policy: LTS only, adaptive otherwise
+| Qt | Platform | Integration | UI target | Status | Notes |
+| --- | --- | --- | --- | --- | --- |
+| 6.8.3 | Windows x86_64 | C++ API | Widgets | **Primary** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Primary** | Same `HyRemote::RemoteAccess` facade |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Primary** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Primary** | Same `HyRemote::RemoteAccess` facade |
+| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Primary** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Primary** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Preview** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Preview** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Preview** | Private ABI; native delegate `qwindows` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Preview** | Private ABI; native delegate `qxcb` |
 
-HyRemote targets **Qt LTS lines only**. The qualified reference line is **6.8.3 (Qt 6.8 LTS)**, and the public C++/QML direction is that same LTS line.
+The matrix above describes the current product line. It does not imply that every graphics configuration inside a Widgets/Quick application is already qualified.
 
-The build detects the Qt it is given and adapts instead of refusing:
+## Qt LTS policy
 
-- an **LTS line** (5.15, 6.2, 6.5, 6.8) is reported as such during configure;
-- a **non-LTS line** produces one actionable warning and then **builds anyway**, against the **6.8 API baseline** that every feature search in this repository already asks for - the most compatible configuration available for a line this project has not qualified - so a user on a newer Qt is never blocked;
-- a Qt **below 6.8** cannot configure the product targets at all, and the configure error says so and names the supported way to build Core alone on purpose.
+HyRemote is intended to support selected Qt LTS families rather than promise every Qt release automatically.
 
-The **Transparent QPA payload is not part of that adaptation**: it is qualified against **exactly Qt 6.8.3 private ABI** and is skipped unless that exact SDK is present, because a public-API-compatible Qt is not a private-ABI-compatible one. Qualifying any other line is owned by #57, which carries the Supported / Experimental / Unsupported conclusion for non-reference lines.
+Current state:
 
-| Qt | OS / architecture | Mode | Native/QPA path | Application scope | Status | Required evidence |
-| --- | --- | --- | --- | --- | --- | --- |
-| 6.8.3 | Windows x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Windows acceptance + #109 physical coexistence |
-| 6.8.3 | Linux x86_64 | Embedded C++ | public Qt APIs | supported QWidget + QQuickWindow targets | Candidate | #30 + #104 executable Linux acceptance + #109 physical coexistence |
-| 6.8.3 | Windows x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Windows acceptance + #109 physical coexistence |
-| 6.8.3 | Linux x86_64 | Declarative QML | thin wrapper over shared `RemoteAccess` | QML target over supported Quick path | Candidate | #31 + #104 executable Linux acceptance + #109 physical coexistence |
-| 6.8.3 | Windows x86_64 | Transparent QPA | `hyremote` -> native `qwindows` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
-| 6.8.3 | Linux x86_64 | Transparent QPA | `hyremote` -> native `qxcb` delegate | qualified application-owned QWidget/QQuickWindow surfaces | Candidate | #32 + #104 + #109 physical native local+remote evidence |
+- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.1.
+- **Qt 5.15 LTS** — **TODO V0.4 qualification**. Do not describe it as currently supported until the product can actually build, deploy, and run through the applicable matrix.
+- other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
 
-#74 currently makes hosted runner assignment intermittent. Some PR #106 jobs on 2026-09-17 received real Windows/Linux runners and produced valid configure/build/test evidence, while newer exact-candidate jobs can still remain queued with no executed steps. No row is upgraded to Supported until the required current-candidate #104 Windows/Linux pass and distinct #109 physical/native evidence are complete.
+Public-Qt frontends and QPA have different compatibility rules:
 
-## V1 artifact compatibility contract
+- **C++ / QML / Generic** primarily depend on public Qt APIs and can be qualified by Qt family/version range;
+- **QPA** depends on Qt private ABI and must be qualified per exact Qt patch/platform combination.
 
-The installed V1 product surface is deliberately smaller than the repository's internal architecture:
+A public-API-compatible Qt patch does not automatically make a QPA binary compatible.
 
-| Artifact | V1 form | Application expectation |
-| --- | --- | --- |
-| `HyRemote::RemoteAccess` | shared library + exported CMake target | the one normal C++ HyRemote product target |
-| `hyremote-core` | static source/internal component | not installed/exported as a V1 SDK target and not a separately deployed runtime |
-| `qhyremote` | Qt platform MODULE payload | selected through `hyremote_deploy(... QPA)` / `-platform hyremote`; no installed `HyRemote::QpaPlatform` link target |
-| QML `HyRemote` module | declarative payload over shared runtime | consumed through `import HyRemote`; backing library is not a second C++ SDK target |
+## Operating systems
 
-`BUILD_SHARED_LIBS` does not change this normal V1 product model.
+Current desktop reference platforms:
 
-## V1 capture/application scope
+- Windows x86_64;
+- Linux x86_64.
 
-### Widgets
+Passing on one operating system does not imply the same result on the other.
 
-The production correctness path captures supported QWidget top levels through Qt public widget rendering into owned CPU-readable frame storage. QPA composes qualified application-owned top-level surfaces into one remote application canvas.
+> **TODO V0.4:** expand formal qualification coverage across the selected Qt LTS matrix while keeping Windows/Linux results explicit.
 
-### Qt Quick
+## Product payload compatibility
 
-The production correctness path uses public asynchronous `QQuickWindow::contentItem()->grabToImage()` behavior. It is a correctness baseline, not a zero-copy/performance promise.
+| Product payload | Compatibility expectation |
+| --- | --- |
+| `HyRemote::RemoteAccess` | Shared Runtime used by the C++ API and by other frontends internally |
+| QML `HyRemote` module | Declarative payload over the same Shared Runtime |
+| Generic Plugin | Public Qt generic-plugin payload; must preserve the application's native Qt platform identity |
+| `qhyremote` QPA plugin | Exact-Qt private-ABI payload; delegates to the qualified native platform integration |
+| Core | Internal implementation component, not an independent SDK/runtime compatibility surface |
 
-### Configuration-specific graphics cases
+Applications should not mix payloads from unrelated HyRemote SDK builds or rely on a build-tree copy to repair an incomplete deployed package.
 
-Historical Windows Qt 6.8.3 spike evidence exists for QWidget raster, QOpenGLWidget, QQuickWidget, Quick 2D, Quick3D and custom Quick/OpenGL cases. Those measurements are useful architecture evidence but do not automatically become release support for every integration mode or graphics backend.
+## Widgets scope
 
-Detailed evidence remains in:
+The portable correctness baseline supports qualified QWidget top-level targets through the Widgets adapter path.
 
-- `docs/internal/capture-spike.md`;
-- `docs/internal/async-capture-spike.md`;
-- `docs/widgets-capture.md`;
-- `docs/internal/qpa-capture-classification-qt-6.8.3.md`.
+Basic Widgets support does not automatically qualify every configuration involving:
 
-Important V1 limits:
+- `QOpenGLWidget`;
+- embedded/native child windows;
+- unusual platform-native ownership;
+- third-party rendering engines that bypass normal QWidget rendering assumptions.
 
-- arbitrary generic/foreign native `QWindow` capture is not a Transparent QPA claim;
-- a working QWidget raster case does not imply every QOpenGLWidget/QQuickWidget configuration;
-- a working Quick 2D case does not imply every Quick3D/custom-FBO/backend combination;
-- QPA claims are exact-Qt/private-ABI qualified, not generic `Qt 6.8+` promises.
+These cases receive explicit qualification when they become part of the product matrix.
 
-## V1 transport/viewer boundary
+## Qt Quick scope
 
-The listener **address-family** answer is part of this boundary and is measured, not described:
-`src/cpp/tests/test_listener_address_matrix.cpp` pins loopback, an unassigned address, an occupied port, `0.0.0.0`,
-`::1` and `::`. On Windows x86_64 / Qt 6.8.3 the wildcard `::` is an **IPv6-only** listener (reachable through `::1`, not
-through `127.0.0.1`), `0.0.0.0` is reachable through `127.0.0.1`, and both a rejected address and an occupied port fail
-before `Running` with the state still `Stopped`. The Linux column is pending #109 and must not be inferred from the
-Windows one. See `known-limitations.md` for the IPv6-only boundary and the current non-actionable failure message.
+The portable correctness baseline supports qualified `QQuickWindow` targets through the public asynchronous Quick capture path.
 
-The production correctness transport is bounded RFB 3.8: SecurityType None unless an authenticated profile is configured, and then RFB VNC authentication (security type 2), which mainstream viewers already implement. It is intended to establish remote-view/input correctness and standard VNC interoperability, not Internet-safe security: the stream is not encrypted.
+Basic Qt Quick support does not automatically qualify every configuration involving:
 
-The V1 automated product path uses maintained `vncdotool` plus raw protocol checks. Additional viewer products such as TigerVNC can be added to the compatibility matrix only after versioned acceptance evidence exists.
+- Quick3D;
+- custom FBO/render-node pipelines;
+- unusual graphics backends;
+- `QQuickWidget` mixed Widgets/Quick composition;
+- foreign/native windows outside the application's normal Qt surface model.
 
-Input compatibility evidence is lifecycle-sensitive. A row cannot be upgraded merely because ordinary pointer/key events work: required evidence must also cover abrupt viewer disconnect with held supported state and explicit HyRemote stop/policy transition with delivered held state, proving that the next/local input state is neutral and that pending undelivered remote input is not injected after stop.
+> **TODO V0.4:** qualify representative real-world rendering/application combinations instead of broadening claims by inference.
 
-## Post-V1 embedded expansion
+## Generic Plugin compatibility
 
-The following are important next-platform candidates but are **not V1.0.0.0 GA acceptance rows**:
+Generic Plugin is the preferred zero-code path when the application can keep its normal Qt platform.
 
-| Qt / target | Platform direction | Application types | Status | Notes |
-| --- | --- | --- | --- | --- |
-| Qt 6.8.x / RK3588 | Embedded Linux / EGLFS/OpenGL ES | Widgets + Quick | Unverified | high-priority post-V1 target; validate on actual BSP/display/input stack |
-| Qt 6.8.x / NXP i.MX class | Embedded Linux | Widgets + Quick | Unverified | high-priority post-V1 platform family |
-| future qualified line | OpenHarmony | Widgets/Quick feasibility | Unverified | longer-term direction, not V1 gate |
+A compatible Generic deployment should satisfy all of the following:
 
-DMA-BUF/GBM, RKMPP/hardware encoding and other platform acceleration remain optional implementation optimizations. They must not force a more complex normal application API.
+- the application source remains Qt-only;
+- the application does not link `HyRemote::RemoteAccess`;
+- HyRemote is activated through Qt's generic-plugin mechanism;
+- the native Qt platform identity remains `windows`, `xcb`, or the platform the application would normally use;
+- the deployed tree contains both the Generic Plugin and the normal native Qt platform plugin;
+- the application does not depend on the original HyRemote/Qt build tree at runtime.
 
-## Evidence required to upgrade a row
+Generic compatibility is a public-Qt claim and is not tied to QPA private ABI.
 
-Record at minimum:
+## QPA compatibility
 
-- exact Qt version;
-- OS/BSP and architecture;
-- compiler/toolchain;
-- native QPA/graphics backend;
-- application/sample and integration mode;
-- capture/input path exercised;
-- transport/viewer version;
-- resolution/DPR where relevant;
-- connect/view/input/disconnect/reconnect results;
-- abrupt-disconnect held-input cleanup result where control is enabled;
-- explicit remote-runtime stop/policy-transition held-input cleanup result and confirmation that no pending remote input was delivered after stop;
-- local rendering/input impact where required;
-- deployment/runtime-path result;
-- known limitations;
-- link to reproducible test/issue/acceptance evidence.
+QPA is a specialized zero-code route and has a narrower compatibility boundary.
 
-## Rules
+Current reference pairs:
 
-1. Candidate/Unverified/Experimental must never be described as Supported.
-2. Windows evidence does not substitute for Linux evidence or vice versa.
-3. x86 desktop evidence does not imply Embedded Linux/EGLFS support.
-4. public Qt API compatibility does not imply QPA private-ABI compatibility.
-5. graphics-family evidence is configuration-specific unless an acceptance matrix explicitly broadens it.
-6. hardware acceleration support is independent of the stable application-facing product contract.
-7. V1 usability remains one exported shared C++ facade, a declarative QML payload, or the QPA plugin launch path; platform optimization must stay behind that boundary.
+| Qt | OS | Native delegate | Status |
+| --- | --- | --- | --- |
+| 6.8.3 exact | Windows x86_64 | `qwindows` | **Preview** |
+| 6.8.3 exact | Linux x86_64 | `qxcb` | **Preview** |
+
+Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another platform plugin from these rows.
+
+> **TODO:** add new QPA rows only after the exact Qt/private-ABI/platform combination is qualified.
+
+## Transport and viewer boundary
+
+The current transport baseline is bounded RFB 3.8.
+
+Current product behavior includes:
+
+- loopback-first listener behavior;
+- standard RFB remote viewing;
+- optional remote input;
+- reconnect without rebuilding the application Runtime;
+- `Insecure` loopback-only behavior;
+- conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
+- no stream encryption in V0.1;
+- `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
+
+The default V0.1 build/profile must not be interpreted as providing authenticated transport merely because the public API exposes the `Authenticated` profile.
+
+Viewer-specific interoperability claims should be added only for viewers/versions that have been explicitly exercised. A viewer's ability to connect once is not enough to broaden the product compatibility matrix for every viewer implementation.
+
+## Input compatibility
+
+Remote input compatibility includes lifecycle behavior, not only ordinary pointer/key delivery.
+
+The product must keep supported held key/button state balanced across disconnect and Runtime stop. Unsupported IME/composition or key cases are documented rather than guessed.
+
+## Deployment compatibility
+
+A supported deployment path should run from the application's deployed tree without depending on:
+
+- the original HyRemote SDK path;
+- the HyRemote build tree;
+- a Qt SDK plugin path used as a runtime crutch;
+- manually copied internal HyRemote implementation files.
+
+The product deployment entry point is `hyremote_deploy()`; see [`guide/deployment.md`](guide/deployment.md).
+
+## Embedded/platform expansion
+
+Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
+
+Planned directions include:
+
+| Direction | Current status |
+| --- | --- |
+| ARM64 Embedded Linux | **TODO V1.1** |
+| RK3588 / EGLFS or Wayland | **TODO V1.1** |
+| NXP i.MX class | **TODO V1.1** |
+| DMA-BUF / GBM / external-buffer paths | **TODO later acceleration line** |
+| RKMPP / VAAPI / platform hardware encoding | **TODO later acceleration line** |
+| OpenHarmony | Long-term direction; no current support claim |
+
+Desktop evidence does not imply embedded support, and one BSP does not imply an entire SoC/platform family.
+
+## Compatibility rules
+
+1. Primary/Preview/TODO statuses are not interchangeable.
+2. Windows results do not substitute for Linux results, or vice versa.
+3. Public Qt API compatibility does not imply QPA private-ABI compatibility.
+4. Basic Widgets/Quick support does not automatically qualify every graphics/rendering configuration.
+5. Desktop x86 results do not imply Embedded Linux support.
+6. Hardware acceleration support is independent of the stable application-facing integration contract.
+7. New support rows are added only when the product can state the exact Qt, OS, integration path, application scope, and known limitations.

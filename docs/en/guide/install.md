@@ -1,281 +1,276 @@
-# Install, build and integration preparation
+# Install, build, and integration setup
 
 > Language / 语言: **English** | [中文](../../guide/install.md)
 
-This guide covers obtaining HyRemote, building it, and integrating it into a Qt application (installed SDK or
-source). It describes the final product shape; acceptance process, milestone tracking and internal engineering
-conventions live elsewhere - see the "Internal documents" section of [`docs/README.md`](../README.md).
+This guide explains how to build HyRemote, create an installed SDK, and consume HyRemote from an application project. It describes the current product shape rather than internal acceptance history.
 
-## 1. V1 reference support matrix
+## Current product environment
 
-| Dimension | V1 commitment |
+V0.1 Developer Preview currently references:
+
+| Dimension | Current product status |
 | --- | --- |
-| Operating systems | Windows x86_64 and Linux x86_64 (desktop). Embedded Linux/EGLFS is **outside** the V1 support claim |
-| Qt | **Exact Qt 6.8.3** is the reference version and the acceptance baseline for the bounded RFB transport and all three integration modes; the required acceptance evidence for the current candidate is still pending |
-| Compilers | Windows: MSVC x64 (C++17); Linux: GCC x86_64 (C++17) |
-| Integration modes | (1) Embedded C++ (one shared library), (2) Declarative QML (`import HyRemote`), (3) Transparent QPA Proxy (`-platform hyremote`) |
-| QPA constraint | Transparent QPA is exactly coupled to the Qt 6.8.3 private QPA ABI; it preserves the native `qwindows` / `qxcb` delegate |
-| Viewer | Any standard VNC client, default `127.0.0.1:5921` |
+| Operating systems | Windows x86_64, Linux x86_64 |
+| Qt | Qt 6.8.3 reference |
+| C++ API | **V0.1 primary** |
+| Generic Plugin | **V0.1 primary** |
+| QML API | **Preview** |
+| QPA | **Preview, Qt 6.8.3 exact private ABI** |
+| Embedded Linux / ARM64 | **TODO V1.1** |
+| Qt 5.15 LTS | **TODO V0.4 qualification** |
 
-The default port is a configure-time value an integrator can define:
-`cmake -DHYREMOTE_DEFAULT_PORT=<port>` (omitted, it is `5921`). All three integration modes share that one default -
-the Embedded C++ API and the declarative QML API start from the Core default, and the QPA proxy uses the same number
-when the platform string carries no `hyremote-port`. It stays overridable per process at run time through
-`RemoteAccess::setPort()`, the QML `port` property, or `-platform "hyremote:hyremote-port=<port>"`.
+See [`../../compatibility.md`](../../compatibility.md) for the exact compatibility statement.
 
-> **Product status:** V1.0.0.0 acceptance is pending. The candidate implementation is not a **Supported** claim
-> until the required hosted and physical evidence actually passes. Current status:
-> [`docs/compatibility.md`](../../compatibility.md).
+## Prerequisites
 
-## 2. Two acquisition paths: exactly one per CMake configure
+Recommended tools:
 
-| Path | Use it when | Entry point |
-| --- | --- | --- |
-| **Installed SDK** | You consume a prebuilt/installed prefix shared by a team | `find_package(HyRemote CONFIG REQUIRED)` |
-| **Source** | Vendored alongside the application, cross-building, or modifying HyRemote | `add_subdirectory(third_party/HyRemote)` |
+- CMake 3.21+;
+- Ninja;
+- Qt 6.8.3 development kit;
+- Windows: MSVC x64;
+- Linux: GCC/Clang x86_64.
 
-Both paths expose the **same** application API, artifact shape and deployment helper; only the acquisition step
-differs. A single CMake configure must choose exactly **one** acquisition: either one installed package prefix or
-one source/add-subdirectory tree. Do not call `find_package(HyRemote)` and `add_subdirectory(HyRemote)` in the
-same configure, and do not combine two different installed HyRemote prefixes - V1 fails those mixed cases closed
-instead of pairing one runtime target with QML/QPA metadata from another HyRemote build. Repeating
-`find_package(HyRemote)` for the same installed prefix remains valid.
+QPA additionally requires the Qt private Gui development target from the **same exact Qt 6.8.3 SDK**.
 
-## 3. Building HyRemote itself
+## Build HyRemote from source
 
-### 3.1 Plain product build
+The repository's unified build entry point is `compile.cmd`. It works on Windows and POSIX shells and reads project defaults from `build.yml`.
 
-A plain configure is intentionally product-only: it builds the standard C++
-`HyRemote::RemoteAccess` path and does not build the repository's tests or examples.
+Inspect the resolved configuration first:
 
-Windows (x64 MSVC developer environment):
-
-```bat
-cmake -S . -B build -G Ninja ^
-  -DCMAKE_BUILD_TYPE=Release ^
-  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64
-cmake --build build --parallel
+```text
+compile.cmd --show-config
 ```
 
-Linux:
+Build the primary V0.1 paths:
+
+```text
+compile.cmd --integrations=cpp,generic --qt-prefix=/path/to/Qt/6.8.3/<kit>
+```
+
+Build all four frontends for development:
+
+```text
+compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix=/path/to/Qt/6.8.3/<kit>
+```
+
+Enable examples/tests explicitly when needed:
+
+```text
+compile.cmd --integrations=cpp,generic --examples --tests --run-tests
+```
+
+Command-line options override the corresponding `build.yml` fields. The four integrations are independent selections; enabling Generic, QML, or QPA does not make the C++ frontend their implementation parent.
+
+## Direct CMake build
+
+HyRemote can also be configured as a normal CMake project:
 
 ```bash
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<kit> \
+  -DHYREMOTE_BUILD_CPP_API=ON \
+  -DHYREMOTE_WITH_GENERIC_PLUGIN=ON
 cmake --build build --parallel
 ```
 
-### 3.2 Creating an installed SDK
-
-```bash
-cmake -S . -B build-hyremote -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<toolchain> \
-  -DCMAKE_INSTALL_PREFIX=/path/to/hyremote-sdk
-cmake --build build-hyremote --parallel
-cmake --install build-hyremote
-```
-
-The resulting prefix is consumed with `find_package(HyRemote CONFIG REQUIRED)` as in section 4.
-
-### 3.3 Optional integration packages
-
-QML and Transparent QPA are optional payloads:
+Optional frontends:
 
 ```text
--DHYREMOTE_BUILD_QML_API=ON      # provides import HyRemote
--DHYREMOTE_WITH_QPA_PROXY=ON     # provides the qhyremote platform plugin (requires exact Qt 6.8.3 and the matching private Gui development package)
+-DHYREMOTE_BUILD_QML_API=ON
+-DHYREMOTE_WITH_GENERIC_PLUGIN=ON
+-DHYREMOTE_WITH_QPA_PROXY=ON
 ```
 
-Normal C++ use needs neither, and needs no Qt private development package. Enabling them does not enlarge the
-normal C++ link surface.
+QPA requires Qt 6.8.3 exact + `Qt6::GuiPrivate`.
 
-### 3.4 Maintainer / acceptance build
+## Create an installed SDK
 
-Repository validation is explicit rather than hidden in the normal product build. The complete configure,
-build and test chain (Windows):
-
-```bat
-cmake -S . -B build-test -G Ninja ^
-  -DCMAKE_BUILD_TYPE=Release ^
-  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64 ^
-  -DHYREMOTE_BUILD_TESTS=ON ^
-  -DHYREMOTE_BUILD_EXAMPLES=ON
-cmake --build build-test --parallel
-set PATH=C:\Qt\6.8.3\msvc2022_64\bin;%CD%\build-test\remoteaccess;%PATH%
-ctest --test-dir build-test --output-on-failure
-```
-
-Linux:
+Choose an install prefix and run the standard CMake install step:
 
 ```bash
-cmake -S . -B build-test -G Ninja \
+cmake -S . -B build-sdk -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH=/opt/Qt/6.8.3/gcc_64 \
-  -DHYREMOTE_BUILD_TESTS=ON \
-  -DHYREMOTE_BUILD_EXAMPLES=ON
-cmake --build build-test --parallel
-export LD_LIBRARY_PATH=/opt/Qt/6.8.3/gcc_64/lib:${LD_LIBRARY_PATH}   # only when the local kit provides no suitable runtime lookup
-ctest --test-dir build-test --output-on-failure
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/<kit> \
+  -DCMAKE_INSTALL_PREFIX=/path/to/hyremote-sdk \
+  -DHYREMOTE_BUILD_CPP_API=ON \
+  -DHYREMOTE_WITH_GENERIC_PLUGIN=ON
+
+cmake --build build-sdk --parallel
+cmake --install build-sdk
 ```
 
-Add `-DHYREMOTE_BUILD_QML_API=ON` and `-DHYREMOTE_WITH_QPA_PROXY=ON` to the same configure when the QML/QPA
-validation scope is needed.
+Enable QML/QPA while creating the SDK only when those payloads are required.
 
-Those `PATH` / `LD_LIBRARY_PATH` additions are a **build-tree test concern**, not the deployment contract: a
-deployed application obtains Qt/HyRemote runtime files through deployment and must not depend on the original
-SDK or build tree.
+Applications consume the installed product through:
 
-## 4. Consumption A: installed SDK
-
-### 4.1 Contract
-
-The V1 installed SDK exposes **one normal C++ product target**: `HyRemote::RemoteAccess` (a shared library).
-
-- Core is statically composed behind the facade and is **not installed/exported** as a V1 SDK target;
-- the QML module is consumed through `import HyRemote`; its backing library is not a second C++ SDK target;
-- Transparent QPA is consumed through `hyremote_deploy(... QPA)` and is **not** an application link target (the
-  installed SDK does not export `HyRemote::QpaPlatform`).
-
-Application code does not discover or link internal Core/transport/capture/input/QPA targets individually.
-
-### 4.2 Minimal application
-
-```bash
-cmake -S . -B build \
-  -DCMAKE_PREFIX_PATH="/path/to/Qt/6.8.3/<toolchain>;/path/to/hyremote-sdk"
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
 ```
+
+They do not need to know HyRemote's internal source layout.
+
+## Installed SDK: C++ API
+
+Qt Widgets:
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 find_package(HyRemote CONFIG REQUIRED)
 
-target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
+target_link_libraries(MyApp PRIVATE
+    Qt6::Widgets
+    HyRemote::RemoteAccess
+)
 ```
 
-```cpp
-#include <HyRemote/RemoteAccess.h>
+Qt Quick:
 
-HyRemote::RemoteAccess remote(&window);
-remote.start();
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
+find_package(HyRemote CONFIG REQUIRED)
+
+target_link_libraries(MyApp PRIVATE
+    Qt6::Quick
+    HyRemote::RemoteAccess
+)
 ```
 
-Defaults are the safe defaults: loopback listener, port 5921, remote input disabled. Setters are optional policy
-controls, not mandatory setup. For Qt Quick, request the application's normal Qt Quick components and keep the
-same HyRemote product target; `find_package(HyRemote)` does not force an application to resolve Widgets, Quick or
-QML modules it does not use.
+Widgets and Quick use the same `HyRemote::RemoteAccess` target.
 
-### 4.3 What `find_package(HyRemote)` means
+See [`../getting-started/cpp.md`](../getting-started/cpp.md).
 
-`HyRemoteConfig.cmake` resolves the public dependencies of `HyRemote::RemoteAccess`, loads that exported product
-target, publishes optional QML/QPA payload metadata, and exposes `hyremote_deploy()`.
+## Installed SDK: Generic Plugin
 
-It does **not** turn Core, the QML backing library or `qhyremote` into application link choices. It is generated by
-HyRemote install/export rules and is not expected to exist merely because a source directory was added to another
-project.
+A Generic application remains Qt-only and links no HyRemote target:
 
-## 5. Consumption B: source
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
+find_package(HyRemote CONFIG REQUIRED)
 
-Source consumption suits vendored, cross-built or modified trees; it does **not** require or imply
-`find_package(HyRemote)` for the HyRemote source tree itself.
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
+
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp GENERIC)
+```
+
+Activate it with Qt's generic-plugin mechanism:
+
+```text
+MyExistingApp -plugin hyremote
+```
+
+See [`../getting-started/generic.md`](../getting-started/generic.md).
+
+## Installed SDK: QML API (Preview)
+
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(HyRemote CONFIG REQUIRED)
+```
+
+```qml
+import HyRemote
+
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+Deployment:
+
+```cmake
+hyremote_deploy(TARGET MyQmlApp QML)
+```
+
+> **TODO V0.3:** complete formal productization before promoting QML API from Preview.
+
+## Installed SDK: QPA (Preview)
+
+The application remains Qt-only:
+
+```cmake
+find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Widgets)
+find_package(HyRemote CONFIG REQUIRED)
+
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
+
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp QPA)
+```
+
+Run with:
+
+```text
+MyExistingApp -platform hyremote
+```
+
+QPA support applies only to explicitly declared exact Qt/private-ABI combinations. The current reference is Qt 6.8.3.
+
+## Source consumption
+
+HyRemote can also be included as a source subproject:
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 
-add_subdirectory(third_party/HyRemote)
+set(HYREMOTE_BUILD_CPP_API ON CACHE BOOL "" FORCE)
+set(HYREMOTE_WITH_GENERIC_PLUGIN ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
 
 add_executable(MyApp main.cpp)
 target_link_libraries(MyApp PRIVATE Qt6::Widgets HyRemote::RemoteAccess)
 ```
 
-When HyRemote is included as a subproject, its own tests and examples default to **OFF**, and there is no experimental tree in the build at all
-automatically; applications do not need to know or override those developer-only switches.
-`add_subdirectory(... EXCLUDE_FROM_ALL)` is supported: HyRemote's source-tree payloads remain internal build
-targets, the deployment helper adds only the local build dependencies needed to materialize the selected payload,
-and it does **not** turn those targets into application link dependencies - a Transparent QPA application remains
-Qt-only even when `qhyremote` and `HyRemoteRemoteAccess` are built from source.
+Source consumption and installed-SDK consumption use the same product API and deployment model.
 
-Opt into extra integration packages only when needed:
+Do not mix these acquisition methods in one CMake configure:
 
-```cmake
-set(HYREMOTE_BUILD_QML_API ON CACHE BOOL "" FORCE)       # import HyRemote
-set(HYREMOTE_WITH_QPA_PROXY ON CACHE BOOL "" FORCE)      # exact Qt 6.8.3 qhyremote plugin
-add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
+```text
+find_package(HyRemote)
++
+add_subdirectory(HyRemote)
 ```
 
-These options do not create alternate Core/transport stacks: QML remains a thin wrapper and QPA remains a plugin
-entry point over the same shared runtime. Source consumption inherits the caller's compiler, sysroot, CMake
-toolchain file and target Qt SDK, which is why the future Embedded Linux families extend this model - and why
-they must not introduce a second project-specific build system or a more complex application API.
+Choose one HyRemote acquisition source.
 
-## 6. Deployment: `hyremote_deploy()`
+## Deployment
 
-One HyRemote-owned entry point owns deployment:
+The single product deployment entry point is:
 
 ```cmake
-hyremote_deploy(TARGET MyCppApp)          # Embedded C++
-hyremote_deploy(TARGET MyQmlApp QML)      # Declarative QML
-hyremote_deploy(TARGET ExistingQtApp QPA) # Transparent QPA
-hyremote_deploy(TARGET ExistingQmlApp QML QPA)  # QML + QPA composition
+hyremote_deploy(TARGET MyCppApp)
+hyremote_deploy(TARGET MyQmlApp QML)
+hyremote_deploy(TARGET ExistingQtApp GENERIC)
+hyremote_deploy(TARGET ExistingQtApp QPA)
 ```
 
-```cmake
-install(TARGETS MyApp RUNTIME DESTINATION bin)
-hyremote_deploy(TARGET MyApp)
-```
+A normal deployment should run from the application's own deployed tree without pointing `QT_PLUGIN_PATH`, `LD_LIBRARY_PATH`, or similar variables back to the HyRemote/Qt SDK or build tree.
 
-The helper owns placement of the selected payload (shared runtime, Qt dependencies, QML plugin files,
-`qhyremote`). Applications must **not** manually copy DLL/SO, `qmldir` or plugin files, and must not set
-SDK-specific `QT_PLUGIN_PATH` / `QT_QPA_PLATFORM_PLUGIN_PATH` / `LD_LIBRARY_PATH` overrides. Full contract:
-[`docs/guide/deployment.md`](../../guide/deployment.md).
+See [`deployment.md`](deployment.md).
 
-## 7. Clean deployment requirement
+## Security defaults
 
-A successful build is **not** sufficient evidence. The deployed application must run from its deployment prefix
-without depending on the HyRemote build tree, the original SDK prefix, or manual `PATH`, `LD_LIBRARY_PATH`,
-`QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH`, `QML2_IMPORT_PATH` or `QML_IMPORT_PATH` workarounds.
+V0.1 defaults:
 
-On Linux the V1 fixtures additionally verify where the HyRemote/Qt shared objects are actually resolved from, so a
-surviving SDK/build-tree RUNPATH cannot masquerade as a clean deployment. On Windows, clean runtime checks narrow
-`PATH` to the deployed application plus required system directories.
+- `127.0.0.1:5921`;
+- remote input disabled;
+- `Insecure` is loopback-only;
+- `Authenticated` is available only when HyRemote was built with the transport-security capability and a valid security descriptor is configured; it currently provides VNC authentication without stream encryption;
+- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without falling back to a weaker profile.
 
-## 8. Platform notes
+Do not expose the current product directly to the public Internet. See [`../security.md`](../security.md).
 
-| Topic | Windows x86_64 | Linux x86_64 |
-| --- | --- | --- |
-| Reference Qt | `C:\Qt\6.8.3\msvc2022_64` | `/opt/Qt/6.8.3/gcc_64` |
-| Build-tree test support | Put Qt `bin` and the build tree's `remoteaccess` directory on `PATH` | Set `LD_LIBRARY_PATH` when needed |
-| QPA native delegate | `qwindows` | `qxcb` |
-| Offscreen/software rendering | Validates the protocol-to-application path; it is **not** evidence of local-visible display/input coexistence | Same (`offscreen` and similar) |
+## Next steps
 
-Desktop Linux results do not imply Embedded Linux/EGLFS support. Final platform acceptance must record the exact
-Qt/compiler/QPA/viewer configuration.
-
-## 9. Examples and viewer
-
-With `-DHYREMOTE_BUILD_EXAMPLES=ON` the V1 candidate contains `widgets-basic`, `quick-basic`, `qml-basic`,
-`qpa-proxy-existing-app` and `remote-support-showcase`, according to the enabled integration packages.
-
-E1/E2 use the same public `HyRemote::RemoteAccess` facade and are view-only by default; the explicit remote-input
-option is for controlled test environments only. Viewer connection:
-[`docs/guide/viewer-connection.md`](../../guide/viewer-connection.md).
-
-## 10. Security and support boundary
-
-The bounded RFB correctness transport uses **SecurityType None** unless an authenticated profile is configured: no
-transport authentication with `SecurityType None` (which is refused beyond loopback), RFB VNC authentication when
-such a profile is configured, and no transport encryption in either case. The listener defaults to loopback and
-remote input is off by default - do not expose a listener to an untrusted network or the public Internet. See
-[`docs/security.md`](../../security.md) and [`SECURITY.md`](../../../SECURITY.md).
-
-The support boundary follows evidence: a hosted/offscreen build is not by itself proof of local-visible
-display/input coexistence with remote access. A capability that has not passed acceptance is not described as
-Supported; explicit limitations are in [`docs/known-limitations.md`](../../known-limitations.md).
-
-## 11. Related documents
-
-- Integration modes (choose one, each with its Chinese primary at the same path under `docs/`): [Embedded C++](../getting-started/cpp.md) | [Declarative QML](../getting-started/qml.md) | [Transparent QPA](../getting-started/qpa-proxy.md)
-- Deployment and packaging: [`deployment.md`](../../guide/deployment.md)
-- Compatibility and limits: [`compatibility.md`](../../compatibility.md) | [`known-limitations.md`](../../known-limitations.md)
-- Troubleshooting: [`troubleshooting.md`](../../guide/troubleshooting.md)
+- C++ API: [`../getting-started/cpp.md`](../getting-started/cpp.md)
+- Generic Plugin: [`../getting-started/generic.md`](../getting-started/generic.md)
+- QML API (Preview): [`../getting-started/qml.md`](../getting-started/qml.md)
+- QPA (Preview): [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
+- deployment: [`deployment.md`](deployment.md)
+- compatibility: [`../../compatibility.md`](../../compatibility.md)
+- known limitations: [`../../known-limitations.md`](../../known-limitations.md)
