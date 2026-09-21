@@ -103,6 +103,57 @@ jobs:
               raise SystemExit(f"PRs targeting develop must keep version sentinel 0.0.0; found {version}")
           print("develop version sentinel gate passed: 0.0.0")
 
+      - name: Resolve requested release train
+        if: startsWith(github.head_ref, 'release/v') || startsWith(github.head_ref, 'backmerge/v') || startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          # One machine authority, selected by the requested version. Unknown versions, retired planning labels and
+          # conditional versions without activation all fail closed here: the lifecycle never guesses a train.
+          authority_file=".github/release/release-trains.json"
+          test -f "${authority_file}" || { echo "missing ${authority_file}" >&2; exit 1; }
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            requested="${GITHUB_REF_NAME#v}"
+          else
+            # pull_request events carry the head branch, not the branch name, in GITHUB_REF.
+            requested="${HEAD_REF#release/v}"
+            requested="${requested#backmerge/v}"
+          fi
+          echo "requested release version: ${requested}"
+          python - "${authority_file}" "${requested}" <<'PY'
+          import json, re, sys
+          authority_path, requested = sys.argv[1], sys.argv[2]
+          if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){3}", requested):
+              raise SystemExit("release versions must use Major.Minor.Feature.Maintenance")
+          authority = json.load(open(authority_path, encoding="utf-8"))
+          if authority.get("schema") != 2:
+              raise SystemExit(f"unsupported release-train authority schema {authority.get('schema')}")
+          if requested in authority.get("retired_profiles", []):
+              raise SystemExit(f"release/{requested} is a retired planning label, not a release train")
+          for conditional in authority.get("conditional_trains", []):
+              if conditional["version"] == requested:
+                  if not conditional.get("active"):
+                      raise SystemExit(
+                          f"release/{requested} is conditional on activation authority "
+                          f"#{conditional.get('activation_authority')} and has recorded no activation")
+          train = authority.get("trains", {}).get(requested)
+          if not train:
+              raise SystemExit(f"release/{requested} is not an authorized release train")
+          mandatory = train.get("mandatory_children")
+          if mandatory is None:
+              raise SystemExit(f"release train {requested} declares no mandatory_children list")
+          if not mandatory and train.get("scope_status", "active") == "active":
+              raise SystemExit(f"release train {requested} is active but declares no closeable mandatory children")
+          with open("release-train.env", "w", encoding="utf-8") as handle:
+              handle.write(f"RELEASE_TRAIN_VERSION={requested}\n")
+              handle.write(f"RELEASE_TRAIN_AUTHORITY={train.get('authority_parent', '')}\n")
+              handle.write("RELEASE_TRAIN_MANDATORY=" + " ".join(str(issue) for issue in mandatory) + "\n")
+          print(f"release train {requested}: authority #{train.get('authority_parent')}, {len(mandatory)} mandatory child(ren)")
+          PY
+          cat release-train.env >> "${GITHUB_ENV}"
+
       - name: Validate release candidate version before main merge
         if: startsWith(github.head_ref, 'release/v')
         shell: python
@@ -118,8 +169,8 @@ jobs:
           if not match:
               raise SystemExit("release branches must use release/vMajor.Minor.Feature.Maintenance")
           version = match.group(1)
-          if version not in {"0.0.1.0", "0.0.2.0", "0.0.3.0", "1.0.0.0"}:
-              raise SystemExit(f"release/{version} is not an authorized milestone")
+          if os.environ.get("RELEASE_TRAIN_VERSION") != version:
+              raise SystemExit(f"release/{version} did not resolve to a selectable release train")
           text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
           cmake = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
           if not cmake or cmake.group(1) != version:
@@ -135,22 +186,14 @@ jobs:
         run: |
           set -euo pipefail
           version="${HEAD_REF#release/v}"
-          case "${version}" in
-            0.0.1.0) required_issues=(30) ;;
-            0.0.2.0) required_issues=(30 31) ;;
-            0.0.3.0) required_issues=(30 31 32) ;;
-            1.0.0.0)
-              authority_file=".github/release/v1-mandatory-issues.json"
-              test -f "${authority_file}" || { echo "missing ${authority_file}" >&2; exit 1; }
-              test "$(jq -r '.version' "${authority_file}")" = "${version}" || {
-                echo "${authority_file} version does not match release/v${version}" >&2
-                exit 1
-              }
-              mapfile -t required_issues < <(jq -r '.required_issue_numbers[]' "${authority_file}")
-              test "${#required_issues[@]}" -gt 0 || { echo "V1 mandatory authority list is empty" >&2; exit 1; }
-              ;;
-            *) echo "no release-authority mapping for ${version}" >&2; exit 1 ;;
-          esac
+          # The selected train's own closeable children. Cross-version umbrellas the train merely references are
+          # never required to close as whole umbrellas, which is what lets an earlier train ship.
+          read -r -a required_issues <<< "${RELEASE_TRAIN_MANDATORY:-}"
+          test "${#required_issues[@]}" -gt 0 || {
+            echo "release/v${version} has no closeable mandatory child in the selected release train" >&2
+            exit 1
+          }
+          echo "release train #${RELEASE_TRAIN_AUTHORITY} selected for release/v${version}: ${required_issues[*]}"
 
           for issue in "${required_issues[@]}"; do
             response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq '[.state, (.state_reason // "")] | @tsv')"
@@ -199,7 +242,12 @@ jobs:
         run: |
           set -euo pipefail
           version="${HEAD_REF#backmerge/v}"
-          case "${version}" in 0.0.1.0|0.0.2.0|0.0.3.0|1.0.0.0) ;; *) echo "unauthorized backmerge milestone ${version}" >&2; exit 1;; esac
+          # The backmerge must name the same train the lifecycle resolved, so a retired label or an unknown version
+          # cannot carry released history back into develop.
+          test "${version}" = "${RELEASE_TRAIN_VERSION}" || {
+            echo "unauthorized backmerge milestone ${version}" >&2
+            exit 1
+          }
           tag="v${version}"
           git fetch origin main "refs/tags/${tag}:refs/tags/${tag}" --force
           git fetch origin "${HEAD_REF}:refs/remotes/origin/${HEAD_REF}" --force
@@ -226,8 +274,10 @@ jobs:
           match = re.fullmatch(r"v([0-9]+(?:\.[0-9]+){3})", tag)
           if not match:
               raise SystemExit("HyRemote release tags must use vMajor.Minor.Feature.Maintenance")
-          if match.group(1) not in {"0.0.1.0", "0.0.2.0", "0.0.3.0", "1.0.0.0"}:
-              raise SystemExit(f"tag {tag} is not an authorized milestone")
+          # The tag must name the train the lifecycle resolved for this ref; the resolution step already refused
+          # retired labels, unknown versions and conditional versions without activation.
+          if match.group(1) != os.environ.get("RELEASE_TRAIN_VERSION"):
+              raise SystemExit(f"tag {tag} is not an authorized release train")
 
       - name: Require annotated tag on exact main release head
         shell: bash

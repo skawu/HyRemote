@@ -16,7 +16,10 @@ For V1, Draft PR #106 is the sole product-convergence line, #33 is GA authority,
 Before any `release/v1.0.0.0` branch exists:
 
 - all V1-required implementation/docs/test PRs are integrated into #106;
-- all mandatory issues in `.github/release/v1-mandatory-issues.json` are accepted/closed as completed when their lifecycle requires closure;
+- the requested release version selects one train in `.github/release/release-trains.json`, and every closeable mandatory child of **that train** is accepted/closed as completed when its lifecycle requires closure;
+- the train's cross-version references and declared non-blockers are **not** required to close as whole umbrellas: `V0.1` consumes evidence from `#41`/`#143`/`#176`/`#209` without waiting for them;
+- an unknown version, a retired `V0.0.x` planning label and a conditional train whose activation authority has recorded no activation are all refused rather than resolved to a nearby train;
+- `V1.2` stays conditional on `#123` activation evidence, and `V1.0.0.0` uses this same mechanism with its own unchanged mandatory set;
 - all mandatory hosted/reference checks actually execute and pass on the same integrated head;
 - compatibility/security/known-limitations describe the **implemented candidate truth**, not future intent;
 - root `project(VERSION ...)` on `develop` remains the development sentinel `0.0.0`;
