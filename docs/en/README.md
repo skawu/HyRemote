@@ -2,88 +2,91 @@
 
 > Language / 语言: **English** | [中文](../README.md)
 
-HyRemote keeps the application-facing model deliberately small: **one shared C++ library** plus two optional
-integration payloads. This index is organised by reader intent rather than by development history.
+HyRemote is a remote-access framework for existing Qt applications. The product provides **one Shared Runtime** and four peer integration frontends: C++ API, QML API, Generic Plugin, and QPA. Qt Widgets and Qt Quick are Runtime target types rather than separate products.
 
-## 1. Start here
+This documentation area is organized around product use: what HyRemote is, how to integrate it, how to deploy it, what is currently supported, and which security/compatibility limits apply.
 
-| I want to | Read |
+## Start here
+
+| Your scenario | Recommended entry | Current status |
+| --- | --- | --- |
+| Add a small amount of C++ and control the remote-access lifecycle explicitly | [`getting-started/cpp.md`](getting-started/cpp.md) | **V0.1 primary** |
+| Keep the application Qt-only and preserve its native Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | **V0.1 primary** |
+| Prefer declarative configuration in a Qt Quick application | [`getting-started/qml.md`](getting-started/qml.md) | **Preview** |
+| Need the specialized `-platform hyremote` zero-code route | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | **Preview** |
+| Install, build, and acquire the SDK | [`guide/install.md`](guide/install.md) · [中文](../guide/install.md) | Product guide |
+| Package and deploy | [`guide/deployment.md`](guide/deployment.md) · [中文](../guide/deployment.md) | Product guide |
+| Connect a viewer, enable control, and reconnect | [`guide/viewer-connection.md`](guide/viewer-connection.md) | Product guide |
+| Troubleshoot | [`guide/troubleshooting.md`](guide/troubleshooting.md) | Product guide |
+
+## Product overview
+
+Start with [`../product-overview.md`](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
+
+The V0.1 Developer Preview focuses on **getting users to a working remote-access path quickly**:
+
+- C++ API and Generic Plugin are the primary integration paths;
+- Windows x86_64 and Linux x86_64 with Qt 6.8.3 are the current reference environments;
+- Widgets and Qt Quick use the same Shared Runtime;
+- loopback is the default bind and remote input is disabled by default;
+- QML API and QPA exist as Preview paths;
+- incomplete capabilities are marked as **TODO** instead of being described through issue/PR history or acceptance-process language.
+
+## Product reference
+
+| Document | Purpose |
 | --- | --- |
-| Install, build and integrate HyRemote | [English](guide/install.md) · [中文](../guide/install.md) |
-| Integrate with the Embedded C++ API | [`getting-started/cpp.md`](getting-started/cpp.md) |
-| Integrate with Declarative QML | [`getting-started/qml.md`](getting-started/qml.md) |
-| Use Transparent QPA without touching application source | [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md) |
-| Package and deploy | [`../deployment.md`](../guide/deployment.md) |
-| Run and connect a viewer | [`../viewer-connection.md`](../guide/viewer-connection.md) |
-| Diagnose a problem | [`../troubleshooting.md`](../guide/troubleshooting.md) |
+| [`../product-overview.md`](../product-overview.md) | Product positioning, integration frontends, capability boundaries, roadmap |
+| [`../architecture.md`](../architecture.md) | Core, Shared Runtime, and four integration frontends |
+| [`../compatibility.md`](../compatibility.md) | Current platform, Qt, and integration compatibility matrix |
+| [`../security.md`](../security.md) | Current security behavior, defaults, and unsupported security capabilities |
+| [`../known-limitations.md`](../known-limitations.md) | Known product limitations |
+| [`../versioning.md`](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
+| [`../v1-api-stability.md`](../v1-api-stability.md) | Public API stability boundary |
+| [`../widgets-capture.md`](../widgets-capture.md) | Widgets capture model |
+| [`../quick-capture.md`](../quick-capture.md) | Qt Quick capture model |
+| [`../input-model.md`](../input-model.md) | Remote-input model |
+| [`../dependency-policy.md`](../dependency-policy.md) | Product dependency policy |
+| [`../release-package-manifest.md`](../release-package-manifest.md) | SDK/runtime payload definition |
 
-## 2. Three zones
+## How the four frontends relate
 
-| Zone | For | Language | Content rule |
-| --- | --- | --- | --- |
-| `docs/guide/**` | End users | Chinese primary + `docs/en/**` mirror | Final shape only: install, integrate, deploy, troubleshoot. **No process content** |
-| The product final-state contracts at the top level of `docs/` | Product final-state contracts | Same | Architecture, capture/input model, API stability, compatibility, security boundary, versioning (`architecture.md`, `widgets-capture.md`, `quick-capture.md`, `input-model.md`, `v1-api-stability.md`, `compatibility.md`, `security.md`, `versioning.md`, ...) |
-| `docs/internal/**` plus `docs/adr/`, `docs/releases/`, `docs/proposals/` | Maintainers / release | English (frozen by release gates) | Acceptance runbooks, repository administration, layout authority, milestone records, research/evaluation records |
+```text
+C++ API ---------\
+QML API ----------\
+Generic Plugin ----> Shared Runtime -> Core
+QPA --------------/
+```
 
-**Process content** - issue numbers and tracking, acceptance scheduling and status boards, milestone chronicles,
-investigation logs and one-off checklists - is excluded from the user-facing zone by definition. It belongs to the
-internal zone, or to an evaluation record under `docs/internal/`.
+The four frontends are peers:
 
-## 3. Reference (product final state)
+- **C++ API**: application links `HyRemote::RemoteAccess`;
+- **QML API**: `import HyRemote`, a thin declarative frontend over the same Runtime;
+- **Generic Plugin**: public Qt plugin route that keeps the native QPA/platform identity;
+- **QPA**: private-ABI Factory Trampoline that delegates to the native platform integration.
 
-Start with the product definition, which sets the boundary every contract below assumes:
-[`../product-overview.md`](../product-overview.md) (what the product is for, the three access modes, the V1
-differentiation target, and the non-goals).
+No frontend creates a second Session, capture, input, or transport architecture.
 
-| Document | Content |
-| --- | --- |
-| [`../architecture.md`](../architecture.md) | Layer model, dependency rules, threading principles |
-| [`../v1-api-stability.md`](../v1-api-stability.md) | V1 public API stability contract (stable and non-stable surfaces) |
-| [`../compatibility.md`](../compatibility.md) | Exact evidence/status matrix |
-| [`../known-limitations.md`](../known-limitations.md) | Explicit V1 limitations |
-| [`../security.md`](../security.md) | Implemented security boundary |
-| [`../security-model.md`](../security-model.md) | Threat model and release security gate |
-| [`../versioning.md`](../versioning.md) | Versioning and milestone policy |
-| [`../release-package-manifest.md`](../release-package-manifest.md) | V1 release package manifest (installed payload contract) |
-| [`../dependency-policy.md`](../dependency-policy.md) | Dependency policy, including optional build-time dependencies |
-| [`../widgets-capture.md`](../widgets-capture.md) · [`../quick-capture.md`](../quick-capture.md) · [`../input-model.md`](../input-model.md) | Capture and input model |
+## Documentation style
 
-## 4. Internal / release documents (not user documentation)
+User-facing and product-reference documentation follows these rules:
 
-[`../internal/repository-layout.md`](../internal/repository-layout.md) (layout authority),
-[`../internal/branch-lifecycle.md`](../internal/branch-lifecycle.md), [`../internal/git-flow-release.md`](../internal/git-flow-release.md),
-[`../internal/v1-ga-acceptance.md`](../internal/v1-ga-acceptance.md), [`../internal/v1-physical-acceptance.md`](../internal/v1-physical-acceptance.md),
-[`../internal/v1-repository-admin.md`](../internal/v1-repository-admin.md), [`../internal/release-candidate-checklist.md`](../internal/release-candidate-checklist.md),
-[`../internal/development-roadmap.md`](../internal/development-roadmap.md), [`../internal/naming-conventions.md`](../internal/naming-conventions.md),
-the example records ([`../internal/example-strategy-v1.md`](../internal/example-strategy-v1.md),
-[`../internal/example-branding-contract.md`](../internal/example-branding-contract.md), [`../internal/example-matrix-v1.md`](../internal/example-matrix-v1.md)),
-and the research/evaluation records ([`../internal/capture-spike.md`](../internal/capture-spike.md),
-[`../internal/async-capture-spike.md`](../internal/async-capture-spike.md), [`../internal/neatvnc-evaluation.md`](../internal/neatvnc-evaluation.md),
-[`../internal/x86-vnc-transport-evaluation.md`](../internal/x86-vnc-transport-evaluation.md), `internal/qpa-*-qt-6.8.3.md`),
-[`../adr/`](../adr/), [`../releases/`](../releases/), [`../proposals/`](../proposals/).
+- describe **current product behavior, support state, and explicit future TODOs**;
+- do not use issue numbers, PR numbers, runner state, acceptance batches, or migration history as product explanation;
+- describe completed capabilities as facts;
+- mark implemented but not yet fully productized capabilities as **Preview**;
+- mark not-yet-implemented capabilities as **TODO**;
+- make security, compatibility, and platform claims only for explicitly stated environments.
 
-Ordinary integration work does not require this zone.
+## Maintainer material
 
-## 5. Navigation root and writing conventions
+Repository governance, release procedures, ADRs, research records, execution plans, and acceptance material live under:
 
-This file is the **bilingual navigation root**; its Chinese counterpart is [`../README.md`](../README.md). The
-mirrored zones are `docs/guide/**` and the product final-state contracts at the top level of `docs/`; everything else is the internal/release zone and
-stays English.
+```text
+docs/internal/
+docs/adr/
+docs/releases/
+docs/proposals/
+```
 
-- **Bilingual mirror**: the Chinese primary document lives at `docs/<path>` and the English mirror at
-  `docs/en/<path>`. Files that **enter `guide/`** must correspond one-to-one (same relative path), carry a
-  one-line language switch at the top, and change in both languages in the same change. Legacy documents that
-  have not moved into that zone yet are not required to be mirrored while the migration runs. The product
-  final-state contracts and the `internal/` zone are English-only and are not mirrored.
-- **One document per intent**: user documentation is consolidated by reader intent, not split by development
-  stage. Prefer one detailed document over five that each cover a fragment.
-- **Source comments**: follow the style already in the file. New or substantially edited comments prioritize
-  clarity and consistency with their surroundings; bilingual comments are allowed where they materially help
-  maintainers, but they are **not mandatory** and there is no bulk comment-only migration.
-- **Links**: when a document moves, update every reference in the repository. Keep a **content-free** migration
-  pointer only while a release gate still lists the old path, and delete it in the same change that moves the
-  gate to the new path.
-- **Process content**: issue numbers and tracking, acceptance scheduling and status, milestone chronicles,
-  investigation logs and one-off checklists do not belong to the user/reference zones.
-
-Full rules: [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+These files serve development and release work. Ordinary HyRemote integration does not require reading them, and their process history is not duplicated into product documentation.
