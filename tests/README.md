@@ -5,9 +5,14 @@ module they qualify (`src/<owner>/tests/`). The repository-level `tests/` tree i
 from one product module alone: clean consumers, package/deploy behavior, repository/public contracts, adoption flows
 and release qualification.
 
-The authoritative Phase-A audit is [`TEST_CATALOG.md`](TEST_CATALOG.md); confirmed and candidate coverage gaps are
-tracked in [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md). Those files describe test intent and ownership. They do not replace
-CTest/CMake as execution authority.
+The Phase-A audit is split into four complementary views:
+
+- [`TEST_CATALOG.md`](TEST_CATALOG.md) — what each durable test protects and whether it should KEEP/MOVE/SPLIT/MERGE/RETIRE;
+- [`TEST_SCENARIOS.md`](TEST_SCENARIOS.md) — meaningful scenarios inside multi-case executables/scripts;
+- [`TEST_MATRIX.md`](TEST_MATRIX.md) — capability/platform/cost/execution conditions;
+- [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md) — confirmed gaps, review candidates and future-owned obligations.
+
+These files describe test intent and ownership. They do not replace CTest/CMake as execution authority.
 
 ## Semantic layers
 
@@ -34,7 +39,7 @@ location even when the catalog marks it `MOVE`. Do not create another copy merel
 | `consumer-installed-qml` | clean installed declarative/QML payload consumer |
 | `consumer-installed-qpa` | clean installed QPA payload consumer/product-fit fixture |
 | `consumer-source` | external `add_subdirectory`/source-acquisition consumer; must not inherit developer-only assumptions |
-| `product-e2e` | black-box/semi-black-box product/user-flow probes |
+| `product-e2e` | black-box/semi-black-box product/user-flow probes; some historical scripts currently lack execution authority and are classified in #274 |
 | `public-api-contract` | installed public C++ API/target/dependency-surface contract |
 | `release-readiness` | release/candidate authority plus some historical cross-release checks being reclassified by #274 |
 | `v01-examples` | V0.1 adoption smoke: install SDK, independently configure/build/run the minimum examples |
@@ -70,7 +75,7 @@ Every durable test must be able to answer:
 6. whether it overlaps another test and, if so, why both remain necessary.
 
 A historical test is not kept merely because it already exists. Conversely, tests are not deleted just to reduce CI
-runtime. `KEEP`, `MOVE`, `SPLIT`, `MERGE`, `RETIRE` and `REVIEW` decisions are recorded in `TEST_CATALOG.md` first.
+runtime. `KEEP`, `MOVE`, `SPLIT`, `MERGE`, `RETIRE` and `REVIEW` decisions are recorded before structural changes.
 
 ## Execution and evidence
 
@@ -78,8 +83,12 @@ The repository's canonical build authority remains the only normal way to config
 guards decide whether a test is meaningful for a configuration; semantic labels/tiering are planned by #274 but must
 not replace those guards.
 
-A selected test set that executes zero tests is non-evidence. CI/release evidence must remain fail-closed under #250
-semantics. Recorded review/acceptance evidence is documentation rather than product test code and belongs under
+Having test code in the repository is not evidence that the test executes. A durable automated contract must have an
+explicit execution authority (CTest/semantic e2e/candidate lane as appropriate); otherwise it is catalogued as a
+manual harness or a coverage gap. Likewise, a selected test set that executes zero tests is non-evidence.
+CI/release evidence must remain fail-closed under #250 semantics.
+
+Recorded review/acceptance evidence is documentation rather than product test code and belongs under
 `docs/acceptance/` or the release's designated evidence artifacts.
 
 No target under `tests/` may become a product dependency, and no product module may include or link a repository-level
