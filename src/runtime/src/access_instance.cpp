@@ -349,6 +349,22 @@ bool AccessInstance::start()
     detail::RfbSecurityConfig transportSecurity;
     bool authenticationEnabled = false;
     if (m_impl->securityProfile != SecurityProfile::Insecure) {
+        // AuthenticatedEncrypted is a declared product API, but its wire contract (VeNCrypt 0.2 + X509Vnc +
+        // TLS >= 1.2) does not exist yet. It therefore has to fail closed deterministically and
+        // *independently of the transport-security capability*: a build that can perform VNC Authentication
+        // must not accept the encrypted profile and then serve the weaker mechanism, and a readable
+        // certificate/private-key descriptor must not make the profile look implemented. Descriptor validity
+        // and backend capability are separate facts; this one is about the backend. The refusal happens here,
+        // before any listener or transport is composed, and it never falls back to Authenticated or Insecure.
+        if (m_impl->securityProfile == SecurityProfile::AuthenticatedEncrypted) {
+            m_impl->setError(
+                ErrorCode::SecurityUnavailable,
+                QStringLiteral("AuthenticatedEncrypted requires the final VeNCrypt/TLS transport, which this "
+                               "release does not provide; refusing to start instead of falling back to a weaker "
+                               "listener"));
+            return false;
+        }
+
         if (m_impl->securityConfigFile.trimmed().isEmpty()) {
             m_impl->setError(ErrorCode::SecurityUnavailable,
                              QStringLiteral("the selected security profile requires a security descriptor"));
