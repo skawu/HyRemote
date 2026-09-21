@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+﻿cmake_minimum_required(VERSION 3.21)
 
 if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
@@ -340,6 +340,47 @@ foreach(security_document IN ITEMS
     endforeach()
 endforeach()
 
+# `examples/README.md` is the single V0.1 developer entry, so it has to stay a user entry rather than a release
+# catalogue. These are stable structural facts, not prose: the three canonical adoption paths must be reachable from
+# it, the reference matrix and security boundary must be stated, and the retired release storytelling (the E-numbered
+# taxonomy and the V0.0.x frontend-coded labels) must not reappear as current navigation.
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/README.md" examples_entry)
+foreach(required_entry_token IN ITEMS
+        "learning/01-widgets-cpp"
+        "learning/02-quick-cpp"
+        "learning/03-zero-code-generic"
+        "docs/getting-started/cpp.md"
+        "docs/getting-started/generic.md"
+        "docs/guide/deployment.md"
+        "Embedded C++"
+        "Generic Plugin"
+        "Declarative QML API"
+        "Transparent QPA"
+        "Preview"
+        "Qt 6.8.3"
+        "Windows x86_64"
+        "Linux x86_64"
+        "loopback"
+        "Qt 5.15 is not yet qualified")
+    string(FIND "${examples_entry}" "${required_entry_token}" entry_token_found)
+    if(entry_token_found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: examples/README.md no longer states '${required_entry_token}'; the V0.1 entry must "
+            "keep its adoption paths, reference matrix and security boundary")
+    endif()
+endforeach()
+foreach(retired_entry_token IN ITEMS
+        "| E1 |" "| E2 |" "| E3 |" "| E4 |" "| E5 |" "| E6 |" "| E7 |"
+        "V0.0.1.0" "V0.0.2.0" "V0.0.3.0"
+        "# HyRemote V1 examples")
+    string(FIND "${examples_entry}" "${retired_entry_token}" retired_token_found)
+    if(NOT retired_token_found EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: examples/README.md carries retired release storytelling as current navigation: "
+            "'${retired_entry_token}'")
+    endif()
+endforeach()
+
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
         "add_subdirectory(learning/01-widgets-cpp)"
@@ -502,3 +543,4 @@ endforeach()
 message(STATUS
     "HyRemote release-readiness metadata gate: PASS "
     "(project ${source_project_version}, canonical repository layout + milestone notes + minimal SDK surface + complete V1 user entry points)")
+
