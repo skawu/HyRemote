@@ -42,17 +42,16 @@ The concrete platform ordering is a product-roadmap decision and must be based o
 
 `Feature` carries a product capability that can be independently delivered and independently verified inside a Minor line.
 
-For platform support lines, the three integration modes are the primary Feature increments:
+Integration technologies are **not** Feature increments. The version digits do not encode:
 
-1. Embedded C++ API;
-2. Declarative QML API;
-3. Transparent QPA Proxy.
+- C++ / QML / Generic / QPA;
+- platform;
+- Qt version;
+- UI family.
 
-Example for a platform line `V1.1.x.0`:
-
-- `V1.1.1.0` — Embedded C++ API supported on the platform;
-- `V1.1.2.0` — Declarative QML API supported on the platform;
-- `V1.1.3.0` — Transparent QPA Proxy supported on the platform.
+`V0.1` and the old `V0.0.1.0 = C++`, `V0.0.2.0 = QML`, `V0.0.3.0 = QPA` mapping was planning history and is not revived.
+Integration technologies and UI families are **compatibility dimensions** recorded by the capability/compatibility
+matrix, while the version identifies one coherent product state.
 
 ### Maintenance — defect fixes and small-scope optimization
 
@@ -72,16 +71,22 @@ A maintenance release must not be used to introduce a newly supported platform o
 
 The x86_64 reference/standard platform includes **both Windows x86_64 and Linux x86_64**. The first HyRemote product generation is not considered complete on x86 if only one of these operating systems is supported.
 
-The frozen pre-GA release profiles are **cumulative**. Each later milestone retains the already accepted earlier product modes; it adds the next independently accepted mode rather than replacing the previous one.
+Product delivery before first GA is **progressive** (#24, #95). Each train is a real coherent release with a
+deliberately narrower support and qualification claim than GA:
 
-| Version | Released product surface |
+| Train | User promise |
 | --- | --- |
-| `V0.0.1.0` | x86_64 (Windows + Linux) — Embedded C++ API |
-| `V0.0.2.0` | x86_64 (Windows + Linux) — Embedded C++ API + Declarative QML API |
-| `V0.0.3.0` | x86_64 (Windows + Linux) — Embedded C++ API + Declarative QML API + Transparent QPA Proxy |
-| `V1.0.0.0` | x86_64 reference-platform GA — Windows + Linux, all three integration modes productized |
+| `V0.1.0.0` | Use It / Developer Preview — loopback-only, primary C++/Generic paths, minimum deploy/examples |
+| `V0.2.0.0` | Trust It / Operational Preview — security, session and network |
+| `V0.3.0.0` | Productize It / Product Preview — four product-deliverable integrations, deployment, examples |
+| `V0.4.0.0` | Qualify It / Release Candidate Line — feature freeze, qualification and evidence; `V0.4.0.x` maintenance |
+| `V1.0.0.0` | Stabilize It / first GA — one mature V0.4 lineage promoted with an explicit support commitment |
 
-The development sentinel `0.0.0` may integrate all in-flight V1 modes concurrently. A formal release version is stricter: its CMake release-profile gate rejects any integration mode whose milestone has not yet been reached, even if later-mode source already exists in the branch history. No separate user-selectable release-profile option exists.
+The development sentinel `0.0.0` may integrate all in-flight modes concurrently. A formal release version no longer
+selects which frontends may exist: the CMake release-profile gate rejects only the retired `V0.0.x` planning labels, and
+frontend enablement, support level and preview/qualified/supported status are release-train scope and compatibility
+authority. Whether a train may be released is decided by #1, #24 and #95 with that train's own readiness scope, not by
+the version digits.
 
 Each pre-GA milestone must be independently validated on both Windows x86_64 and Linux x86_64. Passing on one operating system is useful engineering evidence, but it does not complete the product milestone for the other operating system.
 

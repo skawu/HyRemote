@@ -19,15 +19,21 @@ function(hyremote_validate_release_profile)
         return()
     endif()
 
-    # #24 retired the sequential V0 frontend trains. Rejecting these values prevents an old planning
-    # label from accidentally becoming a release branch/tag or an architecture gate again.
-    if(HYREMOTE_PROFILE_VERSION VERSION_LESS "1.0.0.0")
+    # #24 retired the sequential V0.0.x frontend labels. Only that retired family is rejected: the planning
+    # labels V0.0.1.0/V0.0.2.0/V0.0.3.0 must never become a release branch, tag or architecture gate again.
+    if(HYREMOTE_PROFILE_VERSION VERSION_LESS "0.1.0.0")
         message(FATAL_ERROR
             "HyRemote ${HYREMOTE_PROFILE_VERSION} is a retired pre-GA planning label, not a releasable product profile. "
-            "V1.0.0.0 is the first formal GA; integration frontends are capability dimensions, not version slots.")
+            "Integration frontends are capability dimensions, not version slots.")
     endif()
 
-    # V1+ does not sequence cpp/qml/generic/qpa through VERSION_LESS thresholds. Applicability and
-    # qualification are recorded by the compatibility/capability matrix (QPA remains exact-private-ABI
-    # qualified), while the release version identifies the coherent product state.
+    # The progressive trains V0.1 -> V0.2 -> V0.3 -> V0.4 -> V1.0 are real releases and are accepted here without
+    # regard to which frontends a build happens to enable; V0.4.0.x maintenance releases are inside the V0.4 line.
+    #
+    # This function validates that the value is a releasable profile, and nothing more. It is deliberately not a
+    # release-authorization engine: whether a train may actually be released is decided by #1 (roadmap), #24 (version
+    # semantics), #95 (release trains) and that train's own readiness scope, and frontend enablement, support level
+    # and preview/qualified/supported status are release-train scope and compatibility authority - never version
+    # digits. Applicability continues to be recorded by the compatibility/capability matrix, where QPA remains
+    # exact-private-ABI qualified.
 endfunction()

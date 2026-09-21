@@ -1,6 +1,6 @@
 # ADR-0007: Four Integration Frontends over Core + Common Runtime
 
-Status: **Accepted for post-V1 architecture migration (#219)**
+Status: **Accepted — V0.1 foundation / V1 architecture invariant (#219, reconciled by #209)**
 
 ## Context
 
@@ -182,7 +182,7 @@ Any intentional artifact/API change requires a separate compatibility decision; 
 
 ## Migration constraints
 
-- Do not change the frozen V1 candidate/release evidence merely to absorb this migration.
+- Do not change an already frozen release candidate or its evidence merely to absorb this migration.
 - Perform the migration on the dedicated #219 architecture branch/PR.
 - Preserve one Core/session/capture/input/transport architecture throughout the migration.
 - Do not temporarily solve ownership by making Generic or QPA depend on Embedded C++ implementation details.

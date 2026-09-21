@@ -87,7 +87,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteReleaseProfile.cmake" release_pr
 # while the gate still proves the profile bounds a version.
 foreach(required_token
         [=[HYREMOTE_PROFILE_VERSION STREQUAL "0.0.0"]=]
-        [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "1.0.0.0"]=])
+        [=[HYREMOTE_PROFILE_VERSION VERSION_LESS "0.1.0.0"]=])
     string(FIND "${release_profile}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -96,7 +96,8 @@ foreach(required_token
 endforeach()
 foreach(retired_token
         [=[VERSION_LESS "0.0.2.0"]=]
-        [=[VERSION_LESS "0.0.3.0"]=])
+        [=[VERSION_LESS "0.0.3.0"]=]
+        [=[VERSION_LESS "1.0.0.0"]=])
     string(FIND "${release_profile}" "${retired_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR

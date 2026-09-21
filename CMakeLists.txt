@@ -302,7 +302,22 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     hyremote_add_release_profile_test(
         hyremote-release-profile-retire-v003 0.0.3.0 ON ON OFF ON OFF TRUE)
 
-    # V1 is the first formal release line. Frontend subsets do not encode version semantics.
+    # Progressive trains are real releases, so they must be accepted whatever frontends a build enables. A
+    # frontend subset is a capability choice, never a version meaning: these cases would have failed under the
+    # retired rule that rejected every value below the first GA.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v010-cpp-only 0.1.0.0 ON OFF OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v040-all 0.4.0.0 ON ON ON ON ON FALSE)
+    # V0.4.0.x maintenance releases stay inside the V0.4 line.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v040-maintenance 0.4.0.5 ON ON ON ON ON FALSE)
+
+    # V1 is the first formal GA. Frontend subsets do not encode version semantics.
     hyremote_add_release_profile_test(
         hyremote-release-profile-v100-all 1.0.0.0 ON ON ON ON ON FALSE)
     hyremote_add_release_profile_test(
