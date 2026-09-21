@@ -24,9 +24,13 @@ Current limitations:
 
 - default listener is loopback;
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
-- `Authenticated` can use RFB VNC authentication, but the stream is not encrypted;
-- `AuthenticatedEncrypted` is not implemented and fails closed before listening;
+- `Insecure` is loopback-only; a non-loopback `Insecure` start is rejected before listener creation;
+- `Authenticated` is conditional and requires a transport-security-enabled build plus a valid security descriptor;
+- when `Authenticated` is available, it uses RFB VNC authentication but the stream remains unencrypted;
+- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- a requested `Authenticated` profile with no required build capability fails with `SecurityUnavailable` before target/transport/listener creation;
+- `AuthenticatedEncrypted` is not implemented and always fails with `SecurityUnavailable` before listener creation;
+- `AuthenticatedEncrypted` never falls back to `Authenticated` or `Insecure`, even if a certificate/private-key descriptor exists;
 - there is no production TLS/certificate policy yet;
 - there is no authenticated Session Registry or per-session role model yet.
 
@@ -43,7 +47,7 @@ Important behavior:
 - default: `127.0.0.1`;
 - an invalid/unassigned bind address fails instead of silently widening to a wildcard;
 - an already occupied port fails startup;
-- `0.0.0.0` explicitly widens IPv4 exposure;
+- `0.0.0.0` explicitly widens IPv4 exposure and therefore requires a valid authenticated configuration rather than `Insecure`;
 - IPv6 wildcard behavior is platform-specific and must not be assumed to be dual-stack.
 
 On the current Windows/Qt 6.8.3 reference path, `::` behaves as an IPv6-only listener rather than accepting IPv4 through the same socket.
