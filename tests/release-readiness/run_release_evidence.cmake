@@ -306,55 +306,10 @@ set(CONSUMER_CONFIG_ARGS --config "${CONSUMER_CONFIGURATION}")
 
 # ---------------------------------------------------------------- acquisition auditing
 
-# cache_field(<cache_file> <key> <out_var>) - read exactly one CMake cache entry, by parsing the file as lines.
-#
-# A CMakeCache is not a CMake list. Its values legitimately contain semicolons, spaces, backslashes and escape
-# sequences - Windows paths are the everyday case - so reading the whole file into one variable and iterating it as a
-# list splits values that were never lists, and any audit built on it depends on quoting luck rather than on the file
-# format. file(STRINGS) yields the real lines; the key line is then joined back losslessly, because splitting on
-# semicolons and rejoining with them is a round trip.
-function(cache_field cache_file key out_var)
-    file(STRINGS "${cache_file}" _key_lines REGEX "^${key}:[A-Za-z0-9_]+=")
-    if(NOT _key_lines)
-        set(${out_var} "" PARENT_SCOPE)
-        return()
-    endif()
-    list(JOIN _key_lines ";" _entry)
-    string(REGEX REPLACE "^${key}:[A-Za-z0-9_]+=" "" _value "${_entry}")
-    string(REPLACE "\r" "" _value "${_value}")
-    string(STRIP "${_value}" _value)
-    set(${out_var} "${_value}" PARENT_SCOPE)
-endfunction()
-
-# normalize_path(<in> <out>) - the comparable form of a path: forward slashes, no trailing separator, and lower case on
-# Windows, where the filesystem is case-insensitive and the cache records whatever the generator happened to write.
-function(normalize_path in_path out_var)
-    set(_path "${in_path}")
-    string(STRIP "${_path}" _path)
-    string(REPLACE "\\" "/" _path "${_path}")
-    string(REGEX REPLACE "/+$" "" _path "${_path}")
-    if(WIN32)
-        string(TOLOWER "${_path}" _path)
-    endif()
-    set(${out_var} "${_path}" PARENT_SCOPE)
-endfunction()
-
-# path_is_under(<path> <root> <out_bool>) - true when path is root or below it. Compared with string(FIND) rather than
-# a regex, because a path contains regex metacharacters on both platforms.
-function(path_is_under path root out_var)
-    normalize_path("${path}" _path)
-    normalize_path("${root}" _root)
-    if(_path STREQUAL "" OR _root STREQUAL "")
-        set(${out_var} FALSE PARENT_SCOPE)
-        return()
-    endif()
-    string(FIND "${_path}/" "${_root}/" _offset)
-    if(_offset EQUAL 0)
-        set(${out_var} TRUE PARENT_SCOPE)
-    else()
-        set(${out_var} FALSE PARENT_SCOPE)
-    endif()
-endfunction()
+# Path normalisation, the single cache-field reader and the per-entry acquisition audit live in
+# acquisition_audit.cmake, so the same decision logic can be exercised without configuring or building a product. The
+# runner includes it instead of carrying a second copy that would be free to disagree with the copy under test.
+include("${CMAKE_CURRENT_LIST_DIR}/acquisition_audit.cmake")
 
 # stage_consumer_source(<cell> <fixture> <out_dir_var>) - the executed consumer must not be built from the repository.
 #
@@ -431,29 +386,13 @@ function(audit_consumer_acquisition cell build_dir)
     endif()
 
     # Acquisition fields only: a CMake package, include, library or plugin path that points into the product source
-    # tree or the product build tree is acquisition from there. Lines about this run's own scratch tree are excluded,
-    # because the run lives inside the build tree by construction and the staged consumer source is its own input.
-    set(_source_tree_hits 0)
-    set(_build_tree_hits 0)
-    normalize_path("${HYREMOTE_SOURCE_DIR}" _source_probe)
-    normalize_path("${HYREMOTE_BUILD_DIR}" _build_probe)
-    normalize_path("${RUN_DIR}" _run_probe)
-    file(STRINGS "${_cache}" _cache_lines REGEX "^(HyRemote|Qt6|[A-Za-z0-9_]*Qt6|CMAKE_PREFIX_PATH|CMAKE_[A-Za-z_]*PATH|.*_DIR|.*_INCLUDE_DIR|.*_LIBRARY|.*_PLUGIN|.*_PLUGINS|.*_FILE):")
-    foreach(_line IN LISTS _cache_lines)
-        normalize_path("${_line}" _line_normalized)
-        string(FIND "${_line_normalized}" "${_run_probe}" _run_hit)
-        if(NOT _run_hit EQUAL -1)
-            continue()
-        endif()
-        string(FIND "${_line_normalized}" "${_source_probe}" _source_hit)
-        if(NOT _source_hit EQUAL -1)
-            math(EXPR _source_tree_hits "${_source_tree_hits} + 1")
-        endif()
-        string(FIND "${_line_normalized}" "${_build_probe}" _build_hit)
-        if(NOT _build_hit EQUAL -1)
-            math(EXPR _build_tree_hits "${_build_tree_hits} + 1")
-        endif()
-    endforeach()
+    # tree or the product build tree is acquisition from there. The judgement is per cache-value element rather than
+    # per cache line: a mixed value such as "<run-prefix>;<forbidden-path>" contains this run's own path, so a
+    # line-level skip reads it as a clean acquisition while the forbidden element sits behind it. The run's own tree is
+    # allowed, because the run lives inside the build tree by construction and the staged consumer source is its own
+    # input.
+    audit_acquisition_entries("${_cache}" "${RUN_DIR}" "${HYREMOTE_SOURCE_DIR}" "${HYREMOTE_BUILD_DIR}"
+        _source_tree_hits _build_tree_hits)
     record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
     record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
     record("${cell}" "SOURCE_TREE_DEP_COUNT" "${_source_tree_hits}")

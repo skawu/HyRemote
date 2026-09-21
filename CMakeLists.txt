@@ -304,6 +304,19 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     )
     set_tests_properties(hyremote-release-scope-self-test PROPERTIES TIMEOUT 300)
 
+    # The clean-consumer acquisition audit decides whether a consumer acquired HyRemote from a package or from the
+    # product source/build tree. That decision is a pure function of a CMakeCache, so its self test runs here without
+    # configuring or building anything: it drives the same shared audit the evidence runner includes, against
+    # synthetic caches, including the mixed "<run-prefix>;<forbidden-path>" value that a line-level audit skipped
+    # over and reported as clean.
+    add_test(
+        NAME hyremote-acquisition-audit-self-test
+        COMMAND "${CMAKE_COMMAND}"
+            -DACQUISITION_AUDIT_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/acquisition-audit-selftest
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/acquisition_audit_self_test.cmake"
+    )
+    set_tests_properties(hyremote-acquisition-audit-self-test PROPERTIES TIMEOUT 60)
+
     # The V0.1 learning examples are the adoption path a new developer follows, so they are exercised end to end: the
     # smoke installs the SDK from this build tree, configures and builds each example as a standalone project against
     # that installed SDK, launches all four executables, and checks the native platform identity plus the
