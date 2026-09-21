@@ -2,64 +2,78 @@
 
 HyRemote is remote-access infrastructure. A working viewer connection does not by itself make a deployment secure.
 
-This page describes the **current product security behavior**. Capabilities that are not available yet are marked as TODO rather than described as future acceptance work.
+This page describes the **current product security behavior**. Capabilities that are not available yet are marked as TODO.
 
-## V0.1 security profile
+## V0.1 security boundary
 
 V0.1 is a Developer Preview with a loopback-first security boundary.
 
-The Shared Runtime applies the same security behavior to the C++ API, QML API, Generic Plugin, and QPA frontends:
+The Shared Runtime applies the same security model to the C++ API, QML API, Generic Plugin, and QPA frontends.
 
-- default bind: `127.0.0.1`;
-- default port: `5921`;
-- remote input: disabled by default;
+Default behavior:
+
+- bind address: `127.0.0.1`;
+- port: `5921`;
+- remote input: disabled;
 - constructing a C++ `HyRemote::RemoteAccess` object does not open a listener;
-- QML starts only when `enabled: true` is requested;
+- QML starts only after `enabled: true` is requested;
 - Generic/QPA start only when explicitly activated through their Qt startup mechanisms;
 - unauthenticated non-loopback exposure is rejected;
-- malformed or incomplete protocol clients are bounded by transport limits;
-- sensitive credential material must not be written to normal diagnostics.
+- malformed/incomplete clients remain subject to bounded transport limits;
+- secrets must not be written to normal diagnostics.
 
-V0.1 must not be exposed directly to the public Internet.
+The default V0.1 build profile does **not** imply that authenticated or encrypted transport is present merely because the public API contains security-profile values.
+
+Do not expose V0.1 directly to the public Internet.
 
 ## Security profiles
 
 ### Insecure
 
-`Insecure` is intended for local/trusted development use.
+`Insecure` is the normal V0.1 development profile.
 
-- loopback is the normal/default deployment;
-- no viewer authentication is provided;
-- the stream is not encrypted;
+- no viewer authentication;
+- no transport encryption;
+- loopback is required;
 - remote input remains a separate opt-in policy.
 
-An unauthenticated configuration is not accepted for non-loopback exposure.
+If `Insecure` is combined with a non-loopback address, `start()` fails before any listener is opened. HyRemote does not silently widen an unauthenticated listener.
 
 ### Authenticated
 
-`Authenticated` adds RFB VNC authentication when a valid credential configuration is provided.
+`Authenticated` is a **conditional capability**.
 
-This authenticates the viewer at the RFB layer, but **does not encrypt the stream**. Authentication and encryption are separate product capabilities.
+It is usable only when all of the following are true:
 
-Use this profile only inside an appropriate trusted network boundary until encrypted transport is available.
+1. the HyRemote build includes the transport-security capability;
+2. a security descriptor path is configured;
+3. the descriptor is valid for the selected profile.
+
+When those conditions are satisfied, the current transport uses RFB VNC authentication for viewer authentication.
+
+The stream is still **not encrypted**.
+
+If the required build capability is absent, `start()` fails with `SecurityUnavailable` before target, transport, or listener creation. If the descriptor is missing or invalid, startup fails rather than falling back to a weaker profile.
+
+The default V0.1 developer build/profile should therefore be treated as **Insecure loopback-only unless the authenticated capability was explicitly built and configured**.
 
 ### AuthenticatedEncrypted
 
-The public product model reserves `AuthenticatedEncrypted` for authenticated + encrypted transport.
+`AuthenticatedEncrypted` is declared in the product model but is **not implemented in V0.1**.
 
-The TLS/VeNCrypt backend is not implemented in V0.1. Selecting this profile therefore:
+Selecting it always fails closed before a listener is opened, including in builds that can provide `Authenticated` VNC authentication:
 
 ```text
 AuthenticatedEncrypted
   -> SecurityUnavailable
-  -> no listener opened
+  -> no target/transport/listener composed
   -> no fallback to Authenticated
   -> no fallback to Insecure
 ```
 
-This fail-closed behavior is intentional. Certificate/private-key fields being syntactically valid must not make the product pretend that encrypted transport exists.
+A readable certificate/private-key descriptor does not make encrypted transport available by itself.
 
-> **TODO V0.2:** implement VeNCrypt/TLS, certificate/private-key policy, cipher/protocol policy, and encrypted authenticated sessions.
+> **TODO V0.2:** implement the final encrypted transport profile, certificate/private-key policy, protocol/cipher policy, and authenticated encrypted sessions.
 
 ## Remote viewing versus remote control
 
@@ -83,21 +97,23 @@ RemoteAccess {
 }
 ```
 
-Generic and QPA expose the corresponding startup configuration through their plugin specifications.
+Generic and QPA expose corresponding startup configuration through their plugin specifications.
 
-Leaving remote input disabled keeps the session view-only. View-only is **not** a substitute for authentication or encryption.
+Leaving remote input disabled keeps the session view-only. View-only is **not** authentication and is **not** encryption.
 
 ## Listener exposure
 
-The safest V0.1 use is the default loopback listener:
+The safest and default V0.1 listener is:
 
 ```text
 127.0.0.1:5921
 ```
 
-Changing the bind address changes the network trust boundary. It does not automatically add authentication or encryption.
+Changing the bind address changes the network trust boundary. It does not automatically enable authentication or encryption.
 
-Use a specific numeric address rather than widening exposure casually. Exact address-family behavior is documented in [`known-limitations.md`](known-limitations.md).
+For `Insecure`, non-loopback startup is rejected. For `Authenticated`, a non-loopback listener is possible only when the authenticated build capability and descriptor are valid.
+
+Exact address-family behavior is documented in [`known-limitations.md`](known-limitations.md).
 
 ## Connection state is not authorization
 
@@ -111,21 +127,13 @@ Use a specific numeric address rather than widening exposure casually. Exact add
 
 Remote input is normalized and routed only to the attached Qt application target. HyRemote does not use desktop-wide virtual HID / `uinput` injection as the normal product path.
 
-The Runtime tracks supported held key/button state so disconnecting a remote peer or stopping the Runtime does not intentionally leave the local application in a stuck input state.
+Supported held key/button state is balanced across viewer disconnect and Runtime teardown so a remote peer should not leave the local application stuck in a pressed state.
 
 Unsupported key/composition/IME cases are documented rather than guessed.
 
 ## Resource boundaries
 
-The RFB baseline uses bounded behavior for items such as:
-
-- concurrent clients;
-- protocol input buffering;
-- handshake lifetime;
-- advertised encoding lists;
-- clipboard/cut-text payload limits where applicable;
-- Core frame handoff;
-- GUI input delivery.
+The RFB baseline uses bounded behavior for items such as concurrent clients, protocol buffering, handshake lifetime, frame handoff, and GUI input delivery.
 
 These limits reduce accidental or malicious resource growth. They do not make the current transport suitable for direct hostile-Internet exposure.
 
@@ -133,23 +141,25 @@ These limits reduce accidental or malicious resource growth. They do not make th
 
 Passwords, tokens, private keys, and equivalent secrets must not be written to normal logs, error strings, UI diagnostics, or command examples.
 
-Where a frontend needs credential configuration, prefer an external configuration/descriptor mechanism rather than placing secrets directly in a process command line.
+Security configuration should use an external descriptor/configuration mechanism instead of placing secrets directly on a process command line.
 
-## Recommended deployment profiles
+A descriptor confirms what the operator configured; it does not prove that the selected security mechanism exists in the build.
+
+## Recommended V0.1 deployment profiles
 
 ### Local developer / same machine
 
-Use the default loopback listener. Enable remote input only when needed.
+Use the default `Insecure` loopback listener. Enable remote input only when required.
 
 ### Trusted lab or maintenance network
 
-Use an authenticated profile where appropriate and restrict network reachability. Remember that V0.1 authentication does not encrypt the RFB stream.
+Use `Authenticated` only when the package was explicitly built with the required security capability and a valid descriptor is configured. The stream remains unencrypted, so network reachability still needs an appropriate trust boundary.
 
 ### Public Internet
 
 **Not supported as a direct V0.1 deployment profile.**
 
-Do not expose a HyRemote V0.1 listener directly to the public Internet.
+Do not expose the current HyRemote listener directly to the public Internet.
 
 ## Current security capability matrix
 
@@ -157,15 +167,17 @@ Do not expose a HyRemote V0.1 listener directly to the public Internet.
 | --- | --- |
 | Loopback-first default | Available |
 | Remote input off by default | Available |
-| Reject unauthenticated non-loopback exposure | Available |
-| RFB VNC authentication | Available with `Authenticated` profile |
-| Encrypted transport | **TODO V0.2** |
+| Reject `Insecure` non-loopback exposure | Available |
+| `Authenticated` API/configuration surface | Available |
+| RFB VNC authentication | **Conditional: requires transport-security-enabled build + valid descriptor** |
+| Default V0.1 build includes authenticated transport | **No** |
+| `AuthenticatedEncrypted` | **Unavailable; fail-closed** |
+| Stream encryption | **TODO V0.2** |
 | Certificate/private-key production policy | **TODO V0.2** |
 | Authenticated session identity/registry | **TODO V0.2** |
 | Per-session admission/termination | **TODO V0.2** |
-| Central account/role management | Not a V0.1 capability |
 | VPN/tunnel/firewall provisioning | Outside HyRemote product scope |
 
 The concise V0.1 statement is:
 
-> HyRemote V0.1 defaults to loopback with remote input off. An authenticated profile can authenticate a viewer with RFB VNC authentication, but the stream is not encrypted. `AuthenticatedEncrypted` fails closed until the encrypted backend is implemented. Do not expose V0.1 directly to the public Internet.
+> HyRemote V0.1 defaults to an unauthenticated, unencrypted loopback listener with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose V0.1 directly to the public Internet.
