@@ -312,7 +312,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     add_test(
         NAME hyremote-acquisition-audit-self-test
         COMMAND "${CMAKE_COMMAND}"
-            -DACQUISITION_AUDIT_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/acquisition-audit-selftest
+            -DACQUISITION_AUDIT_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/acquisition_audit_self_test.cmake"
     )
     set_tests_properties(hyremote-acquisition-audit-self-test PROPERTIES TIMEOUT 60)

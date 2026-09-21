@@ -11,47 +11,45 @@ cmake_minimum_required(VERSION 3.21)
 
 include("${CMAKE_CURRENT_LIST_DIR}/acquisition_audit.cmake")
 
+# The self test writes synthetic caches. They belong in a build directory: fixtures written into the repository tree
+# are generated inputs one `git add -A` away from being committed. The build directory is therefore an explicit input
+# rather than a guess - the repository's own build directory is not always called "build" (CI uses build-ci), and a
+# guessed name would either reject a legitimate directory or quietly accept the tree itself.
+if(NOT DEFINED ACQUISITION_AUDIT_BUILD_DIR OR ACQUISITION_AUDIT_BUILD_DIR STREQUAL "")
+    message(FATAL_ERROR
+        "acquisition-audit-selftest: ACQUISITION_AUDIT_BUILD_DIR is required, so that fixtures are written under the "
+        "build directory and can never land in the repository tree.")
+endif()
 if(NOT DEFINED ACQUISITION_AUDIT_SCRATCH_DIR OR ACQUISITION_AUDIT_SCRATCH_DIR STREQUAL "")
-    set(ACQUISITION_AUDIT_SCRATCH_DIR "${CMAKE_CURRENT_BINARY_DIR}/acquisition-audit-selftest")
+    set(ACQUISITION_AUDIT_SCRATCH_DIR "${ACQUISITION_AUDIT_BUILD_DIR}/acquisition-audit-selftest")
 endif()
 
-# Fixtures are scratch data. They are allowed under the repository's build directory or in the system temporary
-# directory, and nowhere else - writing them into the tree itself would put generated inputs one `git add -A` away
-# from being committed.
 normalize_path("${ACQUISITION_AUDIT_SCRATCH_DIR}" _scratch)
-normalize_path("${CMAKE_CURRENT_LIST_DIR}/../../build" _build_root_allowed)
+normalize_path("${ACQUISITION_AUDIT_BUILD_DIR}" _build_dir)
 normalize_path("${CMAKE_CURRENT_LIST_DIR}/../.." _repository_root)
+
 set(_scratch_allowed FALSE)
-if(_scratch STREQUAL _build_root_allowed)
+path_is_under("${_scratch}" "${_build_dir}" _scratch_under_build)
+if(_scratch_under_build)
     set(_scratch_allowed TRUE)
 else()
-    string(FIND "${_scratch}/" "${_build_root_allowed}/" _scratch_under_build)
-    if(_scratch_under_build EQUAL 0)
-        set(_scratch_allowed TRUE)
-    endif()
-endif()
-if(CMAKE_HOST_WIN32)
-    if(DEFINED ENV{TEMP})
-        normalize_path("$ENV{TEMP}" _temp_root)
-        string(FIND "${_scratch}/" "${_temp_root}/" _scratch_under_temp)
-        if(_scratch_under_temp EQUAL 0)
-            set(_scratch_allowed TRUE)
+    # The system temporary directory is the only alternative, so a developer can run this by hand anywhere.
+    foreach(_temp_variable IN ITEMS TEMP TMPDIR TMP)
+        if(DEFINED ENV{${_temp_variable}})
+            path_is_under("${_scratch}" "$ENV{${_temp_variable}}" _scratch_under_temp)
+            if(_scratch_under_temp)
+                set(_scratch_allowed TRUE)
+                break()
+            endif()
         endif()
-    endif()
-else()
-    if(DEFINED ENV{TMPDIR})
-        normalize_path("$ENV{TMPDIR}" _temp_root)
-        string(FIND "${_scratch}/" "${_temp_root}/" _scratch_under_temp)
-        if(_scratch_under_temp EQUAL 0)
-            set(_scratch_allowed TRUE)
-        endif()
-    endif()
+    endforeach()
 endif()
+
 if(NOT _scratch_allowed)
     message(FATAL_ERROR
         "acquisition-audit-selftest: refusing to write fixtures to '${ACQUISITION_AUDIT_SCRATCH_DIR}'. Use a directory "
-        "under ${_build_root_allowed} or the system temporary directory; the repository root (${_repository_root}) is "
-        "never a scratch directory.")
+        "under the build directory (${_build_dir}) or the system temporary directory; the repository tree "
+        "(${_repository_root}) is never a scratch directory.")
 endif()
 
 file(REMOVE_RECURSE "${ACQUISITION_AUDIT_SCRATCH_DIR}")
