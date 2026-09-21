@@ -13,8 +13,8 @@
 # a stub instead of waiting for real propagation timing.
 set -uo pipefail
 
-attempts="${MAINLINE_AUDIT_ATTEMPTS:-8}"
-delay="${MAINLINE_AUDIT_DELAY_SECONDS:-3}"
+attempts="${MAINLINE_AUDIT_ATTEMPTS:-12}"
+delay="${MAINLINE_AUDIT_DELAY_SECONDS:-5}"
 repo="${GITHUB_REPOSITORY:-}"
 sha="${GITHUB_SHA:-}"
 branch="${BRANCH:-}"

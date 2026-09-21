@@ -36,6 +36,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      # The audit and its self test are a script, so the job has to have the repository: the association query alone
+      # never needed a checkout, and the audit spent its first runs failing on a missing file rather than on its
+      # actual question.
+      - uses: actions/checkout@v4
+
       - name: Self-test the mainline push audit
         shell: bash
         run: bash .github/scripts/mainline-push-audit.sh --self-test
