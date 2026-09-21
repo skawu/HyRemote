@@ -249,8 +249,6 @@ foreach(required_token
         [=[issues: read]=]
         [=[pull-requests: read]=]
         [=[mainline-push-audit]=]
-        [=[commits/${GITHUB_SHA}/pulls]=]
-        [=[select(.merged_at != null and .base.ref ==]=]
         [=[after-the-fact audit only]=]
         [=[cannot undo a direct push]=]
         [=[must never be described as branch protection]=]
@@ -273,6 +271,28 @@ foreach(required_token
             "release-authority-policy: Git Flow lost required authority invariant: ${required_token}")
     endif()
 endforeach()
+
+# The commit-to-pull-request association is the only evidence the mainline push audit accepts. That logic now lives in
+# the audit script the workflow calls, so both halves stay pinned: the script must still prove the association, and the
+# workflow must still call the script. A local commit shape is never evidence, and the audit cannot be unplugged.
+set(mainline_audit_script "${HYREMOTE_SOURCE_DIR}/.github/scripts/mainline-push-audit.sh")
+if(NOT EXISTS "${mainline_audit_script}")
+    message(FATAL_ERROR "release-authority-policy: mainline push audit script is missing")
+endif()
+file(READ "${mainline_audit_script}" mainline_audit_body)
+foreach(mainline_audit_token IN ITEMS
+        [=[/commits/${sha}/pulls]=]
+        [=[select(.merged_at != null and .base.ref ==]=])
+    string(FIND "${mainline_audit_body}" "${mainline_audit_token}" audit_found)
+    if(audit_found EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: mainline push audit lost its PR-association invariant: ${mainline_audit_token}")
+    endif()
+endforeach()
+string(FIND "${policy}" "mainline-push-audit.sh" policy_calls_audit)
+if(policy_calls_audit EQUAL -1)
+    message(FATAL_ERROR "release-authority-policy: the Git Flow policy no longer calls the mainline push audit")
+endif()
 
 # Release authorization may read issue state but must never manufacture acceptance or rewrite history.
 foreach(forbidden_token

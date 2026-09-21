@@ -269,8 +269,8 @@ endforeach()
 file(READ "${HYREMOTE_SOURCE_DIR}/docs/release-package-manifest.md" package_manifest)
 foreach(required_phrase
         "HyRemote::RemoteAccess"
-        "not installed/exported"
-        "does not export `HyRemote::QpaPlatform`"
+        "is not a second application Runtime or ordinary exported SDK target"
+        "does not expose `HyRemote::QpaPlatform` as an application target"
         "qhyremote"
         "hyremote_deploy(TARGET MyApp)")
     string(FIND "${package_manifest}" "${required_phrase}" found)
@@ -430,9 +430,9 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/docs/input-model.md" input_model)
 foreach(required_phrase
-        "Viewer disconnect cleanup belongs to the transport"
-        "HyRemote runtime/target teardown cleanup belongs to the target `InputSink`"
-        "pending"
+        "the transport balances recognized held state contributed by that viewer"
+        "repeated teardown is idempotent and does not synthesize duplicate releases"
+        "rejected"
         "delivered")
     string(FIND "${input_model}" "${required_phrase}" found)
     if(found EQUAL -1)
@@ -444,8 +444,8 @@ endforeach()
 foreach(doc_check
         "docs/internal/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
         "docs/releases/v1.0.0.0.md|explicit HyRemote runtime stop/policy transition"
-        "docs/compatibility.md|explicit HyRemote stop/policy transition"
-        "docs/known-limitations.md|explicit HyRemote runtime stop")
+        "docs/compatibility.md|explicit Runtime lifecycle"
+        "docs/known-limitations.md|Stopping the runtime is explicit and complete")
     string(REPLACE "|" ";" doc_parts "${doc_check}")
     list(GET doc_parts 0 doc_path)
     list(GET doc_parts 1 required_phrase)

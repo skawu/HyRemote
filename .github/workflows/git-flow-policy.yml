@@ -36,23 +36,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Self-test the mainline push audit
+        shell: bash
+        run: bash .github/scripts/mainline-push-audit.sh --self-test
+
       - name: Audit mainline push came through an accepted PR
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          # This is an after-the-fact audit only; it cannot undo a direct push and it
-          # must never be described as branch protection when repository policy cannot enforce that before push.
-          merged_prs="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
-            --jq ".[] | select(.merged_at != null and .base.ref == \"${BRANCH}\") | .number")"
-          if [[ -z "${merged_prs}" ]]; then
-            echo "mainline direct-push audit failed: ${GITHUB_SHA} has no merged PR into ${BRANCH}" >&2
-            echo "This is governance evidence only; the workflow cannot roll back the push." >&2
-            exit 1
-          fi
-          echo "mainline push audit passed for ${BRANCH}: merged PR(s) ${merged_prs//$'\n'/, }"
+        # This is an after-the-fact audit only; it cannot undo a direct push. It must never be described as branch protection when repository policy cannot enforce that before push. The audit itself retries the
+        # commit-to-pull-request association, because GitHub may answer `commits/<sha>/pulls` empty for a few seconds
+        # right after a real merge; a missing association after every attempt still fails, and no local commit shape
+        # is ever accepted in its place.
+        run: bash .github/scripts/mainline-push-audit.sh
 
   pull-request-topology:
     if: github.event_name == 'pull_request'

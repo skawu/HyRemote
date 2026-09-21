@@ -125,12 +125,9 @@ foreach(required_token IN ITEMS
         "cancel-in-progress: true"
         "Resolve affected capabilities"
         [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
-        "src/core/"
-        "src/runtime/"
-        "src/integrations/cpp/"
-        "src/integrations/qml/"
-        "src/integrations/generic/"
-        "src/integrations/qpa/"
+        "resolve-ci-scope.py"
+        "--self-test"
+        "readiness_evidence"
         "hyremote-qt-v4-"
         "qt_tree_valid"
         [=[--need-qml "$NEED_QML"]=]
@@ -138,6 +135,22 @@ foreach(required_token IN ITEMS
         "install-linux-qt-desktop-deps.sh qpa"
         "install-linux-qt-desktop-deps.sh public")
     require_token("${ci}" "${required_token}" "consolidated PR CI contract")
+endforeach()
+
+# The capability prefixes live in the classifier script the workflow calls rather than inline in the workflow, so the
+# lane a change selects and the tokens this gate checks cannot drift apart. Reading the script follows the same
+# pattern already used for the Qt SDK validator below.
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/scripts/resolve-ci-scope.py" ci_scope_classifier)
+foreach(required_token IN ITEMS
+        "src/core/"
+        "src/runtime/"
+        "src/integrations/cpp/"
+        "src/integrations/qml/"
+        "src/integrations/generic/"
+        "src/integrations/qpa/"
+        "READINESS_PREFIXES"
+        "hyremote-release-readiness-")
+    require_token("${ci_scope_classifier}" "${required_token}" "classifier capability contract")
 endforeach()
 
 # The Qt components every product change needs, and the ones that stay capability-conditional.

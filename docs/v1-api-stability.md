@@ -64,6 +64,9 @@ Behavioral invariants intended for V1 stability:
 - remote viewing and remote-control policy remain distinct;
 - `Running` means the Runtime/listener is active, not that a viewer is authenticated or connected;
 - application-facing errors remain HyRemote product types rather than backend/protocol types;
+- a non-recoverable runtime failure stays observable as `Faulted` until the owner calls `stop()`;
+- acknowledging an error does not resurrect the session that produced it: unrelated viewer, capture or transport activity must not make the same acknowledged failure current again;
+- if the same condition occurs again after it was acknowledged, that later occurrence must become visible again;
 - transport, capture, input, and acceleration implementations may change without requiring ordinary application-source changes.
 
 `RemoteAccess` remains non-copyable and movable. Its private implementation boundary prevents backend/session/platform types from leaking into installed headers.
