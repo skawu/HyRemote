@@ -169,10 +169,23 @@ string(REGEX MATCH "function\\(_hyremote_generate_generic_deploy_script[^)]*\\)(
 if("${CMAKE_MATCH_1}" STREQUAL "")
     message(FATAL_ERROR "deploy-helper-contract: Generic deploy script generator is missing")
 endif()
+foreach(required_token
+        [=[_hyremote_resolve_native_platform_payload]=]
+        [=[\${QT_DEPLOY_PLUGINS_DIR}/platforms]=])
+    string(FIND "${CMAKE_MATCH_1}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: Generic deployment must carry the native Qt platform plugin so a clean "
+            "deployed application can start without the Qt SDK: ${required_token}")
+    endif()
+endforeach()
+
+# Generic must not borrow QPA's exact-private-ABI semantics while sharing the resolver, and it must not ship a
+# HyRemote platform plugin in place of the native one.
 foreach(forbidden_token
-        [=[QT_DEPLOY_PLUGINS_DIR}/platforms]=]
-        [=[_hyremote_resolve_native_qpa_delegate_payload]=]
-        [=[HyRemote_QPA_PLUGIN_FILE]=])
+        [=[HyRemote_QPA_PLUGIN_FILE]=]
+        [=[HyRemote_QPA_QT_VERSION]=]
+        [=[_hyremote_resolve_qpa_payload]=])
     string(FIND "${CMAKE_MATCH_1}" "${forbidden_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR
