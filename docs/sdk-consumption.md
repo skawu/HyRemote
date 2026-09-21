@@ -1,84 +1,88 @@
 # HyRemote SDK Consumption Contract
 
-Status: **frozen product contract; implementation tracked by #39**
+HyRemote is an independent SDK/framework for Qt applications. It is consumed through normal CMake/Qt mechanisms and does not require modifying the user's Qt installation.
 
-Product milestone: **V0.0.1.0 — x86_64 (Windows + Linux) / Embedded C++ API**
+The product contract is intentionally small: **one Shared Runtime**, four peer integration frontends, two acquisition methods, and one deployment helper.
 
-HyRemote is an independent SDK/framework for Qt applications. It is not installed by modifying the Qt SDK tree and it does not pretend to be a built-in Qt module. The product requirement is that, after HyRemote is installed or added as source once, using it should feel comparable to using a normal Qt module.
+## 1. Product mental model
 
-This document is the user-facing consumption authority. Internal Core, capture, input, transport, protocol and hardware choices must converge on this contract rather than leak into application code.
+An application developer should choose an integration frontend first:
 
-## 1. Normal user mental model
+| Frontend | Application code change | Product role |
+| --- | --- | --- |
+| **C++ API** | Link `HyRemote::RemoteAccess` | Explicit lifecycle/policy control |
+| **Generic Plugin** | No HyRemote application linkage | Preferred zero-code path while preserving native Qt platform |
+| **QML API** | `import HyRemote` | Declarative frontend for Qt Quick |
+| **QPA** | No HyRemote application linkage; start with `-platform hyremote` | Specialized exact-private-ABI zero-code path |
 
-A normal application developer should think in terms of only four things:
+Qt Widgets and Qt Quick are target types handled by the Shared Runtime; they are not separate SDK products.
 
-1. add/find HyRemote;
-2. link the product target;
-3. attach remote access to a Qt window/target;
-4. start/stop remote access.
+Applications should not need to instantiate or understand:
 
-The developer should not need to understand or instantiate:
-
-- `Session`;
+- Core;
+- Session internals;
 - `RemoteFrame`;
-- `CaptureSource`;
-- `Transport`;
-- `InputSink`;
-- Core mailbox/backpressure internals;
-- NeatVNC, rustvncserver or any future protocol backend;
-- Tokio/Rust runtime details;
-- platform acceleration backends.
+- capture backend classes;
+- transport/RFB implementation objects;
+- input backend objects;
+- graphics/SoC acceleration backends.
 
-Those are implementation details owned by HyRemote.
+Those are owned by HyRemote.
 
-## 2. Distribution model
+## 2. Acquisition models
 
-HyRemote supports two first-class consumption paths that expose the same public API.
+HyRemote supports two first-class acquisition paths.
 
-### 2.1 Prebuilt SDK — primary x86 path
+### Installed SDK
 
-Windows x86_64 and Linux x86_64 releases provide a standalone install prefix conceptually shaped as:
+The installed SDK exposes CMake package metadata through:
+
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
+```
+
+A conceptual install prefix contains:
 
 ```text
-HyRemote/<version>/
-├── include/
-│   └── HyRemote/
-│       └── RemoteAccess.h
+hyremote-sdk/
+├── include/HyRemote/
 ├── lib/
-│   ├── <HyRemote libraries>
-│   └── cmake/
-│       └── HyRemote/
-│           ├── HyRemoteConfig.cmake
-│           ├── HyRemoteConfigVersion.cmake
-│           └── HyRemoteTargets.cmake
-├── bin/                         # platform/runtime payload where applicable
-├── qml/                         # introduced with V0.0.2.0
-│   └── HyRemote/
+│   ├── cmake/HyRemote/
+│   └── HyRemote product runtime
+├── qml/HyRemote/                 # when QML payload is included
+├── lib/HyRemote/plugins/generic/ # when Generic payload is included
+├── plugins/platforms/            # deployed QPA payload in application tree
 └── licenses/
 ```
 
-The SDK must not require copying files into the user's Qt installation tree.
+The SDK is separate from the Qt SDK. Users do not copy HyRemote files into their Qt installation.
 
-### 2.2 Source consumption — open-source and cross-build path
+### Source consumption
 
-The repository must support normal CMake source integration, including vendored `add_subdirectory()` and a documented acquisition path such as `FetchContent` where appropriate.
-
-Source integration inherits the caller's:
-
-- compiler/toolchain;
-- sysroot;
-- Qt target SDK;
-- CMake configuration;
-- platform-specific cross-build environment.
-
-Embedded Linux and future OpenHarmony support extend this model instead of introducing a separate project-specific build system.
-
-## 3. Public CMake contract
-
-The normal installed-SDK experience should be approximately:
+HyRemote can also be vendored into an application build:
 
 ```cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
+```
+
+Source consumption inherits the caller's compiler, toolchain, sysroot, and Qt SDK. It uses the same product API and deployment model as the installed SDK.
+
+Do not mix installed-package and source acquisition for the same HyRemote instance in one CMake configure.
+
+## 3. Shared Runtime contract
+
+`HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` is the normal shared Runtime artifact.
+
+Core remains internal and is not a second deployed Runtime. QML, Generic, and QPA are frontend payloads over the same Runtime rather than independent product stacks.
+
+This rule remains true even when a physical build later slices optional Qt dependencies for embedded/Quick-only products.
+
+## 4. C++ API consumption
+
+Qt Widgets:
+
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 find_package(HyRemote CONFIG REQUIRED)
 
 target_link_libraries(MyApp PRIVATE
@@ -87,10 +91,10 @@ target_link_libraries(MyApp PRIVATE
 )
 ```
 
-For Qt Quick applications the application selects its normal Qt modules, while the HyRemote product target remains the same:
+Qt Quick:
 
 ```cmake
-find_package(Qt6 REQUIRED COMPONENTS Quick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
 find_package(HyRemote CONFIG REQUIRED)
 
 target_link_libraries(MyApp PRIVATE
@@ -99,48 +103,53 @@ target_link_libraries(MyApp PRIVATE
 )
 ```
 
-`HyRemote::RemoteAccess` is the normal product-level aggregate target. Internal implementation targets may exist, but getting-started documentation must not require application developers to manually compose Core, capture, input or VNC targets.
-
-## 4. Public Embedded C++ facade
-
-The common path for Widgets and Quick must stay concise.
-
-Conceptual Widgets usage:
+Both use the same API:
 
 ```cpp
 #include <HyRemote/RemoteAccess.h>
 
-MainWindow window;
 HyRemote::RemoteAccess remote(&window);
 remote.start();
-window.show();
 ```
 
-Conceptual Qt Quick usage:
+Product invariants:
 
-```cpp
-#include <HyRemote/RemoteAccess.h>
-
-QQuickWindow *window = /* application window */;
-HyRemote::RemoteAccess remote(window);
-remote.start();
-```
-
-The exact constructor/setter/error API is implementation-reviewed, but these product invariants are frozen:
-
-- one public facade model for Widgets and Quick;
 - construction alone does not open a listener;
-- `start()`/`stop()` are explicit;
-- bind address and port are configurable without protocol-backend types;
-- remote input is independently controllable from remote viewing;
-- diagnostics/errors use HyRemote product types, not backend types;
-- replacing the default VNC backend does not require normal application-source changes.
+- `start()` / `stop()` are explicit;
+- bind address and port are product configuration, not backend-specific types;
+- remote viewing and remote input are separate policies;
+- errors/diagnostics use HyRemote product types;
+- switching an internal transport/capture backend must not require normal application-source changes.
 
-## 5. QML extension — V0.0.2.0
+## 5. Generic Plugin consumption
 
-The QML API is a declarative wrapper over the same product/Core semantics, not a second implementation stack.
+Generic Plugin is the preferred zero-code route when the application can keep its normal Qt platform.
 
-Target usage:
+The application stays Qt-only:
+
+```cmake
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
+
+find_package(HyRemote CONFIG REQUIRED)
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp GENERIC)
+```
+
+Activate with Qt's generic-plugin mechanism:
+
+```text
+MyExistingApp -plugin hyremote
+```
+
+or, where appropriate:
+
+```text
+QT_QPA_GENERIC_PLUGINS=hyremote
+```
+
+Generic compatibility is based on public Qt plugin APIs. It must preserve the application's native Qt platform identity.
+
+## 6. QML API consumption — Preview
 
 ```qml
 import HyRemote
@@ -151,103 +160,129 @@ RemoteAccess {
 }
 ```
 
-The module is delivered using normal Qt reusable-QML-module conventions. Users should not manually manage backend libraries or internal QML import paths in the documented deployment path.
+The QML API is a declarative frontend over the same Shared Runtime used by the C++ API.
 
-## 6. Deployment contract
-
-Installed-SDK usage must provide a deployment mechanism, conceptually:
+Deployment uses:
 
 ```cmake
-hyremote_deploy(TARGET MyApp)
+hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-The exact command may be refined during implementation, but HyRemote owns deployment of its required runtime payload, including:
+> **TODO V0.3:** complete full productization, bilingual examples, and deployment qualification before promoting QML API from Preview.
 
-- HyRemote runtime libraries;
-- the selected default transport backend/runtime;
-- QML module/plugin payload when used;
-- required third-party notices/licenses where applicable.
+## 7. QPA consumption — Preview
 
-The normal user must not manually discover or copy backend DLL/SO files or hand-edit `PATH`, runtime search paths or QML import paths merely to follow the supported getting-started path.
+QPA keeps the application Qt-only:
 
-## 7. Backend/toolchain isolation
+```cmake
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
 
-Transport and acceleration backends are selected for product fit, not only technical capability.
+find_package(HyRemote CONFIG REQUIRED)
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp QPA)
+```
 
-A backend-specific extra toolchain must not silently become a normal-user prerequisite.
-
-For a Rust/Cargo implementation, for example:
-
-- prebuilt Windows/Linux SDK users must not install/configure Rust;
-- any source-build Rust requirement must be explicit, optional where practical, and justified by product benefit;
-- embedded cross-compilation cost is part of the backend selection decision;
-- Rust/Tokio types never cross the normal HyRemote public API.
-
-The same principle applies to any future system library, hardware SDK or protocol implementation.
-
-## 8. Product acceptance examples
-
-Examples are product acceptance artifacts, not architecture demos.
-
-### V0.0.1.0
-
-Required:
+Run with:
 
 ```text
-examples/widgets-basic/
-examples/quick-basic/
+MyExistingApp -platform hyremote
 ```
 
-Both examples must:
+QPA uses Qt private ABI and therefore has an exact-version compatibility boundary. The current reference is Qt 6.8.3 on Windows/x86_64 and Linux/x86_64.
 
-- consume only the public product facade;
-- avoid direct use of Core/Transport/CaptureSource/InputSink internals;
-- build on Windows x86_64 and Linux x86_64 in the claimed configurations;
-- demonstrate remote view and remote input;
-- demonstrate disconnect/reconnect;
-- keep local rendering and local input functional.
+Prefer Generic when it satisfies the application. Use QPA when platform-entry behavior is actually required.
 
-### V0.0.2.0
+> **TODO V0.3/V0.4:** complete formal QPA productization and add new exact Qt/OS compatibility rows only after qualification.
 
-Add a QML example that uses `import HyRemote` and the declarative `RemoteAccess` surface.
+## 8. Deployment contract
 
-## 9. Required user documentation
+HyRemote owns one deployment helper family:
 
-Before V0.0.1.0 completion the repository/release must provide:
+```cmake
+hyremote_deploy(TARGET MyCppApp)
+hyremote_deploy(TARGET MyQmlApp QML)
+hyremote_deploy(TARGET ExistingQtApp GENERIC)
+hyremote_deploy(TARGET ExistingQtApp QPA)
+hyremote_deploy(TARGET ExistingQmlApp QML QPA)
+```
 
-1. Windows getting started;
-2. Linux getting started;
-3. prebuilt SDK installation and `find_package(HyRemote)`;
-4. source consumption (`add_subdirectory` and supported acquisition workflow);
-5. Embedded C++ API reference/getting-started usage;
-6. runtime deployment;
-7. VNC viewer connect/view/control walkthrough;
-8. safe listener and remote-input defaults;
-9. compatibility matrix;
-10. known limitations and release notes.
+The helper places the Shared Runtime and selected frontend payloads and cooperates with Qt deployment support for runtime dependencies.
 
-Before V0.0.2.0 completion add QML module/import usage documentation.
+A normal application should not manually discover/copy HyRemote internal DLL/SO/plugin files or keep SDK-specific runtime paths in the deployed environment.
 
-Documentation examples must match the released product API; internal engineering snippets are not a substitute for user documentation.
+Generic and QPA are alternative zero-code platform strategies and are not intended to be combined as one integration mode.
 
-## 10. Comparison target with Qt modules
+See [`guide/deployment.md`](guide/deployment.md).
 
-HyRemote cannot remove the fact that it is a separately acquired SDK, but after acquisition the expected developer flow is intentionally similar to a Qt module:
+## 9. Product package expectations
+
+A clean deployed application should be able to run without the original HyRemote build/source tree.
+
+The application deployment must not rely on:
+
+- HyRemote source/build directories;
+- an unrelated HyRemote SDK prefix;
+- manual Core/transport/capture file copying;
+- permanent `QT_PLUGIN_PATH` / `LD_LIBRARY_PATH` workarounds pointing back to a developer SDK.
+
+The installed SDK and source-consumption paths should lead to the same application-facing product model.
+
+## 10. Backend/toolchain isolation
+
+Normal application code must remain isolated from transport/capture/acceleration implementation choices.
+
+A backend-specific compiler, runtime, or SDK may be introduced internally only when its product benefit justifies the distribution cost. Backend-specific types must not leak into the ordinary C++/QML application contract.
+
+The same rule applies to future DMA-BUF, RKMPP, VAAPI, D3D, or alternative transport implementations.
+
+## 11. Current SDK compatibility
+
+V0.1 reference:
+
+- Windows x86_64;
+- Linux x86_64;
+- Qt 6.8.3;
+- C++ API + Generic Plugin as primary paths;
+- QML API + QPA as Preview paths.
+
+> **TODO V0.4:** qualify the planned Qt 5.15 LTS compatibility line before adding it to the supported installed-SDK matrix.
+>
+> **TODO V1.1:** add embedded/ARM64 SDK and cross-compilation package/deployment contracts.
+
+See [`compatibility.md`](compatibility.md).
+
+## 12. Example/learning contract
+
+Examples are the first developer-product entry point, not architecture demos.
+
+The product curriculum is designed around the user journey:
 
 ```text
-Install/add HyRemote once
-        ↓
-find_package(HyRemote)
-        ↓
-link HyRemote::RemoteAccess
-        ↓
-use HyRemote::RemoteAccess / import HyRemote
-        ↓
-deploy through supported CMake packaging
+01 Widgets + C++
+02 Quick + C++
+03 Zero-code Generic
+04 Quick + QML
+05 Control/Lifecycle
+06 Security/Session
+07 Zero-code QPA
+08 Deployment
+09 Production Showcase
 ```
 
-The extra acquisition step is acceptable. Additional manual knowledge of HyRemote's protocol/capture/backend internals is not.
+Every HyRemote-authored GUI example uses the canonical project branding and provides English + Simplified Chinese UI/documentation where applicable.
 
-## 11. Definition of success
+> **TODO V0.1:** complete the initial C++/Generic onboarding set.
+>
+> **TODO V0.3:** complete the full 01–09 product curriculum.
 
-The SDK/user-consumption design succeeds when an external Qt developer can add remote access to a normal Widgets or Quick application using the documented product target and concise public API, build and deploy it reproducibly, and never need to understand which VNC/capture/input implementation HyRemote selected internally.
+## 13. Definition of success
+
+The SDK contract succeeds when a Qt developer can:
+
+1. choose an integration frontend from the application ownership model;
+2. acquire HyRemote through installed SDK or source;
+3. build the application without understanding internal Core/transport/capture architecture;
+4. deploy with `hyremote_deploy()`;
+5. run from the application's own deployment tree;
+6. connect a standard viewer and obtain the documented view/control behavior;
+7. understand the exact security, compatibility, and known-limitations boundary from product documentation.
