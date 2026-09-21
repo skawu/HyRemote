@@ -13,18 +13,13 @@
 | Linux x86_64 | Qt 6.8.3, `cpp,qml,generic,qpa`, Release | 93 | 93 | 100% PASS | 40.50 s |
 | Windows x86_64 | Qt 6.8.3, `cpp,qml,generic,qpa`, Release | 92 | 92 | 100% PASS | 72.51 s |
 
-The only platform-set difference is:
-
-- Linux only: `hyremote-qpa-source-payload-relocation`.
-- Windows only: none.
-
-This is expected from the explicit `UNIX AND NOT APPLE` registration guard. No unexplained platform-only test omission was found.
+The only platform-set difference is Linux-only `hyremote-qpa-source-payload-relocation`; Windows has no unique test. This matches the explicit `UNIX AND NOT APPLE` guard. No unexplained platform omission was found.
 
 ## 2. Executed CTest inventory
 
-The Linux all-frontends list is the superset. Windows executes the same list except the one Linux-only relocation test above.
+Linux is the superset. Windows executes the same names except #81.
 
-### T6 / release and repository gates
+### Release/repository gates
 
 1. `hyremote-release-readiness-deployment-relocation`
 2. `hyremote-release-readiness-runtime-contract`
@@ -57,7 +52,7 @@ The Linux all-frontends list is the superset. Windows executes the same list exc
 29. `hyremote-release-profile-v100-cpp-only`
 30. `hyremote-release-profile-v100-generic-only`
 
-### T1 / Core
+### Core
 
 31. `hyremote-core-test-frame-lifetime`
 32. `hyremote-core-test-damage`
@@ -72,14 +67,14 @@ The Linux all-frontends list is the superset. Windows executes the same list exc
 41. `hyremote-core-test-callback-exception-boundary`
 42. `hyremote-core-test-dependency-boundary`
 
-### T1/T3 / Shared Runtime and build authority
+### Shared Runtime / build authority
 
 43. `hyremote-runtime-automatic-surface-model-test`
 44. `hyremote-runtime-automatic-composite-capture-test`
 45. `hyremote-runtime-automatic-composite-input-test`
 46. `hyremote-build-authority-selftest`
 
-### T2 plus historically misowned Runtime/RFB/adapters under C++
+### C++ plus historically misowned Runtime/RFB/adapters
 
 47. `hyremote-remoteaccess-test`
 48. `hyremote-security-descriptor-test`
@@ -97,7 +92,7 @@ The Linux all-frontends list is the superset. Windows executes the same list exc
 60. `hyremote-quick-input-routing-test`
 61. `hyremote-quick-input-backpressure-test`
 
-### T2/T4 / QML, Generic and QPA
+### QML / Generic / QPA / deploy
 
 62. `hyremote-qml-module-test`
 63. `hyremote-qml-deploy-helper-non-qml`
@@ -127,36 +122,26 @@ The Linux all-frontends list is the superset. Windows executes the same list exc
 87. `hyremote-qpa-multi-surface-connection-smoke`
 88. `hyremote-qpa-widget-popup-connection-smoke`
 89. `hyremote-qpa-widget-opengl-capture-smoke`
-
-### T4/T5 / installed primary paths and adoption
-
 90. `hyremote-cpp-installed-consumers`
 91. `hyremote-qpa-quick-multi-window-connection-smoke`
 92. `hyremote-generic-installed-consumers`
 93. `hyremote-v01-example-smoke`
 
-## 3. Assets that exist but are **not** in the hosted CTest execution set
+## 3. Meaningful assets absent from hosted CTest execution
 
-These files contain meaningful test logic but are not registered by the current CMake/CTest authority and are not called by the normal hosted CI/release-evidence path inspected in Phase A:
-
-| Asset | Current status | Consequence |
+| Asset | Final Phase-A disposition | Consequence |
 | --- | --- | --- |
-| `src/integrations/cpp/tests/rfb_product_fit.py` | unregistered support/product-fit harness | its maintained-viewer framebuffer/input/reconnect/timeout evidence does **not** exist merely because the file exists; #229 was notified because its exact-candidate correctness baseline currently requires this class of executable evidence |
-| `tests/product-e2e/qml_product_fit.py` | unregistered | useful QML-preview user-flow logic is dormant until an explicit non-fast/manual/candidate authority owns it |
-| `tests/product-e2e/showcase_product_fit.py` | unregistered | showcase regression logic is dormant; retain only if showcase remains an intentionally supported regression surface |
-| `tests/product-e2e/example_product_fit.py` | unregistered and references historical `widgets-basic` / `quick-basic` semantics | migrate any still-unique standard-viewer assertions to canonical 01/02 or another product-fit harness; do not resurrect removed teaching paths |
+| `src/integrations/cpp/tests/rfb_product_fit.py` | KEEP contract, MOVE to semantic T5 RFB owner; TG-009 | maintained-viewer framebuffer/input/reconnect/timeout code is not release evidence until an explicit authority executes it; reported to #229 |
+| `tests/product-e2e/qml_product_fit.py` | KEEP T5 preview | QML viewer/lifecycle logic remains dormant until a non-fast/manual/candidate owner executes it |
+| `tests/product-e2e/showcase_product_fit.py` | KEEP T5 showcase | showcase is still maintained and documents product-fit intent; its harness remains dormant until a non-fast owner executes it |
+| `tests/product-e2e/example_product_fit.py` | KEEP T5 app-level contract | real-viewer/control assertions remain useful but historical internal labels must retarget to canonical 01/02 or a canonical fixture; removed teaching paths stay removed |
 
-## 4. Claimed scenarios that are not separately registered
+## 4. Claimed scenarios not separately registered
 
-The source of both adapter capture tests states that a second forced-HiDPI execution is intended using `QT_SCALE_FACTOR=1.5` and `HYREMOTE_EXPECT_DPR=1.5`. The hosted inventory contains only:
+Both adapter capture sources state a second forced-HiDPI execution is intended using `QT_SCALE_FACTOR=1.5` and `HYREMOTE_EXPECT_DPR=1.5`. The hosted inventory contains only `hyremote-widgets-capture-test` and `hyremote-quick-capture-test`; there is no DPR-specific second CTest or forced-DPR environment. TG-001/TG-002 are therefore confirmed gaps.
 
-- `hyremote-widgets-capture-test`;
-- `hyremote-quick-capture-test`.
+## 5. Scope
 
-There is no second DPR-specific CTest name and current CMake sets no forced-DPR environment for those registrations. Therefore TG-001/TG-002 remain confirmed coverage gaps rather than inferred omissions.
+This baseline proves the **registered/executed name inventory** and expected platform difference. Necessity, ownership, overlap and sufficiency are decided by `TEST_CATALOG.md`, `TEST_SCENARIOS.md`, `TEST_MATRIX.md` and `COVERAGE_GAPS.md`.
 
-## 5. What this baseline does and does not prove
-
-This file proves the **registered/executed test inventory** for the all-frontends reference matrix and reconciles platform differences. It does not prove every registered test is necessary, correctly owned, non-overlapping or sufficient. Those judgments belong to `TEST_CATALOG.md`, `TEST_SCENARIOS.md`, `TEST_MATRIX.md` and `COVERAGE_GAPS.md`.
-
-It also does not turn dormant scripts into evidence. A test file contributes to release confidence only when a defined authority executes it and fails closed when it does not execute.
+A test file is not evidence merely because it exists. A defined authority must execute it and fail closed when the required execution does not occur.
