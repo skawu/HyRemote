@@ -61,6 +61,14 @@ file(GLOB_RECURSE _build_drivers RELATIVE "${HYREMOTE_SOURCE_DIR}"
      "${HYREMOTE_SOURCE_DIR}/tests/*/CMakeLists.txt"
      "${HYREMOTE_SOURCE_DIR}/examples/*/CMakeLists.txt")
 foreach(_driver IN LISTS _build_drivers)
+    # A build tree may live inside the source tree (the repository's own convention is build/ or build-*), and nested
+    # builds - release evidence sub-builds, consumer fixtures - create and delete transient CMake scratch files there
+    # as they run. Those are generated artifacts, not build drivers, and reading one that a concurrent or finished
+    # nested configure has already removed made this gate fail nondeterministically while a concurrent run was in
+    # flight. Only source-tree drivers are in scope, so paths below a build output directory are skipped.
+    if(_driver MATCHES "(^|/)(build|build[-_][^/]*|_build|out|CMakeFiles|CMakeScratch)(/)")
+        continue()
+    endif()
     file(READ "${HYREMOTE_SOURCE_DIR}/${_driver}" _driver_text)
     if(_driver_text MATCHES "FetchContent|ExternalProject_Add|CPMAddPackage")
         foreach(_forbidden IN ITEMS "Qt6" "Qt5" "OpenSSL" "openssl")

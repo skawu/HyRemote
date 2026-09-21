@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -87,6 +88,21 @@ READINESS_PREFIXES = (
 
 READINESS_TEST_PREFIX = "hyremote-release-readiness-"
 
+# A name no exclusion is ever allowed to match. Any expression that matches it excludes every test, which would make
+# the lane claim integration while executing nothing.
+DANGEROUS_REGEX_PROBE = "hyremote-probe-name-that-no-exclusion-may-match"
+
+
+def exclusion_is_total(test_exclude: str) -> bool:
+    """True when the exclusion expression would exclude every test, or cannot be compiled at all."""
+    if not test_exclude:
+        return False
+    try:
+        pattern = re.compile(test_exclude)
+    except re.error:
+        return True
+    return pattern.search(DANGEROUS_REGEX_PROBE) is not None
+
 
 def changed_paths(event: str, base: str, head: str) -> list[str]:
     if event == "pull_request":
@@ -149,7 +165,10 @@ def resolve(event: str, changed: list[str]) -> dict[str, str]:
         excluded.append("hyremote-qml-deploy-helper-")
     if not qpa_evidence:
         excluded.append("hyremote-qpa-deploy-helper-")
-    test_exclude = "^(" + "|".join(excluded) + ")"
+    # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
+    # test name: CTest then excluded everything, reported success, and a lane that promised full integration
+    # executed nothing. That is a false green, not a formatting detail.
+    test_exclude = "^(" + "|".join(excluded) + ")" if excluded else ""
 
     return {
         "product": "true" if product else "false",
@@ -185,11 +204,20 @@ def self_test() -> int:
          {"readiness_evidence": "true"}),
         ("install authority change runs readiness", "pull_request", ["cmake/HyRemoteInstall.cmake"],
          {"readiness_evidence": "true"}),
-        # 5.-6. The lanes that are supposed to be full integration actually are.
+        # 5.-6. The lanes that are supposed to be full integration actually are, and they exclude nothing at all.
         ("develop push runs readiness", "push", ["CMakeLists.txt"],
-         {"readiness_evidence": "true", "lane": "full integration"}),
+         {"readiness_evidence": "true", "lane": "full integration", "test_exclude": ""}),
         ("workflow dispatch runs readiness", "workflow_dispatch", ["CMakeLists.txt"],
-         {"readiness_evidence": "true", "lane": "full integration"}),
+         {"readiness_evidence": "true", "lane": "full integration", "test_exclude": ""}),
+        # 7. A PR that reaches every evidence contract is full integration for that run, so an empty exclusion must
+        #    survive as an empty exclusion there too.
+        ("full-evidence PR excludes nothing", "pull_request",
+         ["src/integrations/cpp/cpp_remote_access.cpp",
+          "src/integrations/qml/qml_remote_access.cpp",
+          "src/integrations/generic/generic_plugin.cpp",
+          "src/integrations/qpa/qpa_platform.cpp",
+          "tests/release-readiness/check_release_metadata.cmake"],
+         {"readiness_evidence": "true", "test_exclude": ""}),
     ]
     failures = 0
     for description, event, changed, expected in cases:
@@ -213,16 +241,37 @@ def self_test() -> int:
     if READINESS_TEST_PREFIX in fast["test_exclude"] and "hyremote-generic-installed-consumers$" not in fast["test_exclude"]:
         print("CASE FAILED: fast lane must still exclude unrelated clean-consumer sub-builds")
         failures += 1
-    full = resolve("push", ["CMakeLists.txt"])
-    if READINESS_TEST_PREFIX in full["test_exclude"] or "hyremote-generic-installed-consumers$" in full["test_exclude"]:
-        print("CASE FAILED: full integration lane must exclude nothing")
-        failures += 1
+    for expected in ("hyremote-generic-installed-consumers$", "hyremote-cpp-installed-consumers$",
+                     "hyremote-qml-deploy-helper-", "hyremote-qpa-deploy-helper-"):
+        if expected not in fast["test_exclude"]:
+            print(f"CASE FAILED: fast PR must exclude the sub-build it cannot affect: {expected}")
+            failures += 1
+    # The fast lane keeps the runtime/product tests it can affect.
+    for kept in ("src/integrations/cpp/",):
+        cpp_only = resolve("pull_request", [kept + "cpp_remote_access.cpp"])
+        if "hyremote-cpp-installed-consumers$" in cpp_only["test_exclude"]:
+            print("CASE FAILED: a C++ PR must keep its own clean consumer evidence")
+            failures += 1
+
+    # Whatever the lane, an exclusion must never be able to exclude everything: "^()" is the shape that turned a
+    # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
+    # match test against a name no exclusion may ever match, not a string comparison of the expression.
+    for description, event, changed in (
+            ("develop push", "push", ["CMakeLists.txt"]),
+            ("workflow dispatch", "workflow_dispatch", ["CMakeLists.txt"]),
+            ("fast PR", "pull_request", ["src/core/session/session.cpp"]),
+            ("documentation PR", "pull_request", ["docs/proposals/notes.md"])):
+        resolved = resolve(event, changed)
+        if exclusion_is_total(resolved["test_exclude"]):
+            print(f"CASE FAILED: {description} produced an exclusion that matches every test: "
+                  f"{resolved['test_exclude']!r}")
+            failures += 1
 
     if failures:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
-    print("resolve-ci-scope self test: PASS (fast lane preserved; readiness runs on develop, dispatch and "
-          "readiness-consumed changes)")
+    print("resolve-ci-scope self test: PASS (empty exclusions stay empty, no exclusion can match every test, fast "
+          "lane preserved, readiness runs on develop, dispatch and readiness-consumed changes)")
     return 0
 
 
