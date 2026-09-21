@@ -25,7 +25,6 @@ jobs:
       qpa: ${{ steps.scope.outputs.qpa }}
       qml: ${{ steps.scope.outputs.qml }}
       generic_evidence: ${{ steps.scope.outputs.generic_evidence }}
-      build_type: ${{ steps.scope.outputs.build_type }}
       test_exclude: ${{ steps.scope.outputs.test_exclude }}
     steps:
       - uses: actions/checkout@v4
@@ -45,19 +44,17 @@ jobs:
 
           event = os.environ["EVENT_NAME"]
           full_evidence = event != "pull_request"
-
           if event == "pull_request":
               changed = subprocess.check_output(
                   ["git", "diff", "--name-only", f"{os.environ['BASE_SHA']}...{os.environ['HEAD_SHA']}"],
                   text=True,
               ).splitlines()
           else:
-              # develop pushes and manual dispatches are integration evidence, never a diff-minimized PR lane.
+              # develop/manual is the full integration lane, independent of the triggering diff.
               changed = ["CMakeLists.txt"]
 
           peers = ["cpp", "qml", "generic", "qpa"]
           selected = set()
-
           common_files = {
               "CMakeLists.txt",
               "compile.cmd",
@@ -83,7 +80,6 @@ jobs:
               if path in common_files or path.startswith(common_prefixes):
                   selected.update(peers)
                   continue
-
               matched = False
               for peer, prefixes in frontend_prefixes.items():
                   if path.startswith(prefixes):
@@ -91,14 +87,13 @@ jobs:
                       matched = True
               if matched:
                   continue
-
               if path.startswith(("examples/", "tests/product-e2e/", "tests/public-api-contract/", "logo/")):
                   selected.update(peers)
               elif path.startswith("tests/"):
                   selected.update(peers)
 
-          # The clean installed Generic consumers are product/release evidence, not a useful tax on every Runtime PR.
-          # Run them when their contract can have changed, and on every develop/manual full integration run.
+          # Clean install/deploy is evidence, not a tax on unrelated PRs. It remains mandatory when its
+          # own contract changes and on every develop/manual full integration run.
           generic_evidence_paths = (
               "src/integrations/generic/",
               "tests/consumer-installed-generic/",
@@ -113,14 +108,11 @@ jobs:
           ordered = [peer for peer in peers if peer in selected]
           integrations = ",".join(ordered)
           product = bool(ordered)
-
-          # PRs are compile/correctness feedback and use Debug unless they are validating installed/deployment
-          # evidence. develop/manual runs remain the Release integration proof.
-          build_type = "Release" if (full_evidence or generic_evidence) else "Debug"
-          if generic_evidence:
-              test_exclude = "^hyremote-release-readiness-"
-          else:
-              test_exclude = "^(hyremote-release-readiness-|hyremote-generic-installed-consumers$)"
+          test_exclude = (
+              "^hyremote-release-readiness-"
+              if generic_evidence
+              else "^(hyremote-release-readiness-|hyremote-generic-installed-consumers$)"
+          )
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"product={'true' if product else 'false'}\n")
@@ -128,7 +120,6 @@ jobs:
               f.write(f"qpa={'true' if 'qpa' in selected else 'false'}\n")
               f.write(f"qml={'true' if 'qml' in selected else 'false'}\n")
               f.write(f"generic_evidence={'true' if generic_evidence else 'false'}\n")
-              f.write(f"build_type={build_type}\n")
               f.write(f"test_exclude={test_exclude}\n")
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
@@ -136,12 +127,12 @@ jobs:
               f.write(f"- changed files: {len(changed)}\n")
               f.write(f"- integrations: {integrations or 'none'}\n")
               f.write(f"- Qt build: {'yes' if product else 'no — documentation/governance only'}\n")
-              f.write(f"- build type: {build_type}\n")
+              f.write("- build type: Release\n")
               f.write(f"- clean Generic evidence: {'yes' if generic_evidence else 'no'}\n")
               f.write(f"- lane: {'full integration' if full_evidence else 'PR fast'}\n")
 
   product:
-    name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / ${{ needs.classify.outputs.build_type }}
+    name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
     needs: classify
     if: needs.classify.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
@@ -238,14 +229,13 @@ jobs:
         shell: bash
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
-          BUILD_TYPE: ${{ needs.classify.outputs.build_type }}
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
         run: |
           set -euo pipefail
           sh ./compile.cmd \
             --integrations="$INTEGRATIONS" \
             --qt-prefix="$QT_PREFIX" \
-            --build-type="$BUILD_TYPE" \
+            --build-type=Release \
             --build-dir=build-ci \
             --tests --run-tests --no-examples \
             --test-exclude="$TEST_EXCLUDE" \
@@ -257,12 +247,11 @@ jobs:
         shell: cmd
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
-          BUILD_TYPE: ${{ needs.classify.outputs.build_type }}
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type="%BUILD_TYPE%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
+          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
 
       - name: Test evidence summary
         if: always()
@@ -273,11 +262,11 @@ jobs:
           {
             echo "## Test evidence — ${{ matrix.name }}"
             echo
-            echo "- build type: ${{ needs.classify.outputs.build_type }}"
+            echo "- build type: Release"
             echo "- clean Generic evidence requested: ${{ needs.classify.outputs.generic_evidence }}"
             echo
             if [[ ! -f "$LOG" ]]; then
-              echo "No \`$LOG\` was produced, so the test phase never ran (build or configuration failure)."
+              echo "No \`$LOG\` was produced, so the test phase never ran (build/configuration failure)."
               exit 0
             fi
             echo "### CTest summary"
@@ -318,8 +307,10 @@ jobs:
             build-ci/evidence/*/*/evidence.txt
             build-ci/evidence/**/*.log
 
+      # PR-created caches live under refs/pull/.../merge and cannot seed sibling PRs. The trusted develop/manual
+      # lanes own the reusable baseline cache; PRs consume that cache or perform a one-off fallback install.
       - name: Save verified exact Qt SDK
-        if: always() && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'
+        if: always() && github.event_name != 'pull_request' && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/Qt
@@ -336,7 +327,7 @@ jobs:
             echo
             echo "- runner: ${{ matrix.name }}"
             echo "- integrations: ${{ needs.classify.outputs.integrations }}"
-            echo "- build type: ${{ needs.classify.outputs.build_type }}"
+            echo "- build type: Release"
             echo "- clean Generic evidence: ${{ needs.classify.outputs.generic_evidence }}"
             echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
             echo "- Qt tree rebuilt: ${QT_TREE_REBUILT:-unknown}"
