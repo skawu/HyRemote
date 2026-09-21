@@ -12,25 +12,23 @@ HyRemote product versions use:
 Major.Minor.Feature.Maintenance
 ```
 
-Current authorized milestone tags are:
+Current authorized release trains are progressive, and every one of them is a real public release with a narrower
+support contract than GA (#24, #95):
 
 ```text
-v0.0.1.0
-v0.0.2.0
-v0.0.3.0
-v1.0.0.0
+v0.1.0.0   Use It / Developer Preview        (loopback-only, primary C++/Generic paths)
+v0.2.0.0   Trust It / Operational Preview    (security, session, network)
+v0.3.0.0   Productize It / Product Preview   (four product-deliverable integrations, deployment, examples)
+v0.4.0.0   Qualify It / Release Candidate Line, with v0.4.0.x maintenance releases
+v1.0.0.0   Stabilize It / first GA, promoted from one mature V0.4 lineage
 ```
+
+The retired planning labels `v0.0.1.0`, `v0.0.2.0` and `v0.0.3.0` are not release trains and must not be revived; they
+appear in this document only to say so.
 
 A tag is a **release fact**, never a progress marker. Implementation existing on `develop` is not enough to create a tag.
 
-Every taggable milestone owns matching candidate release notes:
-
-```text
-docs/releases/v0.0.1.0.md
-docs/releases/v0.0.2.0.md
-docs/releases/v0.0.3.0.md
-docs/releases/v1.0.0.0.md
-```
+Every taggable release owns matching candidate release notes under `docs/releases/<version>.md`.
 
 During acceptance the notes keep:
 
@@ -121,23 +119,19 @@ Maintainers/CI explicitly enable tests/examples. `add_subdirectory()` consumers 
 
 The four-part project version is therefore also the release-profile authority; **there is no second public release-profile option**.
 
-| Release version | Product modes allowed |
+The four-part version no longer selects which product modes a release may contain:
+
+| Release version | Meaning for frontends |
 | --- | --- |
-| `0.0.1.0` | Embedded C++ |
-| `0.0.2.0` | Embedded C++ + Declarative QML |
-| `0.0.3.0` | Embedded C++ + Declarative QML + Transparent QPA |
-| `1.0.0.0` | all three modes / GA |
+| any current train | which frontends are enabled, preview, qualified or supported is a release-train scope and compatibility decision - never a version digit |
+| `V0.0.x` (retired) | rejected as a planning label; the sequential `V0.0.1.0 = C++`, `V0.0.2.0 = QML`, `V0.0.3.0 = QPA` map is not revived |
 
-The root CMake graph enforces this profile:
+The root CMake graph enforces exactly this much and no more: a formal version in the retired `V0.0.x` family is refused,
+and every current train - `V0.1`, `V0.2`, `V0.3`, `V0.4` (including `V0.4.0.x` maintenance) and `V1.0` - is accepted
+whatever frontends the build enables.
 
-- a formal version below `0.0.2.0` rejects `HYREMOTE_BUILD_QML_API=ON`;
-- a formal version below `0.0.3.0` rejects `HYREMOTE_WITH_QPA_PROXY=ON`.
-
-CI follows the same rule:
-
-- QML acceptance does not run for `release/v0.0.1.0`;
-- QPA acceptance does not run for `release/v0.0.1.0` or `release/v0.0.2.0`;
-- the integrated all-modes GA matrix runs on V1 convergence/develop and `release/v1.0.0.0`, not the three pre-GA release profiles.
+CI follows the capability model instead of the version model: the classifier selects the affected frontends for a
+change, and release readiness consumes the current train's own scope (#95) rather than one static V1 list.
 
 This prevents a correct early release profile from being falsely failed by a future-mode workflow, while also preventing an early tag from becoming an accidental support claim for later modes.
 
@@ -159,14 +153,17 @@ Local Developer Agent/physical hosts are used only for genuinely local-only evid
 
 ## 7. Current milestone release map
 
-| Authority | Product version | Release branch | Release notes | Final tag |
-| --- | --- | --- | --- | --- |
-| #30 | `V0.0.1.0` | `release/v0.0.1.0` | `docs/releases/v0.0.1.0.md` | `v0.0.1.0` |
-| #31 | `V0.0.2.0` | `release/v0.0.2.0` | `docs/releases/v0.0.2.0.md` | `v0.0.2.0` |
-| #32 | `V0.0.3.0` | `release/v0.0.3.0` | `docs/releases/v0.0.3.0.md` | `v0.0.3.0` |
-| #33 | `V1.0.0.0` | `release/v1.0.0.0` | `docs/releases/v1.0.0.0.md` | `v1.0.0.0` |
+| Train | Release branch | Release notes | Final tag |
+| --- | --- | --- | --- |
+| `V0.1.0.0` | `release/v0.1.0.0` | `docs/releases/v0.1.0.0.md` | `v0.1.0.0` |
+| `V0.2.0.0` | `release/v0.2.0.0` | `docs/releases/v0.2.0.0.md` | `v0.2.0.0` |
+| `V0.3.0.0` | `release/v0.3.0.0` | `docs/releases/v0.3.0.0.md` | `v0.3.0.0` |
+| `V0.4.0.0` (+ `V0.4.0.x`) | `release/v0.4.0.0` | `docs/releases/v0.4.0.0.md` | `v0.4.0.0` |
+| `V1.0.0.0` | `release/v1.0.0.0` | `docs/releases/v1.0.0.0.md` | `v1.0.0.0` |
 
-`release/v1.0.0.0` may not be cut until the predecessor product authorities #30, #31, #32, #39 and #41 are accepted and integrated **and** all of the following exact-candidate closure gates are accepted:
+The retired `#30` / `#31` / `#32` single-frontend milestone authorities are history and are not release trains. Each
+current train is authorized by its own readiness scope under #1, #24 and #95; `release/v1.0.0.0` may not be cut until
+one mature V0.4 lineage has been accepted **and** all of the following exact-candidate closure gates are accepted:
 
 - #101 — V1 public C++/QML/CMake/API/package freeze;
 - #104 — integrated all-three-mode GA automation has actually executed and passed on both Windows and Linux reference environments;

@@ -9,10 +9,10 @@ set(required_files
     "cmake/HyRemoteConfig.cmake.in"
     "cmake/HyRemoteInstall.cmake"
     "cmake/HyRemoteDeploy.cmake"
-    "src/cpp/CMakeLists.txt"
-    "src/qpa/CMakeLists.txt"
-    "src/qpa/tests/deploy_helper_fixture/CMakeLists.txt"
-    "src/qpa/tests/run_deploy_helper_fixture.cmake"
+    "src/integrations/cpp/CMakeLists.txt"
+    "src/integrations/qpa/CMakeLists.txt"
+    "src/integrations/qpa/tests/deploy_helper_fixture/CMakeLists.txt"
+    "src/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
     "tests/release-readiness/check_package_acquisition_isolation.cmake")
 foreach(path IN LISTS required_files)
     if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/${path}")
@@ -62,36 +62,55 @@ if(NOT leaked_qml_api EQUAL -1)
     message(FATAL_ERROR "deploy-helper-contract: do not expand the frozen installed package surface with QML availability API")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" remoteaccess_cmake)
+# The acquisition contract is enforced where it lives: the frontend requires the root build to own the shared runtime
+# (so a source tree can never silently reuse an installed one), and the installed package refuses the conflict in the
+# project's own words. The previous tokens ("source acquisition conflict", "do not combine") had stopped existing
+# anywhere but in this gate, so they guarded nothing.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
-        [=[if(TARGET HyRemote::RemoteAccess)]=]
-        [=[source acquisition conflict]=]
-        [=[do not combine]=]
-        [=[find_package(HyRemote)]=]
-        [=[add_subdirectory(HyRemote)]=])
+        [=[TARGET hyremote-remoteaccess]=]
+        [=[TARGET HyRemote::RemoteAccess]=]
+        [=[FATAL_ERROR]=])
     string(FIND "${remoteaccess_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "deploy-helper-contract: source acquisition no longer rejects an existing installed runtime target: ${required_token}")
+        message(FATAL_ERROR
+            "deploy-helper-contract: the C++ frontend must require the root build to own the shared runtime: ${required_token}")
     endif()
 endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteConfig.cmake.in" acquisition_guard)
+string(FIND "${acquisition_guard}" [=[package acquisition conflict]=] found)
+if(found EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: the installed package must fail a source/package acquisition conflict closed")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteInstall.cmake" install_rules)
 foreach(required_token
         [=[set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")]=]
-        [=["${CMAKE_SHARED_MODULE_PREFIX}qhyremote${CMAKE_SHARED_MODULE_SUFFIX}")]=])
+        [=[function(hyremote_target_artifact_name target out_var)]=]
+        [=[get_target_property(_artifact_output ${target} OUTPUT_NAME)]=]
+        [=[get_target_property(_artifact_prefix ${target} PREFIX)]=]
+        [=[hyremote_target_artifact_name(hyremote-qml HYREMOTE_PACKAGE_QML_BACKING_FILENAME)]=]
+        [=[hyremote_target_artifact_name(hyremote-qpa-platform HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME)]=])
     string(FIND "${install_rules}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "deploy-helper-contract: installed QPA package metadata no longer matches the MODULE artifact: ${required_token}")
+        message(FATAL_ERROR
+            "deploy-helper-contract: installed package metadata must describe the target's own artifact: ${required_token}")
     endif()
 endforeach()
-string(FIND "${install_rules}" [=["qhyremote${CMAKE_SHARED_MODULE_SUFFIX}"]=] missing_module_prefix)
-if(NOT missing_module_prefix EQUAL -1)
-    message(FATAL_ERROR "deploy-helper-contract: installed QPA filename must retain CMAKE_SHARED_MODULE_PREFIX")
+# A payload name must not be re-derived from the toolchain-global filename variables. They describe CMake's default
+# for a target type, and a target may override them - Qt's QML module support sets PREFIX to empty on the QML
+# backing library - which is exactly how the declared name and the installed artifact came apart.
+string(FIND "${install_rules}" [=["${CMAKE_SHARED_LIBRARY_PREFIX}hyremote-qml${CMAKE_SHARED_LIBRARY_SUFFIX}"]=] guessed_qml_payload)
+if(NOT guessed_qml_payload EQUAL -1)
+    message(FATAL_ERROR
+        "deploy-helper-contract: package payload name must come from the target artifact, not from toolchain-global filename guessing")
 endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
-        [=[set(options QML QPA)]=]
+        [=[set(options QML QPA GENERIC)]=]
         [=[_hyremote_target_is_local]=]
         [=[_hyremote_source_acquisition]=]
         [=[_hyremote_qpa_source_acquisition]=]
@@ -118,15 +137,61 @@ foreach(required_token
     endif()
 endforeach()
 
-# Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV} without
-# preserving argument boundaries, which breaks legitimate executable output names containing spaces.
-# HyRemote is Qt-6-only, so both supplemental deploy shapes must call the Qt 6 implementation directly.
 string(REGEX MATCHALL "qt6_deploy_runtime_dependencies\\(" qt6_runtime_deploy_calls "${deploy_helper}")
 list(LENGTH qt6_runtime_deploy_calls qt6_runtime_deploy_call_count)
-if(NOT qt6_runtime_deploy_call_count EQUAL 2)
+if(NOT qt6_runtime_deploy_call_count EQUAL 3)
     message(FATAL_ERROR
-        "deploy-helper-contract: expected exactly two direct Qt6 runtime deploy calls (ordinary/QML + QPA), found ${qt6_runtime_deploy_call_count}")
+        "deploy-helper-contract: expected exactly three direct Qt6 runtime deploy calls (ordinary/QML + QPA + Generic), "
+        "found ${qt6_runtime_deploy_call_count}")
 endif()
+
+# Generic is a peer frontend deployed through the same helper, and it must stay a plugin payload: it goes to Qt's
+# generic plugin directory, it never installs to or references the platform plugin directory, and it never ships the
+# native platform delegate. A regression that routed Generic through the QPA path would destroy the native
+# QPA identity Generic exists to preserve.
+foreach(required_token
+        [=[_hyremote_resolve_generic_payload]=]
+        [=[HyRemote_GENERIC_AVAILABLE]=]
+        [=[HyRemote_GENERIC_PLUGIN_FILE]=]
+        [=[TARGET hyremote-generic-plugin]=]
+        [=[HYREMOTE_WITH_GENERIC_PLUGIN=ON]=]
+        [=[installed Generic metadata cannot satisfy a source deployment]=]
+        [=[\${QT_DEPLOY_PLUGINS_DIR}/generic]=]
+        [=[GENERIC QPA) is not a supported combination]=])
+    string(FIND "${deploy_helper}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: Generic deployment contract missing: ${required_token}")
+    endif()
+endforeach()
+
+string(REGEX MATCH "function\\(_hyremote_generate_generic_deploy_script[^)]*\\)(.*)function\\(hyremote_deploy\\)" _generic_body "${deploy_helper}")
+if("${CMAKE_MATCH_1}" STREQUAL "")
+    message(FATAL_ERROR "deploy-helper-contract: Generic deploy script generator is missing")
+endif()
+foreach(required_token
+        [=[_hyremote_resolve_native_platform_payload]=]
+        [=[\${QT_DEPLOY_PLUGINS_DIR}/platforms]=])
+    string(FIND "${CMAKE_MATCH_1}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: Generic deployment must carry the native Qt platform plugin so a clean "
+            "deployed application can start without the Qt SDK: ${required_token}")
+    endif()
+endforeach()
+
+# Generic must not borrow QPA's exact-private-ABI semantics while sharing the resolver, and it must not ship a
+# HyRemote platform plugin in place of the native one.
+foreach(forbidden_token
+        [=[HyRemote_QPA_PLUGIN_FILE]=]
+        [=[HyRemote_QPA_QT_VERSION]=]
+        [=[_hyremote_resolve_qpa_payload]=])
+    string(FIND "${CMAKE_MATCH_1}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: Generic deployment must not reach the platform-plugin path: ${forbidden_token}")
+    endif()
+endforeach()
 string(FIND "${deploy_helper}"
     [=[${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(]=]
     versionless_runtime_deploy_call)
@@ -153,7 +218,7 @@ foreach(required_phrase
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/deploy_helper_fixture/CMakeLists.txt" fixture)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/tests/deploy_helper_fixture/CMakeLists.txt" fixture)
 foreach(required_token
         [=[TEST_DEPLOY_QPA]=]
         [=[TEST_QML_AVAILABLE]=]
@@ -186,7 +251,7 @@ if(NOT leaked_fixture_api EQUAL -1)
     message(FATAL_ERROR "deploy-helper-contract: deterministic fixture must not rely on a new QML package API")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/tests/run_deploy_helper_fixture.cmake" runner)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/tests/run_deploy_helper_fixture.cmake" runner)
 foreach(required_token
         [=[TEST_STALE_QML_METADATA]=]
         [=[TEST_QML_IMPORT_PATH_EXISTS]=]
@@ -211,7 +276,7 @@ foreach(required_token
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
@@ -270,12 +335,21 @@ foreach(required_test
     endif()
 endforeach()
 
-# Execute the package-config behavior probe, not just textual assertions. It intentionally uses a
-# fake Qt config that overwrites PACKAGE_PREFIX_DIR to model the CMake 3.21-3.29 hazard, then checks
-# same-prefix rediscovery and mixed installed/source acquisition rejection.
+# Forward the toolchain of the build under test: the probe configures the project source tree, and without these the
+# nested configure fell back to whatever the host prefers (MSVC NMake here) and failed before reaching the contract.
+set(package_probe_toolchain "")
+foreach(package_probe_toolchain_key IN ITEMS GENERATOR MAKE_PROGRAM C_COMPILER CXX_COMPILER)
+    if(DEFINED HYREMOTE_GATE_${package_probe_toolchain_key}
+       AND NOT HYREMOTE_GATE_${package_probe_toolchain_key} STREQUAL "")
+        list(APPEND package_probe_toolchain
+            "-DHYREMOTE_GATE_${package_probe_toolchain_key}=${HYREMOTE_GATE_${package_probe_toolchain_key}}")
+    endif()
+endforeach()
+
 execute_process(
     COMMAND "${CMAKE_COMMAND}"
         -DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}
+        ${package_probe_toolchain}
         -P "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
     RESULT_VARIABLE package_probe_result
     OUTPUT_VARIABLE package_probe_stdout
@@ -289,4 +363,4 @@ endif()
 
 message(STATUS
     "HyRemote deploy-helper contract gate: PASS "
-    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; Qt6 deploy argument boundaries preserved; four deploy shapes stay distinct; optional installed/source payloads fail closed)")
+    "(one acquisition/prefix per configure; CMake-3.21-safe package prefix preservation behavior; Qt6 deploy argument boundaries preserved; established V1 deploy shapes stay distinct while source ownership is grouped)")

@@ -8,10 +8,20 @@ Rectangle {
     property bool remoteControlEnabled: false
     property int connectedClientCount: 0
 
-    Text {
+    Image {
         x: 20
+        y: 16
+        width: 28
+        height: 28
+        source: "qrc:/hyremote/branding/huayan-logo-single.png"
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+    }
+
+    Text {
+        x: 58
         y: 18
-        width: 320
+        width: 282
         height: 32
         text: "HyRemote · Embedded C++ / Qt Quick"
         color: "#f2f4f8"

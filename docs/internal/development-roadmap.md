@@ -14,6 +14,12 @@ HyRemote V1 keeps the normal user surface deliberately small:
 
 Core, capture, input, transport, RFB and QPA interception/composition remain implementation detail. The bounded C++ RFB 3.8 implementation is the V1 Windows/Linux correctness transport baseline; historical Rust/NeatVNC work is research/future-backend input, not a competing V1 product route.
 
+> **Superseded planning record.** The `V0.0.1.0` / `V0.0.2.0` / `V0.0.3.0` sections below were the sequential
+> single-frontend planning map. That model was retired: the progressive trains are
+> `V0.1 -> V0.2 -> V0.3 -> V0.4 -> V1.0`, version digits do not encode C++/QML/Generic/QPA, and release readiness is
+> consumed per train rather than from one static V1 list. The roadmap and version-semantics authorities own the
+> current trains, and #95 owns the release-train mechanics; this file is history, not the current release map.
+
 ## V0.0.1.0 — Windows + Linux x86_64 / Embedded C++
 
 Authority: #30. Final tag: `v0.0.1.0` only after acceptance.

@@ -192,12 +192,20 @@ function(_hyremote_resolve_qpa_payload file_var name_var)
         "Transparent QPA payload is unavailable; install/build HyRemote with HYREMOTE_WITH_QPA_PROXY=ON")
 endfunction()
 
-# qhyremote dynamically delegates to the native Qt platform plugin, so the native delegate is not a
-# link dependency of either the application or the proxy module. Qt 6 publishes platform plugins as
-# individual CMake packages below Qt6Gui_DIR. Resolve the exact reference delegate explicitly so one
-# hyremote_deploy(... QPA) call owns the complete transparent platform chain in both source and installed
-# SDK consumption without exposing a plugin target to the application link interface.
-function(_hyremote_resolve_native_qpa_delegate_payload file_var name_var)
+# Resolve the native Qt platform plugin of the consuming Qt build. Qt 6 publishes platform plugins as individual
+# CMake packages below Qt6Gui_DIR, and this resolver reads only that: it is deliberately neutral about who needs the
+# plugin or why.
+#
+# Two different contracts need it, and they need it for opposite reasons:
+#   - Transparent QPA replaces the application's platform integration, so qhyremote delegates to this plugin and the
+#     proxy module therefore cannot link it directly; one hyremote_deploy(... QPA) call owns the complete transparent
+#     platform chain in both source and installed SDK consumption.
+#   - Generic Plugin preserves the application's platform integration, so the native plugin must simply be present in
+#     the deployed tree alongside the generic payload. Without it a deployed Generic application cannot start at all
+#     unless the machine happens to have the Qt SDK, which is exactly what a clean deployment must not require.
+# Sharing the resolver is about locating the plugin, not about QPA semantics: nothing here reads HyRemote_QPA_QT_VERSION
+# or any exact-private-ABI qualification, and Generic must never inherit those (Generic uses public Qt APIs only).
+function(_hyremote_resolve_native_platform_payload file_var name_var)
     if(WIN32)
         set(_native_qpa_target "Qt6::QWindowsIntegrationPlugin")
         set(_native_qpa_package "Qt6QWindowsIntegrationPlugin")
@@ -268,7 +276,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     endif()
 
     _hyremote_resolve_qpa_payload(_qpa_plugin_file _qpa_plugin_name)
-    _hyremote_resolve_native_qpa_delegate_payload(_native_qpa_plugin_file _native_qpa_plugin_name)
+    _hyremote_resolve_native_platform_payload(_native_qpa_plugin_file _native_qpa_plugin_name)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
     _hyremote_linux_private_runtime_bootstrap(
         "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_qpa_plugin_name}")
@@ -318,8 +326,111 @@ ${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dep
     set(${output_var} "${_qpa_script}" PARENT_SCOPE)
 endfunction()
 
+# The Generic Plugin is the other package payload and it is deliberately not a platform plugin: it is a
+# QGenericPlugin built from public Qt APIs that leaves the application's native platform integration exactly as it
+# was. Its identity therefore comes from the target (source acquisition) or from the installed package metadata
+# (installed acquisition) - never from a toolchain-global prefix/suffix guess and never from a build-tree search,
+# which is what would let a declared name and an installed artifact drift apart again.
+function(_hyremote_resolve_generic_payload file_var name_var)
+    if(TARGET hyremote-generic-plugin)
+        set(${file_var} "$<TARGET_FILE:hyremote-generic-plugin>" PARENT_SCOPE)
+        set(${name_var} "$<TARGET_FILE_NAME:hyremote-generic-plugin>" PARENT_SCOPE)
+        return()
+    endif()
+
+    if(DEFINED HyRemote_GENERIC_AVAILABLE AND NOT HyRemote_GENERIC_AVAILABLE)
+        message(FATAL_ERROR
+            "hyremote_deploy(... GENERIC) requested a HyRemote SDK that was built without the Generic Plugin")
+    endif()
+
+    if(DEFINED HyRemote_GENERIC_PLUGIN_FILE AND NOT "${HyRemote_GENERIC_PLUGIN_FILE}" STREQUAL "")
+        if(NOT IS_ABSOLUTE "${HyRemote_GENERIC_PLUGIN_FILE}")
+            message(FATAL_ERROR "HyRemote_GENERIC_PLUGIN_FILE must be an absolute installed payload path")
+        endif()
+        if(NOT EXISTS "${HyRemote_GENERIC_PLUGIN_FILE}")
+            message(FATAL_ERROR
+                "installed HyRemote Generic Plugin payload is missing: ${HyRemote_GENERIC_PLUGIN_FILE}")
+        endif()
+        get_filename_component(_generic_name "${HyRemote_GENERIC_PLUGIN_FILE}" NAME)
+        set(${file_var} "${HyRemote_GENERIC_PLUGIN_FILE}" PARENT_SCOPE)
+        set(${name_var} "${_generic_name}" PARENT_SCOPE)
+        return()
+    endif()
+
+    message(FATAL_ERROR
+        "Generic Plugin payload is unavailable; install/build HyRemote with HYREMOTE_WITH_GENERIC_PLUGIN=ON")
+endfunction()
+
+function(_hyremote_generate_generic_deploy_script target output_var)
+    if(APPLE OR (NOT WIN32 AND NOT UNIX))
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${target} GENERIC) is supported only for the V1 Windows/Linux reference platforms")
+    endif()
+
+    if(NOT DEFINED QT_DEPLOY_SUPPORT OR "${QT_DEPLOY_SUPPORT}" STREQUAL "")
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${target} GENERIC) requires Qt's deployment support script from Qt6 Core")
+    endif()
+    if(NOT TARGET HyRemote::RemoteAccess)
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${target} GENERIC) expected shared runtime target HyRemote::RemoteAccess in this SDK")
+    endif()
+
+    _hyremote_resolve_generic_payload(_generic_plugin_file _generic_plugin_name)
+    # Generic preserves the application's platform integration, so the native Qt platform plugin has to be in the
+    # deployed tree as well. Two different payloads, two different directories, and neither substitutes for the
+    # other: the generic payload makes HyRemote reachable with no code, and the native platform plugin is what keeps
+    # the application on its normal platform identity. Without the native plugin a deployed Generic application
+    # cannot start outside the Qt SDK at all, which would make the deployment look complete while remaining
+    # SDK-dependent. The plugin is resolved through the same neutral resolver the QPA path uses, and its identity
+    # comes from the target rather than from a platform-conditional file name.
+    _hyremote_resolve_native_platform_payload(
+        _native_platform_plugin_file _native_platform_plugin_name)
+    _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    # The native platform plugin carries its own private Qt runtime dependency - the Linux xcb delegate is the
+    # concrete case - so the shared bootstrap is given that plugin and produces the same closure it produces for the
+    # QPA delegate.
+    _hyremote_linux_private_runtime_bootstrap(
+        "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_platform_plugin_name}")
+
+    # The deployed platform plugin must find the deployed Qt runtime rather than the SDK it was built against, the
+    # same relocation the QPA path performs for its delegate.
+    set(_linux_platform_rpath_rewrite "")
+    if(UNIX AND NOT APPLE)
+        set(_linux_platform_rpath_rewrite
+"file(RPATH_CHANGE
+    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
+    OLD_RPATH \"$ORIGIN/../../../.\"
+    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
+)
+")
+    endif()
+
+    set(_generic_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-generic-deploy-${target}-$<CONFIG>.cmake")
+    file(GENERATE
+        OUTPUT "${_generic_script}"
+        CONTENT
+"include(\"${QT_DEPLOY_SUPPORT}\")
+file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+    \"${_native_platform_plugin_file}\")
+${_linux_platform_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/generic\" TYPE FILE FILES
+    \"${_generic_plugin_file}\")
+file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
+${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+    EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
+    ADDITIONAL_MODULES
+    \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
+    \"\${QT_DEPLOY_PLUGINS_DIR}/generic/${_generic_plugin_name}\"
+    ADDITIONAL_LIBRARIES
+    \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"
+)
+")
+
+    set(${output_var} "${_generic_script}" PARENT_SCOPE)
+endfunction()
+
 function(hyremote_deploy)
-    set(options QML QPA)
+    set(options QML QPA GENERIC)
     set(oneValueArgs TARGET)
     set(multiValueArgs)
     cmake_parse_arguments(HYREMOTE_DEPLOY "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -374,11 +485,21 @@ function(hyremote_deploy)
             "to enable HYREMOTE_WITH_QPA_PROXY=ON; installed QPA metadata cannot satisfy a source deployment")
     endif()
 
+    if(HYREMOTE_DEPLOY_GENERIC AND _hyremote_source_acquisition AND NOT TARGET hyremote-generic-plugin)
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} GENERIC) requires the current HyRemote source build "
+            "to enable HYREMOTE_WITH_GENERIC_PLUGIN=ON; installed Generic metadata cannot satisfy a source deployment")
+    endif()
+
     _hyremote_add_local_build_dependency(
         "${HYREMOTE_DEPLOY_TARGET}" HyRemote::RemoteAccess)
     if(HYREMOTE_DEPLOY_QPA)
         _hyremote_add_local_build_dependency(
             "${HYREMOTE_DEPLOY_TARGET}" HyRemote::QpaPlatform)
+    endif()
+    if(HYREMOTE_DEPLOY_GENERIC)
+        _hyremote_add_local_build_dependency(
+            "${HYREMOTE_DEPLOY_TARGET}" hyremote-generic-plugin)
     endif()
     if(HYREMOTE_DEPLOY_QML)
         get_property(_hyremote_qml_source_targets GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS)
@@ -388,7 +509,21 @@ function(hyremote_deploy)
         endforeach()
     endif()
 
-    if(HYREMOTE_DEPLOY_QPA)
+    if(HYREMOTE_DEPLOY_GENERIC AND HYREMOTE_DEPLOY_QPA)
+        message(FATAL_ERROR
+            "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} GENERIC QPA) is not a supported combination: the "
+            "Generic Plugin keeps the application's native platform integration, while Transparent QPA replaces it")
+    endif()
+
+    if(HYREMOTE_DEPLOY_GENERIC)
+        if(NOT _hyremote_source_acquisition
+           AND DEFINED HyRemote_GENERIC_AVAILABLE AND NOT HyRemote_GENERIC_AVAILABLE)
+            message(FATAL_ERROR
+                "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET} GENERIC) requested an SDK that was built without the Generic Plugin")
+        endif()
+        _hyremote_generate_generic_deploy_script(
+            "${HYREMOTE_DEPLOY_TARGET}" _hyremote_supplemental_deploy_script)
+    elseif(HYREMOTE_DEPLOY_QPA)
         if(NOT _hyremote_source_acquisition
            AND DEFINED HyRemote_QPA_AVAILABLE AND NOT HyRemote_QPA_AVAILABLE)
             message(FATAL_ERROR

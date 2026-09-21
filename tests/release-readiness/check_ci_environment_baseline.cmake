@@ -4,6 +4,27 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
 endif()
 
+# Consolidated topology: the CI model this branch converged on plus branch hygiene, which develop merged
+# separately. The retired per-lane workflows must not come back through a merge or a replay - the capability
+# dimension is selected by the classifier, not by one workflow per source directory.
+set(required_workflows
+    ".github/workflows/ci.yml"
+    ".github/workflows/git-flow-policy.yml"
+    ".github/workflows/mainline-validation.yml"
+    ".github/workflows/branch-hygiene.yml")
+
+set(retired_workflows
+    ".github/workflows/remoteaccess-facade.yml"
+    ".github/workflows/widgets-adapter.yml"
+    ".github/workflows/quick-adapter.yml"
+    ".github/workflows/qml-api.yml"
+    ".github/workflows/qpa-proxy.yml"
+    ".github/workflows/rfb-transport.yml"
+    ".github/workflows/sdk-consumption.yml"
+    ".github/workflows/v1-ga-acceptance.yml")
+
+# The reference Linux host baseline is one shared script, and the workflows that need it must call it and retrigger
+# when it changes. Workflows that never touch a Linux Qt desktop host are not required to call it.
 set(shared_script ".github/scripts/install-linux-qt-desktop-deps.sh")
 set(shared_script_path "${HYREMOTE_SOURCE_DIR}/${shared_script}")
 if(NOT EXISTS "${shared_script_path}")
@@ -25,35 +46,16 @@ foreach(required_token
     endif()
 endforeach()
 
-set(required_workflows
-    ".github/workflows/remoteaccess-facade.yml"
-    ".github/workflows/widgets-adapter.yml"
-    ".github/workflows/quick-adapter.yml"
-    ".github/workflows/qml-api.yml"
-    ".github/workflows/qpa-proxy.yml"
-    ".github/workflows/sdk-consumption.yml"
-    ".github/workflows/v1-ga-acceptance.yml")
-
 foreach(workflow IN LISTS required_workflows)
     set(path "${HYREMOTE_SOURCE_DIR}/${workflow}")
     if(NOT EXISTS "${path}")
         message(FATAL_ERROR "ci-baseline: missing required workflow: ${workflow}")
     endif()
     file(READ "${path}" workflow_text)
-    string(FIND "${workflow_text}" "bash ${shared_script}" shared_call)
-    if(shared_call EQUAL -1)
-        message(FATAL_ERROR
-            "ci-baseline: ${workflow} drifted from the shared Linux Qt desktop host baseline")
-    endif()
-    string(FIND "${workflow_text}" "'${shared_script}'" trigger_path)
-    if(trigger_path EQUAL -1)
-        message(FATAL_ERROR
-            "ci-baseline: ${workflow} does not retrigger when the shared host dependency baseline changes")
-    endif()
 
-    # Concurrency cancels superseded runs, but nothing stops a hung job from holding a runner for the platform's default
-    # six hours, so every job must state its own bound. The repository-layout gate claims "bounded/cancellable workflow
-    # fan-out"; this is the half of that claim which does not enforce itself.
+    # Concurrency cancels superseded runs, but nothing stops a hung job from holding a runner for the platform's
+    # default six hours, so every job must state its own bound. The repository-layout gate claims
+    # "bounded/cancellable workflow fan-out"; this is the half of that claim which does not enforce itself.
     string(REGEX MATCHALL "runs-on:" _runs_on_declarations "${workflow_text}")
     string(REGEX MATCHALL "timeout-minutes:" _timeout_declarations "${workflow_text}")
     list(LENGTH _runs_on_declarations _job_count)
@@ -65,85 +67,121 @@ foreach(workflow IN LISTS required_workflows)
     endif()
 endforeach()
 
-# Windows clean-deployment runtime evidence must not inherit the Qt SDK's bin directory. Build and
-# install phases still need Qt/MSVC on PATH, but the launched deployed application must be able to
-# resolve every Qt/HyRemote DLL from its deployment tree. Python-driven QPA checks capture Python by
-# absolute path before narrowing PATH so the harness remains runnable without leaking the Qt SDK to
-# the child process.
-function(require_workflow_token workflow token description)
-    set(path "${HYREMOTE_SOURCE_DIR}/${workflow}")
-    file(READ "${path}" workflow_text)
-    string(FIND "${workflow_text}" "${token}" found)
+foreach(workflow IN LISTS retired_workflows)
+    if(EXISTS "${HYREMOTE_SOURCE_DIR}/${workflow}")
+        message(FATAL_ERROR "ci-baseline: retired per-lane workflow returned: ${workflow}")
+    endif()
+endforeach()
+
+foreach(workflow IN ITEMS
+        ".github/workflows/ci.yml"
+        ".github/workflows/mainline-validation.yml")
+    file(READ "${HYREMOTE_SOURCE_DIR}/${workflow}" workflow_text)
+    string(FIND "${workflow_text}" "bash ${shared_script}" shared_call)
+    if(shared_call EQUAL -1)
+        message(FATAL_ERROR
+            "ci-baseline: ${workflow} drifted from the shared Linux Qt desktop host baseline")
+    endif()
+endforeach()
+
+# Two ways to retrigger when the shared baseline changes: no path filter at all (the workflow always runs), or a
+# explicit path list that names the script. Requiring the path literal unconditionally was wrong for the
+# consolidated lane, which deliberately has no filter.
+foreach(workflow IN ITEMS
+        ".github/workflows/ci.yml"
+        ".github/workflows/mainline-validation.yml")
+    file(READ "${HYREMOTE_SOURCE_DIR}/${workflow}" workflow_text)
+    string(FIND "${workflow_text}" "paths:" declares_paths)
+    if(NOT declares_paths EQUAL -1)
+        string(FIND "${workflow_text}" "'${shared_script}'" trigger_path)
+        if(trigger_path EQUAL -1)
+            message(FATAL_ERROR
+                "ci-baseline: ${workflow} filters paths but does not retrigger when the shared host dependency "
+                "baseline changes")
+        endif()
+    endif()
+endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/workflows/ci.yml" ci)
+
+function(require_token text token description)
+    string(FIND "${text}" "${token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "ci-baseline: ${workflow} missing ${description}: ${token}")
+        message(FATAL_ERROR "ci-baseline: missing ${description}: ${token}")
     endif()
 endfunction()
 
-foreach(workflow IN ITEMS
-        ".github/workflows/qpa-proxy.yml"
-        ".github/workflows/sdk-consumption.yml"
-        ".github/workflows/v1-ga-acceptance.yml")
-    require_workflow_token("${workflow}"
-        [=[set "PYTHON_EXE=%pythonLocation%\python.exe"]=]
-        "absolute Python capture for clean Windows QPA runtime checks")
+function(forbid_token text token description)
+    string(FIND "${text}" "${token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR "ci-baseline: ${description}: ${token}")
+    endif()
+endfunction()
+
+# The consolidated PR lane keeps the capability contract: the classifier resolves the affected frontends, the lane
+# builds exactly that union through the official entry point, and the Qt SDK contract is per capability rather than
+# one fixed requirement list.
+foreach(required_token IN ITEMS
+        "cancel-in-progress: true"
+        "Resolve affected capabilities"
+        [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
+        "src/core/"
+        "src/runtime/"
+        "src/integrations/cpp/"
+        "src/integrations/qml/"
+        "src/integrations/generic/"
+        "src/integrations/qpa/"
+        "hyremote-qt-v4-"
+        "qt_tree_valid"
+        [=[--need-qml "$NEED_QML"]=]
+        [=[--need-qpa "$NEED_QPA"]=]
+        "install-linux-qt-desktop-deps.sh qpa"
+        "install-linux-qt-desktop-deps.sh public")
+    require_token("${ci}" "${required_token}" "consolidated PR CI contract")
 endforeach()
 
-# Focused declarative package evidence.
-require_workflow_token(".github/workflows/qml-api.yml"
-    [=[set "PATH=%CD%\qml-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\qml-consumer-install\bin\hyremote-installed-qml-consumer.exe"]=]
-    "installed-QML clean runtime launch")
+# The Qt components every product change needs, and the ones that stay capability-conditional.
+foreach(required_token IN ITEMS
+        "Qt6CoreConfig.cmake"
+        "Qt6GuiConfig.cmake"
+        "Qt6WidgetsConfig.cmake"
+        "Qt6QuickConfig.cmake"
+        "qguiapplication_p.h")
+    require_token("${ci}" "${required_token}" "baseline Qt capability contract")
+endforeach()
 
-# Focused QPA package evidence.
-require_workflow_token(".github/workflows/qpa-proxy.yml"
-    [=[set "PATH=%CD%\qpa-consumer-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "installed-QPA PATH isolation immediately before product-fit")
+forbid_token("${ci}" "Qt6QmlConfig.cmake"
+             "QML artifacts must stay capability-conditional, not unconditionally required")
+forbid_token("${ci}" "--integrations=cpp,qml,generic,qpa"
+             "PR CI must not hard-code all four frontends for every product change")
 
-# SDK source/installed shapes: Embedded C++, QML, QPA and QML+QPA.
-require_workflow_token(".github/workflows/sdk-consumption.yml"
-    [=[set "PATH=%CD%\deploy-installed\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\deploy-installed\bin\hyremote-installed-consumer.exe"]=]
-    "installed C++ clean runtime launch")
-require_workflow_token(".github/workflows/sdk-consumption.yml"
-    [=[set "PATH=%CD%\deploy-source\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\deploy-source\bin\hyremote-source-consumer.exe"]=]
-    "source C++ clean runtime launch")
-require_workflow_token(".github/workflows/sdk-consumption.yml"
-    [=[set "PATH=%CD%\deploy-source-qml\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\deploy-source-qml\bin\hyremote-installed-qml-consumer.exe"]=]
-    "source QML clean runtime launch")
-require_workflow_token(".github/workflows/sdk-consumption.yml"
-    [=[set "PATH=%CD%\deploy-source-qpa\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "source QPA PATH isolation immediately before product-fit")
-require_workflow_token(".github/workflows/sdk-consumption.yml"
-    [=[set "PATH=%CD%\deploy-source-qml-qpa\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "source QML+QPA PATH isolation immediately before product-fit")
+file(READ "${HYREMOTE_SOURCE_DIR}/.github/scripts/validate-qt-sdk.py" qt_validator)
+foreach(required_token IN ITEMS
+        "Qt6QmlConfig.cmake"
+        "qmldir"
+        "qwindows"
+        "libqxcb")
+    require_token("${qt_validator}" "${required_token}" "Qt capability check in the SDK validator")
+endforeach()
 
-# Integrated GA installed/source evidence repeats the same isolation on the release-like all-modes tree.
-require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
-    [=[set "PATH=%CD%\consumer-installed-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\consumer-installed-install\bin\hyremote-installed-consumer.exe"]=]
-    "GA installed C++ clean runtime launch")
-require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
-    [=[set "PATH=%CD%\consumer-source-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\consumer-source-install\bin\hyremote-source-consumer.exe"]=]
-    "GA source C++ clean runtime launch")
-require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
-    [=[set "PATH=%CD%\consumer-qml-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%CD%\consumer-qml-install\bin\hyremote-installed-qml-consumer.exe"]=]
-    "GA installed QML clean runtime launch")
-require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
-    [=[set "PATH=%CD%\consumer-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "GA installed QPA PATH isolation immediately before product-fit")
-require_workflow_token(".github/workflows/v1-ga-acceptance.yml"
-    [=[set "PATH=%CD%\consumer-qml-qpa-install\bin;%SystemRoot%\System32;%SystemRoot%"
-          "%PYTHON_EXE%" tests\consumer-installed-qpa\product_fit.py]=]
-    "GA combined QML+QPA PATH isolation immediately before product-fit")
+# Windows clean-deployment runtime isolation is produced by the release evidence runner now: its installed and source
+# product-fit cells construct an explicit runtime search path and launch the deployed consumer from the deployment
+# tree, which is where the retired per-lane workflows used to assert that inline.
+set(evidence_runner "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake")
+if(NOT EXISTS "${evidence_runner}")
+    message(FATAL_ERROR "ci-baseline: release evidence runner is missing")
+endif()
+file(READ "${evidence_runner}" evidence_runner_text)
+foreach(required_token IN ITEMS
+        "installed-qpa-product-fit"
+        "source-qpa-product-fit"
+        "installed-qml-qpa"
+        "HYREMOTE_CONSUMER_SOURCE_DIR")
+    require_token("${evidence_runner_text}" "${required_token}"
+                  "executable deployed-consumer evidence cell")
+endforeach()
 
 message(STATUS
     "HyRemote CI environment baseline gate: PASS "
-    "(shared Linux Qt desktop dependencies + Windows clean deployed-runtime isolation for all V1 modes)")
+    "(consolidated capability-scoped workflows + bounded jobs + shared Linux Qt host baseline + capability-scoped "
+    "Qt SDK contract + executable deployed-consumer evidence cells)")

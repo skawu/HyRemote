@@ -1,0 +1,51 @@
+# HyRemote project build configuration.
+# Precedence: built-in defaults < this file < compile.cmd command-line overrides.
+version: 1
+
+build:
+  type: Release
+  directory: build
+  generator: Ninja
+  jobs: auto
+  examples: true
+
+# Leave blank to use the Qt kit already provided by the environment.
+qt:
+  prefix: ""
+
+# Native builds normally leave these blank. Cross/embedded builds can pin the
+# compiler executables directly and/or select a repository/toolchain file.
+compiler:
+  c: ""
+  cxx: ""
+  toolchain: ""
+
+# Four peer application integration frontends over the same Common Runtime.
+# No frontend implies or enables another frontend.
+integrations:
+  cpp: true
+  qml: true
+  generic: true
+  qpa: true
+
+# Transport security is a Common Runtime capability, not an integration mode.
+transport:
+  security: false
+
+tests:
+  build: false
+  run: false
+  parallel: auto
+  exclude: ""
+  xvfb: false
+
+# Any non-structural CMake cache value can be persisted here instead of being
+# repeated as -D... on every invocation. Dedicated build.yml fields above must
+# not be duplicated in this map.
+cmake:
+  HYREMOTE_DEFAULT_PORT: 5921
+
+# Optional environment values are applied consistently to configure/build/test.
+# Example:
+# env:
+#   PKG_CONFIG_PATH: /opt/sysroot/usr/lib/pkgconfig

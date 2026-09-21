@@ -72,7 +72,7 @@ hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 
 The application does not link a HyRemote QPA target. `find_package(HyRemote)` publishes QPA availability/version/payload metadata internally to the deployment helper, while the target application remains Qt-only at link level.
 
-The deployed HyRemote payload is intentionally bounded to the QPA module plus the same shared `RemoteAccess` runtime. QPA is version-coupled to the qualified Qt private ABI and must not imply generic Qt-private compatibility. Native `qwindows` / `qxcb` deployment remains Qt-owned. Normal deployed applications must not require manually configured `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH` or SDK-specific runtime search paths.
+The deployed HyRemote payload is intentionally bounded to the same shared `RemoteAccess` runtime plus the optional QPA module and the optional Generic Plugin payload; the Generic plugin is a `QGenericPlugin` that keeps the application's native Qt platform integration and uses public Qt APIs only. QPA is version-coupled to the qualified Qt private ABI and must not imply generic Qt-private compatibility. Native `qwindows` / `qxcb` deployment remains Qt-owned. Normal deployed applications must not require manually configured `QT_PLUGIN_PATH`, `QT_QPA_PLATFORM_PLUGIN_PATH` or SDK-specific runtime search paths.
 
 The combined `QML QPA` form is a first-class deployment composition, not a fourth runtime architecture and not something release verification may infer from two independent successful consumers. The clean combined fixture must load the deployed `HyRemote` QML module while the transparent QPA plugin owns the one active remote listener/runtime, and must do so without SDK/plugin/QML path overrides.
 

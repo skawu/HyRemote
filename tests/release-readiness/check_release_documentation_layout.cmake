@@ -85,7 +85,7 @@ require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.c
 
 # Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
 # the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
-require_doc_token("docs/dependency-policy.md" "Historical experiments are recorded as documents under `docs/internal/`"
+require_doc_token("docs/dependency-policy.md" "remain optional/research work"
                   "retired experiment-tree policy in dependency policy")
 forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
                  "legacy spikes path in dependency policy")
@@ -93,7 +93,7 @@ require_doc_token("docs/dependency-policy.md" "### Repository test/CI-only tools
                   "CI-only tooling boundary")
 require_doc_token("docs/dependency-policy.md" "`vncdotool==1.3.0`"
                   "pinned maintained VNC test client")
-require_doc_token("docs/dependency-policy.md" "These tools are pinned/used by repository automation and acceptance harnesses"
+require_doc_token("docs/dependency-policy.md" "test tooling, not Runtime dependencies"
                   "CI tools are not runtime payloads")
 
 # User-facing entry points must identify the canonical layout document so repository contributors do

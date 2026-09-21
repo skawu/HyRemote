@@ -52,11 +52,13 @@ set(required_files
     "tests/consumer-installed-qpa/CMakeLists.txt"
     "tests/consumer-installed-qpa/product_fit.py"
     "tests/public-api-contract/CMakeLists.txt"
-    "src/cpp/tests/test_remote_access.cpp"
-    "src/cpp/tests/test_widgets_input_backpressure.cpp"
-    "src/cpp/tests/test_quick_input_backpressure.cpp"
-    "src/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
-    "src/qpa/tests/qpa_composite_input_test.cpp"
+    "src/integrations/cpp/tests/test_remote_access.cpp"
+    "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp"
+    "src/integrations/cpp/tests/test_quick_input_backpressure.cpp"
+    "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
+    "src/runtime/tests/automatic_composite_input_test.cpp"
+    "src/runtime/tests/automatic_composite_capture_test.cpp"
+    "src/runtime/tests/automatic_application_surface_model_test.cpp"
 )
 
 foreach(path IN LISTS required_files)
@@ -119,12 +121,6 @@ foreach(milestone_version
         "1.0.0.0")
     set(release_note_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v${milestone_version}.md")
     file(READ "${release_note_path}" milestone_notes)
-    # The security-boundary statement must describe what that milestone actually contains. The three pre-release
-    # milestones shipped the unauthenticated correctness transport and their notes are the record of what they did,
-    # so they keep saying so. v1.0.0.0 is the milestone that carries the RFB VNC authentication capability, so its
-    # note has to state that authentication and must not claim encryption - TLS is a separate later step (#143).
-    # Pinning a phrase that no longer describes the release would be exactly the "transient implementation
-    # limitation hard-coded as a permanent release invariant" that docs/release-candidate-checklist.md forbids.
     if(milestone_version VERSION_LESS "1.0.0.0")
         set(required_security_phrases "SecurityType None")
     else()
@@ -185,25 +181,54 @@ if(NOT core_install EQUAL -1)
     message(FATAL_ERROR "release-readiness: V1 Core must not be installed/exported as a second product target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/CMakeLists.txt" remoteaccess_cmake)
+# #219 moved ownership of the single delivered shared runtime out of the Embedded C++ frontend.
+# Preserve the binary/export contract while validating its new owner explicitly.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt" remoteaccess_cmake)
 foreach(required_token
         "add_library(hyremote-remoteaccess SHARED"
         "OUTPUT_NAME HyRemoteRemoteAccess"
         "EXPORT_NAME RemoteAccess")
     string(FIND "${remoteaccess_cmake}" "${required_token}" found)
     if(found EQUAL -1)
-        message(FATAL_ERROR "release-readiness: RemoteAccess shared facade contract missing: ${required_token}")
+        message(FATAL_ERROR "release-readiness: RemoteAccess shared runtime contract missing: ${required_token}")
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qml/CMakeLists.txt" qml_cmake)
+# The delivered export header is generated and installed by the shared runtime that owns the target, and the public
+# facade includes it by its documented name. The frontend CMakeLists no longer names the generated file, so the
+# contract is asserted where it is defined rather than where it used to be spelled out.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/CMakeLists.txt" cpp_cmake)
+string(FIND "${cpp_cmake}" "src/remote_access.cpp" found)
+if(found EQUAL -1)
+    message(FATAL_ERROR "release-readiness: the C++ facade lost its RemoteAccess implementation")
+endif()
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt" runtime_export_cmake)
+foreach(required_token
+        "generate_export_header(hyremote-remoteaccess"
+        "generated/HyRemote/RemoteAccessExport.h")
+    string(FIND "${runtime_export_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR "release-readiness: shared runtime export contract missing: ${required_token}")
+    endif()
+endforeach()
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/include/HyRemote/RemoteAccess.h" facade_header)
+string(FIND "${facade_header}" "HyRemote/RemoteAccessExport.h" found)
+if(found EQUAL -1)
+    message(FATAL_ERROR "release-readiness: the public C++ facade must include its generated export header")
+endif()
+string(FIND "${cpp_cmake}" "add_library(hyremote-remoteaccess SHARED" cpp_owns_runtime)
+if(NOT cpp_owns_runtime EQUAL -1)
+    message(FATAL_ERROR "release-readiness: Embedded C++ frontend must not re-own the common shared runtime")
+endif()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qml/CMakeLists.txt" qml_cmake)
 string(FIND "${qml_cmake}" "TARGETS hyremote-qml\n    EXPORT HyRemoteTargets" qml_export)
 if(NOT qml_export EQUAL -1)
     message(FATAL_ERROR
         "release-readiness: declarative QML backing library must not become a second C++ SDK target")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/CMakeLists.txt" qpa_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
 string(FIND "${qpa_cmake}" "add_library(hyremote-qpa-platform MODULE" qpa_module)
 if(qpa_module EQUAL -1)
     message(FATAL_ERROR "release-readiness: Transparent QPA must remain a platform MODULE")
@@ -334,17 +359,18 @@ if(input_shutdown_contract EQUAL -1)
         "release-readiness: internal InputSink terminal shutdown contract was removed")
 endif()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/cpp/src/remote_access.cpp" remoteaccess_source)
+# The shared AccessInstance now owns runtime teardown; the Embedded C++ facade only maps public API.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/src/access_instance.cpp" remoteaccess_source)
 string(FIND "${remoteaccess_source}" "session->stop();" session_stop_pos)
 string(FIND "${remoteaccess_source}" "inputSink->shutdown();" input_shutdown_pos)
 if(session_stop_pos EQUAL -1 OR input_shutdown_pos EQUAL -1 OR input_shutdown_pos LESS session_stop_pos)
     message(FATAL_ERROR
-        "release-readiness: RemoteAccess must quiesce Session before terminal target-input shutdown")
+        "release-readiness: common runtime must quiesce Session before terminal target-input shutdown")
 endif()
 
 foreach(adapter_file
-        "src/cpp/src/widgets/widget_target.cpp"
-        "src/cpp/src/quick/quick_target.cpp")
+        "src/runtime/src/widgets/widget_target.cpp"
+        "src/runtime/src/quick/quick_target.cpp")
     file(READ "${HYREMOTE_SOURCE_DIR}/${adapter_file}" adapter_source)
     foreach(required_token
             "void shutdown() noexcept override"
@@ -359,7 +385,9 @@ foreach(adapter_file
     endforeach()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/src/qpa/interactive_composite_target.cpp" qpa_input_source)
+# The composite target is runtime-owned now: #219 finished moving it out of the QPA frontend, so the terminal
+# child-input behavior is pinned at the canonical Runtime::Automatic path instead of the retired frontend copy.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/runtime/src/automatic/interactive_composite_target.cpp" qpa_input_source)
 foreach(required_token
         "void shutdown() noexcept override"
         "sink->shutdown()"
@@ -372,11 +400,11 @@ foreach(required_token
 endforeach()
 
 foreach(test_entry
-        "src/cpp/tests/test_remote_access.cpp|inputShutdowns"
-        "src/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
-        "src/qpa/tests/qpa_composite_input_test.cpp|shutdownCalls")
+        "src/integrations/cpp/tests/test_remote_access.cpp|inputShutdowns"
+        "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/integrations/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
+        "src/runtime/tests/automatic_composite_input_test.cpp|shutdownCalls")
     string(REPLACE "|" ";" test_parts "${test_entry}")
     list(GET test_parts 0 test_path)
     list(GET test_parts 1 required_token)
