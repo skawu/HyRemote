@@ -68,7 +68,7 @@ The defaults match the C++ API:
 - address: `127.0.0.1`;
 - port: `5921`;
 - remote input: disabled;
-- unauthenticated non-loopback listening: rejected.
+- `Insecure` is loopback-only.
 
 ## Configuration format
 
@@ -96,9 +96,12 @@ Recognized fields:
 | `security` | `insecure`, `authenticated`, `authenticated-encrypted` |
 | `security-config` | Security configuration file path |
 
-`authenticated-encrypted` **fails closed** in V0.1. It is never silently downgraded to an unencrypted connection.
+A configured profile name does not mean that the current HyRemote package necessarily contains the corresponding transport capability:
 
-> **TODO V0.2:** provide the complete VeNCrypt/TLS, certificate-policy, and session-security implementation before `authenticated-encrypted` is presented as a production security profile.
+- `authenticated` starts successfully only when HyRemote was built with the transport-security capability and `security-config` points to a valid descriptor; the current mechanism provides VNC authentication but does not encrypt the stream;
+- `authenticated-encrypted` always **fails closed** in V0.1 and never falls back to `authenticated` or `insecure`.
+
+> **TODO V0.2:** provide complete encrypted transport, certificate policy, authenticated sessions, and production network policy.
 
 ## Native platform identity is preserved
 
@@ -131,11 +134,12 @@ V0.1 is a Developer Preview:
 
 - loopback is the default bind;
 - remote control is disabled by default;
-- unauthenticated non-loopback listening is rejected;
-- `AuthenticatedEncrypted` fails closed while the TLS backend is unavailable;
+- `Insecure` cannot be exposed directly on a non-loopback address;
+- `Authenticated` is a conditional capability and must not be assumed to exist in the default package;
+- `AuthenticatedEncrypted` is not implemented and always fails closed;
 - do not expose the current product directly to the public Internet.
 
-See [`../../security.md`](../../security.md).
+See [`../security.md`](../security.md).
 
 ## Deployment troubleshooting
 
@@ -149,8 +153,8 @@ Do not hide an incomplete deployment by pointing `QT_PLUGIN_PATH`, `LD_LIBRARY_P
 
 ## Next
 
-- Deployment: [`../../guide/deployment.md`](../../guide/deployment.md)
-- Viewer: [`../../guide/viewer-connection.md`](../../guide/viewer-connection.md)
-- Security: [`../../security.md`](../../security.md)
+- Deployment: [`../guide/deployment.md`](../guide/deployment.md)
+- Viewer: [`../guide/viewer-connection.md`](../guide/viewer-connection.md)
+- Security: [`../security.md`](../security.md)
 - Compatibility: [`../../compatibility.md`](../../compatibility.md)
 - Known limitations: [`../../known-limitations.md`](../../known-limitations.md)
