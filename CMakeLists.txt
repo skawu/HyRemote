@@ -323,6 +323,14 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     # RemoteAccess lifecycle. Qt comes from the developer environment, which is how someone following the example
     # READMEs runs them; deployed-tree independence is a different question and is owned by the release evidence
     # cells, which this smoke deliberately does not duplicate.
+    #
+    # The interpreter has to be the one the environment provides, not one that a Windows registry entry happens to
+    # name. Candidate test tooling is installed into the interpreter on PATH, so a registry-resolved interpreter would
+    # run the tests with a different Python than the one the tooling went into - which is exactly how the product-fit
+    # test failed on Windows with its viewer installed and "No module named PIL" at run time. Location-based discovery
+    # keeps install and run on the same interpreter on every platform.
+    set(Python3_FIND_REGISTRY NEVER)
+    set(Python3_FIND_STRATEGY LOCATION)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(

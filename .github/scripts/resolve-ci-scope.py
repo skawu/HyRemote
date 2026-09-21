@@ -100,6 +100,14 @@ READINESS_PREFIXES = (
 
 READINESS_TEST_PREFIX = "hyremote-release-readiness-"
 
+# The exact-candidate product fit drives the production transport through a standard RFB viewer (Pillow + vncdotool).
+# That viewer is candidate test tooling rather than a product or development dependency, so the test is candidate
+# acceptance evidence instead of a regression: an ordinary fast pull request does not run it, the change that touches
+# the product-fit lane itself does - which is how the candidate-preparation pull request proves the wiring really
+# executes - and the exact-candidate full gate requires it unconditionally.
+RFB_PRODUCT_FIT_TEST = "hyremote-v01-rfb-product-fit$"
+RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
+
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
 # selection scripts over the repository itself. They run in a lightweight governance job, and they must not drag the
 # product matrix along just to execute a policy script.
@@ -208,6 +216,11 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         path.startswith(READINESS_PREFIXES) for path in changed
     )
 
+    # Candidate acceptance evidence rather than a regression: see RFB_PRODUCT_FIT_TEST above.
+    rfb_product_fit_evidence = full_gate or any(
+        path.startswith(RFB_PRODUCT_FIT_PREFIXES) for path in changed
+    )
+
     governance = full_gate or any(
         path.startswith(GOVERNANCE_PREFIXES) or path in GOVERNANCE_ONLY_PATHS for path in changed
     )
@@ -229,6 +242,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         excluded.append("hyremote-qml-deploy-helper-")
     if not qpa_evidence:
         excluded.append("hyremote-qpa-deploy-helper-")
+    if not rfb_product_fit_evidence:
+        excluded.append(RFB_PRODUCT_FIT_TEST)
     # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
     # test name: CTest then excluded everything, reported success, and a lane that promised full integration
     # executed nothing. That is a false green, not a formatting detail. A lane that runs no product job has no
@@ -247,6 +262,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         "qml_evidence": "true" if (qml_evidence and product) else "false",
         "qpa_evidence": "true" if (qpa_evidence and product) else "false",
         "readiness_evidence": "true" if readiness_evidence else "false",
+        "rfb_product_fit_evidence": "true" if (rfb_product_fit_evidence and product) else "false",
         "governance": "true" if governance else "false",
         "test_exclude": test_exclude,
     }
@@ -313,14 +329,15 @@ def self_test() -> int:
          {"readiness_evidence": "true"}),
         ("install authority change runs readiness", "pull_request", ["cmake/HyRemoteInstall.cmake"], False,
          {"readiness_evidence": "true"}),
-        # A PR that reaches every evidence contract is full integration for that run, so it excludes nothing - an
-        # empty exclusion must survive as an empty exclusion.
-        ("full-evidence PR excludes nothing", "pull_request",
+        # A PR that reaches every integration evidence contract is full integration for that run, so it excludes no
+        # integration sub-build - an empty exclusion survives as an empty exclusion. The candidate-only product fit is
+        # the single named exception and is asserted separately below.
+        ("full-integration PR excludes no integration sub-build", "pull_request",
          ["src/integrations/cpp/cpp_remote_access.cpp",
           "src/integrations/qml/qml_remote_access.cpp",
           "src/integrations/generic/generic_plugin.cpp",
           "src/integrations/qpa/qpa_platform.cpp",
-          "tests/release-readiness/run_release_evidence.cmake"], False, {"test_exclude": ""}),
+          "tests/release-readiness/run_release_evidence.cmake"], False, {"readiness_evidence": "true"}),
     ]
 
     for description, event, changed, draft, expected in cases:
@@ -355,6 +372,34 @@ def self_test() -> int:
         print("CASE FAILED: a C++ PR must keep its own clean consumer evidence")
         failures += 1
 
+    # The candidate product fit is candidate acceptance evidence: the exact-candidate full gate requires it, the change
+    # that touches its own lane runs it - which is how the candidate-preparation pull request proves the wiring - and
+    # an ordinary pull request excludes it, including one that reaches every other evidence contract.
+    full_integration_pr = resolve("pull_request", [
+        "src/integrations/cpp/cpp_remote_access.cpp",
+        "src/integrations/qml/qml_remote_access.cpp",
+        "src/integrations/generic/generic_plugin.cpp",
+        "src/integrations/qpa/qpa_platform.cpp",
+        "tests/release-readiness/run_release_evidence.cmake",
+    ])
+    if "hyremote-cpp-installed-consumers$" in full_integration_pr["test_exclude"]:
+        print("CASE FAILED: a full-integration PR must not exclude its own clean consumer evidence")
+        failures += 1
+    for description, event, changed, expected_excluded in (
+            ("the candidate product-fit lane change runs it", "pull_request",
+             ["src/integrations/cpp/tests/rfb_product_fit.py"], False),
+            ("an ordinary pull request excludes it", "pull_request", ["src/core/session/session.cpp"], True),
+            ("a full-integration pull request still excludes it", "pull_request",
+             ["src/integrations/cpp/cpp_remote_access.cpp",
+              "src/integrations/generic/generic_plugin.cpp",
+              "tests/release-readiness/run_release_evidence.cmake"], True),
+            ("the full gate requires it", "workflow_dispatch", [], False)):
+        resolved = resolve(event, changed)
+        excluded_now = RFB_PRODUCT_FIT_TEST in resolved["test_exclude"]
+        if excluded_now != expected_excluded:
+            print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
+            failures += 1
+
     # Whatever the lane, an exclusion must never be able to exclude everything: "^()" is the shape that turned a
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
@@ -375,7 +420,8 @@ def self_test() -> int:
         return 1
     print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, examples documentation "
           "selects no capability, release authority is governance, empty exclusions stay empty, no exclusion can "
-          "match every test, fast lane preserved, readiness runs where it is consumed)")
+          "match every test, fast lane preserved, readiness runs where it is consumed, the candidate-only product "
+          "fit runs where it is required rather than by default)")
     return 0
 
 

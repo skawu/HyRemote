@@ -46,6 +46,7 @@ jobs:
       qml_evidence: ${{ steps.scope.outputs.qml_evidence }}
       qpa_evidence: ${{ steps.scope.outputs.qpa_evidence }}
       readiness_evidence: ${{ steps.scope.outputs.readiness_evidence }}
+      rfb_product_fit_evidence: ${{ steps.scope.outputs.rfb_product_fit_evidence }}
       governance: ${{ steps.scope.outputs.governance }}
       test_exclude: ${{ steps.scope.outputs.test_exclude }}
     steps:
@@ -153,6 +154,31 @@ jobs:
             python -m pip install --disable-pip-version-check ninja
           fi
           echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+
+      # Viewer-side tooling for the exact-candidate product fit, installed only when that test is part of this run: the
+      # change that touches the product-fit lane runs it, and the exact-candidate full gate requires it. It is
+      # candidate test tooling rather than a product dependency - it never enters a product package, an installed SDK
+      # runtime manifest or any instruction to an ordinary user - and installing it here rather than on every pull
+      # request keeps an external viewer out of the ordinary fast lane. A failure to install fails the run, because a
+      # candidate that cannot execute its product fit must not report success.
+      #
+      # The interpreter is pinned first, so the tooling is installed into the same Python that the build system
+      # resolves from PATH for the test command. Without that, a Windows runner can install into one interpreter and
+      # run the test with another, which shows up as a viewer that is "installed" but cannot be imported.
+      - name: Set up the candidate product-fit interpreter
+        if: needs.classify.outputs.rfb_product_fit_evidence == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install candidate product-fit viewer tooling
+        if: needs.classify.outputs.rfb_product_fit_evidence == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            -r src/integrations/cpp/tests/candidate-test-requirements.txt
+          python -c "import PIL, vncdotool; print('viewer tooling importable: Python', __import__('sys').version.split()[0])"
 
       - name: Install missing Linux Qt host dependencies
         if: runner.os == 'Linux'
