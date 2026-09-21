@@ -41,7 +41,7 @@ string(JSON authority_schema ERROR_VARIABLE schema_error GET "${authority_json}"
 if(schema_error)
     scope_fail("release-train authority is malformed: ${schema_error}")
 endif()
-if(NOT authority_schema STREQUAL "2")
+if(NOT authority_schema STREQUAL "3")
     scope_fail("unsupported release-train authority schema '${authority_schema}'")
 endif()
 
@@ -85,8 +85,8 @@ function(validate_train_notes version)
         list(APPEND note_key_numbers "${_note_key_number}")
     endforeach()
     set(classified "")
-    foreach(bucket IN ITEMS mandatory_children cross_version_references non_blockers conditional_items
-                        embedded_deferred_issue_numbers classified_referenced_issue_numbers)
+    foreach(bucket IN ITEMS mandatory_children candidate_prerequisites cross_version_references non_blockers
+                        conditional_items embedded_deferred_issue_numbers classified_referenced_issue_numbers)
         string(JSON bucket_count ERROR_VARIABLE bucket_error LENGTH
                "${authority_json}" trains "${version}" ${bucket})
         if(bucket_error OR bucket_count EQUAL 0)
@@ -109,8 +109,62 @@ function(validate_train_notes version)
     endforeach()
 endfunction()
 
-# selected_scope(<version> out_parent out_children out_references out_status)
-function(selected_scope version out_parent out_children out_references out_status)
+# number_list(<version> <field> <required> out_var) - read one numeric issue list, validating each element.
+function(number_list version field required out_var)
+    string(JSON count ERROR_VARIABLE count_error LENGTH "${authority_json}" trains "${version}" ${field})
+    if(count_error)
+        if(required)
+            scope_fail("release train '${version}' declares no ${field} list")
+        endif()
+        set(${out_var} "" PARENT_SCOPE)
+        return()
+    endif()
+    set(values "")
+    if(count GREATER 0)
+        math(EXPR last "${count} - 1")
+        foreach(index RANGE 0 ${last})
+            string(JSON entry GET "${authority_json}" trains "${version}" ${field} ${index})
+            if(entry LESS 1)
+                scope_fail("release train '${version}' declares '${entry}' in ${field}")
+            endif()
+            if(entry IN_LIST values)
+                scope_fail("release train '${version}' repeats #${entry} in ${field}")
+            endif()
+            list(APPEND values "${entry}")
+        endforeach()
+    endif()
+    set(${out_var} "${values}" PARENT_SCOPE)
+endfunction()
+
+# validate_lineage(<version>) - lineage_parent is an exact-version relation, so it is resolved the same way a
+# selection is: the named Feature must exist, it must not name this Feature, and the chain must terminate. An
+# unknown parent and a cycle both fail closed instead of being taken on trust from prose.
+function(validate_lineage version)
+    set(seen "")
+    set(current "${version}")
+    while(TRUE)
+        string(JSON lineage ERROR_VARIABLE lineage_error GET "${authority_json}" trains "${current}" lineage_parent)
+        if(lineage_error OR lineage STREQUAL "")
+            return()
+        endif()
+        string(JSON lineage_type ERROR_VARIABLE lineage_type_error TYPE "${authority_json}" trains "${lineage}")
+        if(lineage_type_error OR NOT lineage_type STREQUAL "OBJECT")
+            scope_fail(
+                "release train '${current}' declares lineage_parent '${lineage}', which is not a release train; "
+                "lineage must name an exact accepted Feature")
+        endif()
+        if(lineage STREQUAL "${version}" OR lineage IN_LIST seen)
+            scope_fail("release train '${version}' has a cyclic lineage chain through '${lineage}'")
+        endif()
+        list(APPEND seen "${current}")
+        set(current "${lineage}")
+    endwhile()
+endfunction()
+
+# selected_scope(<version> out_parent out_children out_prerequisites out_evidence out_lineage out_references
+#                out_status)
+function(selected_scope version out_parent out_children out_prerequisites out_evidence out_lineage out_references
+         out_status)
     string(JSON member_type ERROR_VARIABLE member_error TYPE "${authority_json}" trains "${version}")
     if(member_error OR NOT member_type STREQUAL "OBJECT")
         scope_fail("unknown or unclassifiable release train '${version}'; selection fails closed")
@@ -131,22 +185,7 @@ function(selected_scope version out_parent out_children out_references out_statu
         set(status "active")
     endif()
 
-    string(JSON children_count ERROR_VARIABLE children_error LENGTH
-           "${authority_json}" trains "${version}" mandatory_children)
-    if(children_error)
-        scope_fail("release train '${version}' declares no mandatory_children list")
-    endif()
-    set(children "")
-    if(children_count GREATER 0)
-        math(EXPR children_last "${children_count} - 1")
-        foreach(index RANGE 0 ${children_last})
-            string(JSON child GET "${authority_json}" trains "${version}" mandatory_children ${index})
-            if(child LESS 1)
-                scope_fail("release train '${version}' declares '${child}' as a mandatory child")
-            endif()
-            list(APPEND children "${child}")
-        endforeach()
-    endif()
+    number_list("${version}" "mandatory_children" true children)
 
     # An active train with nothing closeable would silently authorize a release, which is exactly what an
     # unclassified mandatory set must never do. The declared-unpopulated trains are representable-only and say so.
@@ -156,21 +195,49 @@ function(selected_scope version out_parent out_children out_references out_statu
             "release without any closeable authority")
     endif()
 
-    set(references "")
-    string(JSON references_count ERROR_VARIABLE references_error LENGTH
-           "${authority_json}" trains "${version}" cross_version_references)
-    if(NOT references_error AND references_count GREATER 0)
-        math(EXPR references_last "${references_count} - 1")
-        foreach(index RANGE 0 ${references_last})
-            string(JSON reference GET "${authority_json}" trains "${version}" cross_version_references ${index})
-            list(APPEND references "${reference}")
+    # Prerequisites gate candidate acceptance without being product work. A number claimed by both lists would be
+    # two contradictory statements about the same issue, so the overlap fails closed.
+    number_list("${version}" "candidate_prerequisites" true prerequisites)
+    foreach(prerequisite IN LISTS prerequisites)
+        if(prerequisite IN_LIST children)
+            scope_fail(
+                "release train '${version}' classifies #${prerequisite} as both a mandatory child and a candidate "
+                "prerequisite; a prerequisite gates acceptance without entering the product work breakdown")
+        endif()
+    endforeach()
+
+    number_list("${version}" "cross_version_references" false references)
+    number_list("${version}" "non_blockers" false non_blockers)
+    number_list("${version}" "conditional_items" false conditional_items)
+
+    set(evidence "")
+    string(JSON evidence_count ERROR_VARIABLE evidence_error LENGTH
+           "${authority_json}" trains "${version}" required_evidence)
+    if(NOT evidence_error AND evidence_count GREATER 0)
+        math(EXPR evidence_last "${evidence_count} - 1")
+        foreach(index RANGE 0 ${evidence_last})
+            string(JSON entry GET "${authority_json}" trains "${version}" required_evidence ${index})
+            if(entry STREQUAL "")
+                scope_fail("release train '${version}' declares an empty required_evidence name")
+            endif()
+            list(APPEND evidence "${entry}")
         endforeach()
     endif()
+
+    set(lineage "")
+    string(JSON lineage_value ERROR_VARIABLE lineage_error GET "${authority_json}" trains "${version}" lineage_parent)
+    if(NOT lineage_error AND NOT lineage_value STREQUAL "")
+        set(lineage "${lineage_value}")
+    endif()
+    validate_lineage("${version}")
 
     validate_train_notes("${version}")
 
     set(${out_parent} "${parent}" PARENT_SCOPE)
     set(${out_children} "${children}" PARENT_SCOPE)
+    set(${out_prerequisites} "${prerequisites}" PARENT_SCOPE)
+    set(${out_evidence} "${evidence}" PARENT_SCOPE)
+    set(${out_lineage} "${lineage}" PARENT_SCOPE)
     set(${out_references} "${references}" PARENT_SCOPE)
     set(${out_status} "${status}" PARENT_SCOPE)
 endfunction()
@@ -267,25 +334,47 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
-    if(NOT v01_output MATCHES "MANDATORY_CHILDREN=230,231,232,237,238")
+    if(NOT v01_output MATCHES "MANDATORY_CHILDREN=230,231,232,237,238,253")
         message(STATUS "release-scope self test: 0.1.0.0 mandatory set drifted: ${v01_output}")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
-    math(EXPR cases_run "${cases_run} + 2")
-    # Cross-version umbrellas and later-train productization must never be V0.1 closeable requirements: #240 is
-    # complete V0.3 Example productization and #241 is project-wide GUI branding enforcement, both V0.3.
-    foreach(umbrella IN ITEMS 41 143 176 209 240 241)
+    if(NOT v01_output MATCHES "CANDIDATE_PREREQUISITES=250")
+        message(STATUS "release-scope self test: 0.1.0.0 must carry #250 as its candidate prerequisite: ${v01_output}")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+    if(NOT v01_output MATCHES "REQUIRED_EVIDENCE=[^\n]*truthful-v01-security-version-output")
+        message(STATUS "release-scope self test: 0.1.0.0 must require truthful V0.1 security/version evidence")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+    if(NOT v01_output MATCHES "REQUIRED_EVIDENCE=[^\n]*nonzero-hosted-normal-and-release-readiness-tests")
+        message(STATUS "release-scope self test: 0.1.0.0 must require nonzero hosted test evidence")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+    if(v01_output MATCHES "REQUIRED_EVIDENCE=[^\n]*bilingual")
+        message(STATUS "release-scope self test: V0.1 evidence must not require bilingual productization")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+    math(EXPR cases_run "${cases_run} + 5")
+    # Cross-version umbrellas, later-train productization and this governance migration must never be V0.1 closeable
+    # requirements: #240 is V0.3 Example/i18n productization, #241 is V0.3 GUI branding, #263 is the governance
+    # migration that produced this file, and #266 is governance sync.
+    foreach(umbrella IN ITEMS 41 143 176 209 240 241 263 266)
         if(v01_output MATCHES "MANDATORY_CHILDREN=[^\n]*\\b${umbrella}\\b")
-            message(STATUS "release-scope self test: umbrella #${umbrella} must not be a V0.1 mandatory child")
+            message(STATUS "release-scope self test: #${umbrella} must not be a V0.1 mandatory child")
             math(EXPR _failures "${case_failures} + 1")
             set(case_failures "${_failures}")
         endif()
         math(EXPR cases_run "${cases_run} + 1")
     endforeach()
 
-    # 9.-13. Later trains are representable, each with its own authority parent.
-    foreach(pair IN ITEMS "0.2.0.0;233" "0.3.0.0;234" "0.4.0.0;235" "1.0.0.0;33" "1.1.0.0;236")
+    # 9.-13. Later exact Features are representable, each with its own authority parent.
+    foreach(pair IN ITEMS "0.2.0.0;233" "0.2.1.0;233" "0.3.0.0;234" "0.3.1.0;234" "0.3.2.0;234"
+                          "0.4.0.0;235" "1.0.0.0;33" "1.1.0.0;236")
         list(GET pair 0 later_version)
         list(GET pair 1 later_authority)
         run_selection("${later_version}" TRUE later_output)
@@ -293,6 +382,75 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         if(NOT later_output MATCHES "AUTHORITY_PARENT=${later_authority}")
             message(STATUS
                 "release-scope self test: ${later_version} must select authority #${later_authority}: ${later_output}")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+    endforeach()
+
+    # Exact Features are exact: each one names its own closeable set, its own prerequisites and its own lineage, and
+    # neighbouring Features never share a set by accident.
+    foreach(expectation IN ITEMS
+            "0.2.0.0|143,174,259,271|258|0.1.0.0"
+            "0.2.1.0|170,239||0.2.0.0"
+            "0.3.0.0|240,241,264||0.2.1.0"
+            "0.3.1.0|265|260|0.3.0.0"
+            "0.3.2.0|144,175|261|0.3.1.0"
+            "0.4.0.0|9,57,109,134,165,242||0.3.2.0")
+        string(REPLACE "|" ";" parts "${expectation}")
+        list(GET parts 0 expectation_version)
+        list(GET parts 1 expectation_children)
+        list(GET parts 2 expectation_prerequisites)
+        list(GET parts 3 expectation_lineage)
+        run_selection("${expectation_version}" TRUE exact_output)
+        math(EXPR cases_run "${cases_run} + 4")
+        if(NOT exact_output MATCHES "MANDATORY_CHILDREN=${expectation_children}\n")
+            message(STATUS
+                "release-scope self test: ${expectation_version} closeable set drifted: ${exact_output}")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+        if(NOT exact_output MATCHES "CANDIDATE_PREREQUISITES=${expectation_prerequisites}\n")
+            message(STATUS
+                "release-scope self test: ${expectation_version} prerequisites drifted: ${exact_output}")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+        if(NOT exact_output MATCHES "LINEAGE_PARENT=${expectation_lineage}\n")
+            message(STATUS
+                "release-scope self test: ${expectation_version} lineage drifted: ${exact_output}")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+        if(exact_output MATCHES "LINEAGE_PARENT=0.0.0")
+            message(STATUS "release-scope self test: ${expectation_version} must not claim the sentinel as lineage")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+    endforeach()
+
+    # 0.1.0.0 is the first release of its line, so it has no lineage parent to claim.
+    if(v01_output MATCHES "LINEAGE_PARENT=[^\n]*[0-9]")
+        message(STATUS "release-scope self test: 0.1.0.0 must not declare a lineage parent: ${v01_output}")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+    math(EXPR cases_run "${cases_run} + 1")
+
+    # 14b.-14c. Neighbouring exact Features must be distinguishable, and a later Feature must never block an earlier
+    # one: the earlier selection is independent of whatever the later Feature still has open.
+    foreach(distinct IN ITEMS "0.2.0.0;0.2.1.0" "0.3.0.0;0.3.1.0" "0.3.1.0;0.3.2.0")
+        list(GET distinct 0 first_version)
+        list(GET distinct 1 second_version)
+        run_selection("${first_version}" TRUE first_output)
+        run_selection("${second_version}" TRUE second_output)
+        math(EXPR cases_run "${cases_run} + 1")
+        string(REGEX MATCH "MANDATORY_CHILDREN=([^\n]*)" _ignored "${first_output}")
+        set(first_children "${CMAKE_MATCH_1}")
+        string(REGEX MATCH "MANDATORY_CHILDREN=([^\n]*)" _ignored "${second_output}")
+        set(second_children "${CMAKE_MATCH_1}")
+        if(first_children STREQUAL second_children)
+            message(STATUS
+                "release-scope self test: ${first_version} and ${second_version} must not share one closeable set")
             math(EXPR _failures "${case_failures} + 1")
             set(case_failures "${_failures}")
         endif()
@@ -375,7 +533,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     set(empty_path "${fixture_dir}/release-trains-empty.json")
     file(READ "${authority_path}" empty_json)
     string(REPLACE
-        "\"mandatory_children\": [ 230, 231, 232, 237, 238 ]"
+        "\"mandatory_children\": [ 230, 231, 232, 237, 238, 253 ]"
         "\"mandatory_children\": []"
         empty_json "${empty_json}")
     file(WRITE "${empty_path}" "${empty_json}")
@@ -389,6 +547,98 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     math(EXPR cases_run "${cases_run} + 1")
     if(empty_result EQUAL 0)
         message(STATUS "release-scope self test: an active train with no mandatory children must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    # 16b. A lineage parent that names no exact Feature is refused rather than trusted as prose, and a lineage chain
+    #      that returns to its own Feature is refused as a cycle.
+    set(lineage_unknown_path "${fixture_dir}/release-trains-lineage-unknown.json")
+    file(READ "${authority_path}" lineage_unknown_json)
+    string(REPLACE
+        "\"lineage_parent\": \"0.1.0.0\""
+        "\"lineage_parent\": \"9.9.9.9\""
+        lineage_unknown_json "${lineage_unknown_json}")
+    file(WRITE "${lineage_unknown_path}" "${lineage_unknown_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${lineage_unknown_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.2.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE lineage_unknown_result)
+    math(EXPR cases_run "${cases_run} + 1")
+    if(lineage_unknown_result EQUAL 0)
+        message(STATUS "release-scope self test: an unknown lineage parent must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    set(lineage_cycle_path "${fixture_dir}/release-trains-lineage-cycle.json")
+    file(READ "${authority_path}" lineage_cycle_json)
+    string(REPLACE
+        "\"lineage_parent\": \"0.1.0.0\""
+        "\"lineage_parent\": \"0.2.0.0\""
+        lineage_cycle_json "${lineage_cycle_json}")
+    file(WRITE "${lineage_cycle_path}" "${lineage_cycle_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${lineage_cycle_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.2.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE lineage_cycle_result)
+    math(EXPR cases_run "${cases_run} + 1")
+    if(lineage_cycle_result EQUAL 0)
+        message(STATUS "release-scope self test: a cyclic lineage chain must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    # 16c. A malformed candidate prerequisite is refused, and so is a number claimed by both the closeable set and
+    #      the prerequisite set - two contradictory statements about one issue.
+    foreach(bad_prerequisite IN ITEMS "0" "230")
+        set(bad_prerequisite_path "${fixture_dir}/release-trains-prerequisite-${bad_prerequisite}.json")
+        file(READ "${authority_path}" bad_prerequisite_json)
+        string(REPLACE
+            "\"candidate_prerequisites\": [ 250 ]"
+            "\"candidate_prerequisites\": [ ${bad_prerequisite} ]"
+            bad_prerequisite_json "${bad_prerequisite_json}")
+        file(WRITE "${bad_prerequisite_path}" "${bad_prerequisite_json}")
+        execute_process(
+            COMMAND "${CMAKE_COMMAND}"
+                "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+                "-DHYREMOTE_RELEASE_AUTHORITY=${bad_prerequisite_path}"
+                "-DHYREMOTE_RELEASE_VERSION=0.1.0.0"
+                -P "${CMAKE_CURRENT_LIST_FILE}"
+            RESULT_VARIABLE bad_prerequisite_result)
+        math(EXPR cases_run "${cases_run} + 1")
+        if(bad_prerequisite_result EQUAL 0)
+            message(STATUS
+                "release-scope self test: prerequisite '${bad_prerequisite}' must be refused")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+    endforeach()
+
+    # 16d. A train that declares no candidate_prerequisites list at all is refused rather than defaulted to none.
+    set(missing_prerequisites_path "${fixture_dir}/release-trains-prerequisites-missing.json")
+    file(READ "${authority_path}" missing_prerequisites_json)
+    string(REPLACE
+        "\"candidate_prerequisites\": [ 250 ],\n      "
+        ""
+        missing_prerequisites_json "${missing_prerequisites_json}")
+    file(WRITE "${missing_prerequisites_path}" "${missing_prerequisites_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${missing_prerequisites_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.1.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE missing_prerequisites_result)
+    math(EXPR cases_run "${cases_run} + 1")
+    if(missing_prerequisites_result EQUAL 0)
+        message(STATUS "release-scope self test: a train without a candidate_prerequisites list must be refused")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
@@ -442,6 +692,10 @@ if(HYREMOTE_RELEASE_VERSION STREQUAL sentinel)
     message(STATUS "RELEASE_SCOPE=development-sentinel")
     message(STATUS "AUTHORITY_PARENT=")
     message(STATUS "MANDATORY_CHILDREN=")
+    message(STATUS "CANDIDATE_PREREQUISITES=")
+    message(STATUS "REQUIRED_EVIDENCE=")
+    message(STATUS "LINEAGE_PARENT=")
+    message(STATUS "SCOPE_STATUS=development-sentinel")
     return()
 endif()
 
@@ -461,13 +715,18 @@ if(NOT selected_conditional_active)
     endif()
 endif()
 
-selected_scope("${HYREMOTE_RELEASE_VERSION}" parent children references status)
+selected_scope("${HYREMOTE_RELEASE_VERSION}" parent children prerequisites evidence lineage references status)
 
 string(REPLACE ";" "," children_text "${children}")
+string(REPLACE ";" "," prerequisites_text "${prerequisites}")
+string(REPLACE ";" "," evidence_text "${evidence}")
 string(REPLACE ";" "," references_text "${references}")
 message(STATUS "RELEASE_VERSION=${HYREMOTE_RELEASE_VERSION}")
 message(STATUS "RELEASE_SCOPE=release-train")
 message(STATUS "AUTHORITY_PARENT=${parent}")
 message(STATUS "SCOPE_STATUS=${status}")
 message(STATUS "MANDATORY_CHILDREN=${children_text}")
+message(STATUS "CANDIDATE_PREREQUISITES=${prerequisites_text}")
+message(STATUS "REQUIRED_EVIDENCE=${evidence_text}")
+message(STATUS "LINEAGE_PARENT=${lineage}")
 message(STATUS "CROSS_VERSION_REFERENCES=${references_text}")

@@ -165,7 +165,7 @@ jobs:
           if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){3}", requested):
               raise SystemExit("release versions must use Major.Minor.Feature.Maintenance")
           authority = json.load(open(authority_path, encoding="utf-8"))
-          if authority.get("schema") != 2:
+          if authority.get("schema") != 3:
               raise SystemExit(f"unsupported release-train authority schema {authority.get('schema')}")
           if requested in authority.get("retired_profiles", []):
               raise SystemExit(f"release/{requested} is a retired planning label, not a release train")
@@ -175,7 +175,8 @@ jobs:
                       raise SystemExit(
                           f"release/{requested} is conditional on activation authority "
                           f"#{conditional.get('activation_authority')} and has recorded no activation")
-          train = authority.get("trains", {}).get(requested)
+          trains = authority.get("trains", {})
+          train = trains.get(requested)
           if not train:
               raise SystemExit(f"release/{requested} is not an authorized release train")
           mandatory = train.get("mandatory_children")
@@ -183,11 +184,33 @@ jobs:
               raise SystemExit(f"release train {requested} declares no mandatory_children list")
           if not mandatory and train.get("scope_status", "active") == "active":
               raise SystemExit(f"release train {requested} is active but declares no closeable mandatory children")
+          prerequisites = train.get("candidate_prerequisites")
+          if prerequisites is None:
+              raise SystemExit(f"release train {requested} declares no candidate_prerequisites list")
+          overlap = sorted(set(str(issue) for issue in mandatory) & set(str(issue) for issue in prerequisites))
+          if overlap:
+              raise SystemExit(
+                  f"release train {requested} classifies #{', #'.join(overlap)} as both a mandatory child and a "
+                  "candidate prerequisite")
+          lineage = train.get("lineage_parent", "")
+          if lineage:
+              seen, current = set(), lineage
+              while current:
+                  if current == requested or current in seen:
+                      raise SystemExit(f"release train {requested} has a cyclic lineage chain through {current}")
+                  if current not in trains:
+                      raise SystemExit(
+                          f"release train {requested} declares lineage_parent {current}, which is not a release train")
+                  seen.add(current)
+                  current = trains[current].get("lineage_parent", "")
           with open("release-train.env", "w", encoding="utf-8") as handle:
               handle.write(f"RELEASE_TRAIN_VERSION={requested}\n")
               handle.write(f"RELEASE_TRAIN_AUTHORITY={train.get('authority_parent', '')}\n")
               handle.write("RELEASE_TRAIN_MANDATORY=" + " ".join(str(issue) for issue in mandatory) + "\n")
-          print(f"release train {requested}: authority #{train.get('authority_parent')}, {len(mandatory)} mandatory child(ren)")
+              handle.write("RELEASE_TRAIN_PREREQUISITES=" + " ".join(str(issue) for issue in prerequisites) + "\n")
+              handle.write(f"RELEASE_TRAIN_LINEAGE={lineage}\n")
+          print(f"release train {requested}: authority #{train.get('authority_parent')}, {len(mandatory)} mandatory "
+                f"child(ren), {len(prerequisites)} candidate prerequisite(s), lineage '{lineage or 'none'}'")
           PY
           cat release-train.env >> "${GITHUB_ENV}"
 
@@ -223,24 +246,53 @@ jobs:
         run: |
           set -euo pipefail
           version="${HEAD_REF#release/v}"
-          # The selected train's own closeable children. Cross-version umbrellas the train merely references are
-          # never required to close as whole umbrellas, which is what lets an earlier train ship.
+          # The selected train's own closeable children, and separately the prerequisites that gate candidate
+          # acceptance without being product work. Cross-version umbrellas the train merely references are never
+          # required to close as whole umbrellas, which is what lets an earlier train ship.
           read -r -a required_issues <<< "${RELEASE_TRAIN_MANDATORY:-}"
+          read -r -a prerequisites <<< "${RELEASE_TRAIN_PREREQUISITES:-}"
           test "${#required_issues[@]}" -gt 0 || {
             echo "release/v${version} has no closeable mandatory child in the selected release train" >&2
             exit 1
           }
           echo "release train #${RELEASE_TRAIN_AUTHORITY} selected for release/v${version}: ${required_issues[*]}"
+          echo "candidate prerequisites: ${prerequisites[*]:-none}"
 
-          for issue in "${required_issues[@]}"; do
-            response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq '[.state, (.state_reason // "")] | @tsv')"
+          # One helper, two labels: a failing product child and a failing prerequisite are different problems and
+          # must never be reported as one, because one is missing product work and the other is unresolved
+          # repository risk or evidence.
+          require_closed() {
+            local group="$1" issue="$2" response state reason
+            if ! response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq '[.state, (.state_reason // "")] | @tsv' 2>/dev/null)"; then
+              echo "${group} FAILED: #${issue} could not be read for release/v${version}" >&2
+              return 1
+            fi
             IFS=$'\t' read -r state reason <<< "${response}"
             if [[ "${state}" != "closed" || "${reason}" == "not_planned" ]]; then
-              echo "release/v${version} is not authorized: issue #${issue} state=${state} reason=${reason:-none}" >&2
+              echo "${group} FAILED: #${issue} state=${state} reason=${reason:-none}" >&2
+              return 1
+            fi
+            echo "${group} #${issue}: closed (${reason:-unspecified})"
+          }
+
+          for issue in "${required_issues[@]}"; do
+            require_closed "PRODUCT CHILD" "${issue}" || exit 1
+          done
+          if [[ ${#prerequisites[@]} -gt 0 ]]; then
+            for issue in "${prerequisites[@]}"; do
+              require_closed "CANDIDATE PREREQUISITE" "${issue}" || exit 1
+            done
+          fi
+
+          # The lineage parent is an exact prior Feature. Trusting the manifest's prose would let a Feature ship
+          # before the release it builds on was accepted, so the accepted public release it names is verified here.
+          if [[ -n "${RELEASE_TRAIN_LINEAGE:-}" ]]; then
+            if ! git ls-remote --exit-code --tags origin "refs/tags/v${RELEASE_TRAIN_LINEAGE}" >/dev/null 2>&1; then
+              echo "CANDIDATE PREREQUISITE FAILED: release/v${version} declares lineage v${RELEASE_TRAIN_LINEAGE}, which has no accepted release tag" >&2
               exit 1
             fi
-            echo "authority #${issue}: closed (${reason:-unspecified})"
-          done
+            echo "lineage v${RELEASE_TRAIN_LINEAGE}: accepted release tag present"
+          fi
           echo "release authority gate passed for v${version}"
 
       - name: Validate milestone release-note state

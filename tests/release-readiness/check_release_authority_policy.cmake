@@ -22,7 +22,7 @@ string(JSON authority_schema ERROR_VARIABLE authority_schema_error GET "${author
 if(authority_schema_error)
     message(FATAL_ERROR "release-authority-policy: release-train authority is malformed: ${authority_schema_error}")
 endif()
-if(NOT authority_schema STREQUAL "2")
+if(NOT authority_schema STREQUAL "3")
     message(FATAL_ERROR "release-authority-policy: unsupported release-train authority schema ${authority_schema}")
 endif()
 
@@ -100,7 +100,7 @@ endif()
 
 # The train map must stay selectable for the trains the release lifecycle is allowed to name, and the conditional
 # train must stay conditional: a version number existing never authorizes a release scope by itself.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.3.0.0 0.4.0.0 1.0.0.0 1.1.0.0)
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.1.0 0.3.0.0 0.3.1.0 0.3.2.0 0.4.0.0 1.0.0.0 1.1.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
@@ -152,17 +152,185 @@ foreach(index RANGE 0 ${v01_child_last})
     string(JSON child GET "${authority_json}" trains "0.1.0.0" mandatory_children ${index})
     list(APPEND actual_v01_children "${child}")
 endforeach()
-set(expected_v01_children 230 231 232 237 238)
+set(expected_v01_children 230 231 232 237 238 253)
 if(NOT "${actual_v01_children}" STREQUAL "${expected_v01_children}")
     message(FATAL_ERROR
         "release-authority-policy: 0.1.0.0 mandatory children drifted. "
         "expected='${expected_v01_children}' actual='${actual_v01_children}'")
 endif()
-foreach(umbrella IN ITEMS 41 143 176 209)
+# #253 is closeable V0.1 release-truth work: shipping a false encryption capability or support statement is itself a
+# product-contract defect, so a selector that can accept V0.1 while #253 is open is incomplete.
+list(FIND actual_v01_children 253 v01_truth_child)
+if(v01_truth_child EQUAL -1)
+    message(FATAL_ERROR "release-authority-policy: #253 must remain a 0.1.0.0 mandatory child")
+endif()
+# Umbrellas, later-train productization and this governance migration are never V0.1 closeable requirements.
+foreach(umbrella IN ITEMS 41 143 176 209 240 241 263 266)
     list(FIND actual_v01_children "${umbrella}" umbrella_as_child)
     if(NOT umbrella_as_child EQUAL -1)
         message(FATAL_ERROR
-            "release-authority-policy: cross-version umbrella #${umbrella} must not be a 0.1.0.0 mandatory child")
+            "release-authority-policy: #${umbrella} must not be a 0.1.0.0 mandatory child")
+    endif()
+endforeach()
+
+# The candidate prerequisite is the other half of the V0.1 contract: #250 is repository evidence-integrity work that
+# blocks candidate acceptance without being part of the product work breakdown, so it must appear as a prerequisite
+# and must not be folded into the closeable children.
+set(expected_v01_prerequisites 250)
+string(JSON v01_prerequisite_count LENGTH "${authority_json}" trains "0.1.0.0" candidate_prerequisites)
+math(EXPR v01_prerequisite_last "${v01_prerequisite_count} - 1")
+set(actual_v01_prerequisites)
+foreach(index RANGE 0 ${v01_prerequisite_last})
+    string(JSON prerequisite GET "${authority_json}" trains "0.1.0.0" candidate_prerequisites ${index})
+    list(APPEND actual_v01_prerequisites "${prerequisite}")
+endforeach()
+if(NOT "${actual_v01_prerequisites}" STREQUAL "${expected_v01_prerequisites}")
+    message(FATAL_ERROR
+        "release-authority-policy: 0.1.0.0 candidate prerequisites drifted. "
+        "expected='${expected_v01_prerequisites}' actual='${actual_v01_prerequisites}'")
+endif()
+list(FIND actual_v01_children 250 v01_prerequisite_as_child)
+if(NOT v01_prerequisite_as_child EQUAL -1)
+    message(FATAL_ERROR
+        "release-authority-policy: #250 is a candidate prerequisite and must not be a 0.1.0.0 mandatory child")
+endif()
+# The V0.1 evidence contract must not require bilingual/branded productization, which is V0.3 work.
+string(JSON v01_evidence_count LENGTH "${authority_json}" trains "0.1.0.0" required_evidence)
+math(EXPR v01_evidence_last "${v01_evidence_count} - 1")
+set(actual_v01_evidence)
+foreach(index RANGE 0 ${v01_evidence_last})
+    string(JSON evidence GET "${authority_json}" trains "0.1.0.0" required_evidence ${index})
+    list(APPEND actual_v01_evidence "${evidence}")
+endforeach()
+foreach(required_v01_evidence IN ITEMS
+        "minimal-developer-entry-and-01-02-03-learning-flow"
+        "truthful-v01-security-version-output"
+        "nonzero-hosted-normal-and-release-readiness-tests")
+    if(NOT required_v01_evidence IN_LIST actual_v01_evidence)
+        message(FATAL_ERROR
+            "release-authority-policy: 0.1.0.0 must require '${required_v01_evidence}'")
+    endif()
+endforeach()
+foreach(forbidden_v01_evidence IN ITEMS "bilingual" "branded")
+    foreach(evidence IN LISTS actual_v01_evidence)
+        if(evidence MATCHES "${forbidden_v01_evidence}")
+            message(FATAL_ERROR
+                "release-authority-policy: 0.1.0.0 evidence '${evidence}' pulls V0.3 productization into V0.1")
+        endif()
+    endforeach()
+endforeach()
+
+# Every exact Feature must carry its own closeable set, prerequisites and lineage: the whole point of the migration is
+# that 0.2.0.0/0.2.1.0 and 0.3.0.0/0.3.1.0/0.3.2.0 are distinct decisions rather than one another's placeholders.
+# A semicolon cannot appear inside a foreach(ITEMS) element - it would split the element itself - so the issue lists
+# below are written with commas and converted before they are compared against a CMake list.
+foreach(exact_expectation IN ITEMS
+        "0.2.0.0|143,174,259,271|258|0.1.0.0"
+        "0.2.1.0|170,239||0.2.0.0"
+        "0.3.0.0|240,241,264||0.2.1.0"
+        "0.3.1.0|265|260|0.3.0.0"
+        "0.3.2.0|144,175|261|0.3.1.0"
+        "0.4.0.0|9,57,109,134,165,242||0.3.2.0")
+    string(REPLACE "|" ";" exact_parts "${exact_expectation}")
+    list(GET exact_parts 0 exact_version)
+    list(GET exact_parts 1 exact_children)
+    string(REPLACE "," ";" exact_children "${exact_children}")
+    list(GET exact_parts 2 exact_prerequisites)
+    string(REPLACE "," ";" exact_prerequisites "${exact_prerequisites}")
+    list(GET exact_parts 3 exact_lineage)
+    string(JSON exact_child_count LENGTH "${authority_json}" trains "${exact_version}" mandatory_children)
+    math(EXPR exact_child_last "${exact_child_count} - 1")
+    set(seen_exact_children)
+    foreach(index RANGE 0 ${exact_child_last})
+        string(JSON child GET "${authority_json}" trains "${exact_version}" mandatory_children ${index})
+        list(APPEND seen_exact_children "${child}")
+    endforeach()
+    if(NOT "${seen_exact_children}" STREQUAL "${exact_children}")
+        message(FATAL_ERROR
+            "release-authority-policy: ${exact_version} closeable set drifted. "
+            "expected='${exact_children}' actual='${seen_exact_children}'")
+    endif()
+    string(JSON exact_prerequisite_count LENGTH
+           "${authority_json}" trains "${exact_version}" candidate_prerequisites)
+    math(EXPR exact_prerequisite_last "${exact_prerequisite_count} - 1")
+    set(seen_exact_prerequisites)
+    if(exact_prerequisite_count GREATER 0)
+        foreach(index RANGE 0 ${exact_prerequisite_last})
+            string(JSON prerequisite GET "${authority_json}" trains "${exact_version}" candidate_prerequisites ${index})
+            list(APPEND seen_exact_prerequisites "${prerequisite}")
+        endforeach()
+    endif()
+    if(NOT "${seen_exact_prerequisites}" STREQUAL "${exact_prerequisites}")
+        message(FATAL_ERROR
+            "release-authority-policy: ${exact_version} candidate prerequisites drifted. "
+            "expected='${exact_prerequisites}' actual='${seen_exact_prerequisites}'")
+    endif()
+    string(JSON actual_exact_lineage ERROR_VARIABLE exact_lineage_error GET
+           "${authority_json}" trains "${exact_version}" lineage_parent)
+    if(exact_lineage_error)
+        set(actual_exact_lineage "")
+    endif()
+    if(NOT actual_exact_lineage STREQUAL "${exact_lineage}")
+        message(FATAL_ERROR
+            "release-authority-policy: ${exact_version} lineage drifted. "
+            "expected='${exact_lineage}' actual='${actual_exact_lineage}'")
+    endif()
+endforeach()
+
+# Preflight is risk work, not product implementation: it is classified as a prerequisite, never as a Feature child.
+foreach(preflight_expectation IN ITEMS "0.2.0.0;258" "0.3.1.0;260" "0.3.2.0;261")
+    list(GET preflight_expectation 0 preflight_version)
+    list(GET preflight_expectation 1 preflight_issue)
+    list(FIND seen_exact_children "${preflight_issue}" preflight_placeholder)
+    string(JSON preflight_count LENGTH "${authority_json}" trains "${preflight_version}" candidate_prerequisites)
+    math(EXPR preflight_last "${preflight_count} - 1")
+    set(preflight_found FALSE)
+    foreach(index RANGE 0 ${preflight_last})
+        string(JSON prerequisite GET "${authority_json}" trains "${preflight_version}" candidate_prerequisites ${index})
+        if(prerequisite STREQUAL "${preflight_issue}")
+            set(preflight_found TRUE)
+        endif()
+    endforeach()
+    if(NOT preflight_found)
+        message(FATAL_ERROR
+            "release-authority-policy: preflight #${preflight_issue} must be a ${preflight_version} candidate "
+            "prerequisite")
+    endif()
+    string(JSON preflight_child_count LENGTH "${authority_json}" trains "${preflight_version}" mandatory_children)
+    math(EXPR preflight_child_last "${preflight_child_count} - 1")
+    foreach(index RANGE 0 ${preflight_child_last})
+        string(JSON child GET "${authority_json}" trains "${preflight_version}" mandatory_children ${index})
+        if(child STREQUAL "${preflight_issue}")
+            message(FATAL_ERROR
+                "release-authority-policy: preflight #${preflight_issue} must not be a ${preflight_version} "
+                "mandatory child")
+        endif()
+    endforeach()
+endforeach()
+
+# The first customer trial is a V0.2.0 decision, not a V0.1 one.
+string(JSON v020_child_count LENGTH "${authority_json}" trains "0.2.0.0" mandatory_children)
+math(EXPR v020_child_last "${v020_child_count} - 1")
+set(v020_children)
+foreach(index RANGE 0 ${v020_child_last})
+    string(JSON child GET "${authority_json}" trains "0.2.0.0" mandatory_children ${index})
+    list(APPEND v020_children "${child}")
+endforeach()
+list(FIND v020_children 271 v020_customer_trial)
+if(v020_customer_trial EQUAL -1)
+    message(FATAL_ERROR "release-authority-policy: #271 customer trial must be a 0.2.0.0 mandatory child")
+endif()
+
+# V0.4 is qualification, not a hidden Feature train: the V0.3 implementation children must not reappear as V0.4 work.
+string(JSON v040_child_count LENGTH "${authority_json}" trains "0.4.0.0" mandatory_children)
+math(EXPR v040_child_last "${v040_child_count} - 1")
+foreach(index RANGE 0 ${v040_child_last})
+    string(JSON child GET "${authority_json}" trains "0.4.0.0" mandatory_children ${index})
+    if(child IN_LIST v020_children OR child EQUAL 264 OR child EQUAL 265 OR child EQUAL 144 OR child EQUAL 175
+       OR child EQUAL 240 OR child EQUAL 241)
+        message(FATAL_ERROR
+            "release-authority-policy: #${child} is V0.2/V0.3 implementation work and must not be re-developed "
+            "under the V0.4 qualification Feature")
     endif()
 endforeach()
 string(JSON v01_reference_count LENGTH "${authority_json}" trains "0.1.0.0" cross_version_references)
@@ -256,6 +424,12 @@ foreach(required_token
         [=[Resolve requested release train]=]
         [=[.github/release/release-trains.json]=]
         [=[RELEASE_TRAIN_MANDATORY]=]
+        [=[RELEASE_TRAIN_PREREQUISITES]=]
+        [=[RELEASE_TRAIN_LINEAGE]=]
+        [=[PRODUCT CHILD]=]
+        [=[CANDIDATE PREREQUISITE]=]
+        [=[candidate_prerequisites list]=]
+        [=[lineage_parent]=]
         [=[is a retired planning label, not a release train]=]
         [=[not an authorized release train]=]
         [=[activation authority]=]
