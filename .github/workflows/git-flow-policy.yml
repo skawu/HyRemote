@@ -82,6 +82,27 @@ jobs:
           # so its matrix is tested rather than reviewed by eye.
           bash .github/scripts/check-pr-branch-name.sh "${HEAD_REF}" "${BASE_REF}"
 
+      # The pull request gate must validate the tree that will actually land. A merge commit is built from the pull
+      # request head against the base's CURRENT tip, so a hosted run recorded against an older base no longer
+      # describes what merges. Requiring a fresh base here makes the stale case visible at merge time instead of
+      # relying on a duplicate full run after the merge - which is the duplication this lane change removes.
+      - name: Require a fresh base before merge
+        if: github.base_ref == 'develop' || github.base_ref == 'main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BASE_REF}" --jq '.object.sha')"
+          echo "pr_base=${PR_BASE_SHA} ${BASE_REF}=${current}"
+          if [ "${PR_BASE_SHA}" != "${current}" ]; then
+            echo "::error::${BASE_REF} moved after this pull request's hosted run (pr base ${PR_BASE_SHA}, ${BASE_REF} ${current}). Merge ${BASE_REF} into the branch and re-run the gate; merge only from a fresh base."
+            exit 1
+          fi
+          echo "base is fresh: ${BASE_REF} == ${current}"
+
       - name: Require the referenced issue to exist and to be an issue
         if: startsWith(github.head_ref, 'feature/') || startsWith(github.head_ref, 'hotfix/')
         shell: bash

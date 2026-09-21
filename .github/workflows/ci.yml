@@ -2,10 +2,25 @@ name: CI
 
 on:
   pull_request:
+    # ready_for_review is not part of the default activity set, and without it a draft converted to ready would never
+    # start the product gate it was waiting for. converted_to_draft keeps the suppression honest in the other
+    # direction: turning a ready PR back into a draft stops being a product run.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     branches:
       - develop
   workflow_dispatch:
+    inputs:
+      # One manual mode, deliberately: a dispatch is the explicit full gate (an exact V0.1 candidate, a release
+      # branch readiness run, main/GA validation, or a deliberate diagnostic). Ordinary work reaches the product
+      # matrix through its own ready pull request instead.
+      validation_level:
+        description: "Validation level for this manual run"
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
 
 permissions:
   contents: read
@@ -20,6 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     outputs:
+      lane: ${{ steps.scope.outputs.lane }}
       product: ${{ steps.scope.outputs.product }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
@@ -30,6 +46,7 @@ jobs:
       qml_evidence: ${{ steps.scope.outputs.qml_evidence }}
       qpa_evidence: ${{ steps.scope.outputs.qpa_evidence }}
       readiness_evidence: ${{ steps.scope.outputs.readiness_evidence }}
+      governance: ${{ steps.scope.outputs.governance }}
       test_exclude: ${{ steps.scope.outputs.test_exclude }}
     steps:
       - uses: actions/checkout@v4
@@ -47,13 +64,19 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           python .github/scripts/resolve-ci-scope.py
 
   product:
     name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
     needs: classify
-    if: needs.classify.outputs.product == 'true'
+    # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
+    # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
+    # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
+    if: >-
+      needs.classify.outputs.product == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -221,8 +244,17 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
+      # Artifacts exist to support a decision: a failure, the clean SDK/deploy acceptance contracts this run was
+      # asked to prove, or the explicit full gate. An ordinary ready pull request that proves neither does not
+      # produce a build-evidence bundle for nothing.
       - name: Upload diagnostic evidence
-        if: failure() || needs.classify.outputs.generic_evidence == 'true' || needs.classify.outputs.qml_evidence == 'true' || needs.classify.outputs.qpa_evidence == 'true' || github.event_name != 'pull_request'
+        if: >-
+          failure() ||
+          needs.classify.outputs.generic_evidence == 'true' ||
+          needs.classify.outputs.cpp_evidence == 'true' ||
+          needs.classify.outputs.qml_evidence == 'true' ||
+          needs.classify.outputs.qpa_evidence == 'true' ||
+          github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: hyremote-test-log-${{ runner.os }}-${{ github.sha }}
@@ -258,6 +290,33 @@ jobs:
             echo "- elapsed after environment start: $((now-start))s"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Release-authority governance needs no Qt SDK, no Windows runner and no product build: it is CMake policy and
+  # selection over the repository itself. Running two full Qt runners just to execute a policy script was the most
+  # expensive way to answer a question that a five-second job answers, so the governance lane is separate and the
+  # classifier reports governance and product independently.
+  authority-governance:
+    name: Release-authority governance (no Qt)
+    needs: classify
+    if: needs.classify.outputs.governance == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Self-test release-train selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_SCOPE_SELF_TEST=ON \
+            -P tests/release-readiness/release_scope.cmake
+
+      - name: Release authority policy gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
+            -P tests/release-readiness/check_release_authority_policy.cmake
+
   no-product-change:
     name: No product CI needed
     needs: classify
@@ -265,4 +324,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
-      - run: echo "Documentation/governance-only change; Qt runner intentionally skipped."
+      - name: Report the lane
+        run: |
+          echo "lane=${{ needs.classify.outputs.lane }}"
+          echo "capabilities=${{ needs.classify.outputs.integrations || 'none' }}"
+          echo "governance=${{ needs.classify.outputs.governance }}"
+          if [ "${{ needs.classify.outputs.lane }}" = "DEVELOP_SENTINEL" ]; then
+            echo "develop sentinel: repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform Qt matrix is not repeated here."
+          else
+            echo "This change cannot affect a product contract; the Qt runners are intentionally skipped."
+          fi

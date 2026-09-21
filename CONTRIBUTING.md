@@ -185,3 +185,42 @@ HyRemote is licensed under the **Apache License 2.0**. Unless a contribution is 
 Do not add source or assets copied from external projects unless their license compatibility, attribution, and redistribution requirements have been reviewed first.
 
 The Apache License 2.0 does not grant trademark rights. Project names, logos, trademarks, and brand assets may have separate usage terms.
+
+## Hosted CI cadence
+
+Hosted runners exist to produce decisions, not to act as a remote compiler. The classifier in
+`.github/scripts/resolve-ci-scope.py` selects one of four lanes, and its self test is the authority for what each
+lane may start:
+
+| Lane | Trigger | What runs |
+| --- | --- | --- |
+| `PR_DRAFT` | draft pull request | Git Flow/topology, the classifier self test, release-authority governance. No Qt runner. |
+| `PR_FAST` | ready pull request | Only what the real `base...head` diff can affect: affected capabilities, the deploy evidence for contracts it touches, readiness when it touches a readiness-consumed surface. |
+| `DEVELOP_SENTINEL` | push to `develop` | Repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform matrix is not repeated on every merge. |
+| `FULL_GATE` | `workflow_dispatch` (`validation_level: full`) | Both platforms, all four frontends, all readiness gates, all applicable clean-deploy evidence. This is the lane for an exact candidate, a release-branch readiness run, main/GA validation or a deliberate diagnostic. |
+
+Working rules that keep that cadence meaningful:
+
+- **Push once per change.** Iterate locally: focused tests, then the canonical `compile.cmd` gate, then a clean local
+  exact head - and only then push and open the pull request. A second push is for a genuine hosted failure, not for
+  using CI as a trial-and-error loop.
+- **Drafts are cheap on purpose.** A draft runs governance only, so it is safe to open early for collaboration; the
+  product gate starts when the pull request becomes ready for review.
+- **Merge only from a fresh base.** A merge commit is built from the pull request head against the base's current tip,
+  so a hosted run against an older base no longer describes what merges. The Git Flow policy checks this at merge
+  time: if the base moved, merge the base into the branch, re-run the gate, and merge only afterwards. That is what
+  makes it safe not to repeat the full matrix after every merge.
+- **Wait only where a decision is pending**: the final ready-pull-request gate and an exact-candidate `FULL_GATE`. Do
+  not wait on ordinary commits, drafts or post-merge duplicates; poll by run id and stop as soon as the run reports
+  completion, because an empty answer is "unknown", never "finished".
+- **Artifacts are evidence, not routine.** Build evidence is uploaded for a failure, for the clean SDK/deploy
+  acceptance contracts a run was asked to prove, and for `FULL_GATE`. A documentation or governance change does not
+  need a build-evidence bundle.
+- **Release-authority work needs no Qt.** Changes to `.github/release/**`,
+  `tests/release-readiness/release_scope.cmake` or `check_release_authority_policy.cmake` run the lightweight
+  governance lane, which executes those policy scripts directly. `governance=true` deliberately does not imply
+  `product=true`.
+
+Reducing frequency must never reduce coverage of the contracts that actually depend on cross-platform behaviour:
+core, runtime, integrations, public headers, the deploy/install authority, package metadata, clean-consumer fixtures,
+the RFB transport and QPA private ABI still require both platforms on the final ready pull request.
