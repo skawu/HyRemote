@@ -256,6 +256,21 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
     )
 
+    if(TARGET hyremote-generic-plugin)
+        # The installed Generic consumers run through the release evidence runner's own cell mechanism, so the
+        # hosted lanes exercise the same clean-install/deploy/run path the release evidence uses - as a normal
+        # product integration test through the canonical build authority, not as a CI-only command.
+        add_test(
+            NAME hyremote-generic-installed-consumers
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-generic-widgets;installed-generic-quick"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-generic-installed-consumers PROPERTIES TIMEOUT 900)
+    endif()
+
     if(TARGET HyRemote::QpaPlatform)
         add_test(
             NAME hyremote-release-readiness-source-qpa-authority

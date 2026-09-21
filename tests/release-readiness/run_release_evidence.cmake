@@ -50,6 +50,12 @@ set(all_cells
     source-qpa-product-fit
     deploy-helper)
 
+# Generic is a primary V0.1 surface, so its installed consumption is part of the evidence set rather than an
+# optional extra: the two consumers are Widgets and Qt Quick, and both must actually run after deployment.
+list(APPEND all_cells
+    installed-generic-widgets
+    installed-generic-quick)
+
 if(NOT DEFINED EVIDENCE_CELLS OR EVIDENCE_CELLS STREQUAL "")
     set(EVIDENCE_CELLS "${all_cells}")
 endif()
@@ -433,6 +439,132 @@ if("source-qpa-product-fit" IN_LIST EVIDENCE_CELLS)
 endif()
 
 # ---------------------------------------------------------------- deploy-helper validation (existing harness)
+
+# ---------------------------------------------------------------- Generic installed consumption
+
+# generic_product_fit(cell consumer_target) - build the Generic consumers against the clean install, deploy them with
+# the same helper every other payload uses, and run the deployed executable with only the deployed runtime on its
+# search path. Two facts are asserted, and they stay separate: the deployed tree carries the Generic payload in Qt's
+# generic plugin directory and no HyRemote platform plugin, and the application itself reports both that it is still
+# on a Qt-provided platform and that the plugin is discoverable.
+function(generic_product_fit cell consumer_target)
+    set(_build "${RUN_DIR}/${cell}/build")
+    file(MAKE_DIRECTORY "${_build}")
+    run_toolchain("${cell}" "configure"
+        "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-generic" -B "${_build}"
+            "-DCMAKE_BUILD_TYPE=Release"
+            "-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}${PATH_SEP}${QT_PREFIX_CACHE}"
+            ${CONSUMER_TOOLCHAIN_ARGS})
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "Generic consumer configure failed")
+        return()
+    endif()
+    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}")
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "Generic consumer build failed")
+        return()
+    endif()
+    run_toolchain("${cell}" "install"
+        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed")
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "Generic consumer deployment failed")
+        return()
+    endif()
+
+    set(_deployed "${RUN_DIR}/${cell}/deployed")
+    set(_exe "${_deployed}/bin/${consumer_target}")
+    if(WIN32)
+        set(_exe "${_exe}.exe")
+    endif()
+    if(NOT EXISTS "${_exe}")
+        fail_cell("${cell}" "deployed Generic consumer executable is missing: ${_exe}")
+        return()
+    endif()
+
+    # Generic is a plugin payload, never a platform plugin: the payload must be present below the generic plugin
+    # directory, and a HyRemote platform plugin in the deployed tree would mean the native platform identity was
+    # replaced rather than preserved.
+    file(GLOB _generic_payloads "${_deployed}/plugins/generic/*")
+    list(LENGTH _generic_payloads _generic_payload_count)
+    if(_generic_payload_count EQUAL 0)
+        fail_cell("${cell}" "deployed tree carries no Generic Plugin payload under plugins/generic")
+        return()
+    endif()
+    file(GLOB _platform_payloads "${_deployed}/plugins/platforms/*hyremote*")
+    list(LENGTH _platform_payloads _platform_payload_count)
+    if(NOT _platform_payload_count EQUAL 0)
+        fail_cell("${cell}" "Generic deployment installed a HyRemote platform plugin: ${_platform_payloads}")
+        return()
+    endif()
+    record("${cell}" "GENERIC_PAYLOAD" "${_generic_payloads}")
+
+    # Source/build-tree independence, counted rather than asserted in prose: the consumer must have acquired
+    # HyRemote from the clean install prefix, so neither the repository source tree nor the product build tree
+    # may appear in the consumer's configure cache, and the deployed tree must be self-contained.
+    set(_source_tree_hits 0)
+    set(_build_tree_hits 0)
+    file(READ "${_build}/CMakeCache.txt" _consumer_cache)
+    string(REPLACE "\\" "/" _consumer_cache "${_consumer_cache}")
+    set(_source_probe "${HYREMOTE_SOURCE_DIR}")
+    set(_build_probe "${HYREMOTE_BUILD_DIR}")
+    string(REPLACE "\\" "/" _source_probe "${_source_probe}")
+    string(REPLACE "\\" "/" _build_probe "${_build_probe}")
+    # The evidence run itself lives inside the product build tree, so lines that are about this run's own
+    # directories are not build-tree acquisition; everything else pointing at the product trees is.
+    foreach(_cache_line IN LISTS _consumer_cache)
+        string(FIND "${_cache_line}" "${RUN_DIR}" _run_dir_hit)
+        if(NOT _run_dir_hit EQUAL -1)
+            continue()
+        endif()
+        string(FIND "${_cache_line}" "${_source_probe}" _source_hit)
+        if(NOT _source_hit EQUAL -1)
+            math(EXPR _source_tree_hits "${_source_tree_hits} + 1")
+        endif()
+        string(FIND "${_cache_line}" "${_build_probe}" _build_hit)
+        if(NOT _build_hit EQUAL -1)
+            math(EXPR _build_tree_hits "${_build_tree_hits} + 1")
+        endif()
+    endforeach()
+
+    # Positive form of the same fact: the package the consumer resolved is the clean install, not the build tree.
+    string(FIND "${_consumer_cache}" "HyRemote_DIR:PATH=${INSTALL_PREFIX}" _install_acquisition_hit)
+    if(_install_acquisition_hit EQUAL -1)
+        fail_cell("${cell}" "installed Generic consumer did not resolve HyRemote from the clean install prefix")
+        return()
+    endif()
+
+    record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
+    record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
+    if(NOT _source_tree_hits EQUAL 0 OR NOT _build_tree_hits EQUAL 0)
+        fail_cell("${cell}" "installed Generic consumer acquired HyRemote from the source or build tree")
+        return()
+    endif()
+
+    # The deployed application runs with the deployed runtime on its search path only - no build tree, no source
+    # tree, no SDK prefix - which is the same isolation the other consumer cells use.
+    set(_path "${_deployed}/bin${PATH_SEP}${OS_RUNTIME_PATH}")
+    record_runtime_env("${cell}" "${_path}")
+    record("${cell}" "EXECUTABLE" "${_exe}")
+    run_capture("${cell}" "deployed_smoke" "${_path}" "${_exe}")
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "deployed Generic consumer did not exit successfully")
+        return()
+    endif()
+    record("${cell}" "RESULT_DETAIL" "deployed Generic consumer preserved native platform identity and discovered the plugin")
+    record("${cell}" "RESULT" "PASS")
+endfunction()
+
+if("installed-generic-widgets" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-generic-widgets")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-generic (Widgets, Qt-only)")
+    generic_product_fit("${cell}" "generic-widgets-consumer")
+endif()
+
+if("installed-generic-quick" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-generic-quick")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-generic (Quick, Qt-only)")
+    generic_product_fit("${cell}" "generic-quick-consumer")
+endif()
 
 if("deploy-helper" IN_LIST EVIDENCE_CELLS)
     set(cell "deploy-helper")
