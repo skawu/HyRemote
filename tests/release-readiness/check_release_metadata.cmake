@@ -303,6 +303,43 @@ foreach(required_link
     endif()
 endforeach()
 
+# The V0.1 security boundary is product truth a stale document can over-claim, and it has no other owner: V0.1 is a
+# loopback-only Developer Preview with no encrypted or authenticated-encrypted profile, and the VeNCrypt/TLS work
+# belongs to the V0.2 train under #143. This is asserted here - in the gate that already owns release-facing document
+# truth - rather than in a separate prose checker with its own drifting authority.
+foreach(security_document IN ITEMS
+        docs/known-limitations.md docs/security-model.md docs/security.md docs/getting-started/generic.md)
+    file(READ "${HYREMOTE_SOURCE_DIR}/${security_document}" security_text)
+    string(REPLACE "\r\n" "\n" security_body "${security_text}")
+    string(REPLACE "\n" ";" security_lines "${security_body}")
+    foreach(line IN LISTS security_lines)
+        foreach(token IN ITEMS "VeNCrypt" "TLS")
+            string(FIND "${line}" "${token}" token_found)
+            if(token_found EQUAL -1)
+                continue()
+            endif()
+            string(FIND "${line}" "V1.0" v1_found)
+            if(NOT v1_found EQUAL -1)
+                # A line that denies the V1.0 claim is correct documentation, not a mislabel. Release-facing
+                # documents exist in both languages, so the denial has to be recognised in either.
+                set(denial_found -1)
+                foreach(denial IN ITEMS "not " "不是" "不 是")
+                    string(FIND "${line}" "${denial}" _denial_hit)
+                    if(NOT _denial_hit EQUAL -1)
+                        set(denial_found 0)
+                        break()
+                    endif()
+                endforeach()
+                if(denial_found EQUAL -1)
+                    message(FATAL_ERROR
+                        "release-readiness: ${security_document} labels the ${token} work as V1.0.0.0; it is V0.2 "
+                        "work under #143")
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+endforeach()
+
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
         "add_subdirectory(learning/01-widgets-cpp)"

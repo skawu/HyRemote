@@ -7,8 +7,10 @@ HyRemote 的参考接入方式是一个很小的 C++ 门面，以**一个共享�
 
 ## 前置条件
 
-V1 参考线是 **Qt 6.8.x**；自动化产品工作在 Windows x86_64 与 Linux x86_64 上针对 **Qt 6.8.3**。其它 Qt 版本不会因此
-被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。
+V0.1 参考矩阵是 **Windows x86_64** 与 **Linux x86_64**，针对 **Qt 6.8.3**。其它 Qt 版本不会因此
+被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。V0.1 是 **loopback-only Developer
+Preview**：Embedded C++ 与 Generic Plugin 是**主要（primary）**接入面，Declarative QML 与 Transparent QPA 是**预览
+（preview）**接入面，支持承诺更窄。
 
 二选一获取方式：
 
@@ -106,7 +108,7 @@ if (!remote.start()) {
 
 ## 部署
 
-V1 的 C++ 运行期产物是共享库 `HyRemoteRemoteAccess`。Core 静态组合在它之后，所以用户**不需要**再部署第二个 HyRemote Core 运行时。
+V0.1 的 C++ 运行期产物是共享库 `HyRemoteRemoteAccess`，与所有前端共享同一个 Shared Runtime。Core 静态组合在它之后，所以用户**不需要**再部署第二个 HyRemote Core 运行时。
 
 使用唯一那个包助手：
 

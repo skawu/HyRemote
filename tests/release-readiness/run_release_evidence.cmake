@@ -304,6 +304,182 @@ string(REPLACE ";" "\\;" _consumer_prefix_list "${_consumer_prefix_list}")
 set(CONSUMER_CONFIGURATION "Release")
 set(CONSUMER_CONFIG_ARGS --config "${CONSUMER_CONFIGURATION}")
 
+# ---------------------------------------------------------------- acquisition auditing
+
+# cache_field(<cache_file> <key> <out_var>) - read exactly one CMake cache entry, by parsing the file as lines.
+#
+# A CMakeCache is not a CMake list. Its values legitimately contain semicolons, spaces, backslashes and escape
+# sequences - Windows paths are the everyday case - so reading the whole file into one variable and iterating it as a
+# list splits values that were never lists, and any audit built on it depends on quoting luck rather than on the file
+# format. file(STRINGS) yields the real lines; the key line is then joined back losslessly, because splitting on
+# semicolons and rejoining with them is a round trip.
+function(cache_field cache_file key out_var)
+    file(STRINGS "${cache_file}" _key_lines REGEX "^${key}:[A-Za-z0-9_]+=")
+    if(NOT _key_lines)
+        set(${out_var} "" PARENT_SCOPE)
+        return()
+    endif()
+    list(JOIN _key_lines ";" _entry)
+    string(REGEX REPLACE "^${key}:[A-Za-z0-9_]+=" "" _value "${_entry}")
+    string(REPLACE "\r" "" _value "${_value}")
+    string(STRIP "${_value}" _value)
+    set(${out_var} "${_value}" PARENT_SCOPE)
+endfunction()
+
+# normalize_path(<in> <out>) - the comparable form of a path: forward slashes, no trailing separator, and lower case on
+# Windows, where the filesystem is case-insensitive and the cache records whatever the generator happened to write.
+function(normalize_path in_path out_var)
+    set(_path "${in_path}")
+    string(STRIP "${_path}" _path)
+    string(REPLACE "\\" "/" _path "${_path}")
+    string(REGEX REPLACE "/+$" "" _path "${_path}")
+    if(WIN32)
+        string(TOLOWER "${_path}" _path)
+    endif()
+    set(${out_var} "${_path}" PARENT_SCOPE)
+endfunction()
+
+# path_is_under(<path> <root> <out_bool>) - true when path is root or below it. Compared with string(FIND) rather than
+# a regex, because a path contains regex metacharacters on both platforms.
+function(path_is_under path root out_var)
+    normalize_path("${path}" _path)
+    normalize_path("${root}" _root)
+    if(_path STREQUAL "" OR _root STREQUAL "")
+        set(${out_var} FALSE PARENT_SCOPE)
+        return()
+    endif()
+    string(FIND "${_path}/" "${_root}/" _offset)
+    if(_offset EQUAL 0)
+        set(${out_var} TRUE PARENT_SCOPE)
+    else()
+        set(${out_var} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
+# stage_consumer_source(<cell> <fixture> <out_dir_var>) - the executed consumer must not be built from the repository.
+#
+# The checked-in directory is the test definition and stays in the repository; what is configured, built, deployed and
+# run is a copy staged under this run's own scratch space. Without that step, configuring "-S <repository>/tests/..."
+# means the consumer's own source is acquired from the product source tree, and counting how many cache lines mention
+# that tree cannot make the claim true.
+function(stage_consumer_source cell fixture out_var)
+    set(_staged "${RUN_DIR}/${cell}/source")
+    file(REMOVE_RECURSE "${_staged}")
+    file(MAKE_DIRECTORY "${_staged}")
+    file(COPY "${HYREMOTE_SOURCE_DIR}/${fixture}/" DESTINATION "${_staged}")
+    file(GLOB _staged_entries "${_staged}/*")
+    if(NOT _staged_entries)
+        fail_cell("${cell}" "staging ${fixture} produced no consumer source under ${_staged}")
+        set(${out_var} "" PARENT_SCOPE)
+        return()
+    endif()
+    record("${cell}" "CONSUMER_FIXTURE" "${fixture}")
+    record("${cell}" "CONSUMER_SOURCE_DIR" "${_staged}")
+    set(${out_var} "${_staged}" PARENT_SCOPE)
+endfunction()
+
+# audit_consumer_acquisition(<cell> <build_dir>) - what the consumer acquired, and from where.
+#
+# This is the acquisition half of the evidence, and it is deliberately separate from the runtime half: proving the
+# deployed tree runs in isolation does not prove anything about which CMake package the consumer resolved against.
+# Two positive facts are required and recorded - HyRemote resolved from this run's clean install prefix, and Qt
+# resolved from the Qt prefix the product itself was configured against - and the source/build-tree counters then
+# count acquisition-relevant cache fields only, not every line that happens to mention a path.
+function(audit_consumer_acquisition cell build_dir)
+    set(_cache "${build_dir}/CMakeCache.txt")
+    if(NOT EXISTS "${_cache}")
+        fail_cell("${cell}" "consumer configure produced no CMakeCache.txt at ${_cache}")
+        return()
+    endif()
+
+    cache_field("${_cache}" "HyRemote_DIR" _hyremote_dir_raw)
+    cache_field("${_cache}" "Qt6_DIR" _qt6_dir_raw)
+    cache_field("${_cache}" "CMAKE_PREFIX_PATH" _consumer_prefix_raw)
+    if(_hyremote_dir_raw STREQUAL "" OR _qt6_dir_raw STREQUAL "")
+        fail_cell("${cell}" "consumer cache records no resolved HyRemote_DIR or Qt6_DIR acquisition")
+        return()
+    endif()
+
+    normalize_path("${_hyremote_dir_raw}" _hyremote_dir)
+    normalize_path("${_qt6_dir_raw}" _qt6_dir)
+    normalize_path("${INSTALL_PREFIX}" _install_root)
+    record("${cell}" "HYREMOTE_DIR" "${_hyremote_dir}")
+    record("${cell}" "QT6_DIR" "${_qt6_dir}")
+    record("${cell}" "CONSUMER_CMAKE_PREFIX_PATH" "${_consumer_prefix_raw}")
+
+    path_is_under("${_hyremote_dir}" "${_install_root}" _hyremote_in_install)
+    if(NOT _hyremote_in_install)
+        fail_cell("${cell}"
+            "consumer resolved HyRemote_DIR ${_hyremote_dir} outside the clean install prefix ${_install_root}")
+        return()
+    endif()
+
+    # Qt must come from the prefix this lane selected, which is the prefix the product itself was configured against.
+    set(_qt_in_selected_prefix FALSE)
+    foreach(_qt_root IN LISTS QT_PREFIX_CACHE)
+        path_is_under("${_qt6_dir}" "${_qt_root}" _qt_under_root)
+        if(_qt_under_root)
+            set(_qt_in_selected_prefix TRUE)
+            break()
+        endif()
+    endforeach()
+    record("${cell}" "QT_SELECTED_PREFIX" "${QT_PREFIX_CACHE}")
+    if(NOT _qt_in_selected_prefix)
+        fail_cell("${cell}"
+            "consumer resolved Qt6_DIR ${_qt6_dir} outside the selected Qt prefix ${QT_PREFIX_CACHE}")
+        return()
+    endif()
+
+    # Acquisition fields only: a CMake package, include, library or plugin path that points into the product source
+    # tree or the product build tree is acquisition from there. Lines about this run's own scratch tree are excluded,
+    # because the run lives inside the build tree by construction and the staged consumer source is its own input.
+    set(_source_tree_hits 0)
+    set(_build_tree_hits 0)
+    normalize_path("${HYREMOTE_SOURCE_DIR}" _source_probe)
+    normalize_path("${HYREMOTE_BUILD_DIR}" _build_probe)
+    normalize_path("${RUN_DIR}" _run_probe)
+    file(STRINGS "${_cache}" _cache_lines REGEX "^(HyRemote|Qt6|[A-Za-z0-9_]*Qt6|CMAKE_PREFIX_PATH|CMAKE_[A-Za-z_]*PATH|.*_DIR|.*_INCLUDE_DIR|.*_LIBRARY|.*_PLUGIN|.*_PLUGINS|.*_FILE):")
+    foreach(_line IN LISTS _cache_lines)
+        normalize_path("${_line}" _line_normalized)
+        string(FIND "${_line_normalized}" "${_run_probe}" _run_hit)
+        if(NOT _run_hit EQUAL -1)
+            continue()
+        endif()
+        string(FIND "${_line_normalized}" "${_source_probe}" _source_hit)
+        if(NOT _source_hit EQUAL -1)
+            math(EXPR _source_tree_hits "${_source_tree_hits} + 1")
+        endif()
+        string(FIND "${_line_normalized}" "${_build_probe}" _build_hit)
+        if(NOT _build_hit EQUAL -1)
+            math(EXPR _build_tree_hits "${_build_tree_hits} + 1")
+        endif()
+    endforeach()
+    record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
+    record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
+    record("${cell}" "SOURCE_TREE_DEP_COUNT" "${_source_tree_hits}")
+    record("${cell}" "BUILD_TREE_DEP_COUNT" "${_build_tree_hits}")
+    if(NOT _source_tree_hits EQUAL 0 OR NOT _build_tree_hits EQUAL 0)
+        fail_cell("${cell}"
+            "consumer acquired HyRemote from the product source tree (${_source_tree_hits}) or build tree "
+            "(${_build_tree_hits})")
+        return()
+    endif()
+    set(${cell}_acquisition_ok TRUE PARENT_SCOPE)
+endfunction()
+
+# record_runtime_isolation(<cell> <deployed_root>) - the runtime half, stated separately from acquisition.
+function(record_runtime_isolation cell deployed_root)
+    record("${cell}" "RUNTIME_DEPLOYED_TREE" "${deployed_root}")
+    file(GLOB _shared_runtime "${deployed_root}/bin/*RemoteAccess*" "${deployed_root}/lib/*RemoteAccess*")
+    list(LENGTH _shared_runtime _shared_runtime_count)
+    record("${cell}" "RUNTIME_SHARED_RUNTIME_COUNT" "${_shared_runtime_count}")
+    if(NOT _shared_runtime_count EQUAL 1)
+        fail_cell("${cell}" "deployed tree must carry exactly one shared RemoteAccess runtime, found ${_shared_runtime_count}")
+        return()
+    endif()
+    set(${cell}_runtime_ok TRUE PARENT_SCOPE)
+endfunction()
+
 foreach(cell IN LISTS EVIDENCE_CELLS)
     if(NOT cell IN_LIST all_cells)
         message(FATAL_ERROR "release-evidence: unknown evidence cell '${cell}'")
@@ -496,8 +672,9 @@ endif()
 function(generic_product_fit cell consumer_target)
     set(_build "${RUN_DIR}/${cell}/build")
     file(MAKE_DIRECTORY "${_build}")
+    stage_consumer_source("${cell}" "tests/consumer-installed-generic" _consumer_source)
     run_toolchain("${cell}" "configure"
-        "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-generic" -B "${_build}"
+        "${CMAKE_COMMAND}" -S "${_consumer_source}" -B "${_build}"
             "-DCMAKE_BUILD_TYPE=Release"
             "-DCMAKE_PREFIX_PATH=${_consumer_prefix_list}"
             ${CONSUMER_TOOLCHAIN_ARGS})
@@ -562,59 +739,15 @@ function(generic_product_fit cell consumer_target)
     endif()
     record("${cell}" "NATIVE_PLATFORM_PAYLOAD" "${_native_platform_payloads}")
 
-    # Source/build-tree independence, counted rather than asserted in prose: the consumer must have acquired
-    # HyRemote from the clean install prefix, so neither the repository source tree nor the product build tree
-    # may appear in the consumer's configure cache, and the deployed tree must be self-contained.
-    set(_source_tree_hits 0)
-    set(_build_tree_hits 0)
-    file(READ "${_build}/CMakeCache.txt" _consumer_cache)
-    string(REPLACE "\\" "/" _consumer_cache "${_consumer_cache}")
-    set(_source_probe "${HYREMOTE_SOURCE_DIR}")
-    set(_build_probe "${HYREMOTE_BUILD_DIR}")
-    string(REPLACE "\\" "/" _source_probe "${_source_probe}")
-    string(REPLACE "\\" "/" _build_probe "${_build_probe}")
-    # The evidence run itself lives inside the product build tree, so lines that are about this run's own
-    # directories are not build-tree acquisition; everything else pointing at the product trees is.
-    foreach(_cache_line IN LISTS _consumer_cache)
-        string(FIND "${_cache_line}" "${RUN_DIR}" _run_dir_hit)
-        if(NOT _run_dir_hit EQUAL -1)
-            continue()
-        endif()
-        string(FIND "${_cache_line}" "${_source_probe}" _source_hit)
-        if(NOT _source_hit EQUAL -1)
-            math(EXPR _source_tree_hits "${_source_tree_hits} + 1")
-        endif()
-        string(FIND "${_cache_line}" "${_build_probe}" _build_hit)
-        if(NOT _build_hit EQUAL -1)
-            math(EXPR _build_tree_hits "${_build_tree_hits} + 1")
-        endif()
-    endforeach()
-
-    # Positive form of the same fact: the package the consumer resolved is the clean install, not the build tree.
-    string(FIND "${_consumer_cache}" "HyRemote_DIR:PATH=${INSTALL_PREFIX}" _install_acquisition_hit)
-    if(_install_acquisition_hit EQUAL -1)
-        fail_cell("${cell}" "installed Generic consumer did not resolve HyRemote from the clean install prefix")
+    # Acquisition and runtime isolation are proved separately, because neither implies the other: a self-contained
+    # deployed tree says nothing about which CMake package the consumer resolved, and a cache audit says nothing
+    # about whether the deployed application can start without the SDKs.
+    audit_consumer_acquisition("${cell}" "${_build}")
+    if(NOT ${cell}_acquisition_ok)
         return()
     endif()
-
-    # The same positive form for Qt, recorded so the acquisition is auditable: the consumer must resolve Qt6 from
-    # the Qt prefix this lane selected, not from a system or accidental package.
-    string(REGEX MATCH "Qt6_DIR:PATH=([^\n]*)" _qt_dir_line "${_consumer_cache}")
-    if("${_qt_dir_line}" STREQUAL "")
-        fail_cell("${cell}" "installed Generic consumer recorded no resolved Qt6 package directory")
-        return()
-    endif()
-    string(FIND "${_qt_dir_line}" "${QT_PREFIX_CACHE}" _qt_prefix_hit)
-    if(_qt_prefix_hit EQUAL -1)
-        fail_cell("${cell}" "installed Generic consumer resolved Qt6 outside the requested Qt prefix: ${_qt_dir_line}")
-        return()
-    endif()
-    record("${cell}" "QT6_DIR" "${_qt_dir_line}")
-
-    record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
-    record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
-    if(NOT _source_tree_hits EQUAL 0 OR NOT _build_tree_hits EQUAL 0)
-        fail_cell("${cell}" "installed Generic consumer acquired HyRemote from the source or build tree")
+    record_runtime_isolation("${cell}" "${_deployed}")
+    if(NOT ${cell}_runtime_ok)
         return()
     endif()
 
@@ -686,8 +819,9 @@ function(cpp_product_fit cell consumer_target)
         set(_kind "quick")
         set(_probe "quick")
     endif()
+    stage_consumer_source("${cell}" "tests/consumer-installed-cpp" _consumer_source)
     run_toolchain("${cell}" "configure"
-        "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-cpp" -B "${_build}"
+        "${CMAKE_COMMAND}" -S "${_consumer_source}" -B "${_build}"
             "-DCMAKE_BUILD_TYPE=Release"
             "-DHYREMOTE_CPP_CONSUMER_KIND=${_kind}"
             "-DCMAKE_PREFIX_PATH=${_consumer_prefix_list}"
@@ -717,7 +851,10 @@ function(cpp_product_fit cell consumer_target)
         fail_cell("${cell}" "deployed C++ consumer executable is missing: ${_exe}")
         return()
     endif()
-    record("${cell}" "HYREMOTE_DIR" "${_deployed}/bin")
+    # A deployment location is not package acquisition: the acquisition facts are read from the consumer's own cache
+    # by audit_consumer_acquisition() below, and HYREMOTE_DIR therefore means the resolved HyRemote package
+    # directory. Naming a runtime bin directory after it is the mislabeling this cell used to carry.
+    record("${cell}" "RUNTIME_DEPLOYED_BIN" "${_deployed}/bin")
 
     # The deployed tree must be self-contained: the shared runtime and a native Qt platform plugin both have to be
     # present, and no HyRemote platform plugin may exist, because the C++ product path never replaces the native
@@ -742,40 +879,13 @@ function(cpp_product_fit cell consumer_target)
         return()
     endif()
     record("${cell}" "QT_PLATFORM_PAYLOAD" "${_platform_payloads}")
-
-    # Source/build-tree independence, counted from the consumer's own configure cache exactly as the other installed
-    # consumer cells do, plus the positive form of the same fact.
-    set(_source_tree_hits 0)
-    set(_build_tree_hits 0)
-    file(READ "${_build}/CMakeCache.txt" _consumer_cache)
-    string(REPLACE "\\" "/" _consumer_cache "${_consumer_cache}")
-    set(_source_probe "${HYREMOTE_SOURCE_DIR}")
-    set(_build_probe "${HYREMOTE_BUILD_DIR}")
-    string(REPLACE "\\" "/" _source_probe "${_source_probe}")
-    string(REPLACE "\\" "/" _build_probe "${_build_probe}")
-    foreach(_cache_line IN LISTS _consumer_cache)
-        string(FIND "${_cache_line}" "${RUN_DIR}" _run_dir_hit)
-        if(NOT _run_dir_hit EQUAL -1)
-            continue()
-        endif()
-        string(FIND "${_cache_line}" "${_source_probe}" _source_hit)
-        if(NOT _source_hit EQUAL -1)
-            math(EXPR _source_tree_hits "${_source_tree_hits} + 1")
-        endif()
-        string(FIND "${_cache_line}" "${_build_probe}" _build_hit)
-        if(NOT _build_hit EQUAL -1)
-            math(EXPR _build_tree_hits "${_build_tree_hits} + 1")
-        endif()
-    endforeach()
-    string(FIND "${_consumer_cache}" "HyRemote_DIR:PATH=${INSTALL_PREFIX}" _install_acquisition_hit)
-    if(_install_acquisition_hit EQUAL -1)
-        fail_cell("${cell}" "clean C++ consumer did not resolve HyRemote from the clean install prefix")
+    record_runtime_isolation("${cell}" "${_deployed}")
+    if(NOT ${cell}_runtime_ok)
         return()
     endif()
-    record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
-    record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
-    if(NOT _source_tree_hits EQUAL 0 OR NOT _build_tree_hits EQUAL 0)
-        fail_cell("${cell}" "clean C++ consumer acquired HyRemote from the source or build tree")
+
+    audit_consumer_acquisition("${cell}" "${_build}")
+    if(NOT ${cell}_acquisition_ok)
         return()
     endif()
 
