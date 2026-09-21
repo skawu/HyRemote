@@ -175,6 +175,11 @@ jobs:
       - name: Test evidence summary
         if: always()
         shell: bash
+        env:
+          # The summary has to report the exclusion this run actually used, and the guard below has to be able to
+          # fire. Without this the report printed "<empty>" for every run and the all-matching-shape check could
+          # never trigger, which is a guard in name only.
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
         run: |
           set -uo pipefail
           LOG=build-ci/test.log
