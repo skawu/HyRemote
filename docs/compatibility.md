@@ -135,9 +135,12 @@ Current product behavior includes:
 - standard RFB remote viewing;
 - optional remote input;
 - reconnect without rebuilding the application Runtime;
-- RFB VNC authentication when the authenticated profile is configured;
+- `Insecure` loopback-only behavior;
+- conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
 - no stream encryption in V0.1;
-- fail-closed `AuthenticatedEncrypted` while the encrypted backend is unavailable.
+- `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
+
+The default V0.1 build/profile must not be interpreted as providing authenticated transport merely because the public API exposes the `Authenticated` profile.
 
 Viewer-specific interoperability claims should be added only for viewers/versions that have been explicitly exercised. A viewer's ability to connect once is not enough to broaden the product compatibility matrix for every viewer implementation.
 
