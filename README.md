@@ -10,21 +10,22 @@ V1 reference platforms: Windows x86_64 and Linux x86_64.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-  <img src="https://img.shields.io/badge/status-V1%20convergence-orange.svg" alt="Status: V1 convergence">
+  <img src="https://img.shields.io/badge/status-V0.1%20Developer%20Preview-orange.svg" alt="Status: V0.1 Developer Preview">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20x86__64-lightgrey.svg" alt="Platform: Windows | Linux x86_64">
   <img src="https://img.shields.io/badge/Qt-6.8.3%20reference-41CD52.svg" alt="Qt 6.8.3 reference">
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
 </p>
 
-HyRemote keeps the application-facing model deliberately small. V1 has three mandatory integration modes:
+HyRemote keeps the application-facing model deliberately small. The architecture has four peer integration frontends:
 
 1. **Embedded C++ API:** link one shared library, `HyRemote::RemoteAccess`;
 2. **Declarative QML API:** `import HyRemote` and use the thin `RemoteAccess` wrapper over the same C++ runtime;
-3. **Transparent QPA Proxy:** keep the application Qt-only and launch it with `-platform hyremote`.
+3. **Generic Plugin:** a public Qt generic plugin, activated with `-plugin hyremote`, that leaves the application's native Qt platform integration untouched;
+4. **Transparent QPA Proxy:** keep the application Qt-only and launch it with `-platform hyremote`.
 
-Qt Widgets and Qt Quick are first-class peers. The three integration modes share one remote-access runtime architecture rather than creating separate Session/transport stacks.
+Qt Widgets and Qt Quick are first-class peers. The four frontends share one remote-access runtime architecture rather than creating separate Session/transport stacks.
 
-> **Release status:** V1.0.0.0 acceptance is pending. The current reference matrix is Windows x86_64 + Linux x86_64 with Qt 6.8.3. Candidate implementation is not a Supported claim until the required executable and physical evidence actually passes.
+> **Release status:** V0.1.0.0 Developer Preview, acceptance pending. V0.1 promises two primary surfaces - **Embedded C++** and the **Generic Plugin** - while the Declarative QML and Transparent QPA frontends are preview surfaces with a narrower support contract. The current reference matrix is Windows x86_64 + Linux x86_64 with Qt 6.8.3. This is not a GA or production-ready claim until the required executable and physical evidence actually passes.
 
 ## C++ — one shared library
 
@@ -164,9 +165,12 @@ one question - does it ship?:
 ```text
 src/                 the shipping tree: everything built and delivered, one directory per deliverable
   core/                BASE       internal static library; not installed, not linkable by a payload
-  cpp/                 MODE 1     C++ API: the shared runtime and its public facade
-  qml/                 MODE 2     QML API: provides `import HyRemote`
-  qpa/                 MODE 3     QPA platform integration: provides `qhyremote`, Qt 6.8.3-qualified
+  runtime/             RUNTIME    the one shared remote-access runtime every frontend is built on
+  integrations/        FRONTENDS  four peer integration frontends, one directory each
+    cpp/               C++        the public `HyRemote::RemoteAccess` facade
+    qml/               QML        provides `import HyRemote`
+    generic/           GENERIC    the public Qt generic plugin, `-plugin hyremote`
+    qpa/               QPA        provides `qhyremote`, Qt 6.8.3-qualified
 tests/               tests and product verification: clean consumers, product E2E, the public-surface contract,
                      the third-party matrix and the release gates. Unit tests live with the module they
                      qualify, in src/*/tests/, so they are never here.
@@ -210,23 +214,25 @@ The V1 candidate contains:
 
 `-DHYREMOTE_BUILD_EXAMPLES=ON` builds the examples for product modes enabled in the current configuration. The standard C++ configuration therefore builds the C++ Widgets/Quick examples without requiring QML or QPA.
 
-For the complete V1 three-mode example matrix, use:
+For the complete example matrix across all four frontends, use:
 
 ```text
 -DHYREMOTE_BUILD_EXAMPLES=ON
 -DHYREMOTE_BUILD_QML_API=ON
+-DHYREMOTE_WITH_GENERIC_PLUGIN=ON
 -DHYREMOTE_WITH_QPA_PROXY=ON
 ```
 
-Formal pre-GA release versions enforce their cumulative milestone profile and reject later integration modes until those modes reach their own release milestone.
+A release version does not select which frontends may exist: frontend enablement, support level and preview/qualified/supported status are release-train scope and compatibility decisions. The release-profile validator refuses only the retired `V0.0.x` planning labels.
 
 ## Documentation
 
-Choose the application mode first:
+Choose the frontend you consume first:
 
 - [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — Embedded C++
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — Declarative QML
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — Transparent QPA
+- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) — Generic Plugin, including `hyremote_deploy(TARGET MyApp GENERIC)`
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — Declarative QML (V0.1 preview)
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — Transparent QPA (V0.1 preview)
 
 Reference/setup and delivery guides:
 
@@ -250,18 +256,21 @@ The bounded RFB correctness transport uses **SecurityType None** unless an authe
 
 Do **not** expose the current baseline directly to an untrusted network or the public Internet. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
 
-## V1 release discipline
+## Release discipline
 
-Milestone tags are release facts, not progress markers, and the pre-GA profiles are cumulative:
+Milestone tags are release facts, not progress markers. Delivery before first GA is progressive, and every train is a real public release with a deliberately narrower support contract than GA:
 
-| Milestone | Tag | Released product surface | Current state |
-| --- | --- | --- | --- |
-| Embedded C++ | `v0.0.1.0` | C++ | acceptance pending |
-| Declarative QML | `v0.0.2.0` | C++ + QML | acceptance pending |
-| Transparent QPA | `v0.0.3.0` | C++ + QML + QPA | acceptance pending |
-| GA / all three modes | `v1.0.0.0` | C++ + QML + QPA | acceptance pending |
+| Train | User promise | State |
+| --- | --- | --- |
+| `v0.1.0.0` | Use It / Developer Preview - loopback-only, with Embedded C++ and the Generic Plugin as the primary surfaces | acceptance pending |
+| `v0.2.0.0` | Trust It / Operational Preview - security, session and network | not started |
+| `v0.3.0.0` | Productize It / Product Preview - four product-deliverable integrations, deployment, examples | not started |
+| `v0.4.0.0` | Qualify It / Release Candidate line, with `V0.4.0.x` maintenance releases | not started |
+| `v1.0.0.0` | Stabilize It / first GA, promoted from one mature V0.4 lineage | not started |
 
-Development uses version sentinel `0.0.0`. Formal release branches enforce the milestone product surface, then merge to `main` before an annotated tag is created on the exact accepted main HEAD.
+The retired `v0.0.1.0` / `v0.0.2.0` / `v0.0.3.0` planning labels are not release trains and are refused by the release-profile validator. The machine-readable train map, including each train's authority and closeable mandatory children, is `.github/release/release-trains.json`.
+
+Development uses version sentinel `0.0.0`. A release is prepared on `release/vX.Y.Z.W`, merged to `main`, and only then tagged with an annotated tag on that exact accepted main HEAD.
 
 No tag is created from unexecuted hosted jobs. Physical local-display/local-input + remote coexistence evidence remains a separate acceptance gate where required.
 

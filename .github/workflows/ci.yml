@@ -65,7 +65,7 @@ jobs:
               "tests/release-readiness/", ".github/scripts/",
           )
           frontend_prefixes = {
-              "cpp": ("src/integrations/cpp/", "tests/consumer-installed-sdk/"),
+              "cpp": ("src/integrations/cpp/", "tests/consumer-installed-sdk/", "tests/consumer-installed-cpp/"),
               "qml": ("src/integrations/qml/", "tests/consumer-installed-qml/"),
               "generic": ("src/integrations/generic/", "tests/consumer-installed-generic/"),
               "qpa": ("src/integrations/qpa/", "tests/consumer-installed-qpa/"),
@@ -107,6 +107,9 @@ jobs:
           qpa_evidence = evidence_for((
               "src/integrations/qpa/", "tests/consumer-installed-qpa/",
           ))
+          cpp_evidence = evidence_for((
+              "src/integrations/cpp/", "tests/consumer-installed-sdk/", "tests/consumer-installed-cpp/",
+          ))
 
           ordered = [peer for peer in peers if peer in selected]
           integrations = ",".join(ordered)
@@ -117,6 +120,8 @@ jobs:
           excluded = ["hyremote-release-readiness-"]
           if not generic_evidence:
               excluded.append("hyremote-generic-installed-consumers$")
+          if not cpp_evidence:
+              excluded.append("hyremote-cpp-installed-consumers$")
           if not qml_evidence:
               excluded.append("hyremote-qml-deploy-helper-")
           if not qpa_evidence:

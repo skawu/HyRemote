@@ -256,6 +256,20 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
     )
 
+    # The clean installed C++ consumers are the V0.1 product promise for the Embedded C++ frontend: a real Widgets
+    # window and a real Quick window, each driving the public RemoteAccess lifecycle from the installed SDK. They run
+    # through the release evidence runner's own cell mechanism as ordinary product integration tests, so the hosted
+    # lanes execute the same clean-install/deploy/run path the evidence uses.
+    add_test(
+        NAME hyremote-cpp-installed-consumers
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            "-DEVIDENCE_CELLS=installed-cpp-widgets;installed-cpp-quick"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+    )
+    set_tests_properties(hyremote-cpp-installed-consumers PROPERTIES TIMEOUT 1200)
+
     if(TARGET hyremote-generic-plugin)
         # The installed Generic consumers run through the release evidence runner's own cell mechanism, so the
         # hosted lanes exercise the same clean-install/deploy/run path the release evidence uses - as a normal
@@ -270,6 +284,17 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         )
         set_tests_properties(hyremote-generic-installed-consumers PROPERTIES TIMEOUT 900)
     endif()
+
+    # Release-facing documentation is a product artifact: the frontend set, the canonical layout, the V0.1 identity,
+    # the deployment family and the security boundary train are asserted structurally, so a stale document cannot
+    # describe an architecture the product no longer has.
+    add_test(
+        NAME hyremote-release-readiness-product-documentation-truth
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_product_documentation_truth.cmake"
+    )
+    set_tests_properties(hyremote-release-readiness-product-documentation-truth PROPERTIES TIMEOUT 120)
 
     # Release-train authority selection and its acceptance matrix, registered as an ordinary product test so the
     # canonical build authority runs it: a release scope must be selected by the requested version, fail closed on

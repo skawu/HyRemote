@@ -11,6 +11,7 @@ HyRemote 自己负责其产品运行时与集成载荷的部署，不要求应�
 ```cmake
 hyremote_deploy(TARGET MyCppApp)
 hyremote_deploy(TARGET MyQmlApp QML)
+hyremote_deploy(TARGET ExistingQtApp GENERIC)
 hyremote_deploy(TARGET ExistingQtApp QPA)
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 ```
@@ -59,6 +60,44 @@ hyremote_deploy(TARGET MyQmlApp QML)
 若所选构建/包没有 QML 载荷，`hyremote_deploy(... QML)` 会在**配置阶段失败**，而不会静默产出一个没有 `import HyRemote` 的部署。
 
 另见 [`qml-consumption.md`](../qml-consumption.md) 与 [`getting-started/qml.md`](../getting-started/qml.md)。
+
+## Generic Plugin 部署
+
+Generic Plugin 是四个 peer 前端之一，在 V0.1 中是**主要（primary）**接入面。它给普通 Qt 应用提供**零代码**接入：
+应用不链接任何 HyRemote 目标，集成在运行期以 Qt generic plugin 的形式出现。
+
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
+
+add_executable(MyQtOnlyApp main.cpp)
+target_link_libraries(MyQtOnlyApp PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)   # 不链接 HyRemote 目标
+
+install(TARGETS MyQtOnlyApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyQtOnlyApp GENERIC)
+```
+
+运行期激活：
+
+```text
+MyQtOnlyApp -plugin hyremote
+MyQtOnlyApp -plugin hyremote:port=5921
+```
+
+部署产物（名字由已安装包元数据与助手决定，**不要**在脚本或文档里硬编码跨平台文件名）：
+
+- 应用可执行文件；
+- Generic 载荷，位于 Qt 的 generic plugin 目录（`plugins/generic/`）；
+- **native** Qt 平台插件，位于 `plugins/platforms/`——Generic **保持**应用原有的平台身份；
+- 唯一的共享 `RemoteAccess` 运行时；
+- 该应用实际需要的 Qt 运行时闭包。
+
+`hyremote_deploy(... GENERIC QPA)` 会被**拒绝**：Generic 保持原生平台集成，而 QPA 替换它，两者不能同时用于同一应用。
+Generic 部署**不会**安装任何 HyRemote 平台插件：若部署树里出现 `plugins/platforms/*hyremote*`，那就是缺陷。
+
+载荷身份来自目标工件（源码部署）或**已安装包元数据**（已安装 SDK 部署）：`HyRemote_GENERIC_AVAILABLE` 与
+`HyRemote_GENERIC_PLUGIN_FILE`。它**不会**由工具链前缀/后缀猜测，也**不会**回退到构建树搜索。
+
+另见 [`getting-started/generic.md`](../getting-started/generic.md)。
 
 ## Transparent QPA 部署
 
