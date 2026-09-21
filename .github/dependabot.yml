@@ -1,0 +1,13 @@
+version: 2
+
+updates:
+  # GitHub Actions are the repository-managed package ecosystem. Qt and test tooling remain pinned
+  # explicitly by workflows/release policy rather than being floated by Dependabot.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci

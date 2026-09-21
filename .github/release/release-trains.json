@@ -1,0 +1,277 @@
+{
+  "schema": 3,
+  "kind": "release-train-scope-authority",
+  "notes": {
+    "purpose": "Single machine-readable release-train authority. A requested release version selects one exact Feature; that Feature names its own authority parent, its closeable mandatory children, the prerequisites that must be resolved before its candidate can be accepted, the evidence it requires, the cross-version references it consumes, its lineage and its declared non-blockers.",
+    "replaces": "This file replaces the former .github/release/v1-mandatory-issues.json, whose entire content is carried by the 1.0.0.0 train below. There is deliberately no second active authority.",
+    "semantics": "Version digits identify coherent product states and never encode frontend, platform, Qt family, UI family or CI lane. A train that is merely representable never blocks an earlier train, and the number 1.2.0.0 existing does not authorize it.",
+    "field_semantics": {
+      "authority_parent": "The issue that owns this Feature's scope and acceptance.",
+      "mandatory_children": "Closeable product and release-contract work of this exact Feature. Every one of these must be closed before the Feature can be accepted.",
+      "candidate_prerequisites": "Risk, evidence and governance gates that are not product features but block candidate acceptance while unresolved. A prerequisite is never part of the product work breakdown.",
+      "required_evidence": "Names of evidence contracts this Feature must produce. A name is a contract to be proved, never a substitute for an issue's live state.",
+      "cross_version_references": "Other versions' material whose evidence this Feature consumes. Referenced, never required to close as a whole.",
+      "non_blockers": "Work that is explicitly not required for this Feature, so a later train cannot silently become a blocker for an earlier one.",
+      "lineage_parent": "The exact accepted Feature this one is built on. Absent for the first release of a line."
+    },
+    "fail_closed": "Unknown versions, retired planning labels, records whose mandatory_children are absent or empty while the Feature is active, prerequisites that are malformed or that overlap the mandatory set, an unknown or self-referential lineage parent, and note keys that belong to no classified list all fail selection instead of answering."
+  },
+  "development_sentinel": "0.0.0",
+  "retired_profiles": [ "0.0.1.0", "0.0.2.0", "0.0.3.0" ],
+  "conditional_trains": [
+    {
+      "version": "1.2.0.0",
+      "activation_authority": 123,
+      "active": false,
+      "rule": "Conditional by activation evidence, not by the number existing. It becomes selectable only when its activation authority records activation, at which point a Feature record is added here and in trains. No post-V1 fixed commitment is created here."
+    }
+  ],
+  "trains": {
+    "0.1.0.0": {
+      "authority_parent": 229,
+      "candidate_freeze_authority": 229,
+      "mandatory_children": [ 230, 231, 232, 237, 238, 253 ],
+      "candidate_prerequisites": [ 250 ],
+      "required_evidence": [
+        "converged-one-core-shared-runtime-four-peer-frontends",
+        "exact-head-integrated-windows-linux-evidence",
+        "clean-installed-cpp-consumer-smoke",
+        "clean-installed-generic-consumer-smoke-preserving-native-qpa",
+        "minimal-developer-entry-and-01-02-03-learning-flow",
+        "truthful-v01-security-version-output",
+        "fail-closed-security-negative-evidence",
+        "release-scope-machine-gate-selecting-only-this-train",
+        "nonzero-hosted-normal-and-release-readiness-tests",
+        "release-notes-preview-support-boundaries-and-known-limitations"
+      ],
+      "cross_version_references": [ 1, 24, 41, 95, 143, 176, 209, 219, 220 ],
+      "conditional_items": [],
+      "non_blockers": [ 41, 57, 143, 144, 170, 174, 176, 209, 240, 241, 242 ],
+      "notes": {
+        "232": "Closed before this migration; the release gate reads its live state like any other mandatory child.",
+        "209": "Cross-version umbrella. Referenced for the evidence this train consumes; the whole umbrella is never a V0.1 closeable requirement.",
+        "253": "V0.1 release-truth child: shipping a false encryption capability or support statement is itself a product-contract defect, so truthful V0.1 security/version output is closeable V0.1 work.",
+        "250": "Repository evidence-integrity prerequisite. It is not a user product feature: it blocks candidate acceptance while its defect is active, and it is deliberately not part of the product work breakdown.",
+        "240": "V0.3 Example/i18n productization. A declared non-blocker for V0.1, never a V0.1 mandatory child.",
+        "241": "V0.3 productized GUI branding. A declared non-blocker for V0.1, never a V0.1 mandatory child."
+      },
+      "rule": "The V0.1 user promise is the release authority. Later-train work and cross-version umbrellas are referenced, never required to close; prerequisites gate candidate acceptance without entering the product work breakdown."
+    },
+    "0.2.0.0": {
+      "authority_parent": 233,
+      "candidate_freeze_authority": 233,
+      "lineage_parent": "0.1.0.0",
+      "mandatory_children": [ 143, 174, 259, 271 ],
+      "candidate_prerequisites": [ 258 ],
+      "required_evidence": [
+        "accepted-v0.1-lineage",
+        "secure-remote-evidence",
+        "customer-trial-evidence"
+      ],
+      "cross_version_references": [ 95, 143, 170, 174, 259 ],
+      "conditional_items": [],
+      "non_blockers": [ 170, 239 ],
+      "notes": {
+        "258": "Security-modelling entry preflight for the secure-remote Feature. Preflight is risk work, not product implementation, so it is a prerequisite rather than a mandatory child.",
+        "271": "First real customer trial on the frozen Windows/Ubuntu x86_64 trial matrix. Product-owner decision: the first customer trial belongs to V0.2.0, not to V0.1.",
+        "170": "Session Registry belongs to 0.2.1.0, so it is a declared non-blocker here.",
+        "239": "Minimal operational examples belong to 0.2.1.0, so they are a declared non-blocker here."
+      },
+      "rule": "Secure remote access is the first Feature of the V0.2 line and consumes the accepted V0.1 lineage."
+    },
+    "0.2.1.0": {
+      "authority_parent": 233,
+      "candidate_freeze_authority": 233,
+      "lineage_parent": "0.2.0.0",
+      "mandatory_children": [ 170, 239 ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.2.0.0-lineage",
+        "session-operations-evidence"
+      ],
+      "cross_version_references": [ 95, 143, 174, 259 ],
+      "conditional_items": [],
+      "non_blockers": [ 143, 174, 259, 271 ],
+      "notes": {
+        "170": "Session Registry and its public API surface, as the closeable session-operations work of this Feature.",
+        "239": "Minimal operational examples for the session operations introduced here.",
+        "271": "The customer trial belongs to 0.2.0.0, so it is a declared non-blocker for this Feature rather than a repeated requirement."
+      },
+      "rule": "Session operations are a distinct exact Feature from secure remote: it builds on the accepted 0.2.0.0 lineage and does not re-require 0.2.0.0's children as its own."
+    },
+    "0.3.0.0": {
+      "authority_parent": 234,
+      "candidate_freeze_authority": 234,
+      "lineage_parent": "0.2.1.0",
+      "mandatory_children": [ 240, 241, 264 ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.2.1.0-lineage",
+        "four-frontend-clean-sdk-deploy-productization-evidence",
+        "example-and-localization-productization-evidence",
+        "productized-gui-branding-evidence"
+      ],
+      "cross_version_references": [ 41, 95, 144, 176 ],
+      "conditional_items": [],
+      "non_blockers": [ 57, 144, 175, 260, 261 ],
+      "notes": {
+        "264": "Closeable V0.3 SDK/deploy productization child of the delivery umbrella; the umbrella itself is not the release condition.",
+        "240": "Example and localization productization for the V0.3 delivery Feature.",
+        "241": "Productized GUI branding for the V0.3 delivery Feature.",
+        "176": "Delivery umbrella. Referenced as the parent of the closeable delivery child, never required to close as a whole for this Feature.",
+        "57": "Qt5 line qualification stays with V0.4 qualification, so it is not a V0.3.0.0 requirement.",
+        "144": "Damage/ZRLE delivery belongs to 0.3.2.0.",
+        "175": "Maintained viewer interoperability belongs to 0.3.2.0.",
+        "260": "Qt5 entry preflight belongs to 0.3.1.0.",
+        "261": "RFB delivery preflight belongs to 0.3.2.0."
+      },
+      "rule": "Delivery productization is the first V0.3 Feature, built on the accepted 0.2.1.0 lineage."
+    },
+    "0.3.1.0": {
+      "authority_parent": 234,
+      "candidate_freeze_authority": 234,
+      "lineage_parent": "0.3.0.0",
+      "mandatory_children": [ 265 ],
+      "candidate_prerequisites": [ 260 ],
+      "required_evidence": [
+        "accepted-v0.3.0.0-lineage",
+        "qt5-adaptation-candidate-evidence"
+      ],
+      "cross_version_references": [ 57, 95 ],
+      "conditional_items": [],
+      "non_blockers": [ 57, 144, 175, 261 ],
+      "notes": {
+        "260": "Qt5 entry preflight: ecosystem and toolchain risk work, classified as a prerequisite rather than product implementation.",
+        "265": "Closeable Qt5 adaptation implementation candidate; the Qt5 qualification umbrella closure stays with V0.4.",
+        "57": "The Qt5 line umbrella remains open for V0.4 qualification. This Feature must not require its whole-issue closure.",
+        "144": "Damage/ZRLE delivery belongs to 0.3.2.0.",
+        "175": "Maintained viewer interoperability belongs to 0.3.2.0.",
+        "261": "RFB delivery preflight belongs to 0.3.2.0."
+      },
+      "rule": "The Qt5 implementation candidate is a distinct exact Feature from the Qt5 qualification itself."
+    },
+    "0.3.2.0": {
+      "authority_parent": 234,
+      "candidate_freeze_authority": 234,
+      "lineage_parent": "0.3.1.0",
+      "mandatory_children": [ 144, 175 ],
+      "candidate_prerequisites": [ 261 ],
+      "required_evidence": [
+        "accepted-v0.3.1.0-lineage",
+        "damage-compression-delivery-evidence",
+        "maintained-viewer-interoperability-evidence"
+      ],
+      "cross_version_references": [ 57, 95, 144, 175 ],
+      "conditional_items": [],
+      "non_blockers": [ 57, 260, 265 ],
+      "notes": {
+        "261": "RFB delivery profiling preflight: risk work first, classified as a prerequisite rather than product implementation.",
+        "144": "Damage and ZRLE delivery work for this Feature.",
+        "175": "Maintained viewer interoperability work for this Feature.",
+        "57": "The Qt5 line umbrella remains open for V0.4 qualification."
+      },
+      "rule": "Bandwidth delivery and interoperability are the last V0.3 Feature, built on the accepted 0.3.1.0 lineage."
+    },
+    "0.4.0.0": {
+      "authority_parent": 235,
+      "candidate_freeze_authority": 235,
+      "lineage_parent": "0.3.2.0",
+      "mandatory_children": [ 9, 57, 109, 134, 165, 242 ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.3.2.0-lineage",
+        "qt-compatibility-qualification-evidence",
+        "production-performance-qualification-evidence",
+        "real-world-verification-evidence",
+        "physical-native-acceptance-evidence",
+        "exact-candidate-freeze-under-165"
+      ],
+      "cross_version_references": [ 57, 95, 109, 134, 242 ],
+      "conditional_items": [],
+      "non_blockers": [ 144, 175, 240, 241, 264, 265 ],
+      "notes": {
+        "57": "Qt compatibility qualification with a selected Qt 5.15 anchor and the complete Qt 6.8.3 reference. This is qualification work, not new feature development.",
+        "9": "Production performance qualification: reproducible desktop capture/runtime scenarios with capture and encoding/network costs distinguished.",
+        "242": "The frozen representative real-world verification set.",
+        "134": "Real-world verification evidence owner reached through the frozen representative set.",
+        "109": "Physical and native acceptance on the exact candidate.",
+        "165": "Candidate freeze and change control for the release candidate line.",
+        "264": "V0.3 delivery implementation child; qualification consumes its result and must not re-develop it.",
+        "240": "V0.3 Example productization; qualification consumes it rather than re-developing it.",
+        "241": "V0.3 branding productization; qualification consumes it rather than re-developing it.",
+        "265": "V0.3.1 Qt5 implementation candidate; qualification consumes it rather than re-developing it.",
+        "144": "V0.3.2 damage delivery; qualification consumes it rather than re-developing it.",
+        "175": "V0.3.2 viewer interoperability; qualification consumes it rather than re-developing it."
+      },
+      "rule": "V0.4 is qualification, not a hidden Feature train: it consumes the latest accepted V0.3.x lineage and answers whether it is actually qualified."
+    },
+    "1.0.0.0": {
+      "authority_parent": 33,
+      "scope_authority": 157,
+      "candidate_freeze_authority": 165,
+      "mandatory_children": [
+        9,
+        30,
+        31,
+        32,
+        33,
+        39,
+        41,
+        57,
+        101,
+        104,
+        107,
+        109,
+        143,
+        144,
+        157,
+        158,
+        159,
+        162,
+        163,
+        164,
+        165,
+        170,
+        174,
+        175,
+        176,
+        209
+      ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-milestone-authorities",
+        "exact-candidate-freeze-under-165",
+        "physical-acceptance-under-109",
+        "ga-acceptance-under-33"
+      ],
+      "cross_version_references": [ 95 ],
+      "conditional_items": [],
+      "embedded_deferred_issue_numbers": [ 7, 10, 17, 18 ],
+      "classified_referenced_issue_numbers": [ 14, 74, 90, 91, 95, 106, 134, 147, 156, 166 ],
+      "notes": {
+        "9": "V1 requires the x86-applicable damage/asynchronous-capture work or an evidence-backed disposition; embedded follow-up remains separate.",
+        "57": "V1 requires an evidence-backed qualification disposition; this does not automatically promote every Qt line to Supported.",
+        "144": "Only B1/B2 are V1 x86 requirements; embedded B3/B4 continue in dedicated embedded issues.",
+        "109": "Final physical evidence must name the exact RC-FROZEN candidate declared under issue 165.",
+        "170": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "174": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "175": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "176": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "209": "V1.0.0.0 must freeze repository, documentation, build/package and release infrastructure so post-V1 work does not repeatedly repair foundational structure."
+      },
+      "rule": "The former standalone V1 manifest carried into the train map unchanged, in the same order, so no V1 authority lost its classification in the migration."
+    },
+    "1.1.0.0": {
+      "authority_parent": 236,
+      "candidate_freeze_authority": 236,
+      "mandatory_children": [],
+      "candidate_prerequisites": [],
+      "required_evidence": [],
+      "cross_version_references": [ 33, 95, 225 ],
+      "conditional_items": [],
+      "non_blockers": [],
+      "scope_status": "declared-unpopulated",
+      "rule": "Post-GA embedded line using the same mechanism when activated. Its work breakdown belongs to its own authority issue and is deliberately not invented here."
+    }
+  }
+}

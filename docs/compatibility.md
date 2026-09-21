@@ -1,88 +1,189 @@
 # HyRemote Compatibility Matrix
 
-Status: **bootstrap / initial capture evidence collected, embedded validation outstanding**
-
-HyRemote does not claim support based only on API similarity. A configuration is marked supported only after it has a reproducible build and functional validation.
-
-Capture evidence and the reasoning behind the recommended baseline paths are recorded in
-[`capture-spike.md`](capture-spike.md) (SPIKE-01, issue #3).
+HyRemote compatibility is stated only for environments that have an explicit product status. Similar Qt APIs, a nearby patch version, another operating system, or a comparable graphics backend do not automatically create a support claim.
 
 ## Status definitions
 
-- **Supported** — repeatable build + functional validation + documented limitations.
-- **Experimental** — works in a limited validation path but is not yet a compatibility promise.
-- **Unsupported** — known architectural or implementation limitation.
-- **Unverified** — not yet tested; no support claim should be inferred.
+- **Primary** — current product path for the active product line.
+- **Preview** — implemented and usable, but not yet promoted to the same product-support level as the primary path.
+- **TODO** — planned product coverage that is not yet available/qualified.
+- **Unsupported** — outside the stated product contract or known not to work for the stated combination.
 
-## Capture rows validated on the host (SPIKE-01)
+## Current V0.1 reference matrix
 
-These rows come from the host runs in `spikes/capture/evidence/` (Windows 11, Qt 6.8.3,
-MSVC 19.44, Intel UHD Graphics 770). They are **host-only** evidence: per rule 2 below
-they say nothing about Embedded Linux/EGLFS support. The capture backend column names
-the mechanism that was actually measured, not a frozen HyRemote API.
+The current Developer Preview reference environment is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
 
-| Qt | OS / target | QPA / graphics | Application type | Capture backend | Transport | Status | Notes |
-|---|---|---|---|---|---|---|---|
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget/raster | `QWidget::render()` into a caller buffer, `QWidget::grab()` | VNC candidate | Experimental | 2.7-3.7 ms at 960x600 including the buffer clear; child paint regions can be mapped into the shared target (deterministic controls pass); popups/dialogs are separate top-level windows |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QWidget with custom QPainter | same | VNC candidate | Experimental | Covered by the `widgets` case |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QOpenGLWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab composes GL content at 5.2-9.9 ms; `grabFramebuffer()` returns only the GL widget at 3.8-4.9 ms; first call 70-141 ms |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | parent `QWidget::grab()`; `grabFramebuffer()` measured as an alternative | VNC candidate | Experimental | Parent grab 4.9-8.2 ms across sessions; `grabFramebuffer()` 4.1-12.7 ms across sessions; parent path preferred for the whole-window contract and damage mapping |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Qt Quick 2D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 17.1 ms at 960x600; blocks the GUI thread; no damage region (no QWidget root, only `QEvent::UpdateRequest`) |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | Quick3D | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | 16.4 ms; content fidelity verified |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL RHI | custom Quick FBO/OpenGL | `QQuickWindow::grabWindow()` | VNC candidate | Experimental | Freshness verified with an encoded render counter (24 -> 723 over 723 rendered frames) |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | custom Quick FBO/OpenGL | none | VNC candidate | Unsupported | `QQuickFramebufferObject` never rendered on a non-OpenGL RHI backend |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Qt Quick 2D | `QQuickWindow::grabWindow()` once per frame | VNC candidate | Unsupported | The application's own event loop fell to ~1 fps while the call itself reported 15.8 ms |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 and OpenGL | Qt Quick 2D | `QQuickWindow::contentItem()->grabToImage()` (async) | VNC candidate | Experimental (host) | Public-API asynchronous baseline / v0.1 candidate, not a final performance claim. Pixel-identical to the synchronous whole-window capture; 32.8 ms latency at 1 in flight, 119 /s at 4; requires a visible window; no queue or drop policy; see `async-capture-spike.md` |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | Quick3D | `contentItem()->grabToImage()` (async) | VNC candidate | Experimental (host) | 0 differing pixels vs the synchronous capture; 123 /s at 4 in flight |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / OpenGL | custom Quick FBO/OpenGL | `contentItem()->grabToImage()` (async) | VNC candidate | Experimental (host) | Fresh FBO content per rendered frame (counter 80 -> 105 over 26 frames); max channel diff 2 |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / D3D11 | QQuickWidget | `rootObject()->grabToImage()` (async, Quick content only) | VNC candidate | Experimental (host) | 699x557 Quick content; surrounding widget composition still requires the synchronous parent `grab()` |
-| 6.8.3 | Windows 11 / x86_64 | `windows` / any | QOpenGLWidget | none | VNC candidate | Unsupported | No public asynchronous capture API exists for this family |
+| Qt | Platform | Integration | UI target | Status | Notes |
+| --- | --- | --- | --- | --- | --- |
+| 6.8.3 | Windows x86_64 | C++ API | Widgets | **Primary** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Primary** | Same `HyRemote::RemoteAccess` facade |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Primary** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Primary** | Same `HyRemote::RemoteAccess` facade |
+| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Primary** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Primary** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Preview** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Preview** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Preview** | Private ABI; native delegate `qwindows` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Preview** | Private ABI; native delegate `qxcb` |
 
-## Rows still awaiting evidence
+The matrix above describes the current product line. It does not imply that every graphics configuration inside a Widgets/Quick application is already qualified.
 
-Every row below needs the same treatment on the target itself before any claim.
+## Qt LTS policy
 
-| Qt | OS / target | QPA / graphics | Application type | Capture backend | Transport | Status | Notes |
-|---|---|---|---|---|---|---|---|
-| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | Qt Quick 2D | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Primary reference target; acceptance gate of issue #3 |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | Quick3D | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Must be tested separately |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS / OpenGL ES | custom Quick FBO/OpenGL | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Must be tested separately |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS | QWidget/raster | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Widgets are a first-class support target |
-| 6.8.x | Embedded Linux / RK3588 | EGLFS/OpenGL | QOpenGLWidget | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Composing a child GL surface without a window system is unproven |
-| 6.8.x | Embedded Linux / RK3588 | mixed | QQuickWidget | recommended by SPIKE-01, unverified on target | VNC candidate | Unverified | Composition must be validated |
-| 6.8.x | Linux desktop (X11/Wayland) | any | any | not measured | VNC candidate | Unverified | SPIKE-01 was executed on Windows only |
+HyRemote is intended to support selected Qt LTS families rather than promise every Qt release automatically.
 
-## Required evidence per entry
+Current state:
 
-Record:
+- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.1.
+- **Qt 5.15 LTS** — **TODO V0.4 qualification**. Do not describe it as currently supported until the product can actually build, deploy, and run through the applicable matrix.
+- other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
 
-- exact Qt version;
-- compiler/toolchain;
-- board/OS/BSP when embedded;
-- QPA platform;
-- Qt Quick graphics API/backend where relevant;
-- application/sample used;
-- capture backend;
-- transport + viewer version;
-- resolution;
-- basic performance measurements;
-- local rendering/input impact;
-- known limitations;
-- link to test/Issue/PR evidence.
+Public-Qt frontends and QPA have different compatibility rules:
 
-## Viewer matrix
+- **C++ / QML / Generic** primarily depend on public Qt APIs and can be qualified by Qt family/version range;
+- **QPA** depends on Qt private ABI and must be qualified per exact Qt patch/platform combination.
 
-The first baseline should distinguish standard RFB compatibility from optional H.264 support.
+A public-API-compatible Qt patch does not automatically make a QPA binary compatible.
 
-| Viewer | Version/build | Standard RFB | H.264 | Status | Notes |
-|---|---|---|---|---|---|
-| TigerVNC | TBD | Unverified | Unverified | Unverified | H.264 may depend on build options |
-| Other standard VNC viewer | TBD | Unverified | Not assumed | Unverified | Add only after test |
+## Operating systems
 
-## Rules
+Current desktop reference platforms:
 
-1. `Unverified` must never be described as supported in README/release notes.
-2. Desktop Linux results do not automatically imply Embedded Linux/EGLFS support.
-3. A working Qt Quick 2D case does not automatically imply Quick3D or custom OpenGL/FBO support.
-4. A working QWidget raster case does not automatically imply QOpenGLWidget/QQuickWidget support.
-5. Hardware encoder support is tracked separately from the generic capture/transport path.
+- Windows x86_64;
+- Linux x86_64.
+
+Passing on one operating system does not imply the same result on the other.
+
+> **TODO V0.4:** expand formal qualification coverage across the selected Qt LTS matrix while keeping Windows/Linux results explicit.
+
+## Product payload compatibility
+
+| Product payload | Compatibility expectation |
+| --- | --- |
+| `HyRemote::RemoteAccess` | Shared Runtime used by the C++ API and by other frontends internally |
+| QML `HyRemote` module | Declarative payload over the same Shared Runtime |
+| Generic Plugin | Public Qt generic-plugin payload; must preserve the application's native Qt platform identity |
+| `qhyremote` QPA plugin | Exact-Qt private-ABI payload; delegates to the qualified native platform integration |
+| Core | Internal implementation component, not an independent SDK/runtime compatibility surface |
+
+Applications should not mix payloads from unrelated HyRemote SDK builds or rely on a build-tree copy to repair an incomplete deployed package.
+
+## Widgets scope
+
+The portable correctness baseline supports qualified QWidget top-level targets through the Widgets adapter path.
+
+Basic Widgets support does not automatically qualify every configuration involving:
+
+- `QOpenGLWidget`;
+- embedded/native child windows;
+- unusual platform-native ownership;
+- third-party rendering engines that bypass normal QWidget rendering assumptions.
+
+These cases receive explicit qualification when they become part of the product matrix.
+
+## Qt Quick scope
+
+The portable correctness baseline supports qualified `QQuickWindow` targets through the public asynchronous Quick capture path.
+
+Basic Qt Quick support does not automatically qualify every configuration involving:
+
+- Quick3D;
+- custom FBO/render-node pipelines;
+- unusual graphics backends;
+- `QQuickWidget` mixed Widgets/Quick composition;
+- foreign/native windows outside the application's normal Qt surface model.
+
+> **TODO V0.4:** qualify representative real-world rendering/application combinations instead of broadening claims by inference.
+
+## Generic Plugin compatibility
+
+Generic Plugin is the preferred zero-code path when the application can keep its normal Qt platform.
+
+A compatible Generic deployment should satisfy all of the following:
+
+- the application source remains Qt-only;
+- the application does not link `HyRemote::RemoteAccess`;
+- HyRemote is activated through Qt's generic-plugin mechanism;
+- the native Qt platform identity remains `windows`, `xcb`, or the platform the application would normally use;
+- the deployed tree contains both the Generic Plugin and the normal native Qt platform plugin;
+- the application does not depend on the original HyRemote/Qt build tree at runtime.
+
+Generic compatibility is a public-Qt claim and is not tied to QPA private ABI.
+
+## QPA compatibility
+
+QPA is a specialized zero-code route and has a narrower compatibility boundary.
+
+Current reference pairs:
+
+| Qt | OS | Native delegate | Status |
+| --- | --- | --- | --- |
+| 6.8.3 exact | Windows x86_64 | `qwindows` | **Preview** |
+| 6.8.3 exact | Linux x86_64 | `qxcb` | **Preview** |
+
+Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another platform plugin from these rows.
+
+> **TODO:** add new QPA rows only after the exact Qt/private-ABI/platform combination is qualified.
+
+## Transport and viewer boundary
+
+The current transport baseline is bounded RFB 3.8.
+
+Current product behavior includes:
+
+- loopback-first listener behavior;
+- standard RFB remote viewing;
+- optional remote input;
+- reconnect without rebuilding the application Runtime;
+- `Insecure` loopback-only behavior;
+- conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
+- no stream encryption in V0.1;
+- `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
+
+The default V0.1 build/profile must not be interpreted as providing authenticated transport merely because the public API exposes the `Authenticated` profile.
+
+Viewer-specific interoperability claims should be added only for viewers/versions that have been explicitly exercised. A viewer's ability to connect once is not enough to broaden the product compatibility matrix for every viewer implementation.
+
+## Input compatibility
+
+Remote input compatibility includes lifecycle behavior, not only ordinary pointer/key delivery.
+
+The product must keep supported held key/button state balanced across disconnect and Runtime stop. Unsupported IME/composition or key cases are documented rather than guessed.
+
+## Deployment compatibility
+
+A supported deployment path should run from the application's deployed tree without depending on:
+
+- the original HyRemote SDK path;
+- the HyRemote build tree;
+- a Qt SDK plugin path used as a runtime crutch;
+- manually copied internal HyRemote implementation files.
+
+The product deployment entry point is `hyremote_deploy()`; see [`guide/deployment.md`](guide/deployment.md).
+
+## Embedded/platform expansion
+
+Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
+
+Planned directions include:
+
+| Direction | Current status |
+| --- | --- |
+| ARM64 Embedded Linux | **TODO V1.1** |
+| RK3588 / EGLFS or Wayland | **TODO V1.1** |
+| NXP i.MX class | **TODO V1.1** |
+| DMA-BUF / GBM / external-buffer paths | **TODO later acceleration line** |
+| RKMPP / VAAPI / platform hardware encoding | **TODO later acceleration line** |
+| OpenHarmony | Long-term direction; no current support claim |
+
+Desktop evidence does not imply embedded support, and one BSP does not imply an entire SoC/platform family.
+
+## Compatibility rules
+
+1. Primary/Preview/TODO statuses are not interchangeable.
+2. Windows results do not substitute for Linux results, or vice versa.
+3. Public Qt API compatibility does not imply QPA private-ABI compatibility.
+4. Basic Widgets/Quick support does not automatically qualify every graphics/rendering configuration.
+5. Desktop x86 results do not imply Embedded Linux support.
+6. Hardware acceleration support is independent of the stable application-facing integration contract.
+7. New support rows are added only when the product can state the exact Qt, OS, integration path, application scope, and known limitations.

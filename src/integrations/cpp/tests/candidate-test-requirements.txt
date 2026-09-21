@@ -1,0 +1,13 @@
+# Viewer-side tooling for the exact-candidate product fit (rfb_product_fit.py).
+#
+# These packages are test/candidate tooling only. They are NOT product runtime dependencies: they must not appear in a
+# product package dependency list, in the installed SDK runtime manifest, or in any instruction to an ordinary user of
+# HyRemote. The product itself needs no Python at all; a standard RFB client is simply the honest way to prove that the
+# production transport really serves a viewer.
+#
+# vncdotool is pinned because the product fit depends on its client behaviour, and an unpinned viewer would make the
+# candidate evidence depend on whatever the index served that day. Pillow is constrained rather than pinned to an exact
+# build, because it is a compiled wheel whose availability per platform is not what this evidence is about; the
+# constraint is tight enough to keep the image API the script uses stable.
+vncdotool==1.3.0
+Pillow>=10,<13

@@ -1,39 +1,88 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(
-    HyRemote
-    VERSION 0.0.0
-    DESCRIPTION "Qt Remote Access Framework"
-    LANGUAGES C CXX
-)
+# The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
+project(HyRemote VERSION 0.1.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
+include(HyRemoteReleaseProfile)
 include(HyRemoteDeploy)
 
-include(CTest)
+# Source/add_subdirectory QML deployment metadata is configure-local truth even though the import
+# root is carried through CMake's internal cache so a child module can publish it back to the
+# consumer directory.
+unset(HyRemote_QML_IMPORT_PATH CACHE)
+set_property(GLOBAL PROPERTY HYREMOTE_QML_SOURCE_DEPLOY_TARGETS "")
+
+# Release versions identify coherent product states. Frontends are peer capability dimensions and
+# must never be sequenced through version digits.
+hyremote_validate_release_profile(
+    VERSION "${PROJECT_VERSION}"
+    CPP_ENABLED "${HYREMOTE_BUILD_CPP_API}"
+    QML_ENABLED "${HYREMOTE_BUILD_QML_API}"
+    GENERIC_ENABLED "${HYREMOTE_WITH_GENERIC_PLUGIN}"
+    QPA_ENABLED "${HYREMOTE_WITH_QPA_PROXY}"
+    SECURITY_ENABLED "${HYREMOTE_WITH_TRANSPORT_SECURITY}"
+)
+
+if(HYREMOTE_BUILD_TESTS)
+    include(CTest)
+endif()
 
 message(STATUS "Configuring HyRemote ${PROJECT_VERSION}")
 message(STATUS "  Build core:          ${HYREMOTE_BUILD_CORE}")
-message(STATUS "  Build RemoteAccess:  ${HYREMOTE_BUILD_REMOTE_ACCESS}")
+message(STATUS "  Build runtime:       ${HYREMOTE_BUILD_REMOTE_ACCESS}")
+message(STATUS "  C++ API frontend:    ${HYREMOTE_BUILD_CPP_API}")
+message(STATUS "  QML API frontend:    ${HYREMOTE_BUILD_QML_API}")
+message(STATUS "  Generic Plugin:      ${HYREMOTE_WITH_GENERIC_PLUGIN}")
+message(STATUS "  QPA frontend:        ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
-message(STATUS "  Build spikes:        ${HYREMOTE_BUILD_SPIKES}")
+message(STATUS "  VNC Authentication: ${HYREMOTE_WITH_TRANSPORT_SECURITY} (OpenSSL Crypto; the RFB stream is authenticated, not encrypted)")
 
-# hyremote-core: the production session/frame/dispatch contract frozen by ARCH-01.
-# UI-neutral and free of Qt/protocol/platform types.
+# Shared implementation stays in src/core and src/runtime; application-facing frontends are peer
+# siblings under src/integrations.
 if(HYREMOTE_BUILD_CORE)
-    add_subdirectory(core)
+    add_subdirectory(src/core core)
 endif()
 
-# Product-facing C++ facade. Keep bare Core builds usable on hosts without Qt: when HyRemote is
-# configured as the top-level project and Qt is unavailable, the product target is skipped with an
-# explicit status message. A source-consumer subproject, however, is expected to provide its Qt SDK
-# and fails if the product target was requested but Qt Core/Network cannot be resolved.
+if(PROJECT_IS_TOP_LEVEL
+   AND (CMAKE_PREFIX_PATH OR HYREMOTE_BUILD_EXAMPLES OR HYREMOTE_BUILD_TESTS))
+    if(NOT TARGET Qt6::Core)
+        find_package(Qt6 QUIET COMPONENTS Core)
+    endif()
+    if(NOT TARGET Qt6::Core)
+        message(FATAL_ERROR
+            "This top-level configure expects Qt and did not find it.\n"
+            "  CMAKE_PREFIX_PATH          : '${CMAKE_PREFIX_PATH}'\n"
+            "  HYREMOTE_BUILD_EXAMPLES    : ${HYREMOTE_BUILD_EXAMPLES}\n"
+            "  HYREMOTE_BUILD_TESTS       : ${HYREMOTE_BUILD_TESTS}\n"
+            "Qt 6.8+ is the only qualified line today; Qt 5.15 qualification is tracked by issue #57 and is not\n"
+            "implemented, so a Qt 5.15 prefix cannot configure this product yet.\n"
+            "Pass a Qt 6.8.3 prefix, or build Core alone on purpose with -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF\n"
+            "-DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+    endif()
+endif()
+
+if(TARGET Qt6::Core)
+    set(HYREMOTE_QT_LTS_LINES 5.15 6.2 6.5 6.8)
+    set(HYREMOTE_QT_LINE "${Qt6_VERSION_MAJOR}.${Qt6_VERSION_MINOR}")
+    if(HYREMOTE_QT_LINE IN_LIST HYREMOTE_QT_LTS_LINES)
+        message(STATUS "  Qt ${Qt6_VERSION} detected (LTS line ${HYREMOTE_QT_LINE})")
+    else()
+        message(WARNING
+            "HyRemote: Qt ${Qt6_VERSION} is not an LTS line. This project targets Qt LTS lines "
+            "(${HYREMOTE_QT_LTS_LINES}) and the qualified reference line is 6.8.3.\n"
+            "  The build continues against the public-Qt API baseline but is not a qualified product combination.\n"
+            "  The QPA payload remains separately exact-private-ABI qualified.")
+    endif()
+    unset(HYREMOTE_QT_LINE)
+endif()
+
 if(HYREMOTE_BUILD_REMOTE_ACCESS)
     if(NOT TARGET HyRemote::Core)
-        message(FATAL_ERROR "HyRemote::RemoteAccess requires HYREMOTE_BUILD_CORE=ON")
+        message(FATAL_ERROR "HyRemote Common Runtime requires HYREMOTE_BUILD_CORE=ON")
     endif()
 
     if(NOT TARGET Qt6::Core OR NOT TARGET Qt6::Network)
@@ -41,24 +90,361 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 
     if(TARGET Qt6::Core AND TARGET Qt6::Network)
-        add_subdirectory(remoteaccess)
+        add_subdirectory(src/runtime runtime)
+        if(HYREMOTE_BUILD_CPP_API)
+            add_subdirectory(src/integrations/cpp integrations/cpp)
+        endif()
     elseif(PROJECT_IS_TOP_LEVEL)
-        message(STATUS "  RemoteAccess target skipped: Qt 6.8+ Core/Network not found")
+        message(STATUS "  Common Runtime skipped: Qt 6.8+ Core/Network not found")
     else()
         message(FATAL_ERROR
             "HYREMOTE_BUILD_REMOTE_ACCESS=ON requires Qt 6.8+ Core and Network. "
-            "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the product target explicitly.")
+            "Find/provide the target Qt SDK before add_subdirectory(HyRemote), or disable the runtime explicitly.")
     endif()
 endif()
 
-# Throwaway architecture spike harnesses. They are not part of the production build graph.
-if(HYREMOTE_BUILD_SPIKES)
-    add_subdirectory(spikes/capture)
-    add_subdirectory(spikes/async-capture)
+if(HYREMOTE_BUILD_QML_API)
+    if(NOT TARGET hyremote-remoteaccess)
+        if(PROJECT_IS_TOP_LEVEL)
+            message(STATUS "  QML API skipped: Common Runtime is unavailable")
+        else()
+            message(FATAL_ERROR "HYREMOTE_BUILD_QML_API=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON")
+        endif()
+    else()
+        if(NOT TARGET Qt6::Qml)
+            find_package(Qt6 6.8 QUIET COMPONENTS Qml)
+        endif()
+
+        if(TARGET Qt6::Qml)
+            add_subdirectory(src/integrations/qml qml/HyRemote)
+        elseif(PROJECT_IS_TOP_LEVEL)
+            message(STATUS "  QML API skipped: Qt 6.8+ Qml not found")
+        else()
+            message(FATAL_ERROR
+                "HYREMOTE_BUILD_QML_API=ON requires Qt 6.8+ Qml. "
+                "Provide the target Qt SDK before add_subdirectory(HyRemote), or disable the QML API explicitly.")
+        endif()
+    endif()
 endif()
 
-# Install/export is part of the SDK contract. A bare Core-only package remains valid; when the Qt
-# product facade is present it is exported from the same HyRemote package and namespace.
-if(TARGET hyremote-core)
+if(HYREMOTE_WITH_GENERIC_PLUGIN)
+    if(NOT TARGET hyremote-remoteaccess)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and the Common Runtime")
+    endif()
+    if(NOT HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_GENERIC_PLUGIN=ON requires the common automatic-access runtime")
+    endif()
+
+    # Generic preserves the application's native QPA and uses public Qt APIs only.
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Quick)
+    add_subdirectory(src/integrations/generic generic)
+endif()
+
+if(HYREMOTE_WITH_QPA_PROXY)
+    if(NOT TARGET hyremote-remoteaccess)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_QPA_PROXY=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and the Common Runtime")
+    endif()
+
+    find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Widgets Quick)
+    if(NOT TARGET Qt6::GuiPrivate)
+        message(FATAL_ERROR
+            "HYREMOTE_WITH_QPA_PROXY=ON requires the exact Qt 6.8.3 private Gui development target (Qt6::GuiPrivate)")
+    endif()
+    add_subdirectory(src/integrations/qpa qpa)
+endif()
+
+if(HYREMOTE_BUILD_EXAMPLES)
+    find_package(Qt6 6.8 QUIET COMPONENTS Widgets Quick Qml)
+    if(TARGET hyremote-remoteaccess)
+        add_subdirectory(examples)
+    elseif(PROJECT_IS_TOP_LEVEL)
+        message(STATUS "  Product examples skipped: Common Runtime is unavailable")
+    else()
+        message(FATAL_ERROR
+            "HYREMOTE_BUILD_EXAMPLES=ON requires HYREMOTE_BUILD_REMOTE_ACCESS=ON and a supported Qt SDK")
+    endif()
+endif()
+
+if(TARGET hyremote-remoteaccess)
     include(HyRemoteInstall)
+endif()
+
+if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
+    add_test(
+        NAME hyremote-release-readiness-metadata
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-runtime-contract
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_v1_runtime_contract.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-deployment-relocation
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deployment_relocation.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-deploy-helper-contract
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
+            -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deploy_helper_contract.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-release-authority-policy
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_authority_policy.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-consumer-simplicity
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-repository-layout
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_repository_layout.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-release-documentation-layout
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_documentation_layout.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-documentation-paths
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_documentation_paths.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-licensing-boundary
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_licensing_boundary.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-package-acquisition-isolation
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_GATE_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/gate-scratch
+            -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
+            -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
+    )
+    add_test(
+        NAME hyremote-release-readiness-ci-environment-baseline
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
+    )
+
+    # The clean installed C++ consumers are the V0.1 product promise for the Embedded C++ frontend: a real Widgets
+    # window and a real Quick window, each driving the public RemoteAccess lifecycle from the installed SDK. They run
+    # through the release evidence runner's own cell mechanism as ordinary product integration tests, so the hosted
+    # lanes execute the same clean-install/deploy/run path the evidence uses.
+    #
+    # This registration is guarded by the capability it accepts: a configuration that does not build the C++
+    # frontend does not promise an installed C++ consumer, so registering the cell there would create an acceptance
+    # test for a product surface that configuration never claimed - and a test that skips itself is not a substitute
+    # for not registering it.
+    if(HYREMOTE_BUILD_CPP_API AND TARGET hyremote-remoteaccess)
+        add_test(
+            NAME hyremote-cpp-installed-consumers
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-cpp-widgets;installed-cpp-quick"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-cpp-installed-consumers PROPERTIES TIMEOUT 1200)
+    endif()
+
+    if(TARGET hyremote-generic-plugin)
+        # The installed Generic consumers run through the release evidence runner's own cell mechanism, so the
+        # hosted lanes exercise the same clean-install/deploy/run path the release evidence uses - as a normal
+        # product integration test through the canonical build authority, not as a CI-only command.
+        add_test(
+            NAME hyremote-generic-installed-consumers
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-generic-widgets;installed-generic-quick"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-generic-installed-consumers PROPERTIES TIMEOUT 900)
+    endif()
+
+    # Release-train authority selection and its acceptance matrix, registered as an ordinary product test so the
+    # canonical build authority runs it: a release scope must be selected by the requested version, fail closed on
+    # anything it cannot classify, and never treat a representable train as a blocker for an earlier one.
+    add_test(
+        NAME hyremote-release-scope-self-test
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_SCOPE_SELF_TEST=ON
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/release_scope.cmake"
+    )
+    set_tests_properties(hyremote-release-scope-self-test PROPERTIES TIMEOUT 300)
+
+    # The clean-consumer acquisition audit decides whether a consumer acquired HyRemote from a package or from the
+    # product source/build tree. That decision is a pure function of a CMakeCache, so its self test runs here without
+    # configuring or building anything: it drives the same shared audit the evidence runner includes, against
+    # synthetic caches, including the mixed "<run-prefix>;<forbidden-path>" value that a line-level audit skipped
+    # over and reported as clean.
+    add_test(
+        NAME hyremote-acquisition-audit-self-test
+        COMMAND "${CMAKE_COMMAND}"
+            -DACQUISITION_AUDIT_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/acquisition_audit_self_test.cmake"
+    )
+    set_tests_properties(hyremote-acquisition-audit-self-test PROPERTIES TIMEOUT 60)
+
+    # The V0.1 learning examples are the adoption path a new developer follows, so they are exercised end to end: the
+    # smoke installs the SDK from this build tree, configures and builds each example as a standalone project against
+    # that installed SDK, launches all four executables, and checks the native platform identity plus the
+    # RemoteAccess lifecycle. Qt comes from the developer environment, which is how someone following the example
+    # READMEs runs them; deployed-tree independence is a different question and is owned by the release evidence
+    # cells, which this smoke deliberately does not duplicate.
+    #
+    # The interpreter has to be the one the environment provides, not one that a Windows registry entry happens to
+    # name. Candidate test tooling is installed into the interpreter on PATH, so a registry-resolved interpreter would
+    # run the tests with a different Python than the one the tooling went into - which is exactly how the product-fit
+    # test failed on Windows with its viewer installed and "No module named PIL" at run time. Location-based discovery
+    # keeps install and run on the same interpreter on every platform.
+    set(Python3_FIND_REGISTRY NEVER)
+    set(Python3_FIND_STRATEGY LOCATION)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-v01-example-smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/v01-examples/example_adoption_smoke.py"
+                --source-dir "${CMAKE_CURRENT_SOURCE_DIR}"
+                --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+                --qt-prefix "${CMAKE_PREFIX_PATH}"
+                "--cmake-arg=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                "--cmake-arg=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+        )
+        set_tests_properties(hyremote-v01-example-smoke PROPERTIES TIMEOUT 1800)
+    endif()
+
+    # The CI scope classifier decides which lanes run - including whether the release-readiness gates run at all - so
+    # it is executed by the canonical build authority instead of only being trusted inside a workflow. A classifier
+    # that cannot be tested is how a lane that claims to be full integration quietly excludes readiness forever.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-ci-scope-self-test
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/resolve-ci-scope.py" --self-test
+        )
+        set_tests_properties(hyremote-ci-scope-self-test PROPERTIES TIMEOUT 120)
+    endif()
+
+    # The mainline push audit's retry logic is a shell script for the same reason; it is tested where bash exists.
+    find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    if(HYREMOTE_BASH_EXECUTABLE)
+        add_test(
+            NAME hyremote-mainline-audit-self-test
+            COMMAND "${HYREMOTE_BASH_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/mainline-push-audit.sh" --self-test
+        )
+        set_tests_properties(hyremote-mainline-audit-self-test PROPERTIES TIMEOUT 120)
+
+        # The branch family gate decides which branch names may open a pull request, so its matrix is executed rather
+        # than reviewed by eye.
+        add_test(
+            NAME hyremote-branch-name-gate-self-test
+            COMMAND "${HYREMOTE_BASH_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/check-pr-branch-name.sh" --self-test
+        )
+        set_tests_properties(hyremote-branch-name-gate-self-test PROPERTIES TIMEOUT 120)
+    endif()
+
+    if(TARGET HyRemote::QpaPlatform)
+        add_test(
+            NAME hyremote-release-readiness-source-qpa-authority
+            COMMAND "${CMAKE_COMMAND}"
+                -DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/src/integrations/qpa/tests/deploy_helper_fixture
+                -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-readiness-source-qpa-authority
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DTEST_QML=OFF
+                -DTEST_STALE_QPA_NEGATIVE_METADATA=ON
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/src/integrations/qpa/tests/run_deploy_helper_fixture.cmake"
+        )
+    endif()
+
+    function(hyremote_add_release_profile_test
+             test_name version cpp_enabled qml_enabled generic_enabled qpa_enabled security_enabled expect_reject)
+        add_test(
+            NAME "${test_name}"
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_TEST_VERSION=${version}
+                -DHYREMOTE_TEST_CPP=${cpp_enabled}
+                -DHYREMOTE_TEST_QML=${qml_enabled}
+                -DHYREMOTE_TEST_GENERIC=${generic_enabled}
+                -DHYREMOTE_TEST_QPA=${qpa_enabled}
+                -DHYREMOTE_TEST_SECURITY=${security_enabled}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
+        )
+        if(expect_reject)
+            set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
+        endif()
+    endfunction()
+
+    # Development sentinel accepts arbitrary capability combinations while V1 converges.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-develop-all 0.0.0 ON ON ON ON ON FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-develop-runtime-only 0.0.0 OFF OFF OFF OFF OFF FALSE)
+
+    # Historical V0 labels are planning references only and must never become release profiles again.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-retire-v001 0.0.1.0 ON OFF OFF OFF OFF TRUE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-retire-v002 0.0.2.0 ON ON OFF OFF OFF TRUE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-retire-v003 0.0.3.0 ON ON OFF ON OFF TRUE)
+
+    # Progressive trains are real releases, so they must be accepted whatever frontends a build enables. A
+    # frontend subset is a capability choice, never a version meaning: these cases would have failed under the
+    # retired rule that rejected every value below the first GA.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v010-cpp-only 0.1.0.0 ON OFF OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v040-all 0.4.0.0 ON ON ON ON ON FALSE)
+    # V0.4.0.x maintenance releases stay inside the V0.4 line.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v040-maintenance 0.4.0.5 ON ON ON ON ON FALSE)
+
+    # V1 is the first formal GA. Frontend subsets do not encode version semantics.
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v100-all 1.0.0.0 ON ON ON ON ON FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v100-cpp-only 1.0.0.0 ON OFF OFF OFF OFF FALSE)
+    hyremote_add_release_profile_test(
+        hyremote-release-profile-v100-generic-only 1.0.0.0 OFF OFF ON OFF OFF FALSE)
 endif()

@@ -1,0 +1,362 @@
+name: CI
+
+on:
+  pull_request:
+    # ready_for_review is not part of the default activity set, and without it a draft converted to ready would never
+    # start the product gate it was waiting for. converted_to_draft keeps the suppression honest in the other
+    # direction: turning a ready PR back into a draft stops being a product run.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      # One manual mode, deliberately: a dispatch is the explicit full gate (an exact V0.1 candidate, a release
+      # branch readiness run, main/GA validation, or a deliberate diagnostic). Ordinary work reaches the product
+      # matrix through its own ready pull request instead.
+      validation_level:
+        description: "Validation level for this manual run"
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Classify changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      lane: ${{ steps.scope.outputs.lane }}
+      product: ${{ steps.scope.outputs.product }}
+      integrations: ${{ steps.scope.outputs.integrations }}
+      qpa: ${{ steps.scope.outputs.qpa }}
+      qml: ${{ steps.scope.outputs.qml }}
+      cpp: ${{ steps.scope.outputs.cpp }}
+      generic_evidence: ${{ steps.scope.outputs.generic_evidence }}
+      cpp_evidence: ${{ steps.scope.outputs.cpp_evidence }}
+      qml_evidence: ${{ steps.scope.outputs.qml_evidence }}
+      qpa_evidence: ${{ steps.scope.outputs.qpa_evidence }}
+      readiness_evidence: ${{ steps.scope.outputs.readiness_evidence }}
+      rfb_product_fit_evidence: ${{ steps.scope.outputs.rfb_product_fit_evidence }}
+      governance: ${{ steps.scope.outputs.governance }}
+      test_exclude: ${{ steps.scope.outputs.test_exclude }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Self-test the CI scope classifier
+        shell: bash
+        run: python3 .github/scripts/resolve-ci-scope.py --self-test
+
+      - id: scope
+        name: Resolve affected capabilities
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          python .github/scripts/resolve-ci-scope.py
+
+  product:
+    name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
+    needs: classify
+    # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
+    # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
+    # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
+    if: >-
+      needs.classify.outputs.product == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 / Qt 6.8.3
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+          - name: Windows x86_64 / Qt 6.8.3
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: qt-cache
+        name: Restore exact Qt SDK
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+
+      - name: Validate or install exact Qt SDK
+        shell: bash
+        env:
+          NEED_QML: ${{ needs.classify.outputs.qml }}
+          NEED_QPA: ${{ needs.classify.outputs.qpa }}
+        run: |
+          set -euo pipefail
+          echo "CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
+          case "${{ runner.os }}" in
+            Linux) QT_PLATFORM=linux ;;
+            *)     QT_PLATFORM=windows ;;
+          esac
+
+          qt_tree_valid() {
+            python .github/scripts/validate-qt-sdk.py \
+              --prefix "$QT_PREFIX" \
+              --qt-version 6.8.3 \
+              --platform "$QT_PLATFORM" \
+              --need-qml "$NEED_QML" \
+              --need-qpa "$NEED_QPA" \
+              --cmake-components Qt6CoreConfig.cmake Qt6GuiConfig.cmake Qt6NetworkConfig.cmake \
+                                 Qt6WidgetsConfig.cmake Qt6QuickConfig.cmake \
+              --private-headers qguiapplication_p.h
+          }
+
+          if ! qt_tree_valid; then
+            if [[ "${{ steps.qt-cache.outputs.cache-hit }}" == "true" ]]; then
+              echo "Restored Qt cache failed integrity validation; rebuilding the local tree."
+            else
+              echo "Qt cache miss; installing exact SDK."
+            fi
+            rm -rf "$QT_ROOT"
+            python -m pip install --disable-pip-version-check aqtinstall
+            aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+            qt_tree_valid || {
+              echo "Fresh Qt installation failed integrity validation." >&2
+              exit 1
+            }
+            echo "QT_TREE_REBUILT=true" >> "$GITHUB_ENV"
+          else
+            echo "QT_TREE_REBUILT=false" >> "$GITHUB_ENV"
+          fi
+
+          if ! command -v ninja >/dev/null 2>&1; then
+            python -m pip install --disable-pip-version-check ninja
+          fi
+          echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+
+      # Viewer-side tooling for the exact-candidate product fit, installed only when that test is part of this run: the
+      # change that touches the product-fit lane runs it, and the exact-candidate full gate requires it. It is
+      # candidate test tooling rather than a product dependency - it never enters a product package, an installed SDK
+      # runtime manifest or any instruction to an ordinary user - and installing it here rather than on every pull
+      # request keeps an external viewer out of the ordinary fast lane. A failure to install fails the run, because a
+      # candidate that cannot execute its product fit must not report success.
+      #
+      # The interpreter is pinned first, so the tooling is installed into the same Python that the build system
+      # resolves from PATH for the test command. Without that, a Windows runner can install into one interpreter and
+      # run the test with another, which shows up as a viewer that is "installed" but cannot be imported.
+      - name: Set up the candidate product-fit interpreter
+        if: needs.classify.outputs.rfb_product_fit_evidence == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install candidate product-fit viewer tooling
+        if: needs.classify.outputs.rfb_product_fit_evidence == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            -r src/integrations/cpp/tests/candidate-test-requirements.txt
+          python -c "import PIL, vncdotool; print('viewer tooling importable: Python', __import__('sys').version.split()[0])"
+
+      - name: Install missing Linux Qt host dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          NEED_QPA: ${{ needs.classify.outputs.qpa }}
+        run: |
+          if [[ "$NEED_QPA" == "true" ]]; then
+            bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+          else
+            bash .github/scripts/install-linux-qt-desktop-deps.sh public
+          fi
+
+      - name: Build and test through HyRemote build system — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+        run: |
+          set -euo pipefail
+          sh ./compile.cmd \
+            --integrations="$INTEGRATIONS" \
+            --qt-prefix="$QT_PREFIX" \
+            --build-type=Release \
+            --build-dir=build-ci \
+            --tests --run-tests --no-examples \
+            --test-exclude="$TEST_EXCLUDE" \
+            --xvfb -j4 \
+            --env=QT_QUICK_BACKEND=software
+
+      - name: Build and test through HyRemote build system — Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        env:
+          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
+
+      - name: Test evidence summary
+        if: always()
+        shell: bash
+        env:
+          # The summary has to report the exclusion this run actually used, and the guard below has to be able to
+          # fire. Without this the report printed "<empty>" for every run and the all-matching-shape check could
+          # never trigger, which is a guard in name only.
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+        run: |
+          set -uo pipefail
+          LOG=build-ci/test.log
+          status=0
+          {
+            echo "## Test evidence — ${{ matrix.name }}"
+            echo
+            echo "TEST_EXCLUDE=${TEST_EXCLUDE:-<empty>}"
+            if [[ ! -f "$LOG" ]]; then
+              echo "No \`$LOG\` was produced, so the test phase never ran (build/configuration failure)."
+              exit 0
+            fi
+            echo "### CTest summary"
+            echo '```text'
+            grep -E "[0-9]+% tests passed|Total Test time" "$LOG" || true
+            echo '```'
+            echo
+            echo "### Failed tests"
+            echo '```text'
+            sed -n '/The following tests FAILED/,$p' "$LOG" || true
+            echo '```'
+            echo
+            # A lane that claims to be integration has to show real tests. This reads the run's own result line
+            # rather than trusting the job status: "No tests were found!!!" with a zero count is exactly the false
+            # green that let the release-readiness gates stay unexecuted, and it exits zero.
+            executed="$(grep -oE 'out of [0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+' || true)"
+            executed="${executed:-0}"
+            echo "EXECUTED_TEST_COUNT=$executed"
+            if [[ "$executed" -eq 0 ]] || grep -q "No tests were found" "$LOG"; then
+              echo "::error::${{ matrix.name }} executed $executed test(s); the log shows no real test execution"
+              status=1
+            fi
+            # An exclusion that matches every test name would empty the suite silently, so it is refused here as
+            # well as in the classifier, where the same shape is proved impossible by an executable self test.
+            if [[ "${TEST_EXCLUDE:-}" == "^()" ]]; then
+              echo "::error::test_exclude is '$TEST_EXCLUDE', which excludes every test"
+              status=1
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      # Artifacts exist to support a decision: a failure, the clean SDK/deploy acceptance contracts this run was
+      # asked to prove, or the explicit full gate. An ordinary ready pull request that proves neither does not
+      # produce a build-evidence bundle for nothing.
+      - name: Upload diagnostic evidence
+        if: >-
+          failure() ||
+          needs.classify.outputs.generic_evidence == 'true' ||
+          needs.classify.outputs.cpp_evidence == 'true' ||
+          needs.classify.outputs.qml_evidence == 'true' ||
+          needs.classify.outputs.qpa_evidence == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyremote-test-log-${{ runner.os }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build-ci/test.log
+            build-ci/evidence/*/summary.txt
+            build-ci/evidence/*/*/evidence.txt
+            build-ci/evidence/**/*.log
+
+      # PR-created caches live under refs/pull/.../merge and cannot seed sibling PRs. The trusted develop/manual
+      # lanes own the reusable baseline cache; PRs consume that cache or perform a one-off fallback install.
+      - name: Save verified exact Qt SDK
+        if: always() && github.event_name != 'pull_request' && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+
+      - name: Timing summary
+        if: always()
+        shell: bash
+        run: |
+          now="$(date +%s)"
+          start="${CI_STARTED:-$now}"
+          {
+            echo "## CI timing"
+            echo
+            echo "- runner: ${{ matrix.name }}"
+            echo "- integrations: ${{ needs.classify.outputs.integrations }}"
+            echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
+            echo "- elapsed after environment start: $((now-start))s"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Release-authority governance needs no Qt SDK, no Windows runner and no product build: it is CMake policy and
+  # selection over the repository itself. Running two full Qt runners just to execute a policy script was the most
+  # expensive way to answer a question that a five-second job answers, so the governance lane is separate and the
+  # classifier reports governance and product independently.
+  authority-governance:
+    name: Release-authority governance (no Qt)
+    needs: classify
+    if: needs.classify.outputs.governance == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Self-test release-train selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_SCOPE_SELF_TEST=ON \
+            -P tests/release-readiness/release_scope.cmake
+
+      - name: Release authority policy gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
+            -P tests/release-readiness/check_release_authority_policy.cmake
+
+  no-product-change:
+    name: No product CI needed
+    needs: classify
+    if: needs.classify.outputs.product != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Report the lane
+        run: |
+          echo "lane=${{ needs.classify.outputs.lane }}"
+          echo "capabilities=${{ needs.classify.outputs.integrations || 'none' }}"
+          echo "governance=${{ needs.classify.outputs.governance }}"
+          if [ "${{ needs.classify.outputs.lane }}" = "DEVELOP_SENTINEL" ]; then
+            echo "develop sentinel: repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform Qt matrix is not repeated here."
+          else
+            echo "This change cannot affect a product contract; the Qt runners are intentionally skipped."
+          fi

@@ -1,105 +1,160 @@
 # Third-Party Dependency Policy
 
-HyRemote is licensed under the **Apache License 2.0** and is intended for reuse in commercial and open-source embedded products. Dependencies therefore need to be technically useful, maintainable, and legally compatible with distribution of HyRemote under Apache-2.0.
+HyRemote is licensed under the **Apache License 2.0** and is intended for reuse in commercial and open-source Qt products, including future embedded deployments.
 
-## Required review for every new dependency
+Dependencies must be technically justified, maintainable, legally compatible, and invisible to normal application integration unless a product capability genuinely requires them.
 
-Record the following before adding a dependency:
+## Product toolchain rule
 
-1. upstream project and canonical repository;
-2. selected release/tag/commit;
-3. license and attribution obligations;
-4. compatibility with HyRemote's Apache-2.0 distribution;
-5. static/dynamic linking implications where relevant;
-6. project activity and release history;
-7. security/update mechanism;
-8. required versus optional status;
-9. supported platforms;
-10. fallback/removal strategy;
-11. whether an upstream contribution is preferable to maintaining a fork.
+HyRemote has one Shared Runtime and four peer integration frontends:
 
-## License compatibility rule
+```text
+C++ API ---------\
+QML API ----------\
+Generic Plugin ----> Shared Runtime -> Core
+QPA --------------/
+```
 
-A dependency must not silently impose licensing terms that contradict the intended Apache-2.0 distribution of HyRemote or force downstream applications to adopt an incompatible license merely by using HyRemote.
+The normal product implementation uses C++17, CMake, and Qt.
 
-Before vendoring, statically incorporating, or making a dependency required, record its exact redistribution and attribution obligations. Copyleft, source-disclosure, commercial-only, or otherwise restrictive terms require explicit review and must not be introduced into the generic Core by default.
+C++/QML/Generic/QPA are integration frontends rather than separate backend toolchains. A normal Windows/Linux SDK consumer does not install Rust, Cargo, Go, Node, Python, or another backend-specific toolchain merely to use HyRemote.
 
-Third-party code remains under its own license. Required notices and attributions must be preserved in the form required by that dependency's license.
+A future implementation may use an additional language/toolchain internally only when the resulting SDK still preserves the documented application API, package, deployment, and platform contracts.
 
-## Preferred dependency shape
+## Dependency classes
 
-Prefer libraries that:
+HyRemote distinguishes three classes of dependency:
 
-- expose a stable C/C++ API, or can be isolated behind a small stable C ABI when there is a justified cross-language backend;
-- use permissive licenses compatible with Apache-2.0 and broad embedded adoption;
-- can be built reproducibly with normal toolchain/package mechanisms;
-- allow optional features to be disabled;
-- do not pull desktop-only dependencies into the core;
-- have active upstream maintenance and reproducible releases.
+| Class | Meaning |
+| --- | --- |
+| **Application/runtime dependency** | Needed by a shipped HyRemote capability at runtime |
+| **Build dependency** | Needed to build an enabled capability but not exposed as an application API |
+| **Development/verification tool** | Used to build, test, benchmark, package, or qualify HyRemote; not part of the installed product contract |
 
-A non-C++ toolchain must not become a project-wide requirement merely because one optional backend uses it. Its build/runtime boundary, supported platforms and fallback strategy must be explicit.
+Development tooling does not become an SDK/runtime prerequisite merely because the repository uses it.
 
-## Fork policy
+## No hidden dependency downloads
 
-Do not create a permanent HyRemote fork merely to avoid contributing a generally useful change upstream.
+The HyRemote product build does not silently download or patch major product dependencies.
 
-A temporary pinned patch may be maintained when necessary, but it must document:
+In particular:
 
-- why upstream cannot currently be used unchanged;
-- the exact patch;
-- the upstream issue/PR if applicable;
-- criteria for deleting the patch.
+- Qt is supplied by the selected developer/CI/toolchain environment;
+- OpenSSL, when a secure transport build requires it, is supplied by the environment or an explicitly selected prefix;
+- product dependencies are not silently added through hidden `FetchContent`/`ExternalProject` download flows;
+- third-party application sources used for qualification are not installed as part of the HyRemote SDK.
 
-## VNC/RFB backend candidates
-
-Canonical x86 transport evaluation: [`x86-vnc-transport-evaluation.md`](x86-vnc-transport-evaluation.md).
-
-### NeatVNC
-
-Candidate role: Linux/Embedded Linux-oriented VNC/RFB transport backend.
-
-Why it remains valuable:
-
-- embeddable server library rather than a full desktop stack;
-- transport/protocol responsibility can remain outside HyRemote Core;
-- frame buffers, damage, input callbacks and modern Linux graphics-oriented integrations;
-- permissive ISC license;
-- strong fit for later Linux GBM/DRM/low-copy work without becoming a Core dependency.
-
-The accepted #4 evidence does **not** establish native Windows support, so NeatVNC alone cannot satisfy the frozen V0.0.1.0 Windows + Linux product gate.
-
-### rustvncserver
-
-Current disposition: **Conditional GO for bounded x86 C ABI/build feasibility only** (#34), not production dependency approval.
-
-- pinned evaluation release: `v2.2.1`;
-- upstream license: Apache-2.0;
-- upstream-declared Windows x86_64 and Linux x86_64/ARM64 support;
-- Rust/Tokio implementation;
-- Rust-native public API; no exported upstream C ABI was found during evaluation, so HyRemote's spike owns a thin opaque C ABI shim.
-
-Before production adoption, #27 must resolve safe bind/listener control, lifecycle/error propagation, bounded downstream backpressure, real viewer interoperability, input fidelity and the cost of carrying a Rust/Cargo backend in a C++/Qt project.
-
-### LibVNCServer
-
-Current disposition: **NO-GO as HyRemote's default linked production backend**.
-
-LibVNCServer is mature and cross-platform, but upstream is GPL-2.0-or-later and explicitly states that linking makes the program derivative work under GPL. That conflicts with the frozen normal Apache-2.0 HyRemote distribution model unless project licensing policy is explicitly changed.
-
-### Custom HyRemote RFB implementation
-
-Current disposition: **NO-GO by default**.
-
-Owning an RFB server stack is not HyRemote's product value. Reconsider only if bounded evidence shows that maintained permissive backends cannot satisfy the product contract.
-
-No transport dependency is considered production-frozen until #27 acceptance is complete.
+This keeps offline, enterprise, and embedded build environments predictable.
 
 ## Qt
 
-HyRemote's stable core should target Qt public APIs where possible. Qt private/QPA APIs may be used only in optional, isolated compatibility adapters with explicit Qt-version support statements.
+Core remains independent of Qt UI technology.
 
-Qt itself is an external dependency and remains subject to the Qt license selected by the downstream build/deployment. HyRemote's Apache-2.0 license does not alter Qt's licensing obligations.
+The Shared Runtime and frontends use Qt according to these rules:
 
-## Platform libraries
+- public Qt APIs are preferred for normal product integration;
+- Generic Plugin stays on public Qt plugin APIs and preserves the application's native platform integration;
+- QPA is the only frontend allowed to depend on Qt private/QPA ABI as part of its product role;
+- QPA compatibility is qualified per exact Qt patch/platform combination;
+- public-API compatibility never implies QPA private-ABI compatibility.
 
-GBM, DRM, RKMPP, V4L2, VA-API, and similar platform/hardware libraries must remain optional backend dependencies. They must not become required dependencies of the generic core.
+Current desktop reference: Qt **6.8.3**.
+
+Qt remains under its own licensing terms. A distributor is responsible for the license, notice, relinking/source-availability, and other obligations associated with the exact Qt binaries it redistributes.
+
+HyRemote does not change those obligations.
+
+## Transport security and OpenSSL
+
+Transport security is a Runtime capability, not a fifth integration mode.
+
+The build capability is represented by:
+
+```text
+HYREMOTE_WITH_TRANSPORT_SECURITY
+```
+
+When secure transport is requested:
+
+- the required cryptographic/TLS dependency must be explicitly available;
+- configuration fails closed when the dependency is unavailable;
+- HyRemote does not silently downgrade a requested secure build to an insecure one;
+- cryptographic implementation types remain private Runtime details rather than downstream SDK targets.
+
+Current V0.1 `AuthenticatedEncrypted` is unavailable and fails closed.
+
+> **TODO V0.2:** complete the encrypted transport/certificate product capability and publish its exact third-party runtime/package obligations.
+
+## RFB/VNC transport baseline
+
+The current Windows/Linux correctness baseline is HyRemote's bounded C++ RFB 3.8 transport behind the private Runtime transport boundary.
+
+RFB is an implementation and interoperability baseline, not the permanent public identity of HyRemote.
+
+All four frontends share the same transport-neutral Runtime/Core model, so a future accepted transport may replace or supplement RFB without creating frontend-specific Runtime personalities.
+
+Current security semantics:
+
+- `Insecure` is appropriate only within the documented trusted/loopback boundary;
+- `Authenticated` may use RFB VNC authentication but remains unencrypted;
+- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.
+
+## Adding a new product dependency
+
+A new dependency must have a documented product justification covering:
+
+1. upstream project and canonical source;
+2. selected release/tag/commit policy;
+3. license and attribution obligations;
+4. compatibility with HyRemote's distribution model;
+5. static/dynamic linking implications;
+6. activity, maintenance, and security-update posture;
+7. required versus optional status;
+8. supported platforms/toolchains;
+9. effect on C++/QML/Generic/QPA packaging and deployment;
+10. fallback/removal strategy;
+11. offline/cross-build impact;
+12. whether upstream contribution is preferable to maintaining a fork.
+
+A dependency must not silently force downstream applications into an incompatible license or a new mandatory toolchain merely by using HyRemote.
+
+## Fork policy
+
+Prefer upstream collaboration over a permanent HyRemote-specific fork when a change is generally useful.
+
+A temporary pinned patch or fork must have a clear product reason and a deletion/upstreaming plan. It must not become invisible long-term infrastructure that users are expected to understand or maintain.
+
+## Product-distribution rules
+
+Two product rules are especially important:
+
+### Qt remains external to the HyRemote source tree
+
+HyRemote consumes a selected Qt SDK rather than fetching, rebuilding, or patching Qt as part of the normal product build.
+
+QPA may compile against qualified Qt private interfaces, but that does not turn Qt into vendored HyRemote source or broaden the QPA compatibility promise.
+
+### Third-party qualification applications are not HyRemote runtime payloads
+
+Real-world applications used to qualify HyRemote remain separate upstream projects. HyRemote records the exact upstream revision and test method, but does not rebrand or redistribute those applications as part of its own SDK unless a future distribution decision explicitly addresses the associated licensing obligations.
+
+## Platform and hardware libraries
+
+GBM, DRM, DMA-BUF-related libraries, RKMPP, V4L2, VA-API, D3D-class APIs, and similar platform/hardware dependencies remain optional implementation dependencies unless a product line explicitly requires them.
+
+They must not:
+
+- enter the generic Core;
+- change the four application integration contracts;
+- force Generic/QPA applications to link SoC-specific libraries directly;
+- become prerequisites for ordinary desktop users merely to optimize one target platform.
+
+> **TODO V1.1+:** publish exact embedded/platform dependency manifests per supported BSP/product package.
+
+## Historical and future candidates
+
+Past experiments with other VNC/transport implementations remain engineering evidence, not current application dependencies.
+
+A future transport or low-copy dependency is accepted only when it provides measurable product value while preserving the normal C++/Qt SDK and deployment experience.
+
+No dependency is promoted merely because it is technically interesting.

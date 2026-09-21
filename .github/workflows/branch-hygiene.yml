@@ -1,0 +1,101 @@
+name: Branch hygiene
+
+# The remote branch set is supposed to be `main`, `develop` and the heads of open pull requests
+# (docs/internal/branch-lifecycle.md). `delete_branch_on_merge` now covers merged PRs automatically, but a PR that is
+# closed without merging still leaves its head ref behind - which is how the 2026-09-20 audit found twenty-one refs
+# where six belonged. This workflow applies the documented deletion rule on a schedule instead of relying on somebody
+# remembering to run the prune script with a local PowerShell 7.
+#
+# The rule it applies is the policy's, verbatim: delete a head ref whose pull request is merged or closed, provided the
+# branch is not the head of another open pull request. It fails closed on anything it cannot prove: no pull request at
+# all, an unknown state, a protected or lifecycle name, the default branch, or the API refusing to answer.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: 'Delete the stale refs (leave false for a dry run)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: branch-hygiene
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Apply the documented branch deletion rule
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # The scheduled run is the lane that actually prunes. Resolving execute from the input alone forced every
+          # scheduled run into a dry run, so nothing was ever deleted and the stale refs simply accumulated. A manual
+          # run stays a dry run unless the operator explicitly asks for execution, so the default manual action is
+          # never destructive.
+          EXECUTE: ${{ github.event_name == 'schedule' && 'true' || inputs.execute || 'false' }}
+        run: |
+          set -euo pipefail
+
+          # Lifecycle and long-lived names the policy never treats as short-lived task refs.
+          protected() {
+            case "$1" in
+              main|develop|HEAD) return 0 ;;
+              release/*|backmerge/*|hotfix/*) return 0 ;;
+            esac
+            return 1
+          }
+
+          branches=$(gh api "repos/${REPO}/branches?per_page=100" --jq '.[].name')
+          deleted=0
+          kept=0
+
+          for branch in $branches; do
+            if protected "$branch"; then
+              echo "keep   ${branch}  (long-lived or lifecycle ref)"
+              kept=$((kept + 1))
+              continue
+            fi
+
+            # The policy decides on pull-request facts, never on commit ids.
+            prs=$(gh api "repos/${REPO}/pulls?state=all&head=${REPO%%/*}:${branch}&per_page=100" \
+                    --jq '[.[] | {number: .number, state: .state, merged: (.merged_at != null)}]')
+            count=$(printf '%s' "$prs" | jq 'length')
+
+            if [ "$count" -eq 0 ]; then
+              echo "keep   ${branch}  (fail closed: no pull request to judge from)"
+              kept=$((kept + 1))
+              continue
+            fi
+
+            if printf '%s' "$prs" | jq -e 'any(.[]; .state == "open")' >/dev/null; then
+              echo "keep   ${branch}  (head of an open pull request)"
+              kept=$((kept + 1))
+              continue
+            fi
+
+            if printf '%s' "$prs" | jq -e 'any(.[]; .state == "closed")' >/dev/null; then
+              if [ "$EXECUTE" = "true" ]; then
+                gh api -X DELETE "repos/${REPO}/git/refs/heads/${branch}"
+                echo "delete ${branch}  (pull request merged or closed)"
+              else
+                echo "would  ${branch}  (pull request merged or closed; dry run)"
+              fi
+              deleted=$((deleted + 1))
+              continue
+            fi
+
+            echo "keep   ${branch}  (fail closed: no merged or closed pull request state)"
+            kept=$((kept + 1))
+          done
+
+          echo "---"
+          echo "candidates=${deleted} kept=${kept} execute=${EXECUTE}"

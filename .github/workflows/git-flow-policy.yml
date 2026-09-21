@@ -1,0 +1,420 @@
+name: Git Flow policy
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mainline-push-audit:
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # The audit and its self test are a script, so the job has to have the repository: the association query alone
+      # never needed a checkout, and the audit spent its first runs failing on a missing file rather than on its
+      # actual question.
+      - uses: actions/checkout@v4
+
+      - name: Self-test the mainline push audit
+        shell: bash
+        run: bash .github/scripts/mainline-push-audit.sh --self-test
+
+      - name: Audit mainline push came through an accepted PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        # This is an after-the-fact audit only; it cannot undo a direct push. It must never be described as branch protection when repository policy cannot enforce that before push. The audit itself retries the
+        # commit-to-pull-request association, because GitHub may answer `commits/<sha>/pulls` empty for a few seconds
+        # right after a real merge; a missing association after every attempt still fails, and no local commit shape
+        # is ever accepted in its place.
+        run: bash .github/scripts/mainline-push-audit.sh
+
+  pull-request-topology:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Self-test the branch family gate
+        shell: bash
+        run: bash .github/scripts/check-pr-branch-name.sh --self-test
+
+      - name: Validate branch topology
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          echo "head=${HEAD_REF} base=${BASE_REF}"
+          # Four families, and nothing else. The historical default case accepted any name as long as it targeted
+          # develop, which is how fix/*, refactor/*, chore/* and one-off names accumulated; the check lives in a script
+          # so its matrix is tested rather than reviewed by eye.
+          bash .github/scripts/check-pr-branch-name.sh "${HEAD_REF}" "${BASE_REF}"
+
+      # The pull request gate must validate the tree that will actually land. A merge commit is built from the pull
+      # request head against the base's CURRENT tip, so a hosted run recorded against an older base no longer
+      # describes what merges. Requiring a fresh base here makes the stale case visible at merge time instead of
+      # relying on a duplicate full run after the merge - which is the duplication this lane change removes.
+      - name: Require a fresh base before merge
+        if: github.base_ref == 'develop' || github.base_ref == 'main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BASE_REF}" --jq '.object.sha')"
+          echo "pr_base=${PR_BASE_SHA} ${BASE_REF}=${current}"
+          if [ "${PR_BASE_SHA}" != "${current}" ]; then
+            echo "::error::${BASE_REF} moved after this pull request's hosted run (pr base ${PR_BASE_SHA}, ${BASE_REF} ${current}). Merge ${BASE_REF} into the branch and re-run the gate; merge only from a fresh base."
+            exit 1
+          fi
+          echo "base is fresh: ${BASE_REF} == ${current}"
+
+      - name: Require the referenced issue to exist and to be an issue
+        if: startsWith(github.head_ref, 'feature/') || startsWith(github.head_ref, 'hotfix/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          topic="${HEAD_REF#feature/}"
+          topic="${topic#hotfix/}"
+          issue="${topic%%-*}"
+          if [[ -z "$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq .number 2>/dev/null || true)" ]]; then
+            echo "${HEAD_REF} references issue #${issue}, which does not exist" >&2
+            exit 1
+          fi
+          # Pull requests are issues in the REST API, so the reference has to be checked against the pulls endpoint too:
+          # a branch named after a pull request number would otherwise pass as if it named an issue.
+          if gh api "repos/${GITHUB_REPOSITORY}/pulls/${issue}" --jq .number >/dev/null 2>&1; then
+            echo "${HEAD_REF} references #${issue}, which is a pull request, not an issue" >&2
+            exit 1
+          fi
+          echo "issue reference accepted: #${issue}"
+
+      - name: Keep develop on the development version sentinel
+        if: github.base_ref == 'develop'
+        shell: python
+        run: |
+          import pathlib, re
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          match = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){2,3})", text, re.S)
+          if not match:
+              raise SystemExit("root project(VERSION ...) is missing or malformed")
+          version = match.group(1)
+          if version != "0.0.0":
+              raise SystemExit(f"PRs targeting develop must keep version sentinel 0.0.0; found {version}")
+          print("develop version sentinel gate passed: 0.0.0")
+
+      - name: Resolve requested release train
+        if: startsWith(github.head_ref, 'release/v') || startsWith(github.head_ref, 'backmerge/v') || startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          # One machine authority, selected by the requested version. Unknown versions, retired planning labels and
+          # conditional versions without activation all fail closed here: the lifecycle never guesses a train.
+          authority_file=".github/release/release-trains.json"
+          test -f "${authority_file}" || { echo "missing ${authority_file}" >&2; exit 1; }
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            requested="${GITHUB_REF_NAME#v}"
+          else
+            # pull_request events carry the head branch, not the branch name, in GITHUB_REF.
+            requested="${HEAD_REF#release/v}"
+            requested="${requested#backmerge/v}"
+          fi
+          echo "requested release version: ${requested}"
+          python - "${authority_file}" "${requested}" <<'PY'
+          import json, re, sys
+          authority_path, requested = sys.argv[1], sys.argv[2]
+          if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){3}", requested):
+              raise SystemExit("release versions must use Major.Minor.Feature.Maintenance")
+          authority = json.load(open(authority_path, encoding="utf-8"))
+          if authority.get("schema") != 3:
+              raise SystemExit(f"unsupported release-train authority schema {authority.get('schema')}")
+          if requested in authority.get("retired_profiles", []):
+              raise SystemExit(f"release/{requested} is a retired planning label, not a release train")
+          for conditional in authority.get("conditional_trains", []):
+              if conditional["version"] == requested:
+                  if not conditional.get("active"):
+                      raise SystemExit(
+                          f"release/{requested} is conditional on activation authority "
+                          f"#{conditional.get('activation_authority')} and has recorded no activation")
+          trains = authority.get("trains", {})
+          train = trains.get(requested)
+          if not train:
+              raise SystemExit(f"release/{requested} is not an authorized release train")
+          mandatory = train.get("mandatory_children")
+          if mandatory is None:
+              raise SystemExit(f"release train {requested} declares no mandatory_children list")
+          if not mandatory and train.get("scope_status", "active") == "active":
+              raise SystemExit(f"release train {requested} is active but declares no closeable mandatory children")
+          prerequisites = train.get("candidate_prerequisites")
+          if prerequisites is None:
+              raise SystemExit(f"release train {requested} declares no candidate_prerequisites list")
+          overlap = sorted(set(str(issue) for issue in mandatory) & set(str(issue) for issue in prerequisites))
+          if overlap:
+              raise SystemExit(
+                  f"release train {requested} classifies #{', #'.join(overlap)} as both a mandatory child and a "
+                  "candidate prerequisite")
+          lineage = train.get("lineage_parent", "")
+          if lineage:
+              seen, current = set(), lineage
+              while current:
+                  if current == requested or current in seen:
+                      raise SystemExit(f"release train {requested} has a cyclic lineage chain through {current}")
+                  if current not in trains:
+                      raise SystemExit(
+                          f"release train {requested} declares lineage_parent {current}, which is not a release train")
+                  seen.add(current)
+                  current = trains[current].get("lineage_parent", "")
+          with open("release-train.env", "w", encoding="utf-8") as handle:
+              handle.write(f"RELEASE_TRAIN_VERSION={requested}\n")
+              handle.write(f"RELEASE_TRAIN_AUTHORITY={train.get('authority_parent', '')}\n")
+              handle.write("RELEASE_TRAIN_MANDATORY=" + " ".join(str(issue) for issue in mandatory) + "\n")
+              handle.write("RELEASE_TRAIN_PREREQUISITES=" + " ".join(str(issue) for issue in prerequisites) + "\n")
+              handle.write(f"RELEASE_TRAIN_LINEAGE={lineage}\n")
+          print(f"release train {requested}: authority #{train.get('authority_parent')}, {len(mandatory)} mandatory "
+                f"child(ren), {len(prerequisites)} candidate prerequisite(s), lineage '{lineage or 'none'}'")
+          PY
+          cat release-train.env >> "${GITHUB_ENV}"
+
+      - name: Validate release candidate version before main merge
+        if: startsWith(github.head_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          import os, pathlib, re
+          head = os.environ["HEAD_REF"]
+          if os.environ["BASE_REF"] != "main":
+              raise SystemExit("release/v* candidates must target main")
+          match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
+          if not match:
+              raise SystemExit("release branches must use release/vMajor.Minor.Feature.Maintenance")
+          version = match.group(1)
+          if os.environ.get("RELEASE_TRAIN_VERSION") != version:
+              raise SystemExit(f"release/{version} did not resolve to a selectable release train")
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          cmake = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
+          if not cmake or cmake.group(1) != version:
+              raise SystemExit(f"release branch version {version} must equal root CMake four-part version")
+          print(f"release candidate version gate passed for v{version}")
+
+      - name: Require accepted milestone authorities before release PR
+        if: startsWith(github.head_ref, 'release/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          version="${HEAD_REF#release/v}"
+          # The selected train's own closeable children, and separately the prerequisites that gate candidate
+          # acceptance without being product work. Cross-version umbrellas the train merely references are never
+          # required to close as whole umbrellas, which is what lets an earlier train ship.
+          read -r -a required_issues <<< "${RELEASE_TRAIN_MANDATORY:-}"
+          read -r -a prerequisites <<< "${RELEASE_TRAIN_PREREQUISITES:-}"
+          test "${#required_issues[@]}" -gt 0 || {
+            echo "release/v${version} has no closeable mandatory child in the selected release train" >&2
+            exit 1
+          }
+          echo "release train #${RELEASE_TRAIN_AUTHORITY} selected for release/v${version}: ${required_issues[*]}"
+          echo "candidate prerequisites: ${prerequisites[*]:-none}"
+
+          # One helper, two labels: a failing product child and a failing prerequisite are different problems and
+          # must never be reported as one, because one is missing product work and the other is unresolved
+          # repository risk or evidence.
+          require_closed() {
+            local group="$1" issue="$2" response state reason
+            if ! response="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq '[.state, (.state_reason // "")] | @tsv' 2>/dev/null)"; then
+              echo "${group} FAILED: #${issue} could not be read for release/v${version}" >&2
+              return 1
+            fi
+            IFS=$'\t' read -r state reason <<< "${response}"
+            if [[ "${state}" != "closed" || "${reason}" == "not_planned" ]]; then
+              echo "${group} FAILED: #${issue} state=${state} reason=${reason:-none}" >&2
+              return 1
+            fi
+            echo "${group} #${issue}: closed (${reason:-unspecified})"
+          }
+
+          for issue in "${required_issues[@]}"; do
+            require_closed "PRODUCT CHILD" "${issue}" || exit 1
+          done
+          if [[ ${#prerequisites[@]} -gt 0 ]]; then
+            for issue in "${prerequisites[@]}"; do
+              require_closed "CANDIDATE PREREQUISITE" "${issue}" || exit 1
+            done
+          fi
+
+          # The lineage parent is an exact prior Feature. Trusting the manifest's prose would let a Feature ship
+          # before the release it builds on was accepted, so the accepted public release it names is verified here.
+          if [[ -n "${RELEASE_TRAIN_LINEAGE:-}" ]]; then
+            if ! git ls-remote --exit-code --tags origin "refs/tags/v${RELEASE_TRAIN_LINEAGE}" >/dev/null 2>&1; then
+              echo "CANDIDATE PREREQUISITE FAILED: release/v${version} declares lineage v${RELEASE_TRAIN_LINEAGE}, which has no accepted release tag" >&2
+              exit 1
+            fi
+            echo "lineage v${RELEASE_TRAIN_LINEAGE}: accepted release tag present"
+          fi
+          echo "release authority gate passed for v${version}"
+
+      - name: Validate milestone release-note state
+        if: startsWith(github.head_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          import os, pathlib, re
+          head = os.environ["HEAD_REF"]
+          match = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", head)
+          if not match:
+              raise SystemExit(f"invalid release branch name: {head}")
+          version = match.group(1)
+          notes = pathlib.Path(f"docs/releases/v{version}.md")
+          if not notes.is_file():
+              raise SystemExit(f"release branch {head} requires {notes}")
+          text = notes.read_text(encoding="utf-8")
+          for required in (f"v{version}", f"release/v{version}", "## Security boundary"):
+              if required not in text:
+                  raise SystemExit(f"{notes} is missing required release fact/section: {required}")
+          marker = "Status: **candidate / acceptance pending**"
+          is_draft = os.environ.get("PR_DRAFT", "true").lower() == "true"
+          if is_draft and marker not in text:
+              raise SystemExit(f"Draft release PR {head} must keep the candidate marker")
+          if not is_draft and marker in text:
+              raise SystemExit(f"ready release PR {head} still says acceptance pending")
+          print(f"release-note state gate passed for {head}")
+
+      - name: Validate released-history backmerge
+        if: startsWith(github.head_ref, 'backmerge/v')
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          version="${HEAD_REF#backmerge/v}"
+          # The backmerge must name the same train the lifecycle resolved, so a retired label or an unknown version
+          # cannot carry released history back into develop.
+          test "${version}" = "${RELEASE_TRAIN_VERSION}" || {
+            echo "unauthorized backmerge milestone ${version}" >&2
+            exit 1
+          }
+          tag="v${version}"
+          git fetch origin main "refs/tags/${tag}:refs/tags/${tag}" --force
+          git fetch origin "${HEAD_REF}:refs/remotes/origin/${HEAD_REF}" --force
+          test "$(git cat-file -t "refs/tags/${tag}")" = "tag" || { echo "backmerge requires annotated ${tag}" >&2; exit 1; }
+          tagged_commit="$(git rev-parse "refs/tags/${tag}^{commit}")"
+          git merge-base --is-ancestor "${tagged_commit}" origin/main || { echo "${tag} not in current main history" >&2; exit 1; }
+          git merge-base --is-ancestor "${tagged_commit}" "origin/${HEAD_REF}" || { echo "${HEAD_REF} lacks ${tagged_commit}" >&2; exit 1; }
+          echo "backmerge gate passed for ${tag}"
+
+  release-tag:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate four-part authorized milestone tag
+        shell: python
+        run: |
+          import os, re
+          tag = os.environ["GITHUB_REF_NAME"]
+          match = re.fullmatch(r"v([0-9]+(?:\.[0-9]+){3})", tag)
+          if not match:
+              raise SystemExit("HyRemote release tags must use vMajor.Minor.Feature.Maintenance")
+          # The tag must name the train the lifecycle resolved for this ref; the resolution step already refused
+          # retired labels, unknown versions and conditional versions without activation.
+          if match.group(1) != os.environ.get("RELEASE_TRAIN_VERSION"):
+              raise SystemExit(f"tag {tag} is not an authorized release train")
+
+      - name: Require annotated tag on exact main release head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = "tag" || {
+            echo "release tag ${GITHUB_REF_NAME} must be annotated" >&2
+            exit 1
+          }
+          tagged_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          main_head="$(git rev-parse origin/main)"
+          test "${tagged_commit}" = "${main_head}" || {
+            echo "release tag ${GITHUB_REF_NAME} must point to exact current main HEAD" >&2
+            exit 1
+          }
+
+      - name: Require CMake version to match tag
+        shell: python
+        run: |
+          import os, pathlib, re
+          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          match = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
+          if not match:
+              raise SystemExit("root project(VERSION ...) must contain a four-part release version")
+          if match.group(1) != os.environ["GITHUB_REF_NAME"][1:]:
+              raise SystemExit("release tag does not match root CMake project version")
+
+      - name: Require finalized milestone release notes
+        shell: python
+        run: |
+          import os, pathlib
+          tag = os.environ["GITHUB_REF_NAME"]
+          notes = pathlib.Path(f"docs/releases/{tag}.md")
+          if not notes.is_file():
+              raise SystemExit(f"release tag {tag} requires {notes}")
+          text = notes.read_text(encoding="utf-8")
+          if "Status: **candidate / acceptance pending**" in text:
+              raise SystemExit(f"tagged release {tag} still contains the candidate marker")
+          for required in (tag, f"release/{tag}", "## Security boundary"):
+              if required not in text:
+                  raise SystemExit(f"{notes} is missing required release fact/section: {required}")
+          print(f"final release-note gate passed for {tag}")
+
+      - name: Audit release tag fact
+        shell: bash
+        run: |
+          set -euo pipefail
+          tagged_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          echo "Validated annotated release tag ${GITHUB_REF_NAME} at exact main head ${tagged_commit}."
+          echo "This post-push audit does not replace the pre-merge release/v* gate."
