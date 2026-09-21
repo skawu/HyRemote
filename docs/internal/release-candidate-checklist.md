@@ -16,10 +16,12 @@ For V1, Draft PR #106 is the sole product-convergence line, #33 is GA authority,
 Before any `release/v1.0.0.0` branch exists:
 
 - all V1-required implementation/docs/test PRs are integrated into #106;
-- the requested release version selects one train in `.github/release/release-trains.json`, and every closeable mandatory child of **that train** is accepted/closed as completed when its lifecycle requires closure;
-- the train's cross-version references and declared non-blockers are **not** required to close as whole umbrellas: `V0.1` consumes evidence from `#41`/`#143`/`#176`/`#209` without waiting for them;
-- an unknown version, a retired `V0.0.x` planning label and a conditional train whose activation authority has recorded no activation are all refused rather than resolved to a nearby train;
-- `V1.2` stays conditional on `#123` activation evidence, and `V1.0.0.0` uses this same mechanism with its own unchanged mandatory set;
+- the requested release version selects one exact Feature in `.github/release/release-trains.json`, and every closeable mandatory child of **that Feature** is accepted/closed as completed when its lifecycle requires closure;
+- the Feature's `candidate_prerequisites` are resolved as well, but they are **not** product work: a prerequisite is repository risk, evidence or governance that blocks candidate acceptance while unresolved, and the gate reports it separately (`CANDIDATE PREREQUISITE FAILED`) from a missing product child (`PRODUCT CHILD FAILED`), so unresolved repository health is never confused with unfinished product scope;
+- the Feature's `lineage_parent` names the exact accepted Feature it builds on, and the gate verifies that release actually exists (its accepted release tag) rather than trusting the manifest's prose: a Feature cannot ship before the release it depends on has been accepted;
+- the Feature's cross-version references and declared non-blockers are **not** required to close as whole umbrellas: `V0.1` consumes evidence from `#41`/`#143`/`#176`/`#209` without waiting for them, and `V0.3` consumes `#176`/`#57` through their closeable children rather than through whole-umbrella closure;
+- an unknown version, a retired `V0.0.x` planning label and a conditional train whose activation authority has recorded no activation are all refused rather than resolved to a nearby Feature;
+- `V1.2` stays conditional on `#123` activation evidence, no fixed post-V1 version is committed by its number merely existing, and `V1.0.0.0` uses this same mechanism with its own unchanged mandatory set in its original order;
 - all mandatory hosted/reference checks actually execute and pass on the same integrated head;
 - compatibility/security/known-limitations describe the **implemented candidate truth**, not future intent;
 - root `project(VERSION ...)` on `develop` remains the development sentinel `0.0.0`;
