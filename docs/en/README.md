@@ -17,6 +17,7 @@ This documentation area is organized around product use: what HyRemote is, how t
 | Install, build, and acquire the SDK | [`guide/install.md`](guide/install.md) · [中文](../guide/install.md) | Product guide |
 | Package and deploy | [`guide/deployment.md`](guide/deployment.md) · [中文](../guide/deployment.md) | Product guide |
 | Connect a viewer, enable control, and reconnect | [`guide/viewer-connection.md`](guide/viewer-connection.md) | Product guide |
+| Security model and deployment boundary | [`security.md`](security.md) · [中文](../security.md) | Product guide |
 | Troubleshoot | [`guide/troubleshooting.md`](guide/troubleshooting.md) | Product guide |
 
 ## Product overview
@@ -39,7 +40,7 @@ The V0.1 Developer Preview focuses on **getting users to a working remote-access
 | [`../product-overview.md`](../product-overview.md) | Product positioning, integration frontends, capability boundaries, roadmap |
 | [`../architecture.md`](../architecture.md) | Core, Shared Runtime, and four integration frontends |
 | [`../compatibility.md`](../compatibility.md) | Current platform, Qt, and integration compatibility matrix |
-| [`../security.md`](../security.md) | Current security behavior, defaults, and unsupported security capabilities |
+| [`security.md`](security.md) | Current security behavior, defaults, and unsupported security capabilities |
 | [`../known-limitations.md`](../known-limitations.md) | Known product limitations |
 | [`../versioning.md`](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
 | [`../v1-api-stability.md`](../v1-api-stability.md) | Public API stability boundary |
