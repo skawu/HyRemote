@@ -54,7 +54,9 @@ set(all_cells
 # optional extra: the two consumers are Widgets and Qt Quick, and both must actually run after deployment.
 list(APPEND all_cells
     installed-generic-widgets
-    installed-generic-quick)
+    installed-generic-quick
+    installed-cpp-widgets
+    installed-cpp-quick)
 
 if(NOT DEFINED EVIDENCE_CELLS OR EVIDENCE_CELLS STREQUAL "")
     set(EVIDENCE_CELLS "${all_cells}")
@@ -124,7 +126,12 @@ endif()
 
 string(TIMESTAMP RUN_STAMP "%Y%m%d-%H%M%S" UTC)
 string(TIMESTAMP RUN_ISO "%Y-%m-%dT%H:%M:%SZ" UTC)
-set(RUN_DIR "${EVIDENCE_DIR}/${RUN_STAMP}-${SOURCE_SHA}")
+# The run directory has to be unique per invocation, not just per second: several evidence configurations run
+# concurrently under one ctest invocation, and two of them starting within the same second would otherwise share a
+# prefix and race inside cmake --install (file INSTALL cannot set modification time because the other process is
+# still writing the same file). The stamp keeps the ordering readable; the random suffix keeps the directory private.
+string(RANDOM LENGTH 6 ALPHABET 0123456789abcdef _evidence_run_suffix)
+set(RUN_DIR "${EVIDENCE_DIR}/${RUN_STAMP}-${SOURCE_SHA}-${_evidence_run_suffix}")
 
 # Harness executor: captured absolutely before any product runtime path is constructed. Its directory is never
 # added to PRODUCT_RUNTIME_PATH.
@@ -642,6 +649,179 @@ if("installed-generic-quick" IN_LIST EVIDENCE_CELLS)
     set(cell "installed-generic-quick")
     record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-generic (Quick, Qt-only)")
     generic_product_fit("${cell}" "generic-quick-consumer")
+endif()
+
+# ---------------------------------------------------------------- C++ installed consumption
+
+# free_evidence_port(<out_var>) - a port the operating system says is currently unused. The clean consumer is an
+# external application and is given the port through its environment, so it only ever calls the public setter and
+# never has to know about this repository's own test fixtures.
+function(free_evidence_port out_var)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c
+            "import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()"
+        OUTPUT_VARIABLE _free_port
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE _free_port_result)
+    if(NOT _free_port_result EQUAL 0 OR "${_free_port}" STREQUAL "")
+        message(FATAL_ERROR "release-evidence: could not allocate a free port for the clean C++ consumer")
+    endif()
+    set(${out_var} "${_free_port}" PARENT_SCOPE)
+endfunction()
+
+# cpp_product_fit(cell consumer_target) - build the C++ consumer against the clean install, deploy it with the one
+# deployment family, and run the deployed executable with only the deployed tree and the OS on its search path. The
+# consumer proves the public lifecycle itself (start -> Running through a pumped event loop -> stop -> Stopped), and
+# this cell proves the surrounding product facts: acquisition from the clean install, a self-contained deployed tree
+# carrying the shared runtime and a native platform plugin, and no source or build tree dependency.
+function(cpp_product_fit cell consumer_target)
+    set(_build "${RUN_DIR}/${cell}/build")
+    file(MAKE_DIRECTORY "${_build}")
+    string(TOUPPER "${consumer_target}" _excluded_probe)
+    if(consumer_target STREQUAL "hyremote-cpp-widgets-consumer")
+        set(_kind "widgets")
+        set(_probe "widgets")
+    else()
+        set(_kind "quick")
+        set(_probe "quick")
+    endif()
+    run_toolchain("${cell}" "configure"
+        "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-cpp" -B "${_build}"
+            "-DCMAKE_BUILD_TYPE=Release"
+            "-DHYREMOTE_CPP_CONSUMER_KIND=${_kind}"
+            "-DCMAKE_PREFIX_PATH=${_consumer_prefix_list}"
+            ${CONSUMER_TOOLCHAIN_ARGS})
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "clean C++ consumer configure failed")
+        return()
+    endif()
+    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "clean C++ consumer build failed")
+        return()
+    endif()
+    run_toolchain("${cell}" "install"
+        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed" ${CONSUMER_CONFIG_ARGS})
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "clean C++ consumer deployment failed")
+        return()
+    endif()
+
+    set(_deployed "${RUN_DIR}/${cell}/deployed")
+    set(_exe "${_deployed}/bin/${consumer_target}")
+    if(WIN32)
+        set(_exe "${_exe}.exe")
+    endif()
+    if(NOT EXISTS "${_exe}")
+        fail_cell("${cell}" "deployed C++ consumer executable is missing: ${_exe}")
+        return()
+    endif()
+    record("${cell}" "HYREMOTE_DIR" "${_deployed}/bin")
+
+    # The deployed tree must be self-contained: the shared runtime and a native Qt platform plugin both have to be
+    # present, and no HyRemote platform plugin may exist, because the C++ product path never replaces the native
+    # platform integration.
+    file(GLOB _shared_runtime_payloads "${_deployed}/bin/*RemoteAccess*" "${_deployed}/lib/*RemoteAccess*")
+    list(LENGTH _shared_runtime_payloads _shared_runtime_count)
+    if(_shared_runtime_count EQUAL 0)
+        fail_cell("${cell}" "deployed C++ consumer tree carries no shared HyRemote runtime payload")
+        return()
+    endif()
+    record("${cell}" "REMOTEACCESS_PAYLOAD" "${_shared_runtime_payloads}")
+    file(GLOB _platform_payloads "${_deployed}/plugins/platforms/*")
+    list(LENGTH _platform_payloads _platform_count)
+    if(_platform_count EQUAL 0)
+        fail_cell("${cell}" "deployed C++ consumer tree carries no native Qt platform plugin")
+        return()
+    endif()
+    file(GLOB _hyremote_platform_payloads "${_deployed}/plugins/platforms/*hyremote*")
+    list(LENGTH _hyremote_platform_payloads _hyremote_platform_count)
+    if(NOT _hyremote_platform_count EQUAL 0)
+        fail_cell("${cell}" "deployed C++ consumer tree carries a HyRemote platform plugin: ${_hyremote_platform_payloads}")
+        return()
+    endif()
+    record("${cell}" "QT_PLATFORM_PAYLOAD" "${_platform_payloads}")
+
+    # Source/build-tree independence, counted from the consumer's own configure cache exactly as the other installed
+    # consumer cells do, plus the positive form of the same fact.
+    set(_source_tree_hits 0)
+    set(_build_tree_hits 0)
+    file(READ "${_build}/CMakeCache.txt" _consumer_cache)
+    string(REPLACE "\\" "/" _consumer_cache "${_consumer_cache}")
+    set(_source_probe "${HYREMOTE_SOURCE_DIR}")
+    set(_build_probe "${HYREMOTE_BUILD_DIR}")
+    string(REPLACE "\\" "/" _source_probe "${_source_probe}")
+    string(REPLACE "\\" "/" _build_probe "${_build_probe}")
+    foreach(_cache_line IN LISTS _consumer_cache)
+        string(FIND "${_cache_line}" "${RUN_DIR}" _run_dir_hit)
+        if(NOT _run_dir_hit EQUAL -1)
+            continue()
+        endif()
+        string(FIND "${_cache_line}" "${_source_probe}" _source_hit)
+        if(NOT _source_hit EQUAL -1)
+            math(EXPR _source_tree_hits "${_source_tree_hits} + 1")
+        endif()
+        string(FIND "${_cache_line}" "${_build_probe}" _build_hit)
+        if(NOT _build_hit EQUAL -1)
+            math(EXPR _build_tree_hits "${_build_tree_hits} + 1")
+        endif()
+    endforeach()
+    string(FIND "${_consumer_cache}" "HyRemote_DIR:PATH=${INSTALL_PREFIX}" _install_acquisition_hit)
+    if(_install_acquisition_hit EQUAL -1)
+        fail_cell("${cell}" "clean C++ consumer did not resolve HyRemote from the clean install prefix")
+        return()
+    endif()
+    record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
+    record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
+    if(NOT _source_tree_hits EQUAL 0 OR NOT _build_tree_hits EQUAL 0)
+        fail_cell("${cell}" "clean C++ consumer acquired HyRemote from the source or build tree")
+        return()
+    endif()
+
+    free_evidence_port(_consumer_port)
+    set(_path "${_deployed}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+    record_runtime_env("${cell}" "${_path}")
+    record("${cell}" "EXECUTABLE" "${_exe}")
+    record("${cell}" "CONSUMER_PORT" "${_consumer_port}")
+    run_capture("${cell}" "deployed_smoke" "${_path}"
+        "HYREMOTE_CPP_CONSUMER_PORT=${_consumer_port}" "${_exe}")
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "deployed C++ consumer did not exit successfully")
+        return()
+    endif()
+
+    file(READ "${RUN_DIR}/${cell}/deployed_smoke.log" _smoke_log)
+    string(TOUPPER "${_probe}" _probe_upper)
+    string(FIND "${_smoke_log}" "HYREMOTE_CPP_${_probe_upper}_START=Running" _start_hit)
+    string(FIND "${_smoke_log}" "HYREMOTE_CPP_${_probe_upper}_STOP=Stopped" _stop_hit)
+    if(_start_hit EQUAL -1 OR _stop_hit EQUAL -1)
+        fail_cell("${cell}" "deployed C++ consumer did not prove Running then Stopped: ${_smoke_log}")
+        return()
+    endif()
+    string(REGEX MATCH "HYREMOTE_CPP_${_probe_upper}_PLATFORM=([^\n]*)" _ignored "${_smoke_log}")
+    set(_consumer_platform "${CMAKE_MATCH_1}")
+    if("${_consumer_platform}" STREQUAL "" OR "${_consumer_platform}" STREQUAL "hyremote")
+        fail_cell("${cell}" "deployed C++ consumer ran on an unexpected platform: '${_consumer_platform}'")
+        return()
+    endif()
+    record("${cell}" "PLATFORM" "${_consumer_platform}")
+    record("${cell}" "RESULT_DETAIL"
+        "clean installed SDK, real ${_probe} target adapter, start->Running, stop->Stopped, platform ${_consumer_platform}")
+    record("${cell}" "RESULT" "PASS")
+    message(STATUS "release-evidence: CPP_${_probe_upper}_INSTALLED=PASS (${_exe})")
+endfunction()
+
+if("installed-cpp-widgets" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-cpp-widgets")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-cpp (Widgets + C++ API)")
+    cpp_product_fit("${cell}" "hyremote-cpp-widgets-consumer")
+endif()
+
+if("installed-cpp-quick" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-cpp-quick")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-cpp (Quick + C++ API)")
+    cpp_product_fit("${cell}" "hyremote-cpp-quick-consumer")
 endif()
 
 if("deploy-helper" IN_LIST EVIDENCE_CELLS)

@@ -1,160 +1,86 @@
-# Generic Plugin 接入（零业务代码改动）
+# Generic Plugin - zero-code integration for an ordinary Qt application
 
-> 语言 / Language：**中文** ｜ [English](../en/getting-started/generic.md)
+The Generic Plugin is the fourth peer frontend and, together with Embedded C++, one of the two **primary** V0.1
+surfaces. It is a public Qt *generic* plugin: your application stays an ordinary Qt application, links no HyRemote
+target, and acquires remote access at run time through Qt's own plugin mechanism.
 
-Generic Plugin 适合已经存在的 Qt Widgets / Qt Quick 应用：应用本身保持普通 Qt 程序，不链接 HyRemote API，通过 Qt 的 **generic plugin** 机制在运行时启用远程访问。
+## What you get and what you do not
 
-它的关键特点是：**不替换应用的 Qt platform integration**。Windows 仍使用 `qwindows`，Linux/X11 仍使用 `qxcb`；HyRemote 只在应用旁路接入同一个 Shared Runtime。
+| | |
+| --- | --- |
+| Public Qt plugin | yes - the integration is a Qt generic plugin loaded through `-plugin hyremote` |
+| HyRemote application API / link dependency | none - you do not link `HyRemote::RemoteAccess` and you do not call HyRemote code |
+| Native Qt platform | preserved - the plugin never replaces or installs a Qt platform plugin, so your application keeps running on the platform it already used |
+| Qt private APIs | none - the plugin uses public Qt APIs only |
 
-## 适用场景
+This is the difference between the two Qt-facing frontends: the Generic Plugin leaves your application's platform
+integration alone, while the Transparent QPA Proxy replaces it with `-platform hyremote`.
 
-优先考虑 Generic Plugin，当你希望：
-
-- 不改业务代码；
-- 不引入 `HyRemote::RemoteAccess` 链接依赖；
-- 保持原生 Qt platform、窗口、本地输入和 GPU 路径；
-- 使用统一的 `hyremote_deploy()` 完成打包。
-
-如果应用需要在运行时显式控制启动/停止、目标切换或策略，优先使用 [`cpp.md`](cpp.md)。
-
-## 构建应用
-
-应用仍然只链接 Qt：
+## Consume the installed SDK
 
 ```cmake
-find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
+cmake_minimum_required(VERSION 3.21)
+project(MyApp LANGUAGES CXX)
 
-target_link_libraries(MyApp PRIVATE Qt6::Widgets)
-```
-
-Qt Quick 应用对应链接 `Qt6::Quick`。
-
-## 部署
-
-部署阶段引入 HyRemote SDK：
-
-```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)   # or Quick, for a Qt Quick application
 find_package(HyRemote CONFIG REQUIRED)
 
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)   # note: no HyRemote target
+
 install(TARGETS MyApp RUNTIME DESTINATION bin)
+
+# The Generic payload, the shared runtime and the runtime closure your application needs.
 hyremote_deploy(TARGET MyApp GENERIC)
 ```
 
-部署结果会包含：
+`GENERIC` is a mode of the same `hyremote_deploy()` family every other payload uses - there is no second deploy script
+to learn and no separate tool to install. `hyremote_deploy(TARGET ... GENERIC QPA)` is refused: the Generic Plugin
+preserves the native platform integration and QPA replaces it, so the two cannot both be deployed for one application.
 
-- HyRemote Generic Plugin；
-- Shared Runtime；
-- 应用正常启动所需的原生 Qt platform plugin；
-- 相关 Qt 运行时依赖。
+Deploy from the build tree (`cmake --install`) or from the installed SDK. The payload identity always comes from the
+target artifact when you deploy a source build, and only from the installed package metadata when you deploy an
+installed SDK; it is never guessed from a toolchain prefix/suffix and never taken from a build-tree search.
 
-应用源码仍然不链接 HyRemote target。
-
-## 启动
-
-使用 Qt generic-plugin 参数：
+## Activate it
 
 ```text
 MyApp -plugin hyremote
+MyApp -plugin hyremote:port=5921
 ```
 
-也可以使用环境变量启用默认配置：
+The plugin is discovered where Qt looks for generic plugins, so the argument alone is enough once the payload is
+deployed. `port` is optional; when omitted the runtime uses its default port.
 
-```text
-QT_QPA_GENERIC_PLUGINS=hyremote
-```
+## What a deployment contains
 
-默认行为与 C++ API 一致：
+`hyremote_deploy(TARGET MyApp GENERIC)` produces a tree that runs without the HyRemote SDK and without the Qt SDK on
+its search path:
 
-- 地址：`127.0.0.1`；
-- 端口：`5921`；
-- 远程输入：关闭；
-- `Insecure` 仅允许回环监听。
+- the deployed application executable;
+- the Generic Plugin payload, below Qt's generic plugin directory (`plugins/generic/`);
+- the **native** Qt platform plugin, below `plugins/platforms/`, so the application keeps its normal platform;
+- the one shared `RemoteAccess` runtime artifact;
+- the Qt runtime closure the deployed application needs.
 
-## 配置格式
+Exact file names are platform specific and are decided by the installed package metadata and the deploy helper - do
+not hard-code them in build scripts or documentation. Read `HyRemote_GENERIC_AVAILABLE` and
+`HyRemote_GENERIC_PLUGIN_FILE` from the package if you need the installed payload location; the deployed location is
+whatever `QT_DEPLOY_PLUGINS_DIR/generic` resolves to for your application.
 
-Qt 把 `-plugin` 参数中第一个冒号前的部分作为 Generic Plugin key，冒号后的部分作为 specification 传入插件。HyRemote 的 specification 由 `key=value` 字段组成，多个字段使用分号分隔。
+No HyRemote platform plugin is ever installed. If you find `plugins/platforms/*hyremote*` in a Generic deployment,
+that is a defect: the integration would no longer be preserving your native platform.
 
-例如：
+## Security boundary (V0.1)
 
-```text
-MyApp -plugin "hyremote:address=127.0.0.1;port=5901;input=true;security=insecure"
-```
+V0.1 is a **loopback-only Developer Preview**:
 
-其中真正传给 HyRemote 的 specification 是：
+- the listener is bound to loopback and is not reachable from other machines;
+- `Insecure` is loopback, unauthenticated and unencrypted;
+- `Authenticated` is RFB VNC Authentication and is unencrypted;
+- `AuthenticatedEncrypted` is **unavailable in V0.1** and fails closed before a listener exists - there is no
+  downgrade to a weaker profile;
+- the VeNCrypt/TLS work is V0.2 under #143, not V0.1 and not V1.0-only.
 
-```text
-address=127.0.0.1;port=5901;input=true;security=insecure
-```
-
-当前可识别字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `address` | 数字 IP 地址 |
-| `port` | `1..65535` |
-| `input` | `true/false`、`on/off`、`yes/no`、`1/0` |
-| `security` | `insecure`、`authenticated`、`authenticated-encrypted` |
-| `security-config` | 安全配置文件路径 |
-
-安全 profile 名称可被配置，不代表当前包一定包含对应传输能力：
-
-- `authenticated` 只有在 HyRemote 构建包含 transport-security capability 且 `security-config` 指向有效 descriptor 时才能成功启动；当前提供 VNC authentication，但流量不加密；
-- `authenticated-encrypted` 在 V0.1 中始终**失败关闭**，不会降级成 `authenticated` 或 `insecure`。
-
-> **TODO V0.2：** 提供完整加密传输、证书策略、authenticated session 与生产网络策略。
-
-## Native platform 保持不变
-
-Generic Plugin 与 QPA 是两种不同产品入口：
-
-```text
-Generic Plugin:
-Qt application -> native qwindows/qxcb/... + HyRemote generic plugin
-
-QPA:
-Qt application -> qhyremote Factory Trampoline -> native qwindows/qxcb
-```
-
-Generic Plugin 不应该让 `QGuiApplication::platformName()` 变成 `hyremote`。
-
-## Widgets 与 Qt Quick
-
-Generic Plugin 的 automatic-access Runtime 会发现和组合受支持的应用顶层窗口。Widgets 与 Qt Quick 使用同一个 Runtime，不要求应用切换 UI 技术。
-
-当前参考环境：
-
-- Windows x86_64 + Qt 6.8.3；
-- Linux x86_64 + Qt 6.8.3。
-
-其它环境请查看 [`../compatibility.md`](../compatibility.md)。
-
-## 安全边界
-
-V0.1 以 Developer Preview 为定位：
-
-- 默认只监听回环地址；
-- 远程控制默认关闭；
-- `Insecure` 不允许非回环直接监听；
-- `Authenticated` 是条件能力，不应假设默认包已经编译启用；
-- `AuthenticatedEncrypted` 尚未实现并始终 fail-closed；
-- 不要将当前产品直接暴露到公网。
-
-详见 [`../security.md`](../security.md)。
-
-## 部署排错
-
-如果应用在脱离 Qt SDK 的机器上启动失败，首先确认部署树同时包含：
-
-- `plugins/generic/` 下的 HyRemote Generic Plugin；
-- `plugins/platforms/` 下应用原本使用的 Qt platform plugin；
-- Shared Runtime 与 Qt runtime dependencies。
-
-不要通过手工设置 SDK 的 `QT_PLUGIN_PATH`、`LD_LIBRARY_PATH` 或复制构建树文件来掩盖部署缺失。正式部署应由 `hyremote_deploy(TARGET ... GENERIC)` 自包含完成。
-
-## 后续
-
-- 部署：[`../guide/deployment.md`](../guide/deployment.md)
-- 查看器：[`../guide/viewer-connection.md`](../guide/viewer-connection.md)
-- 安全：[`../security.md`](../security.md)
-- 兼容性：[`../compatibility.md`](../compatibility.md)
-- 已知限制：[`../known-limitations.md`](../known-limitations.md)
+Do not describe a V0.1 deployment as production ready, authenticated, encrypted or GA. See
+[`../known-limitations.md`](../known-limitations.md) and [`../security-model.md`](../security-model.md).
