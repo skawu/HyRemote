@@ -283,6 +283,30 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     )
     set_tests_properties(hyremote-release-scope-self-test PROPERTIES TIMEOUT 300)
 
+    # The CI scope classifier decides which lanes run - including whether the release-readiness gates run at all - so
+    # it is executed by the canonical build authority instead of only being trusted inside a workflow. A classifier
+    # that cannot be tested is how a lane that claims to be full integration quietly excludes readiness forever.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-ci-scope-self-test
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/resolve-ci-scope.py" --self-test
+        )
+        set_tests_properties(hyremote-ci-scope-self-test PROPERTIES TIMEOUT 120)
+    endif()
+
+    # The mainline push audit's retry logic is a shell script for the same reason; it is tested where bash exists.
+    find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    if(HYREMOTE_BASH_EXECUTABLE)
+        add_test(
+            NAME hyremote-mainline-audit-self-test
+            COMMAND "${HYREMOTE_BASH_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/mainline-push-audit.sh" --self-test
+        )
+        set_tests_properties(hyremote-mainline-audit-self-test PROPERTIES TIMEOUT 120)
+    endif()
+
     if(TARGET HyRemote::QpaPlatform)
         add_test(
             NAME hyremote-release-readiness-source-qpa-authority

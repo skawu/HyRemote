@@ -34,6 +34,8 @@ Current limitations:
 - there is no production TLS/certificate policy yet;
 - there is no authenticated Session Registry or per-session role model yet.
 
+Stopping the runtime is explicit and complete: `stop()` releases the held input state the runtime was maintaining for connected viewers and returns the listener and the target adapter to `Stopped`, so an application never has to undo synthetic remote held state itself.
+
 > **TODO V0.2:** encrypted transport, certificate policy, authenticated sessions, admission/termination controls, and production network policy.
 
 See [`security.md`](security.md).

@@ -190,6 +190,20 @@ Version digits describe product evolution; they do not encode C++/QML/Generic/QP
 
 ## Documentation
 
+Repository paths are architecture boundaries rather than arbitrary folders: the canonical source layout and module
+ownership are defined by [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
+
+User guides:
+
+- [`docs/guide/install.md`](docs/guide/install.md) - install and reference setup;
+- [`docs/guide/deployment.md`](docs/guide/deployment.md) - deployment forms, including `hyremote_deploy(TARGET MyApp GENERIC)`;
+- [`docs/guide/viewer-connection.md`](docs/guide/viewer-connection.md) - connecting a viewer to a running application;
+- [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) - diagnosing a deployment or connection problem;
+- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) - Embedded C++ (V0.1 primary surface);
+- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) - Generic Plugin (V0.1 primary surface);
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) - Declarative QML (V0.1 preview);
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) - Transparent QPA (V0.1 preview).
+
 Start with [`docs/README.md`](docs/README.md).
 
 Primary product guides:
