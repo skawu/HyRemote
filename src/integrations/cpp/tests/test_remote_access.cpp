@@ -639,43 +639,90 @@ void testBindPolicyFollowsAuthentication()
 // served in its place. A readable descriptor must not make the profile look implemented.
 void testAuthenticatedEncryptedFailsClosedBeforeListen()
 {
-    // Items 1 and 2 of the required evidence are already asserted by testProductLifecycleAndConfigurationForwarding,
-    // which drives them with the factories that test installs: the Insecure loopback baseline reaches Running, and an
-    // unauthenticated non-loopback listener is refused before listen. Neither is re-proved here, because this test
-    // deliberately runs without those factories - the refusal below happens before any target or transport exists,
-    // which is exactly the property being asserted.
+    auto counters = std::make_shared<RuntimeCounters>();
+    HyRemote::detail::resetFactories();
+    installFakeRuntime(counters);
 
-    // 3./4./5. AuthenticatedEncrypted refuses, and the refusal is the security-unavailable capability statement
-    // rather than a claim about a descriptor. The descriptor path here is deliberately a path that would have to be
-    // reported verbatim if anything echoed its name, so the same assertion also proves the failure discloses no
-    // descriptor material. Nothing is left listening because the refusal precedes any transport composition, which
-    // this test states through the Runtime state the caller observes.
+    // Item 1 of the required evidence - the Insecure loopback baseline still starts as intended - is asserted by
+    // testProductLifecycleAndConfigurationForwarding, which owns the running-listener fixture. It is not duplicated
+    // here: this test asserts what has to be true *before* a listener exists, so it composes none of its own.
+
+    // 2. Unauthenticated non-loopback still fails before listen: no target and no transport is ever composed for it.
     {
         HyRemote::RemoteAccess remote;
+        CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Insecure));
+        CHECK(remote.setListenAddress(QHostAddress::AnyIPv4));
+        CHECK(!remote.start());
+        CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+        CHECK(remote.lastError().has_value());
+        CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
+        CHECK(counters->targetFactoryCalls.load() == 0);
+        CHECK(counters->transportFactoryCalls.load() == 0);
+        CHECK(counters->transportStarts.load() == 0);
+    }
+
+    // 3./4./5. AuthenticatedEncrypted refuses even when the descriptor it is given is otherwise syntactically valid:
+    // a readable password file holding an eight-byte password, plus the certificate and private-key fields the
+    // encrypted profile requires. Descriptor validity and backend capability are separate facts, and this build has
+    // no VeNCrypt/TLS backend, so the profile must be refused rather than served with the weaker VNC Authentication.
+    // The password token and the descriptor path are asserted absent from the failure, so the same block proves the
+    // refusal discloses neither secret material nor the descriptor location.
+    {
         QTemporaryDir temp;
         CHECK(temp.isValid());
-        const QString descriptorPath = temp.filePath(QStringLiteral("secret7material-fail-closed.conf"));
+        const QString descriptorPath = temp.filePath(QStringLiteral("encrypted-valid-descriptor.conf"));
+        auto writeFixture = [](const QString &path, const QByteArray &content) {
+            QFile file(path);
+            return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(content) == content.size();
+        };
+        CHECK(writeFixture(temp.filePath(QStringLiteral("password.txt")), QByteArray("secret7\n")));
+        CHECK(writeFixture(temp.filePath(QStringLiteral("certificate.pem")),
+                           QByteArray("-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----\n")));
+        CHECK(writeFixture(temp.filePath(QStringLiteral("private-key.pem")),
+                           QByteArray("-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----\n")));
+        CHECK(writeFixture(descriptorPath,
+                           QByteArray("version=1\n"
+                                      "credentialId=operator\n"
+                                      "passwordFile=password.txt\n"
+                                      "certificateFile=certificate.pem\n"
+                                      "privateKeyFile=private-key.pem\n")));
+
+        HyRemote::RemoteAccess remote;
         CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted));
         CHECK(remote.setSecurityConfigFile(descriptorPath));
+
+        const int targetsBeforeRefusal = counters->targetFactoryCalls.load();
+        const int transportsBeforeRefusal = counters->transportFactoryCalls.load();
         CHECK(!remote.start());
         CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
         CHECK(remote.lastError().has_value());
         CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
-        CHECK(!remote.lastError()->message.contains(QStringLiteral("secret7material")));
+        CHECK(!remote.lastError()->message.contains(QStringLiteral("secret7")));
         CHECK(!remote.lastError()->message.contains(descriptorPath));
 
-        // The rule is deterministic and does not become satisfiable by retrying or by configuring further.
-        CHECK(!remote.start());
-        CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+        // The before-listen proof is explicit rather than inferred from Runtime state: a refused start composes no
+        // target and no transport, so no socket is created and nothing can be left listening on the configured port.
+        CHECK(counters->targetFactoryCalls.load() == targetsBeforeRefusal);
+        CHECK(counters->transportFactoryCalls.load() == transportsBeforeRefusal);
+        CHECK(counters->transportStarts.load() == 0);  // nothing in this test ever opened a listener
 
-        // 6. No frontend can bypass it: every frontend selects this profile through the Shared Runtime, and the
-        // Runtime refuses it here regardless of which entry point configured it. The facade mapping is covered by
-        // testProductLifecycleAndConfigurationForwarding, and the QML/QPA/Gateway parsers map their own spellings of
-        // authenticated-encrypted onto exactly this profile.
+        // The refusal is deterministic: retrying, and retrying against a different descriptor, changes nothing.
+        CHECK(!remote.start());
+        CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+        CHECK(counters->transportFactoryCalls.load() == transportsBeforeRefusal);
+        CHECK(remote.setSecurityConfigFile(temp.filePath(QStringLiteral("second-valid-descriptor.conf"))));
+        CHECK(!remote.start());
+        CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+        CHECK(counters->transportFactoryCalls.load() == transportsBeforeRefusal);
+
+        // 6. No frontend can bypass the rule: every frontend selects this profile through the Shared Runtime, which is
+        // where the refusal lives, so the QML/QPA/Gateway spellings of authenticated-encrypted reach exactly this
+        // path and none of them opens a listener of its own.
         remote.stop();
         CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
     }
 
+    HyRemote::detail::resetFactories();
 }
 
 int main()
