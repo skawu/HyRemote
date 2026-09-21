@@ -258,11 +258,12 @@ V0.1 defaults:
 
 - `127.0.0.1:5921`;
 - remote input disabled;
-- unauthenticated non-loopback exposure rejected;
-- `Authenticated` may use RFB VNC authentication, while traffic remains unencrypted;
-- `AuthenticatedEncrypted` fails closed while the encrypted backend is not implemented.
+- `Insecure` is loopback-only;
+- `Authenticated` is available only when HyRemote was built with the transport-security capability and a valid security descriptor is configured; it currently provides VNC authentication without stream encryption;
+- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without falling back to a weaker profile.
 
-Do not expose the current product directly to the public Internet. See [`../../security.md`](../../security.md).
+Do not expose the current product directly to the public Internet. See [`../security.md`](../security.md).
 
 ## Next steps
 
