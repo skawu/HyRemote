@@ -284,6 +284,7 @@ jobs:
             build-ci/test.log
             build-ci/evidence/*/summary.txt
             build-ci/evidence/*/*/evidence.txt
+            build-ci/evidence/**/*.log
 
       - name: Save verified exact Qt SDK
         if: always() && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'

@@ -136,10 +136,10 @@ endif()
 # Product runtime path: the operating system's own directories plus the deployed tree, nothing else.
 if(WIN32)
     set(OS_RUNTIME_PATH "$ENV{SystemRoot}\\System32;$ENV{SystemRoot}")
-    set(PATH_SEP ";")
+    set(RUNTIME_PATH_SEP ";")
 else()
     set(OS_RUNTIME_PATH "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
-    set(PATH_SEP ":")
+    set(RUNTIME_PATH_SEP ":")
 endif()
 
 # ---------------------------------------------------------------- helpers
@@ -204,6 +204,15 @@ function(run_capture cell label path_value)
     set(${cell}_result "${_result}" PARENT_SCOPE)
     if(NOT _result EQUAL 0)
         message(STATUS "release-evidence: ${cell}: ${label} failed (exit ${_result}); see ${_log}")
+        # Echo this step's own log body - and only the failing step's, never the successful ones - so the chain is
+        # readable end to end: the ctest log, the echo the build system performs on failure, the uploaded artifact
+        # and the evidence summary all carry the real command, output and exit code instead of a pointer to a file
+        # that nothing outside the runner can open.
+        file(READ "${_log}" _failed_step_log)
+        string(STRIP "${_failed_step_log}" _failed_step_log)
+        message(STATUS "--- begin ${label}.log ---")
+        message(STATUS "${_failed_step_log}")
+        message(STATUS "--- end ${label}.log ---")
     endif()
 endfunction()
 
@@ -225,6 +234,15 @@ function(run_toolchain cell label)
     set(${cell}_result "${_result}" PARENT_SCOPE)
     if(NOT _result EQUAL 0)
         message(STATUS "release-evidence: ${cell}: ${label} failed (exit ${_result}); see ${_log}")
+        # Echo this step's own log body - and only the failing step's, never the successful ones - so the chain is
+        # readable end to end: the ctest log, the echo the build system performs on failure, the uploaded artifact
+        # and the evidence summary all carry the real command, output and exit code instead of a pointer to a file
+        # that nothing outside the runner can open.
+        file(READ "${_log}" _failed_step_log)
+        string(STRIP "${_failed_step_log}" _failed_step_log)
+        message(STATUS "--- begin ${label}.log ---")
+        message(STATUS "${_failed_step_log}")
+        message(STATUS "--- end ${label}.log ---")
     endif()
 endfunction()
 
@@ -257,6 +275,16 @@ file(WRITE "${RUN_DIR}/run.txt"
 file(WRITE "${RUN_DIR}/summary.txt" "")
 
 set(INSTALL_PREFIX "${RUN_DIR}/prefix")
+
+# CMAKE_PREFIX_PATH is a CMake **list**, so its entries are separated by the CMake list separator and never by the
+# operating system's runtime search-path separator. The two differ on Linux (':' versus ';'), and reusing the
+# runtime separator here produced a single bogus entry such as "<install-prefix>:<qt-prefix>": the consumer's
+# find_package(HyRemote) and find_package(Qt6) then failed before it could configure at all, while the identical
+# code passed on Windows only because there both separators happen to be ';'. The value crosses two expansions -
+# the runner's ARGN command list and the -D argument itself - so the list separator is escaped here and unescaped
+# once more on the way to the child process.
+set(_consumer_prefix_list "${INSTALL_PREFIX};${QT_PREFIX_CACHE}")
+string(REPLACE ";" "\\;" _consumer_prefix_list "${_consumer_prefix_list}")
 
 foreach(cell IN LISTS EVIDENCE_CELLS)
     if(NOT cell IN_LIST all_cells)
@@ -298,7 +326,7 @@ function(acquire_installed cell fixture)
     run_toolchain("${cell}" "configure"
         "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/${fixture}" -B "${_build}"
             "-DCMAKE_BUILD_TYPE=Release"
-            "-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}${PATH_SEP}${QT_PREFIX_CACHE}"
+            "-DCMAKE_PREFIX_PATH=${_consumer_prefix_list}"
             ${CONSUMER_TOOLCHAIN_ARGS}
             ${ARGN})
     if(NOT ${cell}_result EQUAL 0)
@@ -325,7 +353,7 @@ if("installed-sdk" IN_LIST EVIDENCE_CELLS)
     record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-sdk")
     acquire_installed("${cell}" "tests/consumer-installed-sdk")
     if(NOT "${FAILED_CELLS}" MATCHES "${cell}")
-        set(_path "${RUN_DIR}/${cell}/deployed/bin${PATH_SEP}${OS_RUNTIME_PATH}")
+        set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
         record_runtime_env("${cell}" "${_path}")
         run_capture("${cell}" "run" "${_path}"
             "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-consumer")
@@ -383,7 +411,7 @@ function(qpa_product_fit cell fixture)
     run_toolchain("${cell}" "configure"
         "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/${fixture}" -B "${_build}"
             "-DCMAKE_BUILD_TYPE=Release"
-            "-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}${PATH_SEP}${QT_PREFIX_CACHE}"
+            "-DCMAKE_PREFIX_PATH=${_consumer_prefix_list}"
             ${CONSUMER_TOOLCHAIN_ARGS}
             ${ARGN})
     if(NOT ${cell}_result EQUAL 0)
@@ -411,7 +439,7 @@ function(qpa_product_fit cell fixture)
     endif()
     # The product-fit harness runs the deployed consumer with the product runtime path only; the harness's own
     # interpreter is invoked by absolute path, so its directory never enters that path.
-    set(_path "${RUN_DIR}/${cell}/deployed/bin${PATH_SEP}${OS_RUNTIME_PATH}")
+    set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
     record("${cell}" "HARNESS_COMMAND" "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe}")
@@ -453,7 +481,7 @@ function(generic_product_fit cell consumer_target)
     run_toolchain("${cell}" "configure"
         "${CMAKE_COMMAND}" -S "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-generic" -B "${_build}"
             "-DCMAKE_BUILD_TYPE=Release"
-            "-DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}${PATH_SEP}${QT_PREFIX_CACHE}"
+            "-DCMAKE_PREFIX_PATH=${_consumer_prefix_list}"
             ${CONSUMER_TOOLCHAIN_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "Generic consumer configure failed")
@@ -533,6 +561,20 @@ function(generic_product_fit cell consumer_target)
         return()
     endif()
 
+    # The same positive form for Qt, recorded so the acquisition is auditable: the consumer must resolve Qt6 from
+    # the Qt prefix this lane selected, not from a system or accidental package.
+    string(REGEX MATCH "Qt6_DIR:PATH=([^\n]*)" _qt_dir_line "${_consumer_cache}")
+    if("${_qt_dir_line}" STREQUAL "")
+        fail_cell("${cell}" "installed Generic consumer recorded no resolved Qt6 package directory")
+        return()
+    endif()
+    string(FIND "${_qt_dir_line}" "${QT_PREFIX_CACHE}" _qt_prefix_hit)
+    if(_qt_prefix_hit EQUAL -1)
+        fail_cell("${cell}" "installed Generic consumer resolved Qt6 outside the requested Qt prefix: ${_qt_dir_line}")
+        return()
+    endif()
+    record("${cell}" "QT6_DIR" "${_qt_dir_line}")
+
     record("${cell}" "SOURCE_TREE_DEPENDENCY_COUNT" "${_source_tree_hits}")
     record("${cell}" "BUILD_TREE_DEPENDENCY_COUNT" "${_build_tree_hits}")
     if(NOT _source_tree_hits EQUAL 0 OR NOT _build_tree_hits EQUAL 0)
@@ -542,7 +584,7 @@ function(generic_product_fit cell consumer_target)
 
     # The deployed application runs with the deployed runtime on its search path only - no build tree, no source
     # tree, no SDK prefix - which is the same isolation the other consumer cells use.
-    set(_path "${_deployed}/bin${PATH_SEP}${OS_RUNTIME_PATH}")
+    set(_path "${_deployed}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
     run_capture("${cell}" "deployed_smoke" "${_path}" "${_exe}")
