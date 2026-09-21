@@ -18,8 +18,16 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      # An ordinary manual policy run passes no tag and never starts a release-tag audit. Naming an existing
+      # annotated tag audits that immutable tag through the same job a tag push uses, which is how a tag whose audit
+      # was broken by infrastructure can be re-audited without touching main or the tag.
+      release_tag:
+        description: Existing annotated release tag to audit (leave empty for a normal policy run)
+        required: false
+        type: string
 
-permissions:
+  permissions:
   contents: read
   issues: read
   pull-requests: read
@@ -29,6 +37,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-tag-audit-self-test:
+    # Which tag a run audits, and whether it audits one at all, is decided by a script with its own self test, so the
+    # decision is proved on every policy run instead of only when a tag happens to be pushed. No Qt, no product build:
+    # the release-train authority is exercised through the machine selector, which is CMake only.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Self-test the release-tag audit target resolver
+        shell: bash
+        run: python3 .github/release/resolve-release-tag.py --self-test
+
   mainline-push-audit:
     if: >-
       github.event_name == 'push' &&
@@ -347,7 +368,12 @@ jobs:
           echo "backmerge gate passed for ${tag}"
 
   release-tag:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Two entry points, one audit. A pushed release tag audits the tag that was pushed; an explicit dispatch audits an
+    # existing immutable tag named by its input. An ordinary manual policy run names no tag and this job stays out of
+    # the way, so nothing but an explicit request can start a tag audit.
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -355,66 +381,103 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate four-part authorized milestone tag
-        shell: python
-        run: |
-          import os, re
-          tag = os.environ["GITHUB_REF_NAME"]
-          match = re.fullmatch(r"v([0-9]+(?:\.[0-9]+){3})", tag)
-          if not match:
-              raise SystemExit("HyRemote release tags must use vMajor.Minor.Feature.Maintenance")
-          # The tag must name the train the lifecycle resolved for this ref; the resolution step already refused
-          # retired labels, unknown versions and conditional versions without activation.
-          if match.group(1) != os.environ.get("RELEASE_TRAIN_VERSION"):
-              raise SystemExit(f"tag {tag} is not an authorized release train")
-
-      - name: Require annotated tag on exact main release head
+      - name: Resolve the release tag to audit
+        id: target
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          python3 .github/release/resolve-release-tag.py
+
+      # The release-train authority is resolved inside this job, by the machine release-scope selector, instead of
+      # being read from an environment value a sibling job happens to write: jobs do not share environments, and that
+      # assumption is why this audit could not pass for any tag. The selector refuses unknown versions, retired
+      # planning labels and conditional versions without recorded activation, so a tag whose version resolves names an
+      # authorized train - for a pushed tag and for a re-audited one alike.
+      - name: Require an authorized release train for the audited tag
+        shell: bash
+        env:
+          TARGET_TAG: ${{ steps.target.outputs.target_tag }}
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_RELEASE_VERSION="${TARGET_TAG#v}" \
+            -P tests/release-readiness/release_scope.cmake
+
+      # Everything below reads the *tagged* tree. A dispatch checks out the default branch, so reading the working tree
+      # would audit develop's 0.0.0 sentinel instead of the released 0.1.0.0 the tag actually names.
+      - name: Fetch the audited tag and the released main head
+        shell: bash
+        env:
+          TARGET_TAG: ${{ steps.target.outputs.target_tag }}
         run: |
           set -euo pipefail
           git fetch origin main --no-tags
-          test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = "tag" || {
-            echo "release tag ${GITHUB_REF_NAME} must be annotated" >&2
+          git fetch origin "refs/tags/${TARGET_TAG}:refs/tags/${TARGET_TAG}" --force
+
+      - name: Require an annotated tag on the exact current main head
+        shell: bash
+        env:
+          TARGET_TAG: ${{ steps.target.outputs.target_tag }}
+        run: |
+          set -euo pipefail
+          test "$(git cat-file -t "refs/tags/${TARGET_TAG}")" = "tag" || {
+            echo "release tag ${TARGET_TAG} must be annotated" >&2
             exit 1
           }
-          tagged_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
+          tagged_commit="$(git rev-parse "refs/tags/${TARGET_TAG}^{commit}")"
           main_head="$(git rev-parse origin/main)"
           test "${tagged_commit}" = "${main_head}" || {
-            echo "release tag ${GITHUB_REF_NAME} must point to exact current main HEAD" >&2
+            echo "release tag ${TARGET_TAG} must point to exact current main HEAD" >&2
             exit 1
           }
+          echo "TAGGED_COMMIT=${tagged_commit}" >> "$GITHUB_ENV"
 
-      - name: Require CMake version to match tag
+      - name: Require the tagged tree to carry the release version
         shell: python
+        env:
+          TARGET_TAG: ${{ steps.target.outputs.target_tag }}
         run: |
-          import os, pathlib, re
-          text = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          import os, re, subprocess
+          tag = os.environ["TARGET_TAG"]
+          text = subprocess.run(
+              ["git", "show", f"refs/tags/{tag}^{{commit}}:CMakeLists.txt"],
+              check=True, capture_output=True, text=True).stdout
           match = re.search(r"project\s*\(\s*HyRemote\s+VERSION\s+([0-9]+(?:\.[0-9]+){3})", text, re.S)
           if not match:
               raise SystemExit("root project(VERSION ...) must contain a four-part release version")
-          if match.group(1) != os.environ["GITHUB_REF_NAME"][1:]:
-              raise SystemExit("release tag does not match root CMake project version")
+          if match.group(1) != tag[1:]:
+              raise SystemExit(
+                  f"release tag {tag} does not match the tagged tree's root CMake project version {match.group(1)}")
+          print(f"tagged tree carries release version {match.group(1)}")
 
-      - name: Require finalized milestone release notes
+      - name: Require finalized release notes in the tagged tree
         shell: python
+        env:
+          TARGET_TAG: ${{ steps.target.outputs.target_tag }}
         run: |
-          import os, pathlib
-          tag = os.environ["GITHUB_REF_NAME"]
-          notes = pathlib.Path(f"docs/releases/{tag}.md")
-          if not notes.is_file():
-              raise SystemExit(f"release tag {tag} requires {notes}")
-          text = notes.read_text(encoding="utf-8")
+          import os, subprocess
+          tag = os.environ["TARGET_TAG"]
+          path = f"docs/releases/{tag}.md"
+          show = subprocess.run(["git", "show", f"refs/tags/{tag}^{{commit}}:{path}"],
+                                capture_output=True, text=True)
+          if show.returncode != 0:
+              raise SystemExit(f"release tag {tag} requires {path} in its own tree")
+          text = show.stdout
           if "Status: **candidate / acceptance pending**" in text:
               raise SystemExit(f"tagged release {tag} still contains the candidate marker")
           for required in (tag, f"release/{tag}", "## Security boundary"):
               if required not in text:
-                  raise SystemExit(f"{notes} is missing required release fact/section: {required}")
-          print(f"final release-note gate passed for {tag}")
+                  raise SystemExit(f"{path} is missing required release fact/section: {required}")
+          print(f"final release-note gate passed for {tag} from the tagged tree")
 
       - name: Audit release tag fact
         shell: bash
+        env:
+          TARGET_TAG: ${{ steps.target.outputs.target_tag }}
         run: |
           set -euo pipefail
-          tagged_commit="$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")"
-          echo "Validated annotated release tag ${GITHUB_REF_NAME} at exact main head ${tagged_commit}."
+          echo "Validated annotated release tag ${TARGET_TAG} at exact main head ${TAGGED_COMMIT}."
           echo "This post-push audit does not replace the pre-merge release/v* gate."
