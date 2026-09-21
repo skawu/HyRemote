@@ -39,7 +39,7 @@ message(STATUS "  QPA frontend:        ${HYREMOTE_WITH_QPA_PROXY}")
 message(STATUS "  Build tests:         ${HYREMOTE_BUILD_TESTS}")
 message(STATUS "  Build examples:      ${HYREMOTE_BUILD_EXAMPLES}")
 message(STATUS "  VNC backend:         ${HYREMOTE_WITH_VNC}")
-message(STATUS "  Transport security:  ${HYREMOTE_WITH_TRANSPORT_SECURITY}")
+message(STATUS "  VNC Authentication: ${HYREMOTE_WITH_TRANSPORT_SECURITY} (OpenSSL Crypto; the RFB stream is authenticated, not encrypted)")
 
 # Shared implementation stays in src/core and src/runtime; application-facing frontends are peer
 # siblings under src/integrations.

@@ -139,4 +139,53 @@ require_text(invalid-bool "${HYB_TEST_OUTPUT}" "expected boolean")
 run_failure(retired-print-config --no-config --print-config)
 require_text(retired-print-config "${HYB_TEST_OUTPUT}" "Unknown build option '--print-config'")
 
+# 10. Dependency truth: the transport-security capability is VNC Authentication over OpenSSL Crypto and nothing more.
+#     It must not advertise encryption/TLS, must not require the SSL component, and the runtime must not link a
+#     library it never calls. #143 introduces the encrypted backend and its dependency when that backend exists; until
+#     then this gate is what stops the false claim from coming back.
+function(forbid_text name haystack needle)
+    string(FIND "${haystack}" "${needle}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR "build-authority/${name}: must not contain '${needle}'\n${haystack}")
+    endif()
+endfunction()
+
+set(project_options "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteProjectOptions.cmake")
+set(runtime_cmake "${HYREMOTE_SOURCE_DIR}/src/runtime/CMakeLists.txt")
+set(vnc_auth_source "${HYREMOTE_SOURCE_DIR}/src/runtime/src/transport/vnc_auth.cpp")
+set(cpp_tests_cmake "${HYREMOTE_SOURCE_DIR}/src/integrations/cpp/tests/CMakeLists.txt")
+foreach(required_file "${project_options}" "${runtime_cmake}" "${vnc_auth_source}" "${cpp_tests_cmake}")
+    if(NOT EXISTS "${required_file}")
+        message(FATAL_ERROR "build-authority/security-truth: missing ${required_file}")
+    endif()
+endforeach()
+
+file(READ "${project_options}" option_text)
+require_text(security-truth "${option_text}" "find_package(OpenSSL QUIET COMPONENTS Crypto)")
+require_text(security-truth "${option_text}" "VNC Authentication")
+require_text(security-truth "${option_text}" "not encrypted")
+foreach(overclaim IN ITEMS
+        "COMPONENTS Crypto SSL" "Crypto;SSL"
+        "authenticated and encrypted transport" "authenticated/encrypted transport"
+        "encrypted transport available" "Crypto and SSL components")
+    forbid_text(security-truth "${option_text}" "${overclaim}")
+endforeach()
+
+file(READ "${runtime_cmake}" runtime_text)
+require_text(runtime-truth "${runtime_text}" "target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto)")
+forbid_text(runtime-truth "${runtime_text}" "OpenSSL::SSL")
+
+# The implementation itself is the reason Crypto is enough: only Crypto-side primitives are used.
+file(READ "${vnc_auth_source}" vnc_auth_text)
+foreach(crypto_primitive IN ITEMS "openssl/rand.h" "openssl/des.h" "openssl/crypto.h" "RAND_bytes" "CRYPTO_memcmp")
+    require_text(vnc_auth-crypto-only "${vnc_auth_text}" "${crypto_primitive}")
+endforeach()
+foreach(tls_symbol IN ITEMS "openssl/ssl.h" "SSL_CTX" "SSL_new" "TLS_method" "SSL_library_init")
+    forbid_text(vnc_auth-crypto-only "${vnc_auth_text}" "${tls_symbol}")
+endforeach()
+
+# No transport-security build target may link SSL before an encrypted backend exists.
+file(READ "${cpp_tests_cmake}" cpp_tests_text)
+forbid_text(security-targets "${cpp_tests_text}" "OpenSSL::SSL")
+
 message(STATUS "HyRemote build authority self-tests: PASS")

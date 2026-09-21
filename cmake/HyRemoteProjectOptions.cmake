@@ -22,23 +22,29 @@ option(HYREMOTE_BUILD_QML_API "Build the 'import HyRemote' QML frontend when Qt 
 option(HYREMOTE_WITH_GENERIC_PLUGIN "Enable the QGenericPlugin zero-code frontend" OFF)
 option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA Factory-Trampoline zero-code frontend" OFF)
 
-# Transport security is a Common Runtime capability shared by every frontend. It uses the OpenSSL
-# already supplied by the environment: no provider selector, bundled crypto toolchain or hidden
-# downgrade.
-option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable authenticated and encrypted transport (uses the OpenSSL from your environment)" OFF)
+# Transport security is a Common Runtime capability shared by every frontend. In its current implementation it
+# provides VNC Authentication for the RFB stream and nothing more: the stream is authenticated, not encrypted, and
+# the capability therefore depends on OpenSSL Crypto only. The exact option and capability identifier names are kept
+# stable deliberately - renaming them is a compatibility question of its own, while the help/status text below has to
+# describe what the capability actually does today.
+option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable VNC Authentication support for the RFB transport using OpenSSL Crypto (authenticates the stream; does not encrypt it - VeNCrypt/TLS is not implemented)" OFF)
 
 set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE OFF)
 
 if(HYREMOTE_WITH_TRANSPORT_SECURITY)
-    find_package(OpenSSL QUIET COMPONENTS Crypto SSL)
+    # Crypto is the whole dependency of the current implementation. Requiring SSL here would advertise an encrypted
+    # transport that does not exist and would link a library the runtime never calls.
+    find_package(OpenSSL QUIET COMPONENTS Crypto)
     if(OpenSSL_FOUND)
         set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE ON)
-        message(STATUS "HyRemote: authenticated/encrypted transport available (OpenSSL ${OPENSSL_VERSION})")
+        message(STATUS
+            "HyRemote: VNC Authentication support available (OpenSSL Crypto ${OPENSSL_VERSION}); the RFB stream is "
+            "authenticated, not encrypted")
     else()
         message(FATAL_ERROR
-            "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL with the Crypto and SSL components, "
-            "but none was found. Provide one from your environment (for example with "
-            "-DOPENSSL_ROOT_DIR=<prefix>) or configure with HYREMOTE_WITH_TRANSPORT_SECURITY=OFF. "
+            "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL Crypto, the component the current VNC "
+            "Authentication implementation uses, but none was found. Provide it from your environment (for example "
+            "with -DOPENSSL_ROOT_DIR=<prefix>) or configure with HYREMOTE_WITH_TRANSPORT_SECURITY=OFF. "
             "HyRemote never installs or bundles OpenSSL for you.")
     endif()
 endif()

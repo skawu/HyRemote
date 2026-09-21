@@ -108,7 +108,6 @@ if(HYREMOTE_WITH_VNC)
             PRIVATE
                 hyremote-remoteaccess
                 OpenSSL::Crypto
-                OpenSSL::SSL
                 Qt6::Core
                 Qt6::Network
         )
@@ -129,7 +128,10 @@ if(HYREMOTE_WITH_VNC)
             PRIVATE
                 hyremote-remoteaccess
                 OpenSSL::Crypto
-                OpenSSL::SSL
+                # This test includes hyremote/core/transport.hpp, so it needs the Core interface the other tests in
+                # this file already link. Without it the target cannot compile in its own configuration, which is how
+                # a registered transport-security test could sit unbuildable while security was off by default.
+                HyRemote::Core
                 Qt6::Core
                 Qt6::Network
         )
