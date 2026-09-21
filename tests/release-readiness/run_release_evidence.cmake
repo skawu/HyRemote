@@ -286,6 +286,17 @@ set(INSTALL_PREFIX "${RUN_DIR}/prefix")
 set(_consumer_prefix_list "${INSTALL_PREFIX};${QT_PREFIX_CACHE}")
 string(REPLACE ";" "\\;" _consumer_prefix_list "${_consumer_prefix_list}")
 
+# The consumer projects are built in one named configuration, and whether that is a CMake *build type* (single
+# configuration generator) or a *configuration* (multi-configuration generator) depends on the generator the
+# consumer ends up with, which the harness does not choose. A multi-config generator writes artifacts into a
+# per-configuration directory and then needs --config on build and install alike: passing it to neither, as this
+# harness did, makes the install step look for build/Release/<consumer> when the build put the binary somewhere
+# else, which is what the hosted Windows lane reported. Single-configuration generators accept --config as well and
+# ignore it, so the argument is declared once and passed to both steps rather than to one of them: configure, build
+# and install therefore cannot disagree about which configuration is being exercised.
+set(CONSUMER_CONFIGURATION "Release")
+set(CONSUMER_CONFIG_ARGS --config "${CONSUMER_CONFIGURATION}")
+
 foreach(cell IN LISTS EVIDENCE_CELLS)
     if(NOT cell IN_LIST all_cells)
         message(FATAL_ERROR "release-evidence: unknown evidence cell '${cell}'")
@@ -333,13 +344,13 @@ function(acquire_installed cell fixture)
         fail_cell("${cell}" "installed consumer configure failed")
         return()
     endif()
-    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}")
+    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer build failed")
         return()
     endif()
     run_toolchain("${cell}" "install"
-        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed")
+        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer deployment failed")
         return()
@@ -388,7 +399,7 @@ if("source-consumer" IN_LIST EVIDENCE_CELLS)
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "source consumer configure failed")
     else()
-        run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}")
+        run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
         if(NOT ${cell}_result EQUAL 0)
             fail_cell("${cell}" "source consumer build failed")
         else()
@@ -418,13 +429,13 @@ function(qpa_product_fit cell fixture)
         fail_cell("${cell}" "QPA consumer configure failed")
         return()
     endif()
-    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}")
+    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "QPA consumer build failed")
         return()
     endif()
     run_toolchain("${cell}" "install"
-        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed")
+        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "QPA consumer deployment failed")
         return()
@@ -487,13 +498,13 @@ function(generic_product_fit cell consumer_target)
         fail_cell("${cell}" "Generic consumer configure failed")
         return()
     endif()
-    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}")
+    run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "Generic consumer build failed")
         return()
     endif()
     run_toolchain("${cell}" "install"
-        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed")
+        "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "Generic consumer deployment failed")
         return()
@@ -525,6 +536,24 @@ function(generic_product_fit cell consumer_target)
         return()
     endif()
     record("${cell}" "GENERIC_PAYLOAD" "${_generic_payloads}")
+
+    # Generic deployment has to ship both kinds of plugin, and neither stands in for the other: exactly one HyRemote
+    # generic payload, and the native Qt platform plugin that keeps the application on its normal platform identity.
+    # Without the native plugin the application cannot start outside the Qt SDK, so a tree that has the generic
+    # payload but not the native one is not a clean deployment.
+    file(GLOB _generic_hyremote_payloads "${_deployed}/plugins/generic/*hyremote*")
+    list(LENGTH _generic_hyremote_payloads _generic_hyremote_count)
+    if(NOT _generic_hyremote_count EQUAL 1)
+        fail_cell("${cell}" "deployed tree must carry exactly one HyRemote generic plugin payload, found ${_generic_hyremote_count}")
+        return()
+    endif()
+    file(GLOB _native_platform_payloads "${_deployed}/plugins/platforms/*")
+    list(LENGTH _native_platform_payloads _native_platform_count)
+    if(_native_platform_count EQUAL 0)
+        fail_cell("${cell}" "deployed tree carries no native Qt platform plugin, so the application cannot start without the Qt SDK")
+        return()
+    endif()
+    record("${cell}" "NATIVE_PLATFORM_PAYLOAD" "${_native_platform_payloads}")
 
     # Source/build-tree independence, counted rather than asserted in prose: the consumer must have acquired
     # HyRemote from the clean install prefix, so neither the repository source tree nor the product build tree
