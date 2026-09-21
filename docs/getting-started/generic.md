@@ -68,7 +68,7 @@ QT_QPA_GENERIC_PLUGINS=hyremote
 - 地址：`127.0.0.1`；
 - 端口：`5921`；
 - 远程输入：关闭；
-- 未认证的非回环监听：拒绝。
+- `Insecure` 仅允许回环监听。
 
 ## 配置格式
 
@@ -96,9 +96,12 @@ address=127.0.0.1;port=5901;input=true;security=insecure
 | `security` | `insecure`、`authenticated`、`authenticated-encrypted` |
 | `security-config` | 安全配置文件路径 |
 
-`authenticated-encrypted` 在 V0.1 中会**失败关闭**，不会降级成未加密连接。
+安全 profile 名称可被配置，不代表当前包一定包含对应传输能力：
 
-> **TODO V0.2：** 提供完整 VeNCrypt/TLS、证书策略和会话安全能力后，再将 `authenticated-encrypted` 作为可用安全配置公开给生产场景。
+- `authenticated` 只有在 HyRemote 构建包含 transport-security capability 且 `security-config` 指向有效 descriptor 时才能成功启动；当前提供 VNC authentication，但流量不加密；
+- `authenticated-encrypted` 在 V0.1 中始终**失败关闭**，不会降级成 `authenticated` 或 `insecure`。
+
+> **TODO V0.2：** 提供完整加密传输、证书策略、authenticated session 与生产网络策略。
 
 ## Native platform 保持不变
 
@@ -131,8 +134,9 @@ V0.1 以 Developer Preview 为定位：
 
 - 默认只监听回环地址；
 - 远程控制默认关闭；
-- 不允许未认证的非回环直接监听；
-- `AuthenticatedEncrypted` 在 TLS 后端未实现时失败关闭；
+- `Insecure` 不允许非回环直接监听；
+- `Authenticated` 是条件能力，不应假设默认包已经编译启用；
+- `AuthenticatedEncrypted` 尚未实现并始终 fail-closed；
 - 不要将当前产品直接暴露到公网。
 
 详见 [`../security.md`](../security.md)。
