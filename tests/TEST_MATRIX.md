@@ -1,186 +1,179 @@
 # HyRemote Test Capability / Execution Matrix
 
-> Phase A companion to `TEST_CATALOG.md` and `TEST_SCENARIOS.md` for #274.
+> Phase A companion to `TEST_CATALOG.md` / `TEST_SCENARIOS.md` for #274. Facts refreshed against `develop` at `6dc244a8717bdc520544c71d9756499033857c73`.
 >
-> This matrix describes *when* a test family is meaningful. It is audit metadata only in Phase A; it does not replace existing CMake capability guards or change CI selection.
+> This matrix describes **when** each family is meaningful. It is audit metadata only; Phase A does not change CMake guards or CI selection.
 
-## Legend
+## Legend / proposed Phase-C cost tiers
 
-- **Always**: whenever the owning product module and `HYREMOTE_BUILD_TESTS` are built.
-- **CPP / QML / Generic / QPA**: frontend capability must exist.
-- **Widgets / Quick**: corresponding Runtime target adapter + Qt module must exist.
-- **Security**: current VNC Auth/OpenSSL transport-security build capability must exist.
-- **Win/Linux**: reference desktop OS semantics are part of the contract.
-- **Conditional**: registered only when a discovered tool/module exists.
-
-Cost tiers proposed for Phase C:
-
-- `fast`: deterministic in-process/configure-only test, normal PR candidate.
-- `integration`: real Qt event loop/socket/thread interaction, still normal PR when affected.
-- `installed`: clean install/configure/build/deploy/run; relatively expensive and path-sensitive.
-- `e2e`: real viewer/product process flow; not required on every unrelated PR.
+- **CPP / QML / Generic / QPA**: frontend capability exists.
+- **Widgets / Quick**: corresponding Runtime target adapter + Qt module exists.
+- **Security**: current VNC Auth/OpenSSL transport-security capability exists.
+- `fast`: deterministic in-process/configure-only.
+- `integration`: Qt event loop/socket/thread interaction.
+- `installed`: clean install/configure/build/deploy/run.
+- `e2e`: real viewer/product-process flow.
 - `qualification`: exact candidate/platform/manual/physical evidence.
 
-## T1 — Core
+## T1 Core
 
-| Family | Existing guard | Platform | Cost | Release relevance | Phase-A decision |
-| --- | --- | --- | --- | --- | --- |
-| frame lifetime / damage / timing / mailbox | Core + tests | host-neutral | fast | cross-release | KEEP |
-| transport handoff / input routing / normalization | Core + tests | host-neutral | fast | cross-release | KEEP |
-| Session lifecycle/concurrency | Core + tests | host-neutral | integration | cross-release; critical | KEEP |
-| callback lifetime/exception boundary | Core + tests | host-neutral | fast/integration | cross-release | KEEP |
-| Core dependency boundary | Core + tests | repository source | fast/contract | every release | KEEP |
-
-Core does not require Widgets, Quick, RFB, QML, Generic or QPA.
-
-## T1 — Shared Runtime / RFB / target adapters
-
-| CTest/family | Existing registration guard | Platform/env | Cost | Intended owner | Decision |
-| --- | --- | --- | --- | --- | --- |
-| automatic surface model | Runtime + tests | Qt Core | fast | Runtime | KEEP |
-| automatic composite capture | Runtime + tests | Qt Core/Gui + Shared Runtime | fast/integration | Runtime | KEEP |
-| automatic composite input | Runtime + tests | Qt Core/Gui + Shared Runtime | fast/integration | Runtime | KEEP |
-| security descriptor | currently CPP + Runtime | Qt Core/Network | fast | Runtime/security | MOVE |
-| VNC auth primitive | CPP + VNC + Security | OpenSSL/Qt Network | fast | Runtime/RFB security | MOVE |
-| RFB VNC-auth handshake | CPP + VNC + Security | loopback socket | integration, 15s bound | Runtime/RFB | MOVE |
-| RFB multi-client input | CPP + VNC | loopback socket | integration, 15s bound | Runtime/RFB | MOVE |
-| listener address matrix | CPP + Widgets adapter | offscreen + Qt Network | integration | Runtime/network | MOVE; remove accidental Widgets ownership if implementation allows |
-| Runtime input mailbox admission | CPP | Qt Core | fast/integration | Runtime | MOVE |
-| target component provider | CPP | Qt Core + available adapters | fast | Runtime/adapters | MOVE |
-| Widgets capture | CPP + Widgets adapter | `QT_QPA_PLATFORM=offscreen` | integration | Runtime/Widgets | MOVE; add forced-DPR variant later |
-| Widgets input routing/backpressure | CPP + Widgets adapter | offscreen | integration | Runtime/Widgets | MOVE |
-| RFB + Widgets disconnect/backpressure | CPP + VNC + Widgets | offscreen + loopback socket | integration | Runtime/RFB+Widgets | MOVE |
-| Quick capture | CPP + Quick adapter | offscreen + software Quick | integration | Runtime/Quick | MOVE; add forced-DPR variant later |
-| Quick input routing/backpressure | CPP + Quick adapter | offscreen + software Quick | integration | Runtime/Quick | MOVE |
-| `rfb_product_fit.py` | **not currently registered** | Python + Pillow + `vncdotool`, loopback | e2e | RFB product-fit | KEEP code; execution authority gap TG-009 |
-
-The existing `CPP` dependency for many rows is historical registration placement, not the desired semantic guard. Phase B must preserve the actual Runtime/adapters required by the test while removing unnecessary C++-frontend ownership.
-
-## T2 — C++ frontend
-
-| CTest | Guard | Platform | Cost | Release relevance |
+| Family | Guard | Platform | Cost | Decision |
 | --- | --- | --- | --- | --- |
-| `hyremote-remoteaccess-test` | CPP | Qt Core/Network + Runtime fakes | fast | V0.1+ public facade |
-| `hyremote-remoteaccess-error-ack-test` | CPP | Qt Core | fast | public diagnostic contract |
-| `hyremote-remoteaccess-target-loss-test` | CPP | Qt Core | fast/integration | embedding safety |
+| frame lifetime / damage / timing / mailbox | Core + tests | host-neutral | fast | KEEP |
+| transport handoff / input routing / normalization | Core + tests | host-neutral | fast | KEEP |
+| Session lifecycle/concurrency | Core + tests | host-neutral | integration | KEEP |
+| callback lifetime/exception boundary | Core + tests | host-neutral | fast/integration | KEEP |
+| Core dependency boundary | Core + tests | repository source | contract | KEEP |
 
-These remain C++-owned even when lower Runtime tests move away.
+Core requires no Widgets/Quick/RFB/QML/Generic/QPA frontend.
 
-## T2 — QML frontend
+## T1 Shared Runtime / RFB / target adapters
 
-| CTest | Guard | Platform | Cost | Unique contract |
+| CTest/family | Current guard | Platform/env | Cost | Final decision |
 | --- | --- | --- | --- | --- |
-| `hyremote-qml-module-test` | QML | QML module runtime path | integration | import/type registration and declarative facade semantics |
-| `hyremote-qml-deploy-helper-non-qml` | QML | configure-only | fast/contract | ordinary helper dispatch leaves application QML import path untouched |
-| `hyremote-qml-deploy-helper-qml` | QML | configure-only | fast/contract | QML helper dispatch + existing import path + installed HyRemote import root preserved |
-| `qml_product_fit.py` | **not currently registered** | Python/Pillow/vncdotool + offscreen/software Quick | e2e | real viewer, QML client-count observation, view-only isolation, stop/configure/start, input, reconnect |
+| automatic surface model | Runtime + tests | Qt Core | fast | KEEP Runtime |
+| automatic composite capture/input | Runtime + tests | Qt Core/Gui | integration | KEEP Runtime |
+| security descriptor | currently CPP + Runtime | Qt Core/Network | fast | MOVE Runtime/security |
+| VNC auth primitive | CPP + VNC + Security | OpenSSL/Qt Network | fast | MOVE Runtime/RFB |
+| RFB VNC-auth handshake | CPP + VNC + Security | loopback | integration | MOVE Runtime/RFB |
+| RFB multi-client input | CPP + VNC | loopback | integration | MOVE Runtime/RFB |
+| listener address matrix | CPP + Widgets | offscreen/network | integration | SPLIT C++ facade rows vs Runtime bind/address-family rows |
+| Runtime input mailbox admission | CPP | Qt Core | fast/integration | MOVE Runtime |
+| target component provider | CPP | available adapters | fast | MOVE Runtime/adapters |
+| Widgets capture | CPP + Widgets | offscreen | integration | MOVE Runtime/Widgets; TG-001 forced-DPR GAP |
+| Widgets input routing/backpressure | CPP + Widgets | offscreen | integration | MOVE Runtime/Widgets |
+| RFB+Widgets disconnect/backpressure | CPP + VNC + Widgets | offscreen + loopback | integration | MOVE Runtime/RFB+Widgets |
+| Quick capture | CPP + Quick | offscreen + software | integration | MOVE Runtime/Quick; TG-002 forced-DPR GAP |
+| Quick input routing/backpressure | CPP + Quick | offscreen + software | integration | MOVE Runtime/Quick |
+| `rfb_product_fit.py` | **unregistered** | Python + Pillow + `vncdotool` | e2e | MOVE to T5 RFB harness; TG-009 execution GAP |
 
-Deploy-helper rows are semantically T4 despite current QML physical ownership; keep their unique dispatch/import-path contract when consolidating fixtures.
+Historical CPP guards above often come from physical registration, not semantic ownership. Phase B must remove unnecessary frontend ownership while preserving real capability requirements.
 
-## T2 — Generic frontend
+## T2 C++ frontend
 
-| CTest | Guard | Platform | Cost | Unique contract |
-| --- | --- | --- | --- | --- |
-| `hyremote-generic-plugin-smoke` | Generic + Qt Widgets | offscreen; plugin path + `QT_QPA_GENERIC_PLUGINS` | integration | zero-code generic activation through Qt plugin mechanism |
-
-Installed Generic Widgets/Quick tests are T4 and independently necessary.
-
-## T2 — QPA frontend
-
-All QPA tests require QPA capability and therefore exact Qt private-ABI qualification before this directory is reached.
-
-| CTest | Additional guard/env | Cost | Unique contract |
+| CTest | Guard | Cost | Decision |
 | --- | --- | --- | --- |
-| qpa proxy smoke | `QT_QPA_PLATFORM=hyremote` | integration | proxy/platform plugin loads |
-| native semantics | Qt GuiPrivate | integration | native delegate/private-ABI semantics |
-| remote config | Qt Core/Network | fast | QPA-only launch/config vocabulary |
-| auto remote access | Widgets | integration | QPA starts one Shared Runtime |
-| remote-failure native survival | Widgets; ws2_32 on Windows | integration | remote failure does not destroy local/native app |
-| multi-surface connection | Widgets | integration, timeout 25s | multiple Widgets surfaces through proxy |
-| popup connection | Widgets | integration, timeout 25s | popup/transient behavior through proxy |
-| OpenGL widget capture | Widgets + conditional `Qt6::OpenGLWidgets` | integration, timeout 25s | real QOpenGLWidget capture classification |
-| Quick multi-window | Quick + software backend | integration, timeout 30s | multiple Quick windows through proxy |
+| `hyremote-remoteaccess-test` | CPP | fast | KEEP facade |
+| `hyremote-remoteaccess-error-ack-test` | CPP | fast | KEEP facade diagnostics |
+| `hyremote-remoteaccess-target-loss-test` | CPP | fast/integration | KEEP embedding safety |
 
-`hyremote-qpa-existing-app-build-check` is a build target, not a CTest; it proves the example source remains ordinary Qt-only by compilation dependency shape and should be catalogued as build evidence, not counted as an executed test.
+## T2 QML frontend
 
-## T3 — repository/product contracts
+| Test | Guard | Cost | Final decision |
+| --- | --- | --- | --- |
+| `hyremote-qml-module-test` | QML | integration | KEEP T2 |
+| `hyremote-qml-deploy-helper-non-qml` | QML | contract | MOVE T4, keep ordinary-dispatch/import-path semantics |
+| `hyremote-qml-deploy-helper-qml` | QML | contract | MOVE T4, keep QML-aware dispatch/import-root semantics |
+| `qml_product_fit.py` | **unregistered** | e2e | KEEP T5 preview; TG-011 explicit execution ownership needed |
 
-| Test | Current location | Guard/platform | Cost | Decision |
+## T2 Generic frontend
+
+| CTest | Guard | Cost | Decision |
+| --- | --- | --- | --- |
+| `hyremote-generic-plugin-smoke` | Generic + Widgets | integration | KEEP zero-code activation/native-QPA contract |
+
+Installed Generic paths are T4 and independently necessary.
+
+## T2 QPA frontend
+
+QPA requires exact Qt 6.8.3 private ABI before the frontend is configured.
+
+| CTest | Additional guard/env | Cost | Decision |
+| --- | --- | --- | --- |
+| `hyremote-qpa-proxy-smoke` | `QT_QPA_PLATFORM=hyremote` | integration | KEEP |
+| `hyremote-qpa-native-semantics` | GuiPrivate | integration | KEEP |
+| `hyremote-qpa-remote-config-test` | Core/Network | fast | KEEP |
+| `hyremote-qpa-auto-remoteaccess-smoke` | Widgets | integration | KEEP |
+| `hyremote-qpa-remote-failure-native-survival-smoke` | Widgets; ws2_32 Windows | integration | KEEP |
+| `hyremote-qpa-multi-surface-connection-smoke` | Widgets | integration / 25s bound | KEEP |
+| `hyremote-qpa-widget-popup-connection-smoke` | Widgets | integration / 25s | KEEP |
+| `hyremote-qpa-widget-opengl-capture-smoke` | conditional OpenGLWidgets | integration / 25s | KEEP conditional |
+| `hyremote-qpa-quick-multi-window-connection-smoke` | Quick + software | integration / 30s | KEEP |
+
+`hyremote-qpa-existing-app-build-check` is a build target, not a CTest; it is build evidence that the example source remains Qt-only.
+
+## T3 repository/product contracts
+
+| Test | Current location | Cost | Decision |
+| --- | --- | --- | --- |
+| build-authority selftest | Runtime registration | fast | MOVE T3 |
+| CI classifier selftest | root | fast | KEEP |
+| mainline audit selftest | root | fast | KEEP |
+| branch-name selftest | root | fast | KEEP |
+| public API contract | standalone fixture | contract | KEEP; reword stale V1-only vocabulary (TG-018) |
+| repository layout | release-readiness | fast | MOVE T3 |
+| Runtime architecture contract | release-readiness | fast | SPLIT cross-release T3 vs true T6 residue |
+| documentation paths | release-readiness | fast | MOVE T3 |
+| CI environment baseline | release-readiness | fast | MOVE T3 |
+| licensing boundary | release-readiness | fast | MOVE T3 |
+
+## T4 consumer / package / deploy
+
+| Test/cell | Capability | Platform | Cost | Decision/claim |
 | --- | --- | --- | --- | --- |
-| build-authority selftest | registered from Runtime tests | tests + repository | fast | MOVE to repository owner |
-| CI scope classifier selftest | root | Python/script | fast | KEEP |
-| mainline audit selftest | root | Bash available | fast | KEEP |
-| branch-name gate selftest | root | Bash available | fast | KEEP |
-| public API contract | standalone consumer fixture | Qt + installed/source contract as configured | fast/contract | KEEP |
-| repository layout | release-readiness | repository files | fast | MOVE from T6 to T3 |
-| Runtime architecture contract | release-readiness | repository files | fast | SPLIT/MOVE cross-release pieces |
-| CI environment baseline | release-readiness | repository/workflow files | fast | MOVE to T3 |
-| licensing boundary | release-readiness | repository metadata | fast | MOVE to T3 |
+| installed C++ Widgets | CPP + Widgets | Win/Linux | installed | KEEP clean SDK Widgets lifecycle |
+| installed C++ Quick | CPP + Quick | Win/Linux | installed | KEEP clean SDK Quick lifecycle |
+| installed Generic Widgets | Generic + Widgets | Win/Linux | installed | KEEP zero-code deployment/native platform |
+| installed Generic Quick | Generic + Quick | Win/Linux | installed | KEEP same for Quick |
+| minimal `installed-sdk` | shared Runtime/C++ package | Win/Linux | installed | KEEP distinct minimal package/export/deploy closure; rename later |
+| source consumer | source acquisition | cross-platform | installed/source | KEEP |
+| installed QML | QML | Win/Linux | installed | KEEP preview |
+| installed QPA | exact QPA | Win/Linux | installed | KEEP preview |
+| relocation/package isolation | relevant payload | defined platform | installed/contract | MOVE/KEEP T4 |
+| source-QPA authority negative | QPA | configure-only | contract | MOVE T4 |
 
-## T4 — clean consumer / package / deploy
+### Deploy-helper proof layers — no duplicate layer approved for deletion
 
-| Test/cell | Capability | Platform | Cost | Unique delivery claim |
-| --- | --- | --- | --- | --- |
-| installed C++ Widgets | CPP + Widgets | Win/Linux reference | installed | clean SDK C++ Widgets lifecycle, deployment, source/build isolation |
-| installed C++ Quick | CPP + Quick | Win/Linux reference | installed | same for Quick |
-| installed Generic Widgets | Generic + Widgets | Win/Linux reference | installed | zero-code clean deployment + native platform identity |
-| installed Generic Quick | Generic + Quick | Win/Linux reference | installed | same for Quick |
-| minimal `installed-sdk` | CPP/shared Runtime package | Win/Linux reference | installed | minimal export/package/deploy closure without adapter-specific application target |
-| source consumer | Runtime/CPP as fixture requires | cross-platform | installed/source | add_subdirectory/source acquisition does not inherit dev-only assumptions |
-| installed QML | QML | Win/Linux reference | installed | declarative payload package/deploy preview |
-| installed QPA | QPA exact 6.8.3 | Win/Linux reference | installed | private-ABI package/deploy preview |
-| relocation/package isolation | relevant payload | Win/Linux as defined | installed/contract | installed tree is relocatable and source/build acquisition does not leak |
-
-### Deploy-helper proof layers
-
-These are overlapping by subject but not equivalent by proof type:
-
-| Proof layer | Current owner | What it uniquely proves | Phase-A disposition |
+| Layer | Current owner | Unique proof | Decision |
 | --- | --- | --- | --- |
-| static deploy/package contract scan | `tests/release-readiness/check_deploy_helper_contract.cmake` | helper/package/install implementation retains required dispatch, metadata, fail-closed phrases, native-platform/QPA/Generic separation, and fixture capabilities | KEEP behavior; MOVE T4 and reduce brittle prose-token assertions later where semantic execution exists |
-| QML dispatch fixture | `src/integrations/qml/tests` | exactly one Qt deploy API is selected; non-QML does not mutate app import path; QML preserves app import path and adds installed HyRemote root | KEEP unique contract; consolidate physical fixture in Phase B if safe |
-| QPA/source-installed matrix | `src/integrations/qpa/CMakeLists.txt` | ordinary/QML/QPA source+installed combinations, missing/stale QML/QPA metadata, missing module/root, Qt mismatch, missing QPA package, generator shape, Linux source-payload relocation | KEEP scenarios; semantically T4/QPA deploy-contract |
-| release evidence `deploy-helper` | evidence runner | real clean install/deploy output from exact SHA rather than configure-time doubles/static scanning | KEEP as evidence-production cell |
+| root static deploy/package scan | release-readiness | required/forbidden implementation/package semantics | MOVE T4 |
+| QML dispatch fixture | QML tests | ordinary vs QML-aware Qt deploy API + import-path preservation | MOVE T4 |
+| QPA source/installed matrix | QPA | source/installed combinations, negative metadata, Qt mismatch, generator shape, Linux relocation | MOVE T4/QPA |
+| exact-SHA evidence cell | release evidence | actual clean install/deploy output | KEEP evidence production |
 
-Phase B target is one shared deploy-contract fixture/runner where practical, **not** one giant test. Static structure, deterministic negative configure matrix and real exact-SHA deploy evidence protect different failure classes.
+Confirmed T4 gaps: TG-015 paths with spaces, TG-016 same-destination repeatability, TG-017 Generic capability-off negative contract.
 
-## T5 — adoption / product E2E
+## T5 adoption / product E2E
 
-| Asset/test | Guard/current authority | Cost | Phase-A conclusion |
+| Asset | Current authority | Cost | Final decision |
 | --- | --- | --- | --- |
-| `hyremote-v01-example-smoke` | Python found + examples/product capabilities | installed/e2e-lite | KEEP: proves SDK install + standalone build/deploy/run of canonical 01/02/03 and Generic native identity |
-| old `example_product_fit.py` | no current registration; targets removed `widgets-basic/quick-basic` | e2e | RETIRE/MIGRATE unique standard-viewer contract; never resurrect removed teaching examples |
-| `rfb_product_fit.py` | no current registration | e2e | KEEP code; exact-candidate execution gap reported to #229 |
-| `qml_product_fit.py` | no current registration | e2e | KEEP as preview/non-fast candidate or explicit manual harness; unique QML observable lifecycle value |
-| `showcase_product_fit.py` | no current registration | e2e | REVIEW/optional non-fast: showcase still exists but is not V0.1 primary authority; retain only if showcase remains a supported regression surface |
+| `hyremote-v01-example-smoke` | registered when Python/examples are available | installed/e2e-lite | KEEP canonical 01/02/03 adoption proof |
+| `rfb_product_fit.py` | unregistered | e2e | KEEP contract/MOVE owner; TG-009 exact-candidate execution GAP |
+| `example_product_fit.py` | unregistered; historical scenario labels | e2e | KEEP unique app-level viewer/control contract; retarget to canonical 01/02, do not resurrect old examples |
+| `qml_product_fit.py` | unregistered | e2e | KEEP preview/non-fast |
+| `showcase_product_fit.py` | unregistered | e2e | KEEP maintained showcase regression, non-fast and non-V0.1-primary |
 
-## T6 — release authority/readiness
+## T6 release authority/readiness
 
-| Family | Guard | Cost | Release relevance |
+| Family | Guard | Cost | Decision |
 | --- | --- | --- | --- |
-| release metadata/security/version truth | top-level tests | fast/contract | candidate-specific truth; KEEP/SPLIT |
-| release authority policy | top-level tests | fast/contract | every selectable train |
-| release documentation layout | top-level tests | fast/contract | candidate/release artifact layout |
-| release scope self-test | top-level tests | fast/contract | exact train selection/fail-closed unknown |
-| release-profile acceptance/rejection matrix | top-level tests; profile-specific configure | fast/contract | version semantics across trains |
-| source-QPA authority negative checks | QPA/root conditional | contract | QPA acquisition truth; permanent owner under review T4 vs T6 |
+| release metadata/security/version truth | top-level | contract | SPLIT: true candidate truth T6, permanent contract pieces T3/T4 |
+| release authority policy | top-level | contract | KEEP T6 |
+| release documentation layout | top-level | contract | KEEP T6 |
+| release scope self-test | top-level | contract | KEEP T6 |
+| release-profile acceptance/rejection matrix | top-level/profile configure | contract | KEEP T6 |
+| source-QPA acquisition negative | QPA/root conditional | contract | MOVE T4 |
 
-## Platform / capability observations
+#277 expanded Feature-release scenario coverage inside existing T6 registrations; it did not add CTest names.
 
-1. Headless `offscreen`/software-Quick tests qualify deterministic Qt adapter behavior, **not** native/physical GPU/display qualification.
-2. QPA carries an exact Qt 6.8.3 private-ABI boundary; Generic and ordinary C++ must not inherit it.
-3. Security/VNC tests are conditionally registered according to actual compiled capability; a test that skips at runtime is not a substitute for correct non-registration.
-4. Installed/evidence cells must bind to one SHA and prove clean acquisition/runtime isolation; a green in-tree unit test cannot replace them.
-5. Real-viewer product-fit belongs in a semantic `e2e`/candidate lane rather than every unrelated fast PR.
-6. Phase C labels must express these semantics without introducing a second test runner or bypassing canonical build authority.
+## Hosted platform reconciliation
 
-## Phase-C proposed semantic labels
+Run `35577711774` all-frontends Release:
 
-No labels are applied in Phase A. Proposed vocabulary:
+- Linux Qt6.8.3: 93 discovered / 93 executed / PASS;
+- Windows Qt6.8.3: 92 / 92 / PASS;
+- only difference: Linux-only `hyremote-qpa-source-payload-relocation`, matching explicit platform guard;
+- no product-e2e Python harness above and no forced-DPR second capture run appears in the executed CTest set.
+
+Exact names are in [`EXECUTION_BASELINE.md`](EXECUTION_BASELINE.md).
+
+## Phase-C proposed labels
+
+No labels are applied in Phase A.
 
 - type: `unit`, `component`, `integration`, `contract`, `consumer`, `e2e`, `release`;
 - owner: `core`, `runtime`, `rfb`, `widgets`, `quick`, `cpp`, `qml`, `generic`, `qpa`, `repository`;
 - cost: `fast`, `installed`, `e2e`, `qualification`;
-- optional matrix tags only where needed: `security`, `windows`, `linux`, `physical`.
+- optional matrix: `security`, `windows`, `linux`, `physical` only where semantically needed.
 
-Avoid encoding release versions into every test label. Release scope should select required semantic contracts rather than turning test names into a second WBS system.
+Labels must not encode release versions into every test name, replace capability guards, create a second runner, or allow zero selected tests to count as evidence.
