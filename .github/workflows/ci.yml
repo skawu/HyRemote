@@ -233,6 +233,58 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=^hyremote-release-readiness-" --clean -j4
 
+      - name: Test evidence summary
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG=build-ci/test.log
+          {
+            echo "## Test evidence — ${{ matrix.name }}"
+            echo
+            if [[ ! -f "$LOG" ]]; then
+              echo "No \`$LOG\` was produced, so the test phase never ran (build or configuration failure)."
+              exit 0
+            fi
+            echo "### CTest summary"
+            echo '```text'
+            grep -E "[0-9]+% tests passed|Total Test time" "$LOG" || true
+            echo '```'
+            echo
+            echo "### Failed tests"
+            echo '```text'
+            sed -n '/The following tests FAILED/,$p' "$LOG" || true
+            echo '```'
+            echo
+            echo "### Required evidence tests"
+            echo '```text'
+            grep -E "hyremote-generic-installed-consumers|hyremote-qpa-widget-popup-connection-smoke" "$LOG" || true
+            echo '```'
+            echo
+            echo "### Generic installed consumers, per cell"
+            for f in build-ci/evidence/*/installed-generic-*/evidence.txt; do
+              [[ -f "$f" ]] || continue
+              echo '```text'
+              echo "# $f"
+              grep -E "^(CELL|CONSUMER|GENERIC_PAYLOAD|SOURCE_TREE_DEPENDENCY_COUNT|BUILD_TREE_DEPENDENCY_COUNT|RESULT)=" "$f" || true
+              echo '```'
+            done
+            echo
+            echo "Raw CTest log is attached as the workflow artifact for this platform."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyremote-test-log-${{ runner.os }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            build-ci/test.log
+            build-ci/evidence/*/summary.txt
+            build-ci/evidence/*/*/evidence.txt
+
       - name: Save verified exact Qt SDK
         if: always() && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'
         uses: actions/cache/save@v4

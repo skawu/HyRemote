@@ -552,6 +552,13 @@ function(generic_product_fit cell consumer_target)
     endif()
     record("${cell}" "RESULT_DETAIL" "deployed Generic consumer preserved native platform identity and discovered the plugin")
     record("${cell}" "RESULT" "PASS")
+    # One auditable line per required consumer in the runner's own output, so a passing run still states which
+    # consumers actually executed rather than leaving that to be inferred from a cell count.
+    if(consumer_target STREQUAL "generic-widgets-consumer")
+        message(STATUS "release-evidence: GENERIC_WIDGETS_INSTALLED=PASS (${_exe})")
+    else()
+        message(STATUS "release-evidence: GENERIC_QUICK_INSTALLED=PASS (${_exe})")
+    endif()
 endfunction()
 
 if("installed-generic-widgets" IN_LIST EVIDENCE_CELLS)

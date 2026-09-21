@@ -731,7 +731,23 @@ if(HYB_TESTS_RUN)
             ERROR_FILE "${test_log}")
     endif()
     if(NOT rc EQUAL 0)
-        message(FATAL_ERROR "Tests failed (${rc}). See ${test_log}")
+        # rc is the ctest process exit status, not a count of failures - ctest exits 8 whenever one or more tests
+        # failed, and reporting it as "Tests failed (8)" read like eight failures and hid the actual names from
+        # every caller. Echo the log the same run already produced, so the build system itself is diagnosable
+        # without a second CI round trip, and state what the number is.
+        if(EXISTS "${test_log}")
+            file(READ "${test_log}" _hyb_test_log_text)
+            string(STRIP "${_hyb_test_log_text}" _hyb_test_log_text)
+            message(STATUS "TEST_EXIT_STATUS=${rc}")
+            message(STATUS "TEST_LOG=${test_log}")
+            message(STATUS "--- begin ${test_log} ---")
+            message(STATUS "${_hyb_test_log_text}")
+            message(STATUS "--- end ${test_log} ---")
+        endif()
+        message(FATAL_ERROR
+            "CTest exited with status ${rc}. See ${test_log}. "
+            "That status is the ctest process exit code, not a failure count: ctest exits 8 when one or more tests "
+            "failed, and the failing test names and their output are in the log echoed above.")
     endif()
 endif()
 
