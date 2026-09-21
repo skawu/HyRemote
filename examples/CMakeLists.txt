@@ -1,10 +1,17 @@
-# V1 product examples consume only the intended public surface for their integration mode.
+# HyRemote examples.
+#
+# V0.1 canonical adoption paths live under examples/learning: 01 Widgets + C++, 02 Quick + C++, 03 Generic zero-code.
+# They are the paths a new application developer is expected to follow, and they use only the public product surface.
+#
+# The remaining directories are earlier milestone examples and product showcases. They stay built so their evidence
+# keeps working, but they are not the V0.1 teaching authority.
+
+# ---------------------------------------------------------------- V0.1 canonical adoption paths
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
-    add_subdirectory(widgets-basic)
-    add_subdirectory(remote-support-showcase)
+    add_subdirectory(learning/01-widgets-cpp)
 else()
-    message(STATUS "  Widgets examples skipped: Widgets adapter/Qt Widgets unavailable")
+    message(STATUS "  learning/01-widgets-cpp skipped: Widgets adapter/Qt Widgets unavailable")
 endif()
 
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND TARGET Qt6::Quick)
@@ -12,12 +19,42 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND TARGET Qt6::Quick)
         find_package(Qt6 6.8 QUIET COMPONENTS Qml)
     endif()
     if(TARGET Qt6::Qml)
-        add_subdirectory(quick-basic)
+        add_subdirectory(learning/02-quick-cpp)
     else()
-        message(STATUS "  quick-basic example skipped: Qt Qml unavailable")
+        message(STATUS "  learning/02-quick-cpp skipped: Qt Qml unavailable")
     endif()
 else()
-    message(STATUS "  quick-basic example skipped: Quick adapter unavailable")
+    message(STATUS "  learning/02-quick-cpp skipped: Quick adapter unavailable")
+endif()
+
+# 03 is two ordinary Qt applications that link no HyRemote target at all, so they build whenever Qt does. Whether
+# their deployment helper can also deploy the Generic payload is settled inside each of them: an SDK built without
+# Generic support still builds and runs these applications as plain Qt applications.
+if(TARGET Qt6::Widgets)
+    add_subdirectory(learning/03-zero-code-generic/widgets-app)
+else()
+    message(STATUS "  learning/03-zero-code-generic/widgets-app skipped: Qt Widgets unavailable")
+endif()
+
+if(TARGET Qt6::Quick)
+    if(NOT TARGET Qt6::Qml)
+        find_package(Qt6 6.8 QUIET COMPONENTS Qml)
+    endif()
+    if(TARGET Qt6::Qml)
+        add_subdirectory(learning/03-zero-code-generic/quick-app)
+    else()
+        message(STATUS "  learning/03-zero-code-generic/quick-app skipped: Qt Qml unavailable")
+    endif()
+else()
+    message(STATUS "  learning/03-zero-code-generic/quick-app skipped: Quick adapter unavailable")
+endif()
+
+# ---------------------------------------------------------------- earlier milestone examples
+
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
+    add_subdirectory(remote-support-showcase)
+else()
+    message(STATUS "  remote-support-showcase example skipped: Widgets adapter/Qt Widgets unavailable")
 endif()
 
 if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml AND TARGET Qt6::Qml AND TARGET Qt6::Quick)

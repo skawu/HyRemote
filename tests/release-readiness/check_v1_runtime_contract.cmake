@@ -78,14 +78,23 @@ require_file_token("src/integrations/qml/QmlRemoteAccess.cpp" "emit targetChange
 require_file_token("src/integrations/qml/tests/test_qml_module.cpp" "testTargetDestructionNotifiesDeclarativeProperty" "QML target destruction regression")
 require_file_token("src/integrations/qml/tests/CMakeLists.txt" "hyremote-qml-module-test" "registered QML module lifecycle CTest")
 
+# The V0.1 learning examples are teaching paths, not acceptance harnesses: they must use the public facade and stop
+# the runtime explicitly, and nothing more is required of them. The stopped-runtime policy mutation they used to
+# carry is owned by the product test below, where it is asserted against the real runtime rather than against an
+# example's instrumentation.
 foreach(example_source IN ITEMS
-        "examples/widgets-basic/main.cpp"
-        "examples/quick-basic/main.cpp")
-    require_file_token("${example_source}" "policy-transition-ms" "E1/E2 stopped-runtime acceptance helper")
-    require_file_token("${example_source}" "remote.stop();" "E1/E2 public facade stop during policy transition")
-    require_file_token("${example_source}" "remote.setRemoteInputEnabled(true)" "E1/E2 stopped remote-input configuration")
-    require_file_token("${example_source}" "POLICY_RESTART_REQUESTED" "E1/E2 public facade restart evidence")
+        "examples/learning/01-widgets-cpp/main.cpp"
+        "examples/learning/02-quick-cpp/main.cpp")
+    require_file_token("${example_source}" "HyRemote::RemoteAccess" "V0.1 learning example public facade")
+    require_file_token("${example_source}" "remote.start()" "V0.1 learning example explicit runtime start")
+    require_file_token("${example_source}" "remote.stop();" "V0.1 learning example explicit runtime stop")
 endforeach()
+require_file_token("src/integrations/cpp/tests/test_remote_access.cpp"
+    "CHECK(!remote.setRemoteInputEnabled(false));"
+    "policy mutation refused while running")
+require_file_token("src/integrations/cpp/tests/test_remote_access.cpp"
+    "CHECK(remote.setRemoteInputEnabled(false));"
+    "policy mutation accepted while stopped")
 require_file_token("tests/product-e2e/example_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E1/E2 bounded transition watchdog")
 require_file_token("tests/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "E1/E2 lifecycle-driven policy transition")
 require_file_token("tests/product-e2e/example_product_fit.py" "public stop/configure/start" "E1/E2 same-process acceptance result")

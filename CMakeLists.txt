@@ -308,6 +308,27 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     )
     set_tests_properties(hyremote-release-scope-self-test PROPERTIES TIMEOUT 300)
 
+    # The V0.1 learning examples are the adoption path a new developer follows, so they are exercised end to end: the
+    # smoke installs the SDK from this build tree, configures and builds each example as a standalone project against
+    # that installed SDK, launches all four executables, and checks the native platform identity plus the
+    # RemoteAccess lifecycle. Qt comes from the developer environment, which is how someone following the example
+    # READMEs runs them; deployed-tree independence is a different question and is owned by the release evidence
+    # cells, which this smoke deliberately does not duplicate.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-v01-example-smoke
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/v01-examples/example_adoption_smoke.py"
+                --source-dir "${CMAKE_CURRENT_SOURCE_DIR}"
+                --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+                --qt-prefix "${CMAKE_PREFIX_PATH}"
+                "--cmake-arg=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+                "--cmake-arg=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+        )
+        set_tests_properties(hyremote-v01-example-smoke PROPERTIES TIMEOUT 1800)
+    endif()
+
     # The CI scope classifier decides which lanes run - including whether the release-readiness gates run at all - so
     # it is executed by the canonical build authority instead of only being trusted inside a workflow. A classifier
     # that cannot be tested is how a lane that claims to be full integration quietly excludes readiness forever.

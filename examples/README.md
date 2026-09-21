@@ -4,8 +4,9 @@ This directory is the canonical example matrix for the V1.0.0.0 product surface.
 
 | ID | Example / fixture | Integration mode | Product surface | Release role |
 | --- | --- | --- | --- | --- |
-| E1 | `widgets-basic` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | Basic Widgets attach/view/input/reconnect evidence for V0.0.1.0 |
-| E2 | `quick-basic` | Embedded C++ / Qt Quick | `HyRemote::RemoteAccess` | Basic Quick attach/view/input/reconnect evidence for V0.0.1.0 |
+| E1 | `learning/01-widgets-cpp` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | V0.1 adoption path: shortest real Widgets + C++ route |
+| E2 | `learning/02-quick-cpp` | Embedded C++ / Qt Quick | `HyRemote::RemoteAccess` | V0.1 adoption path: Quick UI over the same C++ facade, no QML frontend |
+| E7 | `learning/03-zero-code-generic` | Generic Plugin | Ordinary Qt-only applications | V0.1 adoption path: zero application code, native platform preserved |
 | E3 | `qml-basic` | Declarative QML | `import HyRemote` over the shared runtime | Declarative product E2E for V0.0.2.0 |
 | E4 | `qpa-proxy-existing-app` | Transparent QPA Proxy | Ordinary Qt app; HyRemote supplied by deployed QPA package | Existing-app / zero application-code integration evidence for V0.0.3.0 |
 | E5 | `remote-support-showcase` | Embedded C++ / Qt Widgets | `HyRemote::RemoteAccess` | Production-like operator workflow and explicit policy controls for V1.0.0.0 |
