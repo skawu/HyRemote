@@ -633,11 +633,57 @@ void testBindPolicyFollowsAuthentication()
     HyRemote::detail::resetFactories();
 }
 
+// #232: AuthenticatedEncrypted is a declared product API whose wire contract (VeNCrypt 0.2 + X509Vnc + TLS >= 1.2)
+// does not exist yet, so it must fail closed deterministically before any listener exists - in a build without the
+// transport-security capability and equally in one that has it, where the weaker VNC Authentication must not be
+// served in its place. A readable descriptor must not make the profile look implemented.
+void testAuthenticatedEncryptedFailsClosedBeforeListen()
+{
+    // Items 1 and 2 of the required evidence are already asserted by testProductLifecycleAndConfigurationForwarding,
+    // which drives them with the factories that test installs: the Insecure loopback baseline reaches Running, and an
+    // unauthenticated non-loopback listener is refused before listen. Neither is re-proved here, because this test
+    // deliberately runs without those factories - the refusal below happens before any target or transport exists,
+    // which is exactly the property being asserted.
+
+    // 3./4./5. AuthenticatedEncrypted refuses, and the refusal is the security-unavailable capability statement
+    // rather than a claim about a descriptor. The descriptor path here is deliberately a path that would have to be
+    // reported verbatim if anything echoed its name, so the same assertion also proves the failure discloses no
+    // descriptor material. Nothing is left listening because the refusal precedes any transport composition, which
+    // this test states through the Runtime state the caller observes.
+    {
+        HyRemote::RemoteAccess remote;
+        QTemporaryDir temp;
+        CHECK(temp.isValid());
+        const QString descriptorPath = temp.filePath(QStringLiteral("secret7material-fail-closed.conf"));
+        CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::AuthenticatedEncrypted));
+        CHECK(remote.setSecurityConfigFile(descriptorPath));
+        CHECK(!remote.start());
+        CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+        CHECK(remote.lastError().has_value());
+        CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+        CHECK(!remote.lastError()->message.contains(QStringLiteral("secret7material")));
+        CHECK(!remote.lastError()->message.contains(descriptorPath));
+
+        // The rule is deterministic and does not become satisfiable by retrying or by configuring further.
+        CHECK(!remote.start());
+        CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+
+        // 6. No frontend can bypass it: every frontend selects this profile through the Shared Runtime, and the
+        // Runtime refuses it here regardless of which entry point configured it. The facade mapping is covered by
+        // testProductLifecycleAndConfigurationForwarding, and the QML/QPA/Gateway parsers map their own spellings of
+        // authenticated-encrypted onto exactly this profile.
+        remote.stop();
+        CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
+    }
+
+}
+
 int main()
 {
     testSafeDefaultsAndNoConstructionSideEffect();
     testMissingTargetAndMissingAdapterFailCleanly();
     testProductLifecycleAndConfigurationForwarding();
+    testAuthenticatedEncryptedFailsClosedBeforeListen();
     testMoveTransfersOwnershipAndQuiescesReplacedRuntime();
     testConnectedClientCountUsesTransportNeutralEvents();
     testRemoteInputIsIndependentAndOffByDefault();
