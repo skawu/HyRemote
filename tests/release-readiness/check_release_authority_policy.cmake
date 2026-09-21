@@ -152,7 +152,7 @@ foreach(index RANGE 0 ${v01_child_last})
     string(JSON child GET "${authority_json}" trains "0.1.0.0" mandatory_children ${index})
     list(APPEND actual_v01_children "${child}")
 endforeach()
-set(expected_v01_children 230 231 232 237 238 241)
+set(expected_v01_children 230 231 232 237 238)
 if(NOT "${actual_v01_children}" STREQUAL "${expected_v01_children}")
     message(FATAL_ERROR
         "release-authority-policy: 0.1.0.0 mandatory children drifted. "

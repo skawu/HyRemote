@@ -21,20 +21,20 @@
     "0.1.0.0": {
       "authority_parent": 229,
       "candidate_freeze_authority": 229,
-      "mandatory_children": [ 230, 231, 232, 237, 238, 241 ],
+      "mandatory_children": [ 230, 231, 232, 237, 238 ],
       "required_evidence": [
         "converged-one-core-shared-runtime-four-peer-frontends",
         "exact-head-integrated-windows-linux-evidence",
         "clean-installed-cpp-consumer-smoke",
         "clean-installed-generic-consumer-smoke-preserving-native-qpa",
-        "bilingual-branded-developer-entry-and-01-02-03-learning-flow",
+        "minimal-developer-entry-and-01-02-03-learning-flow",
         "fail-closed-security-negative-evidence",
         "release-scope-machine-gate-selecting-only-this-train",
         "release-notes-preview-support-boundaries-and-known-limitations"
       ],
       "cross_version_references": [ 1, 24, 41, 95, 143, 176, 209, 219, 220 ],
       "conditional_items": [],
-      "non_blockers": [ 41, 143, 144, 170, 174, 176, 209, 240, 242, 57 ],
+      "non_blockers": [ 41, 143, 144, 170, 174, 176, 209, 240, 241, 242, 57 ],
       "notes": {
         "232": "Closed before this migration; the release gate reads its live state like any other mandatory child.",
         "209": "Cross-version umbrella. Referenced for the evidence this train consumes; the whole umbrella is never a V0.1 closeable requirement."

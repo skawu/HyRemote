@@ -267,13 +267,15 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
-    if(NOT v01_output MATCHES "MANDATORY_CHILDREN=230,231,232,237,238,241")
+    if(NOT v01_output MATCHES "MANDATORY_CHILDREN=230,231,232,237,238")
         message(STATUS "release-scope self test: 0.1.0.0 mandatory set drifted: ${v01_output}")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
     math(EXPR cases_run "${cases_run} + 2")
-    foreach(umbrella IN ITEMS 41 143 176 209)
+    # Cross-version umbrellas and later-train productization must never be V0.1 closeable requirements: #240 is
+    # complete V0.3 Example productization and #241 is project-wide GUI branding enforcement, both V0.3.
+    foreach(umbrella IN ITEMS 41 143 176 209 240 241)
         if(v01_output MATCHES "MANDATORY_CHILDREN=[^\n]*\\b${umbrella}\\b")
             message(STATUS "release-scope self test: umbrella #${umbrella} must not be a V0.1 mandatory child")
             math(EXPR _failures "${case_failures} + 1")
@@ -373,7 +375,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     set(empty_path "${fixture_dir}/release-trains-empty.json")
     file(READ "${authority_path}" empty_json)
     string(REPLACE
-        "\"mandatory_children\": [ 230, 231, 232, 237, 238, 241 ]"
+        "\"mandatory_children\": [ 230, 231, 232, 237, 238 ]"
         "\"mandatory_children\": []"
         empty_json "${empty_json}")
     file(WRITE "${empty_path}" "${empty_json}")
