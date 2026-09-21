@@ -162,13 +162,14 @@ V0.1 is a **Developer Preview with a loopback-first security boundary**:
 
 - default bind: `127.0.0.1`;
 - remote input: off by default;
-- unauthenticated non-loopback exposure is rejected;
-- an authenticated profile may use RFB VNC authentication, but the stream is not encrypted;
-- `AuthenticatedEncrypted` fails closed before opening a listener while the TLS/VeNCrypt backend is unavailable.
+- `Insecure` is loopback-only; non-loopback startup is rejected;
+- `Authenticated` is conditional: it requires a transport-security-enabled HyRemote build plus a valid security descriptor, and currently provides VNC authentication without stream encryption;
+- the default V0.1 build/profile does not imply authenticated transport is present;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before any listener is opened, without fallback to a weaker profile.
 
 Do not expose the current product directly to the public Internet.
 
-**TODO (V0.2):** VeNCrypt/TLS, certificate policy, authenticated sessions, and production network policy.
+**TODO (V0.2):** encrypted transport, certificate policy, authenticated sessions, and production network policy.
 
 See [`docs/security.md`](docs/security.md).
 
