@@ -347,10 +347,21 @@ if(TEST_DEPLOY_QPA)
         endif()
     endif()
 else()
-    foreach(forbidden_fragment IN ITEMS
+    # An ordinary (non-QPA) deployment keeps the application on its native Qt platform, so it must carry that
+    # platform plugin: the same closure Generic carries. What it must not carry is the QPA proxy payload, and the
+    # forbidden set is now exactly that, because the old blanket ban also forbade the native platform closure the
+    # ordinary path needs.
+    foreach(required_fragment IN ITEMS
             "ADDITIONAL_MODULES"
-            "qhyremote"
-            "RPATH_CHANGE")
+            "platforms")
+        string(FIND "${generated_content}" "${required_fragment}" required_pos)
+        if(required_pos EQUAL -1)
+            message(FATAL_ERROR
+                "ordinary runtime deploy script is missing '${required_fragment}':\n${generated_content}")
+        endif()
+    endforeach()
+    foreach(forbidden_fragment IN ITEMS
+            "qhyremote")
         string(FIND "${generated_content}" "${forbidden_fragment}" forbidden_pos)
         if(NOT forbidden_pos EQUAL -1)
             message(FATAL_ERROR
@@ -371,7 +382,7 @@ if(NOT plugin_path_pos EQUAL -1)
         "normal deployment must not require QT_PLUGIN_PATH: ${generated_content}")
 endif()
 
-if(TEST_DEPLOY_QPA AND UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE)
     set(_literal_deploy_lib_dir "$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}")
     foreach(rpath_fragment IN ITEMS
             "RPATH_CHANGE"

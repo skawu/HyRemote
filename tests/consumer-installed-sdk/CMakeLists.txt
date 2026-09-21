@@ -4,7 +4,10 @@ project(HyRemoteInstalledConsumer LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network)
+# Gui is required because a deployable HyRemote application runs a Qt GUI application: the deploy helper resolves
+# the native platform plugin through Qt6Gui_DIR, so a fixture that deploys but never asks for Gui would describe an
+# application that cannot exist and would hide the platform closure contract.
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Network Gui)
 find_package(HyRemote CONFIG REQUIRED)
 
 if(NOT COMMAND hyremote_deploy)
