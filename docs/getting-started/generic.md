@@ -57,7 +57,7 @@ hyremote_deploy(TARGET MyApp GENERIC)
 MyApp -plugin hyremote
 ```
 
-也可以使用环境变量：
+也可以使用环境变量启用默认配置：
 
 ```text
 QT_QPA_GENERIC_PLUGINS=hyremote
@@ -72,7 +72,15 @@ QT_QPA_GENERIC_PLUGINS=hyremote
 
 ## 配置格式
 
-Generic Plugin 的配置采用 `key=value` 字段，字段之间使用分号：
+Qt 把 `-plugin` 参数中第一个冒号前的部分作为 Generic Plugin key，冒号后的部分作为 specification 传入插件。HyRemote 的 specification 由 `key=value` 字段组成，多个字段使用分号分隔。
+
+例如：
+
+```text
+MyApp -plugin "hyremote:address=127.0.0.1;port=5901;input=true;security=insecure"
+```
+
+其中真正传给 HyRemote 的 specification 是：
 
 ```text
 address=127.0.0.1;port=5901;input=true;security=insecure
@@ -90,7 +98,7 @@ address=127.0.0.1;port=5901;input=true;security=insecure
 
 `authenticated-encrypted` 在 V0.1 中会**失败关闭**，不会降级成未加密连接。
 
-> **TODO：** V0.2 提供完整 VeNCrypt/TLS、证书策略和会话安全能力后，再将 `authenticated-encrypted` 作为可用安全配置公开给生产场景。
+> **TODO V0.2：** 提供完整 VeNCrypt/TLS、证书策略和会话安全能力后，再将 `authenticated-encrypted` 作为可用安全配置公开给生产场景。
 
 ## Native platform 保持不变
 
