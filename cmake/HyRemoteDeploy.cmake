@@ -137,7 +137,30 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     endif()
 
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
-    _hyremote_linux_private_runtime_bootstrap("${_runtime_deploy_dir}" _linux_private_runtime_bootstrap)
+    # The ordinary C++ path keeps the application on its native Qt platform, so the deployed tree has to carry that
+    # platform plugin exactly as the Generic path does: without it a deployed application cannot start at all unless
+    # the machine happens to have the Qt SDK, which is what a clean deployment must not require. The plugin identity
+    # comes from the same neutral resolver the Generic and QPA paths use, so no platform-conditional file name is
+    # guessed here and the contract cannot drift into a Windows-only accidental pass.
+    _hyremote_resolve_native_platform_payload(
+        _native_platform_plugin_file _native_platform_plugin_name)
+    # The Linux native delegate carries its own private Qt runtime dependency, so the shared bootstrap is given the
+    # plugin and produces the closure that lets the deployed plugin resolve against the deployed Qt runtime.
+    _hyremote_linux_private_runtime_bootstrap(
+        "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_platform_plugin_name}")
+
+    # The deployed platform plugin must find the deployed Qt runtime rather than the SDK it was built against - the
+    # same relocation the QPA and Generic paths perform for the same plugin.
+    set(_linux_platform_rpath_rewrite "")
+    if(UNIX AND NOT APPLE)
+        set(_linux_platform_rpath_rewrite
+"file(RPATH_CHANGE
+    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
+    OLD_RPATH \"$ORIGIN/../../../.\"
+    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
+)
+")
+    endif()
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
@@ -158,8 +181,12 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+    \"${_native_platform_plugin_file}\")
+${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
+    ADDITIONAL_MODULES
+    \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
     ADDITIONAL_LIBRARIES
     \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )

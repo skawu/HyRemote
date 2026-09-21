@@ -192,6 +192,40 @@ foreach(forbidden_token
             "deploy-helper-contract: Generic deployment must not reach the platform-plugin path: ${forbidden_token}")
     endif()
 endforeach()
+
+# The ordinary C++ deployment is a clean deployment too, and it must be able to start outside the Qt SDK on every
+# reference platform - not only on the one where a missing native platform plugin happens to be masked by the
+# environment. That behaviour is proved by the installed C++ consumer cells; this assertion pins the contract they
+# depend on, and it pins the other direction as well, so the ordinary path cannot drift into the QPA contract to get
+# the plugin: ordinary C++ keeps the native platform, QPA replaces it.
+string(REGEX MATCH "function\\(_hyremote_generate_remoteaccess_deploy_script[^)]*\\)(.*)function\\(_hyremote_resolve_qpa_payload" _ordinary_body "${deploy_helper}")
+if("${CMAKE_MATCH_1}" STREQUAL "")
+    message(FATAL_ERROR "deploy-helper-contract: ordinary RemoteAccess deploy script generator is missing")
+endif()
+foreach(ordinary_required_token
+        [=[_hyremote_resolve_native_platform_payload]=]
+        [=[\${QT_DEPLOY_PLUGINS_DIR}/platforms]=]
+        [=[ADDITIONAL_MODULES]=]
+        [=[_hyremote_linux_private_runtime_bootstrap]=]
+        [=[RPATH_CHANGE]=])
+    string(FIND "${CMAKE_MATCH_1}" "${ordinary_required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: ordinary C++ deployment must carry the native platform closure and its Linux "
+            "relocation: ${ordinary_required_token}")
+    endif()
+endforeach()
+foreach(ordinary_forbidden_token
+        [=[_hyremote_resolve_qpa_payload]=]
+        [=[HyRemote_QPA_PLUGIN_FILE]=]
+        [=[HyRemote_QPA_QT_VERSION]=]
+        [=[ADDITIONAL_QPA]=])
+    string(FIND "${CMAKE_MATCH_1}" "${ordinary_forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: ordinary C++ deployment must not borrow the QPA contract: ${ordinary_forbidden_token}")
+    endif()
+endforeach()
 string(FIND "${deploy_helper}"
     [=[${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(]=]
     versionless_runtime_deploy_call)
