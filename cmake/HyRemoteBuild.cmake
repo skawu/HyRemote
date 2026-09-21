@@ -698,6 +698,27 @@ if(HYB_TESTS_RUN)
         list(APPEND test_env "LD_LIBRARY_PATH=${test_ld}")
     endif()
 
+    # --run-tests must fail closed on a suite that discovers nothing. "No tests were found!!!" followed by exit 0 and
+    # "HyRemote build succeeded" is a false green: it lets a lane claim integration while executing none of it, which
+    # is how the release-readiness gates could stay unexecuted for as long as they did. This asks CTest itself what it
+    # discovered (-N registers the tests without running them), so it keys off real test registration rather than
+    # workflow text.
+    execute_process(
+        COMMAND "${CMAKE_CTEST_COMMAND}" --test-dir "${HYB_BUILD_DIR}" -N
+        RESULT_VARIABLE discover_status
+        OUTPUT_VARIABLE discover_output
+        ERROR_VARIABLE discover_error)
+    set(HYB_DISCOVERED_TEST_COUNT 0)
+    if(discover_output MATCHES "Total Tests: ([0-9]+)")
+        set(HYB_DISCOVERED_TEST_COUNT "${CMAKE_MATCH_1}")
+    endif()
+    message(STATUS "DISCOVERED_TEST_COUNT=${HYB_DISCOVERED_TEST_COUNT}")
+    if(HYB_DISCOVERED_TEST_COUNT EQUAL 0)
+        message(FATAL_ERROR
+            "--run-tests was requested but CTest discovers no test (ctest -N reported 0, status ${discover_status}). "
+            "Configure with tests enabled, or drop --run-tests: a run that executes nothing must not report success.")
+    endif()
+
     set(ctest_cmd "${CMAKE_CTEST_COMMAND}" --test-dir "${HYB_BUILD_DIR}" --output-on-failure)
     if(NOT HYB_TESTS_PARALLEL STREQUAL "")
         list(APPEND ctest_cmd --parallel "${HYB_TESTS_PARALLEL}")
@@ -748,6 +769,23 @@ if(HYB_TESTS_RUN)
             "CTest exited with status ${rc}. See ${test_log}. "
             "That status is the ctest process exit code, not a failure count: ctest exits 8 when one or more tests "
             "failed, and the failing test names and their output are in the log echoed above.")
+    endif()
+
+    # Discovered is not the same as executed: an exclusion can filter the whole suite away, and CTest still exits 0.
+    # The executed count therefore comes from the run's own result line, which is the only place that states how many
+    # tests actually ran.
+    if(EXISTS "${test_log}")
+        file(READ "${test_log}" hyb_test_log)
+        set(HYB_EXECUTED_TEST_COUNT 0)
+        if(hyb_test_log MATCHES "out of ([0-9]+)")
+            set(HYB_EXECUTED_TEST_COUNT "${CMAKE_MATCH_1}")
+        endif()
+        message(STATUS "EXECUTED_TEST_COUNT=${HYB_EXECUTED_TEST_COUNT}")
+        if(HYB_EXECUTED_TEST_COUNT EQUAL 0 OR hyb_test_log MATCHES "No tests were found")
+            message(FATAL_ERROR
+                "--run-tests discovered ${HYB_DISCOVERED_TEST_COUNT} test(s) but executed "
+                "${HYB_EXECUTED_TEST_COUNT}. See ${test_log}. A run that executes nothing must not report success.")
+        endif()
     endif()
 endif()
 

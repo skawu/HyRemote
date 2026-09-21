@@ -178,9 +178,11 @@ jobs:
         run: |
           set -uo pipefail
           LOG=build-ci/test.log
+          status=0
           {
             echo "## Test evidence — ${{ matrix.name }}"
             echo
+            echo "TEST_EXCLUDE=${TEST_EXCLUDE:-<empty>}"
             if [[ ! -f "$LOG" ]]; then
               echo "No \`$LOG\` was produced, so the test phase never ran (build/configuration failure)."
               exit 0
@@ -194,7 +196,25 @@ jobs:
             echo '```text'
             sed -n '/The following tests FAILED/,$p' "$LOG" || true
             echo '```'
+            echo
+            # A lane that claims to be integration has to show real tests. This reads the run's own result line
+            # rather than trusting the job status: "No tests were found!!!" with a zero count is exactly the false
+            # green that let the release-readiness gates stay unexecuted, and it exits zero.
+            executed="$(grep -oE 'out of [0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+' || true)"
+            executed="${executed:-0}"
+            echo "EXECUTED_TEST_COUNT=$executed"
+            if [[ "$executed" -eq 0 ]] || grep -q "No tests were found" "$LOG"; then
+              echo "::error::${{ matrix.name }} executed $executed test(s); the log shows no real test execution"
+              status=1
+            fi
+            # An exclusion that matches every test name would empty the suite silently, so it is refused here as
+            # well as in the classifier, where the same shape is proved impossible by an executable self test.
+            if [[ "${TEST_EXCLUDE:-}" == "^()" ]]; then
+              echo "::error::test_exclude is '$TEST_EXCLUDE', which excludes every test"
+              status=1
+            fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Upload diagnostic evidence
         if: failure() || needs.classify.outputs.generic_evidence == 'true' || needs.classify.outputs.qml_evidence == 'true' || needs.classify.outputs.qpa_evidence == 'true' || github.event_name != 'pull_request'
