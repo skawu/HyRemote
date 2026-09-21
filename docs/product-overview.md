@@ -177,12 +177,12 @@ Current behavior includes:
 
 - loopback listener by default;
 - remote input disabled by default;
-- unauthenticated non-loopback exposure rejected;
-- optional RFB VNC authentication where the authenticated profile is used;
-- no stream encryption in the current transport;
-- `AuthenticatedEncrypted` fails closed before opening a listener while the encrypted backend is unavailable.
+- `Insecure` is loopback-only and non-loopback startup is rejected;
+- `Authenticated` is a conditional capability that requires a transport-security-enabled build and a valid security descriptor; when available it provides VNC authentication without stream encryption;
+- the default V0.1 build/profile does not imply authenticated transport is present;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before target, transport, or listener composition, without falling back to a weaker profile.
 
-> **TODO (V0.2):** VeNCrypt/TLS, certificate policy, authenticated session management, and production network policy.
+> **TODO (V0.2):** encrypted transport, certificate policy, authenticated session management, and production network policy.
 
 See [`security.md`](security.md).
 
