@@ -72,6 +72,18 @@ if(TARGET hyremote-qpa-platform)
     hyremote_target_artifact_name(hyremote-qpa-platform HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME)
 endif()
 
+# Generic Plugin is the fourth peer frontend and, like QPA, a package payload rather than a C++ link target. Export
+# availability and the installed plugin location so the package describes the zero-code QGenericPlugin payload it
+# ships, without introducing another link target or runtime personality.
+set(HYREMOTE_PACKAGE_WITH_GENERIC FALSE)
+set(HYREMOTE_PACKAGE_GENERIC_PLUGIN_SUBDIR "")
+set(HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME "")
+if(TARGET hyremote-generic-plugin)
+    set(HYREMOTE_PACKAGE_WITH_GENERIC TRUE)
+    set(HYREMOTE_PACKAGE_GENERIC_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/generic")
+    hyremote_target_artifact_name(hyremote-generic-plugin HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME)
+endif()
+
 configure_package_config_file(
     "${CMAKE_CURRENT_LIST_DIR}/HyRemoteConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"
