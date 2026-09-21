@@ -1,26 +1,39 @@
-# Declarative QML 接入
+# QML API 接入（Preview）
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/qml.md)
 
-HyRemote 的 Declarative QML 方式，是 C++ 所使用的**同一份**共享 `HyRemote::RemoteAccess` 运行时之上的薄声明层。
-它**不会**创建第二套 Session、采集、传输或输入栈。
+QML API 是 HyRemote 面向 Qt Quick 应用的声明式接入方式。它是 Shared Runtime 之上的薄前端，不会创建第二套 Session、采集、传输、输入或安全实现。
 
-## 前置条件
+当前产品状态：**Preview**。
 
-V1 参考线是 Windows x86_64 与 Linux x86_64 上的 **Qt 6.8.3**。
+## 适合谁
 
-QML 应用先解析它原本的 Qt 模块，再解析 HyRemote 包：
+选择 QML API，如果你的应用：
+
+- 主要使用 Qt Quick / QML；
+- 希望通过声明式属性控制远程访问；
+- 不希望为基础生命周期再写额外 C++ glue code。
+
+如果你的 Quick 应用更希望通过 C++ 显式控制 HyRemote，也可以直接使用 [`cpp.md`](cpp.md) 中的 C++ API。
+
+## 当前参考环境
+
+当前参考环境：
+
+- Windows x86_64；
+- Linux x86_64；
+- Qt 6.8.3。
+
+QML API 目前按 Preview 提供；精确支持状态见 [`../compatibility.md`](../compatibility.md)。
+
+> **TODO V0.3：** 完成 installed-SDK、部署、双语示例和完整产品资格后，将 QML API 提升为正式产品路径。
+
+## 最小接入
 
 ```cmake
-find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
 find_package(HyRemote CONFIG REQUIRED)
 ```
-
-`find_package(HyRemote)` 本身**不会**把无关的 Widgets/Quick/QML 开发组件强加给一个纯 C++ 消费者；应用自己选择它已经在用的 Qt UI 栈。
-
-## QML 最小用法
-
-正常的声明式启动刻意只涉及两个属性：
 
 ```qml
 import QtQuick
@@ -32,30 +45,27 @@ ApplicationWindow {
     visible: true
 
     RemoteAccess {
+        id: remote
         target: window
         enabled: true
     }
 }
 ```
 
-`enabled: true` 是一个**请求**，不是构造副作用。HyRemote 会等到 QML 组件构造完成之后才启动共享运行时，因此初始属性
-声明顺序**不需要** `Component.onCompleted` 之类的胶水代码。如果启动失败，`enabled` 会回滚为 `false`，并由产品级
-错误属性描述失败原因。
+`enabled: true` 是显式启动请求。HyRemote 在 QML 组件完成构造后启动 Shared Runtime，因此不需要为了基础启动额外编写 `Component.onCompleted` glue code。
 
-安全默认值与 C++ 一致：
+默认行为与 C++ API 一致：
 
-- 回环监听；
-- 端口 5921；
-- 远程输入关闭；
-- 必须显式 `enabled: true`；
-- 当前 RFB 正确性基线默认 SecurityType None（未认证、未加密，且回环之外被拒绝）；配置认证档后增加 RFB VNC 认证，但仍不加密。
+- 默认监听 `127.0.0.1:5921`；
+- 远程输入默认关闭；
+- 未显式启用时不会启动 Runtime；
+- 安全行为由 Shared Runtime 统一实现。
 
-## 可选配置
-
-只设置你确实需要改变的值：
+## 常用配置
 
 ```qml
 RemoteAccess {
+    id: remote
     target: window
     port: 5901
     remoteInputEnabled: true
@@ -63,12 +73,17 @@ RemoteAccess {
 }
 ```
 
-配置属于**停止状态**。要在运行中改变监听/输入策略，请先禁用、更新属性、再重新启用。HyRemote **不会**静默创建第二套
-运行时，也没有隐藏的重启路径。
+运行时配置遵循显式生命周期：
 
-## 连接状态
+```text
+disable -> 修改配置 -> enable
+```
 
-`Running` 表示监听器/运行时是活跃的，**不**表示已有查看端连接：
+QML 前端不会偷偷建立第二个 Runtime，也不会暴露 RFB/socket 专有对象。
+
+## 状态与连接数
+
+`Running` 表示 Runtime/监听器已经运行，不代表已有查看端连接或已经认证。
 
 ```qml
 Label {
@@ -78,12 +93,11 @@ Label {
 }
 ```
 
-`connectedClientCount` 是只读且后端中立的。E3 的产品适配要求真实查看端生命周期 `0 → 1 → 0 → 1 → 0`（连接、断开、
-重连，且**不重建**应用）。
+`connectedClientCount` 是运行状态信息，不是身份或授权数据。
 
-## 只看 与 远程控制
+## 只看与远程控制
 
-默认是**只看**。只有在你确实需要时才开启远程控制：
+默认是只看。需要时显式开启远程输入：
 
 ```qml
 RemoteAccess {
@@ -93,12 +107,9 @@ RemoteAccess {
 }
 ```
 
-远端指针、按键与已提交文本事件走的是与 C++ **同一条**归一化输入路径。Qt 的正常焦点保持权威；QML 里**不会**出现
-RFB 专有的按键/socket 对象。
+远端指针、按键和文本输入使用与其它 frontend 相同的归一化输入语义；Qt 自己的焦点与控件状态仍然是应用权威。
 
 ## 部署
-
-正常安装应用，并使用唯一那个 HyRemote 助手：
 
 ```cmake
 install(TARGETS MyQmlApp
@@ -109,42 +120,47 @@ install(TARGETS MyQmlApp
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-QML 模块是**导入载荷**，不是第二个 C++ SDK 目标。应用开发者不链接 `HyRemote::Qml` 目标，也不需要手工拷贝后端库、
-插件、`qmldir`、共享门面或传输文件。
+QML payload 与 C++ API 共用一个 Shared Runtime。应用不需要手工复制 `qmldir`、内部插件或 Runtime 库。
 
-当应用有意把声明式 API 与 Transparent QPA 打包组合时，可用 `QML QPA`：
+如果所选 HyRemote SDK 不包含 QML payload，配置阶段应直接失败，而不是生成不完整部署。
+
+详见 [`../guide/deployment.md`](../guide/deployment.md)。
+
+## 与 QPA 组合
+
+在确实需要 QPA platform-entry 行为时，可以同时部署 QML 与 QPA payload：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML QPA)
 ```
 
-这仍然复用**同一份**共享运行时，不构成第四套集成架构。
-
-## 查看端流程
-
-在默认配置下，用标准 RFB/VNC 查看端连接 `127.0.0.1:5921`。关闭查看端并重连，**无需重启** Qt 应用：监听器保持活跃，
-`connectedClientCount` 在两次客户端之间回到零。
-
-查看端行为见 [`guide/viewer-connection.md`](../guide/viewer-connection.md)。
+这只是两个 frontend payload 共用同一个 Shared Runtime，不会创建第四套 Runtime 架构。
 
 ## 安全边界
 
-当前正确性基线在未配置认证档时协商 RFB SecurityType None；配置了认证档则用 RFB VNC 认证对查看端做认证。不要把它直接暴露到
-不可信/公网网络。"只看"是**输入策略**，不是认证；而且数据流**未加密**。
+V0.1 的 Shared Runtime 采用回环优先策略：
 
-见 [`security.md`](../security.md)。
+- 默认绑定 `127.0.0.1`；
+- 远程输入默认关闭；
+- 未认证非回环监听被拒绝；
+- `Authenticated` 可使用 RFB VNC authentication，但数据流不加密；
+- `AuthenticatedEncrypted` 在加密后端不可用时失败关闭。
 
-## 本机与远端并存
+不要把当前产品直接暴露到公网。详见 [`../security.md`](../security.md)。
 
-无头 offscreen/软件渲染的 E2E 证明了"查看端到 QML"的产品路径，但**不能**证明物理显示器与本地键鼠同时可用。
-跨模式的物理并存证据与标准查看端互操作是两件不同的事。
+## 示例
 
-## 相关文档
+新的 Example 体系会提供独立的 Quick + QML 学习路径，并和 Quick + C++ 示例明确区分。
 
-- 部署：[`guide/deployment.md`](../guide/deployment.md)；
-- Windows / Linux 平台准备：[`guide/install.md`](../guide/install.md)；
-- 查看端连接：[`guide/viewer-connection.md`](../guide/viewer-connection.md)；
-- 安全：[`security.md`](../security.md)；
-- 排错：[`guide/troubleshooting.md`](../guide/troubleshooting.md)；
-- 兼容矩阵：[`compatibility.md`](../compatibility.md)；
-- 已知限制：[`known-limitations.md`](../known-limitations.md)。
+> **TODO V0.3：** 完成 `examples/learning/04-quick-qml` 的双语、品牌化正式示例。
+
+## 下一步
+
+- Quick + C++：[`cpp.md`](cpp.md)；
+- Generic 零代码接入：[`generic.md`](generic.md)；
+- QPA（Preview）：[`qpa-proxy.md`](qpa-proxy.md)；
+- 部署：[`../guide/deployment.md`](../guide/deployment.md)；
+- 查看器连接：[`../guide/viewer-connection.md`](../guide/viewer-connection.md)；
+- 安全：[`../security.md`](../security.md)；
+- 兼容矩阵：[`../compatibility.md`](../compatibility.md)；
+- 已知限制：[`../known-limitations.md`](../known-limitations.md)。
