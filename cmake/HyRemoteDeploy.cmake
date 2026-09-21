@@ -234,39 +234,46 @@ endfunction()
 # or any exact-private-ABI qualification, and Generic must never inherit those (Generic uses public Qt APIs only).
 function(_hyremote_resolve_native_platform_payload file_var name_var)
     if(WIN32)
-        set(_native_qpa_target "Qt6::QWindowsIntegrationPlugin")
-        set(_native_qpa_package "Qt6QWindowsIntegrationPlugin")
-        set(_native_qpa_key "windows")
+        set(_native_platform_target "Qt6::QWindowsIntegrationPlugin")
+        set(_native_platform_package "Qt6QWindowsIntegrationPlugin")
+        set(_native_platform_key "windows")
     elseif(UNIX AND NOT APPLE)
-        set(_native_qpa_target "Qt6::QXcbIntegrationPlugin")
-        set(_native_qpa_package "Qt6QXcbIntegrationPlugin")
-        set(_native_qpa_key "xcb")
+        set(_native_platform_target "Qt6::QXcbIntegrationPlugin")
+        set(_native_platform_package "Qt6QXcbIntegrationPlugin")
+        set(_native_platform_key "xcb")
     else()
+        # Neutral wording on purpose: this resolver locates the consumer's own Qt platform plugin for the ordinary
+        # C++/QML deployment path, the Generic path and QPA alike, so none of them may be told a QPA-specific or
+        # release-specific story here.
         message(FATAL_ERROR
-            "hyremote_deploy QPA native delegate is supported only for the V1 Windows/Linux reference platforms")
+            "hyremote_deploy: the native Qt platform payload is resolvable only on the supported reference desktop "
+            "platforms (Windows, Linux)")
     endif()
 
-    if(NOT TARGET "${_native_qpa_target}")
+    if(NOT TARGET "${_native_platform_target}")
         if(NOT DEFINED Qt6Gui_DIR OR "${Qt6Gui_DIR}" STREQUAL "")
             message(FATAL_ERROR
-                "hyremote_deploy QPA cannot locate Qt6Gui_DIR for native '${_native_qpa_key}' delegate")
+                "hyremote_deploy: cannot locate Qt6Gui_DIR, so the native '${_native_platform_key}' Qt platform "
+                "plugin package cannot be resolved")
         endif()
-        find_package(${_native_qpa_package} QUIET PATHS "${Qt6Gui_DIR}")
+        find_package(${_native_platform_package} QUIET PATHS "${Qt6Gui_DIR}")
     endif()
 
-    if(NOT TARGET "${_native_qpa_target}")
+    if(NOT TARGET "${_native_platform_target}")
         message(FATAL_ERROR
-            "hyremote_deploy QPA requires the Qt 6.8.3 native '${_native_qpa_key}' platform plugin package (${_native_qpa_package})")
+            "hyremote_deploy: the Qt build in use does not provide the native '${_native_platform_key}' Qt platform "
+            "plugin package (${_native_platform_package})")
     endif()
 
-    set(${file_var} "$<TARGET_FILE:${_native_qpa_target}>" PARENT_SCOPE)
-    set(${name_var} "$<TARGET_FILE_NAME:${_native_qpa_target}>" PARENT_SCOPE)
+    set(${file_var} "$<TARGET_FILE:${_native_platform_target}>" PARENT_SCOPE)
+    set(${name_var} "$<TARGET_FILE_NAME:${_native_platform_target}>" PARENT_SCOPE)
 endfunction()
 
 function(_hyremote_generate_qpa_deploy_script target output_var)
     if(APPLE OR (NOT WIN32 AND NOT UNIX))
         message(FATAL_ERROR
-            "hyremote_deploy(TARGET ${target} QPA) is supported only for the V1 Windows/Linux reference platforms")
+            "hyremote_deploy(TARGET ${target} QPA) is supported on the supported reference desktop platforms "
+            "(Windows, Linux); the QPA proxy is the frontend that carries the exact-Qt private-ABI requirement")
     endif()
 
     _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_qpa_source_acquisition)
@@ -391,7 +398,8 @@ endfunction()
 function(_hyremote_generate_generic_deploy_script target output_var)
     if(APPLE OR (NOT WIN32 AND NOT UNIX))
         message(FATAL_ERROR
-            "hyremote_deploy(TARGET ${target} GENERIC) is supported only for the V1 Windows/Linux reference platforms")
+            "hyremote_deploy(TARGET ${target} GENERIC) is supported on the supported reference desktop platforms "
+            "(Windows, Linux); the Generic Plugin uses public Qt APIs and carries no private-ABI coupling")
     endif()
 
     if(NOT DEFINED QT_DEPLOY_SUPPORT OR "${QT_DEPLOY_SUPPORT}" STREQUAL "")
