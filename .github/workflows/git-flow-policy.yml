@@ -65,6 +65,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Self-test the branch family gate
+        shell: bash
+        run: bash .github/scripts/check-pr-branch-name.sh --self-test
+
       - name: Validate branch topology
         shell: bash
         env:
@@ -73,23 +77,33 @@ jobs:
         run: |
           set -euo pipefail
           echo "head=${HEAD_REF} base=${BASE_REF}"
-          case "${HEAD_REF}" in
-            feature/*)
-              test "${BASE_REF}" = "develop" || { echo "feature/* PRs must target develop" >&2; exit 1; }
-              ;;
-            release/v*)
-              test "${BASE_REF}" = "main" || { echo "release/v* PRs must target main" >&2; exit 1; }
-              ;;
-            backmerge/v*)
-              test "${BASE_REF}" = "develop" || { echo "backmerge/v* PRs must target develop" >&2; exit 1; }
-              ;;
-            hotfix/*)
-              case "${BASE_REF}" in main|develop) ;; *) echo "hotfix/* PRs may target only main or develop" >&2; exit 1;; esac
-              ;;
-            *)
-              test "${BASE_REF}" = "develop" || { echo "only release/v* or hotfix/* may target main" >&2; exit 1; }
-              ;;
-          esac
+          # Four families, and nothing else. The historical default case accepted any name as long as it targeted
+          # develop, which is how fix/*, refactor/*, chore/* and one-off names accumulated; the check lives in a script
+          # so its matrix is tested rather than reviewed by eye.
+          bash .github/scripts/check-pr-branch-name.sh "${HEAD_REF}" "${BASE_REF}"
+
+      - name: Require the referenced issue to exist and to be an issue
+        if: startsWith(github.head_ref, 'feature/') || startsWith(github.head_ref, 'hotfix/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          topic="${HEAD_REF#feature/}"
+          topic="${topic#hotfix/}"
+          issue="${topic%%-*}"
+          if [[ -z "$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq .number 2>/dev/null || true)" ]]; then
+            echo "${HEAD_REF} references issue #${issue}, which does not exist" >&2
+            exit 1
+          fi
+          # Pull requests are issues in the REST API, so the reference has to be checked against the pulls endpoint too:
+          # a branch named after a pull request number would otherwise pass as if it named an issue.
+          if gh api "repos/${GITHUB_REPOSITORY}/pulls/${issue}" --jq .number >/dev/null 2>&1; then
+            echo "${HEAD_REF} references #${issue}, which is a pull request, not an issue" >&2
+            exit 1
+          fi
+          echo "issue reference accepted: #${issue}"
 
       - name: Keep develop on the development version sentinel
         if: github.base_ref == 'develop'

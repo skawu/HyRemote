@@ -330,6 +330,15 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
                 "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/mainline-push-audit.sh" --self-test
         )
         set_tests_properties(hyremote-mainline-audit-self-test PROPERTIES TIMEOUT 120)
+
+        # The branch family gate decides which branch names may open a pull request, so its matrix is executed rather
+        # than reviewed by eye.
+        add_test(
+            NAME hyremote-branch-name-gate-self-test
+            COMMAND "${HYREMOTE_BASH_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/check-pr-branch-name.sh" --self-test
+        )
+        set_tests_properties(hyremote-branch-name-gate-self-test PROPERTIES TIMEOUT 120)
     endif()
 
     if(TARGET HyRemote::QpaPlatform)
