@@ -24,123 +24,31 @@ jobs:
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
       qml: ${{ steps.scope.outputs.qml }}
+      cpp: ${{ steps.scope.outputs.cpp }}
       generic_evidence: ${{ steps.scope.outputs.generic_evidence }}
+      cpp_evidence: ${{ steps.scope.outputs.cpp_evidence }}
       qml_evidence: ${{ steps.scope.outputs.qml_evidence }}
       qpa_evidence: ${{ steps.scope.outputs.qpa_evidence }}
+      readiness_evidence: ${{ steps.scope.outputs.readiness_evidence }}
       test_exclude: ${{ steps.scope.outputs.test_exclude }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Self-test the CI scope classifier
+        shell: bash
+        run: python3 .github/scripts/resolve-ci-scope.py --self-test
+
       - id: scope
         name: Resolve affected capabilities
-        shell: python
+        shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          import os
-          import subprocess
-
-          event = os.environ["EVENT_NAME"]
-          full_evidence = event != "pull_request"
-          if event == "pull_request":
-              changed = subprocess.check_output(
-                  ["git", "diff", "--name-only", f"{os.environ['BASE_SHA']}...{os.environ['HEAD_SHA']}"],
-                  text=True,
-              ).splitlines()
-          else:
-              # develop/manual is the full integration lane, independent of the triggering diff.
-              changed = ["CMakeLists.txt"]
-
-          peers = ["cpp", "qml", "generic", "qpa"]
-          selected = set()
-          common_files = {
-              "CMakeLists.txt", "compile.cmd", "build.yml", ".github/workflows/ci.yml",
-          }
-          common_prefixes = (
-              "src/core/", "src/runtime/", "cmake/", "tests/build-authority/",
-              "tests/release-readiness/", ".github/scripts/",
-          )
-          frontend_prefixes = {
-              "cpp": ("src/integrations/cpp/", "tests/consumer-installed-sdk/"),
-              "qml": ("src/integrations/qml/", "tests/consumer-installed-qml/"),
-              "generic": ("src/integrations/generic/", "tests/consumer-installed-generic/"),
-              "qpa": ("src/integrations/qpa/", "tests/consumer-installed-qpa/"),
-          }
-
-          for path in changed:
-              if path in common_files or path.startswith(common_prefixes):
-                  selected.update(peers)
-                  continue
-              matched = False
-              for peer, prefixes in frontend_prefixes.items():
-                  if path.startswith(prefixes):
-                      selected.add(peer)
-                      matched = True
-              if matched:
-                  continue
-              if path.startswith(("examples/", "tests/product-e2e/", "tests/public-api-contract/", "logo/")):
-                  selected.update(peers)
-              elif path.startswith("tests/"):
-                  selected.update(peers)
-
-          common_deploy_paths = (
-              "cmake/HyRemoteDeploy.cmake",
-              "cmake/HyRemoteInstall.cmake",
-              "tests/release-readiness/run_release_evidence.cmake",
-          )
-
-          def evidence_for(prefixes):
-              return full_evidence or any(
-                  path.startswith(common_deploy_paths + prefixes) for path in changed
-              )
-
-          generic_evidence = evidence_for((
-              "src/integrations/generic/", "tests/consumer-installed-generic/",
-          ))
-          qml_evidence = evidence_for((
-              "src/integrations/qml/", "tests/consumer-installed-qml/",
-          ))
-          qpa_evidence = evidence_for((
-              "src/integrations/qpa/", "tests/consumer-installed-qpa/",
-          ))
-
-          ordered = [peer for peer in peers if peer in selected]
-          integrations = ",".join(ordered)
-          product = bool(ordered)
-
-          # Fast PRs keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
-          # that can affect those contracts. Every develop/manual integration run executes all of them.
-          excluded = ["hyremote-release-readiness-"]
-          if not generic_evidence:
-              excluded.append("hyremote-generic-installed-consumers$")
-          if not qml_evidence:
-              excluded.append("hyremote-qml-deploy-helper-")
-          if not qpa_evidence:
-              excluded.append("hyremote-qpa-deploy-helper-")
-          test_exclude = "^(" + "|".join(excluded) + ")"
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write(f"product={'true' if product else 'false'}\n")
-              f.write(f"integrations={integrations}\n")
-              f.write(f"qpa={'true' if 'qpa' in selected else 'false'}\n")
-              f.write(f"qml={'true' if 'qml' in selected else 'false'}\n")
-              f.write(f"generic_evidence={'true' if generic_evidence else 'false'}\n")
-              f.write(f"qml_evidence={'true' if qml_evidence else 'false'}\n")
-              f.write(f"qpa_evidence={'true' if qpa_evidence else 'false'}\n")
-              f.write(f"test_exclude={test_exclude}\n")
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("## CI scope\n\n")
-              f.write(f"- changed files: {len(changed)}\n")
-              f.write(f"- integrations: {integrations or 'none'}\n")
-              f.write(f"- Qt build: {'yes' if product else 'no — documentation/governance only'}\n")
-              f.write("- build type: Release\n")
-              f.write(f"- Generic/QML/QPA deploy evidence: {generic_evidence}/{qml_evidence}/{qpa_evidence}\n")
-              f.write(f"- lane: {'full integration' if full_evidence else 'PR fast'}\n")
+          python .github/scripts/resolve-ci-scope.py
 
   product:
     name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
