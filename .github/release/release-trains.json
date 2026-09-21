@@ -1,0 +1,144 @@
+{
+  "schema": 2,
+  "kind": "release-train-scope-authority",
+  "notes": {
+    "purpose": "Single machine-readable release-train authority. A requested release version selects one train; that train names its own authority parent, its closeable mandatory children, the evidence it requires, the cross-version references it consumes, its conditional items and its declared non-blockers.",
+    "replaces": "This file replaces the former .github/release/v1-mandatory-issues.json, whose entire content is carried by the 1.0.0.0 train below. There is deliberately no second active authority.",
+    "semantics": "Version digits identify coherent product states and never encode frontend, platform, Qt family, UI family or CI lane. A train that is merely representable never blocks an earlier train, and the number 1.2.0.0 existing does not authorize it.",
+    "fail_closed": "Unknown versions, retired planning labels, records whose mandatory_children are absent or empty while the train is active, and note keys that belong to no classified list all fail selection instead of answering."
+  },
+  "development_sentinel": "0.0.0",
+  "retired_profiles": [ "0.0.1.0", "0.0.2.0", "0.0.3.0" ],
+  "conditional_trains": [
+    {
+      "version": "1.2.0.0",
+      "activation_authority": 123,
+      "active": false,
+      "rule": "Conditional by activation evidence, not by the number existing. It becomes selectable only when its activation authority records activation, at which point a train record is added here and in trains."
+    }
+  ],
+  "trains": {
+    "0.1.0.0": {
+      "authority_parent": 229,
+      "candidate_freeze_authority": 229,
+      "mandatory_children": [ 230, 231, 232, 237, 238, 241 ],
+      "required_evidence": [
+        "converged-one-core-shared-runtime-four-peer-frontends",
+        "exact-head-integrated-windows-linux-evidence",
+        "clean-installed-cpp-consumer-smoke",
+        "clean-installed-generic-consumer-smoke-preserving-native-qpa",
+        "bilingual-branded-developer-entry-and-01-02-03-learning-flow",
+        "fail-closed-security-negative-evidence",
+        "release-scope-machine-gate-selecting-only-this-train",
+        "release-notes-preview-support-boundaries-and-known-limitations"
+      ],
+      "cross_version_references": [ 1, 24, 41, 95, 143, 176, 209, 219, 220 ],
+      "conditional_items": [],
+      "non_blockers": [ 41, 143, 144, 170, 174, 176, 209, 240, 242, 57 ],
+      "notes": {
+        "232": "Closed before this migration; the release gate reads its live state like any other mandatory child.",
+        "209": "Cross-version umbrella. Referenced for the evidence this train consumes; the whole umbrella is never a V0.1 closeable requirement."
+      },
+      "rule": "The V0.1 user promise is the release authority. Later-train work and cross-version umbrellas are referenced, never required to close."
+    },
+    "0.2.0.0": {
+      "authority_parent": 233,
+      "candidate_freeze_authority": 233,
+      "mandatory_children": [],
+      "required_evidence": [],
+      "cross_version_references": [ 95, 143, 170, 174 ],
+      "conditional_items": [],
+      "non_blockers": [],
+      "scope_status": "declared-unpopulated",
+      "rule": "Representable and selectable so it never blocks an earlier train. Its mandatory slices are populated by its own authority issue, never invented here."
+    },
+    "0.3.0.0": {
+      "authority_parent": 234,
+      "candidate_freeze_authority": 234,
+      "mandatory_children": [],
+      "required_evidence": [],
+      "cross_version_references": [ 41, 95, 144, 176, 240 ],
+      "conditional_items": [],
+      "non_blockers": [],
+      "scope_status": "declared-unpopulated",
+      "rule": "Representable and selectable. Mandatory slices belong to its own authority issue."
+    },
+    "0.4.0.0": {
+      "authority_parent": 235,
+      "candidate_freeze_authority": 235,
+      "mandatory_children": [],
+      "required_evidence": [],
+      "cross_version_references": [ 57, 95, 109, 134, 242 ],
+      "conditional_items": [],
+      "non_blockers": [],
+      "scope_status": "declared-unpopulated",
+      "rule": "Release Candidate line. V0.4.0.x maintenance releases stay inside this train."
+    },
+    "1.0.0.0": {
+      "authority_parent": 33,
+      "scope_authority": 157,
+      "candidate_freeze_authority": 165,
+      "mandatory_children": [
+        9,
+        30,
+        31,
+        32,
+        33,
+        39,
+        41,
+        57,
+        101,
+        104,
+        107,
+        109,
+        143,
+        144,
+        157,
+        158,
+        159,
+        162,
+        163,
+        164,
+        165,
+        170,
+        174,
+        175,
+        176,
+        209
+      ],
+      "required_evidence": [
+        "accepted-milestone-authorities",
+        "exact-candidate-freeze-under-165",
+        "physical-acceptance-under-109",
+        "ga-acceptance-under-33"
+      ],
+      "cross_version_references": [ 95 ],
+      "conditional_items": [],
+      "embedded_deferred_issue_numbers": [ 7, 10, 17, 18 ],
+      "classified_referenced_issue_numbers": [ 14, 74, 90, 91, 95, 106, 134, 147, 156, 166 ],
+      "notes": {
+        "9": "V1 requires the x86-applicable damage/asynchronous-capture work or an evidence-backed disposition; embedded follow-up remains separate.",
+        "57": "V1 requires an evidence-backed qualification disposition; this does not automatically promote every Qt line to Supported.",
+        "144": "Only B1/B2 are V1 x86 requirements; embedded B3/B4 continue in dedicated embedded issues.",
+        "109": "Final physical evidence must name the exact RC-FROZEN candidate declared under issue 165.",
+        "170": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "174": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "175": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "176": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
+        "209": "V1.0.0.0 must freeze repository, documentation, build/package and release infrastructure so post-V1 work does not repeatedly repair foundational structure."
+      },
+      "rule": "The former standalone V1 manifest carried into the train map unchanged, so no V1 authority lost its classification in the migration."
+    },
+    "1.1.0.0": {
+      "authority_parent": 236,
+      "candidate_freeze_authority": 236,
+      "mandatory_children": [],
+      "required_evidence": [],
+      "cross_version_references": [ 33, 95, 225 ],
+      "conditional_items": [],
+      "non_blockers": [],
+      "scope_status": "declared-unpopulated",
+      "rule": "Post-GA embedded line using the same mechanism when activated."
+    }
+  }
+}

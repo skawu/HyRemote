@@ -173,6 +173,8 @@ The QPA path does not add a hidden credential system or dynamic policy service. 
 
 ## 10. Future transport-security requirements
 
+Until that backend exists, the two profiles are not interchangeable and the Runtime keeps them apart: `Authenticated` is RFB VNC authentication over an unencrypted stream, while `AuthenticatedEncrypted` is refused in V0.1 with a deterministic `SecurityUnavailable` **before any listener is created** - no target, transport or socket is composed and nothing is left listening. It never falls back to `Authenticated` or to `SecurityType None`, and a syntactically valid certificate/private-key descriptor does not make it available, because descriptor validity and backend capability are separate facts. V0.1 remains a **loopback-only Developer Preview**: unencrypted, and unauthenticated unless an authenticated profile is configured.
+
 Authenticated and encrypted transport is a **V1.0.0.0 requirement, not a `V1.x` track**: `[SEC-01]` #143 is x86 work, sequenced design -> authentication -> encryption -> per-client authorization/audit. This supersedes the earlier statement that it was a post-baseline capability accepted into some later release, which contradicted the release roadmap.
 
 It is added behind the stable application model:

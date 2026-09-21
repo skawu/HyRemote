@@ -56,5 +56,15 @@ if (( ${#missing[@]} == 0 )); then
 fi
 
 echo "Installing missing Linux Qt host dependencies for profile '$profile': ${missing[*]}"
+
+# GitHub's hosted Ubuntu image is produced with a usable package index. Avoid an unconditional
+# apt-get update on every QPA PR: it was a measured 5-7 second fixed cost. If the image index is
+# stale or a mirror has rotated, fail over to one refresh and retry rather than weakening the
+# dependency contract.
+if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"; then
+  exit 0
+fi
+
+echo "Initial apt install failed; refreshing package indexes once and retrying." >&2
 sudo apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
