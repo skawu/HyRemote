@@ -76,11 +76,13 @@ RemoteAccess {
 
 ### Generic Plugin
 
-通过 Generic Plugin 配置启用输入，例如：
+通过 Generic Plugin specification 启用输入，例如：
 
 ```text
-MyApp -plugin "hyremote;input=true"
+MyApp -plugin "hyremote:input=true"
 ```
+
+多项配置写在冒号后的 specification 中，并使用分号分隔，详见 [`../getting-started/generic.md`](../getting-started/generic.md)。
 
 ### QPA
 
