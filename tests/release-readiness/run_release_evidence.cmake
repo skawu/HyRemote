@@ -126,7 +126,12 @@ endif()
 
 string(TIMESTAMP RUN_STAMP "%Y%m%d-%H%M%S" UTC)
 string(TIMESTAMP RUN_ISO "%Y-%m-%dT%H:%M:%SZ" UTC)
-set(RUN_DIR "${EVIDENCE_DIR}/${RUN_STAMP}-${SOURCE_SHA}")
+# The run directory has to be unique per invocation, not just per second: several evidence configurations run
+# concurrently under one ctest invocation, and two of them starting within the same second would otherwise share a
+# prefix and race inside cmake --install (file INSTALL cannot set modification time because the other process is
+# still writing the same file). The stamp keeps the ordering readable; the random suffix keeps the directory private.
+string(RANDOM LENGTH 6 ALPHABET 0123456789abcdef _evidence_run_suffix)
+set(RUN_DIR "${EVIDENCE_DIR}/${RUN_STAMP}-${SOURCE_SHA}-${_evidence_run_suffix}")
 
 # Harness executor: captured absolutely before any product runtime path is constructed. Its directory is never
 # added to PRODUCT_RUNTIME_PATH.
