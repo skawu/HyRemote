@@ -27,7 +27,7 @@ on:
         required: false
         type: string
 
-  permissions:
+permissions:
   contents: read
   issues: read
   pull-requests: read
