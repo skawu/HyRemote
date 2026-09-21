@@ -110,7 +110,7 @@ endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
-        [=[set(options QML QPA)]=]
+        [=[set(options QML QPA GENERIC)]=]
         [=[_hyremote_target_is_local]=]
         [=[_hyremote_source_acquisition]=]
         [=[_hyremote_qpa_source_acquisition]=]
@@ -139,10 +139,46 @@ endforeach()
 
 string(REGEX MATCHALL "qt6_deploy_runtime_dependencies\\(" qt6_runtime_deploy_calls "${deploy_helper}")
 list(LENGTH qt6_runtime_deploy_calls qt6_runtime_deploy_call_count)
-if(NOT qt6_runtime_deploy_call_count EQUAL 2)
+if(NOT qt6_runtime_deploy_call_count EQUAL 3)
     message(FATAL_ERROR
-        "deploy-helper-contract: expected exactly two direct Qt6 runtime deploy calls (ordinary/QML + QPA), found ${qt6_runtime_deploy_call_count}")
+        "deploy-helper-contract: expected exactly three direct Qt6 runtime deploy calls (ordinary/QML + QPA + Generic), "
+        "found ${qt6_runtime_deploy_call_count}")
 endif()
+
+# Generic is a peer frontend deployed through the same helper, and it must stay a plugin payload: it goes to Qt's
+# generic plugin directory, it never installs to or references the platform plugin directory, and it never ships the
+# native platform delegate. A regression that routed Generic through the QPA path would destroy the native
+# QPA identity Generic exists to preserve.
+foreach(required_token
+        [=[_hyremote_resolve_generic_payload]=]
+        [=[HyRemote_GENERIC_AVAILABLE]=]
+        [=[HyRemote_GENERIC_PLUGIN_FILE]=]
+        [=[TARGET hyremote-generic-plugin]=]
+        [=[HYREMOTE_WITH_GENERIC_PLUGIN=ON]=]
+        [=[installed Generic metadata cannot satisfy a source deployment]=]
+        [=[\${QT_DEPLOY_PLUGINS_DIR}/generic]=]
+        [=[GENERIC QPA) is not a supported combination]=])
+    string(FIND "${deploy_helper}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: Generic deployment contract missing: ${required_token}")
+    endif()
+endforeach()
+
+string(REGEX MATCH "function\\(_hyremote_generate_generic_deploy_script[^)]*\\)(.*)function\\(hyremote_deploy\\)" _generic_body "${deploy_helper}")
+if("${CMAKE_MATCH_1}" STREQUAL "")
+    message(FATAL_ERROR "deploy-helper-contract: Generic deploy script generator is missing")
+endif()
+foreach(forbidden_token
+        [=[QT_DEPLOY_PLUGINS_DIR}/platforms]=]
+        [=[_hyremote_resolve_native_qpa_delegate_payload]=]
+        [=[HyRemote_QPA_PLUGIN_FILE]=])
+    string(FIND "${CMAKE_MATCH_1}" "${forbidden_token}" found)
+    if(NOT found EQUAL -1)
+        message(FATAL_ERROR
+            "deploy-helper-contract: Generic deployment must not reach the platform-plugin path: ${forbidden_token}")
+    endif()
+endforeach()
 string(FIND "${deploy_helper}"
     [=[${_qml_backing_install}${_linux_private_runtime_bootstrap}qt_deploy_runtime_dependencies(]=]
     versionless_runtime_deploy_call)
