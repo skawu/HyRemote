@@ -78,11 +78,13 @@ endfunction()
 # ---------------------------------------------------------------- the frontend set is four, not three
 
 read_document("README.md" readme)
-require_phrase(readme "README.md" "four peer integration frontends")
-require_phrase(readme "README.md" "**Embedded C++ API:**")
-require_phrase(readme "README.md" "**Declarative QML API:**")
-require_phrase(readme "README.md" "**Generic Plugin:**")
-require_phrase(readme "README.md" "**Transparent QPA Proxy:**")
+# The frontend set is four and they are peers on one runtime. The document is free to word that as it wants, so this
+# asserts the claims rather than one phrasing of them.
+require_phrase(readme "README.md" "All four frontends converge on the same Runtime/Core implementation")
+require_phrase(readme "README.md" "**C++ API**")
+require_phrase(readme "README.md" "**Generic Plugin**")
+require_phrase(readme "README.md" "The QML type is a thin frontend over the same Runtime")
+require_phrase(readme "README.md" "The QPA frontend uses a Factory Trampoline")
 forbid_token(readme "README.md" "three mandatory integration modes" "")
 forbid_token(readme "README.md" "three integration modes" "")
 foreach(retired_mode_label IN ITEMS "MODE 1" "MODE 2" "MODE 3")
@@ -91,19 +93,16 @@ endforeach()
 
 # ---------------------------------------------------------------- canonical source layout
 
-require_phrase(readme "README.md" "runtime/")
-require_phrase(readme "README.md" "integrations/")
-foreach(frontend_directory IN ITEMS "cpp/" "qml/" "generic/" "qpa/")
-    require_phrase(readme "README.md" "    ${frontend_directory}")
-endforeach()
+# Physical layout has one authority, and the README has to point at it instead of restating a tree that can drift.
+require_phrase(readme "README.md" "docs/internal/repository-layout.md")
 foreach(retired_flat_directory IN ITEMS "  cpp/                 MODE" "  qml/                 MODE" "  qpa/                 MODE")
     forbid_token(readme "README.md" "${retired_flat_directory}" "")
 endforeach()
 
 # ---------------------------------------------------------------- V0.1 identity and the retired labels
 
-require_phrase(readme "README.md" "V0.1.0.0 Developer Preview")
-require_phrase(readme "README.md" "V0.1 promises two primary surfaces")
+require_phrase(readme "README.md" "Developer Preview: C++ API + Generic Plugin as the primary paths")
+require_phrase(readme "README.md" "**V0.1 primary**")
 foreach(retired_label IN ITEMS "v0.0.1.0" "v0.0.2.0" "v0.0.3.0")
     forbid_token(readme "README.md" "${retired_label}" "retired")
 endforeach()
