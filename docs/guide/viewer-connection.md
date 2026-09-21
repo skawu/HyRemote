@@ -160,10 +160,10 @@ V0.1：
 
 - 默认回环；
 - 远程输入默认关闭；
-- 未认证非回环监听被拒绝；
-- `Authenticated` 可使用 RFB VNC authentication；
-- 当前数据流不加密；
-- `AuthenticatedEncrypted` 在加密 backend 不可用时失败关闭。
+- `Insecure` 仅允许回环监听；
+- `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供的是 VNC authentication，不提供流加密；
+- 默认 V0.1 build/profile 不应被理解为天然带有 authenticated transport；
+- `AuthenticatedEncrypted` 尚未实现，始终在监听器创建前 fail-closed，且不会降级到较弱 profile。
 
 不要把当前产品直接暴露到公网。详见 [`../security.md`](../security.md)。
 
