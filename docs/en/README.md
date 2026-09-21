@@ -4,7 +4,7 @@
 
 HyRemote is a remote-access framework for existing Qt applications. The product provides **one Shared Runtime** and four peer integration frontends: C++ API, QML API, Generic Plugin, and QPA. Qt Widgets and Qt Quick are Runtime target types rather than separate products.
 
-This documentation area is organized around product use: what HyRemote is, how to integrate it, how to deploy it, what is currently supported, and which security/compatibility limits apply.
+This area provides product integration, deployment, security, compatibility, and capability-boundary guidance.
 
 ## Start here
 
@@ -31,7 +31,7 @@ The V0.1 Developer Preview focuses on **getting users to a working remote-access
 - Widgets and Qt Quick use the same Shared Runtime;
 - loopback is the default bind and remote input is disabled by default;
 - QML API and QPA exist as Preview paths;
-- incomplete capabilities are marked as **TODO** instead of being described through issue/PR history or acceptance-process language.
+- incomplete capabilities are marked **TODO**.
 
 ## Product reference
 
@@ -68,26 +68,14 @@ The four frontends are peers:
 
 No frontend creates a second Session, capture, input, or transport architecture.
 
-## Documentation style
+## Product status labels
 
-User-facing and product-reference documentation follows these rules:
+- **Primary** — the recommended path for the current product line;
+- **Preview** — implemented and usable, but not yet promoted to the current line's full supported status;
+- **TODO** — planned capability that is not yet an availability or compatibility commitment.
 
-- describe **current product behavior, support state, and explicit future TODOs**;
-- do not use issue numbers, PR numbers, runner state, acceptance batches, or migration history as product explanation;
-- describe completed capabilities as facts;
-- mark implemented but not yet fully productized capabilities as **Preview**;
-- mark not-yet-implemented capabilities as **TODO**;
-- make security, compatibility, and platform claims only for explicitly stated environments.
+Security, compatibility, and platform claims are limited to the explicitly stated matrix; similar environments are not assumed to be supported.
 
 ## Maintainer material
 
-Repository governance, release procedures, ADRs, research records, execution plans, and acceptance material live under:
-
-```text
-docs/internal/
-docs/adr/
-docs/releases/
-docs/proposals/
-```
-
-These files serve development and release work. Ordinary HyRemote integration does not require reading them, and their process history is not duplicated into product documentation.
+Architecture decisions, repository governance, release procedures, research records, and acceptance material live under `docs/adr/`, `docs/internal/`, `docs/releases/`, and `docs/proposals/`. Ordinary application integration does not require those files.
