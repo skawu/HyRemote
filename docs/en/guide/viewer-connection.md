@@ -2,90 +2,174 @@
 
 > Language / 语言: **English** | [中文](../../guide/viewer-connection.md)
 
-HyRemote V1 uses one bounded internal RFB correctness transport behind all three integration modes. The protocol backend is not part of the application-facing API.
+HyRemote uses one Shared Runtime and one RFB transport baseline behind all four integration frontends. The viewer does not need to know whether the application entered through C++, QML, Generic, or QPA.
 
 ## Start the target application
 
-### Embedded C++
+### C++ API
 
-The application explicitly calls `RemoteAccess::start()`.
+The application explicitly calls:
 
-### Declarative QML
+```cpp
+remote.start();
+```
 
-The application explicitly requests start through `enabled: true`; the wrapper applies that request after QML component completion.
+### Generic Plugin
 
-### Transparent QPA
+Keep the application Qt-only and activate HyRemote through Qt's generic-plugin mechanism:
 
-The application is deliberately launched through the `hyremote` platform plugin, for example:
+```text
+MyApp -plugin hyremote
+```
+
+### QML API (Preview)
+
+```qml
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+### QPA (Preview)
 
 ```text
 MyApp -platform hyremote
 ```
 
-The default product configuration in every mode listens on loopback port 5921 and leaves remote input disabled.
+All four routes converge on the same Shared Runtime, so the default network and input policy is shared.
 
-## Connect
+## Default connection address
 
-Which interface the listener is actually on is part of the connection answer, so state it before connecting: the default
-is loopback `127.0.0.1`, V1 takes a **numeric** address only (no hostnames or DNS names), and the measured per-address
-behaviour - including that the IPv6 wildcard `::` is an IPv6-only listener here rather than a dual-stack one - is listed in
-[`known-limitations.md`](../../known-limitations.md#listener-address-family-and-reachability). A non-loopback address
-is an explicit widening of the trust boundary; see [`security.md`](../../security.md) before choosing one.
-
-With the default configuration, point a standard VNC/RFB client at:
+V0.1 listens on:
 
 ```text
 127.0.0.1:5921
 ```
 
-Viewer syntax varies. The automated product-fit suite uses maintained `vncdotool` as an interoperability client; a GA compatibility entry must record the exact viewer/version used for its claim.
+Point a standard VNC/RFB viewer at that address.
 
-## View-only versus control
+HyRemote currently uses numeric IP addresses. Binding outside loopback expands the network trust boundary; read [`../../security.md`](../../security.md) before changing it.
 
-Remote viewing and remote input are separate policies. The safe product default is view-only.
+See [`../../known-limitations.md`](../../known-limitations.md) for address-family and platform-specific behavior.
 
-Embedded C++ explicitly enables control before start:
+## View-only and remote control
+
+Remote viewing and remote input are separate capabilities. The default is **view-only**.
+
+### C++ API
 
 ```cpp
 remote.setRemoteInputEnabled(true);
 remote.start();
 ```
 
-QML exposes the equivalent `remoteInputEnabled` policy while stopped.
+### QML API
 
-Transparent QPA keeps zero-source-change policy in launch configuration:
-
-```text
--platform hyremote                         # view-only
--platform hyremote:hyremote-input=true     # remote control
+```qml
+RemoteAccess {
+    target: mainWindow
+    remoteInputEnabled: true
+    enabled: true
+}
 ```
 
-Unsupported key/IME behavior remains a documented limitation rather than being approximated silently. See `docs/input-model.md` and `docs/known-limitations.md`.
+### Generic Plugin
+
+Enable input through the Generic Plugin specification, for example:
+
+```text
+MyApp -plugin "hyremote;input=true"
+```
+
+### QPA
+
+```text
+MyApp -platform "hyremote:hyremote-input=true"
+```
+
+Keep the default view-only mode when remote control is not required.
 
 ## Disconnect and reconnect
 
-A viewer may disconnect and reconnect without recreating the target application. Remote client lifetime is owned by the shared transport; the Qt target and local application continue independently.
+An ordinary viewer disconnect does not require restarting the Qt application.
 
-`RemoteAccess::stop()` tears down the Embedded C++/QML session/listener and returns the facade to Stopped. Transparent QPA retains its one application session across supported surface churn and normal viewer reconnects until the plugin/controller lifecycle ends.
+Typical lifecycle:
 
-Recognized remote pressed state is balanced when a viewer disappears abruptly, so no pressed key or button is left held.
+```text
+application running
+    ↓
+viewer connects
+    ↓
+viewer disconnects
+    ↓
+application keeps running
+    ↓
+viewer reconnects
+```
 
-## Listening versus connected
+The Shared Runtime owns remote-client lifetime while the Qt application and local UI continue independently.
 
-`RemoteAccessState::Running` means the remote runtime/listener is running. It is not equivalent to “a viewer is connected”.
+For C++/QML, an explicit `stop()`/disable closes the Runtime and listener. Generic/QPA follow their plugin lifecycle.
 
-The current product facade/QML wrapper exposes backend-neutral `connectedClientCount()` diagnostics. E1/E2/E3/E5 product-fit uses the expected `0 → 1 → 0 → 1 → 0` lifecycle across connect, disconnect and reconnect. Those commands are implemented but are not accepted support evidence until the reference jobs actually run.
+## “Running” is not “connected”
 
-Transparent QPA does not expose a second application diagnostics API to an otherwise unmodified application merely to mirror this value.
+`RemoteAccessState::Running` means the Runtime/listener is active. It does not mean a viewer is connected or authenticated.
+
+C++/QML can observe current connection count through:
+
+```text
+connectedClientCount()
+```
+
+This value is operational state, not user identity, role, or authorization.
+
+Generic/QPA do not add a second business API to an otherwise zero-code application merely to expose this value.
+
+## Multi-window applications
+
+Supported application top-level surfaces may appear and disappear within one logical remote session rather than creating a listener per window.
+
+This does not imply automatic support for arbitrary native/foreign OS windows. See [`../../compatibility.md`](../../compatibility.md) for the current complex-window/graphics scope.
+
+## Viewer interoperability
+
+HyRemote currently uses standard RFB/VNC as its transport baseline.
+
+Viewer behavior can differ for shortcuts, clipboard, scaling, and input methods. Only viewer/version combinations explicitly listed in the compatibility matrix form a formal interoperability claim.
+
+> **TODO V0.3/V0.4:** complete the formal viewer interoperability matrix and cover at least two maintained real VNC viewers.
 
 ## Local + remote coexistence
 
-Hosted/offscreen/Xvfb viewer tests prove only the path they execute. V1 additionally requires physical native local display/input to remain usable while the remote viewer is active where the integration mode claims coexistence.
+HyRemote's product goal is to add remote access without breaking native Qt display or local input.
 
-That cross-mode physical evidence is separate from standard-viewer interoperability, and headless tests do not prove it.
+Generic explicitly preserves the native Qt platform. QPA delegates to the native platform integration through the Factory Trampoline.
+
+Headless/offscreen execution alone cannot qualify every physical display/keyboard/mouse combination.
+
+> **TODO V0.4:** complete physical Windows/Linux local-display + local-input + remote-access qualification for the final compatibility matrix.
 
 ## Security boundary
 
-The RFB correctness baseline uses **SecurityType None** unless an authenticated profile is configured: `SecurityType None` carries no transport authentication, and a configured profile uses **RFB VNC authentication** (security type 2). Neither provides transport encryption. It is suitable for loopback/trusted test use, or for a listener behind an appropriate access boundary, not direct untrusted-network exposure.
+V0.1:
 
-Read [`security.md`](../../security.md) for the implemented V1 security boundary before changing the bind address away from loopback. [`security-model.md`](../../security-model.md) is broader future threat-model context, not a claim that authentication/encryption already exists.
+- default bind is loopback;
+- remote input is disabled by default;
+- unauthenticated non-loopback exposure is rejected;
+- `Authenticated` may use RFB VNC authentication;
+- the current stream is not encrypted;
+- `AuthenticatedEncrypted` fails closed while the encrypted backend is unavailable.
+
+Do not expose the current product directly to the public Internet. See [`../../security.md`](../../security.md).
+
+## Related documentation
+
+- C++ API: [`../getting-started/cpp.md`](../getting-started/cpp.md)
+- Generic Plugin: [`../getting-started/generic.md`](../getting-started/generic.md)
+- QML API: [`../getting-started/qml.md`](../getting-started/qml.md)
+- QPA: [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
+- deployment: [`deployment.md`](deployment.md)
+- security: [`../../security.md`](../../security.md)
+- compatibility: [`../../compatibility.md`](../../compatibility.md)
+- known limitations: [`../../known-limitations.md`](../../known-limitations.md)
