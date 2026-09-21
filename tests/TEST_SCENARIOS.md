@@ -1,209 +1,294 @@
 # HyRemote Test Scenario Appendix
 
-> Scenario-level appendix to [`TEST_CATALOG.md`](TEST_CATALOG.md) for #274 Phase A.
+> Scenario-level appendix to [`TEST_CATALOG.md`](TEST_CATALOG.md) for #274 Phase A. Facts refreshed against `develop` at `6dc244a8717bdc520544c71d9756499033857c73`.
 >
-> This file records meaningful scenarios inside multi-case executables/scripts. It is intentionally behavior-neutral: it does not create, remove or reselect tests.
+> This file records meaningful scenarios inside multi-case executables/scripts. It does not create, remove, move or reselect tests.
 
 ## 1. C++ `RemoteAccess` facade
 
-CTest: `hyremote-remoteaccess-test` — owner T2/C++ frontend — decision: KEEP.
+CTest: `hyremote-remoteaccess-test` — T2/C++ — KEEP.
 
-| Scenario | Why it is necessary | Failure meaning |
+| Scenario | Why necessary | Failure meaning |
 | --- | --- | --- |
-| `testSafeDefaultsAndNoConstructionSideEffect` | proves inert construction, loopback/input-safe defaults, secure-profile fail-before-compose behavior and stopped-only security mutation | public facade can create side effects or unsafe listener/security behavior before explicit start |
-| `testMissingTargetAndMissingAdapterFailCleanly` | proves product-level errors for absent target/adapter | embedding application receives undefined/crashing behavior instead of a stable error |
-| `testProductLifecycleAndConfigurationForwarding` | proves configuration reaches the one Runtime, live config is immutable, stop is deterministic/idempotent and config becomes mutable after stop | public API no longer maps deterministically onto Shared Runtime lifecycle |
-| `testMoveTransfersOwnershipAndQuiescesReplacedRuntime` | proves move-only facade ownership transfers without leaked/running duplicate Runtime | SDK move semantics can leak capture/transport/input ownership |
-| `testConnectedClientCountUsesTransportNeutralEvents` | proves count updates only from neutral transport events and cannot resurrect after stop | frontend leaks RFB-specific counting or stale callbacks mutate stopped state |
-| `testRemoteInputIsIndependentAndOffByDefault` | proves input is opt-in and absence of an input sink is a clean product error | safe default or optional-input contract regresses |
-| `testRecoverableRuntimeErrorCanBeAcknowledgedAndReappearsOnNewFailure` | proves `lastError/clearError` behavior for recoverable failures | application cannot reliably acknowledge and observe new diagnostics |
-| `testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic` | proves fatal diagnostics survive Faulted state until explicit cleanup | fatal cause can be lost or Runtime can silently self-reset |
-| `testBackendStartFailureIsMappedAndCleanedUp` | proves backend start failure maps to public error and partially started pieces are cleaned | facade exposes internal failure inconsistently or leaks resources |
-| `testInvalidPublicConfigurationIsProductLevel` | proves invalid public values are rejected at facade contract level | callers can feed invalid state into lower layers |
-| `testAuthenticatedEncryptedFailsClosedBeforeListen` | proves declared encrypted profile never downgrades to weaker VNC/None before TLS/VeNCrypt exists | serious security contract violation |
+| `testSafeDefaultsAndNoConstructionSideEffect` | inert construction, loopback/input-safe defaults, stopped-only security mutation | public facade causes side effects or unsafe default state |
+| `testMissingTargetAndMissingAdapterFailCleanly` | stable errors for absent target/adapter | embedding app gets undefined/crashing behavior |
+| `testProductLifecycleAndConfigurationForwarding` | config reaches one Runtime; live config frozen; deterministic/idempotent stop | facade no longer maps deterministically to Shared Runtime |
+| `testMoveTransfersOwnershipAndQuiescesReplacedRuntime` | move-only ownership without duplicate/leaked Runtime | capture/transport/input ownership can leak |
+| `testConnectedClientCountUsesTransportNeutralEvents` | neutral client events; no stale post-stop resurrection | public API leaks backend-specific/stale counting |
+| `testRemoteInputIsIndependentAndOffByDefault` | control opt-in and clean unavailable-input error | safe default regresses |
+| `testRecoverableRuntimeErrorCanBeAcknowledgedAndReappearsOnNewFailure` | clear/ack + new-error observability | diagnostics become stale or lossy |
+| `testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic` | fatal cause persists until cleanup | fault cause can disappear or auto-reset unexpectedly |
+| `testBackendStartFailureIsMappedAndCleanedUp` | partial backend start failure maps/cleans | facade leaks internals/resources |
+| `testInvalidPublicConfigurationIsProductLevel` | invalid values rejected before lower layers | invalid state enters Runtime |
+| `testAuthenticatedEncryptedFailsClosedBeforeListen` | unavailable encrypted profile never downgrades | security contract violation |
 
-These scenarios are related by one public-facade contract and do not need splitting merely because the file is large. Split only if future diagnostics/ownership become materially clearer.
+One executable remains justified because all scenarios qualify one facade/state contract.
 
 ## 2. Core Session lifecycle/concurrency
 
-CTest: `hyremote-core-test-session-lifecycle` — owner T1/Core — decision: KEEP.
+CTest: `hyremote-core-test-session-lifecycle` — T1/Core — KEEP.
 
-The current file is intentionally a regression collection around one state machine. Scenario families observed in the source:
+Meaningful scenarios/families:
 
-| Scenario/family | Why necessary |
-| --- | --- |
-| `the_session_follows_the_documented_state_sequence` | freezes Stopped → Starting → Running → Stopping → Stopped ordering visible to components |
-| `repeated_start_stop_is_deterministic` | detects per-run counter/state leakage and duplicate teardown |
-| `a_capture_start_failure_faults_before_running` | partial-start failure before transport must be diagnosable/cleanable |
-| `a_transport_start_failure_faults_and_cleans_the_capture_source` | capture started before transport failure must be stopped exactly once |
-| recoverable/non-recoverable capture-event scenarios | only fatal target/capture failures may fault the Session |
-| `transport_events_escalate_only_when_fatal` | normal disconnect/recoverable events must not fault shared Runtime |
-| `configuration_and_component_errors_fail_before_starting` | invalid bounds/missing components fail before worker activity |
-| `start_requires_the_stopped_state_and_stop_is_idempotent` | prevents overlapping runs/double teardown |
-| `the_capture_in_flight_bound_is_respected` | protects memory/work bounds |
-| rejected-request retry scenario | capture backpressure can recover without faulting or spinning unboundedly |
-| backend request/enqueue exception scenarios | plugin/backend exceptions cannot terminate host process |
-| `r2b1_concurrent_stop_callers_produce_exactly_one_teardown` | multiple stop callers must converge on one teardown owner |
-| `r2b2_stop_while_the_capture_source_start_is_in_progress` | deterministic cancellation while external capture start is blocked |
-| `r2b2_stop_while_the_transport_start_is_in_progress` | same for transport startup |
-| `r2b3_a_setter_replacing_a_component_during_start_is_safe` | replacement racing with startup cannot produce dangling component use |
-| `r3b1_stop_wins_at_the_earliest_moment_after_starting_is_published` | protects earliest externally observable stop/start race window |
-| `r3b1_stop_wins_after_the_transport_startup_commits_before_running` | protects commit-before-Running race window |
-| `r3b1_concurrent_start_and_stop_complete_without_deadlock` | bounded race regression for lock-order/deadlock failure mode |
-| `b1_workers_created_during_starting_survive_the_running_publication` | worker threads created during Starting must not exit before Running publication |
-| `b2_replacement_is_rejected_while_starting_and_while_faulted` | ownership mutation is forbidden while state cannot accept it |
-| `b2_replacement_is_rejected_while_stopping` | prevents component replacement racing with teardown |
-| plugin-boundary throwing start/capability scenarios | exceptions at external component boundaries must map to deterministic faults/cleanup |
+- documented Stopped→Starting→Running→Stopping→Stopped sequence;
+- repeated deterministic start/stop and exactly-once teardown;
+- capture-start and transport-start partial-failure cleanup;
+- recoverable vs fatal capture/transport event escalation;
+- invalid configuration/missing component rejection before activity;
+- start only from Stopped and idempotent stop;
+- capture in-flight bounds and rejected-request retry;
+- capture/transport exceptions contained at backend boundary;
+- concurrent stop callers produce one teardown owner;
+- stop while capture start is blocked;
+- stop while transport start is blocked;
+- component replacement racing with startup is safe;
+- earliest externally observable stop-win after Starting publication;
+- stop after transport startup commit but before Running publication;
+- bounded concurrent start/stop deadlock regression;
+- workers created during Starting survive Running publication;
+- component replacement rejected in Starting/Faulted/Stopping;
+- throwing capture/transport start and capability queries map to deterministic cleanup/fault.
 
-Phase A disposition: KEEP as one executable for now. A later SPLIT would need to preserve deterministic shared fixtures and demonstrably improve diagnosis/runtime isolation.
+Do not split merely because the file is large; split only if diagnosis/ownership materially improves without losing deterministic race fixtures.
 
-## 3. RFB security handshake
+## 3. RFB authentication / multi-viewer / product-fit
 
-CTest: `hyremote-rfb-vnc-auth-handshake-test` — current location C++, target owner T1 Runtime/RFB — decision MOVE.
+### Registered VNC Auth handshake
 
-| Scenario | Necessity |
-| --- | --- |
-| correct credential succeeds | proves SecurityType 2 challenge/response works end-to-end |
-| wrong credential rejected | proves failure result + `AuthenticationRejected` + disconnect |
-| client selects None despite auth requirement | proves no downgrade to SecurityType None |
-| stalled auth client | proves bounded handshake timeout |
-| explicit insecure profile | proves None is offered only for the deliberate insecure mode |
+CTest `hyremote-rfb-vnc-auth-handshake-test` — MOVE to T1 Runtime/RFB.
 
-This is distinct from the VNC primitive unit test: primitive correctness cannot prove wire negotiation/downgrade behavior.
+- correct credential succeeds;
+- wrong credential is rejected;
+- client selecting None while auth required is refused (no downgrade);
+- stalled auth is bounded by handshake timeout;
+- explicit insecure profile offers None only when deliberately selected.
 
-## 4. RFB product-fit harness
+Distinct from the VNC primitive test: crypto primitive correctness cannot prove wire negotiation.
 
-Script: `rfb_product_fit.py` — target owner T5/RFB product-fit — decision MOVE from C++ test ownership.
+### Registered multi-viewer held-state isolation
 
-| Scenario | Unique value |
-| --- | --- |
-| `verify_occupied_port_failure` | real listener conflict is bounded and reported as startup failure |
-| `verify_handshake_slots_expire` | eight incomplete handshakes cannot permanently consume all bounded client slots; a legitimate viewer connects after expiry |
-| `verify_abrupt_disconnect_releases_input` | abrupt socket loss releases only still-held key/button state in correct modifier order and next viewer is clean |
-| `verify_standard_client` | maintained-tool (`vncdotool`) framebuffer pixel, pointer/button/wheel, keyboard/text, reconnect, clean stop/listener release |
+CTest `hyremote-rfb-multi-client-input-test` — MOVE to T1 Runtime/RFB.
 
-Do not add duplicate tests for these behaviors unless a lower-layer deterministic test protects a different invariant.
+One scenario intentionally combines one invariant:
 
-## 5. RFB multi-viewer input
+- two viewers holding same logical key/button cause one global down;
+- out-of-order release from a non-owner cannot release another viewer's hold;
+- disconnect removes only that viewer's references;
+- surviving-viewer repeat remains repeat input;
+- final holder emits the only up transition;
+- final release preserves modifiers and last pointer position.
 
-CTest: `hyremote-rfb-multi-client-input-test` — target owner T1 Runtime/RFB — decision MOVE.
+### Dormant `rfb_product_fit.py`
 
-Single high-value scenario `testConcurrentViewerHeldStateIsolation` covers multiple aspects of one invariant:
+T5/RFB product-fit — MOVE from C++ physical ownership; GAP TG-009 because it is not currently executed.
 
-- two viewers holding the same logical key/button emit only one global down transition;
-- an out-of-order release from a viewer that did not own the hold cannot release another viewer's contribution;
-- one viewer disconnect decrements only its references;
-- repeated key-down from the remaining viewer remains repeat input, not a new global hold;
-- only the final holder emits key/button up;
-- modifiers and last pointer coordinates are preserved on final release.
+- `verify_occupied_port_failure`: bounded real bind failure;
+- `verify_handshake_slots_expire`: eight stalled sockets expire and a legitimate viewer then connects;
+- `verify_abrupt_disconnect_releases_input`: held modifiers/keys/buttons are synthesized exactly once and next viewer starts clean;
+- `verify_standard_client`: maintained `vncdotool` framebuffer pixel, pointer/button/wheel, keyboard/text, reconnect and listener release.
 
-KEEP as one deterministic state-isolation scenario unless future per-viewer delivery/session work introduces a separate owner.
+Do not duplicate these behaviors in another E2E harness just because this script lacked registration.
 
-## 6. Widgets target adapter
+### Confirmed parser/fragmentation gaps
 
-CTest executable: `hyremote-widgets-capture-test` — target owner T1 Runtime/Widgets adapter — decision MOVE.
+`rfb_transport.cpp` buffers arbitrary `readAll()` fragments and enforces `kMaxClientInputBytes`, `kMaxEncodings`, `kMaxCutTextBytes`. Inspected registered RFB tests send complete protocol messages and do not drive those bound failures. Therefore TG-013/TG-014 are confirmed Phase-D Runtime/RFB gaps.
 
-| Scenario | Necessity / current audit result |
-| --- | --- |
-| `testWidgetsFactoryAndOwnedFrame` | capture capability, owned frame storage, async publication, geometry/format/timing/damage, resize and logical-coordinate behavior |
-| intended forced-DPR 1.5 variant | **CONFIRMED GAP TG-001:** source explicitly relies on a second CTest registration with `QT_SCALE_FACTOR=1.5` + `HYREMOTE_EXPECT_DPR`; current CMake has no such registration |
-| `testStopCancelsQueuedPublication` | queued capture must not publish after stop |
-| `testDestroyedTargetReportsTargetLost` | target destruction produces a terminal target-lost event rather than UAF/stale frame publication |
+## 4. Widgets adapter
 
-Input routing/backpressure are separate executables and remain necessary because capture behavior cannot prove GUI-thread input behavior.
+### Capture
 
-## 7. Quick target adapter
+CTest `hyremote-widgets-capture-test` — MOVE to T1 Runtime/Widgets.
 
-CTest executable: `hyremote-quick-capture-test` — target owner T1 Runtime/Quick adapter — decision MOVE.
+- factory/capabilities + owned asynchronous frame;
+- geometry/pixel/timing/damage and resize/logical-coordinate semantics;
+- stop cancels queued publication;
+- destroyed target reports target-lost rather than publishing stale data;
+- **GAP TG-001:** intended forced DPR=1.5 execution is not registered.
 
-| Scenario | Necessity / current audit result |
-| --- | --- |
-| `testQuickFactoryAndOwnedFrame` | Quick capture capability, asynchronous owned frame, geometry/format/timing/damage and resize |
-| intended forced-DPR 1.5 variant | **CONFIRMED GAP TG-002:** source states it is registered with `QT_SCALE_FACTOR=1.5` + `HYREMOTE_EXPECT_DPR`; current CMake does not register it |
-| `testDestroyedQuickTargetReportsTargetLost` | destruction of QQuickWindow must report target loss cleanly |
+### Input backpressure
 
-Quick input routing/backpressure remain separate Runtime-adapter contracts.
+CTest `hyremote-widgets-input-backpressure-test` — MOVE to T1 Runtime/Widgets.
+
+- 10k pointer moves while GUI queue is not drained coalesce to one newest coordinate rather than 10k queued deliveries;
+- accepted held button/Shift releases cross a saturated normal mailbox through protected release capacity;
+- a rejected press cannot later consume protected capacity via unmatched releases;
+- `shutdown()` drops pending undelivered input but balances already-delivered held state exactly once;
+- destruction after terminal shutdown does not synthesize a second release sequence.
+
+These are distinct from normal input-routing tests and from the RFB+Widgets disconnect-backpressure cross-component test.
+
+## 5. Quick adapter
+
+CTest `hyremote-quick-capture-test` — MOVE to T1 Runtime/Quick.
+
+- factory/capabilities + asynchronous owned frame;
+- geometry/pixel/timing/damage and resize;
+- destroyed QQuickWindow reports target loss;
+- **GAP TG-002:** intended forced DPR=1.5 execution is not registered.
+
+Quick routing/backpressure stays a distinct T1 contract for Quick event delivery; it is not replaced by Widgets tests.
+
+## 6. Listener / address matrix — SPLIT ownership
+
+Current CTest `hyremote-listener-address-matrix-test` uses public `RemoteAccess` and a QWidget target, but its scenarios have two semantic owners:
+
+### C++ facade-facing rows — remain T2 C++
+
+- explicit loopback address + OS-selected port starts and stop immediately releases endpoint;
+- occupied port fails before Running with public product error;
+- unavailable TEST-NET address fails before Running without silent fallback.
+
+These protect `RemoteAccess::setListenAddress/setPort/start/lastError` mapping.
+
+### Runtime/RFB network rows — move/extract when Phase B/#174 needs them
+
+- IPv4 wildcard reachability;
+- IPv6 loopback reachability;
+- IPv6 wildcard reachability;
+- IPv6 wildcard explicitly not treated as dual-stack on the measured platform;
+- rule: success must be reachable on requested address; failure must not silently fall back to loopback/another scope.
+
+Phase A does not create duplicate transport tests. The current executable is marked SPLIT so Phase B can separate facade mapping from bind/address-family behavior without semantic loss.
+
+## 7. QML frontend: module vs installed vs E2E
+
+### Registered `hyremote-qml-module-test` — T2 QML KEEP
+
+Source scenarios:
+
+1. `testDeclarativeImportAndSafeDefaults` — import/type registration, stopped/client-count/listen/security defaults and read-only diagnostics;
+2. `testInvalidConfigurationDoesNotMutateAcceptedValue` — invalid port rejection, error clear, security-profile/config surface, absence of raw secret API;
+3. `testEnabledStartFailureIsTransactional` — declarative `enabled:true` failure rolls back to disabled/Stopped with stable error;
+4. `testInitialEnabledDoesNotRaceLaterTargetBinding` — QQmlParserStatus/component-complete ordering prevents setter-order start race;
+5. `testTargetDestructionNotifiesDeclarativeProperty` — target lifetime updates observable QML property exactly once.
+
+### Installed-QML evidence — T4 KEEP preview
+
+Proves clean package/import/deploy/runtime closure from an installed SDK. It cannot be replaced by the in-tree module test.
+
+### `qml_product_fit.py` — T5 KEEP, currently dormant
+
+Proves real-viewer/QML-observable client count, view-only isolation, same-process stop→configure→start, control input and reconnect. It is neither import smoke nor package acquisition evidence. TG-011 records missing non-fast execution ownership.
+
+Conclusion: three layers overlap by feature, not by proof type; none is a duplicate.
 
 ## 8. QPA unique frontend scenarios
 
-Owner T2/QPA. Current high-level CTests remain KEEP unless noted in `TEST_CATALOG.md`.
+T2 QPA KEEP:
 
-- proxy load/delegate smoke;
+- proxy load/native delegate smoke;
 - exact-private-ABI native semantics;
-- QPA-only remote configuration vocabulary;
-- automatic Shared Runtime start through QPA;
-- local/native survival when remote access fails;
+- QPA launch/config vocabulary;
+- automatic Shared Runtime start;
+- native/local application survival when remote start fails;
 - QWidget multi-surface connection;
-- QWidget popup/transient connection;
+- popup/transient QWidget connection;
 - conditional QOpenGLWidget capture classification;
 - Quick multi-window connection.
 
-These must not be replaced by Runtime automatic-composition tests: QPA's unique contract is preserving native platform semantics while injecting the peer frontend.
+Runtime automatic-composition tests cannot replace these because QPA uniquely promises native platform semantics while inserting the frontend.
 
-## 9. QPA deploy-helper matrix
+## 9. Deploy-helper proof layers
 
-Owner under review: T4/QPA-specific deployment vs central deploy contracts. Current scenarios are necessary until overlap is proved:
+### QML dispatch fixtures — MOVE to T4, KEEP semantics
 
-- ordinary non-QML deployment;
-- QML-only deployment without QPA payload;
-- composed QML + QPA deployment;
-- installed-payload ordinary/QML-only/QML+QPA variants;
+- non-QML route must call ordinary Qt deploy API and leave app QML import path unchanged;
+- QML route must call QML-aware Qt deploy API, preserve the app's existing import path and add installed HyRemote import root.
+
+### QPA source/installed matrix — MOVE to T4/QPA deploy-contract
+
+- ordinary non-QML;
+- QML-only without QPA;
+- QML+QPA composition;
+- installed-payload ordinary/QML-only/QML+QPA;
 - reject missing QML capability;
 - reject stale QML metadata;
-- reject missing QML import root;
-- reject missing QML module directory;
+- reject missing QML import root/module directory;
 - reject stale QPA metadata;
-- reject Qt private-ABI mismatch;
-- reject installed SDK without QPA payload;
-- single-config and multi-config generator behavior when Ninja is available;
+- reject exact-Qt mismatch;
+- reject installed SDK missing QPA;
+- single-config and multi-config generator shape when Ninja exists;
 - Linux source-payload relocation.
 
-Phase A must compare these against root `check_deploy_helper_contract.cmake` before MERGE/RETIRE decisions.
+### Root static contract scan — MOVE to T4
+
+Checks implementation/package/install structure: required/forbidden dispatch and metadata, native platform vs QPA/Generic separation, fail-closed contract, fixture capabilities.
+
+### Exact-SHA release evidence `deploy-helper` cell — KEEP evidence production
+
+Proves actual clean install/deploy output rather than configure doubles or token/static assertions.
+
+Conclusion: these are four different proof layers. Phase B may share fixture plumbing but no semantic layer is approved for deletion.
 
 ## 10. Release evidence cells
 
-Runner: `tests/release-readiness/run_release_evidence.cmake`.
+Runner `tests/release-readiness/run_release_evidence.cmake`:
 
-| Cell | Necessity |
+| Cell | Distinct necessity |
 | --- | --- |
-| `clean-install` | creates the clean installed product prefix every consumer cell depends on |
-| `installed-sdk` | minimal installed package/export/deploy closure independent of Widgets/Quick adapter selection; keep but clarify historical name |
-| `installed-qml-qpa` | clean installed declarative + QPA payload composition preview path |
-| `installed-qpa-product-fit` | black-box installed QPA product behavior, not just package presence |
-| `source-consumer` | external source/add_subdirectory acquisition does not inherit developer-only assumptions |
-| `source-qpa-product-fit` | source-acquired QPA product behavior remains usable |
-| `deploy-helper` | deployed payload closure through the one SDK deployment helper |
-| `installed-generic-widgets` | clean zero-code Generic Widgets primary V0.1 path |
-| `installed-generic-quick` | clean zero-code Generic Quick primary V0.1 path |
-| `installed-cpp-widgets` | clean installed C++ Widgets primary V0.1 path with actual lifecycle |
-| `installed-cpp-quick` | clean installed C++ Quick primary V0.1 path with actual lifecycle |
+| `clean-install` | produces clean installed prefix all consumer cells use |
+| `installed-sdk` | minimal package/export/deploy closure without Widgets/Quick-specific consumer; KEEP, later rename for clarity |
+| `installed-qml-qpa` | clean installed declarative + QPA composition preview |
+| `installed-qpa-product-fit` | installed QPA product behavior, not payload presence only |
+| `source-consumer` | source/add_subdirectory acquisition independent of dev-only assumptions |
+| `source-qpa-product-fit` | source-acquired QPA product behavior |
+| `deploy-helper` | real one-family deploy closure |
+| `installed-generic-widgets` | primary clean Generic Widgets path |
+| `installed-generic-quick` | primary clean Generic Quick path |
+| `installed-cpp-widgets` | primary clean C++ Widgets lifecycle |
+| `installed-cpp-quick` | primary clean C++ Quick lifecycle |
 
-Evidence cells prove external delivery/acquisition/runtime-isolation claims. They do not replace lower-layer unit/component tests.
+TG-012 records the acquisition-isolation audit bug discovered here and handed back to reopened #230.
 
-## 11. Release-profile / authority scenarios
+## 11. V0.1 adoption vs app/product-fit
 
-Owner T6/release.
+### `hyremote-v01-example-smoke` — T5 KEEP
 
-KEEP current cases because each protects a distinct version-authority rule:
+Installs the SDK, independently configures/builds/deploys canonical 01/02/03, launches them, checks RemoteAccess Running→Stopped and Generic native-platform preservation. It proves the **developer adoption path**, not complete remote-control correctness.
 
-- development sentinel: all frontends enabled;
-- development sentinel: runtime-only/reduced capability;
+### `tests/product-e2e/example_product_fit.py` — T5 KEEP
+
+Its unique app-level contract is view-only→control policy transition, real framebuffer, buttons/wheel/modifiers/text, reconnect and listener release across Widgets/Quick applications. The old internal labels `widgets-basic`/`quick-basic` are historical drift; Phase D should point the harness at canonical 01/02 or a canonical app fixture without restoring removed teaching paths.
+
+### `showcase_product_fit.py` — T5 KEEP non-fast
+
+The showcase still exists and its README explicitly claims standard-viewer/client-count lifecycle acceptance. The harness protects showcase-specific `SHOWCASE_CLIENTS 0/1/reconnect`, remote pointer/key delivery and listener release. It is not a V0.1 primary acceptance requirement.
+
+## 12. Release profile / authority scenarios
+
+Registered T6 cases remain distinct:
+
+- development sentinel with all frontends;
+- development sentinel runtime-only/reduced capability;
 - retired `0.0.1.0`, `0.0.2.0`, `0.0.3.0` rejected;
-- V0.1 representable without frontend-as-version encoding;
-- V0.2, V0.3, V0.4 representable;
+- V0.1, V0.2, V0.3, V0.4 selectable;
 - V0.4 maintenance digit accepted;
-- V1.0 all-frontends, C++-only and Generic-only capability subsets accepted.
+- V1.0 all/C++-only/Generic-only capability subsets accepted.
 
-As #263 adds Feature releases (`0.2.1.0`, `0.3.1.0`, `0.3.2.0`), corresponding exact-scope authority tests belong here rather than in frontend tests.
+#277 expanded exact Feature-release selection/policy behavior inside the existing `hyremote-release-scope-self-test` and authority-policy registrations. Those internal scenarios belong here; they are not new CTest names.
 
-## 12. Phase-A scenario audit still open
+## 13. Hosted execution reconciliation
 
-Before Phase A PASS this appendix still needs scenario-level overlap decisions for:
+The all-frontends hosted baseline in run `35577711774` proved:
 
-- QML module vs installed-QML vs QML product-fit;
-- root deploy-helper contract vs QML/QPA deploy-helper fixtures;
-- V0.1 example smoke vs `product-e2e/example_product_fit.py`;
-- showcase product-fit unique value;
-- listener/address and input-backpressure executables after they move to Runtime ownership;
-- candidate fragmented/malformed RFB input gaps from `COVERAGE_GAPS.md`;
-- exact capability/platform guard matrix from a canonical all-frontends CTest listing.
+- Linux Qt 6.8.3 Release: 93 discovered / 93 executed / PASS;
+- Windows Qt 6.8.3 Release: 92 / 92 / PASS;
+- the only platform-set difference is Linux-only `hyremote-qpa-source-payload-relocation`;
+- none of `rfb_product_fit.py`, `qml_product_fit.py`, `showcase_product_fit.py`, `example_product_fit.py` is in that executed CTest set;
+- there is no second forced-DPR Widgets or Quick capture registration.
+
+See [`EXECUTION_BASELINE.md`](EXECUTION_BASELINE.md) for the exact 93-name superset.
+
+## 14. Phase-A overlap conclusions
+
+All previously open scenario questions are closed:
+
+- QML module / installed-QML / QML product-fit: **all KEEP**, distinct T2/T4/T5 proof layers;
+- root / QML / QPA / release deploy-helper tests: **KEEP semantics, MOVE persistent contracts to T4**, no duplicate layer deletion;
+- V0.1 adoption smoke vs app product-fit: **both KEEP**, adoption vs real viewer/control correctness;
+- showcase product-fit: **KEEP non-fast** while showcase remains maintained;
+- listener matrix: **SPLIT** C++ facade mapping from Runtime bind/address-family behavior;
+- fragmented/malformed RFB: **GAP TG-013/TG-014**;
+- capability/platform execution: reconciled in `TEST_MATRIX.md` + `EXECUTION_BASELINE.md`.
+
+Phase A therefore has no unresolved scenario-level `REVIEW` item.
