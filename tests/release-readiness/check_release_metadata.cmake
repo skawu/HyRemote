@@ -35,10 +35,13 @@ set(required_files
     "docs/internal/v1-ga-acceptance.md"
     "examples/README.md"
     "examples/CMakeLists.txt"
-    "examples/widgets-basic/CMakeLists.txt"
-    "examples/widgets-basic/README.md"
-    "examples/quick-basic/CMakeLists.txt"
-    "examples/quick-basic/README.md"
+    "examples/learning/01-widgets-cpp/CMakeLists.txt"
+    "examples/learning/01-widgets-cpp/README.md"
+    "examples/learning/02-quick-cpp/CMakeLists.txt"
+    "examples/learning/02-quick-cpp/README.md"
+    "examples/learning/03-zero-code-generic/README.md"
+    "examples/learning/03-zero-code-generic/widgets-app/CMakeLists.txt"
+    "examples/learning/03-zero-code-generic/quick-app/CMakeLists.txt"
     "examples/qml-basic/CMakeLists.txt"
     "examples/qml-basic/README.md"
     "examples/qpa-proxy-existing-app/CMakeLists.txt"
@@ -302,8 +305,10 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
-        "add_subdirectory(widgets-basic)"
-        "add_subdirectory(quick-basic)"
+        "add_subdirectory(learning/01-widgets-cpp)"
+        "add_subdirectory(learning/02-quick-cpp)"
+        "add_subdirectory(learning/03-zero-code-generic/widgets-app)"
+        "add_subdirectory(learning/03-zero-code-generic/quick-app)"
         "add_subdirectory(qml-basic)"
         "add_subdirectory(qpa-proxy-existing-app)"
         "add_subdirectory(remote-support-showcase)")
