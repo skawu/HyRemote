@@ -52,6 +52,7 @@ jobs:
                   text=True,
               ).splitlines()
           else:
+              # develop/manual is the full integration lane, independent of the triggering diff.
               changed = ["CMakeLists.txt"]
 
           peers = ["cpp", "qml", "generic", "qpa"]
@@ -91,6 +92,7 @@ jobs:
               "cmake/HyRemoteInstall.cmake",
               "tests/release-readiness/run_release_evidence.cmake",
           )
+
           def evidence_for(prefixes):
               return full_evidence or any(
                   path.startswith(common_deploy_paths + prefixes) for path in changed
@@ -170,18 +172,6 @@ jobs:
         with:
           path: ${{ runner.temp }}/Qt
           key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
-
-      # PR acceleration only. A develop/manual job never consumes this build tree; it starts clean and
-      # publishes the next baseline after successful full integration. Thus incremental state is never release evidence.
-      - id: build-cache
-        name: Restore develop build baseline for PR
-        if: github.event_name == 'pull_request' && needs.classify.outputs.integrations == 'cpp,qml,generic,qpa'
-        uses: actions/cache/restore@v4
-        with:
-          path: build-ci
-          key: hyremote-build-v1-${{ runner.os }}-qt683-all-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            hyremote-build-v1-${{ runner.os }}-qt683-all-
 
       - name: Validate or install exact Qt SDK
         shell: bash
@@ -311,19 +301,14 @@ jobs:
             build-ci/evidence/*/*/evidence.txt
             build-ci/evidence/**/*.log
 
+      # PR-created caches live under refs/pull/.../merge and cannot seed sibling PRs. The trusted develop/manual
+      # lanes own the reusable baseline cache; PRs consume that cache or perform a one-off fallback install.
       - name: Save verified exact Qt SDK
         if: always() && github.event_name != 'pull_request' && steps.qt-cache.outputs.cache-hit != 'true' && env.QT_TREE_REBUILT == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/Qt
           key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
-
-      - name: Save clean develop build baseline
-        if: github.event_name != 'pull_request' && success() && needs.classify.outputs.integrations == 'cpp,qml,generic,qpa'
-        uses: actions/cache/save@v4
-        with:
-          path: build-ci
-          key: hyremote-build-v1-${{ runner.os }}-qt683-all-${{ github.sha }}
 
       - name: Timing summary
         if: always()
@@ -337,7 +322,6 @@ jobs:
             echo "- runner: ${{ matrix.name }}"
             echo "- integrations: ${{ needs.classify.outputs.integrations }}"
             echo "- Qt cache hit: ${{ steps.qt-cache.outputs.cache-hit }}"
-            echo "- build baseline cache hit: ${{ steps.build-cache.outputs.cache-hit }}"
             echo "- elapsed after environment start: $((now-start))s"
           } >> "$GITHUB_STEP_SUMMARY"
 
