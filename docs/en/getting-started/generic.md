@@ -57,7 +57,7 @@ Use Qt's generic-plugin command-line option:
 MyApp -plugin hyremote
 ```
 
-Or use the environment variable:
+Or use the environment variable for the default configuration:
 
 ```text
 QT_QPA_GENERIC_PLUGINS=hyremote
@@ -72,7 +72,15 @@ The defaults match the C++ API:
 
 ## Configuration format
 
-The Generic Plugin uses `key=value` fields separated by semicolons:
+Qt treats the part before the first colon in a `-plugin` argument as the Generic Plugin key and passes the part after the colon as the plugin specification. HyRemote's specification is a semicolon-separated list of `key=value` fields.
+
+For example:
+
+```text
+MyApp -plugin "hyremote:address=127.0.0.1;port=5901;input=true;security=insecure"
+```
+
+The specification received by HyRemote is:
 
 ```text
 address=127.0.0.1;port=5901;input=true;security=insecure
@@ -90,7 +98,7 @@ Recognized fields:
 
 `authenticated-encrypted` **fails closed** in V0.1. It is never silently downgraded to an unencrypted connection.
 
-> **TODO:** V0.2 will provide the complete VeNCrypt/TLS, certificate-policy, and session-security implementation before `authenticated-encrypted` is presented as a production security profile.
+> **TODO V0.2:** provide the complete VeNCrypt/TLS, certificate-policy, and session-security implementation before `authenticated-encrypted` is presented as a production security profile.
 
 ## Native platform identity is preserved
 
