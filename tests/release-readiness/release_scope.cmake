@@ -302,7 +302,17 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     expect_refusal("empty version is refused" "")
 
     # 15. A malformed authority is refused.
-    set(malformed_path "${CMAKE_CURRENT_BINARY_DIR}/release-trains-malformed.json")
+    # Script mode has no build directory, so the temporary manifests this matrix writes must never land in the
+    # working tree: they go to the platform temporary directory instead and are removed when the matrix finishes.
+    if(DEFINED ENV{TEMP})
+        set(fixture_dir "$ENV{TEMP}")
+    elseif(DEFINED ENV{TMPDIR})
+        set(fixture_dir "$ENV{TMPDIR}")
+    else()
+        set(fixture_dir "/tmp")
+    endif()
+
+    set(malformed_path "${fixture_dir}/release-trains-malformed.json")
     file(WRITE "${malformed_path}" "{ this is not json ")
     execute_process(
         COMMAND "${CMAKE_COMMAND}"
@@ -319,7 +329,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     endif()
 
     # 15b. A wrong schema is refused as well.
-    set(wrong_schema_path "${CMAKE_CURRENT_BINARY_DIR}/release-trains-wrong-schema.json")
+    set(wrong_schema_path "${fixture_dir}/release-trains-wrong-schema.json")
     file(WRITE "${wrong_schema_path}" "{ \"schema\": 1, \"development_sentinel\": \"0.0.0\" }")
     execute_process(
         COMMAND "${CMAKE_COMMAND}"
@@ -338,7 +348,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     # 16. An authority reference that only exists as prose is refused, and an active train with nothing closeable
     #     is refused rather than silently authorizing a release. The leak case explains a number that no classified
     #     list of that train contains, which is authority hiding in a note.
-    set(leak_path "${CMAKE_CURRENT_BINARY_DIR}/release-trains-leak.json")
+    set(leak_path "${fixture_dir}/release-trains-leak.json")
     file(READ "${authority_path}" leak_json)
     string(REPLACE
         "\"209\": \"Cross-version umbrella."
@@ -360,7 +370,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         set(case_failures "${_failures}")
     endif()
 
-    set(empty_path "${CMAKE_CURRENT_BINARY_DIR}/release-trains-empty.json")
+    set(empty_path "${fixture_dir}/release-trains-empty.json")
     file(READ "${authority_path}" empty_json)
     string(REPLACE
         "\"mandatory_children\": [ 230, 231, 232, 237, 238, 241 ]"
