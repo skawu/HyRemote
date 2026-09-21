@@ -1,72 +1,102 @@
 # Security Policy
 
-HyRemote is currently in **V1 convergence** and has not yet made a production-ready GA release.
+HyRemote is remote-access infrastructure and should be treated as security-sensitive software.
 
-## Supported versions
+The current product line is **V0.1 Developer Preview**. It is intended for development, evaluation, and trusted-network use; it is **not** an Internet-facing production remote-access service.
 
-No released version is currently supported for production security updates. V1.0.0.0 remains acceptance-pending until the documented Windows/Linux and physical/native release gates pass.
+## Supported product versions
 
-## Current transport security state
+No HyRemote version has reached the V1 GA security-support contract yet.
 
-The bounded internal RFB 3.8 correctness transport negotiates **SecurityType None over plaintext** unless an authenticated profile is configured, in which case the viewer is authenticated with **RFB VNC authentication** (security type 2) and a client that does not select that type is rejected rather than downgraded. HyRemote V1 provides **no transport encryption**: TLS is a separate, later step, and the stream must not be described as encrypted.
+Current product documentation describes the behavior and limitations of the V0.x preview line. Security capabilities marked **TODO** or **Preview** are not production-security claims.
 
-The listener defaults to loopback (`127.0.0.1`) and remote input is disabled by default, but those safe defaults are not authentication or encryption. Do not expose the current HyRemote listener directly to the public Internet or an otherwise untrusted network. Use an appropriate trusted network boundary, VPN or separately managed secure tunnel when remote reachability is required.
+See [`docs/security.md`](docs/security.md) and [`docs/compatibility.md`](docs/compatibility.md) for the current product boundary.
 
-The complete security architecture and release gate are documented in [`docs/security-model.md`](docs/security-model.md). The concise deployment guidance is in [`docs/security.md`](docs/security.md).
+## Current transport security
 
-## Security-sensitive areas
+HyRemote currently uses a bounded RFB/VNC transport baseline.
 
-Remote access software has a high security impact. Changes involving any of the following require explicit security review:
+V0.1 behavior:
+
+- listener defaults to loopback (`127.0.0.1`);
+- remote input is disabled by default;
+- `Insecure` is loopback-only and non-loopback startup is rejected;
+- `Authenticated` requires a transport-security-enabled build plus a valid security descriptor; when available it uses RFB VNC authentication but does not encrypt the stream;
+- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without fallback to a weaker profile.
+
+Authentication is not encryption. A viewer password prompt does not make the transport confidential.
+
+Do not expose the current HyRemote listener directly to the public Internet or another untrusted network.
+
+> **TODO V0.2:** encrypted transport, certificate policy, authenticated sessions, and production network policy.
+
+## Security defaults apply to every frontend
+
+The four product frontends converge on the same Shared Runtime and security model:
+
+- **C++ API** — explicit Runtime lifecycle and policy;
+- **Generic Plugin** — zero-code public-Qt plugin path;
+- **QML API** — declarative frontend over the same Runtime;
+- **QPA** — specialized private-ABI frontend.
+
+Changing frontend does not silently create a stronger transport-security profile.
+
+## Security invariants
+
+HyRemote's product design preserves these boundaries:
+
+- constructing or installing HyRemote does not by itself open a listener;
+- loopback is the default bind scope;
+- remote viewing and remote control are separate policies;
+- remote input is opt-in;
+- `Running` and `connectedClientCount()` are operational state, not authentication or authorization;
+- malformed-client/protocol/frame/input state must remain bounded;
+- recognized held remote input is balanced on disconnect and Runtime teardown;
+- secrets must not be written to ordinary logs or diagnostics;
+- a requested security capability fails closed rather than silently downgrading;
+- Generic keeps the application's native Qt platform identity;
+- QPA private-ABI use does not weaken the security boundary or create an undocumented bypass.
+
+## Security-sensitive changes
+
+Changes involving any of the following require explicit security review:
 
 - authentication or authorization;
 - network listeners and protocol negotiation;
-- TLS/transport security;
-- remote input enablement;
+- TLS or other transport encryption;
+- remote-input enablement;
 - default bind address or exposed port;
-- credential storage;
-- runtime/session enable-disable controls;
+- credentials, certificates, tokens, or private keys;
+- session admission/termination controls;
 - viewer lifecycle and held-input cleanup;
 - malformed-client/resource bounds;
-- system-level input injection such as `uinput`;
+- system-level input injection;
 - Qt private/QPA platform integration;
-- third-party protocol or crypto libraries.
-
-## V1 security invariants
-
-V1 must preserve these boundaries:
-
-- constructing/installing HyRemote does not implicitly open a listener;
-- the normal bind default is loopback-only;
-- remote viewing and remote control are separate policies;
-- remote input is opt-in;
-- Embedded C++/QML policy changes use explicit stopped-runtime configuration;
-- Transparent QPA remote-input policy is explicit startup/relaunch policy;
-- `Running` and `connectedClientCount()` are operational state, not authentication/authorization;
-- protocol/frame/client/input state remains bounded;
-- recognized held remote input is balanced on abrupt viewer disconnect and explicit runtime shutdown;
-- no password/TLS/authenticated-identity capability is implied by the current V1 API;
-- native local display/input remains authoritative in the Transparent QPA path.
+- third-party protocol or cryptographic libraries.
 
 ## Reporting a vulnerability
 
-This repository is public. **Do not open a public issue containing exploit details, credentials, proof-of-concept payloads or other sensitive vulnerability information.**
+Do **not** open a public issue containing exploit details, credentials, proof-of-concept payloads, private keys, or other sensitive vulnerability information.
 
-Preferred reporting channel: GitHub private vulnerability reporting for this repository (`Security` -> `Report a vulnerability`) once that repository feature is enabled.
+Use GitHub's private vulnerability reporting flow from the repository's **Security** area when that option is available.
 
-If the private reporting UI is not available, contact the repository owner through a private contact method published on the owner's GitHub profile. If no private contact channel is available, open only a non-sensitive public issue asking for a security contact; do not include vulnerability details in that issue.
+If no private reporting option is available, contact the repository owner through a private contact method published on the owner's GitHub profile. If no private channel can be found, open only a non-sensitive public issue requesting a security contact and do not include vulnerability details.
 
-When reporting privately, include when practical:
+A useful private report includes, when practical:
 
-- affected commit/version;
-- operating system / architecture / Qt version;
-- integration mode (C++, QML or QPA);
+- affected HyRemote version or commit;
+- operating system, architecture, and Qt version;
+- integration frontend (C++, Generic, QML, or QPA);
 - reproduction conditions;
 - security impact;
-- whether the default loopback/input-off policy must be changed to trigger the issue;
-- any temporary mitigation known to you.
+- whether non-default bind/input/security policy is required;
+- any known temporary mitigation.
 
-## Disclosure expectations
+## Disclosure
 
-Please allow reasonable time for triage and remediation before public disclosure. Security fixes must not be described as accepted release evidence until the relevant release/compatibility gates actually execute and pass.
+Please allow reasonable time for triage, remediation, and coordinated disclosure.
 
-HyRemote's Apache-2.0 license does not change the licensing or security-update obligations of Qt or other third-party components used by a downstream deployment.
+A security fix does not automatically broaden the product compatibility matrix. Updated security/support claims are published through the normal product documentation and release notes.
+
+HyRemote's Apache-2.0 license does not replace the license, security-update, or redistribution obligations of Qt or any other third-party component used by a downstream product.

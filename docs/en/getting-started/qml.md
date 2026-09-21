@@ -1,25 +1,39 @@
-# Declarative QML Getting Started
+# QML API Getting Started (Preview)
 
 > Language / 语言: **English** | [中文](../../getting-started/qml.md)
 
-HyRemote's Declarative QML mode is a thin declarative surface over the same shared `HyRemote::RemoteAccess` runtime used by C++. It does not create a second Session, capture, transport or input stack.
+The QML API is HyRemote's declarative integration path for Qt Quick applications. It is a thin frontend over the Shared Runtime and does not create a second Session, capture, transport, input, or security implementation.
 
-## Prerequisites
+Current product status: **Preview**.
 
-The V1 reference line is Qt 6.8.3 on Windows x86_64 and Linux x86_64.
+## Who this is for
 
-A QML application resolves its normal Qt modules and then the HyRemote package:
+Choose the QML API when your application:
+
+- is primarily Qt Quick / QML;
+- prefers declarative properties for remote-access policy;
+- does not want extra C++ glue for basic lifecycle control.
+
+A Qt Quick application can also use the C++ API directly; see [`cpp.md`](cpp.md).
+
+## Current reference environment
+
+Current reference environment:
+
+- Windows x86_64;
+- Linux x86_64;
+- Qt 6.8.3.
+
+The QML API is currently provided as Preview. See [`../../compatibility.md`](../../compatibility.md) for the exact compatibility statement.
+
+> **TODO V0.3:** complete installed-SDK, deployment, bilingual examples, and product qualification before promoting QML API to a formal product path.
+
+## Minimal integration
 
 ```cmake
-find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
 find_package(HyRemote CONFIG REQUIRED)
 ```
-
-`find_package(HyRemote)` itself does not force unrelated Widgets/Quick/QML development components onto a plain C++ consumer; the application chooses the Qt UI stack it already uses.
-
-## Minimal QML use
-
-Normal declarative startup is intentionally two properties:
 
 ```qml
 import QtQuick
@@ -31,28 +45,27 @@ ApplicationWindow {
     visible: true
 
     RemoteAccess {
+        id: remote
         target: window
         enabled: true
     }
 }
 ```
 
-`enabled: true` is a request, not constructor side effect. HyRemote waits until the QML component is complete before starting the shared runtime, so initial property declaration order does not require `Component.onCompleted` glue. If start fails, `enabled` rolls back to `false` and the product-level error properties describe the failure.
+`enabled: true` is an explicit start request. HyRemote starts the Shared Runtime after the QML component is complete, so basic startup does not require `Component.onCompleted` glue.
 
-Safe defaults match C++:
+Defaults match the C++ API:
 
-- loopback listener;
-- port 5921;
+- listener `127.0.0.1:5921`;
 - remote input disabled;
-- explicit `enabled: true` required;
-- the current RFB correctness baseline defaults to SecurityType None (unauthenticated and unencrypted, refused beyond loopback); a configured authenticated profile adds RFB VNC authentication but no encryption.
+- Runtime stays stopped until explicitly enabled;
+- security behavior comes from the same Shared Runtime.
 
-## Optional configuration
-
-Only set values you actually need to change:
+## Common configuration
 
 ```qml
 RemoteAccess {
+    id: remote
     target: window
     port: 5901
     remoteInputEnabled: true
@@ -60,11 +73,17 @@ RemoteAccess {
 }
 ```
 
-Configuration belongs to the stopped state. To change listener/input policy while running, disable first, update the properties, then enable again. HyRemote does not silently create a second runtime or hidden restart path.
+Runtime configuration follows an explicit lifecycle:
 
-## Connection status
+```text
+disable -> change configuration -> enable
+```
 
-`Running` means the listener/runtime is active; it does not mean a viewer is connected.
+The QML frontend does not create a hidden second Runtime and does not expose RFB/socket-specific objects.
+
+## State and connection count
+
+`Running` means the Runtime/listener is active. It does not mean a viewer is connected or authenticated.
 
 ```qml
 Label {
@@ -74,11 +93,11 @@ Label {
 }
 ```
 
-`connectedClientCount` is read-only and backend-neutral. E3 product-fit requires the real viewer lifecycle `0 → 1 → 0 → 1 → 0` across connect, disconnect and reconnect without recreating the application.
+`connectedClientCount` is operational state, not identity or authorization data.
 
 ## View-only and remote control
 
-The default is view-only. Opt into remote control only when intended:
+The default is view-only. Enable remote input explicitly when required:
 
 ```qml
 RemoteAccess {
@@ -88,11 +107,9 @@ RemoteAccess {
 }
 ```
 
-Remote pointer, key and committed-text events use the same normalized input path as C++. Normal Qt focus remains authoritative; no RFB-specific key/socket object enters QML.
+Remote pointer, key, and text input follow the same normalized input semantics used by the other frontends. Qt focus and control state remain authoritative.
 
 ## Deployment
-
-Install the application normally and use the one HyRemote helper:
 
 ```cmake
 install(TARGETS MyQmlApp
@@ -103,38 +120,47 @@ install(TARGETS MyQmlApp
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-The QML module is an import payload, not a second C++ SDK target. Application developers do not link a `HyRemote::Qml` target or manually copy the backing library, plugin, `qmldir`, shared facade, or transport files.
+The QML payload reuses the same Shared Runtime as the C++ API. Applications should not copy `qmldir`, internal plugins, or Runtime libraries manually.
 
-`QML QPA` is available when an application deliberately combines declarative API use with Transparent QPA packaging:
+If the selected HyRemote SDK does not contain the QML payload, configuration should fail instead of producing an incomplete deployment.
+
+See [`../guide/deployment.md`](../guide/deployment.md).
+
+## Combining with QPA
+
+When the application genuinely needs QPA platform-entry behavior, deploy both payloads:
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML QPA)
 ```
 
-This still reuses one shared runtime; it does not create a fourth integration architecture.
-
-## Viewer workflow
-
-With defaults, connect a standard RFB/VNC viewer to `127.0.0.1:5921`. Close the viewer and reconnect without restarting the Qt application. The listener remains active and `connectedClientCount` returns to zero between clients.
-
-See [`../../guide/viewer-connection.md`](../../guide/viewer-connection.md) for viewer behavior.
+This is still one Shared Runtime used by two frontend payloads, not a fourth Runtime architecture.
 
 ## Security boundary
 
-The current correctness baseline negotiates RFB SecurityType None unless an authenticated profile is configured, which authenticates the viewer with RFB VNC authentication. Do not expose it directly to an untrusted/public network. View-only is an input policy, not authentication, and the stream is not encrypted.
+The V0.1 Shared Runtime is loopback-first:
 
-See `../security.md`.
+- default bind is `127.0.0.1`;
+- remote input is disabled by default;
+- unauthenticated non-loopback exposure is rejected;
+- `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;
+- `AuthenticatedEncrypted` fails closed while the encrypted backend is unavailable.
 
-## Local + remote coexistence
+Do not expose the current product directly to the public Internet. See [`../../security.md`](../../security.md).
 
-Hosted offscreen/software E2E proves the viewer-to-QML product path but does not prove a physical monitor and local keyboard/mouse remain usable at the same time. Cross-mode physical coexistence is a separate question from standard-viewer interoperability.
+## Examples
 
-## Related documentation
+The new Example curriculum provides a dedicated Quick + QML learning path and keeps it distinct from Quick + C++.
 
-- deployment: [`../../guide/deployment.md`](../../guide/deployment.md)
-- Windows / Linux platform setup: [`../../guide/install.md`](../../guide/install.md) and [`../guide/install.md`](../guide/install.md)
-- viewer connection: [`../../guide/viewer-connection.md`](../../guide/viewer-connection.md)
-- security: [`../../security.md`](../../security.md)
-- troubleshooting: [`../../guide/troubleshooting.md`](../../guide/troubleshooting.md)
-- compatibility: [`../../compatibility.md`](../../compatibility.md)
-- known limitations: [`../../known-limitations.md`](../../known-limitations.md)
+> **TODO V0.3:** complete the bilingual, branded `examples/learning/04-quick-qml` product example.
+
+## Next steps
+
+- Quick + C++: [`cpp.md`](cpp.md);
+- Generic zero-code integration: [`generic.md`](generic.md);
+- QPA (Preview): [`qpa-proxy.md`](qpa-proxy.md);
+- deployment: [`../guide/deployment.md`](../guide/deployment.md);
+- viewer workflow: [`../guide/viewer-connection.md`](../guide/viewer-connection.md);
+- security: [`../../security.md`](../../security.md);
+- compatibility: [`../../compatibility.md`](../../compatibility.md);
+- known limitations: [`../../known-limitations.md`](../../known-limitations.md).

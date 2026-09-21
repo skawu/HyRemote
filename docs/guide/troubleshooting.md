@@ -2,118 +2,227 @@
 
 > 语言 / Language：**中文** ｜ [English](../en/guide/troubleshooting.md)
 
-本文覆盖 V1 的 Embedded C++、Declarative QML 与 Transparent QPA 三条路径。请先看产品层面的错误、包元数据与已文档化的策略，再去追内部实现层。
+本文覆盖 C++ API、Generic Plugin、QML API 与 QPA 四条产品路径。优先检查产品级错误、部署结果和兼容矩阵，不需要先进入 HyRemote 内部实现。
 
 ## `find_package(HyRemote)` 找不到包
 
-`find_package(HyRemote CONFIG REQUIRED)` 针对的是**已安装**的 HyRemote 前缀。把该前缀加入 `CMAKE_PREFIX_PATH`，或改用 [`guide/install.md`](install.md) 里的源码获取方式。
+`find_package(HyRemote CONFIG REQUIRED)` 面向 installed SDK。
 
-不要把 `add_subdirectory(HyRemote)` 与"已生成安装版 `HyRemoteConfig.cmake`"的假设混用。
+确认：
 
-已安装的 V1 包只暴露**一个**普通 C++ 目标：`HyRemote::RemoteAccess`。Core、QML 后端库与 `qhyremote` 都**不是**可供应用链接的替代目标。
+- HyRemote 安装前缀已加入 `CMAKE_PREFIX_PATH`；
+- 当前应用没有同时混用 installed SDK 与 `add_subdirectory(HyRemote)`；
+- 使用的是与当前 Qt/toolchain 匹配的 HyRemote SDK。
+
+源码接入见 [`install.md`](install.md)。
 
 ## `RemoteAccess::start()` 返回 false
 
-检查 `lastError()` 并确认：
+检查 `lastError()`，并确认：
 
-- 目标是一个**存活的、受支持的** `QWidget` 或 `QQuickWindow`；
-- 配置是在**停止状态**下完成的；
-- 所选端口合法且未被占用；
-- 所构建产品所需的 target adapter 存在；
-- 内部 VNC 正确性传输没有在自定义源码构建里被显式关掉。
+- target 是存活且受支持的 `QWidget` 或 `QQuickWindow`；
+- 配置在 Runtime 停止状态完成；
+- 端口合法且未被占用；
+- 监听地址是有效数字 IP；
+- 当前安全 profile 的配置完整；
+- `AuthenticatedEncrypted` 没有被误当成当前已实现能力。
 
-公开的错误面**有意不暴露** RFB 后端类型。
+如果选择 `AuthenticatedEncrypted`，V0.1 会按设计返回安全能力不可用并且不打开监听器。
 
-## QML 的 `enabled: true` 又变回 false
+## QML `enabled: true` 又变回 false
 
-声明式启用是**事务性**的。QML 初次构造期间，`enabled: true` 只是一个请求；真正的共享运行时启动会推迟到组件构造完成，好让目标/策略绑定先稳定下来。
+QML 的启用是显式请求。若 Runtime 启动失败，`enabled` 会回到 false。
 
-若启动随后失败，`enabled` 会变回 false。此时检查 `errorCode` / `errorString`，并确认绑定的目标是受支持的存活 Quick 目标、且配置的端点可用。
+检查：
 
-**不要**为了绕开属性顺序而加 `Component.onCompleted: remote.enabled = true`；正常的声明式用法不应需要这类生命周期胶水。
+- `target` 是否是有效的 Quick 顶层窗口；
+- 端口/地址是否可用；
+- 安全配置是否允许启动；
+- `errorCode` / `errorString` 的产品级错误。
+
+正常使用不需要通过 `Component.onCompleted` 手工补启动逻辑。
+
+## Generic Plugin 没有生效
+
+先确认部署使用了：
+
+```cmake
+hyremote_deploy(TARGET MyApp GENERIC)
+```
+
+然后确认运行时通过 Qt generic-plugin 机制激活，例如：
+
+```text
+MyApp -plugin hyremote
+```
+
+如果插件没有加载，检查应用部署树中的 Generic Plugin 目录和 Qt plugin search path。
+
+Generic 的关键特征是**保持原生 Qt platform identity**。如果应用从 `windows`/`xcb` 等正常 platform 变成 `hyremote`，那不是正确的 Generic 路径。
 
 ## 查看端连不上
 
-确认该集成方式**确实启动了服务**：
+先确认对应 frontend 已经真正启动：
 
 - C++：`start()` 成功；
-- QML：`enabled` 保持 true 且状态到达 Running；
-- QPA：部署后的应用是以 `-platform hyremote` 启动的，而不是直接用原生平台。
+- Generic：Generic Plugin 已成功加载；
+- QML：`enabled` 保持 true 且状态到达 `Running`；
+- QPA：应用以 `-platform hyremote` 启动。
 
-同时确认查看端用的是配置中的回环地址/端口、端口没有被别的进程占用、进程仍在运行、且没有防火墙/安全软件干扰预期的本机/受信连接。
+同时确认：
 
-**仅仅构造**永远不会打开 Embedded C++ 的监听器；仅仅 `import` QML 模块也不会启动它。
+- 查看端使用正确地址/端口；
+- 默认地址是 `127.0.0.1:5921`；
+- 端口没有被其它进程占用；
+- 应用进程仍在运行；
+- 防火墙/安全软件没有拦截预期连接。
 
 ## 查看端能看到画面，但输入没有反应
 
 远程输入默认关闭。
 
-- C++：在停止状态下调用 `setRemoteInputEnabled(true)`，再启动；
-- QML：先设 `remoteInputEnabled: true`，再启用；
-- QPA：以 `-platform hyremote:hyremote-input=true` 重新启动。
+- C++：`setRemoteInputEnabled(true)`；
+- QML：`remoteInputEnabled: true`；
+- Generic：Generic specification 中设置 `input=true`；
+- QPA：`-platform "hyremote:hyremote-input=true"`。
 
-如果只是特定按键/组合失效，请查 [`input-model.md`](../input-model.md) 与 [`known-limitations.md`](../known-limitations.md)；V1 **不声称**完整的输入法/死键/各国键盘布局一致性。
+如果只有特定按键、输入法或组合键异常，查看 [`../input-model.md`](../input-model.md) 和 [`../known-limitations.md`](../known-limitations.md)。
 
-## 指针坐标不对
+## 查看端连接后画面为空/不完整
 
-记录：目标逻辑尺寸、采集到的帧缓冲尺寸、device-pixel ratio 与缩放状态。坐标映射基于远端帧/目标的几何；过期或不受支持的几何变化**不得**被掩盖成"查看端行为"。
+确认应用目标属于当前兼容范围：
 
-对 QPA，还要记录当时活跃的顶层 surface 与合成画布几何。
+- QWidget top-level；
+- QQuickWindow；
+- 或兼容矩阵中明确声明的复杂组合。
 
-## Quick 采集是空白的，或隐藏后停止
+QOpenGLWidget、QQuickWidget、Quick3D、自定义 FBO、foreign/native windows 不应从基础 Widgets/Quick 支持自动推导。
 
-公开的异步 Quick 正确性路径依赖一个**可被采集**的 Qt Quick 场景/窗口。隐藏/最小化行为有明确的处理与限制，它**不等价于**合成器层面的桌面采集服务。
+详见 [`../compatibility.md`](../compatibility.md)。
 
-先查 [`compatibility.md`](../compatibility.md)、[`known-limitations.md`](../known-limitations.md) 与 QPA 采集分类，再把问题扩大成泛泛的"图形支持"结论。
+## 指针坐标不正确
 
-## QPA 部署说包不可用
+记录以下信息：
 
-已安装的 SDK 必须以如下方式构建：
+- 目标逻辑尺寸；
+- frame 像素尺寸；
+- device-pixel ratio；
+- 当前缩放；
+- resize 前后的窗口几何。
+
+对于 QPA/自动 surface 组合，还要确认当前远程画布与顶层 surface 几何。
+
+## 断开后按键/按钮像是还按着
+
+HyRemote 会在远端异常断开和 Runtime stop 时清理已识别的 held key/button state。
+
+如果仍可稳定复现，请记录：
+
+- viewer；
+- 按下/释放顺序；
+- 是否异常断开；
+- 是否同时存在第二个 viewer；
+- 应用目标类型。
+
+这类行为应视为产品缺陷，而不是让应用自行补发按键释放。
+
+## QPA 部署说不可用
+
+确认生成 HyRemote SDK 时启用了：
 
 ```text
 -DHYREMOTE_WITH_QPA_PROXY=ON
 ```
 
-`hyremote_deploy(TARGET ... QPA)` 消费的是包自带的可用性/版本/插件元数据。已安装 SDK **有意不导出** `HyRemote::QpaPlatform` 供应用链接。
+同时确认消费者使用**精确 Qt 6.8.3** 和匹配的 private Gui 开发组件。
 
-## QPA 部署拒绝 Qt 版本
+QPA 不导出一个供应用链接的 `HyRemote::QpaPlatform` target；应用本身仍是 Qt-only。
 
-V1 中，Transparent QPA 与**精确的 Qt 6.8.3** 私有 ABI 耦合。应用/部署的配置必须解析出与所限定 QPA 载荷**完全相同**的 Qt 版本。
+## QPA 拒绝 Qt 版本
 
-**不要**靠改包内文件或手工拷贝 `qhyremote` 绕过这道闸；正确做法是显式去限定另一条 Qt 线。
+这是预期的 fail-closed 行为。
 
-## 部署后的 QPA 应用找不到 `hyremote`
+QPA 使用 Qt private ABI，当前参考为 **Qt 6.8.3 exact**。不要通过手工复制 `qhyremote` 或修改 package metadata 绕过版本约束。
 
-正常部署后的应用应当在自己的 Qt `plugins/platforms` 树下含有 `qhyremote`，并且**不需要**在 `QT_PLUGIN_PATH` 或 `QT_QPA_PLATFORM_PLUGIN_PATH` 上指向原始 SDK 路径。
+如果需要另一条 Qt private-ABI 线，应先完成对应资格化。
 
-如果插件只存在于 SDK 的暂存前缀里，请把它当作**部署缺陷**处理，而不是长期把 SDK 目录加进环境变量。
+## 部署后的应用找不到 HyRemote Plugin / Runtime
 
-## Windows 上 Qt 相关测试起不来
+正常部署应该从应用自己的部署树运行，而不是依赖原始 SDK。
 
-运行**构建树内**的测试时，确保匹配的 Qt `bin` 与构建树的 `remoteaccess` 目录在 `PATH` 上可被发现。
+不要长期通过这些方式“修好”部署：
 
-对已安装/已部署的验收夹具，规则正好相反：**移除**原始 SDK/构建路径，验证应用能从自己的部署树运行。
+- `QT_PLUGIN_PATH` 指回 Qt/HyRemote SDK；
+- `QT_QPA_PLATFORM_PLUGIN_PATH` 指回构建目录；
+- `LD_LIBRARY_PATH` 指回 HyRemote build tree；
+- 手工复制内部 Core/transport/capture 文件。
 
-## Linux 上构建树测试只有设了 `LD_LIBRARY_PATH` 才通过
+重新检查 [`deployment.md`](deployment.md) 中对应的 `hyremote_deploy()` 调用。
 
-在开发者直接跑构建树测试时，把 Qt/构建输出目录放进 `LD_LIBRARY_PATH` 可以是合理的；但它**不是**已安装部署的可接受证据。
+## Windows 运行时找不到 Qt/HyRemote DLL
 
-`hyremote_deploy()` 必须产出一个**不依赖**原始 HyRemote SDK/构建目录即可解析共享门面与插件/QML 载荷的部署。
+确认应用已经执行产品部署，而不是只完成编译。
 
-## Linux 上 offscreen/Xvfb 通过，但本机桌面行为未知
+installed/deployed 应用应从自己的目录解析：
 
-无头 CI 只证明它实际执行到的行为，**不会**把本机可见的并存或某个桌面 QPA/图形组合升级为"已支持"。
+- Qt runtime；
+- `HyRemoteRemoteAccess`；
+- 对应 Generic/QPA/QML payload。
 
-物理本机显示/本地输入与远端并存的验收另行处理。
+不要把开发机 Qt `bin` 永久加入产品环境来掩盖部署缺失。
 
-## 查看端断开后输入看起来还按着
+## Linux 只有设置 `LD_LIBRARY_PATH` 才能运行
 
-查看端异常断开后，已识别到的按下键/按钮状态会被平衡。如果当前候选仍能在异常断开后复现按住残留，请记录**精确的事件序列**，并按回归处理。
+构建树调试时临时设置 `LD_LIBRARY_PATH` 可以帮助定位问题，但正式部署不应该依赖原 HyRemote/Qt SDK 路径。
 
-## 慢客户端或恶意客户端
+如果 deployed app 离开 build tree 就失败，应按部署问题处理。
 
-Core 的帧邮箱、RFB 帧交接、GUI 输入投递与未完成握手的存活期都在设计上有界。如果内存/工作量仍然无界增长，请当作**产品缺陷**处理，记录确切的客户端流量与复现步骤；**不要**用调大队列容量替代修复所有权/背压问题。
+## Headless/offscreen 能跑，但本机显示行为未知
 
-## 安全提醒
+Headless/offscreen 只说明对应代码路径能运行。
 
-当前 RFB SecurityType None 基线是未认证、未加密的。**不要**仅仅为了验证连通性就把监听器直接暴露到不可信/公网。见 [`security.md`](../security.md)。
+它不自动证明：
+
+- 物理显示器正常；
+- 本地键鼠正常；
+- QPA native delegate 的全部行为正常；
+- 特殊 GPU/rendering path 已经兼容。
+
+> **TODO V0.4：** 完成最终物理 Windows/Linux local + remote coexistence qualification。
+
+## 慢客户端导致资源增长
+
+HyRemote 的 frame handoff、transport 和输入路径设计为有界。
+
+如果一个慢客户端能够让内存、队列或工作量持续无界增长，应视为产品缺陷。不要简单通过扩大队列上限掩盖 backpressure/ownership 问题。
+
+## 安全问题
+
+V0.1 不提供加密 RFB stream。
+
+如果你遇到：
+
+- 非回环启动被拒绝；
+- `AuthenticatedEncrypted` 无法启动；
+- viewer password 与预期不一致；
+
+先阅读 [`../security.md`](../security.md)。
+
+不要为了“先连通”而把当前产品直接暴露到公网。
+
+## 仍然无法定位
+
+请记录至少：
+
+- HyRemote 版本/commit；
+- Qt 精确版本；
+- OS/architecture；
+- integration frontend；
+- Widgets / Quick 目标类型；
+- viewer 与版本；
+- 启动参数；
+- `lastError()` / 日志；
+- 是否为 source build 或 installed SDK；
+- 是否使用 `hyremote_deploy()`。
+
+这些信息足以让问题首先按产品边界定位，而不是从内部模块猜测。

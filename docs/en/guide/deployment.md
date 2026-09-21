@@ -2,121 +2,192 @@
 
 > Language / 语言: **English** | [中文](../../guide/deployment.md)
 
-HyRemote owns deployment of its product runtime and integration payloads instead of requiring application developers to discover internal backend files manually.
+HyRemote uses one `hyremote_deploy()` family to deploy its Shared Runtime and integration payloads. Applications should not copy HyRemote internals by filename or depend on the original source/build tree at runtime.
 
 ## One deployment entry point
 
-The installed SDK and source/add_subdirectory acquisition expose the same application-facing helper:
+Installed-SDK and source acquisition use the same application-facing helper:
 
 ```cmake
 hyremote_deploy(TARGET MyCppApp)
 hyremote_deploy(TARGET MyQmlApp QML)
+hyremote_deploy(TARGET ExistingQtApp GENERIC)
 hyremote_deploy(TARGET ExistingQtApp QPA)
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 ```
 
-These forms extend one deployment contract; they do not create separate runtime architectures.
+The four integration frontends share one Runtime. The options select deployment payloads; they do not create another Runtime architecture.
 
-`QML` and `QPA` select optional payloads that must already exist in the chosen HyRemote build/package. They are not build-option switches: `hyremote_deploy()` does not turn a C++-only SDK into a QML/QPA SDK at application configure time. A requested optional payload that is unavailable fails closed during configuration instead of producing an incomplete deployment that fails later at runtime.
+## Product payload model
 
-## Fixed V1 artifact model
+| Payload | Role |
+| --- | --- |
+| `HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` | One Shared Runtime |
+| QML `HyRemote` module | Declarative QML frontend payload |
+| Generic Plugin | Qt generic-plugin payload that preserves the native Qt platform |
+| `qhyremote` | QPA platform-plugin payload |
+| Core | Internal static composition, not a separately deployed application Runtime |
 
-Normal V1 deployment is intentionally simple:
-
-- `HyRemote::RemoteAccess` is one shared C++ product library;
-- Core is statically composed behind that facade and is not a separate runtime payload;
-- `qhyremote` is one Qt platform MODULE for Transparent QPA;
-- the QML module is a thin wrapper over the same shared `RemoteAccess` runtime.
-
-`BUILD_SHARED_LIBS` does not switch the normal product between static and shared personalities.
-
-Applications must not copy or select Core, Session, RFB, capture, input, adapter, or backend implementation files by name.
-
-## Ordinary C++ deployment
-
-For a C++ Widgets/Quick application:
+## C++ API deployment
 
 ```cmake
+find_package(HyRemote CONFIG REQUIRED)
+
 install(TARGETS MyApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyApp)
 ```
 
-Qt's normal deployment script owns Qt runtime placement. The HyRemote supplemental script installs the single `HyRemoteRemoteAccess` shared library and asks Qt's deployment support to resolve that library's Qt dependencies.
+The application links `HyRemote::RemoteAccess`; the deployment helper carries the Shared Runtime and its Qt runtime closure.
 
-The application developer should not need to locate `HyRemoteRemoteAccess.dll` / `libHyRemoteRemoteAccess.so` manually.
+Applications should not locate `HyRemoteRemoteAccess.dll` or `libHyRemoteRemoteAccess.so` manually.
 
-## QML deployment
+## Generic Plugin deployment
 
-Build/install HyRemote with the QML API enabled, then package the application with:
+Generic Plugin is the primary V0.1 zero-code route. The application remains Qt-only:
 
 ```cmake
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
+
+find_package(HyRemote CONFIG REQUIRED)
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp GENERIC)
+```
+
+The deployed tree contains:
+
+- the HyRemote Generic Plugin;
+- the Shared Runtime;
+- the application's normal native Qt platform plugin;
+- required Qt runtime dependencies.
+
+Generic Plugin does not replace the Qt platform. The application should still run with its normal `qwindows`, `qxcb`, or other Qt-provided platform identity.
+
+Activate it with Qt's generic-plugin mechanism:
+
+```text
+MyExistingApp -plugin hyremote
+```
+
+or:
+
+```text
+QT_QPA_GENERIC_PLUGINS=hyremote
+```
+
+See [`../getting-started/generic.md`](../getting-started/generic.md).
+
+## QML API deployment — Preview
+
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
+
 install(TARGETS MyQmlApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-Both installed and source acquisition publish an absolute `HyRemote_QML_IMPORT_PATH` representing their current HyRemote QML import root. The helper appends that root to the application's existing QML import paths and uses Qt's supported QML-aware deployment machinery. The same supplemental HyRemote step carries the shared `RemoteAccess` runtime.
+QML deployment adds the `HyRemote` import module and reuses the same Shared Runtime.
 
-If the selected HyRemote build/package has no QML payload, `hyremote_deploy(... QML)` fails during configuration. It does not silently generate a deployment without `import HyRemote`.
+If the selected SDK does not contain the QML payload, configuration fails instead of producing an incomplete package that cannot resolve `import HyRemote`.
 
-See `docs/qml-consumption.md` and `docs/getting-started/qml.md`.
+> **TODO:** complete the final installed-SDK example and product qualification before promoting QML API from Preview.
 
-## Transparent QPA deployment
+## QPA deployment — Preview
 
 The application remains Qt-only at the source/link layer:
 
 ```cmake
 target_link_libraries(MyApp PRIVATE Qt6::Widgets)
-```
 
-Package through the installed HyRemote SDK:
-
-```cmake
 find_package(HyRemote CONFIG REQUIRED)
 install(TARGETS MyApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyApp QPA)
 ```
 
+Run with:
+
+```text
+MyApp -platform hyremote
+```
+
 The helper adds:
 
-- the exact SDK/source-built `qhyremote` platform module selected by acquisition;
-- the shared `HyRemoteRemoteAccess` runtime used internally by that module;
-- the Qt/native-platform dependencies resolved by Qt deployment tooling.
+- `qhyremote`;
+- the Shared Runtime;
+- the native Qt platform plugin selected by the Factory Trampoline;
+- required Qt runtime dependencies.
 
-The application executable itself still does not link `HyRemote::RemoteAccess`.
+QPA uses Qt private ABI and is therefore qualified per exact Qt patch. The current reference is Qt 6.8.3.
 
-The current QPA package is version-coupled to exact Qt 6.8.3. `hyremote_deploy(... QPA)` fails closed when the selected HyRemote build/package lacks QPA support or the consumer Qt version does not match the qualified private-ABI line.
+A consumer whose Qt version does not match the selected QPA payload should fail closed instead of guessing compatibility.
 
-On Linux, qhyremote carries a bounded origin-relative relocation anchor to the shared facade. When deployment moves the plugin into the application's normal `plugins/platforms` directory, HyRemote rewrites that package-owned RUNPATH segment to the application's Qt deploy library directory. Normal deployed applications should not require `LD_LIBRARY_PATH` or `QT_PLUGIN_PATH` merely to find HyRemote.
-
-For source/add_subdirectory consumption, qhyremote remains an internal build target and is kept inside the HyRemote sub-build rather than writing into the host application's top-level plugin build directory. The deploy helper resolves the target file directly, so this build isolation does not change application usage.
-
-See `docs/getting-started/qpa-proxy.md` and `docs/guide/install.md`.
+> **TODO:** broaden QPA support only after exact-version compatibility and physical local+remote coexistence are qualified for the target Qt/OS pair.
 
 ## QML + QPA
 
-A QML application may deliberately use both options when both optional payloads exist:
+A QML application may deliberately deploy both payloads:
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML QPA)
 ```
 
-`QML` selects Qt's QML-aware deployment flow and `QPA` adds the proxy module. Both still use the same shared `RemoteAccess` runtime; this is not a fourth runtime architecture. Availability/version checks for both selected payloads remain fail-closed.
+Both still reuse one Shared Runtime.
 
-## Security and network configuration
+## Generic and QPA are alternatives
 
-Deployment does not weaken product defaults:
+Generic and QPA are two different zero-code platform strategies:
 
-- Embedded C++ construction is inert;
-- QML remains disabled until explicitly enabled by application policy;
-- QPA listener creation follows the documented platform-plugin lifecycle;
-- loopback is the default bind;
+```text
+Generic: native Qt platform + HyRemote generic plugin
+QPA:     qhyremote Factory Trampoline -> native Qt platform
+```
+
+They are not two plugins that need to be enabled together. Choose the zero-code route that fits the application.
+
+## Self-contained deployment
+
+A product deployment should run without the original HyRemote SDK, Qt SDK, or build tree.
+
+Do not hide missing payloads by:
+
+- pointing `QT_PLUGIN_PATH` back to the Qt SDK;
+- pointing `LD_LIBRARY_PATH` back to a build tree;
+- copying internal HyRemote files manually from build output;
+- mixing source acquisition with installed-package metadata in one consumer.
+
+The deployed tree itself should contain the product payloads required by the application.
+
+## Windows / Linux
+
+Current V0.1 reference environments:
+
+- Windows x86_64 + Qt 6.8.3;
+- Linux x86_64 + Qt 6.8.3.
+
+On Linux, HyRemote handles relocation of its own Runtime/plugin payload so ordinary deployment does not depend on returning to the SDK location.
+
+See [`../../compatibility.md`](../../compatibility.md) for exact product status.
+
+## Security and deployment
+
+Deployment does not weaken the product defaults:
+
+- default bind is `127.0.0.1`;
 - remote input is disabled by default;
-- bare RFB SecurityType None provides no viewer authentication (a configured authenticated profile provides RFB VNC authentication instead), and no configuration provides transport encryption yet.
+- unauthenticated non-loopback exposure is rejected;
+- an authenticated profile may use RFB VNC authentication, but the current stream is not encrypted;
+- `AuthenticatedEncrypted` fails closed without opening a listener while the TLS/VeNCrypt backend is unavailable.
 
-If an application intentionally changes the bind address, its operator/deployment documentation must describe the resulting trust boundary. See `docs/security.md`.
+> **TODO V0.2:** VeNCrypt/TLS, certificate policy, authenticated sessions, and production network policy.
 
-## Deployment verification boundary
+Do not expose V0.1 directly to the public Internet. See [`../../security.md`](../../security.md).
 
-Normal V1 deployment requires that clean installed and declared source-consumption applications can run from their deployed tree without depending on the original HyRemote SDK/build runtime path. The four deployment call shapes are exercised independently where applicable; QML-only is not inferred from QML+QPA because they select different supplemental deployment paths.
+## Deployment check
 
-The reference environments are Windows x86_64 and Linux x86_64 with the exact Qt matrix defined by the milestone.
+After packaging, verify that:
+
+- the application starts without the original HyRemote/Qt SDK paths;
+- a C++ API application loads the Shared Runtime;
+- a Generic application contains the HyRemote generic plugin and the native Qt platform plugin;
+- a QPA application contains `qhyremote` and the matching native delegate chain;
+- a QML application resolves `import HyRemote`;
+- runtime search paths do not point back to the source/build tree.
