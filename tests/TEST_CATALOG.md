@@ -1,215 +1,238 @@
 # HyRemote Test Catalog
 
-> Phase A audit for #274. Baseline: `develop` at `97083f874491c8c4987856340c83c4157c7d3d6f`.
+> Phase A audit for #274. Repository facts refreshed against `develop` at `6dc244a8717bdc520544c71d9756499033857c73`.
 >
-> This file is an ownership/necessity catalog, not a new execution authority. Phase A does not move, delete, rename or reselect tests. Matrix-dependent tests remain guarded by their existing capabilities.
+> This file is the authoritative **necessity / ownership / disposition** catalog. It does not replace CTest/CMake as execution authority. The exact hosted all-frontends registration baseline is in [`EXECUTION_BASELINE.md`](EXECUTION_BASELINE.md), scenario details are in [`TEST_SCENARIOS.md`](TEST_SCENARIOS.md), capability/cost mapping is in [`TEST_MATRIX.md`](TEST_MATRIX.md), and missing coverage is in [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md).
 
-## 1. Taxonomy
+## 1. Taxonomy and final Phase-A decisions
 
 | Layer | Meaning | Typical owner |
 | --- | --- | --- |
-| T1 | deterministic module/component behavior, including private implementation seams | Core, Runtime, RFB backend, Widgets/Quick Runtime adapters |
+| T1 | deterministic module/component behavior, including private implementation seams | Core, Runtime, RFB, Widgets/Quick Runtime adapters |
 | T2 | behavior unique to one peer integration frontend | C++, QML, Generic, QPA |
-| T3 | repository/product contract independent of one release candidate | build authority, source layout, CI classifier, public API shape |
-| T4 | external consumer/package/deploy contract | installed/source consumer, relocation, deployment |
-| T5 | user/adoption/product end-to-end flow | examples, product-fit harnesses |
-| T6 | release/candidate-specific authority and qualification | release profile/scope/metadata/readiness |
+| T3 | repository/product contract independent of one release candidate | build authority, layout, CI classifier, public API shape |
+| T4 | external consumer/package/deploy contract | installed/source consumers, relocation, deploy |
+| T5 | user/adoption/product end-to-end flow | examples, viewer/product-fit harnesses |
+| T6 | release/candidate-specific authority and qualification | release scope/profile/metadata/readiness |
 
-Decision values used in Phase A:
+Final disposition values:
 
-- `KEEP`: correct purpose and no proven redundant replacement.
-- `MOVE`: necessary test, but semantic owner/location is wrong.
-- `SPLIT`: one test currently protects multiple unrelated contracts that need clearer ownership/diagnostics.
-- `MERGE`: distinct file/cell exists, but its contract is already covered more strongly elsewhere.
-- `RETIRE`: no unique necessary contract remains.
-- `REVIEW`: evidence is insufficient to choose KEEP/MOVE/MERGE/RETIRE yet.
+- `KEEP`: distinct necessary contract remains with its current semantic owner.
+- `MOVE`: necessary contract, wrong semantic/physical owner.
+- `SPLIT`: one current test combines contracts with different owners/failure meanings.
+- `MERGE`: keep the contract but consolidate it into a stronger equivalent test.
+- `RETIRE`: no distinct necessary contract remains.
+- `GAP`: required evidence is absent or a claimed scenario is not actually executed.
 
-A test is necessary only when it protects observable product behavior, an expensive architecture/security invariant, a known regression, external install/deploy behavior, real user/interoperability flow, or release truth.
+Phase A leaves **no `REVIEW` disposition**. A future uncertainty is recorded as a GAP with an owner rather than left as an unbounded review state.
 
-## 2. Core — T1
+## 2. T1 Core — all KEEP
 
-All Core tests are correctly owned under `src/core/tests`. They are host-runnable and protect transport/UI/platform-neutral invariants.
-
-| CTest / executable | Decision | Necessity / protected contract | Failure meaning |
-| --- | --- | --- | --- |
-| `hyremote-core-test-frame-lifetime` | KEEP | `RemoteFrame` storage/lifetime survives asynchronous handoff without dangling buffers | Core frame ownership contract is unsafe |
-| `hyremote-core-test-damage` | KEEP | damage tri-state/region semantics remain deterministic | future incremental delivery can send wrong regions |
-| `hyremote-core-test-timing` | KEEP | PTS/capture scheduling/timing semantics remain bounded | pacing and observability become unreliable |
-| `hyremote-core-test-mailbox` | KEEP | bounded queue/drop/backpressure mechanics | memory/resource bound or ordering contract regresses |
-| `hyremote-core-test-transport-handoff` | KEEP | Core-to-transport frame/input/event handoff semantics | Runtime backends can observe invalid ordering/lifetime |
-| `hyremote-core-test-session-lifecycle` | KEEP | state machine, fault escalation, deterministic teardown, concurrent stop/start edges, counters | one Shared Runtime cannot rely on deterministic Core lifecycle |
-| `hyremote-core-test-session-defaults` | KEEP | default `SessionConfig` and contract-safe defaults | callers can enter invalid/unsafe behavior without opting in |
-| `hyremote-core-test-input-routing` | KEEP | transport input reaches only the configured Core input sink under bounded lifecycle | remote input can be dropped/misrouted after composition |
-| `hyremote-core-test-input-normalization` | KEEP | normalized input representation is stable across backends | adapters/backends disagree on input semantics |
-| `hyremote-core-test-callback-lifetime` | KEEP | callbacks do not outlive/dangle across stop/destruction | use-after-free / post-stop callback risk |
-| `hyremote-core-test-callback-exception-boundary` | KEEP | backend callback exceptions are contained instead of terminating host | faulty backend can crash embedding Qt process |
-| `hyremote-core-test-dependency-boundary` | KEEP | Core remains Qt-GUI/protocol/platform neutral and does not link Qt product targets | canonical `integrations -> runtime -> core` dependency rule is broken |
-
-### Core scenario-level note
-
-`test_session_lifecycle.cpp` is intentionally multi-scenario. Current meaningful scenario families all earn their place: documented state transitions; repeated start/stop; capture/transport start failure cleanup; recoverable vs fatal event escalation; invalid configuration; idempotent stop; in-flight capture bounds/retry; backend exception containment; concurrent stop ownership; and stop-during-start races. Phase B may split it only if failure diagnosis remains too broad; splitting is not required merely because the file is large.
-
-## 3. Shared Runtime / RFB / target adapters
-
-### 3.1 Correctly Runtime-owned today
-
-| CTest | Current owner | Decision | Necessity |
-| --- | --- | --- | --- |
-| `hyremote-runtime-automatic-surface-model-test` | Runtime | KEEP | proves application-surface discovery/model decisions independent of QPA/Generic frontend |
-| `hyremote-runtime-automatic-composite-capture-test` | Runtime | KEEP | proves composite capture geometry/composition behavior used by automatic access |
-| `hyremote-runtime-automatic-composite-input-test` | Runtime | KEEP | proves input routing across the same composite model |
-| `hyremote-build-authority-selftest` | Runtime registration | MOVE -> T3 repository | necessary, but build/bootstrap authority is not Runtime behavior |
-
-### 3.2 Runtime/backend tests currently misowned by C++ frontend
-
-These tests are necessary, but their implementation includes Runtime private headers/source and they protect Runtime/backend/adapter behavior rather than C++ facade semantics.
-
-| Current CTest | Target owner | Decision | Necessity / protected contract |
-| --- | --- | --- | --- |
-| `hyremote-security-descriptor-test` | Runtime/security | MOVE | descriptor parsing/validation and fail-closed credential configuration |
-| `hyremote-vnc-auth-test` | Runtime/RFB security | MOVE | VNC challenge/response primitive correctness |
-| `hyremote-rfb-vnc-auth-handshake-test` | Runtime/RFB | MOVE | RFB security negotiation and positive/negative VNC Auth handshake |
-| `hyremote-rfb-multi-client-input-test` | Runtime/RFB | MOVE | simultaneous viewer input ownership/cleanup semantics |
-| `hyremote-listener-address-matrix-test` | Runtime/network | MOVE | loopback/non-loopback bind policy and address handling |
-| `hyremote-input-mailbox-admission-test` | Runtime | MOVE | Runtime-side bounded admission of transport input before GUI dispatch |
-| `hyremote-target-component-provider-test` | Runtime/adapters | MOVE | target -> capture/input component selection independent of public C++ facade |
-| `hyremote-widgets-capture-test` | Runtime/Widgets adapter | MOVE | QWidget capture correctness |
-| `hyremote-widgets-input-routing-test` | Runtime/Widgets adapter | MOVE | QWidget input injection/routing |
-| `hyremote-widgets-input-backpressure-test` | Runtime/Widgets adapter | MOVE | bounded GUI-thread input delivery under pressure |
-| `hyremote-quick-capture-test` | Runtime/Quick adapter | MOVE | QQuickWindow capture correctness |
-| `hyremote-quick-input-routing-test` | Runtime/Quick adapter | MOVE | QQuickWindow input injection/routing |
-| `hyremote-quick-input-backpressure-test` | Runtime/Quick adapter | MOVE | bounded Quick input delivery under pressure |
-| `hyremote-rfb-widget-disconnect-backpressure-test` | Runtime/RFB + Widgets integration | MOVE | disconnected/slow viewer must not break bounded capture/input lifecycle |
-
-Support-only files `rfb_test_server.cpp` and `rfb_product_fit.py` are not ordinary CTest owners; they should move with the RFB/product-fit owner if Phase B centralizes the Runtime RFB harness.
-
-## 4. C++ frontend — T2
-
-Only facade/public behavior unique to `HyRemote::RemoteAccess` should remain here.
-
-| CTest | Decision | Necessity |
+| CTest | Decision | Protected contract / failure meaning |
 | --- | --- | --- |
-| `hyremote-remoteaccess-test` | KEEP | safe defaults, inert construction, public config mutability, lifecycle forwarding, move ownership, client-count/error mapping and security fail-closed behavior of the C++ facade |
-| `hyremote-remoteaccess-error-ack-test` | KEEP | public `lastError()/clearError()` acknowledgement contract; prevents stale/accidentally cleared error semantics |
-| `hyremote-remoteaccess-target-loss-test` | KEEP | public facade response when the bound QObject/target disappears; protects embedding-app safety |
+| `hyremote-core-test-frame-lifetime` | KEEP | frame storage/lifetime survives async handoff; failure means unsafe/dangling ownership |
+| `hyremote-core-test-damage` | KEEP | deterministic damage tri-state/regions |
+| `hyremote-core-test-timing` | KEEP | PTS/capture timing/scheduling semantics |
+| `hyremote-core-test-mailbox` | KEEP | bounded queue/drop/backpressure mechanics |
+| `hyremote-core-test-transport-handoff` | KEEP | Core↔transport frame/input/event handoff |
+| `hyremote-core-test-session-lifecycle` | KEEP | Session state machine, fault escalation, concurrency and deterministic teardown |
+| `hyremote-core-test-session-defaults` | KEEP | safe valid default SessionConfig |
+| `hyremote-core-test-input-routing` | KEEP | transport input reaches only the configured sink under lifecycle bounds |
+| `hyremote-core-test-input-normalization` | KEEP | backend-independent input vocabulary |
+| `hyremote-core-test-callback-lifetime` | KEEP | callbacks cannot outlive stop/destruction |
+| `hyremote-core-test-callback-exception-boundary` | KEEP | backend callback exceptions do not terminate the host |
+| `hyremote-core-test-dependency-boundary` | KEEP | Core remains Qt-GUI/protocol/platform neutral |
 
-The C++ facade tests may use controlled Runtime fakes. They should not own RFB/security parser or GUI adapter implementation tests.
+`hyremote-core-test-session-lifecycle` intentionally contains many related state-machine regressions. File size alone is not a reason to split it; scenario-level rationale is in `TEST_SCENARIOS.md`.
 
-## 5. QML frontend — T2
+## 3. T1 Shared Runtime / RFB / target adapters
 
-| CTest | Decision | Necessity |
+### Correctly Runtime-owned
+
+| CTest | Decision | Protected contract |
 | --- | --- | --- |
-| `hyremote-qml-module-test` | KEEP | QML module/import/type registration and declarative facade semantics are available from the built payload |
-| `hyremote-qml-deploy-helper-non-qml` | REVIEW | validates deployment helper route selection; contract may belong to central T4 deploy tests rather than QML ownership |
-| `hyremote-qml-deploy-helper-qml` | REVIEW | same as above for QML deployment; retain until overlap with root/QPA deploy-helper tests is mapped |
+| `hyremote-runtime-automatic-surface-model-test` | KEEP | automatic application-surface model |
+| `hyremote-runtime-automatic-composite-capture-test` | KEEP | composite geometry/capture |
+| `hyremote-runtime-automatic-composite-input-test` | KEEP | composite input routing |
 
-QML tests must not duplicate Shared Runtime lifecycle/security behavior merely through the declarative wrapper. V0.2 typed notifications should add parity tests only for QML-observable semantics.
+### Necessary tests currently misowned by C++
 
-## 6. Generic frontend — T2
-
-| CTest | Decision | Necessity |
+| CTest | Final decision | Target owner / rationale |
 | --- | --- | --- |
-| `hyremote-generic-plugin-smoke` | KEEP | proves Qt generic-plugin activation from `QT_QPA_GENERIC_PLUGINS`, with native QPA preserved and no application HyRemote API/link requirement |
+| `hyremote-security-descriptor-test` | MOVE | Runtime/security; descriptor parsing/fail-closed credentials are not C++ facade behavior |
+| `hyremote-vnc-auth-test` | MOVE | Runtime/RFB security primitive |
+| `hyremote-rfb-vnc-auth-handshake-test` | MOVE | Runtime/RFB wire negotiation/auth/no-downgrade/timeout |
+| `hyremote-rfb-multi-client-input-test` | MOVE | Runtime/RFB viewer-held-state isolation |
+| `hyremote-listener-address-matrix-test` | SPLIT | keep public `RemoteAccess` config/error mapping rows under C++; move bind/address-family/wildcard/IPv6 behavior to Runtime/RFB when extracted; do not duplicate behavior |
+| `hyremote-input-mailbox-admission-test` | MOVE | Runtime admission/backpressure before GUI adapter delivery |
+| `hyremote-target-component-provider-test` | MOVE | Runtime target→capture/input adapter selection |
+| `hyremote-widgets-capture-test` | MOVE | Runtime/Widgets capture; forced-HiDPI execution is GAP TG-001 |
+| `hyremote-widgets-input-routing-test` | MOVE | Runtime/Widgets input routing |
+| `hyremote-widgets-input-backpressure-test` | MOVE | Runtime/Widgets bounded GUI dispatch and held-release reserve |
+| `hyremote-quick-capture-test` | MOVE | Runtime/Quick capture; forced-HiDPI execution is GAP TG-002 |
+| `hyremote-quick-input-routing-test` | MOVE | Runtime/Quick input routing |
+| `hyremote-quick-input-backpressure-test` | MOVE | Runtime/Quick bounded GUI dispatch |
+| `hyremote-rfb-widget-disconnect-backpressure-test` | MOVE | Runtime/RFB+Widgets cross-component disconnect cleanup under saturation |
 
-The stronger clean installed Generic Widgets/Quick paths are T4 and remain separately necessary because in-tree plugin activation cannot prove install/deploy isolation.
+`rfb_test_server.cpp` is support code and `rfb_product_fit.py` is a T5 harness; both leave C++ physical ownership when Phase B/D establishes the shared RFB harness owner.
 
-## 7. QPA frontend — T2 plus QPA-specific deployment contracts
+## 4. T2 C++ frontend — facade only
 
-Runtime/QPA behavior that is unique to the exact-private-ABI Factory-Trampoline remains justified.
-
-| CTest | Decision | Necessity |
+| CTest | Decision | Protected contract |
 | --- | --- | --- |
-| `hyremote-qpa-proxy-smoke` | KEEP | platform plugin loads and delegates through native platform path |
-| `hyremote-qpa-native-semantics` | KEEP | exact Qt-private delegate/native QPA semantics remain intact |
-| `hyremote-qpa-remote-config-test` | KEEP | QPA launch/config vocabulary parses correctly without re-owning Runtime composition |
-| `hyremote-qpa-auto-remoteaccess-smoke` | KEEP | zero-code QPA route actually starts shared Runtime |
-| `hyremote-qpa-remote-failure-native-survival-smoke` | KEEP | remote-access failure must not destroy local/native Qt application survival |
-| `hyremote-qpa-multi-surface-connection-smoke` | KEEP | multiple QWidget surfaces remain usable through QPA automatic composition |
-| `hyremote-qpa-widget-popup-connection-smoke` | KEEP | popup/transient QWidget behavior survives proxy/delegate path |
-| `hyremote-qpa-widget-opengl-capture-smoke` | KEEP conditional | protects real QOpenGLWidget capture classification when Qt OpenGLWidgets exists |
-| `hyremote-qpa-quick-multi-window-connection-smoke` | KEEP | multiple Quick windows survive QPA proxy path |
+| `hyremote-remoteaccess-test` | KEEP | safe defaults, inert construction, config mutability, lifecycle forwarding, move ownership, client count/error mapping, fail-closed encrypted-profile facade behavior |
+| `hyremote-remoteaccess-error-ack-test` | KEEP | public error acknowledgement/reappearance contract |
+| `hyremote-remoteaccess-target-loss-test` | KEEP | public facade response to target destruction/loss |
 
-QPA deploy-helper tests (`ordinary`, `qml-only`, `qml-composed`, installed-payload variants, negative missing/stale metadata cases, Qt mismatch, generator matrix, Linux source-payload relocation) are necessary contracts but are marked `REVIEW` for Phase B physical ownership. They may remain QPA-specific T4 tests or move under a central deploy-contract area; the criterion is unique QPA deployment value, not file location aesthetics.
+C++ tests may use controlled Runtime fakes; they must not become the home for RFB parser/security or GUI-adapter internals.
 
-## 8. Repository/product contracts — T3
+## 5. T2 QML frontend
 
-| CTest / asset | Decision | Necessity |
+| CTest | Decision | Protected contract |
 | --- | --- | --- |
-| `hyremote-build-authority-selftest` | MOVE here | canonical `compile.cmd -> CMake/build.yml` behavior must not drift |
-| `hyremote-ci-scope-self-test` | KEEP | CI path classifier decides what evidence executes; a bad classifier can create false-green lanes |
-| `hyremote-mainline-audit-self-test` | KEEP | retry/verification behavior of mainline audit must be executable, not prose-only |
-| `hyremote-branch-name-gate-self-test` | KEEP | branch-family policy is executable repository contract |
-| `tests/public-api-contract` | KEEP | freezes exported C++ target/API shape and prevents Core/QPA/Widgets/Quick/QML dependency leakage |
-| `hyremote-release-readiness-runtime-contract` | MOVE/SPLIT -> T3 | current filename/location says release, but much of it protects cross-release Runtime architecture |
-| `hyremote-release-readiness-repository-layout` | MOVE -> T3 | canonical source/dependency layout is repository truth, not release-only truth |
-| `hyremote-release-readiness-documentation-paths` | REVIEW -> T3 | keep only assertions that protect live navigability/authority; remove wording/history policing |
-| `hyremote-release-readiness-ci-environment-baseline` | MOVE -> T3 | CI reference environment/toolchain truth is repository automation contract |
-| `hyremote-release-readiness-licensing-boundary` | MOVE -> T3 | dependency/license boundary is product/repository contract across releases |
+| `hyremote-qml-module-test` | KEEP | import/type registration, safe declarative defaults, transactional enabled/config/error semantics, target lifetime |
+| `hyremote-qml-deploy-helper-non-qml` | MOVE -> T4 | ordinary deploy dispatch must not mutate application QML import paths |
+| `hyremote-qml-deploy-helper-qml` | MOVE -> T4 | QML deploy dispatch must preserve app import paths and add installed HyRemote import root |
 
-## 9. External consumer / package / deploy — T4
+The two deploy-helper tests stay behaviorally distinct from the QML module test and from exact-SHA installed-QML evidence.
 
-| Test/cell | Decision | Necessity |
+## 6. T2 Generic frontend
+
+| CTest | Decision | Protected contract |
 | --- | --- | --- |
-| `hyremote-cpp-installed-consumers` (`installed-cpp-widgets`, `installed-cpp-quick`) | KEEP | V0.1 primary C++ product promise from clean installed SDK with real Widgets and Quick lifecycle |
-| `hyremote-generic-installed-consumers` (`installed-generic-widgets`, `installed-generic-quick`) | KEEP | V0.1 primary zero-code promise from clean installed SDK while preserving native QPA |
-| `tests/consumer-installed-sdk` / release cell `installed-sdk` | KEEP but RENAME/clarify | distinct minimal installed public-package/deploy smoke: no Widgets/Quick adapter dependency; catches package/export/deploy closure failures that adapter consumers can mask. Current name is ambiguous |
-| `tests/consumer-source` / `source-consumer` | KEEP | source/add_subdirectory consumption must not inherit developer-only switches or require installed-package assumptions |
-| `tests/consumer-installed-qml` / installed QML evidence | KEEP preview | clean declarative payload consumption remains distinct from in-tree QML module smoke |
-| `tests/consumer-installed-qpa` / installed QPA product-fit | KEEP preview | exact private-ABI QPA package/deploy path cannot be proved by in-tree plugin tests |
-| `hyremote-release-readiness-deployment-relocation` | MOVE -> T4 | relocation is a package/deploy contract, not inherently release-only |
-| `hyremote-release-readiness-deploy-helper-contract` | MOVE/SPLIT -> T4 | one deploy family is a persistent SDK contract; split by acquisition/frontend only when it improves diagnosis |
-| `hyremote-release-readiness-consumer-simplicity` | MOVE -> T4/T3 | proves applications do not learn internal targets/choices |
-| `hyremote-release-readiness-package-acquisition-isolation` | MOVE -> T4 | installed package must not leak source/build-tree acquisition |
+| `hyremote-generic-plugin-smoke` | KEEP | Qt generic-plugin activation with native QPA preserved and no application HyRemote API/link requirement |
 
-Release evidence runner cells remain evidence production, not substitutes for lower-layer behavior tests. Every cell must state the unique external-delivery claim it proves.
+Installed Generic Widgets/Quick tests remain separate T4 contracts because in-tree activation cannot prove clean SDK acquisition/deployment.
 
-## 10. Product/adoption E2E — T5
+## 7. T2 QPA frontend behavior
 
-| Test/asset | Decision | Necessity |
+| CTest | Decision | Protected contract |
 | --- | --- | --- |
-| `hyremote-v01-example-smoke` | KEEP | installs SDK, configures/builds 01/02/03 independently, launches them and checks adoption path/native platform/lifecycle |
-| `tests/product-e2e/example_product_fit.py` | REVIEW | keep only user-level behavior not already covered by `hyremote-v01-example-smoke` plus lower layers |
-| `tests/product-e2e/qml_product_fit.py` | KEEP/REVIEW | QML preview user-flow has value, but overlap with installed-QML and module tests must be made explicit |
-| `tests/product-e2e/showcase_product_fit.py` | REVIEW | showcase-specific UX/product behavior must be identified; retire if it only repeats lower-level RFB checks |
-| `src/integrations/cpp/tests/rfb_product_fit.py` | MOVE -> T5/RFB harness | black-box protocol/product-fit value exists, but C++ frontend is the wrong semantic owner |
+| `hyremote-qpa-proxy-smoke` | KEEP | platform plugin load/delegate path |
+| `hyremote-qpa-native-semantics` | KEEP | exact-private-ABI native delegate semantics |
+| `hyremote-qpa-remote-config-test` | KEEP | QPA-only launch/config vocabulary |
+| `hyremote-qpa-auto-remoteaccess-smoke` | KEEP | QPA starts the one Shared Runtime |
+| `hyremote-qpa-remote-failure-native-survival-smoke` | KEEP | remote failure does not destroy local/native app |
+| `hyremote-qpa-multi-surface-connection-smoke` | KEEP | multiple QWidget surfaces through proxy |
+| `hyremote-qpa-widget-popup-connection-smoke` | KEEP | popup/transient semantics through proxy |
+| `hyremote-qpa-widget-opengl-capture-smoke` | KEEP conditional | QOpenGLWidget capture classification when Qt OpenGLWidgets exists |
+| `hyremote-qpa-quick-multi-window-connection-smoke` | KEEP | multiple Quick windows through proxy |
 
-## 11. Release authority / readiness — T6
+QPA deployment tests are not T2 behavior tests; they move as a group to T4 while preserving their scenarios.
 
-| CTest | Decision | Necessity |
+## 8. T3 repository/product contracts
+
+| CTest / fixture | Decision | Protected contract |
 | --- | --- | --- |
-| `hyremote-release-readiness-metadata` | SPLIT/KEEP | keep release/version/security truth; move cross-release documentation/repository checks to T3 |
-| `hyremote-release-readiness-release-authority-policy` | KEEP | machine release-train authority must match governance and fail closed |
-| `hyremote-release-readiness-release-documentation-layout` | KEEP | candidate/release note/package documentation presence/layout is release-specific |
-| `hyremote-release-scope-self-test` | KEEP | exact requested train resolves only its own mandatory WBS and unknown trains fail closed |
-| `hyremote-release-readiness-source-qpa-authority` | REVIEW | likely valid QPA acquisition-authority negative test; determine whether T4 is the better permanent owner |
-| `hyremote-release-profile-develop-all` | KEEP | 0.0.0 development sentinel accepts broad capability build |
-| `hyremote-release-profile-develop-runtime-only` | KEEP | sentinel also supports reduced capability build |
-| `hyremote-release-profile-retire-v001` | KEEP | retired frontend-coded version must remain rejected |
+| `hyremote-build-authority-selftest` | MOVE | canonical `compile.cmd -> CMake/build.yml`; currently registered by Runtime |
+| `hyremote-ci-scope-self-test` | KEEP | classifier cannot create false-green/incorrect evidence lanes |
+| `hyremote-mainline-audit-self-test` | KEEP | mainline audit retry/verification logic is executable |
+| `hyremote-branch-name-gate-self-test` | KEEP | branch-family governance |
+| `tests/public-api-contract` | KEEP | exported target/API/dependency surface; reword stale V1-only vocabulary without weakening assertions |
+| `hyremote-release-readiness-runtime-contract` | SPLIT | move cross-release architecture/dependency invariants to T3; retain only candidate-specific truth in T6 |
+| `hyremote-release-readiness-repository-layout` | MOVE | canonical source/dependency layout is repository truth |
+| `hyremote-release-readiness-documentation-paths` | MOVE | verifies maintained Markdown file links resolve; no candidate-specific semantics |
+| `hyremote-release-readiness-ci-environment-baseline` | MOVE | hosted/reference CI environment truth |
+| `hyremote-release-readiness-licensing-boundary` | MOVE | dependency/license boundary across releases |
+
+## 9. T4 external consumer / package / deploy
+
+### Consumers and persistent package contracts
+
+| Test/cell | Decision | Distinct necessity |
+| --- | --- | --- |
+| `hyremote-cpp-installed-consumers` | KEEP | clean installed Widgets+C++ and Quick+C++ primary paths |
+| `hyremote-generic-installed-consumers` | KEEP | clean installed Generic Widgets/Quick with native platform identity |
+| `tests/consumer-installed-sdk` / `installed-sdk` | KEEP, rename later | minimal package/export/deploy closure without an adapter-specific application; catches failures stronger consumers can mask |
+| `tests/consumer-source` / `source-consumer` | KEEP | source/add_subdirectory consumption remains independent of installed-package assumptions |
+| installed QML consumer/evidence | KEEP preview | clean declarative payload consumption |
+| installed QPA consumer/product-fit | KEEP preview | clean exact-private-ABI QPA package/deploy behavior |
+| `hyremote-release-readiness-deployment-relocation` | MOVE | relocation is a persistent package/deploy contract |
+| `hyremote-release-readiness-deploy-helper-contract` | MOVE | persistent static deploy/package contract; keep static proof layer distinct from execution fixtures |
+| `hyremote-release-readiness-consumer-simplicity` | MOVE | external apps must not learn internal targets/choices |
+| `hyremote-release-readiness-package-acquisition-isolation` | MOVE | installed package must not acquire source/build tree |
+| `hyremote-release-readiness-source-qpa-authority` | MOVE | negative QPA source/installed acquisition-authority scenario, not release-specific truth |
+
+### QPA deploy-helper registered matrix — all MOVE to T4/QPA deploy-contract
+
+Each name protects a distinct configuration or negative failure reason, so none is approved for deletion:
+
+- `hyremote-qpa-deploy-helper-ordinary`
+- `hyremote-qpa-deploy-helper-qml-only`
+- `hyremote-qpa-deploy-helper-qml-composed`
+- `hyremote-qpa-deploy-helper-installed-payload`
+- `hyremote-qpa-deploy-helper-installed-payload-qml-only`
+- `hyremote-qpa-deploy-helper-installed-payload-qml`
+- `hyremote-qpa-deploy-helper-reject-missing-qml`
+- `hyremote-qpa-deploy-helper-reject-stale-qml-metadata`
+- `hyremote-qpa-deploy-helper-reject-missing-qml-root`
+- `hyremote-qpa-deploy-helper-reject-missing-qml-module-dir`
+- `hyremote-qpa-deploy-helper-reject-stale-qpa-metadata`
+- `hyremote-qpa-deploy-helper-reject-qt-mismatch`
+- `hyremote-qpa-deploy-helper-reject-missing-package`
+- `hyremote-qpa-deploy-helper-single-config-generator`
+- `hyremote-qpa-deploy-helper-multi-config-generator`
+- `hyremote-qpa-source-payload-relocation` — Linux-only by explicit guard.
+
+Phase B may share fixture/runner code with QML deploy tests, but static contract scan, deterministic negative configure matrix and real exact-SHA release evidence are **different proof layers**, not duplicates.
+
+## 10. T5 product/adoption E2E
+
+| Test/asset | Decision | Distinct necessity / follow-up |
+| --- | --- | --- |
+| `hyremote-v01-example-smoke` | KEEP | shipped SDK -> independently build/deploy/run canonical 01/02/03; proves adoption path and Generic native identity |
+| `src/integrations/cpp/tests/rfb_product_fit.py` | MOVE + GAP TG-009 | maintained-viewer framebuffer/input/reconnect/timeout/held-input user-level evidence; move to semantic RFB E2E owner and give it explicit execution authority |
+| `tests/product-e2e/example_product_fit.py` | KEEP | app-level Widgets/Quick view-only→control, framebuffer, buttons/wheel/modifiers/text, reconnect/listener-release contract is stronger/different than adoption smoke; retarget scenario naming/inputs to canonical 01/02 and never resurrect removed flat examples |
+| `tests/product-e2e/qml_product_fit.py` | KEEP | QML-visible client count, view-only isolation, same-process stop→configure→start, control input and reconnect; preview/non-fast E2E |
+| `tests/product-e2e/showcase_product_fit.py` | KEEP | maintained showcase-specific `SHOWCASE_CLIENTS` lifecycle, remote input, reconnect and listener release; non-fast and not a V0.1 primary blocker |
+
+Dormant test code is not evidence. TG-009/TG-011 record missing execution ownership where applicable.
+
+## 11. T6 release/candidate authority
+
+| CTest | Decision | Protected release truth |
+| --- | --- | --- |
+| `hyremote-release-readiness-metadata` | SPLIT | keep actual version/security/release truth in T6; move permanent repository/product assertions to T3/T4 |
+| `hyremote-release-readiness-release-authority-policy` | KEEP | machine release-train authority matches governance and fails closed |
+| `hyremote-release-readiness-release-documentation-layout` | KEEP | release-note/candidate documentation artifact layout |
+| `hyremote-release-scope-self-test` | KEEP | exact train selects its own WBS; unknown/invalid selection fails closed |
+| `hyremote-release-profile-develop-all` | KEEP | development sentinel accepts broad capabilities |
+| `hyremote-release-profile-develop-runtime-only` | KEEP | development sentinel supports reduced capability build |
+| `hyremote-release-profile-retire-v001` | KEEP | retired frontend-coded version rejected |
 | `hyremote-release-profile-retire-v002` | KEEP | same |
 | `hyremote-release-profile-retire-v003` | KEEP | same |
-| `hyremote-release-profile-v010-cpp-only` | KEEP | progressive V0.1 train is representable independent of frontend-as-version semantics |
-| `hyremote-release-profile-v020-runtime` | KEEP | V0.2 train remains representable |
-| `hyremote-release-profile-v030-all` | KEEP | V0.3 train remains representable |
-| `hyremote-release-profile-v040-all` | KEEP | V0.4 train remains representable |
-| `hyremote-release-profile-v040-maintenance` | KEEP | four-part maintenance digit is accepted within V0.4 line |
-| `hyremote-release-profile-v100-all` | KEEP | first GA train with all capabilities |
-| `hyremote-release-profile-v100-cpp-only` | KEEP | frontend subset must not redefine version meaning |
-| `hyremote-release-profile-v100-generic-only` | KEEP | same for Generic-only capability subset |
+| `hyremote-release-profile-v010-cpp-only` | KEEP | V0.1 representable without frontend-as-version semantics |
+| `hyremote-release-profile-v020-runtime` | KEEP | V0.2 line representable |
+| `hyremote-release-profile-v030-all` | KEEP | V0.3 line representable |
+| `hyremote-release-profile-v040-all` | KEEP | V0.4 line representable |
+| `hyremote-release-profile-v040-maintenance` | KEEP | maintenance digit remains inside V0.4 line |
+| `hyremote-release-profile-v100-all` | KEEP | GA all-capability profile |
+| `hyremote-release-profile-v100-cpp-only` | KEEP | capability subset does not redefine version meaning |
+| `hyremote-release-profile-v100-generic-only` | KEEP | same for Generic-only subset |
 
-## 12. First Phase-A ownership conclusions
+#277 expanded Feature-release authority inside the existing release-scope/policy test registrations. Those are scenario-level additions, not new CTest names.
 
-1. **Core test ownership is healthy.** No move is currently justified.
-2. **Runtime test ownership is incomplete.** RFB/security/network/Widgets/Quick adapter tests accumulated under C++ frontend and should move in Phase B without changing semantics.
-3. **C++ frontend should shrink to facade-only tests.** This restores the product architecture in the test architecture.
-4. **QPA has many justified unique tests**, but its deploy-helper matrix should be reviewed alongside central deploy tests before any consolidation.
-5. **`release-readiness` is overloaded.** Persistent repository/package contracts should execute earlier and live outside T6; release-specific scope/profile/metadata stays T6.
-6. **The legacy `consumer-installed-sdk` still has a distinct contract**, but its name hides that contract. It is not yet approved for retirement.
-7. **No test is approved for deletion in Phase A.** `MERGE/RETIRE` requires scenario-level equivalence evidence first.
+## 12. Coverage GAP decisions produced by Phase A
 
-## 13. Phase-A remaining work before Review Gate
+The catalog does not pretend missing tests exist. Confirmed gaps are owned in `COVERAGE_GAPS.md`, including:
 
-- expand multi-scenario executables/scripts to scenario-level entries, especially Core Session, C++ RemoteAccess, RFB, QPA deploy matrix and release-evidence cells;
-- map all current CTest registrations to capability guards and platform conditions;
-- map overlap among product-fit/example/installed-consumer suites;
-- complete `COVERAGE_GAPS.md` severity/owner/release assignment;
-- reconcile source-derived catalog against one canonical full all-frontends CTest listing before Phase A PASS.
+- TG-001/TG-002: Widgets/Quick forced-HiDPI execution missing;
+- TG-009: real RFB product-fit code exists but lacks execution authority required by #229 exact-candidate evidence;
+- TG-012: clean-consumer acquisition audit can false-pass mixed run/source/build cache entries; returned to reopened #230;
+- TG-013/TG-014: fragmented RFB reads and bounded malformed/oversized protocol input lack deterministic registered scenarios;
+- package paths containing spaces and same-destination deploy repeatability/idempotence are confirmed T4 robustness gaps;
+- semantic CTest labels/tiering are absent and belong to Phase C.
+
+## 13. Phase-A completion state
+
+Phase A is complete when this PR head satisfies all of the following:
+
+- every registered CTest in `EXECUTION_BASELINE.md` has a disposition above;
+- every meaningful multi-case executable/script has scenario coverage or a referenced family rationale in `TEST_SCENARIOS.md`;
+- capability/platform/cost conditions are mapped in `TEST_MATRIX.md`;
+- overlap decisions are explicit; no registered test is removed merely for CI speed;
+- missing evidence is a GAP with owner/severity rather than an unresolved REVIEW;
+- `tests/README.md` reflects current tree and links this audit set;
+- V0.1 blockers discovered by the audit are handed back to their owning release issues rather than fixed opportunistically here.
+
+Phase B may change physical ownership only after this audit PR passes its Review Gate.
