@@ -79,8 +79,10 @@ RemoteAccess {
 Enable input through the Generic Plugin specification, for example:
 
 ```text
-MyApp -plugin "hyremote;input=true"
+MyApp -plugin "hyremote:input=true"
 ```
+
+Multiple fields belong after the colon in the plugin specification and are separated with semicolons; see [`../getting-started/generic.md`](../getting-started/generic.md).
 
 ### QPA
 
