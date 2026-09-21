@@ -171,7 +171,7 @@ jobs:
           path: ${{ runner.temp }}/Qt
           key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
 
-      # Daily PR acceleration only. A develop/manual job never consumes this build tree; it starts clean and
+      # PR acceleration only. A develop/manual job never consumes this build tree; it starts clean and
       # publishes the next baseline after successful full integration. Thus incremental state is never release evidence.
       - id: build-cache
         name: Restore develop build baseline for PR
@@ -317,15 +317,6 @@ jobs:
         with:
           path: ${{ runner.temp }}/Qt
           key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
-
-      # Measurement-only on this optimization PR: creates a same-PR baseline so the next commit can prove the
-      # incremental-build delta. This step is removed before merge; production PRs never publish build caches.
-      - name: Save PR build baseline for measurement
-        if: github.event_name == 'pull_request' && success() && needs.classify.outputs.integrations == 'cpp,qml,generic,qpa' && steps.build-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: build-ci
-          key: hyremote-build-v1-${{ runner.os }}-qt683-all-${{ github.event.pull_request.base.sha }}
 
       - name: Save clean develop build baseline
         if: github.event_name != 'pull_request' && success() && needs.classify.outputs.integrations == 'cpp,qml,generic,qpa'
