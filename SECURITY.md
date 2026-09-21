@@ -20,10 +20,10 @@ V0.1 behavior:
 
 - listener defaults to loopback (`127.0.0.1`);
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
-- an `Authenticated` profile may use RFB VNC authentication;
-- the current stream is **not encrypted**;
-- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.
+- `Insecure` is loopback-only and non-loopback startup is rejected;
+- `Authenticated` requires a transport-security-enabled build plus a valid security descriptor; when available it uses RFB VNC authentication but does not encrypt the stream;
+- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without fallback to a weaker profile.
 
 Authentication is not encryption. A viewer password prompt does not make the transport confidential.
 
@@ -54,7 +54,7 @@ HyRemote's product design preserves these boundaries:
 - malformed-client/protocol/frame/input state must remain bounded;
 - recognized held remote input is balanced on disconnect and Runtime teardown;
 - secrets must not be written to ordinary logs or diagnostics;
-- a requested secure capability fails closed rather than silently downgrading;
+- a requested security capability fails closed rather than silently downgrading;
 - Generic keeps the application's native Qt platform identity;
 - QPA private-ABI use does not weaken the security boundary or create an undocumented bypass.
 
