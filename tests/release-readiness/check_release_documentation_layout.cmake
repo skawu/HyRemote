@@ -33,10 +33,14 @@ endfunction()
 # The package manifest is the release-facing source-tree inventory. Keep its physical paths aligned
 # with docs/internal/repository-layout.md instead of allowing the old root-level module names to become facts
 # again. Conceptual prose such as "Core" or "architecture research" is intentionally not forbidden.
-require_doc_token("docs/release-package-manifest.md" "`src/core/` low-level implementation headers and tests"
+require_doc_token("docs/internal/repository-layout.md" "`src/core` is the shared Core implementation"
                   "canonical Core source path")
-require_doc_token("docs/release-package-manifest.md" "maintainer documentation under `docs/internal/`"
-                  "maintainer documentation path")
+require_doc_token("docs/internal/repository-layout.md" "`src/runtime` owns implementation shared by multiple/all integration frontends"
+                  "canonical Runtime source path")
+require_doc_token("docs/release-package-manifest.md" "one Shared Runtime"
+                  "single shipped Runtime")
+require_doc_token("docs/release-package-manifest.md" "Core is internal composition"
+                  "Core is internal composition, not an application SDK target")
 forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implementation headers and tests"
                  "legacy root Core path")
 forbid_doc_token("docs/release-package-manifest.md" "architecture spikes under `spikes/`"
@@ -57,11 +61,14 @@ forbid_doc_token("docs/internal/async-capture-spike.md" "cmake -S research/async
                  "reproducer command for a removed async-capture harness")
 
 require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
-                  "`src/cpp/src/widgets/widget_target.cpp`"
+                  "`src/runtime/src/widgets/widget_target.cpp`"
                   "canonical Widgets target source citation")
 require_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
-                  "`src/cpp/src/quick/quick_target.cpp`"
+                  "`src/runtime/src/quick/quick_target.cpp`"
                   "canonical Quick target source citation")
+forbid_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
+                 "`src/cpp/src/"
+                 "pre-#219 target adapter source citation")
 forbid_doc_token("docs/internal/qpa-capture-classification-qt-6.8.3.md"
                  "`remoteaccess/src/"
                  "removed root RemoteAccess source citation")
@@ -83,18 +90,19 @@ require_doc_token("docs/internal/core-architecture.md" "No experimental tree is 
 require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.cmake enforces the include/declaration/link part"
                   "canonical Core dependency-guard path and scope")
 
-# Dependency-policy prose is also release-facing architecture truth. Keep historical experiments under
-# the canonical research/ tree and keep CI-only tooling clearly separated from shipped runtime payloads.
-require_doc_token("docs/dependency-policy.md" "remain optional/research work"
-                  "retired experiment-tree policy in dependency policy")
+# Dependency-policy prose is release-facing architecture truth. Pin the current product statements - the frontends
+# are not separate toolchains, development tooling does not become a runtime prerequisite, and dependencies are not
+# fetched behind the consumer back - instead of the historical wording and version pins that used to carry them.
+require_doc_token("docs/dependency-policy.md" "rather than separate backend toolchains"
+                  "frontends are not separate backend toolchains")
 forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
                  "legacy spikes path in dependency policy")
-require_doc_token("docs/dependency-policy.md" "### Repository test/CI-only tools"
-                  "CI-only tooling boundary")
-require_doc_token("docs/dependency-policy.md" "`vncdotool==1.3.0`"
-                  "pinned maintained VNC test client")
-require_doc_token("docs/dependency-policy.md" "test tooling, not Runtime dependencies"
-                  "CI tools are not runtime payloads")
+require_doc_token("docs/dependency-policy.md" "Development tooling does not become an SDK/runtime prerequisite"
+                  "development tooling is not an SDK/runtime prerequisite")
+require_doc_token("docs/dependency-policy.md" "No hidden dependency downloads"
+                  "no hidden dependency downloads")
+require_doc_token("docs/dependency-policy.md" "are not silently added through hidden"
+                  "product dependencies are not fetched implicitly")
 
 # User-facing entry points must identify the canonical layout document so repository contributors do
 # not infer module ownership from historical root names.
