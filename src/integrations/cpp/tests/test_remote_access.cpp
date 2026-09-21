@@ -563,9 +563,22 @@ void testInvalidPublicConfigurationIsProductLevel()
 
     remote.clearError();
     CHECK(!remote.lastError().has_value());
+    const quint16 accepted_port = remote.port();
     CHECK(!remote.setPort(0));
     CHECK(remote.lastError().has_value());
+    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
     CHECK(remote.lastError()->message.contains(QStringLiteral("port")));
+    // The message has to explain the rejection in product terms: the rejected value and the accepted range. A
+    // release label is not a user-facing contract, and the V0.0.x labels are retired planning labels under current
+    // release authority, so none of them may appear in an error a user can read.
+    CHECK(remote.lastError()->message.contains(QStringLiteral("65535")));
+    const QStringList retired_labels{QStringLiteral("V0.0.1.0"), QStringLiteral("V0.0.2.0"),
+                                     QStringLiteral("V0.0.3.0")};
+    for (const QString &retired_label : retired_labels) {
+        CHECK(!remote.lastError()->message.contains(retired_label));
+    }
+    // Rejecting the value must not change the configuration that was already accepted.
+    CHECK(remote.port() == accepted_port);
 }
 
 }  // namespace

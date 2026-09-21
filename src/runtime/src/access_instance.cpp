@@ -284,8 +284,10 @@ bool AccessInstance::setPort(quint16 port)
     if (!m_impl || !m_impl->isConfigurable())
         return false;
     if (port == 0) {
+        // A version-neutral, factual statement: the rejected value, the accepted range and nothing about a release
+        // label. A retired planning label has no place in a user-visible product error.
         m_impl->setError(ErrorCode::InvalidConfiguration,
-                         QStringLiteral("port 0 is not part of the stable V0.0.1.0 contract"));
+                         QStringLiteral("port 0 is invalid: a configured listener port must be between 1 and 65535"));
         return false;
     }
 
