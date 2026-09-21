@@ -4,7 +4,7 @@
 
 HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个共享 Runtime**，以及四种并列的接入方式：C++ API、QML API、Generic Plugin 和 QPA。Qt Widgets 与 Qt Quick 是 Runtime 的目标类型，不是两套产品。
 
-本文档区只回答产品使用问题：HyRemote 是什么、如何接入、如何部署、当前支持到什么程度、有什么安全边界和已知限制。
+这里集中提供产品接入、部署、安全、兼容性和能力边界说明。
 
 ## 从这里开始
 
@@ -17,6 +17,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | 安装、构建和 SDK 接入 | [`guide/install.md`](guide/install.md) ｜ [English](en/guide/install.md) | 产品指南 |
 | 打包与部署 | [`guide/deployment.md`](guide/deployment.md) ｜ [English](en/guide/deployment.md) | 产品指南 |
 | 连接查看器、远程控制、重连 | [`guide/viewer-connection.md`](guide/viewer-connection.md) | 产品指南 |
+| 安全模型与部署边界 | [`security.md`](security.md) ｜ [English](en/security.md) | 产品指南 |
 | 排错 | [`guide/troubleshooting.md`](guide/troubleshooting.md) | 产品指南 |
 
 ## 产品概览
@@ -30,7 +31,7 @@ V0.1 Developer Preview 的重点是**先让用户能够用起来**：
 - Widgets 与 Qt Quick 共用一个 Runtime；
 - 默认回环监听，远程输入默认关闭；
 - QML API 与 QPA 已存在，但仍按 Preview 标识；
-- 未完成能力在产品文档中直接标记为 **TODO / 待办**，而不是用 issue、PR、验收批次或历史过程来描述。
+- 未完成能力直接标记为 **TODO / 待办**。
 
 ## 产品参考
 
@@ -67,26 +68,14 @@ QPA --------------/
 
 无论从哪个入口进入，都不会创建第二套 Session、capture、input 或 transport 架构。
 
-## 文档口径
+## 产品状态标识
 
-用户与产品参考文档遵循以下规则：
+- **Primary / 主路径**：当前产品线优先推荐的接入路径；
+- **Preview**：已经存在并可使用，但尚未达到当前产品线的完整正式支持级别；
+- **TODO / 待办**：规划中的能力，目前不构成可用性或兼容性承诺。
 
-- 只描述**产品当前行为、支持状态和明确的未来 TODO**；
-- 不使用 issue 编号、PR 编号、runner 状态、验收批次、历史迁移过程作为产品说明；
-- 已完成能力按事实描述；
-- 已存在但尚未达到正式产品化程度的能力标记 **Preview**；
-- 尚未实现的能力标记 **TODO / 待办**，不写成已经具备；
-- 安全、兼容性和平台支持只按明确声明的范围描述，不从相似环境推导支持。
+安全、兼容性和平台支持以对应产品矩阵为准，不从相似环境自动推导。
 
 ## 维护者资料
 
-仓库治理、发布流程、ADR、研究记录、执行路线和验收资料位于：
-
-```text
-docs/internal/
-docs/adr/
-docs/releases/
-docs/proposals/
-```
-
-这些文件服务于开发与发布，不属于普通用户接入 HyRemote 的必读路径。产品文档不会把其中的执行过程复制给用户。
+架构决策、仓库治理、发布流程、研究记录和验收资料位于 `docs/adr/`、`docs/internal/`、`docs/releases/` 与 `docs/proposals/`。普通应用接入无需阅读这些内容。
