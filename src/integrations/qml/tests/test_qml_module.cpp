@@ -73,7 +73,7 @@ void testDeclarativeImportAndSafeDefaults()
     CHECK(!object->property("enabled").toBool());
     CHECK(object->property("state").toInt() == 0); // Stopped
     CHECK(object->property("connectedClientCount").toULongLong() == 0);
-    CHECK(object->property("listenAddress").toString() == QStringLiteral("127.0.0.1"));
+    CHECK(object->property("listenAddress").toString() == QStringLiteral("0.0.0.0"));
     CHECK(object->property("port").toInt() == 5901);
     CHECK(object->property("remoteInputEnabled").toBool());
     CHECK(object->property("securityProfile").toInt() == 0); // Insecure compatibility profile
@@ -216,6 +216,55 @@ void testTargetDestructionNotifiesDeclarativeProperty()
     CHECK(object->property("targetChangeCount").toInt() == before + 1);
 }
 
+
+// #174 mapping, QML: the property maps straight onto the runtime, and the frontend resolves nothing itself. The
+// notifications are observed through QML property handlers rather than a C++ spy, because that is exactly the
+// contract a declarative consumer depends on: `onListenInterfaceChanged` runs only if the signal really fired.
+void testListenInterfaceMapping()
+{
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
+
+    std::unique_ptr<QObject> object = createInline(
+        engine,
+        R"QML(
+            import HyRemote 1.0
+            RemoteAccess {
+                property int interfaceNotifies: 0
+                property int addressNotifies: 0
+                onListenInterfaceChanged: interfaceNotifies++
+                onListenAddressChanged: addressNotifies++
+            }
+        )QML",
+        "inline:hyremote-interface-mapping.qml");
+    CHECK(object != nullptr);
+    if (!object)
+        return;
+
+    // The default is the wildcard with no interface selected.
+    CHECK(object->property("listenAddress").toString() == QStringLiteral("0.0.0.0"));
+    CHECK(object->property("listenInterface").toString().isEmpty());
+
+    // An interface identity maps through, and selecting it notifies once.
+    object->setProperty("listenInterface", QStringLiteral("eth-test"));
+    CHECK(object->property("listenInterface").toString() == QStringLiteral("eth-test"));
+    CHECK(object->property("interfaceNotifies").toInt() == 1);
+    CHECK(object->property("addressNotifies").toInt() == 0);
+
+    // Assigning an address clears the interface, and that clearing is notified as well: a binding showing the
+    // interface would otherwise keep displaying a selection that no longer applies.
+    object->setProperty("listenAddress", QStringLiteral("127.0.0.1"));
+    CHECK(object->property("listenAddress").toString() == QStringLiteral("127.0.0.1"));
+    CHECK(object->property("listenInterface").toString().isEmpty());
+    CHECK(object->property("interfaceNotifies").toInt() == 2);
+    CHECK(object->property("addressNotifies").toInt() == 1);
+
+    // An empty identity is refused rather than treated as "no interface", and a refusal does not notify.
+    object->setProperty("listenInterface", QString());
+    CHECK(object->property("listenInterface").toString().isEmpty());
+    CHECK(object->property("interfaceNotifies").toInt() == 2);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -226,6 +275,7 @@ int main(int argc, char **argv)
     testEnabledStartFailureIsTransactional();
     testInitialEnabledDoesNotRaceLaterTargetBinding();
     testTargetDestructionNotifiesDeclarativeProperty();
+    testListenInterfaceMapping();
 
     if (failures != 0)
         std::cerr << failures << " QML module checks failed\n";

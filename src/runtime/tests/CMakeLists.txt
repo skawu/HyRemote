@@ -1,3 +1,15 @@
+# The #174 listener binding contract: mode inference, the four interface resolutions and the locality rule, decided
+# from an injected interface snapshot so none of it depends on the host or on timing.
+add_executable(hyremote-runtime-listener-binding-test
+    test_listener_binding.cpp
+)
+target_compile_features(hyremote-runtime-listener-binding-test PRIVATE cxx_std_17)
+target_include_directories(hyremote-runtime-listener-binding-test PRIVATE ../src)
+target_link_libraries(hyremote-runtime-listener-binding-test PRIVATE Qt6::Core HyRemote::RemoteAccess)
+add_test(NAME hyremote-runtime-listener-binding-test
+         COMMAND hyremote-runtime-listener-binding-test)
+set_tests_properties(hyremote-runtime-listener-binding-test PROPERTIES TIMEOUT 15)
+
 # Application-level automatic access controller tests, plus the private notification seam and the
 # build/bootstrap authority self-test. These were only ever reachable because the whole tests
 # directory used to be entered behind HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE, so they keep that same

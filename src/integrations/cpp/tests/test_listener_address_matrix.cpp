@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QNetworkInterface>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QWidget>
@@ -21,6 +22,13 @@
 #include <optional>
 
 #include <HyRemote/RemoteAccess.h>
+
+// The dynamic interface-following rows drive the runtime directly rather than the facade, because the
+// reconciliation entry point they must exercise is a runtime seam. This target already links the shared runtime and
+// has its private source directory on the include path, so reaching it needs nothing new.
+#include "access_instance.hpp"
+#include "access_types.hpp"
+#include "detail/listener_binding.hpp"
 
 namespace {
 
@@ -101,6 +109,9 @@ void testOccupiedPortFailsBeforeRunning()
 
     QWidget target;
     HyRemote::RemoteAccess remote(&target);
+    // The probe and the listener must contend for the same endpoint, so the address is stated explicitly instead of
+    // relying on how a wildcard and a loopback bind happen to overlap on a given OS.
+    CHECK(remote.setListenAddress(QHostAddress(QHostAddress::LocalHost)));
     CHECK(remote.setPort(probe.port()));
     remote.clearError();
 
@@ -204,11 +215,50 @@ void measureAddressRow(const AddressRow &row)
     }
 }
 
-void measureIpv6WildcardIsNotDualStack()
+void testIpv6IsRejectedAndNeverFallsBack()
 {
-    // Measured on this platform: binding "::" accepts IPv6 and does NOT accept an IPv4 loopback
-    // connection, so "::" is IPv6-only here rather than a dual-stack listener. #174 accepts an explicit
-    // evidence-backed answer like this, but not an ambiguous one, so the negative case is pinned too.
+    // #174 is an IPv4 listener contract, so an IPv6 address is refused at configuration time. The rows are kept as
+    // assertions rather than deleted: the point is not that IPv6 is unavailable, it is that asking for it cannot
+    // produce a listener on some other address - no wildcard fallback, no loopback fallback - and that the refusal
+    // is deterministic for both the IPv6 loopback and the IPv6 wildcard.
+    for (const char *ipv6 : {"::1", "::"}) {
+        QWidget target;
+        HyRemote::RemoteAccess remote(&target);
+        CHECK(!remote.setListenAddress(QHostAddress(QString::fromLatin1(ipv6))));
+        CHECK(remote.lastError().has_value());
+        if (remote.lastError())
+            CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
+        // The refused address is not adopted, so the listener still holds its previous default.
+        CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
+        std::cout << "row ipv6-rejected (" << ipv6 << ") refused=1\n";
+    }
+}
+
+
+// #174: what an interface binding does while the machine moves underneath it. Every step is triggered directly through
+// the same reconciliation function the runtime's watcher calls, so nothing here sleeps or waits on a timer, and every
+// claim is measured against real reachability on a real socket rather than against a counter.
+//
+// Both addresses are inside 127/8, which RFC 1122 reserves for host loopback, so they are bindable on the platforms
+// this ships on without depending on any particular adapter being present.
+void testInterfaceFollowing()
+{
+    using HyRemote::Runtime::AccessInstance;
+    using HyRemote::Runtime::AccessState;
+
+    const QString identity = QStringLiteral("hyremote-test-iface");
+    auto liveAddresses = std::make_shared<QStringList>();
+
+    HyRemote::detail::setInterfaceAddressProvider([identity, liveAddresses](const QString &requested, bool &found) {
+        found = (requested == identity);
+        QList<QHostAddress> resolved;
+        if (!found)
+            return resolved;
+        for (const QString &candidate : *liveAddresses)
+            resolved.append(QHostAddress(candidate));
+        return resolved;
+    });
+
     PortProbe probe;
     if (!probe.acquire())
         return;
@@ -218,18 +268,149 @@ void measureIpv6WildcardIsNotDualStack()
         return;
 
     QWidget target;
-    HyRemote::RemoteAccess remote(&target);
-    CHECK(remote.setListenAddress(QHostAddress(QStringLiteral("::"))));
-    CHECK(remote.setPort(port));
-    remote.clearError();
-    if (!remote.start())
+    AccessInstance instance(&target);
+    CHECK(instance.setPort(port));
+    CHECK(instance.setListenInterface(identity));
+    CHECK(instance.listenInterface() == identity);
+
+    // The interface has one address: the listener serves exactly that one.
+    *liveAddresses = QStringList{QStringLiteral("127.0.0.1")};
+    CHECK(instance.start());
+    CHECK(instance.state() == AccessState::Running);
+    CHECK(dials("127.0.0.1", port));
+
+    // A -> B. The old listener is gone, a fresh one serves the new address, and the configured identity is untouched:
+    // the effective endpoint moved, the configuration did not.
+    *liveAddresses = QStringList{QStringLiteral("127.0.0.2")};
+    instance.reconcileInterfaceBinding();
+    CHECK(instance.state() == AccessState::Running);
+    CHECK(dials("127.0.0.2", port));
+    CHECK(!dials("127.0.0.1", port));
+    CHECK(instance.listenInterface() == identity);
+
+    // The interface loses its address. No listener survives on the old address and none appears anywhere else: the
+    // state says Unavailable and carries the reason, while the intent to be reachable stands.
+    liveAddresses->clear();
+    instance.reconcileInterfaceBinding();
+    CHECK(instance.state() == AccessState::Unavailable);
+    CHECK(!dials("127.0.0.1", port));
+    CHECK(!dials("127.0.0.2", port));
+    CHECK(!instance.lastError().has_value() == false);
+    if (instance.lastError())
+        std::cout << "unavailable reason: " << instance.lastError()->message.toStdString() << '\n';
+
+    // While the intent stands the configuration is not the user's to change, or a recovery could race the edit.
+    CHECK(!instance.setListenAddress(QHostAddress(QStringLiteral("127.0.0.1"))));
+    CHECK(!instance.setListenInterface(QStringLiteral("some-other-iface")));
+    CHECK(!instance.setPort(port == 65000 ? 65001 : 65000));
+    CHECK(instance.listenInterface() == identity);
+
+    // The same interface answers again: the listener comes back on the new address without the user doing anything.
+    *liveAddresses = QStringList{QStringLiteral("127.0.0.2")};
+    instance.reconcileInterfaceBinding();
+    CHECK(instance.state() == AccessState::Running);
+    CHECK(dials("127.0.0.2", port));
+    CHECK(!instance.lastError().has_value());
+
+    // stop() is final. The interface coming back afterwards must not start anything, and the configuration becomes the
+    // user's again.
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    *liveAddresses = QStringList{QStringLiteral("127.0.0.1")};
+    instance.reconcileInterfaceBinding();
+    CHECK(instance.state() == AccessState::Stopped);
+    CHECK(!dials("127.0.0.1", port));
+    CHECK(instance.setListenAddress(QHostAddress(QStringLiteral("127.0.0.1"))));
+
+    HyRemote::detail::resetInterfaceAddressProvider();
+}
+
+// The real host, not a synthetic snapshot: one non-loopback interface that currently has exactly one usable IPv4
+// address. A machine without one (a bare CI runner, for instance) reports SKIP rather than pretending, so this row
+// is evidence where it runs and honest where it cannot.
+//
+// The three rows are the three bindings the product offers, each checked with a real TCP connection to the real LAN
+// address rather than to loopback: the wildcard default, the same address named exactly, and the adapter named for
+// the runtime to resolve.
+void testRealLanInterfaceBinding()
+{
+    using HyRemote::Runtime::AccessInstance;
+    using HyRemote::Runtime::AccessState;
+
+    QString identity;
+    QString lanAddress;
+    for (const QNetworkInterface &candidate : QNetworkInterface::allInterfaces()) {
+        const QNetworkInterface::InterfaceFlags flags = candidate.flags();
+        if (flags.testFlag(QNetworkInterface::IsLoopBack) || !flags.testFlag(QNetworkInterface::IsUp)
+            || !flags.testFlag(QNetworkInterface::IsRunning)) {
+            continue;
+        }
+
+        QStringList addresses;
+        for (const QNetworkAddressEntry &entry : candidate.addressEntries()) {
+            const QHostAddress ip = entry.ip();
+            if (!ip.isNull() && ip.protocol() == QAbstractSocket::IPv4Protocol)
+                addresses.append(ip.toString());
+        }
+        if (addresses.size() == 1) {
+            identity = candidate.name();
+            lanAddress = addresses.first();
+            break;
+        }
+    }
+
+    if (identity.isEmpty() || lanAddress.isEmpty()) {
+        std::cout << "real-LAN rows: SKIP (this host has no non-loopback interface with exactly one IPv4)\n";
+        return;
+    }
+
+    const QByteArray dialTarget = lanAddress.toLatin1();
+    std::cout << "real LAN: interface=" << identity.toStdString() << " address=" << lanAddress.toStdString() << '\n';
+
+    PortProbe probe;
+    if (!probe.acquire())
+        return;
+    const quint16 port = probe.port();
+    probe.release();
+    if (port == 0)
         return;
 
-    CHECK(dials("::1", port));
-    std::cout << "row wildcard-ipv6 negative: reachable via 127.0.0.1 = " << dials("127.0.0.1", port)
-              << " (expected 0)\n";
-    CHECK(!dials("127.0.0.1", port));
-    remote.stop();
+    QWidget target;
+
+    // A. The default: 0.0.0.0 is reachable on the real LAN address, not only on loopback.
+    {
+        AccessInstance instance(&target);
+        CHECK(instance.setPort(port));
+        CHECK(instance.start());
+        CHECK(instance.state() == AccessState::Running);
+        CHECK(dials(dialTarget.constData(), port));
+        instance.stop();
+    }
+
+    // B. The same address, named exactly: bound as asked, and reachable there.
+    {
+        AccessInstance instance(&target);
+        CHECK(instance.setListenAddress(QHostAddress(lanAddress)));
+        CHECK(instance.setPort(port));
+        CHECK(instance.start());
+        CHECK(instance.state() == AccessState::Running);
+        CHECK(dials(dialTarget.constData(), port));
+        instance.stop();
+    }
+
+    // C. The adapter, named: the runtime resolves its current IPv4 and binds exactly that.
+    {
+        AccessInstance instance(&target);
+        CHECK(instance.setListenInterface(identity));
+        CHECK(instance.setPort(port));
+        CHECK(instance.start());
+        CHECK(instance.state() == AccessState::Running);
+        CHECK(instance.listenInterface() == identity);
+        CHECK(dials(dialTarget.constData(), port));
+        instance.stop();
+    }
+
+    // The port is free again after all three: stop() released every endpoint.
 }
 
 } // namespace
@@ -242,14 +423,17 @@ int main(int argc, char **argv)
     testOccupiedPortFailsBeforeRunning();
     testUnavailableAddressFailsBeforeRunning();
 
+    // IPv4 rows only: the contract is IPv4, and the IPv6 inputs are asserted as refusals below rather than as
+    // supported binds.
     const AddressRow rows[] = {
         {"wildcard-ipv4", "0.0.0.0", "127.0.0.1", true},
-        {"loopback-ipv6", "::1", "::1", true},
-        {"wildcard-ipv6", "::", "::1", true},
+        {"loopback-ipv4", "127.0.0.1", "127.0.0.1", true},
     };
     for (const AddressRow &row : rows)
         measureAddressRow(row);
-    measureIpv6WildcardIsNotDualStack();
+    testIpv6IsRejectedAndNeverFallsBack();
+    testInterfaceFollowing();
+    testRealLanInterfaceBinding();
 
     std::cout << (failures == 0 ? "PASS: listener address matrix (product rows)"
                                 : "FAIL: listener address matrix (product rows)")

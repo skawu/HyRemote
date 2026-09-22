@@ -14,7 +14,7 @@ The same Shared Runtime security model applies to the C++ API, QML API, Generic 
 
 Default behavior:
 
-- bind address: `127.0.0.1`;
+- bind address: `0.0.0.0` (every IPv4 interface of the host), or one exact local IPv4, or a named interface;
 - port: `5921`;
 - remote input: disabled;
 - constructing `HyRemote::RemoteAccess` does not open a listener;
@@ -104,7 +104,7 @@ Use an external security descriptor/configuration mechanism instead of putting s
 
 ## Recommended V0.1 profiles
 
-- **Local developer / same machine:** use the default `Insecure` loopback listener.
+- **Local developer / same machine:** a listener on `127.0.0.1` (set it explicitly) stays the tightest option.
 - **Trusted lab / maintenance network:** use `Authenticated` only when the package includes the required security capability and a valid descriptor is configured. The stream remains unencrypted.
 - **Public Internet:** direct exposure is **not supported** in V0.1.
 
