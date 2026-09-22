@@ -216,7 +216,13 @@ private:
             return false;
 
         auto instance = std::make_unique<Runtime::AccessInstance>(compositeTarget.get());
-        if (!instance->setListenAddress(config.listenAddress)
+        // #174: exactly one of the two selects the binding. setListenAddress clears an interface selection, so calling
+        // both in sequence would silently discard the interface the configuration asked for - the interface wins when
+        // it is configured, and only then is the address left alone.
+        const bool bindingAccepted = config.listenInterface.isEmpty()
+                                         ? instance->setListenAddress(config.listenAddress)
+                                         : instance->setListenInterface(config.listenInterface);
+        if (!bindingAccepted
             || !instance->setPort(config.port)
             || !instance->setRemoteInputEnabled(config.remoteInputEnabled)
             || !instance->setSecurityProfile(config.securityProfile)
@@ -236,7 +242,10 @@ private:
 
         access = std::move(instance);
         qInfo() << "HyRemote automatic application access active on"
-                << config.listenAddress.toString() << config.port
+                << (config.listenInterface.isEmpty()
+                        ? config.listenAddress.toString()
+                        : QStringLiteral("interface %1").arg(config.listenInterface))
+                << config.port
                 << "remote input:" << config.remoteInputEnabled
                 << "security profile:" << securityProfileName(config.securityProfile);
         return true;

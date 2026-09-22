@@ -18,3 +18,15 @@ if(TARGET Qt6::Widgets)
         TIMEOUT 10
     )
 endif()
+
+# #174: the Generic Plugin launch-syntax mapping, on its own so it neither needs Qt's plugin loader nor a real
+# adapter. It compiles the parser directly, the way the QPA frontend's config test does.
+add_executable(hyremote-generic-config-test
+    generic_config_test.cpp
+    ../generic_config.cpp
+)
+target_compile_features(hyremote-generic-config-test PRIVATE cxx_std_17)
+target_include_directories(hyremote-generic-config-test PRIVATE ${CMAKE_SOURCE_DIR}/src/runtime/src)
+target_link_libraries(hyremote-generic-config-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME hyremote-generic-config-test COMMAND hyremote-generic-config-test)
+set_tests_properties(hyremote-generic-config-test PROPERTIES TIMEOUT 15)

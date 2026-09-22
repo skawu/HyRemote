@@ -19,6 +19,10 @@ enum class RemoteAccessState {
     Running,
     Stopping,
     Faulted,
+    // #174: the configured interface has no usable IPv4 address right now, so there is no listener - but the
+    // configuration is not yours to change until you stop, and the listener comes back on its own when the
+    // interface does. It is not Stopped and it is not Faulted.
+    Unavailable,
 };
 
 // Stable product-level security intent. Protocol/security-type selection stays private to the
@@ -76,8 +80,16 @@ public:
     QObject *target() const noexcept;
     bool setTarget(QObject *target);
 
+    // The default is 0.0.0.0 (AnyIPv4): the host's IPv4 interfaces, not just loopback (#174).
     QHostAddress listenAddress() const;
     bool setListenAddress(const QHostAddress &address);
+
+    // #174: the listener can be named by network interface instead of by address. The identity is
+    // QNetworkInterface::name(), and it is configuration rather than an observation: an interface that changes its
+    // IPv4 address keeps reporting the same identity here. A non-empty interface selects interface mode and
+    // outranks the address; setting an address clears it again, so the two never describe different modes.
+    QString listenInterface() const;
+    bool setListenInterface(const QString &identity);
 
     quint16 port() const noexcept;
     bool setPort(quint16 port);

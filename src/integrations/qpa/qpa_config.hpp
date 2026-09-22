@@ -14,7 +14,10 @@ enum class SecurityProfile {
 
 struct RemoteConfig
 {
-    QHostAddress listenAddress = QHostAddress::LocalHost;
+    // #174: an interface identity (QNetworkInterface::name()) selects interface mode and outranks the address
+    // below; the two are mutually exclusive in the launch syntax.
+    QString listenInterface;
+    QHostAddress listenAddress = QHostAddress::AnyIPv4;
     quint16 port = static_cast<quint16>(HYREMOTE_DEFAULT_PORT);
     bool remoteInputEnabled = false;
     SecurityProfile securityProfile = SecurityProfile::Insecure;

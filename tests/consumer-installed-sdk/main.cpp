@@ -11,7 +11,7 @@ int main()
         return 1;
     if (remote.state() != HyRemote::RemoteAccessState::Stopped)
         return 2;
-    if (remote.listenAddress() != QHostAddress(QHostAddress::LocalHost))
+    if (remote.listenAddress() != QHostAddress(QHostAddress::AnyIPv4))
         return 3;
     if (remote.port() != 5921)
         return 4;
