@@ -193,15 +193,21 @@ jobs:
             done
             echo '```'
             echo
+            # Evidence comes from this run's own artefacts, not from an echoed number. ctest writes the summary to
+            # test.log and the individual transcripts to Testing/Temporary/LastTest.log, so the executed count and
+            # the encrypted-profile test's own result are read from those two files.
             executed="$(grep -oE 'out of [0-9]+' build-ci/test.log 2>/dev/null | head -1 | grep -oE '[0-9]+' || true)"
             executed="${executed:-0}"
             discovered="$(grep -cE '^ *[0-9]+/[0-9]+ Test ' build-ci/test.log 2>/dev/null || echo 0)"
-            secure_runs="$(grep -c 'SECURE_TEST_RESULT=' build-ci/test.log 2>/dev/null || echo 0)"
+            secure_line="$(grep -E 'hyremote-runtime-secure-transport-test' build-ci/test.log 2>/dev/null | head -1 || true)"
+            secure_result="$(grep -rhoE 'SECURE_TEST_RESULT=[A-Z]+' build-ci/Testing/Temporary/LastTest.log 2>/dev/null | head -1 || true)"
+            secure_backends="$(grep -rhoE 'SECURE_TEST_ACTIVE_BACKEND=\S+' build-ci/Testing/Temporary/LastTest.log 2>/dev/null | head -1 || true)"
             echo "SECURITY_TEST_DISCOVERED=$discovered"
             echo "SECURITY_TEST_EXECUTED=$executed"
-            echo "SECURE_TRANSPORT_TEST_RUNS=$secure_runs"
-            echo "SECURE_TRANSPORT_TEST_RESULT=$(grep -oE 'SECURE_TEST_RESULT=[A-Z]+' build-ci/test.log 2>/dev/null | head -1 || true)"
-            if [[ "$executed" -eq 0 || "$secure_runs" -eq 0 ]]; then
+            echo "SECURE_TRANSPORT_TEST_LINE=$secure_line"
+            echo "SECURE_TRANSPORT_TEST_RESULT=${secure_result:-unknown}"
+            echo "SECURE_TRANSPORT_${secure_backends:-ACTIVE_BACKEND=unknown}"
+            if [[ "$executed" -eq 0 || -z "$secure_line" ]]; then
               echo "::error::the security lane did not execute the encrypted-profile test"
               exit 1
             fi
