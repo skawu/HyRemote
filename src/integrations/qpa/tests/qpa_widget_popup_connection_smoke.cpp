@@ -2,6 +2,9 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QMenu>
 #include <QPoint>
 #include <QRect>
@@ -12,6 +15,27 @@
 
 namespace {
 constexpr quint16 kPort = 5996;
+
+// The native popup window is created and withdrawn asynchronously by the platform plugin, so
+// "the popup has appeared / has withdrawn" has to be observed as a condition instead of being
+// assumed true after a fixed delay. This bounded, event-driven wait keeps processing Qt events
+// (so the very events that make the condition true can still be delivered) and gives up after
+// `timeoutMs` rather than blocking for an arbitrary constant.
+template <typename Condition>
+bool waitForPopupCondition(Condition condition, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs) {
+        if (condition())
+            return true;
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    return condition();
+}
+
+constexpr int kPopupMaterializeTimeoutMs = 5000;
+constexpr int kPopupWithdrawTimeoutMs = 5000;
 }
 
 int main(int argc, char **argv)
@@ -44,9 +68,10 @@ int main(int argc, char **argv)
         // the application canvas. The actual post-show geometry is authoritative because native
         // window managers may clamp/reposition popups.
         menu.popup(QPoint(primary.x() + primary.width() + 80, primary.y() + 20));
-        HyRemote::Qpa::Test::pumpEvents(350);
-        if (!menu.isVisible() || !menu.isWindow()) {
-            std::cerr << "FAIL: QMenu did not materialize as a visible top-level popup\n";
+        if (!waitForPopupCondition([&menu] { return menu.isVisible() && menu.isWindow(); },
+                                   kPopupMaterializeTimeoutMs)) {
+            std::cerr << "FAIL: QMenu did not materialize as a visible top-level popup within "
+                      << kPopupMaterializeTimeoutMs << " ms\n";
             app.quit();
             return;
         }
@@ -67,7 +92,13 @@ int main(int argc, char **argv)
         }
 
         menu.hide();
-        HyRemote::Qpa::Test::pumpEvents(300);
+        if (!waitForPopupCondition([&menu] { return !menu.isVisible(); },
+                                   kPopupWithdrawTimeoutMs)) {
+            std::cerr << "FAIL: QMenu popup did not withdraw within "
+                      << kPopupWithdrawTimeoutMs << " ms\n";
+            app.quit();
+            return;
+        }
         if (!viewer.waitForGeometry(primary.size()) || !viewer.connected()) {
             std::cerr << "FAIL: popup removal changed/restarted the remote session\n";
             app.quit();
