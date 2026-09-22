@@ -85,10 +85,10 @@ if(HYREMOTE_WITH_VNC)
         target_sources(hyremote-remoteaccess PRIVATE
             src/transport/vnc_auth.cpp
         )
-        # Crypto is the only OpenSSL component this implementation uses: vnc_auth.cpp calls RAND_bytes, DES and
-        # CRYPTO_memcmp and nothing transport-encryption related, so an SSL link would be a dependency the runtime
-        # never calls. #143 introduces the encrypted backend and its dependency when that backend exists.
-        target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto)
+        # Crypto supplies the VNC authentication primitive (RAND_bytes, DES, CRYPTO_memcmp) and the private
+        # certificate/key match check; SSL is what Qt's OpenSSL TLS backend is built on and is therefore required by
+        # the encrypted profile. Both are PRIVATE: no consumer of the runtime ever sees an OpenSSL type.
+        target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto OpenSSL::SSL)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
     endif()
 endif()

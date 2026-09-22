@@ -590,18 +590,9 @@ bool AccessInstance::start()
                                  preparation.error);
                 return false;
             }
-
-            // The wire profile itself is the next slice. Until it exists this refuses to start rather than
-            // serving a weaker security type: fail closed, never downgrade.
-            m_impl->setError(
-                ErrorCode::SecurityUnavailable,
-                QStringLiteral("AuthenticatedEncrypted requires the VeNCrypt/TLS wire profile, which this build "
-                               "does not provide yet; refusing to start instead of falling back to a weaker "
-                               "security type"));
-            return false;
+        } else {
+            transportSecurity.profile = detail::RfbSecurityProfile::VncAuth;
         }
-
-        transportSecurity.profile = detail::RfbSecurityProfile::VncAuth;
 #endif
     }
 

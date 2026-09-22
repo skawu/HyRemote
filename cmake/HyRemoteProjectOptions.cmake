@@ -23,29 +23,33 @@ option(HYREMOTE_WITH_GENERIC_PLUGIN "Enable the QGenericPlugin zero-code fronten
 option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA Factory-Trampoline zero-code frontend" OFF)
 
 # Transport security is a Common Runtime capability shared by every frontend. In its current implementation it
-# provides VNC Authentication for the RFB stream and nothing more: the stream is authenticated, not encrypted, and
-# the capability therefore depends on OpenSSL Crypto only. The exact option and capability identifier names are kept
-# stable deliberately - renaming them is a compatibility question of its own, while the help/status text below has to
-# describe what the capability actually does today.
-option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable VNC Authentication support for the RFB transport using OpenSSL Crypto (authenticates the stream; does not encrypt it - VeNCrypt/TLS is not implemented)" OFF)
+# provides both authenticated RFB profiles: VNC Authentication for the plaintext one, and the encrypted
+# VeNCrypt 0.2 / X509Vnc 261 / TLS >= 1.2 profile with VNC Authentication inside the tunnel, which runs on Qt's
+# OpenSSL TLS backend. The capability therefore depends on OpenSSL Crypto and SSL. The exact option and capability
+# identifier names are kept stable deliberately - renaming them is a compatibility question of its own, while the
+# help/status text below has to describe what the capability actually does today.
+option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable the authenticated RFB transport security profiles using OpenSSL Crypto and SSL (VNC Authentication, and the VeNCrypt 0.2 / X509Vnc / TLS >= 1.2 encrypted profile with VNC Authentication inside TLS)" OFF)
 
 set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE OFF)
 
 if(HYREMOTE_WITH_TRANSPORT_SECURITY)
-    # Crypto is the whole dependency of the current implementation. Requiring SSL here would advertise an encrypted
-    # transport that does not exist and would link a library the runtime never calls.
-    find_package(OpenSSL QUIET COMPONENTS Crypto)
+    # Both components are real dependencies of the shipped implementation: Crypto supplies the VNC authentication
+    # primitive and the certificate/key match check, and SSL is what Qt's OpenSSL TLS backend is built on, so the
+    # encrypted profile cannot exist without it. Requiring them together keeps the capability's claim and what the
+    # runtime can actually do as one statement.
+    find_package(OpenSSL QUIET COMPONENTS Crypto SSL)
     if(OpenSSL_FOUND)
         set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE ON)
         message(STATUS
-            "HyRemote: VNC Authentication support available (OpenSSL Crypto ${OPENSSL_VERSION}); the RFB stream is "
-            "authenticated, not encrypted")
+            "HyRemote: authenticated RFB transport security available (OpenSSL ${OPENSSL_VERSION}): VNC "
+            "Authentication, and the VeNCrypt 0.2 / X509Vnc / TLS >= 1.2 encrypted profile with VNC Authentication "
+            "inside TLS on Qt's OpenSSL backend")
     else()
         message(FATAL_ERROR
-            "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL Crypto, the component the current VNC "
-            "Authentication implementation uses, but none was found. Provide it from your environment (for example "
-            "with -DOPENSSL_ROOT_DIR=<prefix>) or configure with HYREMOTE_WITH_TRANSPORT_SECURITY=OFF. "
-            "HyRemote never installs or bundles OpenSSL for you.")
+            "HyRemote: HYREMOTE_WITH_TRANSPORT_SECURITY=ON requires OpenSSL Crypto and SSL, the components the "
+            "authenticated RFB transport profiles use, but they were not both found. Provide them from your "
+            "environment (for example with -DOPENSSL_ROOT_DIR=<prefix>) or configure with "
+            "HYREMOTE_WITH_TRANSPORT_SECURITY=OFF. HyRemote never installs or bundles OpenSSL for you.")
     endif()
 endif()
 

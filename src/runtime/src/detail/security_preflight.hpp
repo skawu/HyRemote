@@ -4,6 +4,8 @@
 
 #include <QString>
 
+#include <HyRemote/RemoteAccessExport.h>
+
 namespace HyRemote::detail {
 
 // Pre-listen preparation for a secure transport profile.
@@ -28,7 +30,17 @@ struct SecureTransportPreparation
     QString credentialId;
 };
 
+// The private source-tree declaration is exported only in a test-enabled build, so repository tests can link
+// against the shared runtime DLL on Windows. It is not installed and not part of any SDK surface.
+#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
+#  define HYREMOTE_SECURITY_PREFLIGHT_EXPORT HYREMOTE_REMOTEACCESS_EXPORT
+#else
+#  define HYREMOTE_SECURITY_PREFLIGHT_EXPORT
+#endif
+
 // Only `VeNCryptTlsVncAuth` is prepared here; the other profiles need no TLS backend and are returned as ok.
-SecureTransportPreparation prepareSecureTransport(RfbSecurityConfig &config);
+HYREMOTE_SECURITY_PREFLIGHT_EXPORT SecureTransportPreparation prepareSecureTransport(RfbSecurityConfig &config);
+
+#undef HYREMOTE_SECURITY_PREFLIGHT_EXPORT
 
 }  // namespace HyRemote::detail

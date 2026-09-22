@@ -54,6 +54,23 @@ add_test(NAME hyremote-runtime-notifications-test
          COMMAND hyremote-runtime-notifications-test)
 set_tests_properties(hyremote-runtime-notifications-test PROPERTIES TIMEOUT 60)
 
+# #143: the encrypted RFB profile, exercised through the real transport with a deterministic peer. It is only
+# registered in a security-enabled tree, because the encrypted profile does not exist without the
+# transport-security capability - that is a property of the product, not of the test.
+if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+    add_executable(hyremote-runtime-secure-transport-test
+        test_rfb_secure_transport.cpp
+    )
+    target_compile_features(hyremote-runtime-secure-transport-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-runtime-secure-transport-test PRIVATE ../src)
+    target_link_libraries(hyremote-runtime-secure-transport-test
+        PRIVATE Qt6::Core Qt6::Network HyRemote::Core HyRemote::RemoteAccess OpenSSL::Crypto
+    )
+    add_test(NAME hyremote-runtime-secure-transport-test
+             COMMAND hyremote-runtime-secure-transport-test)
+    set_tests_properties(hyremote-runtime-secure-transport-test PROPERTIES TIMEOUT 180)
+endif()
+
 # Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
 # available in the current all-frontends CI profile without introducing another product target.
 add_test(
