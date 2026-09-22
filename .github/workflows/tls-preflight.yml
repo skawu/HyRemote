@@ -87,6 +87,10 @@ jobs:
           # the harness process as well as for its children.
           echo "$OPENSSL_PREFIX/bin" >> "$GITHUB_PATH"
           echo "OPENSSL_ROOT_DIR=$OPENSSL_PREFIX" >> "$GITHUB_ENV"
+          # A Windows executable has no rpath, so Qt's own DLLs must be on PATH too. Without this the harness never
+          # starts and reports STATUS_DLL_NOT_FOUND (0xC0000135) instead of a transcript - which is exactly how the
+          # first hosted Windows run failed, with what looked like "no output at all".
+          echo "$QT_PREFIX/bin" >> "$GITHUB_PATH"
 
       - name: Build and run the preflight — Linux
         if: runner.os == 'Linux'
@@ -110,10 +114,12 @@ jobs:
           if errorlevel 1 exit /b 1
           cmake --build build-tls-preflight
           if errorlevel 1 exit /b 1
+          set "PATH=%QT_PREFIX%\bin;%OPENSSL_ROOT_DIR%\bin;%PATH%"
           build-tls-preflight\hyremote-tls-transition-preflight.exe > tls-preflight.log 2>&1
           set "PREFLIGHT_RC=%ERRORLEVEL%"
           type tls-preflight.log
           echo PREFLIGHT_EXIT_CODE=%PREFLIGHT_RC%
+          echo PREFLIGHT_RC=%PREFLIGHT_RC%>>"%GITHUB_ENV%"
           if not "%PREFLIGHT_RC%"=="0" exit /b 1
 
       # The record's machine-readable matrix is read straight out of the harness output, so a lane cannot pass while the
@@ -128,8 +134,10 @@ jobs:
           {
             echo "## V0.2 TLS preflight — ${{ matrix.name }}"
             echo
-            if [[ ! -f "$LOG" ]]; then
-              echo "No harness output was produced, so the proof did not run."
+            if [[ ! -s "$LOG" ]]; then
+              # An empty transcript with a non-zero status on Windows almost always means the loader never reached
+              # main (missing DLL), so the exit code is reported rather than left to guesswork.
+              echo "No harness transcript was produced, so the proof did not run. PREFLIGHT_EXIT_CODE=${PREFLIGHT_RC:-unknown}"
               exit 0
             fi
             echo '```text'
