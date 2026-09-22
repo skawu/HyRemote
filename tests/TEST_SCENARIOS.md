@@ -63,19 +63,19 @@ Current implementation buffers arbitrary socket fragments and enforces input/enc
 
 ## Widgets adapter
 
-`hyremote-widgets-capture-test` — MOVE Runtime/Widgets. It proves asynchronous owned frame, geometry/pixel/timing/damage/resize, cancellation after stop and target-loss handling. TG-001 remains because the source expects a forced DPR=1.5 run that is not registered.
+`hyremote-widgets-capture-test` — Runtime/Widgets after #327/#328. It proves asynchronous owned frame, geometry/pixel/timing/damage/resize, cancellation after stop and target-loss handling. TG-001 remains because the source expects a forced DPR=1.5 run that is not registered.
 
-`hyremote-widgets-input-backpressure-test` — MOVE Runtime/Widgets. It proves pointer-flood coalescing, protected release capacity, unmatched-release handling, shutdown dropping of pending input, and exactly-once balancing of already-delivered held state.
+`hyremote-widgets-input-backpressure-test` — Runtime/Widgets after #327/#328. It proves pointer-flood coalescing, protected release capacity, unmatched-release handling, shutdown dropping of pending input, and exactly-once balancing of already-delivered held state.
 
-`hyremote-widgets-input-routing-test` — MOVE Runtime/Widgets; ordinary delivery/local coexistence remains distinct from saturation/backpressure.
+`hyremote-widgets-input-routing-test` — Runtime/Widgets after #327/#328; ordinary delivery/local coexistence remains distinct from saturation/backpressure.
 
-`hyremote-rfb-widget-disconnect-backpressure-test` — MOVE Runtime/RFB+Widgets. Contract is valid, but TG-020 remains because CMake currently guards it by Widgets alone rather than VNC+Widgets.
+`hyremote-rfb-widget-disconnect-backpressure-test` — Runtime/RFB+Widgets after #327/#328. It requires both `HYREMOTE_REMOTEACCESS_WITH_WIDGETS` and `HYREMOTE_WITH_VNC`; TG-020 is closed and VNC-off leaves the RFB-specific test absent from registration.
 
 ## Quick adapter
 
-`hyremote-quick-capture-test` — MOVE Runtime/Quick; asynchronous owned frame, geometry/pixel/timing/damage/resize and target-loss. TG-002 remains for missing forced-DPR run.
+`hyremote-quick-capture-test` — Runtime/Quick after #327/#328; asynchronous owned frame, geometry/pixel/timing/damage/resize and target-loss. TG-002 remains for missing forced-DPR run.
 
-`hyremote-quick-input-routing-test` and `hyremote-quick-input-backpressure-test` remain distinct Quick delivery/pressure contracts and move Runtime/Quick.
+`hyremote-quick-input-routing-test` and `hyremote-quick-input-backpressure-test` remain distinct Quick delivery/pressure contracts and are Runtime/Quick after #327/#328.
 
 ## Listener/address matrix — SPLIT
 
@@ -188,5 +188,5 @@ VeNCrypt probe scripts supply bounded protocol/viewer feasibility evidence for #
 - QPA popup: TG-019 closed by #296.
 - C++-disabled adoption registration: TG-021 closed by #300/#296 evidence.
 - listener matrix: SPLIT by semantic owner.
-- RFB+Widgets disconnect/backpressure: KEEP/MOVE, but TG-020 guard remains.
+- RFB+Widgets disconnect/backpressure: KEEP Runtime/RFB+Widgets; TG-020 closed by #327/#328 capability guard.
 - fragmented/malformed RFB: TG-013/TG-014 remain.
