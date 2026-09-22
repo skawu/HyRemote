@@ -48,6 +48,7 @@ jobs:
       readiness_evidence: ${{ steps.scope.outputs.readiness_evidence }}
       rfb_product_fit_evidence: ${{ steps.scope.outputs.rfb_product_fit_evidence }}
       governance: ${{ steps.scope.outputs.governance }}
+      security_evidence: ${{ steps.scope.outputs.security_evidence }}
       test_exclude: ${{ steps.scope.outputs.test_exclude }}
     steps:
       - uses: actions/checkout@v4
@@ -180,6 +181,41 @@ jobs:
             -r src/integrations/cpp/tests/candidate-test-requirements.txt
           python -c "import PIL, vncdotool; print('viewer tooling importable: Python', __import__('sys').version.split()[0])"
 
+      # The ordinary product matrix is security-off, so the VNC-auth tests are never compiled by it and a green
+      # ordinary run is not evidence about them. When the classifier selects security-on evidence, the product job
+      # provides OpenSSL the same way the TLS preflight already proves works on both reference platforms. This is
+      # provisioning only: the preflight keeps its own PRE semantics, and no second security workflow is introduced.
+      - name: Provide the OpenSSL backend runtime and development files — Linux
+        if: runner.os == 'Linux' && needs.classify.outputs.security_evidence == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libssl-dev
+          echo "OPENSSL_ROOT_DIR=/usr" >> "$GITHUB_ENV"
+          openssl version -a | head -2
+
+      - name: Provide the OpenSSL backend runtime and development files — Windows
+        if: runner.os == 'Windows' && needs.classify.outputs.security_evidence == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          # The Qt SDK is often restored from cache, in which case the Qt step never installed the tooling.
+          python -m pip install --disable-pip-version-check aqtinstall
+          aqt install-tool "${{ matrix.aqt_host }}" desktop tools_opensslv3_x64 --outputdir "$QT_ROOT"
+          OPENSSL_PREFIX="$QT_ROOT/Tools/OpenSSLv3/Win_x64"
+          if [[ ! -d "$OPENSSL_PREFIX" ]]; then
+            echo "the Qt OpenSSL tool component did not install where expected" >&2
+            exit 1
+          fi
+          # Qt's plugin loader finds the DLLs through the loader path, so the runtime directory has to be on PATH for
+          # the product process as well as for its children.
+          echo "$OPENSSL_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "OPENSSL_ROOT_DIR=$OPENSSL_PREFIX" >> "$GITHUB_ENV"
+          # A Windows executable has no rpath, so Qt's own DLLs must be on PATH too.
+          echo "$QT_PREFIX/bin" >> "$GITHUB_PATH"
+
       - name: Install missing Linux Qt host dependencies
         if: runner.os == 'Linux'
         shell: bash
@@ -198,8 +234,16 @@ jobs:
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+          SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
         run: |
           set -euo pipefail
+          # Ordinary builds stay security-off. Only a diff that can invalidate the VNC-auth/private-security path
+          # makes this run request the capability, resolving OpenSSL from the prefix provisioned above. Everything
+          # else - integration selection, exclusions, fail-closed checks and artifacts - is unchanged.
+          security_args=()
+          if [[ "$SECURITY_EVIDENCE" == "true" ]]; then
+            security_args+=(--security "--cmake=OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR}")
+          fi
           sh ./compile.cmd \
             --integrations="$INTEGRATIONS" \
             --qt-prefix="$QT_PREFIX" \
@@ -208,7 +252,8 @@ jobs:
             --tests --run-tests --no-examples \
             --test-exclude="$TEST_EXCLUDE" \
             --xvfb -j4 \
-            --env=QT_QUICK_BACKEND=software
+            --env=QT_QUICK_BACKEND=software \
+            ${security_args[@]+"${security_args[@]}"}
 
       - name: Build and test through HyRemote build system — Windows
         if: runner.os == 'Windows'
@@ -216,10 +261,13 @@ jobs:
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+          SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
+          set "SECURITY_ARG="
+          if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
+          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" %SECURITY_ARG% -j4
 
       - name: Test evidence summary
         if: always()
@@ -229,6 +277,7 @@ jobs:
           # fire. Without this the report printed "<empty>" for every run and the all-matching-shape check could
           # never trigger, which is a guard in name only.
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+          SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
         run: |
           set -uo pipefail
           LOG=build-ci/test.log
@@ -237,6 +286,9 @@ jobs:
             echo "## Test evidence — ${{ matrix.name }}"
             echo
             echo "TEST_EXCLUDE=${TEST_EXCLUDE:-<empty>}"
+            # The VNC-auth tests only exist when the product actually resolved security, so the run records the
+            # classifier's decision next to the counts it produced.
+            echo "SECURITY_EVIDENCE=${SECURITY_EVIDENCE:-<false>}"
             if [[ ! -f "$LOG" ]]; then
               echo "No \`$LOG\` was produced, so the test phase never ran (build/configuration failure)."
               exit 0
@@ -280,6 +332,7 @@ jobs:
           needs.classify.outputs.cpp_evidence == 'true' ||
           needs.classify.outputs.qml_evidence == 'true' ||
           needs.classify.outputs.qpa_evidence == 'true' ||
+          needs.classify.outputs.security_evidence == 'true' ||
           github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
