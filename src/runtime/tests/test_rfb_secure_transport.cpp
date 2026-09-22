@@ -21,11 +21,13 @@
 #include <QTcpServer>
 #include <QThread>
 
+#include <openssl/des.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -80,6 +82,36 @@ QByteArray readExact(QSslSocket &socket, int bytes, int timeoutMs)
                     bytes, int(data.size()), int(socket.isEncrypted()), int(socket.state()));
     }
     return data;
+}
+
+// The client half of VNC Authentication, implemented here so the test does not rely on an internal symbol the
+// product does not export: DES-ECB over the two challenge halves with the password bytes bit-reversed, which is the
+// historical per-byte order the original VNC implementation uses.
+QByteArray vncAuthResponse(const QByteArray &password, const QByteArray &challenge)
+{
+    unsigned char key[8] = {0};
+    for (int index = 0; index < password.size() && index < 8; ++index) {
+        unsigned char value = static_cast<unsigned char>(password.at(index));
+        unsigned char reversed = 0;
+        for (int bit = 0; bit < 8; ++bit) {
+            reversed = static_cast<unsigned char>((reversed << 1) | ((value >> bit) & 0x01));
+        }
+        key[index] = reversed;
+    }
+
+    DES_cblock desKey;
+    std::memcpy(desKey, key, sizeof(desKey));
+    DES_key_schedule schedule;
+    DES_set_key_unchecked(&desKey, &schedule);
+
+    // DES_ecb_encrypt takes mutable input, so the challenge is copied instead of casting its constness away.
+    QByteArray input = challenge;
+    QByteArray response(16, '\0');
+    DES_cblock *blocks = reinterpret_cast<DES_cblock *>(input.data());
+    DES_cblock *output = reinterpret_cast<DES_cblock *>(response.data());
+    DES_ecb_encrypt(blocks, output, &schedule, DES_ENCRYPT);
+    DES_ecb_encrypt(blocks + 1, output + 1, &schedule, DES_ENCRYPT);
+    return response;
 }
 
 quint16 freePort()
@@ -383,13 +415,7 @@ public:
 
         const QByteArray password = m_behaviour == PeerBehaviour::WrongPassword ? QByteArrayLiteral("wrong-pw")
                                                                                 : m_password;
-        QByteArray response;
-        QString computeError;
-        if (!HyRemote::detail::computeVncAuthResponse(password, challenge, response, computeError)) {
-            result.error = QStringLiteral("the response could not be computed");
-            return result;
-        }
-        m_socket.write(response);
+        m_socket.write(vncAuthResponse(password, challenge));
         m_socket.flush();
 
         const QByteArray securityResult = readExact(m_socket, 4, timeoutMs);
