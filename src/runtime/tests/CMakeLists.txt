@@ -91,6 +91,17 @@ if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
     set_tests_properties(hyremote-runtime-secure-transport-test PROPERTIES TIMEOUT 180)
 endif()
 
+# The encrypted profile's deployment closure is structural, so it is asserted without a Qt build and without a
+# runner: the runtime mode decides what a deploy may and must add, and Qt's deployment tool has to be told which
+# OpenSSL to take its TLS backend plugin from. Both incidents that reached hosted CI are decided here instead.
+add_test(
+    NAME hyremote-release-readiness-security-deploy-modes
+    COMMAND "${CMAKE_COMMAND}"
+        -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P "${CMAKE_SOURCE_DIR}/tests/release-readiness/check_security_deploy_modes.cmake"
+)
+set_tests_properties(hyremote-release-readiness-security-deploy-modes PROPERTIES TIMEOUT 30)
+
 # Runtime-owned regressions. These exercise Shared Runtime internals through the C++ test-exports the
 # runtime target already exposes to the build tree, so they register whenever tests are enabled -
 # not only when the C++ frontend or the application-level automatic controller is built.

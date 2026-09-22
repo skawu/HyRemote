@@ -104,43 +104,108 @@ endfunction()
 # PATH and no environment variable pointing at one. A security-enabled deploy that cannot find the payload fails here
 # rather than producing a tree that dies at the first TLS use.
 function(_hyremote_security_private_runtime_install runtime_deploy_dir output_var)
-    set(_hyremote_security_enabled FALSE)
-    if(DEFINED HYREMOTE_TRANSPORT_SECURITY_AVAILABLE AND HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
-        set(_hyremote_security_enabled TRUE)
+    # The deploy contract is driven by the runtime mode, because the modes mean genuinely different things:
+    #   NONE   - the capability is not part of this build; nothing is added, nothing is required.
+    #   BUNDLED- Windows: Qt's TLS backend plugin loads libssl/libcrypto at run time, Qt's own tooling does not copy
+    #            them, and a Windows executable has no rpath. The package carries them and a deploy that cannot find
+    #            them fails here rather than producing a tree that dies at the first TLS use.
+    #   SYSTEM - Linux: the distribution's runtime is the platform's own and every deployed application resolves it
+    #            through the standard loader paths. Empty files are correct here, and demanding a payload would be
+    #            the Windows invariant applied to a platform that does not have that problem.
+    #   STATIC - OpenSSL is linked into the runtime itself; there is no runtime payload at all.
+    set(_hyremote_mode "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE}")
+    if(_hyremote_mode STREQUAL "")
+        set(_hyremote_mode "NONE")
     endif()
-    if(DEFINED HyRemote_TRANSPORT_SECURITY_AVAILABLE AND HyRemote_TRANSPORT_SECURITY_AVAILABLE)
-        set(_hyremote_security_enabled TRUE)
+    if(DEFINED HyRemote_SECURITY_RUNTIME_MODE AND NOT "${HyRemote_SECURITY_RUNTIME_MODE}" STREQUAL "")
+        set(_hyremote_mode "${HyRemote_SECURITY_RUNTIME_MODE}")
     endif()
 
     set(_hyremote_security_install "")
+    set(_hyremote_security_files "")
 
-    if(DEFINED HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES
-       AND NOT "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES}" STREQUAL "")
-        foreach(_hyremote_security_file IN LISTS HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES)
+    if(DEFINED HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME AND HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME)
+        set(_hyremote_security_files "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES}")
+    elseif(DEFINED HyRemote_SECURITY_RUNTIME_FILES AND NOT "${HyRemote_SECURITY_RUNTIME_FILES}" STREQUAL "")
+        set(_hyremote_security_files "${HyRemote_SECURITY_RUNTIME_DIR}|${HyRemote_SECURITY_RUNTIME_FILES}")
+    endif()
+
+    if(_hyremote_mode STREQUAL "NONE" OR _hyremote_mode STREQUAL "STATIC" OR _hyremote_mode STREQUAL "SYSTEM")
+        # Nothing is added. SYSTEM deliberately tolerates an empty payload; NONE and STATIC have nothing to add.
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    if(NOT _hyremote_mode STREQUAL "BUNDLED")
+        message(FATAL_ERROR
+            "hyremote_deploy: unknown transport-security runtime mode '${_hyremote_mode}'. The deployment closure "
+            "cannot be described honestly for a mode this project does not define.")
+    endif()
+
+    if(_hyremote_security_files STREQUAL "")
+        message(FATAL_ERROR
+            "hyremote_deploy: this HyRemote runs the encrypted profile with a bundled OpenSSL runtime but publishes "
+            "no runtime payload, so a deployed application would start and fail at the first TLS use. Rebuild the SDK "
+            "so the capability and its payload come from the same configuration.")
+    endif()
+
+    if(DEFINED HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME AND HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME)
+        foreach(_hyremote_security_file IN LISTS _hyremote_security_files)
             string(APPEND _hyremote_security_install
 "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${_hyremote_security_file}\")\n")
         endforeach()
-    elseif(DEFINED HyRemote_SECURITY_RUNTIME_DIR AND NOT "${HyRemote_SECURITY_RUNTIME_DIR}" STREQUAL ""
-           AND DEFINED HyRemote_SECURITY_RUNTIME_FILES AND NOT "${HyRemote_SECURITY_RUNTIME_FILES}" STREQUAL "")
-        foreach(_hyremote_security_file IN LISTS HyRemote_SECURITY_RUNTIME_FILES)
-            string(APPEND _hyremote_security_install
-"if(NOT EXISTS \"${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_file}\")
-    message(FATAL_ERROR \"HyRemote: the installed package does not carry the OpenSSL runtime its encrypted profile needs (\"${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_file}\" is missing); reinstall the SDK or rebuild without HYREMOTE_WITH_TRANSPORT_SECURITY.\")
+    else()
+        foreach(_hyremote_security_pair IN LISTS _hyremote_security_files)
+            string(REPLACE "|" ";" _hyremote_split "${_hyremote_security_pair}")
+            list(GET _hyremote_split 0 _hyremote_dir)
+            list(GET _hyremote_split 1 _hyremote_files)
+            foreach(_hyremote_security_file IN LISTS _hyremote_files)
+                string(APPEND _hyremote_security_install
+"if(NOT EXISTS \"${_hyremote_dir}/${_hyremote_security_file}\")
+    message(FATAL_ERROR \"HyRemote: the installed package does not carry the OpenSSL runtime its encrypted profile needs (\"${_hyremote_dir}/${_hyremote_security_file}\" is missing); reinstall the SDK or rebuild without HYREMOTE_WITH_TRANSPORT_SECURITY.\")
 endif()
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_file}\")\n")
+file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${_hyremote_dir}/${_hyremote_security_file}\")\n")
+            endforeach()
         endforeach()
-    elseif(_hyremote_security_enabled AND TARGET HyRemote::RemoteAccess)
-        # A project that fakes Qt deployment - the deploy-helper fixtures do exactly that - has no real runtime to
-        # deploy, so it has no runtime payload to carry either. Only a deployment of the actual shared runtime can be
-        # missing the payload the encrypted profile needs, and that case must fail here rather than produce a tree
-        # that starts and then dies at the first TLS use.
-        message(FATAL_ERROR
-            "hyremote_deploy: this HyRemote was built with the transport-security capability but publishes no "
-            "private OpenSSL runtime payload, so a deployed application would start and fail at the first TLS use. "
-            "Rebuild the SDK so the capability and its payload come from the same configuration.")
     endif()
 
     set(${output_var} "${_hyremote_security_install}" PARENT_SCOPE)
+endfunction()
+
+# Qt's deployment tool owns the TLS backend plugin, but it only deploys it when it is told which OpenSSL to take it
+# from: hosted Windows logged "Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root".
+# DEPLOY_TOOL_OPTIONS is Qt's own documented way to pass that through, so the plugin keeps being deployed by its owner.
+# The prefix comes from the source build or from this package's own prefix, never from the build machine.
+function(_hyremote_security_qt_deploy_options output_var)
+    set(_hyremote_mode "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE}")
+    if(DEFINED HyRemote_SECURITY_RUNTIME_MODE AND NOT "${HyRemote_SECURITY_RUNTIME_MODE}" STREQUAL "")
+        set(_hyremote_mode "${HyRemote_SECURITY_RUNTIME_MODE}")
+    endif()
+    if(NOT WIN32 OR NOT _hyremote_mode STREQUAL "BUNDLED")
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(_hyremote_root "")
+    if(DEFINED HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME AND HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME
+       AND NOT "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES}" STREQUAL "")
+        # Source acquisition: the runtime libraries were resolved from the OpenSSL this build linked against, so the
+        # prefix is the directory above their bin directory. Nothing has to be stored anywhere for it.
+        list(GET HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES 0 _hyremote_first_payload)
+        get_filename_component(_hyremote_payload_dir "${_hyremote_first_payload}" DIRECTORY)
+        get_filename_component(_hyremote_root "${_hyremote_payload_dir}" DIRECTORY)
+    elseif(DEFINED HyRemote_SECURITY_OPENSSL_ROOT AND NOT "${HyRemote_SECURITY_OPENSSL_ROOT}" STREQUAL "")
+        set(_hyremote_root "${HyRemote_SECURITY_OPENSSL_ROOT}")
+    endif()
+    if(_hyremote_root STREQUAL "")
+        message(FATAL_ERROR
+            "hyremote_deploy: the encrypted profile runs on Qt's OpenSSL backend, and Qt's deployment tool needs the "
+            "OpenSSL prefix to deploy that backend's plugin, but no prefix is known for this acquisition.")
+    endif()
+
+    set(${output_var}
+"    DEPLOY_TOOL_OPTIONS
+    \"--openssl-root=${_hyremote_root}\"")
 endfunction()
 
 # Resolve the declarative module's backing shared library without creating a public C++ package target.
@@ -218,6 +283,7 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     endif()
 
     _hyremote_security_private_runtime_install("${_runtime_deploy_dir}" _security_private_runtime_install)
+    _hyremote_security_qt_deploy_options(_security_qt_deploy_options)
 
     # Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV}
     # unquoted and therefore loses argument boundaries when an executable filename contains spaces.
@@ -231,6 +297,7 @@ file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FI
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
     \"${_native_platform_plugin_file}\")
 ${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_private_runtime_install}qt6_deploy_runtime_dependencies(
+${_security_qt_deploy_options}
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
@@ -388,6 +455,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     # produced by the one helper the ordinary path already uses, never by a second copy.
     # This path deploys the same shared runtime, so it carries the same private security closure -
     _hyremote_security_private_runtime_install("${_runtime_deploy_dir}" _security_private_runtime_install)
+    _hyremote_security_qt_deploy_options(_security_qt_deploy_options)
     set(_qpa_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-qpa-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_qpa_script}"
@@ -398,6 +466,7 @@ file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platfo
     \"${_native_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_private_runtime_install}qt6_deploy_runtime_dependencies(
+${_security_qt_deploy_options}
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
@@ -492,6 +561,7 @@ function(_hyremote_generate_generic_deploy_script target output_var)
     endif()
 
     _hyremote_security_private_runtime_install("${_runtime_deploy_dir}" _security_private_runtime_install)
+    _hyremote_security_qt_deploy_options(_security_qt_deploy_options)
     set(_generic_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-generic-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_generic_script}"
@@ -503,6 +573,7 @@ ${_linux_platform_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/
     \"${_generic_plugin_file}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_linux_private_runtime_bootstrap}${_security_private_runtime_install}qt6_deploy_runtime_dependencies(
+${_security_qt_deploy_options}
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
