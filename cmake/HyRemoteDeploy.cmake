@@ -98,6 +98,51 @@ endforeach()
     set(${output_var} "${_bootstrap}" PARENT_SCOPE)
 endfunction()
 
+# The encrypted profile's private runtime payload, as a deploy-script fragment. Source acquisition knows the exact
+# files because it linked against them; installed acquisition reads the prefix-relative location the package
+# publishes. Both produce the same deployed semantics: the application completes a TLS session with no OpenSSL on
+# PATH and no environment variable pointing at one. A security-enabled deploy that cannot find the payload fails here
+# rather than producing a tree that dies at the first TLS use.
+function(_hyremote_security_private_runtime_install runtime_deploy_dir output_var)
+    set(_hyremote_security_enabled FALSE)
+    if(DEFINED HYREMOTE_TRANSPORT_SECURITY_AVAILABLE AND HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+        set(_hyremote_security_enabled TRUE)
+    endif()
+    if(DEFINED HyRemote_TRANSPORT_SECURITY_AVAILABLE AND HyRemote_TRANSPORT_SECURITY_AVAILABLE)
+        set(_hyremote_security_enabled TRUE)
+    endif()
+
+    set(_hyremote_security_install "")
+
+    if(DEFINED HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES
+       AND NOT "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES}" STREQUAL "")
+        foreach(_hyremote_security_file IN LISTS HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES)
+            string(APPEND _hyremote_security_install
+"file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${_hyremote_security_file}\")\n")
+        endforeach()
+    elseif(DEFINED HyRemote_SECURITY_RUNTIME_DIR AND NOT "${HyRemote_SECURITY_RUNTIME_DIR}" STREQUAL ""
+           AND DEFINED HyRemote_SECURITY_RUNTIME_FILES AND NOT "${HyRemote_SECURITY_RUNTIME_FILES}" STREQUAL "")
+        foreach(_hyremote_security_file IN LISTS HyRemote_SECURITY_RUNTIME_FILES)
+            string(APPEND _hyremote_security_install
+"if(NOT EXISTS \"${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_file}\")
+    message(FATAL_ERROR \"HyRemote: the installed package does not carry the OpenSSL runtime its encrypted profile needs (\"${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_file}\" is missing); reinstall the SDK or rebuild without HYREMOTE_WITH_TRANSPORT_SECURITY.\")
+endif()
+file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_file}\")\n")
+        endforeach()
+    elseif(_hyremote_security_enabled AND TARGET HyRemote::RemoteAccess)
+        # A project that fakes Qt deployment - the deploy-helper fixtures do exactly that - has no real runtime to
+        # deploy, so it has no runtime payload to carry either. Only a deployment of the actual shared runtime can be
+        # missing the payload the encrypted profile needs, and that case must fail here rather than produce a tree
+        # that starts and then dies at the first TLS use.
+        message(FATAL_ERROR
+            "hyremote_deploy: this HyRemote was built with the transport-security capability but publishes no "
+            "private OpenSSL runtime payload, so a deployed application would start and fail at the first TLS use. "
+            "Rebuild the SDK so the capability and its payload come from the same configuration.")
+    endif()
+
+    set(${output_var} "${_hyremote_security_install}" PARENT_SCOPE)
+endfunction()
+
 # Resolve the declarative module's backing shared library without creating a public C++ package target.
 # Source acquisition names the concrete local qt_add_qml_module backing target; installed acquisition
 # consumes absolute package metadata. Applications still consume only the stable `import HyRemote` URI.
@@ -172,6 +217,8 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
 "\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
     endif()
 
+    _hyremote_security_private_runtime_install("${_runtime_deploy_dir}" _security_private_runtime_install)
+
     # Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV}
     # unquoted and therefore loses argument boundaries when an executable filename contains spaces.
     # HyRemote is a Qt 6 package, so call the Qt 6 implementation directly and preserve PARSE_ARGV semantics.
@@ -183,7 +230,7 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
     \"${_native_platform_plugin_file}\")
-${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_private_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
