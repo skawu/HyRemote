@@ -1,8 +1,8 @@
-# Application-level automatic access controller tests, plus the private notification seam and the
-# build/bootstrap authority self-test. These were only ever reachable because the whole tests
-# directory used to be entered behind HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE, so they keep that same
-# effective guard here: freeing the Runtime-owned regressions below must not silently change what the
-# runtime-only and frontend-less configurations register.
+# Application-level automatic access controller tests plus the private notification seam. These were
+# only ever reachable because the whole tests directory used to be entered behind
+# HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE, so they keep that same effective guard here: freeing the
+# Runtime-owned regressions below must not silently change what the runtime-only and frontend-less
+# configurations register.
 if(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
     add_executable(hyremote-runtime-automatic-surface-model-test
         automatic_application_surface_model_test.cpp
@@ -59,18 +59,6 @@ if(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
     add_test(NAME hyremote-runtime-notifications-test
              COMMAND hyremote-runtime-notifications-test)
     set_tests_properties(hyremote-runtime-notifications-test PROPERTIES TIMEOUT 60)
-
-    # Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
-    # available in the current all-frontends CI profile without introducing another product target.
-    # Moving this registration to its own owner is a later slice, so it keeps the guard it had here
-    # instead of being newly registered in configurations that never had it.
-    add_test(
-        NAME hyremote-build-authority-selftest
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
-    )
-    set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
 endif()
 
 # Runtime-owned regressions. These exercise Shared Runtime internals through the C++ test-exports the
