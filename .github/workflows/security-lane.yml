@@ -101,6 +101,7 @@ jobs:
           openssl version
 
       - name: Provision the OpenSSL runtime — Windows
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           set -euo pipefail
