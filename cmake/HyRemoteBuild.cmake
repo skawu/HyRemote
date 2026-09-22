@@ -728,6 +728,52 @@ if(HYB_INSTALL)
         message(FATAL_ERROR "Install failed (${rc}). See ${install_log}")
     endif()
     message(STATUS "HYREMOTE_INSTALL_ROOT=${HYB_INSTALL_ROOT}")
+    # A truthful, human-readable manifest beside the tree. It is deliberately not a schema or a framework: it states
+    # the facts this build already knows, so a user holding the directory can tell what it is and what it contains.
+    # The Qt version is read back from the cache Qt itself populated, so it reports the Qt that was actually used.
+    set(_hyb_qt_version "unknown")
+    if(EXISTS "${HYB_BUILD_DIR}/CMakeCache.txt")
+        file(READ "${HYB_BUILD_DIR}/CMakeCache.txt" _hyb_cache)
+        if(_hyb_cache MATCHES "Qt6Core_DIR[^\n]*/([0-9]+\\.[0-9]+\\.[0-9]+)/")
+            set(_hyb_qt_version "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+    set(_hyb_source_sha "unknown")
+    execute_process(
+        COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse HEAD
+        RESULT_VARIABLE _hyb_git_rc
+        OUTPUT_VARIABLE _hyb_git_out
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_hyb_git_rc EQUAL 0 AND NOT _hyb_git_out STREQUAL "")
+        set(_hyb_source_sha "${_hyb_git_out}")
+    endif()
+
+    # CMAKE_HOST_SYSTEM_PROCESSOR is not populated by every generator/host pair, and an empty ARCH= line would be a
+    # manifest that claims less than it knows. The environment's own architecture is the first fallback because that is
+    # the word a Windows user recognises, then CMake's target processor, and only then "unknown".
+    set(_hyb_arch "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    if(_hyb_arch STREQUAL "")
+        set(_hyb_arch "$ENV{PROCESSOR_ARCHITECTURE}")
+    endif()
+    if(_hyb_arch STREQUAL "")
+        set(_hyb_arch "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    if(_hyb_arch STREQUAL "")
+        set(_hyb_arch "unknown")
+    endif()
+
+    file(WRITE "${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt"
+        "SOURCE_SHA=${_hyb_source_sha}\n"
+        "OS=${CMAKE_HOST_SYSTEM_NAME}\n"
+        "ARCH=${_hyb_arch}\n"
+        "QT_VERSION=${_hyb_qt_version}\n"
+        "BUILD_TYPE=${HYB_BUILD_TYPE}\n"
+        "CPP=${HYB_CPP}\n"
+        "QML=${HYB_QML}\n"
+        "GENERIC=${HYB_GENERIC}\n"
+        "QPA=${HYB_QPA}\n"
+        "SECURITY_STATE=${HYB_SECURITY}\n")
+    message(STATUS "HYREMOTE_INSTALL_MANIFEST=${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt")
 endif()
 
 if(HYB_TESTS_RUN)
