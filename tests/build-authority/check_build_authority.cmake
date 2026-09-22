@@ -206,4 +206,13 @@ endforeach()
 file(READ "${cpp_tests_cmake}" cpp_tests_text)
 forbid_text(security-targets "${cpp_tests_text}" "OpenSSL::SSL")
 
+# The canonical Windows wrapper must state its exit contract, not infer it by re-expanding a batch variable. The
+# hosted Windows lane once reported "HyRemote build succeeded" and 100% of its tests, while its caller still received
+# a non-zero status - a false red that costs a whole round and hides the real answer. The wrapper therefore has to
+# contain an explicit success exit and an explicit failure exit, and must not end on a bare %ERRORLEVEL% expansion.
+file(READ "${HYREMOTE_SOURCE_DIR}/compile.cmd" wrapper_text)
+require_text(wrapper-exit-contract "${wrapper_text}" "if errorlevel 1 exit /b 1")
+require_text(wrapper-exit-contract "${wrapper_text}" "exit /b 0")
+forbid_text(wrapper-exit-contract "${wrapper_text}" "exit /b %ERRORLEVEL%")
+
 message(STATUS "HyRemote build authority self-tests: PASS")

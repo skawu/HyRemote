@@ -385,6 +385,9 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     # Keep the same direct Qt 6 call here as in the ordinary/QML supplemental deploy script. QPA
     # consumers can also have executable output names containing spaces, and the Qt 6.8.3 versionless
     # forwarding wrapper does not preserve those arguments.
+    # produced by the one helper the ordinary path already uses, never by a second copy.
+    # This path deploys the same shared runtime, so it carries the same private security closure -
+    _hyremote_security_private_runtime_install("${_runtime_deploy_dir}" _security_private_runtime_install)
     set(_qpa_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-qpa-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_qpa_script}"
@@ -394,7 +397,7 @@ file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platfo
     \"${_qpa_plugin_file}\"
     \"${_native_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_private_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
@@ -488,6 +491,7 @@ function(_hyremote_generate_generic_deploy_script target output_var)
 ")
     endif()
 
+    _hyremote_security_private_runtime_install("${_runtime_deploy_dir}" _security_private_runtime_install)
     set(_generic_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-generic-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_generic_script}"
@@ -498,7 +502,7 @@ file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platfo
 ${_linux_platform_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/generic\" TYPE FILE FILES
     \"${_generic_plugin_file}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+${_linux_private_runtime_bootstrap}${_security_private_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"

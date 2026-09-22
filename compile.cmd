@@ -17,7 +17,8 @@ if errorlevel 1 (
 )
 
 cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %*
-exit /b %ERRORLEVEL%
+if errorlevel 1 exit /b 1
+exit /b 0
 HYREMOTE_BATCH
 
 set -eu
