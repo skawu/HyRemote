@@ -12,6 +12,7 @@ endif()
 add_library(hyremote-remoteaccess SHARED
     src/access_instance.cpp
     src/detail/component_factories.cpp
+    src/detail/runtime_notifications.cpp
     src/detail/security_descriptor.cpp
     src/detail/composition_support.cpp
 )

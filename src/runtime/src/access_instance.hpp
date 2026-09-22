@@ -1,6 +1,7 @@
 #pragma once
 
 #include "access_types.hpp"
+#include "detail/runtime_notifications.hpp"
 
 #include <HyRemote/RemoteAccessExport.h>
 
@@ -54,6 +55,18 @@ public:
     std::size_t connectedClientCount() const noexcept;
     std::optional<Error> lastError() const;
     void clearError();
+
+    // Private Runtime notification seam (#259). A frontend subscribes instead of polling: the handlers
+    // are typed (see detail/runtime_notifications.hpp), the returned token unregisters them, and the
+    // values are published from the event boundaries that already exist in this class - the start/stop
+    // lifecycle, the transport wrapper and the capture wrapper - never from a timer.
+    //
+    // Frontends consume these notifications and read the snapshot they already read today; there is no
+    // second state machine and no second copy of the client count. Like the rest of AccessInstance this
+    // is not an application SDK promise: the header is never installed and no Core or public facade
+    // type appears here.
+    RuntimeNotificationToken subscribeNotifications(RuntimeNotificationHandlers handlers);
+    void unsubscribeNotifications(RuntimeNotificationToken token) noexcept;
 
 private:
     struct Impl;
