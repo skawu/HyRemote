@@ -1,6 +1,15 @@
 get_filename_component(_hyremote_runtime_src
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime/src" ABSOLUTE)
 
+# The facade tests encode the transport-security contract, so they are told whether the capability is part of this
+# build - the same fact the runtime itself is compiled with. Without it a test reads the compiled-out branch of its
+# own `#ifdef` and asserts the contract of a configuration it is not running in, which is exactly how #143 first
+# looked like a regression here.
+set(_hyremote_transport_security_definitions)
+if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+    list(APPEND _hyremote_transport_security_definitions HYREMOTE_HAS_TRANSPORT_SECURITY=1)
+endif()
+
 add_executable(hyremote-remoteaccess-test
     test_remote_access.cpp
 )
@@ -14,6 +23,10 @@ target_link_libraries(hyremote-remoteaccess-test
 target_include_directories(hyremote-remoteaccess-test
     PRIVATE
         ${_hyremote_runtime_src}
+)
+target_compile_definitions(hyremote-remoteaccess-test
+    PRIVATE
+        ${_hyremote_transport_security_definitions}
 )
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
