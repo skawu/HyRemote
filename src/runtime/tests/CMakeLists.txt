@@ -60,10 +60,23 @@ if(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
              COMMAND hyremote-runtime-notifications-test)
     set_tests_properties(hyremote-runtime-notifications-test PROPERTIES TIMEOUT 60)
 
-<<<<<<< HEAD
-# #143: the encrypted RFB profile, exercised through the real transport with a deterministic peer. It is only
-# registered in a security-enabled tree, because the encrypted profile does not exist without the
-# transport-security capability - that is a property of the product, not of the test.
+    # Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
+    # available in the current all-frontends CI profile without introducing another product target.
+    # Moving this registration to its own owner is a later slice, so it keeps the guard it had here
+    # instead of being newly registered in configurations that never had it.
+    add_test(
+        NAME hyremote-build-authority-selftest
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
+    )
+    set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
+endif()
+
+# #143: the encrypted RFB profile, exercised through the real transport with a deterministic peer that speaks the
+# frozen wire profile. It registers whenever tests are enabled, and is only built in a security-enabled tree: the
+# encrypted profile does not exist without the transport-security capability, which is a property of the product
+# rather than of the test.
 if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
     add_executable(hyremote-runtime-secure-transport-test
         test_rfb_secure_transport.cpp
@@ -78,34 +91,12 @@ if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
     set_tests_properties(hyremote-runtime-secure-transport-test PROPERTIES TIMEOUT 180)
 endif()
 
-# Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
-# available in the current all-frontends CI profile without introducing another product target.
-add_test(
-    NAME hyremote-build-authority-selftest
-    COMMAND "${CMAKE_COMMAND}"
-        -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-        -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
-=======
-    # Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
-    # available in the current all-frontends CI profile without introducing another product target.
-    # Moving this registration to its own owner is a later slice, so it keeps the guard it had here
-    # instead of being newly registered in configurations that never had it.
-    add_test(
-        NAME hyremote-build-authority-selftest
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
-    )
-    set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
-endif()
-
 # Runtime-owned regressions. These exercise Shared Runtime internals through the C++ test-exports the
 # runtime target already exposes to the build tree, so they register whenever tests are enabled -
 # not only when the C++ frontend or the application-level automatic controller is built.
 add_executable(hyremote-security-descriptor-test
     test_security_descriptor.cpp
     ../src/detail/security_descriptor.cpp
->>>>>>> origin/develop
 )
 target_link_libraries(hyremote-security-descriptor-test
     PRIVATE
