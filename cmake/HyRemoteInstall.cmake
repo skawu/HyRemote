@@ -84,6 +84,16 @@ if(TARGET hyremote-generic-plugin)
     hyremote_target_artifact_name(hyremote-generic-plugin HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME)
 endif()
 
+# The transport security runtime, installed as a package-owned private payload beside the shared runtime. It is
+# resolved from the OpenSSL this build links against (cmake/HyRemoteProjectOptions.cmake), because the deploy helper
+# runs before these rules are processed. There is no consumer target, no link interface and no OpenSSL dependency a
+# consumer has to resolve.
+if(HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME)
+    foreach(_hyremote_security_source IN LISTS HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES)
+        install(FILES "${_hyremote_security_source}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    endforeach()
+endif()
+
 configure_package_config_file(
     "${CMAKE_CURRENT_LIST_DIR}/HyRemoteConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"

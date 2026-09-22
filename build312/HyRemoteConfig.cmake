@@ -1,4 +1,28 @@
-@PACKAGE_INIT@
+
+####### Expanded from @PACKAGE_INIT@ by configure_package_config_file() #######
+####### Any changes to this file will be overwritten by the next CMake run ####
+####### The input file was HyRemoteConfig.cmake.in                            ########
+
+get_filename_component(PACKAGE_PREFIX_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../" ABSOLUTE)
+
+macro(set_and_check _var _file)
+  set(${_var} "${_file}")
+  if(NOT EXISTS "${_file}")
+    message(FATAL_ERROR "File or directory ${_file} referenced by variable ${_var} does not exist !")
+  endif()
+endmacro()
+
+macro(check_required_components _NAME)
+  foreach(comp ${${_NAME}_FIND_COMPONENTS})
+    if(NOT ${_NAME}_${comp}_FOUND)
+      if(${_NAME}_FIND_REQUIRED_${comp})
+        set(${_NAME}_FOUND FALSE)
+      endif()
+    endif()
+  endforeach()
+endmacro()
+
+####################################################################################
 
 include(CMakeFindDependencyMacro)
 
@@ -31,7 +55,7 @@ set_property(GLOBAL PROPERTY HYREMOTE_INSTALLED_PACKAGE_PREFIX "${_hyremote_pack
 # The installed V1 package exposes one shared RemoteAccess C++ target. Its installed public header
 # uses Qt Core/Network types, so those are the only unconditional package-level Qt dependencies.
 # Widgets, Quick and QML remain application-selected UI layers.
-if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
+if(TRUE)
     find_dependency(Qt6 6.8 COMPONENTS Core Network)
 endif()
 
@@ -44,20 +68,20 @@ endif()
 # deliberately not a link target and not a dependency: a clean consumer never calls find_package(OpenSSL), never links
 # OpenSSL and never needs to know that the runtime has a private OpenSSL dependency. The directory is derived from
 # this package's own prefix, so an installed SDK stays relocatable and records no build-machine path.
-set(HyRemote_TRANSPORT_SECURITY_AVAILABLE @HYREMOTE_TRANSPORT_SECURITY_AVAILABLE@)
-set(HyRemote_SECURITY_RUNTIME_MODE "@HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE@")
-set(HyRemote_SECURITY_RUNTIME_SUBDIR "@HYREMOTE_PACKAGE_SECURITY_RUNTIME_SUBDIR@")
-set(HyRemote_SECURITY_RUNTIME_FILES "@HYREMOTE_PACKAGE_SECURITY_RUNTIME_FILES@")
+set(HyRemote_TRANSPORT_SECURITY_AVAILABLE ON)
+set(HyRemote_SECURITY_RUNTIME_MODE "BUNDLED")
+set(HyRemote_SECURITY_RUNTIME_SUBDIR "bin")
+set(HyRemote_SECURITY_RUNTIME_FILES "libcrypto-3-x64.dll;libssl-3-x64.dll")
 if(HyRemote_SECURITY_RUNTIME_SUBDIR STREQUAL "")
     set(HyRemote_SECURITY_RUNTIME_DIR "")
 else()
-    set(HyRemote_SECURITY_RUNTIME_DIR "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_SECURITY_RUNTIME_SUBDIR@")
+    set(HyRemote_SECURITY_RUNTIME_DIR "${_hyremote_package_prefix}/bin")
 endif()
 
-if(@HYREMOTE_PACKAGE_WITH_QML@)
-    set(HyRemote_QML_IMPORT_PATH "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
+if(FALSE)
+    set(HyRemote_QML_IMPORT_PATH "${_hyremote_package_prefix}/lib/qml")
     set(HyRemote_QML_BACKING_FILE
-        "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QML_BACKING_SUBDIR@/@HYREMOTE_PACKAGE_QML_BACKING_FILENAME@")
+        "${_hyremote_package_prefix}//")
 else()
     set(HyRemote_QML_IMPORT_PATH "")
     set(HyRemote_QML_BACKING_FILE "")
@@ -65,11 +89,11 @@ endif()
 
 # Transparent QPA is a package-owned plugin payload. There is no consumer link target and no
 # static/shared personality switch in V1: qhyremote always reuses the one shared RemoteAccess runtime.
-set(HyRemote_QPA_AVAILABLE @HYREMOTE_PACKAGE_WITH_QPA@)
+set(HyRemote_QPA_AVAILABLE FALSE)
 if(HyRemote_QPA_AVAILABLE)
-    set(HyRemote_QPA_QT_VERSION "@HYREMOTE_PACKAGE_QPA_QT_VERSION@")
+    set(HyRemote_QPA_QT_VERSION "6.8.3")
     set(HyRemote_QPA_PLUGIN_FILE
-        "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR@/@HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME@")
+        "${_hyremote_package_prefix}//")
 else()
     set(HyRemote_QPA_QT_VERSION "")
     set(HyRemote_QPA_PLUGIN_FILE "")
@@ -77,10 +101,10 @@ endif()
 
 # Generic Plugin is the other zero-code package payload. It is a QGenericPlugin that leaves the application's native
 # Qt platform integration untouched, so it publishes availability and its installed payload location only.
-set(HyRemote_GENERIC_AVAILABLE @HYREMOTE_PACKAGE_WITH_GENERIC@)
+set(HyRemote_GENERIC_AVAILABLE FALSE)
 if(HyRemote_GENERIC_AVAILABLE)
     set(HyRemote_GENERIC_PLUGIN_FILE
-        "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_GENERIC_PLUGIN_SUBDIR@/@HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME@")
+        "${_hyremote_package_prefix}//")
 else()
     set(HyRemote_GENERIC_PLUGIN_FILE "")
 endif()
