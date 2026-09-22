@@ -6,7 +6,7 @@
 
 ## Status / severity
 
-- `CLOSED` — found during Phase A and fixed before the audit merged.
+- `CLOSED` — found during Phase A and fixed before the audit merged or by a later #274 slice.
 - `CONFIRMED` — trustworthy evidence is absent or the test contract/registration is wrong now.
 - `FUTURE-OWNED` — test obligation belongs to an admitted future capability/release.
 - P0/P1/P2/P3 indicate release/evidence risk, not implementation priority by themselves.
@@ -36,7 +36,7 @@ There are no unresolved `REVIEW` findings.
 | TG-017 | CONFIRMED P2 | Generic capability-off | No equivalent deterministic package/deploy negative proving a Generic-disabled SDK reports absence and rejects `GENERIC` deployment for the intended reason. Add one bounded T4 negative, not an all-flags matrix. |
 | TG-018 | CONFIRMED P2 intent | stale V1-only vocabulary | Some durable public/package test comments/assertion messages still call cross-release contracts “V1”. Keep assertions; clean wording/ownership in Phase B. |
 | TG-019 | CLOSED P1 quality | QPA popup timing | #282/#296 replaced fixed `350/300 ms` synchronization with bounded condition/event-driven waits. Fresh first hosted qpa-only run `35676277901`: Linux 72 discovered / 59 executed / 59 PASS, popup 0.73s; Windows 71 / 58 / 58 PASS, popup 1.21s. No retry. |
-| TG-020 | CONFIRMED P1 build matrix | RFB+Widgets capability guard | `hyremote-rfb-widget-disconnect-backpressure-test` requires `createRfbTransport` but remains registered inside Widgets-only guard, outside `HYREMOTE_WITH_VNC`. Phase B: require actual VNC+Widgets capability while moving Runtime/RFB+Widgets ownership; do not runtime-skip it. |
+| TG-020 | CLOSED P1 build matrix | RFB+Widgets capability guard | #327/#328 moved `hyremote-rfb-widget-disconnect-backpressure-test` to Runtime ownership and made registration/build require both `HYREMOTE_REMOTEACCESS_WITH_WIDGETS` and `HYREMOTE_WITH_VNC`; Widgets-on/VNC-off therefore has no RFB-specific registration instead of a runtime skip/unbuildable target. |
 | TG-021 | CLOSED P1 evidence | V0.1 example capability guard | QPA-only lanes used to register the combined 01/02/03 adoption smoke even though 01/02 require C++ API. #298/#300 now require C++ API + Runtime target + Python. #296 first fresh qpa-only hosted run proves smoke absent on both platforms while suites remain nonzero/pass. |
 
 ## Verified coverage — do not duplicate
@@ -51,7 +51,7 @@ There are no unresolved `REVIEW` findings.
 | framebuffer/input/reconnect with maintained viewer | `verify_standard_client` via `vncdotool` |
 | VNC Auth positive/negative/no-downgrade/timeout | conditional `hyremote-rfb-vnc-auth-handshake-test` |
 | concurrent viewer held state | `hyremote-rfb-multi-client-input-test` |
-| saturated adapter disconnect cleanup | `hyremote-rfb-widget-disconnect-backpressure-test` semantics are valid; TG-020 is only its current registration guard |
+| saturated adapter disconnect cleanup | Runtime-owned `hyremote-rfb-widget-disconnect-backpressure-test`, registered only for Widgets + VNC; TG-020 closed |
 | Widgets input pressure | coalescing, protected releases, shutdown balancing in `hyremote-widgets-input-backpressure-test` |
 | Core lifecycle/concurrency | `hyremote-core-test-session-lifecycle` families |
 | installed C++ | `hyremote-cpp-installed-consumers` |
@@ -80,4 +80,4 @@ There are no unresolved `REVIEW` findings.
 
 ## Release-admission handoff
 
-No open Phase-A finding currently reopens V0.1. TG-009/TG-012/TG-019/TG-021 were closed by their owning issues before this audit merges. Remaining gaps belong to later #274 phases unless restored deterministic coverage exposes a separate product/security/release defect; such a defect must be handed to its owning release issue rather than silently expanding #274.
+No open Phase-A finding currently reopens V0.1. TG-009/TG-012/TG-019/TG-020/TG-021 were closed by their owning issues/slices. Remaining gaps belong to later #274 phases unless restored deterministic coverage exposes a separate product/security/release defect; such a defect must be handed to its owning release issue rather than silently expanding #274.
