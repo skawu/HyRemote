@@ -84,6 +84,16 @@ if(TARGET hyremote-generic-plugin)
     hyremote_target_artifact_name(hyremote-generic-plugin HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME)
 endif()
 
+# --- #143: the encrypted profile's private runtime payload -------------------------------------------------
+# The resolution happens where the capability is decided (cmake/HyRemoteProjectOptions.cmake), because the deploy
+# helper runs before these install rules are processed. This file only installs what that decision resolved, as a
+# package-owned private payload: no consumer target, no link interface, and no find_dependency(OpenSSL).
+if(HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME)
+    foreach(_hyremote_security_source IN LISTS HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES)
+        install(FILES "${_hyremote_security_source}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    endforeach()
+endif()
+
 configure_package_config_file(
     "${CMAKE_CURRENT_LIST_DIR}/HyRemoteConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"

@@ -150,19 +150,36 @@ public:
         return readFramebufferUpdate(timeoutMs);
     }
 
+    // Awaiting a geometry must honour the caller's whole budget. Capping each framebuffer request at a fixed 1.5 s
+    // turned a five-second bounded wait into "the first frame did not arrive in 1.5 s", which is how a popup the
+    // canvas does observe a moment later was reported as never observed. Each request may now consume whatever is
+    // left of the deadline, and the failure distinguishes a request that died from a geometry that had not changed.
     bool waitForGeometry(const QSize &expected, int timeoutMs = 5000)
     {
         QElapsedTimer timer;
         timer.start();
-        while (timer.elapsed() < timeoutMs) {
+        for (;;) {
             pumpEvents(80);
             const int remaining = timeoutMs - static_cast<int>(timer.elapsed());
-            const int attemptTimeout = qMax(1, qMin(1500, remaining));
-            if (!requestFramebuffer(attemptTimeout))
+            if (remaining <= 0)
+                break;
+
+            if (!requestFramebuffer(remaining)) {
+                qWarning().nospace() << "QPA_TEST_CLIENT: REMOTE_GEOMETRY_REQUEST_FAILED expected="
+                                     << expected.width() << 'x' << expected.height() << " last="
+                                     << m_geometry.size().width() << 'x' << m_geometry.size().height()
+                                     << " elapsed=" << timer.elapsed() << "ms connected=" << connected()
+                                     << " remaining=" << remaining << "ms";
                 return false;
+            }
             if (m_geometry.size() == expected)
                 return true;
         }
+
+        qWarning().nospace() << "QPA_TEST_CLIENT: REMOTE_GEOMETRY_TIMEOUT expected=" << expected.width() << 'x'
+                             << expected.height() << " last=" << m_geometry.size().width() << 'x'
+                             << m_geometry.size().height() << " elapsed=" << timer.elapsed()
+                             << "ms connected=" << connected();
         return false;
     }
 

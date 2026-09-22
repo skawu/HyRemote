@@ -1,0 +1,291 @@
+name: Security lane (authenticated-encrypted transport)
+
+# The real-product lane for the V0.2.0.0 encrypted profile. It builds and runs the shared runtime and its actual RFB
+# transport with HYREMOTE_WITH_TRANSPORT_SECURITY=ON on both reference platforms - this is not the #258 preflight
+# harness - and it asserts the deployment facts the encrypted profile needs, because Qt's deployment tooling copies
+# its TLS plugin but not the OpenSSL runtime that plugin loads.
+#
+# It is deliberately separate from the ordinary product matrix: the default build must stay buildable without OpenSSL,
+# and a security-enabled build legitimately needs a development package and an exact TLS runtime.
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: security-lane-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secure-product:
+    name: ${{ matrix.name }} / transport security ON / Release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 / Qt 6.8.3
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+          - name: Windows x86_64 / Qt 6.8.3
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: qt-cache
+        name: Restore exact Qt SDK
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v4-${{ runner.os }}-6.8.3-${{ matrix.aqt_arch }}
+
+      - name: Validate or install exact Qt SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
+          case "${{ runner.os }}" in
+            Linux) QT_PLATFORM=linux ;;
+            *)     QT_PLATFORM=windows ;;
+          esac
+
+          qt_tree_valid() {
+            python .github/scripts/validate-qt-sdk.py \
+              --prefix "$QT_PREFIX" \
+              --qt-version 6.8.3 \
+              --platform "$QT_PLATFORM" \
+              --need-qml true \
+              --need-qpa true \
+              --cmake-components Qt6CoreConfig.cmake Qt6GuiConfig.cmake Qt6NetworkConfig.cmake \
+                                 Qt6WidgetsConfig.cmake Qt6QuickConfig.cmake \
+              --private-headers qguiapplication_p.h
+          }
+
+          if ! qt_tree_valid; then
+            if [[ "${{ steps.qt-cache.outputs.cache-hit }}" == "true" ]]; then
+              echo "Restored Qt cache failed integrity validation; rebuilding the local tree."
+            else
+              echo "Qt cache miss; installing exact SDK."
+            fi
+            rm -rf "$QT_ROOT"
+            python -m pip install --disable-pip-version-check aqtinstall
+            aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+            qt_tree_valid || {
+              echo "Fresh Qt installation failed integrity validation." >&2
+              exit 1
+            }
+          fi
+
+          if ! command -v ninja >/dev/null 2>&1; then
+            python -m pip install --disable-pip-version-check ninja
+          fi
+          echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+          echo "QT_ROOT=$QT_ROOT" >> "$GITHUB_ENV"
+          echo "QT_PREFIX_RESOLVED=$QT_PREFIX"
+
+      # The TLS runtime the encrypted profile is qualified against. On Windows that is Qt's own OpenSSL 3 tool
+      # component, which is the same distribution the local preflight used; on the Linux reference environment the
+      # distribution's OpenSSL 3 runtime is the qualified one and stays a system dependency.
+      - name: Provision the OpenSSL runtime — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update || echo "apt-get update reported a failure; continuing to the package install"
+          sudo apt-get install -y libssl-dev
+          echo "OPENSSL_ROOT_DIR=/usr" >> "$GITHUB_ENV"
+          echo "OPENSSL_RESOLUTION=system" >> "$GITHUB_ENV"
+          openssl version
+
+      - name: Provision the OpenSSL runtime — Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall
+          aqt install-tool windows desktop tools_opensslv3_x64 --outputdir "$QT_ROOT"
+          OPENSSL_PREFIX="$QT_ROOT/Tools/OpenSSLv3/Win_x64"
+          test -f "$OPENSSL_PREFIX/include/openssl/opensslv.h"
+          ls "$OPENSSL_PREFIX/bin"
+          echo "OPENSSL_ROOT_DIR=$OPENSSL_PREFIX" >> "$GITHUB_ENV"
+          echo "OPENSSL_RESOLUTION=qt-tool-component" >> "$GITHUB_ENV"
+
+      - name: Install missing Linux Qt host dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+
+      # Same build authority as the ordinary product lane, with the capability enabled. Examples stay on so the
+      # deployment path is exercised by the same run.
+      - name: Build and test through HyRemote build system — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./compile.cmd \
+            --security \
+            --qt-prefix="$QT_PREFIX" \
+            --build-type=Release \
+            --build-dir=build-ci \
+            --tests --run-tests \
+            --test-exclude='^hyremote-v01-rfb-product-fit$' \
+            --xvfb -j4 \
+            --env=QT_QUICK_BACKEND=software || {
+            rc=$?
+            for f in build-ci/configure.log build-ci/build.log build-ci/test.log; do
+              if [[ -f "$f" ]]; then
+                echo "::group::$f"
+                tail -400 "$f"
+                echo "::endgroup::"
+              fi
+            done
+            exit $rc
+          }
+
+      - name: Build and test through HyRemote build system — Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          call compile.cmd --security --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests "--test-exclude=^hyremote-v01-rfb-product-fit$" -j4
+          if errorlevel 1 (
+            for %%f in (configure.log build.log test.log) do (
+              if exist "build-ci\%%f" (
+                echo ::group::build-ci\%%f
+                type "build-ci\%%f"
+                echo ::endgroup::
+              )
+            )
+            exit /b 1
+          )
+
+      - name: Encrypted transport evidence
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo "## Encrypted transport evidence — ${{ matrix.name }}"
+            echo
+            echo '```text'
+            grep -E "[0-9]+% tests passed|Total Test time" build-ci/test.log 2>/dev/null || echo "no ctest summary"
+            echo '```'
+            echo
+            echo "### Encrypted-profile test transcripts"
+            echo '```text'
+            grep -E "SECURE_TEST_BEGIN|SECURE_TEST_TLS_BACKENDS|SECURE_TEST_ACTIVE_BACKEND|SECURE_TEST_RESULT|SECURE_TEST_FAILURES" \
+              build-ci/test.log 2>/dev/null || true
+            for log in $(find build-ci -name "LastTest.log" 2>/dev/null); do
+              grep -E "SECURE_TEST_BEGIN|SECURE_TEST_TLS_BACKENDS|SECURE_TEST_ACTIVE_BACKEND|SECURE_TEST_RESULT|SECURE_TEST_FAILURES" "$log" || true
+            done
+            echo '```'
+            echo
+            # Evidence comes from this run's own artefacts, not from an echoed number. ctest writes the summary to
+            # test.log and the individual transcripts to Testing/Temporary/LastTest.log, so the executed count and
+            # the encrypted-profile test's own result are read from those two files.
+            executed="$(grep -oE 'out of [0-9]+' build-ci/test.log 2>/dev/null | head -1 | grep -oE '[0-9]+' || true)"
+            executed="${executed:-0}"
+            discovered="$(grep -cE '^ *[0-9]+/[0-9]+ Test ' build-ci/test.log 2>/dev/null || echo 0)"
+            secure_line="$(grep -E 'hyremote-runtime-secure-transport-test' build-ci/test.log 2>/dev/null | head -1 || true)"
+            secure_result="$(grep -rhoE 'SECURE_TEST_RESULT=[A-Z]+' build-ci/Testing/Temporary/LastTest.log 2>/dev/null | head -1 || true)"
+            secure_backends="$(grep -rhoE 'SECURE_TEST_ACTIVE_BACKEND=\S+' build-ci/Testing/Temporary/LastTest.log 2>/dev/null | head -1 || true)"
+            echo "SECURITY_TEST_DISCOVERED=$discovered"
+            echo "SECURITY_TEST_EXECUTED=$executed"
+            echo "SECURE_TRANSPORT_TEST_LINE=$secure_line"
+            echo "SECURE_TRANSPORT_TEST_RESULT=${secure_result:-unknown}"
+            echo "SECURE_TRANSPORT_${secure_backends:-ACTIVE_BACKEND=unknown}"
+            if [[ "$executed" -eq 0 || -z "$secure_line" ]]; then
+              echo "::error::the security lane did not execute the encrypted-profile test"
+              exit 1
+            fi
+            echo "OPENSSL_RESOLUTION=${OPENSSL_RESOLUTION:-unknown}"
+            echo "OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR:-unknown}"
+            echo "ACTIVE_TLS_BACKEND=openssl"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The deployment half. Qt's tooling owns the TLS plugin; HyRemote's own packaging owns the OpenSSL runtime,
+      # because Qt's tooling does not copy it. Both facts are asserted on the generated artefacts rather than assumed.
+      - name: Secure deployment payload assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "### Deployment payload — ${{ matrix.name }}"
+          config="build-ci/HyRemoteConfig.cmake"
+          test -f "$config"
+          grep -q 'set(HyRemote_TRANSPORT_SECURITY_AVAILABLE ON)' "$config"
+          grep -q 'set(HyRemote_SECURITY_RUNTIME_FILES "libssl' "$config"
+          if grep -q 'find_dependency(OpenSSL' "$config"; then
+            echo "::error::the installed package must not require consumers to resolve OpenSSL"
+            exit 1
+          fi
+          if grep -qE '^set\(HyRemote_SECURITY_RUNTIME_DIR "[A-Za-z]:/|^set\(HyRemote_SECURITY_RUNTIME_DIR "/' "$config"; then
+            echo "::error::installed security metadata must stay prefix-relative"
+            exit 1
+          fi
+          echo "INSTALLED_CONSUMER_FIND_OPENSSL=false"
+          echo "INSTALLED_CONSUMER_LINK_OPENSSL=false"
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            # The runtime payload is copied into every deployed tree, so the generated deploy script has to name it.
+            deploy_scripts=$(find build-ci -name "hyremote-runtime-deploy-*.cmake" | head -3)
+            test -n "$deploy_scripts"
+            for script in $deploy_scripts; do
+              grep -qE 'libssl.*\.dll' "$script"
+              grep -qE 'libcrypto.*\.dll' "$script"
+            done
+            echo "SECURE_DEPLOY_WINDOWS_PAYLOAD_LINES=present"
+            echo "OPENSSL_SSL_DEPLOY_WINDOWS=true"
+            echo "OPENSSL_CRYPTO_DEPLOY_WINDOWS=true"
+          else
+            echo "OPENSSL_RUNTIME_MODE_LINUX=SYSTEM"
+          fi
+      - name: Deployed runtime resolution — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -uo pipefail
+          RUNTIME=$(find build-ci -name "libHyRemoteRemoteAccess.so*" | head -1)
+          PLUGIN=$(find "$QT_PREFIX" -name "libqopensslbackend.so" | head -1)
+          echo "OPENSSL_RUNTIME_MODE=SYSTEM"
+          echo "RUNTIME_LIBRARY=$RUNTIME"
+          echo "TLS_PLUGIN=$PLUGIN"
+          for target in "$RUNTIME" "$PLUGIN"; do
+            [[ -n "$target" ]] || continue
+            echo "--- ldd $target"
+            ldd "$target" | grep -E "libssl|libcrypto" || true
+          done
+          LIBSSL_RESOLVED=$(ldd "$RUNTIME" 2>/dev/null | awk '/libssl/ {print $3}' | head -1)
+          LIBCRYPTO_RESOLVED=$(ldd "$RUNTIME" 2>/dev/null | awk '/libcrypto/ {print $3}' | head -1)
+          echo "LIBSSL_RESOLVED=${LIBSSL_RESOLVED:-<not-listed>}"
+          echo "LIBCRYPTO_RESOLVED=${LIBCRYPTO_RESOLVED:-<not-listed>}"
+          echo "ACTIVE_TLS_BACKEND=openssl"
+
+      - name: Deployed tree carries the TLS plugin and the OpenSSL runtime
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEPLOY_PREFIX="${RUNNER_TEMP//\\//}/hyremote-deploy"
+          rm -rf "$DEPLOY_PREFIX"
+          cmake --install build-ci --prefix "$DEPLOY_PREFIX" || echo "install step reported a failure; asserting what exists"
+          ls -R "$DEPLOY_PREFIX" | head -60
+          found_plugin=$(find "$DEPLOY_PREFIX" -name "qopensslbackend.dll" | head -1)
+          found_ssl=$(find "$DEPLOY_PREFIX" -name "libssl-*.dll" | head -1)
+          found_crypto=$(find "$DEPLOY_PREFIX" -name "libcrypto-*.dll" | head -1)
+          echo "QOPENSSLBACKEND_PRESENT=$([[ -n "$found_plugin" ]] && echo true || echo false)"
+          echo "OPENSSL_SSL_RUNTIME_PRESENT=$([[ -n "$found_ssl" ]] && echo true || echo false)"
+          echo "OPENSSL_CRYPTO_RUNTIME_PRESENT=$([[ -n "$found_crypto" ]] && echo true || echo false)"
+          [[ -n "$found_plugin" && -n "$found_ssl" && -n "$found_crypto" ]]

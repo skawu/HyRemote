@@ -18,13 +18,18 @@ The Transparent QPA Proxy additionally depends on exact Qt private QPA interface
 
 ### OpenSSL
 
-HyRemote's V1 authenticated/encrypted RFB implementation uses OpenSSL cryptographic primitives as a **private implementation dependency** of the single `HyRemoteRemoteAccess` runtime. OpenSSL is not part of the public C++/QML/QPA API and downstream applications are not given an `OpenSSL` SDK target through HyRemote.
+HyRemote's authenticated/encrypted RFB implementation uses OpenSSL as a **private implementation dependency** of the single `HyRemoteRemoteAccess` runtime: **OpenSSL Crypto** for the VNC authentication primitive and the certificate/private-key match check, and **OpenSSL SSL** because Qt's OpenSSL TLS backend is built on it and the `AuthenticatedEncrypted` profile runs its VeNCrypt/TLS session through that backend. Both are linked privately. OpenSSL is not part of the public C++/QML/QPA API, downstream applications are not given an `OpenSSL` SDK target through HyRemote, and a clean consumer never calls `find_package(OpenSSL)` or links OpenSSL itself.
+
+Because the encrypted profile selects Qt's **OpenSSL** TLS backend explicitly and never falls back to Schannel, a deployed tree that offers `AuthenticatedEncrypted` needs two things, and they come from two different places:
+
+- **Qt's TLS backend plugin** (`qopensslbackend`) is deployed by **Qt's own** deployment tooling, which `hyremote_deploy()` drives through `qt_generate_deploy_app_script()` / `qt_generate_deploy_qml_app_script()`. HyRemote does not copy a second copy of it.
+- **The OpenSSL runtime** (`libssl`, `libcrypto`) is **not** deployed by Qt's tooling. On a security-enabled Windows build HyRemote resolves the exact runtime libraries from the OpenSSL installation the runtime was linked against, installs them into the package as a private payload beside the runtime, and copies that payload into any deployed tree. The files are located from the linked artifact rather than named from a distribution's version suffix, and a security-enabled build fails at configure time if they cannot be found - a deployed tree that starts and then dies at the first TLS use is not an acceptable outcome. A build without the transport-security capability adds no OpenSSL runtime payload of any kind.
 
 The HyRemote source tree does not vendor or relicense OpenSSL. Source builds use the OpenSSL installation selected by CMake on the qualified build host. The OpenSSL project's own license terms therefore continue to apply.
 
 If a HyRemote binary release asset redistributes OpenSSL runtime binaries, that release asset must also carry the OpenSSL license/notice material required for that exact redistributed version. Release-readiness evidence must record the exact OpenSSL runtime version and prove that a clean extracted SDK runs without relying on an undeclared build-workspace copy. Conversely, a platform build that intentionally relies on an operating-system supplied OpenSSL runtime must document that runtime prerequisite instead of silently bundling a different copy.
 
-The legacy VNC-authentication DES primitive is used only for protocol interoperability in the explicit `Authenticated` compatibility profile. It is **not** the V1 GA encrypted-security claim; `AuthenticatedEncrypted` remains the required secure release profile and must fail closed if its TLS capability or material cannot be established.
+The legacy VNC-authentication DES primitive is used for protocol interoperability in the explicit `Authenticated` compatibility profile and, inside the encrypted channel, for the VNC Authentication step of `AuthenticatedEncrypted`. It is **not** the encrypted-security claim: `AuthenticatedEncrypted` is the profile that encrypts the stream, and it fails closed - before any listener exists - if its OpenSSL backend, TLS capability or certificate/private-key material cannot be established.
 
 ## Development and CI tooling
 

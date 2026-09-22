@@ -267,11 +267,11 @@ Current security behavior:
 - default loopback listener;
 - remote input disabled by default;
 - unauthenticated non-loopback exposure rejected;
-- authenticated profile may use RFB VNC authentication;
-- stream encryption is not implemented in the current baseline;
-- `AuthenticatedEncrypted` fails closed before a listener is opened while the encrypted backend is unavailable.
+- the authenticated profile may use RFB VNC authentication, on an unencrypted stream;
+- the authenticated-encrypted profile runs VeNCrypt 0.2 + X509Vnc 261 + TLS >= 1.2 with VNC Authentication inside the tunnel, on Qt's OpenSSL TLS backend only;
+- `AuthenticatedEncrypted` fails closed before a listener is opened when that backend, its runtime or the certificate/private-key pair is unusable, and never falls back to a weaker profile.
 
-> **TODO V0.2:** VeNCrypt/TLS, certificate policy, authenticated sessions, and production network policy.
+> **TODO V0.2:** certificate issuance/rotation policy, authenticated session identity (#170), and production network policy.
 
 ## 14. Packaging and deployment
 

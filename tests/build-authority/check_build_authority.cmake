@@ -161,19 +161,37 @@ foreach(required_file "${project_options}" "${runtime_cmake}" "${vnc_auth_source
 endforeach()
 
 file(READ "${project_options}" option_text)
-require_text(security-truth "${option_text}" "find_package(OpenSSL QUIET COMPONENTS Crypto)")
+# Since #143 the capability ships two authenticated profiles, so the option has to require both OpenSSL components
+# and its help text has to describe the encrypted profile it really provides. The guard keeps its purpose from the
+# V0.1 line: it still refuses a claim the implementation cannot back, now in the other direction - an encrypted
+# profile that does not name the backend it is restricted to, or that suggests a platform default or a fallback,
+# would be an overclaim exactly as "encrypted" was before the encrypted backend existed.
+require_text(security-truth "${option_text}" "find_package(OpenSSL QUIET COMPONENTS Crypto SSL)")
 require_text(security-truth "${option_text}" "VNC Authentication")
-require_text(security-truth "${option_text}" "not encrypted")
+require_text(security-truth "${option_text}" "VeNCrypt")
+require_text(security-truth "${option_text}" "X509Vnc")
+require_text(security-truth "${option_text}" "inside TLS")
+require_text(security-truth "${option_text}" "OpenSSL backend")
+require_text(security-truth "${option_text}" "Schannel is not qualified")
+# The backend restriction has to be stated positively and never blurred: naming Schannel in order to disqualify it
+# is the truth, while any phrasing that leaves the reader thinking a platform default, either backend, an automatic
+# choice or a fallback is acceptable would be an overclaim of exactly the kind this guard exists to refuse.
 foreach(overclaim IN ITEMS
-        "COMPONENTS Crypto SSL" "Crypto;SSL"
-        "authenticated and encrypted transport" "authenticated/encrypted transport"
-        "encrypted transport available" "Crypto and SSL components")
+        "platform default backend" "default platform backend"
+        "either backend" "any available backend" "best available backend"
+        "Schannel backend" "supports Schannel" "use Schannel" "falls back"
+        "automatically selects")
     forbid_text(security-truth "${option_text}" "${overclaim}")
 endforeach()
 
 file(READ "${runtime_cmake}" runtime_text)
-require_text(runtime-truth "${runtime_text}" "target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto)")
-forbid_text(runtime-truth "${runtime_text}" "OpenSSL::SSL")
+require_text(runtime-truth "${runtime_text}" "target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto OpenSSL::SSL)")
+# The encrypted profile needs SSL, but only as a private implementation dependency of the shared runtime: a consumer
+# must never inherit an OpenSSL requirement through HyRemote's link interface.
+file(READ "${project_options}" option_link_text)
+forbid_text(security-boundary "${runtime_text}" "PUBLIC OpenSSL::")
+forbid_text(security-boundary "${runtime_text}" "INTERFACE OpenSSL::")
+forbid_text(security-boundary "${option_link_text}" "find_dependency(OpenSSL")
 
 # The implementation itself is the reason Crypto is enough: only Crypto-side primitives are used.
 file(READ "${vnc_auth_source}" vnc_auth_text)
@@ -187,5 +205,14 @@ endforeach()
 # No transport-security build target may link SSL before an encrypted backend exists.
 file(READ "${cpp_tests_cmake}" cpp_tests_text)
 forbid_text(security-targets "${cpp_tests_text}" "OpenSSL::SSL")
+
+# The canonical Windows wrapper must state its exit contract, not infer it by re-expanding a batch variable. The
+# hosted Windows lane once reported "HyRemote build succeeded" and 100% of its tests, while its caller still received
+# a non-zero status - a false red that costs a whole round and hides the real answer. The wrapper therefore has to
+# contain an explicit success exit and an explicit failure exit, and must not end on a bare %ERRORLEVEL% expansion.
+file(READ "${HYREMOTE_SOURCE_DIR}/compile.cmd" wrapper_text)
+require_text(wrapper-exit-contract "${wrapper_text}" "if errorlevel 1 exit /b 1")
+require_text(wrapper-exit-contract "${wrapper_text}" "exit /b 0")
+forbid_text(wrapper-exit-contract "${wrapper_text}" "exit /b %ERRORLEVEL%")
 
 message(STATUS "HyRemote build authority self-tests: PASS")

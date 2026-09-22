@@ -73,6 +73,35 @@ if(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
     set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
 endif()
 
+# #143: the encrypted RFB profile, exercised through the real transport with a deterministic peer that speaks the
+# frozen wire profile. It registers whenever tests are enabled, and is only built in a security-enabled tree: the
+# encrypted profile does not exist without the transport-security capability, which is a property of the product
+# rather than of the test.
+if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+    add_executable(hyremote-runtime-secure-transport-test
+        test_rfb_secure_transport.cpp
+    )
+    target_compile_features(hyremote-runtime-secure-transport-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-runtime-secure-transport-test PRIVATE ../src)
+    target_link_libraries(hyremote-runtime-secure-transport-test
+        PRIVATE Qt6::Core Qt6::Network HyRemote::Core HyRemote::RemoteAccess OpenSSL::Crypto
+    )
+    add_test(NAME hyremote-runtime-secure-transport-test
+             COMMAND hyremote-runtime-secure-transport-test)
+    set_tests_properties(hyremote-runtime-secure-transport-test PROPERTIES TIMEOUT 180)
+endif()
+
+# The encrypted profile's deployment closure is structural, so it is asserted without a Qt build and without a
+# runner: the runtime mode decides what a deploy may and must add, and Qt's deployment tool has to be told which
+# OpenSSL to take its TLS backend plugin from. Both incidents that reached hosted CI are decided here instead.
+add_test(
+    NAME hyremote-release-readiness-security-deploy-modes
+    COMMAND "${CMAKE_COMMAND}"
+        -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P "${CMAKE_SOURCE_DIR}/tests/release-readiness/check_security_deploy_modes.cmake"
+)
+set_tests_properties(hyremote-release-readiness-security-deploy-modes PROPERTIES TIMEOUT 30)
+
 # Runtime-owned regressions. These exercise Shared Runtime internals through the C++ test-exports the
 # runtime target already exposes to the build tree, so they register whenever tests are enabled -
 # not only when the C++ frontend or the application-level automatic controller is built.

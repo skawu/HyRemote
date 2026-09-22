@@ -153,7 +153,8 @@ bool startFixture(Fixture &fixture, const QByteArray &password, bool authenticat
         return false;
 
     RfbSecurityConfig security;
-    security.vncAuthenticationRequired = authenticationRequired;
+    security.profile = authenticationRequired ? HyRemote::detail::RfbSecurityProfile::VncAuth
+                                              : HyRemote::detail::RfbSecurityProfile::None;
     security.password = password;
 
     fixture.transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);

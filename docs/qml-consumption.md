@@ -149,9 +149,9 @@ V0.1 behavior:
 - loopback by default;
 - remote input disabled by default;
 - unauthenticated non-loopback exposure rejected;
-- `Authenticated` may use RFB VNC authentication;
-- the current stream is not encrypted;
-- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.
+- `Authenticated` may use RFB VNC authentication, on an unencrypted stream;
+- `AuthenticatedEncrypted` encrypts the stream (VeNCrypt 0.2 + X509Vnc 261 + TLS >= 1.2) with VNC Authentication inside TLS, on the OpenSSL TLS backend only;
+- `AuthenticatedEncrypted` fails closed while that backend or the certificate/private key is unusable, and never falls back to a weaker profile.
 
 Do not expose the current product directly to the public Internet. See [`security.md`](security.md).
 

@@ -180,9 +180,9 @@ Current behavior includes:
 - `Insecure` is loopback-only and non-loopback startup is rejected;
 - `Authenticated` is a conditional capability that requires a transport-security-enabled build and a valid security descriptor; when available it provides VNC authentication without stream encryption;
 - the default V0.1 build/profile does not imply authenticated transport is present;
-- `AuthenticatedEncrypted` is not implemented and always fails closed before target, transport, or listener composition, without falling back to a weaker profile.
+- `AuthenticatedEncrypted` provides VeNCrypt 0.2 + X509Vnc 261 + TLS >= 1.2 with VNC Authentication inside the tunnel on Qt's OpenSSL TLS backend, and fails closed before target, transport, or listener composition when that backend or the certificate/private key is unusable - never falling back to a weaker profile.
 
-> **TODO (V0.2):** encrypted transport, certificate policy, authenticated session management, and production network policy.
+> **TODO (V0.2):** certificate issuance/rotation policy, authenticated session management (#170), and production network policy.
 
 See [`security.md`](security.md).
 

@@ -40,6 +40,29 @@ endif()
 # metadata does not create a link target or another runtime personality; applications still consume
 # the stable `import HyRemote` URI. Clear both values when the SDK has no QML payload so repeated
 # package discovery cannot retain stale paths from another configuration.
+# The encrypted profile's private runtime payload, published as package metadata for hyremote_deploy() only.
+# It is deliberately **not** a link target and not a dependency: a clean consumer never calls
+# find_package(OpenSSL), never links OpenSSL, and never needs to know that Qt's TLS backend is involved. The files
+# are named relative to this package prefix, so an installed SDK stays relocatable and never records the machine it
+# was built on.
+set(HyRemote_TRANSPORT_SECURITY_AVAILABLE @HYREMOTE_TRANSPORT_SECURITY_AVAILABLE@)
+set(HyRemote_SECURITY_RUNTIME_MODE "@HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE@")
+set(HyRemote_SECURITY_RUNTIME_SUBDIR "@HYREMOTE_PACKAGE_SECURITY_RUNTIME_SUBDIR@")
+set(HyRemote_SECURITY_RUNTIME_FILES "@HYREMOTE_PACKAGE_SECURITY_RUNTIME_FILES@")
+# Qt's deployment tool needs the OpenSSL prefix to deploy the TLS backend plugin, and an installed SDK must never
+# record the machine it was built on. The bundled runtime lives inside this package, so the prefix is derived from
+# this package's own location.
+if(HyRemote_SECURITY_RUNTIME_MODE STREQUAL "BUNDLED")
+    set(HyRemote_SECURITY_OPENSSL_ROOT "${_hyremote_package_prefix}")
+else()
+    set(HyRemote_SECURITY_OPENSSL_ROOT "")
+endif()
+if(HyRemote_SECURITY_RUNTIME_SUBDIR STREQUAL "")
+    set(HyRemote_SECURITY_RUNTIME_DIR "")
+else()
+    set(HyRemote_SECURITY_RUNTIME_DIR "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_SECURITY_RUNTIME_SUBDIR@")
+endif()
+
 if(@HYREMOTE_PACKAGE_WITH_QML@)
     set(HyRemote_QML_IMPORT_PATH "${_hyremote_package_prefix}/@HYREMOTE_PACKAGE_QML_IMPORT_SUBDIR@")
     set(HyRemote_QML_BACKING_FILE

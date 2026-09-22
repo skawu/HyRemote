@@ -208,7 +208,17 @@ jobs:
             --tests --run-tests --no-examples \
             --test-exclude="$TEST_EXCLUDE" \
             --xvfb -j4 \
-            --env=QT_QUICK_BACKEND=software
+            --env=QT_QUICK_BACKEND=software || {
+            rc=$?
+            for f in build-ci/configure.log build-ci/build.log build-ci/test.log; do
+              if [[ -f "$f" ]]; then
+                echo "::group::$f"
+                tail -400 "$f"
+                echo "::endgroup::"
+              fi
+            done
+            exit $rc
+          }
 
       - name: Build and test through HyRemote build system — Windows
         if: runner.os == 'Windows'
@@ -220,6 +230,16 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
+          if errorlevel 1 (
+            for %%f in (configure.log build.log test.log) do (
+              if exist "build-ci\%%f" (
+                echo ::group::build-ci\%%f
+                type "build-ci\%%f"
+                echo ::endgroup::
+              )
+            )
+            exit /b 1
+          )
 
       - name: Test evidence summary
         if: always()

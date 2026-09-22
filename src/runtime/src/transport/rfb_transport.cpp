@@ -5,10 +5,14 @@
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
+#include <QSslConfiguration>
+#include <QSslSocket>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
 #include <QTimer>
+
+#include <functional>
 
 #include <algorithm>
 #include <array>
@@ -37,6 +41,20 @@ namespace {
 
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
+
+// The frozen encrypted profile: SecurityType 19 (VeNCrypt), VeNCrypt protocol 0.2 and sub-type X509Vnc 261, then
+// TLS >= 1.2 and VNC Authentication inside it. #258 proved these exact values against the maintained viewer
+// (TigerVNC 1.16.2) and against TigerVNC's own GnuTLS server, so nothing in this negotiation is approximate.
+constexpr std::uint8_t kSecurityTypeNone = 1;
+constexpr std::uint8_t kSecurityTypeVncAuth = 2;
+constexpr std::uint8_t kSecurityTypeVeNCrypt = 19;
+constexpr std::uint32_t kSubTypeX509Vnc = 261;
+constexpr std::uint8_t kVeNCryptVersionMajor = 0;
+constexpr std::uint8_t kVeNCryptVersionMinor = 2;
+// The byte a VeNCrypt client reads before it will create any TLS state; zero would mean "the server failed to
+// initialise TLS", so the peer is told to proceed instead.
+constexpr char kTlsInitProceed = 1;
+constexpr char kVeNCryptVersionUnsupported = static_cast<char>(0xff);
 // How long a failing handshake waits for its final SecurityResult to reach the client before the socket is aborted.
 constexpr int kHandshakeFlushMs = 1000;
 constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
@@ -328,6 +346,11 @@ struct SharedFrameState
 enum class ClientPhase {
     AwaitVersion,
     AwaitSecurityChoice,
+    // Encrypted profile only: VeNCrypt's own version handshake, its sub-type choice, and the TLS handshake that
+    // carries the rest of the RFB session once the sub-type is accepted.
+    AwaitVeNCryptVersion,
+    AwaitVeNCryptSubtype,
+    AwaitTlsHandshake,
     AwaitAuthResponse,
     AwaitClientInit,
     AwaitInitialFrame,
@@ -336,6 +359,10 @@ enum class ClientPhase {
 
 struct ClientState
 {
+    // Opaque, run-local identity of one accepted peer. It exists so the later session layer (#170) can correlate a
+    // connection without ever seeing a socket, a file descriptor or a backend pointer. It is not a product session
+    // identity: it is assigned at accept, invalidated at disconnect and never reused across connections.
+    std::uint64_t peerToken = 0;
     QPointer<QTcpSocket> socket;
     ClientPhase phase = ClientPhase::AwaitVersion;
     QByteArray input;
@@ -373,6 +400,32 @@ static constexpr std::array<ButtonBit, 3> kButtons{{
     {0x04, hyremote::PointerButton::Right},
 }};
 
+// The accepted-socket model the preflight froze: the transport owns the descriptor from the moment it is
+// accepted, and for the encrypted profile it owns it as a QSslSocket for the whole connection. A plain QTcpSocket
+// is never migrated into a QSslSocket and the session is never re-established on a second connection, so the
+// plaintext negotiation and the encrypted session are provably the same connection.
+class RfbServer final : public QTcpServer
+{
+public:
+    using DescriptorHandler = std::function<void(qintptr)>;
+
+    RfbServer(DescriptorHandler onDescriptor, QObject *parent)
+        : QTcpServer(parent)
+        , m_onDescriptor(std::move(onDescriptor))
+    {
+    }
+
+protected:
+    void incomingConnection(qintptr socketDescriptor) override
+    {
+        if (m_onDescriptor)
+            m_onDescriptor(socketDescriptor);
+    }
+
+private:
+    DescriptorHandler m_onDescriptor;
+};
+
 class RfbWorker final : public QObject
 {
 public:
@@ -395,9 +448,8 @@ public:
     {
         if (m_server)
             return false;
-        m_server = new QTcpServer(this);
+        m_server = new RfbServer([this](qintptr descriptor) { adoptPendingClient(descriptor); }, this);
         m_server->setMaxPendingConnections(kMaxClients);
-        connect(m_server, &QTcpServer::newConnection, this, [this] { acceptPendingClients(); });
         if (!m_server->listen(m_address, m_port)) {
             m_server->deleteLater();
             m_server = nullptr;
@@ -488,20 +540,88 @@ private:
         return result;
     }
 
-    void acceptPendingClients()
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+    void configureServerTls(QSslSocket &socket)
     {
-        while (m_server && m_server->hasPendingConnections()) {
-            QTcpSocket *socket = m_server->nextPendingConnection();
-            if (!socket)
-                continue;
-            if (static_cast<int>(m_clients.size()) >= kMaxClients) {
-                publishEvent(hyremote::TransportEventCode::RecoverableFailure,
-                             "RFB client rejected because the bounded client limit was reached");
-                socket->abort();
-                socket->deleteLater();
-                continue;
-            }
+        // The certificate, the key and the TLS floor all come from the pre-listen preparation: a listener only
+        // exists once that material was parsed and proved to match, so nothing here can fail on a bad pair.
+        QSslConfiguration configuration = socket.sslConfiguration();
+        configuration.setLocalCertificate(m_security.certificate);
+        configuration.setPrivateKey(m_security.privateKey);
+        configuration.setProtocol(QSsl::TlsV1_2OrLater);
+        // A VNC viewer presents no client certificate; the authentication this profile requires is VNC
+        // Authentication inside the encrypted channel.
+        configuration.setPeerVerifyMode(QSslSocket::VerifyNone);
+        socket.setSslConfiguration(configuration);
+    }
 
+    void onTlsEncrypted(QSslSocket *socket)
+    {
+        const auto it = m_clients.find(socket);
+        if (it == m_clients.end() || it->second->phase != ClientPhase::AwaitTlsHandshake)
+            return;
+        ClientState &client = *it->second;
+
+        // Defence in depth: the configuration already requires TLS >= 1.2, and a session negotiated below the
+        // release's floor is refused here instead of continuing on a protocol V0.2 does not qualify.
+        const QSsl::SslProtocol negotiated = socket->sessionProtocol();
+        if (negotiated == QSsl::TlsV1_0 || negotiated == QSsl::TlsV1_1) {
+            authenticationRejected(client, "RFB client negotiated a TLS version below the required minimum");
+            return;
+        }
+
+        // Only now, inside the encrypted channel, is the VNC challenge generated and sent. No authentication byte
+        // has crossed this connection before this point, so there is nothing a downgrade attempt could reuse.
+        QString challengeError;
+        if (!generateVncAuthChallenge(client.authChallenge, challengeError)) {
+            protocolFailure(client, "the authentication challenge could not be generated");
+            return;
+        }
+        socket->write(client.authChallenge);
+        client.phase = ClientPhase::AwaitAuthResponse;
+    }
+#endif  // HYREMOTE_HAS_TRANSPORT_SECURITY
+
+    void adoptPendingClient(qintptr descriptor)
+    {
+        if (static_cast<int>(m_clients.size()) >= kMaxClients) {
+            publishEvent(hyremote::TransportEventCode::RecoverableFailure,
+                         "RFB client rejected because the bounded client limit was reached");
+            QTcpSocket rejected;
+            if (rejected.setSocketDescriptor(descriptor))
+                rejected.abort();
+            return;
+        }
+
+        QTcpSocket *socket = nullptr;
+#ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+        if (m_security.profile == RfbSecurityProfile::VeNCryptTlsVncAuth) {
+            auto *secureSocket = new QSslSocket(this);
+            if (!secureSocket->setSocketDescriptor(descriptor)) {
+                delete secureSocket;
+                publishEvent(hyremote::TransportEventCode::RecoverableFailure,
+                             "RFB client connection could not be adopted");
+                return;
+            }
+            configureServerTls(*secureSocket);
+            connect(secureSocket, &QSslSocket::encrypted, this, [this, secureSocket] {
+                onTlsEncrypted(secureSocket);
+            });
+            socket = secureSocket;
+        } else
+#endif
+        {
+            auto *plainSocket = new QTcpSocket(this);
+            if (!plainSocket->setSocketDescriptor(descriptor)) {
+                delete plainSocket;
+                publishEvent(hyremote::TransportEventCode::RecoverableFailure,
+                             "RFB client connection could not be adopted");
+                return;
+            }
+            socket = plainSocket;
+        }
+
+        {
             socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
             auto client = std::make_unique<ClientState>();
             client->socket = socket;
@@ -530,15 +650,15 @@ private:
 
             QPointer<QTcpSocket> guardedSocket(socket);
             QTimer::singleShot(kHandshakeTimeoutMs, this, [this, guardedSocket] {
-                QTcpSocket *socket = guardedSocket.data();
-                if (!socket)
+                QTcpSocket *timedOut = guardedSocket.data();
+                if (!timedOut)
                     return;
-                const auto it = m_clients.find(socket);
-                if (it == m_clients.end() || it->second->phase == ClientPhase::Normal)
+                const auto found = m_clients.find(timedOut);
+                if (found == m_clients.end() || found->second->phase == ClientPhase::Normal)
                     return;
                 publishEvent(hyremote::TransportEventCode::RecoverableFailure,
                              "RFB client handshake timed out");
-                socket->abort();
+                timedOut->abort();
             });
 
             static constexpr char kVersion[] = "RFB 003.008\n";
@@ -618,7 +738,12 @@ private:
                 // weaker mode, and 'None' is only ever offered when the insecure profile asked for it explicitly.
                 // The RFB 3.8 form is a count followed by the type values.
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
-                const char security[] = {1, m_security.vncAuthenticationRequired ? char(2) : char(1)};
+                std::uint8_t offeredType = kSecurityTypeNone;
+                if (m_security.profile == RfbSecurityProfile::VncAuth)
+                    offeredType = kSecurityTypeVncAuth;
+                else if (m_security.profile == RfbSecurityProfile::VeNCryptTlsVncAuth)
+                    offeredType = kSecurityTypeVeNCrypt;
+                const char security[] = {1, static_cast<char>(offeredType)};
 #else
                 const char security[] = {1, 1};  // one type: None; this build has no authentication to offer
 #endif
@@ -633,7 +758,22 @@ private:
                 const std::uint8_t selected = byteAt(client.input, 0);
                 client.input.remove(0, 1);
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
-                if (m_security.vncAuthenticationRequired) {
+                if (m_security.profile == RfbSecurityProfile::VeNCryptTlsVncAuth) {
+                    if (selected != kSecurityTypeVeNCrypt) {
+                        // Never downgrade: a client that will not take the only offered type is refused rather
+                        // than invited to continue on a weaker one.
+                        authenticationRejected(client,
+                                               "RFB client did not select the configured VeNCrypt profile");
+                        return;
+                    }
+                    const char version[] = {static_cast<char>(kVeNCryptVersionMajor),
+                                            static_cast<char>(kVeNCryptVersionMinor)};
+                    client.socket->write(version, 2);
+                    client.phase = ClientPhase::AwaitVeNCryptVersion;
+                    continue;
+                }
+
+                if (m_security.profile == RfbSecurityProfile::VncAuth) {
                     if (selected != 2) {
                         // Never downgrade: a connection refusing the only configured authentication type is an
                         // authentication rejection, not a generic protocol diagnostic.
@@ -663,6 +803,68 @@ private:
             }
 
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
+            if (client.phase == ClientPhase::AwaitVeNCryptVersion) {
+                if (client.input.size() < 2)
+                    return;
+                const std::uint8_t major = byteAt(client.input, 0);
+                client.input.remove(0, 2);
+                if (major != kVeNCryptVersionMajor) {
+                    // The client is told with the single byte the profile reserves for this, and the connection
+                    // ends here rather than falling back to a weaker type.
+                    const char unsupported = kVeNCryptVersionUnsupported;
+                    client.socket->write(&unsupported, 1);
+                    client.socket->flush();
+                    authenticationRejected(client, "RFB client does not support VeNCrypt 0.2");
+                    return;
+                }
+
+                const char versionAck = 0;
+                client.socket->write(&versionAck, 1);
+                const char subTypeCount = 1;
+                client.socket->write(&subTypeCount, 1);
+                QByteArray subType(4, '\0');
+                subType[0] = char((kSubTypeX509Vnc >> 24) & 0xff);
+                subType[1] = char((kSubTypeX509Vnc >> 16) & 0xff);
+                subType[2] = char((kSubTypeX509Vnc >> 8) & 0xff);
+                subType[3] = char(kSubTypeX509Vnc & 0xff);
+                client.socket->write(subType);
+                client.phase = ClientPhase::AwaitVeNCryptSubtype;
+                continue;
+            }
+
+            if (client.phase == ClientPhase::AwaitVeNCryptSubtype) {
+                if (client.input.size() < 4)
+                    return;
+                const std::uint32_t chosen = (std::uint32_t(byteAt(client.input, 0)) << 24)
+                        | (std::uint32_t(byteAt(client.input, 1)) << 16)
+                        | (std::uint32_t(byteAt(client.input, 2)) << 8)
+                        | std::uint32_t(byteAt(client.input, 3));
+                client.input.remove(0, 4);
+                if (chosen != kSubTypeX509Vnc) {
+                    authenticationRejected(client, "RFB client did not select the X509Vnc VeNCrypt sub-type");
+                    return;
+                }
+
+                auto *secureSocket = qobject_cast<QSslSocket *>(client.socket.data());
+                if (!secureSocket) {
+                    protocolFailure(client, "the encrypted profile requires a TLS-capable connection");
+                    return;
+                }
+
+                // The one byte the client reads before it will create any TLS state. Everything above this line was
+                // plaintext on this same connection; everything below is inside the encrypted channel, on the same
+                // socket object and the same accepted descriptor.
+                const char proceed = kTlsInitProceed;
+                client.socket->write(&proceed, 1);
+                client.socket->flush();
+                client.phase = ClientPhase::AwaitTlsHandshake;
+                secureSocket->startServerEncryption();
+                return;
+            }
+
+            if (client.phase == ClientPhase::AwaitTlsHandshake)
+                return;  // bounded by the handshake timeout armed at accept
+
             if (client.phase == ClientPhase::AwaitAuthResponse) {
                 // Bounded by construction: one challenge per connection, no retry, and the 16-byte read is the
                 // only thing this phase waits for - the handshake timeout closes a client that stalls.
@@ -1279,6 +1481,14 @@ std::unique_ptr<hyremote::Transport> createRfbTransport(const QHostAddress &list
 {
     if (listenAddress.isNull() || port == 0)
         return {};
+
+    // Defence in depth: the encrypted profile either carries the certificate and key its pre-listen preparation
+    // validated, or it does not start. Nothing can fall through to a weaker security type.
+    if (security.profile == RfbSecurityProfile::VeNCryptTlsVncAuth
+        && (security.certificate.isNull() || security.privateKey.isNull())) {
+        return {};
+    }
+
     return std::make_unique<RfbTransport>(listenAddress, port, security);
 }
 

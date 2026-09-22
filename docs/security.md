@@ -59,21 +59,22 @@ The default V0.1 developer build/profile should therefore be treated as **Insecu
 
 ### AuthenticatedEncrypted
 
-`AuthenticatedEncrypted` is declared in the product model but is **not implemented in V0.1**.
-
-Selecting it always fails closed before a listener is opened, including in builds that can provide `Authenticated` VNC authentication:
+`AuthenticatedEncrypted` is implemented from V0.2 on the frozen profile:
 
 ```text
 AuthenticatedEncrypted
-  -> SecurityUnavailable
-  -> no target/transport/listener composed
-  -> no fallback to Authenticated
-  -> no fallback to Insecure
+  -> RFB 3.8
+  -> VeNCrypt security type 19, protocol version 0.2
+  -> sub-type X509Vnc 261
+  -> TLS >= 1.2 on the same accepted connection
+  -> VNC Authentication inside the encrypted channel
 ```
 
-A readable certificate/private-key descriptor does not make encrypted transport available by itself.
+The TLS backend is **OpenSSL only** (`QSslSocket::setActiveBackend("openssl")`, selected before any TLS object exists, with `activeBackend()` verified). Schannel is **not qualified** for V0.2.0.0, a platform default is not accepted, and there is **no runtime fallback**: if the OpenSSL backend, its plugin or its runtime is unavailable, `start()` fails with `SecurityUnavailable` before target, transport or listener creation, and the capability never continues on Schannel, on a weaker security type or in plaintext.
 
-> **TODO V0.2:** implement the final encrypted transport profile, certificate/private-key policy, protocol/cipher policy, and authenticated encrypted sessions.
+Certificate and private key are read, parsed and proved to match **before a listener exists**, so a missing, malformed or mismatched pair is a configuration failure rather than a listening service. `AuthenticatedEncrypted` never falls back to `Authenticated` or to `SecurityType None`, and no authentication byte crosses the connection before TLS.
+
+> **TODO V0.2:** certificate issuance/rotation policy, authenticated session identity and per-session admission (#170), and production network policy. See [`known-limitations.md`](known-limitations.md).
 
 ## Remote viewing versus remote control
 
@@ -171,13 +172,13 @@ Do not expose the current HyRemote listener directly to the public Internet.
 | `Authenticated` API/configuration surface | Available |
 | RFB VNC authentication | **Conditional: requires transport-security-enabled build + valid descriptor** |
 | Default V0.1 build includes authenticated transport | **No** |
-| `AuthenticatedEncrypted` | **Unavailable; fail-closed** |
-| Stream encryption | **TODO V0.2** |
-| Certificate/private-key production policy | **TODO V0.2** |
+| `AuthenticatedEncrypted` | **Available: VeNCrypt 0.2 + X509Vnc 261 + TLS >= 1.2 + VNC Auth inside TLS, OpenSSL backend only** |
+| Stream encryption | **Available for `AuthenticatedEncrypted` (TLS >= 1.2); `Insecure` and `Authenticated` stay unencrypted** |
+| Certificate/private-key policy | **Validated (read, parsed, matched) before the listener exists** |
 | Authenticated session identity/registry | **TODO V0.2** |
 | Per-session admission/termination | **TODO V0.2** |
 | VPN/tunnel/firewall provisioning | Outside HyRemote product scope |
 
 The concise V0.1 statement is:
 
-> HyRemote V0.1 defaults to an unauthenticated, unencrypted loopback listener with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose V0.1 directly to the public Internet.
+> HyRemote defaults to an unauthenticated, unencrypted loopback listener with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and provides VNC authentication without encryption. `AuthenticatedEncrypted` is available in the same kind of build when an OpenSSL 3.x TLS runtime and a valid certificate/private-key pair are present, and provides VeNCrypt 0.2 + X509Vnc 261 + TLS >= 1.2 with VNC Authentication inside the tunnel; otherwise it fails closed. `Insecure` and `Authenticated` remain unencrypted, and the default profile must not be exposed directly to the public Internet.
