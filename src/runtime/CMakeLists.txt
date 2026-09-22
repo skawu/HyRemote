@@ -163,7 +163,11 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
     endif()
 endif()
 
-if(HYREMOTE_BUILD_TESTS AND HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+# Runtime tests are entered whenever tests are enabled. Only the application-level automatic
+# controller tests inside tests/ need HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE; guarding the whole
+# directory here kept Runtime-owned Core/Network/RFB regressions unregistered in every
+# configuration that does not build the automatic controller.
+if(HYREMOTE_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
