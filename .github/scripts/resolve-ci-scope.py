@@ -148,6 +148,13 @@ SECURITY_EVIDENCE_PATHS = (
     # file adds the RFB transport source to the Shared Runtime target and defines HYREMOTE_HAS_RFB_TRANSPORT, which is
     # the other half of the tests' HYREMOTE_WITH_VNC + HYREMOTE_TRANSPORT_SECURITY_AVAILABLE guard.
     "src/runtime/CMakeLists.txt",
+    # The deployment closure of the transport security runtime. Source inspection: these four files decide whether a
+    # security-enabled deploy carries the OpenSSL runtime the shared runtime loads (HyRemoteProjectOptions resolves it,
+    # HyRemoteInstall packages it, HyRemoteConfig publishes it, HyRemoteDeploy emits it), so a diff here can only be
+    # settled by a security-on run. The rest of cmake/ does not control the capability and is deliberately absent.
+    "cmake/HyRemoteDeploy.cmake",
+    "cmake/HyRemoteInstall.cmake",
+    "cmake/HyRemoteConfig.cmake.in",
 )
 
 
