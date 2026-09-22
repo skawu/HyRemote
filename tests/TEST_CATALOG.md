@@ -108,7 +108,7 @@ QPA deployment/configuration fixtures below are T4, not T2 runtime behavior.
 
 | Test/fixture | Decision | Necessity |
 | --- | --- | --- |
-| `hyremote-build-authority-selftest` | MOVE T3 | canonical `compile.cmd`/CMake/build.yml authority; current Runtime registration is ownership debt |
+| `hyremote-build-authority-selftest` | MOVE T3 | canonical `build.cmd`/CMake/build.yml authority; current Runtime registration is ownership debt |
 | `hyremote-ci-scope-self-test` | KEEP | classifier cannot silently select a false-green/incorrect lane |
 | `hyremote-mainline-audit-self-test` | KEEP | mainline audit retry/verification logic executes deterministically |
 | `hyremote-branch-name-gate-self-test` | KEEP | branch-family governance is executable |

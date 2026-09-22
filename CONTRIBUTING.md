@@ -201,7 +201,7 @@ lane may start:
 
 Working rules that keep that cadence meaningful:
 
-- **Push once per change.** Iterate locally: focused tests, then the canonical `compile.cmd` gate, then a clean local
+- **Push once per change.** Iterate locally: focused tests, then the canonical `build.cmd` gate, then a clean local
   exact head - and only then push and open the pull request. A second push is for a genuine hosted failure, not for
   using CI as a trial-and-error loop.
 - **Drafts are cheap on purpose.** A draft runs governance only, so it is safe to open early for collaboration; the

@@ -35,30 +35,30 @@ QPA additionally requires the Qt private Gui development target from the **same 
 
 ## Build HyRemote from source
 
-The repository's unified build entry point is `compile.cmd`. It works on Windows and POSIX shells and reads project defaults from `build.yml`.
+The repository's unified build entry point is `build.cmd`. It works on Windows and POSIX shells and reads project defaults from `build.yml`. `build.cmd build` configures and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the build tree and `build.cmd rebuild` is clean plus build. `compile.cmd` remains only as a compatibility forwarder. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers actually use.
 
 Inspect the resolved configuration first:
 
 ```text
-compile.cmd --show-config
+build.cmd build --show-config
 ```
 
 Build the primary V0.1 paths:
 
 ```text
-compile.cmd --integrations=cpp,generic --qt-prefix=/path/to/Qt/6.8.3/<kit>
+build.cmd build --integrations=cpp,generic --qt-prefix=/path/to/Qt/6.8.3/<kit>
 ```
 
 Build all four frontends for development:
 
 ```text
-compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix=/path/to/Qt/6.8.3/<kit>
+build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=/path/to/Qt/6.8.3/<kit>
 ```
 
 Enable examples/tests explicitly when needed:
 
 ```text
-compile.cmd --integrations=cpp,generic --examples --tests --run-tests
+build.cmd test --integrations=cpp,generic --examples
 ```
 
 Command-line options override the corresponding `build.yml` fields. The four integrations are independent selections; enabling Generic, QML, or QPA does not make the C++ frontend their implementation parent.

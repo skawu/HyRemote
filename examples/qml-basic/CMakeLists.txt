@@ -19,3 +19,8 @@ add_dependencies(hyremote-qml-basic hyremote-qml hyremote-qmlplugin)
 target_compile_definitions(hyremote-qml-basic PRIVATE
     HYREMOTE_BUILD_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml"
 )
+
+# Same treatment as the other examples: into the shared prefix, deployed by the shared helper, with the QML route
+# selected so the module payload it imports is deployed with it.
+install(TARGETS hyremote-qml-basic RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET hyremote-qml-basic QML)
