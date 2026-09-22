@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          QT_ROOT="${RUNNER_TEMP//\//}/Qt"
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
           QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
           case "${{ runner.os }}" in
             Linux) QT_PLATFORM=linux ;;

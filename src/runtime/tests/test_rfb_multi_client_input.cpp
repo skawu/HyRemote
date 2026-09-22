@@ -214,8 +214,10 @@ void testConcurrentViewerHeldStateIsolation()
         return;
 
     Recorder recorder;
-    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
-                                                         HyRemote::detail::RfbSecurityConfig{});
+    // A named configuration rather than a braced temporary: the type has a user-declared destructor (it wipes the
+    // password buffer), so it is not an aggregate before C++20 and the braced form is not portable across compilers.
+    HyRemote::detail::RfbSecurityConfig security;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
     CHECK(transport != nullptr);
     if (!transport)
         return;
