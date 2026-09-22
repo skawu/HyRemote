@@ -16,6 +16,12 @@ target_include_directories(hyremote-remoteaccess-test
         ${_hyremote_runtime_src}
 )
 
+if(HYREMOTE_WITH_VNC AND HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+    target_compile_definitions(hyremote-remoteaccess-test
+        PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1
+    )
+endif()
+
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
 
 add_executable(hyremote-remoteaccess-error-ack-test
