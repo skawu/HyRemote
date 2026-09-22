@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          QT_ROOT="${RUNNER_TEMP//\//}/Qt"
           QT_PREFIX="$QT_ROOT/6.8.3/${{ matrix.qt_dir }}"
           case "${{ runner.os }}" in
             Linux) QT_PLATFORM=linux ;;
@@ -74,10 +74,18 @@ jobs:
           }
 
           if ! qt_tree_valid; then
+            if [[ "${{ steps.qt-cache.outputs.cache-hit }}" == "true" ]]; then
+              echo "Restored Qt cache failed integrity validation; rebuilding the local tree."
+            else
+              echo "Qt cache miss; installing exact SDK."
+            fi
             rm -rf "$QT_ROOT"
             python -m pip install --disable-pip-version-check aqtinstall
             aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
-            qt_tree_valid
+            qt_tree_valid || {
+              echo "Fresh Qt installation failed integrity validation." >&2
+              exit 1
+            }
           fi
 
           if ! command -v ninja >/dev/null 2>&1; then
@@ -85,6 +93,7 @@ jobs:
           fi
           echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
           echo "QT_ROOT=$QT_ROOT" >> "$GITHUB_ENV"
+          echo "QT_PREFIX_RESOLVED=$QT_PREFIX"
 
       # The TLS runtime the encrypted profile is qualified against. On Windows that is Qt's own OpenSSL 3 tool
       # component, which is the same distribution the local preflight used; on the Linux reference environment the

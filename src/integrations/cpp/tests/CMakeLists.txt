@@ -24,10 +24,12 @@ target_include_directories(hyremote-remoteaccess-test
     PRIVATE
         ${_hyremote_runtime_src}
 )
-target_compile_definitions(hyremote-remoteaccess-test
-    PRIVATE
-        ${_hyremote_transport_security_definitions}
-)
+if(_hyremote_transport_security_definitions)
+    target_compile_definitions(hyremote-remoteaccess-test
+        PRIVATE
+            ${_hyremote_transport_security_definitions}
+    )
+endif()
 
 add_test(NAME hyremote-remoteaccess-test COMMAND hyremote-remoteaccess-test)
 
