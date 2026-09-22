@@ -332,7 +332,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     set(Python3_FIND_REGISTRY NEVER)
     set(Python3_FIND_STRATEGY LOCATION)
     find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND)
+    if(HYREMOTE_BUILD_CPP_API AND TARGET hyremote-remoteaccess AND Python3_Interpreter_FOUND)
         add_test(
             NAME hyremote-v01-example-smoke
             COMMAND "${Python3_EXECUTABLE}"
