@@ -267,7 +267,7 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "SECURITY_ARG="
           if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
-          call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" %SECURITY_ARG% -j4
+          call build.cmd build --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" %SECURITY_ARG% -j4
 
       - name: Test evidence summary
         if: always()
