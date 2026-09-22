@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Install only host packages missing from the ephemeral GitHub runner. Public-Qt lanes must not pay
-# the QPA/XCB dependency cost. ubuntu-24.04 already provides xvfb, so it is intentionally not an apt
-# dependency here.
+# Install only host packages missing from the ephemeral GitHub runner. Public Qt deployment carries the
+# application's native qxcb platform plugin, so the public profile owns that plugin's non-Qt runtime closure
+# as well as the configure-time OpenGL support needed by clean installed/example consumers. The qpa profile
+# adds only the development dependencies needed to qualify the private-QPA path. ubuntu-24.04 already provides
+# xvfb, so it is intentionally not an apt dependency here.
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "install-linux-qt-desktop-deps.sh is Linux-only" >&2
   exit 2
@@ -15,31 +17,32 @@ if [[ "$profile" != "public" && "$profile" != "qpa" ]]; then
   exit 2
 fi
 
-# Minimal runtime and configure-time support used by the official Qt desktop archive for normal public-Qt GUI lanes.
-# The development OpenGL package is required because installed/example consumers run their own find_package(Qt6 Gui),
-# whose WrapOpenGL dependency must resolve independently of what happens to be preinstalled on the runner image.
+# Runtime and configure-time support used by the official Qt desktop archive for normal public-Qt GUI lanes.
+# Installed/example consumers run their own find_package(Qt6 Gui), so WrapOpenGL must resolve independently of
+# the runner image. hyremote_deploy() also carries the consumer's native qxcb platform plugin, so its runtime
+# XCB dependencies are explicit public-lane prerequisites instead of accidental runner-image dependencies.
 packages=(
   libx11-xcb1
   libxcb-cursor0
   libxkbcommon-x11-0
   libgl1
   libgl1-mesa-dev
+  libxcb-icccm4
+  libxcb-image0
+  libxcb-keysyms1
+  libxcb-randr0
+  libxcb-render-util0
+  libxcb-shape0
+  libxcb-shm0
+  libxcb-sync1
+  libxcb-util1
+  libxcb-xfixes0
+  libxcb-xkb1
 )
 
-# QPA qualification additionally exercises the native XCB delegate/private-QPA path.
+# QPA qualification additionally compiles against native/private platform integration surfaces.
 if [[ "$profile" == "qpa" ]]; then
   packages+=(
-    libxcb-icccm4
-    libxcb-image0
-    libxcb-keysyms1
-    libxcb-randr0
-    libxcb-render-util0
-    libxcb-shape0
-    libxcb-shm0
-    libxcb-sync1
-    libxcb-util1
-    libxcb-xfixes0
-    libxcb-xkb1
     libxkbcommon-dev
     libxkbcommon-x11-dev
   )
