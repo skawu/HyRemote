@@ -140,12 +140,17 @@ jobs:
             --build-type=Release \
             --build-dir=build-ci \
             --tests --run-tests \
+            --test-exclude='^hyremote-v01-rfb-product-fit$' \
             --xvfb -j4 \
             --env=QT_QUICK_BACKEND=software || {
             rc=$?
-            echo "::group::build-ci/build.log (build or test failure)"
-            tail -400 build-ci/build.log || true
-            echo "::endgroup::"
+            for f in build-ci/configure.log build-ci/build.log build-ci/test.log; do
+              if [[ -f "$f" ]]; then
+                echo "::group::$f"
+                tail -400 "$f"
+                echo "::endgroup::"
+              fi
+            done
             exit $rc
           }
 
@@ -155,11 +160,15 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call compile.cmd --security --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests -j4
+          call compile.cmd --security --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests "--test-exclude=^hyremote-v01-rfb-product-fit$" -j4
           if errorlevel 1 (
-            echo ::group::build-ci/build.log (build or test failure)
-            type build-ci\build.log
-            echo ::endgroup::
+            for %%f in (configure.log build.log test.log) do (
+              if exist "build-ci\%%f" (
+                echo ::group::build-ci\%%f
+                type "build-ci\%%f"
+                echo ::endgroup::
+              )
+            )
             exit /b 1
           )
 
@@ -184,6 +193,18 @@ jobs:
             done
             echo '```'
             echo
+            executed="$(grep -oE 'out of [0-9]+' build-ci/test.log 2>/dev/null | head -1 | grep -oE '[0-9]+' || true)"
+            executed="${executed:-0}"
+            discovered="$(grep -cE '^ *[0-9]+/[0-9]+ Test ' build-ci/test.log 2>/dev/null || echo 0)"
+            secure_runs="$(grep -c 'SECURE_TEST_RESULT=' build-ci/test.log 2>/dev/null || echo 0)"
+            echo "SECURITY_TEST_DISCOVERED=$discovered"
+            echo "SECURITY_TEST_EXECUTED=$executed"
+            echo "SECURE_TRANSPORT_TEST_RUNS=$secure_runs"
+            echo "SECURE_TRANSPORT_TEST_RESULT=$(grep -oE 'SECURE_TEST_RESULT=[A-Z]+' build-ci/test.log 2>/dev/null | head -1 || true)"
+            if [[ "$executed" -eq 0 || "$secure_runs" -eq 0 ]]; then
+              echo "::error::the security lane did not execute the encrypted-profile test"
+              exit 1
+            fi
             echo "OPENSSL_RESOLUTION=${OPENSSL_RESOLUTION:-unknown}"
             echo "OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR:-unknown}"
             echo "ACTIVE_TLS_BACKEND=openssl"

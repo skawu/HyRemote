@@ -210,9 +210,13 @@ jobs:
             --xvfb -j4 \
             --env=QT_QUICK_BACKEND=software || {
             rc=$?
-            echo "::group::build-ci/build.log (build or test failure)"
-            tail -400 build-ci/build.log || true
-            echo "::endgroup::"
+            for f in build-ci/configure.log build-ci/build.log build-ci/test.log; do
+              if [[ -f "$f" ]]; then
+                echo "::group::$f"
+                tail -400 "$f"
+                echo "::endgroup::"
+              fi
+            done
             exit $rc
           }
 
@@ -227,9 +231,13 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           call compile.cmd --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
           if errorlevel 1 (
-            echo ::group::build-ci/build.log (build or test failure)
-            type build-ci\build.log
-            echo ::endgroup::
+            for %%f in (configure.log build.log test.log) do (
+              if exist "build-ci\%%f" (
+                echo ::group::build-ci\%%f
+                type "build-ci\%%f"
+                echo ::endgroup::
+              )
+            )
             exit /b 1
           )
 
