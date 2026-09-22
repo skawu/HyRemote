@@ -42,4 +42,10 @@ install(
 
 if(HYREMOTE_BUILD_TESTS)
     add_subdirectory(tests)
+    # The Runtime capability macro is intentionally PRIVATE to the product target. The facade regression has two
+    # compile-time expectation branches for security-on/off builds, so give that test target the same build fact
+    # without turning an implementation macro into public package/interface state.
+    if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+        target_compile_definitions(hyremote-remoteaccess-test PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
+    endif()
 endif()
