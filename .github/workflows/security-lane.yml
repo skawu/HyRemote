@@ -141,7 +141,13 @@ jobs:
             --build-dir=build-ci \
             --tests --run-tests \
             --xvfb -j4 \
-            --env=QT_QUICK_BACKEND=software
+            --env=QT_QUICK_BACKEND=software || {
+            rc=$?
+            echo "::group::build-ci/build.log (build or test failure)"
+            tail -400 build-ci/build.log || true
+            echo "::endgroup::"
+            exit $rc
+          }
 
       - name: Build and test through HyRemote build system — Windows
         if: runner.os == 'Windows'
@@ -150,7 +156,12 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           call compile.cmd --security --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests -j4
-          if errorlevel 1 exit /b 1
+          if errorlevel 1 (
+            echo ::group::build-ci/build.log (build or test failure)
+            type build-ci\build.log
+            echo ::endgroup::
+            exit /b 1
+          )
 
       - name: Encrypted transport evidence
         if: always()
