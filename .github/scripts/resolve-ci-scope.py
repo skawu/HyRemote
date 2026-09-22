@@ -64,6 +64,10 @@ COMMON_DEPLOY_PATHS = (
     "cmake/HyRemoteDeploy.cmake",
     "cmake/HyRemoteInstall.cmake",
     "tests/release-readiness/run_release_evidence.cmake",
+    # This script defines the host dependency closure used by every clean consumer/deploy cell on Linux. If it changes,
+    # a normal product build can still pass while the isolated consumers fail during configure, so every deploy family
+    # must execute rather than being excluded by the fast-lane selector.
+    ".github/scripts/install-linux-qt-desktop-deps.sh",
 )
 
 # Surfaces that carry release/product truth the readiness gates assert. A change here has to execute readiness, or
@@ -329,6 +333,9 @@ def self_test() -> int:
          {"readiness_evidence": "true"}),
         ("install authority change runs readiness", "pull_request", ["cmake/HyRemoteInstall.cmake"], False,
          {"readiness_evidence": "true"}),
+        ("Linux host dependency authority runs every deploy family", "pull_request",
+         [".github/scripts/install-linux-qt-desktop-deps.sh"], False,
+         {"generic_evidence": "true", "cpp_evidence": "true", "qml_evidence": "true", "qpa_evidence": "true"}),
         # A PR that reaches every integration evidence contract is full integration for that run, so it excludes no
         # integration sub-build - an empty exclusion survives as an empty exclusion. The candidate-only product fit is
         # the single named exception and is asserted separately below.
