@@ -188,3 +188,134 @@ if(HYREMOTE_WITH_VNC AND HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
              COMMAND hyremote-rfb-vnc-auth-handshake-test)
     set_tests_properties(hyremote-rfb-vnc-auth-handshake-test PROPERTIES TIMEOUT 15)
 endif()
+
+# Widgets target-adapter contracts belong to the Shared Runtime. Their registration follows the
+# adapter capability itself and is independent of whether the Embedded C++ facade is built.
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
+    add_executable(hyremote-widgets-capture-test
+        test_widgets_capture.cpp
+    )
+    target_link_libraries(hyremote-widgets-capture-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-widgets-capture-test PRIVATE ../src)
+    add_test(NAME hyremote-widgets-capture-test COMMAND hyremote-widgets-capture-test)
+    set_tests_properties(hyremote-widgets-capture-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
+    add_executable(hyremote-widgets-input-backpressure-test
+        test_widgets_input_backpressure.cpp
+    )
+    target_link_libraries(hyremote-widgets-input-backpressure-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-widgets-input-backpressure-test PRIVATE ../src)
+    add_test(NAME hyremote-widgets-input-backpressure-test COMMAND hyremote-widgets-input-backpressure-test)
+    set_tests_properties(hyremote-widgets-input-backpressure-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
+    add_executable(hyremote-widgets-input-routing-test
+        test_widgets_input_routing.cpp
+    )
+    target_link_libraries(hyremote-widgets-input-routing-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-widgets-input-routing-test PRIVATE ../src)
+    add_test(NAME hyremote-widgets-input-routing-test COMMAND hyremote-widgets-input-routing-test)
+    set_tests_properties(hyremote-widgets-input-routing-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
+    # TG-020: this composition test drives the real RFB transport as well as the Widgets adapter.
+    # When VNC is unavailable it must be absent from the test graph rather than left unbuildable or skipped.
+    if(HYREMOTE_WITH_VNC)
+        add_executable(hyremote-rfb-widget-disconnect-backpressure-test
+            test_rfb_widget_disconnect_backpressure.cpp
+        )
+        target_link_libraries(hyremote-rfb-widget-disconnect-backpressure-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Network
+                Qt6::Widgets
+        )
+        target_include_directories(hyremote-rfb-widget-disconnect-backpressure-test PRIVATE ../src)
+        add_test(NAME hyremote-rfb-widget-disconnect-backpressure-test
+                 COMMAND hyremote-rfb-widget-disconnect-backpressure-test)
+        set_tests_properties(hyremote-rfb-widget-disconnect-backpressure-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        )
+    endif()
+endif()
+
+# Qt Quick target-adapter contracts are likewise Runtime-owned and follow only the Quick adapter capability.
+if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+    add_executable(hyremote-quick-capture-test
+        test_quick_capture.cpp
+    )
+    target_link_libraries(hyremote-quick-capture-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Quick
+    )
+    target_include_directories(hyremote-quick-capture-test PRIVATE ../src)
+    add_test(NAME hyremote-quick-capture-test COMMAND hyremote-quick-capture-test)
+    set_tests_properties(hyremote-quick-capture-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    )
+
+    add_executable(hyremote-quick-input-routing-test
+        test_quick_input_routing.cpp
+    )
+    target_link_libraries(hyremote-quick-input-routing-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Quick
+    )
+    target_include_directories(hyremote-quick-input-routing-test PRIVATE ../src)
+    add_test(NAME hyremote-quick-input-routing-test COMMAND hyremote-quick-input-routing-test)
+    set_tests_properties(hyremote-quick-input-routing-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    )
+
+    add_executable(hyremote-quick-input-backpressure-test
+        test_quick_input_backpressure.cpp
+    )
+    target_link_libraries(hyremote-quick-input-backpressure-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Quick
+    )
+    target_include_directories(hyremote-quick-input-backpressure-test PRIVATE ../src)
+    add_test(NAME hyremote-quick-input-backpressure-test COMMAND hyremote-quick-input-backpressure-test)
+    set_tests_properties(hyremote-quick-input-backpressure-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    )
+endif()
