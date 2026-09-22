@@ -1,0 +1,146 @@
+name: V0.2 TLS preflight (OpenSSL backend)
+
+# Focused evidence lane for issue #258's Preflight B: the same-socket plaintext -> TLS transition of the V0.2.0.0
+# authenticated/encrypted profile on the **OpenSSL** TLS backend, on both reference platforms.
+#
+# This lane is deliberately not an acceptance lane and does not build the product. Product acceptance stays with
+# `ci.yml` and its capability classifier; this one exists because the preflight harness needs an OpenSSL development
+# package and an OpenSSL runtime that the product build only requires when the transport-security capability is enabled,
+# and because the harness must fail closed when that backend is missing - which is correct behaviour for the capability
+# and the wrong behaviour for an ordinary developer's default test suite. It therefore runs only when the preflight
+# harness, its record or this workflow changes, or on demand.
+
+on:
+  pull_request:
+    paths:
+      - 'tests/preflight/**'
+      - 'docs/internal/v0.2-technical-preflight.md'
+      - '.github/workflows/tls-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tls-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openssl-transition:
+    name: ${{ matrix.name }} / OpenSSL backend
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 / Qt 6.8.3
+            os: ubuntu-24.04
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+          - name: Windows x86_64 / Qt 6.8.3
+            os: windows-2022
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6.8.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          aqt install-qt "${{ matrix.aqt_host }}" desktop 6.8.3 "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+          echo "QT_PREFIX=$QT_ROOT/6.8.3/${{ matrix.qt_dir }}" >> "$GITHUB_ENV"
+
+      # The OpenSSL runtime that Qt's openssl backend plugin loads, and the development files the harness links against
+      # to prove a certificate and its key belong together. On Windows both come from Qt's own OpenSSL tool component,
+      # so the runtime is the one the Qt SDK is built against and a future packaging step can reproduce it; on Linux the
+      # distribution's OpenSSL is the same runtime Qt loads, so the harness and the session agree by construction.
+      - name: Provide the OpenSSL backend runtime and development files — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libssl-dev
+          echo "OPENSSL_ROOT_DIR=/usr" >> "$GITHUB_ENV"
+          openssl version -a | head -2
+
+      - name: Provide the OpenSSL backend runtime and development files — Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          aqt install-tool "${{ matrix.aqt_host }}" desktop tools_opensslv3_x64 --outputdir "$QT_ROOT"
+          OPENSSL_PREFIX="$QT_ROOT/Tools/OpenSSLv3/Win_x64"
+          if [[ ! -d "$OPENSSL_PREFIX" ]]; then
+            echo "the Qt OpenSSL tool component did not install where expected" >&2
+            exit 1
+          fi
+          # Qt's plugin loader finds the DLLs through the loader path, so the runtime directory has to be on PATH for
+          # the harness process as well as for its children.
+          echo "$OPENSSL_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "OPENSSL_ROOT_DIR=$OPENSSL_PREFIX" >> "$GITHUB_ENV"
+
+      - name: Build and run the preflight — Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tests/preflight -B build-tls-preflight -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"
+          cmake --build build-tls-preflight
+          ./build-tls-preflight/hyremote-tls-transition-preflight 2>&1 | tee tls-preflight.log
+
+      - name: Build and run the preflight — Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -S tests/preflight -B build-tls-preflight -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QT_PREFIX%" -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" || exit /b 1
+          cmake --build build-tls-preflight || exit /b 1
+          build-tls-preflight\hyremote-tls-transition-preflight.exe > tls-preflight.log 2>&1 || type tls-preflight.log && exit /b 1
+          type tls-preflight.log
+
+      # The record's machine-readable matrix is read straight out of the harness output, so a lane cannot pass while the
+      # proof it claims is missing one of its lines.
+      - name: Preflight evidence summary
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG=tls-preflight.log
+          status=0
+          {
+            echo "## V0.2 TLS preflight — ${{ matrix.name }}"
+            echo
+            if [[ ! -f "$LOG" ]]; then
+              echo "No harness output was produced, so the proof did not run."
+              exit 0
+            fi
+            echo '```text'
+            grep -E '^(QT_VERSION|AVAILABLE_TLS_BACKENDS|ACTIVE_TLS_BACKEND|OPENSSL_RUNTIME_VERSION|OPENSSL_BUILD_VERSION|BACKEND_SELECTION|BACKEND_FALLBACK|BEFORE_TLS_SOCKET_DESCRIPTOR|AFTER_TLS_SOCKET_DESCRIPTOR|PLAINTEXT_PHASE|SAME_SOCKET_TLS|TLS_PROTOCOL|TLS_MIN_1_2|TLS_BELOW_1_2_REFUSED|CERT_PREVALIDATION|HANDSHAKE_TIMEOUT|LISTENER_SURVIVES_TIMEOUT|FAILURE_NO_FALLBACK|RECONNECT|SHUTDOWN|SPIKE_RESULT|SPIKE_FAILURES)=' "$LOG" || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          for required in PLAINTEXT_PHASE SAME_SOCKET_TLS TLS_MIN_1_2 CERT_PREVALIDATION HANDSHAKE_TIMEOUT \
+                          FAILURE_NO_FALLBACK RECONNECT SHUTDOWN SPIKE_RESULT; do
+            if ! grep -q "^${required}=PASS$" "$LOG"; then
+              echo "::error::the preflight output is missing ${required}=PASS"
+              status=1
+            fi
+          done
+          if ! grep -q "^ACTIVE_TLS_BACKEND=openssl$" "$LOG"; then
+            echo "::error::the session did not run on the OpenSSL TLS backend"
+            status=1
+          fi
+          exit "$status"
