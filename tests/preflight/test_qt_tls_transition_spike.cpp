@@ -580,6 +580,12 @@ void runCredentialMatrix(const QString &scratchDir)
 
 int main(int argc, char **argv)
 {
+    // Unbuffered output, so that a crash still leaves the transcript that says how far the run got. A redirected
+    // stdout is fully buffered on Windows, and a process that fails fast loses every line it had already printed -
+    // which is exactly how a failing hosted run above was first reported as "no output at all".
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::printf("SPIKE_BEGIN v0.2-tls-preflight\n");
+
     QCoreApplication application(argc, argv);
 
     // Backend selection happens before any TLS-related Qt object is created, as the human decision requires. On Linux

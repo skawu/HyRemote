@@ -106,10 +106,15 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          cmake -S tests/preflight -B build-tls-preflight -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QT_PREFIX%" -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%" || exit /b 1
-          cmake --build build-tls-preflight || exit /b 1
-          build-tls-preflight\hyremote-tls-transition-preflight.exe > tls-preflight.log 2>&1 || type tls-preflight.log && exit /b 1
+          cmake -S tests/preflight -B build-tls-preflight -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%QT_PREFIX%" -DOPENSSL_ROOT_DIR="%OPENSSL_ROOT_DIR%"
+          if errorlevel 1 exit /b 1
+          cmake --build build-tls-preflight
+          if errorlevel 1 exit /b 1
+          build-tls-preflight\hyremote-tls-transition-preflight.exe > tls-preflight.log 2>&1
+          set "PREFLIGHT_RC=%ERRORLEVEL%"
           type tls-preflight.log
+          echo PREFLIGHT_EXIT_CODE=%PREFLIGHT_RC%
+          if not "%PREFLIGHT_RC%"=="0" exit /b 1
 
       # The record's machine-readable matrix is read straight out of the harness output, so a lane cannot pass while the
       # proof it claims is missing one of its lines.
