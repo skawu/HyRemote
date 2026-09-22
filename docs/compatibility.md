@@ -137,8 +137,8 @@ Current product behavior includes:
 - reconnect without rebuilding the application Runtime;
 - `Insecure` loopback-only behavior;
 - conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
-- no stream encryption in V0.1;
-- `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
+- stream encryption is available for the `AuthenticatedEncrypted` profile and requires a transport-security-enabled build, an available OpenSSL 3.x TLS runtime for Qt's OpenSSL backend, and a matching certificate/private-key pair; `Insecure` and `Authenticated` stay unencrypted;
+- `AuthenticatedEncrypted` fails closed before listener creation when that backend or that material is unusable, and never falls back to a weaker profile.
 
 The default V0.1 build/profile must not be interpreted as providing authenticated transport merely because the public API exposes the `Authenticated` profile.
 

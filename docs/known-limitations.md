@@ -29,9 +29,9 @@ Current limitations:
 - when `Authenticated` is available, it uses RFB VNC authentication but the stream remains unencrypted;
 - the default V0.1 build/profile does not imply authenticated transport is compiled in;
 - a requested `Authenticated` profile with no required build capability fails with `SecurityUnavailable` before target/transport/listener creation;
-- `AuthenticatedEncrypted` is not implemented and always fails with `SecurityUnavailable` before listener creation;
-- `AuthenticatedEncrypted` never falls back to `Authenticated` or `Insecure`, even if a certificate/private-key descriptor exists;
-- there is no production TLS/certificate policy yet;
+- `AuthenticatedEncrypted` requires a transport-security-enabled build, an available OpenSSL 3.x TLS runtime for Qt's OpenSSL backend, and a certificate/private-key pair that parses and matches; otherwise it fails with `SecurityUnavailable` or `InvalidConfiguration` before listener creation;
+- Schannel is not a qualified backend for V0.2.0.0, and `AuthenticatedEncrypted` never falls back to `Authenticated`, to `Insecure`, or to plaintext, even if a certificate/private-key descriptor exists;
+- certificate issuance, rotation and revocation remain operator responsibilities; HyRemote validates the pair it is given and does not manage a PKI;
 - there is no authenticated Session Registry or per-session role model yet.
 
 Stopping the runtime is explicit and complete: `stop()` releases the held input state the runtime was maintaining for connected viewers and returns the listener and the target adapter to `Stopped`, so an application never has to undo synthetic remote held state itself.

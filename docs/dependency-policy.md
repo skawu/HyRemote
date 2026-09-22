@@ -81,9 +81,9 @@ When secure transport is requested:
 - HyRemote does not silently downgrade a requested secure build to an insecure one;
 - cryptographic implementation types remain private Runtime details rather than downstream SDK targets.
 
-Current V0.1 `AuthenticatedEncrypted` is unavailable and fails closed.
+The V0.2 `AuthenticatedEncrypted` profile adds **OpenSSL SSL** beside Crypto: SSL is what Qt's OpenSSL TLS backend is built on, so the capability links `OpenSSL::Crypto` and `OpenSSL::SSL` - both **privately**, and neither is an installed SDK target a consumer links.
 
-> **TODO V0.2:** complete the encrypted transport/certificate product capability and publish its exact third-party runtime/package obligations.
+> **TODO V0.2:** certificate issuance/rotation policy and the exact packaged runtime obligations for each supported platform.
 
 ## RFB/VNC transport baseline
 
