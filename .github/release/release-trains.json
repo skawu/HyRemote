@@ -65,19 +65,21 @@
       "candidate_prerequisites": [ 258 ],
       "required_evidence": [
         "accepted-v0.1-lineage",
-        "secure-remote-evidence",
+        "usable-lan-remote-access-evidence",
+        "truthful-trial-security-state-evidence",
         "customer-trial-evidence"
       ],
       "cross_version_references": [ 95, 143, 170, 174, 259 ],
       "conditional_items": [],
       "non_blockers": [ 170, 239 ],
       "notes": {
+        "143": "Secure remote access is a mandatory child because the trial needs a usable and truthfully reported transport, not because an encrypted profile has to exist before the first candidate can be accepted. A candidate that ships BASIC_TRUSTED_LAN satisfies this train; encrypted-profile work still being unfinished is not a blocker for it.",
         "258": "Security-modelling entry preflight for the secure-remote Feature. Preflight is risk work, not product implementation, so it is a prerequisite rather than a mandatory child.",
         "271": "First real customer trial on the frozen Windows/Ubuntu x86_64 trial matrix. Product-owner decision: the first customer trial belongs to V0.2.0, not to V0.1.",
         "170": "Session Registry belongs to 0.2.1.0, so it is a declared non-blocker here.",
         "239": "Minimal operational examples belong to 0.2.1.0, so they are a declared non-blocker here."
       },
-      "rule": "Secure remote access is the first Feature of the V0.2 line and consumes the accepted V0.1 lineage."
+      "rule": "The V0.2 user promise is the first real remote-access trial on a trusted LAN. The first candidate may be accepted as BASIC_TRUSTED_LAN - usable LAN remote access with a truthfully reported security state - and it is never blocked by VeNCrypt/TLS or any other encrypted profile still being unfinished. Encrypted evidence is conditional on what the candidate itself ships: it is required only when that candidate actually declares AUTHENTICATED_ENCRYPTED, and it is never a standing requirement of this train."
     },
     "0.2.1.0": {
       "authority_parent": 233,

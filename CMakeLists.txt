@@ -310,6 +310,16 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     )
     set_tests_properties(hyremote-release-scope-self-test PROPERTIES TIMEOUT 300)
 
+    # The V0.2.0 user-first release authority: the first candidate may ship BASIC_TRUSTED_LAN, encrypted evidence is
+    # conditional on the candidate's own shipped claim, and every other train keeps its product authority (#323).
+    add_test(
+        NAME hyremote-release-authority-v02-user-first
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_authority_v02_user_first.cmake"
+    )
+    set_tests_properties(hyremote-release-authority-v02-user-first PROPERTIES TIMEOUT 300)
+
     # The clean-consumer acquisition audit decides whether a consumer acquired HyRemote from a package or from the
     # product source/build tree. That decision is a pure function of a CMakeCache, so its self test runs here without
     # configuring or building anything: it drives the same shared audit the evidence runner includes, against
