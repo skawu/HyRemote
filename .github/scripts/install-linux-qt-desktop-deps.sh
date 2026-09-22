@@ -15,12 +15,15 @@ if [[ "$profile" != "public" && "$profile" != "qpa" ]]; then
   exit 2
 fi
 
-# Minimal runtime support used by the official Qt desktop archive for normal public-Qt GUI lanes.
+# Minimal runtime and configure-time support used by the official Qt desktop archive for normal public-Qt GUI lanes.
+# The development OpenGL package is required because installed/example consumers run their own find_package(Qt6 Gui),
+# whose WrapOpenGL dependency must resolve independently of what happens to be preinstalled on the runner image.
 packages=(
   libx11-xcb1
   libxcb-cursor0
   libxkbcommon-x11-0
   libgl1
+  libgl1-mesa-dev
 )
 
 # QPA qualification additionally exercises the native XCB delegate/private-QPA path.
@@ -39,7 +42,6 @@ if [[ "$profile" == "qpa" ]]; then
     libxcb-xkb1
     libxkbcommon-dev
     libxkbcommon-x11-dev
-    libgl1-mesa-dev
   )
 fi
 
