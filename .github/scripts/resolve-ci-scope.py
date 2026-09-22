@@ -134,6 +134,19 @@ DANGEROUS_REGEX_PROBE = "hyremote-probe-name-that-no-exclusion-may-match"
 # the product job request security explicitly. This is deliberately the narrow set of files that actually control
 # VNC-auth capability and registration, not "everything under src/runtime/".
 SECURITY_EVIDENCE_PATHS = (
+    # Current, active ownership. While the VNC-auth tests and their registration still live under the C++ frontend,
+    # a diff to these paths can invalidate the security path just as much as a Runtime one, so they have to select
+    # security-on evidence. Listing only the future Runtime-owned paths left every surface that exists today
+    # uncovered: a pull request changing one of them resolved security_evidence=false and ran security-off only.
+    "src/integrations/cpp/tests/CMakeLists.txt",
+    "src/integrations/cpp/tests/test_remote_access.cpp",
+    "src/integrations/cpp/tests/test_vnc_auth.cpp",
+    "src/integrations/cpp/tests/test_rfb_vnc_auth_handshake.cpp",
+    # The authenticated-startup branch itself. access_instance.cpp is where HYREMOTE_HAS_TRANSPORT_SECURITY actually
+    # changes runtime behavior, so a diff here can only be settled by a run that built the capability.
+    "src/runtime/src/access_instance.cpp",
+    # Post-move Runtime ownership, retained so the trigger set keeps working across the ownership transition and
+    # does not have to be rediscovered once the tests move.
     "src/runtime/tests/test_vnc_auth.cpp",
     "src/runtime/tests/test_rfb_vnc_auth_handshake.cpp",
     "src/runtime/tests/CMakeLists.txt",
@@ -398,6 +411,18 @@ def self_test() -> int:
          ["cmake/HyRemoteProjectOptions.cmake"], False, {"security_evidence": "true"}),
         ("runtime vnc capability registration requests security evidence", "pull_request",
          ["src/runtime/CMakeLists.txt"], False, {"security_evidence": "true"}),
+        # Current ownership has to select security-on evidence as well: otherwise a diff to a file that exists on
+        # develop today could run security-off only, which is the defect this change closes.
+        ("current cpp test registration requests security evidence", "pull_request",
+         ["src/integrations/cpp/tests/CMakeLists.txt"], False, {"security_evidence": "true"}),
+        ("current facade capability contract requests security evidence", "pull_request",
+         ["src/integrations/cpp/tests/test_remote_access.cpp"], False, {"security_evidence": "true"}),
+        ("current vnc auth primitive test requests security evidence", "pull_request",
+         ["src/integrations/cpp/tests/test_vnc_auth.cpp"], False, {"security_evidence": "true"}),
+        ("current vnc auth handshake test requests security evidence", "pull_request",
+         ["src/integrations/cpp/tests/test_rfb_vnc_auth_handshake.cpp"], False, {"security_evidence": "true"}),
+        ("authenticated startup branch requests security evidence", "pull_request",
+         ["src/runtime/src/access_instance.cpp"], False, {"security_evidence": "true"}),
         # ... and nothing beyond that narrow set pays the security-on cost.
         ("unrelated runtime source requests no security evidence", "pull_request",
          ["src/runtime/runtime.cpp"], False, {"security_evidence": "false", "product": "true"}),
