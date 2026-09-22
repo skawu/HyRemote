@@ -143,3 +143,48 @@ if(HYREMOTE_WITH_VNC)
     add_test(NAME hyremote-rfb-multi-client-input-test COMMAND hyremote-rfb-multi-client-input-test)
     set_tests_properties(hyremote-rfb-multi-client-input-test PROPERTIES TIMEOUT 15)
 endif()
+
+# Private VNC Authentication contracts. They need the real capability pair - the RFB transport has to
+# exist and the transport-security implementation has to be built - because they drive the actual wire
+# exchange. Linking the Shared Runtime target is component identity, not a C++ frontend dependency.
+if(HYREMOTE_WITH_VNC AND HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
+    add_executable(hyremote-vnc-auth-test
+        test_vnc_auth.cpp
+        ../src/transport/vnc_auth.cpp
+    )
+    target_link_libraries(hyremote-vnc-auth-test
+        PRIVATE
+            hyremote-remoteaccess
+            OpenSSL::Crypto
+            Qt6::Core
+            Qt6::Network
+    )
+    target_include_directories(hyremote-vnc-auth-test
+        PRIVATE
+            ../src
+    )
+    add_test(NAME hyremote-vnc-auth-test COMMAND hyremote-vnc-auth-test)
+    set_tests_properties(hyremote-vnc-auth-test PROPERTIES TIMEOUT 15)
+
+    add_executable(hyremote-rfb-vnc-auth-handshake-test
+        test_rfb_vnc_auth_handshake.cpp
+        ../src/transport/vnc_auth.cpp
+    )
+    target_link_libraries(hyremote-rfb-vnc-auth-handshake-test
+        PRIVATE
+            hyremote-remoteaccess
+            OpenSSL::Crypto
+            # This test includes hyremote/core/transport.hpp, so it needs the Core interface the other
+            # Runtime tests already link. Without it the target cannot compile in its own configuration.
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+    )
+    target_include_directories(hyremote-rfb-vnc-auth-handshake-test
+        PRIVATE
+            ../src
+    )
+    add_test(NAME hyremote-rfb-vnc-auth-handshake-test
+             COMMAND hyremote-rfb-vnc-auth-handshake-test)
+    set_tests_properties(hyremote-rfb-vnc-auth-handshake-test PROPERTIES TIMEOUT 15)
+endif()

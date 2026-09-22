@@ -57,51 +57,6 @@ add_test(NAME hyremote-remoteaccess-target-loss-test COMMAND hyremote-remoteacce
 set_tests_properties(hyremote-remoteaccess-target-loss-test PROPERTIES TIMEOUT 15)
 
 if(HYREMOTE_WITH_VNC)
-    if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
-        add_executable(hyremote-vnc-auth-test
-            test_vnc_auth.cpp
-            ${_hyremote_runtime_src}/transport/vnc_auth.cpp
-        )
-        target_link_libraries(hyremote-vnc-auth-test
-            PRIVATE
-                hyremote-remoteaccess
-                OpenSSL::Crypto
-                Qt6::Core
-                Qt6::Network
-        )
-        target_include_directories(hyremote-vnc-auth-test
-            PRIVATE
-                ${_hyremote_runtime_src}
-        )
-        add_test(NAME hyremote-vnc-auth-test COMMAND hyremote-vnc-auth-test)
-        set_tests_properties(hyremote-vnc-auth-test PROPERTIES TIMEOUT 15)
-    endif()
-
-    if(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
-        add_executable(hyremote-rfb-vnc-auth-handshake-test
-            test_rfb_vnc_auth_handshake.cpp
-            ${_hyremote_runtime_src}/transport/vnc_auth.cpp
-        )
-        target_link_libraries(hyremote-rfb-vnc-auth-handshake-test
-            PRIVATE
-                hyremote-remoteaccess
-                OpenSSL::Crypto
-                # This test includes hyremote/core/transport.hpp, so it needs the Core interface the other tests in
-                # this file already link. Without it the target cannot compile in its own configuration, which is how
-                # a registered transport-security test could sit unbuildable while security was off by default.
-                HyRemote::Core
-                Qt6::Core
-                Qt6::Network
-        )
-        target_include_directories(hyremote-rfb-vnc-auth-handshake-test
-            PRIVATE
-                ${_hyremote_runtime_src}
-        )
-        add_test(NAME hyremote-rfb-vnc-auth-handshake-test
-                 COMMAND hyremote-rfb-vnc-auth-handshake-test)
-        set_tests_properties(hyremote-rfb-vnc-auth-handshake-test PROPERTIES TIMEOUT 15)
-    endif()
-
     add_executable(hyremote-rfb-test-server
         rfb_test_server.cpp
     )
