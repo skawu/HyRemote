@@ -173,7 +173,8 @@ void installFakeRuntime(const std::shared_ptr<RuntimeCounters> &counters)
             ++counters->transportFactoryCalls;
             counters->observedAddress = address;
             counters->observedPort = port;
-            counters->observedAuthenticationRequired = security.vncAuthenticationRequired;
+            counters->observedAuthenticationRequired =
+            security.profile == HyRemote::detail::RfbSecurityProfile::VncAuth;
             counters->observedPasswordBytes = security.password.size();
             HyRemote::detail::TransportComponent result;
             result.transport = std::make_unique<FakeTransport>(counters);

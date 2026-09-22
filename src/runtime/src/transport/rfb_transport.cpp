@@ -618,7 +618,7 @@ private:
                 // weaker mode, and 'None' is only ever offered when the insecure profile asked for it explicitly.
                 // The RFB 3.8 form is a count followed by the type values.
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
-                const char security[] = {1, m_security.vncAuthenticationRequired ? char(2) : char(1)};
+                const char security[] = {1, m_security.profile == RfbSecurityProfile::VncAuth ? char(2) : char(1)};
 #else
                 const char security[] = {1, 1};  // one type: None; this build has no authentication to offer
 #endif
@@ -633,7 +633,7 @@ private:
                 const std::uint8_t selected = byteAt(client.input, 0);
                 client.input.remove(0, 1);
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
-                if (m_security.vncAuthenticationRequired) {
+                if (m_security.profile == RfbSecurityProfile::VncAuth) {
                     if (selected != 2) {
                         // Never downgrade: a connection refusing the only configured authentication type is an
                         // authentication rejection, not a generic protocol diagnostic.

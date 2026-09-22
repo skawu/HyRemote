@@ -10,6 +10,7 @@
 
 #include "detail/component_factories.hpp"
 #include "detail/security_descriptor.hpp"
+#include "detail/security_preflight.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -546,15 +547,6 @@ bool AccessInstance::start()
         // certificate/private-key descriptor must not make the profile look implemented. Descriptor validity
         // and backend capability are separate facts; this one is about the backend. The refusal happens here,
         // before any listener or transport is composed, and it never falls back to Authenticated or Insecure.
-        if (m_impl->securityProfile == SecurityProfile::AuthenticatedEncrypted) {
-            m_impl->setError(
-                ErrorCode::SecurityUnavailable,
-                QStringLiteral("AuthenticatedEncrypted requires the final VeNCrypt/TLS transport, which this "
-                               "release does not provide; refusing to start instead of falling back to a weaker "
-                               "listener"));
-            return false;
-        }
-
         if (m_impl->securityConfigFile.trimmed().isEmpty()) {
             m_impl->setError(ErrorCode::SecurityUnavailable,
                              QStringLiteral("the selected security profile requires a security descriptor"));
@@ -579,8 +571,37 @@ bool AccessInstance::start()
         }
 
         authenticationEnabled = true;
-        transportSecurity.vncAuthenticationRequired = true;
         transportSecurity.password = descriptor->password;
+
+        // The private profile is closed, so a frontend profile maps onto exactly one wire profile.
+        if (m_impl->securityProfile == SecurityProfile::AuthenticatedEncrypted) {
+            // Prepared exactly as the final implementation prepares it - explicit OpenSSL backend selection,
+            // readable material, matching certificate and key - so these pre-listen guarantees cannot be bypassed
+            // when the VeNCrypt/TLS wire slice lands, and none of them can be satisfied after a listener exists.
+            transportSecurity.profile = detail::RfbSecurityProfile::VeNCryptTlsVncAuth;
+            transportSecurity.certificateFile = descriptor->certificateFile;
+            transportSecurity.privateKeyFile = descriptor->privateKeyFile;
+
+            const detail::SecureTransportPreparation preparation =
+                detail::prepareSecureTransport(transportSecurity);
+            if (!preparation.ok) {
+                m_impl->setError(preparation.unavailable ? ErrorCode::SecurityUnavailable
+                                                        : ErrorCode::InvalidConfiguration,
+                                 preparation.error);
+                return false;
+            }
+
+            // The wire profile itself is the next slice. Until it exists this refuses to start rather than
+            // serving a weaker security type: fail closed, never downgrade.
+            m_impl->setError(
+                ErrorCode::SecurityUnavailable,
+                QStringLiteral("AuthenticatedEncrypted requires the VeNCrypt/TLS wire profile, which this build "
+                               "does not provide yet; refusing to start instead of falling back to a weaker "
+                               "security type"));
+            return false;
+        }
+
+        transportSecurity.profile = detail::RfbSecurityProfile::VncAuth;
 #endif
     }
 
