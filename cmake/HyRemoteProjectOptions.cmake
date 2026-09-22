@@ -28,7 +28,7 @@ option(HYREMOTE_WITH_QPA_PROXY "Enable the QPA Factory-Trampoline zero-code fron
 # OpenSSL TLS backend. The capability therefore depends on OpenSSL Crypto and SSL. The exact option and capability
 # identifier names are kept stable deliberately - renaming them is a compatibility question of its own, while the
 # help/status text below has to describe what the capability actually does today.
-option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable the authenticated RFB transport security profiles using OpenSSL Crypto and SSL (VNC Authentication, and the VeNCrypt 0.2 / X509Vnc / TLS >= 1.2 encrypted profile with VNC Authentication inside TLS)" OFF)
+option(HYREMOTE_WITH_TRANSPORT_SECURITY "Enable the authenticated RFB transport security profiles using OpenSSL Crypto and SSL (VNC Authentication, and the VeNCrypt 0.2 / X509Vnc 261 / TLS >= 1.2 encrypted profile with VNC Authentication inside TLS on Qt's OpenSSL backend only; Schannel is not qualified and there is no fallback)" OFF)
 
 set(HYREMOTE_TRANSPORT_SECURITY_AVAILABLE OFF)
 
@@ -54,124 +54,120 @@ if(HYREMOTE_WITH_TRANSPORT_SECURITY)
         set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_FILES "" CACHE INTERNAL "Package-relative names of the runtime payload files")
         set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES "" CACHE INTERNAL "Absolute source locations of the same files")
 
-        # FindOpenSSL resolves the artifact the *linker* uses, which on Windows is the import library, so the
-        # runtime DLL is located from the same OpenSSL installation rather than assumed. Both the file CMake found
-        # and the directory it lives in drive the search, so no distribution's version suffix is hard-coded here and
-        # a missing runtime fails the configure instead of producing a tree that dies at the first TLS use.
-        set(_hyremote_openssl_runtime "")
-        set(_hyremote_openssl_runtime_names "")
-        set(_hyremote_openssl_link_only TRUE)
-        foreach(_hyremote_openssl_target OpenSSL::SSL OpenSSL::Crypto)
-            set(_hyremote_openssl_location "")
-            foreach(_hyremote_openssl_property IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE IMPORTED_IMPLIB IMPORTED_IMPLIB_RELEASE)
-                get_target_property(_hyremote_openssl_candidate "${_hyremote_openssl_target}" "${_hyremote_openssl_property}")
-                if(NOT _hyremote_openssl_candidate MATCHES "-NOTFOUND$" AND NOT _hyremote_openssl_candidate STREQUAL "")
-                    set(_hyremote_openssl_location "${_hyremote_openssl_candidate}")
-                    break()
-                endif()
-            endforeach()
-
-            if(_hyremote_openssl_location STREQUAL "")
-                message(FATAL_ERROR
-                    "HyRemote: the transport-security capability is enabled but ${_hyremote_openssl_target} has no "
-                    "resolvable library, so the deployed tree cannot be described honestly. Configure with "
-                    "HYREMOTE_WITH_TRANSPORT_SECURITY=OFF to build without the capability.")
-            endif()
-
-            if(_hyremote_openssl_location MATCHES "\\.dll$")
-                list(APPEND _hyremote_openssl_runtime "${_hyremote_openssl_location}")
-                set(_hyremote_openssl_link_only FALSE)
-                continue()
-            endif()
-            if(_hyremote_openssl_location MATCHES "\\.(so|dylib)")
-                set(_hyremote_openssl_link_only FALSE)
-                continue()
-            endif()
-            if(NOT _hyremote_openssl_location MATCHES "\\.(a|lib)$")
-                continue()
-            endif()
-
-            # An import library or a static archive. The static case needs no payload; the import case needs the
-            # runtime library that carries the same base name inside the same OpenSSL installation.
-            set(_hyremote_openssl_search_dirs "")
-            get_filename_component(_hyremote_openssl_directory "${_hyremote_openssl_location}" DIRECTORY)
-            if(DEFINED OPENSSL_ROOT_DIR AND NOT "${OPENSSL_ROOT_DIR}" STREQUAL "" AND IS_DIRECTORY "${OPENSSL_ROOT_DIR}")
-                list(APPEND _hyremote_openssl_search_dirs "${OPENSSL_ROOT_DIR}/bin")
-            endif()
-            list(APPEND _hyremote_openssl_search_dirs "${_hyremote_openssl_directory}/../bin" "${_hyremote_openssl_directory}")
-
-            # The link artifact is `libssl.lib` or `libcrypto.lib`; the runtime library carries the same stem with
-            # the distribution's own version suffix, so the stem is taken from that artifact rather than assumed.
-            get_filename_component(_hyremote_openssl_base "${_hyremote_openssl_location}" NAME_WE)
-            if(_hyremote_openssl_base MATCHES "^[Ll]ib(.*)$")
-                set(_hyremote_openssl_stem "${CMAKE_MATCH_1}")
-            else()
-                set(_hyremote_openssl_stem "${_hyremote_openssl_base}")
-            endif()
-
-            set(_hyremote_openssl_found "")
-            foreach(_hyremote_openssl_search_dir IN LISTS _hyremote_openssl_search_dirs)
-                if(NOT IS_DIRECTORY "${_hyremote_openssl_search_dir}")
-                    continue()
-                endif()
-                file(GLOB _hyremote_openssl_candidates
-                    "${_hyremote_openssl_search_dir}/${_hyremote_openssl_stem}*.dll"
-                    "${_hyremote_openssl_search_dir}/lib${_hyremote_openssl_stem}*.dll")
-                foreach(_hyremote_openssl_candidate_file IN LISTS _hyremote_openssl_candidates)
-                    # A TLS or crypto runtime library carries the same stem as the artifact the linker used.
-                    if(_hyremote_openssl_candidate_file MATCHES "${_hyremote_openssl_stem}[^/\\\\]*\\.dll$")
-                        set(_hyremote_openssl_found "${_hyremote_openssl_candidate_file}")
+        # The payload only exists where it is needed. On the Linux reference environment libssl/libcrypto are the
+        # distribution's runtime and every deployed application resolves them through the standard loader paths, so
+        # copying them would ship a second copy of a system library and none of this work applies. Resolving it only
+        # on Windows also keeps a Linux configure from depending on how a particular FindOpenSSL build happens to
+        # spell its imported locations.
+        if(NOT WIN32)
+            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE "SYSTEM" CACHE INTERNAL
+                "How the encrypted profile's runtime is provided" FORCE)
+        else()
+            # FindOpenSSL resolves the artifact the *linker* uses, which on Windows is the import library, so the
+            # runtime DLL is located from the same OpenSSL installation rather than assumed. Both the file CMake
+            # found and the directory it lives in drive the search, so no distribution's version suffix is
+            # hard-coded here and a missing runtime fails the configure instead of producing a tree that dies at
+            # the first TLS use.
+            set(_hyremote_openssl_runtime "")
+            set(_hyremote_openssl_names "")
+            foreach(_hyremote_openssl_target OpenSSL::SSL OpenSSL::Crypto)
+                set(_hyremote_openssl_location "")
+                foreach(_hyremote_openssl_property IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE IMPORTED_IMPLIB IMPORTED_IMPLIB_RELEASE)
+                    get_target_property(_hyremote_openssl_candidate "${_hyremote_openssl_target}" "${_hyremote_openssl_property}")
+                    if(NOT _hyremote_openssl_candidate MATCHES "-NOTFOUND$" AND NOT _hyremote_openssl_candidate STREQUAL "")
+                        set(_hyremote_openssl_location "${_hyremote_openssl_candidate}")
                         break()
                     endif()
                 endforeach()
-                if(NOT _hyremote_openssl_found STREQUAL "")
-                    break()
+
+                if(_hyremote_openssl_location STREQUAL "")
+                    message(FATAL_ERROR
+                        "HyRemote: the transport-security capability is enabled but ${_hyremote_openssl_target} has no "
+                        "resolvable library, so the deployed tree cannot be described honestly. Configure with "
+                        "HYREMOTE_WITH_TRANSPORT_SECURITY=OFF to build without the capability.")
                 endif()
+
+                if(_hyremote_openssl_location MATCHES "\\.dll$")
+                    list(APPEND _hyremote_openssl_runtime "${_hyremote_openssl_location}")
+                    continue()
+                endif()
+                if(NOT _hyremote_openssl_location MATCHES "\\.(a|lib)$")
+                    continue()
+                endif()
+
+                # An import library or a static archive. The static case needs no payload; the import case needs
+                # the runtime library that carries the same base name inside the same OpenSSL installation.
+                set(_hyremote_openssl_search_dirs "")
+                get_filename_component(_hyremote_openssl_directory "${_hyremote_openssl_location}" DIRECTORY)
+                if(DEFINED OPENSSL_ROOT_DIR AND NOT "${OPENSSL_ROOT_DIR}" STREQUAL "" AND IS_DIRECTORY "${OPENSSL_ROOT_DIR}")
+                    list(APPEND _hyremote_openssl_search_dirs "${OPENSSL_ROOT_DIR}/bin")
+                endif()
+                list(APPEND _hyremote_openssl_search_dirs "${_hyremote_openssl_directory}/../bin" "${_hyremote_openssl_directory}")
+
+                get_filename_component(_hyremote_openssl_base "${_hyremote_openssl_location}" NAME_WE)
+                if(_hyremote_openssl_base MATCHES "^[Ll]ib(.*)$")
+                    set(_hyremote_openssl_stem "${CMAKE_MATCH_1}")
+                else()
+                    set(_hyremote_openssl_stem "${_hyremote_openssl_base}")
+                endif()
+
+                set(_hyremote_openssl_found "")
+                foreach(_hyremote_openssl_search_dir IN LISTS _hyremote_openssl_search_dirs)
+                    if(NOT IS_DIRECTORY "${_hyremote_openssl_search_dir}")
+                        continue()
+                    endif()
+                    file(GLOB _hyremote_openssl_candidates
+                        "${_hyremote_openssl_search_dir}/${_hyremote_openssl_stem}*.dll"
+                        "${_hyremote_openssl_search_dir}/lib${_hyremote_openssl_stem}*.dll")
+                    foreach(_hyremote_openssl_candidate_file IN LISTS _hyremote_openssl_candidates)
+                        if(_hyremote_openssl_candidate_file MATCHES "${_hyremote_openssl_stem}[^/\\\\]*\\.dll$")
+                            set(_hyremote_openssl_found "${_hyremote_openssl_candidate_file}")
+                            break()
+                        endif()
+                    endforeach()
+                    if(NOT _hyremote_openssl_found STREQUAL "")
+                        break()
+                    endif()
+                endforeach()
+
+                if(_hyremote_openssl_found STREQUAL "")
+                    message(FATAL_ERROR
+                        "HyRemote: the transport-security capability is enabled and ${_hyremote_openssl_target} links "
+                        "against '${_hyremote_openssl_location}', but the OpenSSL runtime library that carries its "
+                        "name was not found next to it. A security-enabled deployment must carry the OpenSSL runtime "
+                        "it was linked against, because shipping a tree that starts and then fails at the first TLS "
+                        "use is not an option. Set OPENSSL_ROOT_DIR to the OpenSSL installation to deploy from, or "
+                        "configure with HYREMOTE_WITH_TRANSPORT_SECURITY=OFF.")
+                endif()
+                list(APPEND _hyremote_openssl_runtime "${_hyremote_openssl_found}")
             endforeach()
 
-            if(_hyremote_openssl_found STREQUAL "")
-                message(FATAL_ERROR
-                    "HyRemote: the transport-security capability is enabled and ${_hyremote_openssl_target} links "
-                    "against '${_hyremote_openssl_location}', but the OpenSSL runtime library that carries its name "
-                    "was not found next to it. A security-enabled deployment must carry the OpenSSL runtime it was "
-                    "linked against, because shipping a tree that starts and then fails at the first TLS use is not "
-                    "an option. Set OPENSSL_ROOT_DIR to the OpenSSL installation to deploy from, or configure with "
-                    "HYREMOTE_WITH_TRANSPORT_SECURITY=OFF.")
+            if(_hyremote_openssl_runtime STREQUAL "")
+                # A static OpenSSL is linked into the runtime itself, so there is no runtime payload to carry and
+                # nothing a deployment could get wrong.
+                set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE "STATIC" CACHE INTERNAL
+                    "How the encrypted profile's runtime is provided" FORCE)
+            else()
+                foreach(_hyremote_openssl_runtime_file IN LISTS _hyremote_openssl_runtime)
+                    get_filename_component(_hyremote_openssl_runtime_name "${_hyremote_openssl_runtime_file}" NAME)
+                    list(APPEND _hyremote_openssl_names "${_hyremote_openssl_runtime_name}")
+                endforeach()
+                list(REMOVE_DUPLICATES _hyremote_openssl_runtime)
+                list(REMOVE_DUPLICATES _hyremote_openssl_names)
+                set(HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME TRUE CACHE INTERNAL
+                    "HyRemote ships a private OpenSSL runtime payload" FORCE)
+                set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE "BUNDLED" CACHE INTERNAL
+                    "How the encrypted profile's runtime is provided" FORCE)
+                set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_SUBDIR "bin" CACHE INTERNAL
+                    "Package-relative directory of the runtime payload" FORCE)
+                set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_FILES "${_hyremote_openssl_names}" CACHE INTERNAL
+                    "Package-relative names of the runtime payload files" FORCE)
+                set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES "${_hyremote_openssl_runtime}" CACHE INTERNAL
+                    "Absolute source locations of the same files" FORCE)
+                message(STATUS
+                    "HyRemote: the encrypted profile's OpenSSL runtime is carried as a private package payload: "
+                    "${_hyremote_openssl_names}")
             endif()
-            list(APPEND _hyremote_openssl_runtime "${_hyremote_openssl_found}")
-        endforeach()
-
-        if(_hyremote_openssl_runtime STREQUAL "")
-            # A static OpenSSL is linked into the runtime itself, so there is no runtime payload to carry and nothing
-            # a deployment could get wrong.
-            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE "STATIC" CACHE INTERNAL
-                "How the encrypted profile's runtime is provided" FORCE)
-        elseif(WIN32)
-            foreach(_hyremote_openssl_runtime_file IN LISTS _hyremote_openssl_runtime)
-                get_filename_component(_hyremote_openssl_runtime_name "${_hyremote_openssl_runtime_file}" NAME)
-                list(APPEND _hyremote_openssl_names "${_hyremote_openssl_runtime_name}")
-            endforeach()
-            list(REMOVE_DUPLICATES _hyremote_openssl_runtime)
-            list(REMOVE_DUPLICATES _hyremote_openssl_names)
-            set(HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME TRUE CACHE INTERNAL
-                "HyRemote ships a private OpenSSL runtime payload" FORCE)
-            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE "BUNDLED" CACHE INTERNAL
-                "How the encrypted profile's runtime is provided" FORCE)
-            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_SUBDIR "bin" CACHE INTERNAL
-                "Package-relative directory of the runtime payload" FORCE)
-            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_FILES "${_hyremote_openssl_names}" CACHE INTERNAL
-                "Package-relative names of the runtime payload files" FORCE)
-            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES "${_hyremote_openssl_runtime}" CACHE INTERNAL
-                "Absolute source locations of the same files" FORCE)
-            message(STATUS
-                "HyRemote: the encrypted profile's OpenSSL runtime is carried as a private package payload: "
-                "${_hyremote_openssl_names}")
-        else()
-            # On the Linux reference environment libssl/libcrypto are the distribution's runtime and every deployed
-            # application resolves them through the standard loader paths. Copying them would ship a second copy of a
-            # system library, so the platform keeps owning it and the package records that instead.
-            set(HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE "SYSTEM" CACHE INTERNAL
-                "How the encrypted profile's runtime is provided" FORCE)
         endif()
     else()
         message(FATAL_ERROR
