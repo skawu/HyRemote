@@ -63,7 +63,10 @@ endif()
 # metadata and the installed plugin location used internally by hyremote_deploy(... QPA). V1 has one
 # fixed shared RemoteAccess runtime, so no static/shared QPA personality flag is published.
 set(HYREMOTE_PACKAGE_WITH_QPA FALSE)
-set(HYREMOTE_PACKAGE_QPA_QT_VERSION "6.8.3")
+# The exact Qt this package was built against, taken from the Qt CMake found rather than written down. A literal
+# here is right only on the machine it was typed on and silently wrong everywhere else, which turns "exact Qt
+# compatibility metadata" into a guess. `Qt6_VERSION` is the same fact the project already prints and gates on.
+set(HYREMOTE_PACKAGE_QPA_QT_VERSION "${Qt6_VERSION}")
 set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "")
 set(HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME "")
 if(TARGET hyremote-qpa-platform)

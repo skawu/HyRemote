@@ -28,6 +28,9 @@ set(HYB_EXAMPLES OFF)
 set(HYB_CLEAN OFF)
 set(HYB_VERBOSE OFF)
 set(HYB_SHOW_CONFIG OFF)
+# build.cmd's subcommand. Absent means build, so every historical invocation keeps its meaning.
+set(HYB_SUBCOMMAND "build")
+set(HYB_INSTALL OFF)
 set(HYB_CMAKE_CACHE_ENTRIES "")
 set(HYB_ENV_ENTRIES "")
 
@@ -339,12 +342,30 @@ if(NOT HYB_CONFIG_PATH STREQUAL "")
     hyb_load_config("${HYB_CONFIG_PATH}")
 endif()
 
+# The first bare word is the subcommand. It is read before the option loop so that loop keeps sole ownership of
+# every option, and `help` is folded into --help here so the usage text exists in exactly one place.
+set(i 0)
+while(i LESS argc)
+    list(GET HYB_ARGS ${i} arg)
+    if(NOT arg MATCHES "^-")
+        set(HYB_SUBCOMMAND "${arg}")
+        break()
+    endif()
+    math(EXPR i "${i}+1")
+endwhile()
+if(HYB_SUBCOMMAND STREQUAL "help")
+    list(APPEND HYB_ARGS "--help")
+    # argc was measured before this fold, so it has to be measured again or the option loop would never see the word
+    # that was just added to the list it iterates.
+    list(LENGTH HYB_ARGS argc)
+endif()
+
 # Pass 2 applies explicit one-off overrides.
 set(i 0)
 while(i LESS argc)
     list(GET HYB_ARGS ${i} arg)
     if(arg STREQUAL "--help")
-        message("HyRemote build entry point\n\nUsage: compile.cmd [options]\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config")
+        message("HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config")
         return()
     elseif(arg MATCHES "^--config=" OR arg STREQUAL "--no-config")
         # Already consumed in pass 1.
@@ -485,11 +506,33 @@ while(i LESS argc)
         set(HYB_JOBS "${CMAKE_MATCH_1}")
     elseif(arg MATCHES "^--jobs=([1-9][0-9]*)$")
         set(HYB_JOBS "${CMAKE_MATCH_1}")
+    elseif(NOT arg MATCHES "^-")
+        # Already consumed as the subcommand.
     else()
         message(FATAL_ERROR "Unknown build option '${arg}'. Use --help.")
     endif()
     math(EXPR i "${i}+1")
 endwhile()
+
+# What the invocation does. Options keep working beside the command, so "build.cmd install --security" configures
+# the tree it installs; nothing here is a second configuration system.
+if(HYB_SUBCOMMAND STREQUAL "build")
+    # configure if required, then compile
+elseif(HYB_SUBCOMMAND STREQUAL "install")
+    # build if required, then install
+    set(HYB_INSTALL ON)
+elseif(HYB_SUBCOMMAND STREQUAL "test")
+    # the test command owns both switches, so tests are built and run even when build.yml leaves them off
+    set(HYB_TESTS_BUILD ON)
+    set(HYB_TESTS_RUN ON)
+elseif(HYB_SUBCOMMAND STREQUAL "clean")
+    set(HYB_CLEAN ON)
+elseif(HYB_SUBCOMMAND STREQUAL "rebuild")
+    set(HYB_CLEAN ON)
+else()
+    message(FATAL_ERROR
+        "Unknown command '${HYB_SUBCOMMAND}'. Use one of: build, install, test, clean, rebuild, help.")
+endif()
 
 if(HYB_TESTS_RUN AND NOT HYB_TESTS_BUILD)
     set(HYB_TESTS_BUILD ON)
@@ -550,6 +593,7 @@ message(STATUS "  integrations.qpa  : ${HYB_QPA}")
 message(STATUS "  integrations      : ${HYB_INTEGRATIONS_TEXT}")
 message(STATUS "  transport.security: ${HYB_SECURITY}")
 message(STATUS "  build type        : ${HYB_BUILD_TYPE}")
+message(STATUS "  command           : ${HYB_SUBCOMMAND}")
 message(STATUS "  build dir         : ${HYB_BUILD_DIR}")
 message(STATUS "  generator         : ${HYB_GENERATOR}")
 message(STATUS "  jobs              : ${HYB_JOBS}")
@@ -569,6 +613,12 @@ endif()
 if(HYB_CLEAN AND EXISTS "${HYB_BUILD_DIR}")
     file(REMOVE_RECURSE "${HYB_BUILD_DIR}")
 endif()
+if(HYB_SUBCOMMAND STREQUAL "clean")
+    # The install root is inside the build tree, so removing the tree removes the deployed product with it.
+    message(STATUS "HYREMOTE_BUILD_DIR=${HYB_BUILD_DIR}")
+    message(STATUS "HyRemote clean complete")
+    return()
+endif()
 file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")
 
 # Prevent one build tree from silently mixing compiler/Qt/frontend/security identities.
@@ -580,7 +630,7 @@ if(EXISTS "${identity_file}")
     if(NOT previous_identity STREQUAL identity)
         message(FATAL_ERROR
             "The existing build directory has a different compiler/Qt/frontend/security identity. "
-            "Run compile.cmd --clean once after changing build.yml or these command-line options.")
+            "Run build.cmd rebuild once after changing build.yml or these command-line options.")
     endif()
 endif()
 file(WRITE "${identity_file}" "${identity}")
@@ -651,6 +701,79 @@ else()
 endif()
 if(NOT rc EQUAL 0)
     message(FATAL_ERROR "Build failed (${rc}). See ${build_log}")
+endif()
+
+if(HYB_INSTALL)
+    set(HYB_INSTALL_ROOT "${HYB_BUILD_DIR}/install")
+    # Stale safety: the tree is materialized from this configuration alone, so a previous run cannot leave a
+    # frontend, example or security payload behind that this configuration no longer produces. The install root
+    # lives inside the build tree, which is also why clean removes it.
+    if(EXISTS "${HYB_INSTALL_ROOT}")
+        file(REMOVE_RECURSE "${HYB_INSTALL_ROOT}")
+    endif()
+    file(MAKE_DIRECTORY "${HYB_INSTALL_ROOT}")
+
+    set(install_cmd "${CMAKE_COMMAND}" --install "${HYB_BUILD_DIR}" --prefix "${HYB_INSTALL_ROOT}")
+    set(install_log "${HYB_BUILD_DIR}/install.log")
+    if(HYB_VERBOSE)
+        execute_process(COMMAND ${env_cmd} ${install_cmd} RESULT_VARIABLE rc)
+    else()
+        execute_process(
+            COMMAND ${env_cmd} ${install_cmd}
+            RESULT_VARIABLE rc
+            OUTPUT_FILE "${install_log}"
+            ERROR_FILE "${install_log}")
+    endif()
+    if(NOT rc EQUAL 0)
+        message(FATAL_ERROR "Install failed (${rc}). See ${install_log}")
+    endif()
+    message(STATUS "HYREMOTE_INSTALL_ROOT=${HYB_INSTALL_ROOT}")
+    # A truthful, human-readable manifest beside the tree. It is deliberately not a schema or a framework: it states
+    # the facts this build already knows, so a user holding the directory can tell what it is and what it contains.
+    # The Qt version is read back from the cache Qt itself populated, so it reports the Qt that was actually used.
+    set(_hyb_qt_version "unknown")
+    if(EXISTS "${HYB_BUILD_DIR}/CMakeCache.txt")
+        file(READ "${HYB_BUILD_DIR}/CMakeCache.txt" _hyb_cache)
+        if(_hyb_cache MATCHES "Qt6Core_DIR[^\n]*/([0-9]+\\.[0-9]+\\.[0-9]+)/")
+            set(_hyb_qt_version "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+    set(_hyb_source_sha "unknown")
+    execute_process(
+        COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse HEAD
+        RESULT_VARIABLE _hyb_git_rc
+        OUTPUT_VARIABLE _hyb_git_out
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_hyb_git_rc EQUAL 0 AND NOT _hyb_git_out STREQUAL "")
+        set(_hyb_source_sha "${_hyb_git_out}")
+    endif()
+
+    # CMAKE_HOST_SYSTEM_PROCESSOR is not populated by every generator/host pair, and an empty ARCH= line would be a
+    # manifest that claims less than it knows. The environment's own architecture is the first fallback because that is
+    # the word a Windows user recognises, then CMake's target processor, and only then "unknown".
+    set(_hyb_arch "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    if(_hyb_arch STREQUAL "")
+        set(_hyb_arch "$ENV{PROCESSOR_ARCHITECTURE}")
+    endif()
+    if(_hyb_arch STREQUAL "")
+        set(_hyb_arch "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    if(_hyb_arch STREQUAL "")
+        set(_hyb_arch "unknown")
+    endif()
+
+    file(WRITE "${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt"
+        "SOURCE_SHA=${_hyb_source_sha}\n"
+        "OS=${CMAKE_HOST_SYSTEM_NAME}\n"
+        "ARCH=${_hyb_arch}\n"
+        "QT_VERSION=${_hyb_qt_version}\n"
+        "BUILD_TYPE=${HYB_BUILD_TYPE}\n"
+        "CPP=${HYB_CPP}\n"
+        "QML=${HYB_QML}\n"
+        "GENERIC=${HYB_GENERIC}\n"
+        "QPA=${HYB_QPA}\n"
+        "SECURITY_STATE=${HYB_SECURITY}\n")
+    message(STATUS "HYREMOTE_INSTALL_MANIFEST=${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt")
 endif()
 
 if(HYB_TESTS_RUN)

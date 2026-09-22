@@ -15,3 +15,8 @@ target_link_libraries(hyremote-remote-support-showcase
         Qt6::Widgets
         HyRemote::RemoteAccess
 )
+
+# It is a user-facing example like the learning ones: it installs into the same shared prefix and is deployed by the
+# same helper, so it is reachable from the product tree instead of only from the build tree.
+install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET hyremote-remote-support-showcase)

@@ -9,7 +9,9 @@ The repository is divided into shipping product code, product verification, user
 ```text
 HyRemote/
 ├─ CMakeLists.txt
-├─ compile.cmd / clean.cmd
+├─ build.cmd  (the single build/install entry point)
+├─ compile.cmd  (compatibility shim -> build.cmd build)
+├─ clean.cmd
 ├─ README.md / CONTRIBUTING.md / SECURITY.md
 ├─ NOTICE.md / LICENSE
 │
