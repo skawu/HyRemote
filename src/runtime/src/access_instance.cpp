@@ -73,13 +73,25 @@ void decrementConnectedClients(const std::shared_ptr<std::atomic<std::size_t>> &
     }
 }
 
+// Wraps the transport so the shared Runtime keeps the one authoritative client count and observes the
+// *result* of every transport event rather than racing the Core for it: the Core handler runs first,
+// and only then does the Runtime read and publish what the Session made of the event.
+//
+// A run-scoped activity token makes a callback that belongs to a run that has already stopped inert:
+// once stop() has entered, a late event can neither change the count nor publish a notification into
+// the next run. That is what keeps a queued notification from a previous run from ever overwriting a
+// newer run's values - the property #259 freezes instead of a per-notification run generation.
 class ClientCountingTransport final : public hyremote::Transport
 {
 public:
     ClientCountingTransport(std::unique_ptr<hyremote::Transport> transport,
-                            std::shared_ptr<std::atomic<std::size_t>> connectedClients)
+                            std::shared_ptr<std::atomic<std::size_t>> connectedClients,
+                            std::shared_ptr<std::atomic<bool>> runActive,
+                            std::function<void()> onRuntimeObservation)
         : m_transport(std::move(transport))
         , m_connectedClients(std::move(connectedClients))
+        , m_runActive(std::move(runActive))
+        , m_onRuntimeObservation(std::move(onRuntimeObservation))
     {
     }
 
@@ -92,9 +104,32 @@ public:
     {
         m_connectedClients->store(0, std::memory_order_relaxed);
         const auto connectedClients = m_connectedClients;
+        const auto runActive = m_runActive;
+        const auto observe = m_onRuntimeObservation;
         const bool started = m_transport->start(
-            std::move(onInput),
-            [connectedClients, onEvent = std::move(onEvent)](const hyremote::TransportEvent &event) mutable {
+            // The input path is observed here rather than on the sink because the Core owns the outcome:
+            // an InputSink that throws is caught by Core, counted and reported as a recoverable error
+            // inside this call, so once it returns the Runtime can read the truth the Core produced
+            // instead of asserting one first. That is what makes a repeated recoverable failure
+            // observable again after it was acknowledged.
+            [runActive, observe, onInput = std::move(onInput)](const hyremote::InputEvent &event) {
+                if (onInput)
+                    onInput(event);
+
+                if (!runActive->load(std::memory_order_acquire))
+                    return;
+                if (observe)
+                    observe();
+            },
+            [connectedClients, runActive, observe, onEvent = std::move(onEvent)](
+                const hyremote::TransportEvent &event) mutable {
+                if (onEvent)
+                    onEvent(event);
+
+                if (!runActive->load(std::memory_order_acquire)) {
+                    return;
+                }
+
                 switch (event.code) {
                 case hyremote::TransportEventCode::ClientConnected:
                     connectedClients->fetch_add(1, std::memory_order_relaxed);
@@ -108,8 +143,8 @@ public:
                     break;
                 }
 
-                if (onEvent)
-                    onEvent(event);
+                if (observe)
+                    observe();
             });
         if (!started)
             m_connectedClients->store(0, std::memory_order_relaxed);
@@ -130,6 +165,62 @@ public:
 private:
     std::unique_ptr<hyremote::Transport> m_transport;
     std::shared_ptr<std::atomic<std::size_t>> m_connectedClients;
+    std::shared_ptr<std::atomic<bool>> m_runActive;
+    std::function<void()> m_onRuntimeObservation;
+};
+
+// Wraps the capture source for the same reason: target loss and backend failure reach the Core first
+// and the Runtime then publishes what the Core made of them. Without this seam the Runtime would have
+// to guess the outcome (and could claim Faulted before the Core decided) or poll for it.
+class ObservedCaptureSource final : public hyremote::CaptureSource
+{
+public:
+    ObservedCaptureSource(std::unique_ptr<hyremote::CaptureSource> source,
+                          std::shared_ptr<std::atomic<bool>> runActive,
+                          std::function<void()> onRuntimeObservation)
+        : m_source(std::move(source))
+        , m_runActive(std::move(runActive))
+        , m_onRuntimeObservation(std::move(onRuntimeObservation))
+    {
+    }
+
+    hyremote::CaptureCapabilities capabilities() const override
+    {
+        return m_source->capabilities();
+    }
+
+    bool start(hyremote::FrameReadyHandler onFrame, hyremote::CaptureEventHandler onEvent) override
+    {
+        const auto runActive = m_runActive;
+        const auto observe = m_onRuntimeObservation;
+        return m_source->start(
+            std::move(onFrame),
+            [runActive, observe, onEvent = std::move(onEvent)](const hyremote::CaptureEvent &event) mutable {
+                if (onEvent)
+                    onEvent(event);
+
+                if (!runActive->load(std::memory_order_acquire)) {
+                    return;
+                }
+                if (observe)
+                    observe();
+            });
+    }
+
+    void stop() noexcept override
+    {
+        m_source->stop();
+    }
+
+    bool requestFrame(const hyremote::CaptureRequest &request) override
+    {
+        return m_source->requestFrame(request);
+    }
+
+private:
+    std::unique_ptr<hyremote::CaptureSource> m_source;
+    std::shared_ptr<std::atomic<bool>> m_runActive;
+    std::function<void()> m_onRuntimeObservation;
 };
 
 }  // namespace
@@ -154,6 +245,15 @@ struct AccessInstance::Impl
     SessionErrorRevision acknowledgedRecoverableRevision;
     std::shared_ptr<std::atomic<std::size_t>> connectedClients =
         std::make_shared<std::atomic<std::size_t>>(0);
+
+    // #259 private notification seam. `transitionState` is the only state this class projects on its
+    // own, and only while a lifecycle call is in flight: Core performs its own Starting/Stopping window
+    // synchronously inside start()/stop(), so an observer would otherwise never see those two states.
+    // Every other state is read from the Core Session, so no second state machine exists here.
+    RuntimeNotificationSink notifications;
+    std::optional<AccessState> transitionState;
+    std::shared_ptr<std::atomic<bool>> runActive;
+    std::uint64_t lastFailureRevision = 0;
 
     ~Impl() { shutdownRuntime(); }
 
@@ -212,6 +312,12 @@ struct AccessInstance::Impl
 
     void shutdownRuntime() noexcept
     {
+        // The run stops being active before anything is torn down, so a callback that belongs to this
+        // run can no longer change the client count or publish a notification - including the last
+        // one, which the caller publishes itself after the teardown.
+        if (runActive)
+            runActive->store(false, std::memory_order_release);
+
         if (!session) {
             inputSink.reset();
             return;
@@ -225,6 +331,68 @@ struct AccessInstance::Impl
         session.reset();
         inputSink.reset();
         resetErrorAcknowledgement();
+    }
+
+    // ---------------------------------------------------------------- #259 publication of the truth
+    //
+    // Every notification is a snapshot of the Runtime truth, taken after the Core has already handled
+    // whatever caused it. That is what makes a stale event harmless: a callback belonging to a previous
+    // run either is inert (its activity token was cleared) or publishes the *current* truth, and the
+    // sink drops a value the consumers already hold. A queued notification can therefore never
+    // overwrite a newer run's values, which is the property the preflight froze as "stale generation
+    // rejected".
+
+    AccessState projectedState() const
+    {
+        if (transitionState)
+            return *transitionState;
+        if (!session)
+            return AccessState::Stopped;
+        return mapState(session->state());
+    }
+
+    std::optional<Error> effectiveError() const
+    {
+        if (session) {
+            if (const std::optional<hyremote::SessionError> coreError = session->lastError()) {
+                if (!isAcknowledgedRecoverableError(*coreError))
+                    return mapError(*coreError);
+            }
+        }
+        return error;
+    }
+
+    // Moves only when the Session actually produced a failure, so a second real occurrence of the same
+    // recoverable error is still delivered after the first one was acknowledged (see publishSnapshot).
+    std::uint64_t failureRevision() const
+    {
+        if (!session)
+            return 0;
+        const hyremote::SessionStats stats = session->stats();
+        return stats.inputPostFailures + stats.captureEventsNonRecoverable + stats.transportEventsFatal;
+    }
+
+    void publishSnapshot()
+    {
+        const std::uint64_t revision = failureRevision();
+        const bool newErrorOccurrence = revision != lastFailureRevision;
+        lastFailureRevision = revision;
+
+        // Order: client count, error, state. An observer that receives a state already holds the value
+        // that explains it, which is the ordering #259 freezes (a Faulted/Stopped notification arrives
+        // with a meaningful lastError).
+        notifications.publishConnectedClientCount(connectedClients->load(std::memory_order_relaxed));
+        notifications.publishError(effectiveError(), newErrorOccurrence);
+        notifications.publishState(projectedState());
+    }
+
+    void publishSnapshotNoexcept() noexcept
+    {
+        try {
+            publishSnapshot();
+        } catch (...) {
+            // Publishing is diagnostics; it must never break a lifecycle transition or a teardown.
+        }
     }
 };
 
@@ -267,6 +435,7 @@ bool AccessInstance::setListenAddress(const QHostAddress &address)
     if (address.isNull()) {
         m_impl->setError(ErrorCode::InvalidConfiguration,
                          QStringLiteral("listen address must not be null"));
+        m_impl->publishSnapshotNoexcept();
         return false;
     }
 
@@ -288,6 +457,7 @@ bool AccessInstance::setPort(quint16 port)
         // label. A retired planning label has no place in a user-visible product error.
         m_impl->setError(ErrorCode::InvalidConfiguration,
                          QStringLiteral("port 0 is invalid: a configured listener port must be between 1 and 65535"));
+        m_impl->publishSnapshotNoexcept();
         return false;
     }
 
@@ -339,14 +509,32 @@ bool AccessInstance::start()
     if (!m_impl)
         return false;
 
+    // #259: every exit from this call publishes the resulting truth exactly once. The guard clears the
+    // projected Starting state and publishes whatever the call produced, so no early return has to
+    // remember to notify, and the frozen failure order (ErrorChanged, then StateChanged(Stopped))
+    // falls out of the snapshot itself instead of being repeated in every branch.
+    struct ExitPublication
+    {
+        Impl *impl;
+
+        ~ExitPublication()
+        {
+            impl->transitionState.reset();
+            impl->publishSnapshotNoexcept();
+        }
+    } exitPublication{m_impl.get()};
+
     if (!m_impl->isConfigurable()) {
         m_impl->setError(ErrorCode::InvalidConfiguration,
                          QStringLiteral("runtime start requires the Stopped state"));
         return false;
     }
 
+    m_impl->transitionState = AccessState::Starting;
+    m_impl->lastFailureRevision = 0;
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
+    m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
 
     detail::RfbSecurityConfig transportSecurity;
     bool authenticationEnabled = false;
@@ -438,11 +626,20 @@ bool AccessInstance::start()
         return false;
     }
 
-    transport.transport = std::make_unique<ClientCountingTransport>(
-        std::move(transport.transport), m_impl->connectedClients);
+    // The run's activity token is created before the components are composed so both wrappers can hold
+    // it. It is activated immediately before the Session starts and cleared by every teardown.
+    m_impl->runActive = std::make_shared<std::atomic<bool>>(false);
+    const auto observeRuntime = [impl = m_impl.get()] { impl->publishSnapshotNoexcept(); };
+
+    transport.transport = std::make_unique<ClientCountingTransport>(std::move(transport.transport),
+                                                                    m_impl->connectedClients,
+                                                                    m_impl->runActive,
+                                                                    observeRuntime);
 
     auto session = std::make_unique<hyremote::Session>();
-    if (!session->setCaptureSource(std::move(targetComponents.capture))
+    auto observedCapture = std::make_unique<ObservedCaptureSource>(
+        std::move(targetComponents.capture), m_impl->runActive, observeRuntime);
+    if (!session->setCaptureSource(std::move(observedCapture))
         || !session->setTransport(std::move(transport.transport))) {
         m_impl->setError(ErrorCode::RuntimeFailure,
                          QStringLiteral("failed to compose the internal HyRemote session"));
@@ -453,7 +650,9 @@ bool AccessInstance::start()
     if (inputSink)
         session->setInputSink(inputSink);
 
+    m_impl->runActive->store(true, std::memory_order_release);
     if (!session->start()) {
+        m_impl->runActive->store(false, std::memory_order_release);
         const std::optional<hyremote::SessionError> coreError = session->lastError();
         if (coreError)
             m_impl->error = mapError(*coreError);
@@ -475,6 +674,10 @@ void AccessInstance::stop() noexcept
     if (!m_impl || !m_impl->session)
         return;
 
+    // #259 frozen stop order: Stopping, then a client count of 0 if it was not already 0, then Stopped.
+    m_impl->transitionState = AccessState::Stopping;
+    m_impl->publishSnapshotNoexcept();
+
     try {
         if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError()) {
             if (!m_impl->isAcknowledgedRecoverableError(*coreError))
@@ -485,13 +688,18 @@ void AccessInstance::stop() noexcept
     }
 
     m_impl->shutdownRuntime();
+
+    m_impl->transitionState.reset();
+    m_impl->publishSnapshotNoexcept();
 }
 
 AccessState AccessInstance::state() const
 {
-    if (!m_impl || !m_impl->session)
+    if (!m_impl)
         return AccessState::Stopped;
-    return mapState(m_impl->session->state());
+    // Same truth as before, except while a lifecycle call is in flight, where the projected
+    // Starting/Stopping state is the one an observer was just notified about.
+    return m_impl->projectedState();
 }
 
 std::size_t AccessInstance::connectedClientCount() const noexcept
@@ -506,13 +714,7 @@ std::optional<Error> AccessInstance::lastError() const
     if (!m_impl)
         return std::nullopt;
 
-    if (m_impl->session) {
-        if (const std::optional<hyremote::SessionError> coreError = m_impl->session->lastError()) {
-            if (!m_impl->isAcknowledgedRecoverableError(*coreError))
-                return mapError(*coreError);
-        }
-    }
-    return m_impl->error;
+    return m_impl->effectiveError();
 }
 
 void AccessInstance::clearError()
@@ -522,6 +724,21 @@ void AccessInstance::clearError()
 
     m_impl->error.reset();
     m_impl->acknowledgeCurrentRecoverableError();
+    m_impl->publishSnapshotNoexcept();  // ErrorChanged(std::nullopt)
+}
+
+RuntimeNotificationToken AccessInstance::subscribeNotifications(RuntimeNotificationHandlers handlers)
+{
+    if (!m_impl)
+        return RuntimeNotificationToken{};
+    return m_impl->notifications.subscribe(std::move(handlers));
+}
+
+void AccessInstance::unsubscribeNotifications(RuntimeNotificationToken token) noexcept
+{
+    if (!m_impl)
+        return;
+    m_impl->notifications.unsubscribe(token);
 }
 
 }  // namespace HyRemote::Runtime

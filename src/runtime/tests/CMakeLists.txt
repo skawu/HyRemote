@@ -39,6 +39,21 @@ add_test(NAME hyremote-runtime-automatic-composite-input-test
          COMMAND hyremote-runtime-automatic-composite-input-test)
 set_tests_properties(hyremote-runtime-automatic-composite-input-test PROPERTIES TIMEOUT 15)
 
+# #259: the private typed notification seam of the shared runtime. It drives real event boundaries
+# through the private test factories, so a notification is proven by the event that produced it rather
+# than by a timer or a wall-clock wait.
+add_executable(hyremote-runtime-notifications-test
+    access_instance_notifications_test.cpp
+)
+target_compile_features(hyremote-runtime-notifications-test PRIVATE cxx_std_17)
+target_include_directories(hyremote-runtime-notifications-test PRIVATE ../src)
+target_link_libraries(hyremote-runtime-notifications-test
+    PRIVATE Qt6::Core HyRemote::Core HyRemote::RemoteAccess
+)
+add_test(NAME hyremote-runtime-notifications-test
+         COMMAND hyremote-runtime-notifications-test)
+set_tests_properties(hyremote-runtime-notifications-test PROPERTIES TIMEOUT 60)
+
 # Build/bootstrap authority is repository-level behavior, but registering it here keeps the self-test
 # available in the current all-frontends CI profile without introducing another product target.
 add_test(

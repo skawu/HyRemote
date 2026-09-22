@@ -3,6 +3,9 @@
 #include "access_instance.hpp"
 
 #include <QHostAddress>
+#include <QMetaObject>
+#include <QPointer>
+#include <QThread>
 
 #include <optional>
 #include <utility>
@@ -85,15 +88,16 @@ QmlRemoteAccess::QmlRemoteAccess(QObject *parent)
     // Runtime construction is deliberately inert. QML may request enabled=true during object
     // creation, but the wrapper defers the actual start until componentComplete() so initial target
     // and policy bindings can settle first.
-    m_pollTimer.setInterval(100);
-    m_pollTimer.setTimerType(Qt::CoarseTimer);
-    connect(&m_pollTimer, &QTimer::timeout, this, &QmlRemoteAccess::refreshRuntimeSnapshot);
-    refreshRuntimeSnapshot();
+    subscribeToRuntimeNotifications();
+    syncRuntimeSnapshot();
 }
 
 QmlRemoteAccess::~QmlRemoteAccess()
 {
-    m_pollTimer.stop();
+    // Unsubscribe first, quiesce the shared runtime second: once AccessInstance::stop() has returned,
+    // the transport and capture wrappers can no longer publish, so no notification can arrive while
+    // this object is being destroyed - not even from a worker thread.
+    unsubscribeFromRuntimeNotifications();
     if (m_access)
         m_access->stop();
 }
@@ -162,12 +166,14 @@ bool QmlRemoteAccess::startRuntime()
 
     clearLocalError();
     if (!m_access->start()) {
-        refreshRuntimeSnapshot();
+        // The runtime has already published the failure (its error, then Stopped). This read is the
+        // one-shot local synchronization, not a poll: it exists so the wrapper is correct even if a
+        // notification arrived before it had subscribed.
+        syncRuntimeSnapshot();
         return false;
     }
 
-    m_pollTimer.start();
-    refreshRuntimeSnapshot();
+    syncRuntimeSnapshot();
     return true;
 }
 
@@ -194,9 +200,8 @@ void QmlRemoteAccess::setEnabled(bool enabledValue)
 
     m_access->stop();
     m_enabled = false;
-    m_pollTimer.stop();
     emit enabledChanged();
-    refreshRuntimeSnapshot();
+    syncRuntimeSnapshot();
 }
 
 QString QmlRemoteAccess::listenAddress() const
@@ -335,62 +340,148 @@ void QmlRemoteAccess::clearError()
 {
     if (m_access)
         m_access->clearError();
-    clearLocalError();
-    refreshRuntimeSnapshot();
+    m_localError = FrontendError{};
+    applyRuntimeError();
 }
 
-void QmlRemoteAccess::refreshRuntimeSnapshot()
+void QmlRemoteAccess::subscribeToRuntimeNotifications()
+{
+    if (!m_access || m_notificationToken.isValid())
+        return;
+
+    // The runtime calls a handler on whatever thread produced the fact. These handlers only marshal,
+    // and they hold a QPointer so a notification that is already in flight cannot touch a destroyed
+    // wrapper even before the queued invocation is cancelled.
+    const QPointer<QmlRemoteAccess> guard(this);
+    const auto marshal = [guard](void (QmlRemoteAccess::*apply)()) {
+        if (!guard)
+            return;
+        guard->dispatchRuntimeNotification(apply);
+    };
+
+    ::HyRemote::Runtime::RuntimeNotificationHandlers handlers;
+    handlers.stateChanged = [marshal](::HyRemote::Runtime::AccessState) {
+        marshal(&QmlRemoteAccess::applyRuntimeState);
+    };
+    handlers.connectedClientCountChanged = [marshal](std::size_t) {
+        marshal(&QmlRemoteAccess::applyRuntimeClientCount);
+    };
+    handlers.errorChanged = [marshal](std::optional<::HyRemote::Runtime::Error>) {
+        marshal(&QmlRemoteAccess::applyRuntimeError);
+    };
+
+    m_notificationToken = m_access->subscribeNotifications(std::move(handlers));
+}
+
+void QmlRemoteAccess::unsubscribeFromRuntimeNotifications()
+{
+    if (!m_access || !m_notificationToken.isValid())
+        return;
+
+    m_access->unsubscribeNotifications(m_notificationToken);
+    m_notificationToken = ::HyRemote::Runtime::RuntimeNotificationToken{};
+}
+
+void QmlRemoteAccess::dispatchRuntimeNotification(void (QmlRemoteAccess::*apply)())
+{
+    if (QThread::currentThread() == thread()) {
+        // Already on the owner thread: apply directly, so a notification caused by this thread's own
+        // lifecycle call is observable before that call returns.
+        (this->*apply)();
+        return;
+    }
+
+    // A transport or capture worker thread: marshal onto this object's thread. Qt cancels a queued
+    // invocation whose context object is destroyed, and the QPointer check covers the remainder.
+    const QPointer<QmlRemoteAccess> guard(this);
+    QMetaObject::invokeMethod(
+        this,
+        [guard, apply] {
+            if (guard)
+                (guard.data()->*apply)();
+        },
+        Qt::QueuedConnection);
+}
+
+void QmlRemoteAccess::applyRuntimeState()
 {
     if (!m_access)
         return;
 
     const State nextState = mapState(m_access->state());
-    if (nextState != m_state) {
-        m_state = nextState;
-        emit stateChanged();
-    }
+    if (nextState == m_state)
+        return;
 
-    const quint64 nextConnectedClientCount =
-        static_cast<quint64>(m_access->connectedClientCount());
-    if (nextConnectedClientCount != m_connectedClientCount) {
-        m_connectedClientCount = nextConnectedClientCount;
-        emit connectedClientCountChanged();
-    }
+    m_state = nextState;
+    emit stateChanged();
+}
 
+void QmlRemoteAccess::applyRuntimeClientCount()
+{
+    if (!m_access)
+        return;
+
+    const quint64 nextConnectedClientCount = static_cast<quint64>(m_access->connectedClientCount());
+    if (nextConnectedClientCount == m_connectedClientCount)
+        return;
+
+    m_connectedClientCount = nextConnectedClientCount;
+    emit connectedClientCountChanged();
+}
+
+void QmlRemoteAccess::applyRuntimeError()
+{
+    if (!m_access)
+        return;
+
+    // Effective error: this frontend's own validation error when it has one, otherwise the runtime's
+    // effective error. A runtime "no error" notification therefore cannot silently erase a local
+    // validation error, and the rule is deterministic in both directions: clearing the local error
+    // falls back to whatever the runtime currently reports, and clearError() clears both.
     const std::optional<::HyRemote::Runtime::Error> runtimeError = m_access->lastError();
-    if (!runtimeError)
-        return;
+    const bool localIsSet = m_localError.code != NoError || !m_localError.message.isEmpty();
 
-    const ErrorCode nextCode = mapErrorCode(runtimeError->code);
-    if (nextCode == m_errorCode && runtimeError->message == m_errorString
-        && runtimeError->recoverable == m_recoverableError) {
+    const ErrorCode nextCode = localIsSet ? m_localError.code
+                                          : (runtimeError ? mapErrorCode(runtimeError->code) : NoError);
+    const QString nextMessage = localIsSet ? m_localError.message
+                                           : (runtimeError ? runtimeError->message : QString{});
+    const bool nextRecoverable = localIsSet ? m_localError.recoverable
+                                            : (runtimeError ? runtimeError->recoverable : false);
+
+    if (nextCode == m_errorCode && nextMessage == m_errorString && nextRecoverable == m_recoverableError)
         return;
-    }
 
     m_errorCode = nextCode;
-    m_errorString = runtimeError->message;
-    m_recoverableError = runtimeError->recoverable;
+    m_errorString = nextMessage;
+    m_recoverableError = nextRecoverable;
     emit errorChanged();
+}
+
+void QmlRemoteAccess::syncRuntimeSnapshot()
+{
+    // Explicit, one-shot local synchronization - never a poll. It runs only when this wrapper is
+    // constructed, when a lifecycle call it made has just returned, and when a local error changes.
+    // Every product state that changes while the runtime runs arrives as a typed notification.
+    applyRuntimeState();
+    applyRuntimeClientCount();
+    applyRuntimeError();
 }
 
 void QmlRemoteAccess::setLocalError(ErrorCode code, QString message, bool recoverable)
 {
-    if (m_errorCode == code && m_errorString == message && m_recoverableError == recoverable)
-        return;
-    m_errorCode = code;
-    m_errorString = std::move(message);
-    m_recoverableError = recoverable;
-    emit errorChanged();
+    m_localError.code = code;
+    m_localError.message = std::move(message);
+    m_localError.recoverable = recoverable;
+    applyRuntimeError();
 }
 
 void QmlRemoteAccess::clearLocalError()
 {
-    if (m_errorCode == NoError && m_errorString.isEmpty() && !m_recoverableError)
+    if (m_localError.code == NoError && m_localError.message.isEmpty() && !m_localError.recoverable)
         return;
-    m_errorCode = NoError;
-    m_errorString.clear();
-    m_recoverableError = false;
-    emit errorChanged();
+
+    m_localError = FrontendError{};
+    applyRuntimeError();
 }
 
 }  // namespace HyRemote::Qml
