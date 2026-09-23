@@ -121,6 +121,7 @@ foreach(milestone_version
         "0.0.1.0"
         "0.0.2.0"
         "0.0.3.0"
+        "0.2.0.0"
         "1.0.0.0")
     set(release_note_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v${milestone_version}.md")
     file(READ "${release_note_path}" milestone_notes)
@@ -140,6 +141,107 @@ foreach(milestone_version
         endif()
     endforeach()
 endforeach()
+
+# ---------------------------------------------------------------- #332 bilingual release notes (V0.2 and later)
+#
+# A release that states its facts in one language has not stated them to its users, so from V0.2 the two surfaces are
+# required and the load-bearing facts must appear in both. This is deliberately not whole-prose equivalence and not
+# machine translation: it asserts that each surface states the same few facts a user acts on, which is the part that
+# can be checked mechanically without pretending two languages can be compared as strings.
+function(hyremote_notes_surfaces notes_text out_zh out_en out_ok)
+    string(FIND "${notes_text}" "# 中文" zh_at)
+    string(FIND "${notes_text}" "# English" en_at)
+    if(zh_at EQUAL -1 OR en_at EQUAL -1 OR NOT zh_at LESS en_at)
+        set(${out_ok} FALSE PARENT_SCOPE)
+        return()
+    endif()
+
+    math(EXPR zh_len "${en_at} - ${zh_at}")
+    string(SUBSTRING "${notes_text}" ${zh_at} ${zh_len} zh_surface)
+    string(SUBSTRING "${notes_text}" ${en_at} -1 en_surface)
+    string(LENGTH "${zh_surface}" zh_size)
+    string(LENGTH "${en_surface}" en_size)
+
+    # A heading with nothing under it is not a surface.
+    if(zh_size LESS 400 OR en_size LESS 400)
+        set(${out_ok} FALSE PARENT_SCOPE)
+        return()
+    endif()
+
+    foreach(fact IN ITEMS "V0.2.0.0" "0.0.0.0:5921" "SecurityType None" "认证" "未加密" "不适合暴露到 Internet")
+        string(FIND "${zh_surface}" "${fact}" at)
+        if(at EQUAL -1)
+            set(${out_ok} FALSE PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    foreach(fact IN ITEMS "V0.2.0.0" "0.0.0.0:5921" "SecurityType None" "authentication" "unencrypted"
+            "not Internet-safe")
+        string(FIND "${en_surface}" "${fact}" at)
+        if(at EQUAL -1)
+            set(${out_ok} FALSE PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+
+    set(${out_zh} "${zh_surface}" PARENT_SCOPE)
+    set(${out_en} "${en_surface}" PARENT_SCOPE)
+    set(${out_ok} TRUE PARENT_SCOPE)
+endfunction()
+
+set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/hyremote-release-notes-fixtures")
+file(MAKE_DIRECTORY "${notes_fixture_dir}")
+
+# Every V0.2.x release note that exists carries the contract, so a later note in this train cannot be written in one
+# language only while its predecessor is bilingual.
+file(GLOB v02_notes_paths "${HYREMOTE_SOURCE_DIR}/docs/releases/v0.2.*.md")
+list(SORT v02_notes_paths)
+if(NOT v02_notes_paths)
+    message(FATAL_ERROR "release-readiness: the V0.2 train has no release notes to check")
+endif()
+foreach(v02_notes_path IN LISTS v02_notes_paths)
+    get_filename_component(v02_notes_name "${v02_notes_path}" NAME_WE)
+    file(READ "${v02_notes_path}" v02_notes_text)
+    hyremote_notes_surfaces("${v02_notes_text}" v02_zh v02_en v02_surfaces_ok)
+    if(NOT v02_surfaces_ok)
+        message(FATAL_ERROR
+            "release-readiness: ${v02_notes_name} must carry a non-empty Chinese surface and a non-empty English "
+            "surface, and each must state the release identity, the default listener, the security type, the "
+            "authentication boundary and the unencrypted / not-Internet-safe warning")
+    endif()
+endforeach()
+
+set(v020_notes_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v0.2.0.0.md")
+file(READ "${v020_notes_path}" v020_notes)
+
+# Network trust is not a state the product can verify for itself, so the vocabulary that presents it as one must not
+# reappear in a release note. The honest statement is what the artifact does: authentication off, no transport
+# encryption.
+foreach(forbidden_trust_token IN ITEMS "BASIC_TRUSTED_LAN" "OPEN_TRUSTED_LAN" "AUTHENTICATED_TRUSTED_LAN")
+    string(FIND "${v020_notes}" "${forbidden_trust_token}" trust_at)
+    if(NOT trust_at EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: the V0.2.0.0 notes name '${forbidden_trust_token}', which presents network trust as a "
+            "state the product can verify for itself")
+    endif()
+endforeach()
+
+# Fixtures. The real notes are the positive case; the two drifts a bilingual contract exists to catch are the
+# negatives, and they are written out so a failure can be reproduced by reading the file that caused it.
+string(FIND "${v020_notes}" "# English" fixture_en_at)
+string(SUBSTRING "${v020_notes}" 0 ${fixture_en_at} fixture_no_english)
+file(WRITE "${notes_fixture_dir}/v0.2.0.0-missing-english.md" "${fixture_no_english}")
+hyremote_notes_surfaces("${fixture_no_english}" _zh _en no_english_ok)
+if(no_english_ok)
+    message(FATAL_ERROR "release-readiness: the missing-English fixture was accepted")
+endif()
+
+string(SUBSTRING "${v020_notes}" ${fixture_en_at} -1 fixture_no_chinese)
+file(WRITE "${notes_fixture_dir}/v0.2.0.0-missing-chinese.md" "${fixture_no_chinese}")
+hyremote_notes_surfaces("${fixture_no_chinese}" _zh _en no_chinese_ok)
+if(no_chinese_ok)
+    message(FATAL_ERROR "release-readiness: the missing-Chinese fixture was accepted")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/NOTICE.md" notice_text)
 foreach(required_phrase

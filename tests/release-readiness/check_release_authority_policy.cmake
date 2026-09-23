@@ -225,7 +225,7 @@ endforeach()
 # A semicolon cannot appear inside a foreach(ITEMS) element - it would split the element itself - so the issue lists
 # below are written with commas and converted before they are compared against a CMake list.
 foreach(exact_expectation IN ITEMS
-        "0.2.0.0|143,174,259,271|258|0.1.0.0"
+        "0.2.0.0|143,174,259,326,271|258,332|0.1.0.0"
         "0.2.1.0|170,239||0.2.0.0"
         "0.3.0.0|240,241,264||0.2.1.0"
         "0.3.1.0|265|260|0.3.0.0"

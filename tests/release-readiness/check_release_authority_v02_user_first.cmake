@@ -1,15 +1,17 @@
 # Machine guard for the V0.2.0 release authority after #323.
 #
-# The authority is the user promise, not the implementation plan. 0.2.0.0 accepts a BASIC_TRUSTED_LAN candidate - the
-# first real remote-access trial on a trusted LAN - and requires encrypted-profile evidence only from a candidate that
-# actually declares AUTHENTICATED_ENCRYPTED. This test holds that contract, the classifications it must not lose, and
-# the untouched state of every other train, in one place that a release-authority change cannot pass without.
+# The authority is the user promise, not the implementation plan. 0.2.0.0 accepts a first real user trial across a
+# local network on the facts the candidate actually ships - authentication off, no transport encryption, remote input
+# off, listener reachable on the host's IPv4 interfaces - and it is never blocked by an encrypted profile still being
+# unfinished. This test holds that contract, the classifications it must not lose, and the untouched state of every
+# other train, in one place that a release-authority change cannot pass without.
 #
-#   A. the closeable set is exactly 143,174,259,271
-#   B. #258 is a candidate prerequisite and never enters the closeable set
+#   A. the closeable set is exactly 143,174,259,326,271
+#   B. #258 and #332 are candidate prerequisites and never enter the closeable set
 #   C. #170 and #239 remain declared non-blockers rather than children
 #   D. no required evidence is an encrypted-profile requirement
-#   E. the required evidence names the LAN trial, the truthful security state and the customer trial
+#   E. the required evidence names the accepted lineage, the LAN trial, the runtime security facts, the staged
+#      artifact, the bilingual notes and the customer trial
 #   F. every other train is unchanged
 
 cmake_policy(SET CMP0057 NEW)  # IN_LIST membership, as written below
@@ -49,15 +51,15 @@ endfunction()
 
 # A. The closeable set is exactly the four accepted children.
 _list("0.2.0.0" mandatory_children v020_children)
-if(NOT "${v020_children}" STREQUAL "143;174;259;271")
+if(NOT "${v020_children}" STREQUAL "143;174;259;326;271")
     message(FATAL_ERROR
-        "release-authority-v02-user-first: 0.2.0.0 closeable set drifted. expected='143;174;259;271' "
+        "release-authority-v02-user-first: 0.2.0.0 closeable set drifted. expected='143;174;259;326;271' "
         "actual='${v020_children}'")
 endif()
 
 # B. #258 is risk work that gates the candidate; it is not product implementation.
 _list("0.2.0.0" candidate_prerequisites v020_prerequisites)
-if(NOT "${v020_prerequisites}" STREQUAL "258")
+if(NOT "${v020_prerequisites}" STREQUAL "258;332")
     message(FATAL_ERROR
         "release-authority-v02-user-first: 0.2.0.0 candidate prerequisites drifted. expected='258' "
         "actual='${v020_prerequisites}'")
@@ -104,8 +106,11 @@ endforeach()
 
 # E. What the trial actually needs is named, and named by outcome.
 foreach(required_outcome IN ITEMS
+        accepted-v0.1-lineage
         usable-lan-remote-access-evidence
-        truthful-trial-security-state-evidence
+        truthful-runtime-security-facts-evidence
+        coherent-staged-artifact-evidence
+        bilingual-release-notes-evidence
         customer-trial-evidence)
     if(NOT "${required_outcome}" IN_LIST v020_evidence)
         message(FATAL_ERROR
@@ -114,19 +119,29 @@ foreach(required_outcome IN ITEMS
     endif()
 endforeach()
 
-# The rule has to say which candidate states exist and which one is acceptable first, so the classification cannot be
-# read out of the evidence list alone.
+# The rule has to state the factual boundary the candidate is accepted on, so that the boundary cannot be read out of
+# the evidence list alone.
 string(JSON v020_rule ERROR_VARIABLE rule_error GET "${authority_json}" trains "0.2.0.0" rule)
 if(rule_error)
     message(FATAL_ERROR "release-authority-v02-user-first: 0.2.0.0 declares no rule")
 endif()
 string(TOLOWER "${v020_rule}" lowered_rule)
-foreach(required_statement IN ITEMS basic_trusted_lan authenticated_encrypted)
+foreach(required_statement IN ITEMS "authentication off" "remote input off" "not internet-safe" "encrypted profile")
     string(FIND "${lowered_rule}" "${required_statement}" statement_at)
     if(statement_at EQUAL -1)
         message(FATAL_ERROR
-            "release-authority-v02-user-first: the 0.2.0.0 rule must name '${required_statement}' so that the first "
-            "candidate's accepted state and the conditional encrypted state are both explicit")
+            "release-authority-v02-user-first: the 0.2.0.0 rule must state '${required_statement}', so that the facts "
+            "a candidate is accepted on and the encrypted profile that stays conditional are both explicit")
+    endif()
+endforeach()
+
+# Trust states the product cannot verify for itself must not come back as authority vocabulary.
+foreach(forbidden_trust_token IN ITEMS basic_trusted_lan open_trusted_lan authenticated_trusted_lan)
+    string(FIND "${lowered_rule}" "${forbidden_trust_token}" trust_at)
+    if(NOT trust_at EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-v02-user-first: the 0.2.0.0 rule names '${forbidden_trust_token}', which presents "
+            "network trust as a state the product can verify for itself")
     endif()
 endforeach()
 
@@ -180,6 +195,6 @@ foreach(unchanged_expectation IN ITEMS
 endforeach()
 
 message(STATUS
-    "release-authority-v02-user-first: PASS (0.2.0.0 = 143,174,259,271 with prerequisite 258 and non-blockers "
+    "release-authority-v02-user-first: PASS (0.2.0.0 = 143,174,259,326,271 with prerequisites 258,332 and non-blockers "
     "170,239; the LAN trial, the truthful security state and the customer trial are required; no encrypted profile is "
     "required of the first candidate; every other train unchanged)")

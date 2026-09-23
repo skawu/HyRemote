@@ -730,12 +730,22 @@ if(HYB_INSTALL)
     message(STATUS "HYREMOTE_INSTALL_ROOT=${HYB_INSTALL_ROOT}")
     # A truthful, human-readable manifest beside the tree. It is deliberately not a schema or a framework: it states
     # the facts this build already knows, so a user holding the directory can tell what it is and what it contains.
+    # The shipped security facts and the build capability are separate fields on purpose: AUTHENTICATION_* and
+    # TRANSPORT_ENCRYPTION_* say what this artifact does by default, and TRANSPORT_SECURITY_CAPABILITY says only what
+    # it could be configured to do. The defaults here mirror the runtime's own defaults (SecurityProfile::Insecure and
+    # remote input off); the install contract gate asserts both sides.
     # The Qt version is read back from the cache Qt itself populated, so it reports the Qt that was actually used.
     set(_hyb_qt_version "unknown")
+    set(_hyb_default_port "5921")
     if(EXISTS "${HYB_BUILD_DIR}/CMakeCache.txt")
         file(READ "${HYB_BUILD_DIR}/CMakeCache.txt" _hyb_cache)
         if(_hyb_cache MATCHES "Qt6Core_DIR[^\n]*/([0-9]+\\.[0-9]+\\.[0-9]+)/")
             set(_hyb_qt_version "${CMAKE_MATCH_1}")
+        endif()
+        # The runtime's own default listener port, read from the configuration that compiled it, so the manifest
+        # states the port the artifact actually uses rather than a number copied into this file.
+        if(_hyb_cache MATCHES "HYREMOTE_DEFAULT_PORT[^\n]*=([0-9]+)")
+            set(_hyb_default_port "${CMAKE_MATCH_1}")
         endif()
     endif()
     set(_hyb_source_sha "unknown")
@@ -772,7 +782,13 @@ if(HYB_INSTALL)
         "QML=${HYB_QML}\n"
         "GENERIC=${HYB_GENERIC}\n"
         "QPA=${HYB_QPA}\n"
-        "SECURITY_STATE=${HYB_SECURITY}\n")
+        "LISTENER_DEFAULT=0.0.0.0:${_hyb_default_port}\n"
+        "AUTHENTICATION_ENABLED=OFF\n"
+        "AUTHENTICATION_PROFILE=none\n"
+        "TRANSPORT_ENCRYPTION_ENABLED=OFF\n"
+        "TRANSPORT_ENCRYPTION_PROFILE=none\n"
+        "REMOTE_INPUT_DEFAULT=OFF\n"
+        "TRANSPORT_SECURITY_CAPABILITY=${HYB_SECURITY}\n")
     message(STATUS "HYREMOTE_INSTALL_MANIFEST=${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt")
 endif()
 

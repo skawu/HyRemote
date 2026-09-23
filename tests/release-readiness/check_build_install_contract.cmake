@@ -126,9 +126,27 @@ if(NOT remove_at LESS install_at)
     message(FATAL_ERROR "build-install-contract: the install root must be cleared before it is materialized")
 endif()
 _require_text("${build_system}" "HYREMOTE-MANIFEST.txt" "the tree must carry its own manifest")
-foreach(key IN ITEMS SOURCE_SHA OS ARCH QT_VERSION BUILD_TYPE CPP QML GENERIC QPA SECURITY_STATE)
+
+# #350: the shipped facts are separate fields. SECURITY_STATE used to carry the build capability while reading like the
+# shipped state, which was wrong in both directions - the default profile is unauthenticated and unencrypted whether or
+# not the capability was compiled in - so it is gone and must not come back.
+foreach(key IN ITEMS
+        SOURCE_SHA OS ARCH QT_VERSION BUILD_TYPE CPP QML GENERIC QPA
+        LISTENER_DEFAULT AUTHENTICATION_ENABLED AUTHENTICATION_PROFILE
+        TRANSPORT_ENCRYPTION_ENABLED TRANSPORT_ENCRYPTION_PROFILE REMOTE_INPUT_DEFAULT
+        TRANSPORT_SECURITY_CAPABILITY)
     _require_text("${build_system}" "${key}=" "the manifest must state ${key}")
 endforeach()
+_forbid_text("${build_system}" "SECURITY_STATE="
+             "the manifest must not conflate the build capability with the shipped state")
+
+# The defaults the manifest states have to be the runtime's own defaults, or the manifest is a claim rather than a fact.
+_read("${source_dir}/src/runtime/src/access_instance.cpp" runtime_defaults)
+_require_text("${runtime_defaults}" "SecurityProfile securityProfile = SecurityProfile::Insecure"
+              "the manifest states authentication off, so the runtime default must still be Insecure")
+_require_text("${runtime_defaults}" "bool remoteInputEnabled = false"
+              "the manifest states remote input off, so the runtime default must still be off")
+_row("MANIFEST_FACTS_SOURCE" "PASS(runtime defaults)")
 _row("INSTALL_ROOT" "PASS(${install_root})")
 _row("STALE_SAFETY" "PASS(cleared before materializing)")
 
@@ -238,7 +256,10 @@ _read("${install_root}/HYREMOTE-MANIFEST.txt" manifest)
 string(REPLACE "\r\n" "\n" manifest "${manifest}")
 string(REPLACE "\r" "\n" manifest "${manifest}")
 string(REPLACE "\n" ";" manifest_lines "${manifest}")
-set(manifest_keys SOURCE_SHA OS ARCH QT_VERSION BUILD_TYPE CPP QML GENERIC QPA SECURITY_STATE)
+set(manifest_keys SOURCE_SHA OS ARCH QT_VERSION BUILD_TYPE CPP QML GENERIC QPA
+        LISTENER_DEFAULT AUTHENTICATION_ENABLED AUTHENTICATION_PROFILE
+        TRANSPORT_ENCRYPTION_ENABLED TRANSPORT_ENCRYPTION_PROFILE REMOTE_INPUT_DEFAULT
+        TRANSPORT_SECURITY_CAPABILITY)
 foreach(line IN LISTS manifest_lines)
     if(line MATCHES "^([A-Z_]+)=(.*)")
         set(manifest_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
@@ -250,6 +271,25 @@ foreach(key IN LISTS manifest_keys)
     endif()
 endforeach()
 _row("MANIFEST" "PASS(${manifest_OS}/${manifest_ARCH}, qt ${manifest_QT_VERSION})")
+
+# #143/#350: the manifest has to agree with the frozen shipped facts, not merely carry the fields.
+foreach(expected IN ITEMS
+        "AUTHENTICATION_ENABLED=OFF"
+        "AUTHENTICATION_PROFILE=none"
+        "TRANSPORT_ENCRYPTION_ENABLED=OFF"
+        "TRANSPORT_ENCRYPTION_PROFILE=none"
+        "REMOTE_INPUT_DEFAULT=OFF"
+        "LISTENER_DEFAULT=0.0.0.0")
+    _require_text("${manifest}" "${expected}" "the manifest must state ${expected}")
+endforeach()
+if(NOT manifest_LISTENER_DEFAULT MATCHES "^0\\.0\\.0\\.0:[0-9]+")
+    message(FATAL_ERROR "build-install-contract: the manifest records LISTENER_DEFAULT=${manifest_LISTENER_DEFAULT}")
+endif()
+if(NOT manifest_TRANSPORT_SECURITY_CAPABILITY STREQUAL "ON"
+        AND NOT manifest_TRANSPORT_SECURITY_CAPABILITY STREQUAL "OFF")
+    message(FATAL_ERROR "build-install-contract: TRANSPORT_SECURITY_CAPABILITY must be ON or OFF")
+endif()
+_row("MANIFEST_SHIPPED_FACTS" "PASS(authentication off, no encryption, input off, listener ${manifest_LISTENER_DEFAULT})")
 
 # The manifest carries a commit rather than a version label, so a holder of the directory knows exactly which source it
 # came from. Whether the tree is *current* is a statement about the working copy, not about the product, so a stale tree
