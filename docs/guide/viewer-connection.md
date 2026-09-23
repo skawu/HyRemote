@@ -142,7 +142,7 @@ HyRemote 使用标准 RFB/VNC 协议作为当前 transport baseline。
 
 不同查看器在快捷键、剪贴板、缩放和输入法行为上可能有差异。只有明确进入兼容矩阵的查看器/版本才构成正式互操作声明。
 
-> **TODO V0.3/V0.4：** 完成正式 Viewer interoperability matrix，并覆盖至少两个维护中的真实 VNC Viewer。
+> **Open work (current product line):** 完成正式 Viewer interoperability matrix，并覆盖至少两个维护中的真实 VNC Viewer。
 
 ## 本机与远端并存
 

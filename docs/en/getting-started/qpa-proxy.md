@@ -34,7 +34,7 @@ Current reference pairs:
 
 Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another native platform from these pairs.
 
-> **TODO V0.3/V0.4:** complete formal productization, additional exact Qt/OS combinations, and physical local+remote coexistence qualification before broadening the QPA support statement.
+> **Open work (current product line):** complete formal productization, additional exact Qt/OS combinations, and physical local+remote coexistence qualification before broadening the QPA support statement.
 
 See [`../../compatibility.md`](../../compatibility.md).
 
@@ -189,4 +189,4 @@ Prefer Generic when it satisfies the application. Use QPA when platform-entry be
 
 The new Example curriculum teaches Generic and QPA separately so the two zero-code routes remain easy to compare.
 
-> **TODO V0.3:** complete the bilingual, branded `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` product examples.
+> **Open work (current product line):** complete the bilingual, branded `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` product examples.

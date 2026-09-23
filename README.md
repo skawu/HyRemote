@@ -179,7 +179,7 @@ POSIX:       sh ./build.cmd test --integrations=cpp,qml,generic,qpa
 
 For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_deploy()` instead of manually copying internal libraries or plugins.
 
-## Security model in V0.1
+## Security model
 
 The released V0.2.0.0 is a **user-first LAN trial with a truthful security boundary**:
 

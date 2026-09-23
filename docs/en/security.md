@@ -8,7 +8,7 @@ This page describes the **current product security behavior**. Capabilities that
 
 ## V0.1 security boundary
 
-The shipped candidate is a Developer Preview with a truthful security boundary.
+The released product has a truthful security boundary.
 
 The same Shared Runtime security model applies to the C++ API, QML API, Generic Plugin, and QPA frontends.
 
@@ -50,7 +50,7 @@ If the required build capability is absent, startup fails with `SecurityUnavaila
 
 ### AuthenticatedEncrypted
 
-`AuthenticatedEncrypted` is declared in the product model but is **not implemented in V0.1**.
+`AuthenticatedEncrypted` is declared in the product model but is **not implemented in the current product line**.
 
 Selecting it always fails closed before listener creation, including in builds that can provide `Authenticated` VNC authentication:
 
@@ -102,10 +102,10 @@ Passwords, tokens, private keys, and equivalent secrets must not be written to n
 
 Use an external security descriptor/configuration mechanism instead of putting secrets on the process command line.
 
-## Recommended V0.1 profiles
+## Recommended profiles
 
 - **Local developer / same machine:** a listener on `127.0.0.1` (set it explicitly) stays the tightest option.
 - **Trusted lab / maintenance network:** use `Authenticated` only when the package includes the required security capability and a valid descriptor is configured. The stream remains unencrypted.
-- **Public Internet:** direct exposure is **not supported** in V0.1.
+- **Public Internet:** direct exposure is **not supported** in the current product line.
 
 See [`../known-limitations.md`](../known-limitations.md) for current product limits and [`../compatibility.md`](../compatibility.md) for the compatibility matrix.

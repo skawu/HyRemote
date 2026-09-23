@@ -83,7 +83,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 The QML backing payload is not a second public C++ Runtime target.
 
-> **TODO V0.3:** complete full QML package/example qualification before promoting this payload from Preview.
+> **Open work (current product line):** complete full QML package/example qualification before promoting this payload from Preview.
 
 ## QPA payload — Preview
 
@@ -103,7 +103,7 @@ The application remains Qt-only at link level. The installed SDK does not expose
 
 QPA uses Qt private ABI and therefore has an exact-version compatibility boundary. The current reference is Qt 6.8.3 on Windows x86_64 and Linux x86_64.
 
-> **TODO V0.3/V0.4:** complete formal QPA productization and expand exact Qt/OS rows only after qualification.
+> **Open work (current product line):** complete formal QPA productization and expand exact Qt/OS rows only after qualification.
 
 ## Deployment forms
 
@@ -173,14 +173,14 @@ Any newly bundled third-party component must update the package license/notice s
 
 ## Current product package status
 
-V0.1 package focus:
+Current package focus:
 
 | Payload | Status |
 | --- | --- |
-| Shared Runtime / C++ API | **Primary** |
-| Generic Plugin | **Primary** |
-| QML module | **Preview** |
-| QPA plugin | **Preview** |
+| Shared Runtime / C++ API | peer route |
+| Generic Plugin | peer route |
+| QML module | peer route |
+| QPA plugin | peer route (exact Qt/private ABI) |
 | Qt 6.8.3 Windows/Linux package line | Current reference |
 | Qt 5.15 package line | **TODO V0.4** |
 | ARM64 / Embedded Linux packages | **TODO V1.1** |

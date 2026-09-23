@@ -85,7 +85,7 @@ platform integration; it does not replace it.
 
 - reference matrix: **Windows x86_64** and **Linux x86_64**, **Qt 6.8.3**;
 - V0.2 is a **LAN-capable Developer Preview**: the listener is `0.0.0.0:5921` by default, remote input is off by default,
-  and nothing in V0.1 is production, GA or Internet-safe;
+  and nothing here is production, GA or Internet-safe;
 - there is **no transport encryption and no authentication** in this release: the stream is unencrypted, so the listener is for a trusted LAN only and is not Internet-safe (see `docs/known-limitations.md`).
 
 Quick UI instead of Widgets? See [`../02-quick-cpp`](../02-quick-cpp) - it uses this same C++ facade.

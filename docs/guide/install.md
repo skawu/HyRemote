@@ -190,7 +190,7 @@ RemoteAccess {
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-> **TODO V0.3：** 完成正式产品化后再将 QML API 从 Preview 提升为正式路径。
+> **Open work (current product line):** 完成正式产品化后再属于 QML 路线上的未完成工作。
 
 ## 已安装 SDK：QPA
 

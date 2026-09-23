@@ -146,7 +146,7 @@ Limitations:
 
 Prefer Generic when it satisfies the application.
 
-> **TODO V0.3/V0.4:** complete formal QPA productization and add exact compatibility rows only for qualified Qt/OS pairs.
+> **Open work (current product line):** complete formal QPA productization and add exact compatibility rows only for qualified Qt/OS pairs.
 
 ## Multi-window behavior
 

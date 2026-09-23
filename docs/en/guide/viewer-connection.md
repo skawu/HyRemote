@@ -146,7 +146,7 @@ HyRemote currently uses standard RFB/VNC as its transport baseline.
 
 Viewer behavior can differ for shortcuts, clipboard, scaling, and input methods. Only viewer/version combinations explicitly listed in the compatibility matrix form a formal interoperability claim.
 
-> **TODO V0.3/V0.4:** complete the formal viewer interoperability matrix and cover at least two maintained real VNC viewers.
+> **Open work (current product line):** complete the formal viewer interoperability matrix and cover at least two maintained real VNC viewers.
 
 ## Local + remote coexistence
 

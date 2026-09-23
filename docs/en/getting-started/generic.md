@@ -99,7 +99,7 @@ Recognized fields:
 A configured profile name does not mean that the current HyRemote package necessarily contains the corresponding transport capability:
 
 - `authenticated` starts successfully only when HyRemote was built with the transport-security capability and `security-config` points to a valid descriptor; the current mechanism provides VNC authentication but does not encrypt the stream;
-- `authenticated-encrypted` always **fails closed** in V0.1 and never falls back to `authenticated` or `insecure`.
+- `authenticated-encrypted` always **fails closed** in the current product line and never falls back to `authenticated` or `insecure`.
 
 > **TODO V0.2:** provide complete encrypted transport, certificate policy, authenticated sessions, and production network policy.
 

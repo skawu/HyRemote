@@ -27,7 +27,7 @@ Inspect `lastError()` and verify:
 - the selected security profile is configured correctly;
 - `AuthenticatedEncrypted` is not being treated as an implemented V0.1 capability.
 
-Selecting `AuthenticatedEncrypted` in V0.1 intentionally fails with security unavailable and opens no listener.
+Selecting `AuthenticatedEncrypted` intentionally fails with security unavailable and opens no listener.
 
 ## QML `enabled: true` returns to false
 

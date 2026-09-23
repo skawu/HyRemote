@@ -28,7 +28,7 @@ same remote-access runtime, not different products. Every route follows the same
 | You specifically want a declarative HyRemote API | QML API ([guide](../docs/getting-started/qml.md)) |
 
 **A Qt Quick UI is not the HyRemote QML frontend.** Qt Quick is a UI family; the `HyRemote` QML module is one of the
-four integration frontends. A Qt Quick application normally takes the **C++ API** in V0.1, exactly like a Widgets
+four integration frontends. A Qt Quick application normally takes the **C++ API** in the current product line, exactly like a Widgets
 application - see [example 02](learning/02-quick-cpp), which uses a Qt Quick window and no `import HyRemote` at all.
 
 ## The 5-minute path
@@ -58,7 +58,7 @@ Each example directory has its own `README.md` with build, run and viewer instru
 - **Reference matrix:** Windows x86_64 and Linux x86_64, with **Qt 6.8.3**.
 - Those two platforms are what V0.1 is built and exercised on. A different Qt version is not implied to be supported
   unless it is recorded in [`docs/compatibility.md`](../docs/compatibility.md).
-- **Qt 5.15 is not yet qualified** for V0.1: it is not supported, and it is not ruled out for ever - it is a later
+- **Qt 5.15 is not yet qualified** for the current product line: it is not supported, and it is not ruled out for ever - it is a later
   preflight decision, not a V0.1 statement.
 
 ## Security boundary

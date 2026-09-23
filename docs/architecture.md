@@ -119,7 +119,7 @@ RemoteAccess {
 
 It does not create a second Session, transport, capture, state, error, or performance model.
 
-Current product state: **Preview**.
+Current product state: a peer route, on the same shared runtime.
 
 > **TODO:** complete the final installed-SDK examples and qualification required for full productization.
 
@@ -177,7 +177,7 @@ Current reference delegates:
 
 QPA alone owns the Qt private-ABI dependency. Qualification is exact-Qt-patch specific; the current reference is Qt 6.8.3.
 
-Current product state: **Preview**.
+Current product state: a peer route, on the same shared runtime.
 
 > **TODO:** broaden exact-version/platform qualification only where real compatibility evidence exists.
 

@@ -168,7 +168,7 @@ Deployment uses:
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-> **TODO V0.3:** complete full productization, bilingual examples, and deployment qualification before promoting QML API from Preview.
+> **Open work (current product line):** complete full productization, bilingual examples, and deployment qualification on the QML route.
 
 ## 7. QPA consumption — Preview
 
@@ -192,7 +192,7 @@ QPA uses Qt private ABI and therefore has an exact-version compatibility boundar
 
 Prefer Generic when it satisfies the application. Use QPA when platform-entry behavior is actually required.
 
-> **TODO V0.3/V0.4:** complete formal QPA productization and add new exact Qt/OS compatibility rows only after qualification.
+> **Open work (current product line):** complete formal QPA productization and add new exact Qt/OS compatibility rows only after qualification.
 
 ## 8. Deployment contract
 
@@ -271,9 +271,10 @@ The product curriculum is designed around the user journey:
 
 Every HyRemote-authored GUI example uses the canonical project branding and provides English + Simplified Chinese UI/documentation where applicable.
 
-> **TODO V0.1:** complete the initial C++/Generic onboarding set.
+> The C++ and Generic onboarding sets are documented end to end in
+> [\guide/integrate-your-project.md\](guide/integrate-your-project.md).
 >
-> **TODO V0.3:** complete the full 01–09 product curriculum.
+> **Open work (current product line):** complete the full 01–09 product curriculum.
 
 ## 13. Definition of success
 

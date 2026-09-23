@@ -1,104 +1,81 @@
-# QGroundControl - Qt Quick / QML study
-
-A large, actively maintained Qt Quick/QML ground-control application. It is the case for the **QML route**: the UI is
-declarative, and the application already links its own QML modules, so `import HyRemote` plus the deployment helper is
-the least intrusive honest integration.
+# QGroundControl v5.0.6 - Qt Quick/QML study (Qt 6 lane)
 
 ```text
 UPSTREAM_REPOSITORY=github.com/mavlink/qgroundcontrol
-UPSTREAM_REVISION=2b7e55dea40ed88d879029dc6871674d78e666f3   (master, 2026-09-08, "test(Camera): ignore connect-time StandardModes warning in lost camera test")
-UPSTREAM_LICENSE=Apache-2.0
-STAR_COUNT_AT_SELECTION=4974   (forks 5067, read from the GitHub API 2026-09-23)
+UPSTREAM_REVISION=v5.0.6   (pinned release tag; upstream's latest release at selection is v5.1.4 - the set pins v5.0.6 deliberately)
+UPSTREAM_LICENSE=Apache-2.0 (LICENSE-APACHE; the tree also carries LICENSE-GPL)
+STAR_COUNT_AT_SELECTION=4974   (read from the GitHub API 2026-09-23)
 MAINTAINED=yes (pushed 2026-09-23, not archived)
-UI_FAMILY=Qt Quick / QML
-INTEGRATION_ROUTE=QML API (+ C++ link of HyRemote::RemoteAccess; the QML module is a wrapper over the same runtime)
-UPSTREAM_BUILD_REQUIREMENTS=CMake 3.25+, Qt 6 (minimum enforced by upstream's own config), submodules, and an upstream-fetched Vulkan SDK (GIT_TAG vulkan-sdk-1.4.341.0)
+UI_FAMILY=Qt Quick / QML (C++)
+INTEGRATION_ROUTE=GENERIC
+UPSTREAM_QT_LANE=Qt 6 - find_package(Qt6 ...) in the pinned CMakeLists.txt; cmake_minimum_required(VERSION 3.25)
+UPSTREAM_SOURCE_PATCHES_FOR_HYREMOTE=0
 ```
 
-## Why this route
+## Why GENERIC here
 
-QGC is QML-first: its application shell is declarative. The QML route lets the integration live where the UI lives,
-without wrapping the whole application in an imperative lifecycle the project does not otherwise use. The four HyRemote
-routes are peers, so this is a fit choice, not a capability difference - both reach the same shared runtime.
+QGC is a large Qt Quick application. It is in the frozen set as the **QML-heavy** representative, and the honest way to
+reach it is the zero-code route: the application keeps its own QML, its own build and its own branding, and remote access
+arrives at run time as a Qt generic plugin.
 
-The main application target is `${CMAKE_PROJECT_NAME}` (`project(...)` at the root, with its sources and links in
-`src/CMakeLists.txt`), and the C++ entry point is `QGCApplication app(argc, argv, args);` in `src/main.cc`.
+The frozen set's `PRIMARY_ROUTE=GENERIC` applies here exactly as it does to the Widgets representative. **Nothing is
+added to QGC's source**: no `find_package(HyRemote)`, no `HyRemote::RemoteAccess` link, no `hyremote_deploy()`, no patch.
 
-## What the patch changes
-
-One file, `src/CMakeLists.txt`, immediately after an existing library link into the main application target:
+## How the integration works (no upstream change)
 
 ```text
-find_package(HyRemote CONFIG REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE HyRemote::RemoteAccess)
-hyremote_deploy(TARGET ${CMAKE_PROJECT_NAME} QML)
+original QGC application (obtained the way upstream says to: their installer or their own build)
+  -> deploy the Generic payload from the installed HyRemote SDK
+  -> QGroundControl -plugin hyremote
+  -> listener 0.0.0.0:5921
+  -> connect a viewer
 ```
 
-- **Which `CMakeLists.txt` was changed:** `src/CMakeLists.txt` (inserted immediately after
-  `target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE AutoPilotPluginsAPMModule)`).
-- **Which `find_package(HyRemote ...)` was added:** `find_package(HyRemote CONFIG REQUIRED)`.
-- **Which target is linked:** `HyRemote::RemoteAccess` (the QML module is backed by the same shared runtime; there is no
-  second runtime to link).
-- **Why linking is still needed on the QML route:** the declarative wrapper lives in the HyRemote QML plugin, which is
-  backed by the shared runtime library; linking the public target is what makes the deployment helper and the runtime
-  closure coherent.
-- **How `hyremote_deploy()` is executed:** `hyremote_deploy(TARGET ${CMAKE_PROJECT_NAME} QML)` at install time - the
-  `QML` keyword is what deploys `qml/HyRemote/` next to the executable.
-- **Window object the remote access is created on:** the QGC root application window. In QML this is an object
-  declaration targeting that window:
-
-```qml
-import HyRemote
-
-HyRemote.RemoteAccess {
-    target: rootWindow        // the QGC application window in the checked-out revision
-    remoteInputEnabled: true
-}
+```powershell
+# Windows PowerShell
+$env:QT_PLUGIN_PATH = "$env:HYREMOTE_SDK_ROOT/plugins"       # generic/libqhyremote.dll
+$env:PATH           = "$env:HYREMOTE_SDK_ROOT/bin;$env:PATH"  # libHyRemoteRemoteAccess.dll
+QGroundControl.exe -plugin hyremote
 ```
 
-  The **exact QML file that declares the root window is upstream-version dependent** and is deliberately not asserted
-  here: confirm it in the revision you checked out before applying the snippet. This study records the integration
-  mechanics, not a claim about a specific upstream file name.
-- **Application code change:** one import plus a four-line object declaration at the root window, plus the three CMake
-  lines. No upstream module is restructured.
-- **Runnable tree / how to launch:** the install prefix; launch the deployed `QGroundControl` executable, not the build
-  tree one.
+```sh
+# POSIX
+export QT_PLUGIN_PATH="$HYREMOTE_SDK_ROOT/plugins"
+export LD_LIBRARY_PATH="$HYREMOTE_SDK_ROOT/bin:$LD_LIBRARY_PATH"
+./QGroundControl -plugin hyremote
+```
 
-## Verification actually performed, and its limit
+Then confirm the listener (`Get-NetTCPConnection -LocalPort 5921 -State Listen`, or `ss -ltnp | grep 5921`) and connect a
+standard VNC/RFB viewer to `<HOST_LAN_IP>:5921`.
+
+Defaults are unchanged by the integration and are the product's own: `0.0.0.0:5921`, authentication off, transport
+encryption off, remote input **off** until enabled, trusted LAN only, not Internet-safe.
+
+## Verification actually performed, and what is missing
 
 ```text
-PATCH_APPLIES=PASS      git apply --check on the pinned revision 2b7e55d -> exit 0
-CMAKE_INTEGRATION=REAL  the targets and the helper referenced by the patch were verified against the
-                        installed SDK: HyRemote::RemoteAccess is a real imported target, and
-                        hyremote_deploy(TARGET ... QML) is a real function provided by the SDK's
-                        HyRemoteDeploy.cmake
-CONFIGURE=NOT COMPLETED  an upstream configure was started on this host and did not complete within this
-                        slice; no result is claimed. Upstream requires CMake 3.25+, submodules and an
-                        upstream-fetched Vulkan SDK in addition to Qt, so a full build is a
-                        substantially larger operation than the consumer walkthrough in this slice
-BUILD=NOT REACHED
-LISTENER=NOT REACHED
-VIEWER_CONNECT=NOT REACHED
+UPSTREAM_PINNED_TAG_EXISTS=PASS      tag v5.0.6 exists upstream
+QT_LANE_READ_FROM_UPSTREAM=PASS      find_package(Qt6 ...) and cmake_minimum_required(VERSION 3.25) in the pinned tree
+QT_LANE_ON_REFERENCE=PASS            Qt 6 sits on the current V0.3.0 reference lane (Qt 6.8.3)
+LICENCE_FILES_READ=PASS              LICENSE-APACHE (plus LICENSE-GPL for parts)
+UPSTREAM_PATCH=0
+GENERIC_MECHANISM_ON_CURRENT_LANE=PASS   verified with a pristine Qt 6.8.3 application, zero HyRemote code:
+                                         process alive, listening 0.0.0.0:5921, application log
+                                         "HyRemote automatic application access active on \"0.0.0.0\" 5921
+                                          remote input: false security profile: insecure"
+GENERIC_RUN_ON_QGC_ITSELF=NOT PERFORMED  obtaining or building QGC is a large third-party operation
+                                         (upstream needs CMake 3.25+, submodules and an upstream-fetched
+                                         Vulkan SDK); it was not carried out in this slice, so no
+                                         listener/viewer result is claimed for QGC itself
+VIEWER_CONNECT=NOT REACHED ON QGC ITSELF
 ```
 
-**This study was not taken to a remote-viewable QGroundControl window.** It is deliberately reported as such: the patch
-is verified to apply to the pinned revision and to reference real HyRemote targets and helper functions, and the
-blocking dependency set is recorded rather than glossed over. No statement here should be read as "it should work".
-
-## How a viewer would connect (once built)
-
-Same three facts as every other route, which is the point of the peer design:
-
-1. launch the deployed `QGroundControl` executable;
-2. confirm the listener: `Get-NetTCPConnection -LocalPort 5921 -State Listen` (Windows) or `ss -ltnp | grep 5921`
-   (Linux);
-3. connect any standard VNC/RFB viewer to `<HOST_LAN_IP>:5921`.
-
-Default facts are unchanged: listener `0.0.0.0:5921`, authentication off, transport encryption off, remote input off
-until enabled, trusted LAN only, not Internet-safe.
+This is stated plainly rather than softened: the *mechanism* is proven on the current lane with a pristine Qt
+application, and the *application-specific* run is not done here. No statement in this file means "it should work".
 
 ## Known limitations
 
-- Apache-2.0 upstream: a distributed patched build stays under Apache-2.0 with its attribution requirements.
-- No upstream branding is changed, and this is not an endorsement by the QGC project.
-- The root-window QML file name is upstream-version dependent and must be confirmed per revision.
+- Apache-2.0 upstream (with GPL-licensed parts): redistribution obligations stay with upstream's licensing.
+- No upstream branding or identity is changed; this is not an endorsement by the QGC project.
+- Remote input is opt-in and application-scoped in focus
+  ([`docs/known-limitations.md`](../../../docs/known-limitations.md)).
