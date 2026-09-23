@@ -600,8 +600,16 @@ function(hyb_qt_candidates out_list)
 
     # 1. the environment already names a Qt, so use it before looking anywhere else
     foreach(_env IN ITEMS QTDIR CMAKE_PREFIX_PATH)
-        if(DEFINED ENV{${_env}} AND NOT "$ENV{${_env}}" STREQUAL "")
-            set(_paths "$ENV{${_env}}")
+        # $ENV{} takes a literal name: CMake does not expand a variable inside it, and doing so is the bad variable
+        # reference the repository's own parsing gate reports.
+        set(_env_value "")
+        if(_env STREQUAL "QTDIR")
+            set(_env_value "$ENV{QTDIR}")
+        elseif(_env STREQUAL "CMAKE_PREFIX_PATH")
+            set(_env_value "$ENV{CMAKE_PREFIX_PATH}")
+        endif()
+        if(NOT _env_value STREQUAL "")
+            set(_paths "${_env_value}")
             string(REPLACE "\\" "/" _paths "${_paths}")
             foreach(_entry IN LISTS _paths)
                 if(NOT _entry STREQUAL "")
@@ -634,7 +642,20 @@ function(hyb_qt_candidates out_list)
     set(${out_list} "${_candidates}" PARENT_SCOPE)
 endfunction()
 
-if(HYB_QT_PREFIX STREQUAL "")
+# Qt is a precondition of configuring, not of running the entry point: `--show-config`, `clean` and `help` report
+# without configuring, and the repository's own gates drive `--show-config` where no compiler exists at all.
+set(HYB_QT_DISCOVERY_REQUIRED FALSE)
+if(HYB_SUBCOMMAND STREQUAL "build"
+   OR HYB_SUBCOMMAND STREQUAL "install"
+   OR HYB_SUBCOMMAND STREQUAL "test"
+   OR HYB_SUBCOMMAND STREQUAL "rebuild")
+    set(HYB_QT_DISCOVERY_REQUIRED TRUE)
+endif()
+if(HYB_SHOW_CONFIG)
+    set(HYB_QT_DISCOVERY_REQUIRED FALSE)
+endif()
+
+if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
     hyb_qt_candidates(_qt_candidates)
 
     if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "ARM64|AARCH64")
@@ -687,7 +708,9 @@ if(HYB_QT_PREFIX STREQUAL "")
             cmake_path(NORMAL_PATH HYB_QT_PREFIX)
             set(HYB_QT_DISCOVERY_NOTE "Qt prefix        : ${HYB_QT_PREFIX} (discovered)")
         else()
-            message(FATAL_ERROR
+            # Reported, not fatal: see the note above the identity handling. A run that cannot resolve a Qt still has
+            # to be able to prove the build-directory and identity contracts, and configure refuses on its own.
+            message(WARNING
                 "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong about "
                 "the compiler. Choose one explicitly:\n"
                 "\n"
@@ -698,7 +721,7 @@ if(HYB_QT_PREFIX STREQUAL "")
                 "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
         endif()
     elseif(_qt_candidates)
-        message(FATAL_ERROR
+        message(WARNING
             "Qt 6.8 kits were found on this machine, but none of them can be used from this shell as it stands. "
             "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
             "developer environment first:\n"
@@ -709,7 +732,7 @@ if(HYB_QT_PREFIX STREQUAL "")
             "\n"
             "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
     else()
-        message(FATAL_ERROR
+        message(WARNING
             "No Qt 6.8+ installation was found, and this top-level build needs one.\n"
             "\n"
             "Point the build at a Qt 6.8.3 desktop kit, which is the only qualified line today (Qt 5.15 is tracked "
