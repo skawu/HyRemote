@@ -146,12 +146,15 @@ src/
 
 ## Build
 
-The repository's normal developer build is driven by `build.cmd` and `build.yml`. `build.cmd` is the single build authority: `build.cmd build` configures if needed and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the tree and `build.cmd rebuild` is clean plus build. `compile.cmd` is kept as a compatibility shim that forwards to `build.cmd build`. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers take. The checked-in profile enables all four integrations for development; integrations are independent selections and none implies another.
+The repository's normal developer build is driven by `build.cmd` and `build.yml`. `build.cmd` is the single build authority: `build.cmd build` configures if needed and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the tree and `build.cmd rebuild` is clean plus build. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers take. The checked-in profile enables all four integrations for development; integrations are independent selections and none implies another.
 
 ```text
-build.cmd build --show-config
-build.cmd build --integrations=cpp,generic
-build.cmd test --integrations=cpp,qml,generic,qpa
+PowerShell:  .\build.cmd build --show-config
+POSIX:       sh ./build.cmd build --show-config
+PowerShell:  .\build.cmd build --integrations=cpp,generic
+POSIX:       sh ./build.cmd build --integrations=cpp,generic
+PowerShell:  .\build.cmd test --integrations=cpp,qml,generic,qpa
+POSIX:       sh ./build.cmd test --integrations=cpp,qml,generic,qpa
 ```
 
 For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_deploy()` instead of manually copying internal libraries or plugins.

@@ -92,7 +92,8 @@ They are not additional V0.1 primary adoption routes.
 Inside the repository build, configure with examples enabled:
 
 ```text
-build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+PowerShell:  .\build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+POSIX:       sh ./build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
 ```
 
 The runnable examples are installed into `build/install/bin/` and run from there with no Qt SDK on `PATH` and no plugin-path variables set. `build/` on its own is developer intermediate output; `build/install/` is the tree to run and to consume as an SDK.
