@@ -113,7 +113,7 @@ QPA deployment/configuration fixtures below are T4, not T2 runtime behavior.
 
 | Test/fixture | Decision | Necessity |
 | --- | --- | --- |
-| `hyremote-build-authority-selftest` | MOVE T3 | canonical `build.cmd`/CMake/build.yml authority; B3 moves registration out of Runtime ownership without semantic change |
+| `hyremote-build-authority-selftest` | MOVE T3; TG-004 CLOSED by B3 | canonical `build.cmd`/CMake/build.yml authority; registration is top-level repository-owned with the historical capability guard preserved |
 | `hyremote-ci-scope-self-test` | KEEP | classifier cannot silently select a false-green/incorrect lane |
 | `hyremote-mainline-audit-self-test` | KEEP | mainline audit retry/verification logic executes deterministically |
 | `hyremote-branch-name-gate-self-test` | KEEP | branch-family governance is executable |
@@ -215,10 +215,12 @@ Decision: **KEEP as bounded preflight evidence**. Do not count it in the normal 
 The Phase-A default all-frontends/transport-security-off baseline was **Linux 95 / Windows 94**. Linux-only QPA relocation explained the one-name platform difference at that baseline. Later focused slices add explained identities; security-enabled configurations additionally register `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`.
 
 Closed during Phase A or later #274 slices:
+- TG-003 — semantic test ownership debt closed by B1+B2+B4: Runtime/RFB/security/network/Widgets/Quick tests now live under their semantic owners and the listener matrix is split without duplicated rows.
+- TG-004 — build-authority registration ownership closed by B3; repository/T3 owns the CTest registration with the historical capability guard preserved.
 - TG-009 — candidate maintained-viewer RFB evidence binding, closed #281/#229.
 - TG-012 — clean-consumer acquisition false-pass, closed #280/#230.
 - TG-019 — QPA popup timing instability, closed #282/#296.
 - TG-020 — RFB+Widgets test under-guarding, closed #327/#328 with registration/build-time Widgets + VNC capability guard.
 - TG-021 — V0.1 adoption smoke registered in C++-disabled lanes, closed #298/#300 and proved by #296 qpa-only evidence.
 
-Still open and owned by later #274 phases include TG-001/002, TG-003/004/006/007, TG-010/011 and TG-013–018. See `COVERAGE_GAPS.md`.
+Phase C owns TG-006/TG-007. Phase D P1 owns TG-001/TG-002/TG-013/TG-014. Remaining P2 findings are deferred unless separately promoted by evidence. See `COVERAGE_GAPS.md`.
