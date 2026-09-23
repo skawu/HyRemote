@@ -1,6 +1,6 @@
 # HyRemote Product Architecture
 
-HyRemote uses one Core, one Shared Runtime, and four peer integration frontends. The architecture is designed so that applications can choose how to enter the product without creating separate Session, capture, transport, input, or security implementations.
+HyRemote uses one Core, one Shared Runtime, and four peer integration frontends. The architecture is designed so that applications can choose how to enter the product without creating separate Session, capture, transport, input, security, or performance implementations.
 
 ## 1. Product topology
 
@@ -70,7 +70,8 @@ Runtime responsibilities include:
 - automatic application-surface discovery/composition;
 - application target/input routing;
 - runtime component factories and services;
-- cross-mode diagnostics and operational behavior.
+- cross-mode diagnostics and operational behavior;
+- automatic performance policy such as viewer-aware capture demand, input-triggered freshness and adaptive pacing.
 
 The normal shared artifact remains:
 
@@ -79,7 +80,7 @@ HyRemote::RemoteAccess
 HyRemoteRemoteAccess
 ```
 
-There is no separate Widgets Runtime, Quick Runtime, Generic Runtime, or QPA Runtime product personality.
+There is no separate Widgets Runtime, Quick Runtime, Generic Runtime, QPA Runtime, Embedded Runtime, or Accelerated Runtime product personality.
 
 ## 4. C++ API frontend
 
@@ -116,7 +117,7 @@ RemoteAccess {
 }
 ```
 
-It does not create a second Session, transport, capture, state, or error model.
+It does not create a second Session, transport, capture, state, error, or performance model.
 
 Current product state: **Preview**.
 
@@ -124,7 +125,7 @@ Current product state: **Preview**.
 
 ## 6. Generic Plugin frontend
 
-The Generic Plugin uses Qt public plugin APIs (`QGenericPlugin`). It is the preferred zero-code integration route when an application can keep its normal native Qt platform.
+The Generic Plugin uses Qt public plugin APIs (`QGenericPlugin`). It is a zero-code integration route that keeps the application's normal native Qt platform authoritative.
 
 ```text
 Qt application
@@ -196,6 +197,8 @@ Applications use the same product entry points regardless of target family. They
 
 Configuration-specific cases such as QOpenGLWidget, QQuickWidget, Quick3D, custom FBOs, or unusual native-window ownership require explicit compatibility qualification rather than being inferred from basic Widgets/Quick behavior.
 
+Performance policy follows the same rule: adapters expose truthful capture/damage capability, while Shared Runtime and the transport decide how to use those capabilities. Applications do not choose internal capture/performance backends.
+
 ## 9. Automatic application surface model
 
 Generic and QPA both need automatic access to application surfaces. That logic belongs once in Runtime rather than being duplicated in either frontend.
@@ -209,7 +212,7 @@ Runtime automatic access is responsible for:
 
 A frontend must not implement its own competing composition/controller stack.
 
-## 10. Frame and backpressure model
+## 10. Frame, freshness and backpressure model
 
 `RemoteFrame` is transport-neutral and owns its storage lifetime.
 
@@ -223,7 +226,11 @@ The frame contract carries information such as:
 
 Frames cross a bounded Core handoff before transport dispatch. Slow clients must not create unbounded frame retention or block the Qt GUI/render path.
 
-The near-live policy favors the newest relevant frame rather than building an ever-growing queue.
+The near-live policy favors the newest relevant frame rather than building an ever-growing queue. Performance work therefore follows a **freshness-first** rule: stale intermediate work may be dropped or coalesced when a newer useful state exists.
+
+Core owns boundedness and transport-neutral freshness semantics. Shared Runtime owns automatic capture demand/pacing. The RFB transport owns compression, incremental-update state, Continuous Updates/Fence and per-viewer network delivery behavior. None of those protocol/platform-specific mechanisms are exposed as normal application tuning knobs.
+
+See [`performance-optimization.md`](performance-optimization.md) for the long-lived interaction-latency SLO, adaptive capture/delivery model and regression programme.
 
 ## 11. Input model
 
@@ -241,6 +248,8 @@ Input is application-scoped rather than desktop-wide. HyRemote does not use OS-w
 
 Held key/button state is cleaned up on disconnect and on explicit Runtime stop so a remote peer cannot leave the local application in a stuck input state.
 
+Remote input is also a performance signal: after the application processes a remote action and has an opportunity to update/render, Runtime may prioritize a fresh capture/update so interactive response does not depend solely on a periodic capture timer.
+
 ## 12. Runtime state
 
 The public Runtime state model is:
@@ -256,11 +265,22 @@ Running/Faulted -> stop -> Stopped
 
 Operational information such as `connectedClientCount()` is diagnostic state, not an authorization identity.
 
+Capture activity is not itself connection liveness: a static connected session may legitimately send no framebuffer payload until content changes while the TCP/RFB session remains alive.
+
 ## 13. Transport boundary
 
 The current correctness transport is bounded RFB 3.8 behind a private Runtime/Core seam.
 
-RFB is not part of the normal application API. A later transport may reuse the same integration frontends, Runtime target adapters, Core frame model, and input model.
+RFB is not part of the normal application API. A later transport may reuse the same integration frontends, Runtime target adapters, Core frame model, input model and freshness contract.
+
+RFB-specific performance mechanisms stay private to the transport, including:
+
+- encoding negotiation / Raw fallback;
+- practical compression;
+- incremental/non-incremental update state;
+- Continuous Updates / Fence where interoperable;
+- bounded per-viewer delivery flow;
+- cursor pseudo-encoding where useful.
 
 Current security behavior:
 
@@ -270,8 +290,6 @@ Current security behavior:
 - authenticated profile may use RFB VNC authentication;
 - stream encryption is not implemented in the current baseline;
 - `AuthenticatedEncrypted` fails closed before a listener is opened while the encrypted backend is unavailable.
-
-> **TODO V0.2:** VeNCrypt/TLS, certificate policy, authenticated sessions, and production network policy.
 
 ## 14. Packaging and deployment
 
@@ -301,25 +319,29 @@ Public-Qt integration paths and private-QPA compatibility are different claims:
 - C++ / QML / Generic primarily rely on Qt public APIs;
 - QPA is exact private-ABI qualified.
 
-A working configuration on one OS, Qt patch, graphics backend, or application type does not automatically qualify another.
+A working configuration on one OS, Qt patch, graphics backend, application type, or performance profile does not automatically qualify another.
 
 See [`compatibility.md`](compatibility.md).
 
-## 16. Future extension seams
+## 16. Performance extension seams
 
-The architecture intentionally keeps the following behind internal seams:
+The architecture intentionally keeps performance-specific implementation choices behind internal seams:
 
-- more efficient graphics capture;
+- demand-driven/adaptive capture policy in Shared Runtime;
+- more efficient graphics capture adapters;
 - external/GPU-backed frames;
 - DMA-BUF/GBM and embedded graphics paths;
 - RKMPP/VAAPI/D3D hardware encoding;
-- additional transports for high-motion workloads;
-- richer session and programmable application-control APIs.
+- additional transports for high-motion workloads.
 
-> **TODO V1.1+:** embedded-platform feature slicing and deployment.
->
-> **TODO later performance line:** introduce low-copy/hardware paths only where measurement shows a real product blocker.
->
-> **TODO later programmable line:** advanced session policy, observability, privacy/exclusion, target switching, and business integration.
+The mandatory pre-GA performance baseline is defined by [`performance-optimization.md`](performance-optimization.md) / #370 and includes practical compression/incremental delivery plus low-latency Runtime/RFB behavior. Hardware/vendor-specific acceleration is **not** automatically mandatory: it is activated only when accepted measurements show the portable/product baseline misses a declared latency/resource budget.
+
+H.264/H.265/AV1-style media delivery is a separate end-to-end transport/client product decision, not an automatic replacement for the ordinary RFB GUI path.
 
 These additions must preserve the normal product principle: ordinary applications choose an integration frontend, not an internal capture/transport/hardware implementation.
+
+## 17. Other future extension seams
+
+Other product capabilities intentionally remain behind internal seams as well, including richer session and programmable application-control APIs.
+
+Those capabilities must preserve one Core + one Shared Runtime and must not create parallel performance semantics for different integration frontends.
