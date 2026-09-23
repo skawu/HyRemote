@@ -98,6 +98,8 @@ QString runtimeIdentityError(const QString &runningVersion,
 bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &error)
 {
     RemoteConfig parsed;
+    bool addressSeen = false;
+    bool interfaceSeen = false;
 
     for (auto it = parameters.begin(); it != parameters.end();) {
         const QString parameter = *it;
@@ -106,6 +108,11 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
         const QString value = separator >= 0 ? parameter.mid(separator + 1).trimmed() : QString{};
 
         if (key == QStringLiteral("hyremote-address")) {
+            if (interfaceSeen) {
+                error = QStringLiteral("hyremote-address and hyremote-interface are mutually exclusive; "
+                                       "configure one listener binding");
+                return false;
+            }
             if (separator < 0 || value.isEmpty()) {
                 error = QStringLiteral("hyremote-address requires an explicit IP address");
                 return false;
@@ -116,6 +123,25 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
                 return false;
             }
             parsed.listenAddress = address;
+            addressSeen = true;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        if (key == QStringLiteral("hyremote-interface")) {
+            if (addressSeen) {
+                error = QStringLiteral("hyremote-address and hyremote-interface are mutually exclusive; "
+                                       "configure one listener binding");
+                return false;
+            }
+            if (separator < 0 || value.isEmpty()) {
+                error = QStringLiteral("hyremote-interface requires a network interface name");
+                return false;
+            }
+            // Mapped into the common shape; resolving the interface belongs to the shared runtime, and the native
+            // delegate never sees this parameter.
+            parsed.listenInterface = value;
+            interfaceSeen = true;
             it = parameters.erase(it);
             continue;
         }

@@ -20,6 +20,8 @@ RemoteAccessState mapState(Runtime::AccessState state)
         return RemoteAccessState::Stopping;
     case Runtime::AccessState::Faulted:
         return RemoteAccessState::Faulted;
+    case Runtime::AccessState::Unavailable:
+        return RemoteAccessState::Unavailable;
     }
     return RemoteAccessState::Faulted;
 }
@@ -121,6 +123,16 @@ QHostAddress RemoteAccess::listenAddress() const
 bool RemoteAccess::setListenAddress(const QHostAddress &address)
 {
     return m_impl && m_impl->access.setListenAddress(address);
+}
+
+QString RemoteAccess::listenInterface() const
+{
+    return m_impl ? m_impl->access.listenInterface() : QString{};
+}
+
+bool RemoteAccess::setListenInterface(const QString &identity)
+{
+    return m_impl && m_impl->access.setListenInterface(identity);
 }
 
 quint16 RemoteAccess::port() const noexcept

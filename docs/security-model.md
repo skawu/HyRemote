@@ -18,7 +18,8 @@ The implemented V1 security boundary is deliberately narrow and explicit:
 - Embedded C++ starts remote access only through explicit `start()`;
 - QML starts only after an explicit `enabled: true` request is applied after component completion;
 - Transparent QPA starts only when the process is deliberately launched through `-platform hyremote`;
-- the default listener address is loopback (`127.0.0.1`);
+- the default listener address is `0.0.0.0`, so a first run is reachable on the host's IPv4 interfaces; the
+  listener is intended for a **trusted LAN only and is not Internet-safe**, and the shipped security state says so;
 - remote input is disabled by default;
 - the current RFB transport negotiates **SecurityType None**;
 - V1 authenticates the viewer when an authenticated security profile is configured, and provides **no transport encryption** in any configuration;

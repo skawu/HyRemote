@@ -38,6 +38,9 @@ class QmlRemoteAccess : public QObject, public QQmlParserStatus
     Q_PROPERTY(QObject *target READ target WRITE setTarget NOTIFY targetChanged)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(QString listenAddress READ listenAddress WRITE setListenAddress NOTIFY listenAddressChanged)
+    // #174: the interface identity (QNetworkInterface::name()). Non-empty selects interface mode; assigning
+    // listenAddress clears it. The frontend maps the property and never resolves an adapter itself.
+    Q_PROPERTY(QString listenInterface READ listenInterface WRITE setListenInterface NOTIFY listenInterfaceChanged)
     Q_PROPERTY(int port READ port WRITE setPort NOTIFY portChanged)
     Q_PROPERTY(bool remoteInputEnabled READ remoteInputEnabled WRITE setRemoteInputEnabled NOTIFY remoteInputEnabledChanged)
     Q_PROPERTY(SecurityProfile securityProfile READ securityProfile WRITE setSecurityProfile NOTIFY securityProfileChanged)
@@ -55,6 +58,9 @@ public:
         Running,
         Stopping,
         Faulted,
+        // #174: no listener right now because the configured interface has no usable IPv4 address; the runtime
+        // keeps following that same interface and returns to Running by itself.
+        Unavailable,
     };
     Q_ENUM(State)
 
@@ -93,6 +99,9 @@ public:
     QString listenAddress() const;
     void setListenAddress(const QString &address);
 
+    QString listenInterface() const;
+    void setListenInterface(const QString &identity);
+
     int port() const noexcept;
     void setPort(int port);
 
@@ -117,6 +126,7 @@ signals:
     void targetChanged();
     void enabledChanged();
     void listenAddressChanged();
+    void listenInterfaceChanged();
     void portChanged();
     void remoteInputEnabledChanged();
     void securityProfileChanged();

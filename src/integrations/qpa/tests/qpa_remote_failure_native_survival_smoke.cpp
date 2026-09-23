@@ -91,7 +91,10 @@ public:
 
         sockaddr_in address{};
         address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        // #174: the listener defaults to the wildcard, so the blocker must occupy the same address it will ask for.
+    // A loopback blocker would only collide with a loopback listener, and relying on how a wildcard and a
+    // loopback bind happen to overlap is exactly the platform detail this smoke must not depend on.
+    address.sin_addr.s_addr = htonl(INADDR_ANY);
         address.sin_port = htons(0);
 
 #if defined(_WIN32)
