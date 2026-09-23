@@ -27,19 +27,19 @@ Core needs no GUI frontend, RFB or Qt Widgets/Quick.
 | Test/family | Current registration requirement | Semantic requirement / decision |
 | --- | --- | --- |
 | automatic surface/composite tests | Runtime + tests | KEEP Runtime |
-| security descriptor | CPP + Runtime today | MOVE Runtime/security |
-| `hyremote-vnc-auth-test` | CPP + VNC + Security | MOVE Runtime/RFB |
-| `hyremote-rfb-vnc-auth-handshake-test` | CPP + VNC + Security | MOVE Runtime/RFB |
-| RFB multi-client input | CPP + VNC | MOVE Runtime/RFB |
+| security descriptor | Runtime + tests after B1 | Runtime/security |
+| `hyremote-vnc-auth-test` | Runtime + VNC + Security after B1 | Runtime/RFB |
+| `hyremote-rfb-vnc-auth-handshake-test` | Runtime + VNC + Security after B1 | Runtime/RFB |
+| RFB multi-client input | Runtime + VNC after B1 | Runtime/RFB |
 | `hyremote-v01-rfb-product-fit` | CPP + VNC; Python fail-closed; `candidate-evidence` | T5 candidate maintained-viewer evidence; TG-009 CLOSED |
 | listener address matrix | CPP + Widgets | SPLIT facade vs Runtime/RFB bind/address-family |
-| input mailbox admission | CPP | MOVE Runtime |
-| target component provider | CPP | MOVE Runtime/adapters |
-| Widgets capture/routing/backpressure | CPP + Widgets | MOVE Runtime/Widgets; TG-001 on capture DPR |
-| **RFB+Widgets disconnect/backpressure** | **CPP + Widgets only today** | **TG-020: missing VNC guard**; target must require VNC + Widgets |
-| Quick capture/routing/backpressure | CPP + Quick | MOVE Runtime/Quick; TG-002 on capture DPR |
+| input mailbox admission | Runtime + tests after B1 | Runtime |
+| target component provider | Runtime + tests after B1 | Runtime/adapters |
+| Widgets capture/routing/backpressure | Runtime + Widgets after #327/#328 | Runtime/Widgets; TG-001 remains on capture DPR |
+| **RFB+Widgets disconnect/backpressure** | **Runtime + Widgets + VNC after #327/#328** | **TG-020 CLOSED**; absent when VNC is unavailable |
+| Quick capture/routing/backpressure | Runtime + Quick after #327/#328 | Runtime/Quick; TG-002 remains on capture DPR |
 
-Historical CPP guards describe physical registration, not desired ownership.
+Historical CPP guards describe former physical registration, not desired ownership.
 
 ## Peer frontends
 

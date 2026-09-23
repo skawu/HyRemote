@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.21)
 
 if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "HYREMOTE_SOURCE_DIR is required")
@@ -56,9 +56,9 @@ set(required_files
     "tests/consumer-installed-qpa/product_fit.py"
     "tests/public-api-contract/CMakeLists.txt"
     "src/integrations/cpp/tests/test_remote_access.cpp"
-    "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp"
-    "src/integrations/cpp/tests/test_quick_input_backpressure.cpp"
-    "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp"
+    "src/runtime/tests/test_widgets_input_backpressure.cpp"
+    "src/runtime/tests/test_quick_input_backpressure.cpp"
+    "src/runtime/tests/test_rfb_widget_disconnect_backpressure.cpp"
     "src/runtime/tests/automatic_composite_input_test.cpp"
     "src/runtime/tests/automatic_composite_capture_test.cpp"
     "src/runtime/tests/automatic_application_surface_model_test.cpp"
@@ -589,9 +589,9 @@ endforeach()
 
 foreach(test_entry
         "src/integrations/cpp/tests/test_remote_access.cpp|inputShutdowns"
-        "src/integrations/cpp/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/integrations/cpp/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
-        "src/integrations/cpp/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
+        "src/runtime/tests/test_widgets_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/runtime/tests/test_quick_input_backpressure.cpp|testShutdownBalancesDeliveredStateAndDropsPendingInput"
+        "src/runtime/tests/test_rfb_widget_disconnect_backpressure.cpp|testDisconnectCleanupCrossesSaturatedAdapterMailbox"
         "src/runtime/tests/automatic_composite_input_test.cpp|shutdownCalls")
     string(REPLACE "|" ";" test_parts "${test_entry}")
     list(GET test_parts 0 test_path)
@@ -648,4 +648,3 @@ endforeach()
 message(STATUS
     "HyRemote release-readiness metadata gate: PASS "
     "(project ${source_project_version}, canonical repository layout + milestone notes + minimal SDK surface + complete V1 user entry points)")
-
