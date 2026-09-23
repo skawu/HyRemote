@@ -22,9 +22,9 @@ V0.1 is not an Internet-facing remote-access server.
 
 Current limitations:
 
-- default listener is loopback;
+- default listener is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
 - remote input is disabled by default;
-- `Insecure` is loopback-only; a non-loopback `Insecure` start is rejected before listener creation;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is conditional and requires a transport-security-enabled build plus a valid security descriptor;
 - when `Authenticated` is available, it uses RFB VNC authentication but the stream remains unencrypted;
 - the default V0.1 build/profile does not imply authenticated transport is compiled in;

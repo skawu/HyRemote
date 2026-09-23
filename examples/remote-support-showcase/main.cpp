@@ -84,7 +84,7 @@ public:
 
         auto *statusForm = new QFormLayout;
         m_state = new QLabel(remoteBox);
-        m_endpoint = new QLabel(QStringLiteral("127.0.0.1:%1 (loopback only)").arg(port), remoteBox);
+        m_endpoint = new QLabel(QStringLiteral("0.0.0.0:%1 (this host's IPv4 interfaces; trusted LAN only)").arg(port), remoteBox);
         m_clients = new QLabel(QStringLiteral("0"), remoteBox);
         m_policy = new QLabel(remoteBox);
         m_error = new QLabel(QStringLiteral("None"), remoteBox);

@@ -138,11 +138,11 @@ This is still one Shared Runtime used by two frontend payloads, not a fourth Run
 
 ## Security boundary
 
-The V0.1 Shared Runtime is loopback-first:
+The shipped Shared Runtime is LAN-first:
 
 - default bind is `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named network interface;
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;
 - `AuthenticatedEncrypted` fails closed while the encrypted backend is unavailable.
 

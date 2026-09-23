@@ -131,11 +131,11 @@ The current transport baseline is bounded RFB 3.8.
 
 Current product behavior includes:
 
-- loopback-first listener behavior;
+- LAN-capable listener behavior by default;
 - standard RFB remote viewing;
 - optional remote input;
 - reconnect without rebuilding the application Runtime;
-- `Insecure` loopback-only behavior;
+- `Insecure` behavior: unauthenticated and unencrypted, for a trusted LAN only;
 - conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
 - no stream encryption in V0.1;
 - `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
