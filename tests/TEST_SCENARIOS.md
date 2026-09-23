@@ -137,7 +137,7 @@ Phase B may consolidate plumbing, not semantic proof layers.
 
 ## Repository/build/acquisition authority
 
-`hyremote-build-authority-selftest` protects canonical build argument/config behavior and current security truth; it should move to T3 repository ownership.
+`hyremote-build-authority-selftest` protects canonical build argument/config behavior and current security truth. B3 moves its CTest registration to top-level repository/T3 ownership with the historical automatic-runtime capability guard preserved; TG-004 is closed.
 
 `hyremote-acquisition-audit-self-test` — TG-012 CLOSED — drives the same shared per-cache-element logic used by clean-consumer evidence, including mixed `<run-prefix>;<forbidden-source/build-path>` values that the old line-level audit could miss.
 
@@ -191,5 +191,9 @@ VeNCrypt probe scripts supply bounded protocol/viewer feasibility evidence for #
 - QPA popup: TG-019 closed by #296.
 - C++-disabled adoption registration: TG-021 closed by #300/#296 evidence.
 - listener ownership: #338 Runtime binding unit + B4 C++ facade matrix + B4 Runtime/RFB reachability are distinct and non-duplicative.
+- Runtime/RFB/security/network/Widgets/Quick ownership: TG-003 closed by B1+B2+B4.
+- build-authority registration ownership: TG-004 closed by B3.
 - RFB+Widgets disconnect/backpressure: KEEP Runtime/RFB+Widgets; TG-020 closed by #327/#328 capability guard.
-- fragmented/malformed RFB: TG-013/TG-014 remain.
+- semantic execution/release-readiness classification: TG-006/TG-007 remain Phase C.
+- forced-DPR and parser negative coverage: TG-001/TG-002/TG-013/TG-014 remain Phase D P1.
+- P2 findings remain deferred unless separate evidence promotes one.
