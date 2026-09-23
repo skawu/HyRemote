@@ -12,8 +12,8 @@
 仓库根目录的 `build.cmd` **同时是 POSIX shell 脚本和 Windows 批处理脚本**，并且是仓库**唯一的构建/安装入口**：
 
 ```text
-Windows:  build.cmd build --integrations=qpa --qt-prefix C:/Qt/6.8.3/mingw_64
-Linux:    sh build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
+Windows:  .\build.cmd build --integrations=qpa --qt-prefix C:/Qt/6.8.3/mingw_64
+Linux:    sh ./build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 ```
 
 配置优先级是 **内置默认值 < `build.yml` < 命令行**：`build.yml` 保存仓库的开发者配置档，命令行参数覆盖它：
@@ -55,7 +55,7 @@ Linux:    sh build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 ## 2. 指定交叉编译工具链
 
 ```text
-sh build.cmd build --integrations=qpa \
+sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```

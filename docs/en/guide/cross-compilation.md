@@ -14,8 +14,8 @@ project's build script and a **CMake toolchain file**.
 repository's **single build and install authority**:
 
 ```text
-Windows:  build.cmd build --integrations=qpa --qt-prefix C:/Qt/6.8.3/mingw_64
-Linux:    sh build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
+Windows:  .\build.cmd build --integrations=qpa --qt-prefix C:/Qt/6.8.3/mingw_64
+Linux:    sh ./build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 ```
 
 Configuration precedence is **built-in defaults < `build.yml` < the command line**: `build.yml` holds the
@@ -59,7 +59,7 @@ Cleaning entry point: `build.cmd clean` (removes `build/`).
 ## 2. Selecting a cross-compilation toolchain
 
 ```text
-sh build.cmd build --integrations=qpa \
+sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```
