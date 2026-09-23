@@ -45,7 +45,7 @@ int main(int argc, char **argv)
     parser.setApplicationDescription(QStringLiteral("HyRemote Embedded C++ API over a Qt Quick window"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
-                                  QStringLiteral("Loopback port the viewer connects to."),
+                                  QStringLiteral("Listener port the viewer connects to."),
                                   QStringLiteral("port"),
                                   QStringLiteral("5921"));
     QCommandLineOption inputOption(

@@ -34,7 +34,7 @@ application - see [example 02](learning/02-quick-cpp), which uses a Qt Quick win
 ## The 5-minute path
 
 1. **Build and run [example 01](learning/01-widgets-cpp)** - a Qt Widgets window that becomes remotely viewable.
-2. **Connect a viewer** to `127.0.0.1:<port>` and see that window.
+2. **Connect a viewer** to `<host-lan-ip>:<port>` and see that window.
 3. **Then read the guide for your route:**
    - [Embedded C++](../docs/getting-started/cpp.md) - the C++ API, for Widgets and for Quick;
    - [Generic Plugin](../docs/getting-started/generic.md) - for an application you do not want to edit;
