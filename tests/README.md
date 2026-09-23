@@ -1,20 +1,25 @@
 # `tests/` — cross-module and delivered-product verification
 
-HyRemote test ownership follows the product architecture. Private module behavior belongs with the module it qualifies; the repository-level `tests/` tree owns contracts that cannot be proved from one product target alone: clean consumers, package/deploy behavior, repository/public contracts, adoption flows, preflight evidence and release qualification.
+HyRemote test ownership follows the product architecture. Module-private behavior stays with its module; repository-level `tests/` owns contracts that cannot be proved from one product target alone: clean consumers, package/deploy behavior, repository/public contracts, adoption flows, bounded preflight evidence and release qualification.
 
-## Phase-A audit authority
+## Final #274 authority
 
-The #274 Phase-A audit is represented by:
+The completed test-architecture workstream is represented by:
 
-- [`TEST_CATALOG.md`](TEST_CATALOG.md) — necessity, owner and KEEP/MOVE/SPLIT/MERGE/RETIRE/GAP decision;
-- [`TEST_SCENARIOS.md`](TEST_SCENARIOS.md) — meaningful scenarios inside multi-case executables/scripts;
-- [`TEST_MATRIX.md`](TEST_MATRIX.md) — capability/platform/cost matrix and proposed semantic tiers;
-- [`EXECUTION_BASELINE.md`](EXECUTION_BASELINE.md) — current registration/execution evidence and platform reconciliation;
-- [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md) — confirmed gaps and findings closed during Phase A or later #274 slices.
+- [`TEST_CATALOG.md`](TEST_CATALOG.md) — exact registered CTest identities, semantic owner/layer and necessity;
+- [`TEST_SCENARIOS.md`](TEST_SCENARIOS.md) — meaningful scenario groups inside multi-case executables/scripts;
+- [`TEST_MATRIX.md`](TEST_MATRIX.md) — capability/platform requirements plus stable semantic labels;
+- [`EXECUTION_BASELINE.md`](EXECUTION_BASELINE.md) — historical before-refactor counts and final hosted execution reconciliation;
+- [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md) — closed gaps plus explicitly deferred lower-severity debt.
 
-Current audit baseline: `develop@e3fcf2fd06f8feca00b83b6c49c48588264cfd81`.
+Final implementation authority before this reconciliation is `develop@bee774e76a48c7a23020b5386b42ac7a2bbb56f8`.
 
-Current default all-frontends/security-off registration is **Linux 95 / Windows 94**. This is a registration fact, not a claim that one ordinary PR lane executes all 95/94 cases. See `EXECUTION_BASELINE.md`.
+Reference all-frontends/VNC Qt 6.8.3 registration after Phase D is:
+
+- security enabled: Linux **108**, Windows **107**;
+- security off: Linux **106**, Windows **105**.
+
+The single Linux-only identity is `hyremote-qpa-source-payload-relocation`. The historical 95/94 Phase-A inventory is no longer current authority.
 
 ## Semantic layers
 
@@ -23,12 +28,12 @@ Current default all-frontends/security-off registration is **Linux 95 / Windows 
 | T1 | deterministic module/component/private seams | `src/core/tests`, `src/runtime/tests` |
 | T2 | behavior unique to one integration frontend | `src/integrations/<frontend>/tests` |
 | T3 | repository/product contracts | repository-level checks/scripts |
-| T4 | external consumer/package/deploy/acquisition | `tests/consumer-*` and deploy fixtures |
+| T4 | external consumer/package/deploy/acquisition | clean consumers and deploy fixtures |
 | T5 | user/adoption/product E2E | examples and maintained-viewer product-fit harnesses |
-| T6 | release/candidate-specific truth | release/readiness/candidate authority |
+| T6 | release/candidate-specific truth | release scope/profile/readiness authority |
 | PRE | bounded technical-decision preflight | `tests/preflight` + dedicated workflow |
 
-Physical locations are still legacy in places until Phase B. Do not duplicate a test merely to obtain the desired directory.
+Physical directory names are not semantic authority. Some durable T3/T4/T6 checks still live under the legacy `tests/release-readiness` path; Phase C labels carry their real meaning without forcing broad physical churn.
 
 ## Current repository-level directories
 
@@ -37,68 +42,67 @@ Physical locations are still legacy in places until Phase B. Do not duplicate a 
 | `build-authority` | canonical build/bootstrap authority checks |
 | `consumer-installed-cpp` | clean installed C++ Widgets/Quick consumers |
 | `consumer-installed-generic` | clean installed zero-code Generic Widgets/Quick consumers |
-| `consumer-installed-sdk` | minimal public package/export/deploy closure; retained because it is distinct |
-| `consumer-installed-qml` | clean installed declarative/QML payload consumer |
-| `consumer-installed-qpa` | clean installed exact-private-ABI QPA payload consumer |
+| `consumer-installed-qml` | clean installed declarative/QML consumer |
+| `consumer-installed-qpa` | clean installed exact-private-ABI QPA consumer |
+| `consumer-installed-sdk` | smallest public package/export/deploy release-evidence cell; deliberately distinct from adapter apps |
 | `consumer-source` | external source/add_subdirectory acquisition |
-| `preflight` | standalone bounded technical-risk probes, currently V0.2 TLS/VeNCrypt feasibility; not part of normal product CTest graph |
-| `product-e2e` | black-/semi-black-box product/user-flow harnesses; some currently lack execution authority |
-| `public-api-contract` | installed public API/target/dependency contract |
-| `release-readiness` | legacy mixed home for T3/T4 persistent contracts and true T6 gates; Phase B/C will split ownership |
+| `preflight` | standalone bounded technical-risk probes; not part of normal product CTest graph |
+| `product-e2e` | black-/semi-black-box user-flow assets; some remain deferred without execution authority |
+| `public-api-contract` | installed public API/target/dependency contract fixture |
+| `release-readiness` | legacy physical home containing semantically classified T3/T4/T6 checks |
 | `v01-examples` | V0.1 SDK adoption smoke for canonical learning examples |
 
-There is no current `tests/third_party` directory.
+There is no `tests/third_party` directory.
 
 ## Ownership rules
 
-- Core-only lifetime, timing, queue/backpressure, input, callback and dependency-neutrality invariants stay in Core.
-- Shared Runtime, RFB backend/private security and Widgets/Quick adapter behavior belong to Runtime/RFB/adapters. Phase B has moved the B1 Runtime/RFB/security tests and B2 Widgets/Quick adapter tests accordingly; later slices own remaining mixed cases.
-- C++ tests should protect the public `HyRemote::RemoteAccess` facade, not private transport mechanics.
-- QML, Generic and QPA tests protect behavior unique to those peer frontends and reuse the same Runtime.
-- Persistent package/deploy/acquisition tests are T4 regardless of where their fixture currently lives.
-- Clean external consumers stay outside product targets because their purpose is to prove acquisition/export/relocation/deployment from an application's perspective.
-- T6 is not a dumping ground: a test belongs there only when its failure specifically invalidates release/candidate truth.
-- PRE tests are bounded decision evidence. They deliberately do not become a second normal build/test system.
+- Core-only lifetime, timing, queues/backpressure, input, callback and dependency-neutrality invariants stay in Core.
+- Shared Runtime, RFB backend/private security and Widgets/Quick adapter behavior belong to Runtime/RFB/adapters.
+- C++ tests protect the public `HyRemote::RemoteAccess` facade, not private transport mechanics.
+- QML, Generic and QPA tests protect behavior unique to those peer frontends and reuse the same Shared Runtime.
+- Persistent package/deploy/acquisition tests are T4 regardless of legacy physical path.
+- Clean external consumers stay outside product targets because they prove acquisition/export/relocation/deployment from an application's perspective.
+- T6 is reserved for release/candidate truth, not ordinary regressions.
+- PRE tests are bounded technical-decision evidence and deliberately do not form a second normal product test system.
 
-## Test necessity rule
+## Stable CTest semantics
 
-Every durable test must explain:
+Phase C established additive labels:
 
-1. semantic owner;
-2. protected behavior/invariant;
-3. why another layer cannot replace it;
-4. what failure means;
-5. required capabilities/platforms;
-6. overlap and why both tests remain necessary.
+- types: `unit`, `component`, `integration`, `contract`, `consumer`, `e2e`, `release`;
+- owners: `core`, `runtime`, `rfb`, `widgets`, `quick`, `cpp`, `qml`, `generic`, `qpa`, `repository`;
+- costs/tiers: `fast`, `installed`, `e2e`, `qualification`.
 
-Historical age is not justification. CI time reduction alone is not justification for deletion.
+Existing special labels such as `candidate-evidence` are retained. Labels do not replace capability guards and do not make zero selected tests acceptable.
 
-## Important current execution facts
+## Catalog drift is fail-closed
 
-- #281 added `hyremote-v01-rfb-product-fit` as fail-closed `candidate-evidence`; TG-009 is closed.
-- #280 added `hyremote-acquisition-audit-self-test`; TG-012 and #230 are closed.
-- #296 replaced fixed QPA popup sleeps with bounded condition waits; TG-019 is closed.
-- #300 guards `hyremote-v01-example-smoke` by C++ API + Runtime target + Python. #296's first fresh qpa-only run proves it is absent when CPP=OFF; TG-021 is closed.
-- #327/#328 move the Widgets/Quick adapter tests to Runtime ownership. `hyremote-rfb-widget-disconnect-backpressure-test` now requires both Widgets and VNC/RFB at registration/build time; TG-020 is closed.
-- Widgets/Quick forced-DPR second runs remain absent (TG-001/TG-002).
+At top-level configure completion, the Phase-C semantic helper recursively enumerates configured CTest identities from CMake directory `TESTS` properties and verifies that every identity appears exactly in `TEST_CATALOG.md`.
 
-## Preflight boundary
+A change that adds or renames a CTest without updating the catalog therefore fails configuration. This guard adds no CTest identity and does not alter current counts, selectors or runtime behavior.
 
-`tests/preflight` currently contains the V0.2 TLS transition and VeNCrypt feasibility work. `hyremote-tls-transition-preflight` is a standalone CMake/CTest project driven by `.github/workflows/tls-preflight.yml` on Windows/Linux Qt 6.8.3 + OpenSSL.
+## Important completed findings
 
-This proves a technical transition is feasible before product implementation. It does **not** qualify the product security profile, replace `ci.yml`, or count in the normal 95/94 product CTest inventory.
+- Runtime/RFB/security/network/Widgets/Quick ownership debt is closed by Phase B.
+- `hyremote-build-authority-selftest` is repository/T3-owned.
+- listener behavior is split into deterministic Runtime binding, public C++ facade semantics and real RFB reachability without duplicated rows.
+- TG-020 is closed: RFB+Widgets disconnect/backpressure requires both Widgets and VNC and is absent when VNC is off.
+- Phase-C semantic labels are stable and additive.
+- TG-001/TG-002 forced-DPR coverage and TG-013/TG-014 RFB fragmentation/malformed/oversized coverage are closed by Phase D.
+- there is no remaining confirmed P0/P1 gap in `COVERAGE_GAPS.md`.
 
-## Execution and evidence rules
+Deferred P2 findings TG-010/TG-011/TG-015/TG-016/TG-017/TG-018 remain intentionally outside #274 implementation scope with explicit owner/rationale.
 
-Use the repository's canonical build authority. Capability guards determine whether a test is meaningful; future labels/tiering may select by semantics but must not replace guards.
+## Evidence rules for contributors
 
-A source file is not evidence unless a defined authority executes it. A discovered count is not the same as executed count. A selected suite that runs zero tests is non-evidence under #250 fail-closed semantics.
+1. Use the repository's canonical build authority.
+2. Capability guards decide registration; semantic labels describe meaning.
+3. A source file is not evidence unless an execution authority runs it.
+4. Discovered count is not executed count.
+5. A selected suite that executes zero tests is non-evidence.
+6. Cross-platform changes need exact-head Windows/Linux evidence where the touched contract is cross-platform.
+7. New/renamed CTests must update `TEST_CATALOG.md` in the same change.
+8. Do not keep duplicate tests merely because they are historical; document the distinct contract or consolidate them.
+9. Do not add retries/skips to manufacture green correctness evidence.
 
-Current evidence is intentionally split:
-- current registration discovery: Linux 95 / Windows 94 from #300 exact-head full configure;
-- latest prior full execution of the then-94/93 set: #280 run `35591928798`;
-- new candidate product-fit: explicit candidate evidence after #281;
-- reduced qpa-only guard/stability proof: #296 run `35676277901`;
-- technical TLS preflight: dedicated `tls-preflight.yml` evidence.
-
-No target under `tests/` may become a product dependency. Overall repository layout authority remains `docs/internal/repository-layout.md`.
+Overall repository layout authority remains `docs/internal/repository-layout.md`.

@@ -1,199 +1,199 @@
 # HyRemote Test Scenario Appendix
 
-> Scenario-level companion to `TEST_CATALOG.md`, refreshed against `develop@e3fcf2fd06f8feca00b83b6c49c48588264cfd81`.
+> Final #274 scenario authority, reconciled after Phase D against `develop@bee774e76a48c7a23020b5386b42ac7a2bbb56f8`.
 >
-> This records meaningful cases inside multi-scenario executables/scripts. It creates no new tests and changes no selection.
+> `TEST_CATALOG.md` owns exact registered identities and necessity. This appendix records the meaningful scenario groups inside multi-case executables/scripts so one executable is not mistaken for one behavior.
+
+## Core Session lifecycle / concurrency
+
+`hyremote-core-test-session-lifecycle` remains one grouped Core integration executable because the scenarios share state-machine/race fixtures. It covers:
+
+- documented transitions and repeated start/stop;
+- partial capture/transport start cleanup;
+- recoverable/fatal event escalation;
+- invalid configuration;
+- capture in-flight bounds;
+- backend exceptions;
+- concurrent stop ownership;
+- stop while capture/transport start is blocked;
+- component replacement races;
+- stop-win windows before Running;
+- worker startup while Starting;
+- replacement rejection in Starting/Faulted/Stopping;
+- deterministic exception cleanup.
+
+Splitting by source-file size alone would weaken shared race fixtures and is not justified.
+
+## Runtime typed notifications
+
+`hyremote-runtime-notifications-test` drives the Runtime's private typed-notification seam from real state/client/error events rather than fixed delays. It proves ordering, one shared Runtime source of truth, event-boundary delivery and object lifetime behavior.
+
+`hyremote-qml-notifications-test` separately proves that the QML wrapper observes those same Runtime events on the declarative object's thread. It does not re-test Runtime state-machine mechanics.
+
+## RFB authentication and viewer state
+
+`hyremote-vnc-auth-test` proves the VNC Authentication crypto primitive when transport security is enabled.
+
+`hyremote-rfb-vnc-auth-handshake-test` proves wire behavior separately:
+
+- correct credentials;
+- wrong credentials;
+- no downgrade to None;
+- bounded stalled-auth handling;
+- deliberate insecure/basic profile behavior where allowed.
+
+`hyremote-rfb-multi-client-input-test` proves simultaneous viewers cannot prematurely release each other's held key/button state, and that disconnect removes only the departing viewer's references while preserving repeat/modifier/pointer semantics.
+
+## RFB wire robustness — TG-013/TG-014 CLOSED
+
+`hyremote-rfb-wire-robustness-test` drives the production socket parser rather than a test-only parser seam. It covers:
+
+- fragmented RFB 3.8 client-version bytes;
+- fragmented representative KeyEvent and PointerEvent messages byte-by-byte;
+- accepted dispatch after fragmentation;
+- over-limit SetEncodings rejection;
+- over-limit ClientCutText rejection;
+- unsupported client message rejection followed by server recovery for a new client;
+- bounded client-input buffering while handshake progress intentionally prevents consumption.
+
+TCP write boundaries are not assumed to equal receive boundaries; the fixture structures state so the production bound is deterministic regardless of packet coalescing/fragmentation.
+
+## Widgets adapter — TG-001 CLOSED
+
+`hyremote-widgets-capture-test` proves ordinary asynchronous owned-frame capture, geometry/pixel/timing/damage/resize, cancellation after stop and target-loss handling.
+
+`hyremote-widgets-capture-forced-dpr-test` executes the same binary with `QT_SCALE_FACTOR=1.5` and `HYREMOTE_EXPECT_DPR=1.5`, proving the capture contract under deterministic HiDPI scaling rather than merely keeping DPR-aware source assertions dormant.
+
+`hyremote-widgets-input-routing-test` proves ordinary delivery/local coexistence.
+
+`hyremote-widgets-input-backpressure-test` proves pointer-flood coalescing, protected release capacity, unmatched-release handling, shutdown dropping of pending input and exactly-once balancing of already delivered held state.
+
+`hyremote-rfb-widget-disconnect-backpressure-test` composes the real RFB transport with the Widgets adapter under saturation. It requires both Widgets and VNC; VNC-off means no registration, not skip/fail. TG-020 remains closed.
+
+## Quick adapter — TG-002 CLOSED
+
+`hyremote-quick-capture-test` proves ordinary asynchronous owned-frame capture, geometry/pixel/timing/damage/resize and target loss under the software Quick backend used by hosted tests.
+
+`hyremote-quick-capture-forced-dpr-test` repeats that contract with deterministic DPR=1.5.
+
+`hyremote-quick-input-routing-test` and `hyremote-quick-input-backpressure-test` remain separate delivery versus pressure/bounded-dispatch contracts.
+
+## Listener contract after B4
+
+The listener behavior is intentionally three non-overlapping proof layers.
+
+`hyremote-runtime-listener-binding-test` — deterministic T1 Runtime policy, no real listener I/O:
+
+- IPv4 binding-mode inference;
+- interface resolution and ambiguity;
+- unavailable interface/address behavior;
+- locality decisions from an injected interface snapshot.
+
+`hyremote-listener-address-matrix-test` — T2 C++ public facade:
+
+- explicit loopback + selected-port start/stop/rebind lifecycle;
+- occupied-port public error mapping;
+- unavailable explicit IPv4 failure without silent fallback;
+- IPv6 `::1` / `::` rejected as invalid public configuration without mutating accepted IPv4 configuration.
+
+`hyremote-rfb-listener-reachability-test` — real T1 Runtime/RFB socket integration:
+
+- wildcard IPv4 reachable through loopback;
+- explicit loopback reachable;
+- interface-following rebind/unavailable/recovery with deterministic resolution injection;
+- when the host exposes a suitable non-loopback IPv4 interface, wildcard / explicit-address / interface modes are measured against it.
+
+A host without a suitable LAN interface reports that platform fact; deterministic binding policy remains covered by `hyremote-runtime-listener-binding-test`.
 
 ## C++ `RemoteAccess` facade
 
-`hyremote-remoteaccess-test` — T2/C++ — KEEP as one facade/state-contract executable.
+`hyremote-remoteaccess-test` keeps related public facade/state semantics together:
 
-Necessary scenarios include:
 - inert construction and safe loopback/input-off defaults;
 - missing target/adapter clean failures;
 - configuration forwarding and stopped-only mutation;
 - deterministic/idempotent stop;
 - move ownership without duplicate Runtime;
-- transport-neutral client-count events;
+- transport-neutral client count events;
 - input opt-in independent from view;
-- recoverable error acknowledgement and reappearance;
+- recoverable error acknowledgement/reappearance;
 - fatal/Faulted diagnostic retention until explicit stop;
 - backend-start failure mapping/cleanup;
-- invalid public configuration without mutating last accepted value;
-- unavailable `AuthenticatedEncrypted` fails closed before listener exposure.
+- invalid public configuration without mutating the last accepted value;
+- unavailable authenticated/encrypted capability fails closed before listener exposure.
 
-A failure invalidates public C++ integration semantics, not a private RFB implementation detail.
+`hyremote-remoteaccess-error-ack-test` and `hyremote-remoteaccess-target-loss-test` remain separate because their failure diagnosis is narrower and externally observable.
 
-## Core Session lifecycle/concurrency
+## Maintained-viewer product fit
 
-`hyremote-core-test-session-lifecycle` — T1/Core — KEEP grouped.
+`hyremote-v01-rfb-product-fit` remains distinct from lower-layer RFB tests because it proves user-visible interoperability with maintained viewer tooling:
 
-It protects related state-machine/regression families: documented transitions; repeated start/stop; partial capture/transport start cleanup; recoverable/fatal event escalation; invalid configuration; capture in-flight bounds; backend exceptions; concurrent stop ownership; stop during blocked capture/transport start; component replacement races; stop-win windows before Running; concurrent start/stop deadlock regression; worker startup during Starting; replacement rejection in Starting/Faulted/Stopping; and deterministic exception cleanup.
-
-Splitting by file size would weaken shared race fixtures; only split if ownership/diagnosis materially improves.
-
-## RFB authentication, viewers and parser coverage
-
-### Conditional VNC authentication tests
-
-`hyremote-vnc-auth-test` proves the VNC Auth crypto primitive when Security capability exists.
-
-`hyremote-rfb-vnc-auth-handshake-test` separately proves wire behavior: correct credential, wrong credential, no downgrade to None, bounded stalled auth and deliberate insecure profile. These are not TLS tests.
-
-### Multi-viewer state
-
-`hyremote-rfb-multi-client-input-test` proves two viewers cannot prematurely release each other's held key/button state, disconnect removes only the departing viewer's references, repeat semantics survive, and final release uses correct modifiers/pointer state.
-
-### Candidate maintained-viewer product fit — TG-009 CLOSED
-
-`hyremote-v01-rfb-product-fit` now registers `rfb_product_fit.py` as `candidate-evidence` (#281) and fails closed if required Python/viewer tooling is unavailable. Mainline hosted execution remains complementary.
-
-Its distinct user-level scenarios are:
 - occupied listener port fails boundedly;
 - eight incomplete handshakes expire and capacity recovers;
 - abrupt disconnect releases held modifiers/keys/buttons exactly once;
-- standard `vncdotool` reads framebuffer pixels and drives pointer/buttons/wheel/keyboard/text;
+- standard viewer reads framebuffer pixels and drives pointer/buttons/wheel/keyboard/text;
 - reconnect works and listener release is clean.
 
-Do not duplicate these end-to-end behaviors in another harness merely to change ownership.
+It retains `candidate-evidence` in addition to semantic labels.
 
-### Confirmed parser gaps
+## QML
 
-Current implementation buffers arbitrary socket fragments and enforces input/encoding/cut-text limits, but registered tests do not deliberately split all protocol fields/messages or drive all oversize reject branches. TG-013/TG-014 remain Phase-D gaps.
+`hyremote-qml-module-test` covers:
 
-## Widgets adapter
-
-`hyremote-widgets-capture-test` — Runtime/Widgets after #327/#328. It proves asynchronous owned frame, geometry/pixel/timing/damage/resize, cancellation after stop and target-loss handling. TG-001 remains because the source expects a forced DPR=1.5 run that is not registered.
-
-`hyremote-widgets-input-backpressure-test` — Runtime/Widgets after #327/#328. It proves pointer-flood coalescing, protected release capacity, unmatched-release handling, shutdown dropping of pending input, and exactly-once balancing of already-delivered held state.
-
-`hyremote-widgets-input-routing-test` — Runtime/Widgets after #327/#328; ordinary delivery/local coexistence remains distinct from saturation/backpressure.
-
-`hyremote-rfb-widget-disconnect-backpressure-test` — Runtime/RFB+Widgets after #327/#328. It requires both `HYREMOTE_REMOTEACCESS_WITH_WIDGETS` and `HYREMOTE_WITH_VNC`; TG-020 is closed and VNC-off leaves the RFB-specific test absent from registration.
-
-## Quick adapter
-
-`hyremote-quick-capture-test` — Runtime/Quick after #327/#328; asynchronous owned frame, geometry/pixel/timing/damage/resize and target-loss. TG-002 remains for missing forced-DPR run.
-
-`hyremote-quick-input-routing-test` and `hyremote-quick-input-backpressure-test` remain distinct Quick delivery/pressure contracts and are Runtime/Quick after #327/#328.
-
-## Listener ownership after #338 / B4
-
-The listener contract now has three non-overlapping proof layers.
-
-`hyremote-runtime-listener-binding-test` — T1/Runtime — added by #338 and kept unchanged by B4. It proves deterministic IPv4 binding-mode inference, interface resolution, ambiguity handling and locality from an injected interface snapshot. It does not open a real RFB listener and therefore does not replace reachability evidence.
-
-`hyremote-listener-address-matrix-test` — T2/C++ after B4. The existing identity is preserved for public facade rows only:
-- explicit loopback + selected-port start/stop/rebind lifecycle;
-- occupied-port public error mapping;
-- unavailable explicit IPv4 address fails without silent fallback;
-- IPv6 (`::1` and `::`) is rejected as invalid public configuration without mutating the accepted IPv4 binding.
-
-`hyremote-rfb-listener-reachability-test` — T1/Runtime/RFB integration after B4. It uses private `HyRemote::Runtime::AccessInstance`, not the Embedded C++ facade, and requires Widgets + VNC:
-- wildcard IPv4 is reachable through loopback;
-- explicit loopback IPv4 is reachable;
-- interface-following rebind/unavailable/recovery transitions drive real sockets while resolution is injected deterministically;
-- where the host exposes one suitable non-loopback IPv4 interface, wildcard / explicit-address / interface modes are measured against the real LAN address.
-
-A host without a suitable LAN interface reports that platform fact rather than manufacturing evidence; #338's deterministic binding test still covers the resolution contract. B4 adds exactly one CTest identity because the former mixed integration executable is split by semantic owner; no row is duplicated. The pre-#338 IPv6 reachability/dual-stack rows are obsolete because IPv6 is now explicitly fail-closed at public configuration.
-
-## QML proof layers
-
-`hyremote-qml-module-test` — T2 KEEP:
 - import/type registration and safe defaults;
 - invalid config does not mutate accepted value;
 - enabled/start failure is transactional;
-- component-complete ordering avoids target-binding race;
-- target destruction updates declarative property exactly once.
+- component-complete ordering avoids target-binding races;
+- target destruction updates the declarative property exactly once.
 
-Installed QML evidence — T4 KEEP — proves package/import/deploy closure.
+`hyremote-qml-notifications-test` owns observable typed-notification parity as described above.
 
-`qml_product_fit.py` — T5 KEEP asset — contains real-viewer client-count, view-only isolation, stop→configure→start, control input and reconnect scenarios, but TG-011 records missing execution authority.
+QML deploy-helper CTests are T4 package/deploy contracts rather than QML runtime semantics.
 
-## QPA behavior and popup stabilization
+## Generic
 
-Unique T2 QPA scenarios remain necessary: native delegate load/semantics; QPA config; automatic Shared Runtime startup; native app survival after remote failure; QWidget multi-surface; popup/transient; conditional QOpenGLWidget capture; Quick multi-window.
+`hyremote-generic-config-test` isolates launch/config parsing from Qt plugin loading.
 
-### TG-019 CLOSED
+`hyremote-generic-plugin-smoke` proves zero-code activation through public Qt plugin APIs while the application's native platform integration remains selected.
 
-`hyremote-qpa-widget-popup-connection-smoke` previously used fixed event-pump delays as synchronization. #282/#296 replaced those assumptions with bounded condition/event-driven waits for popup appearance/removal while preserving the same one-session composite-canvas contract.
+Installed Generic consumers remain separate T4 proof because in-tree plugin activation cannot prove package acquisition/deployment.
 
-Fresh first-attempt qpa-only CI run `35676277901`:
-- Linux: popup PASS 0.73s, 59/59 selected tests PASS;
-- Windows: popup PASS 1.21s, 58/58 selected tests PASS.
+## QPA
 
-No automatic retry, skip or product-code workaround was used.
+QPA-specific T2 scenarios remain distinct because they depend on the exact Qt 6.8.3 private-ABI frontend:
 
-## Deploy-helper proof layers
+- proxy/delegate load;
+- native delegate semantics;
+- QPA config vocabulary;
+- automatic Shared Runtime startup;
+- native app survival after remote failure;
+- QWidget multi-surface behavior;
+- popup/transient surface behavior;
+- conditional QOpenGLWidget capture;
+- Quick multi-window behavior.
 
-These overlap by subject but not by failure class:
+`hyremote-qpa-widget-popup-connection-smoke` uses bounded condition/event-driven synchronization; TG-019 remains closed with no retry-based correctness.
 
-- root static deploy/package scan — permanent required/forbidden implementation/package structure;
-- QML dispatch fixtures — ordinary vs QML-aware Qt deploy API and import-path preservation;
-- QPA source/installed matrix — positive combinations plus missing/stale metadata, Qt mismatch, missing package, generator shape and Linux relocation;
-- exact-SHA release evidence cell — actual clean install/deploy outputs.
+## Package / deploy proof layers
 
-Phase B may consolidate plumbing, not semantic proof layers.
+These are intentionally not consolidated merely because they all mention deployment:
 
-## Repository/build/acquisition authority
+- QML deploy dispatch: ordinary versus QML-aware helper selection/import roots;
+- QPA source/installed deploy matrix: positive combinations plus missing/stale metadata, Qt mismatch, missing package and generator shape;
+- installed C++/Generic consumers: clean package acquisition plus real application lifecycle;
+- release-readiness deployment/relocation/build-install/package-isolation checks: persistent cross-module T4 contracts;
+- `consumer-installed-sdk` release-evidence cell: smallest package/export closure, distinct from adapter applications.
 
-`hyremote-build-authority-selftest` protects canonical build argument/config behavior and current security truth. B3 moves its CTest registration to top-level repository/T3 ownership with the historical automatic-runtime capability guard preserved; TG-004 is closed.
+TG-015 path-with-spaces, TG-016 repeated destination and TG-017 Generic-off negative package behavior remain deferred P2 rather than hidden gaps.
 
-`hyremote-acquisition-audit-self-test` — TG-012 CLOSED — drives the same shared per-cache-element logic used by clean-consumer evidence, including mixed `<run-prefix>;<forbidden-source/build-path>` values that the old line-level audit could miss.
+## Release authority
 
-## V0.1 adoption smoke — TG-021 CLOSED
-
-`hyremote-v01-example-smoke` installs the SDK and independently builds/runs canonical 01/02/03 paths. It proves developer adoption, not full remote-control correctness.
-
-Phase A discovered that a QPA-only build registered this combined smoke even though 01/02 require the C++ API. #298/#300 changed registration to:
-
-- `HYREMOTE_BUILD_CPP_API`;
-- Runtime target exists;
-- Python interpreter exists.
-
-The first fresh qpa-only #296 run then proved the smoke is absent on both platforms while the remaining suites execute nonzero/pass. The longer-term decision whether to split C++ 01/02 and Generic 03 into separate capability-owned CTests remains Phase B/C, not a current blocker.
+Release profile cases remain separate CTests because each accepted/retired version shape is an independent fail-closed authority decision. `hyremote-release-authority-v02-user-first` separately protects V0.2's user-first evidence rule and does not replace generic release-profile acceptance.
 
 ## Product E2E assets without current execution authority
 
-`example_product_fit.py` retains useful app-level framebuffer, view-only→control, buttons/wheel/modifiers/text, reconnect and listener-release assertions, but historical fixture labels must be retargeted before activation (TG-010).
+`tests/product-e2e/example_product_fit.py`, `qml_product_fit.py`, and `showcase_product_fit.py` still contain useful user-level assertions, but they remain unregistered assets with explicit deferred P2 ownership in TG-010/TG-011. They are not counted as current evidence.
 
-`showcase_product_fit.py` protects showcase-specific client/input/reconnect lifecycle; `qml_product_fit.py` protects declarative user-flow semantics. Both remain T5 assets with TG-011 execution-ownership debt.
+## Final #274 status
 
-## Release scope/profile scenarios
-
-T6 cases intentionally remain separate for:
-- development all-capability and runtime-only sentinels;
-- retired 0.0.1.0/0.0.2.0/0.0.3.0 rejection;
-- representable V0.1/V0.2/V0.3/V0.4 and V0.4 maintenance;
-- V1.0 all/C++-only/Generic-only subsets.
-
-#277 expanded Feature-release scenario coverage inside authority scripts; #281 separately added candidate RFB product fit.
-
-## V0.2 preflight scenarios — separate PRE evidence
-
-`hyremote-tls-transition-preflight` is a standalone test project, not a product CTest. It proves on Qt 6.8.3/OpenSSL:
-- plaintext phase on one socket then TLS transition on that same socket;
-- OpenSSL backend identity and TLS>=1.2;
-- certificate/key prevalidation;
-- bounded handshake timeout with listener survival;
-- no fallback on failure;
-- reconnect and deterministic shutdown.
-
-VeNCrypt probe scripts supply bounded protocol/viewer feasibility evidence for #258. These preflights de-risk #143 but do not replace product security/customer-trial tests.
-
-## Phase-A overlap conclusions
-
-- QML module / installed QML / QML product-fit: all have distinct T2/T4/T5 contracts.
-- root/QML/QPA/release deploy proof layers: retain semantics, move persistent contracts to T4.
-- acquisition audit: KEEP shared #280 regression; TG-012 closed.
-- adoption smoke and viewer product fit: both KEEP; one proves SDK use, one remote behavior.
-- RFB candidate product fit: TG-009 closed by #281/#229.
-- QPA popup: TG-019 closed by #296.
-- C++-disabled adoption registration: TG-021 closed by #300/#296 evidence.
-- listener ownership: #338 Runtime binding unit + B4 C++ facade matrix + B4 Runtime/RFB reachability are distinct and non-duplicative.
-- Runtime/RFB/security/network/Widgets/Quick ownership: TG-003 closed by B1+B2+B4.
-- build-authority registration ownership: TG-004 closed by B3.
-- RFB+Widgets disconnect/backpressure: KEEP Runtime/RFB+Widgets; TG-020 closed by #327/#328 capability guard.
-- semantic execution/release-readiness classification: TG-006/TG-007 remain Phase C.
-- forced-DPR and parser negative coverage: TG-001/TG-002/TG-013/TG-014 remain Phase D P1.
-- P2 findings remain deferred unless separate evidence promotes one.
+TG-001/TG-002/TG-013/TG-014 are closed by executable coverage. TG-003/TG-004/TG-006/TG-007/TG-020 are closed by ownership/metadata/guard work. No confirmed P0/P1 gap remains. Deferred P2 findings stay in `COVERAGE_GAPS.md` and are not silently promoted into this closeout.

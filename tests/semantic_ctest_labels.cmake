@@ -10,9 +10,55 @@ function(hyremote_label_test_family labels)
     endforeach()
 endfunction()
 
+# #274 final reconciliation: TEST_CATALOG.md is the human authority for every registered CTest.
+# Collect the configured tree at configure completion so a new registration cannot silently escape
+# that catalog. This is intentionally a configure-time repository/T3 guard rather than another CTest:
+# it adds no inventory, selector or execution-tier behavior of its own.
+function(_hyremote_collect_registered_tests directory out_var)
+    get_property(_hyremote_local_tests DIRECTORY "${directory}" PROPERTY TESTS)
+    set(_hyremote_all_tests ${_hyremote_local_tests})
+
+    get_property(_hyremote_subdirs DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(_hyremote_subdir IN LISTS _hyremote_subdirs)
+        _hyremote_collect_registered_tests("${_hyremote_subdir}" _hyremote_child_tests)
+        list(APPEND _hyremote_all_tests ${_hyremote_child_tests})
+    endforeach()
+
+    set(${out_var} "${_hyremote_all_tests}" PARENT_SCOPE)
+endfunction()
+
+function(hyremote_assert_test_catalog_complete)
+    set(_hyremote_catalog "${PROJECT_SOURCE_DIR}/tests/TEST_CATALOG.md")
+    if(NOT EXISTS "${_hyremote_catalog}")
+        message(FATAL_ERROR "#274 authority is missing: ${_hyremote_catalog}")
+    endif()
+
+    file(READ "${_hyremote_catalog}" _hyremote_catalog_text)
+    _hyremote_collect_registered_tests("${PROJECT_SOURCE_DIR}" _hyremote_registered_tests)
+    list(REMOVE_DUPLICATES _hyremote_registered_tests)
+    list(SORT _hyremote_registered_tests)
+
+    set(_hyremote_missing_tests "")
+    foreach(_hyremote_test IN LISTS _hyremote_registered_tests)
+        # Exact Markdown code spans avoid accidental substring matches between similarly named tests.
+        string(FIND "${_hyremote_catalog_text}" "`${_hyremote_test}`" _hyremote_catalog_pos)
+        if(_hyremote_catalog_pos EQUAL -1)
+            list(APPEND _hyremote_missing_tests "${_hyremote_test}")
+        endif()
+    endforeach()
+
+    if(_hyremote_missing_tests)
+        string(JOIN "\n  - " _hyremote_missing_lines ${_hyremote_missing_tests})
+        message(FATAL_ERROR
+            "tests/TEST_CATALOG.md is missing registered CTest identities:\n"
+            "  - ${_hyremote_missing_lines}\n"
+            "Update the #274 catalog in the same change that adds or renames a CTest.")
+    endif()
+endfunction()
+
 # Root/T3-T6 tests are registered after module subdirectories return. This function is scheduled
-# from Core's test directory to execute in the top-level CMake directory after those registrations
-# exist, so their properties are still set in the directory that owns the tests.
+# from the top-level release-profile module to execute in the top-level CMake directory after those
+# registrations exist, so their properties are still set in the directory that owns the tests.
 function(hyremote_apply_root_semantic_test_labels)
     hyremote_label_test_family("contract;repository;fast"
         hyremote-build-authority-selftest
@@ -69,6 +115,8 @@ function(hyremote_apply_root_semantic_test_labels)
         hyremote-release-profile-v100-cpp-only
         hyremote-release-profile-v100-generic-only
     )
+
+    hyremote_assert_test_catalog_complete()
 endfunction()
 
 # QPA's T4 deploy-helper matrix is registered by the parent QPA directory after tests/ returns.
