@@ -10,7 +10,7 @@ The #274 Phase-A audit is represented by:
 - [`TEST_SCENARIOS.md`](TEST_SCENARIOS.md) — meaningful scenarios inside multi-case executables/scripts;
 - [`TEST_MATRIX.md`](TEST_MATRIX.md) — capability/platform/cost matrix and proposed semantic tiers;
 - [`EXECUTION_BASELINE.md`](EXECUTION_BASELINE.md) — current registration/execution evidence and platform reconciliation;
-- [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md) — confirmed gaps and findings closed during Phase A.
+- [`COVERAGE_GAPS.md`](COVERAGE_GAPS.md) — confirmed gaps and findings closed during Phase A or later #274 slices.
 
 Current audit baseline: `develop@e3fcf2fd06f8feca00b83b6c49c48588264cfd81`.
 
@@ -52,7 +52,7 @@ There is no current `tests/third_party` directory.
 ## Ownership rules
 
 - Core-only lifetime, timing, queue/backpressure, input, callback and dependency-neutrality invariants stay in Core.
-- Shared Runtime, RFB backend/private security and Widgets/Quick adapter behavior belong to Runtime/RFB/adapters even though several currently live under C++ tests.
+- Shared Runtime, RFB backend/private security and Widgets/Quick adapter behavior belong to Runtime/RFB/adapters. Phase B has moved the B1 Runtime/RFB/security tests and B2 Widgets/Quick adapter tests accordingly; later slices own remaining mixed cases.
 - C++ tests should protect the public `HyRemote::RemoteAccess` facade, not private transport mechanics.
 - QML, Generic and QPA tests protect behavior unique to those peer frontends and reuse the same Runtime.
 - Persistent package/deploy/acquisition tests are T4 regardless of where their fixture currently lives.
@@ -79,7 +79,7 @@ Historical age is not justification. CI time reduction alone is not justificatio
 - #280 added `hyremote-acquisition-audit-self-test`; TG-012 and #230 are closed.
 - #296 replaced fixed QPA popup sleeps with bounded condition waits; TG-019 is closed.
 - #300 guards `hyremote-v01-example-smoke` by C++ API + Runtime target + Python. #296's first fresh qpa-only run proves it is absent when CPP=OFF; TG-021 is closed.
-- `hyremote-rfb-widget-disconnect-backpressure-test` still has a weaker Widgets-only registration guard although it requires VNC/RFB; TG-020 remains open.
+- #327/#328 move the Widgets/Quick adapter tests to Runtime ownership. `hyremote-rfb-widget-disconnect-backpressure-test` now requires both Widgets and VNC/RFB at registration/build time; TG-020 is closed.
 - Widgets/Quick forced-DPR second runs remain absent (TG-001/TG-002).
 
 ## Preflight boundary
