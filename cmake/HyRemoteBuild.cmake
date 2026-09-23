@@ -924,13 +924,32 @@ file(WRITE "${identity_file}" "${identity}")
 # installs or tests is indistinguishable from a run that has died, and "wait, then read build.log" is not a build
 # interface. Verbose output is additive on top of this: it adds the exact command, never the fact that the run is
 # still working.
-function(hyb_run_phase phase_name phase_log)
+function(hyb_run_phase phase_name phase_log phase_env)
     message(STATUS "phase: ${phase_name}")
+
+    # The environment travels as one quoted string with one KEY=VALUE per line, and it is split again here, right
+    # before it is handed to `cmake -E env`. A value may contain the list separator itself - a Windows PATH is the
+    # concrete case - and a list element that contains it cannot cross a function boundary intact, which is how a
+    # path fragment ends up being executed as if it were the command. One quoted argument cannot be split by the
+    # separator, so the entries arrive whole and are re-escaped at the only place that needs them escaped.
+    set(_command "")
+    if(NOT phase_env STREQUAL "")
+        set(_command "${CMAKE_COMMAND}" -E env)
+        string(REPLACE "\n" ";" _env_entries "${phase_env}")
+        foreach(_entry IN LISTS _env_entries)
+            string(REPLACE ";" "\\;" _entry "${_entry}")
+            list(APPEND _command "${_entry}")
+        endforeach()
+    endif()
+    foreach(_argument IN LISTS ARGN)
+        list(APPEND _command "${_argument}")
+    endforeach()
+
     if(HYB_VERBOSE)
-        message(STATUS "  command  : ${ARGN}")
+        message(STATUS "  command  : ${_command}")
     endif()
     execute_process(
-        COMMAND ${ARGN}
+        COMMAND ${_command}
         RESULT_VARIABLE hyb_phase_status
         OUTPUT_VARIABLE hyb_phase_stdout
         ERROR_VARIABLE hyb_phase_stderr
@@ -975,13 +994,17 @@ foreach(entry IN LISTS HYB_CMAKE_CACHE_ENTRIES)
     list(APPEND configure_cmd "-D${entry}")
 endforeach()
 
-set(env_cmd "${CMAKE_COMMAND}" -E env)
+set(env_text "")
 foreach(entry IN LISTS HYB_ENV_ENTRIES)
-    list(APPEND env_cmd "${entry}")
+    if(env_text STREQUAL "")
+        set(env_text "${entry}")
+    else()
+        string(APPEND env_text "\n${entry}")
+    endif()
 endforeach()
 
 set(configure_log "${HYB_BUILD_DIR}/configure.log")
-hyb_run_phase(configure "${configure_log}" ${env_cmd} ${configure_cmd})
+hyb_run_phase(configure "${configure_log}" "${env_text}" ${configure_cmd})
 if(NOT HYB_PHASE_STATUS EQUAL 0)
     message(STATUS "CONFIGURE_EXIT_STATUS=${HYB_PHASE_STATUS}")
     message(STATUS "CONFIGURE_LOG=${configure_log}")
@@ -996,7 +1019,7 @@ else()
     list(APPEND build_cmd --parallel)
 endif()
 set(build_log "${HYB_BUILD_DIR}/build.log")
-hyb_run_phase(build "${build_log}" ${env_cmd} ${build_cmd})
+hyb_run_phase(build "${build_log}" "${env_text}" ${build_cmd})
 if(NOT HYB_PHASE_STATUS EQUAL 0)
     message(STATUS "BUILD_EXIT_STATUS=${HYB_PHASE_STATUS}")
     message(STATUS "BUILD_LOG=${build_log}")
@@ -1016,7 +1039,7 @@ if(HYB_INSTALL)
 
     set(install_cmd "${CMAKE_COMMAND}" --install "${HYB_BUILD_DIR}" --prefix "${HYB_INSTALL_ROOT}")
     set(install_log "${HYB_BUILD_DIR}/install.log")
-    hyb_run_phase(install "${install_log}" ${env_cmd} ${install_cmd})
+    hyb_run_phase(install "${install_log}" "${env_text}" ${install_cmd})
     if(NOT HYB_PHASE_STATUS EQUAL 0)
         message(STATUS "INSTALL_EXIT_STATUS=${HYB_PHASE_STATUS}")
         message(STATUS "INSTALL_LOG=${install_log}")
@@ -1175,7 +1198,17 @@ if(HYB_TESTS_RUN)
     endif()
 
     set(test_log "${HYB_BUILD_DIR}/test.log")
-    hyb_run_phase(test "${test_log}" "${CMAKE_COMMAND}" -E env ${test_env} ${run_test_cmd})
+    # The same one-line-per-entry form the other phases use, built here so the PATH/LD_LIBRARY_PATH entries this
+    # phase adds travel the same way.
+    set(test_env_text "")
+    foreach(entry IN LISTS test_env)
+        if(test_env_text STREQUAL "")
+            set(test_env_text "${entry}")
+        else()
+            string(APPEND test_env_text "\n${entry}")
+        endif()
+    endforeach()
+    hyb_run_phase(test "${test_log}" "${test_env_text}" ${run_test_cmd})
     if(NOT HYB_PHASE_STATUS EQUAL 0)
         # The status is the ctest process exit status, not a count of failures - ctest exits 8 whenever one or more
         # tests fail, and reporting it as "Tests failed (8)" read like eight failures and hid the actual names. The
