@@ -365,7 +365,7 @@ set(i 0)
 while(i LESS argc)
     list(GET HYB_ARGS ${i} arg)
     if(arg STREQUAL "--help")
-        message("HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config")
+        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config")
         return()
     elseif(arg MATCHES "^--config=" OR arg STREQUAL "--no-config")
         # Already consumed in pass 1.
@@ -584,27 +584,36 @@ else()
     set(HYB_INTEGRATIONS_TEXT "runtime-only")
 endif()
 
-message(STATUS "HyRemote build configuration")
-message(STATUS "  config file       : ${HYB_CONFIG_PATH}")
-message(STATUS "  integrations.cpp  : ${HYB_CPP}")
-message(STATUS "  integrations.qml  : ${HYB_QML}")
-message(STATUS "  integrations.generic: ${HYB_GENERIC}")
-message(STATUS "  integrations.qpa  : ${HYB_QPA}")
-message(STATUS "  integrations      : ${HYB_INTEGRATIONS_TEXT}")
-message(STATUS "  transport.security: ${HYB_SECURITY}")
-message(STATUS "  build type        : ${HYB_BUILD_TYPE}")
-message(STATUS "  command           : ${HYB_SUBCOMMAND}")
-message(STATUS "  build dir         : ${HYB_BUILD_DIR}")
-message(STATUS "  generator         : ${HYB_GENERATOR}")
-message(STATUS "  jobs              : ${HYB_JOBS}")
-message(STATUS "  Qt prefix         : ${HYB_QT_PREFIX}")
-message(STATUS "  toolchain         : ${HYB_TOOLCHAIN}")
-message(STATUS "  C compiler        : ${HYB_C_COMPILER}")
-message(STATUS "  C++ compiler      : ${HYB_CXX_COMPILER}")
-message(STATUS "  tests             : build=${HYB_TESTS_BUILD}, run=${HYB_TESTS_RUN}, xvfb=${HYB_TESTS_XVFB}")
-message(STATUS "  examples          : ${HYB_EXAMPLES}")
-message(STATUS "  cmake cache       : ${HYB_CMAKE_CACHE_ENTRIES}")
-message(STATUS "  env               : ${HYB_ENV_ENTRIES}")
+# Normal output is deliberately short. Where the configuration came from, where the tree goes and what kind of build
+# this is are the facts a normal run needs; the full cpp/qml/generic/qpa/compiler/toolchain/env/cache dump is
+# diagnostic and is printed when it is asked for. Diagnostics are not reduced, only their noise in the default path.
+message(STATUS "HyRemote build")
+message(STATUS "  config    : ${HYB_CONFIG_PATH}")
+message(STATUS "  build dir : ${HYB_BUILD_DIR}")
+message(STATUS "  build type: ${HYB_BUILD_TYPE}")
+
+if(HYB_SHOW_CONFIG OR HYB_VERBOSE)
+    message(STATUS "HyRemote build configuration")
+    message(STATUS "  command           : ${HYB_SUBCOMMAND}")
+    message(STATUS "  integrations.cpp  : ${HYB_CPP}")
+    message(STATUS "  integrations.qml  : ${HYB_QML}")
+    message(STATUS "  integrations.generic: ${HYB_GENERIC}")
+    message(STATUS "  integrations.qpa  : ${HYB_QPA}")
+    message(STATUS "  integrations      : ${HYB_INTEGRATIONS_TEXT}")
+    message(STATUS "  transport.security: ${HYB_SECURITY}")
+    message(STATUS "  build type        : ${HYB_BUILD_TYPE}")
+    message(STATUS "  build dir         : ${HYB_BUILD_DIR}")
+    message(STATUS "  generator         : ${HYB_GENERATOR}")
+    message(STATUS "  jobs              : ${HYB_JOBS}")
+    message(STATUS "  Qt prefix         : ${HYB_QT_PREFIX}")
+    message(STATUS "  toolchain         : ${HYB_TOOLCHAIN}")
+    message(STATUS "  C compiler        : ${HYB_C_COMPILER}")
+    message(STATUS "  C++ compiler      : ${HYB_CXX_COMPILER}")
+    message(STATUS "  tests             : build=${HYB_TESTS_BUILD}, run=${HYB_TESTS_RUN}, xvfb=${HYB_TESTS_XVFB}")
+    message(STATUS "  examples          : ${HYB_EXAMPLES}")
+    message(STATUS "  cmake cache       : ${HYB_CMAKE_CACHE_ENTRIES}")
+    message(STATUS "  env               : ${HYB_ENV_ENTRIES}")
+endif()
 
 if(HYB_SHOW_CONFIG)
     return()
@@ -621,17 +630,42 @@ if(HYB_SUBCOMMAND STREQUAL "clean")
 endif()
 file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")
 
-# Prevent one build tree from silently mixing compiler/Qt/frontend/security identities.
+# One build tree must not silently mix compiler/Qt/frontend/security identities, but a configuration change the tool
+# can handle itself must not become the user's problem: a tree that carries HyRemote's own marker is recreated here, so
+# changing build.yml or a command-line option is enough and rebuild is no longer a prerequisite.
+#
+# The marker is also the safety boundary. A directory that does not carry it was not created by this entry point, so it
+# is never removed automatically - it fails closed and names the two ways forward. `rebuild` stays the explicit
+# force-clean path, and it removes the tree before this block, so it never depends on the marker.
 set(identity
     "generator=${HYB_GENERATOR}\nqt=${HYB_QT_PREFIX}\ntoolchain=${HYB_TOOLCHAIN}\nc=${HYB_C_COMPILER}\ncxx=${HYB_CXX_COMPILER}\ncpp=${HYB_CPP}\nqml=${HYB_QML}\ngeneric=${HYB_GENERIC}\nqpa=${HYB_QPA}\nsecurity=${HYB_SECURITY}\n")
 set(identity_file "${HYB_BUILD_DIR}/.hyremote-build-identity")
+set(hyb_recreate_build_tree FALSE)
 if(EXISTS "${identity_file}")
     file(READ "${identity_file}" previous_identity)
     if(NOT previous_identity STREQUAL identity)
-        message(FATAL_ERROR
-            "The existing build directory has a different compiler/Qt/frontend/security identity. "
-            "Run build.cmd rebuild once after changing build.yml or these command-line options.")
+        set(hyb_recreate_build_tree TRUE)
     endif()
+elseif(EXISTS "${HYB_BUILD_DIR}/CMakeCache.txt")
+    message(FATAL_ERROR
+        "${HYB_BUILD_DIR} holds a CMake build tree that HyRemote did not create: it carries no "
+        ".hyremote-build-identity marker, so HyRemote will not delete it automatically. Remove that directory "
+        "yourself, or point --build-dir at another directory.")
+else()
+    file(GLOB hyb_build_dir_entries "${HYB_BUILD_DIR}/*")
+    list(LENGTH hyb_build_dir_entries hyb_build_dir_entry_count)
+    if(hyb_build_dir_entry_count GREATER 0)
+        message(FATAL_ERROR
+            "${HYB_BUILD_DIR} is not empty and carries no .hyremote-build-identity marker, so HyRemote did not create "
+            "it and will not delete it automatically. Remove that directory yourself, or point --build-dir at another "
+            "directory.")
+    endif()
+endif()
+
+if(hyb_recreate_build_tree)
+    message(STATUS "HyRemote: build configuration changed; recreating ${HYB_BUILD_DIR}")
+    file(REMOVE_RECURSE "${HYB_BUILD_DIR}")
+    file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")
 endif()
 file(WRITE "${identity_file}" "${identity}")
 
