@@ -340,7 +340,85 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}" "wasm_32")
     require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}" "gcc_arm64")
     require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}"
-        "a desktop toolchain this kit's name does not state")
+        "its directory name states no compiler family")
 endif()
+
+# 12. One cross-platform build authority, one Qt discovery pipeline, and a run that shows its work (#389).
+#
+# These are source-level assertions on purpose. What is being pinned is that there is a single implementation -
+# one process runner and one discovery pipeline - rather than that one particular host behaves well; the
+# platforms themselves prove the behaviour in their own acceptance runs.
+file(READ "${build_script}" build_authority_text)
+
+# One shared process runner, used by every phase that produces output.
+require_text(orchestration-shared-runner "${build_authority_text}" "function(hyb_run_phase")
+foreach(phase IN ITEMS configure build install test)
+    require_text("orchestration-phase-${phase}" "${build_authority_text}" "hyb_run_phase(${phase} ")
+endforeach()
+
+# A normal run is never silent: the runner duplicates the phase's own output onto the console, and no phase
+# redirects its output to a file where only a reader who knows the filename can find it.
+require_text(orchestration-live-stdout "${build_authority_text}" "ECHO_OUTPUT_VARIABLE")
+require_text(orchestration-live-stderr "${build_authority_text}" "ECHO_ERROR_VARIABLE")
+forbid_text(orchestration-silent-stdout "${build_authority_text}" "OUTPUT_FILE")
+forbid_text(orchestration-silent-stderr "${build_authority_text}" "ERROR_FILE")
+
+# The runner itself: it names the phase, echoes that phase's output as it is produced, keeps the log the callers
+# read, and gates exactly one thing on --verbose - the command echo. Anything else gated on --verbose is how a
+# normal run goes silent again.
+string(FIND "${build_authority_text}" "function(hyb_run_phase" _phase_runner_start)
+if(_phase_runner_start EQUAL -1)
+    message(FATAL_ERROR "build-authority/orchestration: hyb_run_phase is missing")
+endif()
+string(SUBSTRING "${build_authority_text}" ${_phase_runner_start} -1 hyb_phase_tail)
+string(FIND "${hyb_phase_tail}" "endfunction()" _phase_runner_end)
+if(_phase_runner_end EQUAL -1)
+    message(FATAL_ERROR "build-authority/orchestration: hyb_run_phase is not terminated")
+endif()
+math(EXPR _phase_runner_length "${_phase_runner_end} + 13")
+string(SUBSTRING "${hyb_phase_tail}" 0 ${_phase_runner_length} hyb_phase_body)
+require_text(orchestration-phase-heading "${hyb_phase_body}" "message(STATUS \"phase: \${phase_name}\")")
+require_text(orchestration-phase-live-stdout "${hyb_phase_body}" "ECHO_OUTPUT_VARIABLE")
+require_text(orchestration-phase-live-stderr "${hyb_phase_body}" "ECHO_ERROR_VARIABLE")
+require_text(orchestration-phase-log "${hyb_phase_body}" "file(WRITE \"\${phase_log}\"")
+require_text(orchestration-verbose-command "${hyb_phase_body}" "  command  : \${ARGN}")
+string(REGEX MATCHALL "HYB_VERBOSE" _hyb_phase_verbose_uses "${hyb_phase_body}")
+list(LENGTH _hyb_phase_verbose_uses _hyb_phase_verbose_count)
+if(NOT _hyb_phase_verbose_count EQUAL 1)
+    message(FATAL_ERROR
+        "build-authority/orchestration: the phase runner gates ${_hyb_phase_verbose_count} thing(s) on --verbose; "
+        "exactly the command echo may be gated, or a normal run stops being able to show that it is working")
+endif()
+
+# One Qt discovery pipeline: the platform-specific part is isolated to the roots, and the policy that follows -
+# validation, classification, the unique-candidate rule, the ambiguity refusal - carries no platform branch.
+require_text(qt-discovery-roots-function "${build_authority_text}" "function(hyb_qt_candidate_roots")
+require_text(qt-discovery-roots-shared "${build_authority_text}" "hyb_qt_candidate_roots(_roots)")
+string(FIND "${build_authority_text}" "function(hyb_qt_candidates out_list)" _qt_candidates_start)
+if(_qt_candidates_start EQUAL -1)
+    message(FATAL_ERROR "build-authority/qt-discovery-pipeline: hyb_qt_candidates is missing")
+endif()
+string(SUBSTRING "${build_authority_text}" ${_qt_candidates_start} -1 qt_candidates_tail)
+string(FIND "${qt_candidates_tail}" "endfunction()" _qt_candidates_end)
+if(_qt_candidates_end EQUAL -1)
+    message(FATAL_ERROR "build-authority/qt-discovery-pipeline: hyb_qt_candidates is not terminated")
+endif()
+math(EXPR _qt_candidates_length "${_qt_candidates_end} + 13")
+string(SUBSTRING "${qt_candidates_tail}" 0 ${_qt_candidates_length} qt_candidates_body)
+forbid_text(qt-discovery-pipeline "${qt_candidates_body}" "WIN32")
+forbid_text(qt-discovery-pipeline "${qt_candidates_body}" "UNIX")
+
+# Verbose is additive on top of a report that is already complete: the configuration facts a run decided are
+# stated with and without --verbose, and the one thing --verbose adds to the phase output is the command echo
+# already pinned above. The needles are single-spaced because these comparisons normalise whitespace first.
+run_success(verbose-normal --no-config --show-config)
+run_success(verbose-additive --no-config --verbose --show-config)
+foreach(shared_line IN ITEMS
+        "integrations : runtime-only"
+        "build type : Release"
+        "examples : OFF")
+    require_text_flat(verbose-normal "${HYB_TEST_OUTPUT}" "${shared_line}")
+    require_text_flat(verbose-additive "${HYB_TEST_OUTPUT}" "${shared_line}")
+endforeach()
 
 message(STATUS "HyRemote build authority self-tests: PASS")
