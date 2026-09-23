@@ -44,7 +44,7 @@ MyApp -platform hyremote
 V0.1 默认监听：
 
 ```text
-127.0.0.1:5921
+<host-lan-ip>:5921
 ```
 
 将标准 VNC/RFB 查看端连接到该地址即可。

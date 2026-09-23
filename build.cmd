@@ -1,4 +1,3 @@
-#!/bin/sh
 : <<'HYREMOTE_BATCH'
 @echo off
 setlocal
@@ -9,6 +8,15 @@ rem  Same file works as a POSIX shell script and as a Windows batch file. This i
 rem  the only build authority; the option, build.yml, compiler/toolchain, test and
 rem  install semantics live in cmake\HyRemoteBuild.cmake. This wrapper only
 rem  locates the bootstrap tools and forwards every argument.
+rem
+rem  There is deliberately no `#!/bin/sh` first line. cmd.exe would try to run it
+rem  as a command and print "'#!' is not recognized" on every Windows invocation.
+rem  POSIX runs this file as `sh ./build.cmd`, the first line is a heredoc opener
+rem  that sh uses to skip the batch half, and cmd reads that same line as a label.
+rem
+rem  Windows PowerShell:  .\build.cmd help
+rem  Windows cmd:         build.cmd help
+rem  POSIX:               sh ./build.cmd help
 rem
 rem    build.cmd              build (the default subcommand)
 rem    build.cmd build        configure if required, then compile

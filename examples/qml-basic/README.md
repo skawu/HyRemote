@@ -40,7 +40,7 @@ The V1 reference matrix is Qt 6.8.3 on Windows x86_64 and Linux x86_64. Reposito
 
 ## Run view-only
 
-Launch `hyremote-qml-basic` with its default acceptance policy. A VNC/RFB viewer can connect to the configured loopback port and view the Quick scene, while remote input remains blocked.
+Launch `hyremote-qml-basic` with its default acceptance policy. A VNC/RFB viewer can connect to the listener on this host's LAN IPv4 address and view the Quick scene, while remote input remains blocked.
 
 The local UI displays the actual runtime state and `connectedClientCount`; `Running` is not treated as equivalent to “viewer connected.”
 
@@ -75,7 +75,7 @@ The helper bridges the installed HyRemote QML import root into Qt's normal deplo
 
 ## Security
 
-The current bounded RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. Keep the default loopback/trusted boundary; do not expose it directly to an untrusted network or the public Internet.
+The current bounded RFB correctness baseline uses **SecurityType None**: no transport authentication and no transport encryption. Keep the default listener on a trusted LAN; do not expose it directly to an untrusted network or the public Internet.
 
 See `docs/security.md`.
 

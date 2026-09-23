@@ -34,7 +34,7 @@ application - see [example 02](learning/02-quick-cpp), which uses a Qt Quick win
 ## The 5-minute path
 
 1. **Build and run [example 01](learning/01-widgets-cpp)** - a Qt Widgets window that becomes remotely viewable.
-2. **Connect a viewer** to `127.0.0.1:<port>` and see that window.
+2. **Connect a viewer** to `<host-lan-ip>:<port>` and see that window.
 3. **Then read the guide for your route:**
    - [Embedded C++](../docs/getting-started/cpp.md) - the C++ API, for Widgets and for Quick;
    - [Generic Plugin](../docs/getting-started/generic.md) - for an application you do not want to edit;
@@ -92,7 +92,8 @@ They are not additional V0.1 primary adoption routes.
 Inside the repository build, configure with examples enabled:
 
 ```text
-build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+PowerShell:  .\build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+POSIX:       sh ./build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
 ```
 
 The runnable examples are installed into `build/install/bin/` and run from there with no Qt SDK on `PATH` and no plugin-path variables set. `build/` on its own is developer intermediate output; `build/install/` is the tree to run and to consume as an SDK.

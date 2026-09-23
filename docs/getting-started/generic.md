@@ -57,7 +57,7 @@ MyApp -plugin hyremote:port=5921
 用任意 RFB 3.8 viewer 连接该端口即可看到这个应用窗口：
 
 ```sh
-vncviewer 127.0.0.1:5921
+vncviewer <host-lan-ip>:5921
 ```
 
 ## 部署产物

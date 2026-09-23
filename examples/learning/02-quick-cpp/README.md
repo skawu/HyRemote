@@ -24,7 +24,7 @@ C++ bootstrap  ->  HyRemote::RemoteAccess remote(&view);
 
 Compare the integration lines with example 01: they are identical. Only the window and the UI language differ.
 That is the whole lesson - the UI family is your choice, the integration frontend is a separate decision, and for
-V0.1 the primary frontend is Embedded C++.
+V0.2 ships four peer frontends; this example uses Embedded C++.
 
 ## Build
 
@@ -46,14 +46,14 @@ Inside the repository build with examples enabled, this builds as part of the tr
 
 | Option | Meaning |
 | --- | --- |
-| `--port <n>` | loopback port the viewer connects to (default `5921`) |
+| `--port <n>` | listener port the viewer connects to (default `5921`) |
 | `--remote-input` | enable remote keyboard/pointer input; without it the session is view-only |
 | `--test-seconds <n>` | exit by itself after `n` seconds (used by the smoke test) |
 
 ## Connect a viewer
 
 ```sh
-vncviewer 127.0.0.1:6001
+vncviewer <host-lan-ip>:6001
 ```
 
 You should see the Quick window. With `--remote-input` you can also drive it; without it the window is view-only.
@@ -73,5 +73,5 @@ HYREMOTE_STOP=Stopped
 - reference matrix: **Windows x86_64** and **Linux x86_64**, **Qt 6.8.3**;
 - V0.2 is a **LAN-capable Developer Preview** - `0.0.0.0:5921` listener, remote input off by default, no production, GA
   or Internet-safe claim;
-- the `HyRemote` QML module is a **preview** frontend in V0.1. If you specifically want the declarative API, see the
-  QML examples; if you want the V0.1 primary path, this C++ facade is it.
+- the `HyRemote` QML module is a peer frontend, not a preview of the C++ one. If you specifically want the declarative
+  API, see the QML examples; this example is the same product reached through the C++ facade.

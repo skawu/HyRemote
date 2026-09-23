@@ -35,30 +35,34 @@ QPA additionally requires the Qt private Gui development target from the **same 
 
 ## Build HyRemote from source
 
-The repository's unified build entry point is `build.cmd`. It works on Windows and POSIX shells and reads project defaults from `build.yml`. `build.cmd build` configures and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the build tree and `build.cmd rebuild` is clean plus build. `compile.cmd` remains only as a compatibility forwarder. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers actually use.
+The repository's unified build entry point is `build.cmd`. It works on Windows and POSIX shells and reads project defaults from `build.yml`. `build.cmd build` configures and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the build tree and `build.cmd rebuild` is clean plus build. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers actually use.
 
 Inspect the resolved configuration first:
 
 ```text
-build.cmd build --show-config
+PowerShell:  .\build.cmd build --show-config
+POSIX:       sh ./build.cmd build --show-config
 ```
 
 Build the primary V0.1 paths:
 
 ```text
-build.cmd build --integrations=cpp,generic --qt-prefix=/path/to/Qt/6.8.3/<kit>
+PowerShell:  .\build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
+POSIX:       sh ./build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
 ```
 
 Build all four frontends for development:
 
 ```text
-build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=/path/to/Qt/6.8.3/<kit>
+PowerShell:  .\build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=<path>/Qt/6.8.3/<kit>
+POSIX:       sh ./build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=<path>/Qt/6.8.3/<kit>
 ```
 
 Enable examples/tests explicitly when needed:
 
 ```text
-build.cmd test --integrations=cpp,generic --examples
+PowerShell:  .\build.cmd test --integrations=cpp,generic --examples
+POSIX:       sh ./build.cmd test --integrations=cpp,generic --examples
 ```
 
 Command-line options override the corresponding `build.yml` fields. The four integrations are independent selections; enabling Generic, QML, or QPA does not make the C++ frontend their implementation parent.

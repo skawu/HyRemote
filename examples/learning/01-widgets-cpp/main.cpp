@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     parser.setApplicationDescription(QStringLiteral("HyRemote Embedded C++ API over a QMainWindow"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
-                                  QStringLiteral("Loopback port the viewer connects to."),
+                                  QStringLiteral("Listener port the viewer connects to."),
                                   QStringLiteral("port"),
                                   QStringLiteral("5921"));
     QCommandLineOption inputOption(
@@ -72,8 +72,8 @@ int main(int argc, char **argv)
 
     auto *status = new QLabel(&window);
     status->setWordWrap(true);
-    status->setText(QStringLiteral("remote control: %1\nlistening on 127.0.0.1:%2\nconnect a VNC viewer to see this "
-                                   "window from another machine on this host")
+    status->setText(QStringLiteral("remote control: %1\nlistener: 0.0.0.0:%2\nconnect a VNC viewer to this host's "
+                                   "LAN IPv4 address on port %2")
                         .arg(remoteInput ? QStringLiteral("enabled explicitly") : QStringLiteral("view-only (default)"))
                         .arg(port));
     window.setCentralWidget(status);
