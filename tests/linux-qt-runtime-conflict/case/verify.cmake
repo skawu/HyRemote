@@ -71,6 +71,51 @@ if(TEST_CASE STREQUAL "without-collection")
     return()
 endif()
 
+function(linux_qt_conflict_resolve_one library out_var)
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DPROBE_LIBRARY=${library}"
+            "-DPROBE_DIRECTORIES=${SELECTED_ROOT}"
+            -P "${CMAKE_CURRENT_LIST_DIR}/resolve-one.cmake"
+        RESULT_VARIABLE _probe_rc
+        OUTPUT_VARIABLE _probe_out
+        ERROR_VARIABLE _probe_out)
+    set(_probe_resolved "")
+    if(_probe_out MATCHES "QT6CORE_RESOLVED=([^\n\r]*)")
+        set(_probe_resolved "${CMAKE_MATCH_1}")
+    endif()
+    set(${out_var} "${_probe_resolved}" PARENT_SCOPE)
+endfunction()
+
+# The case's own precondition, proved rather than assumed: the two depending files have to reach two different
+# roots, or there would be no ambiguity for the deployment to decide and the case would be asserting nothing.
+# This is also what makes a failure diagnosable - it names which root each depending file actually reached.
+linux_qt_conflict_resolve_one("${_deploy}/lib/${_case_lib_name}" _consumer_resolution)
+linux_qt_conflict_resolve_one("${_deploy}/plugins/platforms/${PLUGIN_NAME}" _plugin_resolution)
+set(_precondition
+    "deployed runtime resolves '${_consumer_resolution}'; platform plugin resolves '${_plugin_resolution}'")
+if(_consumer_resolution STREQUAL "")
+    message(FATAL_ERROR
+        "linux-qt-runtime-conflict: fixture precondition failed for '${TEST_CASE}': the deployed runtime "
+        "resolved no Qt runtime at all, so this case would assert nothing. ${_precondition}")
+endif()
+if(TEST_CASE STREQUAL "selected-root-wins" OR TEST_CASE STREQUAL "ambiguous-selected-candidates")
+    string(FIND "${_consumer_resolution}" "${SELECTED_ROOT}/" _consumer_in_selected_root)
+    if(NOT _consumer_in_selected_root EQUAL 0)
+        message(FATAL_ERROR
+            "linux-qt-runtime-conflict: fixture precondition failed for '${TEST_CASE}': the deployed runtime "
+            "had to reach the selected root and did not. ${_precondition}")
+    endif()
+endif()
+if(TEST_CASE STREQUAL "no-selected-candidate")
+    string(FIND "${_consumer_resolution}" "${SELECTED_ROOT}/" _consumer_in_selected_root)
+    if(_consumer_in_selected_root EQUAL 0)
+        message(FATAL_ERROR
+            "linux-qt-runtime-conflict: fixture precondition failed for '${TEST_CASE}': the deployed runtime "
+            "had to miss the selected root and did not. ${_precondition}")
+    endif()
+endif()
+
 execute_process(
     COMMAND "${CMAKE_COMMAND}"
         "-DQT_DEPLOY_PREFIX=${_deploy}"
@@ -85,7 +130,8 @@ function(linux_qt_conflict_require_deployed_selected_payload)
     set(_deployed "${_deploy}/lib/libQt6Core.so.6")
     if(NOT EXISTS "${_deployed}")
         message(FATAL_ERROR
-            "linux-qt-runtime-conflict: the deployment staged no Qt runtime at all: ${_deployed}")
+            "linux-qt-runtime-conflict: the deployment staged no Qt runtime at all: ${_deployed}. "
+            "${_precondition} (case ${TEST_CASE})")
     endif()
     if(NOT EXISTS "${_selected_runtime}" OR NOT EXISTS "${_foreign_runtime}")
         message(FATAL_ERROR
@@ -98,12 +144,12 @@ function(linux_qt_conflict_require_deployed_selected_payload)
     if(_deployed_md5 STREQUAL _foreign_md5)
         message(FATAL_ERROR
             "linux-qt-runtime-conflict: the deployment staged the foreign same-SONAME payload instead of the "
-            "selected consumer Qt runtime")
+            "selected consumer Qt runtime. ${_precondition} (case ${TEST_CASE})")
     endif()
     if(NOT _deployed_md5 STREQUAL _selected_md5)
         message(FATAL_ERROR
             "linux-qt-runtime-conflict: the deployed Qt runtime is neither the selected root's payload nor a "
-            "copy of it")
+            "copy of it. ${_precondition} (case ${TEST_CASE})")
     endif()
     file(GLOB _deployed_runtime "${_deploy}/lib/libQt6Core.so.6*")
     list(LENGTH _deployed_runtime _deployed_runtime_count)

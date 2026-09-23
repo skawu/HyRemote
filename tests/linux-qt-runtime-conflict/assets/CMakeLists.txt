@@ -8,12 +8,11 @@ project(HyRemoteLinuxQtRuntimeConflictAssets LANGUAGES CXX)
 # reproduce it, and relying on a distribution Qt happening to be installed would make the mechanism
 # untestable wherever it is not - which is every hosted Linux job and every machine whose Qt layout differs.
 #
-# How the conflict is actually produced matters, so it is modelled the way the loader and CMake really work:
-# `file(GET_RUNTIME_DEPENDENCIES)` resolves each dependency from the *depending file* in a fixed order
-# (RUNPATH, then ldconfig, then DIRECTORIES) and stops at the first hit, so a conflict appears when two
-# different depending files resolve the same name to two different paths - which is exactly what happens on a
-# host where the deployed runtime and a distribution Qt are both reachable. Each consumer and each plugin
-# below therefore carries one explicit RUNPATH, and a case is a choice of two of them.
+# How the conflict is actually produced matters. `file(GET_RUNTIME_DEPENDENCIES)` resolves each dependency from
+# the *depending file* in a fixed order (RUNPATH, then ldconfig, then DIRECTORIES) and stops at the first hit, so
+# a conflict appears when two different depending files resolve the same name to two different paths - which is
+# what happens on a host where the deployed runtime and a distribution Qt are both reachable. Each consumer and
+# each plugin below therefore carries exactly ONE explicit RUNPATH, and a case is a choice of two of them.
 #
 #   qt-a/lib/libQt6Core.so.6              the selected consumer Qt runtime root's payload
 #   qt-a/lib/sub/libQt6Core.so.6          a second candidate inside that same selected root
@@ -21,8 +20,8 @@ project(HyRemoteLinuxQtRuntimeConflictAssets LANGUAGES CXX)
 #   qt-c/lib/libQt6Core.so.6              a second same-SONAME foreign payload
 #   qt-b|qt-c/lib/libhyremote-probe.so.1  a same-SONAME conflict on a library that is not the Qt runtime
 #   qt-empty/lib/libplaceholder.so        a selected root that does not carry the Qt runtime at all
-#   consumer-*/libhyremote-qtconflict-consumer.so deployed-runtime-side depending files
-#   plugin-*/libqconflictplugin*.so       platform-plugin-side depending files
+#   consumer-*/libhyremote-qtconflict-consumer.so  deployed-runtime-side depending files
+#   plugin-*/libqconflictplugin*.so                platform-plugin-side depending files
 
 if(NOT ASSET_DIR)
     message(FATAL_ERROR "ASSET_DIR is required")
@@ -58,25 +57,34 @@ _hyremote_conflict_shared_library(probe-b probe.cpp "${QT_B}" hyremote-probe ".s
 _hyremote_conflict_shared_library(probe-c probe.cpp "${QT_C}" hyremote-probe ".so.1")
 _hyremote_conflict_shared_library(placeholder placeholder.cpp "${ASSET_DIR}/qt-empty/lib" placeholder ".so")
 
-function(_hyremote_conflict_link_dependencies target)
-    # The Qt payload has no `libQt6Core.so` development symlink - a distribution Qt runtime does not have one
-    # either - so the exact SONAME is named with the linker's `-l:` form rather than letting CMake turn a full
-    # path into `-lQt6Core`, which no such installation can satisfy.
-    target_link_directories(${target} PRIVATE "${QT_B}")
-    target_link_libraries(${target} PRIVATE "-l:libQt6Core.so.6")
+# The depending files link their payload through an imported target, so the linker is handed the payload file
+# itself. Naming the payload by a search directory instead - a link directory, or a full path that CMake turns
+# into a -L/-l pair - would also put that directory into the depending file's own RUNPATH, and the depending
+# file would then reach two roots at once. That leaks a case's second root into its first one's resolution and
+# makes the case depend on RUNPATH ordering, which is precisely the environment coupling a regression must not
+# have: on one host the selected root wins by luck, on the next the foreign one does.
+function(_hyremote_conflict_import_payload name file)
+    if(NOT TARGET ${name})
+        add_library(${name} SHARED IMPORTED GLOBAL)
+        set_target_properties(${name} PROPERTIES IMPORTED_LOCATION "${file}")
+    endif()
 endfunction()
 
-# Deployed-runtime-side depending files. The consumer is what the deployment bootstraps the private Qt
-# closure from, so it must really NEED the Qt SONAME.
+_hyremote_conflict_import_payload(hyr-payload-b "${QT_B}/libQt6Core.so.6")
+_hyremote_conflict_import_payload(hyr-probe-b "${QT_B}/libhyremote-probe.so.1")
+_hyremote_conflict_import_payload(hyr-probe-c "${QT_C}/libhyremote-probe.so.1")
+
+# Deployed-runtime-side depending files. The consumer is what the deployment bootstraps the private Qt closure
+# from, so it must really NEED the Qt SONAME.
 #
 # The name is deliberately not the shipped runtime's name: these are the build tree's own artifacts, and the
 # canonical build authority puts every directory in the build tree that holds a shared runtime on the loader
-# path so the tests under test are the ones that were built. A fixture that borrowed that name would be
-# loaded by unrelated tests instead of the product, which is a failure of the fixture rather than a finding
-# about the product.
+# path so the tests under test are the ones that were built. A fixture that borrowed that name would be loaded
+# by unrelated tests instead of the product, which is a failure of the fixture rather than a finding about it.
 function(_hyremote_conflict_consumer target runpaths source)
     add_library(${target} SHARED "${source}")
-    _hyremote_conflict_link_dependencies(${target})
+    target_link_libraries(${target} PRIVATE hyr-payload-b)
+    add_dependencies(${target} payload-b)
     set_target_properties(${target} PROPERTIES
         OUTPUT_NAME "hyremote-qtconflict-consumer"
         PREFIX "lib"
@@ -87,11 +95,12 @@ function(_hyremote_conflict_consumer target runpaths source)
     )
 endfunction()
 
-# Platform-plugin-side depending files. These are the second opinion the loader forms about the same SONAME,
-# and the reason a real deployment sees an ambiguity at all.
+# Platform-plugin-side depending files. These are the second opinion the loader forms about the same SONAME, and
+# the reason a real deployment sees an ambiguity at all.
 function(_hyremote_conflict_plugin target runpaths suffix)
     add_library(${target} SHARED consumer_qt.cpp)
-    _hyremote_conflict_link_dependencies(${target})
+    target_link_libraries(${target} PRIVATE hyr-payload-b)
+    add_dependencies(${target} payload-b)
     set_target_properties(${target} PROPERTIES
         OUTPUT_NAME "qconflictplugin${suffix}"
         PREFIX "lib"
@@ -110,9 +119,8 @@ _hyremote_conflict_consumer(consumer-into-b "${QT_B}" consumer_qt.cpp)
 # A consumer that additionally NEEDs a non-Qt library present in two foreign roots: the Qt runtime resolves
 # from the selected root, and the non-Qt name is what stays ambiguous.
 add_library(consumer-probe-into-a SHARED consumer_qt_probe.cpp)
-_hyremote_conflict_link_dependencies(consumer-probe-into-a)
-target_link_directories(consumer-probe-into-a PRIVATE "${QT_B}")
-target_link_libraries(consumer-probe-into-a PRIVATE "-l:libhyremote-probe.so.1")
+target_link_libraries(consumer-probe-into-a PRIVATE hyr-payload-b hyr-probe-b)
+add_dependencies(consumer-probe-into-a payload-b probe-b)
 set_target_properties(consumer-probe-into-a PROPERTIES
     OUTPUT_NAME "hyremote-qtconflict-consumer"
     PREFIX "lib"
@@ -127,9 +135,8 @@ _hyremote_conflict_plugin(plugin-into-c "${QT_C}" "-c")
 _hyremote_conflict_plugin(plugin-into-a-sub "${QT_A_SUB}" "-a-sub")
 
 add_library(plugin-probe-into-a SHARED consumer_qt_probe.cpp)
-_hyremote_conflict_link_dependencies(plugin-probe-into-a)
-target_link_directories(plugin-probe-into-a PRIVATE "${QT_C}")
-target_link_libraries(plugin-probe-into-a PRIVATE "-l:libhyremote-probe.so.1")
+target_link_libraries(plugin-probe-into-a PRIVATE hyr-payload-b hyr-probe-c)
+add_dependencies(plugin-probe-into-a payload-b probe-c)
 set_target_properties(plugin-probe-into-a PROPERTIES
     OUTPUT_NAME "qconflictplugin-probe-a-c"
     PREFIX "lib"
