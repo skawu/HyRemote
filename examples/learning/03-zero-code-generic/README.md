@@ -76,7 +76,7 @@ Transparent QPA is the frontend that replaces it, and the two cannot be combined
 ## Connect a viewer
 
 ```sh
-vncviewer 127.0.0.1:6001
+vncviewer <host-lan-ip>:6001
 ```
 
 ## Expected result

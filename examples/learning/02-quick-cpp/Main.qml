@@ -32,7 +32,7 @@ Rectangle {
         }
 
         Text {
-            text: "listening on 127.0.0.1:" + root.listenPort
+            text: "listener: 0.0.0.0:" + root.listenPort
             color: "#c8d2e0"
         }
 
