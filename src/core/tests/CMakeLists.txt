@@ -51,7 +51,3 @@ hyremote_label_test_family("component;core;fast"
 hyremote_label_test_family("contract;core;fast"
     hyremote-core-test-dependency-boundary
 )
-
-# Root repository/release tests are registered after module subdirectories return. Defer their
-# semantic metadata to the end of the root directory without changing root registration behavior.
-cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL hyremote_apply_root_semantic_test_labels)
