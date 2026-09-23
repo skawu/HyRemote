@@ -1,144 +1,141 @@
 # HyRemote Test Catalog
 
-> Phase A authority for #274. Repository facts refreshed against `develop@e3fcf2fd06f8feca00b83b6c49c48588264cfd81`.
+> Final #274 authority. Reconciled against `develop@bee774e76a48c7a23020b5386b42ac7a2bbb56f8` after Phase D. CMake/CTest remain execution authority; this catalog is the semantic/necessity authority for every CTest registered by the top-level product build.
 >
-> This catalog answers **why each durable test exists, who owns the protected contract, and what Phase A decided to do with it**. CMake/CTest/workflows remain execution authority. `EXECUTION_BASELINE.md` records what is actually registered/executed.
+> `tests/semantic_ctest_labels.cmake` contains a configure-time drift guard: every configured CTest identity must appear here as an exact Markdown code span, otherwise configuration fails. Standalone PRE projects under `tests/preflight/` are intentionally outside this product CTest inventory.
 
-## Taxonomy and dispositions
+## Taxonomy
 
-| Layer | Meaning | Typical owner |
+| Layer | Meaning | Normal owner |
 | --- | --- | --- |
 | T1 | deterministic module/component/private-seam behavior | Core, Runtime, RFB, Widgets/Quick adapters |
 | T2 | behavior unique to one peer integration frontend | C++, QML, Generic, QPA |
-| T3 | repository/product contract independent of one candidate | build/layout/CI/public-contract governance |
-| T4 | external consumer/package/deploy/acquisition contract | installed/source consumers and deployment |
-| T5 | user/adoption/product end-to-end flow | examples and maintained-viewer product fit |
-| T6 | release/candidate-specific truth | release scope/profile/readiness/candidate evidence |
-| PRE | bounded technical-decision preflight | release-entry spike, not normal product regression |
+| T3 | repository/product contract | build/layout/CI/public-contract governance |
+| T4 | external consumer/package/deploy/acquisition | clean consumers and deployment |
+| T5 | user/adoption/product end-to-end | examples and maintained-viewer product fit |
+| T6 | release/candidate truth | release scope/profile/readiness |
+| PRE | bounded technical-decision preflight | standalone preflight project/workflow |
 
-Dispositions: `KEEP`, `MOVE`, `SPLIT`, `MERGE`, `RETIRE`, `GAP`. Phase A leaves no unresolved `REVIEW` item.
+All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions were completed during Phase B; their current semantic owner is shown below. Capability guards remain registration authority and labels never replace them.
 
-## T1 — Core: KEEP
+## T1 — Core
 
-All of the following remain Core-owned because a failure invalidates transport/UI-neutral lifetime, timing, queue, input, callback or Session semantics:
-
-- `hyremote-core-test-frame-lifetime` — asynchronous frame ownership/lifetime.
-- `hyremote-core-test-damage` — damage tri-state/region semantics.
-- `hyremote-core-test-timing` — PTS/capture scheduling semantics.
-- `hyremote-core-test-mailbox` — bounded queue/backpressure/drop accounting.
-- `hyremote-core-test-transport-handoff` — Core↔transport frame/input/event handoff.
-- `hyremote-core-test-session-lifecycle` — state machine, failures, races and deterministic teardown.
-- `hyremote-core-test-session-defaults` — safe valid default SessionConfig.
-- `hyremote-core-test-input-routing` — configured sink/lifecycle routing.
-- `hyremote-core-test-input-normalization` — backend-independent input vocabulary.
-- `hyremote-core-test-callback-lifetime` — callbacks cannot outlive stop/destruction.
-- `hyremote-core-test-callback-exception-boundary` — backend exceptions do not terminate host.
-- `hyremote-core-test-dependency-boundary` — Core remains Qt-GUI/protocol/platform neutral.
-
-`hyremote-core-test-session-lifecycle` contains many related concurrency regressions by design. File size alone is not a reason to split it.
+| CTest identity | Owner / labels | Necessity and failure meaning |
+| --- | --- | --- |
+| `hyremote-core-test-frame-lifetime` | Core / unit-fast | Proves asynchronous frame storage ownership. Failure makes captured frame lifetime unsafe. |
+| `hyremote-core-test-damage` | Core / unit-fast | Proves damage tri-state/region semantics. Failure makes incremental capture correctness untrustworthy. |
+| `hyremote-core-test-timing` | Core / unit-fast | Proves PTS/capture scheduling semantics. Failure invalidates timing/order assumptions. |
+| `hyremote-core-test-mailbox` | Core / component-fast | Proves bounded queue/backpressure/drop accounting. Failure invalidates bounded-resource behavior. |
+| `hyremote-core-test-transport-handoff` | Core / component-fast | Proves Core↔transport frame/input/event handoff. Failure invalidates the module boundary. |
+| `hyremote-core-test-session-lifecycle` | Core / integration-fast | Proves lifecycle, races, partial-start cleanup, stop ownership and deterministic teardown. Failure invalidates Session state/concurrency safety. |
+| `hyremote-core-test-session-defaults` | Core / unit-fast | Proves safe valid defaults. Failure makes default construction/configuration unsafe. |
+| `hyremote-core-test-input-routing` | Core / component-fast | Proves configured sink/lifecycle routing. Failure invalidates backend-neutral input delivery. |
+| `hyremote-core-test-input-normalization` | Core / unit-fast | Proves backend-independent input vocabulary. Failure invalidates cross-transport input semantics. |
+| `hyremote-core-test-callback-lifetime` | Core / component-fast | Proves callbacks cannot outlive stop/destruction. Failure exposes use-after-lifetime risk. |
+| `hyremote-core-test-callback-exception-boundary` | Core / component-fast | Proves backend callback exceptions do not terminate the host. Failure invalidates exception containment. |
+| `hyremote-core-test-dependency-boundary` | Core / contract-fast | Proves Core remains protocol/GUI/platform neutral. Failure invalidates architecture dependency direction. |
 
 ## T1 — Shared Runtime / RFB / adapters
 
-### Correctly Runtime-owned: KEEP
-
-- `hyremote-runtime-automatic-surface-model-test` — automatic surface discovery/model.
-- `hyremote-runtime-automatic-composite-capture-test` — composite geometry/capture.
-- `hyremote-runtime-automatic-composite-input-test` — composite input routing.
-
-### Necessary but physically misowned under C++
-
-| Test | Phase-A decision | Necessity / failure meaning |
+| CTest identity | Guard / semantic owner | Necessity and failure meaning |
 | --- | --- | --- |
-| `hyremote-security-descriptor-test` | MOVE Runtime/security | descriptor/credential parsing and fail-closed configuration |
-| `hyremote-vnc-auth-test` | MOVE Runtime/RFB | VNC authentication crypto primitive; conditional on Security |
-| `hyremote-rfb-vnc-auth-handshake-test` | MOVE Runtime/RFB | wire negotiation/auth/no-downgrade/timeout; conditional on Security |
-| `hyremote-rfb-multi-client-input-test` | MOVE Runtime/RFB | per-viewer held key/button ownership and disconnect cleanup |
-| `hyremote-input-mailbox-admission-test` | MOVE Runtime | bounded input admission/backpressure before GUI delivery |
-| `hyremote-target-component-provider-test` | MOVE Runtime/adapters | target→capture/input adapter selection |
-| `hyremote-widgets-capture-test` | MOVE Runtime/Widgets | Widgets capture/lifetime/resize; forced-DPR gap TG-001 |
-| `hyremote-widgets-input-routing-test` | MOVE Runtime/Widgets | Widgets input delivery |
-| `hyremote-widgets-input-backpressure-test` | MOVE Runtime/Widgets | bounded GUI dispatch and protected releases |
-| `hyremote-quick-capture-test` | MOVE Runtime/Quick | Quick capture/lifetime/resize; forced-DPR gap TG-002 |
-| `hyremote-quick-input-routing-test` | MOVE Runtime/Quick | Quick input delivery |
-| `hyremote-quick-input-backpressure-test` | MOVE Runtime/Quick | bounded Quick GUI dispatch |
-| `hyremote-rfb-widget-disconnect-backpressure-test` | MOVE + GAP TG-020 | RFB+Widgets disconnect cleanup under saturation; current registration guard is weaker than required VNC+Widgets capability |
-| `hyremote-listener-address-matrix-test` | SPLIT | public RemoteAccess config/error rows stay C++; raw bind/address-family semantics move Runtime/RFB |
+| `hyremote-runtime-listener-binding-test` | Runtime | Deterministic IPv4 bind-mode/interface/locality decisions from injected interface facts. Failure invalidates listener policy independently of real sockets. |
+| `hyremote-runtime-automatic-surface-model-test` | automatic Runtime available | Automatic surface discovery/model contract. |
+| `hyremote-runtime-automatic-composite-capture-test` | automatic Runtime available | Composite geometry/capture contract. |
+| `hyremote-runtime-automatic-composite-input-test` | automatic Runtime available | Composite input routing contract. |
+| `hyremote-runtime-notifications-test` | automatic Runtime available | Typed Runtime state/client/error notification ordering on real event boundaries. Failure invalidates frontend observability source semantics. |
+| `hyremote-security-descriptor-test` | Runtime | Descriptor/credential parsing and fail-closed configuration. |
+| `hyremote-target-component-provider-test` | Runtime | Target→capture/input adapter selection. Failure invalidates adapter composition. |
+| `hyremote-input-mailbox-admission-test` | Runtime | Bounded input admission/backpressure before GUI delivery. |
+| `hyremote-rfb-multi-client-input-test` | VNC | Per-viewer held key/button ownership and disconnect cleanup. Failure allows one viewer to corrupt another viewer's input state. |
+| `hyremote-rfb-wire-robustness-test` | VNC | Production-socket fragmentation plus malformed/oversized/unsupported input fail-closed behavior. Closes TG-013/TG-014. |
+| `hyremote-vnc-auth-test` | VNC + transport security | VNC Authentication crypto primitive. Failure invalidates credential challenge/response correctness. |
+| `hyremote-rfb-vnc-auth-handshake-test` | VNC + transport security | Wire auth negotiation, wrong credential, no downgrade and bounded stalled auth. Failure invalidates authenticated RFB behavior. |
+| `hyremote-widgets-capture-test` | Widgets | Ordinary Widgets capture/lifetime/resize/cancellation/target-loss contract. |
+| `hyremote-widgets-capture-forced-dpr-test` | Widgets | Executes the same capture contract at deterministic DPR=1.5. Closes TG-001; failure exposes HiDPI geometry/pixel mapping regression. |
+| `hyremote-widgets-input-routing-test` | Widgets | Widgets input delivery/local coexistence. |
+| `hyremote-widgets-input-backpressure-test` | Widgets | Pointer coalescing, protected releases and shutdown balancing under GUI pressure. |
+| `hyremote-rfb-widget-disconnect-backpressure-test` | Widgets + VNC | Real RFB disconnect cleanup while Widgets input delivery is saturated. TG-020 requires absence when VNC is unavailable. |
+| `hyremote-quick-capture-test` | Quick | Ordinary Qt Quick capture/lifetime/resize/target-loss contract. |
+| `hyremote-quick-capture-forced-dpr-test` | Quick | Executes the same Quick capture contract at deterministic DPR=1.5/software backend. Closes TG-002. |
+| `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |
+| `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure. |
+| `hyremote-rfb-listener-reachability-test` | Widgets + VNC | Real Runtime/RFB wildcard/explicit IPv4 reachability and interface reconciliation. Failure invalidates socket-level reachability while remaining independent of the C++ facade. |
 
-Support code `rfb_test_server.cpp` and its maintained-viewer harness are T5 rather than C++ facade behavior.
+## T2 — C++ frontend
 
-## T2 — C++ frontend: KEEP facade-only contracts
-
-- `hyremote-remoteaccess-test` — public defaults/config/lifecycle/move ownership/client count/input opt-in/errors/fail-closed encrypted-profile facade behavior.
-- `hyremote-remoteaccess-error-ack-test` — public diagnostic acknowledgement/reappearance.
-- `hyremote-remoteaccess-target-loss-test` — public facade behavior when target is destroyed.
-
-These may use controlled Runtime seams but must not remain the default home for RFB/security/adapter internals.
+| CTest identity | Capability | Necessity and failure meaning |
+| --- | --- | --- |
+| `hyremote-remoteaccess-test` | C++ API | Public defaults/config/lifecycle/move/client-count/input/error/fail-closed facade behavior. Failure invalidates the public C++ embedding contract. |
+| `hyremote-remoteaccess-error-ack-test` | C++ API | Public diagnostic acknowledgement/reappearance semantics. |
+| `hyremote-remoteaccess-target-loss-test` | C++ API | Public facade behavior when the target is destroyed. |
+| `hyremote-listener-address-matrix-test` | C++ API + Widgets | Public listener lifecycle/error/configuration including IPv6 fail-closed behavior. Runtime/RFB reachability rows were split out in B4. |
+| `hyremote-v01-rfb-product-fit` | C++ API + VNC + Python/viewer tooling | Maintained-viewer framebuffer/input/reconnect/timeout/held-input product-fit evidence. It keeps the special `candidate-evidence` label in addition to semantic labels. |
 
 ## T2 — QML frontend
 
-- `hyremote-qml-module-test` — **KEEP**: import/type registration, safe defaults, transactional enabled/config/error and target lifetime.
-- `hyremote-qml-deploy-helper-non-qml` — **MOVE T4**: ordinary deploy dispatch and unchanged QML import path.
-- `hyremote-qml-deploy-helper-qml` — **MOVE T4**: QML-aware deploy dispatch/import-root preservation.
-
-The module test, installed QML proof and viewer E2E are distinct T2/T4/T5 layers.
+| CTest identity | Necessity and failure meaning |
+| --- | --- |
+| `hyremote-qml-module-test` | Import/type registration, safe defaults, transactional enable/config/error and target lifetime. Failure invalidates the public declarative wrapper. |
+| `hyremote-qml-notifications-test` | Proves QML observes the shared Runtime's typed state/client/error notifications on the object thread. Failure invalidates declarative parity without duplicating Runtime mechanics. |
 
 ## T2 — Generic frontend
 
-- `hyremote-generic-plugin-smoke` — **KEEP**: zero-code activation through public Qt plugin APIs while native QPA remains selected.
-
-Installed Generic Widgets/Quick tests remain separate T4 contracts because in-tree activation cannot prove clean package acquisition/deployment.
+| CTest identity | Necessity and failure meaning |
+| --- | --- |
+| `hyremote-generic-plugin-smoke` | Zero-code activation through public Qt plugin APIs while native QPA stays selected. |
+| `hyremote-generic-config-test` | Generic launch-syntax/config mapping independent of the plugin loader. Failure invalidates Generic configuration interpretation. |
 
 ## T2 — QPA frontend
 
-All remain **KEEP** because they protect behavior unique to the private-ABI delegate frontend:
-
-- `hyremote-qpa-proxy-smoke` — platform-plugin load/delegate path.
-- `hyremote-qpa-native-semantics` — exact-private-ABI native delegate semantics.
-- `hyremote-qpa-remote-config-test` — QPA launch/config vocabulary.
-- `hyremote-qpa-auto-remoteaccess-smoke` — QPA starts the same Shared Runtime.
-- `hyremote-qpa-remote-failure-native-survival-smoke` — remote failure preserves native/local app.
-- `hyremote-qpa-multi-surface-connection-smoke` — multiple QWidget surfaces.
-- `hyremote-qpa-widget-popup-connection-smoke` — popup/transient surface behavior. TG-019 is **CLOSED** by #282/#296; synchronization is now bounded/condition-driven.
-- `hyremote-qpa-widget-opengl-capture-smoke` — conditional QOpenGLWidget classification/capture.
-- `hyremote-qpa-quick-multi-window-connection-smoke` — multiple Quick windows.
-
-QPA deployment/configuration fixtures below are T4, not T2 runtime behavior.
+| CTest identity | Necessity and failure meaning |
+| --- | --- |
+| `hyremote-qpa-proxy-smoke` | Platform-plugin load/delegate path. |
+| `hyremote-qpa-native-semantics` | Exact-private-ABI native delegate semantics. |
+| `hyremote-qpa-remote-config-test` | QPA launch/config vocabulary. |
+| `hyremote-qpa-auto-remoteaccess-smoke` | QPA starts the same Shared Runtime. |
+| `hyremote-qpa-remote-failure-native-survival-smoke` | Remote failure preserves the native/local application. |
+| `hyremote-qpa-multi-surface-connection-smoke` | Multiple QWidget surfaces share the intended remote session/composite semantics. |
+| `hyremote-qpa-widget-popup-connection-smoke` | Popup/transient surface behavior with bounded event-driven synchronization; TG-019 closed. |
+| `hyremote-qpa-widget-opengl-capture-smoke` | Conditional QOpenGLWidget classification/capture. |
+| `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. |
 
 ## T3 — repository/product contracts
 
-| Test/fixture | Decision | Necessity |
-| --- | --- | --- |
-| `hyremote-build-authority-selftest` | MOVE T3 | canonical `build.cmd`/CMake/build.yml authority; current Runtime registration is ownership debt |
-| `hyremote-ci-scope-self-test` | KEEP | classifier cannot silently select a false-green/incorrect lane |
-| `hyremote-mainline-audit-self-test` | KEEP | mainline audit retry/verification logic executes deterministically |
-| `hyremote-branch-name-gate-self-test` | KEEP | branch-family governance is executable |
-| `tests/public-api-contract` | KEEP | exported target/API/dependency shape; TG-018 is wording debt only |
-| `hyremote-release-readiness-runtime-contract` | SPLIT | permanent architecture/dependency invariants move T3; candidate-only residue remains T6 |
-| `hyremote-release-readiness-repository-layout` | MOVE T3 | canonical source/dependency layout |
-| `hyremote-release-readiness-documentation-paths` | MOVE T3 | maintained Markdown links resolve |
-| `hyremote-release-readiness-ci-environment-baseline` | MOVE T3 | hosted/reference CI environment truth |
-| `hyremote-release-readiness-licensing-boundary` | MOVE T3 | durable dependency/license boundary |
+| CTest identity | Necessity and failure meaning |
+| --- | --- |
+| `hyremote-build-authority-selftest` | Canonical `build.cmd`/CMake/build.yml behavior; repository-owned after B3. Failure makes build/bootstrap authority untrustworthy. |
+| `hyremote-ci-scope-self-test` | CI classifier self-test. Failure can create false-green or over-broad lane selection. |
+| `hyremote-mainline-audit-self-test` | Mainline audit retry/verification behavior. |
+| `hyremote-branch-name-gate-self-test` | Branch-family governance remains executable rather than prose-only. |
+| `hyremote-release-readiness-runtime-contract` | Durable Runtime architecture/dependency contract; semantically T3 despite legacy physical path. |
+| `hyremote-release-readiness-repository-layout` | Canonical source/dependency layout. |
+| `hyremote-release-readiness-documentation-paths` | Maintained Markdown paths resolve. |
+| `hyremote-release-readiness-ci-environment-baseline` | Hosted/reference environment assumptions remain explicit. |
+| `hyremote-release-readiness-licensing-boundary` | Durable dependency/license boundary. |
+
+The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake` is also a T3 authority mechanism, but intentionally is not a CTest and therefore does not change inventory/counts.
 
 ## T4 — consumer / package / deploy
 
-### Clean consumers and persistent package contracts
+| CTest identity | Semantic owner / necessity |
+| --- | --- |
+| `hyremote-acquisition-audit-self-test` | Consumer/repository — proves clean-consumer cache auditing cannot hide source/build-tree acquisition. TG-012 closed. |
+| `hyremote-cpp-installed-consumers` | Consumer/C++ — real installed Widgets+C++ and Quick+C++ lifecycle through a clean SDK. |
+| `hyremote-generic-installed-consumers` | Consumer/Generic — real installed Generic Widgets/Quick with native platform identity. |
+| `hyremote-qml-deploy-helper-non-qml` | Consumer/QML — ordinary deploy dispatch remains non-QML. |
+| `hyremote-qml-deploy-helper-qml` | Consumer/QML — QML-aware deploy dispatch/import-root preservation. |
+| `hyremote-release-readiness-security-runtime-deploy` | Consumer — deployed Runtime/security closure and runtime dependency availability. |
+| `hyremote-release-readiness-build-install-contract` | Consumer — promised build/install entry-point contract. |
+| `hyremote-release-readiness-deployment-relocation` | Consumer — installed/deployed payload remains relocatable. |
+| `hyremote-release-readiness-deploy-helper-contract` | Consumer — static deploy/package helper contract. |
+| `hyremote-release-readiness-consumer-simplicity` | Consumer — public consumption remains bounded/simple. |
+| `hyremote-release-readiness-package-acquisition-isolation` | Consumer — package acquisition stays isolated from product source/build tree. |
+| `hyremote-release-readiness-source-qpa-authority` | Consumer/QPA — source-QPA deployment authority and negative metadata behavior. |
 
-- `hyremote-acquisition-audit-self-test` — **KEEP**; #280 regression for per-cache-element source/build/run-prefix isolation (TG-012 CLOSED).
-- `hyremote-cpp-installed-consumers` — **KEEP**; real installed Widgets+C++ and Quick+C++ lifecycle.
-- `hyremote-generic-installed-consumers` — **KEEP**; real installed Generic Widgets/Quick and native platform identity.
-- `tests/consumer-installed-sdk` / `installed-sdk` cell — **KEEP, rename later**; smallest public package/export/deploy closure, distinct from adapter apps.
-- `tests/consumer-source` / `source-consumer` — **KEEP**; external add_subdirectory/source acquisition.
-- installed QML evidence — **KEEP preview**; package/import/deploy closure.
-- installed QPA evidence — **KEEP preview**; exact-private-ABI package/deploy behavior.
-- `hyremote-release-readiness-deployment-relocation` — **MOVE T4**.
-- `hyremote-release-readiness-deploy-helper-contract` — **MOVE T4**; static deploy/package contract.
-- `hyremote-release-readiness-consumer-simplicity` — **MOVE T4**.
-- `hyremote-release-readiness-package-acquisition-isolation` — **MOVE T4**.
-- `hyremote-release-readiness-source-qpa-authority` — **MOVE T4**.
+### QPA deploy-helper matrix — T4/QPA
 
-### QPA deploy-helper matrix: all KEEP semantics, MOVE T4/QPA deploy owner
-
-Each entry protects a distinct source/installed/configuration or negative failure reason:
+All entries are distinct positive/negative deployment contracts; a failure means the exact deployment mode or rejection reason is no longer trustworthy:
 
 - `hyremote-qpa-deploy-helper-ordinary`
 - `hyremote-qpa-deploy-helper-qml-only`
@@ -155,64 +152,63 @@ Each entry protects a distinct source/installed/configuration or negative failur
 - `hyremote-qpa-deploy-helper-reject-missing-package`
 - `hyremote-qpa-deploy-helper-single-config-generator`
 - `hyremote-qpa-deploy-helper-multi-config-generator`
-- `hyremote-qpa-source-payload-relocation` — Linux-only by explicit platform guard.
+- `hyremote-qpa-source-payload-relocation` — Linux-only source-payload relocation contract.
 
-Static scan, configure-negative matrix, installed fixture and exact-SHA release evidence are different proof layers; none is a deletion candidate merely to shorten CI.
+`tests/consumer-installed-sdk` remains a distinct minimal release-evidence cell rather than a normal CTest: it proves the smallest public package/export/deploy closure and is not redundant with the stronger adapter consumers.
 
-## T5 — adoption and product E2E
+## T5 — adoption / product E2E
 
-| Test/asset | Decision | Necessity / current authority |
-| --- | --- | --- |
-| `hyremote-v01-example-smoke` | KEEP | installs SDK then builds/runs canonical 01/02/03 adoption paths. Since #300 it registers only with C++ API + Runtime target + Python; TG-021 CLOSED |
-| `hyremote-v01-rfb-product-fit` / `rfb_product_fit.py` | KEEP contract, MOVE semantic owner | maintained-viewer framebuffer/input/reconnect/timeout/held-input proof; now registered as `candidate-evidence` by #281 and also retains mainline hosted authority. TG-009 CLOSED; #229 completed |
-| `tests/product-e2e/example_product_fit.py` | KEEP | stronger app-level view-only→control/input/reconnect semantics; retarget historical labels to canonical fixtures before activation |
-| `tests/product-e2e/qml_product_fit.py` | KEEP | QML observable client/view-only/control/reconfigure/reconnect flow; explicit non-fast owner still needed |
-| `tests/product-e2e/showcase_product_fit.py` | KEEP | showcase-specific client/input/reconnect lifecycle; non-fast, not a V0.1 primary gate |
+| CTest identity | Necessity and failure meaning |
+| --- | --- |
+| `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
 
-A source file without an execution authority is not evidence. The last three scripts remain assets, not current hosted coverage.
+`hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
+
+Unregistered assets `tests/product-e2e/example_product_fit.py`, `qml_product_fit.py`, and `showcase_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; source files without execution authority are not counted as evidence.
 
 ## T6 — release/candidate authority
 
-The following remain **KEEP** because each guards release selection or candidate truth rather than ordinary product mechanics:
+| CTest identity | Necessity and failure meaning |
+| --- | --- |
+| `hyremote-release-readiness-metadata` | Candidate/version/security metadata truth. |
+| `hyremote-release-readiness-release-authority-policy` | Release authority policy remains fail-closed and consistent. |
+| `hyremote-release-readiness-release-documentation-layout` | Candidate/release documentation layout required by delivery authority. |
+| `hyremote-release-scope-self-test` | Exact release-train scope selection/rejection logic. |
+| `hyremote-release-authority-v02-user-first` | V0.2 user-first release authority, including conditional secure-evidence semantics. |
+| `hyremote-release-profile-develop-all` | Development all-capability profile acceptance. |
+| `hyremote-release-profile-develop-runtime-only` | Development runtime-only profile acceptance. |
+| `hyremote-release-profile-retire-v001` | Retired pre-GA label rejection. |
+| `hyremote-release-profile-retire-v002` | Retired pre-GA label rejection. |
+| `hyremote-release-profile-retire-v003` | Retired pre-GA label rejection. |
+| `hyremote-release-profile-v010-cpp-only` | V0.1 representable C++ subset. |
+| `hyremote-release-profile-v020-runtime` | V0.2 representable Runtime profile. |
+| `hyremote-release-profile-v030-all` | V0.3 all-capability profile. |
+| `hyremote-release-profile-v040-all` | V0.4 all-capability profile. |
+| `hyremote-release-profile-v040-maintenance` | V0.4 maintenance-line acceptance. |
+| `hyremote-release-profile-v100-all` | V1 all-capability profile. |
+| `hyremote-release-profile-v100-cpp-only` | V1 C++ subset profile. |
+| `hyremote-release-profile-v100-generic-only` | V1 Generic subset profile. |
 
-- `hyremote-release-readiness-metadata` — **SPLIT** permanent assertions to T3/T4, candidate/version/security truth remains T6.
-- `hyremote-release-readiness-release-authority-policy`
-- `hyremote-release-readiness-release-documentation-layout`
-- `hyremote-release-scope-self-test`
-- `hyremote-release-profile-develop-all`
-- `hyremote-release-profile-develop-runtime-only`
-- `hyremote-release-profile-retire-v001`
-- `hyremote-release-profile-retire-v002`
-- `hyremote-release-profile-retire-v003`
-- `hyremote-release-profile-v010-cpp-only`
-- `hyremote-release-profile-v020-runtime`
-- `hyremote-release-profile-v030-all`
-- `hyremote-release-profile-v040-all`
-- `hyremote-release-profile-v040-maintenance`
-- `hyremote-release-profile-v100-all`
-- `hyremote-release-profile-v100-cpp-only`
-- `hyremote-release-profile-v100-generic-only`
+The release-profile matrix intentionally uses separate CTest identities because each representable or retired profile is an independent fail-closed release-authority contract.
 
-The release-profile matrix is intentionally many CTests: each representable/retired version is an independent fail-closed release-authority contract.
+## Current registration reconciliation
 
-## PRE — V0.2 technical preflight evidence
+Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests.
 
-`tests/preflight/` is a **standalone CMake project**, deliberately outside the normal product test graph:
+- final Phase-D #358 exact-head security-enabled inventory: Linux **108**, Windows **107**;
+- security-off equivalent: Linux **106**, Windows **105**;
+- the one platform-only identity is Linux `hyremote-qpa-source-payload-relocation`;
+- the two security-only identities are `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`;
+- #274 final reconciliation adds no CTest identity, so these counts remain unchanged.
 
-- `hyremote-tls-transition-preflight` — Qt 6.8.3/OpenSSL same-socket plaintext→TLS transition, TLS>=1.2, cert prevalidation, bounded handshake timeout, reconnect/shutdown and no fallback.
-- `run_vencrypt_interop_probe.py` / `vencrypt_interop_spike.py` — bounded maintained-viewer/protocol feasibility probes used by #258.
-- `.github/workflows/tls-preflight.yml` — Win/Linux evidence authority for the OpenSSL transition spike.
+The historical Phase-A/#300 95/94 inventory is retained only as a before-refactor baseline in `EXECUTION_BASELINE.md`; it is no longer current registration authority.
 
-Decision: **KEEP as bounded preflight evidence**. Do not count it in the normal 95/94 product CTest inventory and do not turn it into a second product build/test system.
+## Closed and deferred findings
 
-## Current registration authority and closed findings
+Closed by the #274 workstream: TG-001/002/003/004/005/006/007/008/009/012/013/014/019/020/021. There is no remaining confirmed P0/P1 gap.
 
-Default all-frontends/transport-security-off registration on current tree is **Linux 95 / Windows 94**. Linux-only QPA relocation explains the one-name platform difference. Security-enabled configurations additionally register `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`.
+Deferred P2 findings TG-010/011/015/016/017/018 retain explicit owner/rationale in `COVERAGE_GAPS.md`. They are intentionally not implementation scope for this closeout.
 
-Closed during Phase A:
-- TG-009 — candidate maintained-viewer RFB evidence binding, closed #281/#229.
-- TG-012 — clean-consumer acquisition false-pass, closed #280/#230.
-- TG-019 — QPA popup timing instability, closed #282/#296.
-- TG-021 — V0.1 adoption smoke registered in C++-disabled lanes, closed #298/#300 and proved by #296 qpa-only evidence.
+## PRE — outside normal inventory
 
-Still open and owned by later #274 phases include TG-001/002, TG-003/004/006/007, TG-010/011, TG-013–018 and TG-020. See `COVERAGE_GAPS.md`.
+`tests/preflight/` remains a standalone CMake project for bounded technical-risk evidence (currently TLS transition/VeNCrypt feasibility). PRE results do not count toward product CTest registration and do not replace product/release acceptance.

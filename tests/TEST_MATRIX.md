@@ -1,142 +1,78 @@
 # HyRemote Test Capability / Execution Matrix
 
-> Phase A companion for #274, refreshed against `develop@e3fcf2fd06f8feca00b83b6c49c48588264cfd81`.
->
-> This records **when a test family is meaningful**. Phase A does not change the remaining guards or CI selection.
+> Final #274 capability and semantic-selection authority, reconciled after Phase D against `develop@bee774e76a48c7a23020b5386b42ac7a2bbb56f8`.
 
-## Proposed Phase-C semantics
+CTest registration is controlled by capability/platform guards. Phase-C labels are additive semantic metadata and never replace those guards. Zero selected tests remains non-evidence.
 
-Types: `unit`, `component`, `integration`, `contract`, `consumer`, `e2e`, `release`; owners: `core`, `runtime`, `rfb`, `widgets`, `quick`, `cpp`, `qml`, `generic`, `qpa`, `repository`; cost: `fast`, `installed`, `e2e`, `qualification`.
+## Stable semantic labels
 
-Labels must never replace capability guards or make zero selected tests acceptable.
+Type labels: `unit`, `component`, `integration`, `contract`, `consumer`, `e2e`, `release`.
 
-## T1 Core
+Owner labels: `core`, `runtime`, `rfb`, `widgets`, `quick`, `cpp`, `qml`, `generic`, `qpa`, `repository`.
 
-| Family | Required capability | Cost | Decision |
-| --- | --- | --- | --- |
-| frame/damage/timing/mailbox | Core + tests | fast | KEEP |
-| transport handoff/input normalization/routing | Core + tests | fast | KEEP |
-| Session lifecycle/concurrency | Core + tests | integration | KEEP |
-| callback lifetime/exception | Core + tests | fast/integration | KEEP |
-| dependency boundary | source tree | contract | KEEP |
+Cost/tier labels: `fast`, `installed`, `e2e`, `qualification`.
 
-Core needs no GUI frontend, RFB or Qt Widgets/Quick.
+Existing special labels such as `candidate-evidence` remain additive and are not replaced.
 
-## Runtime / RFB / adapters
+## Capability matrix
 
-| Test/family | Current registration requirement | Semantic requirement / decision |
+| Family | Required capability / platform | Semantic owner / tier |
 | --- | --- | --- |
-| automatic surface/composite tests | Runtime + tests | KEEP Runtime |
-| security descriptor | CPP + Runtime today | MOVE Runtime/security |
-| `hyremote-vnc-auth-test` | CPP + VNC + Security | MOVE Runtime/RFB |
-| `hyremote-rfb-vnc-auth-handshake-test` | CPP + VNC + Security | MOVE Runtime/RFB |
-| RFB multi-client input | CPP + VNC | MOVE Runtime/RFB |
-| `hyremote-v01-rfb-product-fit` | CPP + VNC; Python fail-closed; `candidate-evidence` | T5 candidate maintained-viewer evidence; TG-009 CLOSED |
-| listener address matrix | CPP + Widgets | SPLIT facade vs Runtime/RFB bind/address-family |
-| input mailbox admission | CPP | MOVE Runtime |
-| target component provider | CPP | MOVE Runtime/adapters |
-| Widgets capture/routing/backpressure | CPP + Widgets | MOVE Runtime/Widgets; TG-001 on capture DPR |
-| **RFB+Widgets disconnect/backpressure** | **CPP + Widgets only today** | **TG-020: missing VNC guard**; target must require VNC + Widgets |
-| Quick capture/routing/backpressure | CPP + Quick | MOVE Runtime/Quick; TG-002 on capture DPR |
+| Core mechanics | Core + tests | Core; unit/component/integration; fast |
+| Runtime binding/security/provider/mailbox | Runtime + tests | Runtime; component/contract; fast |
+| automatic surface/composite/notification tests | `HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE` | Runtime; component/integration; fast |
+| RFB multi-client + wire robustness | VNC | RFB; integration; fast |
+| VNC auth primitive + handshake | VNC + transport security | RFB; integration; fast |
+| Widgets capture/routing/backpressure + forced DPR | Widgets adapter | Widgets; integration; fast |
+| RFB+Widgets disconnect/backpressure | Widgets + VNC | RFB; integration; fast; absent when VNC is off |
+| Quick capture/routing/backpressure + forced DPR | Quick adapter | Quick; integration; fast |
+| RFB listener reachability | Widgets + VNC | RFB; integration; fast |
+| C++ facade tests | C++ API; listener matrix additionally Widgets | C++; integration/contract; fast |
+| maintained-viewer product fit | C++ API + VNC + Python/viewer tooling | C++/RFB E2E; `candidate-evidence` |
+| QML module + notifications | QML API | QML; integration; fast |
+| QML deploy-helper fixtures | QML API | QML/consumer; contract; installed |
+| Generic config | Generic build path | Generic; contract; fast |
+| Generic plugin smoke | Generic + Widgets | Generic; integration; fast |
+| QPA behavior | exact Qt 6.8.3 private ABI; per-test Widgets/Quick/OpenGL guards | QPA; integration/contract; fast |
+| QPA deploy matrix | QPA | QPA/consumer; contract; installed |
+| QPA source payload relocation | QPA + Linux | QPA/consumer; contract; installed |
+| build/CI/repository contracts | top-level tests; some tool availability guards | repository; contract; fast |
+| installed C++ consumers | C++ API + Runtime | consumer/C++; installed |
+| installed Generic consumers | Generic | consumer/Generic; installed |
+| V0.1 example adoption | C++ API + Runtime + Python | C++ E2E; e2e |
+| release profile/scope/authority | top-level tests | repository/release; qualification |
 
-Historical CPP guards describe physical registration, not desired ownership.
+## Registration counts
 
-## Peer frontends
+Reference configuration is top-level tests with `cpp,qml,generic,qpa`, VNC enabled and Qt 6.8.3.
 
-### C++
+| Configuration | Linux | Windows | Explanation |
+| --- | ---: | ---: | --- |
+| final Phase-D security enabled | 108 | 107 | includes the two conditional VNC-auth tests |
+| final Phase-D security off | 106 | 105 | same graph minus auth primitive/handshake |
 
-- `hyremote-remoteaccess-test` — CPP, fast, KEEP public facade.
-- `hyremote-remoteaccess-error-ack-test` — CPP, fast, KEEP diagnostics.
-- `hyremote-remoteaccess-target-loss-test` — CPP, integration, KEEP embedding safety.
+The single Linux-only name is `hyremote-qpa-source-payload-relocation`. #274 final authority reconciliation adds no CTest identity, so these counts remain stable.
 
-### QML
+The historical 95/94 numbers are Phase-A/#300 before-refactor baseline only; see `EXECUTION_BASELINE.md`.
 
-- `hyremote-qml-module-test` — QML, integration, KEEP T2.
-- `hyremote-qml-deploy-helper-non-qml` / `...-qml` — QML, contract, MOVE T4.
-- `qml_product_fit.py` — no execution owner today, e2e, KEEP asset/TG-011.
+## Ownership results from Phase B
 
-### Generic
+- Runtime/RFB/security/network/Widgets/Quick tests are Runtime-owned; C++ keeps only public facade behavior plus the maintained-viewer harness registration.
+- `hyremote-build-authority-selftest` is repository/T3-owned and keeps its historical automatic-runtime capability guard.
+- Listener proof is split into deterministic Runtime binding, public C++ facade configuration/error semantics, and real Runtime/RFB socket reachability with no duplicated rows.
+- `hyremote-rfb-widget-disconnect-backpressure-test` requires both Widgets and VNC and is absent rather than skipped when VNC is unavailable.
+- permanent T3/T4/T6 meaning is carried by semantic labels even where legacy physical `release-readiness` paths remain; bulk physical relocation was deliberately not required for #274 closure.
 
-- `hyremote-generic-plugin-smoke` — Generic + Widgets, integration, KEEP.
-- installed Generic Widgets/Quick — Generic package capability, installed, KEEP T4.
+## Phase D result
 
-### QPA
+TG-001/TG-002 are closed by the forced-DPR Widgets/Quick executions. TG-013/TG-014 are closed by the real-socket RFB wire-robustness test. There is no remaining confirmed P0/P1 gap.
 
-QPA itself requires exact Qt 6.8.3 private ABI. Unique behavior tests are KEEP:
+TG-010/TG-011/TG-015/TG-016/TG-017/TG-018 remain explicit deferred P2 debt in `COVERAGE_GAPS.md`; this matrix does not promote them into ordinary fast CI.
 
-- proxy/native semantics/config — QPA;
-- auto Runtime/native-survival/multi-surface/popup — QPA + Widgets;
-- OpenGL capture — QPA + OpenGLWidgets when available;
-- Quick multi-window — QPA + Quick/software backend.
+## Selection rules
 
-`hyremote-qpa-widget-popup-connection-smoke` no longer has an open timing gap: TG-019 CLOSED by #296 bounded waits and fresh first-attempt Win/Linux qpa-only evidence.
-
-## T3 repository contracts
-
-| Family | Cost | Decision |
-| --- | --- | --- |
-| build-authority selftest | fast | MOVE from Runtime to T3 |
-| CI classifier / mainline audit / branch-name selftests | fast | KEEP T3 |
-| public API contract | contract | KEEP; TG-018 wording cleanup |
-| repository layout / documentation paths / CI environment / licensing | contract | MOVE from release-readiness to T3 |
-| Runtime architecture contract | contract | SPLIT permanent T3 vs candidate T6 |
-
-## T4 package / consumer / deploy
-
-| Family | Capability | Cost | Decision |
-| --- | --- | --- | --- |
-| acquisition-audit self-test | top-level | fast | KEEP; TG-012 CLOSED |
-| installed C++ Widgets/Quick | CPP + target adapter | installed | KEEP |
-| installed Generic Widgets/Quick | Generic | installed | KEEP |
-| minimal installed-sdk | shared package | installed | KEEP distinct minimal closure |
-| source consumer | source acquisition | source/installed | KEEP |
-| installed QML | QML | installed | KEEP preview |
-| installed QPA | QPA exact ABI | installed | KEEP preview |
-| relocation / package isolation / consumer simplicity | relevant payload | contract/installed | MOVE T4 |
-| source-QPA authority negative | QPA | contract | MOVE T4 |
-| QML deploy dispatch fixtures | QML | contract | MOVE T4 |
-| QPA deploy source/installed negative matrix | QPA | contract/installed | MOVE T4 |
-
-Open T4 robustness gaps remain TG-015 path-with-spaces, TG-016 repeated destination and TG-017 Generic-off negative contract.
-
-## T5 adoption / E2E
-
-| Asset | Current guard/authority | Decision |
-| --- | --- | --- |
-| `hyremote-v01-example-smoke` | **CPP API + Runtime target + Python** after #300 | KEEP; TG-021 CLOSED. Combined 01/02/03 split may be considered later |
-| `hyremote-v01-rfb-product-fit` | CPP + VNC, fail-closed Python/tooling, candidate label; maintained-viewer/mainline authority retained | KEEP contract/MOVE semantic RFB E2E owner; TG-009 CLOSED |
-| `example_product_fit.py` | no active owner | KEEP, retarget historical fixture naming before activation |
-| `qml_product_fit.py` | no active owner | KEEP preview/TG-011 |
-| `showcase_product_fit.py` | no active owner | KEEP non-fast/TG-011 |
-
-## T6 release authority
-
-Release metadata (candidate portion), authority policy, release documentation layout, release scope self-test and release-profile acceptance/rejection matrix remain T6. #277 expanded Feature-release scenarios inside existing registrations; #281 added the separate candidate-evidence RFB product-fit.
-
-## PRE — technical preflight
-
-`tests/preflight` is intentionally standalone:
-
-| Asset | Requirement | Authority | Meaning |
-| --- | --- | --- | --- |
-| `hyremote-tls-transition-preflight` | Qt 6.8.3 + OpenSSL SSL/Crypto | `tls-preflight.yml` Win/Linux | prove same-socket plaintext→TLS, TLS>=1.2, cert/key prevalidation, timeout/reconnect/shutdown/no fallback |
-| VeNCrypt probe scripts | Python/protocol/viewer prerequisites | #258 bounded preflight | viewer/protocol feasibility before implementation |
-
-PRE evidence is not an ordinary product CTest and is not a customer/release acceptance substitute.
-
-## Hosted reconciliation
-
-Current default all-frontends registration on #300-era tree:
-- Linux: **95 discovered**;
-- Windows: **94 discovered**;
-- only platform-name difference: Linux-only QPA source relocation.
-
-Ordinary PR fast lane excluded candidate/release-expensive tests and executed Linux 62 / Windows 61. Latest prior full all-executed baseline is #280 Linux 94/94 and Windows 93/93; #281's new candidate test has its own candidate/full authority.
-
-Reduced qpa-only run #296 (`35676277901`) proved capability guards:
-- Linux 72 discovered / 59 executed / PASS;
-- Windows 71 / 58 / PASS;
-- popup PASS both;
-- V0.1 combined example smoke absent with CPP=OFF.
-
-Exact names and interpretation are in `EXECUTION_BASELINE.md`.
+1. Capability guards decide whether a test can meaningfully exist.
+2. Semantic labels describe why it exists and enable stable inspection/selection.
+3. Ordinary PR selection may remain evidence-driven and path/classifier-aware; labels do not authorize zero-test lanes.
+4. Exact CTest names remain compatibility identities where external selectors consume them.
+5. New/renamed CTests must update `TEST_CATALOG.md` in the same change; configure-time catalog reconciliation enforces this.
