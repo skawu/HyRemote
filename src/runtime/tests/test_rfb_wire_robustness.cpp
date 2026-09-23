@@ -1,4 +1,5 @@
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QTcpServer>
@@ -362,8 +363,10 @@ void testBoundedInputBurstFailsClosed()
 
 }  // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    QCoreApplication app(argc, argv);
+
     testFragmentedHandshakeAndInput();
     testOversizedSetEncodingsFailsClosed();
     testOversizedCutTextFailsClosed();
