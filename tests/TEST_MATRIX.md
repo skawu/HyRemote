@@ -32,14 +32,16 @@ Core needs no GUI frontend, RFB or Qt Widgets/Quick.
 | `hyremote-rfb-vnc-auth-handshake-test` | Runtime + VNC + Security after B1 | Runtime/RFB |
 | RFB multi-client input | Runtime + VNC after B1 | Runtime/RFB |
 | `hyremote-v01-rfb-product-fit` | CPP + VNC; Python fail-closed; `candidate-evidence` | T5 candidate maintained-viewer evidence; TG-009 CLOSED |
-| listener address matrix | CPP + Widgets | SPLIT facade vs Runtime/RFB bind/address-family |
+| `hyremote-runtime-listener-binding-test` | Runtime + tests after #338 | T1 Runtime; deterministic IPv4 mode/interface resolution/locality without real listener I/O |
+| `hyremote-rfb-listener-reachability-test` | Runtime + Widgets + VNC after B4 | T1 Runtime/RFB integration; real wildcard/explicit IPv4 reachability and interface reconciliation; independent of CPP |
+| `hyremote-listener-address-matrix-test` | CPP + Widgets after B4 | T2 C++ facade only; public lifecycle/error mapping and IPv6 fail-closed configuration |
 | input mailbox admission | Runtime + tests after B1 | Runtime |
 | target component provider | Runtime + tests after B1 | Runtime/adapters |
 | Widgets capture/routing/backpressure | Runtime + Widgets after #327/#328 | Runtime/Widgets; TG-001 remains on capture DPR |
 | **RFB+Widgets disconnect/backpressure** | **Runtime + Widgets + VNC after #327/#328** | **TG-020 CLOSED**; absent when VNC is unavailable |
 | Quick capture/routing/backpressure | Runtime + Quick after #327/#328 | Runtime/Quick; TG-002 remains on capture DPR |
 
-Historical CPP guards describe former physical registration, not desired ownership.
+Historical CPP guards describe former physical registration, not desired ownership. B4 intentionally adds one CTest identity because one mixed listener executable becomes two semantic owners; no scenario is duplicated. IPv6 is no longer a Runtime reachability row after #338: it is a public fail-closed configuration case.
 
 ## Peer frontends
 
@@ -48,6 +50,7 @@ Historical CPP guards describe former physical registration, not desired ownersh
 - `hyremote-remoteaccess-test` — CPP, fast, KEEP public facade.
 - `hyremote-remoteaccess-error-ack-test` — CPP, fast, KEEP diagnostics.
 - `hyremote-remoteaccess-target-loss-test` — CPP, integration, KEEP embedding safety.
+- `hyremote-listener-address-matrix-test` — CPP + Widgets, integration, KEEP public listener configuration/error/lifecycle rows after B4.
 
 ### QML
 
@@ -138,5 +141,7 @@ Reduced qpa-only run #296 (`35676277901`) proved capability guards:
 - Windows 71 / 58 / PASS;
 - popup PASS both;
 - V0.1 combined example smoke absent with CPP=OFF.
+
+B4 stacked hosted evidence after #338 proves the semantic listener split adds exactly one CTest and both identities execute: Linux 104 discovered / 72 executed / PASS; Windows 103 / 71 / PASS. These counts are from the security-enabled affected lane and do not replace the historical Phase-A default-security-off baseline above.
 
 Exact names and interpretation are in `EXECUTION_BASELINE.md`.

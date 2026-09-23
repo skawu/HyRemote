@@ -44,10 +44,11 @@ All of the following remain Core-owned because a failure invalidates transport/U
 - `hyremote-runtime-automatic-surface-model-test` — automatic surface discovery/model.
 - `hyremote-runtime-automatic-composite-capture-test` — composite geometry/capture.
 - `hyremote-runtime-automatic-composite-input-test` — composite input routing.
+- `hyremote-runtime-listener-binding-test` — #338 deterministic IPv4 binding mode/interface resolution/locality contract without real listener I/O.
 
-### Necessary but physically misowned under C++
+### Phase-A MOVE/SPLIT set and later closure status
 
-| Test | Phase-A decision | Necessity / failure meaning |
+| Test | Phase-A decision / current status | Necessity / failure meaning |
 | --- | --- | --- |
 | `hyremote-security-descriptor-test` | MOVE Runtime/security | descriptor/credential parsing and fail-closed configuration |
 | `hyremote-vnc-auth-test` | MOVE Runtime/RFB | VNC authentication crypto primitive; conditional on Security |
@@ -61,8 +62,11 @@ All of the following remain Core-owned because a failure invalidates transport/U
 | `hyremote-quick-capture-test` | MOVE Runtime/Quick | Quick capture/lifetime/resize; forced-DPR gap TG-002 |
 | `hyremote-quick-input-routing-test` | MOVE Runtime/Quick | Quick input delivery |
 | `hyremote-quick-input-backpressure-test` | MOVE Runtime/Quick | bounded Quick GUI dispatch |
-| `hyremote-rfb-widget-disconnect-backpressure-test` | MOVE + GAP TG-020 | RFB+Widgets disconnect cleanup under saturation; current registration guard is weaker than required VNC+Widgets capability |
-| `hyremote-listener-address-matrix-test` | SPLIT | public RemoteAccess config/error rows stay C++; raw bind/address-family semantics move Runtime/RFB |
+| `hyremote-rfb-widget-disconnect-backpressure-test` | MOVE Runtime/RFB+Widgets; TG-020 CLOSED by #327/#328 | disconnect cleanup under saturation; registers only with Widgets + VNC and is absent when VNC is unavailable |
+| `hyremote-listener-address-matrix-test` | SPLIT / KEEP T2 identity after B4 | public RemoteAccess lifecycle/error mapping plus IPv6 fail-closed configuration stay C++-owned |
+| `hyremote-rfb-listener-reachability-test` | ADD Runtime/RFB identity from B4 split | real wildcard/explicit IPv4 reachability and interface reconciliation, independent of the C++ frontend |
+
+The listener split after #338 is deliberately three proof layers: `hyremote-runtime-listener-binding-test` owns deterministic private binding decisions; `hyremote-listener-address-matrix-test` owns public C++ configuration/error/lifecycle behavior; `hyremote-rfb-listener-reachability-test` owns real Runtime/RFB socket reachability/reconciliation. The B4 split adds exactly one CTest identity and duplicates no row. Pre-#338 IPv6 reachability/dual-stack scenarios are obsolete because IPv6 is now an explicit public rejection contract.
 
 Support code `rfb_test_server.cpp` and its maintained-viewer harness are T5 rather than C++ facade behavior.
 
@@ -71,6 +75,7 @@ Support code `rfb_test_server.cpp` and its maintained-viewer harness are T5 rath
 - `hyremote-remoteaccess-test` — public defaults/config/lifecycle/move ownership/client count/input opt-in/errors/fail-closed encrypted-profile facade behavior.
 - `hyremote-remoteaccess-error-ack-test` — public diagnostic acknowledgement/reappearance.
 - `hyremote-remoteaccess-target-loss-test` — public facade behavior when target is destroyed.
+- `hyremote-listener-address-matrix-test` — public listener lifecycle/error/configuration contract after B4; no private RFB reachability rows remain here.
 
 These may use controlled Runtime seams but must not remain the default home for RFB/security/adapter internals.
 
@@ -108,7 +113,7 @@ QPA deployment/configuration fixtures below are T4, not T2 runtime behavior.
 
 | Test/fixture | Decision | Necessity |
 | --- | --- | --- |
-| `hyremote-build-authority-selftest` | MOVE T3 | canonical `build.cmd`/CMake/build.yml authority; current Runtime registration is ownership debt |
+| `hyremote-build-authority-selftest` | MOVE T3 | canonical `build.cmd`/CMake/build.yml authority; B3 moves registration out of Runtime ownership without semantic change |
 | `hyremote-ci-scope-self-test` | KEEP | classifier cannot silently select a false-green/incorrect lane |
 | `hyremote-mainline-audit-self-test` | KEEP | mainline audit retry/verification logic executes deterministically |
 | `hyremote-branch-name-gate-self-test` | KEEP | branch-family governance is executable |
@@ -207,12 +212,13 @@ Decision: **KEEP as bounded preflight evidence**. Do not count it in the normal 
 
 ## Current registration authority and closed findings
 
-Default all-frontends/transport-security-off registration on current tree is **Linux 95 / Windows 94**. Linux-only QPA relocation explains the one-name platform difference. Security-enabled configurations additionally register `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`.
+The Phase-A default all-frontends/transport-security-off baseline was **Linux 95 / Windows 94**. Linux-only QPA relocation explained the one-name platform difference at that baseline. Later focused slices add explained identities; security-enabled configurations additionally register `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`.
 
-Closed during Phase A:
+Closed during Phase A or later #274 slices:
 - TG-009 — candidate maintained-viewer RFB evidence binding, closed #281/#229.
 - TG-012 — clean-consumer acquisition false-pass, closed #280/#230.
 - TG-019 — QPA popup timing instability, closed #282/#296.
+- TG-020 — RFB+Widgets test under-guarding, closed #327/#328 with registration/build-time Widgets + VNC capability guard.
 - TG-021 — V0.1 adoption smoke registered in C++-disabled lanes, closed #298/#300 and proved by #296 qpa-only evidence.
 
-Still open and owned by later #274 phases include TG-001/002, TG-003/004/006/007, TG-010/011, TG-013–018 and TG-020. See `COVERAGE_GAPS.md`.
+Still open and owned by later #274 phases include TG-001/002, TG-003/004/006/007, TG-010/011 and TG-013–018. See `COVERAGE_GAPS.md`.
