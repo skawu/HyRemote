@@ -94,7 +94,7 @@ Linux:
 Default behavior:
 
 - the native platform continues to own local display and input;
-- listener defaults to `127.0.0.1:5921`;
+- listener defaults to `0.0.0.0:5921`;
 - remote input is disabled by default;
 - supported application top-level surfaces participate in one logical remote session;
 - ordinary viewer disconnect/reconnect does not require restarting the Qt application.
@@ -155,7 +155,7 @@ QPA reuses the Shared Runtime security policy:
 
 - default bind is loopback;
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;
 - `AuthenticatedEncrypted` fails closed while the encrypted backend is unavailable.
 

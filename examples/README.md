@@ -34,7 +34,7 @@ application - see [example 02](learning/02-quick-cpp), which uses a Qt Quick win
 ## The 5-minute path
 
 1. **Build and run [example 01](learning/01-widgets-cpp)** - a Qt Widgets window that becomes remotely viewable.
-2. **Connect a viewer** to `127.0.0.1:<port>` and see that window.
+2. **Connect a viewer** to `<host-lan-ip>:<port>` and see that window.
 3. **Then read the guide for your route:**
    - [Embedded C++](../docs/getting-started/cpp.md) - the C++ API, for Widgets and for Quick;
    - [Generic Plugin](../docs/getting-started/generic.md) - for an application you do not want to edit;
@@ -47,7 +47,7 @@ one type, and the deployment helper is one call.
 
 | Example | What it shows |
 | --- | --- |
-| [01 - Widgets + C++](learning/01-widgets-cpp) | The shortest real C++ path: a `QMainWindow`, `HyRemote::RemoteAccess`, an explicit `start()`, a loopback listener, view-only by default, an explicit `stop()`. |
+| [01 - Widgets + C++](learning/01-widgets-cpp) | The shortest real C++ path: a `QMainWindow`, `HyRemote::RemoteAccess`, an explicit `start()`, a listener on `0.0.0.0:5921`, view-only by default, an explicit `stop()`. |
 | [02 - Quick + C++](learning/02-quick-cpp) | The same C++ path on a Qt Quick window. It links Qt Quick/Qml plus `HyRemote::RemoteAccess` and never imports `HyRemote`: **Quick UI does not require the HyRemote QML frontend.** |
 | [03 - Generic zero-code](learning/03-zero-code-generic) | Two ordinary Qt applications - Widgets and Quick - with zero HyRemote headers, zero HyRemote API calls and zero HyRemote link dependencies. They run normally, or become remotely viewable with `-plugin hyremote`. |
 
@@ -63,11 +63,11 @@ Each example directory has its own `README.md` with build, run and viewer instru
 
 ## Security boundary
 
-V0.1 is a **loopback-only Developer Preview**:
+The shipped candidate is a **LAN-capable Developer Preview**:
 
-- the listener is on the loopback interface by default;
+- the listener is on `0.0.0.0:5921` by default, so it is reachable on this host's IPv4 interfaces;
 - remote input is **off** until you explicitly enable it;
-- it is **not** Internet-safe, and V0.1 makes **no encrypted-transport promise**;
+- it is for a **trusted LAN only** and is **not** Internet-safe, and this candidate makes **no encrypted-transport promise**;
 - secure remote access over untrusted networks belongs to a later release.
 
 The deployment and platform-integrity details are in [`docs/known-limitations.md`](../docs/known-limitations.md) and
@@ -92,7 +92,13 @@ They are not additional V0.1 primary adoption routes.
 Inside the repository build, configure with examples enabled:
 
 ```text
-compile.cmd --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+PowerShell:  .\build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+POSIX:       sh ./build.cmd install --integrations=cpp,qml,generic,qpa --examples --qt-prefix=<qt-prefix>
+```
+
+The runnable examples are installed into `build/install/bin/` and run from there with no Qt SDK on `PATH` and no plugin-path variables set. `build/` on its own is developer intermediate output; `build/install/` is the tree to run and to consume as an SDK.
+
+```
 ```
 
 `HYREMOTE_BUILD_EXAMPLES=ON` is the CMake spelling, and the optional frontends stay explicit

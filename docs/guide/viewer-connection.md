@@ -44,7 +44,7 @@ MyApp -platform hyremote
 V0.1 默认监听：
 
 ```text
-127.0.0.1:5921
+<host-lan-ip>:5921
 ```
 
 将标准 VNC/RFB 查看端连接到该地址即可。
@@ -158,9 +158,9 @@ Headless/offscreen 运行不能单独证明所有物理显示/键鼠组合都已
 
 V0.1：
 
-- 默认回环；
+- 默认 `0.0.0.0:5921`；
 - 远程输入默认关闭；
-- `Insecure` 仅允许回环监听；
+- `Insecure` 未认证、未加密：监听器面向**可信 LAN**，**不适合暴露到 Internet**；
 - `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供的是 VNC authentication，不提供流加密；
 - 默认 V0.1 build/profile 不应被理解为天然带有 authenticated transport；
 - `AuthenticatedEncrypted` 尚未实现，始终在监听器创建前 fail-closed，且不会降级到较弱 profile。

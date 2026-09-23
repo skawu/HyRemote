@@ -148,7 +148,7 @@ hyremote_deploy(TARGET MyQmlApp QML QPA)
 - Embedded C++ 的构造本身是惰性的；
 - QML 在应用策略显式启用之前保持禁用；
 - QPA 的监听器创建遵循已文档化的平台插件生命周期；
-- 默认绑定回环地址；
+- 默认绑定 `0.0.0.0:5921`（本机全部 IPv4 接口可达）；
 - 远程输入默认关闭；
 - 当前 RFB SecurityType None 基线既不提供查看端认证，也不提供传输加密。
 

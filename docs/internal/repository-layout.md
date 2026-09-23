@@ -9,7 +9,7 @@ The repository is divided into shipping product code, product verification, user
 ```text
 HyRemote/
 ├─ CMakeLists.txt
-├─ compile.cmd / clean.cmd
+├─ build.cmd  (the single build/install entry point)
 ├─ README.md / CONTRIBUTING.md / SECURITY.md
 ├─ NOTICE.md / LICENSE
 │
@@ -23,6 +23,7 @@ HyRemote/
 │     └─ qpa/                    # QPA private-ABI frontend / compatibility shim
 │
 ├─ tests/                        # delivered-product verification and cross-module tests
+│  └─ preflight/                 # focused technical preflight harnesses (decision evidence, never acceptance)
 ├─ examples/                     # user-facing examples
 ├─ docs/                         # contracts, guides, ADRs, evidence and maintainer docs
 ├─ logo/                         # product branding only; never a build input
@@ -151,6 +152,8 @@ When Generic Plugin becomes an implemented payload it receives its own explicit 
 ## Tests and verification
 
 Unit/private-detail tests stay with the module whose implementation they qualify. Root `tests/` validates the delivered product from outside the internal target graph, including installed/source consumers, E2E, public API contracts, third-party application lanes and release-readiness gates.
+
+`tests/preflight/` holds focused technical preflight harnesses: bounded, repeatable programs that remove one named risk before a capability is implemented and leave behind a record in `docs/internal/`. They are evidence for a decision rather than acceptance for the delivered product, so they are standalone CMake projects with their own focused lane (`.github/workflows/tls-preflight.yml`) instead of members of the product build: a preflight may legitimately require a development package, or fail closed on a capability the product only enables optionally, and neither belongs in an ordinary developer's default test suite. Product acceptance never reads them.
 
 As implementation moves from a frontend into `src/runtime`, corresponding private tests should migrate with the implementation rather than remain permanently under the old frontend for historical reasons.
 

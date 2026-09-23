@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     parser.setApplicationDescription(QStringLiteral("HyRemote Embedded C++ API over a QMainWindow"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
-                                  QStringLiteral("Loopback port the viewer connects to."),
+                                  QStringLiteral("Listener port the viewer connects to."),
                                   QStringLiteral("port"),
                                   QStringLiteral("5921"));
     QCommandLineOption inputOption(
@@ -72,8 +72,8 @@ int main(int argc, char **argv)
 
     auto *status = new QLabel(&window);
     status->setWordWrap(true);
-    status->setText(QStringLiteral("remote control: %1\nlistening on 127.0.0.1:%2\nconnect a VNC viewer to see this "
-                                   "window from another machine on this host")
+    status->setText(QStringLiteral("remote control: %1\nlistener: 0.0.0.0:%2\nconnect a VNC viewer to this host's "
+                                   "LAN IPv4 address on port %2")
                         .arg(remoteInput ? QStringLiteral("enabled explicitly") : QStringLiteral("view-only (default)"))
                         .arg(port));
     window.setCentralWidget(status);
@@ -81,7 +81,8 @@ int main(int argc, char **argv)
 
     HyRemote::RemoteAccess remote(&window);
     remote.setPort(static_cast<quint16>(port));
-    // Remote input stays off unless the user asks for it: the V0.1 promise is a loopback-only Developer Preview.
+    // Remote input stays off unless the user asks for it: the shipped listener is reachable on this host's IPv4
+    // interfaces, which is why it is for a trusted LAN only and the reported security state says so.
     remote.setRemoteInputEnabled(remoteInput);
     if (!remote.start()) {
         const auto error = remote.lastError();

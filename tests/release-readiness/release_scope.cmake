@@ -390,7 +390,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     # Exact Features are exact: each one names its own closeable set, its own prerequisites and its own lineage, and
     # neighbouring Features never share a set by accident.
     foreach(expectation IN ITEMS
-            "0.2.0.0|143,174,259,271|258|0.1.0.0"
+            "0.2.0.0|143,174,259,326,271|258,332|0.1.0.0"
             "0.2.1.0|170,239||0.2.0.0"
             "0.3.0.0|240,241,264||0.2.1.0"
             "0.3.1.0|265|260|0.3.0.0"

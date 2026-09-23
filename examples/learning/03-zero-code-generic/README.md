@@ -76,7 +76,7 @@ Transparent QPA is the frontend that replaces it, and the two cannot be combined
 ## Connect a viewer
 
 ```sh
-vncviewer 127.0.0.1:6001
+vncviewer <host-lan-ip>:6001
 ```
 
 ## Expected result
@@ -93,7 +93,7 @@ The platform name is the whole point: it must be the same in both launches.
 ## V0.1 boundary
 
 - reference matrix: **Windows x86_64** and **Linux x86_64**, **Qt 6.8.3**;
-- V0.1 is a **loopback-only Developer Preview** - the listener is loopback, remote input is off unless enabled, and
+- V0.2 is a **LAN-capable Developer Preview** - the listener is `0.0.0.0:5921`, remote input is off unless enabled, and
   nothing here is a production, GA or Internet-safe claim;
 - see [`docs/guide/deployment.md`](../../../docs/guide/deployment.md) for the deployment details and
   [`docs/getting-started/generic.md`](../../../docs/getting-started/generic.md) for the integration guide.

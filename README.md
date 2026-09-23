@@ -146,23 +146,26 @@ src/
 
 ## Build
 
-The repository's normal developer build is driven by `compile.cmd` and `build.yml`. The checked-in profile enables all four integrations for development; integrations are independent selections and none implies another.
+The repository's normal developer build is driven by `build.cmd` and `build.yml`. `build.cmd` is the single build authority: `build.cmd build` configures if needed and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the tree and `build.cmd rebuild` is clean plus build. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers take. The checked-in profile enables all four integrations for development; integrations are independent selections and none implies another.
 
 ```text
-compile.cmd --show-config
-compile.cmd --integrations=cpp,generic
-compile.cmd --integrations=cpp,qml,generic,qpa --tests --run-tests
+PowerShell:  .\build.cmd build --show-config
+POSIX:       sh ./build.cmd build --show-config
+PowerShell:  .\build.cmd build --integrations=cpp,generic
+POSIX:       sh ./build.cmd build --integrations=cpp,generic
+PowerShell:  .\build.cmd test --integrations=cpp,qml,generic,qpa
+POSIX:       sh ./build.cmd test --integrations=cpp,qml,generic,qpa
 ```
 
 For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_deploy()` instead of manually copying internal libraries or plugins.
 
 ## Security model in V0.1
 
-V0.1 is a **Developer Preview with a loopback-first security boundary**:
+The shipped V0.2.0.0 candidate is a **user-first LAN trial with a truthful security boundary**:
 
-- default bind: `127.0.0.1`;
+- default bind: `0.0.0.0:5921` (reachable on the host's IPv4 interfaces), or one exact local IPv4, or a named interface;
 - remote input: off by default;
-- `Insecure` is loopback-only; non-loopback startup is rejected;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is conditional: it requires a transport-security-enabled HyRemote build plus a valid security descriptor, and currently provides VNC authentication without stream encryption;
 - the default V0.1 build/profile does not imply authenticated transport is present;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before any listener is opened, without fallback to a weaker profile.

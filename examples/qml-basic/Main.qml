@@ -129,7 +129,7 @@ ApplicationWindow {
 
         Label {
             text: "State: " + remote.state + " · clients: " + remote.connectedClientCount
-                  + " · 127.0.0.1:" + acceptancePort
+                  + " · <host-lan-ip>:" + acceptancePort
             color: "#c6ceda"
         }
     }

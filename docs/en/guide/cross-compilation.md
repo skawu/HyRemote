@@ -10,29 +10,36 @@ project's build script and a **CMake toolchain file**.
 
 ## 1. The build entry point: one script, both platforms
 
-`compile.cmd` in the repository root is **both a POSIX shell script and a Windows batch file**:
+`build.cmd` in the repository root is **both a POSIX shell script and a Windows batch file**, and it is the
+repository's **single build and install authority**:
 
 ```text
-Windows:  compile.cmd --mode qpa --qt-prefix C:/Qt/6.8.3/mingw_64
-Linux:    sh compile.cmd --mode qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
+Windows:  .\build.cmd build --integrations=qpa --qt-prefix C:/Qt/6.8.3/mingw_64
+Linux:    sh ./build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 ```
 
-The default integration mode is **QPA** (change `HYREMOTE_DEFAULT_MODE` near the top of the script); command-line
-arguments override it:
+Configuration precedence is **built-in defaults < `build.yml` < the command line**: `build.yml` holds the
+repository's developer profile and command-line arguments override it:
 
 | Argument | Meaning |
 | --- | --- |
-| `--mode qpa` (default) | Transparent QPA proxy (`-platform hyremote`) |
-| `--mode cpp` | Embedded C++ only (`HyRemote::RemoteAccess`) |
-| `--mode qml` | Declarative QML (`import HyRemote`) |
-| `--mode all` | All three integration modes |
-| `--mode minimal` | Minimal build (no examples/tests/QML/QPA) |
-| `--toolchain <file>.cmake` | **Select the cross-compilation toolchain file** |
-| `--qt-prefix <path>` | Target Qt 6.8.3 installation prefix |
-| `--build-type Release\|Debug` | Build type (default Release) |
-| `--tests` | Also build tests |
+| `--mode=qpa` | Transparent QPA proxy (`-platform hyremote`) |
+| `--mode=cpp` | Embedded C++ only (`HyRemote::RemoteAccess`) |
+| `--mode=qml` | Declarative QML (`import HyRemote`) |
+| `--mode=generic` | Zero-code `QGenericPlugin` frontend (`-plugin hyremote`) |
+| `--mode=all` | Every integration frontend |
+| `--mode=runtime` | The shared runtime alone, with no frontend |
+| `--mode=minimal` | Minimal build (no examples, tests, QML or QPA) |
+| `--integrations=cpp,qml,generic,qpa` | Select frontends exactly; never prepends C++ |
+| `--toolchain=FILE.cmake` | **Select the cross-compilation toolchain file** |
+| `--qt-prefix=PATH` | Target Qt 6.8.3 installation prefix |
+| `--build-type=Release\|Debug` | Build type (default Release) |
+| `--build-dir=DIR` | Build tree (default `build`) |
+| `--tests` / `--run-tests` | Build tests / build and run them |
 | `--no-examples` | Do not build examples |
-| `--clean` | Delete the build directory and reconfigure |
+| `--security` | Transport-security capability (VNC Authentication) |
+| `--clean` | Delete the build tree and reconfigure |
+| `--cmake=KEY=VALUE`, `--env=KEY=VALUE` | Extra configure cache entries / environment, repeatable |
 | `-v` | Verbose output (otherwise logs go to `build/configure.log` and `build/build.log`) |
 
 Both spellings work: `--mode qpa` and `--mode=qpa`.
@@ -43,16 +50,16 @@ This project keeps **one** build directory, `build/` (git-ignored):
 
 - every artifact lands in `build/`, with no per-mode subdirectory, and the logs live inside it too, so no build file
   appears in the repository root;
-- **switching integration mode or rebuilding means cleaning first**: `clean.cmd` removes the whole `build/`;
+- **switching integration mode or rebuilding means cleaning first**: `build.cmd clean` removes the whole `build/` (and with it the install root inside it);
 - if `build/` already holds a configuration for a different mode, the script **refuses to mix** and prints the exact
-  command (`compile.cmd --clean --mode <new-mode>`) instead of silently reusing a possibly stale cache.
+  command (`build.cmd rebuild --integrations=<new-mode>`) instead of silently reusing a possibly stale cache.
 
-Cleaning entry point: `clean.cmd` (removes `build/`).
+Cleaning entry point: `build.cmd clean` (removes `build/`).
 
 ## 2. Selecting a cross-compilation toolchain
 
 ```text
-sh compile.cmd --mode qpa \
+sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```

@@ -56,7 +56,7 @@ ApplicationWindow {
 
 默认行为与 C++ API 一致：
 
-- 默认监听 `127.0.0.1:5921`；
+- 默认监听 `0.0.0.0:5921`；
 - 远程输入默认关闭；
 - 未显式启用时不会启动 Runtime；
 - 安全行为由 Shared Runtime 统一实现。
@@ -140,7 +140,7 @@ hyremote_deploy(TARGET MyQmlApp QML QPA)
 
 V0.1 的 Shared Runtime 采用回环优先策略：
 
-- 默认绑定 `127.0.0.1`；
+- 默认绑定 `0.0.0.0`（本机全部 IPv4 接口），也可指定一个精确的本机 IPv4，或指定网卡；
 - 远程输入默认关闭；
 - 未认证非回环监听被拒绝；
 - `Authenticated` 可使用 RFB VNC authentication，但数据流不加密；

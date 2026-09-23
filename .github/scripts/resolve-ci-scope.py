@@ -36,7 +36,7 @@ import sys
 PEERS = ["cpp", "qml", "generic", "qpa"]
 
 COMMON_FILES = {
-    "CMakeLists.txt", "compile.cmd", "build.yml", ".github/workflows/ci.yml",
+    "CMakeLists.txt", "build.cmd", "build.yml", ".github/workflows/ci.yml",
 }
 
 COMMON_PREFIXES = (
@@ -128,6 +128,41 @@ GOVERNANCE_ONLY_PATHS = (
 # A name no exclusion is ever allowed to match. Any expression that matches it excludes every test, which would make
 # the lane claim integration while executing nothing.
 DANGEROUS_REGEX_PROBE = "hyremote-probe-name-that-no-exclusion-may-match"
+
+# VNC Authentication and the private-security surfaces behind it. The ordinary product matrix is security-off, so a
+# green ordinary run is not evidence that these still build or pass: a diff that can invalidate this path has to make
+# the product job request security explicitly. This is deliberately the narrow set of files that actually control
+# VNC-auth capability and registration, not "everything under src/runtime/".
+SECURITY_EVIDENCE_PATHS = (
+    # The C++ facade keeps one security-sensitive contract after the VNC-auth tests moved to Runtime: its CMake
+    # registration decides whether test_remote_access.cpp sees the same private capability define as the Runtime.
+    "src/integrations/cpp/tests/CMakeLists.txt",
+    "src/integrations/cpp/tests/test_remote_access.cpp",
+    # Authenticated startup itself changes behavior under HYREMOTE_HAS_TRANSPORT_SECURITY, so changes here require
+    # evidence from a build that actually compiled that branch.
+    "src/runtime/src/access_instance.cpp",
+    "src/runtime/tests/test_vnc_auth.cpp",
+    "src/runtime/tests/test_rfb_vnc_auth_handshake.cpp",
+    "src/runtime/tests/CMakeLists.txt",
+    "src/runtime/src/transport/vnc_auth.cpp",
+    "src/runtime/src/transport/vnc_auth.hpp",
+    "src/runtime/src/transport/rfb_transport.cpp",
+    "src/runtime/src/transport/rfb_transport.hpp",
+    "src/runtime/src/detail/security_descriptor.cpp",
+    "src/runtime/src/detail/security_descriptor.hpp",
+    "cmake/HyRemoteProjectOptions.cmake",
+    # The one additional file source inspection proved directly controls the capability: under HYREMOTE_WITH_VNC this
+    # file adds the RFB transport source to the Shared Runtime target and defines HYREMOTE_HAS_RFB_TRANSPORT, which is
+    # the other half of the tests' HYREMOTE_WITH_VNC + HYREMOTE_TRANSPORT_SECURITY_AVAILABLE guard.
+    "src/runtime/CMakeLists.txt",
+    # The deployment closure of the transport security runtime. Source inspection: these four files decide whether a
+    # security-enabled deploy carries the OpenSSL runtime the shared runtime loads (HyRemoteProjectOptions resolves it,
+    # HyRemoteInstall packages it, HyRemoteConfig publishes it, HyRemoteDeploy emits it), so a diff here can only be
+    # settled by a security-on run. The rest of cmake/ does not control the capability and is deliberately absent.
+    "cmake/HyRemoteDeploy.cmake",
+    "cmake/HyRemoteInstall.cmake",
+    "cmake/HyRemoteConfig.cmake.in",
+)
 
 
 def exclusion_is_total(test_exclude: str) -> bool:
@@ -225,6 +260,12 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         path.startswith(GOVERNANCE_PREFIXES) or path in GOVERNANCE_ONLY_PATHS for path in changed
     )
 
+    # Ordinary product CI builds with security off, so the VNC-auth tests are never compiled by it and a green
+    # ordinary run says nothing about them. This stays strictly path-driven: making the full gate security-on would
+    # silently change the release/candidate security profile, which is separate release authority rather than
+    # something a scope classifier may decide.
+    security_evidence = any(path in SECURITY_EVIDENCE_PATHS for path in changed)
+
     ordered = [peer for peer in PEERS if peer in selected]
     integrations = ",".join(ordered)
     # A capability is only built when the lane is allowed to build anything: the sentinel is policy, and a draft has
@@ -264,6 +305,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         "readiness_evidence": "true" if readiness_evidence else "false",
         "rfb_product_fit_evidence": "true" if (rfb_product_fit_evidence and product) else "false",
         "governance": "true" if governance else "false",
+        "security_evidence": "true" if (security_evidence and product) else "false",
         "test_exclude": test_exclude,
     }
 
@@ -338,6 +380,52 @@ def self_test() -> int:
           "src/integrations/generic/generic_plugin.cpp",
           "src/integrations/qpa/qpa_platform.cpp",
           "tests/release-readiness/run_release_evidence.cmake"], False, {"readiness_evidence": "true"}),
+        # The ordinary product matrix is security-off, so a diff that can invalidate the VNC-auth/private-security
+        # path has to make the product job request security explicitly. A green security-off run is not evidence for
+        # tests it never compiled.
+        ("vnc auth primitive test requests security evidence", "pull_request",
+         ["src/runtime/tests/test_vnc_auth.cpp"], False, {"security_evidence": "true", "product": "true"}),
+        ("vnc auth handshake test requests security evidence", "pull_request",
+         ["src/runtime/tests/test_rfb_vnc_auth_handshake.cpp"], False, {"security_evidence": "true"}),
+        ("runtime test registration requests security evidence", "pull_request",
+         ["src/runtime/tests/CMakeLists.txt"], False, {"security_evidence": "true"}),
+        ("vnc auth implementation requests security evidence", "pull_request",
+         ["src/runtime/src/transport/vnc_auth.cpp"], False, {"security_evidence": "true"}),
+        ("vnc auth header requests security evidence", "pull_request",
+         ["src/runtime/src/transport/vnc_auth.hpp"], False, {"security_evidence": "true"}),
+        ("rfb transport implementation requests security evidence", "pull_request",
+         ["src/runtime/src/transport/rfb_transport.cpp"], False, {"security_evidence": "true"}),
+        ("rfb transport header requests security evidence", "pull_request",
+         ["src/runtime/src/transport/rfb_transport.hpp"], False, {"security_evidence": "true"}),
+        ("security descriptor source requests security evidence", "pull_request",
+         ["src/runtime/src/detail/security_descriptor.cpp"], False, {"security_evidence": "true"}),
+        ("security descriptor header requests security evidence", "pull_request",
+         ["src/runtime/src/detail/security_descriptor.hpp"], False, {"security_evidence": "true"}),
+        ("transport security option requests security evidence", "pull_request",
+         ["cmake/HyRemoteProjectOptions.cmake"], False, {"security_evidence": "true"}),
+        ("runtime vnc capability registration requests security evidence", "pull_request",
+         ["src/runtime/CMakeLists.txt"], False, {"security_evidence": "true"}),
+        ("cpp facade test registration requests security evidence", "pull_request",
+         ["src/integrations/cpp/tests/CMakeLists.txt"], False, {"security_evidence": "true"}),
+        ("cpp facade capability contract requests security evidence", "pull_request",
+         ["src/integrations/cpp/tests/test_remote_access.cpp"], False, {"security_evidence": "true"}),
+        ("authenticated startup branch requests security evidence", "pull_request",
+         ["src/runtime/src/access_instance.cpp"], False, {"security_evidence": "true"}),
+        # ... and nothing beyond that narrow set pays the security-on cost.
+        ("unrelated runtime source requests no security evidence", "pull_request",
+         ["src/runtime/runtime.cpp"], False, {"security_evidence": "false", "product": "true"}),
+        ("unrelated runtime test requests no security evidence", "pull_request",
+         ["src/runtime/tests/test_security_descriptor.cpp"], False, {"security_evidence": "false"}),
+        ("documentation-only change requests no security evidence", "pull_request",
+         ["docs/proposals/notes.md"], False, {"security_evidence": "false"}),
+        ("draft security PR requests no security evidence", "pull_request",
+         ["src/runtime/tests/test_vnc_auth.cpp"], True,
+         {"security_evidence": "false", "product": "false"}),
+        ("develop sentinel requests no security evidence", "push", [], False, {"security_evidence": "false"}),
+        # The full gate must not silently become security-on: exact release/candidate security profile selection is
+        # separate release authority, and this slice only binds affected-PR hosted evidence.
+        ("full gate does not silently become security-on", "workflow_dispatch", [], False,
+         {"security_evidence": "false", "lane": "FULL_GATE", "product": "true"}),
     ]
 
     for description, event, changed, draft, expected in cases:
@@ -421,7 +509,8 @@ def self_test() -> int:
     print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, examples documentation "
           "selects no capability, release authority is governance, empty exclusions stay empty, no exclusion can "
           "match every test, fast lane preserved, readiness runs where it is consumed, the candidate-only product "
-          "fit runs where it is required rather than by default)")
+          "fit runs where it is required rather than by default, security-on evidence is selected only by the "
+          "VNC-auth/private-security surfaces and never silently by the full gate)")
     return 0
 
 
@@ -464,6 +553,7 @@ def main() -> int:
                          f"{outputs['cpp_evidence']}/{outputs['qml_evidence']}/{outputs['qpa_evidence']}\n")
             handle.write(f"- release readiness: {outputs['readiness_evidence']}\n")
             handle.write(f"- release-authority governance: {outputs['governance']}\n")
+            handle.write(f"- security-on evidence: {outputs['security_evidence']}\n")
     return 0
 
 

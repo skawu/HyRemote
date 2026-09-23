@@ -72,7 +72,7 @@ Verify the selected frontend actually started HyRemote:
 Also check:
 
 - viewer address/port;
-- default address is `127.0.0.1:5921`;
+- default address is `0.0.0.0:5921`;
 - no other process owns the port;
 - the application is still running;
 - firewall/security software is not blocking the intended connection.
@@ -202,7 +202,7 @@ V0.1 does not provide encrypted RFB traffic.
 
 If you see:
 
-- non-loopback startup being refused;
+- a listener reachable beyond this machine while the reported security state is still unauthenticated;
 - `AuthenticatedEncrypted` failing to start;
 - viewer password behavior not matching expectations;
 

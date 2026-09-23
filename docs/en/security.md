@@ -8,17 +8,17 @@ This page describes the **current product security behavior**. Capabilities that
 
 ## V0.1 security boundary
 
-V0.1 is a Developer Preview with a loopback-first security boundary.
+The shipped candidate is a Developer Preview with a truthful security boundary.
 
 The same Shared Runtime security model applies to the C++ API, QML API, Generic Plugin, and QPA frontends.
 
 Default behavior:
 
-- bind address: `127.0.0.1`;
+- bind address: `0.0.0.0` (every IPv4 interface of the host), or one exact local IPv4, or a named interface;
 - port: `5921`;
 - remote input: disabled;
 - constructing `HyRemote::RemoteAccess` does not open a listener;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - requested security capabilities fail closed instead of silently downgrading;
 - secrets must not be written to normal diagnostics.
 
@@ -35,7 +35,7 @@ Do not expose V0.1 directly to the public Internet.
 - loopback is required;
 - remote input remains a separate opt-in policy.
 
-A non-loopback `Insecure` start is rejected before listener creation.
+An `Insecure` listener is unauthenticated and unencrypted: it is for a trusted LAN only and is not Internet-safe.
 
 ### Authenticated
 
@@ -68,9 +68,9 @@ AuthenticatedEncrypted
 
 | Capability | V0.1 status |
 | --- | --- |
-| Loopback-first default | **Available** |
+| LAN-capable default (`0.0.0.0:5921`) | **Available** |
 | Remote input off by default | **Available** |
-| Reject `Insecure` non-loopback exposure | **Available** |
+| Truthful unauthenticated/unencrypted state | **Available** |
 | `Authenticated` API/configuration surface | **Available** |
 | RFB VNC authentication | **Conditional: transport-security-enabled build + valid descriptor** |
 | Default V0.1 build includes authenticated transport | **No** |
@@ -104,7 +104,7 @@ Use an external security descriptor/configuration mechanism instead of putting s
 
 ## Recommended V0.1 profiles
 
-- **Local developer / same machine:** use the default `Insecure` loopback listener.
+- **Local developer / same machine:** a listener on `127.0.0.1` (set it explicitly) stays the tightest option.
 - **Trusted lab / maintenance network:** use `Authenticated` only when the package includes the required security capability and a valid descriptor is configured. The stream remains unencrypted.
 - **Public Internet:** direct exposure is **not supported** in V0.1.
 

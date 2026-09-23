@@ -108,7 +108,7 @@ hyremote-qpa-proxy-existing-app -platform hyremote
 
 Safe defaults are:
 
-- listener address: loopback only;
+- listener address: `0.0.0.0` (this host's IPv4 interfaces), or one exact local IPv4 / named interface;
 - port: 5921;
 - remote input: **disabled**;
 - native local display/input remains the authoritative local path.
@@ -117,7 +117,7 @@ The application source is unchanged. The `hyremote` platform plugin delegates no
 
 ## 7. Connect and reconnect a viewer
 
-Connect a standard RFB/VNC viewer to **127.0.0.1 TCP port 5921**. Some viewer UIs express port 5921 as display `:21`; use explicit host/port syntax when available.
+Connect a standard RFB/VNC viewer to **this host's LAN IPv4, TCP port 5921**. Some viewer UIs express port 5921 as display `:21`; use explicit host/port syntax when available.
 
 Expected behavior in view-only mode:
 

@@ -63,7 +63,10 @@ endif()
 # metadata and the installed plugin location used internally by hyremote_deploy(... QPA). V1 has one
 # fixed shared RemoteAccess runtime, so no static/shared QPA personality flag is published.
 set(HYREMOTE_PACKAGE_WITH_QPA FALSE)
-set(HYREMOTE_PACKAGE_QPA_QT_VERSION "6.8.3")
+# The exact Qt this package was built against, taken from the Qt CMake found rather than written down. A literal
+# here is right only on the machine it was typed on and silently wrong everywhere else, which turns "exact Qt
+# compatibility metadata" into a guess. `Qt6_VERSION` is the same fact the project already prints and gates on.
+set(HYREMOTE_PACKAGE_QPA_QT_VERSION "${Qt6_VERSION}")
 set(HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR "")
 set(HYREMOTE_PACKAGE_QPA_PLUGIN_FILENAME "")
 if(TARGET hyremote-qpa-platform)
@@ -82,6 +85,16 @@ if(TARGET hyremote-generic-plugin)
     set(HYREMOTE_PACKAGE_WITH_GENERIC TRUE)
     set(HYREMOTE_PACKAGE_GENERIC_PLUGIN_SUBDIR "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/generic")
     hyremote_target_artifact_name(hyremote-generic-plugin HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME)
+endif()
+
+# The transport security runtime, installed as a package-owned private payload beside the shared runtime. It is
+# resolved from the OpenSSL this build links against (cmake/HyRemoteProjectOptions.cmake), because the deploy helper
+# runs before these rules are processed. There is no consumer target, no link interface and no OpenSSL dependency a
+# consumer has to resolve.
+if(HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME)
+    foreach(_hyremote_security_source IN LISTS HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES)
+        install(FILES "${_hyremote_security_source}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    endforeach()
 endif()
 
 configure_package_config_file(

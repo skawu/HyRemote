@@ -19,11 +19,17 @@ enum class RemoteAccessState {
     Running,
     Stopping,
     Faulted,
+    // #174: the configured interface has no usable IPv4 address right now, so there is no listener - but the
+    // configuration is not yours to change until you stop, and the listener comes back on its own when the
+    // interface does. It is not Stopped and it is not Faulted.
+    Unavailable,
 };
 
 // Stable product-level security intent. Protocol/security-type selection stays private to the
-// runtime. The final V1 GA secure profile is AuthenticatedEncrypted; Insecure remains an explicit
-// loopback/trusted-test compatibility mode and is never silently selected as a downgrade.
+// runtime. The enum states what the application asks for; it is not a capability the build is
+// guaranteed to have. Whether a stronger profile is available depends on the actual build and
+// runtime capability, a profile that cannot be satisfied fails closed with SecurityUnavailable
+// instead of degrading silently, and no stronger profile is promised as a future requirement.
 enum class RemoteSecurityProfile {
     Insecure,
     Authenticated,
@@ -58,9 +64,10 @@ struct RemoteAccessError
 //
 // Safe defaults:
 //   - construction never opens a listener;
-//   - listen address defaults to loopback;
+//   - listen address defaults to AnyIPv4 (0.0.0.0), the host's IPv4 interfaces;
 //   - remote input defaults to disabled;
-//   - security defaults to explicit Insecure compatibility mode;
+//   - security defaults to Insecure: unauthenticated and unencrypted, for a trusted LAN only
+//     and not Internet-safe;
 //   - configuration is mutable only while Stopped.
 class HYREMOTE_REMOTEACCESS_EXPORT RemoteAccess
 {
@@ -76,8 +83,16 @@ public:
     QObject *target() const noexcept;
     bool setTarget(QObject *target);
 
+    // The default is 0.0.0.0 (AnyIPv4): the host's IPv4 interfaces, not just loopback (#174).
     QHostAddress listenAddress() const;
     bool setListenAddress(const QHostAddress &address);
+
+    // #174: the listener can be named by network interface instead of by address. The identity is
+    // QNetworkInterface::name(), and it is configuration rather than an observation: an interface that changes its
+    // IPv4 address keeps reporting the same identity here. A non-empty interface selects interface mode and
+    // outranks the address; setting an address clears it again, so the two never describe different modes.
+    QString listenInterface() const;
+    bool setListenInterface(const QString &identity);
 
     quint16 port() const noexcept;
     bool setPort(quint16 port);
@@ -88,7 +103,7 @@ public:
     RemoteSecurityProfile securityProfile() const noexcept;
     bool setSecurityProfile(RemoteSecurityProfile profile);
 
-    // Path to the non-secret V1 security descriptor. The descriptor refers to secret material by
+    // Path to the non-secret security descriptor/configuration used by the profiles that require it. The descriptor refers to secret material by
     // file path; raw passwords/private keys are never accepted as command-line/QML diagnostics and
     // are never readable back through this API. Relative material paths are resolved by the runtime
     // against the descriptor directory. Configuration changes are accepted only while Stopped.

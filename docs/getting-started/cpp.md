@@ -8,7 +8,7 @@ HyRemote 的参考接入方式是一个很小的 C++ 门面，以**一个共享�
 ## 前置条件
 
 V0.1 参考矩阵是 **Windows x86_64** 与 **Linux x86_64**，针对 **Qt 6.8.3**。其它 Qt 版本不会因此
-被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。V0.1 是 **loopback-only Developer
+被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。V0.2 是 **LAN-capable Developer
 Preview**：Embedded C++ 与 Generic Plugin 是**主要（primary）**接入面，Declarative QML 与 Transparent QPA 是**预览
 （preview）**接入面，支持承诺更窄。
 
@@ -18,6 +18,9 @@ Preview**：Embedded C++ 与 Generic Plugin 是**主要（primary）**接入面�
 - 源码 / vendored：`add_subdirectory(path/to/HyRemote hyremote)`。
 
 两者暴露**同一个**应用目标：`HyRemote::RemoteAccess`。
+
+
+> 监听器面向**可信 LAN**，**不适合暴露到 Internet**。实际发布的安全状态以运行时报告为准。
 
 ## Widgets 最小用法
 
@@ -78,7 +81,7 @@ Embedded C++ 是**主要（primary）**接入面，而 QML 前端是**预览（p
 
 ## 可选配置
 
-`setListenAddress()` **只接受数字地址**。默认是回环 `127.0.0.1`；不属于任何接口的地址、或已被占用的端口，会在到达
+`setListenAddress()` **只接受 IPv4 地址**。默认是 `0.0.0.0`（本机全部 IPv4 接口）；不属于任何接口的地址、或已被占用的端口，会在到达
 `Running` **之前**失败，并且不会留下任何监听；IPv6 通配地址 `::` 在本平台上是**仅 IPv6** 监听，而非双栈。逐地址的
 实测表见 [`known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability)。
 
@@ -123,8 +126,8 @@ hyremote_deploy(TARGET MyApp)
 
 ## 安全基线
 
-当前 RFB SecurityType None 正确性传输**未认证、未加密**，且在回环之外会被直接拒绝；配置了认证档时，查看端会先经 RFB VNC
-认证，但数据流**仍未加密**。不要把它直接暴露到不可信网络。默认绑定回环，远程输入默认关闭。
+当前 RFB SecurityType None 正确性传输**未认证、未加密**，且默认就在本机全部 IPv4 接口上可达；配置了认证档时，查看端会先经 RFB VNC
+认证，但数据流**仍未加密**。不要把它直接暴露到不可信网络。默认绑定 `0.0.0.0:5921`，远程输入默认关闭。
 见 [`security.md`](../security.md) 与 [`known-limitations.md`](../known-limitations.md)。
 
 ## 示例

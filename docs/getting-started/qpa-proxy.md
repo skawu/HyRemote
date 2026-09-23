@@ -94,7 +94,7 @@ Linux：
 默认行为：
 
 - 原生 platform 继续负责本机显示和输入；
-- 默认监听 `127.0.0.1:5921`；
+- 默认监听 `0.0.0.0:5921`；
 - 远程输入默认关闭；
 - 支持的应用顶层 surface 进入一个逻辑远程会话；
 - 正常查看端断开/重连不需要重启 Qt 应用。
@@ -124,7 +124,7 @@ hyremote-input=<0|1|false|true|off|on|no|yes>
 示例：
 
 ```text
--platform "hyremote:hyremote-address=127.0.0.1:hyremote-port=5921:hyremote-input=false"
+-platform "hyremote:hyremote-address=<host-lan-ip>:hyremote-port=5921:hyremote-input=false"
 ```
 
 非法参数失败关闭。
@@ -153,9 +153,9 @@ QPA 与其它 frontend 共用 Runtime target adapter：
 
 QPA 复用 Shared Runtime 的安全策略：
 
-- 默认回环；
+- 默认 `0.0.0.0:5921`；
 - 远程输入默认关闭；
-- 未认证非回环监听被拒绝；
+- `Insecure` 未认证、未加密：监听器面向**可信 LAN**，**不适合暴露到 Internet**；
 - `Authenticated` 可使用 RFB VNC authentication，但当前数据流不加密；
 - `AuthenticatedEncrypted` 在加密后端不可用时失败关闭。
 

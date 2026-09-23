@@ -26,7 +26,7 @@ remote.stop();                         // -> Stopped
 Four things are worth noticing:
 
 1. the runtime is constructed **with the window it shares** - that is the whole capture/target binding;
-2. the listener is **loopback by default**, so the viewer has to be on the same host;
+2. the listener is on `0.0.0.0:5921` by default, so a viewer on another machine on the same LAN can reach it;
 3. remote input stays **off** until `--remote-input` is passed;
 4. application code never mentions Core, Session, capture, input, transport or target-adapter types.
 
@@ -39,7 +39,7 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH="<qt-prefix>;<hyremote-prefix>"
 cmake --build build --config Release
 ```
 
-Inside the repository build, with examples enabled (`compile.cmd --integrations=cpp,qml,generic,qpa --examples ...`),
+Inside the repository build, with examples enabled (`build.cmd build --integrations=cpp,qml,generic,qpa --examples ...`),
 the same source builds as part of the tree and needs no `find_package` step of its own.
 
 ## Run
@@ -53,7 +53,7 @@ the same source builds as part of the tree and needs no `find_package` step of i
 
 | Option | Meaning |
 | --- | --- |
-| `--port <n>` | loopback port the viewer connects to (default `5921`) |
+| `--port <n>` | listener port the viewer connects to (default `5921`) |
 | `--remote-input` | enable remote keyboard/pointer input; without it the session is view-only |
 | `--test-seconds <n>` | exit by itself after `n` seconds (used by the smoke test) |
 
@@ -62,7 +62,7 @@ the same source builds as part of the tree and needs no `find_package` step of i
 Any RFB 3.8 viewer works, for example:
 
 ```sh
-vncviewer 127.0.0.1:5921
+vncviewer <host-lan-ip>:5921
 ```
 
 You should see this example's window. With `--remote-input` you can also drive it; without it the window is
@@ -84,8 +84,8 @@ platform integration; it does not replace it.
 ## V0.1 boundary
 
 - reference matrix: **Windows x86_64** and **Linux x86_64**, **Qt 6.8.3**;
-- V0.1 is a **loopback-only Developer Preview**: the listener is loopback by default, remote input is off by default,
+- V0.2 is a **LAN-capable Developer Preview**: the listener is `0.0.0.0:5921` by default, remote input is off by default,
   and nothing in V0.1 is production, GA or Internet-safe;
-- encrypted transport and authenticated sessions are V0.2 work (see `docs/known-limitations.md`).
+- there is **no transport encryption and no authentication** in this release: the stream is unencrypted, so the listener is for a trusted LAN only and is not Internet-safe (see `docs/known-limitations.md`).
 
 Quick UI instead of Widgets? See [`../02-quick-cpp`](../02-quick-cpp) - it uses this same C++ facade.

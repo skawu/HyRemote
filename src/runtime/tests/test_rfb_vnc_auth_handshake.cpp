@@ -5,8 +5,6 @@
 // Every port here is assigned by the operating system: a probe QTcpServer binds port 0 and reports the number it
 // got, and the transport is then told to use exactly that number. Nothing in this file picks a port, and no fixed
 // port is needed.
-#include <HyRemote/RemoteAccess.h>
-
 #include <QCoreApplication>
 #include <QHostAddress>
 #include <QTcpServer>

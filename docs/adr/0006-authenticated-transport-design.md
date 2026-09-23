@@ -2,6 +2,11 @@
 
 Status: **Proposed for `[SEC-01]` (#143), design step**
 
+> **Superseded in part by #174 (2026-09-23).** The reachability statements below describe the design as it was
+> decided. The shipped contract is that the listener defaults to `0.0.0.0:5921`, may be narrowed to one exact IPv4
+> or one named interface, and that the security state actually shipped is reported truthfully instead of the bind
+> being narrowed as a security workaround.
+
 ## Context
 
 The release roadmap makes authenticated and encrypted transport a **V1.0.0.0 requirement, not a `V1.x` track**,

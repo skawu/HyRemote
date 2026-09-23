@@ -98,6 +98,84 @@ endforeach()
     set(${output_var} "${_bootstrap}" PARENT_SCOPE)
 endfunction()
 
+# The transport security runtime as a deploy-script fragment. Source acquisition knows the exact files because it
+# linked against them; installed acquisition reads the prefix-relative metadata the package publishes. The mode
+# decides what a deployment may and must add, because the modes mean genuinely different things:
+#
+#   NONE   - the capability is not part of this build; nothing is added and nothing is required.
+#   SYSTEM - the platform's own runtime, resolved through the standard loader paths. Empty files are correct here,
+#            and demanding a payload would be another platform's invariant applied where it does not belong.
+#   STATIC - OpenSSL is inside the runtime already; there is no dynamic payload at all.
+#   BUNDLED- the package carries the runtime and a deploy must carry it too, or the deployed application starts and
+#            then fails at first use.
+#
+# Sources are assembled one full path at a time. Joining a directory and a semicolon-separated list into a single
+# string cannot describe more than one file, which is exactly how a two-entry payload used to collapse.
+function(_hyremote_security_runtime_deploy_fragment runtime_deploy_dir output_var)
+    set(_hyremote_mode "${HYREMOTE_PACKAGE_SECURITY_RUNTIME_MODE}")
+    if(DEFINED HyRemote_SECURITY_RUNTIME_MODE AND NOT "${HyRemote_SECURITY_RUNTIME_MODE}" STREQUAL "")
+        set(_hyremote_mode "${HyRemote_SECURITY_RUNTIME_MODE}")
+    endif()
+    if(_hyremote_mode STREQUAL "")
+        set(_hyremote_mode "NONE")
+    endif()
+
+    if(_hyremote_mode STREQUAL "NONE" OR _hyremote_mode STREQUAL "STATIC" OR _hyremote_mode STREQUAL "SYSTEM")
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    if(NOT _hyremote_mode STREQUAL "BUNDLED")
+        message(FATAL_ERROR
+            "hyremote_deploy: unknown transport security runtime mode '${_hyremote_mode}'. The deployment closure "
+            "cannot be described honestly for a mode this project does not define.")
+    endif()
+
+    set(_hyremote_security_sources "")
+    if(DEFINED HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME AND HYREMOTE_PACKAGE_WITH_SECURITY_RUNTIME)
+        # Source acquisition: the absolute paths this build resolved.
+        list(APPEND _hyremote_security_sources ${HYREMOTE_PACKAGE_SECURITY_RUNTIME_SOURCE_FILES})
+    elseif(DEFINED HyRemote_SECURITY_RUNTIME_FILES AND NOT "${HyRemote_SECURITY_RUNTIME_FILES}" STREQUAL ""
+           AND DEFINED HyRemote_SECURITY_RUNTIME_DIR AND NOT "${HyRemote_SECURITY_RUNTIME_DIR}" STREQUAL "")
+        # Installed acquisition: the package's own prefix plus the names it published. One full path per name, so a
+        # payload of any size is described correctly.
+        foreach(_hyremote_security_name IN LISTS HyRemote_SECURITY_RUNTIME_FILES)
+            list(APPEND _hyremote_security_sources "${HyRemote_SECURITY_RUNTIME_DIR}/${_hyremote_security_name}")
+        endforeach()
+    endif()
+
+    if(_hyremote_security_sources STREQUAL "")
+        message(FATAL_ERROR
+            "hyremote_deploy: this HyRemote ships a bundled transport security runtime but publishes no runtime "
+            "payload, so a deployed application would start and then fail at first use. Rebuild the SDK so the "
+            "capability and its payload come from the same configuration.")
+    endif()
+
+    set(_hyremote_security_install "")
+    foreach(_hyremote_security_source IN LISTS _hyremote_security_sources)
+        if(NOT EXISTS "${_hyremote_security_source}")
+            message(FATAL_ERROR
+                "HyRemote: the deployed runtime needs '${_hyremote_security_source}', which is not there. Reinstall "
+                "the SDK or rebuild without HYREMOTE_WITH_TRANSPORT_SECURITY.")
+        endif()
+        get_filename_component(_hyremote_security_name "${_hyremote_security_source}" NAME)
+        string(APPEND _hyremote_security_install
+"file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\" TYPE FILE FILES \"${_hyremote_security_source}\")\n")
+        list(APPEND _hyremote_security_installed "${_hyremote_security_name}")
+    endforeach()
+
+    list(LENGTH _hyremote_security_installed _hyremote_security_count)
+    list(REMOVE_DUPLICATES _hyremote_security_installed)
+    list(LENGTH _hyremote_security_installed _hyremote_security_unique)
+    if(NOT _hyremote_security_count EQUAL _hyremote_security_unique)
+        message(FATAL_ERROR
+            "hyremote_deploy: the transport security runtime payload names the same library twice, so a deployed "
+            "tree would carry two copies of it.")
+    endif()
+
+    set(${output_var} "${_hyremote_security_install}" PARENT_SCOPE)
+endfunction()
+
 # Resolve the declarative module's backing shared library without creating a public C++ package target.
 # Source acquisition names the concrete local qt_add_qml_module backing target; installed acquisition
 # consumes absolute package metadata. Applications still consume only the stable `import HyRemote` URI.
@@ -137,6 +215,7 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
     endif()
 
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
     # The ordinary C++ path keeps the application on its native Qt platform, so the deployed tree has to carry that
     # platform plugin exactly as the Generic path does: without it a deployed application cannot start at all unless
     # the machine happens to have the Qt SDK, which is what a clean deployment must not require. The plugin identity
@@ -183,7 +262,7 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
     \"${_native_platform_plugin_file}\")
-${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
@@ -312,6 +391,7 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
     _hyremote_resolve_qpa_payload(_qpa_plugin_file _qpa_plugin_name)
     _hyremote_resolve_native_platform_payload(_native_qpa_plugin_file _native_qpa_plugin_name)
     _hyremote_runtime_deploy_dir(_runtime_deploy_dir)
+    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
     _hyremote_linux_private_runtime_bootstrap(
         "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_qpa_plugin_name}")
 
@@ -347,7 +427,7 @@ file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platfo
     \"${_qpa_plugin_file}\"
     \"${_native_qpa_plugin_file}\")
 ${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_qml_backing_install}${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
@@ -441,6 +521,7 @@ function(_hyremote_generate_generic_deploy_script target output_var)
 ")
     endif()
 
+    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
     set(_generic_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-generic-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_generic_script}"
@@ -451,7 +532,7 @@ file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platfo
 ${_linux_platform_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/generic\" TYPE FILE FILES
     \"${_generic_plugin_file}\")
 file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
-${_linux_private_runtime_bootstrap}qt6_deploy_runtime_dependencies(
+${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
     \"\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"

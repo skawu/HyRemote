@@ -9,28 +9,34 @@
 
 ## 1. 构建入口：一个脚本，两个平台
 
-仓库根目录的 `compile.cmd` **同时是 POSIX shell 脚本和 Windows 批处理脚本**：
+仓库根目录的 `build.cmd` **同时是 POSIX shell 脚本和 Windows 批处理脚本**，并且是仓库**唯一的构建/安装入口**：
 
 ```text
-Windows:  compile.cmd --mode qpa --qt-prefix C:/Qt/6.8.3/mingw_64
-Linux:    sh compile.cmd --mode qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
+Windows:  .\build.cmd build --integrations=qpa --qt-prefix C:/Qt/6.8.3/mingw_64
+Linux:    sh ./build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 ```
 
-默认接入方式是 **QPA**（在脚本顶部的 `HYREMOTE_DEFAULT_MODE` 一行修改），命令行可覆盖：
+配置优先级是 **内置默认值 < `build.yml` < 命令行**：`build.yml` 保存仓库的开发者配置档，命令行参数覆盖它：
 
 | 参数 | 含义 |
 | --- | --- |
-| `--mode qpa`（默认） | 透明 QPA 代理接入（`-platform hyremote`） |
-| `--mode cpp` | 仅嵌入式 C++（`HyRemote::RemoteAccess`） |
-| `--mode qml` | 声明式 QML（`import HyRemote`） |
-| `--mode all` | 三种接入方式全部构建 |
-| `--mode minimal` | 最小构建（不开示例/测试/QML/QPA） |
-| `--toolchain <file>.cmake` | **指定交叉编译工具链文件** |
-| `--qt-prefix <path>` | 目标平台的 Qt 6.8.3 安装前缀 |
-| `--build-type Release\|Debug` | 构建类型（默认 Release） |
-| `--tests` | 同时构建测试 |
+| `--mode=qpa` | 透明 QPA 代理接入（`-platform hyremote`） |
+| `--mode=cpp` | 仅嵌入式 C++（`HyRemote::RemoteAccess`） |
+| `--mode=qml` | 声明式 QML（`import HyRemote`） |
+| `--mode=generic` | 零代码 `QGenericPlugin` 接入（`-plugin hyremote`） |
+| `--mode=all` | 全部接入前端 |
+| `--mode=runtime` | 仅共享运行时，不含任何前端 |
+| `--mode=minimal` | 最小构建（不含示例/测试/QML/QPA） |
+| `--integrations=cpp,qml,generic,qpa` | 精确选择前端；不会自动补上 C++ |
+| `--toolchain=FILE.cmake` | **指定交叉编译工具链文件** |
+| `--qt-prefix=PATH` | 目标平台的 Qt 6.8.3 安装前缀 |
+| `--build-type=Release\|Debug` | 构建类型（默认 Release） |
+| `--build-dir=DIR` | 构建目录（默认 `build`） |
+| `--tests` / `--run-tests` | 构建测试 / 构建并运行测试 |
 | `--no-examples` | 不构建示例 |
+| `--security` | 传输安全能力（VNC Authentication） |
 | `--clean` | 先删除构建目录再重新配置 |
+| `--cmake=KEY=VALUE`、`--env=KEY=VALUE` | 额外 configure 缓存项 / 环境变量，可重复 |
 | `-v` | 详细输出（默认把日志写入 `build/configure.log` 与 `build/build.log`） |
 
 两种写法都可用：`--mode qpa` 与 `--mode=qpa`。
@@ -40,16 +46,16 @@ Linux:    sh compile.cmd --mode qpa --qt-prefix /opt/Qt/6.8.3/gcc_64
 本项目**只保留一个构建目录 `build/`**（它是 `.gitignore` 忽略的目录）：
 
 - 构建产物一律落在 `build/`，**不再按模式分子目录**，日志也写在 `build/` 内，仓库根目录不会出现构建文件；
-- **换接入方式或需要重新构建时，先清理**：`clean.cmd` 会删除整个 `build/`；
-- 若 `build/` 里已存在另一种模式的配置，脚本会**拒绝混用**并提示确切命令（`compile.cmd --clean --mode <新模式>`），
+- **换接入方式或需要重新构建时，先清理**：`build.cmd clean` 会删除整个 `build/`（连同其中的安装根）；
+- 若 `build/` 里已存在另一种模式的配置，脚本会**拒绝混用**并提示确切命令（`build.cmd rebuild --integrations=<新模式>`），
   而不是悄悄复用可能已失效的缓存。
 
-清理入口：`clean.cmd`（删除 `build/`）。
+清理入口：`build.cmd clean`（删除 `build/`）。
 
 ## 2. 指定交叉编译工具链
 
 ```text
-sh compile.cmd --mode qpa \
+sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```

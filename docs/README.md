@@ -29,7 +29,7 @@ V0.1 Developer Preview 的重点是**先让用户能够用起来**：
 - C++ API 与 Generic Plugin 是主接入路径；
 - Windows x86_64 与 Linux x86_64、Qt 6.8.3 是当前参考环境；
 - Widgets 与 Qt Quick 共用一个 Runtime；
-- 默认回环监听，远程输入默认关闭；
+- 默认监听 `0.0.0.0:5921`，远程输入默认关闭；
 - QML API 与 QPA 已存在，但仍按 Preview 标识；
 - 未完成能力直接标记为 **TODO / 待办**。
 

@@ -4,27 +4,28 @@ HyRemote compatibility is stated only for environments that have an explicit pro
 
 ## Status definitions
 
-- **Primary** — current product path for the active product line.
-- **Preview** — implemented and usable, but not yet promoted to the same product-support level as the primary path.
+- **Supported** — qualified for the active product line. The four integration technologies (C++ API, QML API,
+  Generic Plugin, QPA) are **peers**; none of them is a primary or preview tier over another.
+- **Limited** — qualified only under the stated narrower condition, such as QPA's exact-Qt private ABI.
 - **TODO** — planned product coverage that is not yet available/qualified.
 - **Unsupported** — outside the stated product contract or known not to work for the stated combination.
 
-## Current V0.1 reference matrix
+## Current V0.2.0.0 reference matrix
 
-The current Developer Preview reference environment is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
+The current reference environment for **V0.2.0.0 (First User Trial)** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
 
 | Qt | Platform | Integration | UI target | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| 6.8.3 | Windows x86_64 | C++ API | Widgets | **Primary** | Public Qt APIs, explicit Runtime lifecycle |
-| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Primary** | Same `HyRemote::RemoteAccess` facade |
-| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Primary** | Public Qt APIs, explicit Runtime lifecycle |
-| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Primary** | Same `HyRemote::RemoteAccess` facade |
-| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Primary** | Zero-code path, preserves native Qt platform |
-| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Primary** | Zero-code path, preserves native Qt platform |
-| 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Preview** | Thin declarative frontend over Shared Runtime |
-| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Preview** | Thin declarative frontend over Shared Runtime |
-| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Preview** | Private ABI; native delegate `qwindows` |
-| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Preview** | Private ABI; native delegate `qxcb` |
+| 6.8.3 | Windows x86_64 | C++ API | Widgets | **Supported** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` facade |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Supported** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` facade |
+| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qwindows` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qxcb` |
 
 The matrix above describes the current product line. It does not imply that every graphics configuration inside a Widgets/Quick application is already qualified.
 
@@ -34,7 +35,7 @@ HyRemote is intended to support selected Qt LTS families rather than promise eve
 
 Current state:
 
-- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.1.
+- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.2.0.0.
 - **Qt 5.15 LTS** — **TODO V0.4 qualification**. Do not describe it as currently supported until the product can actually build, deploy, and run through the applicable matrix.
 - other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
 
@@ -60,7 +61,7 @@ Passing on one operating system does not imply the same result on the other.
 
 | Product payload | Compatibility expectation |
 | --- | --- |
-| `HyRemote::RemoteAccess` | Shared Runtime used by the C++ API and by other frontends internally |
+| `HyRemote::RemoteAccess` | Shared Runtime used by the C++ API and by the other integration technologies internally |
 | QML `HyRemote` module | Declarative payload over the same Shared Runtime |
 | Generic Plugin | Public Qt generic-plugin payload; must preserve the application's native Qt platform identity |
 | `qhyremote` QPA plugin | Exact-Qt private-ABI payload; delegates to the qualified native platform integration |
@@ -131,11 +132,11 @@ The current transport baseline is bounded RFB 3.8.
 
 Current product behavior includes:
 
-- loopback-first listener behavior;
+- LAN-capable listener behavior by default;
 - standard RFB remote viewing;
 - optional remote input;
 - reconnect without rebuilding the application Runtime;
-- `Insecure` loopback-only behavior;
+- `Insecure` behavior: unauthenticated and unencrypted, for a trusted LAN only;
 - conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
 - no stream encryption in V0.1;
 - `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.

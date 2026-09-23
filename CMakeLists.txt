@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
-project(HyRemote VERSION 0.1.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
+project(HyRemote VERSION 0.2.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
@@ -187,6 +187,22 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_v1_runtime_contract.cmake"
     )
     add_test(
+        NAME hyremote-release-readiness-security-runtime-deploy
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_security_runtime_deploy.cmake"
+    )
+
+    # #339: the build/install contract the user is promised, registered beside the deployment gates because it
+    # is the same subject seen from the entry point instead of from one deploy path.
+    add_test(
+        NAME hyremote-release-readiness-build-install-contract
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_INSTALL_ROOT=${CMAKE_BINARY_DIR}/install
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_build_install_contract.cmake"
+    )
+    add_test(
         NAME hyremote-release-readiness-deployment-relocation
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
@@ -304,6 +320,16 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     )
     set_tests_properties(hyremote-release-scope-self-test PROPERTIES TIMEOUT 300)
 
+    # The V0.2.0 user-first release authority: the first candidate may ship BASIC_TRUSTED_LAN, encrypted evidence is
+    # conditional on the candidate's own shipped claim, and every other train keeps its product authority (#323).
+    add_test(
+        NAME hyremote-release-authority-v02-user-first
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_authority_v02_user_first.cmake"
+    )
+    set_tests_properties(hyremote-release-authority-v02-user-first PROPERTIES TIMEOUT 300)
+
     # The clean-consumer acquisition audit decides whether a consumer acquired HyRemote from a package or from the
     # product source/build tree. That decision is a pure function of a CMakeCache, so its self test runs here without
     # configuring or building anything: it drives the same shared audit the evidence runner includes, against
@@ -332,7 +358,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     set(Python3_FIND_REGISTRY NEVER)
     set(Python3_FIND_STRATEGY LOCATION)
     find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND)
+    if(HYREMOTE_BUILD_CPP_API AND TARGET hyremote-remoteaccess AND Python3_Interpreter_FOUND)
         add_test(
             NAME hyremote-v01-example-smoke
             COMMAND "${Python3_EXECUTABLE}"

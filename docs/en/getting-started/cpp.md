@@ -17,6 +17,10 @@ Choose the C++ API when your application:
 
 If you want a **zero-code application integration**, start with [`generic.md`](generic.md).
 
+
+> The listener is intended for a **trusted LAN only** and is **not Internet-safe**. The security state actually
+> shipped is what the runtime reports.
+
 ## Current reference environment
 
 V0.1 currently references:
@@ -55,7 +59,7 @@ Default behavior:
 
 - constructing `RemoteAccess` does not open a listener;
 - `start()` explicitly starts the Runtime;
-- the default listener is `127.0.0.1:5921`;
+- the default listener is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
 - remote input is disabled by default.
 
 ## Minimal Qt Quick integration
@@ -147,11 +151,11 @@ See [`../guide/deployment.md`](../guide/deployment.md).
 
 ## Security boundary
 
-V0.1 is loopback-first:
+The shipped Shared Runtime is LAN-first:
 
-- default bind is `127.0.0.1`;
+- default bind is `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named network interface;
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - `Authenticated` may use RFB VNC authentication, but the stream is currently unencrypted;
 - `AuthenticatedEncrypted` fails closed without opening a listener while the encrypted backend is unavailable.
 

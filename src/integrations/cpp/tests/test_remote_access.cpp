@@ -207,7 +207,7 @@ void testSafeDefaultsAndNoConstructionSideEffect()
     HyRemote::RemoteAccess remote(&target);
 
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
-    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::LocalHost));
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
     CHECK(remote.port() == HYREMOTE_DEFAULT_PORT);
     CHECK(!remote.remoteInputEnabled());
     CHECK(remote.securityProfile() == HyRemote::RemoteSecurityProfile::Insecure);
@@ -245,16 +245,16 @@ void testSafeDefaultsAndNoConstructionSideEffect()
 #endif
     CHECK(!remote.lastError()->message.isEmpty());
 
-    // Insecure compatibility mode is loopback-only. This absorbs the former #153 guard without
-    // changing the normal default listener or pretending an unavailable secure transport exists.
+    // Insecure is an allowed LAN mode now (#143/#174): the former "unauthenticated implies loopback" restriction
+    // is gone, so the wildcard is accepted and the listener actually starts. What stays truthful is the reported
+    // security state, which the next assertions cover.
     CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Insecure));
     CHECK(remote.setListenAddress(QHostAddress::AnyIPv4));
-    CHECK(!remote.start());
-    CHECK(counters->targetFactoryCalls.load() == 0);
-    CHECK(counters->transportFactoryCalls.load() == 0);
-    CHECK(remote.lastError().has_value());
-    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
-    CHECK(remote.lastError()->message.contains(QStringLiteral("non-loopback")));
+    CHECK(remote.start());
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
+    CHECK(remote.lastError() == std::nullopt);
+    remote.stop();
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
     CHECK(remote.setListenAddress(QHostAddress::LocalHost));
 
     CHECK(remote.start());
@@ -591,10 +591,11 @@ bool writeTestFile(const QString &path, const QByteArray &content)
     return file.write(content) == content.size();
 }
 
-// #143 bind policy (docs/security-model.md section 10.1): a listener may only be widened beyond loopback while an
-// authentication mode is genuinely enabled, and the credential that protects it has to be in hand - that is what
-// makes accepting the widened bind defensible rather than merely configured. Both directions of the rule are
-// asserted here so they read together.
+// #174 bind policy: there is no "unauthenticated implies loopback" rule any more. It was a product restriction
+// that contradicted the decision in #143/#174 - a BASIC_TRUSTED_LAN build is allowed to listen on the LAN, and what
+// keeps that honest is the reported security state, not a silently narrowed bind. What this test pins instead is
+// that the bind is the user's choice and stays exactly that: the security profile decides what the transport
+// *requires*, never where it listens, and a capability failure does not rewrite the configured address either.
 void testBindPolicyFollowsAuthentication()
 {
     auto counters = std::make_shared<RuntimeCounters>();
@@ -602,16 +603,20 @@ void testBindPolicyFollowsAuthentication()
 
     QObject target;
     HyRemote::RemoteAccess remote(&target);
-    CHECK(remote.setListenAddress(QHostAddress(QHostAddress::AnyIPv4)));
 
-    // The default profile carries no authentication, so the widened listener is refused and nothing is composed.
-    CHECK(!remote.start());
+    // The documented default is the wildcard, and the default Insecure profile is allowed to use it.
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
+    CHECK(remote.setListenAddress(QHostAddress(QHostAddress::AnyIPv4)));
+    CHECK(remote.start());
+    CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
+    CHECK(counters->transportFactoryCalls.load() == 1);
+    CHECK(counters->observedAddress == QHostAddress(QHostAddress::AnyIPv4));
+    CHECK(!counters->observedAuthenticationRequired);
+    remote.stop();
     CHECK(remote.state() == HyRemote::RemoteAccessState::Stopped);
-    CHECK(counters->targetFactoryCalls.load() == 0);
-    CHECK(counters->transportFactoryCalls.load() == 0);
-    CHECK(remote.lastError().has_value());
-    CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
-    CHECK(remote.lastError()->message.contains(QStringLiteral("non-loopback")));
+
+    // Nothing about the profile above changed the address, and nothing below may either.
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
 
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
     QTemporaryDir temp;
@@ -622,16 +627,16 @@ void testBindPolicyFollowsAuthentication()
                                    "credentialId=maintenance-console\n"
                                    "passwordFile=password.txt\n")));
 
-    // With a profile that really produced a credential the same address is accepted, and the credential is what the
-    // transport is told to require.
+    // With a profile that really produced a credential, what changes is the authentication the transport is told to
+    // require - the address is untouched, which is the other half of "the profile never rewrites the bind".
     CHECK(remote.setSecurityProfile(HyRemote::RemoteSecurityProfile::Authenticated));
     CHECK(remote.setSecurityConfigFile(temp.filePath(QStringLiteral("authenticated.conf"))));
     CHECK(remote.start());
     CHECK(remote.state() == HyRemote::RemoteAccessState::Running);
-    CHECK(counters->transportFactoryCalls.load() == 1);
     CHECK(counters->observedAddress == QHostAddress(QHostAddress::AnyIPv4));
     CHECK(counters->observedAuthenticationRequired);
     CHECK(counters->observedPasswordBytes == 7);  // "secret7"
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
     remote.stop();
 #else
     // Without the capability in this build the same configuration is refused rather than served unauthenticated,
@@ -641,6 +646,8 @@ void testBindPolicyFollowsAuthentication()
     CHECK(!remote.start());
     CHECK(remote.lastError().has_value());
     CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::SecurityUnavailable);
+    // A capability failure refuses to serve; it does not quietly move the listener somewhere else.
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
 #endif
 
     HyRemote::detail::resetFactories();
@@ -738,6 +745,40 @@ void testAuthenticatedEncryptedFailsClosedBeforeListen()
     HyRemote::detail::resetFactories();
 }
 
+
+// #174 mapping, Embedded C++: three configurations onto one runtime contract. The facade only maps - it decides no
+// addresses and resolves no adapters - and the one interaction that matters is that an address assignment clears an
+// interface selection, so the two can never describe different modes at the same time.
+void testListenInterfaceMapping()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+
+    // The documented default: the wildcard, and no interface selected.
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
+    CHECK(remote.listenInterface().isEmpty());
+
+    // An interface identity is carried verbatim and selects interface mode.
+    CHECK(remote.setListenInterface(QStringLiteral("eth-test")));
+    CHECK(remote.listenInterface() == QStringLiteral("eth-test"));
+    CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
+
+    // Assigning an address replaces the interface selection: the address modes win, and the identity is gone.
+    CHECK(remote.setListenAddress(QHostAddress(QStringLiteral("127.0.0.1"))));
+    CHECK(remote.listenInterface().isEmpty());
+    CHECK(remote.listenAddress() == QHostAddress(QStringLiteral("127.0.0.1")));
+
+    // An empty identity is not a way to say "no interface"; the address setter is the way back.
+    CHECK(!remote.setListenInterface(QString{}));
+    CHECK(remote.listenInterface().isEmpty());
+
+    HyRemote::detail::resetFactories();
+}
+
 int main()
 {
     testSafeDefaultsAndNoConstructionSideEffect();
@@ -752,6 +793,7 @@ int main()
     testBackendStartFailureIsMappedAndCleanedUp();
     testInvalidPublicConfigurationIsProductLevel();
     testBindPolicyFollowsAuthentication();
+    testListenInterfaceMapping();
 
     HyRemote::detail::resetFactories();
     if (failures != 0) {
