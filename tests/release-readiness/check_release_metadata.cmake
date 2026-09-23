@@ -360,7 +360,10 @@ foreach(required_entry_token IN ITEMS
         "Qt 6.8.3"
         "Windows x86_64"
         "Linux x86_64"
-        "loopback"
+        # #174: the boundary is expressed by the shipped listener and its trust statement, not by a
+        # loopback-only policy that no longer exists.
+        "0.0.0.0:5921"
+        "trusted LAN"
         "Qt 5.15 is not yet qualified")
     string(FIND "${examples_entry}" "${required_entry_token}" entry_token_found)
     if(entry_token_found EQUAL -1)

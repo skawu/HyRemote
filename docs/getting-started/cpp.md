@@ -8,7 +8,7 @@ HyRemote 的参考接入方式是一个很小的 C++ 门面，以**一个共享�
 ## 前置条件
 
 V0.1 参考矩阵是 **Windows x86_64** 与 **Linux x86_64**，针对 **Qt 6.8.3**。其它 Qt 版本不会因此
-被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。V0.1 是 **loopback-only Developer
+被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。V0.2 是 **LAN-capable Developer
 Preview**：Embedded C++ 与 Generic Plugin 是**主要（primary）**接入面，Declarative QML 与 Transparent QPA 是**预览
 （preview）**接入面，支持承诺更窄。
 
@@ -126,8 +126,8 @@ hyremote_deploy(TARGET MyApp)
 
 ## 安全基线
 
-当前 RFB SecurityType None 正确性传输**未认证、未加密**，且在回环之外会被直接拒绝；配置了认证档时，查看端会先经 RFB VNC
-认证，但数据流**仍未加密**。不要把它直接暴露到不可信网络。默认绑定回环，远程输入默认关闭。
+当前 RFB SecurityType None 正确性传输**未认证、未加密**，且默认就在本机全部 IPv4 接口上可达；配置了认证档时，查看端会先经 RFB VNC
+认证，但数据流**仍未加密**。不要把它直接暴露到不可信网络。默认绑定 `0.0.0.0:5921`，远程输入默认关闭。
 见 [`security.md`](../security.md) 与 [`known-limitations.md`](../known-limitations.md)。
 
 ## 示例

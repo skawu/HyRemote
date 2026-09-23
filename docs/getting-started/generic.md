@@ -78,7 +78,7 @@ Generic 部署**不会**安装任何 HyRemote 平台插件：如果部署树里�
 ## V0.1 边界
 
 - 参考矩阵：**Windows x86_64** 与 **Linux x86_64**，**Qt 6.8.3**；
-- V0.1 是 **loopback-only Developer Preview**：监听默认只在本机回环地址，远程输入默认关闭，需要显式启用；
+- V0.2 是 **LAN-capable Developer Preview**：监听默认在本机全部 IPv4 接口上可达，远程输入默认关闭，需要显式启用；
 - **没有**可用的加密档：`AuthenticatedEncrypted` 在 V0.1 不可用，且在开始监听前就会以 SecurityUnavailable 失败，不做降级；
 - VeNCrypt/TLS 属于 **V0.2**，由 #143 跟踪，**不是** V1.0 专属工作；
 - 不要把 V0.1 部署描述成 production ready、authenticated、encrypted 或 GA。详见

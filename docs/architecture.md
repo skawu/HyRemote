@@ -264,9 +264,9 @@ RFB is not part of the normal application API. A later transport may reuse the s
 
 Current security behavior:
 
-- default loopback listener;
+- listener on `0.0.0.0:5921` by default;
 - remote input disabled by default;
-- unauthenticated non-loopback exposure rejected;
+- `Insecure` is unauthenticated and unencrypted: trusted LAN only, not Internet-safe;
 - authenticated profile may use RFB VNC authentication;
 - stream encryption is not implemented in the current baseline;
 - `AuthenticatedEncrypted` fails closed before a listener is opened while the encrypted backend is unavailable.

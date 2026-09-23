@@ -81,7 +81,8 @@ int main(int argc, char **argv)
 
     HyRemote::RemoteAccess remote(&window);
     remote.setPort(static_cast<quint16>(port));
-    // Remote input stays off unless the user asks for it: the V0.1 promise is a loopback-only Developer Preview.
+    // Remote input stays off unless the user asks for it: the shipped listener is reachable on this host's IPv4
+    // interfaces, which is why it is for a trusted LAN only and the reported security state says so.
     remote.setRemoteInputEnabled(remoteInput);
     if (!remote.start()) {
         const auto error = remote.lastError();

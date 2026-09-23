@@ -173,7 +173,7 @@ Deployment does not weaken the product defaults:
 
 - default bind is `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named network interface;
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - an authenticated profile may use RFB VNC authentication, but the current stream is not encrypted;
 - `AuthenticatedEncrypted` fails closed without opening a listener while the TLS/VeNCrypt backend is unavailable.
 

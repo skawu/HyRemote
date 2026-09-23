@@ -6,7 +6,7 @@ This page describes the **current product security behavior**. Capabilities that
 
 ## V0.1 security boundary
 
-V0.1 is a Developer Preview with a loopback-first security boundary.
+The shipped candidate is a Developer Preview with a truthful security boundary.
 
 The Shared Runtime applies the same security model to the C++ API, QML API, Generic Plugin, and QPA frontends.
 
@@ -18,7 +18,7 @@ Default behavior:
 - constructing a C++ `HyRemote::RemoteAccess` object does not open a listener;
 - QML starts only after `enabled: true` is requested;
 - Generic/QPA start only when explicitly activated through their Qt startup mechanisms;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` 未认证、未加密：监听器面向**可信 LAN**，**不适合暴露到 Internet**；
 - malformed/incomplete clients remain subject to bounded transport limits;
 - secrets must not be written to normal diagnostics.
 
@@ -37,7 +37,7 @@ Do not expose V0.1 directly to the public Internet.
 - loopback is required;
 - remote input remains a separate opt-in policy.
 
-If `Insecure` is combined with a non-loopback address, `start()` fails before any listener is opened. HyRemote does not silently widen an unauthenticated listener.
+The `Insecure` listener is unauthenticated and unencrypted and it is reachable wherever it is bound. HyRemote states that plainly instead of narrowing the bind: it is for a trusted LAN only and is not Internet-safe.
 
 ### Authenticated
 
@@ -55,7 +55,7 @@ The stream is still **not encrypted**.
 
 If the required build capability is absent, `start()` fails with `SecurityUnavailable` before target, transport, or listener creation. If the descriptor is missing or invalid, startup fails rather than falling back to a weaker profile.
 
-The default V0.1 developer build/profile should therefore be treated as **Insecure loopback-only unless the authenticated capability was explicitly built and configured**.
+The default V0.1 developer build/profile should therefore be treated as **unauthenticated and unencrypted unless the authenticated capability was explicitly built and configured, and reachable on the host's IPv4 interfaces either way**.
 
 ### AuthenticatedEncrypted
 
@@ -111,7 +111,7 @@ The safest and default V0.1 listener is:
 
 Changing the bind address changes the network trust boundary. It does not automatically enable authentication or encryption.
 
-For `Insecure`, non-loopback startup is rejected. For `Authenticated`, a non-loopback listener is possible only when the authenticated build capability and descriptor are valid.
+For `Insecure`, the listener is reachable wherever it is bound. For `Authenticated`, a non-loopback listener is possible only when the authenticated build capability and descriptor are valid.
 
 Exact address-family behavior is documented in [`known-limitations.md`](known-limitations.md).
 
@@ -149,7 +149,7 @@ A descriptor confirms what the operator configured; it does not prove that the s
 
 ### Local developer / same machine
 
-Use the default `Insecure` loopback listener. Enable remote input only when required.
+Use the `Insecure` `0.0.0.0:5921` default and keep it on a trusted LAN. Enable remote input only when required.
 
 ### Trusted lab or maintenance network
 
@@ -165,9 +165,9 @@ Do not expose the current HyRemote listener directly to the public Internet.
 
 | Capability | V0.1 status |
 | --- | --- |
-| Loopback-first default | Available |
+| LAN-capable default (`0.0.0.0:5921`) | Available |
 | Remote input off by default | Available |
-| Reject `Insecure` non-loopback exposure | Available |
+| Truthful unauthenticated/unencrypted state | Available |
 | `Authenticated` API/configuration surface | Available |
 | RFB VNC authentication | **Conditional: requires transport-security-enabled build + valid descriptor** |
 | Default V0.1 build includes authenticated transport | **No** |
@@ -180,4 +180,4 @@ Do not expose the current HyRemote listener directly to the public Internet.
 
 The concise V0.1 statement is:
 
-> HyRemote V0.1 defaults to an unauthenticated, unencrypted loopback listener with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose V0.1 directly to the public Internet.
+> HyRemote V0.1 defaults to an unauthenticated, unencrypted listener on `0.0.0.0:5921` with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose V0.1 directly to the public Internet.

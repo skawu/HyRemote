@@ -56,7 +56,7 @@ At minimum, V1 design and documentation must account for:
 
 - unauthorized viewing when a listener becomes reachable;
 - unauthorized remote control when remote input is enabled;
-- accidental non-loopback or public-Internet exposure;
+- accidental public-Internet exposure of a listener that is reachable by default;
 - malformed or deliberately incomplete RFB clients;
 - denial of service through slow clients, excessive connection attempts or unbounded protocol state;
 - stale input state after abrupt viewer disconnect;
@@ -75,11 +75,11 @@ Installing or constructing HyRemote must not create a remotely reachable service
 - QML defaults `enabled` to `false`.
 - QPA requires explicit selection of the `hyremote` platform path.
 
-### 4.2 Loopback by default
+### 4.2 Reachability by default, stated honestly
 
-The default listener is loopback-only. A non-loopback bind is an explicit widening of the network trust boundary; it does not add authentication or encryption.
+The default listener is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces. Binding one exact local IPv4 or one named interface is a narrowing of that reachability; it does not add authentication or encryption.
 
-Examples must not use wildcard/public binds merely for convenience.
+Examples must not widen beyond the default, and the shipped security state is what tells the user how far to trust that reachability.
 
 ### 4.3 View and control are separate policies
 
@@ -144,7 +144,7 @@ Future security mechanisms must preserve these rules:
 
 ### Local developer / same machine
 
-Use the default loopback listener. Enable remote input only when intentionally testing or using remote control.
+Use the `0.0.0.0:5921` default and keep it on a trusted LAN. Enable remote input only when intentionally testing or using remote control.
 
 ### Controlled lab / industrial maintenance network
 
@@ -216,8 +216,8 @@ anti-pattern. This is the repository's first third-party security dependency, ca
 readiness authority already anticipates - `package`, `LICENSE`, `NOTICE` and the deployed payload list are updated
 in the change that lands the dependency, never in advance.
 
-**Bind policy.** A non-loopback listener stays fail-closed until an authentication mode is actually enabled: with
-authentication enabled a non-loopback bind may be accepted; with authentication disabled it is still rejected. The
+**Bind policy.** Reachability does not depend on the authentication mode (#174): the default listener is `0.0.0.0:5921` and it is reachable on this host's IPv4 interfaces with
+authentication enabled or disabled, which is exactly why the shipped state is reported truthfully rather than narrowed. The
 construction and listener defaults do not change (no implicit listener, loopback, remote input off), and
 authentication is not remote input - view-only remains the default input policy.
 
