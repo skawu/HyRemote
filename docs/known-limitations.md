@@ -6,19 +6,19 @@ For the exact current matrix, see [`compatibility.md`](compatibility.md).
 
 ## Current product line
 
-V0.1 Developer Preview currently references:
+The current product line is **V0.2.0.0 (First User Trial)**, and it references:
 
 - Windows x86_64;
 - Linux x86_64;
 - Qt 6.8.3;
-- C++ API and Generic Plugin as primary paths;
-- QML API and QPA as Preview paths.
+- C++ API, QML API, Generic Plugin and QPA as **peer** integration technologies, with no primary or
+  preview hierarchy between them.
 
-Qt 5.15 LTS, Embedded Linux, ARM64, and additional QPA private-ABI combinations are not part of the current V0.1 support statement.
+Qt 5.15 LTS, Embedded Linux, ARM64, and additional QPA private-ABI combinations are not part of the current V0.2.0.0 support statement.
 
 ## Security
 
-V0.1 is not an Internet-facing remote-access server.
+V0.2.0.0 is not an Internet-facing remote-access server.
 
 Current limitations:
 
@@ -27,7 +27,7 @@ Current limitations:
 - `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is conditional and requires a transport-security-enabled build plus a valid security descriptor;
 - when `Authenticated` is available, it uses RFB VNC authentication but the stream remains unencrypted;
-- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- the default V0.2.0.0 build/profile does not imply authenticated transport is compiled in;
 - a requested `Authenticated` profile with no required build capability fails with `SecurityUnavailable` before target/transport/listener creation;
 - `AuthenticatedEncrypted` is not implemented and always fails with `SecurityUnavailable` before listener creation;
 - `AuthenticatedEncrypted` never falls back to `Authenticated` or `Insecure`, even if a certificate/private-key descriptor exists;
@@ -36,7 +36,7 @@ Current limitations:
 
 Stopping the runtime is explicit and complete: `stop()` releases the held input state the runtime was maintaining for connected viewers and returns the listener and the target adapter to `Stopped`, so an application never has to undo synthetic remote held state itself.
 
-> **TODO V0.2:** encrypted transport, certificate policy, authenticated sessions, admission/termination controls, and production network policy.
+> **Later line:** encrypted transport, certificate policy, authenticated sessions, admission/termination controls, and production network policy.
 
 See [`security.md`](security.md).
 
@@ -49,14 +49,16 @@ Important behavior:
 - default: `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named interface;
 - an invalid/unassigned bind address fails instead of silently widening to a wildcard;
 - an already occupied port fails startup;
-- `0.0.0.0` explicitly widens IPv4 exposure and therefore requires a valid authenticated configuration rather than `Insecure`;
+- `0.0.0.0` is the shipped default and widens IPv4 exposure to the host's interfaces; it is paired with
+  `Insecure` (unauthenticated and unencrypted), which is why the listener is for a **trusted LAN only**
+  and is **not Internet-safe**;
 - IPv6 wildcard behavior is platform-specific and must not be assumed to be dual-stack.
 
 On the current Windows/Qt 6.8.3 reference path, `::` behaves as an IPv6-only listener rather than accepting IPv4 through the same socket.
 
 > **TODO V0.4:** complete the same explicit address-family qualification across the final Windows/Linux compatibility matrix.
 
-Changing away from loopback also changes the security boundary; see [`security.md`](security.md).
+Changing the bind address changes the security boundary; see [`security.md`](security.md).
 
 ## Capture scope
 
@@ -87,6 +89,11 @@ Limitations:
 
 - HyRemote does not provide desktop-wide virtual HID / `uinput` control as the normal product path;
 - full IME composition/dead-key/international-layout parity is not guaranteed for every platform/viewer combination;
+- printable text is genuinely usable from a maintained VNC viewer on the qualified path: a real LAN user trial
+  entered Latin characters and digits, and Chinese text, from a second machine;
+- remote input is **application-scoped**. If the host locally activates another application or the desktop, the
+  remote pointer does not reliably reclaim OS activation for the target application, so remote typing can stop
+  working until the target application is activated locally again;
 - unsupported input semantics are not reconstructed by guesswork;
 - multiple viewers contribute to one logical application input device rather than separate independent cursors/focus domains.
 
@@ -94,7 +101,7 @@ Held supported key/button state is cleaned up across disconnect/Runtime stop so 
 
 ## Session model
 
-V0.1 exposes operational connection count, not a full authenticated session-management API.
+V0.2.0.0 exposes operational connection count, not a full authenticated session-management API.
 
 `connectedClientCount()` tells the application how many clients are currently connected. It does not provide:
 
@@ -104,19 +111,19 @@ V0.1 exposes operational connection count, not a full authenticated session-mana
 - per-session termination/ban controls;
 - independent per-viewer focus/cursor policy.
 
-> **TODO V0.2:** authenticated Session Registry and bounded admission/termination APIs.
+> **Later line:** authenticated Session Registry and bounded admission/termination APIs.
 
 ## QML API
 
-QML API is currently **Preview**.
+QML API is a peer integration technology of the V0.2.0.0 line, on the same Shared Runtime as the C++ API.
 
 It uses the same Shared Runtime as the C++ API and does not create a second Runtime. However, the final installed-SDK learning/deployment experience and broader qualification are still being completed.
 
-> **TODO V0.3:** promote QML API after complete productization and example/deployment qualification.
+> **Later line:** further QML productization and example/deployment qualification.
 
 ## Generic Plugin
 
-Generic Plugin is a V0.1 primary zero-code path.
+Generic Plugin is a peer zero-code integration technology of the V0.2.0.0 line.
 
 Its contract is that the application's native Qt platform remains authoritative. A deployment that unexpectedly changes the application platform identity to `hyremote` is not a valid Generic configuration.
 
@@ -124,7 +131,8 @@ Generic does not inherit QPA private-ABI compatibility claims.
 
 ## QPA
 
-QPA is currently **Preview** and intentionally narrower than Generic.
+QPA is a peer integration technology of the V0.2.0.0 line, and is intentionally narrower than Generic
+because it depends on Qt's exact private ABI.
 
 Limitations:
 
@@ -150,7 +158,7 @@ This does not create a blanket claim for arbitrary native/foreign windows.
 
 ## Performance
 
-V0.1 is a correctness-first, CPU-readable baseline.
+V0.2.0.0 is a correctness-first, CPU-readable baseline.
 
 It does not promise:
 
@@ -161,7 +169,9 @@ It does not promise:
 - optimal per-surface damage for every Qt application type;
 - high-motion video/Quick3D performance equivalent to a media-streaming protocol.
 
-Performance work is driven by measured product bottlenecks rather than by platform API availability alone.
+Remote interaction may be noticeably slower than local input while remaining usable: the first real LAN trial
+reported that the host reacts immediately while the remote view lags visibly. Performance work is driven by
+measured product bottlenecks rather than by platform API availability alone.
 
 > **TODO later acceleration line:** add low-copy/hardware paths only where measurements justify them.
 
