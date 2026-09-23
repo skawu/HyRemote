@@ -571,12 +571,12 @@ hyb_resolve_path(HYB_CXX_COMPILER TRUE "C++ compiler")
 # Nothing here writes an absolute Qt path into the repository: the resolved value lives in memory and in the build
 # tree's own identity marker, both of which are untracked.
 
-# A kit's directory name is the layout's own contract: <Qt>/<version>/<kit>, where the kit names its target arch and
-# its compiler family. The name differs by platform, because the installers differ: the Windows Online Installer
-# writes msvc2022_64, msvc2022_arm64, mingw_64, llvm-mingw_64, and a desktop POSIX kit is named for the toolchain it
-# was built for - gcc_64, linux_gcc_64, clang_64, linux_clang_64. A POSIX kit that names no desktop toolchain
-# (android_*, wasm_*, ios_*) is not a kit this shell can judge, so it is classified as unknown and rejected by the
-# compiler-family check rather than guessed at. The kit is still validated by requiring the real Qt6Config.cmake
+# A kit's directory name is the layout's own contract: <Qt>/<version>/<kit>, and every platform's installer names
+# the kit by the target arch and the compiler family it was built for - msvc2022_64, msvc2022_arm64, mingw_64,
+# llvm-mingw_64 on Windows; gcc_64, linux_gcc_64, clang_64, linux_clang_64 on a desktop POSIX. One model reads that
+# name on every platform, because the markers are the same markers: a kit is classified by the compiler family its
+# name states, and a name that states none - android_*, wasm_*, ios_* - is classified as unknown and rejected by the
+# compiler-family check instead of being guessed at. The kit is still validated by requiring the real Qt6Config.cmake
 # below, so the name can only reject, never invent, a candidate.
 function(hyb_qt_kit_class kit_dir out_class)
     get_filename_component(_kit "${kit_dir}" NAME)
@@ -585,34 +585,29 @@ function(hyb_qt_kit_class kit_dir out_class)
     else()
         set(_arch "x64")
     endif()
-    if(WIN32)
-        if(_kit MATCHES "llvm")
-            set(_family "clang")
-            set(_needs "clang++")
-        elseif(_kit MATCHES "mingw")
-            set(_family "gcc")
-            set(_needs "g++")
-        else()
-            set(_family "msvc")
-            set(_needs "cl.exe")
-        endif()
+    if(_kit MATCHES "llvm|clang")
+        # llvm-mingw_64 and clang_64 are the same family: the kit is clang-based.
+        set(_family "clang")
+        set(_needs "clang++")
+    elseif(_kit MATCHES "mingw|gcc")
+        set(_family "gcc")
+        set(_needs "g++")
+    elseif(_kit MATCHES "msvc")
+        set(_family "msvc")
+        set(_needs "cl.exe")
     else()
-        if(_kit MATCHES "clang|llvm")
-            set(_family "clang")
-            set(_needs "clang++")
-        elseif(_kit MATCHES "gcc")
-            set(_family "gcc")
-            set(_needs "g++")
-        else()
-            set(_family "unknown")
-            set(_needs "a desktop toolchain this kit's name does not state")
-        endif()
+        set(_family "unknown")
+        set(_needs "a compiler family this kit's name does not state")
     endif()
     set(${out_class} "${_arch}:${_family}:${_needs}" PARENT_SCOPE)
 endfunction()
 
-function(hyb_qt_candidates out_list)
-    set(_candidates "")
+# Where a Qt kit may be installed. This is the only platform-specific part of Qt discovery, and it is an objective
+# fact about the platform rather than a policy: the environment tier is shared precedence, and the platform tier is
+# one install root per platform whose version directories hold one kit per compiler family. Everything else about
+# discovery - the Qt6Config.cmake validation, the classification, the unique-candidate rule, the ambiguity refusal
+# and the diagnostics - is the same on every platform.
+function(hyb_qt_candidate_roots out_roots)
     set(_roots "")
 
     # 1. the environment already names a Qt, so use it before looking anywhere else
@@ -638,26 +633,25 @@ function(hyb_qt_candidates out_list)
     endforeach()
 
     # 2. the platform's own standard layout, so that a developer who installed a qualified kit the normal way does
-    #    not have to export an environment variable first. On Windows that is the Online Installer tree; on POSIX it
-    #    is the two places a desktop kit is normally installed, the system-wide one and the per-user one.
+    #    not have to export an environment variable first.
     #
     #    HYREMOTE_QT_DISCOVERY_ROOTS replaces those install roots for a caller that has to place the kits somewhere
     #    else - the repository's own regression does exactly that, so it exercises this rule instead of a copy of it.
-    #    The version-directory globbing and the validation below are the same either way, and nothing here writes an
+    #    The version-directory globbing and the validation are the same either way, and nothing here writes an
     #    absolute path into the repository.
     if(WIN32)
-        set(_qt_install_roots "C:/Qt")
+        set(_install_roots "C:/Qt")
     else()
-        set(_qt_install_roots "/opt/Qt" "$ENV{HOME}/Qt")
+        set(_install_roots "/opt/Qt" "$ENV{HOME}/Qt")
         if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
-            set(_qt_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
+            set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
         endif()
     endif()
-    foreach(_qt_install_root IN LISTS _qt_install_roots)
-        if(_qt_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_qt_install_root}")
+    foreach(_install_root IN LISTS _install_roots)
+        if(_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_install_root}")
             continue()
         endif()
-        file(GLOB _version_dirs "${_qt_install_root}/6.8.*")
+        file(GLOB _version_dirs "${_install_root}/6.8.*")
         foreach(_version_dir IN LISTS _version_dirs)
             file(GLOB _kit_dirs "${_version_dir}/*")
             foreach(_kit_dir IN LISTS _kit_dirs)
@@ -665,6 +659,13 @@ function(hyb_qt_candidates out_list)
             endforeach()
         endforeach()
     endforeach()
+
+    set(${out_roots} "${_roots}" PARENT_SCOPE)
+endfunction()
+
+function(hyb_qt_candidates out_list)
+    set(_candidates "")
+    hyb_qt_candidate_roots(_roots)
 
     list(REMOVE_DUPLICATES _roots)
     set(_seen_kits "")
@@ -739,6 +740,8 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         list(GET _fields 2 _needs)
         if(NOT _arch STREQUAL _qt_host_arch)
             list(APPEND _qt_rejected "${_prefix}  (targets ${_arch}; this host is ${_qt_host_arch})")
+        elseif(_family STREQUAL "unknown")
+            list(APPEND _qt_rejected "${_prefix}  (its directory name states no compiler family)")
         elseif(NOT _qt_have_${_family})
             list(APPEND _qt_rejected "${_prefix}  (needs ${_needs}, which this shell does not provide)")
         else()
@@ -823,9 +826,10 @@ else()
     set(HYB_INTEGRATIONS_TEXT "runtime-only")
 endif()
 
-# Normal output is deliberately short. Where the configuration came from, where the tree goes and what kind of build
-# this is are the facts a normal run needs; the full cpp/qml/generic/qpa/compiler/toolchain/env/cache dump is
-# diagnostic and is printed when it is asked for. Diagnostics are not reduced, only their noise in the default path.
+# Normal output is deliberately short about configuration and never short about work. Where the configuration came
+# from, where the tree goes and what kind of build this is are the facts a normal run needs, and each phase then
+# prints its own live progress; the full cpp/qml/generic/qpa/compiler/toolchain/env/cache dump is diagnostic and is
+# printed when it is asked for. Verbose is therefore additive: it never turns a silent run into a usable one.
 message(STATUS "HyRemote build")
 message(STATUS "  config    : ${HYB_CONFIG_PATH}")
 message(STATUS "  build dir : ${HYB_BUILD_DIR}")
@@ -911,6 +915,37 @@ if(hyb_recreate_build_tree)
 endif()
 file(WRITE "${identity_file}" "${identity}")
 
+# Every phase of a run goes through this one runner: it states which phase is starting, lets the phase's own output
+# reach the console as it is produced, and keeps the same log file the callers that read it always read. The
+# duplication is CMake's own (ECHO_OUTPUT_VARIABLE / ECHO_ERROR_VARIABLE), so both platforms share this single
+# implementation and neither needs a shell `tee` or a platform-specific equivalent.
+#
+# The phase output is echoed in the *normal* path on purpose. A run that prints nothing while it configures, builds,
+# installs or tests is indistinguishable from a run that has died, and "wait, then read build.log" is not a build
+# interface. Verbose output is additive on top of this: it adds the exact command, never the fact that the run is
+# still working.
+function(hyb_run_phase phase_name phase_log)
+    message(STATUS "phase: ${phase_name}")
+    if(HYB_VERBOSE)
+        message(STATUS "  command  : ${ARGN}")
+    endif()
+    execute_process(
+        COMMAND ${ARGN}
+        RESULT_VARIABLE hyb_phase_status
+        OUTPUT_VARIABLE hyb_phase_stdout
+        ERROR_VARIABLE hyb_phase_stderr
+        ECHO_OUTPUT_VARIABLE
+        ECHO_ERROR_VARIABLE)
+    file(WRITE "${phase_log}" "${hyb_phase_stdout}")
+    file(APPEND "${phase_log}" "${hyb_phase_stderr}")
+    if(NOT hyb_phase_status EQUAL 0)
+        message(STATUS "PHASE=${phase_name}")
+        message(STATUS "PHASE_EXIT_STATUS=${hyb_phase_status}")
+        message(STATUS "PHASE_LOG=${phase_log}")
+    endif()
+    set(HYB_PHASE_STATUS "${hyb_phase_status}" PARENT_SCOPE)
+endfunction()
+
 set(configure_cmd
     "${CMAKE_COMMAND}"
     -S "${HYREMOTE_SOURCE_DIR}"
@@ -946,29 +981,12 @@ foreach(entry IN LISTS HYB_ENV_ENTRIES)
 endforeach()
 
 set(configure_log "${HYB_BUILD_DIR}/configure.log")
-if(HYB_VERBOSE)
-    execute_process(COMMAND ${env_cmd} ${configure_cmd} RESULT_VARIABLE rc)
-else()
-    execute_process(
-        COMMAND ${env_cmd} ${configure_cmd}
-        RESULT_VARIABLE rc
-        OUTPUT_FILE "${configure_log}"
-        ERROR_FILE "${configure_log}")
-endif()
-if(NOT rc EQUAL 0)
-    # The same reasoning the test-failure path already follows: the run knows the log, so it must show it. "See
-    # configure.log" makes the user open a file to learn something as basic as "Qt6 not found".
-    if(EXISTS "${configure_log}")
-        file(READ "${configure_log}" _hyb_configure_log_text)
-        string(STRIP "${_hyb_configure_log_text}" _hyb_configure_log_text)
-        message(STATUS "CONFIGURE_EXIT_STATUS=${rc}")
-        message(STATUS "CONFIGURE_LOG=${configure_log}")
-        message(STATUS "--- begin ${configure_log} ---")
-        message(STATUS "${_hyb_configure_log_text}")
-        message(STATUS "--- end ${configure_log} ---")
-    endif()
+hyb_run_phase(configure "${configure_log}" ${env_cmd} ${configure_cmd})
+if(NOT HYB_PHASE_STATUS EQUAL 0)
+    message(STATUS "CONFIGURE_EXIT_STATUS=${HYB_PHASE_STATUS}")
+    message(STATUS "CONFIGURE_LOG=${configure_log}")
     message(FATAL_ERROR
-        "Configure failed with exit status ${rc}. The full log is above and in ${configure_log}.")
+        "Configure failed with exit status ${HYB_PHASE_STATUS}. The phase output is above and in ${configure_log}.")
 endif()
 
 set(build_cmd "${CMAKE_COMMAND}" --build "${HYB_BUILD_DIR}")
@@ -978,27 +996,12 @@ else()
     list(APPEND build_cmd --parallel)
 endif()
 set(build_log "${HYB_BUILD_DIR}/build.log")
-if(HYB_VERBOSE)
-    execute_process(COMMAND ${env_cmd} ${build_cmd} RESULT_VARIABLE rc)
-else()
-    execute_process(
-        COMMAND ${env_cmd} ${build_cmd}
-        RESULT_VARIABLE rc
-        OUTPUT_FILE "${build_log}"
-        ERROR_FILE "${build_log}")
-endif()
-if(NOT rc EQUAL 0)
-    if(EXISTS "${build_log}")
-        file(READ "${build_log}" _hyb_build_log_text)
-        string(STRIP "${_hyb_build_log_text}" _hyb_build_log_text)
-        message(STATUS "BUILD_EXIT_STATUS=${rc}")
-        message(STATUS "BUILD_LOG=${build_log}")
-        message(STATUS "--- begin ${build_log} ---")
-        message(STATUS "${_hyb_build_log_text}")
-        message(STATUS "--- end ${build_log} ---")
-    endif()
+hyb_run_phase(build "${build_log}" ${env_cmd} ${build_cmd})
+if(NOT HYB_PHASE_STATUS EQUAL 0)
+    message(STATUS "BUILD_EXIT_STATUS=${HYB_PHASE_STATUS}")
+    message(STATUS "BUILD_LOG=${build_log}")
     message(FATAL_ERROR
-        "Build failed with exit status ${rc}. The full log is above and in ${build_log}.")
+        "Build failed with exit status ${HYB_PHASE_STATUS}. The phase output is above and in ${build_log}.")
 endif()
 
 if(HYB_INSTALL)
@@ -1013,17 +1016,12 @@ if(HYB_INSTALL)
 
     set(install_cmd "${CMAKE_COMMAND}" --install "${HYB_BUILD_DIR}" --prefix "${HYB_INSTALL_ROOT}")
     set(install_log "${HYB_BUILD_DIR}/install.log")
-    if(HYB_VERBOSE)
-        execute_process(COMMAND ${env_cmd} ${install_cmd} RESULT_VARIABLE rc)
-    else()
-        execute_process(
-            COMMAND ${env_cmd} ${install_cmd}
-            RESULT_VARIABLE rc
-            OUTPUT_FILE "${install_log}"
-            ERROR_FILE "${install_log}")
-    endif()
-    if(NOT rc EQUAL 0)
-        message(FATAL_ERROR "Install failed (${rc}). See ${install_log}")
+    hyb_run_phase(install "${install_log}" ${env_cmd} ${install_cmd})
+    if(NOT HYB_PHASE_STATUS EQUAL 0)
+        message(STATUS "INSTALL_EXIT_STATUS=${HYB_PHASE_STATUS}")
+        message(STATUS "INSTALL_LOG=${install_log}")
+        message(FATAL_ERROR
+            "Install failed (${HYB_PHASE_STATUS}). The phase output is above and in ${install_log}.")
     endif()
     message(STATUS "HYREMOTE_INSTALL_ROOT=${HYB_INSTALL_ROOT}")
     # A truthful, human-readable manifest beside the tree. It is deliberately not a schema or a framework: it states
@@ -1177,35 +1175,18 @@ if(HYB_TESTS_RUN)
     endif()
 
     set(test_log "${HYB_BUILD_DIR}/test.log")
-    if(HYB_VERBOSE)
-        execute_process(
-            COMMAND "${CMAKE_COMMAND}" -E env ${test_env} ${run_test_cmd}
-            RESULT_VARIABLE rc)
-    else()
-        execute_process(
-            COMMAND "${CMAKE_COMMAND}" -E env ${test_env} ${run_test_cmd}
-            RESULT_VARIABLE rc
-            OUTPUT_FILE "${test_log}"
-            ERROR_FILE "${test_log}")
-    endif()
-    if(NOT rc EQUAL 0)
-        # rc is the ctest process exit status, not a count of failures - ctest exits 8 whenever one or more tests
-        # failed, and reporting it as "Tests failed (8)" read like eight failures and hid the actual names from
-        # every caller. Echo the log the same run already produced, so the build system itself is diagnosable
-        # without a second CI round trip, and state what the number is.
-        if(EXISTS "${test_log}")
-            file(READ "${test_log}" _hyb_test_log_text)
-            string(STRIP "${_hyb_test_log_text}" _hyb_test_log_text)
-            message(STATUS "TEST_EXIT_STATUS=${rc}")
-            message(STATUS "TEST_LOG=${test_log}")
-            message(STATUS "--- begin ${test_log} ---")
-            message(STATUS "${_hyb_test_log_text}")
-            message(STATUS "--- end ${test_log} ---")
-        endif()
+    hyb_run_phase(test "${test_log}" "${CMAKE_COMMAND}" -E env ${test_env} ${run_test_cmd})
+    if(NOT HYB_PHASE_STATUS EQUAL 0)
+        # The status is the ctest process exit status, not a count of failures - ctest exits 8 whenever one or more
+        # tests fail, and reporting it as "Tests failed (8)" read like eight failures and hid the actual names. The
+        # run's own output has already been printed by the phase runner and is also in the log, so the failing test
+        # names are where the reader is already looking instead of one file away.
+        message(STATUS "TEST_EXIT_STATUS=${HYB_PHASE_STATUS}")
+        message(STATUS "TEST_LOG=${test_log}")
         message(FATAL_ERROR
-            "CTest exited with status ${rc}. See ${test_log}. "
+            "CTest exited with status ${HYB_PHASE_STATUS}. The phase output is above and in ${test_log}. "
             "That status is the ctest process exit code, not a failure count: ctest exits 8 when one or more tests "
-            "failed, and the failing test names and their output are in the log echoed above.")
+            "failed, and the failing test names and their output are printed above.")
     endif()
 
     # Discovered is not the same as executed: an exclusion can filter the whole suite away, and CTest still exits 0.
