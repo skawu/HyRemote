@@ -341,3 +341,32 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND HYREMOTE_WITH_VNC)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
 endif()
+
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("component;runtime;fast"
+    hyremote-runtime-listener-binding-test
+    hyremote-runtime-automatic-surface-model-test
+    hyremote-runtime-automatic-composite-capture-test
+    hyremote-runtime-automatic-composite-input-test
+    hyremote-runtime-notifications-test
+    hyremote-security-descriptor-test
+    hyremote-target-component-provider-test
+    hyremote-input-mailbox-admission-test
+)
+hyremote_label_test_family("integration;rfb;fast"
+    hyremote-rfb-multi-client-input-test
+    hyremote-vnc-auth-test
+    hyremote-rfb-vnc-auth-handshake-test
+    hyremote-rfb-widget-disconnect-backpressure-test
+    hyremote-rfb-listener-reachability-test
+)
+hyremote_label_test_family("integration;widgets;fast"
+    hyremote-widgets-capture-test
+    hyremote-widgets-input-routing-test
+    hyremote-widgets-input-backpressure-test
+)
+hyremote_label_test_family("integration;quick;fast"
+    hyremote-quick-capture-test
+    hyremote-quick-input-routing-test
+    hyremote-quick-input-backpressure-test
+)

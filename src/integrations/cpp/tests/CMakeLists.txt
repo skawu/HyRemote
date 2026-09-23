@@ -118,4 +118,15 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     )
 endif()
 
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;cpp;fast"
+    hyremote-remoteaccess-test
+    hyremote-remoteaccess-error-ack-test
+    hyremote-remoteaccess-target-loss-test
+    hyremote-listener-address-matrix-test
+)
+hyremote_label_test_family("e2e;rfb;qualification"
+    hyremote-v01-rfb-product-fit
+)
+
 unset(_hyremote_runtime_src)

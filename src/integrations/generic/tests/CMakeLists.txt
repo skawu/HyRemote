@@ -30,3 +30,11 @@ target_include_directories(hyremote-generic-config-test PRIVATE ${CMAKE_SOURCE_D
 target_link_libraries(hyremote-generic-config-test PRIVATE Qt6::Core Qt6::Network)
 add_test(NAME hyremote-generic-config-test COMMAND hyremote-generic-config-test)
 set_tests_properties(hyremote-generic-config-test PROPERTIES TIMEOUT 15)
+
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;generic;fast"
+    hyremote-generic-plugin-smoke
+)
+hyremote_label_test_family("contract;generic;fast"
+    hyremote-generic-config-test
+)

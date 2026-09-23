@@ -4,6 +4,8 @@
 # and the deterministic fakes; `../src` is on the include path so the tests can exercise the
 # internal bounded mailbox directly (C4).
 
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+
 function(hyremote_add_core_test name source)
     add_executable(${name} ${source})
     target_link_libraries(${name} PRIVATE hyremote-core)
@@ -32,3 +34,20 @@ add_test(NAME hyremote-core-test-dependency-boundary
          COMMAND ${CMAKE_COMMAND}
                  -DCORE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/..
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/check_dependencies.cmake)
+
+hyremote_label_test_family("component;core;fast"
+    hyremote-core-test-frame-lifetime
+    hyremote-core-test-damage
+    hyremote-core-test-timing
+    hyremote-core-test-mailbox
+    hyremote-core-test-transport-handoff
+    hyremote-core-test-session-lifecycle
+    hyremote-core-test-session-defaults
+    hyremote-core-test-input-routing
+    hyremote-core-test-input-normalization
+    hyremote-core-test-callback-lifetime
+    hyremote-core-test-callback-exception-boundary
+)
+hyremote_label_test_family("contract;core;fast"
+    hyremote-core-test-dependency-boundary
+)
