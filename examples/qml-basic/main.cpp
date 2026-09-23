@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     parser.setApplicationDescription(QStringLiteral("HyRemote Declarative QML API example"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
-                                  QStringLiteral("Loopback VNC port."),
+                                  QStringLiteral("Listener port the viewer connects to."),
                                   QStringLiteral("port"),
                                   QStringLiteral("5921"));
     QCommandLineOption inputOption(QStringLiteral("remote-input"),

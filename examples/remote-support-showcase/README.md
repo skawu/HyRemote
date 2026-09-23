@@ -6,7 +6,7 @@ This example demonstrates the V1.0 production-facing remote-support workflow thr
 
 - The local Qt Widgets application starts normally and remains the authoritative UI.
 - Remote access is **off initially**. The local operator must press **Start remote access**.
-- The listener uses HyRemote's loopback-safe default and the configured port is displayed locally.
+- The listener uses HyRemote's LAN-capable default (`0.0.0.0`) and the effective port is displayed locally.
 - Listener/runtime state and viewer connection state are distinct: **Running does not mean a viewer is connected**. The local status panel displays the backend-neutral `connectedClientCount()` from the public facade.
 - Remote input is disabled by default, so the initial policy is view-only.
 - The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
@@ -17,7 +17,7 @@ This example demonstrates the V1.0 production-facing remote-support workflow thr
 
 ## Security boundary
 
-The current bounded RFB correctness baseline uses `SecurityType None`. This example therefore does **not** present the connection as authenticated or encrypted. Keep the listener on loopback or another explicitly trusted/protected network path until production authentication/encryption capabilities exist.
+The current bounded RFB correctness baseline uses `SecurityType None`. This example therefore does **not** present the connection as authenticated or encrypted. Keep the listener on this LAN or another explicitly trusted network path; production authentication and encryption are not part of this release.
 
 The safe startup policy is therefore two-dimensional: the service is explicitly started, and remote control remains independently opt-in. A connected-client count is operational diagnostics only; it is not an authenticated identity count.
 
