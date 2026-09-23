@@ -41,7 +41,7 @@ Core needs no GUI frontend, RFB or Qt Widgets/Quick.
 | **RFB+Widgets disconnect/backpressure** | **Runtime + Widgets + VNC after #327/#328** | **TG-020 CLOSED**; absent when VNC is unavailable |
 | Quick capture/routing/backpressure | Runtime + Quick after #327/#328 | Runtime/Quick; TG-002 remains on capture DPR |
 
-Historical CPP guards describe former physical registration, not desired ownership. B4 intentionally adds one CTest identity because one mixed listener executable becomes two semantic owners; no scenario is duplicated. IPv6 is no longer a Runtime reachability row after #338: it is a public fail-closed configuration case.
+Historical CPP guards describe former physical registration, not desired ownership. B4 intentionally adds one CTest identity because one mixed listener executable becomes two semantic owners; no scenario is duplicated. IPv6 is no longer a Runtime reachability row after #338: it is a public fail-closed configuration case. Together B1+B2+B4 close TG-003.
 
 ## Peer frontends
 
@@ -78,7 +78,7 @@ QPA itself requires exact Qt 6.8.3 private ABI. Unique behavior tests are KEEP:
 
 | Family | Cost | Decision |
 | --- | --- | --- |
-| build-authority selftest | fast | MOVE from Runtime to T3 |
+| build-authority selftest | fast | T3; TG-004 CLOSED by B3 |
 | CI classifier / mainline audit / branch-name selftests | fast | KEEP T3 |
 | public API contract | contract | KEEP; TG-018 wording cleanup |
 | repository layout / documentation paths / CI environment / licensing | contract | MOVE from release-readiness to T3 |
@@ -142,6 +142,8 @@ Reduced qpa-only run #296 (`35676277901`) proved capability guards:
 - popup PASS both;
 - V0.1 combined example smoke absent with CPP=OFF.
 
-B4 stacked hosted evidence after #338 proves the semantic listener split adds exactly one CTest and both identities execute: Linux 104 discovered / 72 executed / PASS; Windows 103 / 71 / PASS. These counts are from the security-enabled affected lane and do not replace the historical Phase-A default-security-off baseline above.
+B4's durable matrix fact is the semantic +1 CTest identity produced by splitting the mixed listener executable into C++ facade and Runtime/RFB owners with no duplicated row. Exact-head B4 execution counts belong to the PR Review Gate evidence after the fail-closed fix/fresh-base; pre-fix stacked-head counts are not architecture authority.
+
+Phase-B closeout: TG-003 is CLOSED by B1+B2+B4, TG-004 by B3, and TG-020 by B2. Phase C owns TG-006/TG-007; Phase D P1 owns TG-001/TG-002/TG-013/TG-014; P2 findings remain deferred.
 
 Exact names and interpretation are in `EXECUTION_BASELINE.md`.
