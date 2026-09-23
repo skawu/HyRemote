@@ -185,7 +185,7 @@ endif()
 
 # The default listener port is shared by every integration frontend. C++ and QML configure the same
 # AccessInstance runtime directly; Generic and QPA bootstrap the same automatic controller/runtime.
-set(HYREMOTE_DEFAULT_PORT 5921 CACHE STRING "Default loopback listener port shared by all integration modes")
+set(HYREMOTE_DEFAULT_PORT 5921 CACHE STRING "Default listener port shared by all integration modes")
 if(NOT HYREMOTE_DEFAULT_PORT MATCHES "^[0-9]+$"
    OR HYREMOTE_DEFAULT_PORT LESS 1
    OR HYREMOTE_DEFAULT_PORT GREATER 65535)
