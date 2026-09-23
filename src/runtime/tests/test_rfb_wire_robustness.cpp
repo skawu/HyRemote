@@ -134,7 +134,7 @@ struct Recorder
     }
 };
 
-bool connectRawRfb(QTcpSocket &socket, quint16 port, bool fragmentedVersion)
+bool negotiateThroughSecurity(QTcpSocket &socket, quint16 port, bool fragmentedVersion)
 {
     socket.connectToHost(QHostAddress::LocalHost, port);
     if (!socket.waitForConnected(3000))
@@ -157,7 +157,12 @@ bool connectRawRfb(QTcpSocket &socket, quint16 port, bool fragmentedVersion)
         return false;
 
     const QByteArray securityResult = readExact(socket, 4);
-    if (securityResult.size() != 4 || readU32(securityResult, 0) != 0U)
+    return securityResult.size() == 4 && readU32(securityResult, 0) == 0U;
+}
+
+bool connectRawRfb(QTcpSocket &socket, quint16 port, bool fragmentedVersion)
+{
+    if (!negotiateThroughSecurity(socket, port, fragmentedVersion))
         return false;
 
     if (!writeAll(socket, QByteArray(1, char(1))))
@@ -168,6 +173,15 @@ bool connectRawRfb(QTcpSocket &socket, quint16 port, bool fragmentedVersion)
     const std::uint32_t nameLength = readU32(serverInit, 20);
     return readExact(socket, static_cast<qsizetype>(nameLength)).size()
            == static_cast<qsizetype>(nameLength);
+}
+
+bool enterAwaitInitialFrame(QTcpSocket &socket, quint16 port)
+{
+    if (!negotiateThroughSecurity(socket, port, false))
+        return false;
+    // ClientInit moves the worker into AwaitInitialFrame. With no frame enqueued in this test,
+    // subsequent bytes are deliberately retained instead of interpreted as normal messages.
+    return writeAll(socket, QByteArray(1, char(1)));
 }
 
 bool waitForDisconnected(QTcpSocket &socket)
@@ -375,8 +389,7 @@ void testBoundedInputBurstFailsClosed()
                            [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
 
     QTcpSocket socket;
-    socket.connectToHost(QHostAddress::LocalHost, port);
-    CHECK(socket.waitForConnected(3000));
+    CHECK(enterAwaitInitialFrame(socket, port));
     QByteArray burst(256 * 1024 + 1, char('x'));
     const qint64 queued = socket.write(burst);
     CHECK(queued == burst.size());
