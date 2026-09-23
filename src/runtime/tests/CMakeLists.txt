@@ -142,6 +142,26 @@ if(HYREMOTE_WITH_VNC)
     )
     add_test(NAME hyremote-rfb-multi-client-input-test COMMAND hyremote-rfb-multi-client-input-test)
     set_tests_properties(hyremote-rfb-multi-client-input-test PROPERTIES TIMEOUT 15)
+
+    # TG-013/TG-014: drive the production RFB socket parser with fragmented input and bounded
+    # malformed/oversized messages. This deliberately reuses the real transport instead of adding
+    # a parser-only seam merely for tests.
+    add_executable(hyremote-rfb-wire-robustness-test
+        test_rfb_wire_robustness.cpp
+    )
+    target_link_libraries(hyremote-rfb-wire-robustness-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+    )
+    target_include_directories(hyremote-rfb-wire-robustness-test
+        PRIVATE
+            ../src
+    )
+    add_test(NAME hyremote-rfb-wire-robustness-test COMMAND hyremote-rfb-wire-robustness-test)
+    set_tests_properties(hyremote-rfb-wire-robustness-test PROPERTIES TIMEOUT 30)
 endif()
 
 # Private VNC Authentication contracts. They need the real capability pair - the RFB transport has to
@@ -207,6 +227,10 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     add_test(NAME hyremote-widgets-capture-test COMMAND hyremote-widgets-capture-test)
     set_tests_properties(hyremote-widgets-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+    add_test(NAME hyremote-widgets-capture-forced-dpr-test COMMAND hyremote-widgets-capture-test)
+    set_tests_properties(hyremote-widgets-capture-forced-dpr-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
     )
 
     add_executable(hyremote-widgets-input-backpressure-test
@@ -284,6 +308,10 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
+    add_test(NAME hyremote-quick-capture-forced-dpr-test COMMAND hyremote-quick-capture-test)
+    set_tests_properties(hyremote-quick-capture-forced-dpr-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
+    )
 
     add_executable(hyremote-quick-input-routing-test
         test_quick_input_routing.cpp
@@ -355,6 +383,7 @@ hyremote_label_test_family("component;runtime;fast"
 )
 hyremote_label_test_family("integration;rfb;fast"
     hyremote-rfb-multi-client-input-test
+    hyremote-rfb-wire-robustness-test
     hyremote-vnc-auth-test
     hyremote-rfb-vnc-auth-handshake-test
     hyremote-rfb-widget-disconnect-backpressure-test
@@ -362,11 +391,13 @@ hyremote_label_test_family("integration;rfb;fast"
 )
 hyremote_label_test_family("integration;widgets;fast"
     hyremote-widgets-capture-test
+    hyremote-widgets-capture-forced-dpr-test
     hyremote-widgets-input-routing-test
     hyremote-widgets-input-backpressure-test
 )
 hyremote_label_test_family("integration;quick;fast"
     hyremote-quick-capture-test
+    hyremote-quick-capture-forced-dpr-test
     hyremote-quick-input-routing-test
     hyremote-quick-input-backpressure-test
 )
