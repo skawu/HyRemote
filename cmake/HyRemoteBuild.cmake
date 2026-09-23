@@ -560,6 +560,171 @@ hyb_resolve_path(HYB_TOOLCHAIN TRUE "Toolchain file")
 hyb_resolve_path(HYB_C_COMPILER TRUE "C compiler")
 hyb_resolve_path(HYB_CXX_COMPILER TRUE "C++ compiler")
 
+# --------------------------------------------------------------------------- Qt discovery
+#
+# Precedence is deliberate and absolute: a --qt-prefix on the command line, or a value in build.yml, is used exactly as
+# given and is never second-guessed. Only an empty prefix is resolved here, first from the environment, then - on
+# Windows - from the standard Qt Online Installer layout. Discovery adopts a kit only when exactly one candidate is
+# both real and usable; anything else fails closed with the candidates and the exact next command, because choosing
+# between an MSVC and a MinGW kit on the user's behalf would produce a build that cannot link.
+#
+# Nothing here writes an absolute Qt path into the repository: the resolved value lives in memory and in the build
+# tree's own identity marker, both of which are untracked.
+
+# A kit's directory name is the layout's own contract: <Qt>/<version>/<kit>, where the kit names its target arch and
+# its compiler family - msvc2022_64, msvc2022_arm64, mingw_64, llvm-mingw_64. The kit is still validated by requiring
+# the real Qt6Config.cmake below, so the name can only reject, never invent, a candidate.
+function(hyb_qt_kit_class kit_dir out_class)
+    get_filename_component(_kit "${kit_dir}" NAME)
+    if(_kit MATCHES "arm64")
+        set(_arch "arm64")
+    else()
+        set(_arch "x64")
+    endif()
+    if(_kit MATCHES "llvm")
+        set(_family "clang")
+        set(_needs "clang++")
+    elseif(_kit MATCHES "mingw")
+        set(_family "gcc")
+        set(_needs "g++")
+    else()
+        set(_family "msvc")
+        set(_needs "cl.exe")
+    endif()
+    set(${out_class} "${_arch}:${_family}:${_needs}" PARENT_SCOPE)
+endfunction()
+
+function(hyb_qt_candidates out_list)
+    set(_candidates "")
+    set(_roots "")
+
+    # 1. the environment already names a Qt, so use it before looking anywhere else
+    foreach(_env IN ITEMS QTDIR CMAKE_PREFIX_PATH)
+        if(DEFINED ENV{${_env}} AND NOT "$ENV{${_env}}" STREQUAL "")
+            set(_paths "$ENV{${_env}}")
+            string(REPLACE "\\" "/" _paths "${_paths}")
+            foreach(_entry IN LISTS _paths)
+                if(NOT _entry STREQUAL "")
+                    string(REGEX REPLACE "[/]+$" "" _entry "${_entry}")
+                    list(APPEND _roots "${_entry}")
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+
+    # 2. the standard Windows Online Installer layout. POSIX keeps relying on CMake's own discovery, which is what the
+    #    product already does when the prefix is empty.
+    if(WIN32)
+        file(GLOB _version_dirs "C:/Qt/6.8.*")
+        foreach(_version_dir IN LISTS _version_dirs)
+            file(GLOB _kit_dirs "${_version_dir}/*")
+            foreach(_kit_dir IN LISTS _kit_dirs)
+                list(APPEND _roots "${_kit_dir}")
+            endforeach()
+        endforeach()
+    endif()
+
+    list(REMOVE_DUPLICATES _roots)
+    foreach(_root IN LISTS _roots)
+        if(EXISTS "${_root}/lib/cmake/Qt6/Qt6Config.cmake")
+            hyb_qt_kit_class("${_root}" _class)
+            list(APPEND _candidates "${_root}|${_class}")
+        endif()
+    endforeach()
+    set(${out_list} "${_candidates}" PARENT_SCOPE)
+endfunction()
+
+if(HYB_QT_PREFIX STREQUAL "")
+    hyb_qt_candidates(_qt_candidates)
+
+    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "ARM64|AARCH64")
+        set(_qt_host_arch "arm64")
+    else()
+        set(_qt_host_arch "x64")
+    endif()
+
+    # The compiler family the shell can actually use. Mixing an MSVC kit with a MinGW compiler (or the reverse) links
+    # nothing, so a kit whose compiler this environment does not provide is not a candidate.
+    find_program(_qt_cl cl.exe)
+    find_program(_qt_gxx g++)
+    find_program(_qt_clangxx clang++)
+    set(_qt_have_msvc FALSE)
+    set(_qt_have_gcc FALSE)
+    set(_qt_have_clang FALSE)
+    if(_qt_cl)
+        set(_qt_have_msvc TRUE)
+    endif()
+    if(_qt_gxx)
+        set(_qt_have_gcc TRUE)
+    endif()
+    if(_qt_clangxx)
+        set(_qt_have_clang TRUE)
+    endif()
+
+    set(_qt_usable "")
+    set(_qt_rejected "")
+    foreach(_candidate IN LISTS _qt_candidates)
+        string(REPLACE "|" ";" _parts "${_candidate}")
+        list(GET _parts 0 _prefix)
+        list(GET _parts 1 _class)
+        string(REPLACE ":" ";" _fields "${_class}")
+        list(GET _fields 0 _arch)
+        list(GET _fields 1 _family)
+        list(GET _fields 2 _needs)
+        if(NOT _arch STREQUAL _qt_host_arch)
+            list(APPEND _qt_rejected "${_prefix}  (targets ${_arch}; this host is ${_qt_host_arch})")
+        elseif(NOT _qt_have_${_family})
+            list(APPEND _qt_rejected "${_prefix}  (needs ${_needs}, which this shell does not provide)")
+        else()
+            list(APPEND _qt_usable "${_prefix}")
+        endif()
+    endforeach()
+
+    if(_qt_usable)
+        list(LENGTH _qt_usable _qt_usable_count)
+        if(_qt_usable_count EQUAL 1)
+            list(GET _qt_usable 0 HYB_QT_PREFIX)
+            cmake_path(NORMAL_PATH HYB_QT_PREFIX)
+            set(HYB_QT_DISCOVERY_NOTE "Qt prefix        : ${HYB_QT_PREFIX} (discovered)")
+        else()
+            message(FATAL_ERROR
+                "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong about "
+                "the compiler. Choose one explicitly:\n"
+                "\n"
+                "  .\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>\n"
+                "\n"
+                "Candidates:\n    ${_qt_usable}\n"
+                "\n"
+                "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
+        endif()
+    elseif(_qt_candidates)
+        message(FATAL_ERROR
+            "Qt 6.8 kits were found on this machine, but none of them can be used from this shell as it stands. "
+            "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
+            "developer environment first:\n"
+            "\n"
+            "  .\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>\n"
+            "\n"
+            "Found but not usable:\n    ${_qt_rejected}\n"
+            "\n"
+            "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
+    else()
+        message(FATAL_ERROR
+            "No Qt 6.8+ installation was found, and this top-level build needs one.\n"
+            "\n"
+            "Point the build at a Qt 6.8.3 desktop kit, which is the only qualified line today (Qt 5.15 is tracked "
+            "by issue #57 and cannot configure this product):\n"
+            "\n"
+            "  .\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/mingw_64>\n"
+            "\n"
+            "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/gcc_64>\n"
+            "\n"
+            "Searched: QTDIR, CMAKE_PREFIX_PATH, and C:/Qt/6.8.*/\* (a kit is recognised by its "
+            "lib/cmake/Qt6/Qt6Config.cmake). To build the Core library alone on purpose instead, pass "
+            "-DHYREMOTE_BUILD_REMOTE_ACCESS=OFF -DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+    endif()
+endif()
+
 if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
     set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
 endif()
@@ -591,6 +756,9 @@ message(STATUS "HyRemote build")
 message(STATUS "  config    : ${HYB_CONFIG_PATH}")
 message(STATUS "  build dir : ${HYB_BUILD_DIR}")
 message(STATUS "  build type: ${HYB_BUILD_TYPE}")
+if(HYB_QT_DISCOVERY_NOTE)
+    message(STATUS "  ${HYB_QT_DISCOVERY_NOTE}")
+endif()
 
 if(HYB_SHOW_CONFIG OR HYB_VERBOSE)
     message(STATUS "HyRemote build configuration")
@@ -714,7 +882,19 @@ else()
         ERROR_FILE "${configure_log}")
 endif()
 if(NOT rc EQUAL 0)
-    message(FATAL_ERROR "Configure failed (${rc}). See ${configure_log}")
+    # The same reasoning the test-failure path already follows: the run knows the log, so it must show it. "See
+    # configure.log" makes the user open a file to learn something as basic as "Qt6 not found".
+    if(EXISTS "${configure_log}")
+        file(READ "${configure_log}" _hyb_configure_log_text)
+        string(STRIP "${_hyb_configure_log_text}" _hyb_configure_log_text)
+        message(STATUS "CONFIGURE_EXIT_STATUS=${rc}")
+        message(STATUS "CONFIGURE_LOG=${configure_log}")
+        message(STATUS "--- begin ${configure_log} ---")
+        message(STATUS "${_hyb_configure_log_text}")
+        message(STATUS "--- end ${configure_log} ---")
+    endif()
+    message(FATAL_ERROR
+        "Configure failed with exit status ${rc}. The full log is above and in ${configure_log}.")
 endif()
 
 set(build_cmd "${CMAKE_COMMAND}" --build "${HYB_BUILD_DIR}")
@@ -734,7 +914,17 @@ else()
         ERROR_FILE "${build_log}")
 endif()
 if(NOT rc EQUAL 0)
-    message(FATAL_ERROR "Build failed (${rc}). See ${build_log}")
+    if(EXISTS "${build_log}")
+        file(READ "${build_log}" _hyb_build_log_text)
+        string(STRIP "${_hyb_build_log_text}" _hyb_build_log_text)
+        message(STATUS "BUILD_EXIT_STATUS=${rc}")
+        message(STATUS "BUILD_LOG=${build_log}")
+        message(STATUS "--- begin ${build_log} ---")
+        message(STATUS "${_hyb_build_log_text}")
+        message(STATUS "--- end ${build_log} ---")
+    endif()
+    message(FATAL_ERROR
+        "Build failed with exit status ${rc}. The full log is above and in ${build_log}.")
 endif()
 
 if(HYB_INSTALL)
