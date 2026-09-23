@@ -98,8 +98,8 @@ if(HYREMOTE_WITH_VNC)
         LABELS "candidate-evidence")
 endif()
 
-# The listener/address matrix still mixes public facade validation with lower-level bind/address
-# behavior. Phase-B4 owns that semantic split, so it remains under the C++ frontend until then.
+# Public listener configuration/error/lifecycle rows are a C++ facade contract. Real Runtime/RFB
+# reachability and interface reconciliation are registered independently from src/runtime/tests.
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     add_executable(hyremote-listener-address-matrix-test
         test_listener_address_matrix.cpp
@@ -111,10 +111,6 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
             Qt6::Core
             Qt6::Network
             Qt6::Widgets
-    )
-    target_include_directories(hyremote-listener-address-matrix-test
-        PRIVATE
-            ${_hyremote_runtime_src}
     )
     add_test(NAME hyremote-listener-address-matrix-test COMMAND hyremote-listener-address-matrix-test)
     set_tests_properties(hyremote-listener-address-matrix-test PROPERTIES
