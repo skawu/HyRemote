@@ -204,6 +204,16 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_security_runtime_deploy.cmake"
     )
+
+    # #339: the build/install contract the user is promised, registered beside the deployment gates because it
+    # is the same subject seen from the entry point instead of from one deploy path.
+    add_test(
+        NAME hyremote-release-readiness-build-install-contract
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_INSTALL_ROOT=${CMAKE_BINARY_DIR}/install
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_build_install_contract.cmake"
+    )
     add_test(
         NAME hyremote-release-readiness-deployment-relocation
         COMMAND "${CMAKE_COMMAND}"
