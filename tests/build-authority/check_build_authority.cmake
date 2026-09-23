@@ -258,36 +258,8 @@ make_qt_discovery_kit("${qt_rejected_root}/6.8.3/wasm_32" kit-wasm)
 make_qt_discovery_kit("${qt_rejected_root}/6.8.4/gcc_arm64" kit-wrong-arch)
 file(MAKE_DIRECTORY "${qt_empty_root}")
 
-# One compatible kit is adopted, and the run says where the prefix came from.
-run_env_success(qt-discovery-one-kit
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=;CMAKE_PREFIX_PATH="
-    --no-config --show-config)
-require_text_flat(qt-discovery-one-kit "${HYB_TEST_OUTPUT}" "Qt prefix : ${qt_one_kit} (discovered)")
-
-# Two compatible kits are ambiguous: nothing is chosen, both are named, and the command to paste is given.
-run_env_success(qt-discovery-two-kits-ambiguous
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
-    --no-config --show-config)
-require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
-    "Several Qt 6.8 kits on this machine could build HyRemote")
-require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.3/gcc_64")
-require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.4/gcc_64")
-require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
-    "sh ./build.cmd build --qt-prefix=<one-of-these>")
-forbid_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "Qt prefix : ${qt_two_root}")
-
-# ... and the same ambiguity fails the build path closed instead of configuring against a guessed kit. The
-# configuration asks for a Qt-dependent product (--examples), which is the shape the defect was reported in: a
-# Core-only configuration legitimately needs no Qt at all, so asserting on that would prove nothing.
-run_env_failure(qt-discovery-two-kits-build-fails-closed
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
-    build --examples "--build-dir=${scratch}/qt-discovery-two-build")
-require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
-    "Several Qt 6.8 kits on this machine could build HyRemote")
-require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
-    "This top-level configure expects Qt and did not find it")
-
-# An explicit --qt-prefix is used exactly as given and never second-guessed by discovery.
+# An explicit --qt-prefix is used exactly as given and never second-guessed by discovery. That precedence is the
+# same on every platform, so it is asserted on every platform.
 run_env_success(qt-discovery-explicit-prefix-wins
     "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
     --no-config --show-config "--qt-prefix=${qt_two_root}/6.8.4/gcc_64")
@@ -295,44 +267,80 @@ require_text_flat(qt-discovery-explicit-prefix-wins "${HYB_TEST_OUTPUT}"
     "Qt prefix : ${qt_two_root}/6.8.4/gcc_64")
 forbid_text_flat(qt-discovery-explicit-prefix-wins "${HYB_TEST_OUTPUT}" "(discovered)")
 
-# The environment tier keeps its precedence over platform discovery.
-run_env_success(qt-discovery-environment-first
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_empty_root};QTDIR=${qt_one_kit};CMAKE_PREFIX_PATH="
-    --no-config --show-config)
-require_text_flat(qt-discovery-environment-first "${HYB_TEST_OUTPUT}"
-    "Qt prefix : ${qt_one_kit} (discovered)")
+# The platform-specific half of the rule: which install roots POSIX discovery scans, how a POSIX kit is
+# classified, and what a POSIX reader is told when nothing usable is installed. Windows keeps its own layout
+# rule in the same function - the Online Installer tree and its msvc/mingw kit names - and that rule is
+# exercised by the Windows lane's real build, so it is not asserted here through POSIX kit names and POSIX
+# shell commands.
+if(UNIX AND NOT APPLE)
+    # One compatible kit is adopted, and the run says where the prefix came from.
+    run_env_success(qt-discovery-one-kit
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-one-kit "${HYB_TEST_OUTPUT}" "Qt prefix : ${qt_one_kit} (discovered)")
 
-# --show-config reports without requiring a kit or a toolchain: it still exits 0 with no compiler on PATH, and the
-# kit it can see is reported as unusable with the reason instead of being adopted.
-run_env_success(qt-discovery-show-config-without-toolchain
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=;CMAKE_PREFIX_PATH=;PATH=/nonexistent"
-    --no-config --show-config)
-require_text(qt-discovery-show-config-without-toolchain "${HYB_TEST_OUTPUT}" "integrations.cpp  : OFF")
-require_text_flat(qt-discovery-show-config-without-toolchain "${HYB_TEST_OUTPUT}"
-    "none of them can be used from this shell")
-require_text_flat(qt-discovery-show-config-without-toolchain "${HYB_TEST_OUTPUT}"
-    "needs g++, which this shell does not provide")
+    # Two compatible kits are ambiguous: nothing is chosen, both are named, and the command to paste is given.
+    run_env_success(qt-discovery-two-kits-ambiguous
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
+        "Several Qt 6.8 kits on this machine could build HyRemote")
+    require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.3/gcc_64")
+    require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.4/gcc_64")
+    require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
+        "sh ./build.cmd build --qt-prefix=<one-of-these>")
+    forbid_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "Qt prefix : ${qt_two_root}")
 
-# Nothing installed is reported for the shell the reader is in, never for another platform's layout.
-run_env_success(qt-discovery-none-found
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_empty_root};QTDIR=;CMAKE_PREFIX_PATH="
-    --no-config --show-config)
-require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "No Qt 6.8+ installation was found")
-require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}"
-    "sh ./build.cmd build --qt-prefix=<path-to-Qt/6.8.3/gcc_64>")
-require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/6.8.*/*")
-forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "C:/Qt")
-forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "mingw_64")
+    # ... and the same ambiguity fails the build path closed instead of configuring against a guessed kit. The
+    # configuration asks for a Qt-dependent product (--examples), which is the shape the defect was reported in:
+    # a Core-only configuration legitimately needs no Qt at all, so asserting on that would prove nothing.
+    run_env_failure(qt-discovery-two-kits-build-fails-closed
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
+        build --examples "--build-dir=${scratch}/qt-discovery-two-build")
+    require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
+        "Several Qt 6.8 kits on this machine could build HyRemote")
+    require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
+        "This top-level configure expects Qt and did not find it")
 
-# A kit for another target or without a desktop toolchain is rejected with its reason, not guessed at.
-run_env_success(qt-discovery-rejects-non-desktop-kit
-    "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_rejected_root};QTDIR=;CMAKE_PREFIX_PATH="
-    --no-config --show-config)
-require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}"
-    "none of them can be used from this shell")
-require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}" "wasm_32")
-require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}" "gcc_arm64")
-require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}"
-    "a desktop toolchain this kit's name does not state")
+    # The environment tier keeps its precedence over platform discovery.
+    run_env_success(qt-discovery-environment-first
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_empty_root};QTDIR=${qt_one_kit};CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-environment-first "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_one_kit} (discovered)")
+
+    # --show-config reports without requiring a kit or a toolchain: it still exits 0 with no compiler on PATH,
+    # and the kit it can see is reported as unusable with the reason instead of being adopted.
+    run_env_success(qt-discovery-show-config-without-toolchain
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=;CMAKE_PREFIX_PATH=;PATH=/nonexistent"
+        --no-config --show-config)
+    require_text(qt-discovery-show-config-without-toolchain "${HYB_TEST_OUTPUT}" "integrations.cpp  : OFF")
+    require_text_flat(qt-discovery-show-config-without-toolchain "${HYB_TEST_OUTPUT}"
+        "none of them can be used from this shell")
+    require_text_flat(qt-discovery-show-config-without-toolchain "${HYB_TEST_OUTPUT}"
+        "needs g++, which this shell does not provide")
+
+    # Nothing installed is reported for the shell the reader is in, never for another platform's layout.
+    run_env_success(qt-discovery-none-found
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_empty_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "No Qt 6.8+ installation was found")
+    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}"
+        "sh ./build.cmd build --qt-prefix=<path-to-Qt/6.8.3/gcc_64>")
+    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/6.8.*/*")
+    forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "C:/Qt")
+    forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "mingw_64")
+
+    # A kit for another target or without a desktop toolchain is rejected with its reason, not guessed at.
+    run_env_success(qt-discovery-rejects-non-desktop-kit
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_rejected_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}"
+        "none of them can be used from this shell")
+    require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}" "wasm_32")
+    require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}" "gcc_arm64")
+    require_text_flat(qt-discovery-rejects-non-desktop-kit "${HYB_TEST_OUTPUT}"
+        "a desktop toolchain this kit's name does not state")
+endif()
 
 message(STATUS "HyRemote build authority self-tests: PASS")
