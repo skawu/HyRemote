@@ -14,7 +14,9 @@
 #include <string>
 #include <vector>
 
+#include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
+#include "hyremote/core/storage.hpp"
 #include "hyremote/core/transport.hpp"
 #include "transport/rfb_transport.hpp"
 
@@ -184,6 +186,27 @@ bool hasRecoverableFailure(const std::vector<hyremote::TransportEvent> &events,
     });
 }
 
+bool primeInitialFrame(hyremote::Transport &transport)
+{
+    constexpr std::uint32_t width = 64;
+    constexpr std::uint32_t height = 48;
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(width * 4U, height);
+    if (!storage)
+        return false;
+
+    hyremote::RemoteFrame frame;
+    frame.geometry.size = {width, height};
+    frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+    frame.geometry.alphaMode = hyremote::AlphaMode::Opaque;
+    frame.geometry.planeCount = 1;
+    frame.storage = std::move(storage);
+    frame.timing.pts = hyremote::Clock::now();
+    frame.timing.ptsSource = hyremote::PtsSource::Completion;
+    frame.damage = hyremote::Damage::fullFrame();
+    transport.enqueueFrame(std::move(frame));
+    return true;
+}
+
 void testFragmentedHandshakeAndInput()
 {
     const quint16 port = freePort();
@@ -199,6 +222,7 @@ void testFragmentedHandshakeAndInput()
         return;
     CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
                            [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
 
     QTcpSocket socket;
     CHECK(connectRawRfb(socket, port, true));
@@ -254,6 +278,7 @@ void testOversizedSetEncodingsFailsClosed()
         return;
     CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
                            [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
 
     QTcpSocket socket;
     CHECK(connectRawRfb(socket, port, false));
@@ -284,6 +309,7 @@ void testOversizedCutTextFailsClosed()
         return;
     CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
                            [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
 
     QTcpSocket socket;
     CHECK(connectRawRfb(socket, port, false));
@@ -314,6 +340,7 @@ void testUnsupportedMessageFailsClosedAndNextClientRecovers()
         return;
     CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
                            [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
 
     QTcpSocket rejected;
     CHECK(connectRawRfb(rejected, port, false));
