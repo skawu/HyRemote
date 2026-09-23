@@ -39,6 +39,7 @@ V0.1 Developer Preview 的重点是**先让用户能够用起来**：
 | --- | --- |
 | [`product-overview.md`](product-overview.md) | 产品定位、集成方式、能力边界与路线 |
 | [`architecture.md`](architecture.md) | Core、Shared Runtime、四个 integration frontend 的产品架构 |
+| [`performance-optimization.md`](performance-optimization.md) | 长期性能专项：交互时延 SLO、Freshness-first、自适应采集/传输与回归 Gate |
 | [`compatibility.md`](compatibility.md) | 当前平台、Qt、接入方式兼容矩阵 |
 | [`security.md`](security.md) | 当前安全行为、默认值和不支持的安全能力 |
 | [`known-limitations.md`](known-limitations.md) | 已知限制 |
