@@ -256,7 +256,7 @@ hyremote_deploy(TARGET ExistingQtApp QPA)
 
 V0.1 默认：
 
-- `127.0.0.1:5921`；
+- `0.0.0.0:5921`；
 - 远程输入关闭；
 - `Insecure` 仅允许回环监听；
 - `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供 VNC authentication，但流量不加密；

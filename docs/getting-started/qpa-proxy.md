@@ -124,7 +124,7 @@ hyremote-input=<0|1|false|true|off|on|no|yes>
 示例：
 
 ```text
--platform "hyremote:hyremote-address=127.0.0.1:hyremote-port=5921:hyremote-input=false"
+-platform "hyremote:hyremote-address=<host-lan-ip>:hyremote-port=5921:hyremote-input=false"
 ```
 
 非法参数失败关闭。

@@ -114,7 +114,7 @@ public:
 
         auto *security = new QLabel(
             QStringLiteral("Security boundary: the current RFB correctness baseline uses "
-                           "SecurityType None. Keep the listener on loopback or another trusted, "
+                           "SecurityType None. The listener is unencrypted, so keep it on this LAN or another trusted, "
                            "explicitly protected network path; this example does not simulate "
                            "authentication or encryption."),
             remoteBox);
@@ -272,7 +272,7 @@ int main(int argc, char **argv)
     parser.setApplicationDescription(QStringLiteral("Production-like HyRemote local + remote support workflow"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
-                                  QStringLiteral("Loopback VNC port."),
+                                  QStringLiteral("Listener port the viewer connects to."),
                                   QStringLiteral("port"),
                                   QStringLiteral("5921"));
     QCommandLineOption inputOption(QStringLiteral("remote-input"),
