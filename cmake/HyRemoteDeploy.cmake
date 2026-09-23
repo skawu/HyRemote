@@ -81,13 +81,82 @@ ${_hyremote_bootstrap_libraries}
     DIRECTORIES \"$<TARGET_FILE_DIR:Qt6::Core>\"
     RESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_dependencies
     UNRESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_unresolved
+    CONFLICTING_DEPENDENCIES_PREFIX _hyremote_runtime_conflict
 )
 if(_hyremote_private_runtime_unresolved)
     message(FATAL_ERROR
         \"HyRemote runtime deployment could not resolve private dependencies: \${_hyremote_private_runtime_unresolved}\")
 endif()
+
+# A Linux host routinely exposes a distro Qt in the loader path next to the Qt the consumer selected, so
+# the same SONAME resolves to more than one root. CMake refuses to choose between them, and letting it
+# refuse would make every clean deployment fail on such a host. The choice is made here instead, and it
+# is a choice between copies of one Qt lineage, never a choice between Qt lineages.
+set(_hyremote_selected_qt_runtime_root \"$<TARGET_FILE_DIR:Qt6::Core>\")
+
+set(_hyremote_runtime_payload \"\")
 foreach(_hyremote_dependency IN LISTS _hyremote_private_runtime_dependencies)
-    string(FIND \"\${_hyremote_dependency}\" \"$<TARGET_FILE_DIR:Qt6::Core>/\" _hyremote_qt_prefix_index)
+    get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
+    list(APPEND _hyremote_runtime_payload \"\${_hyremote_dependency_real}\")
+endforeach()
+list(REMOVE_DUPLICATES _hyremote_runtime_payload)
+
+foreach(_hyremote_conflict_name IN LISTS _hyremote_runtime_conflict_FILENAMES)
+    # Only a library the selected consumer Qt runtime root itself provides may be adjudicated, so a
+    # conflict on any other dependency - and a conflict with no candidate from that root at all -
+    # still fails closed instead of being resolved on the caller's behalf.
+    if(NOT EXISTS \"\${_hyremote_selected_qt_runtime_root}/\${_hyremote_conflict_name}\")
+        message(FATAL_ERROR
+            \"HyRemote runtime deployment found a conflicting '\${_hyremote_conflict_name}' that the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root} does not provide, so it is not a Qt lineage conflict HyRemote may decide. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
+    endif()
+
+    set(_hyremote_deployed_candidates \"\")
+    set(_hyremote_selected_candidates \"\")
+    foreach(_hyremote_candidate IN LISTS _hyremote_runtime_conflict_\${_hyremote_conflict_name})
+        get_filename_component(_hyremote_candidate_real \"\${_hyremote_candidate}\" REALPATH)
+        string(FIND \"\${_hyremote_candidate_real}\" \"\${QT_DEPLOY_PREFIX}/\" _hyremote_in_deploy_tree)
+        string(FIND \"\${_hyremote_candidate_real}\" \"\${_hyremote_selected_qt_runtime_root}/\" _hyremote_in_selected_root)
+        if(_hyremote_in_deploy_tree EQUAL 0)
+            list(APPEND _hyremote_deployed_candidates \"\${_hyremote_candidate_real}\")
+        elseif(_hyremote_in_selected_root EQUAL 0)
+            list(APPEND _hyremote_selected_candidates \"\${_hyremote_candidate_real}\")
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _hyremote_deployed_candidates)
+    list(REMOVE_DUPLICATES _hyremote_selected_candidates)
+    list(LENGTH _hyremote_deployed_candidates _hyremote_deployed_count)
+    list(LENGTH _hyremote_selected_candidates _hyremote_selected_count)
+
+    # 1. the deployment tree already holds exactly one copy of that library; or
+    # 2. the selected consumer Qt runtime root is the only other root that provides it.
+    # Anything else stays ambiguous and is refused rather than guessed.
+    if(_hyremote_deployed_count EQUAL 1)
+        set(_hyremote_winner \"\${_hyremote_deployed_candidates}\")
+    elseif(_hyremote_selected_count EQUAL 1)
+        set(_hyremote_winner \"\${_hyremote_selected_candidates}\")
+    else()
+        message(FATAL_ERROR
+            \"HyRemote runtime deployment could not choose '\${_hyremote_conflict_name}' deterministically: \${_hyremote_deployed_count} candidate(s) inside the deployment tree and \${_hyremote_selected_count} candidate(s) inside the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root}. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
+    endif()
+
+    # Drop every other path claiming that filename, so a foreign same-SONAME library is never staged
+    # beside the selected lineage.
+    set(_hyremote_payload_without_foreign \"\")
+    foreach(_hyremote_dependency IN LISTS _hyremote_runtime_payload)
+        get_filename_component(_hyremote_dependency_name \"\${_hyremote_dependency}\" NAME)
+        if(_hyremote_dependency_name STREQUAL _hyremote_conflict_name
+           AND NOT _hyremote_dependency STREQUAL _hyremote_winner)
+            continue()
+        endif()
+        list(APPEND _hyremote_payload_without_foreign \"\${_hyremote_dependency}\")
+    endforeach()
+    set(_hyremote_runtime_payload \"\${_hyremote_payload_without_foreign}\")
+    list(APPEND _hyremote_runtime_payload \"\${_hyremote_winner}\")
+    list(REMOVE_DUPLICATES _hyremote_runtime_payload)
+endforeach()
+
+foreach(_hyremote_dependency IN LISTS _hyremote_runtime_payload)
+    string(FIND \"\${_hyremote_dependency}\" \"\${_hyremote_selected_qt_runtime_root}/\" _hyremote_qt_prefix_index)
     if(_hyremote_qt_prefix_index EQUAL 0)
         file(COPY \"\${_hyremote_dependency}\"
              DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\"
@@ -560,6 +629,18 @@ function(hyremote_deploy)
     endif()
     if(NOT TARGET "${HYREMOTE_DEPLOY_TARGET}")
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
+    endif()
+
+    # A deployed Linux application has to find the runtime this deployment carries beside it, and it has to do
+    # that without a loader-path repair - the same promise the deployed platform plugin already keeps through its
+    # own relative relocation. CMake's install step rewrites the executable's runtime path to INSTALL_RPATH and
+    # strips the build-tree rpath when that property is empty, so the deployed runtime path is stated here,
+    # relative to the application itself. Nothing is guessed: the deployed runtime lives in the Qt deploy lib
+    # directory, which is the same directory this helper already stages the shared runtime into.
+    if(UNIX AND NOT APPLE)
+        include(GNUInstallDirs)
+        set_property(TARGET "${HYREMOTE_DEPLOY_TARGET}" APPEND PROPERTY INSTALL_RPATH
+            "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
     endif()
 
     _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)
