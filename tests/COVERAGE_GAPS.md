@@ -36,7 +36,7 @@ There are no unresolved `REVIEW` findings and no remaining `CONFIRMED` P0/P1 fin
 | TG-016 | DEFERRED P2 | repeated deployment | Existing fixtures prove clean deployment to fresh destinations, not repeated install/deploy into the same destination. Owner: future T4 idempotence case. |
 | TG-017 | DEFERRED P2 | Generic capability-off | No deterministic package/deploy negative proving a Generic-disabled SDK reports absence/rejects `GENERIC` deployment for the intended reason. Owner: one future T4 negative, not an all-flags matrix. |
 | TG-018 | DEFERRED P2 intent | stale V1-only vocabulary | Some durable public/package comments/assertion messages still use V1-only wording for cross-release contracts. Semantics remain valid; wording cleanup is maintenance debt. |
-| TG-019 | CLOSED P1 quality | QPA popup timing | Fixed sleeps were replaced by bounded condition/event waits; fresh qpa-only Linux/Windows evidence passed without retry. |
+| TG-019 | CLOSED P1 quality | QPA popup timing/geometry | Fixed sleeps were first replaced by bounded event waits, but #363's first Windows closeout run proved QWidget visibility alone still allowed an exact transient native-popup union rectangle to race the QPA surface graph. The final test waits for the same RFB viewer to observe semantic canvas expansion, then exact recovery after hide; it does not assume native window-manager placement is frozen at the first visible event and does not use retries. |
 | TG-020 | CLOSED P1 build matrix | RFB+Widgets capability guard | `hyremote-rfb-widget-disconnect-backpressure-test` requires Widgets + VNC at registration/build time; Widgets-on/VNC-off has zero registration rather than a skip/unbuildable target. |
 | TG-021 | CLOSED P1 evidence | V0.1 example capability guard | `hyremote-v01-example-smoke` requires C++ API + Runtime + Python; qpa-only hosted evidence proves it is absent when C++ is off while the remaining suite stays nonzero/pass. |
 
@@ -59,7 +59,7 @@ There are no unresolved `REVIEW` findings and no remaining `CONFIRMED` P0/P1 fin
 | installed C++ | `hyremote-cpp-installed-consumers` |
 | installed Generic | `hyremote-generic-installed-consumers` |
 | minimal public package closure | `consumer-installed-sdk` release-evidence cell, intentionally distinct from adapter apps |
-| QPA popup synchronization | bounded waits + fresh hosted qpa-only evidence |
+| QPA popup synchronization | bounded widget visibility + same-viewer remote canvas expansion/recovery; no exact transient native-popup placement assumption |
 | C++-disabled adoption registration | `hyremote-v01-example-smoke` guard + qpa-only evidence |
 | catalog completeness | configure-time reconciliation of CMake `TESTS` properties against exact identities in `TEST_CATALOG.md` |
 
@@ -83,4 +83,4 @@ There are no unresolved `REVIEW` findings and no remaining `CONFIRMED` P0/P1 fin
 
 ## Final #274 admission statement
 
-No confirmed P0/P1 gap remains. TG-010/TG-011/TG-015/TG-016/TG-017/TG-018 remain explicit deferred P2 findings with owner/rationale. Future-owned feature obligations remain with their existing release/issues. This register therefore permits #274 closure once the final authority-reconciliation PR passes its exact-head review gate.
+No confirmed P0/P1 gap remains once the exact-head final gate proves TG-019's semantic popup condition on both hosted platforms. TG-010/TG-011/TG-015/TG-016/TG-017/TG-018 remain explicit deferred P2 findings with owner/rationale. Future-owned feature obligations remain with their existing release/issues. This register therefore permits #274 closure only after the final authority-reconciliation PR passes its exact-head review gate.
