@@ -44,6 +44,7 @@ All of the following remain Core-owned because a failure invalidates transport/U
 - `hyremote-runtime-automatic-surface-model-test` — automatic surface discovery/model.
 - `hyremote-runtime-automatic-composite-capture-test` — composite geometry/capture.
 - `hyremote-runtime-automatic-composite-input-test` — composite input routing.
+- `hyremote-runtime-listener-binding-test` — #338 deterministic listener-mode/interface-resolution/IPv4-locality contract without real socket or adapter dependence.
 
 ### Necessary but physically misowned under C++
 
@@ -62,7 +63,10 @@ All of the following remain Core-owned because a failure invalidates transport/U
 | `hyremote-quick-input-routing-test` | MOVE Runtime/Quick | Quick input delivery |
 | `hyremote-quick-input-backpressure-test` | MOVE Runtime/Quick | bounded Quick GUI dispatch |
 | `hyremote-rfb-widget-disconnect-backpressure-test` | MOVE + GAP TG-020 | RFB+Widgets disconnect cleanup under saturation; current registration guard is weaker than required VNC+Widgets capability |
-| `hyremote-listener-address-matrix-test` | SPLIT | public RemoteAccess config/error rows stay C++; raw bind/address-family semantics move Runtime/RFB |
+| `hyremote-listener-address-matrix-test` | SPLIT, then KEEP T2/C++ identity | B4 keeps only public config/error/lifecycle and IPv6-rejection rows under the existing identity |
+| `hyremote-rfb-listener-reachability-test` | SPLIT result: Runtime/RFB | B4 extracts real wildcard/explicit/interface listener reachability and reconciliation under Widgets+VNC, independent of CPP frontend |
+
+B4 deliberately does not duplicate #338's `hyremote-runtime-listener-binding-test`: #338 owns deterministic binding decisions; `hyremote-rfb-listener-reachability-test` owns the resulting real production-listener integration behavior. The B4 semantic split therefore adds exactly one all-capability CTest identity.
 
 Support code `rfb_test_server.cpp` and its maintained-viewer harness are T5 rather than C++ facade behavior.
 
@@ -71,6 +75,7 @@ Support code `rfb_test_server.cpp` and its maintained-viewer harness are T5 rath
 - `hyremote-remoteaccess-test` — public defaults/config/lifecycle/move ownership/client count/input opt-in/errors/fail-closed encrypted-profile facade behavior.
 - `hyremote-remoteaccess-error-ack-test` — public diagnostic acknowledgement/reappearance.
 - `hyremote-remoteaccess-target-loss-test` — public facade behavior when target is destroyed.
+- `hyremote-listener-address-matrix-test` — after B4, public loopback lifecycle/release, occupied-port error mapping, unavailable-address failure/no fallback, and IPv6 configuration rejection/preservation of the last accepted address.
 
 These may use controlled Runtime seams but must not remain the default home for RFB/security/adapter internals.
 
@@ -207,7 +212,7 @@ Decision: **KEEP as bounded preflight evidence**. Do not count it in the normal 
 
 ## Current registration authority and closed findings
 
-Default all-frontends/transport-security-off registration on current tree is **Linux 95 / Windows 94**. Linux-only QPA relocation explains the one-name platform difference. Security-enabled configurations additionally register `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`.
+The historical Phase-A default all-frontends/transport-security-off registration baseline was **Linux 95 / Windows 94**, with Linux-only QPA relocation explaining the one-name platform difference. Later accepted slices can change that inventory only with an explained semantic reason: #338 added deterministic listener coverage, B2 preserves adapter identities while moving ownership, and B4 adds exactly one all-capability identity because a mixed listener CTest becomes two semantic owners. Final counts are taken from each slice's exact-head hosted Review Gate rather than back-propagated into the historical baseline.
 
 Closed during Phase A:
 - TG-009 — candidate maintained-viewer RFB evidence binding, closed #281/#229.
