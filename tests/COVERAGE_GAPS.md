@@ -19,11 +19,11 @@ There are no unresolved `REVIEW` findings.
 | --- | --- | --- | --- |
 | TG-001 | CONFIRMED P1 | Widgets HiDPI capture | `test_widgets_capture.cpp` expects a forced DPR=1.5 execution (`QT_SCALE_FACTOR=1.5`, `HYREMOTE_EXPECT_DPR=1.5`), but current 95/94 registration has only the ordinary Widgets capture test. Phase D: restore deterministic forced-DPR execution before changing product code. |
 | TG-002 | CONFIRMED P1 | Quick HiDPI capture | Same problem for `test_quick_capture.cpp`; no forced-DPR second registration. Phase D. |
-| TG-003 | CONFIRMED P1 quality | ownership | Runtime/RFB/security/network/Widgets/Quick tests live under `src/integrations/cpp/tests` and reach Runtime internals. Phase B: move/split by semantic owner without changing behavior. |
-| TG-004 | CONFIRMED P2 quality | repository ownership | `hyremote-build-authority-selftest` is repository/build governance but is registered by Runtime tests. Phase B: move T3 registration. |
+| TG-003 | CLOSED P1 quality | ownership | Phase B closed the misownership without changing behavior: B1 moved Runtime/RFB/security/network tests, B2 moved Widgets/Quick adapter tests to Runtime ownership, and B4 split listener facade vs Runtime/RFB reachability by semantic owner. |
+| TG-004 | CLOSED P2 quality | repository ownership | B3 moved `hyremote-build-authority-selftest` registration from Runtime tests to top-level repository/T3 CTest ownership while preserving its effective automatic-runtime guard; the configure-local capability is reset fail-closed before optional Runtime configuration. |
 | TG-005 | CLOSED | test docs | Stale `tests/README.md` directory map corrected by Phase A. |
 | TG-006 | CONFIRMED P1 quality | semantic execution metadata | No repository-wide type/owner/cost CTest labels; selectors still rely heavily on names/path classification. Phase C: one semantic label/tier mechanism; capability guards remain authoritative. |
-| TG-007 | CONFIRMED P1 quality | release-readiness ownership | `tests/release-readiness` mixes permanent T3/T4 contracts with true candidate T6 gates. Phase B/C split by semantic owner. |
+| TG-007 | CONFIRMED P1 quality | release-readiness ownership | `tests/release-readiness` mixes permanent T3/T4 contracts with true candidate T6 gates. Phase C: apply the minimum stable semantic classification without changing test meaning. |
 | TG-008 | CLOSED | authoritative catalog | Phase A establishes catalog/scenario/matrix/execution/gap authority. |
 | TG-009 | CLOSED P1 evidence | candidate RFB product fit | #281 registered `hyremote-v01-rfb-product-fit` as fail-closed `candidate-evidence` CTest and preserved maintained-viewer harness behavior; #229 completed. Mainline hosted authority remains complementary. |
 | TG-010 | CONFIRMED P2 | historical app E2E | `tests/product-e2e/example_product_fit.py` still uses historical `widgets-basic`/`quick-basic` terminology and has no current execution authority. KEEP contract; retarget to canonical fixture/path before activation. |
@@ -80,4 +80,4 @@ There are no unresolved `REVIEW` findings.
 
 ## Release-admission handoff
 
-No open Phase-A finding currently reopens V0.1. TG-009/TG-012/TG-019/TG-020/TG-021 were closed by their owning issues/slices. Remaining gaps belong to later #274 phases unless restored deterministic coverage exposes a separate product/security/release defect; such a defect must be handed to its owning release issue rather than silently expanding #274.
+Phase B closes TG-003, TG-004 and TG-020 through their owning B1/B2/B3/B4 slices. Phase C owns the minimum stable semantic classification needed for TG-006/TG-007. Phase D P1 closeout is limited to TG-001/TG-002/TG-013/TG-014; P2 findings remain deferred unless separate evidence promotes one to a confirmed P0/P1 release blocker. No open finding currently reopens V0.1; any newly exposed product/security/release defect must be handed to its owning release issue rather than silently expanding #274.

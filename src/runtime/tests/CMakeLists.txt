@@ -319,3 +319,25 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
 endif()
+
+# Real RFB listener reachability/reconciliation is a Runtime integration contract. It requires the
+# Widgets target adapter used by the fixture and the VNC/RFB backend, but not the Embedded C++ facade.
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND HYREMOTE_WITH_VNC)
+    add_executable(hyremote-rfb-listener-reachability-test
+        test_rfb_listener_reachability.cpp
+    )
+    target_link_libraries(hyremote-rfb-listener-reachability-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-rfb-listener-reachability-test PRIVATE ../src)
+    add_test(NAME hyremote-rfb-listener-reachability-test
+             COMMAND hyremote-rfb-listener-reachability-test)
+    set_tests_properties(hyremote-rfb-listener-reachability-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endif()
