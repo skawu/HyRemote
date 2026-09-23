@@ -77,17 +77,41 @@ endforeach()
 _require_text("${entry}" "HyRemoteBuild.cmake" "the entry point must delegate its semantics")
 _row("ENTRY_POINT" "PASS(build.cmd)")
 
-# The legacy spellings are shims, and a shim that still carried build logic would be a second authority wearing an old
-# name. They must forward, and they must not own any part of the contract.
-foreach(shim IN ITEMS compile.cmd clean.cmd)
-    set(shim_path "${source_dir}/${shim}")
-    _read("${shim_path}" shim_text)
-    _require_text("${shim_text}" "build.cmd" "${shim} must forward to the single authority")
-    _forbid_text("${shim_text}" "HyRemoteBuild.cmake" "${shim} must not own the build system")
-    _forbid_text("${shim_text}" "--integrations" "${shim} must not carry an option surface")
-    _forbid_text("${shim_text}" "cmake -S" "${shim} must not configure anything itself")
+# The legacy spellings are gone, not shimmed. A second entry point is a second authority even when it forwards, and the
+# repository root is expected to hold exactly one build-related .cmd.
+foreach(legacy IN ITEMS compile.cmd clean.cmd)
+    if(EXISTS "${source_dir}/${legacy}")
+        message(FATAL_ERROR
+            "build-install-contract: ${legacy} still exists. build.cmd is the single entry point and the legacy "
+            "spelling must not be shipped beside it.")
+    endif()
 endforeach()
-_row("LEGACY_SHIMS" "PASS(forward-only)")
+file(GLOB build_related_entries "${source_dir}/*.cmd" "${source_dir}/*.sh" "${source_dir}/*.ps1")
+list(LENGTH build_related_entries build_related_count)
+if(NOT build_related_count EQUAL 1 OR NOT build_related_entries MATCHES "/build\.cmd$")
+    message(FATAL_ERROR
+        "build-install-contract: the repository root must hold exactly one build entry point, build.cmd; found: "
+        "${build_related_entries}")
+endif()
+_row("LEGACY_SHIMS" "PASS(absent)")
+
+# The entry point is a shell/batch polyglot and neither shell may misread it. cmd.exe executes a shebang first line as a
+# command, which is where "'#!' is not recognized" came from, and sh needs the heredoc opener as its first line.
+if(entry MATCHES "^#!")
+    message(FATAL_ERROR "build-install-contract: build.cmd must not start with a shebang; cmd.exe would execute it")
+endif()
+_require_text("${entry}" ": <<'HYREMOTE_BATCH'" "the batch half must be introduced by the heredoc opener")
+
+# Identity drift is the tool's problem, not the user's; a foreign build tree is not the tool's to delete.
+_forbid_text("${build_system}" "Run build.cmd rebuild once after changing"
+             "a configuration change must not require a manual rebuild")
+_require_text("${build_system}" "HyRemote: build configuration changed; recreating"
+              "a changed identity must recreate the build tree")
+_require_text("${build_system}" "will not delete it automatically"
+              "a build tree HyRemote did not create must fail closed")
+_require_text("${build_system}" "if(HYB_SHOW_CONFIG OR HYB_VERBOSE)"
+              "the full configuration dump must be opt-in, not the default output")
+_row("ENTRY_POINT_POLYGLOT" "PASS")
 
 # ---------------------------------------------------------------- 2. the command semantics
 _require_text("${build_system}" "set(HYB_SUBCOMMAND \"build\")"
@@ -417,5 +441,85 @@ if(manifest_QPA STREQUAL "ON")
     endif()
     _row("QPA_PAYLOAD" "PASS(${qpa_payload} file(s) under plugins/platforms)")
 endif()
+
+# ---------------------------------------------------------------- 7. real invocations of the entry point
+#
+# Kept cheap on purpose: this gate must not turn a normal test run into a second build, so it drives the paths that
+# return or fail before configure and proves the mechanisms. The end-to-end proof is the recorded transcript and CI,
+# which configures and builds through this same entry point.
+if(WIN32)
+    set(entry_launcher cmd /c)
+else()
+    set(entry_launcher sh)
+endif()
+set(entry_path "${source_dir}/build.cmd")
+
+function(_run_entry out_var)
+    execute_process(COMMAND ${entry_launcher} "${entry_path}" ${ARGN}
+                    RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+    set(${out_var} "${rc}|${out}|${err}" PARENT_SCOPE)
+endfunction()
+
+set(scratch_root "${CMAKE_CURRENT_BINARY_DIR}/hyremote-entry-point-scratch")
+file(REMOVE_RECURSE "${scratch_root}")
+file(MAKE_DIRECTORY "${scratch_root}")
+
+# A. the entry point runs and prints no bootstrap error. This is the check the Windows users saw fail: cmd.exe executed
+#    the shebang line and printed "'#!' is not recognized" before anything else happened.
+_run_entry(help_run --show-config --build-dir=${scratch_root}/a)
+string(FIND "${help_run}" "0|" help_rc_at)
+if(NOT help_rc_at EQUAL 0)
+    message(FATAL_ERROR "build-install-contract: the entry point did not run cleanly: ${help_run}")
+endif()
+_forbid_text("${help_run}" "#!' is not recognized" "the entry point must not print a bootstrap error")
+_forbid_text("${help_run}" "is not recognized as an internal or external command"
+             "the entry point must not print a bootstrap error")
+_row("ENTRY_POINT_RUNS" "PASS")
+
+# Unknown command: fails closed and names the legal ones.
+_run_entry(unknown_run frobnicate --build-dir=${scratch_root}/b)
+string(FIND "${unknown_run}" "0|" unknown_rc_at)
+if(unknown_rc_at EQUAL 0)
+    message(FATAL_ERROR "build-install-contract: an unknown command must fail closed: ${unknown_run}")
+endif()
+
+# D. a build directory HyRemote did not create is refused, and it survives.
+set(foreign_dir "${scratch_root}/foreign")
+file(MAKE_DIRECTORY "${foreign_dir}")
+file(WRITE "${foreign_dir}/CMakeCache.txt" "// a build tree HyRemote did not create
+")
+file(WRITE "${foreign_dir}/someone-elses-file.txt" "keep me
+")
+_run_entry(foreign_run --build-dir=${foreign_dir})
+string(FIND "${foreign_run}" "0|" foreign_rc_at)
+if(foreign_rc_at EQUAL 0)
+    message(FATAL_ERROR "build-install-contract: a foreign build directory must fail closed: ${foreign_run}")
+endif()
+if(NOT EXISTS "${foreign_dir}/someone-elses-file.txt")
+    message(FATAL_ERROR "build-install-contract: a foreign build directory was modified")
+endif()
+_row("FOREIGN_BUILD_DIR" "PASS(refused, untouched)")
+
+# C. a configuration change in a tree HyRemote owns is handled by the tool: the tree is recreated, the stale sentinel
+#    goes with it, and the marker is rewritten. The configure that follows is deliberately impossible to complete, so
+#    the run is expected to fail after the recovery; what is asserted is the recovery itself.
+set(owned_dir "${scratch_root}/owned")
+file(MAKE_DIRECTORY "${owned_dir}")
+file(WRITE "${owned_dir}/.hyremote-build-identity" "generator=old\nqt=old\n")
+file(WRITE "${owned_dir}/stale-sentinel.txt" "from the previous configuration\n")
+_run_entry(owned_run --build-dir=${owned_dir} --generator=HyRemoteNonexistentGenerator)
+_forbid_text("${owned_run}" "Run build.cmd rebuild once"
+             "a configuration change must not ask the user to rebuild by hand")
+_require_text("${owned_run}" "build configuration changed; recreating"
+              "a changed identity must announce that it recreates the tree")
+if(EXISTS "${owned_dir}/stale-sentinel.txt")
+    message(FATAL_ERROR "build-install-contract: the recreated build tree still holds the previous configuration")
+endif()
+file(READ "${owned_dir}/.hyremote-build-identity" rewritten_identity)
+_forbid_text("${rewritten_identity}" "generator=old" "the identity marker must be rewritten for the new configuration")
+_row("IDENTITY_SELF_HEAL" "PASS(recreated, marker rewritten)")
+
+file(REMOVE_RECURSE "${scratch_root}")
+_row("ENTRY_POINT_MECHANISMS" "PASS")
 
 message(STATUS "build-install-contract: PASS")

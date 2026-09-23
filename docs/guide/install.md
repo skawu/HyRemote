@@ -35,30 +35,34 @@ QPA 额外需要与 Qt 6.8.3 **完全匹配**的 Qt private Gui 开发目标。
 
 ## 从源码构建 HyRemote
 
-仓库统一构建入口是 `build.cmd`。它在 Windows 和 POSIX shell 上都可运行，并从 `build.yml` 读取配置。`build.cmd build` 配置并编译，`build.cmd install` 把产品/SDK 树生成到 `build/install/`，`build.cmd test` 构建并运行测试，`build.cmd clean` 删除构建树，`build.cmd rebuild` 等价于 clean 加 build。`compile.cmd` 仅作为兼容转发保留。`build/` 下的内容是开发中间产物，`build/install/` 下的内容才是用户与 SDK 消费者真正使用的东西。
+仓库统一构建入口是 `build.cmd`。它在 Windows 和 POSIX shell 上都可运行，并从 `build.yml` 读取配置。`build.cmd build` 配置并编译，`build.cmd install` 把产品/SDK 树生成到 `build/install/`，`build.cmd test` 构建并运行测试，`build.cmd clean` 删除构建树，`build.cmd rebuild` 等价于 clean 加 build。`build/` 下的内容是开发中间产物，`build/install/` 下的内容才是用户与 SDK 消费者真正使用的东西。
 
 先查看最终配置：
 
 ```text
-build.cmd build --show-config
+PowerShell:  .\build.cmd build --show-config
+POSIX:       sh ./build.cmd build --show-config
 ```
 
 V0.1 主路径构建：
 
 ```text
-build.cmd build --integrations=cpp,generic --qt-prefix=/path/to/Qt/6.8.3/<kit>
+PowerShell:  .\build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
+POSIX:       sh ./build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
 ```
 
 开发时需要完整四 frontend：
 
 ```text
-build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=/path/to/Qt/6.8.3/<kit>
+PowerShell:  .\build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=<path>/Qt/6.8.3/<kit>
+POSIX:       sh ./build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=<path>/Qt/6.8.3/<kit>
 ```
 
 需要示例或测试时显式加入：
 
 ```text
-build.cmd test --integrations=cpp,generic --examples
+PowerShell:  .\build.cmd test --integrations=cpp,generic --examples
+POSIX:       sh ./build.cmd test --integrations=cpp,generic --examples
 ```
 
 命令行参数覆盖 `build.yml` 中的对应配置。四个 integration 是独立选择项；选择 Generic、QML 或 QPA 不会把 C++ frontend 当作父实现隐式打开。
