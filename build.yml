@@ -1,5 +1,5 @@
 # HyRemote project build configuration.
-# Precedence: built-in defaults < this file < compile.cmd command-line overrides.
+# Precedence: built-in defaults < this file < build.cmd command-line overrides.
 version: 1
 
 build:

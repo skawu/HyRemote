@@ -2,7 +2,7 @@
 #
 # Usage:
 #
-#   sh compile.cmd --mode=cpp --toolchain=cmake/toolchains/arm-linux-gnueabihf.cmake \
+#   sh build.cmd build --integrations=cpp \
 #                  --qt-prefix=/opt/qt-6.8.3-armhf
 #
 # Same rule as the aarch64 file: `--qt-prefix` must be a Qt built for this target.

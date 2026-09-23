@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           QT_PREFIX="$RUNNER_TEMP/Qt/6.8.3/${{ matrix.qt_dir }}"
-          sh ./compile.cmd \
+          sh ./build.cmd build \
             --integrations=cpp,qml,generic,qpa \
             --qt-prefix="$QT_PREFIX" \
             --build-dir=build-mainline \
@@ -95,6 +95,6 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "QT_PREFIX=%RUNNER_TEMP%\Qt\6.8.3\${{ matrix.qt_dir }}"
-          call compile.cmd --integrations=cpp,qml,generic,qpa --qt-prefix="%QT_PREFIX%" --build-dir=build-mainline --tests --run-tests --no-examples --clean -j4
+          call build.cmd build --integrations=cpp,qml,generic,qpa --qt-prefix="%QT_PREFIX%" --build-dir=build-mainline --tests --run-tests --no-examples --clean -j4
           set "PATH=%QT_PREFIX%\bin;%CD%\build-mainline\runtime;%PATH%"
           python src\integrations\cpp\tests\rfb_product_fit.py build-mainline\integrations\cpp\tests\hyremote-rfb-test-server.exe

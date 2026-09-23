@@ -16,7 +16,7 @@ Bundled examples:
 Through the build script (recommended - it keeps the flags in one place):
 
 ```text
-sh compile.cmd --mode=qpa --toolchain=cmake/toolchains/aarch64-linux-gnu.cmake --qt-prefix=/opt/qt-6.8.3-aarch64
+sh build.cmd build --integrations=qpa --toolchain=cmake/toolchains/aarch64-linux-gnu.cmake --qt-prefix=/opt/qt-6.8.3-aarch64
 ```
 
 or directly with CMake:
@@ -29,7 +29,7 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 ```
 
-The project keeps **one** build directory, `build/`. Remove it (`clean.cmd`) before configuring for a different target
+The project keeps **one** build directory, `build/`. Remove it (`build.cmd clean`) before configuring for a different target
 or mode, rather than creating a second tree - two trees silently mix generators, compilers and stale caches.
 
 Point the compiler prefix at a non-default location when your toolchain is not on `PATH` under its default name:
