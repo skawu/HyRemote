@@ -10,8 +10,8 @@ This area provides product integration, deployment, security, compatibility, and
 
 | Your scenario | Recommended entry | Current status |
 | --- | --- | --- |
-| Add a small amount of C++ and control the remote-access lifecycle explicitly | [`getting-started/cpp.md`](getting-started/cpp.md) | **V0.1 primary** |
-| Keep the application Qt-only and preserve its native Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | **V0.1 primary** |
+| Add a small amount of C++ and control the remote-access lifecycle explicitly | [`getting-started/cpp.md`](getting-started/cpp.md) | peer route |
+| Keep the application Qt-only and preserve its native Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | peer route |
 | Prefer declarative configuration in a Qt Quick application | [`getting-started/qml.md`](getting-started/qml.md) | **Preview** |
 | Need the specialized `-platform hyremote` zero-code route | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | **Preview** |
 | Install, build, and acquire the SDK | [`guide/install.md`](guide/install.md) · [中文](../guide/install.md) | Product guide |
@@ -24,7 +24,7 @@ This area provides product integration, deployment, security, compatibility, and
 
 Start with [`../product-overview.md`](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
 
-The V0.1 Developer Preview focuses on **getting users to a working remote-access path quickly**:
+The current release focuses on **getting users to a working remote-access path quickly**:
 
 - C++ API and Generic Plugin are the primary integration paths;
 - Windows x86_64 and Linux x86_64 with Qt 6.8.3 are the current reference environments;

@@ -9,20 +9,40 @@ Add remote viewing and optional remote control to existing Qt Widgets and Qt Qui
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-  <img src="https://img.shields.io/badge/product-V0.1%20Developer%20Preview-orange.svg" alt="Product: V0.1 Developer Preview">
+  <img src="https://img.shields.io/badge/product-V0.2%20LAN%20trial-orange.svg" alt="Product: V0.2 LAN trial">
   <img src="https://img.shields.io/badge/reference-Windows%20%7C%20Linux%20x86__64-lightgrey.svg" alt="Reference: Windows | Linux x86_64">
   <img src="https://img.shields.io/badge/Qt-6.8.3%20reference-41CD52.svg" alt="Qt 6.8.3 reference">
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
 </p>
 
+## Start here
+
+Three steps, in this order. Nothing else has to be read first.
+
+1. **Get HyRemote** - download the release artifact, or build it: `build.cmd install`
+   ([install guide](docs/guide/install.md))
+2. **Integrate it into your project** - one canonical walkthrough from acquisition to a running application:
+   **[Integrate HyRemote into your Qt project](docs/guide/integrate-your-project.md)**
+   ([中文](docs/guide/integrate-your-project.md) ｜ [English](docs/en/guide/integrate-your-project.md))
+3. **Connect a viewer** - host LAN endpoint, the real defaults, reconnect and stop:
+   [viewer connection](docs/guide/viewer-connection.md)
+
+Real open-source integration studies (one Widgets/C++ application, one Qt Quick/QML application) live in
+[`examples/real-world/`](examples/real-world/).
+
+Architecture, input model, release authority and repository layout are **reference material**, not onboarding.
+
 HyRemote provides one shared remote-access Runtime and four peer ways to enter it. Applications choose the integration style that best fits their ownership model; Widgets and Qt Quick are Runtime target types, not separate products.
 
-| Integration | Application change | Current product status | Typical use |
+| Integration | Application change | Status | Typical use |
 | --- | --- | --- | --- |
-| **C++ API** | Link `HyRemote::RemoteAccess` | **V0.1 primary** | Applications that want explicit lifecycle and policy control |
-| **Generic Plugin** | No HyRemote application linkage | **V0.1 primary** | Existing Qt applications that need a zero-code remote-access path while keeping their native Qt platform |
-| **QML API** | `import HyRemote` | **Preview** | Qt Quick applications that prefer declarative configuration |
-| **QPA** | Launch with `-platform hyremote` | **Preview** | Specialized zero-code integration that requires an exact qualified Qt private ABI |
+| **C++ API** | Link `HyRemote::RemoteAccess` | peer route | Applications that want explicit lifecycle and policy control |
+| **Generic Plugin** | No HyRemote application linkage | peer route | Existing Qt applications that need a zero-code remote-access path while keeping their native Qt platform |
+| **QML API** | `import HyRemote` | peer route | Qt Quick applications that prefer declarative configuration |
+| **QPA** | Launch with `-platform hyremote` | peer route (exact Qt private ABI) | Specialized zero-code integration that requires an exact qualified Qt private ABI |
+
+The four routes are **peers**: none is primary, and every one follows the same
+[acquisition -> integrate -> deploy -> run -> connect](docs/guide/integrate-your-project.md) flow.
 
 All four frontends converge on the same Runtime/Core implementation. There is no second Session, capture, transport, or input stack hidden behind a different integration mode.
 
@@ -45,7 +65,7 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-Construction is inert. The default listener is `127.0.0.1:5921`, and remote input is disabled by default.
+Construction is inert. The default listener is `0.0.0.0:5921` (the host's IPv4 interfaces, not just loopback), and remote input is disabled by default.
 
 Deploy the application and the HyRemote Runtime through the package helper:
 
@@ -82,7 +102,7 @@ The Generic Plugin is not a QPA replacement. The native Qt platform remains auth
 
 See [`docs/getting-started/generic.md`](docs/getting-started/generic.md) for configuration options.
 
-## QML API — Preview
+## QML API
 
 ```qml
 import HyRemote
@@ -99,9 +119,9 @@ The QML type is a thin frontend over the same Runtime used by the C++ API.
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-**TODO (productization):** complete the final installed-SDK examples, documentation polish, and cross-version qualification before promoting QML from Preview.
+The QML route is supported as a peer of the other three: the walkthrough covers acquisition, deployment and viewer connection for it like any other route.
 
-## QPA — Preview
+## QPA
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
@@ -115,7 +135,7 @@ ExistingQtApp -platform hyremote
 
 The QPA frontend uses a Factory Trampoline and delegates to the qualified native Qt platform implementation rather than replacing it with an offscreen/qvnc-style backend. QPA uses Qt private ABI and is therefore qualified per exact Qt patch; the current reference is Qt 6.8.3.
 
-**TODO (productization):** broaden qualification only after exact-version compatibility and physical local+remote coexistence are verified for the target Qt/OS pair.
+QPA qualification is per exact Qt patch: the Qt used for deployment must match the application's Qt exactly (reference: Qt 6.8.3).
 
 ## Product architecture
 
@@ -161,7 +181,7 @@ For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_
 
 ## Security model in V0.1
 
-The shipped V0.2.0.0 candidate is a **user-first LAN trial with a truthful security boundary**:
+The released V0.2.0.0 is a **user-first LAN trial with a truthful security boundary**:
 
 - default bind: `0.0.0.0:5921` (reachable on the host's IPv4 interfaces), or one exact local IPv4, or a named interface;
 - remote input: off by default;
@@ -172,7 +192,7 @@ The shipped V0.2.0.0 candidate is a **user-first LAN trial with a truthful secur
 
 Do not expose the current product directly to the public Internet.
 
-**TODO (V0.2):** encrypted transport, certificate policy, authenticated sessions, and production network policy.
+Encrypted transport, certificate policy, authenticated sessions and production network policy belong to a later release.
 
 See [`docs/security.md`](docs/security.md).
 
@@ -202,8 +222,8 @@ User guides:
 - [`docs/guide/deployment.md`](docs/guide/deployment.md) - deployment forms, including `hyremote_deploy(TARGET MyApp GENERIC)`;
 - [`docs/guide/viewer-connection.md`](docs/guide/viewer-connection.md) - connecting a viewer to a running application;
 - [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) - diagnosing a deployment or connection problem;
-- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) - Embedded C++ (V0.1 primary surface);
-- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) - Generic Plugin (V0.1 primary surface);
+- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) - Embedded C++ (peer route);
+- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) - Generic Plugin (peer route);
 - [`docs/getting-started/qml.md`](docs/getting-started/qml.md) - Declarative QML (V0.1 preview);
 - [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) - Transparent QPA (V0.1 preview).
 
@@ -213,8 +233,8 @@ Primary product guides:
 
 - [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — C++ API
 - [`docs/getting-started/generic.md`](docs/getting-started/generic.md) — Generic Plugin
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — QML API (Preview)
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — QPA (Preview)
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — QML API
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — QPA
 - [`docs/guide/deployment.md`](docs/guide/deployment.md) — packaging and deployment
 - [`docs/security.md`](docs/security.md) — security behavior and limitations
 - [`docs/compatibility.md`](docs/compatibility.md) — compatibility matrix

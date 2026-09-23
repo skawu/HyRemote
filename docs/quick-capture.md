@@ -105,7 +105,7 @@ Such optimizations remain behind the Shared Runtime and Core contracts. Normal a
 
 ## Current status
 
-Qt Quick through the C++ API and Generic Plugin is part of the V0.1 primary product path in the current reference environment.
+Qt Quick through the C++ API and Generic Plugin is one of the peer routes in the current reference environment.
 
 The QML API and QPA paths are currently Preview. QPA additionally requires exact Qt private-ABI qualification.
 
