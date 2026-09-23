@@ -77,22 +77,23 @@ Current implementation buffers arbitrary socket fragments and enforces input/enc
 
 `hyremote-quick-input-routing-test` and `hyremote-quick-input-backpressure-test` remain distinct Quick delivery/pressure contracts and are Runtime/Quick after #327/#328.
 
-## Listener/address matrix — SPLIT
+## Listener/address ownership — B4 split after #338
 
-Current `hyremote-listener-address-matrix-test` combines two owners.
+#338 made the supported listener contract explicit: IPv4 wildcard, explicit local IPv4 and interface binding are supported; IPv6 inputs are rejected deterministically. It also added `hyremote-runtime-listener-binding-test`, which owns deterministic interface resolution, listener-mode inference and IPv4 locality without opening a real listener. B4 does not duplicate that unit contract.
 
-C++ facade rows stay T2:
-- explicit loopback + selected port lifecycle;
-- occupied-port public error;
-- unavailable address fails without silent fallback.
+`hyremote-listener-address-matrix-test` remains exactly once as the T2/C++ facade identity and now contains only public behavior:
+- explicit loopback + selected-port lifecycle/release through `HyRemote::RemoteAccess`;
+- occupied-port public error mapping;
+- unavailable explicit address public failure without silent fallback;
+- IPv6 public configuration rejection, `InvalidConfiguration` mapping and preservation of the previous accepted address.
 
-Runtime/RFB rows move/extract when ownership is refactored:
-- IPv4 wildcard reachability;
-- IPv6 loopback/wildcard reachability;
-- measured dual-stack behavior;
-- success must bind requested scope, failure must not fall back silently.
+`hyremote-rfb-listener-reachability-test` is the Runtime/RFB integration identity created by B4. It is registered only for Runtime + Widgets + VNC, is independent of `HYREMOTE_BUILD_CPP_API`, drives private `HyRemote::Runtime::AccessInstance`, and contains the extracted real-listener rows:
+- IPv4 wildcard listener reachability through loopback;
+- explicit IPv4 listener reachability;
+- interface-following reconciliation across address move, loss, recovery and final stop;
+- real-LAN wildcard / explicit-address / interface binding reachability when the host exposes one suitable IPv4 interface.
 
-Do not duplicate rows during the split.
+The real-LAN rows retain the existing honest host-dependent SKIP when no suitable interface exists. No scenario is duplicated between the facade identity, the Runtime/RFB integration identity and #338's deterministic Runtime binding test. The semantic split adds exactly one CTest identity in an all-capability configuration.
 
 ## QML proof layers
 
@@ -187,6 +188,6 @@ VeNCrypt probe scripts supply bounded protocol/viewer feasibility evidence for #
 - RFB candidate product fit: TG-009 closed by #281/#229.
 - QPA popup: TG-019 closed by #296.
 - C++-disabled adoption registration: TG-021 closed by #300/#296 evidence.
-- listener matrix: SPLIT by semantic owner.
+- listener matrix: SPLIT by semantic owner into the existing C++ facade identity plus one Runtime/RFB integration identity; #338's deterministic binding unit remains complementary.
 - RFB+Widgets disconnect/backpressure: KEEP Runtime/RFB+Widgets; TG-020 closed by #327/#328 capability guard.
 - fragmented/malformed RFB: TG-013/TG-014 remain.
