@@ -381,21 +381,18 @@ require_text(orchestration-phase-heading "${hyb_phase_body}" "message(STATUS \"p
 require_text(orchestration-phase-live-stdout "${hyb_phase_body}" "ECHO_OUTPUT_VARIABLE")
 require_text(orchestration-phase-live-stderr "${hyb_phase_body}" "ECHO_ERROR_VARIABLE")
 require_text(orchestration-phase-log "${hyb_phase_body}" "file(WRITE \"\${phase_log}\"")
-require_text(orchestration-verbose-command "${hyb_phase_body}" "  command  : \${_command}")
+require_text(orchestration-verbose-command "${hyb_phase_body}" "  command  : \${ARGN}")
 
-# The environment has to survive the trip into the runner. A Windows PATH contains the list separator, and an
-# element that contains it does not cross a function boundary intact - the fragments then reach `cmake -E env` as
-# separate arguments and a path fragment is executed as the command. So the entries arrive as one quoted argument
-# and are re-escaped inside the runner, immediately before use.
-require_text(orchestration-env-reescape "${hyb_phase_body}"
-    [=[string(REPLACE ";" "\\;" _entry "${_entry}")]=])
-require_text(orchestration-env-split "${hyb_phase_body}" [=[string(REPLACE "\n" ";" _env_entries "${phase_env}")]=])
-foreach(phase IN ITEMS configure build install)
-    require_text("orchestration-env-quoted-${phase}" "${build_authority_text}"
-        "hyb_run_phase(${phase} \"\${${phase}_log}\" \"\${env_text}\"")
-endforeach()
-require_text(orchestration-env-quoted-test "${build_authority_text}"
-    "hyb_run_phase(test \"\${test_log}\" \"\${test_env_text}\"")
+# The environment has to survive the trip to the process, and a Windows PATH contains the list separator: every
+# route that puts such a value on an argument list eventually splits it, after which a path fragment is launched as
+# if it were the command. So a phase's environment is applied to this process, which the phase then inherits, and no
+# value ever becomes an argument.
+require_text(orchestration-env-helper "${build_authority_text}" "function(hyb_apply_env")
+require_text(orchestration-env-applied "${build_authority_text}"
+    "set(ENV{\${_phase_env_name}} \"\${_phase_env_value}\")")
+require_text(orchestration-env-applied-configure "${build_authority_text}" "hyb_apply_env(\"\${env_text}\")")
+require_text(orchestration-env-applied-test "${build_authority_text}" "hyb_apply_env(\"\${test_env_text}\")")
+forbid_text(orchestration-command-env-wrapper "${build_authority_text}" "COMMAND \"\${CMAKE_COMMAND}\" -E env")
 string(REGEX MATCHALL "HYB_VERBOSE" _hyb_phase_verbose_uses "${hyb_phase_body}")
 list(LENGTH _hyb_phase_verbose_uses _hyb_phase_verbose_count)
 if(NOT _hyb_phase_verbose_count EQUAL 1)

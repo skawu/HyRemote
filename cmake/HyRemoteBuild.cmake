@@ -924,32 +924,13 @@ file(WRITE "${identity_file}" "${identity}")
 # installs or tests is indistinguishable from a run that has died, and "wait, then read build.log" is not a build
 # interface. Verbose output is additive on top of this: it adds the exact command, never the fact that the run is
 # still working.
-function(hyb_run_phase phase_name phase_log phase_env)
+function(hyb_run_phase phase_name phase_log)
     message(STATUS "phase: ${phase_name}")
-
-    # The environment travels as one quoted string with one KEY=VALUE per line, and it is split again here, right
-    # before it is handed to `cmake -E env`. A value may contain the list separator itself - a Windows PATH is the
-    # concrete case - and a list element that contains it cannot cross a function boundary intact, which is how a
-    # path fragment ends up being executed as if it were the command. One quoted argument cannot be split by the
-    # separator, so the entries arrive whole and are re-escaped at the only place that needs them escaped.
-    set(_command "")
-    if(NOT phase_env STREQUAL "")
-        set(_command "${CMAKE_COMMAND}" -E env)
-        string(REPLACE "\n" ";" _env_entries "${phase_env}")
-        foreach(_entry IN LISTS _env_entries)
-            string(REPLACE ";" "\\;" _entry "${_entry}")
-            list(APPEND _command "${_entry}")
-        endforeach()
-    endif()
-    foreach(_argument IN LISTS ARGN)
-        list(APPEND _command "${_argument}")
-    endforeach()
-
     if(HYB_VERBOSE)
-        message(STATUS "  command  : ${_command}")
+        message(STATUS "  command  : ${ARGN}")
     endif()
     execute_process(
-        COMMAND ${_command}
+        COMMAND ${ARGN}
         RESULT_VARIABLE hyb_phase_status
         OUTPUT_VARIABLE hyb_phase_stdout
         ERROR_VARIABLE hyb_phase_stderr
@@ -963,6 +944,42 @@ function(hyb_run_phase phase_name phase_log phase_env)
         message(STATUS "PHASE_LOG=${phase_log}")
     endif()
     set(HYB_PHASE_STATUS "${hyb_phase_status}" PARENT_SCOPE)
+endfunction()
+
+# Applies KEY=VALUE entries to this process's environment, which the phases then inherit.
+#
+# Setting the environment is how a phase gets its environment, rather than wrapping the command in `cmake -E env`.
+# That is not a stylistic choice: a value may contain the list separator itself - a Windows PATH always does - and
+# every route that puts such a value on an argument list (an element crossing a function boundary, a list being
+# expanded, a separator being substituted to make iteration possible) eventually splits it, at which point a path
+# fragment is handed to the process launcher as if it were the command. An environment variable never becomes an
+# argument, so there is nothing left to split.
+#
+# The entries arrive as one quoted string, one per line, because that is the one carrier no separator can break;
+# the split is done here by scanning, not by list expansion, for the same reason.
+function(hyb_apply_env phase_env)
+    if("${phase_env}" STREQUAL "")
+        return()
+    endif()
+    set(_remaining "${phase_env}")
+    while(NOT _remaining STREQUAL "")
+        string(FIND "${_remaining}" "\n" _phase_env_newline)
+        if(_phase_env_newline EQUAL -1)
+            set(_entry "${_remaining}")
+            set(_remaining "")
+        else()
+            string(SUBSTRING "${_remaining}" 0 ${_phase_env_newline} _entry)
+            math(EXPR _phase_env_next "${_phase_env_newline} + 1")
+            string(SUBSTRING "${_remaining}" ${_phase_env_next} -1 _remaining)
+        endif()
+        string(FIND "${_entry}" "=" _phase_env_separator)
+        if(_phase_env_separator GREATER 0)
+            string(SUBSTRING "${_entry}" 0 ${_phase_env_separator} _phase_env_name)
+            math(EXPR _phase_env_value_start "${_phase_env_separator} + 1")
+            string(SUBSTRING "${_entry}" ${_phase_env_value_start} -1 _phase_env_value)
+            set(ENV{${_phase_env_name}} "${_phase_env_value}")
+        endif()
+    endwhile()
 endfunction()
 
 set(configure_cmd
@@ -1004,7 +1021,8 @@ foreach(entry IN LISTS HYB_ENV_ENTRIES)
 endforeach()
 
 set(configure_log "${HYB_BUILD_DIR}/configure.log")
-hyb_run_phase(configure "${configure_log}" "${env_text}" ${configure_cmd})
+hyb_apply_env("${env_text}")
+hyb_run_phase(configure "${configure_log}" ${configure_cmd})
 if(NOT HYB_PHASE_STATUS EQUAL 0)
     message(STATUS "CONFIGURE_EXIT_STATUS=${HYB_PHASE_STATUS}")
     message(STATUS "CONFIGURE_LOG=${configure_log}")
@@ -1019,7 +1037,7 @@ else()
     list(APPEND build_cmd --parallel)
 endif()
 set(build_log "${HYB_BUILD_DIR}/build.log")
-hyb_run_phase(build "${build_log}" "${env_text}" ${build_cmd})
+hyb_run_phase(build "${build_log}" ${build_cmd})
 if(NOT HYB_PHASE_STATUS EQUAL 0)
     message(STATUS "BUILD_EXIT_STATUS=${HYB_PHASE_STATUS}")
     message(STATUS "BUILD_LOG=${build_log}")
@@ -1039,7 +1057,7 @@ if(HYB_INSTALL)
 
     set(install_cmd "${CMAKE_COMMAND}" --install "${HYB_BUILD_DIR}" --prefix "${HYB_INSTALL_ROOT}")
     set(install_log "${HYB_BUILD_DIR}/install.log")
-    hyb_run_phase(install "${install_log}" "${env_text}" ${install_cmd})
+    hyb_run_phase(install "${install_log}" ${install_cmd})
     if(NOT HYB_PHASE_STATUS EQUAL 0)
         message(STATUS "INSTALL_EXIT_STATUS=${HYB_PHASE_STATUS}")
         message(STATUS "INSTALL_LOG=${install_log}")
@@ -1134,9 +1152,10 @@ if(HYB_TESTS_RUN)
             get_filename_component(runtime_dir "${runtime_candidate}" DIRECTORY)
             string(PREPEND test_path "${runtime_dir};")
         endforeach()
-        # test_env is expanded unquoted into `cmake -E env`, so this PATH has to keep its semicolons inside one
-        # argument. Unescaped, the list separator split it and the first PATH fragment was executed as the command,
-        # which failed as "no such file or directory" and made --run-tests unusable on Windows.
+        # The whole PATH has to stay one list element so that it reaches the phase runner intact; the runner then
+        # applies it to the environment rather than putting it on a command line. Unescaped, the list separator
+        # split it and the first PATH fragment was executed as the command, which failed as "no such file or
+        # directory" and made --run-tests unusable on Windows.
         string(REPLACE ";" "\\;" test_path "${test_path}")
         list(APPEND test_env "PATH=${test_path}")
     elseif(UNIX)
@@ -1208,7 +1227,8 @@ if(HYB_TESTS_RUN)
             string(APPEND test_env_text "\n${entry}")
         endif()
     endforeach()
-    hyb_run_phase(test "${test_log}" "${test_env_text}" ${run_test_cmd})
+    hyb_apply_env("${test_env_text}")
+    hyb_run_phase(test "${test_log}" ${run_test_cmd})
     if(NOT HYB_PHASE_STATUS EQUAL 0)
         # The status is the ctest process exit status, not a count of failures - ctest exits 8 whenever one or more
         # tests fail, and reporting it as "Tests failed (8)" read like eight failures and hid the actual names. The
