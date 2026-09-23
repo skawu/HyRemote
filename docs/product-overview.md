@@ -16,9 +16,9 @@ The product focuses on:
 - Qt Widgets and Qt Quick support through one Runtime architecture;
 - multiple integration styles without duplicating Session/capture/input/transport implementations;
 - SDK-style consumption through CMake and Qt conventions;
-- a portable correctness baseline first, with embedded and hardware-specific acceleration added behind private seams later.
+- a portable correctness and practical interactive-performance baseline before GA, with hardware/vendor-specific acceleration added only behind private seams when measurements justify it.
 
-HyRemote is not intended to replace a general-purpose operating-system remote desktop service.
+HyRemote is not intended to replace a general-purpose operating-system remote desktop service or a dedicated video-streaming platform.
 
 ## 2. Four integration frontends
 
@@ -114,7 +114,8 @@ The Shared Runtime owns product behavior that must remain consistent across inte
 - concrete RFB transport integration;
 - security-profile handling;
 - Runtime services and diagnostics;
-- integration between Core, capture, input, and transport.
+- integration between Core, capture, input, and transport;
+- automatic viewer-aware capture/freshness policy used by all frontends.
 
 Core owns transport-neutral semantics such as frame lifetime, scheduling/backpressure, normalized input routing, state/error behavior, and capability abstractions.
 
@@ -128,7 +129,7 @@ Widgets and Qt Quick are both first-class Runtime targets.
 - Supported Qt Quick targets use the Quick adapter path.
 - Automatic-access frontends such as Generic and QPA discover supported top-level application surfaces through shared Runtime composition logic.
 
-Applications do not choose capture classes, protocol objects, or input sinks directly.
+Applications do not choose capture classes, protocol objects, input sinks, encoders, damage modes, or GPU performance backends directly.
 
 Configuration-specific graphics cases such as QOpenGLWidget, QQuickWidget, Quick3D, custom FBOs, or unusual native-window ownership require explicit compatibility qualification rather than being inferred from basic Widgets/Quick support.
 
@@ -167,41 +168,25 @@ Current reference environment:
 - C++ API and Generic Plugin as the primary product paths;
 - QML API and QPA available as Preview paths.
 
-Security defaults are conservative: loopback bind by default and remote input disabled by default.
-
 ## 7. Security model
 
-V0.1 is not an Internet-facing remote-access server.
+HyRemote's current unauthenticated/unencrypted mode is not an Internet-facing security claim.
 
 Current behavior includes:
 
-- listener on `0.0.0.0:5921` by default, so it is reachable on the host's IPv4 interfaces;
+- listener on `0.0.0.0:5921` by default;
 - remote input disabled by default;
-- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
-- `Authenticated` is a conditional capability that requires a transport-security-enabled build and a valid security descriptor; when available it provides VNC authentication without stream encryption;
-- the default V0.1 build/profile does not imply authenticated transport is present;
-- `AuthenticatedEncrypted` is not implemented and always fails closed before target, transport, or listener composition, without falling back to a weaker profile.
+- `Insecure` is unauthenticated and unencrypted and must be deployed only where that exposure is acceptable;
+- `Authenticated` may provide viewer-compatible VNC authentication when the required capability/configuration is present, still without implying stream encryption;
+- `AuthenticatedEncrypted` is not implemented and must fail closed while the encrypted backend is unavailable.
 
-> **TODO (V0.2):** encrypted transport, certificate policy, authenticated session management, and production network policy.
-
-See [`security.md`](security.md).
+See [`security.md`](security.md) for the exact current security contract.
 
 ## 8. Product roadmap
 
-HyRemote evolves by user value rather than by internal subsystem completion:
+HyRemote evolves by user value rather than by internal subsystem completion. Exact current release authority lives in GitHub roadmap/release issues and `versioning.md`; technology names must not reserve Feature versions.
 
-| Product line | Product goal |
-| --- | --- |
-| **V0.1 — Use It** | A developer can integrate and use the product through C++ API or Generic Plugin |
-| **V0.2 — Trust It** | Security, authenticated sessions, and production network behavior |
-| **V0.3 — Productize It** | All four frontends fully packaged, deployed, documented, and taught |
-| **V0.4 — Qualify It** | Compatibility, real-world application, performance, and release-candidate qualification |
-| **V1.0 — Stabilize It** | First GA compatibility/support contract |
-| **V1.1 — Embed It** | Embedded Linux/platform deployment and feature slicing |
-| **Later performance line — Accelerate It** | Measured low-copy/hardware acceleration where evidence justifies it |
-| **Later programmable line — Differentiate It** | Advanced application policy, observability, privacy, sessions, and business integration |
-
-Version numbers never encode C++/QML/Generic/QPA, platform, Qt version, or UI family.
+Performance follows the same rule: the practical interactive baseline is required before RC/GA, while lower-level hardware/vendor acceleration is activated only by measured evidence.
 
 ## 9. Long-term technical direction
 
@@ -210,31 +195,59 @@ The architecture keeps several future capabilities behind private seams so they 
 - alternative capture paths;
 - external/GPU-backed frame storage;
 - DMA-BUF/GBM and embedded graphics integration;
-- hardware video encoding such as RKMPP/VAAPI/D3D paths;
+- hardware encoding such as RKMPP/VAAPI/D3D paths;
 - additional transports for high-motion or media-heavy workloads;
 - advanced session and application-control APIs.
 
 These are product improvements, not requirements for ordinary applications to understand HyRemote internals.
+
+### Long-lived performance programme
+
+HyRemote treats performance as a permanent product property rather than a one-time optimization milestone.
+
+The accepted model is:
+
+- **Freshness first** — newest useful state is preferred over queued historical frames;
+- **automatic by default** — users do not select encoders, compression levels, damage modes, capture depths or flow windows;
+- **demand driven** — no-viewer/static workloads should avoid unnecessary capture/encode/network work;
+- **interaction focused** — remote input should prioritize a fresh visual response;
+- **adaptive delivery** — ordinary localized GUI may use region/damage delivery while sustained high-motion Quick may use full-frame compression;
+- **bounded delivery** — capture, Core handoff, encoded pending work and per-viewer network state stay bounded;
+- **portable first** — platform/GPU acceleration is admitted only when the portable/product baseline misses a measured latency/resource target.
+
+For the initial ordinary direct-LAN reference profile, #370 defines an interaction-latency target of P50 <= 200 ms and P95 <= 500 ms under the stated qualified conditions. This is a bounded reference SLO, not a claim for every network or media-like workload.
+
+See [`performance-optimization.md`](performance-optimization.md) for the detailed latency model, workloads, Runtime/Core/RFB responsibility split, compression/damage/Continuous/Fence/flow-control route, platform-acceleration gate and long-term regression policy.
 
 ## 10. Product principles
 
 - **Existing applications first.** Remote access should not require rewriting the UI or business logic.
 - **One Runtime.** Integration convenience must not create duplicate product stacks.
 - **Public API first.** Stable application integration uses public contracts; Qt private ABI is isolated to QPA.
-- **Generic before private ABI when sufficient.** Zero-code integration should prefer the public Qt Generic Plugin path when it satisfies the application.
+- **Peer integration technologies.** C++ / QML / Generic / QPA differ technically but share one product Runtime and are not ranked by implementation convenience.
 - **Local behavior remains authoritative.** Remote access augments the application rather than redefining its native platform behavior.
-- **Correctness before optimization.** Portable, bounded behavior is established before hardware-specific performance work.
-- **Evidence-based compatibility.** Similarity to another Qt version, OS, graphics path, or SoC does not automatically create a support claim.
+- **Freshness before throughput.** Showing the newest useful state is more important than delivering every stale intermediate frame.
+- **Automatic performance.** Normal users should not need transport/capture/network tuning knowledge to obtain the qualified experience.
+- **Portable baseline before acceleration.** Hardware/private optimizations require a measured product blocker, not theoretical opportunity.
+- **Evidence-based compatibility and performance.** Similarity to another Qt version, OS, graphics path, SoC or benchmark does not automatically create a support/performance claim.
 - **No protocol lock-in.** RFB is the current transport baseline, not the permanent product boundary.
 
-## 11. Current TODOs
+## 11. Performance evidence and regression
 
-The following are intentionally visible product gaps rather than hidden process notes:
+Performance qualification records exact candidate SHA, environment, workload and distribution metrics. Functional CI being green is not sufficient if a change materially degrades an accepted interaction-latency, frame-freshness or resource envelope.
 
-- **TODO V0.1:** finalize polished C++/Generic learning examples and clean installed-SDK C++ Widgets/Quick product fixtures.
-- **TODO V0.2:** encrypted transport, authenticated sessions, production network policy.
-- **TODO V0.3:** full four-frontend productization, deployment matrix, and complete example curriculum.
-- **TODO V0.4:** Qt compatibility expansion, real-world applications, performance qualification, and release-candidate hardening.
-- **TODO V1.1+:** embedded Linux packaging/deployment, then measured hardware acceleration and advanced programmable control.
+GitHub Workflow is preferred for deterministic/synthetic/protocol/x86 evidence. Physical RK3588/EGLFS/Wayland/GPU/local-HMI claims require the actual reference environment.
 
-For exact current environment status, see [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md).
+See #370 and #374 for the long-lived programme and machine-regression evidence plan.
+
+## 12. Current TODOs
+
+Current gaps are tracked through the active GitHub roadmap rather than by inventing fixed technology version slots. Performance-specific pre-GA work includes:
+
+- practical compressed + incremental delivery (#261/#144);
+- RFB Continuous Updates/Fence/per-viewer delivery control (#371);
+- demand-driven/input-triggered/adaptive Runtime capture (#372);
+- repeatable performance evidence/regression gates (#374);
+- final production and physical reference qualification (#9 and the applicable platform issues).
+
+For exact current environment status, see [`compatibility.md`](compatibility.md), [`known-limitations.md`](known-limitations.md), and [`performance-optimization.md`](performance-optimization.md).
