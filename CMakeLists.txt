@@ -173,6 +173,18 @@ if(TARGET hyremote-remoteaccess)
 endif()
 
 if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
+    # Build/bootstrap authority is a repository/T3 contract rather than Runtime behavior. Keep the
+    # historical automatic-runtime capability guard so the ownership move does not expand registration.
+    if(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+        add_test(
+            NAME hyremote-build-authority-selftest
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+                -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
+        )
+        set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
+    endif()
+
     add_test(
         NAME hyremote-release-readiness-metadata
         COMMAND "${CMAKE_COMMAND}"
