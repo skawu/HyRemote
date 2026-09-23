@@ -13,6 +13,12 @@ enum class AccessState {
     Running,
     Stopping,
     Faulted,
+    // #174: the user asked to be reachable and the selected interface currently has no single usable IPv4 address.
+    // There is no listener and no Session, but this is neither of the two states it could be confused with:
+    // not Stopped, because the user has not stopped and a watcher is still following the same identity; and not
+    // Faulted, because nothing failed irrecoverably and the listener returns by itself once the interface answers
+    // again. Appended rather than inserted so the existing numeric values keep their meaning for observers.
+    Unavailable,
 };
 
 enum class SecurityProfile {

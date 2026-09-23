@@ -72,7 +72,7 @@ Verify the selected frontend actually started HyRemote:
 Also check:
 
 - viewer address/port;
-- default address is `127.0.0.1:5921`;
+- default address is `0.0.0.0:5921`;
 - no other process owns the port;
 - the application is still running;
 - firewall/security software is not blocking the intended connection.

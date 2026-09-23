@@ -36,6 +36,17 @@ public:
     QHostAddress listenAddress() const;
     bool setListenAddress(const QHostAddress &address);
 
+    // #174: the interface identity of the listener, by QNetworkInterface::name(). Non-empty selects interface
+    // mode and outranks the address; setting an address clears it again. The identity is configuration, never a
+    // resolved address, so an interface that changes IPv4 keeps reporting the same identity here.
+    QString listenInterface() const;
+    bool setListenInterface(const QString &identity);
+
+    // The single reconciliation entry point for an interface binding (#174). The runtime's own watcher calls it,
+    // and repository tests call it directly so that no test ever has to sleep waiting for a timer. It is a no-op
+    // unless an interface listener is actually desired, which is what makes a late tick harmless.
+    void reconcileInterfaceBinding();
+
     quint16 port() const noexcept;
     bool setPort(quint16 port);
 

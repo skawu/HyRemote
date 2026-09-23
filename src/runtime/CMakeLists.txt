@@ -15,6 +15,7 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/runtime_notifications.cpp
     src/detail/security_descriptor.cpp
     src/detail/composition_support.cpp
+src/detail/listener_binding.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 

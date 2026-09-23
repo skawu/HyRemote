@@ -26,6 +26,8 @@ QmlRemoteAccess::State mapState(::HyRemote::Runtime::AccessState state)
         return QmlRemoteAccess::Stopping;
     case ::HyRemote::Runtime::AccessState::Faulted:
         return QmlRemoteAccess::Faulted;
+    case ::HyRemote::Runtime::AccessState::Unavailable:
+        return QmlRemoteAccess::Unavailable;
     }
     return QmlRemoteAccess::Faulted;
 }
@@ -229,6 +231,39 @@ void QmlRemoteAccess::setListenAddress(const QString &addressText)
     }
     clearLocalError();
     emit listenAddressChanged();
+    // Assigning an address clears any interface selection in the shared runtime, so the property that reported the
+    // interface has to report that it is gone - otherwise a QML binding would keep showing a binding that no longer
+    // applies.
+    if (m_access->listenInterface().isEmpty())
+        emit listenInterfaceChanged();
+}
+
+QString QmlRemoteAccess::listenInterface() const
+{
+    return m_access ? m_access->listenInterface() : QString{};
+}
+
+void QmlRemoteAccess::setListenInterface(const QString &identity)
+{
+    if (!m_access)
+        return;
+
+    const QString trimmed = identity.trimmed();
+    if (trimmed.isEmpty()) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("listenInterface must name a network interface; assign listenAddress to use an "
+                                     "address instead"));
+        return;
+    }
+    if (trimmed == m_access->listenInterface())
+        return;
+    if (!m_access->setListenInterface(trimmed)) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("listenInterface can only be changed while remote access is stopped"));
+        return;
+    }
+    clearLocalError();
+    emit listenInterfaceChanged();
 }
 
 int QmlRemoteAccess::port() const noexcept

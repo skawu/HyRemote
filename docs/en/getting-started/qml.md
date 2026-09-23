@@ -56,7 +56,7 @@ ApplicationWindow {
 
 Defaults match the C++ API:
 
-- listener `127.0.0.1:5921`;
+- listener `0.0.0.0:5921`;
 - remote input disabled;
 - Runtime stays stopped until explicitly enabled;
 - security behavior comes from the same Shared Runtime.
@@ -140,7 +140,7 @@ This is still one Shared Runtime used by two frontend payloads, not a fourth Run
 
 The V0.1 Shared Runtime is loopback-first:
 
-- default bind is `127.0.0.1`;
+- default bind is `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named network interface;
 - remote input is disabled by default;
 - unauthenticated non-loopback exposure is rejected;
 - `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;

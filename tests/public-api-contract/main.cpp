@@ -44,7 +44,7 @@ int main()
     RemoteAccess remote;
     if (remote.state() != RemoteAccessState::Stopped)
         return 1;
-    if (!remote.listenAddress().isLoopback())
+    if (remote.listenAddress() != QHostAddress(QHostAddress::AnyIPv4))
         return 2;
     if (remote.remoteInputEnabled())
         return 3;

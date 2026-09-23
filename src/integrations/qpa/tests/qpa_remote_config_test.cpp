@@ -29,7 +29,8 @@ int main()
         QString error;
         if (!check(parseRemoteConfig(parameters, config, error), "default config parses")
             || !check(error.isEmpty(), "default config has no error")
-            || !check(config.listenAddress == QHostAddress::LocalHost, "default address is loopback")
+            || !check(config.listenAddress == QHostAddress::AnyIPv4, "default address is the wildcard (#174)")
+            || !check(config.listenInterface.isEmpty(), "no interface is configured by default")
             || !check(config.port == HYREMOTE_DEFAULT_PORT, "default port is the configured HYREMOTE_DEFAULT_PORT")
             || !check(!config.remoteInputEnabled, "remote input defaults off")
             || !check(config.securityProfile == SecurityProfile::Insecure,
@@ -70,6 +71,39 @@ int main()
                                QStringLiteral("hyremote-security-config=/etc/hyremote/security.conf")};
         RemoteConfig config;
         QString error;
+    {
+        // #174: the interface identity is mapped into the common shape and consumed, and asking for an interface
+        // leaves the address at its wildcard default rather than inventing one.
+        QStringList parameters{QStringLiteral("hyremote-interface=hyremote-test-iface"),
+                               QStringLiteral("native=1")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "interface binding parses")
+            || !check(error.isEmpty(), "interface binding has no error")
+            || !check(config.listenInterface == QStringLiteral("hyremote-test-iface"),
+                      "the interface identity is carried verbatim")
+            || !check(config.listenAddress == QHostAddress::AnyIPv4,
+                      "an interface selection leaves the address at its wildcard default")
+            || !check(parameters == QStringList{QStringLiteral("native=1")},
+                      "the interface parameter is consumed before the native delegate")) {
+            return 9;
+        }
+    }
+
+    {
+        // The two keys describe one decision, so supplying both is refused rather than silently resolved.
+        QStringList parameters{QStringLiteral("hyremote-address=127.0.0.1"),
+                               QStringLiteral("hyremote-interface=hyremote-test-iface")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error),
+                   "address and interface together fail closed")
+            || !check(error.contains(QStringLiteral("mutually exclusive")),
+                      "the refusal explains the mutual exclusion")) {
+            return 10;
+        }
+    }
+
         if (!check(parseRemoteConfig(parameters, config, error), "authenticated profile parses")
             || !check(config.securityProfile == SecurityProfile::Authenticated,
                       "authenticated profile is distinct from encrypted")

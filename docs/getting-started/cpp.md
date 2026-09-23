@@ -19,6 +19,9 @@ Preview**：Embedded C++ 与 Generic Plugin 是**主要（primary）**接入面�
 
 两者暴露**同一个**应用目标：`HyRemote::RemoteAccess`。
 
+
+> 监听器面向**可信 LAN**，**不适合暴露到 Internet**。实际发布的安全状态以运行时报告为准。
+
 ## Widgets 最小用法
 
 ```cmake
@@ -78,7 +81,7 @@ Embedded C++ 是**主要（primary）**接入面，而 QML 前端是**预览（p
 
 ## 可选配置
 
-`setListenAddress()` **只接受数字地址**。默认是回环 `127.0.0.1`；不属于任何接口的地址、或已被占用的端口，会在到达
+`setListenAddress()` **只接受 IPv4 地址**。默认是 `0.0.0.0`（本机全部 IPv4 接口）；不属于任何接口的地址、或已被占用的端口，会在到达
 `Running` **之前**失败，并且不会留下任何监听；IPv6 通配地址 `::` 在本平台上是**仅 IPv6** 监听，而非双栈。逐地址的
 实测表见 [`known-limitations.md`](../known-limitations.md#listener-address-family-and-reachability)。
 

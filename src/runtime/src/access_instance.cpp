@@ -1,5 +1,7 @@
 #include "access_instance.hpp"
 
+#include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
+#include <QTimer>
 #include <QObject>
 #include <QPointer>
 
@@ -9,6 +11,7 @@
 #include <utility>
 
 #include "detail/component_factories.hpp"
+#include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "hyremote/core/session.hpp"
 
@@ -225,6 +228,28 @@ private:
 
 }  // namespace
 
+// #174: the interface watcher. Qt has no portable per-interface address-change signal, so a low-frequency poll is
+// the reliable mechanism available - it is not a network manager, it does no discovery, and it is never a public API.
+// It exists only while an interface binding is active, and the function it calls is the same one the tests call
+// directly.
+class InterfaceWatcher : public QObject
+{
+public:
+    explicit InterfaceWatcher(std::function<void()> onTick)
+        : m_onTick(std::move(onTick))
+    {
+        m_timer.setInterval(2000);
+        QObject::connect(&m_timer, &QTimer::timeout, this, [this] { m_onTick(); });
+    }
+
+    void start() { m_timer.start(); }
+    void stop() { m_timer.stop(); }
+
+private:
+    QTimer m_timer;
+    std::function<void()> m_onTick;
+};
+
 struct AccessInstance::Impl
 {
     struct SessionErrorRevision
@@ -233,11 +258,16 @@ struct AccessInstance::Impl
     };
 
     QPointer<QObject> target;
-    QHostAddress listenAddress = QHostAddress::LocalHost;
+    // 0.0.0.0 is the product default: a first run is reachable on the host's IPv4 interfaces without the user
+    // having to find an address first. This is deliberate product behaviour, not accidental widening (#174), and
+    // the shipped security state is what tells the user how much to trust that reachability.
+    QHostAddress listenAddress = QHostAddress::AnyIPv4;
     quint16 port = static_cast<quint16>(HYREMOTE_DEFAULT_PORT);
     bool remoteInputEnabled = false;
     SecurityProfile securityProfile = SecurityProfile::Insecure;
     QString securityConfigFile;
+    // #174 interface identity. Empty means the address decides the mode.
+    QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
     std::shared_ptr<hyremote::InputSink> inputSink;
     std::optional<Error> error;
@@ -255,10 +285,40 @@ struct AccessInstance::Impl
     std::shared_ptr<std::atomic<bool>> runActive;
     std::uint64_t lastFailureRevision = 0;
 
+    // ---------------------------------------------------------------- #174 binding lifecycle
+    //
+    // `desiredActive` is the user's intent to be reachable, and it outlives any single listener: when the selected
+    // interface loses its address the Session is gone but the intent is not, and only stop() clears it. That is what
+    // keeps the configuration immutable while an interface listener is waiting to come back, so a recovery can never
+    // race an edit the user made in the meantime. `effectiveAddress` is where the current Session actually listens -
+    // an observation, never a setting; the configured identity stays `listenInterface`.
+    bool desiredActive = false;
+    std::optional<QHostAddress> effectiveAddress;
+    // The transport security derived from configuration. It is kept only so the rebind path composes exactly what
+    // the current run composed: while desiredActive is true the configuration cannot change, so it cannot go stale.
+    std::optional<detail::RfbSecurityConfig> activeTransportSecurity;
+    std::unique_ptr<InterfaceWatcher> watcher;
+
+    // The single composition path (#174). The initial start, a rebind after the interface moved and a recovery all
+    // come through here, so there is exactly one place that builds a Session and one that tears the previous one
+    // down - never two ways to build a listener, and never a weaker one for the recovery path.
+    bool composeAndStart(const QHostAddress &address, const detail::RfbSecurityConfig &security);
+    // A -> B for the same configured identity.
+    bool rebindTo(const QHostAddress &address);
+    // The reconciliation the watcher and the tests share.
+    void reconcileBinding();
+    void startInterfaceWatcher();
+    void stopInterfaceWatcher();
+
     ~Impl() { shutdownRuntime(); }
 
     bool isConfigurable() const
     {
+        // #174: the Session is no longer the whole truth. After an interface loses its address the Session is gone,
+        // yet the user has still not stopped and a watcher is waiting to bring the listener back - so accepting a
+        // configuration change here would race the recovery that is about to happen. Only stop() ends the intent.
+        if (desiredActive)
+            return false;
         return !session || session->state() == hyremote::SessionState::Stopped;
     }
 
@@ -346,8 +406,12 @@ struct AccessInstance::Impl
     {
         if (transitionState)
             return *transitionState;
-        if (!session)
-            return AccessState::Stopped;
+        if (!session) {
+            // No Session, but the user still asked to be reachable: there is simply no usable address for the
+            // interface right now. Anything non-recoverable still arrives as Faulted from the Session itself, so
+            // that state keeps meaning what it always meant.
+            return desiredActive ? AccessState::Unavailable : AccessState::Stopped;
+        }
         return mapState(session->state());
     }
 
@@ -432,14 +496,44 @@ bool AccessInstance::setListenAddress(const QHostAddress &address)
 {
     if (!m_impl || !m_impl->isConfigurable())
         return false;
-    if (address.isNull()) {
+    // The listener contract is IPv4 (#174): the wildcard, one explicit local IPv4, or an interface. Anything else
+    // is refused here, at the one place every frontend goes through, rather than being rediscovered per frontend.
+    if (address.isNull() || address.protocol() != QAbstractSocket::IPv4Protocol) {
         m_impl->setError(ErrorCode::InvalidConfiguration,
-                         QStringLiteral("listen address must not be null"));
+                         address.isNull()
+                             ? QStringLiteral("listen address must not be null")
+                             : QStringLiteral("listen address must be an IPv4 address"));
         m_impl->publishSnapshotNoexcept();
         return false;
     }
 
     m_impl->listenAddress = address;
+    // Setting an address is a statement about the address, so it replaces any interface selection: the two
+    // outrank each other in no other way, and silently keeping both would make the mode ambiguous.
+    m_impl->listenInterface.clear();
+    return true;
+}
+
+QString AccessInstance::listenInterface() const
+{
+    return m_impl ? m_impl->listenInterface : QString{};
+}
+
+bool AccessInstance::setListenInterface(const QString &identity)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+    if (identity.isEmpty()) {
+        m_impl->setError(ErrorCode::InvalidConfiguration,
+                         QStringLiteral("listen interface must not be empty; set an address to use the address modes"));
+        m_impl->publishSnapshotNoexcept();
+        return false;
+    }
+
+    // The identity is recorded as configuration. It is deliberately not resolved here: the current address is an
+    // observation, not a setting, and the whole point of interface mode is that it may change while the
+    // configuration does not (#174).
+    m_impl->listenInterface = identity;
     return true;
 }
 
@@ -536,6 +630,30 @@ bool AccessInstance::start()
     m_impl->resetErrorAcknowledgement();
     m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
 
+    // #174 listener contract. The mode is decided from configuration, and the effective IPv4 is settled here -
+    // before any transport exists - so an address that does not belong to this host, an unknown interface, an
+    // interface without a usable IPv4 or an ambiguous one all fail without leaving a half-composed listener. None
+    // of these paths fall back: not to the wildcard, not to loopback, not to another interface.
+    QHostAddress effectiveAddress = m_impl->listenAddress;
+    const detail::ListenerMode bindingMode =
+        detail::listenerModeFor(m_impl->listenAddress, m_impl->listenInterface);
+    if (bindingMode == detail::ListenerMode::Address
+        && !detail::isLocalIpv4Address(m_impl->listenAddress)) {
+        m_impl->setError(ErrorCode::InvalidConfiguration,
+                         QStringLiteral("listen address %1 does not belong to this host")
+                             .arg(m_impl->listenAddress.toString()));
+        return false;
+    }
+    if (bindingMode == detail::ListenerMode::Interface) {
+        const detail::InterfaceResolutionResult resolution =
+            detail::resolveInterfaceAddress(m_impl->listenInterface);
+        if (resolution.status != detail::InterfaceResolution::Found) {
+            m_impl->setError(ErrorCode::TransportUnavailable, resolution.error);
+            return false;
+        }
+        effectiveAddress = resolution.address;
+    }
+
     detail::RfbSecurityConfig transportSecurity;
     bool authenticationEnabled = false;
     if (m_impl->securityProfile != SecurityProfile::Insecure) {
@@ -584,95 +702,54 @@ bool AccessInstance::start()
 #endif
     }
 
-    if (!authenticationEnabled && !m_impl->listenAddress.isLoopback()) {
-        m_impl->setError(
-            ErrorCode::InvalidConfiguration,
-            QStringLiteral("refusing a non-loopback listener while no authentication mode is enabled"));
+    // There is deliberately no "unauthenticated implies loopback" rule here any more. It was a product
+    // restriction that no longer matches the decision in #143/#174: a BASIC_TRUSTED_LAN build is allowed to listen
+    // on the LAN, and what keeps that honest is the reported security state and the documentation, not a silently
+    // narrowed bind. Encrypting or authenticating the stream is a separate question and stays where it is.
+
+    m_impl->activeTransportSecurity = transportSecurity;
+
+    if (!m_impl->composeAndStart(effectiveAddress, transportSecurity))
         return false;
-    }
 
-    QObject *targetObject = m_impl->target.data();
-    if (targetObject == nullptr) {
-        m_impl->setError(ErrorCode::InvalidConfiguration,
-                         QStringLiteral("no live Qt target is attached"));
-        return false;
-    }
-
-    detail::TargetComponents targetComponents =
-        detail::createTargetComponents(targetObject, m_impl->remoteInputEnabled);
-    if (!targetComponents.supported || !targetComponents.capture) {
-        const QString message = targetComponents.error.isEmpty()
-                                    ? QStringLiteral("no HyRemote adapter supports the attached Qt target")
-                                    : targetComponents.error;
-        m_impl->setError(ErrorCode::TargetAdapterUnavailable, message);
-        return false;
-    }
-
-    if (m_impl->remoteInputEnabled && !targetComponents.input) {
-        m_impl->setError(ErrorCode::RemoteInputUnavailable,
-                         targetComponents.error.isEmpty()
-                             ? QStringLiteral("remote input was enabled but this target adapter has no input sink")
-                             : targetComponents.error);
-        return false;
-    }
-
-    detail::TransportComponent transport =
-        detail::createDefaultTransport(m_impl->listenAddress, m_impl->port, transportSecurity);
-    if (!transport.transport) {
-        const QString message = transport.error.isEmpty()
-                                    ? QStringLiteral("no default HyRemote transport is available")
-                                    : transport.error;
-        m_impl->setError(ErrorCode::TransportUnavailable, message);
-        return false;
-    }
-
-    // The run's activity token is created before the components are composed so both wrappers can hold
-    // it. It is activated immediately before the Session starts and cleared by every teardown.
-    m_impl->runActive = std::make_shared<std::atomic<bool>>(false);
-    const auto observeRuntime = [impl = m_impl.get()] { impl->publishSnapshotNoexcept(); };
-
-    transport.transport = std::make_unique<ClientCountingTransport>(std::move(transport.transport),
-                                                                    m_impl->connectedClients,
-                                                                    m_impl->runActive,
-                                                                    observeRuntime);
-
-    auto session = std::make_unique<hyremote::Session>();
-    auto observedCapture = std::make_unique<ObservedCaptureSource>(
-        std::move(targetComponents.capture), m_impl->runActive, observeRuntime);
-    if (!session->setCaptureSource(std::move(observedCapture))
-        || !session->setTransport(std::move(transport.transport))) {
-        m_impl->setError(ErrorCode::RuntimeFailure,
-                         QStringLiteral("failed to compose the internal HyRemote session"));
-        return false;
-    }
-
-    std::shared_ptr<hyremote::InputSink> inputSink = targetComponents.input;
-    if (inputSink)
-        session->setInputSink(inputSink);
-
-    m_impl->runActive->store(true, std::memory_order_release);
-    if (!session->start()) {
-        m_impl->runActive->store(false, std::memory_order_release);
-        const std::optional<hyremote::SessionError> coreError = session->lastError();
-        if (coreError)
-            m_impl->error = mapError(*coreError);
-        else
-            m_impl->setError(ErrorCode::StartFailed,
-                             QStringLiteral("HyRemote runtime failed to start"));
-
-        session->stop();
-        return false;
-    }
-
-    m_impl->inputSink = std::move(inputSink);
-    m_impl->session = std::move(session);
+    // Only now is the user's intent to be reachable recorded, so a start that failed anywhere above leaves no
+    // desired-active state behind - and therefore no watcher that could quietly start a listener seconds later.
+    // From here the configuration is fixed until stop(): the listener is either running, or waiting for the
+    // interface it was told to use.
+    m_impl->desiredActive = true;
+    m_impl->effectiveAddress = effectiveAddress;
+    if (bindingMode == detail::ListenerMode::Interface)
+        m_impl->startInterfaceWatcher();
     return true;
+}
+
+void AccessInstance::reconcileInterfaceBinding()
+{
+    if (m_impl)
+        m_impl->reconcileBinding();
 }
 
 void AccessInstance::stop() noexcept
 {
-    if (!m_impl || !m_impl->session)
+    if (!m_impl)
         return;
+
+    // #174: stop() is the absolute cancellation boundary. The desired-active intent and the watcher are cleared
+    // first, so a tick that is already queued - or a reconciliation a timer ran moments earlier - finds an instance
+    // that no longer wants to be reachable and cannot restart anything. After this returns, only a new start() can
+    // compose a Session again.
+    m_impl->desiredActive = false;
+    m_impl->stopInterfaceWatcher();
+    m_impl->effectiveAddress.reset();
+    m_impl->activeTransportSecurity.reset();
+
+    if (!m_impl->session) {
+        // Nothing is running. The state still has to be published: leaving Unavailable behind would tell the user
+        // they are still waiting for an interface to come back when they have explicitly stopped.
+        m_impl->transitionState.reset();
+        m_impl->publishSnapshotNoexcept();
+        return;
+    }
 
     // #259 frozen stop order: Stopping, then a client count of 0 if it was not already 0, then Stopped.
     m_impl->transitionState = AccessState::Stopping;
@@ -739,6 +816,154 @@ void AccessInstance::unsubscribeNotifications(RuntimeNotificationToken token) no
     if (!m_impl)
         return;
     m_impl->notifications.unsubscribe(token);
+}
+
+// The single composition path (#174): the initial start, an interface rebind and a recovery all arrive here. Every
+// call tears the previous run down first and then builds a fresh activity token and a fresh Session, so the old token
+// is never revived and a late callback from the previous listener or capture cannot change the new run's client count
+// or publish on its behalf. At most one Session is alive at any moment.
+bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const detail::RfbSecurityConfig &security)
+{
+    shutdownRuntime();
+
+    QObject *targetObject = target.data();
+    if (targetObject == nullptr) {
+        setError(ErrorCode::InvalidConfiguration, QStringLiteral("no live Qt target is attached"));
+        return false;
+    }
+
+    detail::TargetComponents targetComponents = detail::createTargetComponents(targetObject, remoteInputEnabled);
+    if (!targetComponents.supported || !targetComponents.capture) {
+        const QString message = targetComponents.error.isEmpty()
+                                    ? QStringLiteral("no HyRemote adapter supports the attached Qt target")
+                                    : targetComponents.error;
+        setError(ErrorCode::TargetAdapterUnavailable, message);
+        return false;
+    }
+
+    if (remoteInputEnabled && !targetComponents.input) {
+        setError(ErrorCode::RemoteInputUnavailable,
+                 targetComponents.error.isEmpty()
+                     ? QStringLiteral("remote input was enabled but this target adapter has no input sink")
+                     : targetComponents.error);
+        return false;
+    }
+
+    detail::TransportComponent transport = detail::createDefaultTransport(address, port, security);
+    if (!transport.transport) {
+        const QString message = transport.error.isEmpty()
+                                    ? QStringLiteral("no default HyRemote transport is available")
+                                    : transport.error;
+        setError(ErrorCode::TransportUnavailable, message);
+        return false;
+    }
+
+    // The run's activity token is created before the components are composed so both wrappers can hold it. It is
+    // activated immediately before the Session starts and cleared by every teardown.
+    runActive = std::make_shared<std::atomic<bool>>(false);
+    const auto observeRuntime = [impl = this] { impl->publishSnapshotNoexcept(); };
+
+    transport.transport = std::make_unique<ClientCountingTransport>(std::move(transport.transport),
+                                                                    connectedClients,
+                                                                    runActive,
+                                                                    observeRuntime);
+
+    auto freshSession = std::make_unique<hyremote::Session>();
+    auto observedCapture =
+        std::make_unique<ObservedCaptureSource>(std::move(targetComponents.capture), runActive, observeRuntime);
+    if (!freshSession->setCaptureSource(std::move(observedCapture))
+        || !freshSession->setTransport(std::move(transport.transport))) {
+        setError(ErrorCode::RuntimeFailure, QStringLiteral("failed to compose the internal HyRemote session"));
+        return false;
+    }
+
+    std::shared_ptr<hyremote::InputSink> freshInputSink = targetComponents.input;
+    if (freshInputSink)
+        freshSession->setInputSink(freshInputSink);
+
+    runActive->store(true, std::memory_order_release);
+    if (!freshSession->start()) {
+        runActive->store(false, std::memory_order_release);
+        if (const std::optional<hyremote::SessionError> coreError = freshSession->lastError())
+            error = mapError(*coreError);
+        else
+            setError(ErrorCode::StartFailed, QStringLiteral("HyRemote runtime failed to start"));
+
+        freshSession->stop();
+        return false;
+    }
+
+    inputSink = std::move(freshInputSink);
+    session = std::move(freshSession);
+    return true;
+}
+
+bool AccessInstance::Impl::rebindTo(const QHostAddress &address)
+{
+    // A real composition, not a patch: the configured identity is untouched and only the effective endpoint moves,
+    // with the security the current run was composed with.
+    transitionState = AccessState::Starting;
+    lastFailureRevision = 0;
+    error.reset();
+    resetErrorAcknowledgement();
+    publishSnapshotNoexcept();  // StateChanged(Starting)
+
+    const detail::RfbSecurityConfig security =
+        activeTransportSecurity ? *activeTransportSecurity : detail::RfbSecurityConfig{};
+
+    if (composeAndStart(address, security)) {
+        effectiveAddress = address;
+        error.reset();
+    } else {
+        // The interface answered but a listener for it could not be composed. That is reported as unavailable
+        // rather than guessed at, and the watcher keeps the same identity so the next tick retries the same
+        // endpoint. Nothing here moves to another address.
+        effectiveAddress.reset();
+    }
+
+    transitionState.reset();
+    publishSnapshotNoexcept();
+    return effectiveAddress.has_value() && *effectiveAddress == address;
+}
+
+void AccessInstance::Impl::reconcileBinding()
+{
+    // Everything below is a no-op unless an interface listener is actually wanted, which is what makes a tick that
+    // arrives after stop() harmless.
+    if (!desiredActive)
+        return;
+    if (detail::listenerModeFor(listenAddress, listenInterface) != detail::ListenerMode::Interface)
+        return;
+
+    const detail::InterfaceResolutionResult resolution = detail::resolveInterfaceAddress(listenInterface);
+
+    if (resolution.status == detail::InterfaceResolution::Found) {
+        if (effectiveAddress && *effectiveAddress == resolution.address)
+            return;  // A -> A: nothing changed, so nothing is torn down
+        rebindTo(resolution.address);
+        return;
+    }
+
+    // The interface is gone, or no longer answers with exactly one address. The listener stops - it does not keep
+    // serving the address it used to have, and it does not move to the wildcard, to loopback or to another
+    // interface - but the user has not stopped, so the intent stays and the watcher keeps following this identity.
+    shutdownRuntime();
+    effectiveAddress.reset();
+    setError(ErrorCode::TransportUnavailable, resolution.error);
+    publishSnapshotNoexcept();  // StateChanged(Unavailable), with the reason visible
+}
+
+void AccessInstance::Impl::startInterfaceWatcher()
+{
+    if (!watcher)
+        watcher = std::make_unique<InterfaceWatcher>([this] { reconcileBinding(); });
+    watcher->start();
+}
+
+void AccessInstance::Impl::stopInterfaceWatcher()
+{
+    if (watcher)
+        watcher->stop();
 }
 
 }  // namespace HyRemote::Runtime

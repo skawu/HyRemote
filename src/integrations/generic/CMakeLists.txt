@@ -14,6 +14,7 @@ endif()
 
 add_library(hyremote-generic-plugin MODULE
     hyremote_generic_plugin.cpp
+    generic_config.cpp
 )
 set_target_properties(hyremote-generic-plugin PROPERTIES
     AUTOMOC ON

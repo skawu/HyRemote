@@ -46,7 +46,7 @@ HyRemote currently accepts numeric IP addresses rather than hostnames/DNS names.
 
 Important behavior:
 
-- default: `127.0.0.1`;
+- default: `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named interface;
 - an invalid/unassigned bind address fails instead of silently widening to a wildcard;
 - an already occupied port fails startup;
 - `0.0.0.0` explicitly widens IPv4 exposure and therefore requires a valid authenticated configuration rather than `Insecure`;
