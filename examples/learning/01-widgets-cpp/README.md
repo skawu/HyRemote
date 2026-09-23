@@ -39,7 +39,7 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH="<qt-prefix>;<hyremote-prefix>"
 cmake --build build --config Release
 ```
 
-Inside the repository build, with examples enabled (`compile.cmd --integrations=cpp,qml,generic,qpa --examples ...`),
+Inside the repository build, with examples enabled (`build.cmd build --integrations=cpp,qml,generic,qpa --examples ...`),
 the same source builds as part of the tree and needs no `find_package` step of its own.
 
 ## Run

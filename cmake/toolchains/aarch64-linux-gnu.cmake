@@ -2,7 +2,7 @@
 #
 # Usage (see cmake/toolchains/README.md and docs/guide/cross-compilation.md):
 #
-#   sh compile.cmd --mode=qpa --toolchain=cmake/toolchains/aarch64-linux-gnu.cmake \
+#   sh build.cmd build --integrations=qpa \
 #                  --qt-prefix=/opt/qt-6.8.3-aarch64
 #
 # `--qt-prefix` must point at a Qt 6.8.3 installation **built for aarch64**, not at the host
