@@ -244,7 +244,7 @@ jobs:
           if [[ "$SECURITY_EVIDENCE" == "true" ]]; then
             security_args+=(--security "--cmake=OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR}")
           fi
-          sh ./compile.cmd \
+          sh ./build.cmd build \
             --integrations="$INTEGRATIONS" \
             --qt-prefix="$QT_PREFIX" \
             --build-type=Release \

@@ -16,11 +16,11 @@ See [`docs/security.md`](docs/security.md) and [`docs/compatibility.md`](docs/co
 
 HyRemote currently uses a bounded RFB/VNC transport baseline.
 
-V0.1 behavior:
+Shipped behavior:
 
-- listener defaults to loopback (`127.0.0.1`);
+- listener defaults to `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
 - remote input is disabled by default;
-- `Insecure` is loopback-only and non-loopback startup is rejected;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` requires a transport-security-enabled build plus a valid security descriptor; when available it uses RFB VNC authentication but does not encrypt the stream;
 - the default V0.1 build/profile does not imply authenticated transport is compiled in;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without fallback to a weaker profile.

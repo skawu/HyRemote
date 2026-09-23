@@ -158,11 +158,11 @@ For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_
 
 ## Security model in V0.1
 
-V0.1 is a **Developer Preview with a loopback-first security boundary**:
+The shipped V0.2.0.0 candidate is a **user-first LAN trial with a truthful security boundary**:
 
-- default bind: `127.0.0.1`;
+- default bind: `0.0.0.0:5921` (reachable on the host's IPv4 interfaces), or one exact local IPv4, or a named interface;
 - remote input: off by default;
-- `Insecure` is loopback-only; non-loopback startup is rejected;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is conditional: it requires a transport-security-enabled HyRemote build plus a valid security descriptor, and currently provides VNC authentication without stream encryption;
 - the default V0.1 build/profile does not imply authenticated transport is present;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before any listener is opened, without fallback to a weaker profile.

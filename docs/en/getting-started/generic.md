@@ -65,10 +65,10 @@ QT_QPA_GENERIC_PLUGINS=hyremote
 
 The defaults match the C++ API:
 
-- address: `127.0.0.1`;
+- address: `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named interface;
 - port: `5921`;
 - remote input: disabled;
-- `Insecure` is loopback-only.
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**.
 
 ## Configuration format
 
@@ -134,7 +134,7 @@ V0.1 is a Developer Preview:
 
 - loopback is the default bind;
 - remote control is disabled by default;
-- `Insecure` cannot be exposed directly on a non-loopback address;
+- `Insecure` is unauthenticated and unencrypted, so keep it on a trusted LAN;
 - `Authenticated` is a conditional capability and must not be assumed to exist in the default package;
 - `AuthenticatedEncrypted` is not implemented and always fails closed;
 - do not expose the current product directly to the public Internet.

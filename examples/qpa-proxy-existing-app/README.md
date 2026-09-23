@@ -108,7 +108,7 @@ hyremote-qpa-proxy-existing-app -platform hyremote
 
 Safe defaults are:
 
-- listener address: loopback only;
+- listener address: `0.0.0.0` (this host's IPv4 interfaces), or one exact local IPv4 / named interface;
 - port: 5921;
 - remote input: **disabled**;
 - native local display/input remains the authoritative local path.

@@ -158,7 +158,7 @@ V0.1:
 
 - default bind is loopback;
 - remote input is disabled by default;
-- `Insecure` is loopback-only;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is available only when HyRemote was built with the transport-security capability and a valid security descriptor is configured; it currently provides VNC authentication without stream encryption;
 - the default V0.1 build/profile does not imply authenticated transport is present;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without falling back to a weaker profile.

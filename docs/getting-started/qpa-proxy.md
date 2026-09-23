@@ -153,9 +153,9 @@ QPA 与其它 frontend 共用 Runtime target adapter：
 
 QPA 复用 Shared Runtime 的安全策略：
 
-- 默认回环；
+- 默认 `0.0.0.0:5921`；
 - 远程输入默认关闭；
-- 未认证非回环监听被拒绝；
+- `Insecure` 未认证、未加密：监听器面向**可信 LAN**，**不适合暴露到 Internet**；
 - `Authenticated` 可使用 RFB VNC authentication，但当前数据流不加密；
 - `AuthenticatedEncrypted` 在加密后端不可用时失败关闭。
 

@@ -32,7 +32,7 @@ RemoteAccess {
 
 Safe defaults are shared with the C++ API:
 
-- loopback listener;
+- listener on `0.0.0.0:5921`;
 - port 5921;
 - remote input disabled;
 - no listener merely from importing the module.
@@ -148,7 +148,7 @@ V0.1 behavior:
 
 - loopback by default;
 - remote input disabled by default;
-- unauthenticated non-loopback exposure rejected;
+- `Insecure` is unauthenticated and unencrypted: trusted LAN only, not Internet-safe;
 - `Authenticated` may use RFB VNC authentication;
 - the current stream is not encrypted;
 - `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.

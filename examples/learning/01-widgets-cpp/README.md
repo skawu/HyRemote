@@ -39,7 +39,7 @@ cmake -S . -B build -DCMAKE_PREFIX_PATH="<qt-prefix>;<hyremote-prefix>"
 cmake --build build --config Release
 ```
 
-Inside the repository build, with examples enabled (`compile.cmd --integrations=cpp,qml,generic,qpa --examples ...`),
+Inside the repository build, with examples enabled (`build.cmd build --integrations=cpp,qml,generic,qpa --examples ...`),
 the same source builds as part of the tree and needs no `find_package` step of its own.
 
 ## Run
@@ -84,7 +84,7 @@ platform integration; it does not replace it.
 ## V0.1 boundary
 
 - reference matrix: **Windows x86_64** and **Linux x86_64**, **Qt 6.8.3**;
-- V0.1 is a **loopback-only Developer Preview**: the listener is loopback by default, remote input is off by default,
+- V0.2 is a **LAN-capable Developer Preview**: the listener is `0.0.0.0:5921` by default, remote input is off by default,
   and nothing in V0.1 is production, GA or Internet-safe;
 - encrypted transport and authenticated sessions are V0.2 work (see `docs/known-limitations.md`).
 

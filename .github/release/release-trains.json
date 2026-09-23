@@ -61,25 +61,29 @@
       "authority_parent": 233,
       "candidate_freeze_authority": 233,
       "lineage_parent": "0.1.0.0",
-      "mandatory_children": [ 143, 174, 259, 271 ],
-      "candidate_prerequisites": [ 258 ],
+      "mandatory_children": [ 143, 174, 259, 326, 271 ],
+      "candidate_prerequisites": [ 258, 332 ],
       "required_evidence": [
         "accepted-v0.1-lineage",
         "usable-lan-remote-access-evidence",
-        "truthful-trial-security-state-evidence",
+        "truthful-runtime-security-facts-evidence",
+        "coherent-staged-artifact-evidence",
+        "bilingual-release-notes-evidence",
         "customer-trial-evidence"
       ],
-      "cross_version_references": [ 95, 143, 170, 174, 259 ],
+      "cross_version_references": [ 95, 143, 170, 174, 259, 326, 332 ],
       "conditional_items": [],
       "non_blockers": [ 170, 239 ],
       "notes": {
-        "143": "Secure remote access is a mandatory child because the trial needs a usable and truthfully reported transport, not because an encrypted profile has to exist before the first candidate can be accepted. A candidate that ships BASIC_TRUSTED_LAN satisfies this train; encrypted-profile work still being unfinished is not a blocker for it.",
+        "143": "Secure remote access is a mandatory child because the trial needs a usable and truthfully reported transport, not because an encrypted profile has to exist before the first candidate can be accepted. The shipped facts - authentication off, no transport encryption, remote input off, listener on the host's IPv4 interfaces - are what this train requires to be stated truthfully; encrypted-profile work still being unfinished is not a blocker for it.",
         "258": "Security-modelling entry preflight for the secure-remote Feature. Preflight is risk work, not product implementation, so it is a prerequisite rather than a mandatory child.",
-        "271": "First real customer trial on the frozen Windows/Ubuntu x86_64 trial matrix. Product-owner decision: the first customer trial belongs to V0.2.0, not to V0.1.",
+        "271": "First real customer trial on the frozen candidate. One real user in one real environment is what the trial requires; Windows and Ubuntu are the internal qualification matrix, and the trial records whichever platform that user actually had. Product-owner decision: the first customer trial belongs to V0.2.0, not to V0.1.",
+        "326": "The unified build/install entry point and the single user-facing install tree are mandatory children because the trial cannot start from developer intermediate output.",
+        "332": "Bilingual release notes are a candidate prerequisite: a release that states its facts in one language only has not stated them to its users.",
         "170": "Session Registry belongs to 0.2.1.0, so it is a declared non-blocker here.",
         "239": "Minimal operational examples belong to 0.2.1.0, so they are a declared non-blocker here."
       },
-      "rule": "The V0.2 user promise is the first real remote-access trial on a trusted LAN. The first candidate may be accepted as BASIC_TRUSTED_LAN - usable LAN remote access with a truthfully reported security state - and it is never blocked by VeNCrypt/TLS or any other encrypted profile still being unfinished. Encrypted evidence is conditional on what the candidate itself ships: it is required only when that candidate actually declares AUTHENTICATED_ENCRYPTED, and it is never a standing requirement of this train."
+      "rule": "The V0.2 user promise is the first real user trial of remote access across a local network, with every fact the user is told matching what the artifact actually does. A candidate is accepted on the facts it ships - a listener reachable on the host's IPv4 interfaces, authentication off, transport encryption off, remote input off, which is not Internet-safe - and it is never blocked by an encrypted profile still being unfinished. Evidence must name those facts, the staged artifact that carries them and the bilingual release notes that state them, rather than any trust state the product cannot verify for itself."
     },
     "0.2.1.0": {
       "authority_parent": 233,

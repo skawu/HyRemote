@@ -8,7 +8,7 @@ This page describes the **current product security behavior**. Capabilities that
 
 ## V0.1 security boundary
 
-V0.1 is a Developer Preview with a loopback-first security boundary.
+The shipped candidate is a Developer Preview with a truthful security boundary.
 
 The same Shared Runtime security model applies to the C++ API, QML API, Generic Plugin, and QPA frontends.
 
@@ -18,7 +18,7 @@ Default behavior:
 - port: `5921`;
 - remote input: disabled;
 - constructing `HyRemote::RemoteAccess` does not open a listener;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - requested security capabilities fail closed instead of silently downgrading;
 - secrets must not be written to normal diagnostics.
 
@@ -35,7 +35,7 @@ Do not expose V0.1 directly to the public Internet.
 - loopback is required;
 - remote input remains a separate opt-in policy.
 
-A non-loopback `Insecure` start is rejected before listener creation.
+An `Insecure` listener is unauthenticated and unencrypted: it is for a trusted LAN only and is not Internet-safe.
 
 ### Authenticated
 
@@ -68,9 +68,9 @@ AuthenticatedEncrypted
 
 | Capability | V0.1 status |
 | --- | --- |
-| Loopback-first default | **Available** |
+| LAN-capable default (`0.0.0.0:5921`) | **Available** |
 | Remote input off by default | **Available** |
-| Reject `Insecure` non-loopback exposure | **Available** |
+| Truthful unauthenticated/unencrypted state | **Available** |
 | `Authenticated` API/configuration surface | **Available** |
 | RFB VNC authentication | **Conditional: transport-security-enabled build + valid descriptor** |
 | Default V0.1 build includes authenticated transport | **No** |

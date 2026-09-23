@@ -19,7 +19,7 @@ RemoteAccess {
 
 Defaults remain identical to C++:
 
-- loopback listener (`127.0.0.1`);
+- listener on `0.0.0.0:5921` (this host's IPv4 interfaces);
 - port `5921`;
 - remote input disabled;
 - no listener until `enabled` is explicitly requested.

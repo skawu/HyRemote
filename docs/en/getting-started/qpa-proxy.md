@@ -155,7 +155,7 @@ QPA reuses the Shared Runtime security policy:
 
 - default bind is loopback;
 - remote input is disabled by default;
-- unauthenticated non-loopback exposure is rejected;
+- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;
 - `AuthenticatedEncrypted` fails closed while the encrypted backend is unavailable.
 

@@ -71,7 +71,7 @@ HYREMOTE_STOP=Stopped
 ## V0.1 boundary
 
 - reference matrix: **Windows x86_64** and **Linux x86_64**, **Qt 6.8.3**;
-- V0.1 is a **loopback-only Developer Preview** - loopback listener, remote input off by default, no production, GA
+- V0.2 is a **LAN-capable Developer Preview** - `0.0.0.0:5921` listener, remote input off by default, no production, GA
   or Internet-safe claim;
 - the `HyRemote` QML module is a **preview** frontend in V0.1. If you specifically want the declarative API, see the
   QML examples; if you want the V0.1 primary path, this C++ facade is it.

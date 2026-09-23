@@ -175,9 +175,9 @@ V0.1 is not an Internet-facing remote-access server.
 
 Current behavior includes:
 
-- loopback listener by default;
+- listener on `0.0.0.0:5921` by default, so it is reachable on the host's IPv4 interfaces;
 - remote input disabled by default;
-- `Insecure` is loopback-only and non-loopback startup is rejected;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is a conditional capability that requires a transport-security-enabled build and a valid security descriptor; when available it provides VNC authentication without stream encryption;
 - the default V0.1 build/profile does not imply authenticated transport is present;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before target, transport, or listener composition, without falling back to a weaker profile.

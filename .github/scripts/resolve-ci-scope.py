@@ -36,7 +36,7 @@ import sys
 PEERS = ["cpp", "qml", "generic", "qpa"]
 
 COMMON_FILES = {
-    "CMakeLists.txt", "compile.cmd", "build.yml", ".github/workflows/ci.yml",
+    "CMakeLists.txt", "build.cmd", "compile.cmd", "build.yml", ".github/workflows/ci.yml",
 }
 
 COMMON_PREFIXES = (

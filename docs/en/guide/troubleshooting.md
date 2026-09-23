@@ -202,7 +202,7 @@ V0.1 does not provide encrypted RFB traffic.
 
 If you see:
 
-- non-loopback startup being refused;
+- a listener reachable beyond this machine while the reported security state is still unauthenticated;
 - `AuthenticatedEncrypted` failing to start;
 - viewer password behavior not matching expectations;
 

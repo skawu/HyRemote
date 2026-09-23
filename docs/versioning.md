@@ -85,7 +85,7 @@ V0.1 is intentionally narrow and usable:
 - Qt 6.8.3 is the current reference SDK;
 - Widgets and Qt Quick share one Runtime;
 - basic SDK/deployment/onboarding is available;
-- security remains loopback-first and is not yet production-Internet ready;
+- security is unauthenticated and unencrypted and is not yet production-Internet ready;
 - QML API and QPA may exist as Preview paths without blocking the V0.1 primary user journey.
 
 ## V0.2 — Trust It
