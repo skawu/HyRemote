@@ -84,3 +84,13 @@ add_test(
         -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
         -DTEST_QML=ON
 )
+
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;qml;fast"
+    hyremote-qml-module-test
+    hyremote-qml-notifications-test
+)
+hyremote_label_test_family("contract;qml;installed"
+    hyremote-qml-deploy-helper-non-qml
+    hyremote-qml-deploy-helper-qml
+)
