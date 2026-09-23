@@ -87,7 +87,7 @@ Remote viewing and remote input are separate policies. View-only mode is not a s
 The safest/default V0.1 listener is:
 
 ```text
-127.0.0.1:5921
+0.0.0.0:5921
 ```
 
 Changing the bind address changes the trust boundary; it does not automatically enable authentication or encryption.

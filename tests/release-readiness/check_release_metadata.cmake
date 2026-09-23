@@ -442,10 +442,13 @@ foreach(security_document IN ITEMS
     endforeach()
 endforeach()
 
-# `examples/README.md` is the single V0.1 developer entry, so it has to stay a user entry rather than a release
+# `examples/README.md` is the single developer entry, so it has to stay a user entry rather than a release
 # catalogue. These are stable structural facts, not prose: the three canonical adoption paths must be reachable from
 # it, the reference matrix and security boundary must be stated, and the retired release storytelling (the E-numbered
 # taxonomy and the V0.0.x frontend-coded labels) must not reappear as current navigation.
+#
+# #240: the four integration routes are peers, so the entry no longer labels two of them "primary" and two "Preview";
+# the token checked here is the peer statement that replaced the retired product-status wording.
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/README.md" examples_entry)
 foreach(required_entry_token IN ITEMS
         "learning/01-widgets-cpp"
@@ -458,7 +461,7 @@ foreach(required_entry_token IN ITEMS
         "Generic Plugin"
         "Declarative QML API"
         "Transparent QPA"
-        "Preview"
+        "peer"
         "Qt 6.8.3"
         "Windows x86_64"
         "Linux x86_64"

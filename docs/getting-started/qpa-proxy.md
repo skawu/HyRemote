@@ -1,10 +1,10 @@
-# QPA 接入（Preview）
+# QPA 接入
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/qpa-proxy.md)
 
 QPA 是 HyRemote 的专用零代码接入路径。它适合确实需要从 Qt platform entry 进入的应用；如果 Generic Plugin 已经能满足需求，应优先使用 [`generic.md`](generic.md)，因为 Generic 使用 Qt public plugin API，不引入 QPA private ABI 约束。
 
-当前产品状态：**Preview**。
+当前产品状态：peer route。
 
 ## 产品模型
 

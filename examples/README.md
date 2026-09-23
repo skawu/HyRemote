@@ -6,26 +6,26 @@ HyRemote adds remote access to an **existing Qt application** with as little int
 application; remote access is delivered as an SDK and a deployment payload rather than as a rewrite, and your
 application does not have to learn about sessions, transports, capture or protocol internals.
 
-V0.1 is a **Developer Preview** with two primary adoption paths and two preview frontends. All four frontends share
-one Runtime/Core: they are different ways for an application to reach the same remote-access runtime, not different
-products.
+The four frontends are **peers** and share one Runtime/Core: they are different ways for an application to reach the
+same remote-access runtime, not different products. Every route follows the same
+[acquisition -> integrate -> deploy -> run -> connect](../docs/guide/integrate-your-project.md) flow.
 
-| V0.1 status | Frontend | What it means |
-| --- | --- | --- |
-| **Primary** | Embedded C++ API - `HyRemote::RemoteAccess` | link one shared library and drive the runtime from your own code |
-| **Primary** | Generic Plugin - `-plugin hyremote` | keep the application source untouched; remote access arrives at run time |
-| **Preview** | Declarative QML API - `import HyRemote` | a thin declarative wrapper over the same runtime |
-| **Preview** | Transparent QPA Proxy - `-platform hyremote` | a platform integration for applications that cannot be edited |
+| Frontend | What it means |
+| --- | --- |
+| Embedded C++ API - `HyRemote::RemoteAccess` | link one shared library and drive the runtime from your own code |
+| Generic Plugin - `-plugin hyremote` | keep the application source untouched; remote access arrives at run time |
+| Declarative QML API - `import HyRemote` | a thin declarative wrapper over the same runtime |
+| Transparent QPA Proxy - `-platform hyremote` | a platform integration for applications that cannot be edited; exact Qt/private ABI |
 
 ## Which path is yours?
 
-| Your application | Recommended V0.1 path |
+| Your application | Route |
 | --- | --- |
 | An editable Qt Widgets application | C++ API - [example 01](learning/01-widgets-cpp) |
 | An editable Qt Quick / QML UI | C++ API - [example 02](learning/02-quick-cpp) |
 | An existing application you would rather not modify | Generic Plugin - [example 03](learning/03-zero-code-generic) |
-| You need platform-entry or Qt private-ABI behaviour | QPA Proxy - **Preview** ([guide](../docs/getting-started/qpa-proxy.md)) |
-| You specifically want a declarative HyRemote API | QML API - **Preview** ([guide](../docs/getting-started/qml.md)) |
+| You need platform-entry or Qt private-ABI behaviour | QPA Proxy ([guide](../docs/getting-started/qpa-proxy.md)) |
+| You specifically want a declarative HyRemote API | QML API ([guide](../docs/getting-started/qml.md)) |
 
 **A Qt Quick UI is not the HyRemote QML frontend.** Qt Quick is a UI family; the `HyRemote` QML module is one of the
 four integration frontends. A Qt Quick application normally takes the **C++ API** in V0.1, exactly like a Widgets
@@ -43,7 +43,7 @@ application - see [example 02](learning/02-quick-cpp), which uses a Qt Quick win
 Nothing in that path requires reading Runtime, Core, Session, transport or protocol internals: the public facade is
 one type, and the deployment helper is one call.
 
-## The three V0.1 examples
+## The three HyRemote-owned examples
 
 | Example | What it shows |
 | --- | --- |
@@ -63,21 +63,20 @@ Each example directory has its own `README.md` with build, run and viewer instru
 
 ## Security boundary
 
-The shipped candidate is a **LAN-capable Developer Preview**:
+The released product is a **LAN-capable** framework:
 
 - the listener is on `0.0.0.0:5921` by default, so it is reachable on this host's IPv4 interfaces;
 - remote input is **off** until you explicitly enable it;
-- it is for a **trusted LAN only** and is **not** Internet-safe, and this candidate makes **no encrypted-transport promise**;
+- it is for a **trusted LAN only** and is **not** Internet-safe, and there is no encrypted-transport promise yet;
 - secure remote access over untrusted networks belongs to a later release.
 
 The deployment and platform-integrity details are in [`docs/known-limitations.md`](../docs/known-limitations.md) and
 [`docs/security-model.md`](../docs/security-model.md); the examples do not restate the security architecture.
 
-## Preview surfaces
+## Route-specific surfaces
 
-The QML API and the Transparent QPA Proxy are **Preview** in V0.1: they are real, they share the same runtime, and
-their support contract is deliberately narrower than the two primary paths. Use them when your situation actually
-calls for them:
+The QML API and the Transparent QPA Proxy are peers of the C++ and Generic routes. They share the same runtime; the QPA
+route additionally requires Qt to match exactly. Use them when your situation actually calls for them:
 
 - [`examples/qml-basic`](qml-basic) and [`docs/getting-started/qml.md`](../docs/getting-started/qml.md) - the
   declarative API;
@@ -85,7 +84,7 @@ calls for them:
   [`docs/getting-started/qpa-proxy.md`](../docs/getting-started/qpa-proxy.md) - the platform-level route;
 - [`examples/remote-support-showcase`](remote-support-showcase) - a wider operator-workflow sample over the C++ API.
 
-They are not additional V0.1 primary adoption routes.
+No route is more primary than another.
 
 ## Building the examples
 
@@ -106,11 +105,19 @@ The runnable examples are installed into `build/install/bin/` and run from there
 never silently substituted by another integration path. The three V0.1 examples also build standalone against an
 installed SDK, which is how an application would consume them.
 
-## Not here yet
+## Real-world integration studies
 
-Complete bilingual example documentation, shared UI/branding infrastructure and a full 01-09 learning curriculum are
-**V0.3 productization**, not V0.1. V0.1 ships the three examples above as the adoption paths, in English, with the
-SDK and deployment guides above as the reference material.
+The HyRemote-owned examples above are deliberately small. To show what integration looks like in a large, real
+application, `examples/real-world/` documents studies against maintained open-source Qt projects with substantial
+public adoption:
+
+- [`real-world/qbittorrent/`](real-world/qbittorrent) - an editable **Qt Widgets / C++** application, C++ API route;
+- [`real-world/qgroundcontrol/`](real-world/qgroundcontrol) - a **Qt Quick / QML** application, QML + C++ route.
+
+Each study records the exact upstream repository, revision, licence, star count at selection, the HyRemote route
+chosen, which `CMakeLists.txt` was touched, how the deployment is produced, how to launch it, how a viewer connects,
+and what the known limits are. Upstream sources are never vendored into this repository: only the documented patch and
+the reasoning live here.
 
 ## Further material
 

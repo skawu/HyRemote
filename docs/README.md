@@ -8,12 +8,21 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 ## 从这里开始
 
-| 你的场景 | 建议入口 | 当前状态 |
-| --- | --- | --- |
-| 新增少量 C++ 代码，显式控制远程访问生命周期 | [`getting-started/cpp.md`](getting-started/cpp.md) | **V0.1 主路径** |
-| 不修改应用业务代码，保持原生 Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | **V0.1 主路径** |
-| Qt Quick 应用偏好声明式配置 | [`getting-started/qml.md`](getting-started/qml.md) | **Preview** |
-| 需要 `-platform hyremote` 的专用零代码入口 | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | **Preview** |
+按任务流走，不要先读架构：
+
+1. **安装 / 构建 HyRemote** → [`guide/install.md`](guide/install.md) ｜ [English](en/guide/install.md)
+2. **把它接入你自己的项目（唯一默认入口）** → [`guide/integrate-your-project.md`](guide/integrate-your-project.md)
+   ｜ [English](en/guide/integrate-your-project.md)
+3. **运行并连接 viewer** → [`guide/viewer-connection.md`](guide/viewer-connection.md)
+
+真实开源项目接入案例 → [`../examples/real-world/`](../examples/real-world/)
+
+| 你的场景 | 该读哪条路线 |
+| --- | --- |
+| 新增少量 C++ 代码，显式控制远程访问生命周期 | [`getting-started/cpp.md`](getting-started/cpp.md) |
+| 不修改应用业务代码，保持原生 Qt platform | [`getting-started/generic.md`](getting-started/generic.md) |
+| Qt Quick 应用偏好声明式配置 | [`getting-started/qml.md`](getting-started/qml.md) |
+| 需要 `-platform hyremote` 的专用零代码入口 | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) |
 | 安装、构建和 SDK 接入 | [`guide/install.md`](guide/install.md) ｜ [English](en/guide/install.md) | 产品指南 |
 | 打包与部署 | [`guide/deployment.md`](guide/deployment.md) ｜ [English](en/guide/deployment.md) | 产品指南 |
 | 连接查看器、远程控制、重连 | [`guide/viewer-connection.md`](guide/viewer-connection.md) | 产品指南 |
@@ -24,14 +33,14 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 先阅读 [`product-overview.md`](product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
 
-V0.1 Developer Preview 的重点是**先让用户能够用起来**：
+当前版本（V0.2 LAN trial）的实际事实：
 
-- C++ API 与 Generic Plugin 是主接入路径；
-- Windows x86_64 与 Linux x86_64、Qt 6.8.3 是当前参考环境；
+- 四种接入方式是**并列**的，没有主次；都走同一条
+  [获得 → 接入 → 部署 → 运行 → 连接](guide/integrate-your-project.md) 流程；
+- Windows x86_64 与 Linux x86_64、Qt 6.8.3 是参考环境；
 - Widgets 与 Qt Quick 共用一个 Runtime；
-- 默认监听 `0.0.0.0:5921`，远程输入默认关闭；
-- QML API 与 QPA 已存在，但仍按 Preview 标识；
-- 未完成能力直接标记为 **TODO / 待办**。
+- 默认监听 `0.0.0.0:5921`（本机 IPv4 接口，不只是 loopback），远程输入默认关闭；
+- 默认**未认证、未加密**，仅适用于**可信局域网**，不适合暴露到 Internet。
 
 ## 产品参考
 
@@ -69,11 +78,9 @@ QPA --------------/
 
 无论从哪个入口进入，都不会创建第二套 Session、capture、input 或 transport 架构。
 
-## 产品状态标识
+## 能力边界
 
-- **Primary / 主路径**：当前产品线优先推荐的接入路径；
-- **Preview**：已经存在并可使用，但尚未达到当前产品线的完整正式支持级别；
-- **TODO / 待办**：规划中的能力，目前不构成可用性或兼容性承诺。
+四种接入方式都是对等路线，各自有明确的适用条件（QPA 需要与 Qt 私有 ABI **精确**一致）。未实现的能力会被直接说明，而不是标记为"待办"占位。
 
 安全、兼容性和平台支持以对应产品矩阵为准，不从相似环境自动推导。
 

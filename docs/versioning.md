@@ -86,7 +86,7 @@ V0.1 is intentionally narrow and usable:
 - Widgets and Qt Quick share one Runtime;
 - basic SDK/deployment/onboarding is available;
 - security is unauthenticated and unencrypted and is not yet production-Internet ready;
-- QML API and QPA may exist as Preview paths without blocking the V0.1 primary user journey.
+- The four integration routes are peers; QML API and QPA are not secondary paths.
 
 ## V0.2 — Trust It
 

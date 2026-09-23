@@ -102,7 +102,7 @@ The C++ frontend is a product facade into the Shared Runtime. It does not own th
 
 Construction is inert. Configuration is performed while stopped, followed by explicit `start()`.
 
-Current product state: **V0.1 primary path**.
+Current product state: a peer route.
 
 ## 5. QML API frontend
 
@@ -149,7 +149,7 @@ MyApp -plugin hyremote
 
 Generic must not inherit QPA private-ABI requirements. Its defining contract is that the application's native platform identity remains normal.
 
-Current product state: **V0.1 primary path**.
+Current product state: a peer route.
 
 ## 7. QPA frontend
 

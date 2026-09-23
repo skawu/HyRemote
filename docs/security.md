@@ -106,7 +106,7 @@ Leaving remote input disabled keeps the session view-only. View-only is **not** 
 The safest and default V0.1 listener is:
 
 ```text
-127.0.0.1:5921
+0.0.0.0:5921
 ```
 
 Changing the bind address changes the network trust boundary. It does not automatically enable authentication or encryption.

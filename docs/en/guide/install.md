@@ -6,15 +6,15 @@ This guide explains how to build HyRemote, create an installed SDK, and consume 
 
 ## Current product environment
 
-V0.1 Developer Preview currently references:
+V0.2 LAN trial currently references:
 
 | Dimension | Current product status |
 | --- | --- |
 | Operating systems | Windows x86_64, Linux x86_64 |
 | Qt | Qt 6.8.3 reference |
-| C++ API | **V0.1 primary** |
-| Generic Plugin | **V0.1 primary** |
-| QML API | **Preview** |
+| C++ API | peer route |
+| Generic Plugin | peer route |
+| QML API | peer route |
 | QPA | **Preview, Qt 6.8.3 exact private ABI** |
 | Embedded Linux / ARM64 | **TODO V1.1** |
 | Qt 5.15 LTS | **TODO V0.4 qualification** |
@@ -168,7 +168,7 @@ MyExistingApp -plugin hyremote
 
 See [`../getting-started/generic.md`](../getting-started/generic.md).
 
-## Installed SDK: QML API (Preview)
+## Installed SDK: QML API 
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
@@ -192,7 +192,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 > **TODO V0.3:** complete formal productization before promoting QML API from Preview.
 
-## Installed SDK: QPA (Preview)
+## Installed SDK: QPA 
 
 The application remains Qt-only:
 
@@ -264,7 +264,7 @@ V0.1 defaults:
 - remote input disabled;
 - `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is available only when HyRemote was built with the transport-security capability and a valid security descriptor is configured; it currently provides VNC authentication without stream encryption;
-- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- the default build/profile does not imply authenticated transport is compiled in;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without falling back to a weaker profile.
 
 Do not expose the current product directly to the public Internet. See [`../security.md`](../security.md).
@@ -273,8 +273,8 @@ Do not expose the current product directly to the public Internet. See [`../secu
 
 - C++ API: [`../getting-started/cpp.md`](../getting-started/cpp.md)
 - Generic Plugin: [`../getting-started/generic.md`](../getting-started/generic.md)
-- QML API (Preview): [`../getting-started/qml.md`](../getting-started/qml.md)
-- QPA (Preview): [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
+- QML API: [`../getting-started/qml.md`](../getting-started/qml.md)
+- QPA: [`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
 - deployment: [`deployment.md`](deployment.md)
 - compatibility: [`../../compatibility.md`](../../compatibility.md)
 - known limitations: [`../../known-limitations.md`](../../known-limitations.md)

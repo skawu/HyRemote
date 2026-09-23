@@ -22,7 +22,7 @@ remote.start();
 MyApp -plugin hyremote
 ```
 
-### QML API（Preview）
+### QML API
 
 ```qml
 RemoteAccess {
@@ -31,7 +31,7 @@ RemoteAccess {
 }
 ```
 
-### QPA（Preview）
+### QPA
 
 ```text
 MyApp -platform hyremote
@@ -41,7 +41,7 @@ MyApp -platform hyremote
 
 ## 默认连接地址
 
-V0.1 默认监听：
+默认监听：
 
 ```text
 <host-lan-ip>:5921
@@ -156,13 +156,13 @@ Headless/offscreen 运行不能单独证明所有物理显示/键鼠组合都已
 
 ## 安全边界
 
-V0.1：
+当前版本：
 
 - 默认 `0.0.0.0:5921`；
 - 远程输入默认关闭；
 - `Insecure` 未认证、未加密：监听器面向**可信 LAN**，**不适合暴露到 Internet**；
 - `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供的是 VNC authentication，不提供流加密；
-- 默认 V0.1 build/profile 不应被理解为天然带有 authenticated transport；
+- 默认 build/profile 不应被理解为天然带有 authenticated transport；
 - `AuthenticatedEncrypted` 尚未实现，始终在监听器创建前 fail-closed，且不会降级到较弱 profile。
 
 不要把当前产品直接暴露到公网。详见 [`../security.md`](../security.md)。

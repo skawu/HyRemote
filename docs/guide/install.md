@@ -6,15 +6,15 @@
 
 ## 当前产品环境
 
-V0.1 Developer Preview 当前参考环境：
+当前参考环境：
 
 | 维度 | 当前产品状态 |
 | --- | --- |
 | 操作系统 | Windows x86_64、Linux x86_64 |
 | Qt | Qt 6.8.3 reference |
-| C++ API | **V0.1 主路径** |
-| Generic Plugin | **V0.1 主路径** |
-| QML API | **Preview** |
+| C++ API | 并列路线 |
+| Generic Plugin | 并列路线 |
+| QML API | peer route |
 | QPA | **Preview，Qt 6.8.3 exact private ABI** |
 | Embedded Linux / ARM64 | **TODO V1.1** |
 | Qt 5.15 LTS | **TODO V0.4 qualification** |
@@ -44,7 +44,7 @@ PowerShell:  .\build.cmd build --show-config
 POSIX:       sh ./build.cmd build --show-config
 ```
 
-V0.1 主路径构建：
+常规构建：
 
 ```text
 PowerShell:  .\build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
@@ -168,7 +168,7 @@ MyExistingApp -plugin hyremote
 
 详见 [`../getting-started/generic.md`](../getting-started/generic.md)。
 
-## 已安装 SDK：QML API（Preview）
+## 已安装 SDK：QML API
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
@@ -192,7 +192,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 > **TODO V0.3：** 完成正式产品化后再将 QML API 从 Preview 提升为正式路径。
 
-## 已安装 SDK：QPA（Preview）
+## 已安装 SDK：QPA
 
 应用保持 Qt-only：
 
@@ -264,7 +264,7 @@ V0.1 默认：
 - 远程输入关闭；
 - `Insecure` 仅允许回环监听；
 - `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供 VNC authentication，但流量不加密；
-- 默认 V0.1 build/profile 不代表 authenticated transport 已编译进产品；
+- 默认 build/profile 不代表 authenticated transport 已编译进产品；
 - `AuthenticatedEncrypted` 尚未实现，始终在监听器创建前 fail-closed，且不会降级到较弱 profile。
 
 不要把当前产品直接暴露到公网。详见 [`../security.md`](../security.md)。
@@ -273,8 +273,8 @@ V0.1 默认：
 
 - C++ API：[`../getting-started/cpp.md`](../getting-started/cpp.md)
 - Generic Plugin：[`../getting-started/generic.md`](../getting-started/generic.md)
-- QML API（Preview）：[`../getting-started/qml.md`](../getting-started/qml.md)
-- QPA（Preview）：[`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
+- QML API：[`../getting-started/qml.md`](../getting-started/qml.md)
+- QPA：[`../getting-started/qpa-proxy.md`](../getting-started/qpa-proxy.md)
 - 部署：[`deployment.md`](deployment.md)
 - 兼容性：[`../compatibility.md`](../compatibility.md)
 - 已知限制：[`../known-limitations.md`](../known-limitations.md)

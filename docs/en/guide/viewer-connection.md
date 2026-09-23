@@ -22,7 +22,7 @@ Keep the application Qt-only and activate HyRemote through Qt's generic-plugin m
 MyApp -plugin hyremote
 ```
 
-### QML API (Preview)
+### QML API
 
 ```qml
 RemoteAccess {
@@ -31,7 +31,7 @@ RemoteAccess {
 }
 ```
 
-### QPA (Preview)
+### QPA
 
 ```text
 MyApp -platform hyremote
@@ -41,15 +41,21 @@ All four routes converge on the same Shared Runtime, so the default network and 
 
 ## Default connection address
 
-V0.1 listens on:
+The default listener is:
 
 ```text
-127.0.0.1:5921
+0.0.0.0:5921
 ```
 
-Point a standard VNC/RFB viewer at that address.
+That is the host's IPv4 interfaces, not just loopback: `RemoteAccess` listens on `AnyIPv4` by default. Point a
+standard VNC/RFB viewer at `<HOST_LAN_IP>:5921`.
 
-HyRemote currently uses numeric IP addresses. Binding outside loopback expands the network trust boundary; read [`../../security.md`](../../security.md) before changing it.
+Because the default is reachable on the host's interfaces and is **unauthenticated and unencrypted**, it is for a
+**trusted LAN only** and is **not Internet-safe**. If you want to restrict it, configure a listen address or a network
+interface explicitly (`setListenAddress()` / `setListenInterface()`, mutable only while `Stopped`), and read
+[`../../security.md`](../../security.md) before exposing it further.
+
+HyRemote currently uses numeric IP addresses.
 
 See [`../../known-limitations.md`](../../known-limitations.md) for address-family and platform-specific behavior.
 
@@ -154,13 +160,13 @@ Headless/offscreen execution alone cannot qualify every physical display/keyboar
 
 ## Security boundary
 
-V0.1:
+Current release:
 
 - default bind is loopback;
 - remote input is disabled by default;
 - `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` is available only when HyRemote was built with the transport-security capability and a valid security descriptor is configured; it currently provides VNC authentication without stream encryption;
-- the default V0.1 build/profile does not imply authenticated transport is present;
+- the default build/profile does not imply authenticated transport is present;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without falling back to a weaker profile.
 
 Do not expose the current product directly to the public Internet. See [`../../security.md`](../../security.md).
