@@ -572,24 +572,41 @@ hyb_resolve_path(HYB_CXX_COMPILER TRUE "C++ compiler")
 # tree's own identity marker, both of which are untracked.
 
 # A kit's directory name is the layout's own contract: <Qt>/<version>/<kit>, where the kit names its target arch and
-# its compiler family - msvc2022_64, msvc2022_arm64, mingw_64, llvm-mingw_64. The kit is still validated by requiring
-# the real Qt6Config.cmake below, so the name can only reject, never invent, a candidate.
+# its compiler family. The name differs by platform, because the installers differ: the Windows Online Installer
+# writes msvc2022_64, msvc2022_arm64, mingw_64, llvm-mingw_64, and a desktop POSIX kit is named for the toolchain it
+# was built for - gcc_64, linux_gcc_64, clang_64, linux_clang_64. A POSIX kit that names no desktop toolchain
+# (android_*, wasm_*, ios_*) is not a kit this shell can judge, so it is classified as unknown and rejected by the
+# compiler-family check rather than guessed at. The kit is still validated by requiring the real Qt6Config.cmake
+# below, so the name can only reject, never invent, a candidate.
 function(hyb_qt_kit_class kit_dir out_class)
     get_filename_component(_kit "${kit_dir}" NAME)
-    if(_kit MATCHES "arm64")
+    if(_kit MATCHES "arm64|aarch64")
         set(_arch "arm64")
     else()
         set(_arch "x64")
     endif()
-    if(_kit MATCHES "llvm")
-        set(_family "clang")
-        set(_needs "clang++")
-    elseif(_kit MATCHES "mingw")
-        set(_family "gcc")
-        set(_needs "g++")
+    if(WIN32)
+        if(_kit MATCHES "llvm")
+            set(_family "clang")
+            set(_needs "clang++")
+        elseif(_kit MATCHES "mingw")
+            set(_family "gcc")
+            set(_needs "g++")
+        else()
+            set(_family "msvc")
+            set(_needs "cl.exe")
+        endif()
     else()
-        set(_family "msvc")
-        set(_needs "cl.exe")
+        if(_kit MATCHES "clang|llvm")
+            set(_family "clang")
+            set(_needs "clang++")
+        elseif(_kit MATCHES "gcc")
+            set(_family "gcc")
+            set(_needs "g++")
+        else()
+            set(_family "unknown")
+            set(_needs "a desktop toolchain this kit's name does not state")
+        endif()
     endif()
     set(${out_class} "${_arch}:${_family}:${_needs}" PARENT_SCOPE)
 endfunction()
@@ -620,39 +637,67 @@ function(hyb_qt_candidates out_list)
         endif()
     endforeach()
 
-    # 2. the standard Windows Online Installer layout. POSIX keeps relying on CMake's own discovery, which is what the
-    #    product already does when the prefix is empty.
+    # 2. the platform's own standard layout, so that a developer who installed a qualified kit the normal way does
+    #    not have to export an environment variable first. On Windows that is the Online Installer tree; on POSIX it
+    #    is the two places a desktop kit is normally installed, the system-wide one and the per-user one.
+    #
+    #    HYREMOTE_QT_DISCOVERY_ROOTS replaces those install roots for a caller that has to place the kits somewhere
+    #    else - the repository's own regression does exactly that, so it exercises this rule instead of a copy of it.
+    #    The version-directory globbing and the validation below are the same either way, and nothing here writes an
+    #    absolute path into the repository.
     if(WIN32)
-        file(GLOB _version_dirs "C:/Qt/6.8.*")
+        set(_qt_install_roots "C:/Qt")
+    else()
+        set(_qt_install_roots "/opt/Qt" "$ENV{HOME}/Qt")
+        if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
+            set(_qt_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
+        endif()
+    endif()
+    foreach(_qt_install_root IN LISTS _qt_install_roots)
+        if(_qt_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_qt_install_root}")
+            continue()
+        endif()
+        file(GLOB _version_dirs "${_qt_install_root}/6.8.*")
         foreach(_version_dir IN LISTS _version_dirs)
             file(GLOB _kit_dirs "${_version_dir}/*")
             foreach(_kit_dir IN LISTS _kit_dirs)
                 list(APPEND _roots "${_kit_dir}")
             endforeach()
         endforeach()
-    endif()
+    endforeach()
 
     list(REMOVE_DUPLICATES _roots)
+    set(_seen_kits "")
     foreach(_root IN LISTS _roots)
-        if(EXISTS "${_root}/lib/cmake/Qt6/Qt6Config.cmake")
-            hyb_qt_kit_class("${_root}" _class)
-            list(APPEND _candidates "${_root}|${_class}")
+        if(NOT EXISTS "${_root}/lib/cmake/Qt6/Qt6Config.cmake")
+            continue()
         endif()
+        # One kit installed in two places is one kit: a developer who copies a kit must not turn a working
+        # discovery into an ambiguity. Two kits whose configuration differs stay two candidates, so the
+        # ambiguity this reports is still a real choice between two different kits.
+        file(SHA1 "${_root}/lib/cmake/Qt6/Qt6Config.cmake" _kit_identity)
+        if(_kit_identity IN_LIST _seen_kits)
+            continue()
+        endif()
+        list(APPEND _seen_kits "${_kit_identity}")
+        hyb_qt_kit_class("${_root}" _class)
+        list(APPEND _candidates "${_root}|${_class}")
     endforeach()
     set(${out_list} "${_candidates}" PARENT_SCOPE)
 endfunction()
 
-# Qt is a precondition of configuring, not of running the entry point: `--show-config`, `clean` and `help` report
-# without configuring, and the repository's own gates drive `--show-config` where no compiler exists at all.
+# Qt is a precondition of configuring, not of running the entry point: `clean` and `help` report without ever looking
+# for Qt. `--show-config` reports the configuration as well, and the Qt prefix the run would use is part of that
+# report, so it resolves the prefix too - but nothing here fails on a missing kit, a missing compiler or an ambiguous
+# one, so --show-config keeps working on a machine that has no Qt and no compiler at all, which is what the
+# repository's own gates drive it for.
 set(HYB_QT_DISCOVERY_REQUIRED FALSE)
 if(HYB_SUBCOMMAND STREQUAL "build"
    OR HYB_SUBCOMMAND STREQUAL "install"
    OR HYB_SUBCOMMAND STREQUAL "test"
-   OR HYB_SUBCOMMAND STREQUAL "rebuild")
+   OR HYB_SUBCOMMAND STREQUAL "rebuild"
+   OR HYB_SHOW_CONFIG)
     set(HYB_QT_DISCOVERY_REQUIRED TRUE)
-endif()
-if(HYB_SHOW_CONFIG)
-    set(HYB_QT_DISCOVERY_REQUIRED FALSE)
 endif()
 
 if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
@@ -701,12 +746,24 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         endif()
     endforeach()
 
+    # The command a reader has to be able to paste is the one for the shell they are in, so every message below is
+    # written for the platform it is printed on instead of naming another platform's layout and toolchain.
+    if(WIN32)
+        set(_qt_choose_command ".\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
+        set(_qt_kit_example ".\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/mingw_64>")
+        set(_qt_searched "QTDIR, CMAKE_PREFIX_PATH, and C:/Qt/6.8.*/*")
+    else()
+        set(_qt_choose_command "sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
+        set(_qt_kit_example "sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/gcc_64>")
+        set(_qt_searched "QTDIR, CMAKE_PREFIX_PATH, /opt/Qt/6.8.*/* and \$HOME/Qt/6.8.*/*")
+    endif()
+
     if(_qt_usable)
         list(LENGTH _qt_usable _qt_usable_count)
         if(_qt_usable_count EQUAL 1)
             list(GET _qt_usable 0 HYB_QT_PREFIX)
             cmake_path(NORMAL_PATH HYB_QT_PREFIX)
-            set(HYB_QT_DISCOVERY_NOTE "Qt prefix        : ${HYB_QT_PREFIX} (discovered)")
+            set(HYB_QT_DISCOVERY_NOTE "Qt prefix : ${HYB_QT_PREFIX} (discovered)")
         else()
             # Reported, not fatal: see the note above the identity handling. A run that cannot resolve a Qt still has
             # to be able to prove the build-directory and identity contracts, and configure refuses on its own.
@@ -714,11 +771,9 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                 "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong about "
                 "the compiler. Choose one explicitly:\n"
                 "\n"
-                "  .\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>\n"
+                "  ${_qt_choose_command}\n"
                 "\n"
-                "Candidates:\n    ${_qt_usable}\n"
-                "\n"
-                "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
+                "Candidates:\n    ${_qt_usable}")
         endif()
     elseif(_qt_candidates)
         message(WARNING
@@ -726,11 +781,9 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
             "developer environment first:\n"
             "\n"
-            "  .\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>\n"
+            "  ${_qt_choose_command}\n"
             "\n"
-            "Found but not usable:\n    ${_qt_rejected}\n"
-            "\n"
-            "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
+            "Found but not usable:\n    ${_qt_rejected}")
     else()
         message(WARNING
             "No Qt 6.8+ installation was found, and this top-level build needs one.\n"
@@ -738,13 +791,11 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             "Point the build at a Qt 6.8.3 desktop kit, which is the only qualified line today (Qt 5.15 is tracked "
             "by issue #57 and cannot configure this product):\n"
             "\n"
-            "  .\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/mingw_64>\n"
+            "  ${_qt_kit_example}\n"
             "\n"
-            "On a POSIX shell use: sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/gcc_64>\n"
-            "\n"
-            "Searched: QTDIR, CMAKE_PREFIX_PATH, and C:/Qt/6.8.*/\* (a kit is recognised by its "
-            "lib/cmake/Qt6/Qt6Config.cmake). To build the Core library alone on purpose instead, pass "
-            "-DHYREMOTE_BUILD_REMOTE_ACCESS=OFF -DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+            "Searched: ${_qt_searched} (a kit is recognised by its lib/cmake/Qt6/Qt6Config.cmake). To build the Core "
+            "library alone on purpose instead, pass -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF "
+            "-DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
     endif()
 endif()
 
