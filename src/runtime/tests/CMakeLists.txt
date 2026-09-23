@@ -319,3 +319,25 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
 endif()
+
+# B4 Runtime/RFB half of the listener matrix. It needs a Widgets target and the production RFB transport,
+# but not the Embedded C++ facade. The deterministic binding decisions remain in the separate #338 unit test.
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND HYREMOTE_WITH_VNC)
+    add_executable(hyremote-rfb-listener-reachability-test
+        test_rfb_listener_reachability.cpp
+    )
+    target_link_libraries(hyremote-rfb-listener-reachability-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-rfb-listener-reachability-test PRIVATE ../src)
+    add_test(NAME hyremote-rfb-listener-reachability-test
+             COMMAND hyremote-rfb-listener-reachability-test)
+    set_tests_properties(hyremote-rfb-listener-reachability-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endif()
