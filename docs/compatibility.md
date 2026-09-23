@@ -119,8 +119,8 @@ Current reference pairs:
 
 | Qt | OS | Native delegate | Status |
 | --- | --- | --- | --- |
-| 6.8.3 exact | Windows x86_64 | `qwindows` | **Preview** |
-| 6.8.3 exact | Linux x86_64 | `qxcb` | **Preview** |
+| 6.8.3 exact | Windows x86_64 | `qwindows` | peer route |
+| 6.8.3 exact | Linux x86_64 | `qxcb` | peer route |
 
 Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another platform plugin from these rows.
 
@@ -138,7 +138,7 @@ Current product behavior includes:
 - reconnect without rebuilding the application Runtime;
 - `Insecure` behavior: unauthenticated and unencrypted, for a trusted LAN only;
 - conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
-- no stream encryption in V0.1;
+- no stream encryption in the current product line;
 - `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
 
 The default V0.1 build/profile must not be interpreted as providing authenticated transport merely because the public API exposes the `Authenticated` profile.

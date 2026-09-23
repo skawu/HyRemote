@@ -27,9 +27,9 @@ HyRemote exposes four peer entry points into the same Runtime:
 | Frontend | Application integration | Product role | Current maturity |
 | --- | --- | --- | --- |
 | **C++ API** | Link `HyRemote::RemoteAccess` | Explicit lifecycle, policy and target control | peer route |
-| **QML API** | `import HyRemote` | Declarative frontend over the same Runtime | **Preview** |
+| **QML API** | `import HyRemote` | Declarative frontend over the same Runtime | peer route |
 | **Generic Plugin** | Qt generic-plugin activation; no HyRemote app linkage | Zero-code path that preserves the native Qt platform | peer route |
-| **QPA** | `-platform hyremote` | Specialized zero-code path using a Qt private-ABI Factory Trampoline | **Preview** |
+| **QPA** | `-platform hyremote` | Specialized zero-code path using a Qt private-ABI Factory Trampoline | peer route |
 
 The frontends are peers. QML, Generic, and QPA do not depend on the C++ frontend as an implementation parent. They converge on the Shared Runtime directly.
 

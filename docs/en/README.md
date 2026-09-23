@@ -12,8 +12,8 @@ This area provides product integration, deployment, security, compatibility, and
 | --- | --- | --- |
 | Add a small amount of C++ and control the remote-access lifecycle explicitly | [`getting-started/cpp.md`](getting-started/cpp.md) | peer route |
 | Keep the application Qt-only and preserve its native Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | peer route |
-| Prefer declarative configuration in a Qt Quick application | [`getting-started/qml.md`](getting-started/qml.md) | **Preview** |
-| Need the specialized `-platform hyremote` zero-code route | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | **Preview** |
+| Prefer declarative configuration in a Qt Quick application | [`getting-started/qml.md`](getting-started/qml.md) | peer route |
+| Need the specialized `-platform hyremote` zero-code route | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | peer route |
 | Install, build, and acquire the SDK | [`guide/install.md`](guide/install.md) · [中文](../guide/install.md) | Product guide |
 | Package and deploy | [`guide/deployment.md`](guide/deployment.md) · [中文](../guide/deployment.md) | Product guide |
 | Connect a viewer, enable control, and reconnect | [`guide/viewer-connection.md`](guide/viewer-connection.md) | Product guide |
@@ -68,11 +68,10 @@ The four frontends are peers:
 
 No frontend creates a second Session, capture, input, or transport architecture.
 
-## Product status labels
+## Capability boundaries
 
-- **Primary** — the recommended path for the current product line;
-- **Preview** — implemented and usable, but not yet promoted to the current line's full supported status;
-- **TODO** — planned capability that is not yet an availability or compatibility commitment.
+The four integration routes are **peers**; each has its own stated conditions (QPA needs an **exact** Qt private-ABI
+match). Capability that does not exist is stated as such rather than parked behind a placeholder label.
 
 Security, compatibility, and platform claims are limited to the explicitly stated matrix; similar environments are not assumed to be supported.
 

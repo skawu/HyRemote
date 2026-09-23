@@ -26,7 +26,7 @@ QML API 是 HyRemote 面向 Qt Quick 应用的声明式接入方式。它是 Sha
 
 QML API 目前按 Preview 提供；精确支持状态见 [`../compatibility.md`](../compatibility.md)。
 
-> **TODO V0.3：** 完成 installed-SDK、部署、双语示例和完整产品资格后，将 QML API 提升为正式产品路径。
+> **Open work (current product line):** 完成 installed-SDK、部署、双语示例和完整产品资格后，属于 QML 路线上的未完成工作。
 
 ## 最小接入
 
@@ -152,7 +152,7 @@ V0.1 的 Shared Runtime 采用回环优先策略：
 
 新的 Example 体系会提供独立的 Quick + QML 学习路径，并和 Quick + C++ 示例明确区分。
 
-> **TODO V0.3：** 完成 `examples/learning/04-quick-qml` 的双语、品牌化正式示例。
+> **Open work (current product line):** 完成 `examples/learning/04-quick-qml` 的双语、品牌化正式示例。
 
 ## 下一步
 

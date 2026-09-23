@@ -190,7 +190,7 @@ Deployment:
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-> **TODO V0.3:** complete formal productization before promoting QML API from Preview.
+> **Open work (current product line):** complete formal productization on the QML route.
 
 ## Installed SDK: QPA 
 

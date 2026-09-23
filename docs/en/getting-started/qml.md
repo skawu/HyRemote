@@ -26,7 +26,7 @@ Current reference environment:
 
 The QML API is currently provided as Preview. See [`../../compatibility.md`](../../compatibility.md) for the exact compatibility statement.
 
-> **TODO V0.3:** complete installed-SDK, deployment, bilingual examples, and product qualification before promoting QML API to a formal product path.
+> **Open work (current product line):** complete installed-SDK, deployment, bilingual examples, and product qualification before promoting QML API to a formal product path.
 
 ## Minimal integration
 
@@ -152,7 +152,7 @@ Do not expose the current product directly to the public Internet. See [`../../s
 
 The new Example curriculum provides a dedicated Quick + QML learning path and keeps it distinct from Quick + C++.
 
-> **TODO V0.3:** complete the bilingual, branded `examples/learning/04-quick-qml` product example.
+> **Open work (current product line):** complete the bilingual, branded `examples/learning/04-quick-qml` product example.
 
 ## Next steps
 
