@@ -52,6 +52,19 @@ These are not a simple strength ladder. Physical evidence cannot replace a deter
 
 Do **not** create a new ER merely because a platform, Qt version, frontend, viewer, gate or input variant differs. Create a new ER only when the product statement/failure meaning is materially different.
 
+### Current listener-authority resolution
+
+The current IPv4 listener product authority is #174. It explicitly states that the former loopback default is **superseded** and freezes the current default as `0.0.0.0:5921`, with exact-address and interface binding as narrowing modes.
+
+Therefore, until a later product decision supersedes #174:
+
+- ER/test oracles use #174 for listener-default/binding semantics;
+- older repository text or historical tests that still require loopback are treated as **authority drift to report**, not as an alternate valid oracle;
+- TS-1 must not choose between conflicting prose based on whichever existing test currently passes;
+- security documentation truth should be reconciled to the current network authority through its owning product/doc work, but that stale prose does not redefine the listener ER.
+
+This ranking is evidence-system clarification of an already explicit supersession, not a new listener product decision.
+
 ---
 
 ## 2. PAC-1 — Low Intrusion
@@ -71,13 +84,13 @@ Do **not** create a new ER merely because a platform, Qt version, frontend, view
 | --- | --- | --- | --- | --- | --- |
 | `ER-NATIVE-LOCAL-DISPLAY` | PAC-2 / R-NATIVE,R-CAPTURE | CLAIM / V+Q(+R) | HyRemote does not replace/hide/corrupt claimed native local display behavior. | Declared local rendering/window behavior matches native baseline while remote access is active. | Material frontend/native-delegate/capture/graphics/platform or cell change. |
 | `ER-NATIVE-LOCAL-INPUT` | PAC-2,PAC-3 / R-NATIVE,R-INPUT | CLAIM / V+Q | Local pointer/keyboard/text/focus remains usable during remote access. | Local actions remain correctly delivered before/during/after remote sessions and are not blocked by remote state. | Material input routing/frontend/native/focus/text or cell change. |
-| `ER-NATIVE-STOP-SURVIVAL` | PAC-2,PAC-10 / R-RUNTIME,R-NATIVE,R-OPERATE | INVARIANT / V+P(+Q) | Stopping/disabling HyRemote leaves the host application alive/usable with no late remote side effects. | Runtime stops, remote listener/input/capture effects cease, host native operation continues. | Material Runtime teardown/frontend activation/native delegate change. |
+| `ER-NATIVE-STOP-SURVIVAL` | PAC-2,PAC-10 / R-RUNTIME,R-NATIVE,R-OPERATE | INVARIANT / V+P(+Q) | Stopping/disabling HyRemote ceases remote effects and leaves the host application alive/usable. | Runtime reaches truthful stopped/disabled state; listener/input/capture effects cease; whole-session remote held state is neutral; no forbidden late effect occurs; host native operation continues. | Material Runtime teardown/input cleanup/frontend activation/native delegate/effective-state reporting change. |
 | `ER-NATIVE-SLOW-REMOTE-ISOLATION` | PAC-2,PAC-6,PAC-8 / R-NATIVE,R-RELIABILITY,R-PERF | CLAIM / V+P+Q | Slow/stalled remote peers do not indefinitely block claimed local Qt UI/render behavior. | Remote backlog stays bounded and local responsiveness remains inside declared policy. | Scheduling/backpressure/transport/capture/native-graphics change. |
 | `ER-NATIVE-GRAPHICS-TRUTH` | PAC-2,PAC-9 / R-NATIVE,R-COMPAT | CLAIM / Q(+R) | Specialized graphics/backend support is claimed only after targeted local+remote qualification. | Exact graphics cell satisfies its declared native+remote oracle; unsupported surfaces are classified, not inferred. | Material Qt/OS/GPU/driver/graphics/capture or claim change. |
 
 ---
 
-## 4. PAC-3 — Remote Experience
+## 4. PAC-3 — Remote Experience & Transport Semantics
 
 | ER | PAC / Risk | Activation / Evidence | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- |
@@ -86,6 +99,7 @@ Do **not** create a new ER merely because a platform, Qt version, frontend, view
 | `ER-REMOTE-INPUT-SEMANTICS` | PAC-3 / R-INPUT,R-TRANSPORT | CAPABILITY / V+P(+Q) | Supported remote pointer/button/wheel/key/modifier/text actions reach the intended Qt target with normalized semantics. | Each declared action produces the expected target event/effect and no unrelated delivery. | Material transport input decoding/normalization/routing/adapter change. |
 | `ER-REMOTE-INPUT-NEUTRALITY` | PAC-3,PAC-6 / R-INPUT,R-RELIABILITY | CAPABILITY / V+P | Remote held-state ownership is cleaned correctly across client/session terminal transitions. | Disconnect removes only the disconnecting viewer's held contribution; shared logical key/button stays held while another viewer still contributes; target becomes globally neutral after final holder leaves or whole-target/session teardown/stop/policy-disable destroys all contributions; forbidden late delivery is zero. | Material per-viewer input ownership, admission/mailbox, disconnect/teardown or target-lifecycle change. |
 | `ER-REMOTE-RECONNECT` | PAC-3,PAC-6 / R-RUNTIME,R-TRANSPORT,R-NETWORK | INVARIANT / V+P(+Q) | Viewer reconnect works without application/Runtime reconstruction outside documented lifecycle. | Reconnect returns to usable remote state with no leaked prior-client state. | Material listener/client/session/transport lifecycle change. |
+| `ER-TRANSPORT-RFB-SEMANTICS` | PAC-3,PAC-6,PAC-9 / R-TRANSPORT,R-COMPAT | CLAIM for current RFB product boundary / V+P(+Q/R) | The declared bounded RFB 3.8 transport performs successful version/security negotiation, framing, update-request semantics, declared encoding/fallback/incremental behavior and maintained-viewer interoperability for the mechanisms actually claimed. | Deterministic protocol fixtures complete the expected handshake/framing/update state machine; each claimed encoding/extension/fallback path produces valid decodable framebuffer updates; maintained-viewer cells negotiate/use the declared interoperable behavior; unsupported mechanisms are not inferred from another passing path. | Material RFB version/security negotiation, parser/framing, encoding/update state, extension, viewer-compatibility or transport-support claim change. |
 
 ---
 
@@ -131,8 +145,8 @@ Do **not** create a new ER merely because a platform, Qt version, frontend, view
 
 | ER | PAC / Risk | Activation / Evidence | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- |
-| `ER-SECURITY-SAFE-DEFAULTS` | PAC-7 / R-SECURITY | INVARIANT / V+P(+R) | Effective shipped default listener/security/input exposure matches documented truth. | Runtime effective defaults and public diagnostic/security statements agree. | Material defaults/security/listener/input/public-security statement change. |
-| `ER-NETWORK-LISTENER-BINDING` | PAC-7,PAC-9 / R-NETWORK,R-SECURITY,R-COMPAT | INVARIANT/CLAIM / V+P(+Q) | Requested exact IPv4/interface/address/port binding is honored; unavailable/invalid binding is rejected; actual socket exposure never silently broadens requested scope. | Actual listening endpoint(s) and reachability equal effective requested policy; narrowing request must not bind wildcard; invalid/unavailable address or occupied port yields intended failure with no unintended listener. | Material listener configuration, address/interface resolution, bind/rebind, port handling or platform network behavior change. |
+| `ER-SECURITY-SAFE-DEFAULTS` | PAC-7 / R-SECURITY | INVARIANT / V+P(+R) | Effective shipped **security and remote-input defaults** match the current owning security/product authorities; listener bind semantics are intentionally owned separately by `ER-NETWORK-LISTENER-BINDING` / #174. | Effective security profile/input default and secret-safe diagnostic/public statements agree with current owning authority; this oracle does not choose between stale listener-default prose. | Material security/input defaults or owning security/public-statement authority change. |
+| `ER-NETWORK-LISTENER-BINDING` | PAC-7,PAC-9 / R-NETWORK,R-SECURITY,R-COMPAT | INVARIANT/CLAIM / V+P(+Q) | Current #174 semantics are honored: default `0.0.0.0:5921`; requested exact IPv4/interface/address/port narrowing is honored; invalid/unavailable binding is rejected; actual socket exposure never silently broadens scope. | Actual listening endpoint(s)/reachability equal #174/effective requested policy; narrowing never falls back to wildcard/loopback/other interface; invalid/unavailable address or occupied port yields intended failure with no unintended listener. | Material listener authority, configuration, address/interface resolution, bind/rebind, port handling or platform network behavior change. |
 | `ER-SECURITY-FAIL-CLOSED` | PAC-7 / R-SECURITY,R-RUNTIME | INVARIANT/CAPABILITY / V(+P/Q) | Requested unavailable/invalid protection is rejected before a weaker usable listener/session exists. | No accepted weaker listener/session; intended error and cleanup observed. | Material security capability negotiation/listener start/config/fallback change. |
 | `ER-SECURITY-AUTH-MECHANISM` | PAC-7 / R-SECURITY,R-TRANSPORT | CAPABILITY / V+P(+Q) | Correct credentials establish declared auth; wrong/missing credentials do not. | Expected accept/reject session result with no downgrade. | Material auth mechanism/credential source/wire/viewer-interoperability change. |
 | `ER-SECURITY-SECRET-HYGIENE` | PAC-7,PAC-10 / R-SECURITY,R-OPERATE | INVARIANT/CAPABILITY / V+P(+Q/R) | Secrets are absent from normal logs, diagnostics, command surfaces and retained evidence. | Prohibited secret material/derivatives absent from declared observable outputs/artifacts. | Material logging/diagnostics/evidence capture/credential/security-mechanism change. |
@@ -171,11 +185,12 @@ Do **not** create a new ER merely because a platform, Qt version, frontend, view
 | --- | --- | --- | --- | --- | --- |
 | `ER-OPERATE-DIAGNOSTIC-SNAPSHOT` | PAC-10 / R-OPERATE,R-ADOPTION | CLAIM / V+P(+Q) | Normal user can obtain one bounded documented secret-safe effective-state report from installed/deployed artifact. | Required effective facts are accurate/present and prohibited secret material absent. | Material diagnostic schema/Runtime fact source/package/troubleshooting-path behavior change. |
 | `ER-OPERATE-FAILURE-CLASSIFICATION` | PAC-10 / R-OPERATE,R-ADOPTION | CLAIM / V+P | Common stopped/config/listener/security/input/viewer/deployment/runtime failures are distinguishable where observable. | Induced failure maps to intended user-facing classification/effective facts, not misleading success/generic state. | Material error/state/diagnostic/deployment-failure reporting change. |
-| `ER-OPERATE-SAFE-DISABLE` | PAC-2,PAC-3,PAC-10 / R-OPERATE,R-RUNTIME,R-INPUT | INVARIANT / V+P(+Q) | User can stop/disable HyRemote safely while host application remains operational. | Disabled state truthful; listener/input/capture effects cease; host remains usable; whole-session held state neutral. | Material lifecycle/input cleanup/frontend activation/diagnostic-state change. |
 | `ER-MAINTENANCE-TARGET-COHERENCE` | PAC-5,PAC-10 / R-UPGRADE,R-DEPLOY,R-PACKAGE | MAINTENANCE / P+Q(+R) | Authorized update yields one coherent target artifact lineage with no stale/mixed payload. | Artifact/runtime-origin audit identifies only allowed target lineage and target product path succeeds. | Material source/target identity, package/deploy/update mechanism, Qt/QPA payload policy change. |
 | `ER-MAINTENANCE-PUBLIC-COMPATIBILITY` | PAC-1,PAC-9,PAC-10 / R-UPGRADE,R-PACKAGE,R-COMPAT | MAINTENANCE/CLAIM / V+P(+Q) | Declared public API/package compatibility across an authorized transition remains true. | Exact supported compatibility operation succeeds without undocumented source/internal dependency change. | Material public API/package/version policy or source/target release change. |
 | `ER-MAINTENANCE-ROLLBACK-COHERENCE` | PAC-10 / R-UPGRADE,R-DEPLOY | MAINTENANCE / P+Q(+R) | Promised rollback restores a coherent known-good lineage, not mixed old/new runtime pieces. | Rollback origin audit matches declared target and documented product path succeeds. | Material rollback policy/mechanism/source/target artifact change. |
 | `ER-OPERATE-VERSION-IDENTITY` | PAC-9,PAC-10 / R-OPERATE,R-UPGRADE,R-COMPAT | CLAIM/MAINTENANCE/RELEASE / V+P+Q(+R) | Diagnostics/artifact metadata identify running/deployed HyRemote accurately enough for support/evidence correlation. | Reported identity matches exact artifact/candidate and changes coherently across authorized transitions. | Material build/version metadata/diagnostics/package/release-identity rule change. |
+
+`PAC-10` safe disable/application-survival evidence is intentionally **not duplicated** here: it is owned by `ER-NATIVE-STOP-SURVIVAL`, which already maps to both PAC-2 and PAC-10 and includes truthful stopped/disabled state plus whole-session input cleanup.
 
 ---
 
@@ -183,7 +198,7 @@ Do **not** create a new ER merely because a platform, Qt version, frontend, view
 
 | ER | PAC / Risk | Activation / Evidence | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- |
-| `ER-JOURNEY-SELF-SERVICE` | PAC-1,3,5,9,10 / R-ADOPTION,R-PACKAGE,R-DEPLOY,R-OPERATE | CLAIM / P(+Q/R) | Normal target user can follow documented compatibility/acquisition/integration/deployment/connect/use/diagnosis journey without project-team-only knowledge or hidden runtime crutches. | Declared executable journey completes successfully; all required external inputs/assumptions are explicit. | **Only material changes** to executable journey steps, commands, required inputs, assumptions, product defaults/behavior, acquisition/deployment/config/diagnostic semantics, or the claimed support boundary. Spelling, translation, formatting and unrelated prose/examples do not invalidate retained journey evidence by themselves. |
+| `ER-JOURNEY-SELF-SERVICE` | PAC-1,3,5,9,10 / R-ADOPTION,R-PACKAGE,R-DEPLOY,R-OPERATE | CLAIM / P(+Q/R) | Normal target user can follow documented compatibility/acquisition/integration/deployment/connect/use/diagnosis journey without project-team-only knowledge or hidden runtime crutches. | Declared executable journey completes successfully; all required external inputs/assumptions are explicit. | **Only material changes** to executable journey steps, commands, required inputs, assumptions, product defaults/behavior, acquisition/deployment/config/diagnostic semantics, or claimed support boundary. Spelling, translation, formatting and unrelated prose/examples do not invalidate retained journey evidence by themselves. |
 | `ER-JOURNEY-REALWORLD-PRISTINE` | PAC-1,2,3,5,9 / R-ADOPTION,R-NATIVE,R-COMPAT | CLAIM/RELEASE / Q(+R) | Pinned representative third-party apps pressure-test applicable product paths without HyRemote-specific source modifications/hidden repair. | Upstream worktree pristine; exact route/environment/artifact recorded; declared view/input/reconnect/deploy/native observations pass or limitations classified. | Material HyRemote candidate, upstream fixture revision, Qt/environment/route applicability or support-claim change. |
 
 ---
@@ -197,7 +212,7 @@ ER IDs do not encode execution frequency.
 | deterministic invariant | G0/G1 | G1; no unnecessary later duplication |
 | affected public/product path | G2 | G4/G6 if claim requires |
 | clean deploy/runtime loader | G2 when affected | G4/G6 platform cells |
-| listener/network/viewer integration | G2 when directly affected | G4/G5/G6 |
+| listener/network/viewer/transport integration | G2 when directly affected | G4/G5/G6 |
 | physical/native cell | not ordinary PR | dedicated Q/G6 |
 | performance reference | smoke when affected | G4/G5/G6 |
 | stress/fuzz/soak | cheap regression only in PR | G4/G5/G6 |
@@ -237,6 +252,7 @@ For each test record:
 - available P50/P95/setup cost;
 - unique versus duplicate evidence value;
 - mismatch between intended ER and actual oracle;
+- authority drift where an existing test asserts superseded product semantics;
 - candidate disposition: `retain identity`, `parameterize`, `move gate`, `governance`, `investigate`.
 
 TS-1 also reports **unmapped ERs** for which required product evidence has no current executable proof.
