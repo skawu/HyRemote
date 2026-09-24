@@ -2,9 +2,9 @@ include_guard(GLOBAL)
 
 function(_hyremote_runtime_deploy_dir output_var)
     if(WIN32)
-        set(${output_var} "${QT_DEPLOY_BIN_DIR}" PARENT_SCOPE)
+        set(${output_var} "\${QT_DEPLOY_BIN_DIR}" PARENT_SCOPE)
     else()
-        set(${output_var} "${QT_DEPLOY_LIB_DIR}" PARENT_SCOPE)
+        set(${output_var} "\${QT_DEPLOY_LIB_DIR}" PARENT_SCOPE)
     endif()
 endfunction()
 
