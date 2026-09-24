@@ -148,61 +148,94 @@ endif()
 # A Linux host routinely exposes a distro Qt in the loader path next to the Qt the consumer selected, so
 # the same SONAME resolves to more than one root. CMake refuses to choose between them, and letting it
 # refuse would make every clean deployment fail on such a host. The choice is made here instead, and it
-# is a choice between copies of one Qt lineage, never a choice between Qt lineages.
+# is a choice between copies of the selected Qt lineage, never a choice between Qt lineages. Paths are
+# canonicalized only for identity and containment; the original candidate path is retained for copying so
+# a normal SONAME symlink chain survives deployment.
 set(_hyremote_selected_qt_runtime_root \"$<TARGET_FILE_DIR:Qt6::Core>\")
+get_filename_component(_hyremote_selected_qt_runtime_root_real
+    \"\${_hyremote_selected_qt_runtime_root}\" REALPATH)
+get_filename_component(_hyremote_deploy_prefix_real \"\${QT_DEPLOY_PREFIX}\" REALPATH)
 
 set(_hyremote_runtime_payload \"\")
+set(_hyremote_runtime_payload_real \"\")
 foreach(_hyremote_dependency IN LISTS _hyremote_private_runtime_dependencies)
     get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
-    list(APPEND _hyremote_runtime_payload \"\${_hyremote_dependency_real}\")
+    if(NOT _hyremote_dependency_real IN_LIST _hyremote_runtime_payload_real)
+        list(APPEND _hyremote_runtime_payload \"\${_hyremote_dependency}\")
+        list(APPEND _hyremote_runtime_payload_real \"\${_hyremote_dependency_real}\")
+    endif()
 endforeach()
-list(REMOVE_DUPLICATES _hyremote_runtime_payload)
 
 foreach(_hyremote_conflict_name IN LISTS _hyremote_runtime_conflict_FILENAMES)
     # Only a library the selected consumer Qt runtime root itself provides may be adjudicated, so a
-    # conflict on any other dependency - and a conflict with no candidate from that root at all -
-    # still fails closed instead of being resolved on the caller's behalf.
-    if(NOT EXISTS \"\${_hyremote_selected_qt_runtime_root}/\${_hyremote_conflict_name}\")
+    # conflict on any other dependency - and a conflict with no payload in that root at all - still
+    # fails closed instead of being resolved on the caller's behalf.
+    set(_hyremote_selected_runtime_file
+        \"\${_hyremote_selected_qt_runtime_root}/\${_hyremote_conflict_name}\")
+    if(NOT EXISTS \"\${_hyremote_selected_runtime_file}\")
         message(FATAL_ERROR
             \"HyRemote runtime deployment found a conflicting '\${_hyremote_conflict_name}' that the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root} does not provide, so it is not a Qt lineage conflict HyRemote may decide. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
     endif()
+    file(SHA256 \"\${_hyremote_selected_runtime_file}\" _hyremote_selected_runtime_hash)
 
     set(_hyremote_deployed_candidates \"\")
+    set(_hyremote_deployed_candidates_real \"\")
     set(_hyremote_selected_candidates \"\")
+    set(_hyremote_selected_candidates_real \"\")
     foreach(_hyremote_candidate IN LISTS _hyremote_runtime_conflict_\${_hyremote_conflict_name})
         get_filename_component(_hyremote_candidate_real \"\${_hyremote_candidate}\" REALPATH)
-        string(FIND \"\${_hyremote_candidate_real}\" \"\${QT_DEPLOY_PREFIX}/\" _hyremote_in_deploy_tree)
-        string(FIND \"\${_hyremote_candidate_real}\" \"\${_hyremote_selected_qt_runtime_root}/\" _hyremote_in_selected_root)
+        string(FIND \"\${_hyremote_candidate_real}\" \"\${_hyremote_deploy_prefix_real}/\" _hyremote_in_deploy_tree)
+        string(FIND \"\${_hyremote_candidate_real}\" \"\${_hyremote_selected_qt_runtime_root_real}/\" _hyremote_in_selected_root)
         if(_hyremote_in_deploy_tree EQUAL 0)
-            list(APPEND _hyremote_deployed_candidates \"\${_hyremote_candidate_real}\")
+            if(NOT _hyremote_candidate_real IN_LIST _hyremote_deployed_candidates_real)
+                list(APPEND _hyremote_deployed_candidates \"\${_hyremote_candidate}\")
+                list(APPEND _hyremote_deployed_candidates_real \"\${_hyremote_candidate_real}\")
+            endif()
         elseif(_hyremote_in_selected_root EQUAL 0)
-            list(APPEND _hyremote_selected_candidates \"\${_hyremote_candidate_real}\")
+            if(NOT _hyremote_candidate_real IN_LIST _hyremote_selected_candidates_real)
+                list(APPEND _hyremote_selected_candidates \"\${_hyremote_candidate}\")
+                list(APPEND _hyremote_selected_candidates_real \"\${_hyremote_candidate_real}\")
+            endif()
         endif()
     endforeach()
-    list(REMOVE_DUPLICATES _hyremote_deployed_candidates)
-    list(REMOVE_DUPLICATES _hyremote_selected_candidates)
     list(LENGTH _hyremote_deployed_candidates _hyremote_deployed_count)
     list(LENGTH _hyremote_selected_candidates _hyremote_selected_count)
 
-    # 1. the deployment tree already holds exactly one copy of that library; or
-    # 2. the selected consumer Qt runtime root is the only other root that provides it.
-    # Anything else stays ambiguous and is refused rather than guessed.
-    if(_hyremote_deployed_count EQUAL 1)
-        set(_hyremote_winner \"\${_hyremote_deployed_candidates}\")
+    # A candidate reached through the selected root is authoritative. A candidate already inside the deployment
+    # may be reused only when its bytes are exactly the selected root's payload; merely being staged first cannot
+    # make a stale or foreign same-SONAME Qt override the consumer's selected lineage.
+    set(_hyremote_winner \"\")
+    set(_hyremote_winner_real \"\")
+    if(_hyremote_selected_count GREATER 1)
+        message(FATAL_ERROR
+            \"HyRemote runtime deployment could not choose '\${_hyremote_conflict_name}' deterministically: \${_hyremote_deployed_count} candidate(s) inside the deployment tree and \${_hyremote_selected_count} candidate(s) inside the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root}. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
     elseif(_hyremote_selected_count EQUAL 1)
-        set(_hyremote_winner \"\${_hyremote_selected_candidates}\")
+        list(GET _hyremote_selected_candidates 0 _hyremote_winner)
+        list(GET _hyremote_selected_candidates_real 0 _hyremote_winner_real)
+    elseif(_hyremote_deployed_count EQUAL 1)
+        list(GET _hyremote_deployed_candidates 0 _hyremote_deployed_candidate)
+        list(GET _hyremote_deployed_candidates_real 0 _hyremote_deployed_candidate_real)
+        file(SHA256 \"\${_hyremote_deployed_candidate_real}\" _hyremote_deployed_candidate_hash)
+        if(NOT _hyremote_deployed_candidate_hash STREQUAL _hyremote_selected_runtime_hash)
+            message(FATAL_ERROR
+                \"HyRemote runtime deployment found a staged '\${_hyremote_conflict_name}' at \${_hyremote_deployed_candidate} that does not match the selected consumer Qt runtime \${_hyremote_selected_runtime_file}; a stale or foreign deployed Qt may not override the selected lineage.\")
+        endif()
+        set(_hyremote_winner \"\${_hyremote_deployed_candidate}\")
+        set(_hyremote_winner_real \"\${_hyremote_deployed_candidate_real}\")
     else()
         message(FATAL_ERROR
             \"HyRemote runtime deployment could not choose '\${_hyremote_conflict_name}' deterministically: \${_hyremote_deployed_count} candidate(s) inside the deployment tree and \${_hyremote_selected_count} candidate(s) inside the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root}. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
     endif()
 
     # Drop every other path claiming that filename, so a foreign same-SONAME library is never staged
-    # beside the selected lineage.
+    # beside the selected lineage. Compare canonical identities, but retain the winner's original spelling
+    # for the copy so FOLLOW_SYMLINK_CHAIN sees the SONAME alias rather than only its final regular file.
     set(_hyremote_payload_without_foreign \"\")
     foreach(_hyremote_dependency IN LISTS _hyremote_runtime_payload)
         get_filename_component(_hyremote_dependency_name \"\${_hyremote_dependency}\" NAME)
+        get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
         if(_hyremote_dependency_name STREQUAL _hyremote_conflict_name
-           AND NOT _hyremote_dependency STREQUAL _hyremote_winner)
+           AND NOT _hyremote_dependency_real STREQUAL _hyremote_winner_real)
             continue()
         endif()
         list(APPEND _hyremote_payload_without_foreign \"\${_hyremote_dependency}\")
@@ -213,8 +246,17 @@ foreach(_hyremote_conflict_name IN LISTS _hyremote_runtime_conflict_FILENAMES)
 endforeach()
 
 foreach(_hyremote_dependency IN LISTS _hyremote_runtime_payload)
-    string(FIND \"\${_hyremote_dependency}\" \"\${_hyremote_selected_qt_runtime_root}/\" _hyremote_qt_prefix_index)
+    get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
+    string(FIND \"\${_hyremote_dependency_real}\" \"\${_hyremote_selected_qt_runtime_root_real}/\" _hyremote_qt_prefix_index)
     if(_hyremote_qt_prefix_index EQUAL 0)
+        # Remove both the SONAME spelling and its real payload before copying. This makes a redeployment replace a
+        # stale regular file or stale same-version payload deterministically, then recreates the selected root's
+        # symlink chain from the original candidate path.
+        get_filename_component(_hyremote_dependency_name \"\${_hyremote_dependency}\" NAME)
+        get_filename_component(_hyremote_dependency_real_name \"\${_hyremote_dependency_real}\" NAME)
+        file(REMOVE
+            \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/\${_hyremote_dependency_name}\"
+            \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/\${_hyremote_dependency_real_name}\")
         file(COPY \"\${_hyremote_dependency}\"
              DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\"
              FOLLOW_SYMLINK_CHAIN)

@@ -14,6 +14,10 @@ project(HyRemoteLinuxQtRuntimeConflictAssets LANGUAGES CXX)
 # what happens on a host where the deployed runtime and a distribution Qt are both reachable. Each consumer and
 # each plugin below therefore carries exactly ONE explicit RUNPATH, and a case is a choice of two of them.
 #
+# The Qt and probe payloads deliberately use a normal versioned shared-library layout. In particular, the Qt
+# fixture is libQt6Core.so.6 -> libQt6Core.so.6.8.3 rather than a regular file named .so.6, because preserving
+# that SONAME alias is part of the deployment contract under test.
+#
 #   qt-a/lib/libQt6Core.so.6              the selected consumer Qt runtime root's payload
 #   qt-a/lib/sub/libQt6Core.so.6          a second candidate inside that same selected root
 #   qt-b/lib/libQt6Core.so.6              a same-SONAME foreign payload
@@ -35,27 +39,40 @@ set(QT_A_SUB "${ASSET_DIR}/qt-a/lib/sub")
 set(QT_B "${ASSET_DIR}/qt-b/lib")
 set(QT_C "${ASSET_DIR}/qt-c/lib")
 
+# Keep every fixture artifact at the exact path the regression names. Multi-config generators otherwise append
+# Debug/Release below LIBRARY_OUTPUT_DIRECTORY, which makes the fixture fail before the deployment decision runs.
+function(_hyremote_conflict_set_output target directory)
+    set_target_properties(${target} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${directory}")
+    foreach(_config IN LISTS CMAKE_CONFIGURATION_TYPES)
+        string(TOUPPER "${_config}" _config_upper)
+        set_target_properties(${target} PROPERTIES
+            "LIBRARY_OUTPUT_DIRECTORY_${_config_upper}" "${directory}")
+    endforeach()
+endfunction()
+
 # A payload carries no search path of its own: which root a depending file reaches is stated by that
 # depending file, one case at a time, and nothing else may leak in and make a case pass for the wrong reason.
-function(_hyremote_conflict_shared_library target source directory output_name suffix)
+function(_hyremote_conflict_shared_library target source directory output_name soversion version)
     add_library(${target} SHARED "${source}")
     set_target_properties(${target} PROPERTIES
         OUTPUT_NAME "${output_name}"
         PREFIX "lib"
-        SUFFIX "${suffix}"
-        LIBRARY_OUTPUT_DIRECTORY "${directory}"
         SKIP_BUILD_RPATH TRUE
         BUILD_RPATH ""
     )
+    if(NOT "${soversion}" STREQUAL "")
+        set_target_properties(${target} PROPERTIES SOVERSION "${soversion}" VERSION "${version}")
+    endif()
+    _hyremote_conflict_set_output(${target} "${directory}")
 endfunction()
 
-_hyremote_conflict_shared_library(payload-a payload_a.cpp "${QT_A}" Qt6Core ".so.6")
-_hyremote_conflict_shared_library(payload-a-sub payload_a.cpp "${QT_A_SUB}" Qt6Core ".so.6")
-_hyremote_conflict_shared_library(payload-b payload_b.cpp "${QT_B}" Qt6Core ".so.6")
-_hyremote_conflict_shared_library(payload-c payload_c.cpp "${QT_C}" Qt6Core ".so.6")
-_hyremote_conflict_shared_library(probe-b probe.cpp "${QT_B}" hyremote-probe ".so.1")
-_hyremote_conflict_shared_library(probe-c probe.cpp "${QT_C}" hyremote-probe ".so.1")
-_hyremote_conflict_shared_library(placeholder placeholder.cpp "${ASSET_DIR}/qt-empty/lib" placeholder ".so")
+_hyremote_conflict_shared_library(payload-a payload_a.cpp "${QT_A}" Qt6Core 6 6.8.3)
+_hyremote_conflict_shared_library(payload-a-sub payload_a.cpp "${QT_A_SUB}" Qt6Core 6 6.8.3)
+_hyremote_conflict_shared_library(payload-b payload_b.cpp "${QT_B}" Qt6Core 6 6.8.3)
+_hyremote_conflict_shared_library(payload-c payload_c.cpp "${QT_C}" Qt6Core 6 6.8.3)
+_hyremote_conflict_shared_library(probe-b probe.cpp "${QT_B}" hyremote-probe 1 1.0.0)
+_hyremote_conflict_shared_library(probe-c probe.cpp "${QT_C}" hyremote-probe 1 1.0.0)
+_hyremote_conflict_shared_library(placeholder placeholder.cpp "${ASSET_DIR}/qt-empty/lib" placeholder "" "")
 
 # The depending files link their payload through an imported target, so the linker is handed the payload file
 # itself. Naming the payload by a search directory instead - a link directory, or a full path that CMake turns
@@ -89,10 +106,10 @@ function(_hyremote_conflict_consumer target runpaths source)
         OUTPUT_NAME "hyremote-qtconflict-consumer"
         PREFIX "lib"
         SUFFIX ".so"
-        LIBRARY_OUTPUT_DIRECTORY "${ASSET_DIR}/${target}"
         BUILD_RPATH "${runpaths}"
         SKIP_BUILD_RPATH FALSE
     )
+    _hyremote_conflict_set_output(${target} "${ASSET_DIR}/${target}")
 endfunction()
 
 # Platform-plugin-side depending files. These are the second opinion the loader forms about the same SONAME, and
@@ -105,10 +122,10 @@ function(_hyremote_conflict_plugin target runpaths suffix)
         OUTPUT_NAME "qconflictplugin${suffix}"
         PREFIX "lib"
         SUFFIX ".so"
-        LIBRARY_OUTPUT_DIRECTORY "${ASSET_DIR}/${target}"
         BUILD_RPATH "${runpaths}"
         SKIP_BUILD_RPATH FALSE
     )
+    _hyremote_conflict_set_output(${target} "${ASSET_DIR}/${target}")
 endfunction()
 
 # `echo` resolves whatever sits beside the deployed runtime, which is how an already staged copy is reached.
@@ -125,10 +142,10 @@ set_target_properties(consumer-probe-into-a PROPERTIES
     OUTPUT_NAME "hyremote-qtconflict-consumer"
     PREFIX "lib"
     SUFFIX ".so"
-    LIBRARY_OUTPUT_DIRECTORY "${ASSET_DIR}/consumer-probe-into-a"
     BUILD_RPATH "${QT_A};${QT_B}"
     SKIP_BUILD_RPATH FALSE
 )
+_hyremote_conflict_set_output(consumer-probe-into-a "${ASSET_DIR}/consumer-probe-into-a")
 
 _hyremote_conflict_plugin(plugin-into-b "${QT_B}" "-b")
 _hyremote_conflict_plugin(plugin-into-c "${QT_C}" "-c")
@@ -141,7 +158,7 @@ set_target_properties(plugin-probe-into-a PROPERTIES
     OUTPUT_NAME "qconflictplugin-probe-a-c"
     PREFIX "lib"
     SUFFIX ".so"
-    LIBRARY_OUTPUT_DIRECTORY "${ASSET_DIR}/plugin-probe-into-a"
     BUILD_RPATH "${QT_A};${QT_C}"
     SKIP_BUILD_RPATH FALSE
 )
+_hyremote_conflict_set_output(plugin-probe-into-a "${ASSET_DIR}/plugin-probe-into-a")

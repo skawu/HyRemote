@@ -75,15 +75,41 @@ foreach(_payload IN ITEMS
     endif()
 endforeach()
 
+# The release shape is a versioned shared library with a SONAME symlink. A regular .so.6 fixture would let a
+# deployment that drops the alias pass while the real application remains unloadable.
+foreach(_qt_alias IN ITEMS
+        "qt-a/lib/libQt6Core.so.6"
+        "qt-a/lib/sub/libQt6Core.so.6"
+        "qt-b/lib/libQt6Core.so.6"
+        "qt-c/lib/libQt6Core.so.6")
+    if(NOT IS_SYMLINK "${_asset_dir}/${_qt_alias}")
+        message(FATAL_ERROR
+            "linux-qt-runtime-conflict: ${_qt_alias} is not a SONAME symlink, so the fixture cannot prove that "
+            "deployment preserves a normal Qt shared-library chain")
+    endif()
+endforeach()
+
+# The selected Qt root may itself be reached through a stable alias such as /opt/Qt/current/gcc_64. The conflict
+# decision compares canonical paths, so the regression gives it exactly that shape rather than only literal roots.
+set(_selected_root_alias "${_asset_dir}/qt-a-link")
+file(REMOVE "${_selected_root_alias}")
+file(CREATE_LINK "${_asset_dir}/qt-a/lib" "${_selected_root_alias}" SYMBOLIC RESULT _alias_result)
+if(NOT _alias_result STREQUAL "0" OR NOT EXISTS "${_selected_root_alias}/libQt6Core.so.6")
+    message(FATAL_ERROR
+        "linux-qt-runtime-conflict: could not create the selected-root symlink fixture: ${_alias_result}")
+endif()
+
 # name | selected consumer Qt root | deployed-runtime depending file | plugin depending file | plugin file name |
-# pre-stage the selected payload
+# prepopulation mode (NONE, SELECTED, FOREIGN)
 set(_cases
-    "without-collection|qt-a/lib|consumer-into-b|plugin-into-c|libqconflictplugin-c.so|OFF"
-    "selected-root-wins|qt-a/lib|consumer-into-a|plugin-into-b|libqconflictplugin-b.so|OFF"
-    "deployed-copy-wins|qt-a/lib|consumer-echo|plugin-into-b|libqconflictplugin-b.so|ON"
-    "no-selected-candidate|qt-empty/lib|consumer-into-b|plugin-into-c|libqconflictplugin-c.so|OFF"
-    "ambiguous-selected-candidates|qt-a/lib|consumer-into-a|plugin-into-a-sub|libqconflictplugin-a-sub.so|OFF"
-    "non-qt-conflict|qt-a/lib|consumer-probe-into-a|plugin-probe-into-a|libqconflictplugin-probe-a-c.so|OFF")
+    "without-collection|qt-a/lib|consumer-into-b|plugin-into-c|libqconflictplugin-c.so|NONE"
+    "selected-root-wins|qt-a/lib|consumer-into-a|plugin-into-b|libqconflictplugin-b.so|NONE"
+    "selected-root-symlink-wins|qt-a-link|consumer-into-a|plugin-into-b|libqconflictplugin-b.so|NONE"
+    "deployed-copy-wins|qt-a/lib|consumer-echo|plugin-into-b|libqconflictplugin-b.so|SELECTED"
+    "foreign-deployed-copy-refused|qt-a/lib|consumer-echo|plugin-into-c|libqconflictplugin-c.so|FOREIGN"
+    "no-selected-candidate|qt-empty/lib|consumer-into-b|plugin-into-c|libqconflictplugin-c.so|NONE"
+    "ambiguous-selected-candidates|qt-a/lib|consumer-into-a|plugin-into-a-sub|libqconflictplugin-a-sub.so|NONE"
+    "non-qt-conflict|qt-a/lib|consumer-probe-into-a|plugin-probe-into-a|libqconflictplugin-probe-a-c.so|NONE")
 
 foreach(_case IN LISTS _cases)
     string(REPLACE "|" ";" _fields "${_case}")
@@ -137,5 +163,6 @@ foreach(_case IN LISTS _cases)
 endforeach()
 
 message(STATUS
-    "linux-qt-runtime-conflict: PASS (the selected consumer Qt runtime root decides the same-SONAME "
-    "conflict; no candidate from it and more than one candidate from it and a non-Qt conflict all fail closed)")
+    "linux-qt-runtime-conflict: PASS (the selected consumer Qt runtime root decides the same-SONAME conflict, "
+    "preserves the SONAME symlink through canonical root aliases, accepts only a matching staged copy, and no "
+    "candidate from it / more than one candidate from it / a non-Qt conflict all fail closed)")

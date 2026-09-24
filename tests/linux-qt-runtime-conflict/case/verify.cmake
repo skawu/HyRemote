@@ -5,20 +5,29 @@ if(NOT CASE_DIR OR NOT ASSET_DIR OR NOT TEST_CASE OR NOT SELECTED_ROOT OR NOT CO
         "PLUGIN_NAME are required")
 endif()
 if(NOT DEFINED PREPOPULATE)
-    set(PREPOPULATE OFF)
+    set(PREPOPULATE NONE)
 endif()
 
 # Stages the deployment tree the way an install would, runs the generated deployment step, and asserts what
 # the hotfix promises. Every assertion is made against the deployment code's own effect on real files: a
 # message in a log cannot prove that the selected lineage was the one staged.
 
+# The public deployment prefix is a symlink to the real tree. Production commonly reaches prefixes through aliases,
+# and canonical candidates must still be recognised as deployed candidates when the prefix itself is not canonical.
 set(_deploy "${CASE_DIR}/deploy")
+set(_deploy_real "${CASE_DIR}/deploy-real")
 set(_case_lib_name "libhyremote-qtconflict-consumer.so")
 set(_selected_runtime "${SELECTED_ROOT}/libQt6Core.so.6")
 set(_foreign_runtime "${ASSET_DIR}/qt-b/lib/libQt6Core.so.6")
 
-file(REMOVE_RECURSE "${_deploy}")
-file(MAKE_DIRECTORY "${_deploy}/lib" "${_deploy}/plugins/platforms")
+file(REMOVE "${_deploy}")
+file(REMOVE_RECURSE "${_deploy_real}")
+file(MAKE_DIRECTORY "${_deploy_real}/lib" "${_deploy_real}/plugins/platforms")
+file(CREATE_LINK "${_deploy_real}" "${_deploy}" SYMBOLIC RESULT _deploy_link_result)
+if(NOT _deploy_link_result STREQUAL "0")
+    message(FATAL_ERROR
+        "linux-qt-runtime-conflict: could not create the deployment-prefix symlink fixture: ${_deploy_link_result}")
+endif()
 file(COPY "${CONSUMER}" DESTINATION "${_deploy}/lib")
 file(COPY "${PLUGIN}" DESTINATION "${_deploy}/plugins/platforms")
 if(NOT EXISTS "${_deploy}/plugins/platforms/${PLUGIN_NAME}")
@@ -26,8 +35,12 @@ if(NOT EXISTS "${_deploy}/plugins/platforms/${PLUGIN_NAME}")
         "linux-qt-runtime-conflict: the plugin was staged as '${PLUGIN_NAME}' but is not there, so the "
         "second depending file this case needs would be missing")
 endif()
-if(PREPOPULATE)
-    file(COPY "${_selected_runtime}" DESTINATION "${_deploy}/lib")
+if(PREPOPULATE STREQUAL "SELECTED")
+    file(COPY "${_selected_runtime}" DESTINATION "${_deploy}/lib" FOLLOW_SYMLINK_CHAIN)
+elseif(PREPOPULATE STREQUAL "FOREIGN")
+    file(COPY "${_foreign_runtime}" DESTINATION "${_deploy}/lib" FOLLOW_SYMLINK_CHAIN)
+elseif(NOT PREPOPULATE STREQUAL "NONE")
+    message(FATAL_ERROR "linux-qt-runtime-conflict: unknown PREPOPULATE mode '${PREPOPULATE}'")
 endif()
 
 function(linux_qt_conflict_run_uncollected_probe out_var)
@@ -99,8 +112,12 @@ if(_consumer_resolution STREQUAL "")
         "linux-qt-runtime-conflict: fixture precondition failed for '${TEST_CASE}': the deployed runtime "
         "resolved no Qt runtime at all, so this case would assert nothing. ${_precondition}")
 endif()
-if(TEST_CASE STREQUAL "selected-root-wins" OR TEST_CASE STREQUAL "ambiguous-selected-candidates")
-    string(FIND "${_consumer_resolution}" "${SELECTED_ROOT}/" _consumer_in_selected_root)
+get_filename_component(_selected_root_real "${SELECTED_ROOT}" REALPATH)
+get_filename_component(_consumer_resolution_real "${_consumer_resolution}" REALPATH)
+string(FIND "${_consumer_resolution_real}" "${_selected_root_real}/" _consumer_in_selected_root)
+if(TEST_CASE STREQUAL "selected-root-wins"
+   OR TEST_CASE STREQUAL "selected-root-symlink-wins"
+   OR TEST_CASE STREQUAL "ambiguous-selected-candidates")
     if(NOT _consumer_in_selected_root EQUAL 0)
         message(FATAL_ERROR
             "linux-qt-runtime-conflict: fixture precondition failed for '${TEST_CASE}': the deployed runtime "
@@ -108,7 +125,6 @@ if(TEST_CASE STREQUAL "selected-root-wins" OR TEST_CASE STREQUAL "ambiguous-sele
     endif()
 endif()
 if(TEST_CASE STREQUAL "no-selected-candidate")
-    string(FIND "${_consumer_resolution}" "${SELECTED_ROOT}/" _consumer_in_selected_root)
     if(_consumer_in_selected_root EQUAL 0)
         message(FATAL_ERROR
             "linux-qt-runtime-conflict: fixture precondition failed for '${TEST_CASE}': the deployed runtime "
@@ -133,6 +149,11 @@ function(linux_qt_conflict_require_deployed_selected_payload)
             "linux-qt-runtime-conflict: the deployment staged no Qt runtime at all: ${_deployed}. "
             "${_precondition} (case ${TEST_CASE})")
     endif()
+    if(NOT IS_SYMLINK "${_deployed}")
+        message(FATAL_ERROR
+            "linux-qt-runtime-conflict: the deployed SONAME ${_deployed} is not a symlink, so the deployment lost "
+            "the selected Qt shared-library chain. ${_precondition} (case ${TEST_CASE})")
+    endif()
     if(NOT EXISTS "${_selected_runtime}" OR NOT EXISTS "${_foreign_runtime}")
         message(FATAL_ERROR
             "linux-qt-runtime-conflict: this case compares payloads that are not there: "
@@ -151,12 +172,17 @@ function(linux_qt_conflict_require_deployed_selected_payload)
             "linux-qt-runtime-conflict: the deployed Qt runtime is neither the selected root's payload nor a "
             "copy of it. ${_precondition} (case ${TEST_CASE})")
     endif()
+    get_filename_component(_deployed_real "${_deployed}" REALPATH)
+    if(NOT EXISTS "${_deployed_real}")
+        message(FATAL_ERROR
+            "linux-qt-runtime-conflict: the deployed SONAME symlink has no real payload: ${_deployed}")
+    endif()
     file(GLOB _deployed_runtime "${_deploy}/lib/libQt6Core.so.6*")
     list(LENGTH _deployed_runtime _deployed_runtime_count)
-    if(NOT _deployed_runtime_count EQUAL 1)
+    if(_deployed_runtime_count LESS 2)
         message(FATAL_ERROR
-            "linux-qt-runtime-conflict: the deployment tree carries ${_deployed_runtime_count} copies of the "
-            "Qt runtime: ${_deployed_runtime}")
+            "linux-qt-runtime-conflict: the deployment did not preserve a versioned Qt runtime chain: "
+            "${_deployed_runtime}")
     endif()
 endfunction()
 
@@ -173,14 +199,14 @@ function(linux_qt_conflict_require_failure expected_fragment)
     message(STATUS "linux-qt-runtime-conflict: ${TEST_CASE} failed closed")
 endfunction()
 
-if(TEST_CASE STREQUAL "selected-root-wins")
+if(TEST_CASE STREQUAL "selected-root-wins" OR TEST_CASE STREQUAL "selected-root-symlink-wins")
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
             "linux-qt-runtime-conflict: a conflict between the selected root and a foreign root must be "
             "decided, not refused: ${_out}")
     endif()
     linux_qt_conflict_require_deployed_selected_payload()
-    message(STATUS "linux-qt-runtime-conflict: selected-root-wins deployed the selected payload")
+    message(STATUS "linux-qt-runtime-conflict: ${TEST_CASE} deployed the selected payload")
 elseif(TEST_CASE STREQUAL "deployed-copy-wins")
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
@@ -188,6 +214,8 @@ elseif(TEST_CASE STREQUAL "deployed-copy-wins")
     endif()
     linux_qt_conflict_require_deployed_selected_payload()
     message(STATUS "linux-qt-runtime-conflict: deployed-copy-wins kept the staged selected payload")
+elseif(TEST_CASE STREQUAL "foreign-deployed-copy-refused")
+    linux_qt_conflict_require_failure("does not match the selected consumer Qt runtime")
 elseif(TEST_CASE STREQUAL "no-selected-candidate")
     linux_qt_conflict_require_failure("is not a Qt lineage conflict HyRemote may decide")
 elseif(TEST_CASE STREQUAL "ambiguous-selected-candidates")
