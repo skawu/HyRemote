@@ -676,12 +676,21 @@ function(hyb_qt_candidates out_list)
         # One kit installed in two places is one kit: a developer who copies a kit must not turn a working
         # discovery into an ambiguity. Two kits whose configuration differs stay two candidates, so the
         # ambiguity this reports is still a real choice between two different kits.
-        file(SHA1 "${_root}/lib/cmake/Qt6/Qt6Config.cmake" _kit_identity)
+        #
+        # The identity has to name the kit, not the Qt version. Qt ships byte-identical Qt6Config.cmake files in
+        # every kit of a release, so hashing that file alone answers "which Qt version is this" and not "which
+        # kit is this". That made the kits of one Qt version look like copies of whichever one the scan reached
+        # first: the siblings - usable ones included - were dropped as duplicates, and a run could then report
+        # that no kit on the machine could be used while its own configure went on to build with one of them.
+        # The target arch and compiler family the kit's directory name states are what actually differ between
+        # kits, so they are part of the identity. Two copies of one kit share both and are still collapsed.
+        hyb_qt_kit_class("${_root}" _class)
+        file(SHA1 "${_root}/lib/cmake/Qt6/Qt6Config.cmake" _kit_config_hash)
+        set(_kit_identity "${_kit_config_hash}|${_class}")
         if(_kit_identity IN_LIST _seen_kits)
             continue()
         endif()
         list(APPEND _seen_kits "${_kit_identity}")
-        hyb_qt_kit_class("${_root}" _class)
         list(APPEND _candidates "${_root}|${_class}")
     endforeach()
     set(${out_list} "${_candidates}" PARENT_SCOPE)
@@ -761,25 +770,56 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         set(_qt_searched "QTDIR, CMAKE_PREFIX_PATH, /opt/Qt/6.8.*/* and \$HOME/Qt/6.8.*/*")
     endif()
 
+    # A run that only reports must stay usable on a machine with no Qt at all, so a discovery problem is a
+    # warning there. A run that is about to configure a Qt-dependent product must not go on to guess or to rely on
+    # CMake finding a kit on its own: it fails closed with the same text, so the reader is told exactly what to do
+    # instead of getting an ambiguity followed by a less specific failure from somewhere else.
+    set(_qt_discovery_fatal FALSE)
+    if(HYB_SUBCOMMAND STREQUAL "build"
+       OR HYB_SUBCOMMAND STREQUAL "install"
+       OR HYB_SUBCOMMAND STREQUAL "test"
+       OR HYB_SUBCOMMAND STREQUAL "rebuild")
+        set(_qt_discovery_fatal TRUE)
+    endif()
+
     if(_qt_usable)
         list(LENGTH _qt_usable _qt_usable_count)
         if(_qt_usable_count EQUAL 1)
             list(GET _qt_usable 0 HYB_QT_PREFIX)
             cmake_path(NORMAL_PATH HYB_QT_PREFIX)
             set(HYB_QT_DISCOVERY_NOTE "Qt prefix : ${HYB_QT_PREFIX} (discovered)")
+            # Exactly one usable kit is not a problem to report: it is the resolution. A kit this shell cannot
+            # use is a diagnostic detail, so it is printed where diagnostics are printed and never next to a
+            # successful selection, which is what made a correct resolution read as a failure.
+            if(HYB_VERBOSE AND _qt_rejected)
+                message(STATUS "  Qt kits found but not usable: ${_qt_rejected}")
+            endif()
         else()
-            # Reported, not fatal: see the note above the identity handling. A run that cannot resolve a Qt still has
-            # to be able to prove the build-directory and identity contracts, and configure refuses on its own.
-            message(WARNING
-                "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong about "
-                "the compiler. Choose one explicitly:\n"
-                "\n"
-                "  ${_qt_choose_command}\n"
-                "\n"
-                "Candidates:\n    ${_qt_usable}")
+            # Ambiguity is not a resolution and not a guess: a reporting run says so and carries on, a run that
+            # would have to build stops here with the candidates and the command to paste.
+            if(_qt_discovery_fatal)
+                message(FATAL_ERROR
+                    "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
+                    "about the compiler. Choose one explicitly:\n"
+                    "\n"
+                    "  ${_qt_choose_command}\n"
+                    "\n"
+                    "Candidates:\n    ${_qt_usable}")
+            else()
+                message(WARNING
+                    "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
+                    "about the compiler. Choose one explicitly:\n"
+                    "\n"
+                    "  ${_qt_choose_command}\n"
+                    "\n"
+                    "Candidates:\n    ${_qt_usable}")
+            endif()
         endif()
     elseif(_qt_candidates)
-        message(WARNING
+        # No usable kit is an actionable failure, not a note to read past: the reasons are listed and the way out
+        # is given. A reporting run still finishes, because inspecting a machine with no usable kit is exactly when
+        # the report is wanted.
+        set(_qt_none_message
             "Qt 6.8 kits were found on this machine, but none of them can be used from this shell as it stands. "
             "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
             "developer environment first:\n"
@@ -787,6 +827,11 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             "  ${_qt_choose_command}\n"
             "\n"
             "Found but not usable:\n    ${_qt_rejected}")
+        if(_qt_discovery_fatal)
+            message(FATAL_ERROR "${_qt_none_message}")
+        else()
+            message(WARNING "${_qt_none_message}")
+        endif()
     else()
         message(WARNING
             "No Qt 6.8+ installation was found, and this top-level build needs one.\n"

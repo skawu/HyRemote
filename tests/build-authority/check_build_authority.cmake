@@ -279,6 +279,46 @@ if(UNIX AND NOT APPLE)
         --no-config --show-config)
     require_text_flat(qt-discovery-one-kit "${HYB_TEST_OUTPUT}" "Qt prefix : ${qt_one_kit} (discovered)")
 
+    # #389: Qt ships byte-identical Qt6Config.cmake files in every kit of a release, so a kit's identity cannot be
+    # that file on its own - hashing it alone identifies the Qt version, and every sibling kit of that version then
+    # looks like a copy of the first one found. These two kits share the identical configuration on purpose, which
+    # is the shape the defect was reported in: a usable kit next to an unusable sibling.
+    set(qt_identical_root "${scratch}/qt-discovery-identical")
+    make_qt_discovery_kit("${qt_identical_root}/6.8.3/gcc_64" shared-config)
+    make_qt_discovery_kit("${qt_identical_root}/6.8.3/wasm_32" shared-config)
+
+    # Exactly one usable kit is the resolution, not a problem: it is adopted, and a run that resolved to it must
+    # not also claim that none of the kits on the machine could be used.
+    run_env_success(qt-discovery-identical-config-unique-usable
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_identical_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-identical-config-unique-usable "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_identical_root}/6.8.3/gcc_64 (discovered)")
+    forbid_text_flat(qt-discovery-identical-config-unique-usable "${HYB_TEST_OUTPUT}"
+        "none of them can be used from this shell")
+    forbid_text_flat(qt-discovery-identical-config-unique-usable "${HYB_TEST_OUTPUT}" "Found but not usable")
+
+    # The unusable sibling is a diagnostic, so it belongs in the diagnostic output and nowhere else.
+    run_env_success(qt-discovery-identical-config-verbose-sibling
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_identical_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config -v)
+    require_text_flat(qt-discovery-identical-config-verbose-sibling "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_identical_root}/6.8.3/gcc_64 (discovered)")
+    require_text_flat(qt-discovery-identical-config-verbose-sibling "${HYB_TEST_OUTPUT}"
+        "Qt kits found but not usable: ${qt_identical_root}/6.8.3/wasm_32 (its directory name states no compiler family)")
+
+    # No usable kit at all is worth stopping for on a run that needs Qt: the reasons and the command to paste are
+    # printed, and the run does not go on to configure against a kit that cannot build it.
+    run_env_failure(qt-discovery-no-usable-kit-build
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_rejected_root};QTDIR=;CMAKE_PREFIX_PATH="
+        build --examples "--build-dir=${scratch}/qt-discovery-no-usable-build")
+    require_text_flat(qt-discovery-no-usable-kit-build "${HYB_TEST_OUTPUT}"
+        "none of them can be used from this shell")
+    require_text_flat(qt-discovery-no-usable-kit-build "${HYB_TEST_OUTPUT}"
+        "Found but not usable:")
+    require_text_flat(qt-discovery-no-usable-kit-build "${HYB_TEST_OUTPUT}"
+        "--qt-prefix=<one-of-these>")
+
     # Two compatible kits are ambiguous: nothing is chosen, both are named, and the command to paste is given.
     run_env_success(qt-discovery-two-kits-ambiguous
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
@@ -300,7 +340,10 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
         "Several Qt 6.8 kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
-        "This top-level configure expects Qt and did not find it")
+        "sh ./build.cmd build --qt-prefix=<one-of-these>")
+    # Fail closed means it stops before configuring anything, not after a configure that then fails for its own
+    # reasons: the reader gets one clear reason, at the point the decision is made.
+    forbid_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}" "phase: configure")
 
     # The environment tier keeps its precedence over platform discovery.
     run_env_success(qt-discovery-environment-first
