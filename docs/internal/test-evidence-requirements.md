@@ -55,9 +55,11 @@ These classes are independent evidence dimensions, not a scalar strength ladder.
 The catalog deliberately avoids ambiguous expressions such as `V+P(+Q/R)`. Every row uses explicit context clauses:
 
 - `base X` — X is the minimum retained evidence family while the ER's activation condition is true;
-- `affected +P` — a material change crossing the real user/product path requires fresh P evidence before that affected path is accepted; this clause is omitted when P is already in `base`;
-- `claim +Q` — before this ER may support a positive environment/product compatibility claim, valid Q evidence for that exact claim/cell is additionally required;
-- `release +R` — if canonical release authority selects this ER for exact-candidate acceptance, valid R evidence for the same frozen candidate/artifact is additionally required.
+- `affected X` — X is required only for an affected-path decision; `affected +X` means add X to the standing `base` obligation;
+- `claim X` — X is required only when the ER is being used to support a positive environment/product claim and there is no standing requirement for X outside that context;
+- `claim +X` — when a positive claim is being supported, add X to the standing `base` obligation;
+- `release X` — X is required only when canonical release authority selects the ER for exact-candidate acceptance and there is no standing requirement for X outside that context;
+- `release +X` — when release authority selects the ER, add X to the already-required base/claim obligations.
 
 The clauses are cumulative. For example:
 
@@ -65,7 +67,15 @@ The clauses are cumulative. For example:
 base V+P; claim +Q; release +R
 ```
 
-means V and P are the standing evidence families, Q becomes mandatory for a positive support/qualification claim, and R becomes mandatory only when the release authority selects this ER for exact-candidate acceptance.
+means V and P are standing evidence families, Q becomes additionally mandatory for a positive support/qualification claim, and R becomes additionally mandatory only when release authority selects the ER for exact-candidate acceptance.
+
+By contrast:
+
+```text
+claim Q; release +R
+```
+
+means the ER has no standing V/P family outside a claim; Q is mandatory whenever the positive claim exists, and R is additionally mandatory for exact-candidate release acceptance.
 
 A missing conditional class is **not** a gap unless its trigger is active. A gate name does not activate a class by itself: a G4 hosted run does not become Q unless the ER's claim context, environment and oracle require/qualify it.
 
