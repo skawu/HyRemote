@@ -345,3 +345,15 @@ These additions must preserve the normal product principle: ordinary application
 Other product capabilities intentionally remain behind internal seams as well, including richer session and programmable application-control APIs.
 
 Those capabilities must preserve one Core + one Shared Runtime and must not create parallel performance semantics for different integration frontends.
+
+## 18. Product testing and qualification architecture
+
+HyRemote tests the **product promise and support claims**, not the current implementation topology or raw CTest count. The canonical product-test architecture is [`internal/test-strategy.md`](internal/test-strategy.md).
+
+The strategy defines nine Product Acceptance Contracts covering low-intrusion integration, native non-interference, remote experience, frontend equivalence, deployability, reliability/boundedness, security truth, responsiveness/efficiency and compatibility truth. Core, Runtime, adapters, frontends, transport and deployment provide the cheapest sufficient evidence for those contracts; implementation-specific evidence such as RFB or a particular capture/backend path stays subordinate to the stable product contract.
+
+Testing is intentionally staged into verification, product validation, qualification and exact-candidate release acceptance. Hosted/headless verification does not substitute for physical/native Windows/Linux evidence when a support claim includes local display/input, native platform, graphics or loader behavior, while physical evidence does not substitute for clean build/install/deploy evidence.
+
+Development velocity is itself a test-system constraint. Ordinary edit/PR loops use risk-based selection and cheap deterministic evidence; expensive clean deployment, viewer, stress/soak, broad compatibility and physical qualification run only at the gates whose product risk requires them. The strategy defines explicit developer/PR/nightly/release execution budgets and rules for consolidating parameter variants instead of allowing every new case to become a permanent blocking test identity.
+
+A support row is accepted only when it can be traced from the declared compatibility boundary to the required Product Acceptance Contracts and to executed evidence for the exact candidate/environment. CI status or test count alone is never a support claim.
