@@ -1,9 +1,13 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QStringList>
 #include <QtLogging>
 
 #include <cstdio>
@@ -19,6 +23,29 @@ int readPositiveInt(const QCommandLineParser &parser,
     bool ok = false;
     const int value = parser.value(option).toInt(&ok);
     return ok && value > 0 ? value : fallback;
+}
+
+void addHyRemoteQmlImportPath(QQmlApplicationEngine &engine)
+{
+    // Never bake a build-host absolute QML root into the example. A deployed application carries
+    // its module at <prefix>/qml/HyRemote, while source-tree runs place it at <build>/qml/HyRemote.
+    // Resolve those layouts only relative to the executable and add the first root that actually
+    // contains the package-owned module. The extra level covers multi-config target directories.
+    const QDir applicationDirectory(QCoreApplication::applicationDirPath());
+    const QStringList relativeRoots{
+        QStringLiteral("../qml"),
+        QStringLiteral("../../qml"),
+        QStringLiteral("../../../qml"),
+    };
+
+    for (const QString &relativeRoot : relativeRoots) {
+        const QString importRoot = QDir::cleanPath(applicationDirectory.absoluteFilePath(relativeRoot));
+        const QString moduleDescriptor = importRoot + QStringLiteral("/HyRemote/qmldir");
+        if (!QFileInfo::isFile(moduleDescriptor))
+            continue;
+        engine.addImportPath(importRoot);
+        return;
+    }
 }
 
 void acceptanceMessageHandler(QtMsgType type,
@@ -85,7 +112,7 @@ int main(int argc, char **argv)
         qInstallMessageHandler(acceptanceMessageHandler);
 
     QQmlApplicationEngine engine;
-    engine.addImportPath(QStringLiteral(HYREMOTE_BUILD_QML_IMPORT_PATH));
+    addHyRemoteQmlImportPath(engine);
     engine.rootContext()->setContextProperty(QStringLiteral("acceptancePort"), port);
     engine.rootContext()->setContextProperty(QStringLiteral("acceptanceRemoteInput"), parser.isSet(inputOption));
     engine.rootContext()->setContextProperty(QStringLiteral("acceptanceTimeoutMs"), testSeconds * 1000);

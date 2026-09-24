@@ -24,9 +24,9 @@ target_compile_features(hyremote-qml-basic PRIVATE cxx_std_17)
 target_link_libraries(hyremote-qml-basic PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 add_dependencies(hyremote-qml-basic hyremote-qml hyremote-qmlplugin)
 
-target_compile_definitions(hyremote-qml-basic PRIVATE
-    HYREMOTE_BUILD_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml"
-)
+# Do not compile an absolute build-tree QML import root into this executable. main.cpp resolves only
+# application-relative QML roots so the same binary shape works from the build tree and after deployment
+# without retaining a path back to the build host.
 
 # Same treatment as the other examples: into the shared prefix, deployed by the shared helper, with the QML route
 # selected so the module payload it imports is deployed with it.
