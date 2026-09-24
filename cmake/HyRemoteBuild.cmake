@@ -563,10 +563,11 @@ hyb_resolve_path(HYB_CXX_COMPILER TRUE "C++ compiler")
 # --------------------------------------------------------------------------- Qt discovery
 #
 # Precedence is deliberate and absolute: a --qt-prefix on the command line, or a value in build.yml, is used exactly as
-# given and is never second-guessed. Only an empty prefix is resolved here, first from the environment, then - on
-# Windows - from the standard Qt Online Installer layout. Discovery adopts a kit only when exactly one candidate is
-# both real and usable; anything else fails closed with the candidates and the exact next command, because choosing
-# between an MSVC and a MinGW kit on the user's behalf would produce a build that cannot link.
+# given and is never second-guessed. Only an empty prefix is resolved here, first from the environment, then from the
+# platform's standard installer layout. Discovery adopts a kit only when exactly one candidate is both real and usable;
+# anything else fails closed for an execution that actually needs Qt, while report-only runs state the unresolved tier
+# without guessing. A deliberately Core-only build may continue without Qt when the runtime/frontends/examples/tests
+# are all disabled explicitly.
 #
 # Nothing here writes an absolute Qt path into the repository: the resolved value lives in memory and in the build
 # tree's own identity marker, both of which are untracked.
@@ -703,11 +704,8 @@ function(hyb_qt_tier_candidates roots out_list)
     set(${out_list} "${_candidates}" PARENT_SCOPE)
 endfunction()
 
-# Qt is a precondition of configuring, not of running the entry point: `clean` and `help` report without ever looking
-# for Qt. `--show-config` reports the configuration as well, and the Qt prefix the run would use is part of that
-# report, so it resolves the prefix too - but nothing here fails on a missing kit, a missing compiler or an ambiguous
-# one, so --show-config keeps working on a machine that has no Qt and no compiler at all, which is what the
-# repository's own gates drive it for.
+# Qt is a precondition of configuring a Qt-dependent product, not of running the entry point: `clean` and `help`
+# report without ever looking for Qt. `--show-config` resolves and reports the tier too, but remains report-only.
 set(HYB_QT_DISCOVERY_REQUIRED FALSE)
 if(HYB_SUBCOMMAND STREQUAL "build"
    OR HYB_SUBCOMMAND STREQUAL "install"
@@ -717,14 +715,33 @@ if(HYB_SUBCOMMAND STREQUAL "build"
     set(HYB_QT_DISCOVERY_REQUIRED TRUE)
 endif()
 
+# Common Runtime is ON by product default, but it is a cache-level product option rather than a frontend field in
+# build.yml. Read the final repeated --cmake value the same way CMake will: last value wins. This lets the intentionally
+# Core-only escape hatch remain Qt-free while every runtime/frontend/example/test execution fails discovery closed.
+set(_qt_runtime_requested TRUE)
+foreach(_qt_cache_entry IN LISTS HYB_CMAKE_CACHE_ENTRIES)
+    if(_qt_cache_entry MATCHES "^HYREMOTE_BUILD_REMOTE_ACCESS=(.*)$")
+        string(TOUPPER "${CMAKE_MATCH_1}" _qt_runtime_value)
+        if(_qt_runtime_value STREQUAL "" OR _qt_runtime_value MATCHES "^(OFF|FALSE|NO|0)$")
+            set(_qt_runtime_requested FALSE)
+        elseif(_qt_runtime_value MATCHES "^(ON|TRUE|YES|1)$")
+            set(_qt_runtime_requested TRUE)
+        endif()
+    endif()
+endforeach()
+set(_qt_execution_needs_qt FALSE)
+if(_qt_runtime_requested OR HYB_EXAMPLES OR HYB_TESTS_BUILD
+   OR HYB_CPP OR HYB_QML OR HYB_GENERIC OR HYB_QPA)
+    set(_qt_execution_needs_qt TRUE)
+endif()
+
 if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
-    # Tiers are resolved in the frozen order, one at a time, and never merged into a single pool: an explicit choice
-    # in the environment must not become an ambiguity because of a kit the platform layout adds, and a broken
-    # explicit choice must not be quietly replaced by one the caller did not name. The platform tier is therefore
-    # consulted only when the environment tier named no kit at all, and both tiers then run the same shared rule.
+    # Tiers are resolved in the frozen order, one at a time, and never merged into a single pool. The environment tier
+    # is selected by the caller naming roots, not by those roots already containing a usable Qt. Otherwise a typo or a
+    # stale QTDIR would silently fall through to /opt/Qt, $HOME/Qt or C:/Qt and replace an explicit choice.
     hyb_qt_environment_roots(_qt_environment_roots)
-    hyb_qt_tier_candidates("${_qt_environment_roots}" _qt_candidates)
-    if(_qt_candidates)
+    if(_qt_environment_roots)
+        hyb_qt_tier_candidates("${_qt_environment_roots}" _qt_candidates)
         set(_qt_tier_name "environment (QTDIR / CMAKE_PREFIX_PATH)")
     else()
         hyb_qt_platform_roots(_qt_platform_roots)
@@ -782,23 +799,25 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
     if(WIN32)
         set(_qt_choose_command ".\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
         set(_qt_kit_example ".\\build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/mingw_64>")
-        set(_qt_searched "QTDIR, CMAKE_PREFIX_PATH, and C:/Qt/6.8.*/*")
     else()
         set(_qt_choose_command "sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<one-of-these>")
         set(_qt_kit_example "sh ./build.cmd ${HYB_SUBCOMMAND} --qt-prefix=<path-to-Qt/6.8.3/gcc_64>")
-        set(_qt_searched "QTDIR, CMAKE_PREFIX_PATH, /opt/Qt/6.8.*/* and \$HOME/Qt/6.8.*/*")
+    endif()
+    if(_qt_tier_name STREQUAL "environment (QTDIR / CMAKE_PREFIX_PATH)")
+        set(_qt_searched "QTDIR and CMAKE_PREFIX_PATH (environment tier; platform discovery was not consulted)")
+    elseif(WIN32)
+        set(_qt_searched "C:/Qt/6.8.*/*")
+    else()
+        set(_qt_searched "/opt/Qt/6.8.*/* and \$HOME/Qt/6.8.*/*")
     endif()
 
-    # A report-only run is not an execution. `--show-config` returns before any phase runs (and is how the
-    # repository's own gates inspect a machine that has no Qt at all), so a discovery problem there is reported and
-    # the run still finishes. The subcommand alone cannot decide this: `--show-config` keeps the default `build`
-    # subcommand, so it would look like an execution and turn into a fatal error the report is meant to avoid.
-    #
-    # An execution, on the other hand, must not go on to guess or to rely on CMake finding a kit by itself: it fails
-    # closed with the same text, so the reader gets one clear reason at the point the decision is made instead of an
-    # ambiguity followed by a less specific failure from somewhere else.
+    # A report-only run is not an execution. `--show-config` returns before any phase runs, so a discovery problem is
+    # reported and the run still finishes. A Core-only execution also remains valid without Qt when the runtime and all
+    # Qt-facing product surfaces were explicitly disabled. Every other execution must stop here instead of letting a
+    # later find_package() discover a kit outside the authority that just failed to resolve one.
     set(_qt_discovery_fatal FALSE)
     if(NOT HYB_SHOW_CONFIG
+       AND _qt_execution_needs_qt
        AND (HYB_SUBCOMMAND STREQUAL "build"
             OR HYB_SUBCOMMAND STREQUAL "install"
             OR HYB_SUBCOMMAND STREQUAL "test"
@@ -860,17 +879,23 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             message(WARNING "${_qt_none_message}")
         endif()
     else()
-        message(WARNING
-            "No Qt 6.8+ installation was found, and this top-level build needs one.\n"
+        set(_qt_missing_message
+            "No Qt 6.8+ installation was found in the selected discovery tier.\n"
+            "Resolved tier: ${_qt_tier_name}\n"
             "\n"
-            "Point the build at a Qt 6.8.3 desktop kit, which is the only qualified line today (Qt 5.15 is tracked "
-            "by issue #57 and cannot configure this product):\n"
+            "A Qt-dependent HyRemote build needs a Qt 6.8.3 desktop kit, which is the only qualified line today "
+            "(Qt 5.15 is tracked by issue #57 and cannot configure this product):\n"
             "\n"
             "  ${_qt_kit_example}\n"
             "\n"
             "Searched: ${_qt_searched} (a kit is recognised by its lib/cmake/Qt6/Qt6Config.cmake). To build the Core "
             "library alone on purpose instead, pass -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF "
             "-DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+        if(_qt_discovery_fatal)
+            message(FATAL_ERROR "${_qt_missing_message}")
+        else()
+            message(WARNING "${_qt_missing_message}")
+        endif()
     endif()
 endif()
 

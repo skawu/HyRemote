@@ -181,7 +181,7 @@ foreach(crypto_primitive IN ITEMS "openssl/rand.h" "openssl/des.h" "openssl/cryp
     require_text(vnc_auth-crypto-only "${vnc_auth_text}" "${crypto_primitive}")
 endforeach()
 foreach(tls_symbol IN ITEMS "openssl/ssl.h" "SSL_CTX" "SSL_new" "TLS_method" "SSL_library_init")
-    forbid_text(vnc_auth-crypto-only "${vnc_auth_text}" "${tls_symbol}")
+    forbid_text(vnc-auth-crypto-only "${vnc_auth_text}" "${tls_symbol}")
 endforeach()
 
 # No transport-security build target may link SSL before an encrypted backend exists.
@@ -250,13 +250,14 @@ set(qt_one_root "${scratch}/qt-discovery-one")
 set(qt_two_root "${scratch}/qt-discovery-two")
 set(qt_rejected_root "${scratch}/qt-discovery-rejected")
 set(qt_empty_root "${scratch}/qt-discovery-empty")
+set(qt_invalid_environment_root "${scratch}/qt-discovery-invalid-environment")
 set(qt_one_kit "${qt_one_root}/6.8.3/gcc_64")
 make_qt_discovery_kit("${qt_one_kit}" kit-one)
 make_qt_discovery_kit("${qt_two_root}/6.8.3/gcc_64" kit-two-a)
 make_qt_discovery_kit("${qt_two_root}/6.8.4/gcc_64" kit-two-b)
 make_qt_discovery_kit("${qt_rejected_root}/6.8.3/wasm_32" kit-wasm)
 make_qt_discovery_kit("${qt_rejected_root}/6.8.4/gcc_arm64" kit-wrong-arch)
-file(MAKE_DIRECTORY "${qt_empty_root}")
+file(MAKE_DIRECTORY "${qt_empty_root}" "${qt_invalid_environment_root}")
 
 # An explicit --qt-prefix is used exactly as given and never second-guessed by discovery. That precedence is the
 # same on every platform, so it is asserted on every platform.
@@ -379,8 +380,8 @@ if(UNIX AND NOT APPLE)
         "sh ./build.cmd build --qt-prefix=<one-of-these>")
     forbid_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}" "phase: configure")
 
-    # An environment tier that names kits and can use none of them is reported as that, and the platform tier is not
-    # silently substituted for the caller's own choice.
+    # An environment tier that names candidates and can use none of them is reported as that, and the platform tier is
+    # not silently substituted for the caller's own choice.
     run_env_success(qt-discovery-environment-tier-broken-not-masked
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=${qt_rejected_root}/6.8.4/gcc_arm64;CMAKE_PREFIX_PATH="
         --no-config --show-config)
@@ -390,6 +391,32 @@ if(UNIX AND NOT APPLE)
         "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
     forbid_text_flat(qt-discovery-environment-tier-broken-not-masked "${HYB_TEST_OUTPUT}"
         "Qt prefix : ${qt_one_kit} (discovered)")
+
+    # Naming an environment root is itself the precedence decision even when the root is empty or stale. The platform
+    # tier contains a valid kit here on purpose: falling through would mask the caller's broken QTDIR and make the
+    # report claim a different Qt choice than the shell actually requested.
+    run_env_success(qt-discovery-invalid-environment-not-masked
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=${qt_invalid_environment_root};CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-invalid-environment-not-masked "${HYB_TEST_OUTPUT}"
+        "No Qt 6.8+ installation was found")
+    require_text_flat(qt-discovery-invalid-environment-not-masked "${HYB_TEST_OUTPUT}"
+        "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
+    require_text_flat(qt-discovery-invalid-environment-not-masked "${HYB_TEST_OUTPUT}"
+        "platform discovery was not consulted")
+    forbid_text_flat(qt-discovery-invalid-environment-not-masked "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_one_kit} (discovered)")
+
+    # The same broken explicit environment choice is fatal on an execution that needs Qt, and it fails before any
+    # configure phase can let CMake discover another kit on its own.
+    run_env_failure(qt-discovery-invalid-environment-build-fails-closed
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=${qt_invalid_environment_root};CMAKE_PREFIX_PATH="
+        build --examples "--build-dir=${scratch}/qt-discovery-invalid-environment-build")
+    require_text_flat(qt-discovery-invalid-environment-build-fails-closed "${HYB_TEST_OUTPUT}"
+        "No Qt 6.8+ installation was found")
+    require_text_flat(qt-discovery-invalid-environment-build-fails-closed "${HYB_TEST_OUTPUT}"
+        "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
+    forbid_text_flat(qt-discovery-invalid-environment-build-fails-closed "${HYB_TEST_OUTPUT}" "phase: configure")
 
     # Identity inside a tier is the canonical physical prefix, not the Qt version, the kit class or the bytes of
     # Qt6Config.cmake: Qt ships byte-identical configuration across a release, so two different prefixes with the same
@@ -445,6 +472,17 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/6.8.*/*")
     forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "C:/Qt")
     forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "mingw_64")
+
+    # A real Qt-dependent execution with no candidate at all must stop at discovery too; warning and continuing would
+    # hand authority back to find_package() and let the configure phase choose an unreported Qt from elsewhere.
+    run_env_failure(qt-discovery-none-found-build-fails-closed
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_empty_root};QTDIR=;CMAKE_PREFIX_PATH="
+        build --examples "--build-dir=${scratch}/qt-discovery-none-build")
+    require_text_flat(qt-discovery-none-found-build-fails-closed "${HYB_TEST_OUTPUT}"
+        "No Qt 6.8+ installation was found")
+    require_text_flat(qt-discovery-none-found-build-fails-closed "${HYB_TEST_OUTPUT}"
+        "Resolved tier: this platform's installed Qt layout")
+    forbid_text_flat(qt-discovery-none-found-build-fails-closed "${HYB_TEST_OUTPUT}" "phase: configure")
 
     # A kit for another target or without a desktop toolchain is rejected with its reason, not guessed at.
     run_env_success(qt-discovery-rejects-non-desktop-kit
@@ -522,7 +560,9 @@ endif()
 require_text(qt-discovery-platform-roots "${build_authority_text}" "function(hyb_qt_platform_roots")
 require_text(qt-discovery-environment-roots "${build_authority_text}" "function(hyb_qt_environment_roots")
 require_text(qt-discovery-tiers-not-pooled "${build_authority_text}" "hyb_qt_environment_roots(_qt_environment_roots)")
+require_text(qt-discovery-environment-root-is-tier "${build_authority_text}" "if(_qt_environment_roots)")
 require_text(qt-discovery-tiers-platform-fallback "${build_authority_text}" "hyb_qt_platform_roots(_qt_platform_roots)")
+require_text(qt-discovery-execution-contract "${build_authority_text}" "_qt_execution_needs_qt")
 string(FIND "${build_authority_text}" "function(hyb_qt_tier_candidates roots out_list)" _qt_candidates_start)
 if(_qt_candidates_start EQUAL -1)
     message(FATAL_ERROR "build-authority/qt-discovery-pipeline: hyb_qt_candidates is missing")
