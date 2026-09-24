@@ -41,7 +41,7 @@ void addHyRemoteQmlImportPath(QQmlApplicationEngine &engine)
     for (const QString &relativeRoot : relativeRoots) {
         const QString importRoot = QDir::cleanPath(applicationDirectory.absoluteFilePath(relativeRoot));
         const QString moduleDescriptor = importRoot + QStringLiteral("/HyRemote/qmldir");
-        if (!QFileInfo::isFile(moduleDescriptor))
+        if (!QFileInfo(moduleDescriptor).isFile())
             continue;
         engine.addImportPath(importRoot);
         return;
