@@ -33,7 +33,7 @@ Each ER defines:
 | --- | --- |
 | `INVARIANT` | Fundamental whenever the owning capability/product path exists. |
 | `CLAIM` | Required when a positive product/support claim depends on it. |
-| `CAPABILITY` | Required only when the named optional/conditional capability exists or is requested. |
+| `CAPABILITY` | Required when the named optional/conditional capability is actually implemented/available in the artifact or is positively claimed for the cell. An unavailable-capability request does **not** activate a success-path ER; its rejection/fallback behavior belongs to the applicable fail-closed ER. |
 | `MAINTENANCE` | Required only for an update/rollback edge explicitly admitted by product/version authority. |
 | `RELEASE` | Required when exact-candidate release authority names it. |
 
@@ -95,6 +95,45 @@ Therefore, until a later product decision supersedes #174:
 - stale security prose must be reconciled by its owning product/doc work, but it does not redefine the listener ER.
 
 This is evidence-system clarification of an explicit supersession, not a new listener product decision.
+
+### 1.6 Authoritative claim-obligation sets
+
+A positive compatibility/support claim must not derive its required ERs from PAC membership, risk membership, current tests or whichever suites happen to exist. Those are reverse/index relationships and cannot prove completeness.
+
+The authoritative forward relation is a reusable **Claim Obligation Profile** supplied by the owning product/compatibility authority. A profile is upstream product data and contains at minimum:
+
+```yaml
+profile_id: <stable authority-owned id>
+authority: <document/issue/version that owns the claim>
+claim_scope: <product/frontend/deployment/support family>
+base_er: [<canonical ER ids>]
+conditional_er:
+  - when: <predicate over declared material cell dimensions/capabilities>
+    require: [<canonical ER ids>]
+```
+
+Rules:
+
+1. Every positive support/compatibility claim or qualification cell must select an applicable authority-owned profile before it can be considered evidence-complete.
+2. `required_ERs(cell)` is the union of the profile's `base_er` plus every `conditional_er.require` whose predicate matches the cell's declared material dimensions/capabilities, plus any maintenance/release obligations explicitly selected by their owning authorities.
+3. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required ER.
+4. The test registry, selectors and suites consume the expanded required set; they cannot amend it to fit the available tests.
+5. Unknown profile IDs, unknown material dimensions, malformed predicates or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
+6. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded ER set must be deterministic and inspectable.
+7. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family.
+8. A material profile/conditional-rule change invalidates prior claim-completeness decisions that depended on the older required-ER set.
+
+This gives TS-6 a mechanical forward chain:
+
+```text
+positive claim/status authority
+ -> claim obligation profile
+ -> qualification cell/material dimensions
+ -> expanded required ER set
+ -> required evidence classes
+ -> valid evidence records
+ -> claim completeness
+```
 
 ---
 
@@ -179,7 +218,7 @@ This is evidence-system clarification of an explicit supersession, not a new lis
 | `ER-SECURITY-SAFE-DEFAULTS` | PAC-7 / R-SECURITY | INVARIANT | base V+P; release +R | Effective shipped **security and remote-input defaults** match current owning security/product authorities; listener bind semantics are owned separately by `ER-NETWORK-LISTENER-BINDING`/#174. | Effective security profile/input default and secret-safe diagnostic/public statements agree with current owning authority; this oracle does not choose between stale listener-default prose. | Material security/input defaults or owning security/public-statement authority change. |
 | `ER-NETWORK-LISTENER-BINDING` | PAC-7,PAC-9 / R-NETWORK,R-SECURITY,R-COMPAT | INVARIANT/CLAIM | base V+P; claim +Q | Current #174 semantics are honored: default `0.0.0.0:5921`; requested exact IPv4/interface/address/port narrowing is honored; invalid/unavailable binding is rejected; actual socket exposure never silently broadens scope. | Actual listening endpoint(s)/reachability equal #174/effective requested policy; narrowing never falls back to wildcard/loopback/other interface; invalid/unavailable address or occupied port yields intended failure with no unintended listener. | Material listener authority, configuration, address/interface resolution, bind/rebind, port handling or platform network behavior change. |
 | `ER-SECURITY-FAIL-CLOSED` | PAC-7 / R-SECURITY,R-RUNTIME | INVARIANT/CAPABILITY | base V; affected +P; claim +Q | Requested unavailable/invalid protection is rejected before a weaker usable listener/session exists. | No accepted weaker listener/session; intended error and cleanup observed. | Material security capability negotiation/listener start/config/fallback change. |
-| `ER-SECURITY-AUTH-MECHANISM` | PAC-7 / R-SECURITY,R-TRANSPORT | CAPABILITY | base V+P; claim +Q | Correct credentials establish declared auth; wrong/missing credentials do not. | Expected accept/reject session result with no downgrade. | Material auth mechanism/credential source/wire/viewer-interoperability change. |
+| `ER-SECURITY-AUTH-MECHANISM` | PAC-7 / R-SECURITY,R-TRANSPORT | CAPABILITY | base V+P; claim +Q | When authentication capability is available in the artifact/declared cell, correct credentials establish the declared authentication mechanism and wrong/missing credentials do not. | Available-authentication fixtures observe expected accept/reject session results with no downgrade; requests against artifacts without the capability are evaluated by `ER-SECURITY-FAIL-CLOSED`, not by this success-path oracle. | Material auth mechanism/credential source/wire/viewer-interoperability or capability-availability declaration change. |
 | `ER-SECURITY-SECRET-HYGIENE` | PAC-7,PAC-10 / R-SECURITY,R-OPERATE | INVARIANT/CAPABILITY | base V+P; claim +Q; release +R | Secrets are absent from normal logs, diagnostics, command surfaces and retained evidence. | Prohibited secret material/derivatives absent from declared observable outputs/artifacts. | Material logging/diagnostics/evidence capture/credential/security-mechanism change. |
 | `ER-SECURITY-ADMISSION-RESOURCE-BOUNDS` | PAC-6,PAC-7 / R-SECURITY,R-RELIABILITY,R-NETWORK | INVARIANT | base V; claim +Q | Connection/handshake/input admission stays bounded under abusive/stalled peers. | Limits/timeouts bound socket/thread/memory/input backlog and system recovers after peer removal. | Material listener admission/timeouts/client limits/input mailbox/transport state change. |
 
@@ -201,7 +240,7 @@ This is evidence-system clarification of an explicit supersession, not a new lis
 
 | ER | PAC / Risk | Activation | Evidence obligation | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support claim names material dimensions and has required valid evidence. | Claim→cell→ERs→evidence records is complete with no missing material dimension; status value is consumed from product authority. | Material claim/cell/candidate/environment/required-ER validity change. |
+| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support claim names material dimensions, selects an authority-owned Claim Obligation Profile, and has valid evidence for the profile's mechanically expanded required ER set. | `claim -> profile -> cell dimensions/capabilities -> expanded required_ERs -> evidence records` is complete; every required ER has its triggered evidence classes satisfied, no unknown profile/dimension is accepted, and status value remains owned by product authority. | Material claim/cell/candidate/environment/claim-profile/conditional-rule/required-ER validity change. |
 | `ER-COMPAT-QPA-EXACT-ABI` | PAC-9,PAC-4 / R-COMPAT,R-NATIVE | CLAIM | claim Q; release +R | QPA compatibility is exact Qt private-ABI/platform evidence, not family inference. | Claimed exact pair passes; mismatched/unqualified pair is not represented as supported. | Material exact Qt/toolchain/platform/QPA change. |
 | `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | One platform family does not substitute for another where product behavior is platform-sensitive. | Every claimed independent platform family has its own required valid cell evidence. | Material support-matrix/platform-sensitivity policy change. |
 | `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Basic Widgets/Quick success does not qualify specialized graphics/native-surface configurations. | Positive specialized claim has targeted evidence; absent evidence remains non-positive according to product authority. | Material graphics claim/capture/backend change. |
@@ -265,8 +304,9 @@ A gate does not promote evidence automatically. A hosted G4 execution stays V/P 
 5. Selectors map changed ownership/risk to ERs/suites; developers do not memorize the catalog for normal edits.
 6. New platform/Qt/viewer rows normally add cells/fixtures, not ERs.
 7. Editorial-only documentation changes do not invalidate expensive product evidence unless they materially change an executable journey, claim or oracle.
-8. TS-1 may propose ER merge/split only when product statement/failure meaning is genuinely too broad/ambiguous.
-9. Success is stronger product evidence per unit development time and maintenance effort, not maximum ER/test count.
+8. Claim Obligation Profiles are reusable/inheritable authority-owned mappings; do not copy a full ER list into every qualification cell.
+9. TS-1 may propose ER merge/split only when product statement/failure meaning is genuinely too broad/ambiguous.
+10. Success is stronger product evidence per unit development time and maintenance effort, not maximum ER/test count.
 
 ---
 
