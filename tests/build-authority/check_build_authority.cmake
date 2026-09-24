@@ -399,7 +399,7 @@ if(UNIX AND NOT APPLE)
     make_qt_discovery_kit("${qt_same_class_root_a}/6.8.3/gcc_64" same-class-config)
     make_qt_discovery_kit("${qt_same_class_root_b}/6.8.3/gcc_64" same-class-config)
     run_env_success(qt-discovery-same-class-distinct-prefixes
-        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_same_class_root_a};${qt_same_class_root_b};QTDIR=;CMAKE_PREFIX_PATH="
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_same_class_root_a}\;${qt_same_class_root_b};QTDIR=;CMAKE_PREFIX_PATH="
         --no-config --show-config)
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
         "Several Qt 6.8 kits on this machine could build HyRemote")
