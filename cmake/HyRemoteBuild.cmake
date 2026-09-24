@@ -770,15 +770,20 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         set(_qt_searched "QTDIR, CMAKE_PREFIX_PATH, /opt/Qt/6.8.*/* and \$HOME/Qt/6.8.*/*")
     endif()
 
-    # A run that only reports must stay usable on a machine with no Qt at all, so a discovery problem is a
-    # warning there. A run that is about to configure a Qt-dependent product must not go on to guess or to rely on
-    # CMake finding a kit on its own: it fails closed with the same text, so the reader is told exactly what to do
-    # instead of getting an ambiguity followed by a less specific failure from somewhere else.
+    # A report-only run is not an execution. `--show-config` returns before any phase runs (and is how the
+    # repository's own gates inspect a machine that has no Qt at all), so a discovery problem there is reported and
+    # the run still finishes. The subcommand alone cannot decide this: `--show-config` keeps the default `build`
+    # subcommand, so it would look like an execution and turn into a fatal error the report is meant to avoid.
+    #
+    # An execution, on the other hand, must not go on to guess or to rely on CMake finding a kit by itself: it fails
+    # closed with the same text, so the reader gets one clear reason at the point the decision is made instead of an
+    # ambiguity followed by a less specific failure from somewhere else.
     set(_qt_discovery_fatal FALSE)
-    if(HYB_SUBCOMMAND STREQUAL "build"
-       OR HYB_SUBCOMMAND STREQUAL "install"
-       OR HYB_SUBCOMMAND STREQUAL "test"
-       OR HYB_SUBCOMMAND STREQUAL "rebuild")
+    if(NOT HYB_SHOW_CONFIG
+       AND (HYB_SUBCOMMAND STREQUAL "build"
+            OR HYB_SUBCOMMAND STREQUAL "install"
+            OR HYB_SUBCOMMAND STREQUAL "test"
+            OR HYB_SUBCOMMAND STREQUAL "rebuild"))
         set(_qt_discovery_fatal TRUE)
     endif()
 

@@ -330,6 +330,9 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
         "sh ./build.cmd build --qt-prefix=<one-of-these>")
     forbid_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "Qt prefix : ${qt_two_root}")
+    # Report-only is not an execution: --show-config keeps the default `build` subcommand and returns before any
+    # phase runs, so an ambiguity there is reported and nothing is configured.
+    forbid_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "phase: configure")
 
     # ... and the same ambiguity fails the build path closed instead of configuring against a guessed kit. The
     # configuration asks for a Qt-dependent product (--examples), which is the shape the defect was reported in:
