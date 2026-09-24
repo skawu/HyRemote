@@ -218,6 +218,26 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deploy_helper_contract.cmake"
     )
+
+    # #382: the same-SONAME conflict between the selected consumer Qt runtime and any other root that offers
+    # that SONAME is a Linux deployment decision, so it is executed rather than reviewed. The regression builds
+    # its own two roots, which is what makes it meaningful on a host that has no distribution Qt at all and on
+    # a host that has one, without either of them changing what the case asserts.
+    if(UNIX AND NOT APPLE)
+        add_test(
+            NAME hyremote-linux-qt-runtime-conflict
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_FIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/linux-qt-runtime-conflict
+                -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
+                -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
+                -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                -DHYREMOTE_GATE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/linux-qt-runtime-conflict/check_runtime_conflict.cmake"
+        )
+        set_tests_properties(hyremote-linux-qt-runtime-conflict PROPERTIES TIMEOUT 600)
+    endif()
     add_test(
         NAME hyremote-release-readiness-release-authority-policy
         COMMAND "${CMAKE_COMMAND}"
