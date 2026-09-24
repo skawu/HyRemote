@@ -678,6 +678,19 @@ function(generic_product_fit cell consumer_target)
     endif()
     record("${cell}" "NATIVE_PLATFORM_PAYLOAD" "${_native_platform_payloads}")
 
+    # The staged payload is inspected as an ELF, not read as source: a deployed plugin that kept the runtime path it
+    # was built with resolves its own Qt and HyRemote dependencies against the build host's tree or SDK, which is how
+    # a deployment looks complete while still depending on the machine that produced it. The verifier the product-fit
+    # cells already use requires every HyRemote/Qt dependency of the payload to resolve inside the deployment.
+    record("${cell}" "GENERIC_PAYLOAD_ORIGIN_ARTIFACT" "${_generic_hyremote_payloads}")
+    run_capture("${cell}" "generic_payload_origin" "${OS_RUNTIME_PATH}"
+        "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/verify_linux_dependency_origin.py"
+        --prefix "${_deployed}" --artifact "${_generic_hyremote_payloads}")
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "deployed Generic payload resolves HyRemote/Qt dependencies outside the deployment")
+        return()
+    endif()
+
     # Acquisition and runtime isolation are proved separately, because neither implies the other: a self-contained
     # deployed tree says nothing about which CMake package the consumer resolved, and a cache audit says nothing
     # about whether the deployed application can start without the SDKs.

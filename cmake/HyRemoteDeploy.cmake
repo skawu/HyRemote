@@ -8,6 +8,27 @@ function(_hyremote_runtime_deploy_dir output_var)
     endif()
 endfunction()
 
+# One deployed-plugin relocation for every plugin this module stages. A deployed plugin directory is exactly one
+# level below the deployment's plugin root, so every deployed plugin reaches the deployed runtime the same way, and
+# Linux has to say so explicitly: the copy keeps the runtime path it was built with, and that copy is what a
+# deployed application loads. Stating it once keeps the native platform payload and the Generic payload on one
+# deployment policy instead of one per path, and the replacement stays bounded to the package-owned segment the
+# payloads reserve, so no external ELF patcher is required. Windows needs no rewrite: a deployed plugin there
+# resolves from the application's own directory, which is the same "the deployment carries what it loads" outcome.
+function(_hyremote_linux_deployed_plugin_relocation plugin_subdirectory plugin_file_name output_var)
+    set(${output_var} "" PARENT_SCOPE)
+    if(NOT UNIX OR APPLE)
+        return()
+    endif()
+    set(${output_var}
+"file(RPATH_CHANGE
+    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/${plugin_subdirectory}/${plugin_file_name}\"
+    OLD_RPATH \"$ORIGIN/../../../.\"
+    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
+)
+" PARENT_SCOPE)
+endfunction()
+
 function(_hyremote_target_is_local target output_var)
     set(_hyremote_local FALSE)
     if(TARGET "${target}")
@@ -298,17 +319,10 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
         "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_platform_plugin_name}")
 
     # The deployed platform plugin must find the deployed Qt runtime rather than the SDK it was built against - the
-    # same relocation the QPA and Generic paths perform for the same plugin.
-    set(_linux_platform_rpath_rewrite "")
-    if(UNIX AND NOT APPLE)
-        set(_linux_platform_rpath_rewrite
-"file(RPATH_CHANGE
-    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../../.\"
-    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
-)
-")
-    endif()
+    # same relocation the QPA and Generic paths perform for the same plugin, applied here through the one shared
+    # deployed-plugin relocation this module owns.
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_native_platform_plugin_name}" _linux_platform_rpath_rewrite)
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
@@ -474,14 +488,31 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 "\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
     endif()
 
-    set(_linux_plugin_rpath_rewrite "")
+    # Both plugins this path stages are copies, and both are relocated by the one shared function: the delegate
+    # replaces the platform integration, and the native platform plugin keeps the deployed application startable
+    # against the deployed runtime rather than the SDK either payload was built with.
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_qpa_plugin_name}" _linux_plugin_rpath_rewrite)
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_native_qpa_plugin_name}" _linux_native_qpa_rpath_rewrite)
+
+    # The delegate is staged the same way the Generic payload is: the copy the product installs carries the bounded
+    # anchor the relocation rewrites, while the build-tree copy would carry the linker's own runtime paths. The local
+    # target stays the fallback for a build whose payload has not been installed yet.
+    set(_qpa_installed_payload_preference "")
     if(UNIX AND NOT APPLE)
-        set(_linux_plugin_rpath_rewrite
-"file(RPATH_CHANGE
-    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../../.\"
-    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
-)\n")
+        # Same rule as the Generic payload: the copy the product installs is what a deployment stages, and the
+        # build-tree payload is only the fallback when that copy is not there yet.
+        set(_qpa_package_subdir "${HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR}")
+        if("${_qpa_package_subdir}" STREQUAL "")
+            include(GNUInstallDirs)
+            set(_qpa_package_subdir "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")
+        endif()
+        set(_qpa_installed_payload_preference
+"if(EXISTS \"\${QT_DEPLOY_PREFIX}/${_qpa_package_subdir}/${_qpa_plugin_name}\")
+    set(_hyremote_qpa_payload \"\${QT_DEPLOY_PREFIX}/${_qpa_package_subdir}/${_qpa_plugin_name}\")
+endif()
+")
     endif()
 
     # Keep the same direct Qt 6 call here as in the ordinary/QML supplemental deploy script. QPA
@@ -492,10 +523,11 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
         OUTPUT "${_qpa_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
-    \"${_qpa_plugin_file}\"
+set(_hyremote_qpa_payload \"${_qpa_plugin_file}\")
+${_qpa_installed_payload_preference}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+    \"\${_hyremote_qpa_payload}\"
     \"${_native_qpa_plugin_file}\")
-${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
+${_linux_plugin_rpath_rewrite}${_linux_native_qpa_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
@@ -577,30 +609,52 @@ function(_hyremote_generate_generic_deploy_script target output_var)
     _hyremote_linux_private_runtime_bootstrap(
         "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_platform_plugin_name}")
 
-    # The deployed platform plugin must find the deployed Qt runtime rather than the SDK it was built against, the
-    # same relocation the QPA path performs for its delegate.
-    set(_linux_platform_rpath_rewrite "")
+    # Two payloads are copied into this deployment and both are relocated by the one shared deployed-plugin
+    # relocation: the native platform plugin that keeps the application on its own platform identity, and the
+    # Generic payload the application actually loads. A generic payload that kept the runtime path it was built
+    # with resolved its own Qt and runtime dependencies outside the deployment, so the deployment only looked
+    # complete on the machine that had built it.
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_native_platform_plugin_name}" _linux_platform_rpath_rewrite)
+    _hyremote_linux_deployed_plugin_relocation(
+        generic "${_generic_plugin_name}" _linux_generic_rpath_rewrite)
+
+    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
+
+    # A deployment stages the payload the product installs, not whatever file the build tree happens to hold: the
+    # installed copy carries the runtime path the package declares, which is exactly the bounded anchor the shared
+    # relocation above rewrites. Staging the build-tree copy instead carried the linker's own entries - including the
+    # SDK the payload was built against - into the deployment, so a tree that looked complete still resolved against
+    # the machine that produced it. A build whose own payload is not installed yet keeps the local target as its
+    # fallback rather than turning a missing install step into a deployment failure.
+    set(_generic_installed_payload_preference "")
     if(UNIX AND NOT APPLE)
-        set(_linux_platform_rpath_rewrite
-"file(RPATH_CHANGE
-    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../../.\"
-    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
-)
+        # The package variable states this layout where the package defines it; the fallback mirrors the install
+        # layout the plugin target installs to, so a build whose examples were configured before the install rules
+        # still stages the payload the product installs instead of the one the build tree holds.
+        set(_generic_package_subdir "${HYREMOTE_PACKAGE_GENERIC_PLUGIN_SUBDIR}")
+        if("${_generic_package_subdir}" STREQUAL "")
+            include(GNUInstallDirs)
+            set(_generic_package_subdir "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/generic")
+        endif()
+        set(_generic_installed_payload_preference
+"if(EXISTS \"\${QT_DEPLOY_PREFIX}/${_generic_package_subdir}/${_generic_plugin_name}\")
+    set(_hyremote_generic_payload \"\${QT_DEPLOY_PREFIX}/${_generic_package_subdir}/${_generic_plugin_name}\")
+endif()
 ")
     endif()
 
-    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
     set(_generic_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-generic-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_generic_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+set(_hyremote_generic_payload \"${_generic_plugin_file}\")
+${_generic_installed_payload_preference}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
     \"${_native_platform_plugin_file}\")
 ${_linux_platform_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/generic\" TYPE FILE FILES
-    \"${_generic_plugin_file}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
+    \"\${_hyremote_generic_payload}\")
+${_linux_generic_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
