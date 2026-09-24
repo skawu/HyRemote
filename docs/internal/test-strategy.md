@@ -184,7 +184,7 @@ Remote control covers, where enabled:
 - committed text when transport semantics support it;
 - focus/routing/drag/held state.
 
-Disconnect, stop, target destruction, policy disable and teardown must return synthetic input state to neutral and forbid late terminal delivery.
+Held input is ownership-aware. A viewer disconnect removes only that viewer's contribution; if another viewer still holds the same logical key/button, the target remains held. Global neutral state is required when the final holder leaves or when stop, target destruction, policy disable or whole-session teardown removes all remote contributions. Forbidden late terminal delivery must remain zero.
 
 ### 3.4 PAC-4 — Frontend Equivalence
 
@@ -197,7 +197,7 @@ Unique frontend responsibilities are bounded:
 | Generic | Qt-only linkage, generic-plugin activation, native platform preservation |
 | QPA | platform factory/trampoline, exact private ABI, native delegate preservation/interception |
 
-Common frame lifetime, queue bounds, listener policy, security policy, generic input neutrality and scheduling belong to shared layers rather than four frontend copies.
+Common frame lifetime, queue bounds, listener policy, security policy, generic input ownership/cleanup and scheduling belong to shared layers rather than four frontend copies.
 
 ### 3.5 PAC-5 — Deployability
 
@@ -250,6 +250,8 @@ requested policy
 ```
 
 Failure is fail-closed: no silent downgrade, partial listener, weaker fallback or secret exposure.
+
+Listener exposure is also part of security truth: an exact requested address/interface/port must be honored and must not silently broaden to a wildcard listener.
 
 Mechanism-specific authentication/encryption/certificate tests sit below this product policy rather than defining it.
 
@@ -454,9 +456,10 @@ Examples:
 | QML frontend | QML mapping + QML vertical P | QPA private-ABI qualification |
 | QPA/native delegate | QPA V + relevant native/deploy cells | QML property tests |
 | deploy helper/runtime origin | package/deploy V + clean Win/Linux P | full Core replay |
+| listener/bind policy | listener V + affected network/product path | unrelated graphics matrix |
 | security | security/listener/transport evidence | unrelated graphics matrix |
 | diagnostics | effective-state V + representative installed P | broad graphics qualification |
-| docs only | docs/product-contract consistency | runtime GUI/deploy tests |
+| docs only | docs/product-contract consistency | runtime GUI/deploy tests unless executable journey/claim materially changed |
 
 ---
 
@@ -512,7 +515,7 @@ native baseline
  -> remote-control-enabled where supported
 ```
 
-Confirm local behavior, remote behavior, reconnect, input cleanup, Runtime stop and slow-viewer isolation.
+Confirm local behavior, remote behavior, reconnect, input ownership/cleanup, Runtime stop and slow-viewer isolation.
 
 ### 9.3 Viewer interoperability
 
@@ -520,9 +523,11 @@ Viewer claims are explicit and versioned. Relevant evidence covers handshake, fr
 
 One working viewer does not imply every RFB client.
 
-### 9.4 Network impairment
+### 9.4 Network impairment and listener exposure
 
-Representative profiles include direct LAN, added RTT, bandwidth cap, bounded loss, slow reader, stalled handshake, abrupt disconnect and reconnect storm.
+Listener evidence proves requested address/interface/port policy is actually reflected in socket exposure and reachability, including rejection of unavailable/invalid narrowing requests without unintended wildcard fallback.
+
+Representative impairment profiles include direct LAN, added RTT, bandwidth cap, bounded loss, slow reader, stalled handshake, abrupt disconnect and reconnect storm.
 
 Results are judged by correctness, boundedness, freshness, recovery, native UI health and interaction latency — not merely TCP survival.
 
