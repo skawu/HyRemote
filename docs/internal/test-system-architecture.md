@@ -28,7 +28,7 @@ This architecture defines:
 - product-risk propagation and selection;
 - suite/case identity rules;
 - execution environments and gates;
-- qualification cells and supported maintenance edges;
+- qualification cells, authority-owned claim-obligation profiles and supported maintenance edges;
 - evidence-record identity, oracle and invalidation semantics;
 - native/deployment/viewer/network/security/reliability/performance/operability evidence placement;
 - development-velocity and maintenance-cost budgets;
@@ -70,10 +70,11 @@ Rules:
 1. Product authorities define **what HyRemote promises**.
 2. Test Strategy defines **which product contracts and evidence classes matter**.
 3. This document defines **how evidence is structured, selected and retained**.
-4. The ER Catalog defines stable **requirement identities, oracles and invalidation**.
+4. The ER Catalog defines stable **requirement identities, activation/evidence-obligation semantics, oracles, invalidation and the Claim Obligation Profile schema/rules used to derive a positive claim's required ER set**.
 5. Current tests implement those requirements incrementally; current test names do not redefine them.
 6. The test system consumes compatibility status vocabulary from `docs/compatibility.md`; it never creates a parallel status enum.
 7. When an explicit newer product authority supersedes older prose/test assumptions, TS-1 reports the older assertion as authority drift rather than choosing product truth from the current test inventory.
+8. PAC/risk membership and current suite coverage are reverse/index relationships; they never substitute for the authority-owned forward `claim -> obligation profile -> cell -> required ERs` relation.
 
 ---
 
@@ -108,6 +109,29 @@ Product Acceptance Contract (PAC)
 ```
 
 The ER Catalog is the identity authority for ER IDs. Architecture examples, metadata and later TS-1/TS-2 mappings may only reference IDs that exist there.
+
+For **positive claim completeness**, the forward relation is separate from the reverse ER/PAC graph:
+
+```text
+product / compatibility claim authority
+            |
+            v
+   Claim Obligation Profile
+            |
+            v
+qualification cell + material dimensions/capabilities
+            |
+            v
+    expanded required ER set
+            |
+            v
+ required evidence classes + valid records
+            |
+            v
+       claim completeness
+```
+
+The owning product/compatibility authority selects the applicable reusable profile. The ER Catalog defines the profile schema and fail-closed expansion rules. TS-2 may implement storage/parsing but cannot infer a profile from current tests, PAC overlap or available suite coverage.
 
 ### 3.1 Product Acceptance Contracts
 
@@ -278,6 +302,8 @@ Principles:
 - selectors consume metadata instead of test-name folklore;
 - adding one case must not imply one new Issue, CTest identity or CI job.
 
+Claim Obligation Profiles are **not suite metadata**. They are upstream claim-policy data owned by product/compatibility authority; suite metadata may reference the ERs it proves but cannot declare a positive claim complete by omitting required ERs.
+
 ---
 
 ## 7. Change-impact and selection
@@ -359,7 +385,7 @@ Selector invariants:
 - selection records why expensive suites were included;
 - selectors themselves have deterministic self-tests.
 
-High-propagation changes include public API, Shared Runtime state/security semantics, package/export/deploy resolution, QPA private ABI, transport parser/security framing, diagnostics schema, maintenance contract, compatibility claims and selector metadata itself.
+High-propagation changes include public API, Shared Runtime state/security semantics, package/export/deploy resolution, QPA private ABI, transport parser/security framing, diagnostics schema, maintenance contract, compatibility claims, claim-obligation profiles and selector metadata itself.
 
 ---
 
@@ -396,6 +422,7 @@ Development velocity also includes **maintenance/cognitive cost**:
 - ordinary PR authors do not maintain qualification ledgers;
 - automated runs produce automated records;
 - suite metadata is inherited;
+- reusable Claim Obligation Profiles prevent per-cell ER-list duplication;
 - no per-case Issue/job/CTest explosion;
 - editorial changes do not invalidate unrelated expensive evidence.
 
@@ -439,6 +466,10 @@ Do not execute the full Cartesian product. Use:
 - anchor cells;
 - interaction-risk cells;
 - representative/pairwise cells.
+
+Every positive qualification/support cell also references an applicable authority-owned Claim Obligation Profile. The cell's declared material dimensions/capabilities deterministically expand that profile into `required_ERs(cell)` using the ER Catalog rules. Unknown/no-applicable profiles, unknown material dimensions or malformed predicates are incomplete/fail-closed. PAC/risk membership does not infer missing obligations, and the registry cannot shrink the set to match existing tests.
+
+Profiles are reusable/inheritable across claim families, so adding another Qt/OS/viewer cell normally adds dimension data rather than another copied ER list.
 
 QPA exact private ABI remains exact Qt patch/platform evidence; public-Qt frontends may use the product authority's declared family/range rules.
 
@@ -534,6 +565,8 @@ requested profile
  -> only then listener/session allowed
 ```
 
+A success-path mechanism ER is active only for a capability actually available in the artifact/declared positive cell. Requests for unavailable protection are evaluated by the applicable fail-closed ER; requesting a missing capability never creates an impossible success obligation.
+
 View/control policy is also enforced behavior: view-only input attempts must be dropped, not merely configured as disabled.
 
 Performance's primary product metric is remote interaction latency:
@@ -594,7 +627,7 @@ Hand-authored records are reserved for genuinely manual/physical/human-observati
 
 An evidence record remains historical truth for exactly what it measured. Invalidation means it cannot satisfy a newer claim without re-execution or an explicit equivalence decision by the owning product/release authority.
 
-Typical invalidators: protected behavior/source change, public package/deploy metadata, Qt/toolchain/native/graphics anchor, named viewer/fixture revision, performance workload/reference host, product support policy, maintenance source/target identity and exact candidate/artifact for R evidence.
+Typical invalidators: protected behavior/source change, public package/deploy metadata, Qt/toolchain/native/graphics anchor, named viewer/fixture revision, performance workload/reference host, product support policy, claim-obligation profile/rule, maintenance source/target identity and exact candidate/artifact for R evidence.
 
 Editorial spelling/formatting/translation/unrelated prose is not an invalidator unless it materially changes an executable journey, product claim or oracle.
 
@@ -661,7 +694,7 @@ Report unmapped ER gaps. **No test edits or scheduling changes.**
 
 ### M2 / TS-2 — Metadata/registry foundation
 
-Introduce minimal machine-readable mapping while keeping current behavior comparable. ER Catalog remains identity authority.
+Introduce minimal machine-readable mapping while keeping current behavior comparable. ER Catalog remains identity authority. Claim Obligation Profiles are implemented as authority-owned input data; the registry validates/expands them but does not invent or weaken them.
 
 ### M3 / TS-3 — Evidence-driven consolidation
 
@@ -677,7 +710,7 @@ Create reusable clean acquisition/install/deploy/isolation/launch/viewer/diagnos
 
 ### M6 / TS-6 — Qualification/evidence framework
 
-**Complete before V0.4 entry.** Provide qualification cells, maintenance-edge references, environment/fixture identity, ER/oracle/invalidation integration, automatic records, physical/manual record schema, exact artifact binding and compatibility traceability.
+**Complete before V0.4 entry.** Provide qualification cells, authority-owned Claim Obligation Profile expansion, maintenance-edge references, environment/fixture identity, ER/oracle/invalidation integration, automatic records, physical/manual record schema, exact artifact binding and compatibility traceability.
 
 ### M7 / TS-7 — Domain-programme integration
 
@@ -708,6 +741,7 @@ All machinery needed to represent and collect the declared GA matrix must alread
 - risk selectors/gates needed by qualification;
 - product-path orchestration;
 - qualification cells/environment identity;
+- authority-owned claim-obligation profile expansion to deterministic required-ER sets;
 - automatic/manual evidence record model;
 - exact candidate binding;
 - domain-programme evidence wiring for compatibility, physical/native, security, reliability, performance and real-world evidence.
@@ -728,11 +762,11 @@ Consume qualified evidence and freeze the long-lived support contract. Final GA 
 | --- | --- | --- | --- | --- |
 | TS-0 | strategy + architecture + ER catalog freeze | #393 | accepted design; no test changes | now, non-blocking V0.2 |
 | TS-1 | current inventory semantic/cost audit | TS-0 | read-only mapping + gaps | after accepted design |
-| TS-2 | logical metadata/registry | TS-1 | ER/risk/suite/gate map | V0.3 incremental |
+| TS-2 | logical metadata/registry | TS-1 | ER/risk/suite/gate + claim-profile map | V0.3 incremental |
 | TS-3 | suite/identity consolidation | TS-1/2 | parameterized suites + governance separation | V0.3 bounded PRs |
 | TS-4 | risk selector + G0–G3 | TS-2 | execution manifest + budgets | V0.3 before matrix growth |
 | TS-5 | product-path harness | TS-2 + productized paths | clean reusable journeys | V0.3 self-service |
-| TS-6 | qualification/evidence records | TS-2/5 + product matrix | cells, automatic records, support traceability | complete before V0.4 |
+| TS-6 | qualification/evidence records | TS-2/5 + product matrix | cells, claim-profile expansion, automatic records, support traceability | complete before V0.4 |
 | TS-7 | domain-programme integration | TS-6 + existing authorities | compatibility/physical/security/reliability/perf/real-world evidence wiring | complete before V0.4 |
 | TS-8 | continuous test-system health | TS-4 onward | runtime/flake/duplicate/evidence governance | ongoing, including V0.4/V1 |
 
@@ -758,7 +792,7 @@ No TS work package enters `release-trains.json` merely because it exists; normal
 | #335 | self-service diagnostics capability |
 | #165 | candidate freeze/change control |
 | #95 / release authority | release/version mechanics |
-| `docs/compatibility.md` | compatibility status vocabulary/public claims |
+| `docs/compatibility.md` | compatibility status vocabulary/public claims and claim-family obligation profile selection |
 
 The test architecture supplies common evidence plumbing and execution economics; it does not take scope ownership away from these authorities.
 
@@ -779,14 +813,15 @@ TS-0 is complete only when review can answer, independently of current CTest cou
 9. How are clean deployment and runtime origin proved?
 10. How are native claims kept separate from hosted evidence?
 11. How are viewer/network/security/performance/reliability dimensions handled without Cartesian explosion?
-12. How are diagnostics and maintenance paths proved without inventing product promises?
-13. How are automated records produced without manual PR bookkeeping?
-14. How is exact-candidate release binding preserved?
-15. How are flaky/infrastructure failures distinguished from product failures?
-16. How does migration avoid a big-bang rewrite?
-17. How does the system protect developer wall time **and** maintenance/cognitive cost?
-18. Are TS-6 and TS-7 complete before V0.4 so V0.4 remains qualification-only?
-19. What must be measured before declaring the new test system better than the current one?
+12. How does a positive support claim deterministically obtain its authority-owned required ER set without inferring from current tests/PAC overlap?
+13. How are diagnostics and maintenance paths proved without inventing product promises?
+14. How are automated records produced without manual PR bookkeeping?
+15. How is exact-candidate release binding preserved?
+16. How are flaky/infrastructure failures distinguished from product failures?
+17. How does migration avoid a big-bang rewrite?
+18. How does the system protect developer wall time **and** maintenance/cognitive cost?
+19. Are TS-6 and TS-7 complete before V0.4 so V0.4 remains qualification-only?
+20. What must be measured before declaring the new test system better than the current one?
 
 Until these are accepted, broad current-test migration must not begin.
 
