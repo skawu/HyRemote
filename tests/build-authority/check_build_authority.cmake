@@ -355,6 +355,75 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-environment-first "${HYB_TEST_OUTPUT}"
         "Qt prefix : ${qt_one_kit} (discovered)")
 
+    # #389: the precedence is a frozen order of tiers - CLI/build.yml explicit, then the environment, then the
+    # platform's layout - and the tiers must not be merged into one pool. An explicit choice in the environment wins
+    # over anything the platform layout adds, and no platform kit may turn it into an ambiguity.
+    run_env_success(qt-discovery-environment-beats-platform
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=${qt_one_kit};CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-environment-beats-platform "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_one_kit} (discovered)")
+    forbid_text_flat(qt-discovery-environment-beats-platform "${HYB_TEST_OUTPUT}"
+        "Several Qt 6.8 kits")
+
+    # Two usable kits *inside the environment tier* are an ambiguity inside that tier: it fails closed there, names the
+    # tier it resolved, and never falls through to the platform.
+    run_env_success(qt-discovery-environment-tier-ambiguous
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_rejected_root};QTDIR=${qt_two_root}/6.8.3/gcc_64;CMAKE_PREFIX_PATH=${qt_two_root}/6.8.4/gcc_64"
+        --no-config --show-config)
+    require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
+        "Several Qt 6.8 kits on this machine could build HyRemote")
+    require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
+        "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
+    require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
+        "sh ./build.cmd build --qt-prefix=<one-of-these>")
+    forbid_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}" "phase: configure")
+
+    # An environment tier that names kits and can use none of them is reported as that, and the platform tier is not
+    # silently substituted for the caller's own choice.
+    run_env_success(qt-discovery-environment-tier-broken-not-masked
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=${qt_rejected_root}/6.8.4/gcc_arm64;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-environment-tier-broken-not-masked "${HYB_TEST_OUTPUT}"
+        "none of them can be used from this shell")
+    require_text_flat(qt-discovery-environment-tier-broken-not-masked "${HYB_TEST_OUTPUT}"
+        "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
+    forbid_text_flat(qt-discovery-environment-tier-broken-not-masked "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_one_kit} (discovered)")
+
+    # Identity inside a tier is the canonical physical prefix, not the Qt version, the kit class or the bytes of
+    # Qt6Config.cmake: Qt ships byte-identical configuration across a release, so two different prefixes with the same
+    # version, the same class and identical configuration are genuinely two candidates and fail closed.
+    set(qt_same_class_root_a "${scratch}/qt-discovery-same-class-a")
+    set(qt_same_class_root_b "${scratch}/qt-discovery-same-class-b")
+    make_qt_discovery_kit("${qt_same_class_root_a}/6.8.3/gcc_64" same-class-config)
+    make_qt_discovery_kit("${qt_same_class_root_b}/6.8.3/gcc_64" same-class-config)
+    run_env_success(qt-discovery-same-class-distinct-prefixes
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_same_class_root_a};${qt_same_class_root_b};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
+        "Several Qt 6.8 kits on this machine could build HyRemote")
+    require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
+        "${qt_same_class_root_a}/6.8.3/gcc_64")
+    require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
+        "${qt_same_class_root_b}/6.8.3/gcc_64")
+    forbid_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}" "phase: configure")
+
+    # The same physical kit reached twice is not a false ambiguity: a symbolic alias resolves to one canonical prefix,
+    # so one kit stays one candidate and is selected.
+    set(qt_alias_root "${scratch}/qt-discovery-alias")
+    file(MAKE_DIRECTORY "${qt_alias_root}/6.8.3")
+    file(CREATE_LINK "${qt_one_kit}" "${qt_alias_root}/6.8.3/gcc_64" SYMBOLIC)
+    if(EXISTS "${qt_alias_root}/6.8.3/gcc_64/lib/cmake/Qt6/Qt6Config.cmake")
+        run_env_success(qt-discovery-canonical-alias-not-ambiguous
+            "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_alias_root};QTDIR=;CMAKE_PREFIX_PATH="
+            --no-config --show-config)
+        require_text_flat(qt-discovery-canonical-alias-not-ambiguous "${HYB_TEST_OUTPUT}"
+            "Qt prefix : ${qt_alias_root}/6.8.3/gcc_64 (discovered)")
+        forbid_text_flat(qt-discovery-canonical-alias-not-ambiguous "${HYB_TEST_OUTPUT}"
+            "Several Qt 6.8 kits")
+    endif()
+
     # --show-config reports without requiring a kit or a toolchain: it still exits 0 with no compiler on PATH,
     # and the kit it can see is reported as unusable with the reason instead of being adopted.
     run_env_success(qt-discovery-show-config-without-toolchain
@@ -447,11 +516,14 @@ if(NOT _hyb_phase_verbose_count EQUAL 1)
         "exactly the command echo may be gated, or a normal run stops being able to show that it is working")
 endif()
 
-# One Qt discovery pipeline: the platform-specific part is isolated to the roots, and the policy that follows -
-# validation, classification, the unique-candidate rule, the ambiguity refusal - carries no platform branch.
-require_text(qt-discovery-roots-function "${build_authority_text}" "function(hyb_qt_candidate_roots")
-require_text(qt-discovery-roots-shared "${build_authority_text}" "hyb_qt_candidate_roots(_roots)")
-string(FIND "${build_authority_text}" "function(hyb_qt_candidates out_list)" _qt_candidates_start)
+# One Qt discovery pipeline: the platform-specific part is isolated to the two roots functions, and the policy
+# that follows - validation, identity, classification, the unique-candidate rule, the ambiguity refusal -
+# carries no platform branch. The tiers are resolved one at a time and never merged into a single pool.
+require_text(qt-discovery-platform-roots "${build_authority_text}" "function(hyb_qt_platform_roots")
+require_text(qt-discovery-environment-roots "${build_authority_text}" "function(hyb_qt_environment_roots")
+require_text(qt-discovery-tiers-not-pooled "${build_authority_text}" "hyb_qt_environment_roots(_qt_environment_roots)")
+require_text(qt-discovery-tiers-platform-fallback "${build_authority_text}" "hyb_qt_platform_roots(_qt_platform_roots)")
+string(FIND "${build_authority_text}" "function(hyb_qt_tier_candidates roots out_list)" _qt_candidates_start)
 if(_qt_candidates_start EQUAL -1)
     message(FATAL_ERROR "build-authority/qt-discovery-pipeline: hyb_qt_candidates is missing")
 endif()

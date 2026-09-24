@@ -607,10 +607,12 @@ endfunction()
 # one install root per platform whose version directories hold one kit per compiler family. Everything else about
 # discovery - the Qt6Config.cmake validation, the classification, the unique-candidate rule, the ambiguity refusal
 # and the diagnostics - is the same on every platform.
-function(hyb_qt_candidate_roots out_roots)
+# The environment tier: the roots this shell was explicitly told about. A value here is a choice the caller made, so
+# the tier is resolved on its own - a kit the platform layout happens to add must never turn an explicit choice into an
+# ambiguity, and a broken explicit choice must not be silently replaced by one the caller did not name.
+function(hyb_qt_environment_roots out_roots)
     set(_roots "")
 
-    # 1. the environment already names a Qt, so use it before looking anywhere else
     foreach(_env IN ITEMS QTDIR CMAKE_PREFIX_PATH)
         # $ENV{} takes a literal name: CMake does not expand a variable inside it, and doing so is the bad variable
         # reference the repository's own parsing gate reports.
@@ -620,6 +622,7 @@ function(hyb_qt_candidate_roots out_roots)
         elseif(_env STREQUAL "CMAKE_PREFIX_PATH")
             set(_env_value "$ENV{CMAKE_PREFIX_PATH}")
         endif()
+
         if(NOT _env_value STREQUAL "")
             set(_paths "${_env_value}")
             string(REPLACE "\\" "/" _paths "${_paths}")
@@ -632,13 +635,22 @@ function(hyb_qt_candidate_roots out_roots)
         endif()
     endforeach()
 
-    # 2. the platform's own standard layout, so that a developer who installed a qualified kit the normal way does
-    #    not have to export an environment variable first.
-    #
-    #    HYREMOTE_QT_DISCOVERY_ROOTS replaces those install roots for a caller that has to place the kits somewhere
-    #    else - the repository's own regression does exactly that, so it exercises this rule instead of a copy of it.
-    #    The version-directory globbing and the validation are the same either way, and nothing here writes an
-    #    absolute path into the repository.
+    set(${out_roots} "${_roots}" PARENT_SCOPE)
+endfunction()
+
+# The platform tier: this platform's own standard install layout, so that a developer who installed a qualified kit the
+# normal way does not have to export an environment variable first.
+#
+# This is the only platform-specific part of discovery and it contributes roots only: the validation, the
+# classification, the unique-candidate rule, the ambiguity refusal and the diagnostics are shared by both tiers.
+#
+# HYREMOTE_QT_DISCOVERY_ROOTS replaces those install roots for a caller that has to place the kits somewhere else - the
+# repository's own regression does exactly that, so it exercises this rule instead of a copy of it. The version
+# directory globbing and the validation are the same either way, and nothing here writes an absolute path into the
+# repository.
+function(hyb_qt_platform_roots out_roots)
+    set(_roots "")
+
     if(WIN32)
         set(_install_roots "C:/Qt")
     else()
@@ -663,36 +675,31 @@ function(hyb_qt_candidate_roots out_roots)
     set(${out_roots} "${_roots}" PARENT_SCOPE)
 endfunction()
 
-function(hyb_qt_candidates out_list)
+# The candidates of one tier, with the one rule that decides what "the same kit" means.
+#
+# Two roots are one kit only when they resolve to the same physical directory. A symlink, a second spelling of the same
+# path or one kit reachable through two environment variables is therefore not a false ambiguity, while two genuinely
+# different prefixes stay two candidates even when the Qt version, the kit class and the bytes of their Qt6Config.cmake
+# are identical: Qt ships byte-identical configuration files across the kits of a release, so file content cannot
+# decide identity, and neither can a version number or a directory name.
+function(hyb_qt_tier_candidates roots out_list)
     set(_candidates "")
-    hyb_qt_candidate_roots(_roots)
+    set(_seen_prefixes "")
 
-    list(REMOVE_DUPLICATES _roots)
-    set(_seen_kits "")
-    foreach(_root IN LISTS _roots)
+    foreach(_root IN LISTS roots)
         if(NOT EXISTS "${_root}/lib/cmake/Qt6/Qt6Config.cmake")
             continue()
         endif()
-        # One kit installed in two places is one kit: a developer who copies a kit must not turn a working
-        # discovery into an ambiguity. Two kits whose configuration differs stay two candidates, so the
-        # ambiguity this reports is still a real choice between two different kits.
-        #
-        # The identity has to name the kit, not the Qt version. Qt ships byte-identical Qt6Config.cmake files in
-        # every kit of a release, so hashing that file alone answers "which Qt version is this" and not "which
-        # kit is this". That made the kits of one Qt version look like copies of whichever one the scan reached
-        # first: the siblings - usable ones included - were dropped as duplicates, and a run could then report
-        # that no kit on the machine could be used while its own configure went on to build with one of them.
-        # The target arch and compiler family the kit's directory name states are what actually differ between
-        # kits, so they are part of the identity. Two copies of one kit share both and are still collapsed.
-        hyb_qt_kit_class("${_root}" _class)
-        file(SHA1 "${_root}/lib/cmake/Qt6/Qt6Config.cmake" _kit_config_hash)
-        set(_kit_identity "${_kit_config_hash}|${_class}")
-        if(_kit_identity IN_LIST _seen_kits)
+        file(REAL_PATH "${_root}" _canonical)
+        string(REGEX REPLACE "[/]+$" "" _canonical "${_canonical}")
+        if(_canonical IN_LIST _seen_prefixes)
             continue()
         endif()
-        list(APPEND _seen_kits "${_kit_identity}")
+        list(APPEND _seen_prefixes "${_canonical}")
+        hyb_qt_kit_class("${_root}" _class)
         list(APPEND _candidates "${_root}|${_class}")
     endforeach()
+
     set(${out_list} "${_candidates}" PARENT_SCOPE)
 endfunction()
 
@@ -711,7 +718,19 @@ if(HYB_SUBCOMMAND STREQUAL "build"
 endif()
 
 if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
-    hyb_qt_candidates(_qt_candidates)
+    # Tiers are resolved in the frozen order, one at a time, and never merged into a single pool: an explicit choice
+    # in the environment must not become an ambiguity because of a kit the platform layout adds, and a broken
+    # explicit choice must not be quietly replaced by one the caller did not name. The platform tier is therefore
+    # consulted only when the environment tier named no kit at all, and both tiers then run the same shared rule.
+    hyb_qt_environment_roots(_qt_environment_roots)
+    hyb_qt_tier_candidates("${_qt_environment_roots}" _qt_candidates)
+    if(_qt_candidates)
+        set(_qt_tier_name "environment (QTDIR / CMAKE_PREFIX_PATH)")
+    else()
+        hyb_qt_platform_roots(_qt_platform_roots)
+        hyb_qt_tier_candidates("${_qt_platform_roots}" _qt_candidates)
+        set(_qt_tier_name "this platform's installed Qt layout")
+    endif()
 
     if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "ARM64|AARCH64")
         set(_qt_host_arch "arm64")
@@ -806,6 +825,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                 message(FATAL_ERROR
                     "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
                     "about the compiler. Choose one explicitly:\n"
+                    "Resolved tier: ${_qt_tier_name}\n"
                     "\n"
                     "  ${_qt_choose_command}\n"
                     "\n"
@@ -814,6 +834,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                 message(WARNING
                     "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
                     "about the compiler. Choose one explicitly:\n"
+                    "Resolved tier: ${_qt_tier_name}\n"
                     "\n"
                     "  ${_qt_choose_command}\n"
                     "\n"
@@ -828,6 +849,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             "Qt 6.8 kits were found on this machine, but none of them can be used from this shell as it stands. "
             "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
             "developer environment first:\n"
+            "Resolved tier: ${_qt_tier_name}\n"
             "\n"
             "  ${_qt_choose_command}\n"
             "\n"
