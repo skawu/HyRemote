@@ -6,6 +6,14 @@ qt_add_executable(hyremote-qml-basic
     ../../logo/hyremote-branding.qrc
 )
 
+# The module this application loads is its own, and it loads it by name: main.cpp calls
+# loadFromModule("HyRemoteExample", "Main"). That lookup goes through the QML module system, so the module has to be
+# laid out the way a by-name lookup expects. QTP0001 is the policy that decides the resource prefix: unset, it keeps
+# the legacy `:/` prefix, the module is built under `:/HyRemoteExample/` and a by-name type lookup fails with
+# `Module "HyRemoteExample" contains no type named "Main"` even though both the qmldir and Main.qml are present. The
+# policy is set to NEW here, exactly as the installed-consumer test and the HyRemote module itself already do.
+qt_policy(SET QTP0001 NEW)
+
 qt_add_qml_module(hyremote-qml-basic
     URI HyRemoteExample
     VERSION 1.0
