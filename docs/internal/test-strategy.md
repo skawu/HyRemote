@@ -14,7 +14,7 @@ A design document, test program, workflow, checklist or empty test registration 
 
 HyRemote is a low-intrusion remote-access Runtime / SDK for existing Qt applications. Its product goal is:
 
-> Add reliable, secure and responsive remote viewing and optional remote control to an existing Qt application with minimal integration burden, while preserving the application's native local display, local input, lifecycle and platform behavior, and without exposing remote-desktop implementation mechanics as normal application configuration.
+> Add reliable, secure, responsive, diagnosable and maintainable remote viewing and optional remote control to an existing Qt application with minimal integration burden, while preserving the application's native local display, local input, lifecycle and platform behavior, and without exposing remote-desktop implementation mechanics as normal application configuration.
 
 The test system therefore exists to prove product outcomes, not merely source-code correctness.
 
@@ -25,7 +25,7 @@ The stable application model is one Core, one Shared Runtime and four peer integ
 - Generic Plugin;
 - QPA.
 
-Widgets and Qt Quick are Runtime target/surface dimensions, not separate products. RFB is the current correctness transport, not the definition of the HyRemote product. Qt 6.8.3, qwindows/qxcb, CPU-readable capture and later graphics/acceleration backends are qualification/implementation choices beneath the product contracts.
+Widgets and Qt Quick are Runtime target/surface dimensions, not separate products. RFB is the current correctness transport, not the definition of the HyRemote product. Qt versions, qwindows/qxcb/Wayland/EGLFS, CPU-readable capture and later graphics/acceleration backends are qualification/implementation choices beneath the product contracts.
 
 A future transport, capture backend, graphics path, embedded platform or hardware acceleration path must preserve the same product contracts unless the product contract is intentionally changed by an explicit architecture/product decision.
 
@@ -69,7 +69,7 @@ A new input combination, negative configuration or release profile is normally a
 
 ### 2.7 Support claims require exact evidence
 
-A `Supported`/`Limited` compatibility row requires explicit qualification evidence for the exact declared product/environment boundary. A nearby Qt patch, another OS, a similar viewer, a different graphics backend or a headless CI result does not expand the support claim by inference.
+A `Supported`/`Qualified`/other positive compatibility row requires explicit qualification evidence for the exact declared product/environment boundary. A nearby Qt patch, another OS, a similar viewer, a different graphics backend or a headless CI result does not expand the support claim by inference.
 
 ### 2.8 Local/native behavior is part of the product
 
@@ -83,9 +83,13 @@ A failing suite must identify the violated product contract/case and provide eno
 
 Runtime, flake rate, duplicate coverage, obsolete cases and support-matrix value are reviewed over time. Tests can be consolidated, moved to a different gate or removed when another cheaper/stronger proof supersedes them. The existence of a historical test is not by itself a reason for permanent execution.
 
+### 2.11 Evidence has an explicit oracle and invalidation rule
+
+Every retained product evidence requirement must say **how PASS/FAIL is decided** and **what changes make previous evidence no longer applicable**. A screenshot, log, benchmark number or manual observation is not self-interpreting evidence without a declared oracle/pass condition. Qualification evidence remains historical truth for the exact artifact/environment it measured; release acceptance follows the stricter exact-candidate rules of the release authority.
+
 ## 3. Product Acceptance Contracts (PAC)
 
-The highest-level test taxonomy is nine Product Acceptance Contracts. Every product-quality test maps to at least one PAC.
+The highest-level test taxonomy is ten Product Acceptance Contracts. Every product-quality test maps to at least one PAC.
 
 | Contract | Product promise | Typical failure meaning |
 | --- | --- | --- |
@@ -98,6 +102,7 @@ The highest-level test taxonomy is nine Product Acceptance Contracts. Every prod
 | **PAC-7 Security Truth** | Requested security policy is either actually established or fails closed; no silent downgrade or secret leak occurs. | Security behavior is weaker than the product claim. |
 | **PAC-8 Responsiveness & Efficiency** | Remote interaction is fresh/responsive while native Qt behavior and resource budgets remain healthy. | The product technically works but is not operationally usable. |
 | **PAC-9 Compatibility Truth** | Every support statement is backed by environment-specific evidence and is not broadened by inference. | Documentation/support promise exceeds verified product reality. |
+| **PAC-10 Operability & Maintainability** | Users can diagnose effective product state/failures, safely disable/recover, and perform explicitly supported update/rollback transitions without stale or mixed artifacts. | The product works only with project-team knowledge or becomes unsafe/unserviceable across normal maintenance. |
 
 ### 3.1 PAC-1 — Low Intrusion
 
@@ -305,7 +310,7 @@ Performance regression monitoring compares exact candidate/build/environment rec
 
 The product's compatibility matrix is an evidence-backed statement, not an inference table.
 
-Each supported/limited row must identify enough of the qualification boundary to reproduce the claim, including as applicable:
+Each positive support row must identify enough of the qualification boundary to reproduce the claim, including as applicable:
 
 - candidate/release identity;
 - OS/architecture;
@@ -324,6 +329,23 @@ Public-Qt frontends and QPA follow different compatibility rules: public API com
 
 No test result on Windows substitutes for Linux, no desktop x86 result substitutes for embedded, and no basic Widgets/Quick result qualifies unrelated graphics combinations.
 
+### 3.10 PAC-10 — Operability & Maintainability
+
+HyRemote must remain supportable after initial installation and connection. The product journey includes diagnosis, safe disable/recovery and, where the product version policy declares it, update/upgrade/rollback.
+
+Required properties include, as applicable:
+
+- one bounded, documented, secret-safe diagnostic path that reports effective product facts rather than requiring source/CI knowledge;
+- product/build identity, Qt/OS/architecture, active integration route, Runtime state, effective listener/security/input policy, client count, bounded last error and installed/deployed artifact identity are distinguishable where available;
+- diagnostics distinguish configuration/runtime failure from deployment/load failure when technically observable;
+- stopping/disabling HyRemote leaves the host application usable and produces no late synthetic input;
+- a supported version transition does not leave stale/mixed libraries, plugins, QML modules, package metadata or incompatible QPA payloads in the deployed product;
+- declared public API/package compatibility follows the product versioning/support policy rather than accidental source compatibility;
+- rollback, when explicitly promised, restores a coherent known-good artifact rather than mixing old/new runtime pieces;
+- troubleshooting documentation consumes the same effective facts that the product reports.
+
+The test architecture does not imply that every historical version must upgrade directly to every later version. Product/version authorities define supported transition edges; qualification tests those edges only.
+
 ## 4. Evidence classes
 
 HyRemote uses four evidence classes. These classes are more important than traditional unit/integration/E2E naming.
@@ -332,7 +354,7 @@ HyRemote uses four evidence classes. These classes are more important than tradi
 | --- | --- | --- |
 | **V — Verification** | Does the implementation satisfy its deterministic design contracts? | developer/PR |
 | **P — Product Validation** | Can a user complete the affected real product path? | affected PR/nightly |
-| **Q — Qualification** | May this exact environment/product cell be described as Supported/Limited? | nightly/reference/physical qualification |
+| **Q — Qualification** | May this exact environment/product cell be described with the intended positive support status? | nightly/reference/physical qualification |
 | **R — Release Acceptance** | May this exact frozen candidate be released with the stated product claims? | RC only |
 
 ### 4.1 Verification (V)
@@ -346,7 +368,8 @@ Examples:
 - RFB parser/handshake/protocol correctness;
 - Widgets/Quick adapter contracts;
 - frontend mapping tests;
-- static package/API boundary checks.
+- static package/API boundary checks;
+- deterministic diagnostics/version-transition contract checks where applicable.
 
 ### 4.2 Product Validation (P)
 
@@ -357,15 +380,17 @@ Product validation exercises a real vertical path through product artifacts:
 - deployment;
 - launch;
 - viewer connection;
-- view/control/reconnect/stop where applicable.
+- view/control/reconnect/stop where applicable;
+- collect diagnostics on relevant failure/success paths;
+- supported update/rollback path where a change directly affects that contract.
 
 It proves usability of the product path, not the support status of every environment.
 
 ### 4.3 Qualification (Q)
 
-Qualification runs on the actual environment characteristics needed by a support claim. It includes platform/native display/input/graphics/loader/viewer/performance facts that hosted synthetic CI cannot honestly infer.
+Qualification runs on the actual environment characteristics needed by a support claim. It includes platform/native display/input/graphics/loader/viewer/performance and maintenance-transition facts that hosted synthetic CI cannot honestly infer.
 
-Qualification may be automated on dedicated reference hosts, semi-automated with recorded evidence, or manual only where automation would change the property being observed. Manual/physical evidence must still be reproducible, candidate-bound and recorded.
+Qualification may be automated on dedicated reference hosts, semi-automated with recorded evidence, or manual only where automation would change the property being observed. Manual/physical evidence must still be reproducible, candidate-bound and recorded with an explicit oracle/pass condition.
 
 ### 4.4 Release Acceptance (R)
 
@@ -404,7 +429,7 @@ Shared Runtime owns the majority of product-semantic integration evidence:
 - client lifecycle/notifications;
 - input routing/admission;
 - capture demand/pacing;
-- common diagnostics;
+- common diagnostics/effective runtime facts;
 - common performance policy.
 
 When behavior is intentionally identical across all frontends, prefer proving it here instead of four times at frontend level.
@@ -433,13 +458,13 @@ The frontend test count should remain bounded even as Shared Runtime behavior gr
 Transport evidence is split into:
 
 1. **transport-neutral contract evidence** — connection lifecycle, frame delivery, normalized input return, bounded flow, disconnect/error reporting;
-2. **transport-specific evidence** — for current RFB: RFB 3.8 handshake, encodings, update semantics, Continuous Updates/Fence, malformed input, VNC Authentication, viewer interoperability.
+2. **transport-specific evidence** — for current RFB: RFB 3.8 handshake, encodings, update semantics, Continuous Updates/Fence, malformed input, authentication, viewer interoperability.
 
 This separation keeps future transports from forcing a rewrite of the entire product test architecture.
 
 ### 5.6 Packaging/deployment
 
-Packaging/deployment owns consumer-visible artifact closure, install/export metadata, optional payload selection, relocation, runtime-origin correctness and clean-environment launch.
+Packaging/deployment owns consumer-visible artifact closure, install/export metadata, optional payload selection, relocation, runtime-origin correctness, clean-environment launch and supported update/rollback artifact coherence.
 
 Deployment evidence is a product test, not merely a CMake helper test.
 
@@ -457,7 +482,7 @@ Expensive evidence is staged so that ordinary development remains fast while rel
 | --- | --- | ---: | --- |
 | **G0 Developer** | Immediate local implementation feedback | **<= 10 s** | changed-module focused V |
 | **G1 PR Verification** | Prevent deterministic logic/integration regressions | **<= 90 s target** | affected V on required OS/capability |
-| **G2 PR Product** | Prove affected vertical product/deployment path | **<= 3–5 min target** | selected P, platform-specific where required |
+| **G2 PR Product** | Prove affected vertical product/deployment/maintenance path | **<= 3–5 min target** | selected P, platform-specific where required |
 | **G3 Merge Sentinel** | Detect broken mainline integration without replaying PR qualification | **<= 60 s target** | minimal nonzero health sentinel |
 | **G4 Nightly Qualification-lite** | Broader cross-product/platform evidence | **<= 30 min target** | broad P + selected Q + stress/perf-lite |
 | **G5 Weekly/Extended** | Expensive robustness/performance/fuzz/repetition | not a PR budget | extended V/P/Q |
@@ -482,7 +507,10 @@ G2 is activated for changes whose risk crosses a user/product boundary, includin
 - deployment helpers/runtime dependency resolution;
 - native plugin loading;
 - security/transport behavior;
-- canonical examples/user adoption path.
+- canonical examples/user adoption path;
+- public diagnostics/effective-state reporting;
+- supported update/rollback/package-transition behavior;
+- compatibility-critical changes.
 
 A deployment/loader change requires Windows/Linux product evidence even if G1 deterministic tests are platform-neutral.
 
@@ -502,11 +530,12 @@ Nightly/weekly gates carry breadth and expensive repetition that would damage da
 - performance baseline/trend;
 - fuzz/protocol robustness;
 - repeated connect/disconnect/start/stop;
+- supported maintenance-transition subsets;
 - broader Qt/graphics cells as defined by the support plan.
 
 ### 6.6 G6 Release Qualification
 
-Release qualification uses an exact frozen candidate and completes all required support evidence including real/native Windows/Linux cells, package/deployment evidence, security boundary, performance SLO, viewer/product path, compatibility disposition and required soak/stress results.
+Release qualification uses an exact frozen candidate and completes all required support evidence including real/native platform cells, package/deployment evidence, security boundary, performance SLO, viewer/product path, compatibility disposition, operability/maintenance evidence and required soak/stress results.
 
 ## 7. Risk-based selection model
 
@@ -527,7 +556,9 @@ Example policy:
 | QPA/native delegate | QPA V + required Win/Linux native/deploy P/Q | QML property tests |
 | RFB/transport | protocol V + maintained-viewer P + relevant perf/security | unrelated frontend package negatives |
 | security | security V + listener/transport P/Q | unrelated graphics qualification |
-| deployment/package | package/deploy V + clean Win/Linux P | full Core unit replay unless shared code changed |
+| deployment/package | package/deploy V + clean platform P; maintenance transition if affected | full Core unit replay unless shared code changed |
+| diagnostics/operability | effective-state V + representative product-path P | broad graphics/transport matrix unless behavior changed |
+| version/public package contract | API/package V + authorized predecessor transition P/Q | unrelated viewer matrix |
 | performance scheduler/capture | affected V + perf smoke, later nightly trend | all release governance |
 | docs only | doc/link/product-contract consistency | GUI/viewer/deployment runtime |
 
@@ -586,7 +617,7 @@ Hosted CI is optimized for repeatability and fast regression detection. Dedicate
 | --- | --- | --- |
 | hosted Linux + headless/Xvfb | V/P regression | No |
 | hosted Windows Server | V/P regression | No, not for all physical/native claims |
-| qualified Ubuntu/Linux native desktop | Q/R | Yes for the declared Linux cell |
+| qualified Linux native desktop/device | Q/R | Yes for the declared Linux cell |
 | qualified Windows desktop | Q/R | Yes for the declared Windows cell |
 | physical HiDPI/GPU/multi-display host | targeted Q/R | Yes for declared graphics/display cells |
 
@@ -608,7 +639,7 @@ Basic Widgets/Quick support does not automatically qualify QOpenGLWidget, QQuick
 
 ### 10.1 Deployment anchor matrix
 
-For currently supported desktop platforms, the anchor deployment programme covers, as applicable:
+For currently supported platforms, the anchor deployment programme covers, as applicable:
 
 - installed SDK + C++ Widgets;
 - installed SDK + C++ Quick;
@@ -681,6 +712,20 @@ Synthetic fixtures remain necessary for deterministic diagnosis, but product qua
 
 The purpose is to detect integration assumptions that tiny fixtures cannot represent.
 
+### 10.6 Operability and maintenance transitions
+
+Product validation also covers the self-service maintenance journey where the product line declares it:
+
+- collect a diagnostic snapshot/report from an installed/deployed artifact;
+- distinguish stopped/configuration/listener/security/input/viewer/deployment identity facts;
+- disable HyRemote and keep the host application usable;
+- update from each explicitly supported predecessor edge to the target candidate;
+- verify the resulting deployed tree contains one coherent target artifact lineage;
+- rollback only where rollback is an explicit product promise;
+- reject unsupported/incompatible transition assumptions rather than silently mixing artifacts.
+
+Transition coverage is edge-based and policy-driven, not a Cartesian product of every historical release.
+
 ## 11. Reliability, stress and soak programme
 
 Exact repetition counts are maintained by executable plans and may evolve with product scale, but the programme includes bounded versions of:
@@ -728,18 +773,19 @@ When encrypted transport/session identity or new authorization capabilities land
 A support claim should be traceable from documentation to executable/recorded evidence:
 
 ```text
-compatibility row
+compatibility/maintenance claim
   -> Product Acceptance Contracts
-  -> required qualification cells
+  -> required qualification cells/transition edges
   -> exact candidate SHA/build identity
-  -> environment record
+  -> environment/fixture record
+  -> declared oracle/pass condition
   -> executed evidence bundle
-  -> PASS/FAIL disposition
+  -> PASS/FAIL/BLOCKED disposition
 ```
 
-A release candidate change invalidates only the evidence whose protected behavior/environment may have changed, according to release change-control classification. Material Runtime/package/default/security/QPA ABI/shared-example changes may require broad or full requalification; evidence-neutral edits do not automatically replay every expensive cell.
+For **Release Acceptance**, all evidence that the canonical release procedure defines as exact-candidate-bound must bind to the same RC-FROZEN candidate/artifact identity. If a post-freeze change changes that SHA/artifact, prior exact-candidate physical/native or other required R evidence becomes historical/preflight for the new candidate unless the canonical release authority explicitly defines an equivalent artifact identity rule. Change control decides which cells must be rerun or whether the candidate must be re-cut; this strategy does **not** permit composing evidence from different candidate SHAs into one release PASS merely because an edit is described as evidence-neutral.
 
-Historical evidence from another candidate remains useful engineering information but cannot be silently reused as exact release acceptance when the relevant product behavior changed.
+For ordinary non-release qualification, an accepted evidence record remains truthful for the exact artifact/environment/fixture it measured. It can be reused for a later claim only when that claim's invalidation rules say the protected artifact/environment semantics remain applicable; otherwise it is historical evidence, not current qualification.
 
 ## 15. Test cost, flake and observability policy
 
@@ -793,8 +839,9 @@ Every proposal for a permanent test/suite answers:
 6. Which change/risk domains trigger it?
 7. Which platform/capability guards are real requirements?
 8. What gate and cost class does it belong to?
-9. What is the expected failure message/evidence?
-10. Does it affect a support/qualification/release claim?
+9. What is the explicit oracle/pass condition and failure message/evidence?
+10. What invalidates previously retained evidence for this requirement?
+11. Does it affect a support/qualification/release claim?
 
 If these questions cannot be answered, do not add a permanent blocking identity by default.
 
@@ -821,15 +868,17 @@ Preferred reporting includes:
 - affected verification suites executed;
 - product validation paths executed;
 - qualified support cells;
-- unsupported/TODO cells;
+- supported maintenance-transition edges;
+- unsupported/TODO cells/edges;
 - performance SLO/trend;
 - reliability/stress/soak disposition;
 - security boundary disposition;
 - deployment qualification result;
+- operability/diagnostics disposition;
 - gate wall-time/critical-path health;
 - flaky/quarantined evidence debt.
 
-A useful release statement is "all required support cells for this exact candidate are qualified", not "N tests passed".
+A useful release statement is "all required support cells and maintenance transitions for this exact candidate are qualified", not "N tests passed".
 
 ## 19. Relationship to current repository test documents
 
@@ -839,6 +888,7 @@ The repository currently contains detailed CTest inventory and execution documen
 | --- | --- |
 | `docs/architecture.md` | product architecture; references this strategy |
 | `docs/internal/test-strategy.md` | **product-test architecture authority** |
+| `docs/internal/test-system-architecture.md` | detailed evidence/selection/qualification system design |
 | `docs/performance-optimization.md` | detailed performance/SLO authority |
 | `docs/compatibility.md` | public support/compatibility truth |
 | `docs/internal/v1-physical-acceptance.md` | current physical/native RC execution runbook |
@@ -861,6 +911,7 @@ tests/
   transport/        transport-neutral + RFB-specific evidence
   deployment/       package / clean consumer / relocation / runtime closure
   e2e/              viewer / examples / real-world vertical paths
+  operability/       diagnostics / disable / supported update / rollback contracts
   qualification/    platform / Qt / graphics / compatibility cells
   reliability/      stress / soak / fault injection / fuzz
   performance/      product performance fixtures/benchmarks
@@ -875,6 +926,7 @@ This organization is descriptive rather than a mandatory immediate mass move. Ph
 The test system is healthy when all of the following are true:
 
 - every supported product claim has explicit evidence;
+- every retained product evidence requirement has an explicit oracle and invalidation rule;
 - deterministic defects are found in cheap verification layers;
 - platform/deployment/native defects are exercised in the environments that can reveal them;
 - Shared Runtime behavior is not redundantly reimplemented across frontends;
@@ -882,7 +934,8 @@ The test system is healthy when all of the following are true:
 - ordinary developer feedback remains fast;
 - PR scope is risk-proportional and never silently zero-test;
 - nightly/extended gates carry broad stress/performance/compatibility work;
-- exact release candidates receive complete required product evidence;
+- self-service diagnostics and declared maintenance transitions are verified as product paths, not support-team folklore;
+- exact release candidates receive complete required product evidence without mixed-SHA acceptance;
 - test runtime/flake/debt is measured and maintained;
 - adding tests does not monotonically increase the PR critical path without review;
 - raw test count is never treated as a substitute for product confidence.
@@ -893,12 +946,12 @@ The canonical product-quality loop is:
 Product vision
   -> Product Acceptance Contract
   -> explicit risk
-  -> cheapest sufficient evidence
+  -> cheapest sufficient evidence + oracle
   -> technical owner
   -> risk-based execution gate
-  -> qualification cell
-  -> exact candidate evidence
-  -> Supported / Limited / Unsupported decision
+  -> qualification cell / maintenance transition
+  -> exact artifact/environment evidence
+  -> Supported / Qualified / Preview / Experimental / Unsupported / Not Applicable decision
 ```
 
 That loop, rather than the current number of CTest registrations, is the HyRemote testing architecture.
