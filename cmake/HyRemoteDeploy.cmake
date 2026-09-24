@@ -29,6 +29,42 @@ function(_hyremote_linux_deployed_plugin_relocation plugin_subdirectory plugin_f
 " PARENT_SCOPE)
 endfunction()
 
+# Qt's QML import deployment copies the module it found through the import path known at configure time, which in a
+# source build is the build tree, so the module that lands beside a deployed application keeps the runtime path the
+# build tree gave it. The payload the package installs is the relocatable one. After the QML machinery has run, each
+# module file the product installed for this prefix replaces the copy that came from the build tree - the same
+# "a deployment stages what the product installs" policy the plugin payloads already follow, expressed through the two
+# QML roots rather than through a second deployment system.
+function(_hyremote_qml_deployed_module_restoration output_var)
+    set(${output_var} "" PARENT_SCOPE)
+    if(NOT UNIX OR APPLE)
+        return()
+    endif()
+    # The package states this layout where GNUInstallDirs has run; the plain library directory is the same default the
+    # SDK install uses, so a consumer scope that never saw the module still names the right installed root.
+    set(_hyremote_qml_installed_libdir "${CMAKE_INSTALL_LIBDIR}")
+    if("${_hyremote_qml_installed_libdir}" STREQUAL "")
+        set(_hyremote_qml_installed_libdir "lib")
+    endif()
+    set(${output_var}
+"set(_hyremote_qml_deployed_root \"\${QT_DEPLOY_PREFIX}/qml\")
+set(_hyremote_qml_installed_root \"\${QT_DEPLOY_PREFIX}/${_hyremote_qml_installed_libdir}/qml\")
+if(EXISTS \"\${_hyremote_qml_deployed_root}\" AND EXISTS \"\${_hyremote_qml_installed_root}\")
+    file(GLOB_RECURSE _hyremote_qml_deployed_files \"\${_hyremote_qml_deployed_root}/*\")
+    foreach(_hyremote_qml_deployed_file IN LISTS _hyremote_qml_deployed_files)
+        if(IS_DIRECTORY \"\${_hyremote_qml_deployed_file}\")
+            continue()
+        endif()
+        file(RELATIVE_PATH _hyremote_qml_relative \"\${_hyremote_qml_deployed_root}\" \"\${_hyremote_qml_deployed_file}\")
+        set(_hyremote_qml_installed_file \"\${_hyremote_qml_installed_root}/\${_hyremote_qml_relative}\")
+        if(EXISTS \"\${_hyremote_qml_installed_file}\")
+            file(COPY_FILE \"\${_hyremote_qml_installed_file}\" \"\${_hyremote_qml_deployed_file}\" ONLY_IF_DIFFERENT)
+        endif()
+    endforeach()
+endif()
+" PARENT_SCOPE)
+endfunction()
+
 function(_hyremote_target_is_local target output_var)
     set(_hyremote_local FALSE)
     if(TARGET "${target}")
@@ -326,12 +362,14 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
+    set(_qml_module_restoration "")
     if(HYREMOTE_DEPLOY_QML)
         _hyremote_resolve_qml_backing_payload(_qml_backing_file _qml_backing_name)
         set(_qml_backing_install
 "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"${_qml_backing_file}\")\n")
         set(_qml_additional_library
 "\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
+        _hyremote_qml_deployed_module_restoration(_qml_module_restoration)
     endif()
 
     # Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV}
@@ -352,7 +390,7 @@ ${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_
     ADDITIONAL_LIBRARIES
     \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )
-")
+${_qml_module_restoration}")
     set(${output_var} "${_runtime_script}" PARENT_SCOPE)
 endfunction()
 
@@ -480,12 +518,14 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
+    set(_qml_module_restoration "")
     if(HYREMOTE_DEPLOY_QML)
         _hyremote_resolve_qml_backing_payload(_qml_backing_file _qml_backing_name)
         set(_qml_backing_install
 "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"${_qml_backing_file}\")\n")
         set(_qml_additional_library
 "\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
+        _hyremote_qml_deployed_module_restoration(_qml_module_restoration)
     endif()
 
     # Both plugins this path stages are copies, and both are relocated by the one shared function: the delegate
@@ -536,7 +576,7 @@ ${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_runtime_in
     ADDITIONAL_LIBRARIES
     \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )
-")
+${_qml_module_restoration}")
 
     set(${output_var} "${_qpa_script}" PARENT_SCOPE)
 endfunction()

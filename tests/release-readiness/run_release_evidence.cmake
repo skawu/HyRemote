@@ -226,6 +226,27 @@ endfunction()
 # configure/build/install steps legitimately need the developer toolchain (compiler, CMake, generator), so they
 # run with the inherited environment. The isolation requirement applies to the *executed product*: only the run and
 # product-fit steps below use PRODUCT_RUNTIME_PATH, and only those are recorded with the runtime search environment.
+# deployed_elf_paths(cell deployed_root) - the shared deployed-ELF truth check for every payload a deployment
+# stages: each shipped artifact must carry a relocatable runtime path rather than one that names the build tree,
+# the source tree or the SDK it was built against. Linux states that contract through DT_RPATH/DT_RUNPATH, and the
+# check reads the artifact's own entries instead of what this host happens to resolve, so a payload cannot pass
+# merely because the machine that produced it still has the directories it named. Windows resolves a deployed
+# plugin from the application's own directory, so there is no runtime path to inspect there.
+function(deployed_elf_paths cell deployed_root)
+    if(NOT UNIX OR APPLE OR NOT EXISTS "${deployed_root}")
+        return()
+    endif()
+    run_capture("${cell}" "deployed_elf_paths" "${OS_RUNTIME_PATH}"
+        "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/verify_linux_deployed_elf_paths.py"
+        --prefix "${deployed_root}" --scan)
+    if(NOT ${cell}_result EQUAL 0)
+        fail_cell("${cell}" "a deployed payload carries an absolute build/source/SDK runtime path")
+        message(FATAL_ERROR
+            "release-evidence: ${cell}: a deployed payload carries an absolute build/source/SDK runtime path; "
+            "see ${RUN_DIR}/${cell}/deployed_elf_paths.log")
+    endif()
+endfunction()
+
 function(run_toolchain cell label)
     execute_process(
         COMMAND ${ARGN}
@@ -505,6 +526,10 @@ if("installed-qml-qpa" IN_LIST EVIDENCE_CELLS)
     set(cell "installed-qml-qpa")
     record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (combined QML + QPA)")
     acquire_installed("${cell}" "tests/consumer-installed-qml" "-DHYREMOTE_CONSUMER_WITH_QPA=ON")
+    # The QML route deploys a module payload of its own, so the same shared ELF contract runs for it: the module
+    # beside the deployed application must be the relocatable one, not the copy the build tree handed the QML
+    # import deployment.
+    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
 endif()
 
 if("source-consumer" IN_LIST EVIDENCE_CELLS)
@@ -694,6 +719,10 @@ function(generic_product_fit cell consumer_target)
             return()
         endif()
     endif()
+
+    # The same shared deployed-ELF truth check covers every payload in this deployment, not only the Generic one: the
+    # runtime, the platform plugins and any QML module the deployment carries are held to one contract.
+    deployed_elf_paths("${cell}" "${_deployed}")
 
     # Acquisition and runtime isolation are proved separately, because neither implies the other: a self-contained
     # deployed tree says nothing about which CMake package the consumer resolved, and a cache audit says nothing
