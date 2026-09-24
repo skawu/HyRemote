@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
-project(HyRemote VERSION 0.2.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
+project(HyRemote VERSION 0.2.0.1 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
