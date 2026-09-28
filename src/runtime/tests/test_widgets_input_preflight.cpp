@@ -34,10 +34,13 @@
 #include <QStandardItemModel>
 #include <QStyleHints>
 #include <QTableView>
+#include <QThread>
 #include <QTreeView>
 #include <QWidget>
 
+#include <atomic>
 #include <iostream>
+#include <thread>
 
 #include "detail/component_factories.hpp"
 #include "hyremote/core/input.hpp"
@@ -187,17 +190,18 @@ void testPointerSequence(QWidget &root, HyRemote::detail::TargetComponents &comp
     doubleClick(components, root, QPointF(100, 100));
     probe.observe("valid double-click envelope");
 
-    check(probe.presses == 2 && probe.releases == 2,
-          "valid double-click envelope: Qt receives two press/release pairs");
-    if (probe.doubleClicks == 0) {
-        divergence("QT_SEMANTIC_CLASSIFICATION",
-                   "valid remote double click on a probe widget",
-                   "Qt receives Press,Release,Press,Release and never MouseButtonDblClick; the platform "
-                   "layer that synthesizes DblClick for a physical mouse is bypassed by application-level "
-                   "event delivery");
-    } else {
-        noDivergence("valid remote double click", "a DblClick semantic reached the widget");
-    }
+    check(probe.doubleClicks == 1,
+          "#400: a valid remote double click delivers exactly one MouseButtonDblClick");
+    check(probe.presses == 1,
+          "#400: the second press is replaced by DblClick, never duplicated as an ordinary press");
+    check(probe.releases == 2, "#400: both releases are delivered");
+    check(probe.order.size() == 4 && probe.order.at(0) == QEvent::MouseButtonPress
+              && probe.order.at(1) == QEvent::MouseButtonRelease
+              && probe.order.at(2) == QEvent::MouseButtonDblClick
+              && probe.order.at(3) == QEvent::MouseButtonRelease,
+          "#400: the delivered sequence is Press, Release, DblClick, Release");
+    if (probe.doubleClicks == 1 && probe.presses == 1)
+        noDivergence("valid remote double click", "Qt's double-click semantic is restored");
 
     // Outside-interval and outside-distance sequences are indistinguishable on the wire to Qt
     // today, because no classification exists at all: both are simply two clicks.
@@ -358,15 +362,11 @@ void testControlMatrix(QWidget &root, HyRemote::detail::TargetComponents &compon
     doubleClick(components, root,
                 QPointF(listView->mapTo(&root, listView->viewport()->mapTo(listView, listRow0.center()))));
     pump();
-    if (activations == 0) {
-        divergence("QT_SEMANTIC_CLASSIFICATION",
-                   "QListView double-click activation",
-                   "a valid double click on a row produces no activated() because the second press is a "
-                   "plain press: view double-click activation, inline edit and open-on-double-click "
-                   "behaviour are all unreachable for remote users");
-    } else {
-        noDivergence("QListView double-click activation", "activations == 1");
-    }
+    check(activations == 1,
+          "#400: a valid remote double click on a row reaches QAbstractItemView::activated() exactly once");
+    if (activations == 1)
+        noDivergence("QListView double-click activation",
+                     "view double-click activation is reachable through the remote path");
     }
     // QComboBox: the dropdown is a separate top-level popup surface. This does not infer
     // inaccessibility from the routing code: it derives the target item's real screen position from
@@ -427,6 +427,116 @@ void testControlMatrix(QWidget &root, HyRemote::detail::TargetComponents &compon
         combo->hidePopup();
         pump();
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// #400 classifier acceptance: boundaries, queue delay and receiver identity.
+// ---------------------------------------------------------------------------------------------
+void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents &components)
+{
+    const QStyleHints *hints = QGuiApplication::styleHints();
+    const int interval = hints->mouseDoubleClickInterval();
+    const int distance = hints->mouseDoubleClickDistance();
+    std::cout << "     observed[classifier policy]: intervalMs=" << interval << " distancePx=" << distance
+              << '\n';
+
+    Probe probe(&root);
+    probe.setGeometry(0, 0, 500, 600);
+    pump();
+
+    // Inside the interval, same point: one DblClick (the boundary itself is inclusive in the
+    // classifier, and this case stays well inside it so it does not depend on that convention).
+    click(components, root, QPointF(200, 200));
+    pump();
+    click(components, root, QPointF(200, 200));
+    pump();
+    check(probe.doubleClicks == 1, "#400 boundary: two clicks just inside the interval form one double click");
+
+    // Inside the distance, but not the same pixel: still one DblClick.
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    const int insideOffset = distance > 1 ? 1 : 0;
+    click(components, root, QPointF(300, 300));
+    pump();
+    click(components, root, QPointF(300 + insideOffset, 300));
+    pump();
+    check(probe.doubleClicks == 1, "#400 boundary: a pair inside the distance still forms one double click");
+
+    // Outside the interval: two singles (already covered above, re-asserted here for the same probe).
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    click(components, root, QPointF(100, 100));
+    pump();
+    pumpFor(interval + 200);
+    click(components, root, QPointF(100, 100));
+    pump();
+    check(probe.doubleClicks == 0 && probe.presses == 2,
+          "#400 boundary: a pair outside the interval stays two single clicks");
+
+    // A double click consumes the pair: the third rapid press is an ordinary press again.
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    click(components, root, QPointF(150, 150));
+    pump();
+    click(components, root, QPointF(150, 150));
+    pump();
+    check(probe.doubleClicks == 1, "#400 triple press: the first pair yields one double click");
+    click(components, root, QPointF(150, 150));
+    pump();
+    check(probe.doubleClicks == 1, "#400 triple press: the third rapid press does not emit another DblClick");
+    check(probe.presses == 2, "#400 triple press: the third press is an ordinary press");
+
+    // Receiver identity: a rapid pair on two different widgets is two singles even when time and
+    // distance qualify.
+    Probe other(&root);
+    other.setGeometry(350, 350, 120, 120);
+    pump();
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    other.presses = other.releases = other.doubleClicks = 0;
+    click(components, root, QPointF(200, 500));
+    pump();
+    click(components, root, QPointF(400, 400));
+    pump();
+    check(probe.presses == 1 && probe.doubleClicks == 0, "#400 cross widget: the first widget gets a single press");
+    check(other.presses == 1 && other.doubleClicks == 0,
+          "#400 cross widget: the second widget gets a single press, never a DblClick from the first");
+
+    // Queue delay positive: the two presses are accepted inside the interval but the GUI thread is
+    // blocked far longer than the interval before draining them. Classification uses the accepted
+    // arrival time, so this must still be one double click.
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    click(components, root, QPointF(250, 250));
+    pump();
+    std::atomic_bool posted{false};
+    std::thread worker([&components, &root, &posted] {
+        QThread::msleep(120);
+        postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(250, 250),
+                hyremote::PointerButton::Left, true);
+        postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(250, 250),
+                hyremote::PointerButton::Left, false);
+        posted.store(true);
+    });
+    QThread::msleep(static_cast<unsigned long>(interval) + 400);  // GUI busy, nothing is drained
+    worker.join();
+    check(posted.load(), "#400 queue delay: the second accept happened while the GUI was blocked");
+    pump();
+    check(probe.doubleClicks == 1,
+          "#400 queue delay positive: accepted-inside-interval clicks still classify as a double click");
+    check(probe.presses == 1, "#400 queue delay positive: no ordinary second press was delivered");
+
+    // Queue delay negative: accepted far apart, but drained together. GUI proximity must not create
+    // a double click.
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(400, 500),
+            hyremote::PointerButton::Left, true);
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(400, 500),
+            hyremote::PointerButton::Left, false);
+    QThread::msleep(static_cast<unsigned long>(interval) + 250);  // accepted gap > interval
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(400, 500),
+            hyremote::PointerButton::Left, true);
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(400, 500),
+            hyremote::PointerButton::Left, false);
+    pump();  // both pairs drain together here
+    check(probe.doubleClicks == 0,
+          "#400 queue delay negative: clicks accepted outside the interval stay two single clicks");
+    check(probe.presses == 2, "#400 queue delay negative: both presses are ordinary presses");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -501,6 +611,7 @@ void runPreflight()
 
     testPointerSequence(root, components);
     testControlMatrix(root, components);
+    testClassifierAcceptance(root, components);
     components.input.reset();
 
     testHostActivationState();

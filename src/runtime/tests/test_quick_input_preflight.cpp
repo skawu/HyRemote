@@ -244,16 +244,50 @@ Rectangle {
                  "Qt Quick resolves the item under the point itself; the adapter only delivers to the window");
 
     // 2. Valid double click: is onDoubleClicked reachable on this path?
+    // The adapter-level contract is observable at the window: exactly one MouseButtonDblClick in
+    // place of the second press, then the release. Qt Quick then owns item/handler delivery.
+    int windowDoubleClicks = 0;
+    int windowPresses = 0;
+    class WindowProbe final : public QObject
+    {
+    public:
+        WindowProbe(int &doubleClicks, int &presses)
+            : m_doubleClicks(doubleClicks)
+            , m_presses(presses)
+        {
+        }
+
+    protected:
+        bool eventFilter(QObject *, QEvent *event) override
+        {
+            if (event->type() == QEvent::MouseButtonDblClick)
+                ++m_doubleClicks;
+            if (event->type() == QEvent::MouseButtonPress)
+                ++m_presses;
+            return false;
+        }
+
+    private:
+        int &m_doubleClicks;
+        int &m_presses;
+    } windowProbe(windowDoubleClicks, windowPresses);
+
+    window.installEventFilter(&windowProbe);
     doubleClick(components, window, sceneCenter("area"));
-    if (bridge.property("areaDoubleClicks").toInt() == 0) {
-        divergence("QT_SEMANTIC_CLASSIFICATION",
-                   "MouseArea onDoubleClicked",
-                   "no DblClick event is ever delivered into the window, so MouseArea/SinglePointHandler "
-                   "double-tap handlers are unreachable for remote users even though Qt Quick routing "
-                   "itself is fine");
-    } else {
-        noDivergence("MouseArea onDoubleClicked", "a double-click semantic was observable");
-    }
+    window.removeEventFilter(&windowProbe);
+
+    std::cout << "     observed[Quick double click]: window dblClicks=" << windowDoubleClicks
+              << " window presses=" << windowPresses
+              << " MouseArea onDoubleClicked=" << bridge.property("areaDoubleClicks").toInt()
+              << " onClicked=" << bridge.property("areaClicks").toInt() << '\n';
+    check(windowDoubleClicks == 1,
+          "#400: a valid remote double click delivers exactly one MouseButtonDblClick to the window");
+    check(windowPresses == 1,
+          "#400: the second press is replaced by the DblClick, not duplicated");
+    if (windowDoubleClicks == 1 && windowPresses == 1)
+        noDivergence("Quick double-click semantic",
+                     "the window receives the Qt double-click semantic in place of the second press, and "
+                     "Qt Quick keeps owning item/handler delivery (no item hit-testing in the adapter)");
 
     // 3. Focusable text target.
     click(components, window, sceneCenter("textInput"));

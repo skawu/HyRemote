@@ -351,18 +351,14 @@ void runPreflight()
     check(facts.countButton(hyremote::PointerButton::Left, true) == 2
               && facts.countButton(hyremote::PointerButton::Left, false) == 2,
           "RFB_PARSE: the wire sequence yields two left press and two left release facts");
-    check(probe.presses == 2 && probe.releases == 2,
-          "valid envelope: both press/release pairs reach the widget");
-    if (probe.doubleClicks == 0) {
-        divergence("QT_SEMANTIC_CLASSIFICATION",
-                   "RFB valid double-click envelope",
-                   "the parser faithfully produces move/press/release facts (no RFB_PARSE defect) and "
-                   "routing delivers them (no TOPLEVEL_INGRESS/TARGET_ROUTING defect), but Qt receives two "
-                   "plain presses: the double-click semantic is lost only at application-level Qt event "
-                   "synthesis");
-    } else {
-        noDivergence("RFB valid double-click envelope", "a DblClick semantic was delivered");
-    }
+    check(probe.doubleClicks == 1,
+          "#400 production RFB: a viewer double click on the wire yields one MouseButtonDblClick");
+    check(probe.presses == 1, "#400 production RFB: the second press is replaced, not duplicated");
+    check(probe.releases == 2, "#400 production RFB: both releases are delivered");
+    if (probe.doubleClicks == 1)
+        noDivergence("RFB valid double-click envelope",
+                     "the production parser path reaches Qt's double-click semantic without any RFB "
+                     "protocol concept");
 
     // --- Case 2: outside interval ------------------------------------------------------------
     facts.clear();

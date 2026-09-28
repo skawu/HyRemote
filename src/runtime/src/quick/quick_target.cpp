@@ -1,6 +1,7 @@
 #include "quick/quick_target.hpp"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
@@ -8,6 +9,7 @@
 #include <QMouseEvent>
 #include <QPointer>
 #include <QSharedPointer>
+#include <QStyleHints>
 #include <QThread>
 #include <QTimer>
 #include <QWheelEvent>
@@ -30,9 +32,11 @@
 #include <vector>
 
 #include "detail/input_mailbox_admission.hpp"
+#include "detail/qt_pointer_sequence_classifier.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
+#include "hyremote/core/types.hpp"
 
 namespace HyRemote::detail {
 namespace {
@@ -505,20 +509,24 @@ public:
             if (admissionClass == InputMailboxAdmission::Class::DropUnmatchedRelease)
                 return;
 
+            // #400: accepted-arrival time travels with the event in the queued envelope; GUI drain
+            // time never decides double-click validity.
+            const QueuedInput queued{event, hyremote::Clock::now()};
+
             if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
                 if (!state->admission.canAcceptProtectedRelease())
                     throw std::runtime_error("bounded Qt Quick protected-release mailbox is full");
                 state->admission.acceptProtectedRelease(event);
-                state->pending.push_back(event);
+                state->pending.push_back(queued);
             } else if (event.kind == hyremote::InputEventKind::PointerMove
                        && !state->pending.empty()
-                       && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
-                state->pending.back() = event;
+                       && state->pending.back().event.kind == hyremote::InputEventKind::PointerMove) {
+                state->pending.back() = queued;
             } else {
                 if (!state->admission.canAcceptNormal()) {
                     const auto staleMove = std::find_if(
-                        state->pending.begin(), state->pending.end(), [](const hyremote::InputEvent &queued) {
-                            return queued.kind == hyremote::InputEventKind::PointerMove;
+                        state->pending.begin(), state->pending.end(), [](const QueuedInput &queuedInput) {
+                            return queuedInput.event.kind == hyremote::InputEventKind::PointerMove;
                         });
                     if (staleMove != state->pending.end()) {
                         state->pending.erase(staleMove);
@@ -529,7 +537,7 @@ public:
                     throw std::runtime_error("bounded Qt Quick input mailbox is full");
 
                 state->admission.acceptNormal(event);
-                state->pending.push_back(event);
+                state->pending.push_back(queued);
             }
 
             if (!state->drainScheduled) {
@@ -578,6 +586,22 @@ public:
     }
 
 private:
+    // #400: the bounded mailbox stores a Runtime-private envelope; admission still classifies the
+    // contained InputEvent, so capacity, protected releases and coalescing rules are unchanged.
+    struct QueuedInput
+    {
+        hyremote::InputEvent event;
+        hyremote::TimePoint acceptedAt{};
+    };
+
+    // #400: the classification policy is Qt's own, never a product constant.
+    static DoubleClickPolicy doubleClickPolicy()
+    {
+        if (const QStyleHints *hints = QGuiApplication::styleHints())
+            return {hints->mouseDoubleClickInterval(), hints->mouseDoubleClickDistance()};
+        return {};
+    }
+
     struct State
     {
         std::mutex mutex;
@@ -585,11 +609,15 @@ private:
         bool active = true;
         bool drainScheduled = false;
         bool shutdownRequested = false;
-        std::deque<hyremote::InputEvent> pending;
+        std::deque<QueuedInput> pending;
         InputMailboxAdmission admission;
 
-        // GUI-thread-owned state already delivered into the QQuickWindow.
+        // GUI-thread-owned state already delivered into the QQuickWindow. The click trace identity is
+        // the configured window (never a QQuickItem): Qt Quick keeps owning item routing, and the
+        // QPointer owner beside the opaque token keeps that identity lifetime-safe.
         Qt::MouseButtons buttons = Qt::NoButton;
+        std::array<PointerClickTrace, 3> clickTraces;
+        QPointer<QQuickWindow> clickTraceOwner;
         QPoint lastLocalPoint;
         QPoint lastGlobalPoint;
         bool pointerPositionKnown = false;
@@ -599,7 +627,8 @@ private:
 
     static void deliverPointer(const std::shared_ptr<State> &state,
                                QQuickWindow *window,
-                               const hyremote::InputEvent &event)
+                               const hyremote::InputEvent &event,
+                               hyremote::TimePoint acceptedAt)
     {
         const std::optional<hyremote::MappedInputPoint> mapped =
             hyremote::mapPointerToTarget(event,
@@ -636,8 +665,35 @@ private:
             if (button == Qt::NoButton)
                 return;
             if (event.pressed) {
+                // #400: a qualifying second press is delivered as MouseButtonDblClick instead of a
+                // second ordinary press. The identity is the configured window, so Qt Quick still
+                // decides the item/handler itself - no QQuickItem hit-testing is added here.
+                const auto index = [button]() -> std::optional<std::size_t> {
+                    switch (button) {
+                    case Qt::LeftButton: return 0;
+                    case Qt::MiddleButton: return 1;
+                    case Qt::RightButton: return 2;
+                    default: return std::nullopt;
+                    }
+                }();
+                if (!index)
+                    return;
+                PointerClickTrace &trace = state->clickTraces[*index];
+                const bool sameTarget = state->clickTraceOwner.data() == window;
+                const bool doubleClick = sameTarget
+                                         && isDoubleClickPress(trace,
+                                                                                acceptedAt,
+                                                                                QPointF(localPoint),
+                                                                                quintptr(window),
+                                                                                doubleClickPolicy());
+                armPointerClickTrace(trace,
+                                                       acceptedAt,
+                                                       QPointF(localPoint),
+                                                       quintptr(window),
+                                                       doubleClick);
+                state->clickTraceOwner = window;
                 state->buttons |= button;
-                type = QEvent::MouseButtonPress;
+                type = doubleClick ? QEvent::MouseButtonDblClick : QEvent::MouseButtonPress;
             } else {
                 state->buttons &= ~Qt::MouseButtons(button);
                 type = QEvent::MouseButtonRelease;
@@ -692,6 +748,10 @@ private:
     static void releaseHeldStateOnGuiThread(const std::shared_ptr<State> &state)
     {
         QQuickWindow *window = state->target.data();
+        // #400 lifecycle: classification state must not outlive a session/target, otherwise a first
+        // click after a restart could pair with the previous session's click.
+        state->clickTraces = {};
+        state->clickTraceOwner = nullptr;
         if (!window) {
             state->buttons = Qt::NoButton;
             state->heldKeys.clear();
@@ -737,8 +797,9 @@ private:
     }
 
     static void deliverOnGuiThread(const std::shared_ptr<State> &state,
-                                   const hyremote::InputEvent &event)
+                                   const QueuedInput &queued)
     {
+        const hyremote::InputEvent &event = queued.event;
         QQuickWindow *window = state->target.data();
         if (!window)
             return;
@@ -747,7 +808,7 @@ private:
         case hyremote::InputEventKind::PointerMove:
         case hyremote::InputEventKind::PointerButton:
         case hyremote::InputEventKind::PointerScroll:
-            deliverPointer(state, window, event);
+            deliverPointer(state, window, event, queued.acceptedAt);
             break;
         case hyremote::InputEventKind::Key:
             deliverKey(state, window, event);
@@ -762,7 +823,7 @@ private:
 
     static void drainOnGuiThread(const std::shared_ptr<State> &state)
     {
-        std::deque<hyremote::InputEvent> batch;
+        std::deque<QueuedInput> batch;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active) {
@@ -776,13 +837,13 @@ private:
             state->drainScheduled = false;
         }
 
-        for (const hyremote::InputEvent &event : batch) {
+        for (const QueuedInput &queued : batch) {
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 if (!state->active)
                     return;
             }
-            deliverOnGuiThread(state, event);
+            deliverOnGuiThread(state, queued);
         }
     }
 

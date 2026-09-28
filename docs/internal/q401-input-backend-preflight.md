@@ -234,7 +234,7 @@ portable, low privilege) and by platform constraints, not by whether it would re
 
 | Aspect | Assessment | Class |
 | --- | --- | --- |
-| fidelity | highest: injected input enters the target application as if from a real device, so the application's own Qt processing - including its double-click classification - applies | DOCUMENTED_PLATFORM_FACT |
+| fidelity | highest: native input traverses the normal target input stack, so the target application's Qt processing, including Qt's click/double-click classification, applies | DOCUMENTED_PLATFORM_FACT |
 | application isolation | violated: injection targets the desktop input stream, not our application | DOCUMENTED_PLATFORM_FACT |
 | whole-desktop side effects | present: input can reach other applications and windows | DOCUMENTED_PLATFORM_FACT |
 | privileges | Windows `SendInput` needs no elevation but is desktop-wide; Linux `uinput` needs device access (root/udev); XTest needs the X server | DOCUMENTED_PLATFORM_FACT |
