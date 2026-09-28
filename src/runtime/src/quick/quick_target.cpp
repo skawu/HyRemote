@@ -1,25 +1,21 @@
 #include "quick/quick_target.hpp"
 
 #include <QCoreApplication>
-#include <QGuiApplication>
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMetaObject>
-#include <QMouseEvent>
 #include <QPointer>
 #include <QSharedPointer>
-#include <QStyleHints>
 #include <QThread>
 #include <QTimer>
-#include <QWheelEvent>
+#include <QWindow>
 #include <QtMath>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickItemGrabResult>
 #include <QtQuick/QQuickWindow>
 
 #include <algorithm>
-#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstring>
@@ -31,9 +27,8 @@
 #include <utility>
 #include <vector>
 
-#include "detail/accepted_pointer_motion.hpp"
 #include "detail/input_mailbox_admission.hpp"
-#include "detail/qt_pointer_sequence_classifier.hpp"
+#include "detail/qt_window_system_input.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -127,7 +122,7 @@ private:
 
     struct GrabAttempt
     {
-        bool finished = false;  // GUI-thread owned
+        bool finished = false;
         QSharedPointer<QQuickItemGrabResult> result;
         QMetaObject::Connection readyConnection;
     };
@@ -183,11 +178,6 @@ private:
     static void completeUnavailable(const std::shared_ptr<State> &state,
                                     const hyremote::CaptureRequest &request)
     {
-        // An accepted Core request must eventually complete or stop() must tear it down. When public
-        // Quick capture stays unavailable beyond the bounded retry budget, report the condition through
-        // the existing recoverable event model and publish one intentionally invalid completion carrying
-        // the same request id. Core rejects that frame but, critically, releases the accepted in-flight
-        // slot so a later request can recover normally instead of wedging the Session forever.
         publishEvent(state,
                      hyremote::CaptureEventCode::TemporarilyUnavailable,
                      "Qt Quick capture remained unavailable after the bounded retry budget",
@@ -237,8 +227,6 @@ private:
             return;
         }
         if (grabbed.isNull()) {
-            // A public Quick grab can become unavailable while a window is hidden/minimized. Keep
-            // ownership of the Core in-flight slot only within this request's bounded retry budget.
             retryLater(state, request, attempt, 100);
             return;
         }
@@ -300,9 +288,6 @@ private:
             return;
         }
 
-        // Accepted requests are retained across a temporary hidden/minimized interval, but only for
-        // this request's bounded retry budget. A persistent hidden target completes recoverably so
-        // Core can release the in-flight slot and make a later recovery attempt.
         if (!window->isVisible() || window->visibility() == QWindow::Minimized
             || window->width() <= 0 || window->height() <= 0) {
             retryLater(state, request, attempt, 250);
@@ -318,15 +303,9 @@ private:
             return;
         }
 
-        const qreal dpr = window->devicePixelRatio();
-        Q_UNUSED(dpr);
-        // grabToImage() takes its size in item (logical) coordinates and applies the device pixel ratio
-        // itself. Multiplying by dpr here applied it a second time: a 1.5 display produced 2.25x the
-        // logical frame. The logical size is the contract; the ratio is not applied twice
-        // (docs/input-model.md, docs/quick-capture.md, docs/widgets-capture.md).
+        // grabToImage() takes logical item dimensions and applies DPR itself.
         const QSize logicalSize(qMax(1, qCeil(window->width())),
-                               qMax(1, qCeil(window->height())));
-
+                                qMax(1, qCeil(window->height())));
         const auto grab = std::make_shared<GrabAttempt>();
         grab->result = content->grabToImage(logicalSize);
         if (grab->result.isNull()) {
@@ -348,12 +327,10 @@ private:
                 grab->finished = true;
                 QObject::disconnect(grab->readyConnection);
                 const QImage image = grab->result ? grab->result->image() : QImage();
-                grab->result.clear();  // break the result/connection/context lifetime cycle
+                grab->result.clear();
                 publishImage(state, request, attempt, image);
             });
 
-        // A public async grab may fail to complete when visibility changes at the wrong moment.
-        // Release the result connection and retry the same Core request within the same finite budget.
         QTimer::singleShot(2000, dispatcher, [state, request, attempt, grab] {
             if (grab->finished)
                 return;
@@ -390,71 +367,33 @@ Qt::KeyboardModifiers toQtModifiers(hyremote::InputModifiers modifiers)
     return result;
 }
 
-Qt::MouseButton toQtButton(hyremote::PointerButton button)
-{
-    switch (button) {
-    case hyremote::PointerButton::Left:
-        return Qt::LeftButton;
-    case hyremote::PointerButton::Middle:
-        return Qt::MiddleButton;
-    case hyremote::PointerButton::Right:
-        return Qt::RightButton;
-    case hyremote::PointerButton::None:
-        return Qt::NoButton;
-    }
-    return Qt::NoButton;
-}
-
 int toQtKey(hyremote::KeyCode key)
 {
     using hyremote::KeyCode;
     switch (key) {
-    case KeyCode::Enter:
-        return Qt::Key_Return;
-    case KeyCode::Escape:
-        return Qt::Key_Escape;
-    case KeyCode::Tab:
-        return Qt::Key_Tab;
-    case KeyCode::Backspace:
-        return Qt::Key_Backspace;
-    case KeyCode::DeleteForward:
-        return Qt::Key_Delete;
-    case KeyCode::Insert:
-        return Qt::Key_Insert;
-    case KeyCode::Home:
-        return Qt::Key_Home;
-    case KeyCode::End:
-        return Qt::Key_End;
-    case KeyCode::PageUp:
-        return Qt::Key_PageUp;
-    case KeyCode::PageDown:
-        return Qt::Key_PageDown;
-    case KeyCode::ArrowLeft:
-        return Qt::Key_Left;
-    case KeyCode::ArrowUp:
-        return Qt::Key_Up;
-    case KeyCode::ArrowRight:
-        return Qt::Key_Right;
-    case KeyCode::ArrowDown:
-        return Qt::Key_Down;
-    case KeyCode::Space:
-        return Qt::Key_Space;
-    case KeyCode::Shift:
-        return Qt::Key_Shift;
-    case KeyCode::Control:
-        return Qt::Key_Control;
-    case KeyCode::Alt:
-        return Qt::Key_Alt;
-    case KeyCode::Meta:
-        return Qt::Key_Meta;
-    case KeyCode::CapsLock:
-        return Qt::Key_CapsLock;
-    case KeyCode::NumLock:
-        return Qt::Key_NumLock;
-    case KeyCode::Unknown:
-        return 0;
-    default:
-        break;
+    case KeyCode::Enter: return Qt::Key_Return;
+    case KeyCode::Escape: return Qt::Key_Escape;
+    case KeyCode::Tab: return Qt::Key_Tab;
+    case KeyCode::Backspace: return Qt::Key_Backspace;
+    case KeyCode::DeleteForward: return Qt::Key_Delete;
+    case KeyCode::Insert: return Qt::Key_Insert;
+    case KeyCode::Home: return Qt::Key_Home;
+    case KeyCode::End: return Qt::Key_End;
+    case KeyCode::PageUp: return Qt::Key_PageUp;
+    case KeyCode::PageDown: return Qt::Key_PageDown;
+    case KeyCode::ArrowLeft: return Qt::Key_Left;
+    case KeyCode::ArrowUp: return Qt::Key_Up;
+    case KeyCode::ArrowRight: return Qt::Key_Right;
+    case KeyCode::ArrowDown: return Qt::Key_Down;
+    case KeyCode::Space: return Qt::Key_Space;
+    case KeyCode::Shift: return Qt::Key_Shift;
+    case KeyCode::Control: return Qt::Key_Control;
+    case KeyCode::Alt: return Qt::Key_Alt;
+    case KeyCode::Meta: return Qt::Key_Meta;
+    case KeyCode::CapsLock: return Qt::Key_CapsLock;
+    case KeyCode::NumLock: return Qt::Key_NumLock;
+    case KeyCode::Unknown: return 0;
+    default: break;
     }
 
     if (key >= KeyCode::Digit0 && key <= KeyCode::Digit9)
@@ -469,16 +408,11 @@ int toQtKey(hyremote::KeyCode key)
 std::optional<Qt::KeyboardModifier> modifierForQtKey(int key)
 {
     switch (key) {
-    case Qt::Key_Shift:
-        return Qt::ShiftModifier;
-    case Qt::Key_Control:
-        return Qt::ControlModifier;
-    case Qt::Key_Alt:
-        return Qt::AltModifier;
-    case Qt::Key_Meta:
-        return Qt::MetaModifier;
-    default:
-        return std::nullopt;
+    case Qt::Key_Shift: return Qt::ShiftModifier;
+    case Qt::Key_Control: return Qt::ControlModifier;
+    case Qt::Key_Alt: return Qt::AltModifier;
+    case Qt::Key_Meta: return Qt::MetaModifier;
+    default: return std::nullopt;
     }
 }
 
@@ -510,45 +444,17 @@ public:
             if (admissionClass == InputMailboxAdmission::Class::DropUnmatchedRelease)
                 return;
 
-            // #400: accepted-arrival time travels with the event in the queued envelope; GUI drain
-            // time never decides double-click validity.
-            const hyremote::TimePoint acceptedAt = hyremote::Clock::now();
-
+            const unsigned long acceptedTimestamp = qtWindowSystemTimestamp();
             if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
                 if (!state->admission.canAcceptProtectedRelease())
                     throw std::runtime_error("bounded Qt Quick protected-release mailbox is full");
                 state->admission.acceptProtectedRelease(event);
-                state->pending.push_back(QueuedInput{event, acceptedAt, {}});
-            } else if (event.kind == hyremote::InputEventKind::PointerMove
-                       && !state->pending.empty()
-                       && state->pending.back().event.kind == hyremote::InputEventKind::PointerMove) {
-                // Coalescing keeps its freshness rule; the accepted-motion summary preserves the
-                // excursion of the move that is being replaced.
-                state->acceptedMotion.noteAcceptedMove(event);
-                state->pending.back() = QueuedInput{event, acceptedAt, {}};
             } else {
-                if (!state->admission.canAcceptNormal()) {
-                    const auto staleMove = std::find_if(
-                        state->pending.begin(), state->pending.end(), [](const QueuedInput &queuedInput) {
-                            return queuedInput.event.kind == hyremote::InputEventKind::PointerMove;
-                        });
-                    if (staleMove != state->pending.end()) {
-                        state->pending.erase(staleMove);
-                        state->admission.removePendingNormal();
-                    }
-                }
                 if (!state->admission.canAcceptNormal())
                     throw std::runtime_error("bounded Qt Quick input mailbox is full");
-
                 state->admission.acceptNormal(event);
-                PointerMovementSummary movement;
-                if (event.kind == hyremote::InputEventKind::PointerButton && event.pressed) {
-                    movement = state->acceptedMotion.takeSummaryForAcceptedPress(event);
-                } else if (event.kind == hyremote::InputEventKind::PointerMove) {
-                    state->acceptedMotion.noteAcceptedMove(event);
-                }
-                state->pending.push_back(QueuedInput{event, acceptedAt, movement});
             }
+            state->pending.push_back(QueuedInput{event, acceptedTimestamp});
 
             if (!state->drainScheduled) {
                 state->drainScheduled = true;
@@ -559,10 +465,7 @@ public:
         if (!scheduleDrain)
             return;
 
-        if (!QMetaObject::invokeMethod(
-                dispatcher,
-                [state] { drainOnGuiThread(state); },
-                Qt::QueuedConnection)) {
+        if (!QMetaObject::invokeMethod(dispatcher, [state] { drainOnGuiThread(state); }, Qt::QueuedConnection)) {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->drainScheduled = false;
             throw std::runtime_error("failed to queue remote input drain to the Qt Quick GUI thread");
@@ -596,22 +499,11 @@ public:
     }
 
 private:
-    // #400: the bounded mailbox stores a Runtime-private envelope; admission still classifies the
-    // contained InputEvent, so capacity, protected releases and coalescing rules are unchanged.
     struct QueuedInput
     {
         hyremote::InputEvent event;
-        hyremote::TimePoint acceptedAt{};
-        PointerMovementSummary movement;
+        unsigned long acceptedTimestamp = 0;
     };
-
-    // #400: the classification policy is Qt's own, never a product constant.
-    static DoubleClickPolicy doubleClickPolicy()
-    {
-        if (const QStyleHints *hints = QGuiApplication::styleHints())
-            return {hints->mouseDoubleClickInterval(), hints->mouseDoubleClickDistance()};
-        return {};
-    }
 
     struct State
     {
@@ -623,16 +515,7 @@ private:
         std::deque<QueuedInput> pending;
         InputMailboxAdmission admission;
 
-        // GUI-thread-owned state already delivered into the QQuickWindow. The click trace identity is
-        // the configured window (never a QQuickItem): Qt Quick keeps owning item routing, and the
-        // QPointer owner beside the opaque token keeps that identity lifetime-safe.
-        Qt::MouseButtons buttons = Qt::NoButton;
-        PointerClickTrace clickTrace;
-        QPointer<QQuickWindow> clickTraceOwner;
-        AcceptedPointerMotionState acceptedMotion;
-        QPoint lastLocalPoint;
-        QPoint lastGlobalPoint;
-        bool pointerPositionKnown = false;
+        QtWindowSystemPointerState pointer;
         Qt::KeyboardModifiers modifiers = Qt::NoModifier;
         std::vector<int> heldKeys;
     };
@@ -640,8 +523,7 @@ private:
     static void deliverPointer(const std::shared_ptr<State> &state,
                                QQuickWindow *window,
                                const hyremote::InputEvent &event,
-                               hyremote::TimePoint acceptedAt,
-                               const PointerMovementSummary &movement)
+                               unsigned long timestamp)
     {
         const std::optional<hyremote::MappedInputPoint> mapped =
             hyremote::mapPointerToTarget(event,
@@ -650,96 +532,9 @@ private:
         if (!mapped)
             return;
 
-        const QPoint localPoint(qRound(mapped->x), qRound(mapped->y));
-        const QPoint globalPoint = window->mapToGlobal(localPoint);
-        const Qt::KeyboardModifiers modifiers = toQtModifiers(event.modifiers);
-        state->modifiers = modifiers;
-        state->lastLocalPoint = localPoint;
-        state->lastGlobalPoint = globalPoint;
-        state->pointerPositionKnown = true;
-
-        if (event.kind == hyremote::InputEventKind::PointerScroll) {
-            QWheelEvent wheel(QPointF(localPoint),
-                              QPointF(globalPoint),
-                              QPoint(),
-                              QPoint(qRound(event.scrollX * 120.0F),
-                                     qRound(event.scrollY * 120.0F)),
-                              state->buttons,
-                              modifiers,
-                              Qt::NoScrollPhase,
-                              false);
-            QCoreApplication::sendEvent(window, &wheel);
-            return;
-        }
-
-        const Qt::MouseButton button = toQtButton(event.button);
-        QEvent::Type type = QEvent::MouseMove;
-        bool followWithDoubleClick = false;
-        if (event.kind == hyremote::InputEventKind::PointerButton) {
-            if (button == Qt::NoButton)
-                return;
-            if (event.pressed) {
-                // #400: the qualifying second press is delivered normally and one MouseButtonDblClick
-                // is appended immediately after it. The identity is the configured window, so Qt Quick
-                // still decides the item/handler itself - no QQuickItem hit-testing is added here.
-                const auto index = [button]() -> std::optional<std::size_t> {
-                    switch (button) {
-                    case Qt::LeftButton: return 0;
-                    case Qt::MiddleButton: return 1;
-                    case Qt::RightButton: return 2;
-                    default: return std::nullopt;
-                    }
-                }();
-                if (!index)
-                    return;
-                PointerClickTrace &trace = state->clickTrace;
-                const bool sameTarget = state->clickTraceOwner.data() == window;
-                const int qtButton = static_cast<int>(button);
-                const PointerMovementSpan span = movementSpanForTarget(
-                    movement, static_cast<float>(window->width()), static_cast<float>(window->height()));
-                const bool doubleClick = sameTarget
-                                         && isDoubleClickPress(trace, qtButton, acceptedAt, QPointF(localPoint),
-                                                               quintptr(window), doubleClickPolicy(), span);
-                if (doubleClick)
-                    disarmPointerClickTrace(trace);  // the pair is consumed
-                else
-                    armPointerClickTrace(trace, qtButton, acceptedAt, QPointF(localPoint), quintptr(window));
-                state->clickTraceOwner = window;
-                state->buttons |= button;
-                followWithDoubleClick = doubleClick;
-                type = QEvent::MouseButtonPress;
-            } else {
-                state->buttons &= ~Qt::MouseButtons(button);
-                type = QEvent::MouseButtonRelease;
-            }
-        } else if (event.kind == hyremote::InputEventKind::PointerMove) {
-            // Movement beyond the double-click distance box invalidates the pending pair.
-            notePointerMove(state->clickTrace, QPointF(localPoint), doubleClickPolicy());
-        }
-
-        QMouseEvent mouse(type,
-                          QPointF(localPoint),
-                          QPointF(localPoint),
-                          QPointF(globalPoint),
-                          type == QEvent::MouseMove ? Qt::NoButton : button,
-                          state->buttons,
-                          modifiers);
-        QCoreApplication::sendEvent(window, &mouse);
-
-        if (followWithDoubleClick) {
-            // Lifetime re-check after the press reached the window: a handler may have destroyed or
-            // replaced the target window, and a stale pointer must never receive the DblClick.
-            if (window && state->clickTraceOwner.data() == window && state->target.data() == window) {
-                QMouseEvent doubleClick(QEvent::MouseButtonDblClick,
-                                        QPointF(localPoint),
-                                        QPointF(localPoint),
-                                        QPointF(globalPoint),
-                                        button,
-                                        state->buttons,
-                                        modifiers);
-                QCoreApplication::sendEvent(window, &doubleClick);
-            }
-        }
+        const QPointF local(mapped->x, mapped->y);
+        const QPointF global = window->mapToGlobal(local);
+        deliverQtWindowSystemPointer(window, event, local, global, timestamp, state->pointer);
     }
 
     static void deliverKey(const std::shared_ptr<State> &state,
@@ -761,9 +556,7 @@ private:
                 state->heldKeys.erase(held);
         }
 
-        QKeyEvent keyEvent(event.pressed ? QEvent::KeyPress : QEvent::KeyRelease,
-                           key,
-                           state->modifiers);
+        QKeyEvent keyEvent(event.pressed ? QEvent::KeyPress : QEvent::KeyRelease, key, state->modifiers);
         QCoreApplication::sendEvent(window, &keyEvent);
     }
 
@@ -780,34 +573,16 @@ private:
     static void releaseHeldStateOnGuiThread(const std::shared_ptr<State> &state)
     {
         QQuickWindow *window = state->target.data();
-        // #400 lifecycle: classification state must not outlive a session/target, otherwise a first
-        // click after a restart could pair with the previous session's click.
-        clearPointerClickTrace(state->clickTrace);
-        state->clickTraceOwner = nullptr;
+        if (window)
+            releaseQtWindowSystemPointer(window, qtWindowSystemTimestamp(), state->pointer);
+        else
+            state->pointer = {};
+
         if (!window) {
-            state->buttons = Qt::NoButton;
             state->heldKeys.clear();
+            state->modifiers = Qt::NoModifier;
             return;
         }
-
-        if (state->pointerPositionKnown) {
-            static constexpr std::array<Qt::MouseButton, 3> buttons{
-                Qt::LeftButton, Qt::MiddleButton, Qt::RightButton};
-            for (Qt::MouseButton button : buttons) {
-                if (!(state->buttons & button))
-                    continue;
-                state->buttons &= ~Qt::MouseButtons(button);
-                QMouseEvent release(QEvent::MouseButtonRelease,
-                                    QPointF(state->lastLocalPoint),
-                                    QPointF(state->lastLocalPoint),
-                                    QPointF(state->lastGlobalPoint),
-                                    button,
-                                    state->buttons,
-                                    state->modifiers);
-                QCoreApplication::sendEvent(window, &release);
-            }
-        }
-        state->buttons = Qt::NoButton;
 
         const std::vector<int> held = state->heldKeys;
         for (int key : held) {
@@ -828,25 +603,23 @@ private:
         state->modifiers = Qt::NoModifier;
     }
 
-    static void deliverOnGuiThread(const std::shared_ptr<State> &state,
-                                   const QueuedInput &queued)
+    static void deliverOnGuiThread(const std::shared_ptr<State> &state, const QueuedInput &queued)
     {
-        const hyremote::InputEvent &event = queued.event;
         QQuickWindow *window = state->target.data();
         if (!window)
             return;
 
-        switch (event.kind) {
+        switch (queued.event.kind) {
         case hyremote::InputEventKind::PointerMove:
         case hyremote::InputEventKind::PointerButton:
         case hyremote::InputEventKind::PointerScroll:
-            deliverPointer(state, window, event, queued.acceptedAt, queued.movement);
+            deliverPointer(state, window, queued.event, queued.acceptedTimestamp);
             break;
         case hyremote::InputEventKind::Key:
-            deliverKey(state, window, event);
+            deliverKey(state, window, queued.event);
             break;
         case hyremote::InputEventKind::Text:
-            deliverText(window, event);
+            deliverText(window, queued.event);
             break;
         case hyremote::InputEventKind::None:
             break;
@@ -861,7 +634,6 @@ private:
             if (!state->active) {
                 state->pending.clear();
                 state->admission.resetAll();
-                state->acceptedMotion.clear();
                 state->drainScheduled = false;
                 return;
             }
