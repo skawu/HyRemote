@@ -194,10 +194,47 @@ lane may start:
 
 | Lane | Trigger | What runs |
 | --- | --- | --- |
-| `PR_DRAFT` | draft pull request | Git Flow/topology, the classifier self test, release-authority governance. No Qt runner. |
+| `PR_DRAFT` | draft pull request | Git Flow/topology, release-authority governance when release authority changed. No Qt runner. |
 | `PR_FAST` | ready pull request | Only what the real `base...head` diff can affect: affected capabilities, the deploy evidence for contracts it touches, readiness when it touches a readiness-consumed surface. |
 | `DEVELOP_SENTINEL` | push to `develop` | Repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform matrix is not repeated on every merge. |
-| `FULL_GATE` | `workflow_dispatch` (`validation_level: full`) | Both platforms, all four frontends, all readiness gates, all applicable clean-deploy evidence. This is the lane for an exact candidate, a release-branch readiness run, main/GA validation or a deliberate diagnostic. |
+| `FULL_GATE` | admitted `workflow_dispatch` (`purpose` + `expected_sha` == the dispatched commit) | Both platforms, all four frontends, all readiness gates, all applicable clean-deploy evidence. This is the lane for an exact candidate, a release-branch readiness run, main/GA validation or a deliberate diagnostic. |
+
+### The three decision layers
+
+Every CI run reports one **decision** — what the run may be waited on for. The decisions map to three layers of
+development cadence:
+
+| Decision | Layer | Meaning | Who waits |
+| --- | --- | --- | --- |
+| `OBSERVE` | L0 — Local development feedback | Fire-and-observe: no merge or release decision is waiting on this lane (draft PRs, the develop sentinel, no-product reporting, maintenance and audit-only runs). | Nobody. **OBSERVE workflows do not block sequencing of independent work** — a later red result opens a defect owner, it is not a reason to idle. |
+| `MERGE` | L1 — Ready PR merge decision | Hosted evidence for a ready pull request's merge decision. Decided by the lane, not by matrix size: a ready docs-only PR is still a MERGE decision. | The author of that pull request, before merging it. |
+| `CANDIDATE` | L2 — Frozen exact-candidate qualification | Full qualification of one frozen, exact SHA for candidate/release purposes. | Whoever will act on the candidate evidence. |
+
+### Candidate standard flow
+
+For candidate-producing work, run the layers in order and never start the expensive one while edits are still
+pending:
+
+```text
+local canonical checks
+→ user-path preflight
+→ freeze exact SHA
+→ admitted FULL_GATE
+→ physical/user validation only if required
+```
+
+A `FULL_GATE` is admitted, not generic: it requires `purpose` (`candidate`, `release-readiness` or `diagnostic`) and
+an `expected_sha` that must equal the dispatched commit. The gate fails closed before any Qt runner starts when the
+SHA is malformed or does not match, so a branch-name dispatch can never be mistaken for candidate evidence.
+
+**A candidate SHA, once changed, invalidates the previous candidate evidence automatically.** Re-running for the new
+SHA is legitimate and must be recorded as such; reusing evidence from a superseded SHA never is.
+
+### Specialized historical evidence
+
+`tls-preflight.yml` is historical/specialized evidence for the closed #258 preflight and is explicit-dispatch only.
+It is not a development or release wait gate and must never be consumed as one unless a future activated security
+capability explicitly re-adopts it. Nothing in this cadence re-activates a TLS product scope.
 
 Working rules that keep that cadence meaningful:
 
@@ -210,9 +247,10 @@ Working rules that keep that cadence meaningful:
   so a hosted run against an older base no longer describes what merges. The Git Flow policy checks this at merge
   time: if the base moved, merge the base into the branch, re-run the gate, and merge only afterwards. That is what
   makes it safe not to repeat the full matrix after every merge.
-- **Wait only where a decision is pending**: the final ready-pull-request gate and an exact-candidate `FULL_GATE`. Do
-  not wait on ordinary commits, drafts or post-merge duplicates; poll by run id and stop as soon as the run reports
-  completion, because an empty answer is "unknown", never "finished".
+- **Wait only where a decision is pending**: an `OBSERVE` run is never one of them. Wait on the `MERGE` decision of
+  your own ready pull request and on an admitted `CANDIDATE` gate. Do not wait on ordinary commits, drafts,
+  post-merge duplicates or maintenance runs; poll by run id and stop as soon as the run reports completion, because
+  an empty answer is "unknown", never "finished".
 - **Artifacts are evidence, not routine.** Build evidence is uploaded for a failure, for the clean SDK/deploy
   acceptance contracts a run was asked to prove, and for `FULL_GATE`. A documentation or governance change does not
   need a build-evidence bundle.

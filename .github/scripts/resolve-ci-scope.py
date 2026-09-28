@@ -23,6 +23,15 @@ Lanes (``lane``):
   * ``FULL_GATE`` - the complete dual-platform, four-frontend, all-evidence run. It is reachable only through an
     explicit ``workflow_dispatch`` (an exact candidate, a release branch or main validation is dispatched the same
     way), never as a side effect of an ordinary change.
+
+Decisions (``decision``) - what the run can be waited on for (#380):
+  * ``OBSERVE`` - fire-and-observe. No merge or release decision is waiting on this lane: a draft pull request, the
+    develop sentinel or any other no-product reporting run. An OBSERVE result never blocks sequencing independent
+    work; a later red result opens a defect owner instead of a hold.
+  * ``MERGE`` - hosted evidence for a ready pull request's merge decision. This is decided by the lane, not by
+    whether a Qt matrix starts: a ready docs-only pull request is still a MERGE decision, answered by governance
+    rather than by product runners.
+  * ``CANDIDATE`` - an admitted exact-SHA full qualification. A candidate or release decision may wait on it.
 """
 
 from __future__ import annotations
@@ -194,6 +203,22 @@ def lane_for(event: str, draft: bool) -> str:
     return "UNKNOWN"
 
 
+def decision_for(lane: str) -> str:
+    """The one decision this lane can produce, as waited on by humans and agents (#380).
+
+    ``PR_FAST`` is ``MERGE`` even when the diff selects no product capability: the decision describes what this CI
+    run is for - the ready pull request's merge decision - not whether a Qt matrix starts. Everything that is not a
+    ready-pull-request or an admitted full gate defaults to ``OBSERVE``, because nothing may wait on a lane whose
+    purpose is unknown.
+    """
+    return {
+        "PR_DRAFT": "OBSERVE",
+        "PR_FAST": "MERGE",
+        "DEVELOP_SENTINEL": "OBSERVE",
+        "FULL_GATE": "CANDIDATE",
+    }.get(lane, "OBSERVE")
+
+
 def changed_paths(event: str, base: str, head: str) -> list[str]:
     if event == "pull_request":
         return subprocess.check_output(
@@ -293,6 +318,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
 
     return {
         "lane": lane,
+        "decision": decision_for(lane),
         "product": "true" if product else "false",
         "integrations": integrations if product else "",
         "qpa": "true" if ("qpa" in selected and product) else "false",
@@ -426,6 +452,18 @@ def self_test() -> int:
         # separate release authority, and this slice only binds affected-PR hosted evidence.
         ("full gate does not silently become security-on", "workflow_dispatch", [], False,
          {"security_evidence": "false", "lane": "FULL_GATE", "product": "true"}),
+        # Decision classes (#380): what a run may be waited on for. A ready pull request is MERGE even when its diff
+        # selects no product capability, because the decision describes the run's purpose, not the matrix size.
+        ("draft product PR decides OBSERVE", "pull_request", ["src/runtime/runtime.cpp"], True,
+         {"decision": "OBSERVE"}),
+        ("ready docs-only PR decides MERGE without a product matrix", "pull_request",
+         ["docs/proposals/notes.md"], False, {"decision": "MERGE", "product": "false"}),
+        ("ready governance-only PR decides MERGE", "pull_request",
+         [".github/release/release-trains.json"], False, {"decision": "MERGE", "product": "false"}),
+        ("ready affected-product PR decides MERGE", "pull_request", ["src/runtime/runtime.cpp"], False,
+         {"decision": "MERGE", "product": "true"}),
+        ("develop push decides OBSERVE", "push", [], False, {"decision": "OBSERVE"}),
+        ("admitted full gate decides CANDIDATE", "workflow_dispatch", [], False, {"decision": "CANDIDATE"}),
     ]
 
     for description, event, changed, draft, expected in cases:
@@ -503,6 +541,18 @@ def self_test() -> int:
                   f"{resolved['test_exclude']!r}")
             failures += 1
 
+    # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
+    # start waiting on a lane whose purpose is not defined.
+    expected_decisions = {
+        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "DEVELOP_SENTINEL": "OBSERVE", "FULL_GATE": "CANDIDATE",
+        "UNKNOWN": "OBSERVE",
+    }
+    for lane, expected in expected_decisions.items():
+        actual = decision_for(lane)
+        if actual != expected:
+            print(f"CASE FAILED: decision map: lane={lane} decision={actual!r}, expected {expected!r}")
+            failures += 1
+
     if failures:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
@@ -510,7 +560,8 @@ def self_test() -> int:
           "selects no capability, release authority is governance, empty exclusions stay empty, no exclusion can "
           "match every test, fast lane preserved, readiness runs where it is consumed, the candidate-only product "
           "fit runs where it is required rather than by default, security-on evidence is selected only by the "
-          "VNC-auth/private-security surfaces and never silently by the full gate)")
+          "VNC-auth/private-security surfaces and never silently by the full gate, and the decision map is "
+          "OBSERVE/MERGE/CANDIDATE with PR_FAST always a merge decision)")
     return 0
 
 
@@ -543,10 +594,14 @@ def main() -> int:
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
+        product_scope = ("Qt product matrix (" + outputs["integrations"] + ")"
+                         if outputs["product"] == "true" else "none - no hosted product validation required")
         with open(summary_path, "a", encoding="utf-8") as handle:
             handle.write("## CI scope\n\n")
             handle.write(f"- lane: {outputs['lane']}\n")
-            handle.write(f"- integrations: {outputs['integrations'] or 'none'}\n")
+            handle.write(f"- decision: {outputs['decision']}\n")
+            handle.write(f"- product scope: {product_scope}\n")
+            handle.write(f"- selected capabilities: {outputs['integrations'] or 'none'}\n")
             handle.write(f"- Qt build: {'yes' if outputs['product'] == 'true' else 'no'}\n")
             handle.write("- build type: Release\n")
             handle.write(f"- Generic/C++/QML/QPA deploy evidence: {outputs['generic_evidence']}/"

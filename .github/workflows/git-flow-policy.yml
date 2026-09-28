@@ -37,10 +37,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # #380: whether the release-audit authority changed is decided from the real diff, not by the resolver deciding
+  # for itself. Only PR and branch-push events carry a meaningful diff; a tag push audits through the release-tag
+  # job (which now validates the resolver it uses), and a deliberate dispatch is rare enough to re-prove the
+  # resolver there.
+  release-authority-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      authority_changed: ${{ steps.changed.outputs.authority_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: changed
+        name: Detect release-authority changes from the real diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_REF_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          authority_changed=false
+          range=""
+          case "${EVENT_NAME}" in
+            pull_request) range="${BASE_SHA}...${HEAD_REF_SHA}" ;;
+            push)
+              # A tag push is audited by the release-tag job itself and carries no diff-based signal here.
+              if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+                :
+              elif [[ "${BEFORE_SHA}" =~ ^0+$ || -z "${BEFORE_SHA}" ]]; then
+                range="${HEAD_REF_SHA}~1..${HEAD_REF_SHA}"
+              else
+                range="${BEFORE_SHA}..${HEAD_REF_SHA}"
+              fi ;;
+          esac
+          if [[ -n "${range}" ]] && git diff --name-only "${range}" -- \
+               '.github/release/**' '.github/workflows/git-flow-policy.yml' | grep -q .; then
+            authority_changed=true
+          fi
+          echo "release-authority changed: ${authority_changed}"
+          echo "authority_changed=${authority_changed}" >> "$GITHUB_OUTPUT"
+
   release-tag-audit-self-test:
-    # Which tag a run audits, and whether it audits one at all, is decided by a script with its own self test, so the
-    # decision is proved on every policy run instead of only when a tag happens to be pushed. No Qt, no product build:
-    # the release-train authority is exercised through the machine selector, which is CMake only.
+    # #380: the resolver's self test is release-authority evidence, not a per-event ritual. It runs when the
+    # release-audit authority changed, or on a deliberate dispatch. Ordinary PR/develop policy events skip it; a
+    # real tag push always validates the resolver inside the release-tag audit job itself. Nothing about PR
+    # topology, base freshness, train selection, candidate prerequisites, mainline audits or tag fail-closed
+    # behavior changes.
+    needs: release-authority-scope
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.release-authority-scope.outputs.authority_changed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -380,6 +431,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # #380: the audit validates the resolver it is about to use, so the resolver is proved on every real tag
+      # audit even though the standalone self-test job no longer runs on unrelated policy events.
+      - name: Self-test the release-tag audit target resolver
+        shell: bash
+        run: python3 .github/release/resolve-release-tag.py --self-test
 
       - name: Resolve the release tag to audit
         id: target
