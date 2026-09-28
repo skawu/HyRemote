@@ -43,7 +43,8 @@ The current product-behavior statements later in this document also have explici
 - bounded RFB 3.8 viewing + current listener/reconnect/bounded-peer behavior → `COP-V020-RFB38`;
 - optional remote input with view-only default/policy enforcement → `COP-V020-REMOTE-INPUT`;
 - `Insecure` unauthenticated/unencrypted trusted-LAN semantics → `COP-V020-SECURITY-INSECURE`;
-- conditional `Authenticated` with transport-security capability available → `COP-V020-SECURITY-AUTH-AVAILABLE`;
+- conditional `Authenticated` with transport-security capability available and a valid descriptor → `COP-V020-SECURITY-AUTH-AVAILABLE`;
+- the same capability-available `Authenticated` family with a missing/invalid descriptor, which must fail before listener/session creation → `COP-V020-SECURITY-AUTH-CONFIG-INVALID`;
 - `Authenticated` requested when that build capability is absent → `COP-V020-SECURITY-AUTH-UNAVAILABLE`;
 - `AuthenticatedEncrypted` unavailable with no downgrade, whether authenticated capability is present or absent → `COP-V020-SECURITY-AUTHENC-UNAVAILABLE`.
 
