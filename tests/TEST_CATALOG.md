@@ -63,6 +63,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |
 | `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure. |
 | `hyremote-quick-input-preflight-test` | Quick | #401 preflight: deterministic reproduction of #400 through the production Quick path with first-divergence classification. |
+| `hyremote-quick-controls-preflight-test` | Quick + QtQuick Controls | #401 preflight: Quick control matrix (Button/CheckBox/Slider/Popup) with a regression-bearing Popup reach assertion. Registered only when the QtQuick.Controls QML module is available; the Runtime Quick capability contract covers Qt Quick, not Controls, so a minimal Quick-only configuration leaves this entry absent rather than broken. |
 | `hyremote-rfb-listener-reachability-test` | Widgets + VNC | Real Runtime/RFB wildcard/explicit IPv4 reachability and interface reconciliation. Failure invalidates socket-level reachability while remaining independent of the C++ facade. |
 
 ## T2 — C++ frontend

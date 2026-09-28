@@ -1,15 +1,21 @@
-// #401 deterministic reproduction of #400 through the real production Qt Quick input path.
+// #401 deterministic reproduction through the real production Qt Quick input path.
 //
 // Same discipline as the Widgets preflight: drive the shipped path (InputSink::post -> bounded
 // mailbox -> GUI drain -> Quick adapter -> QQuickWindow), record what Qt Quick actually receives,
-// and classify the first divergence layer (#401 vocabulary). Assertions pin CURRENT observed
-// behaviour; DIVERGENCE lines are the evidence #400's production fix will flip after the
-// architecture decision.
+// and classify the first divergence layer (#401 vocabulary).
 //
-// The Quick route already delegates item routing, hover, grab and focus to Qt Quick by delivering
-// to the window, so the interesting Quick findings are: is onDoubleClicked reachable at all, and
-// does the popup/overlay surface (which lives inside the same window) behave differently from the
-// Widgets popup case.
+// This fixture deliberately depends on **QtQuick only**, never on QtQuick.Controls: the Runtime's
+// Quick capability contract (HYREMOTE_REMOTEACCESS_WITH_QUICK) promises Qt Quick, so the baseline
+// preflight must stay buildable and runnable in a minimal Quick-only configuration. The control
+// matrix that needs QtQuick.Controls lives in test_quick_controls_preflight.cpp, which is only
+// registered when that QML module is actually available.
+//
+// Evidence kept here (all QtQuick-native): MouseArea click, MouseArea double-click, focusable text
+// target, drag with a held button, and an in-window overlay surface above the content.
+//
+// Assertions pin CURRENT observed behaviour. DIVERGENCE lines are measured evidence. The overlay
+// reachability claim is a hard assertion on purpose: a "NO_DEFECT" statement about a reachable
+// surface must be regression-bearing, not a printout.
 
 #include <QElapsedTimer>
 #include <QEvent>
@@ -134,7 +140,6 @@ void runPreflight()
     QQmlComponent component(&engine);
     component.setData(R"QML(
 import QtQuick
-import QtQuick.Controls
 
 Rectangle {
     width: 500
@@ -142,63 +147,56 @@ Rectangle {
     color: "white"
 
     MouseArea {
-        objectName: "dblArea"
+        objectName: "area"
         x: 0; y: 0; width: 200; height: 200
-        onPressed: bridge.inc("areaPresses")
         onClicked: bridge.inc("areaClicks")
         onDoubleClicked: bridge.inc("areaDoubleClicks")
-    }
-
-    Button {
-        objectName: "button"
-        x: 250; y: 20
-        text: "ok"
-        onClicked: bridge.inc("buttonClicks")
-    }
-
-    CheckBox {
-        objectName: "checkBox"
-        x: 250; y: 90
-        text: "pick"
-        onToggled: bridge.inc("toggles")
     }
 
     TextInput {
         objectName: "textInput"
         id: input
-        x: 250; y: 160; width: 150; height: 30
+        x: 0; y: 240; width: 200; height: 30
         font.pixelSize: 16
         color: "black"
     }
 
-    Slider {
-        objectName: "slider"
-        x: 0; y: 230; width: 300
-        onMoved: bridge.inc("sliderMoves")
+    // Drag target: a held press plus moves, counted by the item itself.
+    MouseArea {
+        objectName: "dragArea"
+        x: 250; y: 240; width: 80; height: 80
+        hoverEnabled: true
+        onPressed: bridge.inc("dragPresses")
+        onPositionChanged: bridge.inc("dragMoves")
     }
 
-    Popup {
-        id: popup
-        x: 220; y: 300; width: 220; height: 160
-        onOpened: bridge.inc("popupOpens")
+    // In-window overlay: a separate layer above the content inside the same window, which is the
+    // QtQuick-native equivalent of an overlay surface (QtQuick.Controls.Popup is covered by the
+    // capability-gated controls fixture).
+    Rectangle {
+        objectName: "overlay"
+        id: overlay
+        x: 250; y: 340; width: 200; height: 120
+        color: "#eef2ff"
+        border.color: "#88a"
+        visible: false
         MouseArea {
-            objectName: "popupArea"
+            objectName: "overlayArea"
             anchors.fill: parent
-            onClicked: bridge.inc("popupClicks")
+            onClicked: bridge.inc("overlayClicks")
         }
     }
 
-    Button {
-        objectName: "openPopup"
-        x: 0; y: 300
-        text: "open"
-        onClicked: popup.open()
+    MouseArea {
+        objectName: "openOverlay"
+        x: 0; y: 300; width: 120; height: 40
+        onClicked: overlay.visible = true
     }
 }
 )QML",
                      QUrl(QStringLiteral("test_quick_input_preflight.qml")));
     QObject *qmlRoot = component.create();
-    check(qmlRoot != nullptr, "qml: the inline matrix scene instantiates");
+    check(qmlRoot != nullptr, "qml: the inline QtQuick-only scene instantiates");
     if (!qmlRoot) {
         for (const QQmlError &error : component.errors())
             std::cerr << "  QML error: " << error.toString().toStdString() << '\n';
@@ -225,60 +223,41 @@ Rectangle {
         return;
     }
 
+    const auto sceneCenter = [&window, qmlRootItem](const char *objectName) {
+        QQuickItem *item = qmlRootItem->findChild<QQuickItem *>(QString::fromLatin1(objectName));
+        if (!item) {
+            std::cout << "     item '" << objectName << "' not found\n";
+            return QPointF(-1, -1);
+        }
+        const QPointF center = item->mapToScene(QPointF(item->width() / 2.0, item->height() / 2.0));
+        std::cout << "     item '" << objectName << "': scene center=(" << center.x() << ", "
+                  << center.y() << ") size=" << item->width() << "x" << item->height()
+                  << " visible=" << (item->isVisible() ? "true" : "false") << '\n';
+        return center;
+    };
+
     // 1. Single click: Qt Quick owns item routing already.
-    click(components, window, QPointF(100, 100));
+    click(components, window, sceneCenter("area"));
     check(bridge.property("areaClicks").toInt() == 1,
           "MouseArea: single remote click reaches onClicked");
     noDivergence("Quick single click / item routing",
                  "Qt Quick resolves the item under the point itself; the adapter only delivers to the window");
 
     // 2. Valid double click: is onDoubleClicked reachable on this path?
-    doubleClick(components, window, QPointF(100, 100));
-    const int doubleClicks = bridge.property("areaDoubleClicks").toInt();
-    if (doubleClicks == 0) {
+    doubleClick(components, window, sceneCenter("area"));
+    if (bridge.property("areaDoubleClicks").toInt() == 0) {
         divergence("QT_SEMANTIC_CLASSIFICATION",
                    "MouseArea onDoubleClicked",
-                   "no DblClick event is ever delivered into the window, so MouseArea/TapHandler/tap "
+                   "no DblClick event is ever delivered into the window, so MouseArea/SinglePointHandler "
                    "double-tap handlers are unreachable for remote users even though Qt Quick routing "
                    "itself is fine");
     } else {
         noDivergence("MouseArea onDoubleClicked", "a double-click semantic was observable");
     }
 
-    // 3. Button and CheckBox single-click behaviour (control-local semantics work).
-    //    Click points are derived from each item's own scene geometry instead of hand-computed
-    //    coordinates, so a failure means input did not arrive, not that the fixture guessed wrong.
-    const auto clickItem = [&components, &window, qmlRootItem](const char *objectName) {
-        QQuickItem *item = qmlRootItem->findChild<QQuickItem *>(QString::fromLatin1(objectName));
-        if (!item)
-            item = window.findChild<QQuickItem *>(QString::fromLatin1(objectName));
-        if (!item) {
-            std::cout << "     item '" << objectName << "' not found; scene items:";
-            const QList<QQuickItem *> all = qmlRootItem->findChildren<QQuickItem *>();
-            for (QQuickItem *candidate : all)
-                std::cout << ' ' << candidate->objectName().toStdString();
-            std::cout << '\n';
-            return false;
-        }
-        const QPointF center = item->mapToScene(QPointF(item->width() / 2.0, item->height() / 2.0));
-        std::cout << "     item '" << objectName << "': scene center=(" << center.x() << ", " << center.y()
-                  << ") size=" << item->width() << "x" << item->height()
-                  << " visible=" << (item->isVisible() ? "true" : "false") << '\n';
-        click(components, window, center);
-        return true;
-    };
-
-    clickItem("button");
-    pump();
-    check(bridge.property("buttonClicks").toInt() == 1, "Button: single remote click activates");
-    clickItem("checkBox");
-    pump();
-    check(bridge.property("toggles").toInt() == 1, "CheckBox: single remote click toggles");
-
-    // 4. Focusable text target.
-    clickItem("textInput");
-    pump();
-    QQuickItem *inputItem = window.findChild<QQuickItem *>(QStringLiteral("textInput"));
+    // 3. Focusable text target.
+    click(components, window, sceneCenter("textInput"));
+    QQuickItem *inputItem = qmlRootItem->findChild<QQuickItem *>(QStringLiteral("textInput"));
     const bool focused = inputItem && inputItem->hasActiveFocus();
     std::cout << "     observed[TextInput focus]: hasActiveFocus=" << (focused ? "true" : "false") << '\n';
     if (focused) {
@@ -296,60 +275,41 @@ Rectangle {
                    "as a reproduced #400 defect");
     }
 
-    // 5. Drag target. Geometry-derived again: the active Qt Quick Controls style decides where the
-    //    groove and handle are, so the drag must not depend on hand-computed coordinates.
-    QQuickItem *sliderItem = qmlRootItem->findChild<QQuickItem *>(QStringLiteral("slider"));
-    if (sliderItem) {
-        const double before = sliderItem->property("value").toDouble();
-        const QPointF start =
-            sliderItem->mapToScene(QPointF(sliderItem->width() * 0.05, sliderItem->height() / 2.0));
-        const QPointF end =
-            sliderItem->mapToScene(QPointF(sliderItem->width() * 0.95, sliderItem->height() / 2.0));
-        postRaw(components, window, hyremote::InputEventKind::PointerMove, start);
-        postRaw(components, window, hyremote::InputEventKind::PointerButton, start,
-                hyremote::PointerButton::Left, true);
-        pump();
-        postRaw(components, window, hyremote::InputEventKind::PointerMove, end);
-        pump();
-        postRaw(components, window, hyremote::InputEventKind::PointerButton, end,
-                hyremote::PointerButton::Left, false);
-        pump();
-        const double after = sliderItem->property("value").toDouble();
-        std::cout << "     observed[Slider drag]: before=" << before << " after=" << after
-                  << " onMoved=" << bridge.property("sliderMoves").toInt() << " start=(" << start.x()
-                  << ", " << start.y() << ") end=(" << end.x() << ", " << end.y() << ")\n";
-        if (after > before) {
-            noDivergence("Quick drag", "press/move/release moves the control's value");
-        } else {
-            divergence("TARGET_ROUTING/UNMEASURED",
-                       "Quick Slider drag",
-                       "the geometry-derived drag did not change the value in this offscreen harness; "
-                       "drag fidelity needs a real desktop run and is listed as an explicit gap, not as a "
-                       "reproduced #400 defect");
-        }
-    } else {
-        divergence("TARGET_ROUTING/UNMEASURED", "Quick Slider drag", "slider item not found");
-    }
-
-    // 6. In-window popup/overlay surface: unlike the Widgets popup (separate top-level window),
-    //    a Qt Quick Popup lives in the same window's overlay, so it should remain reachable.
-    clickItem("openPopup");
+    // 4. Drag: a held press plus moves must keep reaching the pressed item.
+    const QPointF dragStart = sceneCenter("dragArea");
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, dragStart);
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, dragStart,
+            hyremote::PointerButton::Left, true);
     pump();
-    const bool popupOpen = bridge.property("popupOpens").toInt() >= 1;
-    std::cout << "     observed[Popup open]: onOpened fired = " << (popupOpen ? "true" : "false") << '\n';
-    if (popupOpen) {
-        clickItem("popupArea");
-        pump();
-        const int popupClicks = bridge.property("popupClicks").toInt();
-        if (popupClicks >= 1) {
-            noDivergence("Quick Popup/overlay input",
-                         "in-window overlay surfaces stay reachable on the window-delivery route, unlike "
-                         "the Widgets popup top-level");
-        } else {
-            divergence("TARGET_ROUTING",
-                       "Quick Popup/overlay input",
-                       "the popup opened but the click inside it did not reach the popup content");
-        }
+    const int movesBefore = bridge.property("dragMoves").toInt();
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, dragStart + QPointF(60, 60));
+    pump();
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, dragStart + QPointF(60, 60),
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[drag]: presses=" << bridge.property("dragPresses").toInt()
+              << " moves=" << bridge.property("dragMoves").toInt() << " (before move: " << movesBefore
+              << ")\n";
+    check(bridge.property("dragPresses").toInt() >= 1, "MouseArea: the held press reaches the item");
+    check(bridge.property("dragMoves").toInt() > movesBefore,
+          "MouseArea: held moves keep reaching the pressed item");
+    if (bridge.property("dragPresses").toInt() >= 1 && bridge.property("dragMoves").toInt() > movesBefore)
+        noDivergence("Quick drag", "press/move/release reaches the dragged item");
+
+    // 5. In-window overlay surface. Both steps are hard assertions: the overlay reachability claim
+    //    is only printed when the remote path really opened it and really activated its content.
+    click(components, window, sceneCenter("openOverlay"));
+    QQuickItem *overlayItem = qmlRootItem->findChild<QQuickItem *>(QStringLiteral("overlay"));
+    const bool overlayOpen = overlayItem && overlayItem->isVisible();
+    check(overlayOpen, "overlay: the remote click opened the in-window overlay surface");
+    if (overlayOpen) {
+        click(components, window, sceneCenter("overlayArea"));
+        const int overlayClicks = bridge.property("overlayClicks").toInt();
+        std::cout << "     observed[overlay]: overlayClicks=" << overlayClicks << '\n';
+        check(overlayClicks >= 1, "overlay: a remote click reaches the overlay content");
+        if (overlayClicks >= 1)
+            noDivergence("Quick in-window overlay input",
+                         "an overlay layer inside the same window stays reachable on the window-delivery route");
     }
 
     components.input.reset();

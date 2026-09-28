@@ -6,7 +6,9 @@ owner and the final acceptance authority; this note only freezes *where* remote 
 the target application and what HyRemote may own below that point.
 
 Baseline: `develop = e9d25502ce86fb37ba5409d1f0e2bfbd842cd2bc` (branch
-`spike/401-input-backend-preflight`). All measurements below were taken on that tree, Qt 6.8.3,
+`feature/401-input-backend-preflight`, PR #403; #402 with the earlier `spike/*` branch name was
+superseded because the repository Git Flow policy accepts only `feature/<issue>-<topic>` and
+`hotfix/<issue>-<topic>` heads). All measurements below were taken on that tree, Qt 6.8.3,
 Windows x86_64, `QT_QPA_PLATFORM=offscreen`.
 
 Evidence classes used throughout, as required by the #401 execution lock:
@@ -55,11 +57,12 @@ First divergence per scenario, using the #401 vocabulary:
 | `QCheckBox` single click | `NO_DEFECT` | OBSERVED: toggles once |
 | `QSlider` press/drag/release | `NO_DEFECT` | OBSERVED: value moves; implicit grab + held state + release routing all work |
 | `QListView` double-click activation | `QT_SEMANTIC_CLASSIFICATION` | OBSERVED: `activated()` never fires for a valid double click, so view activation / inline edit / open-on-double-click are unreachable remotely |
-| `QComboBox` popup item interaction | `TOPLEVEL_INGRESS` | OBSERVED: the click opens the popup, but the popup is its own top-level window and `root->childAt()` cannot reach it: the item list is not clickable |
+| `QComboBox` popup item interaction | `TOPLEVEL_INGRESS` | OBSERVED by a real attempt, not by code inspection: the remote click opens the popup; the fixture then derives the target row's real screen position from the popup's own geometry, maps it into the root target and sends a real press/release through the production path - `currentIndex` stays unchanged, so the item is not selected. Ownership of a bounded transient-surface model is #404 |
 | `QLineEdit` focus, item-view single-click selection | `OS_ACTIVATION_FOCUS` / `UNMEASURED` | OBSERVED only as a harness gap: the offscreen scratch scene is not shown and offscreen grants no activation, so focus/selection fidelity is not measurable here (see §7) |
 | Quick MouseArea/Button/CheckBox/Slider single click, drag | `NO_DEFECT` | OBSERVED: Qt Quick resolves the item under the point itself; control-local semantics work |
 | Quick MouseArea `onDoubleClicked` | `QT_SEMANTIC_CLASSIFICATION` | OBSERVED: no `DblClick` event is ever delivered into the window |
-| Quick `Popup` (in-window overlay) | `NO_DEFECT` | OBSERVED: `onOpened` fires and a click inside the popup reaches its content |
+| Quick in-window overlay surface | `NO_DEFECT` | OBSERVED and asserted (not printed): the remote click opens the overlay layer and a click inside it reaches its content. This result is regression-bearing - the fixture fails if either step stops holding |
+| Quick `Popup` (`QtQuick.Controls`) | `NO_DEFECT` | OBSERVED and asserted in the controls fixture: `onOpened` fires and a click inside the popup reaches its content. That fixture is registered only when the QtQuick.Controls QML module is really available (see §12) |
 | Quick focusable text target | `OS_ACTIVATION_FOCUS` / `UNMEASURED` | OBSERVED only as a harness gap (see §7) |
 | RFB valid double-click envelope | `QT_SEMANTIC_CLASSIFICATION` | OBSERVED: the parser emits the faithful `move/left-down/left-up/left-down/left-up` facts (two presses, two releases) and routing delivers them; the semantic is lost only at application-level Qt event synthesis |
 | RFB outside-interval pair | `NO_DEFECT` | OBSERVED: two singles; the wire carries no interval information at all |
@@ -255,29 +258,39 @@ Why:
 ### HyRemote must own (finite, frozen)
 
 ```text
-timestamp preservation               the accepted-arrival time of a raw input fact, so a busy GUI
-                                     thread cannot change what the user did
-minimal pointer sequence classification   only the semantic Qt itself would have produced
-                                     (press / double-click), never control-specific behaviour
-bounded state                        the existing bounded mailbox + per-button held state +
-                                     protected releases stay the only state
-receiver identity                    a pair can only combine for the same receiver
+application target / surface selection        which configured target receives remote input
+Widgets receiver resolution                   inside the reachable, admitted surfaces, not per type
+Widgets per-button receiver / implicit-grab bookkeeping
+arrival-time preservation                     the accepted-arrival time of a raw input fact, so a
+                                              busy GUI thread cannot change what the user did
+minimal click / double-click classification   only the semantic Qt itself would have produced
+transport-neutral -> Qt event translation
+bounded queue / state / release cleanup       the existing bounded mailbox, per-button held state,
+                                              protected releases and shutdown balancing
 ```
 
-### Qt / OS must own (explicitly not HyRemote's job)
+### Qt must own (explicitly not HyRemote's job)
 
 ```text
-control routing and control semantics (QPushButton, QCheckBox, QSlider, item views, combo box)
-item routing, hover, implicit grab and focus inside Qt Quick
-popup/overlay behaviour of the surfaces the target model can reach
-activation/focus policy of the host window (the #362 class stays outside HyRemote)
-all normal Qt event semantics once an event with the right type reaches the right receiver
+QPushButton / QCheckBox / QSlider / QListView / QComboBox / ... control-specific behaviour
+normal QWidget semantics once a correct event reaches the correct receiver
+Quick item routing
+Quick grab / focus / overlay semantics
+host OS activation / focus policy (the #362 class stays outside HyRemote)
+```
+
+The principle that keeps this division from drifting, and the reason the two earlier wordings were
+reconciled into this one:
+
+```text
+HyRemote may know QWidget receiver identity.
+HyRemote must NOT know control type semantics.
 ```
 
 ### Explicit non-goals (must not appear in the #400 implementation)
 
 ```text
-no per-control branches (QPushButton/QComboBox/QListView/Popup special cases)
+no per-control branches (QPushButton/QComboBox/QListView/Popup special cases) - see the principle above
 no RealVNC-specific logic and no RFB protocol extension
 no Qt private ABI (QWindowSystemInterface/QPA) dependency in C++/QML/Generic paths
 no native OS injection backend
@@ -330,9 +343,13 @@ S2  shared minimal press-sequence classification helper in runtime detail (Widge
 S3  deliver MouseButtonDblClick in place of the second qualifying press (Widgets + Quick),
     keeping every existing contract: bounded mailbox, protected releases, coalescing, held state,
     implicit grab, drag, disconnect/shutdown cleanup, multi-viewer isolation, DPR mapping
-S4  Product decision needed (not necessarily code): what the target model does about Widgets
-    top-level popups. Options: document the limitation, or extend the target model to a bounded
-    multi-surface route. #400 must not special-case QComboBox.
+S4  SPLIT TO #404. #400's immediate implementation does NOT grow into broad multi-surface
+    composition. #404 owns application-scoped transient top-level surface reach/capture (Widgets
+    popup/menu surfaces created by normal controls), with no per-control special cases.
+    #400 stays open as the user-defect owner: the original "some visible controls do not react"
+    report still has to be mapped to its root cause by real maintained-viewer evidence, and the
+    QComboBox fixture failing here is not proof that a given user's failing control is the same
+    problem.
 S5  Enter/leave/hover: keep out of #400 unless the amended scope says otherwise; it is a separate
     fidelity slice with its own tests.
 ```
@@ -366,4 +383,47 @@ Known limitations of this note:
    Runtime route is a separate target model and was not re-measured here.
 5  no physical RealVNC viewer run was part of this preflight; the reproduction is deterministic
    in-process (RFB transport + adapter), which is the layer #401 asked to freeze.
+6  the fixture's double-click evidence is a deterministic in-process result. It does not identify
+   which root cause explains a particular user's "some controls do not react"; that mapping stays
+   with #400 and needs maintained-viewer evidence.
+```
+
+## 12. Quick capability guard for the preflight fixtures
+
+The reproduction fixtures must not make a previously legal configuration invalid, and must not turn
+an unavailable capability into a silently skipped test:
+
+```text
+test_quick_input_preflight.cpp        QtQuick only (MouseArea, double-click, focus, drag,
+                                      in-window overlay layer). Requires nothing beyond
+                                      HYREMOTE_REMOTEACCESS_WITH_QUICK.
+test_quick_controls_preflight.cpp     Button / CheckBox / Slider / Popup matrix. Requires the
+                                      QtQuick.Controls QML module, which the Runtime's Quick
+                                      capability contract does not promise, so it is registered only
+                                      when that module is actually available.
+```
+
+The guard is real (a configure-time capability check), not a runtime skip: when QtQuick.Controls is
+unavailable the controls fixture is simply absent from the test graph, and the baseline QtQuick-only
+configuration stays valid and buildable. The consequence is recorded in `tests/TEST_CATALOG.md` next
+to the entry.
+
+Neither fixture is a product dependency: QtQuick.Controls is not linked into the Runtime, and no
+product build path references it.
+
+Verification status of the unavailable-capability configuration, stated exactly:
+
+```text
+OBSERVED      configuring with CMAKE_DISABLE_FIND_PACKAGE_Qt6QuickControls2=ON succeeds
+              (configure exit 0, "Configuring done"/"Generating done") and the controls fixture is
+              absent from that graph, i.e. no broken or unbuildable entry is left behind.
+NOT COMPLETED the full "Quick available + QtQuick.Controls unavailable" configuration was not
+              reproduced with the canonical capability set in this session: the canonical build
+              entry (build.cmd) has no supported way to inject an extra cache variable, and
+              re-configuring by hand did not reproduce the same capability set (it also briefly
+              disturbed the local build tree, which was restored with the canonical entry).
+              The structural argument therefore rests on reading: the baseline fixture lives inside
+              the pre-existing HYREMOTE_REMOTEACCESS_WITH_QUICK guard and imports QtQuick only.
+FOLLOW-UP     a canonical way to pass extra cache variables (or a CI lane without QtQuick.Controls)
+              would let this configuration be measured instead of argued.
 ```

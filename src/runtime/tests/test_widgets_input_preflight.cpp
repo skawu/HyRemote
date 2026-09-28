@@ -368,23 +368,62 @@ void testControlMatrix(QWidget &root, HyRemote::detail::TargetComponents &compon
         noDivergence("QListView double-click activation", "activations == 1");
     }
     }
-    // QComboBox: the dropdown is a separate top-level popup surface. The press that opens it works,
-    // but the popup cannot be reached by an adapter whose whole routing model is childAt() on one
-    // root widget.
+    // QComboBox: the dropdown is a separate top-level popup surface. This does not infer
+    // inaccessibility from the routing code: it derives the target item's real screen position from
+    // the popup's own geometry, expresses it in the root target's coordinates, sends a real
+    // press/release through the production input path and reports the user-visible result.
     QComboBox *combo = new QComboBox(&root);
     combo->setGeometry(0, 440, 150, 30);
     combo->addItems({QStringLiteral("one"), QStringLiteral("two")});
-    click(components, root, QPointF(75, 455));
+    combo->setCurrentIndex(0);
+    click(components, root, QPointF(75, 455));  // opens the popup through the remote path
     pump();
-    const bool popupOpen = combo->view() && combo->view()->isVisible();
+    QAbstractItemView *popupView = combo->view();
+    const bool popupOpen = popupView && popupView->isVisible();
     check(popupOpen, "QComboBox: single remote click opens the popup");
     if (popupOpen) {
-        divergence("TOPLEVEL_INGRESS",
-                   "QComboBox popup item interaction",
-                   "the popup is its own top-level window; the Widgets adapter resolves receivers with "
-                   "root->childAt() inside the single configured root, so no input reaches the popup "
-                   "surface and the item list is not clickable (the user-visible \"some controls do not "
-                   "react\" half of #400)");
+        const QModelIndex targetItem = popupView->model()->index(1, 0);  // the "two" row
+        const QRect itemRect = popupView->visualRect(targetItem);
+        const QPoint itemCenterGlobal = popupView->viewport()->mapToGlobal(itemRect.center());
+        const QPoint popupTopLeftGlobal = popupView->mapToGlobal(QPoint(0, 0));
+        const QPoint itemCenterInRoot = root.mapFromGlobal(itemCenterGlobal);
+        const bool expressibleInRoot = root.rect().contains(itemCenterInRoot);
+        std::cout << "     observed[QComboBox popup]: open=true currentIndexBefore=" << combo->currentIndex()
+                  << " popupTopLeftGlobal=(" << popupTopLeftGlobal.x() << ", " << popupTopLeftGlobal.y()
+                  << ") popupSize=" << popupView->width() << "x" << popupView->height()
+                  << " targetItem=1 itemCenterGlobal=(" << itemCenterGlobal.x() << ", "
+                  << itemCenterGlobal.y() << ") mappedIntoRoot=(" << itemCenterInRoot.x() << ", "
+                  << itemCenterInRoot.y() << ") expressibleInRootTarget="
+                  << (expressibleInRoot ? "true" : "false") << '\n';
+
+        if (expressibleInRoot) {
+            // A real remote click at that position, exactly as a viewer would produce it.
+            click(components, root, QPointF(itemCenterInRoot));
+            pump();
+            const int indexAfter = combo->currentIndex();
+            const bool popupStillOpen = popupView && popupView->isVisible();
+            std::cout << "     observed[QComboBox popup user result]: currentIndexAfter=" << indexAfter
+                      << " targetItemSelected=" << (indexAfter == 1 ? "true" : "false")
+                      << " popupStillOpen=" << (popupStillOpen ? "true" : "false") << '\n';
+            if (indexAfter == 1) {
+                noDivergence("QComboBox popup item interaction",
+                             "the target popup item became current through the remote path");
+            } else {
+                divergence("TOPLEVEL_INGRESS",
+                           "QComboBox popup item interaction",
+                           "the popup opened, and a real remote press/release at the target item's own "
+                           "screen position (mapped into the root target) left currentIndex unchanged: "
+                           "input cannot reach this separate top-level popup surface in the single-root "
+                           "model. This is the \"some visible controls do not react\" half of the report; "
+                           "the bounded application-scoped transient-surface model is owned by #404.");
+            }
+        } else {
+            divergence("TOPLEVEL_INGRESS",
+                       "QComboBox popup item interaction",
+                       "the target item's screen position falls outside the root target's coordinate "
+                       "space, so the single-root model cannot even express this click; the bounded "
+                       "application-scoped transient-surface model is owned by #404");
+        }
         combo->hidePopup();
         pump();
     }

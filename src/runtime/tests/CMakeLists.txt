@@ -405,6 +405,37 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set_tests_properties(hyremote-quick-input-preflight-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
+
+    # #401: the control matrix (Button/CheckBox/Slider/Popup) needs the QtQuick.Controls QML module,
+    # which HYREMOTE_REMOTEACCESS_WITH_QUICK does not promise: that contract is Qt Quick, not Quick
+    # Controls. It is registered only when the module is really present, so a minimal Quick-only
+    # configuration keeps a valid test graph instead of an unbuildable or silently skipped entry.
+    # The check honours CMake's standard CMAKE_DISABLE_FIND_PACKAGE_Qt6QuickControls2, which is how
+    # that minimal configuration is verified without uninstalling anything.
+    find_package(Qt6 QUIET COMPONENTS QuickControls2)
+    if(Qt6QuickControls2_FOUND)
+        add_executable(hyremote-quick-controls-preflight-test
+            test_quick_controls_preflight.cpp
+        )
+        target_link_libraries(hyremote-quick-controls-preflight-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Gui
+                Qt6::Qml
+                Qt6::Quick
+        )
+        target_include_directories(hyremote-quick-controls-preflight-test PRIVATE ../src)
+        set_target_properties(hyremote-quick-controls-preflight-test PROPERTIES AUTOMOC TRUE)
+        add_test(NAME hyremote-quick-controls-preflight-test COMMAND hyremote-quick-controls-preflight-test)
+        set_tests_properties(hyremote-quick-controls-preflight-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+        )
+        hyremote_label_test_family("integration;quick;fast"
+            hyremote-quick-controls-preflight-test
+        )
+    endif()
 endif()
 
 # Real RFB listener reachability/reconciliation is a Runtime integration contract. It requires the
