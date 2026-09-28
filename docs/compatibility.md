@@ -192,7 +192,7 @@ Desktop evidence does not imply embedded support, and one BSP does not imply an 
 
 ## Compatibility rules
 
-1. Primary/Preview/TODO statuses are not interchangeable.
+1. `Supported`, `Limited`, `TODO`, and `Unsupported` statuses are not interchangeable.
 2. Windows results do not substitute for Linux results, or vice versa.
 3. Public Qt API compatibility does not imply QPA private-ABI compatibility.
 4. Basic Widgets/Quick support does not automatically qualify every graphics/rendering configuration.
