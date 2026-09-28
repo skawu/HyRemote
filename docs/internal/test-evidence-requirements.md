@@ -137,6 +137,8 @@ All `CCS-1` dimension values are non-empty, case-sensitive UTF-8 strings. A dime
 
 `CCS-1` contains only the dimension names above. A new dimension name or incompatible value-type/semantic change requires an explicitly versioned successor schema; TS-2 must not accept an unknown key by guessing its meaning.
 
+Every positive atomic cell also has an immutable **cell-definition revision**. `claim_cell_revision` content-addresses the normalized authority-owned target cell definition: exact `claim_id`, `cell_id`, `cell_schema`, authority `claim_status` when present, and the canonical key-sorted `material_dimensions` map. A claim-bound record retains that revision plus the exact `target_material_dimensions` snapshot. `claim_profile_revision` remains independent and covers the resolved profile inheritance graph plus the exact `(claim_id, cell_id) -> profile_id` binding. Both revisions must resolve and reconcile with their retained snapshots; a material cell-definition change therefore creates a new evidence identity even when the profile binding is unchanged.
+
 #### CCS-1 material-evidence binding
 
 **Every evidence record consumed by positive claim completeness is claim-bound, regardless of whether its evidence class is V, P, Q or R.** Ordinary V/P developer/PR results that are not used to support a product/support claim do not need claim-cell bookkeeping. But a V/P result cannot become claim evidence merely because the same ER passed somewhere else: once consumed for a claim it must reference immutable execution/observation facts and satisfy the same cell binding rules as Q/R evidence.
@@ -200,10 +202,10 @@ Rules:
 3. `required_dimensions` is inherited by union; child profiles may add dimensions but may not silently remove inherited dimensions.
 4. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required product ER.
 5. The test registry, selectors and suites consume the expanded required product set; they cannot amend it to fit the available tests.
-6. Unknown profile IDs, unknown schema/dimensions, missing required dimensions, malformed predicates, missing/ambiguous `(claim_id, cell_id)` bindings or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
+6. Unknown profile IDs, unknown schema/dimensions, missing required dimensions, malformed predicates, missing/ambiguous `(claim_id, cell_id)` bindings, missing/unresolvable `claim_cell_revision`, missing or mismatched retained `target_material_dimensions`, or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
 7. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded product ER set must be deterministic and inspectable.
 8. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns the exact `(claim_id, cell_id) -> profile_id` binding; this catalog freezes the current bindings those authorities expose. Multiple cells under one `claim_id` may resolve to the same or different profiles.
-9. A material profile/schema/conditional-rule/cell-specific binding change invalidates prior claim-completeness decisions that depended on the older required-product-ER set.
+9. A material profile/schema/conditional-rule/cell-specific binding **or normalized target-cell definition/material-dimension** change invalidates prior claim-completeness decisions that depended on the older profile/binding or cell revision.
 10. A positive claim family is not allowed to defer any currently required atomic cell's concrete profile binding to TS-2: TS-0 must contain a mechanically resolvable `(claim_id, cell_id) -> profile_id` binding for every positive atomic cell it declares frozen.
 11. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
 12. **Claim-meta ERs never appear in `base_er` or `conditional_er.require`.** Profiles describe product obligations only; claim composition/non-inference/binding rules are evaluated outside the product ER expansion.
@@ -226,18 +228,22 @@ For an active claim/cell, the completeness engine performs these outer checks af
 ```text
 META-CELL:
   validate claim_id/cell_id/schema/status/material dimensions
-  resolve exactly one (claim_id, cell_id) -> profile_id binding + immutable revision
+  resolve the normalized authority-owned target cell to exactly one immutable claim_cell_revision
+  require the retained target_material_dimensions snapshot to equal that revision's canonical material_dimensions exactly
+  resolve exactly one (claim_id, cell_id) -> profile_id binding + immutable claim_profile_revision
   validate required_product_ERs(cell) is deterministic and inspectable
 
 META-BINDING:
-  for every V/P/Q/R record consumed by this cell, resolve execution_id + execution_manifest_digest to one immutable retained manifest
+  for every V/P/Q/R record consumed by this cell, require exact claim_id/cell_id/schema + claim_profile_revision + claim_cell_revision
+  require the record's target_material_dimensions to equal the retained cell revision's canonical material_dimensions exactly
+  resolve execution_id + execution_manifest_digest to one immutable retained manifest
   require every ER proved by the record to have an explicit ER -> observation-context/observation binding
   require every ER-bound observation_context_id to belong to that manifest
   require every ER-bound raw/observation artifact reference to be reachable from one of that ER's bound contexts
   require record-level candidate/artifact/environment/fixture facts to equal their manifest/context sources
   for each proved ER and every material phase-varying CCS-1 dimension, require all of that ER's contributing contexts to normalize to one value
-  require every material CCS-1 dimension's canonical observed value to equal the resolved cell value
-  validate exact claim/cell/profile binding revision, invalidation and exact-candidate compatibility
+  require every material CCS-1 dimension's canonical observed value to equal the retained target_material_dimensions value
+  validate exact claim/cell/profile binding revision, cell-definition revision, invalidation and exact-candidate compatibility
 
 META-PLATFORM:
   evidence from another os_arch cannot satisfy this cell
@@ -259,7 +265,7 @@ cell_complete = META-CELL PASS
 claim_complete = authority aggregation over its bound positive atomic cells
 ```
 
-`META-BINDING` is fail-closed: an unresolved manifest/digest, missing per-ER observation binding, foreign or missing Observation Context, unreachable observation reference, record/manifest/context disagreement, disagreement among an ER's contributing contexts on a material dimension, missing material-dimension source fact, material-dimension mismatch, or missing/ambiguous cell-specific profile binding is **BLOCKED/invalid evidence**, not a record that can be repaired by relabelling metadata.
+`META-BINDING` is fail-closed: an unresolved manifest/digest, missing per-ER observation binding, foreign or missing Observation Context, unreachable observation reference, record/manifest/context disagreement, disagreement among an ER's contributing contexts on a material dimension, missing material-dimension source fact, material-dimension mismatch, missing/unresolvable or mismatched `claim_cell_revision`, `target_material_dimensions` disagreement with the retained canonical cell, or missing/ambiguous cell-specific profile binding is **BLOCKED/invalid evidence**, not a record that can be repaired by relabelling metadata.
 
 `META-PLATFORM` does **not** require another platform cell to PASS before this cell can PASS. It enforces exact platform binding/non-substitution. Whether the public product authority chooses to publish independent Windows and Linux claims is upstream product data. This avoids the cross-cell cycle where Windows would depend on Linux and Linux would depend back on Windows.
 
@@ -273,7 +279,7 @@ This gives TS-6 a non-recursive forward chain:
 positive claim/status authority
  -> atomic (claim_id, cell_id)
  -> authority-owned profile binding
- -> qualification cell/material dimensions
+ -> immutable target-cell definition/revision + material dimensions
  -> expanded required_product_ERs(cell)
  -> required evidence classes + valid claim-bound product evidence records
  -> outer claim-meta checks
@@ -655,12 +661,12 @@ These profiles bind claims the repository already makes. They do **not** create 
 
 | ER | PAC / Risk | Activation | Evidence obligation | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support/product-behavior atomic cell has stable claim/cell identity, declared material dimensions and exactly one authority-owned `(claim_id, cell_id) -> profile_id` binding whose product ER set expands deterministically. | The outer META-CELL evaluator validates identity/schema/status/material dimensions, resolves the exact cell-specific profile binding/revision, and computes the canonical `required_product_ERs(cell)` without consulting current test coverage; this derived meta result does not require itself as an input. | Material claim/cell/schema/profile/conditional-rule/cell-specific binding/product-obligation change. |
+| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support/product-behavior atomic cell has stable claim/cell identity, declared material dimensions, an immutable normalized target-cell definition/revision, and exactly one authority-owned `(claim_id, cell_id) -> profile_id` binding whose product ER set expands deterministically. | The outer META-CELL evaluator validates identity/schema/status/material dimensions, resolves the immutable `claim_cell_revision` and exact retained `target_material_dimensions`, resolves the exact cell-specific profile binding/`claim_profile_revision`, and computes the canonical `required_product_ERs(cell)` without consulting current test coverage; this derived meta result does not require itself as an input. | Material claim/cell/schema/status/material-dimension/cell-definition/profile/conditional-rule/cell-specific binding/product-obligation change. |
 | `ER-COMPAT-QPA-EXACT-ABI` | PAC-9,PAC-4 / R-COMPAT,R-NATIVE | CLAIM | claim Q; release +R | QPA compatibility is exact Qt private-ABI/platform evidence, not family inference. | Claimed exact pair passes; mismatched/unqualified pair is not represented as supported. | Material exact Qt/toolchain/platform/QPA change. |
 | `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | Platform-sensitive support is bound to the explicitly declared platform cell; evidence or status from one platform must not be inferred as another platform's evidence/status. | The outer META-PLATFORM evaluator requires this cell's material `os_arch` to match every record used for it and rejects cross-platform substitution. The existence or PASS of one platform cell creates no implicit cell/status/evidence for another platform, but this cell does not depend on another platform cell passing. | Material support-matrix/platform-sensitivity/schema/binding policy change. |
 | `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Portable-baseline Widgets/Quick evidence does not create a specialized graphics/native-surface claim by inference. | The outer META-GRAPHICS-SCOPE evaluator verifies the current cell's explicit `graphics_scope`; baseline evidence cannot satisfy or synthesize a specialized graphics claim. Any specialized positive claim must exist explicitly with its own profile/cell and targeted product obligations, but baseline-cell PASS does not depend on that separate claim existing or passing. | Material graphics claim/schema/capture/backend/binding policy change. |
 | `ER-COMPAT-THIRDPARTY-NONINFERENCE` | PAC-1,PAC-9 / R-COMPAT,R-ADOPTION | CLAIM/RELEASE | claim Q; release +R | Third-party success pressure-tests declared matrix but does not create named-app/broader support. | Record pins app/revision/environment/routes and stays labelled verification rather than inferred support expansion. | Material fixture/environment/support-policy change. |
-| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant atomic claim/cell/profile binding revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator applies to **every V/P/Q/R product-evidence record consumed by the cell**: it resolves exactly one `(claim_id, cell_id) -> profile_id` binding/revision and the retained immutable Execution Manifest/digest; requires explicit per-ER Observation Context/observation bindings; requires every ER-bound context/reference to belong to and be reachable from that manifest; requires record-level derived candidate/artifact/environment/fixture facts to equal their canonical sources; requires all contexts contributing to each ER to agree on every material phase-varying dimension; requires every material CCS-1 cell dimension to resolve from the canonical sources and exactly match the selected cell after normalization; rejects invalidated, mismatched, cross-cell/cross-profile or unresolved records; and enforces exact-candidate rules for release evidence. This derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/cell-specific profile binding/CCS-1 resolver/invalidation/release-binding rule change. |
+| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant atomic claim/cell/profile binding revision, immutable target-cell-definition revision, retained target material-dimension snapshot, and material artifact/environment/fixture identity. | The outer META-BINDING evaluator applies to **every V/P/Q/R product-evidence record consumed by the cell**: it resolves exactly one `(claim_id, cell_id) -> profile_id` binding/`claim_profile_revision`, resolves the immutable `claim_cell_revision` and requires the record's `target_material_dimensions` to exactly equal that revision's canonical cell dimensions, resolves the retained immutable Execution Manifest/digest, requires explicit per-ER Observation Context/observation bindings, requires every ER-bound context/reference to belong to and be reachable from that manifest, requires record-level derived candidate/artifact/environment/fixture facts to equal their canonical sources, requires all contexts contributing to each ER to agree on every material phase-varying dimension, requires every material CCS-1 dimension to resolve from the canonical sources and exactly match the retained target snapshot after normalization, rejects invalidated, mismatched, cross-cell/cross-profile or unresolved records, and enforces exact-candidate rules for release evidence. This derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/target-cell definition or revision/material-dimension snapshot/cell-specific profile binding/CCS-1 resolver/invalidation/release-binding rule change. |
 
 Compatibility status vocabulary itself is owned by `docs/compatibility.md`; the evidence system stores/validates an authority status when the claim family has one and does not invent a parallel enum for prose product-behavior claims.
 
