@@ -112,6 +112,14 @@ conditional_er:
     require: [<canonical ER ids>]
 ```
 
+The TS-0 predicate language is intentionally small and deterministic:
+
+- `dimension == scalar` — exact case-sensitive equality against the normalized cell value;
+- `dimension in [scalar, ...]` — exact case-sensitive membership in a finite declared set;
+- multiple atomic conditions in one `when` object are logical **AND**;
+- separate `conditional_er` entries are evaluated independently and every matching `require` set is unioned;
+- no negation, regex, arbitrary code or implicit version-range comparison exists in the profile language. A range/family rule must first be normalized by its owning authority into explicit cell data/rules before profile expansion.
+
 Rules:
 
 1. Every positive support/compatibility claim or qualification cell must select an applicable authority-owned profile before it can be considered evidence-complete.
@@ -123,6 +131,7 @@ Rules:
 7. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family; this catalog freezes the current bindings that those authorities expose.
 8. A material profile/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-ER set.
 9. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
+10. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
 
 This gives TS-6 a mechanical forward chain:
 
@@ -167,7 +176,7 @@ base_er:
   - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
   - ER-COMPAT-GRAPHICS-NO-INFERENCE
 conditional_er:
-  - when: os_arch == Linux x86_64
+  - when: os_arch == "Linux x86_64"
     require: [ER-DEPLOY-FOREIGN-QT-ISOLATION-LINUX]
 ```
 
@@ -180,9 +189,9 @@ claim_scope: current V0.2 C++ API, QML API and Generic Plugin rows
 inherits: COP-V020-DESKTOP-BASE
 base_er: []
 conditional_er:
-  - when: integration in [C++ API, QML API]
+  - when: integration in ["C++ API", "QML API"]
     require: [ER-INTEGRATE-PUBLIC-BOUNDARY]
-  - when: integration == Generic Plugin
+  - when: integration == "Generic Plugin"
     require: [ER-INTEGRATE-ZEROCODE-QT-ONLY, ER-GENERIC-NATIVE-PRESERVATION]
 ```
 
@@ -200,22 +209,26 @@ base_er:
 conditional_er: []
 ```
 
-The current positive matrix rows bind mechanically as follows:
+The current positive matrix rows normalize to the following stable claim/cell identities. For a source row that already names one UI target, `claim_id == cell_id`; a combined `Widgets / Quick` source row has one `claim_id` and two atomic `cell_id` values.
 
-| Qt | Platform | Integration | UI target | Status | `profile_id` |
-| --- | --- | --- | --- | --- | --- |
-| 6.8.3 | Windows x86_64 | C++ API | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Linux x86_64 | C++ API | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Windows x86_64 | QML API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 | Linux x86_64 | QML API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
-| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
-| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
+| `claim_id` | `cell_id` | Qt | Platform | Integration | Atomic UI target | Status | `profile_id` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `COMPAT-V020-QT683-WIN-CPP-WIDGETS` | `COMPAT-V020-QT683-WIN-CPP-WIDGETS` | 6.8.3 | Windows x86_64 | C++ API | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-WIN-CPP-QUICK` | `COMPAT-V020-QT683-WIN-CPP-QUICK` | 6.8.3 | Windows x86_64 | C++ API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-LINUX-CPP-WIDGETS` | `COMPAT-V020-QT683-LINUX-CPP-WIDGETS` | 6.8.3 | Linux x86_64 | C++ API | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-LINUX-CPP-QUICK` | `COMPAT-V020-QT683-LINUX-CPP-QUICK` | 6.8.3 | Linux x86_64 | C++ API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-WIN-GENERIC` | `COMPAT-V020-QT683-WIN-GENERIC-WIDGETS` | 6.8.3 | Windows x86_64 | Generic Plugin | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-WIN-GENERIC` | `COMPAT-V020-QT683-WIN-GENERIC-QUICK` | 6.8.3 | Windows x86_64 | Generic Plugin | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-LINUX-GENERIC` | `COMPAT-V020-QT683-LINUX-GENERIC-WIDGETS` | 6.8.3 | Linux x86_64 | Generic Plugin | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-LINUX-GENERIC` | `COMPAT-V020-QT683-LINUX-GENERIC-QUICK` | 6.8.3 | Linux x86_64 | Generic Plugin | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-WIN-QML-QUICK` | `COMPAT-V020-QT683-WIN-QML-QUICK` | 6.8.3 | Windows x86_64 | QML API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-LINUX-QML-QUICK` | `COMPAT-V020-QT683-LINUX-QML-QUICK` | 6.8.3 | Linux x86_64 | QML API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| `COMPAT-V020-QT683-WIN-QPA` | `COMPAT-V020-QT683-WIN-QPA-WIDGETS` | 6.8.3 exact | Windows x86_64 | QPA | Widgets | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
+| `COMPAT-V020-QT683-WIN-QPA` | `COMPAT-V020-QT683-WIN-QPA-QUICK` | 6.8.3 exact | Windows x86_64 | QPA | Qt Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
+| `COMPAT-V020-QT683-LINUX-QPA` | `COMPAT-V020-QT683-LINUX-QPA-WIDGETS` | 6.8.3 exact | Linux x86_64 | QPA | Widgets | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
+| `COMPAT-V020-QT683-LINUX-QPA` | `COMPAT-V020-QT683-LINUX-QPA-QUICK` | 6.8.3 exact | Linux x86_64 | QPA | Qt Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
 
-`TODO` and `Unsupported` rows are not positive support claims and therefore do not become positive evidence-completeness obligations merely by existing in the compatibility document. Any future positive row/family must receive an authority-owned profile/binding before it can be considered evidence-complete.
+`TODO` and `Unsupported` rows are not positive support claims and therefore do not become positive evidence-completeness obligations merely by existing in the compatibility document. Any future positive row/family must receive an authority-owned profile/binding plus stable claim/cell identity before it can be considered evidence-complete.
 
 ---
 
