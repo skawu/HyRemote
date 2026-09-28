@@ -207,13 +207,12 @@ void runAcceptance()
 
     QThread::msleep(static_cast<unsigned long>(QApplication::doubleClickInterval()) + 20UL);
     const QRect rowRect = list.visualRect(model.index(1, 0));
-    const QPoint rowInList = list.viewport()->mapTo(&list, rowRect.center());
-    const QPoint rowInRoot = list.mapTo(&root, rowInList);
+    const QPoint rowInRoot = list.viewport()->mapTo(&root, rowRect.center());
     doubleClick(components, root, rowInRoot);
     check(listDoubleClicks == 1,
-          "QAbstractItemView receives Qt's normal doubleClicked semantic");
+          "QAbstractItemView receives the remote double click through Qt's normal path");
 
-    const QPoint scrollPoint = scroll.mapTo(&root, scroll.viewport()->rect().center());
+    const QPoint scrollPoint = scroll.viewport()->mapTo(&root, scroll.viewport()->rect().center());
     const int beforeScroll = scroll.verticalScrollBar()->value();
     postPointer(components, root, hyremote::InputEventKind::PointerScroll, scrollPoint,
                 hyremote::PointerButton::None, true, -1.0F);
