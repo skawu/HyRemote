@@ -56,6 +56,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-widgets-capture-forced-dpr-test` | Widgets | Executes the same capture contract at deterministic DPR=1.5. Closes TG-001; failure exposes HiDPI geometry/pixel mapping regression. |
 | `hyremote-widgets-input-routing-test` | Widgets | Widgets input delivery/local coexistence. |
 | `hyremote-widgets-input-backpressure-test` | Widgets | Pointer coalescing, protected releases and shutdown balancing under GUI pressure. |
+| `hyremote-accepted-pointer-motion-test` | Runtime | #400: accepted-stream pointer motion bookkeeping - period viewport truth (including transient viewport excursions that must stay fail-closed) and the bounded movement-excursion summary. |
 | `hyremote-widgets-input-preflight-test` | Widgets | #401 preflight: deterministic reproduction of #400 through the production Widgets path with first-divergence classification. Evidence fixture, not the production fix. |
 | `hyremote-rfb-widget-disconnect-backpressure-test` | Widgets + VNC | Real RFB disconnect cleanup while Widgets input delivery is saturated. TG-020 requires absence when VNC is unavailable. |
 | `hyremote-rfb-input-preflight-test` | Widgets + VNC | #401 preflight: production RFB pointer-parser reproduction (valid envelope, outside interval, outside distance, different receiver). |

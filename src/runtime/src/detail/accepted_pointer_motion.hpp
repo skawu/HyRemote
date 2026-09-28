@@ -47,12 +47,20 @@ struct PointerMovementSummary
 
 // Transport-thread-owned. The adapters keep one instance inside their existing mailbox state, guarded
 // by the mailbox mutex, and clear it wherever the mailbox is cleared.
+//
+// The period viewport is the viewport of the accepted press that opened the period; every accepted
+// move of the period is compared against it. The comparison is sticky for the whole period: once any
+// accepted move carried a different width/height/DPR, the period stays marked even if later moves and
+// the closing press return to the original viewport. Otherwise `press A -> move B -> move A -> press A`
+// would map B/A extrema as if they all belonged to A. The state stays O(1): one viewport plus four
+// extrema, never a per-move record.
 struct AcceptedPointerMotionState
 {
     bool hasPreviousPress = false;
-    std::uint32_t pressViewportWidth = 0;
-    std::uint32_t pressViewportHeight = 0;
-    float pressDevicePixelRatio = 1.0F;
+    std::uint32_t periodViewportWidth = 0;
+    std::uint32_t periodViewportHeight = 0;
+    float periodDevicePixelRatio = 1.0F;
+    bool periodViewportChanged = false;
     bool hasMovement = false;
     float minX = 0.0F;
     float maxX = 0.0F;
@@ -62,6 +70,15 @@ struct AcceptedPointerMotionState
     // Call after a PointerMove was successfully admitted to the bounded mailbox.
     void noteAcceptedMove(const hyremote::InputEvent &event) noexcept
     {
+        if (hasPreviousPress && !periodViewportChanged
+            && (event.sourceViewport.width != periodViewportWidth
+                || event.sourceViewport.height != periodViewportHeight
+                || event.sourceViewport.devicePixelRatio != periodDevicePixelRatio)) {
+            // The move was accepted in a different coordinate space than the press that opened the
+            // period. Nothing may restore eligibility before the next accepted press opens a new one.
+            periodViewportChanged = true;
+        }
+
         const float x = event.x;
         const float y = event.y;
         if (!hasMovement) {
@@ -87,19 +104,23 @@ struct AcceptedPointerMotionState
         summary.minY = minY;
         summary.maxY = maxY;
         summary.havePreviousPress = hasPreviousPress;
+        // Fail closed on both facts: a viewport transition inside the period, or a closing press in a
+        // different viewport than the one that opened it.
         summary.viewportChanged =
-            hasPreviousPress
-            && (event.sourceViewport.width != pressViewportWidth
-                || event.sourceViewport.height != pressViewportHeight
-                || event.sourceViewport.devicePixelRatio != pressDevicePixelRatio);
+            periodViewportChanged
+            || (hasPreviousPress
+                && (event.sourceViewport.width != periodViewportWidth
+                    || event.sourceViewport.height != periodViewportHeight
+                    || event.sourceViewport.devicePixelRatio != periodDevicePixelRatio));
         summary.viewportWidth = event.sourceViewport.width;
         summary.viewportHeight = event.sourceViewport.height;
         summary.devicePixelRatio = event.sourceViewport.devicePixelRatio;
 
         hasPreviousPress = true;
-        pressViewportWidth = event.sourceViewport.width;
-        pressViewportHeight = event.sourceViewport.height;
-        pressDevicePixelRatio = event.sourceViewport.devicePixelRatio;
+        periodViewportWidth = event.sourceViewport.width;
+        periodViewportHeight = event.sourceViewport.height;
+        periodDevicePixelRatio = event.sourceViewport.devicePixelRatio;
+        periodViewportChanged = false;
         hasMovement = false;
         return summary;
     }

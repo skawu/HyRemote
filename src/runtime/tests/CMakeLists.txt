@@ -272,6 +272,20 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     add_executable(hyremote-widgets-input-preflight-test
         test_widgets_input_preflight.cpp
     )
+
+    # #400: the accepted-stream motion bookkeeping (period viewport truth + bounded excursion summary)
+    # that the GUI-thread classifier cannot see once coalescing has replaced moves.
+    add_executable(hyremote-accepted-pointer-motion-test
+        test_accepted_pointer_motion.cpp
+    )
+    target_link_libraries(hyremote-accepted-pointer-motion-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+    )
+    target_include_directories(hyremote-accepted-pointer-motion-test PRIVATE ../src)
+    add_test(NAME hyremote-accepted-pointer-motion-test COMMAND hyremote-accepted-pointer-motion-test)
     target_link_libraries(hyremote-widgets-input-preflight-test
         PRIVATE
             hyremote-remoteaccess
@@ -476,6 +490,7 @@ endif()
 
 include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
 hyremote_label_test_family("component;runtime;fast"
+    hyremote-accepted-pointer-motion-test
     hyremote-runtime-listener-binding-test
     hyremote-runtime-automatic-surface-model-test
     hyremote-runtime-automatic-composite-capture-test

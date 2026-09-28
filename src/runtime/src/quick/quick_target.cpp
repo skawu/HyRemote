@@ -679,9 +679,9 @@ private:
             if (button == Qt::NoButton)
                 return;
             if (event.pressed) {
-                // #400: a qualifying second press is delivered as MouseButtonDblClick instead of a
-                // second ordinary press. The identity is the configured window, so Qt Quick still
-                // decides the item/handler itself - no QQuickItem hit-testing is added here.
+                // #400: the qualifying second press is delivered normally and one MouseButtonDblClick
+                // is appended immediately after it. The identity is the configured window, so Qt Quick
+                // still decides the item/handler itself - no QQuickItem hit-testing is added here.
                 const auto index = [button]() -> std::optional<std::size_t> {
                     switch (button) {
                     case Qt::LeftButton: return 0;

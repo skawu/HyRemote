@@ -150,6 +150,29 @@ void postRaw(HyRemote::detail::TargetComponents &components,
     components.input->post(event);
 }
 
+// #400: posts an event whose declared source viewport is not the widget size, so a coordinate-space
+// transition can be exercised through the real mailbox.
+void postRawViewport(HyRemote::detail::TargetComponents &components,
+                     hyremote::InputEventKind kind,
+                     std::uint32_t sourceWidth,
+                     std::uint32_t sourceHeight,
+                     float devicePixelRatio,
+                     const QPointF &rootPoint,
+                     hyremote::PointerButton button = hyremote::PointerButton::None,
+                     bool pressed = true)
+{
+    hyremote::InputEvent event;
+    event.kind = kind;
+    event.sourceViewport.width = sourceWidth;
+    event.sourceViewport.height = sourceHeight;
+    event.sourceViewport.devicePixelRatio = devicePixelRatio;
+    event.x = static_cast<float>(rootPoint.x());
+    event.y = static_cast<float>(rootPoint.y());
+    event.button = button;
+    event.pressed = pressed;
+    components.input->post(event);
+}
+
 void click(HyRemote::detail::TargetComponents &components,
            const QWidget &root,
            const QPointF &rootPoint,
@@ -445,8 +468,8 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     probe.setGeometry(0, 0, 500, 600);
     pump();
 
-    // Inside the interval, same point: one DblClick (the boundary itself is inclusive in the
-    // classifier, and this case stays well inside it so it does not depend on that convention).
+    // Inside the interval, same point: one DblClick. The classifier accepts 0 <= delta < interval, and
+    // this case stays well inside the interval so it does not depend on the boundary convention.
     click(components, root, QPointF(200, 200));
     pump();
     click(components, root, QPointF(200, 200));
@@ -591,7 +614,38 @@ void testAcceptedMotionRegression(QWidget &root, HyRemote::detail::TargetCompone
     check(probe.doubleClicks == 1,
           "#400 queued in-box jitter: coalesced moves inside the distance box keep the double click");
     check(probe.presses == 2, "#400 queued in-box jitter: both presses are delivered");
+
+    // Transient coordinate-space excursion: click1 in viewport A, then an accepted move in viewport B
+    // and a move back in A before the drain, then click2 in A. Comparing only press viewports would
+    // call this "unchanged" and map B/A extrema as if they were one space, so it must stay fail-closed.
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    QThread::msleep(600);  // start a new, independent gesture
+    click(components, root, QPointF(100, 100));
+    pump();
+    const double sourceWidth = static_cast<double>(root.width()) - 10.0;   // ~2% smaller viewport
+    const double sourceHeight = static_cast<double>(root.height()) - 10.0;
+    const QPointF pressPoint(100, 100);
+    // The same physical target position expressed in the other viewport. Mapped with the period
+    // viewport it lands ~2px away (inside the box), so only the viewport verdict can refuse it.
+    const QPointF otherViewportPoint(pressPoint.x() * sourceWidth / static_cast<double>(root.width()),
+                                     pressPoint.y() * sourceHeight / static_cast<double>(root.height()));
+    postRawViewport(components, hyremote::InputEventKind::PointerMove,
+                    static_cast<std::uint32_t>(sourceWidth), static_cast<std::uint32_t>(sourceHeight), 1.0F,
+                    otherViewportPoint);
+    postRaw(components, root, hyremote::InputEventKind::PointerMove, pressPoint);
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, pressPoint,
+            hyremote::PointerButton::Left, true);
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, pressPoint,
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[widgets transient viewport]: presses=" << probe.presses
+              << " dblClicks=" << probe.doubleClicks << '\n';
+    check(probe.doubleClicks == 0,
+          "#400 transient viewport (Widgets): a move accepted in another source viewport invalidates the "
+          "pair even when the closing press returns to the original viewport");
+    check(probe.presses == 2, "#400 transient viewport (Widgets): both presses are ordinary presses");
 }
+
 
 // ---------------------------------------------------------------------------------------------
 // Host ACTIVE / INACTIVE observation. Offscreen cannot be given a competing active window, so the

@@ -104,6 +104,29 @@ void postRaw(HyRemote::detail::TargetComponents &components,
     components.input->post(event);
 }
 
+// #400: posts an event whose declared source viewport is not the window size, so a coordinate-space
+// transition can be exercised through the real Quick mailbox.
+void postRawViewport(HyRemote::detail::TargetComponents &components,
+                     hyremote::InputEventKind kind,
+                     std::uint32_t sourceWidth,
+                     std::uint32_t sourceHeight,
+                     float devicePixelRatio,
+                     const QPointF &windowPoint,
+                     hyremote::PointerButton button = hyremote::PointerButton::None,
+                     bool pressed = true)
+{
+    hyremote::InputEvent event;
+    event.kind = kind;
+    event.sourceViewport.width = sourceWidth;
+    event.sourceViewport.height = sourceHeight;
+    event.sourceViewport.devicePixelRatio = devicePixelRatio;
+    event.x = static_cast<float>(windowPoint.x());
+    event.y = static_cast<float>(windowPoint.y());
+    event.button = button;
+    event.pressed = pressed;
+    components.input->post(event);
+}
+
 void click(HyRemote::detail::TargetComponents &components,
            const QQuickWindow &window,
            const QPointF &windowPoint)
@@ -367,6 +390,29 @@ Rectangle {
               << bridge.property("areaDoubleClicks").toInt() << '\n';
     check(bridge.property("areaDoubleClicks").toInt() == 1,
           "#400 queued in-box jitter (Quick): coalesced moves inside the distance box keep the double click");
+
+    // Transient coordinate-space excursion through the Quick mailbox.
+    bridge.setProperty("areaDoubleClicks", 0);
+    QThread::msleep(600);
+    click(components, window, QPointF(100, 100));
+    const double sourceWidth = static_cast<double>(window.width()) - 10.0;   // ~2% smaller viewport
+    const double sourceHeight = static_cast<double>(window.height()) - 10.0;
+    const QPointF pressPoint(100, 100);
+    const QPointF otherViewportPoint(pressPoint.x() * sourceWidth / static_cast<double>(window.width()),
+                                     pressPoint.y() * sourceHeight / static_cast<double>(window.height()));
+    postRawViewport(components, hyremote::InputEventKind::PointerMove,
+                    static_cast<std::uint32_t>(sourceWidth), static_cast<std::uint32_t>(sourceHeight), 1.0F,
+                    otherViewportPoint);
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, pressPoint);
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, pressPoint,
+            hyremote::PointerButton::Left, true);
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, pressPoint,
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[quick transient viewport]: dblClicks="
+              << bridge.property("areaDoubleClicks").toInt() << '\n';
+    check(bridge.property("areaDoubleClicks").toInt() == 0,
+          "#400 transient viewport (Quick): a move accepted in another source viewport invalidates the pair");
 
     // 5. In-window overlay surface. Both steps are hard assertions: the overlay reachability claim
     //    is only printed when the remote path really opened it and really activated its content.
