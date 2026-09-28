@@ -10,7 +10,7 @@ HyRemote compatibility is stated only for environments that have an explicit pro
 - **TODO** — planned product coverage that is not yet available/qualified.
 - **Unsupported** — outside the stated product contract or known not to work for the stated combination.
 
-## Current V0.2.0.0 reference matrix
+## Current released reference matrix (V0.2.0.1)
 
 The current reference environment for **V0.2.0.0 (First User Trial)** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
 
@@ -164,17 +164,20 @@ The product deployment entry point is `hyremote_deploy()`; see [`guide/deploymen
 
 ## Embedded/platform expansion
 
+> #333: post-GA platform/acceleration work is activated as coherent outcomes under its own authority; no exact version number is pre-reserved for a technical theme.
+
+
 Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
 
 Planned directions include:
 
 | Direction | Current status |
 | --- | --- |
-| ARM64 Embedded Linux | **TODO V1.1** |
-| RK3588 / EGLFS or Wayland | **TODO V1.1** |
-| NXP i.MX class | **TODO V1.1** |
-| DMA-BUF / GBM / external-buffer paths | **TODO later acceleration line** |
-| RKMPP / VAAPI / platform hardware encoding | **TODO later acceleration line** |
+| ARM64 Embedded Linux | TODO - post-GA embedded/platform outcome, not yet activated |
+| RK3588 / EGLFS or Wayland | TODO - post-GA embedded/platform outcome, not yet activated |
+| NXP i.MX class | TODO - post-GA embedded/platform outcome, not yet activated |
+| DMA-BUF / GBM / external-buffer paths | TODO - post-GA measured-performance outcome, not yet activated |
+| RKMPP / VAAPI / platform hardware encoding | TODO - post-GA measured-performance outcome, not yet activated |
 | OpenHarmony | Long-term direction; no current support claim |
 
 Desktop evidence does not imply embedded support, and one BSP does not imply an entire SoC/platform family.

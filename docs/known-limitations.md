@@ -217,6 +217,6 @@ The following are later product directions:
 - DMA-BUF/GBM external-buffer paths;
 - RKMPP and other hardware encoders.
 
-> **TODO V1.1:** embedded deployment and dependency slicing.
+> **TODO:** embedded deployment and dependency slicing are post-GA outcomes activated under their own authority; no version number is pre-assigned (#333).
 >
 > **TODO later acceleration line:** hardware-accelerated capture/encode after embedded correctness is established.

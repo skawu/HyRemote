@@ -16,7 +16,7 @@
 | Generic Plugin | 并列路线 |
 | QML API | peer route |
 | QPA | **Preview，Qt 6.8.3 exact private ABI** |
-| Embedded Linux / ARM64 | **TODO V1.1** |
+| Embedded Linux / ARM64 | TODO - post-GA outcome，未预分配版本号 |
 | Qt 5.15 LTS | **TODO V0.4 qualification** |
 
 精确状态见 [`../compatibility.md`](../compatibility.md)。

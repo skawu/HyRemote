@@ -184,8 +184,6 @@ Unregistered assets `tests/product-e2e/example_product_fit.py`, `qml_product_fit
 | `hyremote-release-profile-v010-cpp-only` | V0.1 representable C++ subset. |
 | `hyremote-release-profile-v020-runtime` | V0.2 representable Runtime profile. |
 | `hyremote-release-profile-v030-all` | V0.3 all-capability profile. |
-| `hyremote-release-profile-v040-all` | V0.4 all-capability profile. |
-| `hyremote-release-profile-v040-maintenance` | V0.4 maintenance-line acceptance. |
 | `hyremote-release-profile-v100-all` | V1 all-capability profile. |
 | `hyremote-release-profile-v100-cpp-only` | V1 C++ subset profile. |
 | `hyremote-release-profile-v100-generic-only` | V1 Generic subset profile. |
