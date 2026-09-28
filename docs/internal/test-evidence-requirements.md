@@ -458,7 +458,6 @@ cell_schema: CCS-1
 required_dimensions: [product_line, qt, os_arch, transport, security_profile, transport_security]
 base_er:
   - ER-SECURITY-AUTH-MECHANISM
-  - ER-SECURITY-FAIL-CLOSED
   - ER-SECURITY-SECRET-HYGIENE
   - ER-TRANSPORT-RFB-SEMANTICS
 conditional_er: []
@@ -471,7 +470,30 @@ Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `security_profil
 | `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-WIN` | Windows x86_64 | `COP-V020-SECURITY-AUTH-AVAILABLE` |
 | `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-AUTH-AVAILABLE` |
 
-Valid credentials plus wrong/missing credentials are mechanism cases. Missing/invalid descriptors are fail-closed cases in the same claim family; descriptor contents are fixtures, not new compatibility dimensions. All contributing contexts remain `transport=RFB-3.8` and `security_profile=Authenticated` for this cell.
+Valid credentials plus wrong/missing credentials are mechanism cases inside these transport-bound cells: RFB 3.8 authentication negotiation is actually exercised, correct credentials establish the session, wrong/missing credentials are rejected, and no weaker downgrade is accepted.
+
+#### `Authenticated` with capability available but descriptor invalid (pre-session fail closed)
+
+```yaml
+profile_id: COP-V020-SECURITY-AUTH-CONFIG-INVALID
+authority: docs/compatibility.md conditional authentication statement; docs/security.md Authenticated/current fail-closed configuration policy
+claim_scope: requesting Authenticated on a transport-security-enabled artifact with a missing/invalid security descriptor fails closed before listener/session creation
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
+base_er:
+  - ER-SECURITY-FAIL-CLOSED
+  - ER-SECURITY-SECRET-HYGIENE
+conditional_er: []
+```
+
+These cells stay in the same authority-level `COMPAT-V020-SECURITY-AUTH-AVAILABLE` claim family but deliberately have their own atomic identities. They use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Authenticated`, `transport_security=available`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-WIN-DESCRIPTOR-INVALID` | Windows x86_64 | `COP-V020-SECURITY-AUTH-CONFIG-INVALID` |
+| `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-LINUX-DESCRIPTOR-INVALID` | Linux x86_64 | `COP-V020-SECURITY-AUTH-CONFIG-INVALID` |
+
+Missing/invalid descriptor contents are fixture cases, not a new public compatibility status or CCS-1 dimension. Because these cases must fail before a usable listener/session exists, `transport` is intentionally **not** material to these cells and no transport observation may be invented merely to satisfy binding.
 
 #### `Authenticated` when the build capability is absent
 
