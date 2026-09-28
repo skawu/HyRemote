@@ -85,6 +85,23 @@
       },
       "rule": "The V0.2 user promise is the first real user trial of remote access across a local network, with every fact the user is told matching what the artifact actually does. A candidate is accepted on the facts it ships - a listener reachable on the host's IPv4 interfaces, authentication off, transport encryption off, remote input off, which is not Internet-safe - and it is never blocked by an encrypted profile still being unfinished. Evidence must name those facts, the staged artifact that carries them and the bilingual release notes that state them, rather than any trust state the product cannot verify for itself."
     },
+    "0.2.0.1": {
+      "authority_parent": 386,
+      "candidate_freeze_authority": 386,
+      "lineage_parent": "0.2.0.0",
+      "mandatory_children": [ 382, 387, 389, 390, 391, 392 ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.2.0.0-lineage",
+        "exact-head-windows-linux-hotfix-evidence",
+        "ubuntu-isolated-installed-runtime-evidence",
+        "relocatable-install-tree-evidence",
+        "release-artifact-checksum-evidence"
+      ],
+      "cross_version_references": [ 24, 95, 233, 271, 326, 332, 333 ],
+      "non_blockers": [ 170, 239, 240, 241 ],
+      "rule": "V0.2.0.1 is a bounded maintenance repair of the accepted V0.2.0.0 First User Trial lineage. It restores the released Windows/Linux build, install, deployment and runnable-example promise without adding V0.3 capability."
+    },
     "0.2.1.0": {
       "authority_parent": 233,
       "candidate_freeze_authority": 233,

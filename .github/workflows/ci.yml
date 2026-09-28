@@ -269,6 +269,23 @@ jobs:
           if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
           call build.cmd build --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" %SECURITY_ARG% -j4
 
+      # The lane proves the deployment path, not only the build path: the same canonical entry point runs one bounded
+      # install that reuses the build tree the step above produced, so nothing is recompiled and the run states the
+      # install phase's own progress and the root it deployed into. This is the command a developer runs, not a
+      # second install mechanism, and the Linux lane keeps its own logic unchanged.
+      - name: Canonical install through HyRemote build system — Windows
+        if: runner.os == 'Windows'
+        shell: cmd
+        env:
+          INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
+          SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          set "SECURITY_ARG="
+          if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
+          call build.cmd install --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --no-examples %SECURITY_ARG% -j4
+
       - name: Test evidence summary
         if: always()
         shell: bash

@@ -8,6 +8,63 @@ function(_hyremote_runtime_deploy_dir output_var)
     endif()
 endfunction()
 
+# One deployed-plugin relocation for every plugin this module stages. A deployed plugin directory is exactly one
+# level below the deployment's plugin root, so every deployed plugin reaches the deployed runtime the same way, and
+# Linux has to say so explicitly: the copy keeps the runtime path it was built with, and that copy is what a
+# deployed application loads. Stating it once keeps the native platform payload and the Generic payload on one
+# deployment policy instead of one per path, and the replacement stays bounded to the package-owned segment the
+# payloads reserve, so no external ELF patcher is required. Windows needs no rewrite: a deployed plugin there
+# resolves from the application's own directory, which is the same "the deployment carries what it loads" outcome.
+function(_hyremote_linux_deployed_plugin_relocation plugin_subdirectory plugin_file_name output_var)
+    set(${output_var} "" PARENT_SCOPE)
+    if(NOT UNIX OR APPLE)
+        return()
+    endif()
+    set(${output_var}
+"file(RPATH_CHANGE
+    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/${plugin_subdirectory}/${plugin_file_name}\"
+    OLD_RPATH \"$ORIGIN/../../../.\"
+    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
+)
+" PARENT_SCOPE)
+endfunction()
+
+# Qt's QML import deployment copies the module it found through the import path known at configure time, which in a
+# source build is the build tree, so the module that lands beside a deployed application keeps the runtime path the
+# build tree gave it. The payload the package installs is the relocatable one. After the QML machinery has run, each
+# module file the product installed for this prefix replaces the copy that came from the build tree - the same
+# "a deployment stages what the product installs" policy the plugin payloads already follow, expressed through the two
+# QML roots rather than through a second deployment system.
+function(_hyremote_qml_deployed_module_restoration output_var)
+    set(${output_var} "" PARENT_SCOPE)
+    if(NOT UNIX OR APPLE)
+        return()
+    endif()
+    # The package states this layout where GNUInstallDirs has run; the plain library directory is the same default the
+    # SDK install uses, so a consumer scope that never saw the module still names the right installed root.
+    set(_hyremote_qml_installed_libdir "${CMAKE_INSTALL_LIBDIR}")
+    if("${_hyremote_qml_installed_libdir}" STREQUAL "")
+        set(_hyremote_qml_installed_libdir "lib")
+    endif()
+    set(${output_var}
+"set(_hyremote_qml_deployed_root \"\${QT_DEPLOY_PREFIX}/qml\")
+set(_hyremote_qml_installed_root \"\${QT_DEPLOY_PREFIX}/${_hyremote_qml_installed_libdir}/qml\")
+if(EXISTS \"\${_hyremote_qml_deployed_root}\" AND EXISTS \"\${_hyremote_qml_installed_root}\")
+    file(GLOB_RECURSE _hyremote_qml_deployed_files \"\${_hyremote_qml_deployed_root}/*\")
+    foreach(_hyremote_qml_deployed_file IN LISTS _hyremote_qml_deployed_files)
+        if(IS_DIRECTORY \"\${_hyremote_qml_deployed_file}\")
+            continue()
+        endif()
+        file(RELATIVE_PATH _hyremote_qml_relative \"\${_hyremote_qml_deployed_root}\" \"\${_hyremote_qml_deployed_file}\")
+        set(_hyremote_qml_installed_file \"\${_hyremote_qml_installed_root}/\${_hyremote_qml_relative}\")
+        if(EXISTS \"\${_hyremote_qml_installed_file}\")
+            file(COPY_FILE \"\${_hyremote_qml_installed_file}\" \"\${_hyremote_qml_deployed_file}\" ONLY_IF_DIFFERENT)
+        endif()
+    endforeach()
+endif()
+" PARENT_SCOPE)
+endfunction()
+
 function(_hyremote_target_is_local target output_var)
     set(_hyremote_local FALSE)
     if(TARGET "${target}")
@@ -81,14 +138,128 @@ ${_hyremote_bootstrap_libraries}
     DIRECTORIES \"$<TARGET_FILE_DIR:Qt6::Core>\"
     RESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_dependencies
     UNRESOLVED_DEPENDENCIES_VAR _hyremote_private_runtime_unresolved
+    CONFLICTING_DEPENDENCIES_PREFIX _hyremote_runtime_conflict
 )
 if(_hyremote_private_runtime_unresolved)
     message(FATAL_ERROR
         \"HyRemote runtime deployment could not resolve private dependencies: \${_hyremote_private_runtime_unresolved}\")
 endif()
+
+# A Linux host routinely exposes a distro Qt in the loader path next to the Qt the consumer selected, so
+# the same SONAME resolves to more than one root. CMake refuses to choose between them, and letting it
+# refuse would make every clean deployment fail on such a host. The choice is made here instead, and it
+# is a choice between copies of the selected Qt lineage, never a choice between Qt lineages. Paths are
+# canonicalized only for identity and containment; the original candidate path is retained for copying so
+# a normal SONAME symlink chain survives deployment.
+set(_hyremote_selected_qt_runtime_root \"$<TARGET_FILE_DIR:Qt6::Core>\")
+get_filename_component(_hyremote_selected_qt_runtime_root_real
+    \"\${_hyremote_selected_qt_runtime_root}\" REALPATH)
+get_filename_component(_hyremote_deploy_prefix_real \"\${QT_DEPLOY_PREFIX}\" REALPATH)
+
+set(_hyremote_runtime_payload \"\")
+set(_hyremote_runtime_payload_real \"\")
 foreach(_hyremote_dependency IN LISTS _hyremote_private_runtime_dependencies)
-    string(FIND \"\${_hyremote_dependency}\" \"$<TARGET_FILE_DIR:Qt6::Core>/\" _hyremote_qt_prefix_index)
+    get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
+    list(FIND _hyremote_runtime_payload_real \"\${_hyremote_dependency_real}\" _hyremote_runtime_payload_index)
+    if(_hyremote_runtime_payload_index EQUAL -1)
+        list(APPEND _hyremote_runtime_payload \"\${_hyremote_dependency}\")
+        list(APPEND _hyremote_runtime_payload_real \"\${_hyremote_dependency_real}\")
+    endif()
+endforeach()
+
+foreach(_hyremote_conflict_name IN LISTS _hyremote_runtime_conflict_FILENAMES)
+    # Only a library the selected consumer Qt runtime root itself provides may be adjudicated, so a
+    # conflict on any other dependency - and a conflict with no payload in that root at all - still
+    # fails closed instead of being resolved on the caller's behalf.
+    set(_hyremote_selected_runtime_file
+        \"\${_hyremote_selected_qt_runtime_root}/\${_hyremote_conflict_name}\")
+    if(NOT EXISTS \"\${_hyremote_selected_runtime_file}\")
+        message(FATAL_ERROR
+            \"HyRemote runtime deployment found a conflicting '\${_hyremote_conflict_name}' that the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root} does not provide, so it is not a Qt lineage conflict HyRemote may decide. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
+    endif()
+    file(SHA256 \"\${_hyremote_selected_runtime_file}\" _hyremote_selected_runtime_hash)
+
+    set(_hyremote_deployed_candidates \"\")
+    set(_hyremote_deployed_candidates_real \"\")
+    set(_hyremote_selected_candidates \"\")
+    set(_hyremote_selected_candidates_real \"\")
+    foreach(_hyremote_candidate IN LISTS _hyremote_runtime_conflict_\${_hyremote_conflict_name})
+        get_filename_component(_hyremote_candidate_real \"\${_hyremote_candidate}\" REALPATH)
+        string(FIND \"\${_hyremote_candidate_real}\" \"\${_hyremote_deploy_prefix_real}/\" _hyremote_in_deploy_tree)
+        string(FIND \"\${_hyremote_candidate_real}\" \"\${_hyremote_selected_qt_runtime_root_real}/\" _hyremote_in_selected_root)
+        if(_hyremote_in_deploy_tree EQUAL 0)
+            list(FIND _hyremote_deployed_candidates_real \"\${_hyremote_candidate_real}\" _hyremote_deployed_candidate_index)
+            if(_hyremote_deployed_candidate_index EQUAL -1)
+                list(APPEND _hyremote_deployed_candidates \"\${_hyremote_candidate}\")
+                list(APPEND _hyremote_deployed_candidates_real \"\${_hyremote_candidate_real}\")
+            endif()
+        elseif(_hyremote_in_selected_root EQUAL 0)
+            list(FIND _hyremote_selected_candidates_real \"\${_hyremote_candidate_real}\" _hyremote_selected_candidate_index)
+            if(_hyremote_selected_candidate_index EQUAL -1)
+                list(APPEND _hyremote_selected_candidates \"\${_hyremote_candidate}\")
+                list(APPEND _hyremote_selected_candidates_real \"\${_hyremote_candidate_real}\")
+            endif()
+        endif()
+    endforeach()
+    list(LENGTH _hyremote_deployed_candidates _hyremote_deployed_count)
+    list(LENGTH _hyremote_selected_candidates _hyremote_selected_count)
+
+    # A candidate reached through the selected root is authoritative. A candidate already inside the deployment
+    # may be reused only when its bytes are exactly the selected root's payload; merely being staged first cannot
+    # make a stale or foreign same-SONAME Qt override the consumer's selected lineage.
+    set(_hyremote_winner \"\")
+    set(_hyremote_winner_real \"\")
+    if(_hyremote_selected_count GREATER 1)
+        message(FATAL_ERROR
+            \"HyRemote runtime deployment could not choose '\${_hyremote_conflict_name}' deterministically: \${_hyremote_deployed_count} candidate(s) inside the deployment tree and \${_hyremote_selected_count} candidate(s) inside the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root}. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
+    elseif(_hyremote_selected_count EQUAL 1)
+        list(GET _hyremote_selected_candidates 0 _hyremote_winner)
+        list(GET _hyremote_selected_candidates_real 0 _hyremote_winner_real)
+    elseif(_hyremote_deployed_count EQUAL 1)
+        list(GET _hyremote_deployed_candidates 0 _hyremote_deployed_candidate)
+        list(GET _hyremote_deployed_candidates_real 0 _hyremote_deployed_candidate_real)
+        file(SHA256 \"\${_hyremote_deployed_candidate_real}\" _hyremote_deployed_candidate_hash)
+        if(NOT _hyremote_deployed_candidate_hash STREQUAL _hyremote_selected_runtime_hash)
+            message(FATAL_ERROR
+                \"HyRemote runtime deployment found a staged '\${_hyremote_conflict_name}' at \${_hyremote_deployed_candidate} that does not match the selected consumer Qt runtime \${_hyremote_selected_runtime_file}; a stale or foreign deployed Qt may not override the selected lineage.\")
+        endif()
+        set(_hyremote_winner \"\${_hyremote_deployed_candidate}\")
+        set(_hyremote_winner_real \"\${_hyremote_deployed_candidate_real}\")
+    else()
+        message(FATAL_ERROR
+            \"HyRemote runtime deployment could not choose '\${_hyremote_conflict_name}' deterministically: \${_hyremote_deployed_count} candidate(s) inside the deployment tree and \${_hyremote_selected_count} candidate(s) inside the selected consumer Qt runtime root \${_hyremote_selected_qt_runtime_root}. Candidates: \${_hyremote_runtime_conflict_\${_hyremote_conflict_name}}\")
+    endif()
+
+    # Drop every other path claiming that filename, so a foreign same-SONAME library is never staged
+    # beside the selected lineage. Compare canonical identities, but retain the winner's original spelling
+    # for the copy so FOLLOW_SYMLINK_CHAIN sees the SONAME alias rather than only its final regular file.
+    set(_hyremote_payload_without_foreign \"\")
+    foreach(_hyremote_dependency IN LISTS _hyremote_runtime_payload)
+        get_filename_component(_hyremote_dependency_name \"\${_hyremote_dependency}\" NAME)
+        get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
+        if(_hyremote_dependency_name STREQUAL _hyremote_conflict_name
+           AND NOT _hyremote_dependency_real STREQUAL _hyremote_winner_real)
+            continue()
+        endif()
+        list(APPEND _hyremote_payload_without_foreign \"\${_hyremote_dependency}\")
+    endforeach()
+    set(_hyremote_runtime_payload \"\${_hyremote_payload_without_foreign}\")
+    list(APPEND _hyremote_runtime_payload \"\${_hyremote_winner}\")
+    list(REMOVE_DUPLICATES _hyremote_runtime_payload)
+endforeach()
+
+foreach(_hyremote_dependency IN LISTS _hyremote_runtime_payload)
+    get_filename_component(_hyremote_dependency_real \"\${_hyremote_dependency}\" REALPATH)
+    string(FIND \"\${_hyremote_dependency_real}\" \"\${_hyremote_selected_qt_runtime_root_real}/\" _hyremote_qt_prefix_index)
     if(_hyremote_qt_prefix_index EQUAL 0)
+        # Remove both the SONAME spelling and its real payload before copying. This makes a redeployment replace a
+        # stale regular file or stale same-version payload deterministically, then recreates the selected root's
+        # symlink chain from the original candidate path.
+        get_filename_component(_hyremote_dependency_name \"\${_hyremote_dependency}\" NAME)
+        get_filename_component(_hyremote_dependency_real_name \"\${_hyremote_dependency_real}\" NAME)
+        file(REMOVE
+            \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/\${_hyremote_dependency_name}\"
+            \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}/\${_hyremote_dependency_real_name}\")
         file(COPY \"\${_hyremote_dependency}\"
              DESTINATION \"\${QT_DEPLOY_PREFIX}/${runtime_deploy_dir}\"
              FOLLOW_SYMLINK_CHAIN)
@@ -229,26 +400,21 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
         "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_platform_plugin_name}")
 
     # The deployed platform plugin must find the deployed Qt runtime rather than the SDK it was built against - the
-    # same relocation the QPA and Generic paths perform for the same plugin.
-    set(_linux_platform_rpath_rewrite "")
-    if(UNIX AND NOT APPLE)
-        set(_linux_platform_rpath_rewrite
-"file(RPATH_CHANGE
-    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../../.\"
-    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
-)
-")
-    endif()
+    # same relocation the QPA and Generic paths perform for the same plugin, applied here through the one shared
+    # deployed-plugin relocation this module owns.
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_native_platform_plugin_name}" _linux_platform_rpath_rewrite)
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
+    set(_qml_module_restoration "")
     if(HYREMOTE_DEPLOY_QML)
         _hyremote_resolve_qml_backing_payload(_qml_backing_file _qml_backing_name)
         set(_qml_backing_install
 "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"${_qml_backing_file}\")\n")
         set(_qml_additional_library
 "\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
+        _hyremote_qml_deployed_module_restoration(_qml_module_restoration)
     endif()
 
     # Qt 6.8.3's versionless qt_deploy_runtime_dependencies() wrapper forwards ${ARGV}
@@ -269,7 +435,7 @@ ${_linux_platform_rpath_rewrite}${_qml_backing_install}${_linux_private_runtime_
     ADDITIONAL_LIBRARIES
     \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )
-")
+${_qml_module_restoration}")
     set(${output_var} "${_runtime_script}" PARENT_SCOPE)
 endfunction()
 
@@ -397,22 +563,41 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
 
     set(_qml_backing_install "")
     set(_qml_additional_library "")
+    set(_qml_module_restoration "")
     if(HYREMOTE_DEPLOY_QML)
         _hyremote_resolve_qml_backing_payload(_qml_backing_file _qml_backing_name)
         set(_qml_backing_install
 "file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"${_qml_backing_file}\")\n")
         set(_qml_additional_library
 "\n    \"${_runtime_deploy_dir}/${_qml_backing_name}\"")
+        _hyremote_qml_deployed_module_restoration(_qml_module_restoration)
     endif()
 
-    set(_linux_plugin_rpath_rewrite "")
+    # Both plugins this path stages are copies, and both are relocated by the one shared function: the delegate
+    # replaces the platform integration, and the native platform plugin keeps the deployed application startable
+    # against the deployed runtime rather than the SDK either payload was built with.
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_qpa_plugin_name}" _linux_plugin_rpath_rewrite)
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_native_qpa_plugin_name}" _linux_native_qpa_rpath_rewrite)
+
+    # The delegate is staged the same way the Generic payload is: the copy the product installs carries the bounded
+    # anchor the relocation rewrites, while the build-tree copy would carry the linker's own runtime paths. The local
+    # target stays the fallback for a build whose payload has not been installed yet.
+    set(_qpa_installed_payload_preference "")
     if(UNIX AND NOT APPLE)
-        set(_linux_plugin_rpath_rewrite
-"file(RPATH_CHANGE
-    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_qpa_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../../.\"
-    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
-)\n")
+        # Same rule as the Generic payload: the copy the product installs is what a deployment stages, and the
+        # build-tree payload is only the fallback when that copy is not there yet.
+        set(_qpa_package_subdir "${HYREMOTE_PACKAGE_QPA_PLUGIN_SUBDIR}")
+        if("${_qpa_package_subdir}" STREQUAL "")
+            include(GNUInstallDirs)
+            set(_qpa_package_subdir "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/platforms")
+        endif()
+        set(_qpa_installed_payload_preference
+"if(EXISTS \"\${QT_DEPLOY_PREFIX}/${_qpa_package_subdir}/${_qpa_plugin_name}\")
+    set(_hyremote_qpa_payload \"\${QT_DEPLOY_PREFIX}/${_qpa_package_subdir}/${_qpa_plugin_name}\")
+endif()
+")
     endif()
 
     # Keep the same direct Qt 6 call here as in the ordinary/QML supplemental deploy script. QPA
@@ -423,10 +608,11 @@ function(_hyremote_generate_qpa_deploy_script target output_var)
         OUTPUT "${_qpa_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
-    \"${_qpa_plugin_file}\"
+set(_hyremote_qpa_payload \"${_qpa_plugin_file}\")
+${_qpa_installed_payload_preference}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+    \"\${_hyremote_qpa_payload}\"
     \"${_native_qpa_plugin_file}\")
-${_linux_plugin_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
+${_linux_plugin_rpath_rewrite}${_linux_native_qpa_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
@@ -435,7 +621,7 @@ ${_qml_backing_install}${_linux_private_runtime_bootstrap}${_security_runtime_in
     ADDITIONAL_LIBRARIES
     \"${_runtime_deploy_dir}/$<TARGET_FILE_NAME:HyRemote::RemoteAccess>\"${_qml_additional_library}
 )
-")
+${_qml_module_restoration}")
 
     set(${output_var} "${_qpa_script}" PARENT_SCOPE)
 endfunction()
@@ -508,30 +694,52 @@ function(_hyremote_generate_generic_deploy_script target output_var)
     _hyremote_linux_private_runtime_bootstrap(
         "${_runtime_deploy_dir}" _linux_private_runtime_bootstrap "${_native_platform_plugin_name}")
 
-    # The deployed platform plugin must find the deployed Qt runtime rather than the SDK it was built against, the
-    # same relocation the QPA path performs for its delegate.
-    set(_linux_platform_rpath_rewrite "")
+    # Two payloads are copied into this deployment and both are relocated by the one shared deployed-plugin
+    # relocation: the native platform plugin that keeps the application on its own platform identity, and the
+    # Generic payload the application actually loads. A generic payload that kept the runtime path it was built
+    # with resolved its own Qt and runtime dependencies outside the deployment, so the deployment only looked
+    # complete on the machine that had built it.
+    _hyremote_linux_deployed_plugin_relocation(
+        platforms "${_native_platform_plugin_name}" _linux_platform_rpath_rewrite)
+    _hyremote_linux_deployed_plugin_relocation(
+        generic "${_generic_plugin_name}" _linux_generic_rpath_rewrite)
+
+    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
+
+    # A deployment stages the payload the product installs, not whatever file the build tree happens to hold: the
+    # installed copy carries the runtime path the package declares, which is exactly the bounded anchor the shared
+    # relocation above rewrites. Staging the build-tree copy instead carried the linker's own entries - including the
+    # SDK the payload was built against - into the deployment, so a tree that looked complete still resolved against
+    # the machine that produced it. A build whose own payload is not installed yet keeps the local target as its
+    # fallback rather than turning a missing install step into a deployment failure.
+    set(_generic_installed_payload_preference "")
     if(UNIX AND NOT APPLE)
-        set(_linux_platform_rpath_rewrite
-"file(RPATH_CHANGE
-    FILE \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms/${_native_platform_plugin_name}\"
-    OLD_RPATH \"$ORIGIN/../../../.\"
-    NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"
-)
+        # The package variable states this layout where the package defines it; the fallback mirrors the install
+        # layout the plugin target installs to, so a build whose examples were configured before the install rules
+        # still stages the payload the product installs instead of the one the build tree holds.
+        set(_generic_package_subdir "${HYREMOTE_PACKAGE_GENERIC_PLUGIN_SUBDIR}")
+        if("${_generic_package_subdir}" STREQUAL "")
+            include(GNUInstallDirs)
+            set(_generic_package_subdir "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/generic")
+        endif()
+        set(_generic_installed_payload_preference
+"if(EXISTS \"\${QT_DEPLOY_PREFIX}/${_generic_package_subdir}/${_generic_plugin_name}\")
+    set(_hyremote_generic_payload \"\${QT_DEPLOY_PREFIX}/${_generic_package_subdir}/${_generic_plugin_name}\")
+endif()
 ")
     endif()
 
-    _hyremote_security_runtime_deploy_fragment("${_runtime_deploy_dir}" _security_runtime_install)
     set(_generic_script "${CMAKE_CURRENT_BINARY_DIR}/hyremote-generic-deploy-${target}-$<CONFIG>.cmake")
     file(GENERATE
         OUTPUT "${_generic_script}"
         CONTENT
 "include(\"${QT_DEPLOY_SUPPORT}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
+set(_hyremote_generic_payload \"${_generic_plugin_file}\")
+${_generic_installed_payload_preference}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/platforms\" TYPE FILE FILES
     \"${_native_platform_plugin_file}\")
 ${_linux_platform_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/\${QT_DEPLOY_PLUGINS_DIR}/generic\" TYPE FILE FILES
-    \"${_generic_plugin_file}\")
-file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
+    \"\${_hyremote_generic_payload}\")
+${_linux_generic_rpath_rewrite}file(INSTALL DESTINATION \"\${QT_DEPLOY_PREFIX}/${_runtime_deploy_dir}\" TYPE FILE FILES \"$<TARGET_FILE:HyRemote::RemoteAccess>\")
 ${_linux_private_runtime_bootstrap}${_security_runtime_install}qt6_deploy_runtime_dependencies(
     EXECUTABLE \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:${target}>\"
     ADDITIONAL_MODULES
@@ -560,6 +768,18 @@ function(hyremote_deploy)
     endif()
     if(NOT TARGET "${HYREMOTE_DEPLOY_TARGET}")
         message(FATAL_ERROR "hyremote_deploy: '${HYREMOTE_DEPLOY_TARGET}' is not a CMake target")
+    endif()
+
+    # A deployed Linux application has to find the runtime this deployment carries beside it, and it has to do
+    # that without a loader-path repair - the same promise the deployed platform plugin already keeps through its
+    # own relative relocation. CMake's install step rewrites the executable's runtime path to INSTALL_RPATH and
+    # strips the build-tree rpath when that property is empty, so the deployed runtime path is stated here,
+    # relative to the application itself. Nothing is guessed: the deployed runtime lives in the Qt deploy lib
+    # directory, which is the same directory this helper already stages the shared runtime into.
+    if(UNIX AND NOT APPLE)
+        include(GNUInstallDirs)
+        set_property(TARGET "${HYREMOTE_DEPLOY_TARGET}" APPEND PROPERTY INSTALL_RPATH
+            "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
     endif()
 
     _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)

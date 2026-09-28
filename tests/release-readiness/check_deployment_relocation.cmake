@@ -71,15 +71,32 @@ foreach(required_token
     endif()
 endforeach()
 
+# The Generic payload is a deployed copy too, so it reserves the same package-owned segment and is rewritten by the
+# same helper. Pinning both here is what keeps the deployment at one policy: a payload that carried no bounded
+# anchor was shipped with whatever runtime path the build host had.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/generic/CMakeLists.txt" generic_cmake)
+foreach(required_token
+        [=[BUILD_RPATH "$ORIGIN/../../../."]=]
+        [=[BUILD_RPATH_USE_ORIGIN TRUE]=]
+        [=[INSTALL_RPATH "$ORIGIN/../../../."]=])
+    string(FIND "${generic_cmake}" "${required_token}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "deployment-relocation: Generic payload lost its source/install relocation evidence: ${required_token}")
+    endif()
+endforeach()
+
 file(READ "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteDeploy.cmake" deploy_helper)
 foreach(required_token
         [=[file(RPATH_CHANGE]=]
         [=[OLD_RPATH \"$ORIGIN/../../../.\"]=]
-        [=[NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"]=])
+        [=[NEW_RPATH \"$ORIGIN/../../\${QT_DEPLOY_LIB_DIR}\"]=]
+        [=[function(_hyremote_linux_deployed_plugin_relocation]=]
+        [=[generic "${_generic_plugin_name}" _linux_generic_rpath_rewrite]=])
     string(FIND "${deploy_helper}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
-            "deployment-relocation: QPA helper lost bounded RPATH relocation: ${required_token}")
+            "deployment-relocation: a deployed plugin lost its bounded shared relocation: ${required_token}")
     endif()
 endforeach()
 foreach(forbidden_token
