@@ -247,7 +247,7 @@ V0.1 reference:
 
 > **TODO V0.4:** qualify the planned Qt 5.15 LTS compatibility line before adding it to the supported installed-SDK matrix.
 >
-> **TODO:** add embedded/ARM64 SDK and cross-compilation package/deployment contracts when a post-GA embedded/platform outcome is activated; no version number is pre-assigned (#333).
+> **TODO:** add embedded/ARM64 SDK and cross-compilation package/deployment contracts. Embedded Linux / ARM64 / EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under #343; additional BSP/SoC expansion is separately admitted and no version number is pre-assigned (#333).
 
 See [`compatibility.md`](compatibility.md).
 

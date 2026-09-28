@@ -24,7 +24,7 @@ Adding another SoC, operating system, transport backend, or acceleration backend
 
 `Minor` identifies a substantial, coherent product stage that users can understand as a new product capability line.
 
-Current post-GA strategy uses Minor lines for major product expansion stages such as embedded deployment, hardware acceleration, and advanced programmable integration.
+Post-GA Minor lines are opened only for activated coherent product outcomes; no Minor or Feature version is pre-assigned to a technical theme (#333).
 
 ### Feature — bounded independently deliverable capability
 
@@ -110,7 +110,17 @@ V0.3 turns all four integration frontends into complete product-deliverable path
 - Generic Plugin;
 - QPA.
 
-This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335). Further V0.3-family breadth (Qt 5.15 adaptation, compression/damage delivery, session operations, branding) is planned and executed under #343/#370 as coherent outcomes, without pre-reserving exact Feature version numbers for it (#333). behavior needed for practical delivery.
+This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335).
+
+The V0.3 family carries two strictly separate classes of work:
+
+### Mandatory pre-GA V0.3-family baseline
+
+Qt 5.15, Qt 6.5 and Qt 6.8 compatibility; Windows and Linux; x86_64 and ARM64/AArch64; the qwindows/qxcb/Wayland/EGLFS reference cells; practical compressed + incremental/damage delivery; maintained viewer interoperability; the #370 performance programme. These must converge before V0.4 RC entry, and no exact Feature version is pre-reserved for any of them (#333).
+
+### Optional / quality / differentiating outcomes
+
+Session Registry / Session Operations, full branding expansion, HyRemoteTool enhancements, native TLS, and additional BSP/SoC/platform expansion beyond the declared GA reference cells - each activated separately as a coherent product outcome.
 
 ## V0.4 — Qualify It
 
@@ -142,13 +152,13 @@ It should not introduce a new Runtime architecture, frontend, protocol family, o
 
 ## Post-GA product outcomes
 
-Post-GA work is activated as coherent user/product outcomes under their own authority issues. Version numbers are never pre-reserved for a technical theme (#333): the former fixed slots "V1.1 = Embedded", "V1.2 = Acceleration" and "V1.3 = Differentiate" are retired and no replacement slots are invented. The capability areas below are the standing possibility space, entered only through an activated outcome:
+Post-GA work is activated as coherent user/product outcomes beyond the frozen GA baseline under their own authority issues. Version numbers are never pre-reserved for a technical theme (#333): the former fixed slots "V1.1 = Embedded", "V1.2 = Acceleration" and "V1.3 = Differentiate" are retired and no replacement slots are invented. Additional BSP/SoC/platform expansion beyond the declared GA reference cells, evidence-driven acceleration where still useful, and advanced programmable capabilities are each admitted separately:
 
-- industrial/embedded deployment (ARM64 Embedded Linux, qualified SoC/BSP families, EGLFS/Wayland where applicable, cross compilation, dependency/feature slicing for Quick-only or Widgets-only products, embedded SDK/package manifests, physical target qualification) - with the architecture rule of **one logical Runtime** and physical dependency slicing where needed, never separate public `RuntimeQuick`/`RuntimeWidgets` products;
-- measured hardware/performance work (DMA-BUF/GBM/external buffers, GPU-assisted conversion/scaling, RKMPP/VAAPI/D3D-class paths, bounded buffer/fence ownership, reduced CPU copies and latency) - introduced only where product measurements justify it;
-- programmable C++/QML product value (advanced session policy, business admission decisions, dynamic target selection, privacy/exclusion policy, Runtime health/observability, application-state integration) - while Generic and QPA stay focused on reliable zero-code/startup configuration rather than becoming hidden business-logic APIs.
+- additional platform/BSP expansion beyond the declared GA reference cells (dependency/feature slicing for Quick-only or Widgets-only products, embedded SDK/package manifests, further physical target qualification) - with the architecture rule of **one logical Runtime** and physical dependency slicing where needed, never separate public `RuntimeQuick`/`RuntimeWidgets` products;
+- hardware/vendor acceleration (DMA-BUF/GBM/external buffers, GPU-assisted conversion/scaling, RKMPP/VAAPI/D3D-class paths, bounded buffer/fence ownership) has no pre-assigned version or pre/post-GA placement: it is admitted only through #123 when #370 measured evidence proves a portable-baseline SLO/resource blocker;
+- advanced programmable capabilities (advanced session policy, privacy/exclusion policy, Runtime health/observability, application-state integration) - while Generic and QPA stay focused on reliable zero-code/startup configuration rather than becoming hidden business-logic APIs.
 
-### Later transport/product expansion
+
 
 RFB is the current transport baseline, not HyRemote's permanent product identity.
 

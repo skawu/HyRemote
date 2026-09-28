@@ -217,6 +217,6 @@ The following are later product directions:
 - DMA-BUF/GBM external-buffer paths;
 - RKMPP and other hardware encoders.
 
-> **TODO:** embedded deployment and dependency slicing are post-GA outcomes activated under their own authority; no version number is pre-assigned (#333).
+> **TODO:** Embedded Linux / ARM64 / EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under the position-derived baseline authority and must converge before V0.4 RC entry; dependency slicing and additional BSP/SoC expansion beyond the declared GA cells are separately admitted later outcomes, with no version number pre-assigned by this convergence.
 >
 > **TODO later acceleration line:** hardware-accelerated capture/encode after embedded correctness is established.

@@ -183,6 +183,6 @@ Current package focus:
 | QPA plugin | peer route (exact Qt/private ABI) |
 | Qt 6.8.3 Windows/Linux package line | Current reference |
 | Qt 5.15 package line | **TODO V0.4** |
-| ARM64 / Embedded Linux packages | TODO - post-GA embedded/platform outcome, not yet activated |
+| ARM64 / Embedded Linux packages | TODO - mandatory pre-GA V0.3-family compatibility baseline under #343; no exact Feature version pre-reserved |
 
 The package contract stays centered on one Runtime even as later releases add platform/dependency slicing or hardware acceleration.

@@ -149,7 +149,7 @@ They must not:
 - force Generic/QPA applications to link SoC-specific libraries directly;
 - become prerequisites for ordinary desktop users merely to optimize one target platform.
 
-> **TODO:** publish exact embedded/platform dependency manifests per supported BSP/product package when a post-GA embedded/platform outcome is activated; no version number is pre-assigned (#333).
+> **TODO:** publish exact embedded/platform dependency manifests per supported BSP/product package. Embedded Linux/ARM64/EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under #343; additional BSP/SoC expansion beyond the declared GA cells is separately admitted and no version number is pre-assigned (#333).
 
 ## Historical and future candidates
 

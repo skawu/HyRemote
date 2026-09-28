@@ -36,7 +36,7 @@ HyRemote is intended to support selected Qt LTS families rather than promise eve
 Current state:
 
 - **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.2.0.0.
-- **Qt 5.15 LTS** — **TODO V0.4 qualification**. Do not describe it as currently supported until the product can actually build, deploy, and run through the applicable matrix.
+- **Qt 5.15 LTS** - TODO - mandatory pre-GA V0.3-family adaptation/qualification under the position-derived baseline authority; V0.4 only qualifies the frozen completed matrix. Do not describe it as currently supported until the product can build, deploy and qualify it.
 - other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
 
 Public-Qt frontends and QPA have different compatibility rules:
@@ -164,7 +164,7 @@ The product deployment entry point is `hyremote_deploy()`; see [`guide/deploymen
 
 ## Embedded/platform expansion
 
-> #333: post-GA platform/acceleration work is activated as coherent outcomes under its own authority; no exact version number is pre-reserved for a technical theme.
+> Per this convergence: the currently released V0.2.0.1 matrix is desktop x86_64. ARM64/Embedded Linux/EGLFS are not supported by that released version, but they are mandatory pre-GA V0.3-family compatibility baseline work under the position-derived baseline authority and must converge before V0.4 RC entry. Additional BSP/SoC/platform expansion beyond the declared GA reference cells is separately admitted as later coherent outcomes. Hardware/vendor acceleration has no pre-assigned version or pre/post-GA placement: it is admitted only through its recorded activation authority when measured evidence proves a portable-baseline SLO/resource blocker under the performance programme.
 
 
 Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
@@ -173,11 +173,11 @@ Planned directions include:
 
 | Direction | Current status |
 | --- | --- |
-| ARM64 Embedded Linux | TODO - post-GA embedded/platform outcome, not yet activated |
-| RK3588 / EGLFS or Wayland | TODO - post-GA embedded/platform outcome, not yet activated |
-| NXP i.MX class | TODO - post-GA embedded/platform outcome, not yet activated |
-| DMA-BUF / GBM / external-buffer paths | TODO - post-GA measured-performance outcome, not yet activated |
-| RKMPP / VAAPI / platform hardware encoding | TODO - post-GA measured-performance outcome, not yet activated |
+| ARM64 Embedded Linux | TODO - mandatory pre-GA V0.3-family compatibility baseline under the position-derived baseline authority; no exact Feature version pre-reserved |
+| RK3588 / EGLFS or Wayland | TODO - mandatory pre-GA V0.3-family compatibility baseline reference cells under the position-derived baseline authority; no exact Feature version pre-reserved |
+| NXP i.MX class | TODO - separately admitted platform expansion beyond the declared GA cells |
+| DMA-BUF / GBM / external-buffer paths | TODO - evidence-driven conditional implementation via its recorded activation authority (#123) when the performance programme's measured evidence proves a blocker; no version placement |
+| RKMPP / VAAPI / platform hardware encoding | TODO - evidence-driven conditional implementation via its recorded activation authority (#123) when the performance programme's measured evidence proves a blocker; no version placement |
 | OpenHarmony | Long-term direction; no current support claim |
 
 Desktop evidence does not imply embedded support, and one BSP does not imply an entire SoC/platform family.
