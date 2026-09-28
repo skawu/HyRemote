@@ -5,8 +5,8 @@
 #include <QWindow>
 #include <QtMath>
 
-#include <QtGui/private/qhighdpiscaling_p.h>
-#include <QtGui/private/qwindowsysteminterface_p.h>
+#include <private/qhighdpiscaling_p.h>
+#include <private/qwindowsysteminterface_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
 #include <array>
@@ -112,9 +112,6 @@ void deliverQtWindowSystemPointer(QWindow *window,
         return;
     }
 
-    // Synchronous delivery is intentional here: Runtime already marshals to the GUI thread, and one
-    // accepted raw fact should enter Qt before the next fact is processed. Everything above this line
-    // is transport/runtime state; everything below it, including click classification and grabs, is Qt.
     QWindowSystemInterface::handleMouseEvent<QWindowSystemInterface::SynchronousDelivery>(
         window,
         timestamp,
