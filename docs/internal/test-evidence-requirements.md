@@ -518,7 +518,6 @@ cell_schema: CCS-1
 required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
 base_er:
   - ER-SECURITY-FAIL-CLOSED
-  - ER-SECURITY-SAFE-DEFAULTS
 conditional_er: []
 ```
 
@@ -541,7 +540,6 @@ cell_schema: CCS-1
 required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
 base_er:
   - ER-SECURITY-FAIL-CLOSED
-  - ER-SECURITY-SAFE-DEFAULTS
 conditional_er: []
 ```
 
