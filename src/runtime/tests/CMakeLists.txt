@@ -267,6 +267,25 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
 
+    # #401 preflight: deterministic reproduction of #400 through the production Widgets path, with
+    # a first-divergence classification per scenario. Evidence fixture, not the production fix.
+    add_executable(hyremote-widgets-input-preflight-test
+        test_widgets_input_preflight.cpp
+    )
+    target_link_libraries(hyremote-widgets-input-preflight-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+    )
+    target_include_directories(hyremote-widgets-input-preflight-test PRIVATE ../src)
+    add_test(NAME hyremote-widgets-input-preflight-test COMMAND hyremote-widgets-input-preflight-test)
+    set_tests_properties(hyremote-widgets-input-preflight-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
     # TG-020: this composition test drives the real RFB transport as well as the Widgets adapter.
     # When VNC is unavailable it must be absent from the test graph rather than left unbuildable or skipped.
     if(HYREMOTE_WITH_VNC)
@@ -285,6 +304,26 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         add_test(NAME hyremote-rfb-widget-disconnect-backpressure-test
                  COMMAND hyremote-rfb-widget-disconnect-backpressure-test)
         set_tests_properties(hyremote-rfb-widget-disconnect-backpressure-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        )
+
+        # #401 preflight: production RFB pointer-parser reproduction of #400 (valid envelope,
+        # outside interval, outside distance, different receiver) with first-divergence evidence.
+        add_executable(hyremote-rfb-input-preflight-test
+            test_rfb_input_preflight.cpp
+        )
+        target_link_libraries(hyremote-rfb-input-preflight-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Gui
+                Qt6::Network
+                Qt6::Widgets
+        )
+        target_include_directories(hyremote-rfb-input-preflight-test PRIVATE ../src)
+        add_test(NAME hyremote-rfb-input-preflight-test COMMAND hyremote-rfb-input-preflight-test)
+        set_tests_properties(hyremote-rfb-input-preflight-test PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         )
     endif()
@@ -346,6 +385,57 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set_tests_properties(hyremote-quick-input-backpressure-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
+
+    # #401 preflight: deterministic reproduction of #400 through the production Quick path.
+    add_executable(hyremote-quick-input-preflight-test
+        test_quick_input_preflight.cpp
+    )
+    target_link_libraries(hyremote-quick-input-preflight-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Qml
+            Qt6::Quick
+    )
+    target_include_directories(hyremote-quick-input-preflight-test PRIVATE ../src)
+    set_target_properties(hyremote-quick-input-preflight-test PROPERTIES AUTOMOC TRUE)
+    add_test(NAME hyremote-quick-input-preflight-test COMMAND hyremote-quick-input-preflight-test)
+    set_tests_properties(hyremote-quick-input-preflight-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    )
+
+    # #401: the control matrix (Button/CheckBox/Slider/Popup) needs the QtQuick.Controls QML module,
+    # which HYREMOTE_REMOTEACCESS_WITH_QUICK does not promise: that contract is Qt Quick, not Quick
+    # Controls. It is registered only when the module is really present, so a minimal Quick-only
+    # configuration keeps a valid test graph instead of an unbuildable or silently skipped entry.
+    # The check honours CMake's standard CMAKE_DISABLE_FIND_PACKAGE_Qt6QuickControls2, which is how
+    # that minimal configuration is verified without uninstalling anything.
+    find_package(Qt6 QUIET COMPONENTS QuickControls2)
+    if(Qt6QuickControls2_FOUND)
+        add_executable(hyremote-quick-controls-preflight-test
+            test_quick_controls_preflight.cpp
+        )
+        target_link_libraries(hyremote-quick-controls-preflight-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Gui
+                Qt6::Qml
+                Qt6::Quick
+        )
+        target_include_directories(hyremote-quick-controls-preflight-test PRIVATE ../src)
+        set_target_properties(hyremote-quick-controls-preflight-test PROPERTIES AUTOMOC TRUE)
+        add_test(NAME hyremote-quick-controls-preflight-test COMMAND hyremote-quick-controls-preflight-test)
+        set_tests_properties(hyremote-quick-controls-preflight-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+        )
+        hyremote_label_test_family("integration;quick;fast"
+            hyremote-quick-controls-preflight-test
+        )
+    endif()
 endif()
 
 # Real RFB listener reachability/reconciliation is a Runtime integration contract. It requires the
@@ -387,6 +477,7 @@ hyremote_label_test_family("integration;rfb;fast"
     hyremote-vnc-auth-test
     hyremote-rfb-vnc-auth-handshake-test
     hyremote-rfb-widget-disconnect-backpressure-test
+    hyremote-rfb-input-preflight-test
     hyremote-rfb-listener-reachability-test
 )
 hyremote_label_test_family("integration;widgets;fast"
@@ -394,10 +485,12 @@ hyremote_label_test_family("integration;widgets;fast"
     hyremote-widgets-capture-forced-dpr-test
     hyremote-widgets-input-routing-test
     hyremote-widgets-input-backpressure-test
+    hyremote-widgets-input-preflight-test
 )
 hyremote_label_test_family("integration;quick;fast"
     hyremote-quick-capture-test
     hyremote-quick-capture-forced-dpr-test
     hyremote-quick-input-routing-test
     hyremote-quick-input-backpressure-test
+    hyremote-quick-input-preflight-test
 )
