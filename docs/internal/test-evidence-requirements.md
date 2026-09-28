@@ -149,26 +149,51 @@ The TS-0 predicate language is intentionally small and deterministic:
 Rules:
 
 1. Every positive support/compatibility claim or qualification cell must select an applicable authority-owned profile before it can be considered evidence-complete.
-2. `required_ERs(cell)` is the union of the mandatory claim-meta ERs `ER-COMPAT-EXPLICIT-CELL` and `ER-COMPAT-EVIDENCE-BINDING`, the selected profile's inherited/`base_er`, every matching `conditional_er.require`, and any maintenance/release obligations explicitly selected by their owning authorities.
+2. `required_product_ERs(cell)` is the union of the selected profile's inherited/`base_er`, every matching `conditional_er.require`, and any maintenance/release product obligations explicitly selected by their owning authorities.
 3. `required_dimensions` is inherited by union; child profiles may add dimensions but may not silently remove inherited dimensions.
-4. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required ER.
-5. The test registry, selectors and suites consume the expanded required set; they cannot amend it to fit the available tests.
+4. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required product ER.
+5. The test registry, selectors and suites consume the expanded required product set; they cannot amend it to fit the available tests.
 6. Unknown profile IDs, unknown schema/dimensions, missing required dimensions, malformed predicates or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
-7. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded ER set must be deterministic and inspectable.
+7. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded product ER set must be deterministic and inspectable.
 8. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family; this catalog freezes the current bindings that those authorities expose.
-9. A material profile/schema/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-ER set.
+9. A material profile/schema/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-product-ER set.
 10. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
 11. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
 
-This gives TS-6 a mechanical forward chain:
+#### Claim-meta evaluation is outside profile expansion
+
+`ER-COMPAT-EXPLICIT-CELL` and `ER-COMPAT-EVIDENCE-BINDING` are **claim-meta ERs**, not members of `required_product_ERs(cell)`. This separation is deliberate and prevents a recursive completeness definition.
+
+For an active claim/cell, the completeness engine performs these outer checks after the profile has expanded:
+
+```text
+META-CELL:
+  validate claim_id/cell_id/schema/profile/status ownership/material dimensions
+  validate required_product_ERs(cell) is deterministic and inspectable
+
+META-BINDING:
+  validate evidence records belong to the same claim/cell/profile revision
+  validate candidate/artifact/environment/fixture/invalidation compatibility
+
+PRODUCT-EVIDENCE:
+  satisfy every triggered evidence obligation for every ER in required_product_ERs(cell)
+
+claim_complete = META-CELL PASS
+              && META-BINDING PASS
+              && PRODUCT-EVIDENCE complete
+```
+
+The completeness engine may emit derived Q/R evidence records for the two claim-meta ERs, but those records are outputs of evaluating the product ER set and its bindings; they are never inputs to the product-set expansion and never require themselves in order to evaluate themselves.
+
+This gives TS-6 a non-recursive forward chain:
 
 ```text
 positive claim/status authority
  -> claim obligation profile
  -> qualification cell/material dimensions
- -> expanded required ER set
- -> required evidence classes
- -> valid evidence records
+ -> expanded required_product_ERs(cell)
+ -> required evidence classes + valid product evidence records
+ -> outer claim-meta checks
  -> claim completeness
 ```
 
@@ -532,12 +557,12 @@ These profiles bind claims the repository already makes. They do **not** create 
 
 | ER | PAC / Risk | Activation | Evidence obligation | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support claim names material dimensions, selects an authority-owned Claim Obligation Profile, and has valid evidence for the profile's mechanically expanded required ER set. | `claim -> profile -> cell dimensions/capabilities -> expanded required_ERs -> evidence records` is complete; every required ER has its triggered evidence classes satisfied, no unknown profile/dimension is accepted, and any status value remains owned by product authority. | Material claim/cell/candidate/environment/claim-profile/conditional-rule/required-ER validity change. |
+| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support/product-behavior claim has stable claim/cell identity, declared material dimensions and an authority-owned profile whose product ER set expands deterministically. | The outer META-CELL evaluator validates identity/schema/profile/status ownership/material dimensions and computes the canonical `required_product_ERs(cell)` without consulting current test coverage; this derived meta result does not require itself as an input. | Material claim/cell/schema/profile/conditional-rule/product-obligation change. |
 | `ER-COMPAT-QPA-EXACT-ABI` | PAC-9,PAC-4 / R-COMPAT,R-NATIVE | CLAIM | claim Q; release +R | QPA compatibility is exact Qt private-ABI/platform evidence, not family inference. | Claimed exact pair passes; mismatched/unqualified pair is not represented as supported. | Material exact Qt/toolchain/platform/QPA change. |
 | `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | One platform family does not substitute for another where product behavior is platform-sensitive. | Every claimed independent platform family has its own required valid cell evidence. | Material support-matrix/platform-sensitivity policy change. |
 | `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Basic Widgets/Quick success does not qualify specialized graphics/native-surface configurations. | Positive specialized claim has targeted evidence; absent evidence remains non-positive according to product authority. | Material graphics claim/capture/backend change. |
 | `ER-COMPAT-THIRDPARTY-NONINFERENCE` | PAC-1,PAC-9 / R-COMPAT,R-ADOPTION | CLAIM/RELEASE | claim Q; release +R | Third-party success pressure-tests declared matrix but does not create named-app/broader support. | Record pins app/revision/environment/routes and stays labelled verification rather than inferred support expansion. | Material fixture/environment/support-policy change. |
-| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Claims consume only evidence valid for relevant artifact/environment/fixture identity. | No invalidated/mismatched record satisfies a positive claim; release records obey exact-candidate rules. | Material evidence-schema/identity/invalidation/release-binding rule change. |
+| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant claim/cell/profile revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator rejects invalidated, mismatched or cross-cell/cross-profile records and enforces exact-candidate rules for release evidence; this derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/invalidation/release-binding rule change. |
 
 Compatibility status vocabulary itself is owned by `docs/compatibility.md`; the evidence system stores/validates an authority status when the claim family has one and does not invent a parallel enum for prose product-behavior claims.
 
