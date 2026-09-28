@@ -170,9 +170,6 @@ void doubleClick(HyRemote::detail::TargetComponents &components,
             hyremote::PointerButton::Left, true);
     postRaw(components, root, hyremote::InputEventKind::PointerButton, rootPoint,
             hyremote::PointerButton::Left, false);
-    // Qt needs a strictly positive acceptance delta inside the interval (real double clicks have
-    // one), so the fixture spaces the pair instead of posting both presses at the same instant.
-    QThread::msleep(20);
     postRaw(components, root, hyremote::InputEventKind::PointerButton, rootPoint,
             hyremote::PointerButton::Left, true);
     postRaw(components, root, hyremote::InputEventKind::PointerButton, rootPoint,
@@ -452,7 +449,6 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     // classifier, and this case stays well inside it so it does not depend on that convention).
     click(components, root, QPointF(200, 200));
     pump();
-    QThread::msleep(20);  // strictly positive acceptance delta, as a real pair has
     click(components, root, QPointF(200, 200));
     pump();
     check(probe.doubleClicks == 1, "#400 boundary: two clicks just inside the interval form one double click");
@@ -462,7 +458,6 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     const int insideOffset = distance > 1 ? 1 : 0;
     click(components, root, QPointF(300, 300));
     pump();
-    QThread::msleep(20);  // strictly positive acceptance delta, as a real pair has
     click(components, root, QPointF(300 + insideOffset, 300));
     pump();
     check(probe.doubleClicks == 1, "#400 boundary: a pair inside the distance still forms one double click");
@@ -481,7 +476,6 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     probe.presses = probe.releases = probe.doubleClicks = 0;
     click(components, root, QPointF(150, 150));
     pump();
-    QThread::msleep(20);  // strictly positive acceptance delta, as a real pair has
     click(components, root, QPointF(150, 150));
     pump();
     check(probe.doubleClicks == 1, "#400 triple press: the first pair yields one double click");
@@ -500,7 +494,6 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     other.presses = other.releases = other.doubleClicks = 0;
     click(components, root, QPointF(200, 500));
     pump();
-    QThread::msleep(20);  // strictly positive acceptance delta, as a real pair has
     click(components, root, QPointF(400, 400));
     pump();
     check(probe.presses == 1 && probe.doubleClicks == 0, "#400 cross widget: the first widget gets a single press");
@@ -547,6 +540,57 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     check(probe.doubleClicks == 0,
           "#400 queue delay negative: clicks accepted outside the interval stay two single clicks");
     check(probe.presses == 2, "#400 queue delay negative: both presses are ordinary presses");
+}
+
+// ---------------------------------------------------------------------------------------------
+// #400 queued-motion regression: the far excursion must survive pointer-move coalescing, and in-box
+// jitter must not disable classification.
+// ---------------------------------------------------------------------------------------------
+void testAcceptedMotionRegression(QWidget &root, HyRemote::detail::TargetComponents &components)
+{
+    Probe probe(&root);
+    probe.setGeometry(0, 0, 500, 600);
+    pump();
+
+    // Negative: click1, then a far excursion and a return that are still queued when the second
+    // click arrives. Coalescing keeps only the near move for delivery, so only the accepted-stream
+    // movement summary can invalidate the pair.
+    QThread::msleep(600);  // start a new, independent gesture
+    click(components, root, QPointF(220, 220));
+    pump();
+    check(probe.presses == 1, "#400 queued motion: the first click is delivered");
+    postRaw(components, root, hyremote::InputEventKind::PointerMove, QPointF(460, 560));
+    postRaw(components, root, hyremote::InputEventKind::PointerMove, QPointF(221, 221));
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(220, 220),
+            hyremote::PointerButton::Left, true);
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(220, 220),
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[widgets queued far-return]: presses=" << probe.presses
+              << " dblClicks=" << probe.doubleClicks << '\n';
+    check(probe.doubleClicks == 0,
+          "#400 queued far-return: a far excursion followed by a return does NOT form a double click");
+    check(probe.presses == 2, "#400 queued far-return: both presses are ordinary presses");
+
+    // Positive: several coalesced jitter moves that all stay inside the distance box must keep the
+    // pair eligible. This guards against an implementation that disarms on any coalescing.
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    QThread::msleep(600);
+    click(components, root, QPointF(300, 300));
+    pump();
+    postRaw(components, root, hyremote::InputEventKind::PointerMove, QPointF(301, 300));
+    postRaw(components, root, hyremote::InputEventKind::PointerMove, QPointF(302, 301));
+    postRaw(components, root, hyremote::InputEventKind::PointerMove, QPointF(301, 300));
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(300, 300),
+            hyremote::PointerButton::Left, true);
+    postRaw(components, root, hyremote::InputEventKind::PointerButton, QPointF(300, 300),
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[widgets queued jitter]: presses=" << probe.presses
+              << " dblClicks=" << probe.doubleClicks << '\n';
+    check(probe.doubleClicks == 1,
+          "#400 queued in-box jitter: coalesced moves inside the distance box keep the double click");
+    check(probe.presses == 2, "#400 queued in-box jitter: both presses are delivered");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -622,6 +666,7 @@ void runPreflight()
     testPointerSequence(root, components);
     testControlMatrix(root, components);
     testClassifierAcceptance(root, components);
+    testAcceptedMotionRegression(root, components);
     components.input.reset();
 
     testHostActivationState();

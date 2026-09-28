@@ -123,9 +123,6 @@ void doubleClick(HyRemote::detail::TargetComponents &components,
             hyremote::PointerButton::Left, true);
     postRaw(components, window, hyremote::InputEventKind::PointerButton, windowPoint,
             hyremote::PointerButton::Left, false);
-    // Qt needs a strictly positive acceptance delta inside the interval (real double clicks have
-    // one), so the fixture spaces the pair instead of posting both presses at the same instant.
-    QThread::msleep(20);
     postRaw(components, window, hyremote::InputEventKind::PointerButton, windowPoint,
             hyremote::PointerButton::Left, true);
     postRaw(components, window, hyremote::InputEventKind::PointerButton, windowPoint,
@@ -294,7 +291,7 @@ Rectangle {
           "#400: the item-level double-click semantic reaches MouseArea::onDoubleClicked exactly once");
     if (windowDoubleClicks == 1 && windowPresses == 2 && bridge.property("areaDoubleClicks").toInt() == 1)
         noDivergence("Quick double-click semantic",
-                     "the window receives the Qt double-click semantic in place of the second press, and "
+                     "the window receives the qualifying second press and then one MouseButtonDblClick, and "
                      "Qt Quick keeps owning item/handler delivery (no item hit-testing in the adapter)");
 
     // 3. Focusable text target.
@@ -337,6 +334,39 @@ Rectangle {
           "MouseArea: held moves keep reaching the pressed item");
     if (bridge.property("dragPresses").toInt() >= 1 && bridge.property("dragMoves").toInt() > movesBefore)
         noDivergence("Quick drag", "press/move/release reaches the dragged item");
+
+    // #400 queued-motion regression through the Quick adapter: the far excursion must survive
+    // pointer-move coalescing, and in-box jitter must not disable classification.
+    bridge.setProperty("areaClicks", 0);
+    bridge.setProperty("areaDoubleClicks", 0);
+    QThread::msleep(600);  // start a new, independent gesture
+    click(components, window, sceneCenter("area"));
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, QPointF(460, 460));
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, QPointF(101, 100));
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, QPointF(100, 100),
+            hyremote::PointerButton::Left, true);
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, QPointF(100, 100),
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[quick queued far-return]: dblClicks="
+              << bridge.property("areaDoubleClicks").toInt() << '\n';
+    check(bridge.property("areaDoubleClicks").toInt() == 0,
+          "#400 queued far-return (Quick): a far excursion followed by a return does NOT form a double click");
+
+    bridge.setProperty("areaDoubleClicks", 0);
+    QThread::msleep(600);
+    click(components, window, sceneCenter("area"));
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, QPointF(101, 100));
+    postRaw(components, window, hyremote::InputEventKind::PointerMove, QPointF(100, 102));
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, QPointF(100, 100),
+            hyremote::PointerButton::Left, true);
+    postRaw(components, window, hyremote::InputEventKind::PointerButton, QPointF(100, 100),
+            hyremote::PointerButton::Left, false);
+    pump();
+    std::cout << "     observed[quick queued jitter]: dblClicks="
+              << bridge.property("areaDoubleClicks").toInt() << '\n';
+    check(bridge.property("areaDoubleClicks").toInt() == 1,
+          "#400 queued in-box jitter (Quick): coalesced moves inside the distance box keep the double click");
 
     // 5. In-window overlay surface. Both steps are hard assertions: the overlay reachability claim
     //    is only printed when the remote path really opened it and really activated its content.

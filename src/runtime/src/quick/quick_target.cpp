@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/accepted_pointer_motion.hpp"
 #include "detail/input_mailbox_admission.hpp"
 #include "detail/qt_pointer_sequence_classifier.hpp"
 #include "hyremote/core/capture_source.hpp"
@@ -511,17 +512,20 @@ public:
 
             // #400: accepted-arrival time travels with the event in the queued envelope; GUI drain
             // time never decides double-click validity.
-            const QueuedInput queued{event, hyremote::Clock::now()};
+            const hyremote::TimePoint acceptedAt = hyremote::Clock::now();
 
             if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
                 if (!state->admission.canAcceptProtectedRelease())
                     throw std::runtime_error("bounded Qt Quick protected-release mailbox is full");
                 state->admission.acceptProtectedRelease(event);
-                state->pending.push_back(queued);
+                state->pending.push_back(QueuedInput{event, acceptedAt, {}});
             } else if (event.kind == hyremote::InputEventKind::PointerMove
                        && !state->pending.empty()
                        && state->pending.back().event.kind == hyremote::InputEventKind::PointerMove) {
-                state->pending.back() = queued;
+                // Coalescing keeps its freshness rule; the accepted-motion summary preserves the
+                // excursion of the move that is being replaced.
+                state->acceptedMotion.noteAcceptedMove(event);
+                state->pending.back() = QueuedInput{event, acceptedAt, {}};
             } else {
                 if (!state->admission.canAcceptNormal()) {
                     const auto staleMove = std::find_if(
@@ -537,7 +541,13 @@ public:
                     throw std::runtime_error("bounded Qt Quick input mailbox is full");
 
                 state->admission.acceptNormal(event);
-                state->pending.push_back(queued);
+                PointerMovementSummary movement;
+                if (event.kind == hyremote::InputEventKind::PointerButton && event.pressed) {
+                    movement = state->acceptedMotion.takeSummaryForAcceptedPress(event);
+                } else if (event.kind == hyremote::InputEventKind::PointerMove) {
+                    state->acceptedMotion.noteAcceptedMove(event);
+                }
+                state->pending.push_back(QueuedInput{event, acceptedAt, movement});
             }
 
             if (!state->drainScheduled) {
@@ -592,6 +602,7 @@ private:
     {
         hyremote::InputEvent event;
         hyremote::TimePoint acceptedAt{};
+        PointerMovementSummary movement;
     };
 
     // #400: the classification policy is Qt's own, never a product constant.
@@ -618,6 +629,7 @@ private:
         Qt::MouseButtons buttons = Qt::NoButton;
         PointerClickTrace clickTrace;
         QPointer<QQuickWindow> clickTraceOwner;
+        AcceptedPointerMotionState acceptedMotion;
         QPoint lastLocalPoint;
         QPoint lastGlobalPoint;
         bool pointerPositionKnown = false;
@@ -628,7 +640,8 @@ private:
     static void deliverPointer(const std::shared_ptr<State> &state,
                                QQuickWindow *window,
                                const hyremote::InputEvent &event,
-                               hyremote::TimePoint acceptedAt)
+                               hyremote::TimePoint acceptedAt,
+                               const PointerMovementSummary &movement)
     {
         const std::optional<hyremote::MappedInputPoint> mapped =
             hyremote::mapPointerToTarget(event,
@@ -682,9 +695,11 @@ private:
                 PointerClickTrace &trace = state->clickTrace;
                 const bool sameTarget = state->clickTraceOwner.data() == window;
                 const int qtButton = static_cast<int>(button);
+                const PointerMovementSpan span = movementSpanForTarget(
+                    movement, static_cast<float>(window->width()), static_cast<float>(window->height()));
                 const bool doubleClick = sameTarget
                                          && isDoubleClickPress(trace, qtButton, acceptedAt, QPointF(localPoint),
-                                                               quintptr(window), doubleClickPolicy());
+                                                               quintptr(window), doubleClickPolicy(), span);
                 if (doubleClick)
                     disarmPointerClickTrace(trace);  // the pair is consumed
                 else
@@ -825,7 +840,7 @@ private:
         case hyremote::InputEventKind::PointerMove:
         case hyremote::InputEventKind::PointerButton:
         case hyremote::InputEventKind::PointerScroll:
-            deliverPointer(state, window, event, queued.acceptedAt);
+            deliverPointer(state, window, event, queued.acceptedAt, queued.movement);
             break;
         case hyremote::InputEventKind::Key:
             deliverKey(state, window, event);
@@ -846,6 +861,7 @@ private:
             if (!state->active) {
                 state->pending.clear();
                 state->admission.resetAll();
+                state->acceptedMotion.clear();
                 state->drainScheduled = false;
                 return;
             }

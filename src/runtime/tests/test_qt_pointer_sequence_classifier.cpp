@@ -1,12 +1,13 @@
 // #400: deterministic unit coverage for the shared Runtime-private click-sequence classifier.
 //
 // The policy boundaries are asserted with synthetic TimePoints and QPointF positions instead of real
-// sleeps, so the exact rules - strict interval upper bound, per-axis distance, zero-distance meaning,
-// movement invalidation, button mismatch, identity mismatch and pair consumption - are pinned
-// without depending on wall-clock timing or the host's configured double-click speed.
+// sleeps, so the exact rules - 0 <= delta < interval with backwards time rejected, per-axis distance,
+// zero-distance meaning, accepted-movement invalidation, viewport change, button mismatch, identity
+// mismatch and pair consumption - are pinned without depending on wall-clock timing or the host's
+// configured double-click speed.
 
-#include <QPointF>
 #include <QCoreApplication>
+#include <QPointF>
 
 #include <chrono>
 #include <cstdio>
@@ -27,6 +28,7 @@ void check(bool ok, const char *what)
 using hyremote::TimePoint;
 using HyRemote::detail::DoubleClickPolicy;
 using HyRemote::detail::PointerClickTrace;
+using HyRemote::detail::PointerMovementSpan;
 
 constexpr int kIntervalMs = 400;
 constexpr int kDistancePx = 5;
@@ -56,18 +58,32 @@ PointerClickTrace armedTrace(int button = kLeft, int acceptedMs = 0, const QPoin
 }
 
 bool qualifies(const PointerClickTrace &trace, int acceptedMs, const QPointF &position, int button = kLeft,
-               quintptr identity = kIdentityA)
+               quintptr identity = kIdentityA, const PointerMovementSpan &movement = PointerMovementSpan{})
 {
-    return HyRemote::detail::isDoubleClickPress(trace, button, at(acceptedMs), position, identity, policy());
+    return HyRemote::detail::isDoubleClickPress(trace, button, at(acceptedMs), position, identity, policy(),
+                                               movement);
+}
+
+PointerMovementSpan movementBetween(const QPointF &minimum, const QPointF &maximum)
+{
+    PointerMovementSpan span;
+    span.hasMovement = true;
+    span.minimum = minimum;
+    span.maximum = maximum;
+    return span;
 }
 
 void testIntervalBoundary()
 {
     const PointerClickTrace trace = armedTrace();
+    check(qualifies(trace, 0, kOrigin),
+          "delta = 0ms is eligible (Qt compares unsigned timestamps, so a same-millisecond pair counts)");
+    check(qualifies(trace, 1, kOrigin), "delta = 1ms is eligible");
     check(qualifies(trace, kIntervalMs - 1, kOrigin), "delta = interval - 1ms is eligible");
     check(!qualifies(trace, kIntervalMs, kOrigin), "delta = interval is NOT eligible (strict upper bound)");
-    check(!qualifies(trace, 0, kOrigin), "delta = 0 is NOT eligible (non-positive delta never qualifies)");
-    check(qualifies(trace, 1, kOrigin), "delta = 1ms is eligible");
+    check(!qualifies(trace, kIntervalMs + 1, kOrigin), "delta = interval + 1ms is NOT eligible");
+    check(!qualifies(trace, -1, kOrigin), "a backwards synthetic TimePoint is NOT eligible");
+    check(!qualifies(trace, -kIntervalMs, kOrigin), "a far backwards TimePoint is NOT eligible");
 }
 
 void testDistanceBoundary()
@@ -95,18 +111,51 @@ void testZeroDistance()
           "distance = 0 rejects any non-zero movement (never treated as unconstrained)");
 }
 
-void testMoveInvalidation()
+void testAcceptedMovementSpan()
+{
+    const PointerClickTrace trace = armedTrace();
+    const double d = static_cast<double>(kDistancePx);
+
+    // Far out and back: the press positions themselves qualify, but the accepted excursion does not.
+    check(!qualifies(trace, 10, kOrigin, kLeft, kIdentityA,
+                     movementBetween(kOrigin - QPointF(60, 60), kOrigin + QPointF(60, 60))),
+          "an accepted excursion beyond the distance box invalidates the pair even when the press "
+          "returns to the original position");
+    check(!qualifies(trace, 10, kOrigin, kLeft, kIdentityA,
+                     movementBetween(kOrigin, kOrigin + QPointF(d + 1, 0))),
+          "a single accepted axis excursion beyond the box invalidates the pair");
+    check(!qualifies(trace, 10, kOrigin, kLeft, kIdentityA,
+                     movementBetween(kOrigin - QPointF(0, d + 1), kOrigin)),
+          "the negative direction is bounded the same way");
+
+    // Jitter inside the box must not disable classification.
+    check(qualifies(trace, 10, kOrigin, kLeft, kIdentityA,
+                    movementBetween(kOrigin - QPointF(d, d), kOrigin + QPointF(d, d))),
+          "accepted jitter whose extremes stay inside the box keeps the pair eligible");
+    check(qualifies(trace, 10, kOrigin + QPointF(d, 0), kLeft, kIdentityA,
+                    movementBetween(kOrigin, kOrigin + QPointF(d, 0))),
+          "an in-box excursion combined with an in-box second press is eligible");
+
+    PointerMovementSpan viewportChanged = movementBetween(kOrigin, kOrigin + QPointF(d, 0));
+    viewportChanged.viewportChanged = true;
+    check(!qualifies(trace, 10, kOrigin + QPointF(d, 0), kLeft, kIdentityA, viewportChanged),
+          "a source-viewport change invalidates the pair instead of mixing coordinate spaces");
+    check(!qualifies(trace, 10, kOrigin, kLeft, kIdentityA, viewportChanged),
+          "a source-viewport change invalidates even a same-position pair");
+}
+
+void testDeliveredMoveInvalidation()
 {
     PointerClickTrace trace = armedTrace();
     HyRemote::detail::notePointerMove(trace, kOrigin + QPointF(kDistancePx + 10, 0), policy());
     HyRemote::detail::notePointerMove(trace, kOrigin, policy());  // moving back must not restore it
     check(!qualifies(trace, 10, kOrigin),
-          "a far move and a return to the original position is NOT eligible");
+          "a promptly delivered far move and a return to the original position is NOT eligible");
     check(!trace.armed, "the pending pair stays invalidated after the far move");
 
     PointerClickTrace inside = armedTrace();
     HyRemote::detail::notePointerMove(inside, kOrigin + QPointF(kDistancePx, kDistancePx), policy());
-    check(inside.armed, "a move inside the distance box keeps the pair eligible");
+    check(inside.armed, "an in-box delivered move keeps the pair eligible");
     check(qualifies(inside, 10, kOrigin + QPointF(1, 1)), "an in-box move keeps the pair effective");
 }
 
@@ -151,7 +200,8 @@ int main(int argc, char **argv)
     testIntervalBoundary();
     testDistanceBoundary();
     testZeroDistance();
-    testMoveInvalidation();
+    testAcceptedMovementSpan();
+    testDeliveredMoveInvalidation();
     testButtonAndIdentity();
     testPairConsumption();
     testLifecycle();

@@ -345,7 +345,6 @@ void runPreflight()
     sendPointer(viewer, 0x00U, 100, 100);  // move
     sendPointer(viewer, 0x01U, 100, 100);  // left-down
     sendPointer(viewer, 0x00U, 100, 100);  // left-up
-    QThread::msleep(20);                   // strictly positive acceptance delta, as a real pair has
     sendPointer(viewer, 0x01U, 100, 100);  // left-down
     sendPointer(viewer, 0x00U, 100, 100);  // left-up
     pumpFor(250);
@@ -416,6 +415,27 @@ void runPreflight()
                    "RFB different receiver",
                    "a cross-receiver double click was synthesized");
     }
+
+    // --- Case 5: far excursion that coalescing replaces --------------------------------
+    facts.clear();
+    probe.presses = probe.releases = probe.doubleClicks = 0;
+    probe.setGeometry(0, 0, 500, 600);
+    other.setGeometry(0, 0, 0, 0);
+    pump();
+    sendPointer(viewer, 0x01U, 150, 150);
+    sendPointer(viewer, 0x00U, 150, 150);
+    pumpFor(150);
+    sendPointer(viewer, 0x00U, 420, 520);  // far excursion, still queued
+    sendPointer(viewer, 0x00U, 151, 151);  // return: ambient coalescing keeps only this move
+    sendPointer(viewer, 0x01U, 150, 150);
+    sendPointer(viewer, 0x00U, 150, 150);
+    pumpFor(250);
+    std::cout << "     observed[rfb far-return]: presses=" << probe.presses
+              << " dblClicks=" << probe.doubleClicks << '\n';
+    check(probe.doubleClicks == 0,
+          "#400 production RFB far-return: a far excursion followed by a return does NOT form a "
+          "double click");
+    check(probe.presses == 2, "#400 production RFB far-return: both presses are ordinary presses");
 
     viewer.abort();
     harness.stop();

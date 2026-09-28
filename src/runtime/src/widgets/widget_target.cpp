@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/accepted_pointer_motion.hpp"
 #include "detail/input_mailbox_admission.hpp"
 #include "detail/qt_pointer_sequence_classifier.hpp"
 #include "hyremote/core/capture_source.hpp"
@@ -390,20 +391,22 @@ public:
             // #400: the accepted-arrival time is taken here, when the event enters the bounded
             // mailbox on the transport thread, and travels with it in the queued envelope. Delivery
             // classification later uses this time, never the GUI thread's drain time.
-            const QueuedInput queued{event, hyremote::Clock::now()};
+            const hyremote::TimePoint acceptedAt = hyremote::Clock::now();
 
             if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
                 if (!state->admission.canAcceptProtectedRelease())
                     throw std::runtime_error("bounded Qt protected-release mailbox is full");
                 state->admission.acceptProtectedRelease(event);
-                state->pending.push_back(queued);
+                state->pending.push_back(QueuedInput{event, acceptedAt, {}});
             } else if (event.kind == hyremote::InputEventKind::PointerMove
                        && !state->pending.empty()
                        && state->pending.back().event.kind == hyremote::InputEventKind::PointerMove) {
                 // Pointer motion is freshness-oriented. Adjacent pending moves share one normal
                 // admission slot and collapse to the newest coordinate and arrival time. Button,
-                // key and release events are never coalesced.
-                state->pending.back() = queued;
+                // key and release events are never coalesced. The accepted-motion summary below keeps
+                // the excursion of the move that is being replaced.
+                state->acceptedMotion.noteAcceptedMove(event);
+                state->pending.back() = QueuedInput{event, acceptedAt, {}};
             } else {
                 if (!state->admission.canAcceptNormal()) {
                     const auto staleMove = std::find_if(
@@ -419,7 +422,15 @@ public:
                     throw std::runtime_error("bounded Qt input mailbox is full");
 
                 state->admission.acceptNormal(event);
-                state->pending.push_back(queued);
+                PointerMovementSummary movement;
+                if (event.kind == hyremote::InputEventKind::PointerButton && event.pressed) {
+                    // Snapshot what the accepted stream did since the previous accepted press, then
+                    // start the next period at this press.
+                    movement = state->acceptedMotion.takeSummaryForAcceptedPress(event);
+                } else if (event.kind == hyremote::InputEventKind::PointerMove) {
+                    state->acceptedMotion.noteAcceptedMove(event);
+                }
+                state->pending.push_back(QueuedInput{event, acceptedAt, movement});
             }
 
             if (!state->drainScheduled) {
@@ -473,11 +484,13 @@ public:
 private:
     // #400: the bounded mailbox stores a Runtime-private envelope. Admission still classifies the
     // contained InputEvent (capacity, protected releases and coalescing rules are unchanged); the
-    // envelope only carries the accepted-arrival time alongside it.
+    // envelope carries the accepted-arrival time and, for a press, the accepted movement facts of
+    // the period that just ended.
     struct QueuedInput
     {
         hyremote::InputEvent event;
         hyremote::TimePoint acceptedAt{};
+        PointerMovementSummary movement;
     };
 
     // #400: the classification policy is Qt's own, never a product constant.
@@ -513,6 +526,9 @@ private:
         // to it: a destroyed receiver leaves a null owner, which can never match a live receiver.
         PointerClickTrace clickTrace;
         QPointer<QWidget> clickTraceOwner;
+        // Accepted-stream movement bookkeeping: coalescing may drop a move before the GUI thread sees
+        // it, but the far excursion it carried still invalidates a pending double click.
+        AcceptedPointerMotionState acceptedMotion;
         QPoint lastRootPoint;
         bool pointerPositionKnown = false;
         Qt::KeyboardModifiers modifiers = Qt::NoModifier;
@@ -522,7 +538,8 @@ private:
     static void deliverPointer(const std::shared_ptr<State> &state,
                                QWidget *root,
                                const hyremote::InputEvent &event,
-                               hyremote::TimePoint acceptedAt)
+                               hyremote::TimePoint acceptedAt,
+                               const PointerMovementSummary &movement)
     {
         const std::optional<hyremote::MappedInputPoint> mapped =
             hyremote::mapPointerToTarget(event,
@@ -592,9 +609,11 @@ private:
                 QPointer<QWidget> &owner = state->clickTraceOwner;
                 const bool sameReceiver = owner.data() == receiver;
                 const int qtButton = static_cast<int>(button);
+                const PointerMovementSpan span = movementSpanForTarget(
+                    movement, static_cast<float>(root->width()), static_cast<float>(root->height()));
                 const bool doubleClick = sameReceiver
                                          && isDoubleClickPress(trace, qtButton, acceptedAt, QPointF(rootPoint),
-                                                               quintptr(receiver), doubleClickPolicy());
+                                                               quintptr(receiver), doubleClickPolicy(), span);
                 if (doubleClick)
                     disarmPointerClickTrace(trace);  // the pair is consumed
                 else
@@ -764,7 +783,7 @@ private:
         case hyremote::InputEventKind::PointerMove:
         case hyremote::InputEventKind::PointerButton:
         case hyremote::InputEventKind::PointerScroll:
-            deliverPointer(state, root, event, queued.acceptedAt);
+            deliverPointer(state, root, event, queued.acceptedAt, queued.movement);
             break;
         case hyremote::InputEventKind::Key:
             deliverKey(state, root, event);
@@ -785,6 +804,7 @@ private:
             if (!state->active) {
                 state->pending.clear();
                 state->admission.resetAll();
+                state->acceptedMotion.clear();
                 state->drainScheduled = false;
                 return;
             }
