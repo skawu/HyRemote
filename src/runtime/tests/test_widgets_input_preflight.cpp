@@ -488,7 +488,8 @@ void testClassifierAcceptance(QWidget &root, HyRemote::detail::TargetComponents 
     click(components, root, QPointF(150, 150));
     pump();
     check(probe.doubleClicks == 1, "#400 triple press: the third rapid press does not emit another DblClick");
-    check(probe.presses == 2, "#400 triple press: the third press is an ordinary press");
+    check(probe.presses == 3,
+          "#400 triple press: the third press is an ordinary press (all three presses delivered)");
 
     // Receiver identity: a rapid pair on two different widgets is two singles even when time and
     // distance qualify.
