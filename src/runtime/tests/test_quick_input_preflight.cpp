@@ -29,6 +29,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QStyleHints>
+#include <QThread>
 
 #include <iostream>
 
@@ -122,6 +123,9 @@ void doubleClick(HyRemote::detail::TargetComponents &components,
             hyremote::PointerButton::Left, true);
     postRaw(components, window, hyremote::InputEventKind::PointerButton, windowPoint,
             hyremote::PointerButton::Left, false);
+    // Qt needs a strictly positive acceptance delta inside the interval (real double clicks have
+    // one), so the fixture spaces the pair instead of posting both presses at the same instant.
+    QThread::msleep(20);
     postRaw(components, window, hyremote::InputEventKind::PointerButton, windowPoint,
             hyremote::PointerButton::Left, true);
     postRaw(components, window, hyremote::InputEventKind::PointerButton, windowPoint,
@@ -282,9 +286,13 @@ Rectangle {
               << " onClicked=" << bridge.property("areaClicks").toInt() << '\n';
     check(windowDoubleClicks == 1,
           "#400: a valid remote double click delivers exactly one MouseButtonDblClick to the window");
-    check(windowPresses == 1,
-          "#400: the second press is replaced by the DblClick, not duplicated");
-    if (windowDoubleClicks == 1 && windowPresses == 1)
+    check(windowPresses == 2,
+          "#400: both presses are delivered; the DblClick is added after the second press");
+    // Item-level acceptance: the adapter contract is only useful if Qt Quick actually hands the
+    // semantic to the item/handler, which is what a user double click must reach.
+    check(bridge.property("areaDoubleClicks").toInt() == 1,
+          "#400: the item-level double-click semantic reaches MouseArea::onDoubleClicked exactly once");
+    if (windowDoubleClicks == 1 && windowPresses == 2 && bridge.property("areaDoubleClicks").toInt() == 1)
         noDivergence("Quick double-click semantic",
                      "the window receives the Qt double-click semantic in place of the second press, and "
                      "Qt Quick keeps owning item/handler delivery (no item hit-testing in the adapter)");

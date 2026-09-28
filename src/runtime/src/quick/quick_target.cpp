@@ -616,7 +616,7 @@ private:
         // the configured window (never a QQuickItem): Qt Quick keeps owning item routing, and the
         // QPointer owner beside the opaque token keeps that identity lifetime-safe.
         Qt::MouseButtons buttons = Qt::NoButton;
-        std::array<PointerClickTrace, 3> clickTraces;
+        PointerClickTrace clickTrace;
         QPointer<QQuickWindow> clickTraceOwner;
         QPoint lastLocalPoint;
         QPoint lastGlobalPoint;
@@ -661,6 +661,7 @@ private:
 
         const Qt::MouseButton button = toQtButton(event.button);
         QEvent::Type type = QEvent::MouseMove;
+        bool followWithDoubleClick = false;
         if (event.kind == hyremote::InputEventKind::PointerButton) {
             if (button == Qt::NoButton)
                 return;
@@ -678,26 +679,27 @@ private:
                 }();
                 if (!index)
                     return;
-                PointerClickTrace &trace = state->clickTraces[*index];
+                PointerClickTrace &trace = state->clickTrace;
                 const bool sameTarget = state->clickTraceOwner.data() == window;
+                const int qtButton = static_cast<int>(button);
                 const bool doubleClick = sameTarget
-                                         && isDoubleClickPress(trace,
-                                                                                acceptedAt,
-                                                                                QPointF(localPoint),
-                                                                                quintptr(window),
-                                                                                doubleClickPolicy());
-                armPointerClickTrace(trace,
-                                                       acceptedAt,
-                                                       QPointF(localPoint),
-                                                       quintptr(window),
-                                                       doubleClick);
+                                         && isDoubleClickPress(trace, qtButton, acceptedAt, QPointF(localPoint),
+                                                               quintptr(window), doubleClickPolicy());
+                if (doubleClick)
+                    disarmPointerClickTrace(trace);  // the pair is consumed
+                else
+                    armPointerClickTrace(trace, qtButton, acceptedAt, QPointF(localPoint), quintptr(window));
                 state->clickTraceOwner = window;
                 state->buttons |= button;
-                type = doubleClick ? QEvent::MouseButtonDblClick : QEvent::MouseButtonPress;
+                followWithDoubleClick = doubleClick;
+                type = QEvent::MouseButtonPress;
             } else {
                 state->buttons &= ~Qt::MouseButtons(button);
                 type = QEvent::MouseButtonRelease;
             }
+        } else if (event.kind == hyremote::InputEventKind::PointerMove) {
+            // Movement beyond the double-click distance box invalidates the pending pair.
+            notePointerMove(state->clickTrace, QPointF(localPoint), doubleClickPolicy());
         }
 
         QMouseEvent mouse(type,
@@ -708,6 +710,21 @@ private:
                           state->buttons,
                           modifiers);
         QCoreApplication::sendEvent(window, &mouse);
+
+        if (followWithDoubleClick) {
+            // Lifetime re-check after the press reached the window: a handler may have destroyed or
+            // replaced the target window, and a stale pointer must never receive the DblClick.
+            if (window && state->clickTraceOwner.data() == window && state->target.data() == window) {
+                QMouseEvent doubleClick(QEvent::MouseButtonDblClick,
+                                        QPointF(localPoint),
+                                        QPointF(localPoint),
+                                        QPointF(globalPoint),
+                                        button,
+                                        state->buttons,
+                                        modifiers);
+                QCoreApplication::sendEvent(window, &doubleClick);
+            }
+        }
     }
 
     static void deliverKey(const std::shared_ptr<State> &state,
@@ -750,7 +767,7 @@ private:
         QQuickWindow *window = state->target.data();
         // #400 lifecycle: classification state must not outlive a session/target, otherwise a first
         // click after a restart could pair with the previous session's click.
-        state->clickTraces = {};
+        clearPointerClickTrace(state->clickTrace);
         state->clickTraceOwner = nullptr;
         if (!window) {
             state->buttons = Qt::NoButton;

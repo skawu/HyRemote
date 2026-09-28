@@ -329,6 +329,20 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     endif()
 endif()
 
+# #400: deterministic unit coverage for the shared Runtime-private click-sequence classifier. It
+# depends on the detail header only (QtCore/QtGui), so it is registered unconditionally.
+add_executable(hyremote-qt-pointer-sequence-classifier-test
+    test_qt_pointer_sequence_classifier.cpp
+)
+target_link_libraries(hyremote-qt-pointer-sequence-classifier-test
+    PRIVATE
+        HyRemote::Core
+        Qt6::Core
+        Qt6::Gui
+)
+target_include_directories(hyremote-qt-pointer-sequence-classifier-test PRIVATE ../src)
+add_test(NAME hyremote-qt-pointer-sequence-classifier-test COMMAND hyremote-qt-pointer-sequence-classifier-test)
+
 # Qt Quick target-adapter contracts are likewise Runtime-owned and follow only the Quick adapter capability.
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     add_executable(hyremote-quick-capture-test
@@ -470,6 +484,7 @@ hyremote_label_test_family("component;runtime;fast"
     hyremote-security-descriptor-test
     hyremote-target-component-provider-test
     hyremote-input-mailbox-admission-test
+    hyremote-qt-pointer-sequence-classifier-test
 )
 hyremote_label_test_family("integration;rfb;fast"
     hyremote-rfb-multi-client-input-test

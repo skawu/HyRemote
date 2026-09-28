@@ -21,6 +21,7 @@
 #include <QMouseEvent>
 #include <QStyleHints>
 #include <QTcpServer>
+#include <QThread>
 #include <QTcpSocket>
 #include <QWidget>
 
@@ -344,6 +345,7 @@ void runPreflight()
     sendPointer(viewer, 0x00U, 100, 100);  // move
     sendPointer(viewer, 0x01U, 100, 100);  // left-down
     sendPointer(viewer, 0x00U, 100, 100);  // left-up
+    QThread::msleep(20);                   // strictly positive acceptance delta, as a real pair has
     sendPointer(viewer, 0x01U, 100, 100);  // left-down
     sendPointer(viewer, 0x00U, 100, 100);  // left-up
     pumpFor(250);
@@ -353,7 +355,8 @@ void runPreflight()
           "RFB_PARSE: the wire sequence yields two left press and two left release facts");
     check(probe.doubleClicks == 1,
           "#400 production RFB: a viewer double click on the wire yields one MouseButtonDblClick");
-    check(probe.presses == 1, "#400 production RFB: the second press is replaced, not duplicated");
+    check(probe.presses == 2,
+          "#400 production RFB: the wire yields two ordinary presses plus one added DblClick");
     check(probe.releases == 2, "#400 production RFB: both releases are delivered");
     if (probe.doubleClicks == 1)
         noDivergence("RFB valid double-click envelope",

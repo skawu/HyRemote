@@ -47,6 +47,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-security-descriptor-test` | Runtime | Descriptor/credential parsing and fail-closed configuration. |
 | `hyremote-target-component-provider-test` | Runtime | Target→capture/input adapter selection. Failure invalidates adapter composition. |
 | `hyremote-input-mailbox-admission-test` | Runtime | Bounded input admission/backpressure before GUI delivery. |
+| `hyremote-qt-pointer-sequence-classifier-test` | Runtime | #400: deterministic policy boundaries for the shared click-sequence classifier (strict interval upper bound, per-axis distance, zero distance, movement invalidation, button/identity mismatch, pair consumption) driven by synthetic timestamps instead of sleeps. |
 | `hyremote-rfb-multi-client-input-test` | VNC | Per-viewer held key/button ownership and disconnect cleanup. Failure allows one viewer to corrupt another viewer's input state. |
 | `hyremote-rfb-wire-robustness-test` | VNC | Production-socket fragmentation plus malformed/oversized/unsupported input fail-closed behavior. Closes TG-013/TG-014. |
 | `hyremote-vnc-auth-test` | VNC + transport security | VNC Authentication crypto primitive. Failure invalidates credential challenge/response correctness. |
@@ -215,3 +216,4 @@ Deferred P2 findings TG-010/011/015/016/017/018 retain explicit owner/rationale 
 ## PRE — outside normal inventory
 
 `tests/preflight/` remains a standalone CMake project for bounded technical-risk evidence (currently TLS transition/VeNCrypt feasibility). PRE results do not count toward product CTest registration and do not replace product/release acceptance.
+| hyremote-qt-pointer-sequence-classifier-test | Runtime | #400: deterministic policy boundaries for the shared click-sequence classifier (strict interval, per-axis distance, zero distance, movement invalidation, button/identity mismatch, pair consumption) using synthetic timestamps. |

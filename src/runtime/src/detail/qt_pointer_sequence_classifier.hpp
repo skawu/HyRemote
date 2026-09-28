@@ -1,27 +1,25 @@
 // #400: the shared, Runtime-private pointer click-sequence classifier used by both Qt target
-// adapters. It exists because the public-Qt ingress cannot inherit the classification Qt performs
-// itself (see docs/internal/q401-input-backend-preflight.md): direct delivery
-// (QCoreApplication::sendEvent) sits above Qt's window-system mouse processing, so the adapter has to
-// hand Qt the semantic it would otherwise have produced.
+// adapters. The public-Qt ingress (QCoreApplication::sendEvent) sits above the window-system mouse
+// processing that lets Qt classify a press as a double click, so this helper reproduces the
+// mechanics Qt's own mouse processing applies and the adapters deliver the extra
+// QEvent::MouseButtonDblClick after the ordinary second press.
 //
-// Ownership stays deliberately finite - this helper knows nothing about controls:
-//   - it classifies one press against the previous press of the same button only;
-//   - the policy comes from Qt's own style hints (QStyleHints::mouseDoubleClickInterval /
-//     mouseDoubleClickDistance); no product constants are invented here;
-//   - the caller supplies an opaque identity token (the resolved QWidget receiver on the Widgets
-//     route, the configured QQuickWindow on the Quick route) and owns that token's lifetime.
+// Mechanics mirrored from Qt (see the deterministic classifier test for the pinned rules):
+//   - time:       0 < (acceptedAt - trace.acceptedAt) < mouseDoubleClickInterval()
+//                 (strict on the upper bound, and a non-positive delta never qualifies)
+//   - distance:   abs(dx) <= mouseDoubleClickDistance AND abs(dy) <= mouseDoubleClickDistance
+//                 (per axis, not a radius); distance == 0 therefore allows no non-zero movement
+//                 at all and is never treated as "unconstrained"
+//   - movement:   a pointer move that leaves the distance box invalidates the pending pair, so a
+//                 far move and a return cannot form a double click
+//   - button:     one single pending trace; any press of a different button cuts the old pair
+//   - identity:   an opaque caller-owned token (the resolved QWidget receiver on the Widgets route,
+//                 the configured QQuickWindow on the Quick route) is part of the condition
+//   - lifecycle:  a qualifying press consumes the pair and the trace is disarmed, so the next press
+//                 is ordinary and only the one after it may start the following pair
 //
-// Timing uses the accepted-arrival timestamp captured when the event entered the adapter's bounded
-// mailbox, never the GUI thread's later delivery time: a busy GUI thread must not be able to split a
-// real double click into two single clicks, and two events accepted far apart must not become a
-// double click just because they were drained in the same batch.
-//
-// Alignment notes (values and shape taken from Qt's public policy; conventions pinned by the
-// boundary tests in the Widgets/Quick preflight fixtures):
-//   - bounds are inclusive on both dimensions (elapsed <= interval, distance <= distance);
-//   - distance is the Euclidean distance between the two press positions;
-//   - a qualifying press consumes the pair (see armPointerClickTrace), mirroring the paired-press
-//     model instead of emitting DblClick for every subsequent rapid press.
+// The helper knows nothing about controls: no QPushButton/QComboBox/QListView/MouseArea knowledge,
+// no per-control branches.
 
 #pragma once
 
@@ -34,18 +32,19 @@
 
 namespace HyRemote::detail {
 
-// Accepted-arrival bookkeeping for the previous press of one logical pointer button.
-// GUI-thread-owned by the adapters; one instance per supported pointer button.
+// One pending click. GUI-thread-owned by the adapters; a single instance per adapter, matching Qt's
+// single "current press" classification state rather than a per-button table.
 struct PointerClickTrace
 {
+    int button = 0;  // Qt::MouseButton value
     hyremote::TimePoint acceptedAt{};
     QPointF position;
     quintptr identity = 0;
     bool armed = false;
 };
 
-// Qt's declared double-click policy. intervalMs <= 0 disables classification entirely;
-// distancePx <= 0 leaves the distance unconstrained (the platform theme declared none).
+// Qt's declared double-click policy. intervalMs <= 0 disables classification; distancePx is applied
+// per axis exactly as declared (0 means "no movement allowed", never "unconstrained").
 struct DoubleClickPolicy
 {
     int intervalMs = 0;
@@ -53,6 +52,7 @@ struct DoubleClickPolicy
 };
 
 inline bool isDoubleClickPress(const PointerClickTrace &trace,
+                               int button,
                                hyremote::TimePoint acceptedAt,
                                const QPointF &position,
                                quintptr identity,
@@ -60,36 +60,56 @@ inline bool isDoubleClickPress(const PointerClickTrace &trace,
 {
     if (!trace.armed || policy.intervalMs <= 0)
         return false;
-    if (identity != trace.identity)
+    if (button != trace.button || identity != trace.identity)
         return false;
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(acceptedAt - trace.acceptedAt);
-    if (elapsed.count() < 0 || elapsed > std::chrono::milliseconds(policy.intervalMs))
+    if (elapsed.count() <= 0 || elapsed >= std::chrono::milliseconds(policy.intervalMs))
         return false;
-    if (policy.distancePx > 0) {
-        const QPointF delta = position - trace.position;
-        if (std::hypot(delta.x(), delta.y()) > qreal(policy.distancePx))
-            return false;
-    }
-    return true;
+    const QPointF delta = position - trace.position;
+    return std::abs(delta.x()) <= qreal(policy.distancePx) && std::abs(delta.y()) <= qreal(policy.distancePx);
 }
 
-// Records the press that classification will compare the next one against. A press that produced a
-// double click consumes the pair (armed stays false), so the next rapid press is a fresh single
-// press rather than another DblClick.
+// A move that leaves the per-axis distance box clears the pending eligibility, exactly as it does
+// for physical input.
+inline bool moveInvalidatesTrace(const PointerClickTrace &trace,
+                                 const QPointF &position,
+                                 const DoubleClickPolicy &policy)
+{
+    if (!trace.armed)
+        return false;
+    const QPointF delta = position - trace.position;
+    return std::abs(delta.x()) > qreal(policy.distancePx) || std::abs(delta.y()) > qreal(policy.distancePx);
+}
+
+inline void notePointerMove(PointerClickTrace &trace,
+                            const QPointF &position,
+                            const DoubleClickPolicy &policy)
+{
+    if (moveInvalidatesTrace(trace, position, policy))
+        trace.armed = false;
+}
+
+// Every press records itself as the pending click, so an intervening press of another button
+// replaces the pair instead of extending it.
 inline void armPointerClickTrace(PointerClickTrace &trace,
+                                 int button,
                                  hyremote::TimePoint acceptedAt,
                                  const QPointF &position,
-                                 quintptr identity,
-                                 bool consumedByDoubleClick)
+                                 quintptr identity)
 {
+    trace.button = button;
     trace.acceptedAt = acceptedAt;
     trace.position = position;
     trace.identity = identity;
-    trace.armed = !consumedByDoubleClick;
+    trace.armed = true;
 }
 
-// Lifecycle: a trace must never survive a target change or a session boundary. Clearing one trace
-// entry (or all of them on shutdown) is all the state there is.
+// A completed double click consumes the pair: the trace stays invalid until the next ordinary press.
+inline void disarmPointerClickTrace(PointerClickTrace &trace)
+{
+    trace.armed = false;
+}
+
 inline void clearPointerClickTrace(PointerClickTrace &trace)
 {
     trace = PointerClickTrace{};

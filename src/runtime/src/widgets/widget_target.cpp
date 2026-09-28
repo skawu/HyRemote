@@ -508,11 +508,11 @@ private:
         // first, then balances only state that actually reached Qt.
         Qt::MouseButtons buttons = Qt::NoButton;
         std::array<QPointer<QWidget>, 3> buttonReceivers;
-        // #400 click classification: the trace holds the identity as an opaque token, and the
-        // QPointer owner next to it is what makes that token lifetime-safe - a destroyed receiver
-        // leaves a null owner, which can never match a live receiver.
-        std::array<PointerClickTrace, 3> clickTraces;
-        std::array<QPointer<QWidget>, 3> clickTraceOwners;
+        // #400 click classification: one pending click, mirroring Qt's single current-press state.
+        // The identity is an opaque token whose lifetime safety comes from the QPointer owner next
+        // to it: a destroyed receiver leaves a null owner, which can never match a live receiver.
+        PointerClickTrace clickTrace;
+        QPointer<QWidget> clickTraceOwner;
         QPoint lastRootPoint;
         bool pointerPositionKnown = false;
         Qt::KeyboardModifiers modifiers = Qt::NoModifier;
@@ -580,37 +580,37 @@ private:
         }
 
         QEvent::Type type = QEvent::MouseMove;
+        bool followWithDoubleClick = false;
         if (event.kind == hyremote::InputEventKind::PointerButton) {
             if (button == Qt::NoButton || !index)
                 return;
             if (event.pressed) {
-                // #400: classify this press against the previous press of the same button for the
-                // same resolved receiver. A qualifying pair is delivered as QEvent::MouseButtonDblClick
-                // *instead of* a second ordinary press, which is the sequence a physical mouse
-                // produces; a destroyed receiver leaves a null owner and can therefore never match.
-                PointerClickTrace &trace = state->clickTraces[*index];
-                QPointer<QWidget> &owner = state->clickTraceOwners[*index];
+                // #400: the press is always delivered as an ordinary press; a qualifying pair adds
+                // exactly one MouseButtonDblClick immediately after it, which is the sequence Qt's own
+                // mouse processing produces for a physical double click.
+                PointerClickTrace &trace = state->clickTrace;
+                QPointer<QWidget> &owner = state->clickTraceOwner;
                 const bool sameReceiver = owner.data() == receiver;
-                const quintptr identity = quintptr(receiver);
+                const int qtButton = static_cast<int>(button);
                 const bool doubleClick = sameReceiver
-                                         && isDoubleClickPress(trace,
-                                                                                acceptedAt,
-                                                                                QPointF(rootPoint),
-                                                                                identity,
-                                                                                doubleClickPolicy());
-                armPointerClickTrace(trace,
-                                                       acceptedAt,
-                                                       QPointF(rootPoint),
-                                                       identity,
-                                                       doubleClick);
+                                         && isDoubleClickPress(trace, qtButton, acceptedAt, QPointF(rootPoint),
+                                                               quintptr(receiver), doubleClickPolicy());
+                if (doubleClick)
+                    disarmPointerClickTrace(trace);  // the pair is consumed
+                else
+                    armPointerClickTrace(trace, qtButton, acceptedAt, QPointF(rootPoint), quintptr(receiver));
                 owner = receiver;
                 state->buttons |= button;
                 state->buttonReceivers[*index] = receiver;
-                type = doubleClick ? QEvent::MouseButtonDblClick : QEvent::MouseButtonPress;
+                followWithDoubleClick = doubleClick;
+                type = QEvent::MouseButtonPress;
             } else {
                 state->buttons &= ~Qt::MouseButtons(button);
                 type = QEvent::MouseButtonRelease;
             }
+        } else if (event.kind == hyremote::InputEventKind::PointerMove) {
+            // Movement beyond the double-click distance box invalidates the pending pair.
+            notePointerMove(state->clickTrace, QPointF(rootPoint), doubleClickPolicy());
         }
 
         QMouseEvent mouse(type,
@@ -621,6 +621,21 @@ private:
                           state->buttons,
                           modifiers);
         QCoreApplication::sendEvent(receiver, &mouse);
+
+        if (followWithDoubleClick) {
+            // Lifetime re-check after the press reached its handler: a handler may have destroyed the
+            // receiver or the target, and a stale pointer must never receive the DblClick.
+            if (receiver && state->clickTraceOwner.data() == receiver && state->target.data() == root) {
+                QMouseEvent doubleClick(QEvent::MouseButtonDblClick,
+                                        QPointF(childPoint),
+                                        QPointF(rootPoint),
+                                        QPointF(globalPoint),
+                                        button,
+                                        state->buttons,
+                                        modifiers);
+                QCoreApplication::sendEvent(receiver, &doubleClick);
+            }
+        }
 
         if (event.kind == hyremote::InputEventKind::PointerButton && index && !event.pressed)
             state->buttonReceivers[*index].clear();
@@ -679,8 +694,8 @@ private:
         // #400 lifecycle: no click-classification state may outlive a session, a target or a
         // shutdown, otherwise the first click after a restart could pair with the previous
         // session's click.
-        state->clickTraces = {};
-        state->clickTraceOwners = {};
+        clearPointerClickTrace(state->clickTrace);
+        state->clickTraceOwner = nullptr;
         if (!root) {
             state->buttons = Qt::NoButton;
             state->heldKeys.clear();
