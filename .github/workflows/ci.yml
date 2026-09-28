@@ -14,13 +14,23 @@ on:
       # One manual mode, deliberately: a dispatch is the explicit full gate (an exact V0.1 candidate, a release
       # branch readiness run, main/GA validation, or a deliberate diagnostic). Ordinary work reaches the product
       # matrix through its own ready pull request instead.
-      validation_level:
-        description: "Validation level for this manual run"
+      #
+      # #380: a dispatch is admitted, not generic. `purpose` says which decision this gate may produce and
+      # `expected_sha` freezes the exact commit it claims to qualify. Both are checked fail-closed before any Qt
+      # runner starts, so a branch-name dispatch can never be mistaken for stable candidate evidence and superseded
+      # evidence is obvious.
+      purpose:
+        description: "Why this full gate runs (candidate | release-readiness | diagnostic)"
         required: true
-        default: full
         type: choice
         options:
-          - full
+          - candidate
+          - release-readiness
+          - diagnostic
+      expected_sha:
+        description: "Exact 40-hex commit SHA this gate must run on (must equal the dispatched commit)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -36,6 +46,8 @@ jobs:
     timeout-minutes: 2
     outputs:
       lane: ${{ steps.scope.outputs.lane }}
+      decision: ${{ steps.scope.outputs.decision }}
+      purpose: ${{ steps.admission.outputs.purpose }}
       product: ${{ steps.scope.outputs.product }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
@@ -55,9 +67,80 @@ jobs:
         with:
           fetch-depth: 0
 
+      - id: authority-changed
+        name: Detect CI authority changes from the real diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_REF_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          authority_changed=false
+          range=""
+          case "${EVENT_NAME}" in
+            pull_request) range="${BASE_SHA}...${HEAD_REF_SHA}" ;;
+            push)
+              if [[ "${BEFORE_SHA}" =~ ^0+$ || -z "${BEFORE_SHA}" ]]; then
+                range="${HEAD_REF_SHA}~1..${HEAD_REF_SHA}"
+              else
+                range="${BEFORE_SHA}..${HEAD_REF_SHA}"
+              fi ;;
+          esac
+          if [[ -n "${range}" ]] && git diff --name-only "${range}" -- \
+               .github/scripts/resolve-ci-scope.py .github/workflows/ci.yml | grep -q .; then
+            authority_changed=true
+          fi
+          echo "CI authority changed: ${authority_changed}"
+          echo "changed=${authority_changed}" >> "$GITHUB_OUTPUT"
+
+      # #380: the classifier's self test is CI-authority evidence, not a per-event ritual. It runs when the
+      # classifier or this workflow changed - computed above from the real diff, never by the classifier deciding for
+      # itself - and on an admitted manual dispatch, which is rare and explicitly comprehensive. Ordinary pull
+      # requests and sentinel pushes skip it; a classifier syntax/runtime failure still fails this job immediately
+      # because the scope step below runs the classifier itself.
       - name: Self-test the CI scope classifier
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          steps.authority-changed.outputs.changed == 'true'
         shell: bash
         run: python3 .github/scripts/resolve-ci-scope.py --self-test
+
+      # #380: cheap admission for the manual full gate. It runs here, in the seconds-scale classify job, so a
+      # malformed or mismatching SHA fails closed before a single Qt runner starts.
+      - id: admission
+        name: Admit the full gate (fail closed before any Qt runner)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          PURPOSE: ${{ inputs.purpose }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "${PURPOSE}" in
+            candidate|release-readiness|diagnostic) ;;
+            *) echo "::error::purpose '${PURPOSE}' is not one of: candidate, release-readiness, diagnostic"; exit 1 ;;
+          esac
+          if ! [[ "${EXPECTED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_sha must be a 40-hex commit SHA; got '${EXPECTED_SHA}'"
+            exit 1
+          fi
+          if [[ "${EXPECTED_SHA}" != "${DISPATCH_SHA}" ]]; then
+            echo "::error::expected_sha ${EXPECTED_SHA} does not match the dispatched commit ${DISPATCH_SHA}." >&2
+            echo "A full gate is only evidence for the exact SHA it admits; a moving ref produces superseded evidence." >&2
+            exit 1
+          fi
+          echo "purpose=${PURPOSE}" >> "$GITHUB_OUTPUT"
+          echo "admitted full gate: purpose=${PURPOSE} sha=${DISPATCH_SHA} decision=CANDIDATE"
+          {
+            echo "## FULL_GATE admission"
+            echo
+            echo "- admitted purpose: ${PURPOSE}"
+            echo "- exact SHA: ${DISPATCH_SHA}"
+            echo "- decision: CANDIDATE"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - id: scope
         name: Resolve affected capabilities
@@ -414,15 +497,18 @@ jobs:
             -P tests/release-readiness/check_release_authority_policy.cmake
 
   no-product-change:
-    name: No product CI needed
+    # #380: this is a decision report, not an acceptance run. Its name has to say that no hosted product validation
+    # was required, so nobody reads a green checkmark here as "the product gate ran".
+    name: "CI decision: no hosted product validation required"
     needs: classify
     if: needs.classify.outputs.product != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
-      - name: Report the lane
+      - name: Report the lane and the decision
         run: |
           echo "lane=${{ needs.classify.outputs.lane }}"
+          echo "decision=${{ needs.classify.outputs.decision }}"
           echo "capabilities=${{ needs.classify.outputs.integrations || 'none' }}"
           echo "governance=${{ needs.classify.outputs.governance }}"
           if [ "${{ needs.classify.outputs.lane }}" = "DEVELOP_SENTINEL" ]; then
