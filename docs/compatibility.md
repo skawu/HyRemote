@@ -31,14 +31,23 @@ The matrix above describes the current product line. It does not imply that ever
 
 ### Test-evidence obligation profile binding
 
-The status values and product scopes above remain the compatibility authority. For the TS-0 product-evidence architecture, every current positive row also has a stable **Claim Obligation Profile** binding defined in [`internal/test-evidence-requirements.md`](internal/test-evidence-requirements.md):
+The status values and product scopes above remain the compatibility authority. For the TS-0 product-evidence architecture, every current positive integration row has a stable **Claim Obligation Profile** binding defined in [`internal/test-evidence-requirements.md`](internal/test-evidence-requirements.md):
 
 - current `Supported` rows whose Integration is **C++ API**, **QML API**, or **Generic Plugin** bind to `COP-V020-DESKTOP-PUBLIC-QT`;
 - current `Limited` **QPA** rows bind to `COP-V020-DESKTOP-QPA-EXACT`;
 - a `Widgets / Quick` row expands to two atomic qualification cells (`Widgets` and `Qt Quick`) under the same row status/profile, so evidence for one target does not qualify the other;
 - `TODO` and `Unsupported` rows are not positive support claims and do not become positive evidence-completeness obligations merely by appearing here.
 
-This binding is **evidence metadata, not a status change**. The profile expands only the material dimensions already owned by the current compatibility claim plus its documented deployment/basic-graphics baseline; viewer-specific, security-profile, remote-input, specialized-graphics and maintenance claims remain separate unless their owning authority explicitly adds them. A future positive compatibility row must receive an applicable authority-owned profile binding before the evidence system can call that row complete.
+The current product-behavior statements later in this document also have explicit evidence families rather than being left for TS-2 to infer:
+
+- bounded RFB 3.8 viewing + current listener/reconnect/bounded-peer behavior → `COP-V020-RFB38`;
+- optional remote input with view-only default/policy enforcement → `COP-V020-REMOTE-INPUT`;
+- `Insecure` unauthenticated/unencrypted trusted-LAN semantics → `COP-V020-SECURITY-INSECURE`;
+- conditional `Authenticated` with transport-security capability available → `COP-V020-SECURITY-AUTH-AVAILABLE`;
+- `Authenticated` requested when that build capability is absent → `COP-V020-SECURITY-AUTH-UNAVAILABLE`;
+- `AuthenticatedEncrypted` unavailable with no downgrade, whether authenticated capability is present or absent → `COP-V020-SECURITY-AUTHENC-UNAVAILABLE`.
+
+These bindings are **evidence metadata, not status/product-scope changes**. They project only behavior already declared here and in the current security authority. They do not create named-viewer support, Internet-safe deployment, stream encryption, live per-client authorization, or any frontend-specific security personality. Future positive claim families must receive an applicable authority-owned profile/binding before the evidence system can call them complete.
 
 ## Qt LTS policy
 
