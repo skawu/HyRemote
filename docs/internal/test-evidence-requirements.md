@@ -384,12 +384,12 @@ The current compatibility/security authorities already make product statements o
 
 These claim families stay **orthogonal** to frontend integration rows. They use representative/shared-Runtime qualification cells rather than multiplying every security/input case by every frontend. Frontend equivalence remains owned by the integration profiles above. Every row in the cell tables below is likewise an authoritative `(claim_id, cell_id) -> profile_id` binding.
 
-#### Bounded RFB 3.8 / listener / reconnect
+#### Bounded RFB 3.8 / active listener exposure / reconnect
 
 ```yaml
 profile_id: COP-V020-RFB38
 authority: docs/compatibility.md Transport and viewer boundary; docs/security.md Resource boundaries; #174 listener contract
-claim_scope: bounded RFB 3.8 viewing, default trusted-LAN listener semantics and reconnect
+claim_scope: bounded RFB 3.8 viewing, active default trusted-LAN listener exposure semantics and reconnect
 cell_schema: CCS-1
 required_dimensions: [product_line, qt, os_arch, transport, network_profile]
 base_er:
@@ -412,6 +412,28 @@ Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `network_profile
 | `COMPAT-V020-RFB38` | `COMPAT-V020-RFB38-LINUX` | Linux x86_64 | `COP-V020-RFB38` |
 
 This is a protocol/product claim, not a named-viewer support claim. A viewer fixture used to exercise Q evidence is recorded as a fixture; it does not silently create a broader viewer compatibility status.
+
+#### Listener activation/failure/stop lifecycle (transport non-material)
+
+```yaml
+profile_id: COP-V020-LISTENER-LIFECYCLE
+authority: docs/compatibility.md current listener behavior; docs/security.md explicit activation and listener lifecycle; #174 listener contract
+claim_scope: listener remains closed before explicit activation and after failed start/stop without inventing transport evidence
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch]
+base_er:
+  - ER-NETWORK-LISTENER-LIFECYCLE
+conditional_er: []
+```
+
+These cells stay in the same authority-level `COMPAT-V020-RFB38` claim family as the active RFB/listener cells above, but intentionally omit `transport`: before activation, after a rejected/failed start and after stop there is no usable transport to observe. They use `product_line=V0.2`, `qt=6.8.3`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-RFB38` | `COMPAT-V020-RFB38-WIN-LISTENER-LIFECYCLE` | Windows x86_64 | `COP-V020-LISTENER-LIFECYCLE` |
+| `COMPAT-V020-RFB38` | `COMPAT-V020-RFB38-LINUX-LISTENER-LIFECYCLE` | Linux x86_64 | `COP-V020-LISTENER-LIFECYCLE` |
+
+The current `COMPAT-V020-RFB38` authority claim therefore aggregates two distinct evidence boundaries per OS: a transport-bound active RFB/listener cell and a transport-nonmaterial listener-lifecycle cell. Neither can substitute for the other.
 
 #### Optional remote input / default view-only policy
 
@@ -459,7 +481,7 @@ Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `security_profil
 | `COMPAT-V020-SECURITY-INSECURE` | `COMPAT-V020-SECURITY-INSECURE-WIN` | Windows x86_64 | `COP-V020-SECURITY-INSECURE` |
 | `COMPAT-V020-SECURITY-INSECURE` | `COMPAT-V020-SECURITY-INSECURE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-INSECURE` |
 
-The listener oracle uses #174 (`0.0.0.0:5921` default plus exact narrowing); any historical “loopback-only” prose remains authority drift and is not imported into this profile.
+The listener binding oracle uses #174 for a successfully active listener (`0.0.0.0:5921` default plus exact narrowing); any historical “loopback-only” prose remains authority drift and is not imported into this profile. Pre-activation/failed-start/stop absence belongs to the transport-nonmaterial listener-lifecycle cells above.
 
 #### `Authenticated` when transport-security capability is available
 
@@ -636,7 +658,8 @@ These profiles bind claims the repository already makes. They do **not** create 
 | ER | PAC / Risk | Activation | Evidence obligation | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ER-SECURITY-SAFE-DEFAULTS` | PAC-7 / R-SECURITY | INVARIANT | base V+P; release +R | Effective shipped **security and remote-input defaults** match current owning security/product authorities; listener bind semantics are owned separately by `ER-NETWORK-LISTENER-BINDING`/#174. | Effective security profile/input default and secret-safe diagnostic/public statements agree with current owning authority; this oracle does not choose between stale listener-default prose. | Material security/input defaults or owning security/public-statement authority change. |
-| `ER-NETWORK-LISTENER-BINDING` | PAC-7,PAC-9 / R-NETWORK,R-SECURITY,R-COMPAT | INVARIANT/CLAIM | base V+P; claim +Q | Listener lifecycle and exposure follow the owning activation/network contract: constructing/configuring the facade/Runtime before explicit activation/start opens no HyRemote listener; once activated, current #174 semantics are honored (`0.0.0.0:5921` default plus requested exact IPv4/interface/address/port narrowing); invalid/unavailable binding is rejected; failed start and stop leave no unintended listener; actual socket exposure never silently broadens scope. | Before explicit activation/start, socket/reachability observation finds no HyRemote listener. After activation, actual listening endpoint(s)/reachability equal #174/effective requested policy; narrowing never falls back to wildcard/loopback/other interface; invalid/unavailable address or occupied port yields intended failure with no unintended listener; failed start and stop remove/leave no unintended listener. | Material listener authority, activation/start-stop lifecycle, configuration, address/interface resolution, bind/rebind, port handling or platform network behavior change. |
+| `ER-NETWORK-LISTENER-BINDING` | PAC-7,PAC-9 / R-NETWORK,R-SECURITY,R-COMPAT | INVARIANT/CLAIM | base V+P; claim +Q | After explicit activation/start with a valid listener request, active listener exposure follows current #174 semantics: default `0.0.0.0:5921`; requested exact IPv4/interface/address/port narrowing is honored; actual socket exposure never silently broadens or falls back to another scope. | Valid default and narrowing fixtures start successfully; actual listening endpoint(s)/reachability equal #174/effective requested policy; exact/interface/port narrowing never falls back to wildcard/loopback/another interface. | Material listener authority, valid configuration, address/interface resolution, bind/rebind, port handling or platform network behavior change. |
+| `ER-NETWORK-LISTENER-LIFECYCLE` | PAC-7,PAC-9 / R-NETWORK,R-SECURITY,R-RUNTIME,R-COMPAT | INVARIANT/CLAIM | base V+P; claim +Q | Listener resource ownership follows explicit activation lifecycle without requiring a usable transport: construction/configuration before explicit activation/start opens no HyRemote listener; invalid/unavailable/occupied bind or failed start leaves no unintended listener; stop removes/leaves no unintended listener. | Before explicit activation/start, socket/reachability observation finds no HyRemote listener. Invalid/unavailable address, occupied port or other listener-start failure yields the intended failure and zero unintended listener. After a successful active phase is stopped, no HyRemote listener remains. None of these absence/failure phases requires or invents an exercised transport fact. | Material activation/start-stop lifecycle, listener validation/failure cleanup, bind resource ownership or platform network behavior change. |
 | `ER-SECURITY-FAIL-CLOSED` | PAC-7 / R-SECURITY,R-RUNTIME | INVARIANT/CAPABILITY | base V; affected +P; claim +Q | Requested unavailable/invalid protection is rejected before a weaker usable listener/session exists. | No accepted weaker listener/session; intended error and cleanup observed. | Material security capability negotiation/listener start/config/fallback change. |
 | `ER-SECURITY-AUTH-MECHANISM` | PAC-7 / R-SECURITY,R-TRANSPORT | CAPABILITY | base V+P; claim +Q | When authentication capability is available in the artifact/declared cell, correct credentials establish the declared authentication mechanism and wrong/missing credentials do not. | Available-authentication fixtures observe expected accept/reject session results with no downgrade; requests against artifacts without the capability are evaluated by `ER-SECURITY-FAIL-CLOSED`, not by this success-path oracle. | Material auth mechanism/credential source/wire/viewer-interoperability or capability-availability declaration change. |
 | `ER-SECURITY-SECRET-HYGIENE` | PAC-7,PAC-10 / R-SECURITY,R-OPERATE | INVARIANT/CAPABILITY | base V+P; claim +Q; release +R | Secrets are absent from normal logs, diagnostics, command surfaces and retained evidence. | Prohibited secret material/derivatives absent from declared observable outputs/artifacts. | Material logging/diagnostics/evidence capture/credential/security-mechanism change. |
