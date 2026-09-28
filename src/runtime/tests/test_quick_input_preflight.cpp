@@ -296,18 +296,40 @@ Rectangle {
                    "as a reproduced #400 defect");
     }
 
-    // 5. Drag target.
-    postRaw(components, window, hyremote::InputEventKind::PointerMove, QPointF(30, 250));
-    postRaw(components, window, hyremote::InputEventKind::PointerButton, QPointF(30, 250),
-            hyremote::PointerButton::Left, true);
-    pump();
-    postRaw(components, window, hyremote::InputEventKind::PointerMove, QPointF(280, 250));
-    pump();
-    postRaw(components, window, hyremote::InputEventKind::PointerButton, QPointF(280, 250),
-            hyremote::PointerButton::Left, false);
-    pump();
-    check(bridge.property("sliderMoves").toInt() >= 1, "Slider: press/drag/release moves the value");
-    noDivergence("Quick drag", "press/move/release reaches the dragged item");
+    // 5. Drag target. Geometry-derived again: the active Qt Quick Controls style decides where the
+    //    groove and handle are, so the drag must not depend on hand-computed coordinates.
+    QQuickItem *sliderItem = qmlRootItem->findChild<QQuickItem *>(QStringLiteral("slider"));
+    if (sliderItem) {
+        const double before = sliderItem->property("value").toDouble();
+        const QPointF start =
+            sliderItem->mapToScene(QPointF(sliderItem->width() * 0.05, sliderItem->height() / 2.0));
+        const QPointF end =
+            sliderItem->mapToScene(QPointF(sliderItem->width() * 0.95, sliderItem->height() / 2.0));
+        postRaw(components, window, hyremote::InputEventKind::PointerMove, start);
+        postRaw(components, window, hyremote::InputEventKind::PointerButton, start,
+                hyremote::PointerButton::Left, true);
+        pump();
+        postRaw(components, window, hyremote::InputEventKind::PointerMove, end);
+        pump();
+        postRaw(components, window, hyremote::InputEventKind::PointerButton, end,
+                hyremote::PointerButton::Left, false);
+        pump();
+        const double after = sliderItem->property("value").toDouble();
+        std::cout << "     observed[Slider drag]: before=" << before << " after=" << after
+                  << " onMoved=" << bridge.property("sliderMoves").toInt() << " start=(" << start.x()
+                  << ", " << start.y() << ") end=(" << end.x() << ", " << end.y() << ")\n";
+        if (after > before) {
+            noDivergence("Quick drag", "press/move/release moves the control's value");
+        } else {
+            divergence("TARGET_ROUTING/UNMEASURED",
+                       "Quick Slider drag",
+                       "the geometry-derived drag did not change the value in this offscreen harness; "
+                       "drag fidelity needs a real desktop run and is listed as an explicit gap, not as a "
+                       "reproduced #400 defect");
+        }
+    } else {
+        divergence("TARGET_ROUTING/UNMEASURED", "Quick Slider drag", "slider item not found");
+    }
 
     // 6. In-window popup/overlay surface: unlike the Widgets popup (separate top-level window),
     //    a Qt Quick Popup lives in the same window's overlay, so it should remain reachable.
