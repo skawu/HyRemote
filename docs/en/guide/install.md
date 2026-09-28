@@ -16,8 +16,8 @@ V0.2 LAN trial currently references:
 | Generic Plugin | peer route |
 | QML API | peer route |
 | QPA | **Preview, Qt 6.8.3 exact private ABI** |
-| Embedded Linux / ARM64 | **TODO V1.1** |
-| Qt 5.15 LTS | **TODO V0.4 qualification** |
+| Embedded Linux / ARM64 | TODO - mandatory pre-GA V0.3-family compatibility baseline (#343); no exact Feature version pre-assigned |
+| Qt 5.15 LTS | TODO - mandatory pre-GA V0.3-family adaptation/qualification; V0.4 only qualifies the frozen completed matrix |
 
 See [`../../compatibility.md`](../../compatibility.md) for the exact compatibility statement.
 

@@ -24,7 +24,7 @@ Adding another SoC, operating system, transport backend, or acceleration backend
 
 `Minor` identifies a substantial, coherent product stage that users can understand as a new product capability line.
 
-Current post-GA strategy uses Minor lines for major product expansion stages such as embedded deployment, hardware acceleration, and advanced programmable integration.
+Post-GA Minor lines are opened only for activated coherent product outcomes; no Minor or Feature version is pre-assigned to a technical theme (#333).
 
 ### Feature — bounded independently deliverable capability
 
@@ -110,11 +110,21 @@ V0.3 turns all four integration frontends into complete product-deliverable path
 - Generic Plugin;
 - QPA.
 
-This line also completes the deployment matrix, full Example curriculum, viewer interoperability baseline, and bandwidth/damage-oriented product behavior needed for practical delivery.
+This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335).
+
+The V0.3 family carries two strictly separate classes of work:
+
+### Mandatory pre-GA V0.3-family baseline
+
+Qt 5.15, Qt 6.5 and Qt 6.8 compatibility; Windows and Linux; x86_64 and ARM64/AArch64; the qwindows/qxcb/Wayland/EGLFS reference cells; practical compressed + incremental/damage delivery; maintained viewer interoperability; the #370 performance programme. These must converge before V0.4 RC entry, and no exact Feature version is pre-reserved for any of them (#333).
+
+### Optional / quality / differentiating outcomes
+
+Session Registry / Session Operations, full branding expansion, HyRemoteTool enhancements, native TLS, and additional BSP/SoC/platform expansion beyond the declared GA reference cells - each activated separately as a coherent product outcome.
 
 ## V0.4 — Qualify It
 
-V0.4 is the release-candidate line. Large architecture changes and major new capabilities stop here.
+V0.4 is the release-candidate line: **qualification only**. It is not selectable until the V0.3.0.0 self-service foundation is complete, the activated V0.3-family pre-GA baseline (#343/#370) is complete, and the GA support matrix is frozen; its activation authority is #235 and its lineage is the completed, activated V0.3-family outcome - never a pre-reserved technical slot (#333). Large architecture changes and major new capabilities stop here.
 
 Focus areas include:
 
@@ -140,53 +150,15 @@ V1.0 is the first formal stable support commitment.
 
 It should not introduce a new Runtime architecture, frontend, protocol family, or large public API at the last moment. The mature V0.4 product is stabilized into a GA contract covering API, SDK, compatibility statements, packaging, documentation, and known limitations.
 
-## Post-GA strategic product lines
+## Post-GA product outcomes
 
-### V1.1 — Embed It
+Post-GA work is activated as coherent user/product outcomes beyond the frozen GA baseline under their own authority issues. Version numbers are never pre-reserved for a technical theme (#333): the former fixed slots "V1.1 = Embedded", "V1.2 = Acceleration" and "V1.3 = Differentiate" are retired and no replacement slots are invented. Additional BSP/SoC/platform expansion beyond the declared GA reference cells, evidence-driven acceleration where still useful, and advanced programmable capabilities are each admitted separately:
 
-V1.1 expands HyRemote into industrial/embedded deployment.
+- additional platform/BSP expansion beyond the declared GA reference cells (dependency/feature slicing for Quick-only or Widgets-only products, embedded SDK/package manifests, further physical target qualification) - with the architecture rule of **one logical Runtime** and physical dependency slicing where needed, never separate public `RuntimeQuick`/`RuntimeWidgets` products;
+- hardware/vendor acceleration (DMA-BUF/GBM/external buffers, GPU-assisted conversion/scaling, RKMPP/VAAPI/D3D-class paths, bounded buffer/fence ownership) has no pre-assigned version or pre/post-GA placement: it is admitted only through #123 when #370 measured evidence proves a portable-baseline SLO/resource blocker;
+- advanced programmable capabilities (advanced session policy, privacy/exclusion policy, Runtime health/observability, application-state integration) - while Generic and QPA stay focused on reliable zero-code/startup configuration rather than becoming hidden business-logic APIs.
 
-Planned areas:
 
-- ARM64 Embedded Linux;
-- RK3588 and other qualified SoC/BSP families;
-- EGLFS / Wayland where applicable;
-- cross compilation;
-- dependency/feature slicing for Quick-only or Widgets-only products;
-- embedded SDK/package/deployment manifests;
-- physical target qualification.
-
-Architecture rule: **one logical Runtime**, with physical dependency slicing where needed. Do not create separate public `RuntimeQuick` / `RuntimeWidgets` product personalities.
-
-### V1.2 — Accelerate It
-
-V1.2 focuses on measured hardware/performance bottlenecks after embedded correctness is established.
-
-Possible capabilities include:
-
-- DMA-BUF / GBM / external buffers;
-- GPU-assisted conversion/scaling;
-- RKMPP / VAAPI / D3D-class hardware paths;
-- bounded buffer/fence ownership;
-- reduced CPU copies and latency.
-
-Acceleration is introduced only where product measurements justify it.
-
-### V1.3 — Differentiate It
-
-V1.3 grows the programmable C++/QML product value:
-
-- advanced session policy;
-- business admission decisions;
-- dynamic target selection;
-- privacy/exclusion policy;
-- Runtime health/statistics/observability;
-- application-state integration;
-- richer business control over remote access.
-
-Generic and QPA remain focused on reliable zero-code/startup configuration rather than becoming hidden business-logic APIs.
-
-### Later transport/product expansion
 
 RFB is the current transport baseline, not HyRemote's permanent product identity.
 
@@ -218,9 +190,8 @@ V0.2  let users trust it
 V0.3  make it easy to productize and deliver
 V0.4  prove it is qualified
 V1.0  make the stable support commitment
-V1.1  take it onto embedded/industrial targets
-V1.2  build measured hardware-performance advantages
-V1.3  build advanced programmable product differentiation
 ```
 
 Internal engineering work belongs under the product line it enables; it does not get its own version number.
+
+Post-GA exact Features are activated as coherent outcomes; no version number is pre-assigned to a technical theme (#333).

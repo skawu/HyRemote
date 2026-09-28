@@ -491,11 +491,9 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
     hyremote_add_release_profile_test(
         hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v040-all 0.4.0.0 ON ON ON ON ON FALSE)
-    # V0.4.0.x maintenance releases stay inside the V0.4 line.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v040-maintenance 0.4.0.5 ON ON ON ON ON FALSE)
+    # #333: V0.4.0.0 is qualification only - conditional on #235 until the V0.3 family completes - so it is not a
+    # selectable release profile and has no release-profile test here. Its selection refusal is proved by the
+    # release-scope self test (V0.4.0.0 conditional on #235) and its maintenance numbers fail as unknown versions.
 
     # V1 is the first formal GA. Frontend subsets do not encode version semantics.
     hyremote_add_release_profile_test(

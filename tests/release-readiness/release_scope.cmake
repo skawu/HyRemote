@@ -183,6 +183,16 @@ function(selected_scope version out_parent out_children out_prerequisites out_ev
     string(JSON status ERROR_VARIABLE status_error GET "${authority_json}" trains "${version}" scope_status)
     if(status_error OR status STREQUAL "")
         set(status "active")
+    elseif(NOT status STREQUAL "active" AND NOT status STREQUAL "retired")
+        # #333: scope_status is a closed enum. A malformed value such as "retire" must not silently behave as an
+        # active selectable train, and nothing is normalized here: the record is wrong and selection refuses.
+        scope_fail("release train '${version}' declares unsupported scope_status '${status}'")
+    endif()
+
+    # #333: a pre-reserved technical train slot that was withdrawn from selection keeps its record as historical
+    # provenance but can never be selected. The refusal is precise so a caller cannot mistake it for a typo.
+    if(status STREQUAL "retired")
+        scope_fail("'${version}' is a retired technical train slot and cannot be selected as a release train")
     endif()
 
     number_list("${version}" "mandatory_children" true children)
@@ -372,9 +382,9 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         math(EXPR cases_run "${cases_run} + 1")
     endforeach()
 
-    # 9.-13. Later exact Features are representable, each with its own authority parent.
-    foreach(pair IN ITEMS "0.2.0.0;233" "0.2.1.0;233" "0.3.0.0;234" "0.3.1.0;234" "0.3.2.0;234"
-                          "0.4.0.0;235" "1.0.0.0;33" "1.1.0.0;236")
+    # 9.-11. Selectable later exact Features are representable, each with its own authority parent. The retired
+    # technical slots (0.2.1.0/0.3.1.0/0.3.2.0) and the not-yet-activated 0.4.0.0/1.1.0.0 are refused below.
+    foreach(pair IN ITEMS "0.2.0.0;233" "0.2.0.1;386" "0.3.0.0;234" "1.0.0.0;33")
         list(GET pair 0 later_version)
         list(GET pair 1 later_authority)
         run_selection("${later_version}" TRUE later_output)
@@ -388,14 +398,13 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     endforeach()
 
     # Exact Features are exact: each one names its own closeable set, its own prerequisites and its own lineage, and
-    # neighbouring Features never share a set by accident.
+    # neighbouring Features never share a set by accident. #333: V0.3.0.0 is the self-service adoption foundation
+    # built directly on the accepted V0.2.0.0 lineage, with branding #241 and diagnostics-adjacent breadth outside
+    # the mandatory set.
     foreach(expectation IN ITEMS
             "0.2.0.0|143,174,259,326,271|258,332|0.1.0.0"
-            "0.2.1.0|170,239||0.2.0.0"
-            "0.3.0.0|240,241,264||0.2.1.0"
-            "0.3.1.0|265|260|0.3.0.0"
-            "0.3.2.0|144,175|261|0.3.1.0"
-            "0.4.0.0|9,57,109,134,165,242||0.3.2.0")
+            "0.2.0.1|382,387,389,390,391,392||0.2.0.0"
+            "0.3.0.0|264,240,335||0.2.0.0")
         string(REPLACE "|" ";" parts "${expectation}")
         list(GET parts 0 expectation_version)
         list(GET parts 1 expectation_children)
@@ -438,7 +447,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
 
     # 14b.-14c. Neighbouring exact Features must be distinguishable, and a later Feature must never block an earlier
     # one: the earlier selection is independent of whatever the later Feature still has open.
-    foreach(distinct IN ITEMS "0.2.0.0;0.2.1.0" "0.3.0.0;0.3.1.0" "0.3.1.0;0.3.2.0")
+    foreach(distinct IN ITEMS "0.2.0.0;0.2.0.1" "0.2.0.0;0.3.0.0" "0.2.0.1;0.3.0.0")
         list(GET distinct 0 first_version)
         list(GET distinct 1 second_version)
         run_selection("${first_version}" TRUE first_output)
@@ -460,6 +469,15 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     expect_refusal("unknown 0.9.0.0 is refused" "0.9.0.0")
     expect_refusal("unknown 2.0.0.0 is refused" "2.0.0.0")
     expect_refusal("empty version is refused" "")
+
+    # 14b. #333: the pre-reserved technical train slots stay refused, the not-yet-activated 0.4.0.0 stays refused,
+    #      the post-GA fixed slot 1.1.0.0 stays refused, and an unknown future 0.3.x never resolves.
+    expect_refusal("0.2.1.0 (Session slot) stays refused" "0.2.1.0")
+    expect_refusal("0.3.1.0 (Qt5 slot) stays refused" "0.3.1.0")
+    expect_refusal("0.3.2.0 (Bandwidth/ZRLE slot) stays refused" "0.3.2.0")
+    expect_refusal("0.4.0.0 refuses until #235 records activation" "0.4.0.0")
+    expect_refusal("1.1.0.0 refuses: no post-GA fixed technical slot" "1.1.0.0")
+    expect_refusal("unknown future 0.3.3.0 is refused" "0.3.3.0")
 
     # 15. A malformed authority is refused.
     # Script mode has no build directory, so the temporary manifests this matrix writes must never land in the
@@ -547,6 +565,62 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     math(EXPR cases_run "${cases_run} + 1")
     if(empty_result EQUAL 0)
         message(STATUS "release-scope self test: an active train with no mandatory children must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    # 16a-bis. #333 review: scope_status is a closed enum. A malformed explicit value on an otherwise selectable
+    #          train must fail closed instead of silently behaving as active, and the explicit "active" value must
+    #          keep the train selectable.
+    set(bad_status_path "${fixture_dir}/release-trains-scope-status-malformed.json")
+    file(READ "${authority_path}" bad_status_json)
+    string(REPLACE
+        "\"authority_parent\": 229"
+        "\"scope_status\": \"retire\",\n      \"authority_parent\": 229"
+        bad_status_json "${bad_status_json}")
+    file(WRITE "${bad_status_path}" "${bad_status_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${bad_status_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.1.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE bad_status_result
+        ERROR_VARIABLE bad_status_error)
+    math(EXPR cases_run "${cases_run} + 1")
+    # CMake wraps long messages across lines, so the assertion matches on whitespace-normalized output.
+    string(REGEX REPLACE "[\r\n\t ]+" " " bad_status_normalized "${bad_status_error}")
+    if(bad_status_result EQUAL 0)
+        message(STATUS
+            "release-scope self test: a malformed scope_status must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    elseif(NOT bad_status_normalized MATCHES "declares unsupported scope_status 'retire'")
+        message(STATUS
+            "release-scope self test: the malformed scope_status refusal must name the value; "
+            "output='${bad_status_normalized}'")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    set(explicit_active_path "${fixture_dir}/release-trains-scope-status-active.json")
+    file(READ "${authority_path}" explicit_active_json)
+    string(REPLACE
+        "\"authority_parent\": 229"
+        "\"scope_status\": \"active\",\n      \"authority_parent\": 229"
+        explicit_active_json "${explicit_active_json}")
+    file(WRITE "${explicit_active_path}" "${explicit_active_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${explicit_active_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.1.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE explicit_active_result)
+    math(EXPR cases_run "${cases_run} + 1")
+    if(NOT explicit_active_result EQUAL 0)
+        message(STATUS
+            "release-scope self test: an explicit scope_status=active train must stay selectable")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
@@ -643,21 +717,22 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         set(case_failures "${_failures}")
     endif()
 
-    # 17.-18. V1.2 is conditional: the number existing does not authorize it, and its activation authority is
-    #         recorded so activation evidence has somewhere to land.
-    conditional_train("1.2.0.0" v12_active v12_activation)
+    # 17.-18. #333: V0.4.0.0 is qualification only. The number existing does not authorize it; its activation
+    #         authority (#235) is recorded so activation evidence has somewhere to land, and until then selection
+    #         fails closed.
+    conditional_train("0.4.0.0" v040_active v040_activation)
     math(EXPR cases_run "${cases_run} + 2")
-    if(v12_active)
-        message(STATUS "release-scope self test: V1.2 must not be active by default")
+    if(v040_active)
+        message(STATUS "release-scope self test: V0.4.0.0 must not be active by default")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
-    if(NOT v12_activation STREQUAL "123")
-        message(STATUS "release-scope self test: V1.2 activation authority must remain #123")
+    if(NOT v040_activation STREQUAL "235")
+        message(STATUS "release-scope self test: V0.4.0.0 activation authority must remain #235")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
-    expect_refusal("V1.2 is not a release scope before activation" "1.2.0.0")
+    expect_refusal("V0.4.0.0 is not a release scope before activation" "0.4.0.0")
 
     # V1 authority preserved by the migration: the full mandatory set and both authorities.
     run_selection("1.0.0.0" TRUE v1_output)
@@ -677,7 +752,9 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     endif()
     message(STATUS
         "release-scope self test: PASS (schema ${authority_schema}, ${cases_run} cases, "
-        "sentinel 0.0.0, refused 0.0.x, V0.1 -> #229, later trains representable, V1.2 conditional on #123)")
+        "sentinel 0.0.0, refused 0.0.x, V0.1 -> #229, released history 0.2.0.0/0.2.0.1 selectable, "
+        "V0.3.0.0 -> #234 [264,240,335] on the 0.2.0.0 lineage, retired technical slots 0.2.1.0/0.3.1.0/0.3.2.0 "
+        "and unknown future 0.3.x fail closed, V0.4.0.0 conditional on #235)")
     return()
 endif()
 
