@@ -115,13 +115,14 @@ conditional_er:
 Rules:
 
 1. Every positive support/compatibility claim or qualification cell must select an applicable authority-owned profile before it can be considered evidence-complete.
-2. `required_ERs(cell)` is the union of the profile's `base_er` plus every `conditional_er.require` whose predicate matches the cell's declared material dimensions/capabilities, plus any maintenance/release obligations explicitly selected by their owning authorities.
+2. `required_ERs(cell)` is the union of the mandatory claim-meta ERs `ER-COMPAT-EXPLICIT-CELL` and `ER-COMPAT-EVIDENCE-BINDING`, the selected profile's inherited/`base_er`, every matching `conditional_er.require`, and any maintenance/release obligations explicitly selected by their owning authorities.
 3. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required ER.
 4. The test registry, selectors and suites consume the expanded required set; they cannot amend it to fit the available tests.
 5. Unknown profile IDs, unknown material dimensions, malformed predicates or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
 6. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded ER set must be deterministic and inspectable.
-7. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family.
-8. A material profile/conditional-rule change invalidates prior claim-completeness decisions that depended on the older required-ER set.
+7. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family; this catalog freezes the current bindings that those authorities expose.
+8. A material profile/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-ER set.
+9. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
 
 This gives TS-6 a mechanical forward chain:
 
@@ -134,6 +135,87 @@ positive claim/status authority
  -> valid evidence records
  -> claim completeness
 ```
+
+### 1.7 Frozen V0.2 desktop compatibility profiles and bindings
+
+`docs/compatibility.md` remains the authority for the current V0.2 compatibility rows and their opaque `Supported` / `Limited` status values. This section freezes the **evidence-obligation projection** of those already-declared rows; it does not broaden their product scope or invent support for absent dimensions.
+
+The current row dimensions normalize to `qt`, `os_arch`, `integration`, `ui_target`, `graphics_scope=portable-baseline` and `deployment_form=hyremote_deploy`. A row written as `Widgets / Quick` expands to two atomic qualification cells, one `Widgets` and one `Qt Quick`, so one half cannot silently substitute for the other. Viewer-specific, security-profile, remote-input, specialized-graphics and maintenance claims are separate claim families unless their owning authority explicitly adds those dimensions.
+
+Reusable common profile:
+
+```yaml
+profile_id: COP-V020-DESKTOP-BASE
+authority: docs/compatibility.md current V0.2 reference matrix + deployment compatibility; #393 evidence mapping
+claim_scope: current V0.2 desktop integration-row evidence
+abstract: true
+base_er:
+  - ER-INTEGRATE-ONE-DEPLOY-ENTRY
+  - ER-INTEGRATE-NO-BACKEND-TUNING
+  - ER-NATIVE-LOCAL-DISPLAY
+  - ER-NATIVE-LOCAL-INPUT
+  - ER-NATIVE-STOP-SURVIVAL
+  - ER-REMOTE-VIEW-CONTENT
+  - ER-REMOTE-SURFACE-LIFECYCLE
+  - ER-FRONTEND-ONE-SHARED-RUNTIME
+  - ER-FRONTEND-UNIQUE-MAPPING
+  - ER-PACKAGE-CLEAN-CONSUMER
+  - ER-DEPLOY-ARTIFACT-CLOSURE
+  - ER-DEPLOY-ISOLATED-LAUNCH
+  - ER-DEPLOY-RELOCATION
+  - ER-DEPLOY-RUNTIME-ORIGIN
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+  - ER-COMPAT-GRAPHICS-NO-INFERENCE
+conditional_er:
+  - when: os_arch == Linux x86_64
+    require: [ER-DEPLOY-FOREIGN-QT-ISOLATION-LINUX]
+```
+
+Public-Qt frontend profile:
+
+```yaml
+profile_id: COP-V020-DESKTOP-PUBLIC-QT
+authority: docs/compatibility.md current V0.2 C++/QML/Generic rows; #393 evidence mapping
+claim_scope: current V0.2 C++ API, QML API and Generic Plugin rows
+inherits: COP-V020-DESKTOP-BASE
+base_er: []
+conditional_er:
+  - when: integration in [C++ API, QML API]
+    require: [ER-INTEGRATE-PUBLIC-BOUNDARY]
+  - when: integration == Generic Plugin
+    require: [ER-INTEGRATE-ZEROCODE-QT-ONLY, ER-GENERIC-NATIVE-PRESERVATION]
+```
+
+Exact-QPA profile:
+
+```yaml
+profile_id: COP-V020-DESKTOP-QPA-EXACT
+authority: docs/compatibility.md current V0.2 QPA Limited rows; #57/#343 QPA qualification policy; #393 evidence mapping
+claim_scope: current V0.2 QPA exact-Qt desktop rows
+inherits: COP-V020-DESKTOP-BASE
+base_er:
+  - ER-INTEGRATE-ZEROCODE-QT-ONLY
+  - ER-QPA-NATIVE-DELEGATE-EXACTNESS
+  - ER-COMPAT-QPA-EXACT-ABI
+conditional_er: []
+```
+
+The current positive matrix rows bind mechanically as follows:
+
+| Qt | Platform | Integration | UI target | Status | `profile_id` |
+| --- | --- | --- | --- | --- | --- |
+| 6.8.3 | Windows x86_64 | C++ API | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Windows x86_64 | QML API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | Supported | `COP-V020-DESKTOP-PUBLIC-QT` |
+| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
+
+`TODO` and `Unsupported` rows are not positive support claims and therefore do not become positive evidence-completeness obligations merely by existing in the compatibility document. Any future positive row/family must receive an authority-owned profile/binding before it can be considered evidence-complete.
 
 ---
 
@@ -204,6 +286,7 @@ positive claim/status authority
 | --- | --- | --- | --- | --- | --- | --- |
 | `ER-RELIABILITY-BOUNDED-QUEUES` | PAC-6,PAC-8 / R-CORE,R-RELIABILITY,R-PERF | INVARIANT | base V; claim +Q | Frame/input/per-viewer pending work stays bounded under overload. | Queue/backlog/resource counts stay within declared bounds and intended drop/coalesce/admission policy. | Material mailbox/backpressure/admission/per-viewer-flow change. |
 | `ER-RELIABILITY-DETERMINISTIC-TEARDOWN` | PAC-6 / R-CORE,R-RUNTIME,R-RELIABILITY | INVARIANT | base V | Start/stop/fault/target destruction has deterministic ownership; callbacks/resources do not outlive teardown. | Final state/resources/callback gates match lifecycle contract across ordered/racing transitions. | Material Session/async/cancellation/ownership change. |
+| `ER-RELIABILITY-EXCEPTION-CONTAINMENT` | PAC-6 / R-CORE,R-RUNTIME,R-RELIABILITY | INVARIANT | base V | Adapter/callback exceptions are contained at the Core/Runtime boundary and become the owning lifecycle/error outcome rather than escaping into or terminating the host application. | Startup callback/adapter exceptions produce deterministic start failure with already-started resources cleaned; runtime request/enqueue exceptions remain contained and enter the contract-defined fault/error path; input-post failures remain contained/recoverable and cannot abort unrelated frame delivery; no tested exception crosses the Core callback boundary. | Material adapter/callback invocation boundary, exception translation, Session error/fault policy or input-post failure handling change. |
 | `ER-RELIABILITY-SLOW-CLIENT-ISOLATION` | PAC-6,PAC-8 / R-TRANSPORT,R-RELIABILITY,R-PERF | INVARIANT | base V+P; claim +Q | Slow client cannot create unbounded retention or indefinitely block healthy clients/native Qt. | Pending state bounded; healthy/local progress continues under policy. | Material flow-control/encoding queue/scheduling/client-state change. |
 | `ER-RELIABILITY-REPETITION-RESOURCE-STABILITY` | PAC-6 / R-RELIABILITY | CLAIM/RELEASE | claim Q; release +R | Repeated lifecycle/client/surface operations do not cause unbounded RSS/thread/FD/handle/socket growth. | Defined repetition completes with resource trend inside tolerance and no crash/hang/corruption. | Material lifecycle/resource-ownership or measurement-baseline environment change. |
 | `ER-RELIABILITY-SOAK-STABILITY` | PAC-6,PAC-8 / R-RELIABILITY,R-PERF | CLAIM/RELEASE | claim Q; release +R | Idle/active long-duration operation has no material leak/hang/latency/resource drift. | Declared duration completes inside resource/latency trend envelope. | Material Runtime/transport/capture/resource/perf or reference-environment change. |
