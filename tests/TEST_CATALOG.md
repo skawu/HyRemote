@@ -129,6 +129,7 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-release-readiness-build-install-contract` | Consumer — promised build/install entry-point contract. |
 | `hyremote-release-readiness-deployment-relocation` | Consumer — installed/deployed payload remains relocatable. |
 | `hyremote-release-readiness-deploy-helper-contract` | Consumer — static deploy/package helper contract. |
+| `hyremote-linux-qt-runtime-conflict` | Consumer/Linux deploy — deterministic same-SONAME Qt runtime conflict resolution stays within the selected Qt/deployed lineage and fails closed for ambiguous or foreign candidates. |
 | `hyremote-release-readiness-consumer-simplicity` | Consumer — public consumption remains bounded/simple. |
 | `hyremote-release-readiness-package-acquisition-isolation` | Consumer — package acquisition stays isolated from product source/build tree. |
 | `hyremote-release-readiness-source-qpa-authority` | Consumer/QPA — source-QPA deployment authority and negative metadata behavior. |
