@@ -108,10 +108,10 @@ authority: <document/issue/version that owns the claim>
 claim_scope: <product/frontend/deployment/support family>
 cell_schema: CCS-1
 required_dimensions: [<registered CCS-1 dimension names>]
-base_er: [<canonical ER ids>]
+base_er: [<canonical product ER ids>]
 conditional_er:
   - when: <predicate over declared material cell dimensions/capabilities>
-    require: [<canonical ER ids>]
+    require: [<canonical product ER ids>]
 ```
 
 #### Claim-cell schema `CCS-1`
@@ -149,7 +149,7 @@ The TS-0 predicate language is intentionally small and deterministic:
 Rules:
 
 1. Every positive support/compatibility claim or qualification cell must select an applicable authority-owned profile before it can be considered evidence-complete.
-2. `required_product_ERs(cell)` is the union of the selected profile's inherited/`base_er`, every matching `conditional_er.require`, and any maintenance/release product obligations explicitly selected by their owning authorities.
+2. `required_product_ERs(cell)` is the union of the selected profile's inherited/`base_er`, every matching `conditional_er.require`, and any maintenance/release **product** obligations explicitly selected by their owning authorities.
 3. `required_dimensions` is inherited by union; child profiles may add dimensions but may not silently remove inherited dimensions.
 4. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required product ER.
 5. The test registry, selectors and suites consume the expanded required product set; they cannot amend it to fit the available tests.
@@ -159,10 +159,18 @@ Rules:
 9. A material profile/schema/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-product-ER set.
 10. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
 11. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
+12. **Claim-meta ERs never appear in `base_er` or `conditional_er.require`.** Profiles describe product obligations only; claim composition/non-inference/binding rules are evaluated outside the product ER expansion.
 
 #### Claim-meta evaluation is outside profile expansion
 
-`ER-COMPAT-EXPLICIT-CELL` and `ER-COMPAT-EVIDENCE-BINDING` are **claim-meta ERs**, not members of `required_product_ERs(cell)`. This separation is deliberate and prevents a recursive completeness definition.
+The following PAC-9 requirements are **claim-meta ERs**, not members of `required_product_ERs(cell)`:
+
+- `ER-COMPAT-EXPLICIT-CELL`;
+- `ER-COMPAT-EVIDENCE-BINDING`;
+- `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH`;
+- `ER-COMPAT-GRAPHICS-NO-INFERENCE`.
+
+This separation is deliberate. It prevents both direct self-recursion and cross-cell/cross-claim completeness cycles.
 
 For an active claim/cell, the completeness engine performs these outer checks after the profile has expanded:
 
@@ -175,15 +183,29 @@ META-BINDING:
   validate evidence records belong to the same claim/cell/profile revision
   validate candidate/artifact/environment/fixture/invalidation compatibility
 
+META-PLATFORM:
+  evidence from another os_arch cannot satisfy this cell
+  a passing/existing cell on one platform cannot synthesize a claim/cell on another platform
+
+META-GRAPHICS-SCOPE:
+  portable-baseline evidence cannot synthesize a specialized graphics/native-surface claim
+  a specialized positive claim must exist explicitly with its own profile/cell and targeted product obligations
+
 PRODUCT-EVIDENCE:
   satisfy every triggered evidence obligation for every ER in required_product_ERs(cell)
 
 claim_complete = META-CELL PASS
               && META-BINDING PASS
+              && META-PLATFORM PASS
+              && META-GRAPHICS-SCOPE PASS
               && PRODUCT-EVIDENCE complete
 ```
 
-The completeness engine may emit derived Q/R evidence records for the two claim-meta ERs, but those records are outputs of evaluating the product ER set and its bindings; they are never inputs to the product-set expansion and never require themselves in order to evaluate themselves.
+`META-PLATFORM` does **not** require another platform cell to PASS before this cell can PASS. It enforces exact platform binding/non-substitution. Whether the public product authority chooses to publish independent Windows and Linux claims is upstream product data. This avoids the cross-cell cycle where Windows would depend on Linux and Linux would depend back on Windows.
+
+Likewise, `META-GRAPHICS-SCOPE` checks claim boundaries and non-inference; it does not require an unrelated specialized graphics claim to exist or pass.
+
+The completeness engine may emit derived Q/R evidence records for these claim-meta ERs, but those records are outputs of evaluating the product ER set and its bindings; they are never inputs to the product-set expansion and never require themselves in order to evaluate themselves.
 
 This gives TS-6 a non-recursive forward chain:
 
@@ -227,8 +249,6 @@ base_er:
   - ER-DEPLOY-ISOLATED-LAUNCH
   - ER-DEPLOY-RELOCATION
   - ER-DEPLOY-RUNTIME-ORIGIN
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
-  - ER-COMPAT-GRAPHICS-NO-INFERENCE
 conditional_er:
   - when: os_arch == "Linux x86_64"
     require: [ER-DEPLOY-FOREIGN-QT-ISOLATION-LINUX]
@@ -312,7 +332,6 @@ base_er:
   - ER-RELIABILITY-SLOW-CLIENT-ISOLATION
   - ER-RELIABILITY-MALFORMED-INPUT-BOUNDS
   - ER-SECURITY-ADMISSION-RESOURCE-BOUNDS
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
 conditional_er: []
 ```
 
@@ -337,7 +356,6 @@ base_er:
   - ER-REMOTE-INPUT-SEMANTICS
   - ER-REMOTE-INPUT-NEUTRALITY
   - ER-SECURITY-SAFE-DEFAULTS
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
 conditional_er: []
 ```
 
@@ -362,7 +380,6 @@ base_er:
   - ER-SECURITY-SAFE-DEFAULTS
   - ER-TRANSPORT-RFB-SEMANTICS
   - ER-NETWORK-LISTENER-BINDING
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
 conditional_er: []
 ```
 
@@ -388,7 +405,6 @@ base_er:
   - ER-SECURITY-FAIL-CLOSED
   - ER-SECURITY-SECRET-HYGIENE
   - ER-TRANSPORT-RFB-SEMANTICS
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
 conditional_er: []
 ```
 
@@ -412,7 +428,6 @@ required_dimensions: [product_line, qt, os_arch, security_profile, transport_sec
 base_er:
   - ER-SECURITY-FAIL-CLOSED
   - ER-SECURITY-SAFE-DEFAULTS
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
 conditional_er: []
 ```
 
@@ -436,7 +451,6 @@ required_dimensions: [product_line, qt, os_arch, security_profile, transport_sec
 base_er:
   - ER-SECURITY-FAIL-CLOSED
   - ER-SECURITY-SAFE-DEFAULTS
-  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
 conditional_er: []
 ```
 
@@ -559,8 +573,8 @@ These profiles bind claims the repository already makes. They do **not** create 
 | --- | --- | --- | --- | --- | --- | --- |
 | `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support/product-behavior claim has stable claim/cell identity, declared material dimensions and an authority-owned profile whose product ER set expands deterministically. | The outer META-CELL evaluator validates identity/schema/profile/status ownership/material dimensions and computes the canonical `required_product_ERs(cell)` without consulting current test coverage; this derived meta result does not require itself as an input. | Material claim/cell/schema/profile/conditional-rule/product-obligation change. |
 | `ER-COMPAT-QPA-EXACT-ABI` | PAC-9,PAC-4 / R-COMPAT,R-NATIVE | CLAIM | claim Q; release +R | QPA compatibility is exact Qt private-ABI/platform evidence, not family inference. | Claimed exact pair passes; mismatched/unqualified pair is not represented as supported. | Material exact Qt/toolchain/platform/QPA change. |
-| `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | One platform family does not substitute for another where product behavior is platform-sensitive. | Every claimed independent platform family has its own required valid cell evidence. | Material support-matrix/platform-sensitivity policy change. |
-| `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Basic Widgets/Quick success does not qualify specialized graphics/native-surface configurations. | Positive specialized claim has targeted evidence; absent evidence remains non-positive according to product authority. | Material graphics claim/capture/backend change. |
+| `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | Platform-sensitive support is bound to the explicitly declared platform cell; evidence or status from one platform must not be inferred as another platform's evidence/status. | The outer META-PLATFORM evaluator requires this cell's material `os_arch` to match every record used for it and rejects cross-platform substitution. The existence or PASS of one platform cell creates no implicit cell/status/evidence for another platform, but this cell does not depend on another platform cell passing. | Material support-matrix/platform-sensitivity/schema/binding policy change. |
+| `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Portable-baseline Widgets/Quick evidence does not create a specialized graphics/native-surface claim by inference. | The outer META-GRAPHICS-SCOPE evaluator verifies the current cell's explicit `graphics_scope`; baseline evidence cannot satisfy or synthesize a specialized graphics claim. Any specialized positive claim must exist explicitly with its own profile/cell and targeted product obligations, but baseline-cell PASS does not depend on that separate claim existing or passing. | Material graphics claim/schema/capture/backend/binding policy change. |
 | `ER-COMPAT-THIRDPARTY-NONINFERENCE` | PAC-1,PAC-9 / R-COMPAT,R-ADOPTION | CLAIM/RELEASE | claim Q; release +R | Third-party success pressure-tests declared matrix but does not create named-app/broader support. | Record pins app/revision/environment/routes and stays labelled verification rather than inferred support expansion. | Material fixture/environment/support-policy change. |
 | `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant claim/cell/profile revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator rejects invalidated, mismatched or cross-cell/cross-profile records and enforces exact-candidate rules for release evidence; this derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/invalidation/release-binding rule change. |
 
@@ -622,14 +636,17 @@ A gate does not promote evidence automatically. A hosted G4 execution stays V/P 
 6. New platform/Qt/viewer rows normally add cells/fixtures, not ERs.
 7. Editorial-only documentation changes do not invalidate expensive product evidence unless they materially change an executable journey, claim or oracle.
 8. Claim Obligation Profiles are reusable/inheritable authority-owned mappings; do not copy a full ER list into every qualification cell.
-9. TS-1 may propose ER merge/split only when product statement/failure meaning is genuinely too broad/ambiguous.
-10. Success is stronger product evidence per unit development time and maintenance effort, not maximum ER/test count.
+9. Claim-meta checks stay outside profile product obligations so claim-policy validation never forces recursive/cross-cell product reruns.
+10. TS-1 may propose ER merge/split only when product statement/failure meaning is genuinely too broad/ambiguous.
+11. Success is stronger product evidence per unit development time and maintenance effort, not maximum ER/test count.
 
 ---
 
 ## 15. TS-1 audit contract
 
 After TS-0 is accepted, TS-1 performs a **read-only** mapping of every current test identity.
+
+TS-1 starts by pinning one explicit `develop` inventory snapshot SHA. Every test count, registration fact, current-gate fact and measured cost in the audit is attributed to that snapshot. If `develop` moves while the audit is open, the audit records a separate delta and reconciles it explicitly; it never silently mixes identities/counts/costs from different repository states.
 
 For each test record:
 
