@@ -10,9 +10,10 @@ HyRemote compatibility is stated only for environments that have an explicit pro
 - **TODO** — planned product coverage that is not yet available/qualified.
 - **Unsupported** — outside the stated product contract or known not to work for the stated combination.
 
-## Current V0.2.0.0 reference matrix
+## Current released reference matrix (V0.2.0.1)
 
-The current reference environment for **V0.2.0.0 (First User Trial)** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
+The current released reference environment for **V0.2.0.1** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64** (the
+historical V0.2.0.0 First User Trial used the same reference environment).
 
 | Qt | Platform | Integration | UI target | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -56,8 +57,8 @@ HyRemote is intended to support selected Qt LTS families rather than promise eve
 
 Current state:
 
-- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.2.0.0.
-- **Qt 5.15 LTS** — **TODO V0.4 qualification**. Do not describe it as currently supported until the product can actually build, deploy, and run through the applicable matrix.
+- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by the current released V0.2.0.1 (and by the V0.2.0.0 First User Trial before it).
+- **Qt 5.15 LTS** - TODO - mandatory pre-GA V0.3-family adaptation/qualification under the position-derived baseline authority; V0.4 only qualifies the frozen completed matrix. Do not describe it as currently supported until the product can build, deploy and qualify it.
 - other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
 
 Public-Qt frontends and QPA have different compatibility rules:
@@ -185,17 +186,19 @@ The product deployment entry point is `hyremote_deploy()`; see [`guide/deploymen
 
 ## Embedded/platform expansion
 
+> Per this convergence: the currently released V0.2.0.1 matrix is desktop x86_64. ARM64/Embedded Linux/EGLFS are not supported by that released version, but they are mandatory pre-GA V0.3-family compatibility baseline work under the position-derived baseline authority and must converge before V0.4 RC entry. Additional BSP/SoC/platform expansion beyond the declared GA reference cells is separately admitted as later coherent outcomes. Hardware/vendor acceleration has no pre-assigned version or pre/post-GA placement: it is admitted only through its recorded activation authority when measured evidence proves a portable-baseline SLO/resource blocker under the performance programme.
+
 Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
 
 Planned directions include:
 
 | Direction | Current status |
 | --- | --- |
-| ARM64 Embedded Linux | **TODO V1.1** |
-| RK3588 / EGLFS or Wayland | **TODO V1.1** |
-| NXP i.MX class | **TODO V1.1** |
-| DMA-BUF / GBM / external-buffer paths | **TODO later acceleration line** |
-| RKMPP / VAAPI / platform hardware encoding | **TODO later acceleration line** |
+| ARM64 Embedded Linux | TODO - mandatory pre-GA V0.3-family compatibility baseline under the position-derived baseline authority; no exact Feature version pre-reserved |
+| RK3588 / EGLFS or Wayland | TODO - mandatory pre-GA V0.3-family compatibility baseline reference cells under the position-derived baseline authority; no exact Feature version pre-reserved |
+| NXP i.MX class | TODO - separately admitted platform expansion beyond the declared GA cells |
+| DMA-BUF / GBM / external-buffer paths | TODO - evidence-driven conditional implementation via its recorded activation authority (#123) when the performance programme's measured evidence proves a blocker; no version placement |
+| RKMPP / VAAPI / platform hardware encoding | TODO - evidence-driven conditional implementation via its recorded activation authority (#123) when the performance programme's measured evidence proves a blocker; no version placement |
 | OpenHarmony | Long-term direction; no current support claim |
 
 Desktop evidence does not imply embedded support, and one BSP does not imply an entire SoC/platform family.
