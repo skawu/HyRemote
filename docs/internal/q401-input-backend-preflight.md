@@ -72,7 +72,8 @@ First divergence per scenario, using the #401 vocabulary:
 Two user-visible halves of #400 are therefore reproduced with different root causes:
 
 ```text
-"double-click does not work"      -> QT_SEMANTIC_CLASSIFICATION (platform synthesis bypassed)
+"double-click does not work"      -> QT_SEMANTIC_CLASSIFICATION (Qt's own click classification is not
+                                     reachable from the public delivery ingress)
 "some controls do not react"      -> TOPLEVEL_INGRESS (separate top-level popup surface unreachable)
 ```
 
@@ -130,43 +131,61 @@ Answers to the #401 questions for the public-Qt family:
 | Question | Answer | Class |
 | --- | --- | --- |
 | Can Qt own child/item routing? | Widgets: only below the receiver you pick — `childAt()` is HyRemote's job, then Qt routes no further. Quick: yes, fully (Qt Quick resolves the item and dispatches, including hover/grab/focus). | OBSERVED |
-| Can Qt own click/double-click classification? | No public Qt ingress performs it. Posting events to a receiver or a window delivers exactly what HyRemote constructs; no Qt layer promotes a press to `MouseButtonDblClick`. | OBSERVED |
+| Can Qt own click/double-click classification? | Not through this ingress: posting to a receiver or a window delivers exactly what HyRemote constructs, and the layer that does classify (Qt's window-system mouse processing, §5) is not reachable from public API. | OBSERVED (fixtures) / DOCUMENTED_PLATFORM_FACT (§5) |
 | Can Qt own the implicit grab? | Widgets: no (HyRemote's `buttonReceivers` reproduce it). Quick: yes. | OBSERVED |
 | Can Qt own popup/overlay routing? | Quick: yes for in-window overlays (measured reachable). Widgets: no for the classic top-level popup, because the target model is a single root and no ingress exists for another top-level surface. | OBSERVED |
 | Can Qt own focus transitions? | Partly: pointer clicks move focus through the delivered press (Widgets) / Qt Quick's own focus handling. Not measurable offscreen in this harness. | OBSERVED (partial), gap in §7 |
 | What must a public-Qt backend own at minimum? | The transport-neutral fact -> Qt event translation, receiver/item resolution where Qt does not do it, per-button held state, implicit-grab bookkeeping for Widgets, and whatever Qt semantic is missing at that ingress (today: double-click; also enter/leave/hover). | OBSERVED |
 
-Why there is no lower public ingress (OBSERVED): the platform-level entry points are not public
-API. `QWindowSystemInterface` is a Qt-private header — it is absent from this SDK's public include
-tree (`include/QtGui/qwindowsysteminterface.h` does not exist; the private header directory is not
-part of the binary SDK install).
-
-That single fact is what makes the deferral impossible through public Qt: for a physically
-attached mouse the DblClick semantic is produced *below* the public event-delivery API, so an
-application-scoped backend cannot inherit it by choosing a different public call.
-
-Ingress probe (non-product, run outside the repository; recorded here so the fact is auditable):
+Why there is no lower public ingress:
 
 ```text
-method     a ~60-line throwaway program that links Qt6::Widgets/Qt6::Test, shows a recorder widget
-           and issues two rapid QTest::mouseClick() calls (raw window-system input through
-           QWindowSystemInterface, i.e. the same entry a real device uses) at the same point, then
-           prints the ordered QEvent types the widget received. Not committed on purpose: Qt6::Test
-           is a test-only module and adding it as a build dependency of a repository target would be
-           a dependency-policy change, not a preflight artifact.
-observed   policy: intervalMs=400 distancePx=5
-           rapid same-spot pair            -> Press(Left), Release(Left), Press(Left), Release(Left)   [D=0]
-           600 ms gap pair                 -> Press, Release, Press, Release                        [D=0]
-           far-apart pair                  -> Press, Release, Press, Release                        [D=0]
-           rapid right-button pair         -> Press(Right), Release(Right), Press(Right), Release(Right) [D=0]
-           long first press + quick second -> Press, Release, Press, Release                        [D=0]
-           after setDoubleClickInterval(120), 250 ms gap -> Press, Release, Press, Release          [D=0]
-conclusion OBSERVED: on this Qt build, Qt itself never promotes a press to MouseButtonDblClick
-           without platform participation. The double-click a physically attached mouse produces is
-           therefore created by the platform layer (Windows window class with CS_DBLCLKS, or the
-           X11 backend), i.e. below the public event-delivery API that an application-scoped
-           backend can reach.
+OBSERVED (fixtures)   direct public event delivery - QCoreApplication::sendEvent(receiver, QMouseEvent) -
+                      delivers exactly the event HyRemote constructs. A valid remote double click
+                      therefore arrives as Press, Release, Press, Release and no MouseButtonDblClick
+                      is obtained. This ingress sits *above* Qt's normal window-system mouse
+                      processing.
+OBSERVED (headers)    no stable public Qt API exposes the lower ingress: QWindowSystemInterface is
+                      a Qt-private header, absent from this SDK's public include tree
+                      (include/QtGui/qwindowsysteminterface.h does not exist; the private header
+                      directory is not part of the binary SDK install).
 ```
+
+The accurate statement is therefore about the *ingress*, not about Qt's capability:
+
+```text
+Direct public event delivery (sendEvent) occurs above Qt's normal window-system mouse processing
+and therefore does not obtain Qt's click/double-click classification.
+
+No stable public Qt API exposes the lower window-system ingress needed to delegate that
+classification.
+```
+
+Qt does perform that classification itself, and it does so below the public API (§5): an
+application-scoped backend simply cannot reach the layer that does it.
+
+Ingress probe, and why it is not used as the location evidence:
+
+```text
+method      a ~60-line throwaway program (non-product, run outside the repository) that links
+            Qt6::Widgets/Qt6::Test, shows a recorder widget and issues two rapid QTest::mouseClick()
+            calls at the same point, then prints the ordered QEvent types the widget received.
+observed    policy: intervalMs=400 distancePx=5
+            rapid same-spot pair, 600 ms gap pair, far-apart pair, rapid right-button pair,
+            long-first-press pair, and a 250 ms gap after setDoubleClickInterval(120)
+            -> every case produced Press/Release pairs with no MouseButtonDblClick.
+disposition INSUFFICIENT_FOR_INGRESS_LOCATION - this experiment is NOT used to infer where Qt
+            classifies double clicks, and it must not be read as "QWindowSystemInterface does not
+            classify". QTest's own contract provides mouseDClick(), and its documentation describes
+            testing double clicks by sending press/release pairs with suitable spacing, so this
+            particular QTest::mouseClick experiment only shows that that experiment did not produce a
+            DblClick. It is retained as a note, not as an architecture fact.
+```
+
+The correct attribution for physical input is therefore not "the OS backend produces the double
+click": the platform/QPA delivers raw window-system input into Qt, and Qt's
+`QGuiApplicationPrivate` mouse-processing path performs its own double-click classification before
+the resulting `QMouseEvent` semantics are delivered.
 
 This is exactly why the selected direction in §8 keeps a *finite* classification responsibility in
 HyRemote instead of claiming Qt can be given the semantic through a different public call.
@@ -180,8 +199,16 @@ run exactly as for a physical device.
 ```text
 Capability                                            Assessment                                Class
 -----------------------------------------------------------------------------------------------
-lower ingress exists                                  yes, Qt-private headers + private symbols HYPOTHESIS
-Qt would then own platform/window input semantics     plausible: same path as platform events   HYPOTHESIS
+mouse ingress exists below the public event API       QWindowSystemInterface / QGuiApplication-
+(QWindowSystemInterface / QGuiApplicationPrivate)     Private mouse ingress; Qt-private headers
+                                                      and private symbols                     DOCUMENTED_PLATFORM_FACT
+Qt itself performs double-click classification in     QGuiApplicationPrivate::processMouseEvent
+QGuiApplicationPrivate::processMouseEvent()           classifies timing/distance/button before
+                                                      delivering QMouseEvent semantics         DOCUMENTED_PLATFORM_FACT
+broader fidelity of a future QPA/private backend      popup behaviour, focus transitions, grab
+                                                      and multi-window routing remain
+                                                      capability-specific and must be qualified
+                                                      separately; nothing here upgrades them    HYPOTHESIS
 ABI constraint                                        QPA/private entry points are bound to the
                                                       exact Qt version and build configuration   DOCUMENTED_PLATFORM_FACT
 platform constraint                                   the platform plugin is owned by one
@@ -192,9 +219,13 @@ public-Qt (C++/QML/Generic) may depend on it           forbidden by #401 and by 
                                                       public-Qt promise                           decision
 ```
 
-Consequence: the private/QPA family is a *possible* future capability of the QPA route only, not a
-backend for the public-Qt routes. It cannot be the single answer to #400, because the same defect
-must be fixed for C++ and QML applications whose build cannot depend on Qt private ABI.
+Double-click classification is confirmed at this lower Qt ingress. That is a fact about where the
+classification lives; it is not a general fidelity claim for a future QPA/private backend.
+
+Consequence: the private/QPA family is a **route-specific higher-fidelity capability** - a possible
+future capability of the QPA route only - and not a backend for the public-Qt routes. It cannot be
+the single answer to #400, because the same defect must be fixed for C++ and QML applications whose
+build cannot depend on Qt private ABI.
 
 ## 6. Backend family C: Native OS / virtual input
 
@@ -203,7 +234,7 @@ portable, low privilege) and by platform constraints, not by whether it would re
 
 | Aspect | Assessment | Class |
 | --- | --- | --- |
-| fidelity | highest: the OS produces click/double-click/activation for the target window | DOCUMENTED_PLATFORM_FACT |
+| fidelity | highest: injected input enters the target application as if from a real device, so the application's own Qt processing - including its double-click classification - applies | DOCUMENTED_PLATFORM_FACT |
 | application isolation | violated: injection targets the desktop input stream, not our application | DOCUMENTED_PLATFORM_FACT |
 | whole-desktop side effects | present: input can reach other applications and windows | DOCUMENTED_PLATFORM_FACT |
 | privileges | Windows `SendInput` needs no elevation but is desktop-wide; Linux `uinput` needs device access (root/udev); XTest needs the X server | DOCUMENTED_PLATFORM_FACT |
@@ -220,7 +251,7 @@ Each row is tagged; `HYPOTHESIS` rows are explicitly not architecture facts.
 
 | Criterion | A. Public-Qt application-scoped | B. Qt-private / QPA | C. Native OS / virtual input |
 | --- | --- | --- | --- |
-| fidelity (normal Qt interaction) | medium: Qt owns routing where it is given the window (Quick) or the receiver (Widgets); missing semantics must be restored by HyRemote (OBSERVED) | high: same machinery as platform input (HYPOTHESIS) | highest: OS produces every semantic (DOCUMENTED_PLATFORM_FACT) |
+| fidelity (normal Qt interaction) | medium: Qt owns routing where it is given the window (Quick) or the receiver (Widgets); missing semantics must be restored by HyRemote (OBSERVED) | high: double-click classification is confirmed at that ingress (DOCUMENTED_PLATFORM_FACT); broader fidelity of such a backend stays capability-specific (HYPOTHESIS) | highest: OS produces every semantic (DOCUMENTED_PLATFORM_FACT) |
 | application isolation | full: every event is delivered inside our process to our target (OBSERVED) | full (HYPOTHESIS) | violated (DOCUMENTED_PLATFORM_FACT) |
 | public/private ABI cost | none (OBSERVED) | exact-Qt-version private ABI (DOCUMENTED_PLATFORM_FACT) | none in-process, but platform agents/APIs (HYPOTHESIS) |
 | Windows/Linux portability | one implementation, portable (OBSERVED) | per-Qt-version, per-platform plugin (HYPOTHESIS) | per-platform implementations (DOCUMENTED_PLATFORM_FACT) |
