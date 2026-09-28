@@ -47,7 +47,6 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-security-descriptor-test` | Runtime | Descriptor/credential parsing and fail-closed configuration. |
 | `hyremote-target-component-provider-test` | Runtime | Target→capture/input adapter selection. Failure invalidates adapter composition. |
 | `hyremote-input-mailbox-admission-test` | Runtime | Bounded input admission/backpressure before GUI delivery. |
-| `hyremote-qt-pointer-sequence-classifier-test` | Runtime | #400: deterministic policy boundaries for the shared click-sequence classifier (strict interval upper bound, per-axis distance, zero distance, movement invalidation, button/identity mismatch, pair consumption) driven by synthetic timestamps instead of sleeps. |
 | `hyremote-rfb-multi-client-input-test` | VNC | Per-viewer held key/button ownership and disconnect cleanup. Failure allows one viewer to corrupt another viewer's input state. |
 | `hyremote-rfb-wire-robustness-test` | VNC | Production-socket fragmentation plus malformed/oversized/unsupported input fail-closed behavior. Closes TG-013/TG-014. |
 | `hyremote-vnc-auth-test` | VNC + transport security | VNC Authentication crypto primitive. Failure invalidates credential challenge/response correctness. |
@@ -55,17 +54,16 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-widgets-capture-test` | Widgets | Ordinary Widgets capture/lifetime/resize/cancellation/target-loss contract. |
 | `hyremote-widgets-capture-forced-dpr-test` | Widgets | Executes the same capture contract at deterministic DPR=1.5. Closes TG-001; failure exposes HiDPI geometry/pixel mapping regression. |
 | `hyremote-widgets-input-routing-test` | Widgets | Widgets input delivery/local coexistence. |
-| `hyremote-widgets-input-backpressure-test` | Widgets | Pointer coalescing, protected releases and shutdown balancing under GUI pressure. |
-| `hyremote-accepted-pointer-motion-test` | Runtime | #400: accepted-stream pointer motion bookkeeping - period viewport truth (including transient viewport excursions that must stay fail-closed) and the bounded movement-excursion summary. |
-| `hyremote-widgets-input-preflight-test` | Widgets | #401 preflight: deterministic reproduction of #400 through the production Widgets path with first-divergence classification. Evidence fixture, not the production fix. |
+| `hyremote-widgets-input-backpressure-test` | Widgets | Bounded pointer admission without semantic-loss coalescing, protected releases and shutdown balancing under GUI pressure. |
+| `hyremote-widgets-input-preflight-test` | Widgets | Behavioral acceptance for the shared Qt window-system pointer ingress: child routing, Qt-owned double-click classification, accepted-time queue-delay independence and wheel propagation. |
 | `hyremote-rfb-widget-disconnect-backpressure-test` | Widgets + VNC | Real RFB disconnect cleanup while Widgets input delivery is saturated. TG-020 requires absence when VNC is unavailable. |
-| `hyremote-rfb-input-preflight-test` | Widgets + VNC | #401 preflight: production RFB pointer-parser reproduction (valid envelope, outside interval, outside distance, different receiver). |
+| `hyremote-rfb-input-preflight-test` | Widgets + VNC | Production RFB pointer facts reach the shared Qt window-system ingress; Qt owns interval/distance double-click classification. |
 | `hyremote-quick-capture-test` | Quick | Ordinary Qt Quick capture/lifetime/resize/target-loss contract. |
 | `hyremote-quick-capture-forced-dpr-test` | Quick | Executes the same Quick capture contract at deterministic DPR=1.5/software backend. Closes TG-002. |
 | `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |
-| `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure. |
-| `hyremote-quick-input-preflight-test` | Quick | #401 preflight: deterministic reproduction of #400 through the production Quick path with first-divergence classification. |
-| `hyremote-quick-controls-preflight-test` | Quick + QtQuick Controls | #401 preflight: Quick control matrix (Button/CheckBox/Slider/Popup) with a regression-bearing Popup reach assertion. Registered only when the QtQuick.Controls QML module is available; the Runtime Quick capability contract covers Qt Quick, not Controls, so a minimal Quick-only configuration leaves this entry absent rather than broken. |
+| `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure without semantic-loss pointer coalescing. |
+| `hyremote-quick-input-preflight-test` | Quick | Behavioral acceptance that Qt Quick owns item hit testing, grabs and double-click classification below the shared Qt window-system ingress. |
+| `hyremote-quick-controls-preflight-test` | Quick + QtQuick Controls | Quick control matrix (Button/CheckBox/Slider/Popup), registered only when the QtQuick.Controls QML module is available. It remains product coverage, not Runtime control-specific input logic. |
 | `hyremote-rfb-listener-reachability-test` | Widgets + VNC | Real Runtime/RFB wildcard/explicit IPv4 reachability and interface reconciliation. Failure invalidates socket-level reachability while remaining independent of the C++ facade. |
 
 ## T2 — C++ frontend
@@ -217,4 +215,3 @@ Deferred P2 findings TG-010/011/015/016/017/018 retain explicit owner/rationale 
 ## PRE — outside normal inventory
 
 `tests/preflight/` remains a standalone CMake project for bounded technical-risk evidence (currently TLS transition/VeNCrypt feasibility). PRE results do not count toward product CTest registration and do not replace product/release acceptance.
-| hyremote-qt-pointer-sequence-classifier-test | Runtime | #400: deterministic policy boundaries for the shared click-sequence classifier (strict interval, per-axis distance, zero distance, movement invalidation, button/identity mismatch, pair consumption) using synthetic timestamps. |
