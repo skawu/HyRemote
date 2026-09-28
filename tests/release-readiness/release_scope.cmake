@@ -183,6 +183,10 @@ function(selected_scope version out_parent out_children out_prerequisites out_ev
     string(JSON status ERROR_VARIABLE status_error GET "${authority_json}" trains "${version}" scope_status)
     if(status_error OR status STREQUAL "")
         set(status "active")
+    elseif(NOT status STREQUAL "active" AND NOT status STREQUAL "retired")
+        # #333: scope_status is a closed enum. A malformed value such as "retire" must not silently behave as an
+        # active selectable train, and nothing is normalized here: the record is wrong and selection refuses.
+        scope_fail("release train '${version}' declares unsupported scope_status '${status}'")
     endif()
 
     # #333: a pre-reserved technical train slot that was withdrawn from selection keeps its record as historical
@@ -561,6 +565,62 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     math(EXPR cases_run "${cases_run} + 1")
     if(empty_result EQUAL 0)
         message(STATUS "release-scope self test: an active train with no mandatory children must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    # 16a-bis. #333 review: scope_status is a closed enum. A malformed explicit value on an otherwise selectable
+    #          train must fail closed instead of silently behaving as active, and the explicit "active" value must
+    #          keep the train selectable.
+    set(bad_status_path "${fixture_dir}/release-trains-scope-status-malformed.json")
+    file(READ "${authority_path}" bad_status_json)
+    string(REPLACE
+        "\"authority_parent\": 229"
+        "\"scope_status\": \"retire\",\n      \"authority_parent\": 229"
+        bad_status_json "${bad_status_json}")
+    file(WRITE "${bad_status_path}" "${bad_status_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${bad_status_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.1.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE bad_status_result
+        ERROR_VARIABLE bad_status_error)
+    math(EXPR cases_run "${cases_run} + 1")
+    # CMake wraps long messages across lines, so the assertion matches on whitespace-normalized output.
+    string(REGEX REPLACE "[\r\n\t ]+" " " bad_status_normalized "${bad_status_error}")
+    if(bad_status_result EQUAL 0)
+        message(STATUS
+            "release-scope self test: a malformed scope_status must be refused")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    elseif(NOT bad_status_normalized MATCHES "declares unsupported scope_status 'retire'")
+        message(STATUS
+            "release-scope self test: the malformed scope_status refusal must name the value; "
+            "output='${bad_status_normalized}'")
+        math(EXPR _failures "${case_failures} + 1")
+        set(case_failures "${_failures}")
+    endif()
+
+    set(explicit_active_path "${fixture_dir}/release-trains-scope-status-active.json")
+    file(READ "${authority_path}" explicit_active_json)
+    string(REPLACE
+        "\"authority_parent\": 229"
+        "\"scope_status\": \"active\",\n      \"authority_parent\": 229"
+        explicit_active_json "${explicit_active_json}")
+    file(WRITE "${explicit_active_path}" "${explicit_active_json}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}"
+            "-DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}"
+            "-DHYREMOTE_RELEASE_AUTHORITY=${explicit_active_path}"
+            "-DHYREMOTE_RELEASE_VERSION=0.1.0.0"
+            -P "${CMAKE_CURRENT_LIST_FILE}"
+        RESULT_VARIABLE explicit_active_result)
+    math(EXPR cases_run "${cases_run} + 1")
+    if(NOT explicit_active_result EQUAL 0)
+        message(STATUS
+            "release-scope self test: an explicit scope_status=active train must stay selectable")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()

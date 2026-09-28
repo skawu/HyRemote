@@ -12,7 +12,8 @@ HyRemote compatibility is stated only for environments that have an explicit pro
 
 ## Current released reference matrix (V0.2.0.1)
 
-The current reference environment for **V0.2.0.0 (First User Trial)** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
+The current released reference environment for **V0.2.0.1** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64** (the
+historical V0.2.0.0 First User Trial used the same reference environment).
 
 | Qt | Platform | Integration | UI target | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -35,7 +36,7 @@ HyRemote is intended to support selected Qt LTS families rather than promise eve
 
 Current state:
 
-- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by V0.2.0.0.
+- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by the current released V0.2.0.1 (and by the V0.2.0.0 First User Trial before it).
 - **Qt 5.15 LTS** - TODO - mandatory pre-GA V0.3-family adaptation/qualification under the position-derived baseline authority; V0.4 only qualifies the frozen completed matrix. Do not describe it as currently supported until the product can build, deploy and qualify it.
 - other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
 
