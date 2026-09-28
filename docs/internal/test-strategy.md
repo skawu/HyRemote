@@ -695,13 +695,13 @@ Existing executable documents migrate incrementally; adopting this strategy does
 
 This is cross-cutting engineering infrastructure, not a new version line.
 
-- **V0.2** remains current delivery priority; TS-0 design must not expand its critical path.
-- **V0.3 family** may incrementally introduce metadata, selection and reusable product-path foundations as self-service/product breadth becomes real.
-- **Before V0.4 entry**, qualification/evidence machinery must already exist because V0.4 is qualification-only.
-- **V0.4** executes the declared qualification programme rather than building a hidden test framework.
+- **V0.2.0.1** is the current released maintenance baseline; TS-0 does not reopen or expand that accepted release scope.
+- **V0.3.0.0 Product Preview** is the self-service adoption foundation, while the activated **V0.3-family pre-GA baseline** carries the broader compatibility/performance work required before GA. TS-2 through TS-7 may land incrementally across that V0.3 work as their owning product paths become real.
+- **Before V0.4 entry**, TS-6 qualification/evidence machinery and TS-7 domain-programme evidence wiring must be complete because V0.4 is qualification-only.
+- **V0.4** executes the already-wired qualification programme, records evidence and resolves product/qualification gaps rather than building a hidden test framework.
 - **V1 GA** consumes the qualified evidence and freezes the long-lived support contract.
 
-Detailed migration phases and TS-0..TS-8 work packages live in `test-system-architecture.md` and Issue #393.
+Detailed migration phases and TS-0..TS-8 work packages live in `test-system-architecture.md` and Issue #393. Exact release-train activation/scope remains owned by `.github/release/release-trains.json`; this test strategy does not pre-reserve technical trains.
 
 ---
 
