@@ -74,8 +74,9 @@ Rules:
 5. Current tests implement those requirements incrementally; current test names do not redefine them.
 6. The test system consumes compatibility status vocabulary from `docs/compatibility.md`; it never creates a parallel status enum. Product-behavior claim families that have no separate status enum remain valid claims without inventing one.
 7. When an explicit newer product authority supersedes older prose/test assumptions, TS-1 reports the older assertion as authority drift rather than choosing product truth from the current test inventory.
-8. PAC/risk membership and current suite coverage are reverse/index relationships; they never substitute for the authority-owned forward `claim -> obligation profile -> cell -> required ERs` relation.
+8. PAC/risk membership and current suite coverage are reverse/index relationships; they never substitute for the authority-owned forward `claim -> obligation profile -> cell -> required product ERs` relation.
 9. A profile binding is product/claim metadata, not suite metadata. TS-2/TS-6 may serialize and validate it but may not invent a missing binding from the tests that happen to exist.
+10. Claim-completeness meta checks are outputs around the product-ER graph; they are never recursively included in the profile-expanded product ER set they evaluate.
 
 ---
 
@@ -111,7 +112,7 @@ Product Acceptance Contract (PAC)
 
 The ER Catalog is the identity authority for ER IDs. Architecture examples, metadata and later TS-1/TS-2 mappings may only reference IDs that exist there.
 
-For **positive claim completeness**, the forward relation is separate from the reverse ER/PAC graph:
+For **positive claim completeness**, the forward relation is separate from the reverse ER/PAC graph and deliberately non-recursive:
 
 ```text
 product / compatibility claim authority
@@ -123,26 +124,35 @@ product / compatibility claim authority
 qualification cell + material dimensions/capabilities
             |
             v
-    expanded required ER set
+ expanded required product ER set
             |
             v
- required evidence classes + valid records
+ required evidence classes + valid product evidence records
             |
-            v
-       claim completeness
+            +-----------------------------+
+            |                             |
+            v                             v
+      META-CELL check              META-BINDING check
+            |                             |
+            +--------------+--------------+
+                           v
+                    claim completeness
 ```
 
 The owning product/compatibility authority selects the applicable reusable profile. The ER Catalog defines the versioned claim-cell schema, profile schema, fail-closed expansion rules, and the current V0.2 profile instances/bindings for integration plus already-declared transport/input/security claim families. TS-2 may implement storage/parsing but cannot infer a profile from current tests, PAC overlap or available suite coverage.
 
-A claim-bound qualification/evidence object must preserve both directions:
+A claim-bound qualification/evidence object preserves both directions:
 
 ```text
-claim_id -> claim_profile_id -> cell_id + material dimensions -> expanded required_ERs
-                                                               |
-                                                               +-> evidence records proving subsets of required_ERs
+claim_id -> claim_profile_id -> cell_id + material dimensions -> expanded required_product_ERs
+                                                                       |
+                                                                       +-> evidence records proving subsets of product ERs
+
+claim/cell/profile/binding identities + valid records
+        -> derived ER-COMPAT-EXPLICIT-CELL / ER-COMPAT-EVIDENCE-BINDING results
 ```
 
-That makes missing obligations detectable without requiring one record or one suite per ER.
+That makes missing obligations detectable without requiring one record or one suite per ER and without making a meta ER depend on itself.
 
 ### 3.1 Product Acceptance Contracts
 
@@ -275,7 +285,7 @@ Logical families guide ownership; they do not require immediate directory/test m
 | `S-SECURITY` | policy truth + mechanism-specific security | V/P/Q/R |
 | `S-RELIABILITY` | stress/soak/fuzz/resource bounds | V/Q/R |
 | `S-PERFORMANCE` | interaction SLO/resource regression | V/Q/R |
-| `S-COMPAT` | qualification-cell orchestration | Q/R |
+| `S-COMPAT` | qualification-cell orchestration and derived claim-meta checks | Q/R |
 | `S-REALWORLD` | representative third-party pressure tests | Q/R |
 
 Repository/branch/docs/release-policy governance checks are tracked separately from product-quality evidence.
@@ -483,14 +493,14 @@ material_dimensions:
   security_profile: ...     # only when material to this claim
   transport_security: ...   # only when material to this claim
   viewer: ...               # only for a named-viewer claim
-expanded_required_er: [ER-...]
+expanded_required_er: [ER-...]  # profile-expanded product ER obligations only
 ```
 
 `CCS-1` names, string value semantics, required-dimension rules and the allowed predicate grammar are canonical in the ER Catalog. The registry validates that exact schema; it does not accept unknown dimensions or invent coercions/range semantics. A future incompatible claim-cell vocabulary uses an explicitly versioned successor schema.
 
 `claim_status` is not invented by the evidence system. Matrix rows carry the opaque compatibility value supplied by `docs/compatibility.md`; current prose product-behavior claim families such as RFB/input/security carry no synthetic status field unless their owning authority later defines one.
 
-`claim_profile_revision` is produced by the profile registry from the normalized, fully resolved profile inheritance graph plus the claim→profile binding. It is immutable/content-addressed system output, not free text supplied by a developer. The full `expanded_required_er` list remains the authoritative historical snapshot for that cell; the revision lets the registry detect that the underlying profile/binding changed.
+`claim_profile_revision` is produced by the profile registry from the normalized, fully resolved profile inheritance graph plus the claim→profile binding. It is immutable/content-addressed system output, not free text supplied by a developer. The full `expanded_required_er` list is the authoritative historical snapshot of **product ER obligations** for that cell; `ER-COMPAT-EXPLICIT-CELL` and `ER-COMPAT-EVIDENCE-BINDING` are evaluated outside that list as derived claim-meta checks. The revision lets the registry detect that the underlying profile/binding changed.
 
 The conceptual dimension space is:
 
@@ -511,7 +521,9 @@ Do not execute the full Cartesian product. Use:
 - interaction-risk cells;
 - representative/pairwise cells.
 
-Every positive qualification/support/product-behavior cell references an applicable authority-owned Claim Obligation Profile. The cell's declared material dimensions/capabilities deterministically expand that profile into `required_ERs(cell)` using the ER Catalog rules. Unknown/no-applicable profiles, unknown schema/dimensions, missing required dimensions, malformed predicates, a profile revision that cannot be resolved, or a cell whose stored expansion does not equal the canonical expansion are incomplete/fail-closed. PAC/risk membership does not infer missing obligations, and the registry cannot shrink the set to match existing tests.
+Every positive qualification/support/product-behavior cell references an applicable authority-owned Claim Obligation Profile. The cell's declared material dimensions/capabilities deterministically expand that profile into `required_product_ERs(cell)` using the ER Catalog rules. Unknown/no-applicable profiles, unknown schema/dimensions, missing required dimensions, malformed predicates, a profile revision that cannot be resolved, or a cell whose stored expansion does not equal the canonical product expansion are incomplete/fail-closed. PAC/risk membership does not infer missing obligations, and the registry cannot shrink the set to match existing tests.
+
+After product-set expansion, claim completeness additionally requires the non-recursive claim-meta checks defined by the ER Catalog: `ER-COMPAT-EXPLICIT-CELL` validates claim/cell/schema/profile/dimension truth and `ER-COMPAT-EVIDENCE-BINDING` validates record/candidate/artifact/environment/fixture/invalidation binding. These meta checks consume the expanded product ER set and valid records; they are not inserted into that set.
 
 The current V0.2 integration matrix plus already-declared RFB/input/security product-behavior families have concrete profile instances and stable claim/cell identities frozen in the ER Catalog. Combined `Widgets / Quick` rows normalize into two atomic cells; security capability on/off is split only where it materially changes the claimed fail-closed result. Future positive claim families must add their own authority-owned binding and stable claim/cell identities before TS-2/TS-6 can call them complete.
 
@@ -648,11 +660,11 @@ cell_id: <stable atomic qualification-cell identity when record is claim-bound>
 cell_schema: <CCS-1 or later explicit version when record is claim-bound>
 claim_profile_id: <profile id when record is claim-bound>
 claim_profile_revision: <immutable content-addressed resolved profile+binding revision>
-expanded_required_er: [ER-...]   # full canonical snapshot for this claim/cell
+expanded_required_er: [ER-...]   # full canonical product-obligation snapshot for this claim/cell
 required_er_set_digest: sha256:<lowercase-hex>
 suite_id: logical-suite
 case_ids: [...]
-er: [ER-...]                     # ER subset actually proved by this record
+er: [ER-...]                     # product ER subset actually proved by this execution record
 pac: [PAC-...]
 risk: [R-...]
 evidence_class: Q|R
@@ -666,19 +678,26 @@ started_at: ...
 completed_at: ...
 ```
 
-For a claim-bound record, `expanded_required_er` is the lexicographically sorted unique list of canonical ER IDs produced by the resolved profile+cell expansion. `required_er_set_digest` is a consistency checksum only: SHA-256 over the UTF-8 bytes of the compact JSON array encoding of that exact sorted list (double-quoted JSON strings, comma separators, no insignificant whitespace), rendered as lowercase hexadecimal after `sha256:`. The full list, not the digest, is the historical obligation snapshot.
+For a claim-bound execution record, `expanded_required_er` is the lexicographically sorted unique list of canonical **product ER IDs** produced by the resolved profile+cell expansion. It excludes the two derived claim-meta ERs. `required_er_set_digest` is a consistency checksum only: SHA-256 over the UTF-8 bytes of the compact JSON array encoding of that exact sorted list (double-quoted JSON strings, comma separators, no insignificant whitespace), rendered as lowercase hexadecimal after `sha256:`. The full list, not the digest, is the historical product-obligation snapshot.
 
 `claim_profile_revision` is an immutable content-addressed revision emitted by the registry for the normalized resolved profile inheritance graph plus the applicable claim→profile binding. A retained record never relies on a mutable “latest profile” lookup to explain its historical decision.
 
-Material fields vary by ER. For a claim-bound Q/R record, missing/unresolvable claim/profile/cell/schema identity, a profile revision that cannot be reconciled with the retained snapshot, or a digest that does not match `expanded_required_er` makes evidence invalid/blocked rather than silently reusable. One record may prove only a subset of the cell's required ERs; claim completeness is the union of valid records satisfying every triggered obligation for the same claim/cell/schema/profile revision and compatible candidate/artifact/environment identity.
+Material fields vary by ER. For a claim-bound Q/R execution record, missing/unresolvable claim/profile/cell/schema identity, a profile revision that cannot be reconciled with the retained snapshot, or a digest that does not match `expanded_required_er` makes evidence invalid/blocked rather than silently reusable. One execution record may prove only a subset of the cell's required product ERs.
+
+Claim completeness is evaluated in two stages:
+
+1. union valid execution records that satisfy every triggered evidence obligation for every ER in `required_product_ERs(cell)` for the same claim/cell/schema/profile revision and compatible candidate/artifact/environment identity;
+2. run the outer `META-CELL` and `META-BINDING` evaluators. Their derived `ER-COMPAT-EXPLICIT-CELL` / `ER-COMPAT-EVIDENCE-BINDING` Q/R results may be retained in a claim-evaluation artifact, but are not inserted into `expanded_required_er` and are never prerequisites for their own evaluation.
 
 ### 16.1 Automated-record rule
 
-Any automated suite/orchestrator that claims retained Q/R evidence **must generate its own machine-consumable evidence record from execution context**. It must automatically bind candidate/artifact identity, ER/suite/case, material environment/fixture identity, oracle/result, timestamps and logs/artifacts. When the run is claim-bound it must also bind `claim_id`, `cell_id`, `cell_schema`, `claim_profile_id`, immutable profile/binding revision, the full canonical `expanded_required_er` snapshot and its checksum.
+Any automated suite/orchestrator that claims retained Q/R evidence **must generate its own machine-consumable execution evidence record from execution context**. It must automatically bind candidate/artifact identity, ER/suite/case, material environment/fixture identity, oracle/result, timestamps and logs/artifacts. When the run is claim-bound it must also bind `claim_id`, `cell_id`, `cell_schema`, `claim_profile_id`, immutable profile/binding revision, the full canonical `expanded_required_er` product snapshot and its checksum.
 
-Ordinary PR authors must not manually transcribe those facts. If required identity cannot be captured, the automated result is BLOCKED/invalid evidence rather than a form to fill in later.
+The claim-completeness orchestrator must likewise generate the derived claim-evaluation result for `META-CELL`/`META-BINDING`; ordinary PR authors do not author or edit those derived PASS/FAIL results.
 
-Hand-authored records are reserved for genuinely manual/physical/human-observation evidence and still use a predefined ER oracle/checklist plus the same claim/profile/cell/schema identity and expanded-obligation snapshot when the observation supports a positive claim.
+Ordinary PR authors must not manually transcribe evidence identity facts. If required identity cannot be captured, the automated result is BLOCKED/invalid evidence rather than a form to fill in later.
+
+Hand-authored records are reserved for genuinely manual/physical/human-observation evidence and still use a predefined ER oracle/checklist plus the same claim/profile/cell/schema identity and expanded product-obligation snapshot when the observation supports a positive claim.
 
 ### 16.2 Invalidation
 
@@ -767,7 +786,7 @@ Create reusable clean acquisition/install/deploy/isolation/launch/viewer/diagnos
 
 ### M6 / TS-6 — Qualification/evidence framework
 
-**Complete before V0.4 entry.** Provide qualification cells, versioned claim-cell schema validation, authority-owned Claim Obligation Profile expansion, concrete claim/profile/cell binding identity, maintenance-edge references, environment/fixture identity, ER/oracle/invalidation integration, self-describing automatic records, physical/manual record schema, exact artifact binding and compatibility traceability.
+**Complete before V0.4 entry.** Provide qualification cells, versioned claim-cell schema validation, authority-owned Claim Obligation Profile expansion, concrete claim/profile/cell binding identity, maintenance-edge references, environment/fixture identity, ER/oracle/invalidation integration, self-describing automatic execution records, non-recursive claim-meta evaluation, physical/manual record schema, exact artifact binding and compatibility traceability.
 
 ### M7 / TS-7 — Domain-programme integration
 
@@ -799,7 +818,8 @@ All machinery needed to represent and collect the declared GA matrix must alread
 - product-path orchestration;
 - versioned qualification-cell schema/environment identity;
 - authority-owned claim-obligation profile expansion with concrete claim/profile/cell binding identity;
-- self-describing automatic/manual evidence records carrying schema identity plus the full expanded-obligation snapshot;
+- self-describing automatic/manual evidence records carrying schema identity plus the full expanded product-obligation snapshot;
+- non-recursive derived claim-meta evaluation;
 - exact candidate binding;
 - domain-programme evidence wiring for compatibility, physical/native, security, reliability, performance and real-world evidence.
 
@@ -823,7 +843,7 @@ Consume qualified evidence and freeze the long-lived support contract. Final GA 
 | TS-3 | suite/identity consolidation | TS-1/2 | parameterized suites + governance separation | V0.3 bounded PRs |
 | TS-4 | risk selector + G0–G3 | TS-2 | execution manifest + budgets | V0.3 before matrix growth |
 | TS-5 | product-path harness | TS-2 + productized paths | clean reusable journeys | V0.3 self-service |
-| TS-6 | qualification/evidence records | TS-2/5 + product matrix | cells, schema/profile expansion identity, automatic records, support traceability | complete before V0.4 |
+| TS-6 | qualification/evidence records | TS-2/5 + product matrix | cells, schema/profile product-ER expansion identity, automatic records, derived meta checks, support traceability | complete before V0.4 |
 | TS-7 | domain-programme integration | TS-6 + existing authorities | compatibility/physical/security/reliability/perf/real-world evidence wiring | complete before V0.4 |
 | TS-8 | continuous test-system health | TS-4 onward | runtime/flake/duplicate/evidence governance | ongoing, including V0.4/V1 |
 
@@ -870,16 +890,17 @@ TS-0 is complete only when review can answer, independently of current CTest cou
 9. How are clean deployment and runtime origin proved?
 10. How are native claims kept separate from hosted evidence?
 11. How are viewer/network/security/performance/reliability dimensions handled without Cartesian explosion?
-12. How does every currently positive integration or product-behavior claim deterministically obtain a concrete authority-owned profile and required ER set without inferring from current tests/PAC overlap?
-13. How are versioned claim-cell schema plus stable claim/cell/profile identity and the full expanded-obligation snapshot retained in Q/R records so historical completeness is reproducible?
-14. How are diagnostics and maintenance paths proved without inventing product promises?
-15. How are automated records produced without manual PR bookkeeping?
-16. How is exact-candidate release binding preserved?
-17. How are flaky/infrastructure failures distinguished from product failures?
-18. How does migration avoid a big-bang rewrite?
-19. How does the system protect developer wall time **and** maintenance/cognitive cost?
-20. Are TS-6 and TS-7 complete before V0.4 so V0.4 remains qualification-only?
-21. What must be measured before declaring the new test system better than the current one?
+12. How does every currently positive integration or product-behavior claim deterministically obtain a concrete authority-owned profile and required product ER set without inferring from current tests/PAC overlap?
+13. How are versioned claim-cell schema plus stable claim/cell/profile identity and the full expanded product-obligation snapshot retained in Q/R records so historical completeness is reproducible?
+14. How are claim-meta ERs evaluated non-recursively outside their own product-obligation input set?
+15. How are diagnostics and maintenance paths proved without inventing product promises?
+16. How are automated records produced without manual PR bookkeeping?
+17. How is exact-candidate release binding preserved?
+18. How are flaky/infrastructure failures distinguished from product failures?
+19. How does migration avoid a big-bang rewrite?
+20. How does the system protect developer wall time **and** maintenance/cognitive cost?
+21. Are TS-6 and TS-7 complete before V0.4 so V0.4 remains qualification-only?
+22. What must be measured before declaring the new test system better than the current one?
 
 Until these are accepted, broad current-test migration must not begin.
 
