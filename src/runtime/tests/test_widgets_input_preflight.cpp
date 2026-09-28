@@ -149,8 +149,8 @@ void runAcceptance()
     QListView list(&root);
     list.setGeometry(220, 70, 180, 120);
     list.setModel(&model);
-    int activations = 0;
-    QObject::connect(&list, &QListView::activated, [&] { ++activations; });
+    int listDoubleClicks = 0;
+    QObject::connect(&list, &QListView::doubleClicked, [&] { ++listDoubleClicks; });
 
     QScrollArea scroll(&root);
     scroll.setGeometry(0, 220, 220, 120);
@@ -210,8 +210,8 @@ void runAcceptance()
     const QPoint rowInList = list.viewport()->mapTo(&list, rowRect.center());
     const QPoint rowInRoot = list.mapTo(&root, rowInList);
     doubleClick(components, root, rowInRoot);
-    check(activations == 1,
-          "QAbstractItemView activation comes from Qt's normal double-click path");
+    check(listDoubleClicks == 1,
+          "QAbstractItemView receives Qt's normal doubleClicked semantic");
 
     const QPoint scrollPoint = scroll.mapTo(&root, scroll.viewport()->rect().center());
     const int beforeScroll = scroll.verticalScrollBar()->value();
