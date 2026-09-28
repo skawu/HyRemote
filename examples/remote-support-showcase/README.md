@@ -38,3 +38,9 @@ hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-
 `--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
 
 The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
+
+## Agent-assisted physical pointer acceptance
+
+For the maintained-Viewer #400 pointer gate, use `tests/physical_input_agent.py` with the exact candidate SHA and the executable built from that same clean checkout. The Agent verifies identity, launches this normal public-API showcase, observes its Qt event trace and writes the evidence bundle; the Human performs the requested RealVNC and local physical actions and confirms visible behavior.
+
+See `docs/internal/q400-physical-input-acceptance.md` for the bounded procedure and scope. A generated Agent trace alone is not physical acceptance, and a remote transient popup visibility problem remains #404 rather than being folded into the #400 pointer ingress gate.
