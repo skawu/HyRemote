@@ -139,7 +139,9 @@ All `CCS-1` dimension values are non-empty, case-sensitive UTF-8 strings. A dime
 
 #### CCS-1 material-evidence binding
 
-A claim-bound Q/R record is valid only when **every material dimension declared by its resolved cell can be joined to an immutable fact from the referenced Execution Manifest / Observation Context and the canonical observed value matches the cell value**. Record fields never create those facts.
+**Every evidence record consumed by positive claim completeness is claim-bound, regardless of whether its evidence class is V, P, Q or R.** Ordinary V/P developer/PR results that are not used to support a product/support claim do not need claim-cell bookkeeping. But a V/P result cannot become claim evidence merely because the same ER passed somewhere else: once consumed for a claim it must reference immutable execution/observation facts and satisfy the same cell binding rules as Q/R evidence.
+
+For a claim-bound record, every material dimension declared by its resolved cell must be joined to an immutable fact from the referenced Execution Manifest / Observation Context and the canonical observed value must match the cell value. Record fields never create those facts.
 
 The current `CCS-1` dimension resolvers are:
 
@@ -160,7 +162,27 @@ The current `CCS-1` dimension resolvers are:
 | `transport_security` | Execution Manifest artifact capability state; capability-on/off requires the corresponding artifact fact and cannot be relabelled per record. |
 | `viewer` | Observation Context pinned viewer identity actually exercised. |
 
-The evidence framework may materialize a normalized `observed_material_dimensions` map for convenience, but it must derive that map from the sources above and retain the source linkage. For every material dimension in the cell, comparison is exact after canonical `CCS-1` normalization. A missing source fact, an unknown normalization, or a mismatch between the observed fact and cell value makes the record **BLOCKED/invalid for that cell**. A record cannot satisfy an `Authenticated` cell from an `Insecure` context, a capability-on cell from a capability-off artifact, or any other cell merely by copying the cell's value into record metadata.
+A claim-bound record that proves one or more product ERs must explicitly bind each proved ER to the Observation Context(s) whose observations support that ER, conceptually:
+
+```yaml
+er_observation_bindings:
+  ER-SOME-PROPERTY:
+    observation_context_ids: [ctx-...]
+    observation_artifact_refs: [artifact-or-measurement-ref, ...]
+```
+
+`observation_context_ids` at record level, if serialized, is only the sorted unique union of all per-ER bindings. It is not an alternate source-selection mechanism.
+
+For each proved ER independently:
+
+1. every bound context must belong to the record's immutable Execution Manifest;
+2. every observation/artifact used for that ER must be reachable from one of that ER's bound contexts;
+3. for every material phase-varying CCS-1 dimension, **all contexts contributing to that ER must resolve to the same normalized value**;
+4. that normalized value, together with execution-wide Manifest-derived dimensions, must exactly equal the resolved cell's material dimensions.
+
+If an ER genuinely needs several phases (for example an enabled/disabled policy scenario), those contexts must still normalize to the same cell-level material scenario value. If contributing contexts disagree on a material cell dimension, the record is BLOCKED/invalid for that ER/cell; the evaluator may not choose whichever context value happens to match. The execution must instead use a correctly normalized common scenario dimension, split the evidence/record, or use a different explicit claim cell if product authority actually intends distinct claims.
+
+The evidence framework may materialize a normalized `observed_material_dimensions` map for convenience, but it must derive that map from the sources above and retain the source linkage. For every material dimension in the cell, comparison is exact after canonical `CCS-1` normalization. A missing source fact, an unknown normalization, a disagreement across an ER's contributing contexts, or a mismatch between the observed fact and cell value makes that claim-used record **BLOCKED/invalid for that ER/cell**. A record cannot satisfy an `Authenticated` cell from an `Insecure` context, a capability-on cell from a capability-off artifact, or any other cell merely by copying the cell's value into record metadata.
 
 The TS-0 predicate language is intentionally small and deterministic:
 
@@ -185,6 +207,7 @@ Rules:
 10. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
 11. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
 12. **Claim-meta ERs never appear in `base_er` or `conditional_er.require`.** Profiles describe product obligations only; claim composition/non-inference/binding rules are evaluated outside the product ER expansion.
+13. A V/P/Q/R result that is not claim-bound may remain useful verification/validation evidence, but it cannot be counted toward a positive claim's completeness until a valid claim-bound record exists for the exact cell and ER.
 
 #### Claim-meta evaluation is outside profile expansion
 
@@ -205,11 +228,13 @@ META-CELL:
   validate required_product_ERs(cell) is deterministic and inspectable
 
 META-BINDING:
-  resolve execution_id + execution_manifest_digest to one immutable retained manifest
-  require every observation_context_id to belong to that manifest
-  require every raw/observation artifact reference to be reachable from the referenced context(s)
+  for every V/P/Q/R record consumed by this claim, resolve execution_id + execution_manifest_digest to one immutable retained manifest
+  require every ER proved by the record to have an explicit ER -> observation-context/observation binding
+  require every ER-bound observation_context_id to belong to that manifest
+  require every ER-bound raw/observation artifact reference to be reachable from one of that ER's bound contexts
   require record-level candidate/artifact/environment/fixture facts to equal their manifest/context sources
-  for every material CCS-1 dimension in the resolved cell, resolve the canonical observed fact and require exact normalized equality with the cell value
+  for each proved ER and every material phase-varying CCS-1 dimension, require all of that ER's contributing contexts to normalize to one value
+  require every material CCS-1 dimension's canonical observed value to equal the resolved cell value
   validate claim/cell/profile revision, invalidation and exact-candidate compatibility
 
 META-PLATFORM:
@@ -221,7 +246,7 @@ META-GRAPHICS-SCOPE:
   a specialized positive claim must exist explicitly with its own profile/cell and targeted product obligations
 
 PRODUCT-EVIDENCE:
-  satisfy every triggered evidence obligation for every ER in required_product_ERs(cell)
+  satisfy every triggered V/P/Q/R evidence obligation for every ER in required_product_ERs(cell) using only claim-bound records that passed META-BINDING for this cell/ER
 
 claim_complete = META-CELL PASS
               && META-BINDING PASS
@@ -230,7 +255,7 @@ claim_complete = META-CELL PASS
               && PRODUCT-EVIDENCE complete
 ```
 
-`META-BINDING` is fail-closed: an unresolved manifest/digest, foreign or missing Observation Context, unreachable observation reference, record/manifest/context disagreement, missing material-dimension source fact, or material-dimension mismatch is **BLOCKED/invalid evidence**, not a record that can be repaired by relabelling metadata.
+`META-BINDING` is fail-closed: an unresolved manifest/digest, missing per-ER observation binding, foreign or missing Observation Context, unreachable observation reference, record/manifest/context disagreement, disagreement among an ER's contributing contexts on a material dimension, missing material-dimension source fact, or material-dimension mismatch is **BLOCKED/invalid evidence**, not a record that can be repaired by relabelling metadata.
 
 `META-PLATFORM` does **not** require another platform cell to PASS before this cell can PASS. It enforces exact platform binding/non-substitution. Whether the public product authority chooses to publish independent Windows and Linux claims is upstream product data. This avoids the cross-cell cycle where Windows would depend on Linux and Linux would depend back on Windows.
 
@@ -245,7 +270,7 @@ positive claim/status authority
  -> claim obligation profile
  -> qualification cell/material dimensions
  -> expanded required_product_ERs(cell)
- -> required evidence classes + valid product evidence records
+ -> required evidence classes + valid claim-bound product evidence records
  -> outer claim-meta checks
  -> claim completeness
 ```
@@ -397,16 +422,16 @@ Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `remote_input_po
 | `COMPAT-V020-REMOTE-INPUT` | `COMPAT-V020-REMOTE-INPUT-WIN` | Windows x86_64 | `COP-V020-REMOTE-INPUT` |
 | `COMPAT-V020-REMOTE-INPUT` | `COMPAT-V020-REMOTE-INPUT-LINUX` | Linux x86_64 | `COP-V020-REMOTE-INPUT` |
 
-The ER oracle itself exercises enabled delivery **and** view-only rejection/lifecycle policy; these are cases inside the cell, not separate product support rows.
+The ER oracle itself exercises enabled delivery **and** view-only rejection/lifecycle policy; these are cases inside the cell, not separate product support rows. Their contexts normalize to the same `remote_input_policy=optional-control-default-view-only` scenario value for claim binding.
 
 #### `Insecure` profile semantics
 
 ```yaml
 profile_id: COP-V020-SECURITY-INSECURE
 authority: docs/compatibility.md Transport and viewer boundary; docs/security.md Insecure/current capability matrix; #174 listener contract
-claim_scope: Insecure is unauthenticated and unencrypted, explicitly trusted-LAN only, with truthful defaults/exposure
+claim_scope: Insecure RFB behavior is unauthenticated and unencrypted, explicitly trusted-LAN only, with truthful defaults/exposure
 cell_schema: CCS-1
-required_dimensions: [product_line, qt, os_arch, security_profile]
+required_dimensions: [product_line, qt, os_arch, transport, security_profile]
 base_er:
   - ER-SECURITY-SAFE-DEFAULTS
   - ER-TRANSPORT-RFB-SEMANTICS
@@ -414,7 +439,7 @@ base_er:
 conditional_er: []
 ```
 
-Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Insecure`:
+Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `security_profile=Insecure`:
 
 | `claim_id` | `cell_id` | `os_arch` | `profile_id` |
 | --- | --- | --- | --- |
@@ -430,7 +455,7 @@ profile_id: COP-V020-SECURITY-AUTH-AVAILABLE
 authority: docs/compatibility.md conditional authentication statement; docs/security.md Authenticated
 claim_scope: RFB VNC authentication in a transport-security-enabled artifact with valid descriptor, still unencrypted
 cell_schema: CCS-1
-required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
+required_dimensions: [product_line, qt, os_arch, transport, security_profile, transport_security]
 base_er:
   - ER-SECURITY-AUTH-MECHANISM
   - ER-SECURITY-FAIL-CLOSED
@@ -439,14 +464,14 @@ base_er:
 conditional_er: []
 ```
 
-Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Authenticated`, `transport_security=available`:
+Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `security_profile=Authenticated`, `transport_security=available`:
 
 | `claim_id` | `cell_id` | `os_arch` | `profile_id` |
 | --- | --- | --- | --- |
 | `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-WIN` | Windows x86_64 | `COP-V020-SECURITY-AUTH-AVAILABLE` |
 | `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-AUTH-AVAILABLE` |
 
-Valid credentials plus wrong/missing credentials are mechanism cases. Missing/invalid descriptors are fail-closed cases in the same claim family; descriptor contents are fixtures, not new compatibility dimensions.
+Valid credentials plus wrong/missing credentials are mechanism cases. Missing/invalid descriptors are fail-closed cases in the same claim family; descriptor contents are fixtures, not new compatibility dimensions. All contributing contexts remain `transport=RFB-3.8` and `security_profile=Authenticated` for this cell.
 
 #### `Authenticated` when the build capability is absent
 
@@ -469,7 +494,7 @@ Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Authenticated`, `tr
 | `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE-WIN` | Windows x86_64 | `COP-V020-SECURITY-AUTH-UNAVAILABLE` |
 | `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-AUTH-UNAVAILABLE` |
 
-This negative capability cell intentionally does **not** activate `ER-SECURITY-AUTH-MECHANISM`; its oracle is the fail-closed result.
+This negative capability cell intentionally does **not** activate `ER-SECURITY-AUTH-MECHANISM`; its oracle is the fail-closed result. Because no transport session is established, `transport` is intentionally not a material dimension of this negative capability claim.
 
 #### `AuthenticatedEncrypted` unavailable / no downgrade
 
@@ -607,7 +632,7 @@ These profiles bind claims the repository already makes. They do **not** create 
 | `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | Platform-sensitive support is bound to the explicitly declared platform cell; evidence or status from one platform must not be inferred as another platform's evidence/status. | The outer META-PLATFORM evaluator requires this cell's material `os_arch` to match every record used for it and rejects cross-platform substitution. The existence or PASS of one platform cell creates no implicit cell/status/evidence for another platform, but this cell does not depend on another platform cell passing. | Material support-matrix/platform-sensitivity/schema/binding policy change. |
 | `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Portable-baseline Widgets/Quick evidence does not create a specialized graphics/native-surface claim by inference. | The outer META-GRAPHICS-SCOPE evaluator verifies the current cell's explicit `graphics_scope`; baseline evidence cannot satisfy or synthesize a specialized graphics claim. Any specialized positive claim must exist explicitly with its own profile/cell and targeted product obligations, but baseline-cell PASS does not depend on that separate claim existing or passing. | Material graphics claim/schema/capture/backend/binding policy change. |
 | `ER-COMPAT-THIRDPARTY-NONINFERENCE` | PAC-1,PAC-9 / R-COMPAT,R-ADOPTION | CLAIM/RELEASE | claim Q; release +R | Third-party success pressure-tests declared matrix but does not create named-app/broader support. | Record pins app/revision/environment/routes and stays labelled verification rather than inferred support expansion. | Material fixture/environment/support-policy change. |
-| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant claim/cell/profile revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator must resolve the retained immutable Execution Manifest/digest; require every referenced Observation Context and raw observation/artifact reference to belong to that manifest/context; require record-level derived candidate/artifact/environment/fixture facts to equal their canonical sources; require every material CCS-1 cell dimension to resolve from the canonical sources above and exactly match the selected cell after normalization; reject invalidated, mismatched, cross-cell/cross-profile or unresolved records; and enforce exact-candidate rules for release evidence. This derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/CCS-1 resolver/invalidation/release-binding rule change. |
+| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant claim/cell/profile revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator applies to **every V/P/Q/R product-evidence record consumed by the claim**: it resolves the retained immutable Execution Manifest/digest; requires explicit per-ER Observation Context/observation bindings; requires every ER-bound context/reference to belong to and be reachable from that manifest; requires record-level derived candidate/artifact/environment/fixture facts to equal their canonical sources; requires all contexts contributing to each ER to agree on every material phase-varying dimension; requires every material CCS-1 cell dimension to resolve from the canonical sources and exactly match the selected cell after normalization; rejects invalidated, mismatched, cross-cell/cross-profile or unresolved records; and enforces exact-candidate rules for release evidence. This derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/CCS-1 resolver/invalidation/release-binding rule change. |
 
 Compatibility status vocabulary itself is owned by `docs/compatibility.md`; the evidence system stores/validates an authority status when the claim family has one and does not invent a parallel enum for prose product-behavior claims.
 
@@ -661,15 +686,16 @@ A gate does not promote evidence automatically. A hosted G4 execution stays V/P 
 
 1. ER/suite metadata is declared once and inherited by cases where possible.
 2. No GitHub Issue, CTest identity or CI job per ER/case by default.
-3. Automated executions generate their own machine-consumable evidence records; ordinary PR authors do not transcribe qualification results.
-4. Manual records are reserved for genuinely manual/physical observations.
-5. Selectors map changed ownership/risk to ERs/suites; developers do not memorize the catalog for normal edits.
-6. New platform/Qt/viewer rows normally add cells/fixtures, not ERs.
-7. Editorial-only documentation changes do not invalidate expensive product evidence unless they materially change an executable journey, claim or oracle.
-8. Claim Obligation Profiles are reusable/inheritable authority-owned mappings; do not copy a full ER list into every qualification cell.
-9. Claim-meta checks stay outside profile product obligations so claim-policy validation never forces recursive/cross-cell product reruns.
-10. TS-1 may propose ER merge/split only when product statement/failure meaning is genuinely too broad/ambiguous.
-11. Success is stronger product evidence per unit development time and maintenance effort, not maximum ER/test count.
+3. Automated executions generate their own machine-consumable evidence records when their results are retained for Q/R **or consumed by positive claim completeness at any evidence class**; ordinary PR authors do not transcribe qualification/claim results.
+4. Ordinary V/P feedback that is not used for a positive claim may remain lightweight and need not carry claim/cell metadata.
+5. Manual records are reserved for genuinely manual/physical observations.
+6. Selectors map changed ownership/risk to ERs/suites; developers do not memorize the catalog for normal edits.
+7. New platform/Qt/viewer rows normally add cells/fixtures, not ERs.
+8. Editorial-only documentation changes do not invalidate expensive product evidence unless they materially change an executable journey, claim or oracle.
+9. Claim Obligation Profiles are reusable/inheritable authority-owned mappings; do not copy a full ER list into every qualification cell.
+10. Claim-meta checks stay outside profile product obligations so claim-policy validation never forces recursive/cross-cell product reruns.
+11. TS-1 may propose ER merge/split only when product statement/failure meaning is genuinely too broad/ambiguous.
+12. Success is stronger product evidence per unit development time and maintenance effort, not maximum ER/test count.
 
 ---
 
