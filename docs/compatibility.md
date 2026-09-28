@@ -41,7 +41,8 @@ The status values and product scopes above remain the compatibility authority. F
 
 The current product-behavior statements later in this document also have explicit evidence families rather than being left for TS-2 to infer:
 
-- bounded RFB 3.8 viewing + current listener/reconnect/bounded-peer behavior → `COP-V020-RFB38`;
+- bounded RFB 3.8 viewing + active listener exposure/reconnect/bounded-peer behavior → `COP-V020-RFB38`;
+- listener pre-activation / failed-start / stop resource lifecycle, where no usable transport exists and no transport fact may be invented → `COP-V020-LISTENER-LIFECYCLE`;
 - optional remote input with view-only default/policy enforcement → `COP-V020-REMOTE-INPUT`;
 - `Insecure` unauthenticated/unencrypted trusted-LAN semantics → `COP-V020-SECURITY-INSECURE`;
 - conditional `Authenticated` with transport-security capability available and a valid descriptor → `COP-V020-SECURITY-AUTH-AVAILABLE`;
