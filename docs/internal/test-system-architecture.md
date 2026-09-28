@@ -70,7 +70,7 @@ Rules:
 1. Product authorities define **what HyRemote promises**.
 2. Test Strategy defines **which product contracts and evidence classes matter**.
 3. This document defines **how evidence is structured, selected and retained**.
-4. The ER Catalog defines stable **requirement identities, activation/evidence-obligation semantics, oracles, invalidation, versioned claim-cell schema/predicate rules, Claim Obligation Profile schema/rules, and the frozen concrete profile/binding projection for current positive V0.2 claim families**.
+4. The ER Catalog defines stable **requirement identities, activation/evidence-obligation semantics, oracles, invalidation, versioned claim-cell schema/predicate/material-evidence resolver rules, Claim Obligation Profile schema/rules, and the frozen concrete profile/binding projection for current positive V0.2 claim families**.
 5. Current tests implement those requirements incrementally; current test names do not redefine them.
 6. The test system consumes compatibility status vocabulary from `docs/compatibility.md`; it never creates a parallel status enum. Product-behavior claim families that have no separate status enum remain valid claims without inventing one.
 7. When an explicit newer product authority supersedes older prose/test assumptions, TS-1 reports the older assertion as authority drift rather than choosing product truth from the current test inventory.
@@ -148,7 +148,7 @@ qualification cell + material dimensions/capabilities
                        claim completeness
 ```
 
-The owning product/compatibility authority selects the applicable reusable profile. The ER Catalog defines the versioned claim-cell schema, profile schema, fail-closed expansion rules, and the current V0.2 profile instances/bindings for integration plus already-declared transport/input/security claim families. TS-2 may implement storage/parsing but cannot infer a profile from current tests, PAC overlap or available suite coverage.
+The owning product/compatibility authority selects the applicable reusable profile. The ER Catalog defines the versioned claim-cell schema, profile schema, fail-closed expansion rules, canonical material-dimension evidence resolvers, and the current V0.2 profile instances/bindings for integration plus already-declared transport/input/security claim families. TS-2 may implement storage/parsing but cannot infer a profile or observed cell fact from current tests, PAC overlap or available suite coverage.
 
 A claim-bound qualification/evidence object preserves both directions:
 
@@ -157,7 +157,8 @@ claim_id -> claim_profile_id -> cell_id + material dimensions -> expanded requir
                                                                        |
                                                                        +-> evidence records proving subsets of product ERs
 
-execution manifest -> observation context(s) -> claim/cell/profile-bound evidence records
+execution manifest -> observation context(s) -> canonical observed material dimensions
+                                               -> claim/cell/profile-bound evidence records
 
 claim/cell/profile/binding identities + valid records
         -> derived compatibility meta results
@@ -244,23 +245,26 @@ Otherwise use named table-driven cases. Consolidation must preserve exact case n
 
 An **execution** is one actual invocation of a suite/case set. Every execution produces one immutable **Execution Manifest** that is the canonical factual identity of that invocation. `execution_id` must either be content-addressed from the normalized manifest or resolve to an immutable manifest whose digest is retained; it is never an opaque label whose meaning can later be rewritten.
 
-The Execution Manifest owns facts that cannot legitimately change inside that invocation, including the exact candidate/source identity, built/staged artifact identity, OS/CPU, Qt/toolchain, native platform/driver facts that apply to the whole invocation, suite/case plan, command identity, fixture inventory and raw artifact namespace.
+The Execution Manifest owns facts that cannot legitimately change inside that invocation, including the exact candidate/source identity, product-line identity, built/staged artifact identity, artifact capability state such as `transport_security`, OS/CPU, exact Qt/toolchain, native platform/driver facts that apply to the whole invocation, suite/case plan, command identity, fixture inventory and raw artifact namespace.
 
-An **Observation Context** is an immutable materialized phase/case observation inside one Execution Manifest. It owns facts that may intentionally differ between phases of the same invocation, such as selected security profile, transport-security capability state, listener/network profile, viewer, input policy, graphics scope or application fixture. Each context has a stable `observation_context_id`, references concrete case/phase IDs and raw observations, and is created from what was actually executed—not from a later claim interpretation.
+An **Observation Context** is an immutable materialized phase/case observation inside one Execution Manifest. It owns facts that may intentionally differ between phases of the same invocation, such as integration route, UI target, deployment form, selected/requested security profile, listener/network profile, remote-input policy, graphics scope, transport, viewer or application fixture. Each context has a stable `observation_context_id`, references concrete case/phase IDs and raw observations, and is created from what was actually executed—not from a later claim interpretation.
 
-An **evidence record** is a retained interpretation of one or more Observation Contexts against a specific ER and, when claim-bound, a specific claim/cell/profile identity. Record-level environment/fixture fields are derived snapshots for readability; they are not independent assertions. They must exactly agree with the referenced Execution Manifest plus Observation Context(s).
+For claim-bound use, the evidence framework resolves the material `CCS-1` dimensions from the Manifest/Observation Context according to the canonical resolver table in the ER Catalog. It may store an `observed_material_dimensions` convenience map, but that map is derived and source-linked: execution-wide dimensions come from Manifest facts, phase-varying dimensions come from the actual Observation Context, and no child record may author a different value.
+
+An **evidence record** is a retained interpretation of one or more Observation Contexts against a specific ER and, when claim-bound, a specific claim/cell/profile identity. Record-level environment/fixture fields are derived snapshots for readability; they are not independent assertions. They must exactly agree with the referenced Execution Manifest plus Observation Context(s), and every material cell dimension must exactly match its resolved observed fact after canonical `CCS-1` normalization.
 
 Therefore one expensive execution may legitimately generate more than one evidence record when all of the following are true:
 
 - the referenced Observation Context(s) actually exercised each claimed oracle;
 - the manifest's candidate/artifact/execution-level environment identity is compatible with every emitted record;
-- context-level security/network/viewer/input/graphics/application facts match every emitted record that depends on them;
+- context-level integration/UI/deployment/security/network/input/graphics/transport/viewer/application facts match every emitted record that depends on them;
+- every material dimension in each selected cell resolves to a canonical observed fact and exactly matches it;
 - each record names the exact ER subset it proves;
 - each claim-bound record has its own `claim_id` / `cell_id` / profile revision and obligation snapshot;
 - no record infers an unobserved platform, graphics path, viewer, capability or product state;
 - failures remain attributable to the individual oracle/case/context.
 
-Execution-level identity may never be relabelled by creating another record. For example, one Windows execution cannot emit a Linux record and one artifact cannot emit evidence for another artifact. Context-level identity may differ only when separate Observation Contexts prove that the invocation actually exercised those phases; for example, one orchestrated process may contain distinct `Insecure` and `Authenticated` contexts, but the same context cannot be relabelled as both.
+Execution-level identity may never be relabelled by creating another record. For example, one Windows execution cannot emit a Linux record, one artifact cannot emit evidence for another artifact, and a transport-security-capable artifact cannot be relabelled capability-off (or vice versa). Context-level identity may differ only when separate Observation Contexts prove that the invocation actually exercised those phases; for example, one transport-security-capable orchestrated process may contain distinct `Insecure` and `Authenticated` contexts, but the same context cannot be relabelled as both. Capability-on/off cells require the corresponding artifact-level Manifest fact and therefore cannot be switched by creating another Observation Context.
 
 A shared execution is an optimization of **observation cost**, not permission to weaken evidence identity. The orchestrator must deliberately materialize claim-specific records from canonical manifest/context facts; a database join must never silently reinterpret one claim's record or one observation context as another claim's evidence.
 
@@ -533,7 +537,7 @@ material_dimensions:
 expanded_required_er: [ER-...]  # profile-expanded product ER obligations only
 ```
 
-`CCS-1` names, string value semantics, required-dimension rules and the allowed predicate grammar are canonical in the ER Catalog. The registry validates that exact schema; it does not accept unknown dimensions or invent coercions/range semantics. A future incompatible claim-cell vocabulary uses an explicitly versioned successor schema.
+`CCS-1` names, string value semantics, required-dimension rules, material-evidence resolver table and allowed predicate grammar are canonical in the ER Catalog. The registry validates that exact schema; it does not accept unknown dimensions or invent coercions/range semantics. A future incompatible claim-cell vocabulary uses an explicitly versioned successor schema.
 
 `claim_status` is not invented by the evidence system. Matrix rows carry the opaque compatibility value supplied by `docs/compatibility.md`; current prose product-behavior claim families such as RFB/input/security carry no synthetic status field unless their owning authority later defines one.
 
@@ -561,10 +565,12 @@ Do not execute the full Cartesian product. Use:
 
 Every positive qualification/support/product-behavior cell references an applicable authority-owned Claim Obligation Profile. The cell's declared material dimensions/capabilities deterministically expand that profile into `required_product_ERs(cell)` using the ER Catalog rules. Unknown/no-applicable profiles, unknown schema/dimensions, missing required dimensions, malformed predicates, a profile revision that cannot be resolved, or a cell whose stored expansion does not equal the canonical product expansion are incomplete/fail-closed. PAC/risk membership does not infer missing obligations, and the registry cannot shrink the set to match existing tests.
 
+A product evidence record is eligible for that cell only after a second, independent binding test: **each material cell dimension must resolve from the record's immutable Execution Manifest / Observation Context through the canonical `CCS-1` resolver and exactly match the selected cell**. A record that is internally consistent with an `Insecure` context cannot satisfy an `Authenticated` cell; a capability-off artifact cannot satisfy a capability-on cell; the same fail-closed rule applies to integration, UI target, deployment form, transport, network/input policy, viewer and every other material dimension.
+
 After product-set expansion, claim completeness additionally requires the non-recursive claim-meta checks defined by the ER Catalog:
 
 - `ER-COMPAT-EXPLICIT-CELL` — identity/schema/profile/dimension truth;
-- `ER-COMPAT-EVIDENCE-BINDING` — record/candidate/artifact/environment/fixture/invalidation binding, including canonical Execution Manifest/Observation Context resolution;
+- `ER-COMPAT-EVIDENCE-BINDING` — immutable Manifest/Observation Context resolution/reference integrity, record-to-source equality, **all-material-dimension cell-to-observation equality**, claim/profile/invalidation/exact-candidate binding;
 - `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` — exact platform binding and non-substitution, without making one platform depend on another platform's PASS;
 - `ER-COMPAT-GRAPHICS-NO-INFERENCE` — baseline/specialized graphics claim-boundary truth, without making a baseline cell depend on an unrelated specialized claim.
 
@@ -702,7 +708,11 @@ Conceptually the manifest contains:
 execution_id: immutable-or-content-addressed-id
 execution_manifest_digest: sha256:<normalized-manifest-digest>
 candidate_sha: exact-source-sha
+product_identity:
+  product_line: authority-normalized-line
 artifact_identity: exact-built-or-staged-artifact
+artifact_capabilities:
+  transport_security: available|unavailable
 suite_id: logical-suite
 planned_case_ids: [...]
 execution_environment:
@@ -722,19 +732,26 @@ observation_contexts:
     case_ids: [...]
     phase_id: ...
     material_facts:
+      integration: ...
+      ui_target: ...
+      deployment_form: ...
       security_profile: ...
-      transport_security: ...
       network_profile: ...
       remote_input_policy: ...
       graphics_scope: ...
+      transport: ...
       viewer: ...
       application_revision: ...
+    observed_material_dimensions:
+      <CCS-1-dimension>: <resolver-derived-normalized-value>
     raw_observation_refs: [...]
 started_at: ...
 completed_at: ...
 ```
 
 Manifest normalization/digest rules are implementation-schema work for TS-6, but the identity invariant is frozen here: after records are emitted, neither the manifest nor any referenced Observation Context may be mutated in place. A corrected factual capture creates a new manifest/context identity and records derived from the bad one become invalid/blocked for decisions that require the corrected fact.
+
+`observed_material_dimensions` is never free-form claim metadata. It is derived from the exact Manifest/Observation Context source facts using the resolver table owned by the ER Catalog. For execution-wide dimensions such as product line, OS/CPU and artifact capability, the resolver must use Manifest facts; for phase-varying dimensions such as security profile, network profile, input policy or viewer, it must use the referenced Observation Context. Missing/unknown source facts fail closed rather than being copied from the desired cell.
 
 Every retained Q/R evidence record conceptually contains material identity such as:
 
@@ -743,8 +760,8 @@ record_id: immutable-record-id
 execution_id: immutable-execution-id
 execution_manifest_digest: sha256:<normalized-manifest-digest>
 observation_context_ids: [immutable-context-id, ...]
-candidate_sha: exact-source-sha                 # derived from manifest
-artifact_identity: exact-built-or-staged-artifact # derived from manifest
+candidate_sha: exact-source-sha                    # derived from manifest
+artifact_identity: exact-built-or-staged-artifact  # derived from manifest
 claim_id: <stable claim identity when record is claim-bound>
 cell_id: <stable atomic qualification-cell identity when record is claim-bound>
 cell_schema: <CCS-1 or later explicit version when record is claim-bound>
@@ -760,6 +777,7 @@ risk: [R-...]
 evidence_class: Q|R
 environment: {os, cpu, qt, native_platform, graphics, toolchain, ...} # derived snapshot
 fixtures: {viewer, application_revision, network_profile, security_profile, ...} # derived snapshot
+observed_material_dimensions: {...} # derived/source-linked; never record-authored
 oracle: {type, pass_condition, observation}
 result: PASS|FAIL|BLOCKED
 observation_artifact_refs: [...]
@@ -773,16 +791,18 @@ For a claim-bound execution record, `expanded_required_er` is the lexicographica
 
 Material fields vary by ER. For every Q/R record, `execution_id` + `execution_manifest_digest` must resolve to the retained immutable manifest; every `observation_context_id` must exist in that manifest; every raw observation reference must be reachable from the referenced context(s); and every record-level candidate/artifact/environment/fixture fact must equal the canonical manifest/context facts from which it is derived. A record cannot override those facts to fit a claim.
 
-For a claim-bound Q/R record, missing/unresolvable claim/profile/cell/schema identity, a profile revision that cannot be reconciled with the retained snapshot, a digest that does not match `expanded_required_er`, an unresolved/mismatched execution manifest/context, or a material record field that disagrees with that manifest/context makes evidence invalid/blocked rather than silently reusable. One execution record may prove only a subset of the cell's required product ERs.
+For every **claim-bound** Q/R record, the resolved cell's material dimensions are then joined to the canonical observed facts: each material `CCS-1` key must have a resolver-defined source in the Manifest/Observation Context, and its normalized observed value must exactly equal the cell value. This join is mandatory even when the record itself faithfully mirrors its context. Thus `security_profile=Authenticated` cannot consume an `Insecure` context, `transport_security=available` cannot consume a capability-off artifact, and the same rule applies to product line, Qt anchor, OS/arch, integration, UI target, graphics scope, deployment form, native platform, transport, network/input policy and viewer wherever material.
+
+For a claim-bound Q/R record, missing/unresolvable claim/profile/cell/schema identity, a profile revision that cannot be reconciled with the retained snapshot, a digest that does not match `expanded_required_er`, an unresolved/mismatched execution manifest/context, an unreachable observation reference, a material record field that disagrees with that manifest/context, a missing material-dimension source fact, or an observed material dimension that disagrees with the resolved cell makes evidence invalid/blocked rather than silently reusable. One execution record may prove only a subset of the cell's required product ERs.
 
 Claim completeness is evaluated in two stages:
 
-1. union valid execution records that satisfy every triggered evidence obligation for every ER in `required_product_ERs(cell)` for the same claim/cell/schema/profile revision and compatible candidate/artifact/environment identity, where each record has passed immutable manifest/context consistency checks;
-2. run the outer `META-CELL`, `META-BINDING`, `META-PLATFORM` and `META-GRAPHICS-SCOPE` evaluators. `META-BINDING` specifically validates manifest digest resolution, observation-context membership/reference integrity, equality of derived identity facts, claim/cell/profile binding and normal invalidation/exact-candidate rules. Their derived compatibility-meta Q/R results may be retained in a claim-evaluation artifact, but are not inserted into `expanded_required_er` and are never prerequisites for their own or another cell's product-evidence evaluation.
+1. union valid execution records that satisfy every triggered evidence obligation for every ER in `required_product_ERs(cell)` for the same claim/cell/schema/profile revision and compatible candidate/artifact/environment identity, where each record has passed immutable manifest/context consistency **and all-material-dimension cell join** checks;
+2. run the outer `META-CELL`, `META-BINDING`, `META-PLATFORM` and `META-GRAPHICS-SCOPE` evaluators. `META-BINDING` specifically validates manifest digest resolution, observation-context membership/reference integrity, equality of derived record facts, canonical `CCS-1` resolver output for every material dimension, equality of those observed values to the resolved cell, claim/cell/profile binding and normal invalidation/exact-candidate rules. Their derived compatibility-meta Q/R results may be retained in a claim-evaluation artifact, but are not inserted into `expanded_required_er` and are never prerequisites for their own or another cell's product-evidence evaluation.
 
 ### 16.1 Shared execution / multi-record rule
 
-A scheduler/orchestrator should coalesce compatible expensive observations before creating duplicate executions. A single execution may fan out to multiple records across ERs or claim/cell identities only when the actual referenced Observation Context(s) cover every emitted oracle.
+A scheduler/orchestrator should coalesce compatible expensive observations before creating duplicate executions. A single execution may fan out to multiple records across ERs or claim/cell identities only when the actual referenced Observation Context(s) cover every emitted oracle **and every target cell's material dimensions match the canonical observed facts**.
 
 Examples that may be coalesced when identities align:
 
@@ -794,22 +814,24 @@ Examples that may be coalesced when identities align:
 Forbidden reuse includes:
 
 - relabelling a Windows manifest/context as Linux;
-- relabelling one candidate or artifact as another;
+- relabelling one candidate, product line or artifact as another;
 - relabelling a portable-baseline context as specialized graphics evidence;
-- treating an `Insecure` context as proof of `Authenticated` behavior;
+- treating an `Insecure` context as proof of an `Authenticated` cell;
+- treating a transport-security capability-off artifact as capability-on, or vice versa;
+- relabelling an integration/UI/deployment/transport/network/input/viewer context to satisfy a different material cell dimension;
 - treating a viewer fixture as a named-viewer support claim that was never declared;
 - reusing a record across a different claim/cell/profile revision solely because the underlying ER ID matches;
-- creating a new record-level environment/fixture value that is absent from or contradicts the referenced manifest/context.
+- creating a new record-level environment/fixture/material-dimension value that is absent from or contradicts the referenced manifest/context.
 
-If one invocation deliberately tests multiple security profiles, viewers, network profiles or other phase-varying facts, each phase must have its own Observation Context. Those contexts may share the same execution-level OS/artifact facts but cannot share or overwrite incompatible context facts.
+If one invocation deliberately tests multiple security profiles, viewers, network profiles or other phase-varying facts, each phase must have its own Observation Context. Those contexts may share the same execution-level OS/artifact/capability facts but cannot share or overwrite incompatible context facts.
 
 The planner should measure `executions_saved_by_coalescing`, duplicated observation wall time and fan-out ratio so evidence reuse remains visible rather than becoming hidden coupling.
 
 ### 16.2 Automated-record rule
 
-Any automated suite/orchestrator that claims retained Q/R evidence **must generate its own machine-consumable Execution Manifest, Observation Context(s) and evidence records from execution context**. It must automatically capture execution/candidate/artifact identity, execution-level environment/fixture inventory, case/phase identity, material context facts, raw observation references, ER/oracle/result, timestamps and artifact references. When a record is claim-bound it must also bind `claim_id`, `cell_id`, `cell_schema`, `claim_profile_id`, immutable profile/binding revision, the full canonical `expanded_required_er` product snapshot and its checksum.
+Any automated suite/orchestrator that claims retained Q/R evidence **must generate its own machine-consumable Execution Manifest, Observation Context(s) and evidence records from execution context**. It must automatically capture execution/candidate/artifact/product-line/capability identity, execution-level environment/fixture inventory, case/phase identity, material context facts, resolver-derived `observed_material_dimensions`, raw observation references, ER/oracle/result, timestamps and artifact references. When a record is claim-bound it must also bind `claim_id`, `cell_id`, `cell_schema`, `claim_profile_id`, immutable profile/binding revision, the full canonical `expanded_required_er` product snapshot and its checksum.
 
-When one execution supports multiple claims/cells, the orchestrator emits separate claim-bound records that reference the same immutable manifest and only the Observation Context(s) that actually support each record. It never asks an ordinary PR author to duplicate or hand-edit the record, and it never permits child records to override manifest/context identity.
+When one execution supports multiple claims/cells, the orchestrator emits separate claim-bound records that reference the same immutable manifest and only the Observation Context(s) that actually support each record. Before emission/use, each record must pass the canonical all-material-dimension join against its resolved cell. It never asks an ordinary PR author to duplicate or hand-edit the record, and it never permits child records to override manifest/context identity.
 
 The claim-completeness orchestrator must likewise generate the derived claim-evaluation result for all applicable outer compatibility meta checks; ordinary PR authors do not author or edit those derived PASS/FAIL results.
 
@@ -821,7 +843,7 @@ Hand-authored records are reserved for genuinely manual/physical/human-observati
 
 An evidence record remains historical truth for exactly what it measured. Invalidation means it cannot satisfy a newer claim without re-execution or an explicit equivalence decision by the owning product/release authority.
 
-Typical invalidators: protected behavior/source change, public package/deploy metadata, Qt/toolchain/native/graphics anchor, named viewer/fixture revision, performance workload/reference host, product support policy, claim-cell schema/profile/rule/binding/cell identity, maintenance source/target identity and exact candidate/artifact for R evidence.
+Typical invalidators: protected behavior/source change, public package/deploy metadata, Qt/toolchain/native/graphics anchor, named viewer/fixture revision, performance workload/reference host, product support policy, claim-cell schema/profile/rule/binding/cell identity or material-evidence resolver, maintenance source/target identity and exact candidate/artifact for R evidence.
 
 Editorial spelling/formatting/translation/unrelated prose is not an invalidator unless it materially changes an executable journey, product claim or oracle.
 
@@ -908,7 +930,7 @@ Create reusable clean acquisition/install/deploy/isolation/launch/viewer/diagnos
 
 ### M6 / TS-6 — Qualification/evidence framework
 
-**Complete before V0.4 entry.** Provide qualification cells, versioned claim-cell schema validation, authority-owned Claim Obligation Profile expansion, concrete claim/profile/cell binding identity, maintenance-edge references, environment/fixture identity, ER/oracle/invalidation integration, immutable Execution Manifest/Observation Context identity, execution-vs-record separation with safe fan-out/coalescing, self-describing automatic records, non-recursive claim-meta evaluation, physical/manual record schema, exact artifact binding and compatibility traceability.
+**Complete before V0.4 entry.** Provide qualification cells, versioned claim-cell schema validation, canonical material-dimension evidence resolvers, authority-owned Claim Obligation Profile expansion, concrete claim/profile/cell binding identity, maintenance-edge references, environment/fixture identity, ER/oracle/invalidation integration, immutable Execution Manifest/Observation Context identity, execution-vs-record separation with safe fan-out/coalescing, all-material-dimension cell joins, self-describing automatic records, non-recursive claim-meta evaluation, physical/manual record schema, exact artifact binding and compatibility traceability.
 
 ### M7 / TS-7 — Domain-programme integration
 
@@ -939,6 +961,7 @@ All machinery needed to represent and collect the declared GA matrix must alread
 - risk selectors/gates needed by qualification;
 - product-path orchestration;
 - versioned qualification-cell schema/environment identity;
+- canonical material-dimension resolvers and fail-closed cell-to-observation joins;
 - authority-owned claim-obligation profile expansion with concrete claim/profile/cell binding identity;
 - immutable Execution Manifest/Observation Context capture so shared execution cannot relabel evidence;
 - execution-vs-record separation so overlapping claims do not force duplicate expensive observations;
@@ -967,7 +990,7 @@ Consume qualified evidence and freeze the long-lived support contract. Final GA 
 | TS-3 | suite/identity consolidation | TS-1/2 | parameterized suites + governance separation | V0.3 bounded PRs |
 | TS-4 | risk selector + G0–G3 | TS-2 | execution manifest + budgets | V0.3 before matrix growth |
 | TS-5 | product-path harness | TS-2 + productized paths | clean reusable journeys | V0.3 self-service |
-| TS-6 | qualification/evidence records | TS-2/5 + product matrix | cells, schema/profile product-ER expansion identity, immutable manifest/context, shared-execution fan-out, automatic records, derived meta checks, support traceability | complete before V0.4 |
+| TS-6 | qualification/evidence records | TS-2/5 + product matrix | cells, schema/profile product-ER expansion identity, material-dimension resolvers/joins, immutable manifest/context, shared-execution fan-out, automatic records, derived meta checks, support traceability | complete before V0.4 |
 | TS-7 | domain-programme integration | TS-6 + existing authorities | compatibility/physical/security/reliability/perf/real-world evidence wiring | complete before V0.4 |
 | TS-8 | continuous test-system health | TS-4 onward | runtime/flake/duplicate/evidence governance | ongoing, including V0.4/V1 |
 
@@ -1018,15 +1041,16 @@ TS-0 is complete only when review can answer, independently of current CTest cou
 13. How are versioned claim-cell schema plus stable claim/cell/profile identity and the full expanded product-obligation snapshot retained in Q/R records so historical completeness is reproducible?
 14. How are all compatibility claim-meta ERs evaluated non-recursively outside the product-obligation set, including cross-platform and graphics non-inference rules?
 15. How can overlapping claims share one expensive execution while immutable Execution Manifest/Observation Context facts prevent cross-platform/artifact/security/viewer relabelling?
-16. How are diagnostics and maintenance paths proved without inventing product promises?
-17. How are automated records produced without manual PR bookkeeping?
-18. How is exact-candidate release binding preserved?
-19. How are flaky/infrastructure failures distinguished from product failures?
-20. How does TS-1 remain snapshot-consistent if `develop` moves during the audit?
-21. How does migration avoid a big-bang rewrite?
-22. How does the system protect developer wall time **and** maintenance/cognitive cost?
-23. Are TS-6 and TS-7 complete before V0.4 so V0.4 remains qualification-only?
-24. What must be measured before declaring the new test system better than the current one?
+16. How does every material CCS-1 cell dimension join to an immutable observed fact so an internally consistent record still cannot satisfy the wrong security/capability/network/input/viewer/etc. cell?
+17. How are diagnostics and maintenance paths proved without inventing product promises?
+18. How are automated records produced without manual PR bookkeeping?
+19. How is exact-candidate release binding preserved?
+20. How are flaky/infrastructure failures distinguished from product failures?
+21. How does TS-1 remain snapshot-consistent if `develop` moves during the audit?
+22. How does migration avoid a big-bang rewrite?
+23. How does the system protect developer wall time **and** maintenance/cognitive cost?
+24. Are TS-6 and TS-7 complete before V0.4 so V0.4 remains qualification-only?
+25. What must be measured before declaring the new test system better than the current one?
 
 Until these are accepted, broad current-test migration must not begin.
 
