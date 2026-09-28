@@ -106,32 +106,59 @@ The authoritative forward relation is a reusable **Claim Obligation Profile** su
 profile_id: <stable authority-owned id>
 authority: <document/issue/version that owns the claim>
 claim_scope: <product/frontend/deployment/support family>
+cell_schema: CCS-1
+required_dimensions: [<registered CCS-1 dimension names>]
 base_er: [<canonical ER ids>]
 conditional_er:
   - when: <predicate over declared material cell dimensions/capabilities>
     require: [<canonical ER ids>]
 ```
 
+#### Claim-cell schema `CCS-1`
+
+All `CCS-1` dimension values are non-empty, case-sensitive UTF-8 strings. A dimension omitted from a cell is **not material to that claim** and cannot be referenced by that profile's predicates. A profile lists every dimension it requires; a missing required dimension is incomplete/fail-closed.
+
+| Dimension | Meaning | Current normalized values/examples |
+| --- | --- | --- |
+| `product_line` | product claim line | `V0.2` |
+| `qt` | authority-normalized Qt anchor | `6.8.3`, `6.8.3-exact` |
+| `os_arch` | OS/architecture qualification family | `Windows x86_64`, `Linux x86_64` |
+| `integration` | application integration route | `C++ API`, `QML API`, `Generic Plugin`, `QPA` |
+| `ui_target` | atomic UI target | `Widgets`, `Qt Quick` |
+| `graphics_scope` | graphics claim scope | `portable-baseline` |
+| `deployment_form` | deployment contract/form | `hyremote_deploy` |
+| `native_platform` | native Qt platform/delegate when material | `qwindows`, `qxcb` |
+| `transport` | transport claim | `RFB-3.8` |
+| `network_profile` | named network/exposure qualification profile | `default-trusted-lan` |
+| `remote_input_policy` | declared view/control policy | `optional-control-default-view-only` |
+| `security_profile` | product security profile | `Insecure`, `Authenticated`, `AuthenticatedEncrypted` |
+| `transport_security` | transport-security build capability state when material | `available`, `unavailable` |
+| `viewer` | pinned viewer identity when a named-viewer claim exists | authority-owned pinned string |
+
+`CCS-1` contains only the dimension names above. A new dimension name or incompatible value-type/semantic change requires an explicitly versioned successor schema; TS-2 must not accept an unknown key by guessing its meaning.
+
 The TS-0 predicate language is intentionally small and deterministic:
 
-- `dimension == scalar` — exact case-sensitive equality against the normalized cell value;
-- `dimension in [scalar, ...]` — exact case-sensitive membership in a finite declared set;
+- `dimension == "scalar"` — exact case-sensitive string equality against the normalized cell value;
+- `dimension in ["scalar", ...]` — exact case-sensitive membership in a finite declared string set;
 - multiple atomic conditions in one `when` object are logical **AND**;
 - separate `conditional_er` entries are evaluated independently and every matching `require` set is unioned;
+- a predicate may reference only a `CCS-1` dimension declared in that profile's inherited/own `required_dimensions`;
 - no negation, regex, arbitrary code or implicit version-range comparison exists in the profile language. A range/family rule must first be normalized by its owning authority into explicit cell data/rules before profile expansion.
 
 Rules:
 
 1. Every positive support/compatibility claim or qualification cell must select an applicable authority-owned profile before it can be considered evidence-complete.
 2. `required_ERs(cell)` is the union of the mandatory claim-meta ERs `ER-COMPAT-EXPLICIT-CELL` and `ER-COMPAT-EVIDENCE-BINDING`, the selected profile's inherited/`base_er`, every matching `conditional_er.require`, and any maintenance/release obligations explicitly selected by their owning authorities.
-3. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required ER.
-4. The test registry, selectors and suites consume the expanded required set; they cannot amend it to fit the available tests.
-5. Unknown profile IDs, unknown material dimensions, malformed predicates or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
-6. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded ER set must be deterministic and inspectable.
-7. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family; this catalog freezes the current bindings that those authorities expose.
-8. A material profile/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-ER set.
-9. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
-10. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
+3. `required_dimensions` is inherited by union; child profiles may add dimensions but may not silently remove inherited dimensions.
+4. PAC/risk membership may index or explain an ER but must never silently add, remove or substitute a required ER.
+5. The test registry, selectors and suites consume the expanded required set; they cannot amend it to fit the available tests.
+6. Unknown profile IDs, unknown schema/dimensions, missing required dimensions, malformed predicates or positive cells for which no profile applies are **incomplete/fail-closed**, never implicit PASS.
+7. Profiles may inherit/reuse another authority-owned profile to avoid per-cell duplication, but the final expanded ER set must be deterministic and inspectable.
+8. TS-2 may implement storage/parsing for this relation, but it does not invent the relation. Product/compatibility authority owns which profile applies to which claim family; this catalog freezes the current bindings that those authorities expose.
+9. A material profile/schema/conditional-rule/binding change invalidates prior claim-completeness decisions that depended on the older required-ER set.
+10. A positive claim is not allowed to defer its first concrete profile/binding to TS-2: TS-0 must contain a mechanically resolvable binding for every positive claim family it declares frozen.
+11. A claim/cell identity is stable evidence metadata. Renaming/rekeying one without an authority-declared identity migration creates a new evidence identity; old records remain historical and cannot silently satisfy the new identity.
 
 This gives TS-6 a mechanical forward chain:
 
@@ -145,11 +172,11 @@ positive claim/status authority
  -> claim completeness
 ```
 
-### 1.7 Frozen V0.2 desktop compatibility profiles and bindings
+### 1.7 Frozen V0.2 desktop integration profiles and bindings
 
 `docs/compatibility.md` remains the authority for the current V0.2 compatibility rows and their opaque `Supported` / `Limited` status values. This section freezes the **evidence-obligation projection** of those already-declared rows; it does not broaden their product scope or invent support for absent dimensions.
 
-The current row dimensions normalize to `qt`, `os_arch`, `integration`, `ui_target`, `graphics_scope=portable-baseline` and `deployment_form=hyremote_deploy`. A row written as `Widgets / Quick` expands to two atomic qualification cells, one `Widgets` and one `Qt Quick`, so one half cannot silently substitute for the other. Viewer-specific, security-profile, remote-input, specialized-graphics and maintenance claims are separate claim families unless their owning authority explicitly adds those dimensions.
+All cells in this section use `cell_schema=CCS-1`, `product_line=V0.2`, `graphics_scope=portable-baseline`, and `deployment_form=hyremote_deploy`. Public-Qt rows normalize `qt=6.8.3`; QPA rows normalize `qt=6.8.3-exact` and additionally bind the qualified `native_platform` (`qwindows` or `qxcb`). A source row written as `Widgets / Quick` expands to two atomic qualification cells, one `Widgets` and one `Qt Quick`, so one half cannot silently substitute for the other.
 
 Reusable common profile:
 
@@ -157,7 +184,9 @@ Reusable common profile:
 profile_id: COP-V020-DESKTOP-BASE
 authority: docs/compatibility.md current V0.2 reference matrix + deployment compatibility; #393 evidence mapping
 claim_scope: current V0.2 desktop integration-row evidence
+cell_schema: CCS-1
 abstract: true
+required_dimensions: [product_line, qt, os_arch, integration, ui_target, graphics_scope, deployment_form]
 base_er:
   - ER-INTEGRATE-ONE-DEPLOY-ENTRY
   - ER-INTEGRATE-NO-BACKEND-TUNING
@@ -186,7 +215,9 @@ Public-Qt frontend profile:
 profile_id: COP-V020-DESKTOP-PUBLIC-QT
 authority: docs/compatibility.md current V0.2 C++/QML/Generic rows; #393 evidence mapping
 claim_scope: current V0.2 C++ API, QML API and Generic Plugin rows
+cell_schema: CCS-1
 inherits: COP-V020-DESKTOP-BASE
+required_dimensions: []
 base_er: []
 conditional_er:
   - when: integration in ["C++ API", "QML API"]
@@ -201,7 +232,9 @@ Exact-QPA profile:
 profile_id: COP-V020-DESKTOP-QPA-EXACT
 authority: docs/compatibility.md current V0.2 QPA Limited rows; #57/#343 QPA qualification policy; #393 evidence mapping
 claim_scope: current V0.2 QPA exact-Qt desktop rows
+cell_schema: CCS-1
 inherits: COP-V020-DESKTOP-BASE
+required_dimensions: [native_platform]
 base_er:
   - ER-INTEGRATE-ZEROCODE-QT-ONLY
   - ER-QPA-NATIVE-DELEGATE-EXACTNESS
@@ -228,7 +261,170 @@ The current positive matrix rows normalize to the following stable claim/cell id
 | `COMPAT-V020-QT683-LINUX-QPA` | `COMPAT-V020-QT683-LINUX-QPA-WIDGETS` | 6.8.3 exact | Linux x86_64 | QPA | Widgets | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
 | `COMPAT-V020-QT683-LINUX-QPA` | `COMPAT-V020-QT683-LINUX-QPA-QUICK` | 6.8.3 exact | Linux x86_64 | QPA | Qt Quick | Limited | `COP-V020-DESKTOP-QPA-EXACT` |
 
+For the QPA rows above, Windows cells also carry `native_platform=qwindows` and Linux cells carry `native_platform=qxcb`.
+
 `TODO` and `Unsupported` rows are not positive support claims and therefore do not become positive evidence-completeness obligations merely by existing in the compatibility document. Any future positive row/family must receive an authority-owned profile/binding plus stable claim/cell identity before it can be considered evidence-complete.
+
+### 1.8 Frozen current transport, input and security claim families
+
+The current compatibility/security authorities already make product statements outside the integration table. They are not future claims: `docs/compatibility.md` declares bounded RFB 3.8 remote viewing, default LAN-capable listener behavior, reconnect, optional remote input, `Insecure`, conditional `Authenticated`, no stream encryption, and `AuthenticatedEncrypted` fail-closed; `docs/security.md` defines the current effective security/input defaults and capability conditions; #174 owns the current listener binding semantics.
+
+These claim families stay **orthogonal** to frontend integration rows. They use representative/shared-Runtime qualification cells rather than multiplying every security/input case by every frontend. Frontend equivalence remains owned by the integration profiles above.
+
+#### Bounded RFB 3.8 / listener / reconnect
+
+```yaml
+profile_id: COP-V020-RFB38
+authority: docs/compatibility.md Transport and viewer boundary; docs/security.md Resource boundaries; #174 listener contract
+claim_scope: bounded RFB 3.8 viewing, default trusted-LAN listener semantics and reconnect
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, transport, network_profile]
+base_er:
+  - ER-REMOTE-VIEW-CONTENT
+  - ER-REMOTE-RECONNECT
+  - ER-TRANSPORT-RFB-SEMANTICS
+  - ER-NETWORK-LISTENER-BINDING
+  - ER-RELIABILITY-SLOW-CLIENT-ISOLATION
+  - ER-RELIABILITY-MALFORMED-INPUT-BOUNDS
+  - ER-SECURITY-ADMISSION-RESOURCE-BOUNDS
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+conditional_er: []
+```
+
+Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `network_profile=default-trusted-lan`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-RFB38` | `COMPAT-V020-RFB38-WIN` | Windows x86_64 | `COP-V020-RFB38` |
+| `COMPAT-V020-RFB38` | `COMPAT-V020-RFB38-LINUX` | Linux x86_64 | `COP-V020-RFB38` |
+
+This is a protocol/product claim, not a named-viewer support claim. A viewer fixture used to exercise Q evidence is recorded as a fixture; it does not silently create a broader viewer compatibility status.
+
+#### Optional remote input / default view-only policy
+
+```yaml
+profile_id: COP-V020-REMOTE-INPUT
+authority: docs/compatibility.md Input compatibility + Transport and viewer boundary; docs/security.md Remote viewing versus remote control
+claim_scope: optional remote control with remote input disabled by default and correct held-state cleanup
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, transport, remote_input_policy]
+base_er:
+  - ER-REMOTE-INPUT-SEMANTICS
+  - ER-REMOTE-INPUT-NEUTRALITY
+  - ER-SECURITY-SAFE-DEFAULTS
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+conditional_er: []
+```
+
+Cells use `product_line=V0.2`, `qt=6.8.3`, `transport=RFB-3.8`, `remote_input_policy=optional-control-default-view-only`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-REMOTE-INPUT` | `COMPAT-V020-REMOTE-INPUT-WIN` | Windows x86_64 | `COP-V020-REMOTE-INPUT` |
+| `COMPAT-V020-REMOTE-INPUT` | `COMPAT-V020-REMOTE-INPUT-LINUX` | Linux x86_64 | `COP-V020-REMOTE-INPUT` |
+
+The ER oracle itself exercises enabled delivery **and** view-only rejection/lifecycle policy; these are cases inside the cell, not separate product support rows.
+
+#### `Insecure` profile semantics
+
+```yaml
+profile_id: COP-V020-SECURITY-INSECURE
+authority: docs/compatibility.md Transport and viewer boundary; docs/security.md Insecure/current capability matrix; #174 listener contract
+claim_scope: Insecure is unauthenticated and unencrypted, explicitly trusted-LAN only, with truthful defaults/exposure
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, security_profile]
+base_er:
+  - ER-SECURITY-SAFE-DEFAULTS
+  - ER-TRANSPORT-RFB-SEMANTICS
+  - ER-NETWORK-LISTENER-BINDING
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+conditional_er: []
+```
+
+Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Insecure`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-SECURITY-INSECURE` | `COMPAT-V020-SECURITY-INSECURE-WIN` | Windows x86_64 | `COP-V020-SECURITY-INSECURE` |
+| `COMPAT-V020-SECURITY-INSECURE` | `COMPAT-V020-SECURITY-INSECURE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-INSECURE` |
+
+The listener oracle uses #174 (`0.0.0.0:5921` default plus exact narrowing); any historical “loopback-only” prose remains authority drift and is not imported into this profile.
+
+#### `Authenticated` when transport-security capability is available
+
+```yaml
+profile_id: COP-V020-SECURITY-AUTH-AVAILABLE
+authority: docs/compatibility.md conditional authentication statement; docs/security.md Authenticated
+claim_scope: RFB VNC authentication in a transport-security-enabled artifact with valid descriptor, still unencrypted
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
+base_er:
+  - ER-SECURITY-AUTH-MECHANISM
+  - ER-SECURITY-FAIL-CLOSED
+  - ER-SECURITY-SECRET-HYGIENE
+  - ER-TRANSPORT-RFB-SEMANTICS
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+conditional_er: []
+```
+
+Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Authenticated`, `transport_security=available`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-WIN` | Windows x86_64 | `COP-V020-SECURITY-AUTH-AVAILABLE` |
+| `COMPAT-V020-SECURITY-AUTH-AVAILABLE` | `COMPAT-V020-SECURITY-AUTH-AVAILABLE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-AUTH-AVAILABLE` |
+
+Valid credentials plus wrong/missing credentials are mechanism cases. Missing/invalid descriptors are fail-closed cases in the same claim family; descriptor contents are fixtures, not new compatibility dimensions.
+
+#### `Authenticated` when the build capability is absent
+
+```yaml
+profile_id: COP-V020-SECURITY-AUTH-UNAVAILABLE
+authority: docs/compatibility.md default-build warning; docs/security.md Authenticated/current capability matrix
+claim_scope: requesting Authenticated without transport-security capability fails closed before listener/session creation
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
+base_er:
+  - ER-SECURITY-FAIL-CLOSED
+  - ER-SECURITY-SAFE-DEFAULTS
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+conditional_er: []
+```
+
+Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=Authenticated`, `transport_security=unavailable`:
+
+| `claim_id` | `cell_id` | `os_arch` | `profile_id` |
+| --- | --- | --- | --- |
+| `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE-WIN` | Windows x86_64 | `COP-V020-SECURITY-AUTH-UNAVAILABLE` |
+| `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTH-UNAVAILABLE-LINUX` | Linux x86_64 | `COP-V020-SECURITY-AUTH-UNAVAILABLE` |
+
+This negative capability cell intentionally does **not** activate `ER-SECURITY-AUTH-MECHANISM`; its oracle is the fail-closed result.
+
+#### `AuthenticatedEncrypted` unavailable / no downgrade
+
+```yaml
+profile_id: COP-V020-SECURITY-AUTHENC-UNAVAILABLE
+authority: docs/compatibility.md no-encryption/fail-closed statement; docs/security.md AuthenticatedEncrypted/current capability matrix
+claim_scope: AuthenticatedEncrypted is unavailable in the current line and always fails closed before listener creation with no downgrade
+cell_schema: CCS-1
+required_dimensions: [product_line, qt, os_arch, security_profile, transport_security]
+base_er:
+  - ER-SECURITY-FAIL-CLOSED
+  - ER-SECURITY-SAFE-DEFAULTS
+  - ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH
+conditional_er: []
+```
+
+Cells use `product_line=V0.2`, `qt=6.8.3`, `security_profile=AuthenticatedEncrypted`; both capability states are material because even an artifact capable of `Authenticated` must not downgrade the encrypted request:
+
+| `claim_id` | `cell_id` | `os_arch` | `transport_security` | `profile_id` |
+| --- | --- | --- | --- | --- |
+| `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE-WIN-CAP-ON` | Windows x86_64 | available | `COP-V020-SECURITY-AUTHENC-UNAVAILABLE` |
+| `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE-WIN-CAP-OFF` | Windows x86_64 | unavailable | `COP-V020-SECURITY-AUTHENC-UNAVAILABLE` |
+| `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE-LINUX-CAP-ON` | Linux x86_64 | available | `COP-V020-SECURITY-AUTHENC-UNAVAILABLE` |
+| `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE` | `COMPAT-V020-SECURITY-AUTHENC-UNAVAILABLE-LINUX-CAP-OFF` | Linux x86_64 | unavailable | `COP-V020-SECURITY-AUTHENC-UNAVAILABLE` |
+
+These profiles bind claims the repository already makes. They do **not** create named-viewer support, Internet-safe deployment, encryption support, live per-client authorization, or any frontend-specific security personality.
 
 ---
 
@@ -336,14 +532,14 @@ The current positive matrix rows normalize to the following stable claim/cell id
 
 | ER | PAC / Risk | Activation | Evidence obligation | Statement | Oracle | Invalidation |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support claim names material dimensions, selects an authority-owned Claim Obligation Profile, and has valid evidence for the profile's mechanically expanded required ER set. | `claim -> profile -> cell dimensions/capabilities -> expanded required_ERs -> evidence records` is complete; every required ER has its triggered evidence classes satisfied, no unknown profile/dimension is accepted, and status value remains owned by product authority. | Material claim/cell/candidate/environment/claim-profile/conditional-rule/required-ER validity change. |
+| `ER-COMPAT-EXPLICIT-CELL` | PAC-9 / R-COMPAT | CLAIM | claim Q; release +R | Every positive support claim names material dimensions, selects an authority-owned Claim Obligation Profile, and has valid evidence for the profile's mechanically expanded required ER set. | `claim -> profile -> cell dimensions/capabilities -> expanded required_ERs -> evidence records` is complete; every required ER has its triggered evidence classes satisfied, no unknown profile/dimension is accepted, and any status value remains owned by product authority. | Material claim/cell/candidate/environment/claim-profile/conditional-rule/required-ER validity change. |
 | `ER-COMPAT-QPA-EXACT-ABI` | PAC-9,PAC-4 / R-COMPAT,R-NATIVE | CLAIM | claim Q; release +R | QPA compatibility is exact Qt private-ABI/platform evidence, not family inference. | Claimed exact pair passes; mismatched/unqualified pair is not represented as supported. | Material exact Qt/toolchain/platform/QPA change. |
 | `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | One platform family does not substitute for another where product behavior is platform-sensitive. | Every claimed independent platform family has its own required valid cell evidence. | Material support-matrix/platform-sensitivity policy change. |
 | `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Basic Widgets/Quick success does not qualify specialized graphics/native-surface configurations. | Positive specialized claim has targeted evidence; absent evidence remains non-positive according to product authority. | Material graphics claim/capture/backend change. |
 | `ER-COMPAT-THIRDPARTY-NONINFERENCE` | PAC-1,PAC-9 / R-COMPAT,R-ADOPTION | CLAIM/RELEASE | claim Q; release +R | Third-party success pressure-tests declared matrix but does not create named-app/broader support. | Record pins app/revision/environment/routes and stays labelled verification rather than inferred support expansion. | Material fixture/environment/support-policy change. |
 | `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Claims consume only evidence valid for relevant artifact/environment/fixture identity. | No invalidated/mismatched record satisfies a positive claim; release records obey exact-candidate rules. | Material evidence-schema/identity/invalidation/release-binding rule change. |
 
-Compatibility status vocabulary itself is owned by `docs/compatibility.md`; the evidence system stores/validates the authority's value and does not invent a parallel enum.
+Compatibility status vocabulary itself is owned by `docs/compatibility.md`; the evidence system stores/validates an authority status when the claim family has one and does not invent a parallel enum for prose product-behavior claims.
 
 ---
 
