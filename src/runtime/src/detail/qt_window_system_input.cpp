@@ -6,10 +6,10 @@
 #include <QtMath>
 
 #include <private/qhighdpiscaling_p.h>
-#include <private/qwindowsysteminterface_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
 #include <array>
+#include <chrono>
 
 namespace HyRemote::detail {
 namespace {
@@ -57,8 +57,13 @@ QPointF nativeGlobal(const QPointF &logical, QWindow *window)
 
 unsigned long qtWindowSystemTimestamp() noexcept
 {
-    const qint64 elapsed = QWindowSystemInterfacePrivate::eventTime.elapsed();
-    return elapsed > 0 ? static_cast<unsigned long>(elapsed) : 0UL;
+    // QWindowSystemInterface only requires a monotonic timestamp domain for relative input timing.
+    // Keep remote input on its own steady-clock domain: consecutive remote facts preserve their
+    // real acceptance spacing, while a local physical press can never accidentally combine with a
+    // remote press into one double click merely because both target the same window.
+    using namespace std::chrono;
+    const auto now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    return static_cast<unsigned long>(now);
 }
 
 void deliverQtWindowSystemPointer(QWindow *window,

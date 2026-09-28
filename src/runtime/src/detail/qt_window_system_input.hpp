@@ -20,8 +20,7 @@ struct QtWindowSystemPointerState
     bool positionKnown = false;
 };
 
-// Capture Qt's own monotonic window-system timestamp when Runtime accepts the remote fact.
-// Keeping the timestamp in Qt's domain makes GUI queue delay invisible to Qt's click policy.
+// Capture the remote fact's monotonic acceptance time before GUI queue delay.
 unsigned long qtWindowSystemTimestamp() noexcept;
 
 // Deliver one transport-neutral pointer fact at Qt's window-system boundary.
