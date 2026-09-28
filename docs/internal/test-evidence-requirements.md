@@ -137,6 +137,31 @@ All `CCS-1` dimension values are non-empty, case-sensitive UTF-8 strings. A dime
 
 `CCS-1` contains only the dimension names above. A new dimension name or incompatible value-type/semantic change requires an explicitly versioned successor schema; TS-2 must not accept an unknown key by guessing its meaning.
 
+#### CCS-1 material-evidence binding
+
+A claim-bound Q/R record is valid only when **every material dimension declared by its resolved cell can be joined to an immutable fact from the referenced Execution Manifest / Observation Context and the canonical observed value matches the cell value**. Record fields never create those facts.
+
+The current `CCS-1` dimension resolvers are:
+
+| Dimension | Canonical evidence fact |
+| --- | --- |
+| `product_line` | Execution Manifest candidate/artifact product-line identity, normalized from authoritative build/version metadata. |
+| `qt` | Execution Manifest exact Qt identity, normalized to the cell's registered Qt anchor. Current `6.8.3` and `6.8.3-exact` anchors both require an actually observed Qt 6.8.3 identity; the `-exact` form is valid only for the exact-QPA claim/profile whose product ERs require exact private-ABI evidence. |
+| `os_arch` | Execution Manifest OS + CPU identity normalized to the registered `os_arch` value. |
+| `integration` | Observation Context integration route actually exercised. |
+| `ui_target` | Observation Context atomic UI target actually exercised. |
+| `graphics_scope` | Observation Context graphics/backend scope actually exercised. |
+| `deployment_form` | Observation Context deployment form/path actually exercised. |
+| `native_platform` | Execution Manifest / Observation Context effective Qt native platform/delegate identity. |
+| `transport` | Observation Context transport actually exercised. |
+| `network_profile` | Observation Context controlled network/exposure profile actually exercised. |
+| `remote_input_policy` | Observation Context remote-input policy scenario actually exercised. |
+| `security_profile` | Observation Context requested/selected security profile actually exercised; a fail-closed negative cell records the requested profile even when no session is established. |
+| `transport_security` | Execution Manifest artifact capability state; capability-on/off requires the corresponding artifact fact and cannot be relabelled per record. |
+| `viewer` | Observation Context pinned viewer identity actually exercised. |
+
+The evidence framework may materialize a normalized `observed_material_dimensions` map for convenience, but it must derive that map from the sources above and retain the source linkage. For every material dimension in the cell, comparison is exact after canonical `CCS-1` normalization. A missing source fact, an unknown normalization, or a mismatch between the observed fact and cell value makes the record **BLOCKED/invalid for that cell**. A record cannot satisfy an `Authenticated` cell from an `Insecure` context, a capability-on cell from a capability-off artifact, or any other cell merely by copying the cell's value into record metadata.
+
 The TS-0 predicate language is intentionally small and deterministic:
 
 - `dimension == "scalar"` — exact case-sensitive string equality against the normalized cell value;
@@ -180,8 +205,12 @@ META-CELL:
   validate required_product_ERs(cell) is deterministic and inspectable
 
 META-BINDING:
-  validate evidence records belong to the same claim/cell/profile revision
-  validate candidate/artifact/environment/fixture/invalidation compatibility
+  resolve execution_id + execution_manifest_digest to one immutable retained manifest
+  require every observation_context_id to belong to that manifest
+  require every raw/observation artifact reference to be reachable from the referenced context(s)
+  require record-level candidate/artifact/environment/fixture facts to equal their manifest/context sources
+  for every material CCS-1 dimension in the resolved cell, resolve the canonical observed fact and require exact normalized equality with the cell value
+  validate claim/cell/profile revision, invalidation and exact-candidate compatibility
 
 META-PLATFORM:
   evidence from another os_arch cannot satisfy this cell
@@ -200,6 +229,8 @@ claim_complete = META-CELL PASS
               && META-GRAPHICS-SCOPE PASS
               && PRODUCT-EVIDENCE complete
 ```
+
+`META-BINDING` is fail-closed: an unresolved manifest/digest, foreign or missing Observation Context, unreachable observation reference, record/manifest/context disagreement, missing material-dimension source fact, or material-dimension mismatch is **BLOCKED/invalid evidence**, not a record that can be repaired by relabelling metadata.
 
 `META-PLATFORM` does **not** require another platform cell to PASS before this cell can PASS. It enforces exact platform binding/non-substitution. Whether the public product authority chooses to publish independent Windows and Linux claims is upstream product data. This avoids the cross-cell cycle where Windows would depend on Linux and Linux would depend back on Windows.
 
@@ -576,7 +607,7 @@ These profiles bind claims the repository already makes. They do **not** create 
 | `ER-COMPAT-PLATFORM-INDEPENDENCE-TRUTH` | PAC-9 / R-COMPAT,R-NATIVE,R-DEPLOY | CLAIM | claim Q; release +R | Platform-sensitive support is bound to the explicitly declared platform cell; evidence or status from one platform must not be inferred as another platform's evidence/status. | The outer META-PLATFORM evaluator requires this cell's material `os_arch` to match every record used for it and rejects cross-platform substitution. The existence or PASS of one platform cell creates no implicit cell/status/evidence for another platform, but this cell does not depend on another platform cell passing. | Material support-matrix/platform-sensitivity/schema/binding policy change. |
 | `ER-COMPAT-GRAPHICS-NO-INFERENCE` | PAC-9 / R-COMPAT,R-NATIVE,R-CAPTURE | CLAIM | claim Q; release +R | Portable-baseline Widgets/Quick evidence does not create a specialized graphics/native-surface claim by inference. | The outer META-GRAPHICS-SCOPE evaluator verifies the current cell's explicit `graphics_scope`; baseline evidence cannot satisfy or synthesize a specialized graphics claim. Any specialized positive claim must exist explicitly with its own profile/cell and targeted product obligations, but baseline-cell PASS does not depend on that separate claim existing or passing. | Material graphics claim/schema/capture/backend/binding policy change. |
 | `ER-COMPAT-THIRDPARTY-NONINFERENCE` | PAC-1,PAC-9 / R-COMPAT,R-ADOPTION | CLAIM/RELEASE | claim Q; release +R | Third-party success pressure-tests declared matrix but does not create named-app/broader support. | Record pins app/revision/environment/routes and stays labelled verification rather than inferred support expansion. | Material fixture/environment/support-policy change. |
-| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant claim/cell/profile revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator rejects invalidated, mismatched or cross-cell/cross-profile records and enforces exact-candidate rules for release evidence; this derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/invalidation/release-binding rule change. |
+| `ER-COMPAT-EVIDENCE-BINDING` | PAC-9 / R-COMPAT | CLAIM/RELEASE | claim Q; release +R | Positive claims consume only evidence valid for the exact relevant claim/cell/profile revision and material artifact/environment/fixture identity. | The outer META-BINDING evaluator must resolve the retained immutable Execution Manifest/digest; require every referenced Observation Context and raw observation/artifact reference to belong to that manifest/context; require record-level derived candidate/artifact/environment/fixture facts to equal their canonical sources; require every material CCS-1 cell dimension to resolve from the canonical sources above and exactly match the selected cell after normalization; reject invalidated, mismatched, cross-cell/cross-profile or unresolved records; and enforce exact-candidate rules for release evidence. This derived meta result is evaluated after product records exist and is not part of its own input set. | Material evidence-schema/identity/CCS-1 resolver/invalidation/release-binding rule change. |
 
 Compatibility status vocabulary itself is owned by `docs/compatibility.md`; the evidence system stores/validates an authority status when the claim family has one and does not invent a parallel enum for prose product-behavior claims.
 
