@@ -129,6 +129,7 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-release-readiness-build-install-contract` | Consumer — promised build/install entry-point contract. |
 | `hyremote-release-readiness-deployment-relocation` | Consumer — installed/deployed payload remains relocatable. |
 | `hyremote-release-readiness-deploy-helper-contract` | Consumer — static deploy/package helper contract. |
+| `hyremote-linux-qt-runtime-conflict` | Consumer/Linux deploy — deterministic same-SONAME Qt runtime conflict resolution stays within the selected Qt/deployed lineage and fails closed for ambiguous or foreign candidates. |
 | `hyremote-release-readiness-consumer-simplicity` | Consumer — public consumption remains bounded/simple. |
 | `hyremote-release-readiness-package-acquisition-isolation` | Consumer — package acquisition stays isolated from product source/build tree. |
 | `hyremote-release-readiness-source-qpa-authority` | Consumer/QPA — source-QPA deployment authority and negative metadata behavior. |
@@ -183,8 +184,6 @@ Unregistered assets `tests/product-e2e/example_product_fit.py`, `qml_product_fit
 | `hyremote-release-profile-v010-cpp-only` | V0.1 representable C++ subset. |
 | `hyremote-release-profile-v020-runtime` | V0.2 representable Runtime profile. |
 | `hyremote-release-profile-v030-all` | V0.3 all-capability profile. |
-| `hyremote-release-profile-v040-all` | V0.4 all-capability profile. |
-| `hyremote-release-profile-v040-maintenance` | V0.4 maintenance-line acceptance. |
 | `hyremote-release-profile-v100-all` | V1 all-capability profile. |
 | `hyremote-release-profile-v100-cpp-only` | V1 C++ subset profile. |
 | `hyremote-release-profile-v100-generic-only` | V1 Generic subset profile. |

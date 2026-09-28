@@ -171,12 +171,15 @@ if("${CMAKE_MATCH_1}" STREQUAL "")
 endif()
 foreach(required_token
         [=[_hyremote_resolve_native_platform_payload]=]
-        [=[\${QT_DEPLOY_PLUGINS_DIR}/platforms]=])
+        [=[\${QT_DEPLOY_PLUGINS_DIR}/platforms]=]
+        [=[generic "${_generic_plugin_name}" _linux_generic_rpath_rewrite]=])
     string(FIND "${CMAKE_MATCH_1}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
             "deploy-helper-contract: Generic deployment must carry the native Qt platform plugin so a clean "
-            "deployed application can start without the Qt SDK: ${required_token}")
+            "deployed application can start without the Qt SDK, and it must relocate the Generic payload itself "
+            "through the shared deployed-plugin relocation so the copy resolves against the deployment rather "
+            "than the tree it was built in: ${required_token}")
     endif()
 endforeach()
 
@@ -202,12 +205,15 @@ string(REGEX MATCH "function\\(_hyremote_generate_remoteaccess_deploy_script[^)]
 if("${CMAKE_MATCH_1}" STREQUAL "")
     message(FATAL_ERROR "deploy-helper-contract: ordinary RemoteAccess deploy script generator is missing")
 endif()
+# The ordinary path must apply the one shared deployed-plugin relocation rather than carry a private copy of the
+# ELF rewrite: a duplicated block is what let one deployment path relocate its payload while another shipped the
+# same payload with its build-time runtime path.
 foreach(ordinary_required_token
         [=[_hyremote_resolve_native_platform_payload]=]
         [=[\${QT_DEPLOY_PLUGINS_DIR}/platforms]=]
         [=[ADDITIONAL_MODULES]=]
         [=[_hyremote_linux_private_runtime_bootstrap]=]
-        [=[RPATH_CHANGE]=])
+        [=[_hyremote_linux_deployed_plugin_relocation]=])
     string(FIND "${CMAKE_MATCH_1}" "${ordinary_required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR

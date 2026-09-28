@@ -207,7 +207,7 @@ HyRemote is delivered progressively:
 | **V0.3 — Productize It** | All four integrations fully packaged, deployed, documented, and taught |
 | **V0.4 — Qualify It** | Compatibility, real-world applications, performance and release-candidate qualification |
 | **V1.0 — Stabilize It** | First GA support contract |
-| **V1.1+** | Embedded Linux/platform expansion, then measured hardware acceleration and advanced programmable control |
+| **Post-GA** | Activated coherent outcomes beyond the frozen GA baseline: additional platform/BSP expansion, evidence-driven acceleration where still useful, and advanced programmable capabilities - no pre-reserved version slots |
 
 Version digits describe product evolution; they do not encode C++/QML/Generic/QPA, Qt version, UI family, or platform.
 

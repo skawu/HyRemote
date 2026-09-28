@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
 project(HyRemote VERSION 0.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
 include(HyRemoteReleaseProfile)
@@ -230,6 +229,26 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deploy_helper_contract.cmake"
     )
+
+    # #382: the same-SONAME conflict between the selected consumer Qt runtime and any other root that offers
+    # that SONAME is a Linux deployment decision, so it is executed rather than reviewed. The regression builds
+    # its own two roots, which is what makes it meaningful on a host that has no distribution Qt at all and on
+    # a host that has one, without either of them changing what the case asserts.
+    if(UNIX AND NOT APPLE)
+        add_test(
+            NAME hyremote-linux-qt-runtime-conflict
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_FIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/linux-qt-runtime-conflict
+                -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
+                -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
+                -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                -DHYREMOTE_GATE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/linux-qt-runtime-conflict/check_runtime_conflict.cmake"
+        )
+        set_tests_properties(hyremote-linux-qt-runtime-conflict PROPERTIES TIMEOUT 600)
+    endif()
     add_test(
         NAME hyremote-release-readiness-release-authority-policy
         COMMAND "${CMAKE_COMMAND}"
@@ -472,11 +491,9 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
     hyremote_add_release_profile_test(
         hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v040-all 0.4.0.0 ON ON ON ON ON FALSE)
-    # V0.4.0.x maintenance releases stay inside the V0.4 line.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v040-maintenance 0.4.0.5 ON ON ON ON ON FALSE)
+    # #333: V0.4.0.0 is qualification only - conditional on #235 until the V0.3 family completes - so it is not a
+    # selectable release profile and has no release-profile test here. Its selection refusal is proved by the
+    # release-scope self test (V0.4.0.0 conditional on #235) and its maintenance numbers fail as unknown versions.
 
     # V1 is the first formal GA. Frontend subsets do not encode version semantics.
     hyremote_add_release_profile_test(
