@@ -982,15 +982,15 @@ From TS-4 onward, monitor gate SLO, flake, duplicate proof, invalidated evidence
 
 ## 20. Roadmap placement
 
-This programme is cross-cutting engineering infrastructure, not a new product version line.
+This programme is cross-cutting engineering infrastructure, not a new product version line. Exact release-train scope/activation remains owned by `.github/release/release-trains.json`; this architecture does not pre-reserve technical trains.
 
-### V0.2
+### Released V0.2 baseline
 
-First User Trial remains priority. TS-0 design, later read-only TS-1 and concrete V0.2 regression evidence may proceed without broad migration that delays delivery.
+V0.2.0.1 is the current released maintenance baseline. TS-0 does not reopen the accepted V0.2.0.0 First User Trial or the bounded V0.2.0.1 maintenance repair; its frozen `V020` evidence identities remain the product-line evidence projection for those current released claims.
 
 ### V0.3 family
 
-TS-2 through TS-7 land incrementally as self-service/package/platform breadth becomes real. The test system proves product work; it does not replace product work.
+V0.3.0.0 Product Preview is the self-service adoption foundation. The activated V0.3-family pre-GA baseline carries the wider compatibility/performance work required before GA without pre-reserving technical 0.3.x slots. TS-2 through TS-7 may land incrementally across this V0.3 work as their owning product paths become real. The test system proves product work; it does not replace product work.
 
 ### Before V0.4 entry
 
@@ -1024,7 +1024,7 @@ Consume qualified evidence and freeze the long-lived support contract. Final GA 
 
 | WP | Work | Depends on | Output | Placement |
 | --- | --- | --- | --- | --- |
-| TS-0 | strategy + architecture + ER catalog freeze | #393 | accepted design; no test changes | now, non-blocking V0.2 |
+| TS-0 | strategy + architecture + ER catalog freeze | #393 | accepted design; no test changes | current architecture closure; non-blocking to released V0.2, prerequisite to TS-1/V0.3 test-system work |
 | TS-1 | current inventory semantic/cost audit | TS-0 | snapshot-bound read-only mapping + gaps/delta | after accepted design |
 | TS-2 | logical metadata/registry | TS-1 | ER/risk/suite/gate + versioned concrete `(claim_id, cell_id) -> profile_id` map | V0.3 incremental |
 | TS-3 | suite/identity consolidation | TS-1/2 | parameterized suites + governance separation | V0.3 bounded PRs |
