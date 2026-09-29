@@ -1,8 +1,6 @@
 #include "widgets/widget_surface_scope.hpp"
 
-#include "automatic/application_surface_model.hpp"
-#include "detail/input_mailbox_admission.hpp"
-#include "detail/qt_window_system_input.hpp"
+#include "automatic/interactive_composite_target.hpp"
 #include "widgets/widget_target.hpp"
 
 #include <QApplication>
@@ -21,41 +19,31 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <stdexcept>
-#include <string>
 #include <utility>
-#include <vector>
+
+#include "hyremote/core/capture_source.hpp"
+#include "hyremote/core/frame.hpp"
+#include "hyremote/core/storage.hpp"
 
 namespace HyRemote::detail {
 namespace {
 
-using Runtime::Automatic::ApplicationSurfaceModel;
-using Runtime::Automatic::RoutedPoint;
+using Runtime::Automatic::CompositeSurfaceSnapshot;
+using Runtime::Automatic::CompositeTargetSnapshot;
+using Runtime::Automatic::InteractiveCompositeTarget;
 using Runtime::Automatic::SurfaceId;
-using Runtime::Automatic::SurfaceRecord;
 
-struct ScopedSurface
+struct SurfaceRegistry
 {
-    SurfaceId id = 0;
-    QPointer<QWidget> widget;
-    QRect globalGeometry;
+    QHash<QWidget *, SurfaceId> ids;
+    SurfaceId nextId = 1;
 };
 
-struct ScopedRoutedPoint
+bool eligibleTransientType(Qt::WindowType type)
 {
-    ScopedSurface surface;
-    QPoint localPosition;
-};
-
-bool isEligibleTransientType(Qt::WindowType type)
-{
-    // Same application-surface exclusions as the automatic whole-application path. A configured
-    // target may admit real Popup/Tool/Dialog windows, but never desktop/tooltip/splash/foreign
-    // presentation shells.
     return type != Qt::Desktop && type != Qt::SplashScreen && type != Qt::ToolTip
            && type != Qt::ForeignWindow;
 }
@@ -74,19 +62,19 @@ bool widgetParentChainReaches(QWidget *candidate, QWidget *root)
 bool isOwnedTransient(QWidget *candidate, QWidget *root)
 {
     if (!candidate || !root || candidate == root || !candidate->isWindow()
-        || !isEligibleTransientType(candidate->windowType())) {
+        || !eligibleTransientType(candidate->windowType())) {
         return false;
     }
 
-    // A top-level QWidget may still have a QWidget parent. This public ownership relation is the
-    // strongest signal for popups produced by controls inside a configured subtree and also works
-    // when the configured target is not itself a top-level window.
+    // A top-level QWidget may still have a QWidget parent. This is the strongest public ownership
+    // relation for popups produced from a configured subtree and works even when the configured
+    // target itself is not a top-level window.
     if (widgetParentChainReaches(candidate, root))
         return true;
 
-    // For an explicitly configured top-level target, also admit QWindows that Qt itself places in
-    // its parent/transient-parent ancestry. This covers legitimate unparented transient windows
-    // without broadening a child-widget target to every transient of its containing window.
+    // Only a configured top-level may widen admission through QWindow parent/transient ancestry.
+    // A child-widget target must never inherit unrelated transients merely because they share its
+    // containing top-level window.
     if (!root->isWindow())
         return false;
 
@@ -96,137 +84,87 @@ bool isOwnedTransient(QWidget *candidate, QWidget *root)
            && rootWindow->isAncestorOf(candidateWindow, QWindow::IncludeTransients);
 }
 
-class ScopedWidgetSurfaceState final
+SurfaceId idFor(QWidget *widget, const std::shared_ptr<SurfaceRegistry> &registry)
 {
-public:
-    explicit ScopedWidgetSurfaceState(QWidget *root)
-        : m_root(root)
-    {
+    SurfaceId id = registry->ids.value(widget, 0);
+    if (id == 0) {
+        id = registry->nextId++;
+        registry->ids.insert(widget, id);
     }
+    return id;
+}
 
-    QWidget *root() const noexcept { return m_root.data(); }
+void refreshScopedSurfaces(InteractiveCompositeTarget *composite,
+                           const QPointer<QWidget> &root,
+                           const std::shared_ptr<SurfaceRegistry> &registry)
+{
+    QWidget *rootWidget = root.data();
+    if (!composite)
+        return;
 
-    void refreshOnGuiThread()
-    {
-        QWidget *rootWidget = m_root.data();
-        if (!rootWidget) {
-            clear();
-            return;
-        }
-
-        QSet<QWidget *> live;
-        live.insert(rootWidget);
-        upsert(rootWidget,
-               QRect(rootWidget->mapToGlobal(QPoint(0, 0)), rootWidget->size()),
-               rootWidget->width() > 0 && rootWidget->height() > 0);
-
-        const QWidgetList topLevels = QApplication::topLevelWidgets();
-        for (QWidget *candidate : topLevels) {
-            if (!candidate || candidate == rootWidget || !isOwnedTransient(candidate, rootWidget))
-                continue;
-
-            live.insert(candidate);
-            const bool visible = candidate->isVisible() && !candidate->isMinimized()
-                                 && candidate->width() > 0 && candidate->height() > 0;
-            upsert(candidate,
-                   QRect(candidate->mapToGlobal(QPoint(0, 0)), candidate->size()),
-                   visible);
-
-            if (visible && candidate == QApplication::activePopupWidget())
-                m_model.raise(m_ids.value(candidate));
-        }
-
-        for (auto it = m_ids.begin(); it != m_ids.end();) {
-            QWidget *candidate = it.key();
-            if (live.contains(candidate)) {
-                ++it;
-                continue;
-            }
-            const SurfaceId id = it.value();
-            m_targets.remove(id);
-            m_model.remove(id);
-            it = m_ids.erase(it);
-        }
-    }
-
-    QRect canvasBounds() const { return m_model.canvasBounds(); }
-
-    QVector<ScopedSurface> visibleBackToFront() const
-    {
-        QVector<ScopedSurface> result;
-        const QVector<SurfaceRecord> ordered = m_model.visibleBackToFront();
-        result.reserve(ordered.size());
-        for (const SurfaceRecord &record : ordered) {
-            const QPointer<QWidget> widget = m_targets.value(record.id);
-            if (!widget)
-                continue;
-            result.push_back(ScopedSurface{record.id, widget, record.globalGeometry});
-        }
-        return result;
-    }
-
-    std::optional<ScopedSurface> surfaceById(SurfaceId id) const
-    {
-        const QPointer<QWidget> widget = m_targets.value(id);
-        if (!widget)
-            return std::nullopt;
-        const QVector<SurfaceRecord> ordered = m_model.visibleBackToFront();
-        for (const SurfaceRecord &record : ordered) {
-            if (record.id == id)
-                return ScopedSurface{id, widget, record.globalGeometry};
-        }
-        return std::nullopt;
-    }
-
-    std::optional<ScopedRoutedPoint> routeCanvasPoint(const QPoint &canvasPosition) const
-    {
-        const std::optional<RoutedPoint> routed = m_model.routeCanvasPoint(canvasPosition);
-        if (!routed)
-            return std::nullopt;
-        const QPointer<QWidget> widget = m_targets.value(routed->surfaceId);
-        if (!widget)
-            return std::nullopt;
-        const auto surface = surfaceById(routed->surfaceId);
-        if (!surface)
-            return std::nullopt;
-        return ScopedRoutedPoint{*surface, routed->localPosition};
-    }
-
-private:
-    void clear()
-    {
-        const QList<SurfaceId> ids = m_targets.keys();
+    if (!rootWidget) {
+        const QList<SurfaceId> ids = registry->ids.values();
         for (SurfaceId id : ids)
-            m_model.remove(id);
-        m_targets.clear();
-        m_ids.clear();
+            composite->removeSurface(id);
+        registry->ids.clear();
+        composite->clearActiveSurface();
+        return;
     }
 
-    void upsert(QWidget *widget, const QRect &globalGeometry, bool visible)
-    {
-        SurfaceId id = m_ids.value(widget, 0);
-        if (id == 0) {
-            id = m_nextId++;
-            m_ids.insert(widget, id);
+    QSet<QWidget *> live;
+    live.insert(rootWidget);
+    const SurfaceId rootId = idFor(rootWidget, registry);
+    composite->upsertSurface(rootId,
+                             rootWidget,
+                             QRect(rootWidget->mapToGlobal(QPoint(0, 0)), rootWidget->size()),
+                             rootWidget->width() > 0 && rootWidget->height() > 0);
+
+    for (QWidget *candidate : QApplication::topLevelWidgets()) {
+        if (!candidate || candidate == rootWidget || !candidate->isVisible()
+            || candidate->isMinimized() || candidate->width() <= 0 || candidate->height() <= 0
+            || !isOwnedTransient(candidate, rootWidget)) {
+            continue;
         }
-        m_targets.insert(id, widget);
-        m_model.upsert(id, globalGeometry, visible);
+
+        live.insert(candidate);
+        const SurfaceId id = idFor(candidate, registry);
+        composite->upsertSurface(id,
+                                 candidate,
+                                 QRect(candidate->mapToGlobal(QPoint(0, 0)), candidate->size()),
+                                 true);
     }
 
-    QPointer<QWidget> m_root;
-    ApplicationSurfaceModel m_model;
-    QHash<QWidget *, SurfaceId> m_ids;
-    QHash<SurfaceId, QPointer<QWidget>> m_targets;
-    SurfaceId m_nextId = 1;
-};
+    for (auto it = registry->ids.begin(); it != registry->ids.end();) {
+        QWidget *candidate = it.key();
+        if (live.contains(candidate)) {
+            ++it;
+            continue;
+        }
+        composite->removeSurface(it.value());
+        it = registry->ids.erase(it);
+    }
+
+    QWidget *active = QApplication::activePopupWidget();
+    if (!active || !live.contains(active))
+        active = QApplication::activeWindow();
+    if (!active || !live.contains(active))
+        active = rootWidget;
+
+    const SurfaceId activeId = registry->ids.value(active, rootId);
+    composite->setActiveSurface(activeId);
+    if (active != rootWidget)
+        composite->raiseSurface(activeId);
+}
 
 class ScopedWidgetCaptureSource final : public hyremote::CaptureSource
 {
 public:
-    explicit ScopedWidgetCaptureSource(std::shared_ptr<ScopedWidgetSurfaceState> surfaces)
+    ScopedWidgetCaptureSource(std::shared_ptr<InteractiveCompositeTarget> composite,
+                              QWidget *root)
         : m_state(std::make_shared<State>())
     {
-        m_state->surfaces = std::move(surfaces);
+        m_state->composite = std::move(composite);
+        m_state->root = root;
     }
 
     hyremote::CaptureCapabilities capabilities() const override
@@ -243,9 +181,11 @@ public:
                hyremote::CaptureEventHandler onEvent) override
     {
         QCoreApplication *application = QCoreApplication::instance();
-        QWidget *root = m_state->surfaces ? m_state->surfaces->root() : nullptr;
-        if (!application || !root || root->thread() != application->thread())
+        if (!application || m_state->root.isNull() || !m_state->composite
+            || m_state->root->thread() != application->thread()
+            || m_state->composite->thread() != application->thread()) {
             return false;
+        }
 
         std::lock_guard<std::mutex> lock(m_state->mutex);
         if (m_state->active)
@@ -290,7 +230,8 @@ private:
     {
         std::mutex mutex;
         std::condition_variable callbacksDrained;
-        std::shared_ptr<ScopedWidgetSurfaceState> surfaces;
+        std::shared_ptr<InteractiveCompositeTarget> composite;
+        QPointer<QWidget> root;
         bool active = false;
         std::size_t callbacksInFlight = 0;
         hyremote::FrameReadyHandler onFrame;
@@ -345,7 +286,7 @@ private:
                 return;
         }
 
-        QWidget *root = state->surfaces ? state->surfaces->root() : nullptr;
+        QWidget *root = state->root.data();
         if (!root) {
             publishEvent(state,
                          hyremote::CaptureEventCode::TargetLost,
@@ -354,9 +295,9 @@ private:
             return;
         }
 
-        state->surfaces->refreshOnGuiThread();
-        const QRect canvas = state->surfaces->canvasBounds();
-        if (canvas.isEmpty()) {
+        state->composite->refreshSurfaces();
+        const CompositeTargetSnapshot snapshot = state->composite->captureSnapshot();
+        if (snapshot.canvasBounds.isEmpty()) {
             publishEvent(state,
                          hyremote::CaptureEventCode::TemporarilyUnavailable,
                          "the configured QWidget target has no capturable geometry",
@@ -365,12 +306,11 @@ private:
         }
 
         const qreal dpr = qMax<qreal>(1.0, root->devicePixelRatioF());
-        const int pixelWidth = qMax(1, qCeil(canvas.width() * dpr));
-        const int pixelHeight = qMax(1, qCeil(canvas.height() * dpr));
+        const int pixelWidth = qMax(1, qCeil(snapshot.canvasBounds.width() * dpr));
+        const int pixelHeight = qMax(1, qCeil(snapshot.canvasBounds.height() * dpr));
         const std::size_t bytesPerLine = static_cast<std::size_t>(pixelWidth) * 4U;
-        std::shared_ptr<hyremote::CpuFrameStorage> storage =
-            hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine,
-                                                         static_cast<std::size_t>(pixelHeight));
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(
+            bytesPerLine, static_cast<std::size_t>(pixelHeight));
         if (!storage || !storage->mutablePlane(0)) {
             publishEvent(state,
                          hyremote::CaptureEventCode::BackendFailure,
@@ -388,16 +328,16 @@ private:
         image.fill(Qt::transparent);
 
         QPainter painter(&image);
-        for (const ScopedSurface &surface : state->surfaces->visibleBackToFront()) {
-            QWidget *widget = surface.widget.data();
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        for (const CompositeSurfaceSnapshot &surface : snapshot.backToFront) {
+            QWidget *widget = qobject_cast<QWidget *>(surface.target.data());
             if (!widget)
                 continue;
-            const QPoint targetOffset = surface.globalGeometry.topLeft() - canvas.topLeft();
-            widget->render(&painter, targetOffset);
+            widget->render(&painter,
+                           surface.globalGeometry.topLeft() - snapshot.canvasBounds.topLeft());
         }
         painter.end();
 
-        const hyremote::TimePoint completion = hyremote::Clock::now();
         hyremote::RemoteFrame frame;
         frame.geometry.size = {static_cast<std::uint32_t>(pixelWidth),
                                static_cast<std::uint32_t>(pixelHeight)};
@@ -407,7 +347,7 @@ private:
         frame.storage = std::move(storage);
         frame.timing.ptsSource = hyremote::PtsSource::Completion;
         frame.timing.requestTime = request.requestTime;
-        frame.timing.completionTime = completion;
+        frame.timing.completionTime = hyremote::Clock::now();
         frame.damage = hyremote::Damage::fullFrame();
         frame.requestId = request.id;
         publish(state, &State::onFrame, std::move(frame));
@@ -416,298 +356,53 @@ private:
     std::shared_ptr<State> m_state;
 };
 
-class ScopedWidgetInputSink final : public hyremote::InputSink
+class LifetimeInputSink final : public hyremote::InputSink
 {
 public:
-    ScopedWidgetInputSink(std::shared_ptr<ScopedWidgetSurfaceState> surfaces,
-                          std::shared_ptr<hyremote::InputSink> rootLeaf)
-        : m_state(std::make_shared<State>())
+    LifetimeInputSink(std::shared_ptr<InteractiveCompositeTarget> composite,
+                      std::shared_ptr<hyremote::InputSink> inner)
+        : m_composite(std::move(composite))
+        , m_inner(std::move(inner))
     {
-        m_state->surfaces = std::move(surfaces);
-        m_state->rootLeaf = std::move(rootLeaf);
     }
 
-    ~ScopedWidgetInputSink() override { shutdown(); }
-
-    void post(const hyremote::InputEvent &event) override
-    {
-        QObject *dispatcher = QCoreApplication::instance();
-        if (!dispatcher)
-            throw std::runtime_error("Qt application event dispatcher is unavailable");
-
-        const std::shared_ptr<State> state = m_state;
-        bool scheduleDrain = false;
-        std::string deferredError;
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
-                return;
-
-            if (!state->deferredError.empty()) {
-                deferredError = std::move(state->deferredError);
-                state->deferredError.clear();
-            } else {
-                const InputMailboxAdmission::Class admissionClass = state->admission.classify(event);
-                if (admissionClass == InputMailboxAdmission::Class::DropUnmatchedRelease)
-                    return;
-
-                if (admissionClass == InputMailboxAdmission::Class::ProtectedRelease) {
-                    if (!state->admission.canAcceptProtectedRelease())
-                        throw std::runtime_error("bounded scoped Qt protected-release mailbox is full");
-                    state->admission.acceptProtectedRelease(event);
-                } else {
-                    // Pointer history is semantic input to Qt. Surface arbitration never coalesces or
-                    // evicts it; the bounded lane reports backpressure exactly like the leaf adapter.
-                    if (!state->admission.canAcceptNormal())
-                        throw std::runtime_error("bounded scoped Qt input mailbox is full");
-                    state->admission.acceptNormal(event);
-                }
-
-                state->pending.push_back(QueuedInput{event, qtWindowSystemTimestamp()});
-                if (!state->drainScheduled) {
-                    state->drainScheduled = true;
-                    scheduleDrain = true;
-                }
-            }
-        }
-
-        if (!deferredError.empty())
-            throw std::runtime_error(deferredError);
-        if (!scheduleDrain)
-            return;
-
-        if (!QMetaObject::invokeMethod(
-                dispatcher,
-                [state] { drainOnGuiThread(state); },
-                Qt::QueuedConnection)) {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            state->drainScheduled = false;
-            state->pending.clear();
-            state->admission.resetAll();
-            throw std::runtime_error("failed to queue scoped QWidget input drain to the Qt GUI thread");
-        }
-    }
-
-    void shutdown() noexcept override
-    {
-        QObject *dispatcher = QCoreApplication::instance();
-        const std::shared_ptr<State> state = m_state;
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (state->shutdownRequested)
-                return;
-            state->shutdownRequested = true;
-            state->active = false;
-            state->pending.clear();
-            state->admission.resetAll();
-            state->drainScheduled = false;
-        }
-
-        const auto release = [state] { releaseOnGuiThread(state); };
-        if (dispatcher) {
-            if (QThread::currentThread() == dispatcher->thread())
-                release();
-            else
-                (void)QMetaObject::invokeMethod(dispatcher, release, Qt::QueuedConnection);
-        } else {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            state->pointer = {};
-            state->pointerGrabSurface.reset();
-            state->pressedButtons = 0;
-            state->pointerWindow.clear();
-        }
-
-        if (state->rootLeaf)
-            state->rootLeaf->shutdown();
-    }
+    void post(const hyremote::InputEvent &event) override { m_inner->post(event); }
+    void shutdown() noexcept override { m_inner->shutdown(); }
 
 private:
-    struct QueuedInput
-    {
-        hyremote::InputEvent event;
-        unsigned long acceptedTimestamp = 0;
-    };
-
-    struct State
-    {
-        std::mutex mutex;
-        std::shared_ptr<ScopedWidgetSurfaceState> surfaces;
-        std::shared_ptr<hyremote::InputSink> rootLeaf;
-        bool active = true;
-        bool drainScheduled = false;
-        bool shutdownRequested = false;
-        std::deque<QueuedInput> pending;
-        InputMailboxAdmission admission;
-        std::string deferredError;
-
-        QtWindowSystemPointerState pointer;
-        std::optional<SurfaceId> pointerGrabSurface;
-        std::uint8_t pressedButtons = 0;
-        QPointer<QWindow> pointerWindow;
-    };
-
-    static std::uint8_t buttonBit(hyremote::PointerButton button)
-    {
-        switch (button) {
-        case hyremote::PointerButton::Left: return 1U << 0U;
-        case hyremote::PointerButton::Middle: return 1U << 1U;
-        case hyremote::PointerButton::Right: return 1U << 2U;
-        case hyremote::PointerButton::None: return 0;
-        }
-        return 0;
-    }
-
-    static void deferError(const std::shared_ptr<State> &state, std::string message)
-    {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        if (state->deferredError.empty())
-            state->deferredError = std::move(message);
-    }
-
-    static void releasePointer(const std::shared_ptr<State> &state,
-                               unsigned long timestamp) noexcept
-    {
-        QWindow *window = state->pointerWindow.data();
-        if (window)
-            releaseQtWindowSystemPointer(window, timestamp, state->pointer);
-        else
-            state->pointer = {};
-        state->pointerGrabSurface.reset();
-        state->pressedButtons = 0;
-        state->pointerWindow.clear();
-    }
-
-    static void releaseOnGuiThread(const std::shared_ptr<State> &state) noexcept
-    {
-        releasePointer(state, qtWindowSystemTimestamp());
-    }
-
-    static void deliverPointerOnGuiThread(const std::shared_ptr<State> &state,
-                                          const QueuedInput &queued)
-    {
-        state->surfaces->refreshOnGuiThread();
-        const QRect canvas = state->surfaces->canvasBounds();
-        if (canvas.isEmpty())
-            return;
-
-        const auto mapped = hyremote::mapPointerToTarget(queued.event,
-                                                         static_cast<float>(canvas.width()),
-                                                         static_cast<float>(canvas.height()));
-        if (!mapped)
-            return;
-        const QPoint canvasPoint(qRound(mapped->x), qRound(mapped->y));
-
-        std::optional<ScopedSurface> surface;
-        if (state->pointerGrabSurface) {
-            surface = state->surfaces->surfaceById(*state->pointerGrabSurface);
-            if (!surface) {
-                // The surface disappeared while it owned a delivered press. Balance the Qt state
-                // against the last live QWindow and drop this now-unmatched continuation.
-                releasePointer(state, queued.acceptedTimestamp);
-                return;
-            }
-        } else {
-            const auto routed = state->surfaces->routeCanvasPoint(canvasPoint);
-            if (!routed)
-                return;
-            surface = routed->surface;
-        }
-
-        QWidget *widget = surface->widget.data();
-        QWidget *topLevel = widget ? widget->window() : nullptr;
-        QWindow *window = topLevel ? topLevel->windowHandle() : nullptr;
-        if (!window)
-            return;
-
-        const QPointF global = QPointF(canvas.topLeft() + canvasPoint);
-        const QPointF windowLocal = window->mapFromGlobal(global);
-        const std::uint8_t bit = buttonBit(queued.event.button);
-
-        if (queued.event.kind == hyremote::InputEventKind::PointerButton
-            && queued.event.pressed && bit != 0) {
-            if (!state->pointerGrabSurface)
-                state->pointerGrabSurface = surface->id;
-            state->pressedButtons |= bit;
-        }
-
-        state->pointerWindow = window;
-        deliverQtWindowSystemPointer(window,
-                                     queued.event,
-                                     windowLocal,
-                                     global,
-                                     queued.acceptedTimestamp,
-                                     state->pointer);
-
-        if (queued.event.kind == hyremote::InputEventKind::PointerButton
-            && !queued.event.pressed && bit != 0) {
-            state->pressedButtons &= static_cast<std::uint8_t>(~bit);
-            if (state->pressedButtons == 0)
-                state->pointerGrabSurface.reset();
-        }
-    }
-
-    static void deliverKeyOrTextOnGuiThread(const std::shared_ptr<State> &state,
-                                             const hyremote::InputEvent &event)
-    {
-        if (!state->rootLeaf)
-            return;
-        try {
-            // #404 does not redefine keyboard/IME semantics. Preserve the existing Widgets leaf
-            // path and limit the scoped layer to top-level pointer surface arbitration.
-            state->rootLeaf->post(event);
-        } catch (const std::exception &error) {
-            deferError(state, std::string("scoped QWidget leaf input rejected an event: ") + error.what());
-        } catch (...) {
-            deferError(state, "scoped QWidget leaf input rejected an event");
-        }
-    }
-
-    static void deliverOnGuiThread(const std::shared_ptr<State> &state,
-                                   const QueuedInput &queued)
-    {
-        switch (queued.event.kind) {
-        case hyremote::InputEventKind::PointerMove:
-        case hyremote::InputEventKind::PointerButton:
-        case hyremote::InputEventKind::PointerScroll:
-            deliverPointerOnGuiThread(state, queued);
-            break;
-        case hyremote::InputEventKind::Key:
-        case hyremote::InputEventKind::Text:
-            deliverKeyOrTextOnGuiThread(state, queued.event);
-            break;
-        case hyremote::InputEventKind::None:
-            break;
-        }
-    }
-
-    static void drainOnGuiThread(const std::shared_ptr<State> &state)
-    {
-        std::deque<QueuedInput> batch;
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active) {
-                state->pending.clear();
-                state->admission.resetAll();
-                state->drainScheduled = false;
-                return;
-            }
-            batch.swap(state->pending);
-            state->admission.pendingBatchTaken();
-            state->drainScheduled = false;
-        }
-
-        for (const QueuedInput &queued : batch) {
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                if (!state->active)
-                    return;
-            }
-            deliverOnGuiThread(state, queued);
-        }
-    }
-
-    std::shared_ptr<State> m_state;
+    // Declared first so the inner sink is destroyed before the QObject it references.
+    std::shared_ptr<InteractiveCompositeTarget> m_composite;
+    std::shared_ptr<hyremote::InputSink> m_inner;
 };
+
+std::shared_ptr<InteractiveCompositeTarget> makeCompositeTarget(QWidget *root)
+{
+    QCoreApplication *application = QCoreApplication::instance();
+    if (!application)
+        return {};
+
+    auto *raw = new InteractiveCompositeTarget;
+    if (raw->thread() != application->thread())
+        raw->moveToThread(application->thread());
+
+    const auto deleter = [](InteractiveCompositeTarget *target) {
+        if (!target)
+            return;
+        if (QThread::currentThread() == target->thread()) {
+            delete target;
+            return;
+        }
+        (void)QMetaObject::invokeMethod(target, "deleteLater", Qt::QueuedConnection);
+    };
+    std::shared_ptr<InteractiveCompositeTarget> composite(raw, deleter);
+
+    auto registry = std::make_shared<SurfaceRegistry>();
+    const QPointer<QWidget> guardedRoot(root);
+    raw->setSurfaceRefreshHandler([raw, guardedRoot, registry] {
+        refreshScopedSurfaces(raw, guardedRoot, registry);
+    });
+    return composite;
+}
 
 }  // namespace
 
@@ -718,23 +413,31 @@ TargetComponents createScopedWidgetsTargetComponents(QObject *target, bool remot
     if (!widget)
         return result;
 
-    auto surfaces = std::make_shared<ScopedWidgetSurfaceState>(widget);
+    std::shared_ptr<InteractiveCompositeTarget> composite = makeCompositeTarget(widget);
+    if (!composite) {
+        result.error = QStringLiteral("Qt application event dispatcher is unavailable");
+        return result;
+    }
+
     result.supported = true;
-    result.capture = std::make_unique<ScopedWidgetCaptureSource>(surfaces);
+    result.capture = std::make_unique<ScopedWidgetCaptureSource>(composite, widget);
 
     if (remoteInputEnabled) {
-        // Keep the established leaf adapter for Key/Text only. Pointer input is handled by the
-        // scoped sink so it can choose a target-owned QWindow before entering the same QWSI ingress.
-        TargetComponents leaf = createWidgetsTargetComponents(widget, true);
-        if (!leaf.supported || !leaf.input) {
+        const BuiltinTargetResolver leafResolver = [](QObject *child, bool childRemoteInputEnabled) {
+            return createWidgetsTargetComponents(child, childRemoteInputEnabled);
+        };
+        TargetComponents compositeComponents =
+            composite->createTargetComponents(true, leafResolver);
+        if (!compositeComponents.input) {
             result.supported = false;
             result.capture.reset();
-            result.error = leaf.error.isEmpty()
-                               ? QStringLiteral("failed to construct the QWidget leaf input adapter")
-                               : leaf.error;
+            result.error = compositeComponents.error.isEmpty()
+                               ? QStringLiteral("failed to construct scoped QWidget input routing")
+                               : compositeComponents.error;
             return result;
         }
-        result.input = std::make_shared<ScopedWidgetInputSink>(surfaces, std::move(leaf.input));
+        result.input = std::make_shared<LifetimeInputSink>(composite,
+                                                           std::move(compositeComponents.input));
     }
 
     return result;
