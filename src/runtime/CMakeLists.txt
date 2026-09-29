@@ -92,6 +92,7 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     if(TARGET Qt6::Widgets)
         target_sources(hyremote-remoteaccess PRIVATE
             src/widgets/widget_target.cpp
+            src/widgets/widget_surface_scope.cpp
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Widgets)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_WIDGETS_ADAPTER=1)

@@ -2,6 +2,7 @@
 #include "detail/target_component_provider.hpp"
 
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+#include "widgets/widget_surface_scope.hpp"
 #include "widgets/widget_target.hpp"
 #endif
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
@@ -35,7 +36,10 @@ TransportFactory &transportFactory()
     return factory;
 }
 
-TargetComponents createBuiltinTargetComponents(QObject *target, bool remoteInputEnabled)
+// Composite targets already own the surface set. Resolving one of their child surfaces must reach
+// only the leaf adapter for that QObject; otherwise a QWidget child would manufacture another
+// scoped composite around itself and recurse through the same surface graph.
+TargetComponents createBuiltinLeafTargetComponents(QObject *target, bool remoteInputEnabled)
 {
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
     TargetComponents widgets = createWidgetsTargetComponents(target, remoteInputEnabled);
@@ -56,6 +60,20 @@ TargetComponents createBuiltinTargetComponents(QObject *target, bool remoteInput
     return result;
 }
 
+TargetComponents createBuiltinTargetComponents(QObject *target, bool remoteInputEnabled)
+{
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+    // A directly configured QWidget is one bounded application target. Its Runtime-private scoped
+    // adapter may include only Qt-proven owned/transient top-level surfaces; the public target stays
+    // the exact QObject the application supplied.
+    TargetComponents widgets = createScopedWidgetsTargetComponents(target, remoteInputEnabled);
+    if (widgets.supported)
+        return widgets;
+#endif
+
+    return createBuiltinLeafTargetComponents(target, remoteInputEnabled);
+}
+
 }  // namespace
 
 TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled)
@@ -72,13 +90,13 @@ TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled
         return factory(target, remoteInputEnabled);
 
     // Product-internal composite targets may provide components per QObject instance. The resolver
-    // intentionally bypasses providers and reaches only the normal built-in Widgets/Quick chain,
-    // which lets a composite reuse the same adapters without recursion and without changing any
-    // other RemoteAccess instance in the process.
+    // intentionally bypasses providers and reaches only the normal built-in leaf Widgets/Quick
+    // chain, which lets a composite reuse the same adapters without recursion and without changing
+    // any other RemoteAccess instance in the process.
     if (target) {
         if (auto *provider = dynamic_cast<TargetComponentProvider *>(target)) {
             const BuiltinTargetResolver resolver = [](QObject *child, bool childRemoteInputEnabled) {
-                return createBuiltinTargetComponents(child, childRemoteInputEnabled);
+                return createBuiltinLeafTargetComponents(child, childRemoteInputEnabled);
             };
             return provider->createTargetComponents(remoteInputEnabled, resolver);
         }

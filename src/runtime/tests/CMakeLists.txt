@@ -231,6 +231,30 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
     )
 
+    # #404 physical follow-up: a real QLineEdit standard QMenu captured while it lies completely inside the
+    # configured root. It needs a genuine window system, so it is gated on a native Windows build and is
+    # deliberately NOT registered with QT_QPA_PLATFORM=offscreen; the test itself skips on other platforms.
+    if(WIN32)
+        add_executable(hyremote-widgets-native-popup-capture-test
+            test_widgets_native_popup_capture.cpp
+        )
+        target_link_libraries(hyremote-widgets-native-popup-capture-test
+            PRIVATE
+                hyremote-remoteaccess
+                HyRemote::Core
+                Qt6::Core
+                Qt6::Gui
+                Qt6::Widgets
+        )
+        target_include_directories(hyremote-widgets-native-popup-capture-test PRIVATE ../src)
+        add_test(NAME hyremote-widgets-native-popup-capture-test
+                 COMMAND hyremote-widgets-native-popup-capture-test)
+        set_tests_properties(hyremote-widgets-native-popup-capture-test PROPERTIES TIMEOUT 60)
+        hyremote_label_test_family("integration;widgets;fast"
+            hyremote-widgets-native-popup-capture-test
+        )
+    endif()
+
     add_executable(hyremote-widgets-input-backpressure-test
         test_widgets_input_backpressure.cpp
     )
