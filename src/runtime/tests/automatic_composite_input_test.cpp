@@ -4,10 +4,14 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 
+#include <chrono>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
+#include <thread>
 #include <vector>
 
+#include "detail/qt_window_system_input.hpp"
 #include "hyremote/core/input.hpp"
 
 namespace {
@@ -15,6 +19,7 @@ namespace {
 struct RecordedInput
 {
     std::vector<hyremote::InputEvent> events;
+    std::vector<unsigned long> acceptedTimestamps;
     int shutdownCalls = 0;
 };
 
@@ -26,7 +31,11 @@ public:
     {
     }
 
-    void post(const hyremote::InputEvent &event) override { m_recorded->events.push_back(event); }
+    void post(const hyremote::InputEvent &event) override
+    {
+        m_recorded->events.push_back(event);
+        m_recorded->acceptedTimestamps.push_back(HyRemote::detail::qtWindowSystemTimestamp());
+    }
     void shutdown() noexcept override { ++m_recorded->shutdownCalls; }
 
 private:
@@ -128,10 +137,61 @@ int main(int argc, char **argv)
         return 4;
     }
 
+    // #406 architecture applies before surface routing too: pointer motion is semantic input to Qt.
+    // Queue several moves without allowing the GUI drain and prove none is coalesced or evicted.
+    const std::size_t beforeLossless = right->events.size();
+    components.input->post(pointerMove(61, 20));
+    components.input->post(pointerMove(62, 20));
+    components.input->post(pointerMove(63, 20));
+    if (!check(waitForTotal(left, right, 2 + beforeLossless + 3 - 1),
+               "all queued pointer moves reach the selected surface")) {
+        return 5;
+    }
+    if (!check(right->events.size() == beforeLossless + 3,
+               "composite input does not coalesce semantic pointer history")) {
+        return 6;
+    }
+
+    // The child is invoked only when the GUI drains, but its timestamp must still reflect when the
+    // composite accepted each fact. Without the Runtime-private accepted-timestamp scope these two
+    // observations collapse to nearly the same drain time.
+    const std::size_t timestampBase = right->acceptedTimestamps.size();
+    components.input->post(pointerMove(64, 20));
+    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    components.input->post(pointerMove(65, 20));
+    if (!check(waitForTotal(left, right, left->events.size() + beforeLossless + 5),
+               "timestamp qualification moves are delivered")) {
+        return 7;
+    }
+    if (!check(right->acceptedTimestamps.size() >= timestampBase + 2,
+               "child recorded both accepted timestamps")) {
+        return 8;
+    }
+    const unsigned long firstTimestamp = right->acceptedTimestamps[timestampBase];
+    const unsigned long secondTimestamp = right->acceptedTimestamps[timestampBase + 1];
+    if (!check(secondTimestamp >= firstTimestamp + 20,
+               "GUI drain delay does not replace original composite acceptance spacing")) {
+        return 9;
+    }
+
+    // The normal lane remains bounded. Saturation is an explicit rejection, never a stale-move
+    // deletion. Drain afterwards so shutdown is exercised from a clean pending state.
+    bool rejected = false;
+    for (int i = 0; i < 64; ++i)
+        components.input->post(pointerMove(70.0F + static_cast<float>(i % 20), 25));
+    try {
+        components.input->post(pointerMove(90, 25));
+    } catch (const std::runtime_error &) {
+        rejected = true;
+    }
+    if (!check(rejected, "65th pending normal composite event applies backpressure"))
+        return 10;
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+
     components.input->shutdown();
     if (!check(right->shutdownCalls == 1, "remaining child input is shut down on terminal stop"))
-        return 5;
+        return 11;
 
-    std::cout << "PASS: automatic runtime routes pointer and keyboard input across application surfaces\n";
+    std::cout << "PASS: automatic runtime routes pointer/keyboard across surfaces without losing pointer history\n";
     return 0;
 }
