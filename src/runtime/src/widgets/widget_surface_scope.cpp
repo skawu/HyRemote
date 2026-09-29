@@ -333,8 +333,21 @@ private:
             QWidget *widget = qobject_cast<QWidget *>(surface.target.data());
             if (!widget)
                 continue;
-            widget->render(&painter,
-                           surface.globalGeometry.topLeft() - snapshot.canvasBounds.topLeft());
+            const QPoint offset = surface.globalGeometry.topLeft() - snapshot.canvasBounds.topLeft();
+            if (widget == root || !widget->isWindow()) {
+                // An in-tree surface is rendered straight into the canvas painter at its canvas offset.
+                widget->render(&painter, offset);
+                continue;
+            }
+            // #404: a separate admitted top-level surface is composited from its own origin-local pixels. Painting
+            // such a window widget directly into the canvas painter's device does not deliver its content for every
+            // Qt-painted surface (a real QMenu produces nothing at all), while its own grab does. This is generic:
+            // no widget class, object name or platform surface is special-cased, and the admission rules are
+            // unchanged - whatever the scoped surface model admitted must contribute its own real pixels.
+            const QPixmap surfacePixels = widget->grab();
+            if (surfacePixels.isNull())
+                continue;
+            painter.drawPixmap(offset, surfacePixels);
         }
         painter.end();
 
