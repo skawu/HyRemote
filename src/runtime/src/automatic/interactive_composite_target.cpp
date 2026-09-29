@@ -18,6 +18,8 @@
 #include <vector>
 
 #include "detail/composition_support.hpp"
+#include "detail/input_mailbox_admission.hpp"
+#include "detail/qt_window_system_input.hpp"
 #include "hyremote/core/input.hpp"
 
 namespace HyRemote::Runtime::Automatic {
@@ -41,14 +43,16 @@ public:
     //   * `post` accepts an event only if it can be queued for the GUI thread. On acceptance the caller gets no
     //     error, and the event is delivered to exactly one child - the routed surface, or the surface holding the
     //     pointer grab for a button lifecycle.
-    //   * If the bounded mailbox cannot take the event (pointer-motion coalescing exhausted and no stale motion
-    //     to replace, or the full bound reached), the event is rejected by throwing and nothing is queued: there
-    //     is no state in which an event is both half-delivered and reported as rejected.
+    //   * Pointer history is semantic input to Qt. This arbitration layer never coalesces or evicts PointerMove;
+    //     normal-lane saturation is explicit backpressure. Matching releases use the same bounded protected reserve
+    //     as the leaf Widgets/Quick adapters so a delivered hold can still be balanced.
     //   * A child adapter that rejects an event during the drain is recorded as a deferred error and **surfaces on
     //     the next `post`**, which then throws **without accepting its own event** - so a caller always learns
     //     about a failed delivery before its next event is taken, and never after.
     //   * Acceptance covers the queued batch, not the child delivery: if queueing the drain itself fails, the
     //     queued events are discarded and the call throws, because they can no longer be delivered.
+    //   * The timestamp captured here is replayed through a Runtime-private thread-local scope when the leaf sink is
+    //     invoked on the GUI thread. Queue delay therefore cannot change Qt's click classification.
     void post(const hyremote::InputEvent &event) override
     {
         QObject *dispatcher = QCoreApplication::instance();
@@ -67,28 +71,26 @@ public:
                 deferredError = std::move(state->deferredError);
                 state->deferredError.clear();
             } else {
-                // Match the built-in target-adapter backpressure rule: pointer motion is freshness
-                // oriented, while button/key/text lifecycles are never silently overwritten.
-                if (event.kind == hyremote::InputEventKind::PointerMove
-                    && !state->pending.empty()
-                    && state->pending.back().kind == hyremote::InputEventKind::PointerMove) {
-                    state->pending.back() = event;
-                } else {
-                    if (state->pending.size() >= kMaxPendingInputEvents) {
-                        const auto staleMove = std::find_if(
-                            state->pending.begin(),
-                            state->pending.end(),
-                            [](const hyremote::InputEvent &queued) {
-                                return queued.kind == hyremote::InputEventKind::PointerMove;
-                            });
-                        if (staleMove != state->pending.end())
-                            state->pending.erase(staleMove);
-                    }
-                    if (state->pending.size() >= kMaxPendingInputEvents)
-                        throw std::runtime_error("bounded automatic composite input mailbox is full");
-                    state->pending.push_back(event);
+                const ::HyRemote::detail::InputMailboxAdmission::Class admissionClass =
+                    state->admission.classify(event);
+                if (admissionClass
+                    == ::HyRemote::detail::InputMailboxAdmission::Class::DropUnmatchedRelease) {
+                    return;
                 }
 
+                if (admissionClass
+                    == ::HyRemote::detail::InputMailboxAdmission::Class::ProtectedRelease) {
+                    if (!state->admission.canAcceptProtectedRelease())
+                        throw std::runtime_error("bounded composite protected-release mailbox is full");
+                    state->admission.acceptProtectedRelease(event);
+                } else {
+                    if (!state->admission.canAcceptNormal())
+                        throw std::runtime_error("bounded automatic composite input mailbox is full");
+                    state->admission.acceptNormal(event);
+                }
+
+                state->pending.push_back(
+                    QueuedInput{event, ::HyRemote::detail::qtWindowSystemTimestamp()});
                 if (!state->drainScheduled) {
                     state->drainScheduled = true;
                     scheduleDrain = true;
@@ -108,6 +110,7 @@ public:
             std::lock_guard<std::mutex> lock(state->mutex);
             state->drainScheduled = false;
             state->pending.clear();
+            state->admission.resetAll();
             throw std::runtime_error("failed to queue automatic composite input drain to the Qt GUI thread");
         }
     }
@@ -122,6 +125,7 @@ public:
             m_state->shutdownRequested = true;
             m_state->active = false;
             m_state->pending.clear();
+            m_state->admission.resetAll();
             m_state->drainScheduled = false;
             m_state->pointerGrabSurface.reset();
             m_state->pressedButtons = 0;
@@ -142,7 +146,11 @@ public:
     }
 
 private:
-    static constexpr std::size_t kMaxPendingInputEvents = 64;
+    struct QueuedInput
+    {
+        hyremote::InputEvent event;
+        unsigned long acceptedTimestamp = 0;
+    };
 
     struct ChildInput
     {
@@ -158,7 +166,8 @@ private:
         bool active = true;
         bool drainScheduled = false;
         bool shutdownRequested = false;
-        std::deque<hyremote::InputEvent> pending;
+        std::deque<QueuedInput> pending;
+        ::HyRemote::detail::InputMailboxAdmission admission;
         std::unordered_map<SurfaceId, ChildInput> children;
         std::string deferredError;
 
@@ -305,13 +314,15 @@ private:
 
     static void postToSurface(const std::shared_ptr<State> &state,
                               const CompositeSurfaceSnapshot &surface,
-                              const hyremote::InputEvent &event)
+                              const QueuedInput &queued)
     {
         const auto sink = ensureChildInput(state, surface);
         if (!sink)
             return;
         try {
-            sink->post(event);
+            ::HyRemote::detail::QtWindowSystemAcceptedTimestampScope timestampScope(
+                queued.acceptedTimestamp);
+            sink->post(queued.event);
         } catch (const std::exception &error) {
             deferError(state,
                        std::string("automatic composite child input adapter rejected an event: ")
@@ -323,8 +334,9 @@ private:
 
     static void deliverPointerOnGuiThread(const std::shared_ptr<State> &state,
                                           CompositeTarget *target,
-                                          const hyremote::InputEvent &event)
+                                          const QueuedInput &queued)
     {
+        const hyremote::InputEvent &event = queued.event;
         std::optional<CompositeRoutedPoint> routed = routePointer(state, target, event);
         if (!routed)
             return;
@@ -334,12 +346,12 @@ private:
         if (width <= 0 || height <= 0)
             return;
 
-        hyremote::InputEvent childEvent = event;
-        childEvent.sourceViewport = {static_cast<std::uint32_t>(width),
-                                     static_cast<std::uint32_t>(height),
-                                     1.0F};
-        childEvent.x = static_cast<float>(routed->localPosition.x());
-        childEvent.y = static_cast<float>(routed->localPosition.y());
+        QueuedInput childQueued = queued;
+        childQueued.event.sourceViewport = {static_cast<std::uint32_t>(width),
+                                            static_cast<std::uint32_t>(height),
+                                            1.0F};
+        childQueued.event.x = static_cast<float>(routed->localPosition.x());
+        childQueued.event.y = static_cast<float>(routed->localPosition.y());
 
         const std::uint8_t bit = buttonBit(event.button);
         if (event.kind == hyremote::InputEventKind::PointerButton && event.pressed && bit != 0) {
@@ -349,7 +361,7 @@ private:
             state->pressedButtons |= bit;
         }
 
-        postToSurface(state, routed->surface, childEvent);
+        postToSurface(state, routed->surface, childQueued);
 
         if (event.kind == hyremote::InputEventKind::PointerButton && !event.pressed && bit != 0) {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -361,16 +373,16 @@ private:
 
     static void deliverKeyOrTextOnGuiThread(const std::shared_ptr<State> &state,
                                              CompositeTarget *target,
-                                             const hyremote::InputEvent &event)
+                                             const QueuedInput &queued)
     {
         const auto surface = target->activeSurface();
         if (!surface)
             return;
-        postToSurface(state, *surface, event);
+        postToSurface(state, *surface, queued);
     }
 
     static void deliverOnGuiThread(const std::shared_ptr<State> &state,
-                                   const hyremote::InputEvent &event)
+                                   const QueuedInput &queued)
     {
         {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -385,15 +397,15 @@ private:
         const CompositeTargetSnapshot snapshot = target->captureSnapshot();
         pruneChildInputs(state, snapshot);
 
-        switch (event.kind) {
+        switch (queued.event.kind) {
         case hyremote::InputEventKind::PointerMove:
         case hyremote::InputEventKind::PointerButton:
         case hyremote::InputEventKind::PointerScroll:
-            deliverPointerOnGuiThread(state, target, event);
+            deliverPointerOnGuiThread(state, target, queued);
             break;
         case hyremote::InputEventKind::Key:
         case hyremote::InputEventKind::Text:
-            deliverKeyOrTextOnGuiThread(state, target, event);
+            deliverKeyOrTextOnGuiThread(state, target, queued);
             break;
         case hyremote::InputEventKind::None:
             break;
@@ -402,25 +414,27 @@ private:
 
     static void drainOnGuiThread(const std::shared_ptr<State> &state)
     {
-        std::deque<hyremote::InputEvent> batch;
+        std::deque<QueuedInput> batch;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active) {
                 state->pending.clear();
+                state->admission.resetAll();
                 state->drainScheduled = false;
                 return;
             }
             batch.swap(state->pending);
+            state->admission.pendingBatchTaken();
             state->drainScheduled = false;
         }
 
-        for (const hyremote::InputEvent &event : batch) {
+        for (const QueuedInput &queued : batch) {
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 if (!state->active)
                     return;
             }
-            deliverOnGuiThread(state, event);
+            deliverOnGuiThread(state, queued);
         }
     }
 
