@@ -231,6 +231,10 @@ int main(int argc, char **argv)
         return 7;
     }
 
+    // Re-showing a surface intentionally raises it. Restore the original right-topmost overlap
+    // before the pre-existing lossless/timestamp checks so those checks retain their original target.
+    composite.raiseSurface(2);
+
     // #406 architecture applies before surface routing too: pointer motion is semantic input to Qt.
     // Queue several moves without allowing the GUI drain and prove none is coalesced or evicted.
     const std::size_t beforeLossless = right->events.size();
