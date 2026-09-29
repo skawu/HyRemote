@@ -1,14 +1,13 @@
+#include <QApplication>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QHostAddress>
 #include <QMouseEvent>
-#include <QQuickItem>
-#include <QQuickWindow>
-#include <QSizeF>
 #include <QTcpSocket>
 #include <QThread>
 #include <QTimer>
+#include <QWidget>
 
 #include <algorithm>
 #include <atomic>
@@ -109,14 +108,10 @@ bool sendPointer(QTcpSocket &socket, std::uint8_t mask, std::uint16_t x, std::ui
     return writeAll(socket, message);
 }
 
-class ClickItem final : public QQuickItem
+class ClickWidget final : public QWidget
 {
 public:
-    explicit ClickItem(QQuickItem *parent = nullptr)
-        : QQuickItem(parent)
-    {
-        setAcceptedMouseButtons(Qt::LeftButton);
-    }
+    using QWidget::QWidget;
 
     bool clicked() const noexcept { return m_clicked; }
 
@@ -152,7 +147,7 @@ private:
 
 int main(int argc, char **argv)
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
 
     if (QGuiApplication::platformName() != QStringLiteral("offscreen")) {
         std::fprintf(stderr,
@@ -161,11 +156,9 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    QQuickWindow window;
+    ClickWidget window;
     window.resize(320, 200);
-    window.setTitle(QStringLiteral("HyRemote Generic plugin smoke"));
-    ClickItem target(window.contentItem());
-    target.setSize(QSizeF(320, 200));
+    window.setWindowTitle(QStringLiteral("HyRemote Generic plugin smoke"));
     window.show();
 
     constexpr quint16 port = 5992;
@@ -194,11 +187,11 @@ int main(int argc, char **argv)
         std::fprintf(stderr, "FAIL: Generic Plugin RFB client did not complete the input sequence\n");
         return 3;
     }
-    if (!target.clicked()) {
-        std::fprintf(stderr, "FAIL: Generic Quick target did not receive the remote click\n");
+    if (!window.clicked()) {
+        std::fprintf(stderr, "FAIL: Generic target did not receive the remote click\n");
         return 4;
     }
 
-    std::printf("PASS: Generic Plugin preserved native QPA and delivered remote Quick input\n");
+    std::printf("PASS: Generic Plugin preserved native QPA and delivered remote input\n");
     return 0;
 }
