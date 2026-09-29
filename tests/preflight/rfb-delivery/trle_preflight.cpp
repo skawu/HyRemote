@@ -275,7 +275,9 @@ double percentile(std::vector<double> samples, double p)
 
 CaseResult runCase(std::string name, const Frame &frame)
 {
-    constexpr int kIterations = 12;
+    // One warm-up plus 100 recorded samples makes the empirical tail meaningful: with the lower empirical
+    // percentile used above, P95 is the 95th ordered observation instead of the second-largest of only 11 samples.
+    constexpr int kIterations = 101;
     std::vector<double> timings;
     timings.reserve(kIterations - 1);
     std::vector<std::uint8_t> encoded;
