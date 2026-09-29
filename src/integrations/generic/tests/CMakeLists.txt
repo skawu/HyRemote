@@ -1,4 +1,4 @@
-if(TARGET Qt6::Widgets)
+if(TARGET Qt6::Quick)
     add_executable(hyremote-generic-plugin-smoke
         generic_plugin_smoke.cpp
     )
@@ -8,13 +8,16 @@ if(TARGET Qt6::Widgets)
             Qt6::Core
             Qt6::Gui
             Qt6::Network
-            Qt6::Widgets
+            Qt6::Quick
     )
     add_dependencies(hyremote-generic-plugin-smoke hyremote-generic-plugin)
 
+    # #405: keep one Generic integration smoke and strengthen its responsibility. The plugin is still loaded by
+    # Qt's public generic-plugin mechanism and keeps the native platform selected, but now the same smoke also proves
+    # that a production RFB PointerEvent reaches a normal Qt Quick target when remote input is explicitly enabled.
     add_test(NAME hyremote-generic-plugin-smoke COMMAND hyremote-generic-plugin-smoke)
     set_tests_properties(hyremote-generic-plugin-smoke PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_GENERIC_PLUGINS=hyremote:port=5992;QT_PLUGIN_PATH=${PROJECT_BINARY_DIR}/plugins"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_GENERIC_PLUGINS=hyremote:port=5992\;input=true;QT_PLUGIN_PATH=${PROJECT_BINARY_DIR}/plugins"
         TIMEOUT 10
     )
 endif()
