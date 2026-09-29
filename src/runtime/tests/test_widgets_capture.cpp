@@ -4,6 +4,7 @@
 #include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QWidget>
 #include <QWheelEvent>
 
@@ -40,8 +41,8 @@ bool pumpUntil(const std::function<bool()> &predicate, int attempts = 100)
 class InputProbeWidget final : public QWidget
 {
 public:
-    explicit InputProbeWidget(QWidget *parent = nullptr)
-        : QWidget(parent)
+    explicit InputProbeWidget(QWidget *parent = nullptr, Qt::WindowFlags flags = {})
+        : QWidget(parent, flags)
     {
         setFocusPolicy(Qt::StrongFocus);
         setAttribute(Qt::WA_InputMethodEnabled, true);
@@ -104,6 +105,14 @@ protected:
         event->accept();
     }
 };
+
+void setSolidBackground(QWidget &widget, const QColor &color)
+{
+    QPalette palette = widget.palette();
+    palette.setColor(QPalette::Window, color);
+    widget.setPalette(palette);
+    widget.setAutoFillBackground(true);
+}
 
 void testWidgetsFactoryAndOwnedFrame()
 {
@@ -170,8 +179,6 @@ void testWidgetsFactoryAndOwnedFrame()
     // CMakeLists.txt with QT_SCALE_FACTOR=1.5, so a double application of DPR or a silently ignored DPR
     // fails here deterministically instead of only being visible on a scaled physical display.
     const qreal dpr = target.devicePixelRatioF();
-    // The non-1 DPR registration sets HYREMOTE_EXPECT_DPR. Without this gate a platform plugin that silently
-    // keeps the ratio at 1.0 would make every assertion below vacuously true, which is worse than no test.
     const QString expectedDpr = qEnvironmentVariable("HYREMOTE_EXPECT_DPR");
     if (!expectedDpr.isEmpty()) {
         CHECK(qAbs(dpr - expectedDpr.toDouble()) < 0.01);
@@ -212,6 +219,131 @@ void testWidgetsFactoryAndOwnedFrame()
     probe.close();
 
     components.capture->stop();
+}
+
+void testOwnedTransientSurfaceCaptureInputAndIsolation()
+{
+    HyRemote::detail::resetFactories();
+
+    InputProbeWidget root;
+    root.resize(200, 120);
+    root.move(100, 100);
+    setSolidBackground(root, QColor(16, 16, 16));
+    root.show();
+    QCoreApplication::processEvents();
+
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(&root, true);
+    CHECK(components.supported);
+    CHECK(components.capture != nullptr);
+    CHECK(components.input != nullptr);
+
+    std::optional<hyremote::RemoteFrame> received;
+    int captureEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        [&](const hyremote::CaptureEvent &) { ++captureEvents; }));
+
+    const qreal dpr = qMax<qreal>(1.0, root.devicePixelRatioF());
+    const auto requestFrame = [&](hyremote::CaptureRequestId id) {
+        received.reset();
+        hyremote::CaptureRequest request{id, hyremote::Clock::now()};
+        CHECK(components.capture->requestFrame(request));
+        CHECK(pumpUntil([&] { return received.has_value(); }));
+    };
+
+    requestFrame(20);
+    CHECK(received.has_value());
+    if (received) {
+        CHECK(received->geometry.size.width == qRound(root.width() * dpr));
+        CHECK(received->geometry.size.height == qRound(root.height() * dpr));
+    }
+
+    // Same-process is not ownership. This unrelated top-level is deliberately larger and far away;
+    // if broad QApplication::topLevelWidgets() enumeration leaked into an explicit target, the
+    // framebuffer would grow immediately.
+    InputProbeWidget unrelated;
+    unrelated.resize(260, 180);
+    unrelated.move(500, 420);
+    setSolidBackground(unrelated, QColor(210, 20, 20));
+    unrelated.show();
+    QCoreApplication::processEvents();
+
+    requestFrame(21);
+    if (received) {
+        CHECK(received->geometry.size.width == qRound(root.width() * dpr));
+        CHECK(received->geometry.size.height == qRound(root.height() * dpr));
+    }
+
+    // A real top-level Qt::Popup whose QWidget parent is the configured root is a bounded owned
+    // transient. Place it outside the root so both capture and coordinate routing are discriminating.
+    InputProbeWidget popup(&root, Qt::Popup);
+    popup.resize(80, 50);
+    popup.move(root.mapToGlobal(QPoint(root.width() + 30, 20)));
+    setSolidBackground(popup, QColor(20, 210, 40));
+    popup.show();
+    QCoreApplication::processEvents();
+    CHECK(popup.isWindow());
+    CHECK(popup.parentWidget() == &root);
+    CHECK(popup.isVisible());
+
+    const QRect rootGeometry(root.mapToGlobal(QPoint(0, 0)), root.size());
+    const QRect popupGeometry(popup.mapToGlobal(QPoint(0, 0)), popup.size());
+    const QRect expectedCanvas = rootGeometry.united(popupGeometry);
+    CHECK(expectedCanvas.width() > root.width() || expectedCanvas.height() > root.height());
+
+    requestFrame(22);
+    CHECK(captureEvents == 0);
+    if (received) {
+        CHECK(received->geometry.size.width == static_cast<std::uint32_t>(qCeil(expectedCanvas.width() * dpr)));
+        CHECK(received->geometry.size.height == static_cast<std::uint32_t>(qCeil(expectedCanvas.height() * dpr)));
+
+        // Prove pixels, not only geometry: sample the popup-only green surface from the composed
+        // framebuffer. The unrelated red window is outside expectedCanvas and therefore unreachable.
+        const auto plane = received->storage ? received->storage->mapRead(0) : std::nullopt;
+        CHECK(plane.has_value());
+        if (plane && plane->data) {
+            const QPoint popupCentre = popupGeometry.center() - expectedCanvas.topLeft();
+            const int px = qBound(0, qFloor((popupCentre.x() + 0.5) * dpr),
+                                  static_cast<int>(received->geometry.size.width) - 1);
+            const int py = qBound(0, qFloor((popupCentre.y() + 0.5) * dpr),
+                                  static_cast<int>(received->geometry.size.height) - 1);
+            const auto *row = reinterpret_cast<const unsigned char *>(plane->data)
+                              + static_cast<std::size_t>(py) * plane->stride;
+            const auto *pixel = row + static_cast<std::size_t>(px) * 4U;
+            CHECK(pixel[1] > pixel[0] + 80U);
+            CHECK(pixel[1] > pixel[2] + 80U);
+        }
+
+        const QPoint canvasPoint = popupGeometry.center() - expectedCanvas.topLeft();
+        hyremote::InputEvent press;
+        press.kind = hyremote::InputEventKind::PointerButton;
+        press.sourceViewport = {received->geometry.size.width, received->geometry.size.height, 1.0F};
+        press.x = static_cast<float>((canvasPoint.x() + 0.5) * dpr);
+        press.y = static_cast<float>((canvasPoint.y() + 0.5) * dpr);
+        press.button = hyremote::PointerButton::Left;
+        press.pressed = true;
+        components.input->post(press);
+        CHECK(pumpUntil([&] { return popup.mousePresses == 1; }));
+        CHECK(unrelated.mousePresses == 0);
+
+        press.pressed = false;
+        components.input->post(press);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+
+    popup.hide();
+    QCoreApplication::processEvents();
+    requestFrame(23);
+    if (received) {
+        CHECK(received->geometry.size.width == qRound(root.width() * dpr));
+        CHECK(received->geometry.size.height == qRound(root.height() * dpr));
+    }
+
+    components.input->shutdown();
+    components.capture->stop();
+    unrelated.close();
+    root.close();
 }
 
 void testStopCancelsQueuedPublication()
@@ -367,6 +499,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     testWidgetsFactoryAndOwnedFrame();
+    testOwnedTransientSurfaceCaptureInputAndIsolation();
     testStopCancelsQueuedPublication();
     testDestroyedTargetReportsTargetLost();
     testNormalizedInputIsQueuedAndDeliveredToChild();
