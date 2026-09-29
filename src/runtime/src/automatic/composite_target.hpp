@@ -33,13 +33,14 @@ struct CompositeRoutedPoint
     QPoint localPosition;
 };
 
-// Runtime-private QObject target shared by the zero-code integration frontends.
-// TargetComponentProvider yields one composite CaptureSource/InputSink while the target/model may
-// change without replacing the underlying Session or transport listener.
+// Runtime-private QObject target shared by application-surface compositions. TargetComponentProvider
+// yields one composite CaptureSource/InputSink while the target/model may change without replacing
+// the underlying Session or transport listener.
 class CompositeTarget : public QObject, public ::HyRemote::detail::TargetComponentProvider
 {
 public:
     using SurfaceUnavailableHandler = std::function<void(SurfaceId)>;
+    using SurfaceRefreshHandler = std::function<void()>;
 
     explicit CompositeTarget(QObject *parent = nullptr);
 
@@ -50,6 +51,11 @@ public:
     void raiseSurface(SurfaceId id);
     void setActiveSurface(SurfaceId id);
     void clearActiveSurface();
+
+    // Optional Runtime-private hook for bounded compositions whose surface membership is derived
+    // from current Qt ownership. It runs on the same GUI-thread snapshot boundary used by capture
+    // and composite input, so no second event-driven surface state machine is required.
+    void setSurfaceRefreshHandler(SurfaceRefreshHandler handler);
 
     CompositeTargetSnapshot captureSnapshot() const;
     std::optional<CompositeSurfaceSnapshot> surfaceById(SurfaceId id) const;
@@ -69,6 +75,7 @@ private:
     ApplicationSurfaceModel m_model;
     QHash<SurfaceId, QPointer<QObject>> m_targets;
     std::optional<SurfaceId> m_activeSurface;
+    SurfaceRefreshHandler m_surfaceRefreshHandler;
     QHash<quint64, SurfaceUnavailableHandler> m_surfaceUnavailableHandlers;
     quint64 m_nextSurfaceUnavailableHandler = 1;
 };
