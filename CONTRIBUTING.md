@@ -17,13 +17,13 @@ For non-trivial changes, start with a GitHub Issue describing:
 
 Architecture-affecting changes should be discussed and recorded before implementation.
 
+Before editing, read the current `develop`, the target Issue and its latest authoritative comments, and search open Issues/PRs for overlapping ownership. Current repository/machine facts beat old chat, branch and proposal prose.
+
 ## Repository and branch ownership
 
 Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
-- `src/` is the shipping tree: one directory per deliverable (`core/` is the internal base, then `cpp/`, `qml/` and
-  `qpa/` for the three integration technologies - the same words the product uses on every user-facing surface), and
-  every payload reuses the same shared runtime;
+- `src/` is the shipping tree: one Core, one Shared Runtime, then the four peer integration frontends under `src/integrations/{cpp,qml,generic,qpa}`; every frontend reuses the same Shared Runtime;
 - `tests/` holds what a unit test is not: cross-module integration, clean consumers, product E2E, the public-surface
   contract, the third-party matrix and the release gates;
 - module-private tests stay with their module (`src/*/tests/`) and are never moved here;
@@ -40,7 +40,9 @@ Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`
 
 HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/versioning.md`](docs/versioning.md).
 
-Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable.
+The current product phase is **V0.3.0.0 Product Preview / self-service adoption**. V0.1.0.0, V0.2.0.0 and bounded maintenance V0.2.0.1 are released history. The active V0.3.0 mandatory productization children are #264 (four-route SDK/deploy), #240 (task-oriented self-service learning/docs) and #335 (minimum self-service diagnostics). After V0.3.0, the mandatory #343 Qt/platform/RFB/performance breadth converges across coherent V0.3.x outcomes before V0.4 qualification-only RC entry.
+
+Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable. No exact V0.3.x number being preassigned makes a #343 hard requirement optional.
 
 ## Core boundaries
 
@@ -54,15 +56,18 @@ Do not introduce dependencies that make the core permanently depend on:
 
 Such dependencies belong behind adapters/backends.
 
-## Integration modes
+## Integration technologies
 
-HyRemote intentionally supports three product integration styles. A contribution must not remove another mode merely to simplify one implementation:
+HyRemote intentionally supports four **peer product integration technologies**. A contribution must not remove, rank or reimplement another route merely to simplify one implementation:
 
-- Embedded C++ API;
-- Declarative QML API;
-- Transparent QPA Proxy.
+- C++ (`HyRemote::RemoteAccess`);
+- QML (`import HyRemote`);
+- Generic Plugin (public-Qt zero-code integration that preserves the application's native platform identity);
+- QPA (exact-compatible private-ABI platform-entry/native-delegate integration).
 
-The Embedded C++ API is the stable reference integration. The QML API wraps the same core. The QPA Proxy is optional and may have stronger Qt-version constraints.
+All four consume one Shared Runtime. Peer product status does not imply every route is Supported on every Qt/OS/QPA cell: per-cell `Supported`, `Qualified`, `Preview`, `Experimental`, `Unsupported` and `Not Applicable` outcomes remain truthful. Generic must not depend on Qt private/QPA interfaces; QPA is the only frontend that may own the exact private-ABI/native-delegate boundary.
+
+Widgets and Qt Quick are target/UI families, not additional frontends or Runtime personalities.
 
 ## Qt application types
 
@@ -81,10 +86,12 @@ Do not claim compatibility without repeatable validation.
 
 Prefer Qt public APIs for stable functionality. If Qt private/QPA APIs are unavoidable:
 
-1. isolate them in a dedicated optional adapter;
+1. isolate them in the QPA/private compatibility seam;
 2. document the exact Qt versions tested;
 3. keep private types out of HyRemote public headers;
-4. add compatibility tests before enabling support for a new Qt minor version.
+4. add compatibility tests before enabling support for a new Qt minor/patch cell.
+
+Do not create a second Qt5, embedded or accelerated Runtime to absorb version/platform differences.
 
 ## Dependencies
 
@@ -116,14 +123,14 @@ After a PR is merged, superseded or closed and no other open PR uses its head, d
 
 ## Compatibility claims
 
-A feature is considered **supported** only when it has:
+A feature or matrix cell is considered **supported** only when the current product authority and exact evidence justify that status. At minimum the claim needs:
 
-- a reproducible build;
-- a functional test or example;
-- a compatibility entry;
+- a reproducible build/install/deploy path;
+- applicable functional/product evidence;
+- an explicit compatibility entry;
 - documented known limitations.
 
-Everything else should be marked experimental, planned, or unverified.
+Do not infer a Qt/OS/CPU/QPA/graphics cell from another platform's result. QPA private-ABI compatibility is exact-cell truth, separate from public-Qt family claims.
 
 ## Documentation and comment language
 
@@ -154,7 +161,7 @@ Rules for the user-facing zones:
   still lists may keep a short pointer file until the gate's path list is updated. Such pointers carry no
   documentation content, and removing them is a maintainer change rather than an authoring one.
 
-Source comments are **not** under a mandatory bilingual policy for V1:
+Source comments are **not** under a mandatory bilingual policy:
 
 - keep existing source comments as they are - there is no bulk comment-only migration across public headers,
   internal code or tests;
