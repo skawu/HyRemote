@@ -54,16 +54,16 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-widgets-capture-test` | Widgets | Ordinary Widgets capture/lifetime/resize/cancellation/target-loss contract. |
 | `hyremote-widgets-capture-forced-dpr-test` | Widgets | Executes the same capture contract at deterministic DPR=1.5. Closes TG-001; failure exposes HiDPI geometry/pixel mapping regression. |
 | `hyremote-widgets-input-routing-test` | Widgets | Widgets input delivery/local coexistence. |
-| `hyremote-widgets-input-backpressure-test` | Widgets | Pointer coalescing, protected releases and shutdown balancing under GUI pressure. |
-| `hyremote-widgets-input-preflight-test` | Widgets | #401 preflight: deterministic reproduction of #400 through the production Widgets path with first-divergence classification. Evidence fixture, not the production fix. |
+| `hyremote-widgets-input-backpressure-test` | Widgets | Bounded pointer admission without semantic-loss coalescing, protected releases and shutdown balancing under GUI pressure. |
+| `hyremote-widgets-input-preflight-test` | Widgets | Behavioral acceptance for the shared Qt window-system pointer ingress: child routing, Qt-owned double-click classification, accepted-time queue-delay independence and wheel propagation. |
 | `hyremote-rfb-widget-disconnect-backpressure-test` | Widgets + VNC | Real RFB disconnect cleanup while Widgets input delivery is saturated. TG-020 requires absence when VNC is unavailable. |
-| `hyremote-rfb-input-preflight-test` | Widgets + VNC | #401 preflight: production RFB pointer-parser reproduction (valid envelope, outside interval, outside distance, different receiver). |
+| `hyremote-rfb-input-preflight-test` | Widgets + VNC | Production RFB pointer facts reach the shared Qt window-system ingress; Qt owns interval/distance double-click classification. |
 | `hyremote-quick-capture-test` | Quick | Ordinary Qt Quick capture/lifetime/resize/target-loss contract. |
 | `hyremote-quick-capture-forced-dpr-test` | Quick | Executes the same Quick capture contract at deterministic DPR=1.5/software backend. Closes TG-002. |
 | `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |
-| `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure. |
-| `hyremote-quick-input-preflight-test` | Quick | #401 preflight: deterministic reproduction of #400 through the production Quick path with first-divergence classification. |
-| `hyremote-quick-controls-preflight-test` | Quick + QtQuick Controls | #401 preflight: Quick control matrix (Button/CheckBox/Slider/Popup) with a regression-bearing Popup reach assertion. Registered only when the QtQuick.Controls QML module is available; the Runtime Quick capability contract covers Qt Quick, not Controls, so a minimal Quick-only configuration leaves this entry absent rather than broken. |
+| `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure without semantic-loss pointer coalescing. |
+| `hyremote-quick-input-preflight-test` | Quick | Behavioral acceptance that Qt Quick owns item hit testing, grabs and double-click classification below the shared Qt window-system ingress. |
+| `hyremote-quick-controls-preflight-test` | Quick + QtQuick Controls | Quick control matrix (Button/CheckBox/Slider/Popup), registered only when the QtQuick.Controls QML module is available. It remains product coverage, not Runtime control-specific input logic. |
 | `hyremote-rfb-listener-reachability-test` | Widgets + VNC | Real Runtime/RFB wildcard/explicit IPv4 reachability and interface reconciliation. Failure invalidates socket-level reachability while remaining independent of the C++ facade. |
 
 ## T2 — C++ frontend

@@ -1,4 +1,4 @@
-﻿include(GenerateExportHeader)
+include(GenerateExportHeader)
 include(GNUInstallDirs)
 
 # Common product runtime for all HyRemote integration frontends.
@@ -15,12 +15,10 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/runtime_notifications.cpp
     src/detail/security_descriptor.cpp
     src/detail/composition_support.cpp
-src/detail/listener_binding.cpp
+    src/detail/listener_binding.cpp
 )
 add_library(HyRemote::RemoteAccess ALIAS hyremote-remoteaccess)
 
-# The root build maps src/runtime to the historical `remoteaccess` binary directory, so the shared
-# artifact keeps its established build-tree location while source ownership is now explicit.
 set_target_properties(hyremote-remoteaccess PROPERTIES
     EXPORT_NAME RemoteAccess
     OUTPUT_NAME HyRemoteRemoteAccess
@@ -40,8 +38,6 @@ endif()
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
-# Export visibility belongs to the Common Runtime because AccessInstance/Automatic services are
-# consumed by multiple plugin frontends even when the Embedded C++ API is disabled.
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h
@@ -53,8 +49,6 @@ target_include_directories(hyremote-remoteaccess
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    # Runtime-private declarations are shared with sibling integration frontends in the build tree only.
-    # Nothing under src/runtime/src is installed as an application-facing SDK header.
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
@@ -67,8 +61,6 @@ target_link_libraries(hyremote-remoteaccess
         HyRemote::Core
 )
 
-# Source tests replace private factories so they can exercise lifecycle/error paths deterministically.
-# This definition remains build-tree only and is never an installed API commitment.
 if(HYREMOTE_BUILD_TESTS)
     target_compile_definitions(hyremote-remoteaccess
         PUBLIC $<BUILD_INTERFACE:HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS=1>
@@ -85,9 +77,6 @@ if(HYREMOTE_WITH_VNC)
         target_sources(hyremote-remoteaccess PRIVATE
             src/transport/vnc_auth.cpp
         )
-        # Crypto is the only OpenSSL component this implementation uses: vnc_auth.cpp calls RAND_bytes, DES and
-        # CRYPTO_memcmp and nothing transport-encryption related, so an SSL link would be a dependency the runtime
-        # never calls. #143 introduces the encrypted backend and its dependency when that backend exists.
         target_link_libraries(hyremote-remoteaccess PRIVATE OpenSSL::Crypto)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_TRANSPORT_SECURITY=1)
     endif()
@@ -133,9 +122,25 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
     endif()
 endif()
 
-# Application-level zero-code composition is part of the common runtime, but a Core/Network-only
-# RFB build must remain valid. Compile this layer only when a GUI adapter is actually present or a
-# zero-code frontend explicitly requests it.
+# Pointer input enters Qt at the same QPA/window-system boundary used by platform plugins. Keep the
+# private dependency isolated to one Runtime translation unit; integration frontends remain peers and
+# never need to include or understand Qt private headers themselves.
+if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS OR HYREMOTE_REMOTEACCESS_WITH_QUICK)
+    if(NOT TARGET Qt6::Gui)
+        find_package(Qt6 6.8 QUIET COMPONENTS Gui)
+    endif()
+    if(NOT TARGET Qt6::GuiPrivate)
+        message(FATAL_ERROR
+            "HyRemote Qt input ingress requires the Qt Gui private development target (Qt6::GuiPrivate) "
+            "matching the Qt build used by the application")
+    endif()
+
+    target_sources(hyremote-remoteaccess PRIVATE
+        src/detail/qt_window_system_input.cpp
+    )
+    target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Gui Qt6::GuiPrivate)
+endif()
+
 set(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE FALSE CACHE INTERNAL
     "Common runtime contains the application-level automatic access controller" FORCE)
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
@@ -163,10 +168,6 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
     endif()
 endif()
 
-# Runtime tests are entered whenever tests are enabled. Only the application-level automatic
-# controller tests inside tests/ need HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE; guarding the whole
-# directory here kept Runtime-owned Core/Network/RFB regressions unregistered in every
-# configuration that does not build the automatic controller.
 if(HYREMOTE_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

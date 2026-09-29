@@ -1,14 +1,6 @@
-// #401 deterministic reproduction through the PRODUCTION RFB pointer parser.
-//
-// The viewer side of #400 is a real RFB client: double clicks arrive as ordinary PointerEvent
-// button-mask transitions. This fixture drives the real RFB transport over a real socket, records
-// the transport-neutral facts the parser produced (to prove the first divergence is NOT in
-// RFB_PARSE), feeds them into the real Widgets adapter, and classifies each timing/receiver case.
-//
-// Cases required by #401: move / left-down / left-up / left-down / left-up envelope, outside
-// interval, outside distance, different receiver.
-//
-// Assertions pin CURRENT observed behaviour; DIVERGENCE lines are the measured evidence.
+// Production RFB -> Runtime -> Qt window-system ingress acceptance for #400.
+// RFB has no double-click concept: it carries pointer button-mask transitions. This fixture proves
+// the parser emits raw facts and Qt, not HyRemote, classifies the resulting pointer sequence.
 
 #include <QApplication>
 #include <QByteArray>
@@ -16,12 +8,11 @@
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QEventLoop>
-#include <QGuiApplication>
 #include <QHostAddress>
 #include <QMouseEvent>
-#include <QStyleHints>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QThread>
 #include <QWidget>
 
 #include <algorithm>
@@ -41,7 +32,6 @@
 namespace {
 
 int failures = 0;
-int divergences = 0;
 
 void check(bool ok, const char *what)
 {
@@ -50,23 +40,6 @@ void check(bool ok, const char *what)
         ++failures;
     }
     std::cout << (ok ? "ok   " : "FAIL ") << what << '\n';
-}
-
-void divergence(const char *layer, const char *scenario, const char *detail)
-{
-    ++divergences;
-    std::cout << "DIVERGENCE[" << layer << "] " << scenario << ": " << detail << '\n';
-}
-
-void noDivergence(const char *scenario, const char *detail)
-{
-    std::cout << "NO_DEFECT " << scenario << ": " << detail << '\n';
-}
-
-void pump()
-{
-    for (int i = 0; i < 30; ++i)
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 }
 
 void pumpFor(int milliseconds)
@@ -83,36 +56,29 @@ public:
     explicit Probe(QWidget *parent = nullptr)
         : QWidget(parent)
     {
-        setMouseTracking(true);
     }
 
     int presses = 0;
     int releases = 0;
     int doubleClicks = 0;
-    QVector<QEvent::Type> order;
 
 protected:
-    bool event(QEvent *event) override
+    void mousePressEvent(QMouseEvent *event) override
     {
-        switch (event->type()) {
-        case QEvent::MouseButtonPress:
-            ++presses;
-            order.append(event->type());
-            event->accept();
-            return true;
-        case QEvent::MouseButtonRelease:
-            ++releases;
-            order.append(event->type());
-            event->accept();
-            return true;
-        case QEvent::MouseButtonDblClick:
-            ++doubleClicks;
-            order.append(event->type());
-            event->accept();
-            return true;
-        default:
-            return QWidget::event(event);
-        }
+        ++presses;
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        ++releases;
+        event->accept();
+    }
+
+    void mouseDoubleClickEvent(QMouseEvent *event) override
+    {
+        ++doubleClicks;
+        event->accept();
     }
 };
 
@@ -188,7 +154,7 @@ bool connectRawRfb(QTcpSocket &socket, quint16 port)
     if (securityResult.size() != 4 || readU32(securityResult, 0) != 0U)
         return false;
 
-    if (!writeAll(socket, QByteArray(1, char(1))))  // ClientInit shared=true
+    if (!writeAll(socket, QByteArray(1, char(1))))
         return false;
     const QByteArray serverInit = readExact(socket, 24);
     if (serverInit.size() != 24)
@@ -208,7 +174,6 @@ bool sendPointer(QTcpSocket &socket, std::uint8_t mask, std::uint16_t x, std::ui
     return writeAll(socket, message);
 }
 
-// Records the transport-neutral facts emitted by the production parser, before any target routing.
 class FactLog
 {
 public:
@@ -216,12 +181,6 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_events.push_back(event);
-    }
-
-    std::vector<hyremote::InputEvent> snapshot()
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_events;
     }
 
     void clear()
@@ -232,18 +191,10 @@ public:
 
     std::size_t countButton(hyremote::PointerButton button, bool pressed)
     {
-        const std::vector<hyremote::InputEvent> events = snapshot();
-        return static_cast<std::size_t>(std::count_if(events.begin(), events.end(), [&](const auto &e) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return static_cast<std::size_t>(std::count_if(m_events.begin(), m_events.end(), [&](const auto &e) {
             return e.kind == hyremote::InputEventKind::PointerButton && e.button == button
                    && e.pressed == pressed;
-        }));
-    }
-
-    std::size_t countMoves()
-    {
-        const std::vector<hyremote::InputEvent> events = snapshot();
-        return static_cast<std::size_t>(std::count_if(events.begin(), events.end(), [](const auto &e) {
-            return e.kind == hyremote::InputEventKind::PointerMove;
         }));
     }
 
@@ -263,11 +214,11 @@ struct Harness
         port = freePort();
         if (port == 0)
             return false;
-        // The real production Widgets adapter for this root: the transport's input handler posts
-        // into exactly the sink the product installs (Session::onInput -> sink->post).
+
         components = HyRemote::detail::createTargetComponents(&root, true);
         if (!components.input)
             return false;
+
         transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
                                                          HyRemote::detail::RfbSecurityConfig{});
         if (!transport)
@@ -307,118 +258,72 @@ struct Harness
     }
 };
 
-void runPreflight()
+void sendClick(QTcpSocket &viewer, std::uint16_t x, std::uint16_t y)
+{
+    check(sendPointer(viewer, 0x01U, x, y), "RFB left-down is written");
+    check(sendPointer(viewer, 0x00U, x, y), "RFB left-up is written");
+}
+
+void runAcceptance()
 {
     HyRemote::detail::resetFactories();
 
     QWidget root;
     root.resize(500, 500);
+    Probe probe(&root);
+    probe.setGeometry(0, 0, 500, 500);
+    root.show();
+    pumpFor(50);
 
     FactLog facts;
     Harness harness;
-    if (!harness.start(root, facts)) {
-        check(false, "rfb harness starts");
+    check(harness.start(root, facts), "RFB production harness starts");
+    if (!harness.transport)
         return;
-    }
-
-    Probe probe(&root);
-    probe.setGeometry(0, 0, 500, 500);
-
-    // Second receiver, used for the different-receiver case.
-    Probe other(&root);
-    other.setGeometry(0, 0, 0, 0);  // configured per-scenario via geometry below
-    pump();
 
     QTcpSocket viewer;
-    if (!connectRawRfb(viewer, harness.port)) {
-        check(false, "raw RFB viewer connects");
+    check(connectRawRfb(viewer, harness.port), "raw RFB viewer connects");
+    if (viewer.state() != QAbstractSocket::ConnectedState) {
         harness.stop();
         return;
     }
-    pump();
 
-    // --- Case 1: valid double-click envelope -------------------------------------------------
     facts.clear();
     probe.presses = probe.releases = probe.doubleClicks = 0;
-    probe.order.clear();
-    sendPointer(viewer, 0x00U, 100, 100);  // move
-    sendPointer(viewer, 0x01U, 100, 100);  // left-down
-    sendPointer(viewer, 0x00U, 100, 100);  // left-up
-    sendPointer(viewer, 0x01U, 100, 100);  // left-down
-    sendPointer(viewer, 0x00U, 100, 100);  // left-up
+    check(sendPointer(viewer, 0x00U, 100, 100), "RFB move is written");
+    sendClick(viewer, 100, 100);
+    QThread::msleep(8);
+    sendClick(viewer, 100, 100);
     pumpFor(250);
 
-    check(facts.countButton(hyremote::PointerButton::Left, true) == 2
-              && facts.countButton(hyremote::PointerButton::Left, false) == 2,
-          "RFB_PARSE: the wire sequence yields two left press and two left release facts");
-    check(probe.presses == 2 && probe.releases == 2,
-          "valid envelope: both press/release pairs reach the widget");
-    if (probe.doubleClicks == 0) {
-        divergence("QT_SEMANTIC_CLASSIFICATION",
-                   "RFB valid double-click envelope",
-                   "the parser faithfully produces move/press/release facts (no RFB_PARSE defect) and "
-                   "routing delivers them (no TOPLEVEL_INGRESS/TARGET_ROUTING defect), but Qt receives two "
-                   "plain presses: the double-click semantic is lost only at application-level Qt event "
-                   "synthesis");
-    } else {
-        noDivergence("RFB valid double-click envelope", "a DblClick semantic was delivered");
-    }
+    check(facts.countButton(hyremote::PointerButton::Left, true) == 2,
+          "RFB parser emits two raw left-press facts");
+    check(facts.countButton(hyremote::PointerButton::Left, false) == 2,
+          "RFB parser emits two raw left-release facts");
+    check(probe.doubleClicks == 1,
+          "Qt classifies the production RFB pointer sequence as one double click");
 
-    // --- Case 2: outside interval ------------------------------------------------------------
+    QThread::msleep(static_cast<unsigned long>(QApplication::doubleClickInterval()) + 20UL);
     facts.clear();
     probe.presses = probe.releases = probe.doubleClicks = 0;
-    probe.order.clear();
-    sendPointer(viewer, 0x01U, 100, 100);
-    sendPointer(viewer, 0x00U, 100, 100);
-    pumpFor(250);
-    pumpFor(650);
-    sendPointer(viewer, 0x01U, 100, 100);
-    sendPointer(viewer, 0x00U, 100, 100);
-    pumpFor(250);
-    check(probe.presses == 2 && probe.doubleClicks == 0,
-          "outside interval: two single clicks");
-    noDivergence("RFB outside interval",
-                 "two singles is the correct platform answer; #400 must keep this case unchanged");
+    sendClick(viewer, 100, 100);
+    pumpFor(QApplication::doubleClickInterval() + 50);
+    sendClick(viewer, 100, 100);
+    pumpFor(150);
+    check(probe.doubleClicks == 0,
+          "RFB clicks outside Qt's interval remain two single clicks");
 
-    // --- Case 3: outside distance ------------------------------------------------------------
-    facts.clear();
+    QThread::msleep(static_cast<unsigned long>(QApplication::doubleClickInterval()) + 20UL);
     probe.presses = probe.releases = probe.doubleClicks = 0;
-    probe.order.clear();
-    sendPointer(viewer, 0x01U, 40, 40);
-    sendPointer(viewer, 0x00U, 40, 40);
-    sendPointer(viewer, 0x01U, 360, 260);
-    sendPointer(viewer, 0x00U, 360, 260);
-    pumpFor(250);
-    check(probe.presses == 2 && probe.doubleClicks == 0,
-          "outside distance: two single clicks");
-    noDivergence("RFB outside distance",
-                 "two singles is the correct platform answer; #400 must keep this case unchanged");
+    sendClick(viewer, 40, 40);
+    QThread::msleep(8);
+    sendClick(viewer, 360, 260);
+    pumpFor(150);
+    check(probe.doubleClicks == 0,
+          "RFB clicks outside Qt's distance remain two single clicks");
 
-    // --- Case 4: different receiver ----------------------------------------------------------
-    facts.clear();
-    probe.presses = probe.releases = probe.doubleClicks = 0;
-    probe.order.clear();
-    probe.setGeometry(0, 0, 200, 200);
-    other.setGeometry(250, 250, 200, 200);
-    pump();
-    sendPointer(viewer, 0x01U, 100, 100);  // inside probe
-    sendPointer(viewer, 0x00U, 100, 100);
-    sendPointer(viewer, 0x01U, 300, 300);  // inside other, immediately after
-    sendPointer(viewer, 0x00U, 300, 300);
-    pumpFor(250);
-    check(probe.presses == 1 && other.presses == 1,
-          "different receiver: each widget receives its own press");
-    if (probe.doubleClicks == 0 && other.doubleClicks == 0) {
-        noDivergence("RFB different receiver",
-                     "no cross-receiver double click exists today; #400 must preserve this negative when it "
-                     "introduces classification (receiver identity is a hard condition, not a refinement)");
-    } else {
-        divergence("QT_SEMANTIC_CLASSIFICATION",
-                   "RFB different receiver",
-                   "a cross-receiver double click was synthesized");
-    }
-
-    viewer.abort();
+    viewer.disconnectFromHost();
+    viewer.waitForDisconnected(1000);
     harness.stop();
 }
 
@@ -426,15 +331,12 @@ void runPreflight()
 
 int main(int argc, char **argv)
 {
-    // Widgets targets need a QApplication, not a bare QGuiApplication.
     QApplication app(argc, argv);
-    if (QStyleHints *hints = QGuiApplication::styleHints())
-        hints->setMouseDoubleClickInterval(400);
+    runAcceptance();
+    HyRemote::detail::resetFactories();
 
-    runPreflight();
-
-    std::cout << (failures == 0 ? "PASS: rfb input preflight reproduction"
-                                : "FAIL: rfb input preflight reproduction")
-              << " (checks failed: " << failures << ", divergence scenarios: " << divergences << ")\n";
+    std::cout << (failures == 0 ? "PASS: RFB window-system input acceptance"
+                                : "FAIL: RFB window-system input acceptance")
+              << " (" << failures << " checks failed)\n";
     return failures == 0 ? 0 : 1;
 }

@@ -194,8 +194,6 @@ if(HYREMOTE_WITH_VNC AND HYREMOTE_TRANSPORT_SECURITY_AVAILABLE)
         PRIVATE
             hyremote-remoteaccess
             OpenSSL::Crypto
-            # This test includes hyremote/core/transport.hpp, so it needs the Core interface the other
-            # Runtime tests already link. Without it the target cannot compile in its own configuration.
             HyRemote::Core
             Qt6::Core
             Qt6::Network
@@ -267,8 +265,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
 
-    # #401 preflight: deterministic reproduction of #400 through the production Widgets path, with
-    # a first-divergence classification per scenario. Evidence fixture, not the production fix.
+    # Behavioral acceptance for the shared Qt window-system pointer ingress.
     add_executable(hyremote-widgets-input-preflight-test
         test_widgets_input_preflight.cpp
     )
@@ -307,8 +304,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
         )
 
-        # #401 preflight: production RFB pointer-parser reproduction of #400 (valid envelope,
-        # outside interval, outside distance, different receiver) with first-divergence evidence.
+        # Production RFB raw-pointer acceptance through the shared Qt window-system ingress.
         add_executable(hyremote-rfb-input-preflight-test
             test_rfb_input_preflight.cpp
         )
@@ -386,7 +382,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
 
-    # #401 preflight: deterministic reproduction of #400 through the production Quick path.
+    # Behavioral acceptance for Qt Quick below the shared window-system pointer ingress.
     add_executable(hyremote-quick-input-preflight-test
         test_quick_input_preflight.cpp
     )
@@ -406,12 +402,8 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
 
-    # #401: the control matrix (Button/CheckBox/Slider/Popup) needs the QtQuick.Controls QML module,
-    # which HYREMOTE_REMOTEACCESS_WITH_QUICK does not promise: that contract is Qt Quick, not Quick
-    # Controls. It is registered only when the module is really present, so a minimal Quick-only
-    # configuration keeps a valid test graph instead of an unbuildable or silently skipped entry.
-    # The check honours CMake's standard CMAKE_DISABLE_FIND_PACKAGE_Qt6QuickControls2, which is how
-    # that minimal configuration is verified without uninstalling anything.
+    # The control matrix needs the optional QtQuick.Controls QML module. Keep it capability-gated so
+    # minimal Quick-only configurations stay valid; this is product coverage, not input routing code.
     find_package(Qt6 QUIET COMPONENTS QuickControls2)
     if(Qt6QuickControls2_FOUND)
         add_executable(hyremote-quick-controls-preflight-test

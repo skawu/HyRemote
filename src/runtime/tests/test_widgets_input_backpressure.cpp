@@ -81,7 +81,7 @@ protected:
     }
 };
 
-void testPointerFloodCoalescesBeforeGuiDelivery()
+void testPointerFloodBackpressuresWithoutSemanticLoss()
 {
     HyRemote::detail::resetFactories();
 
@@ -96,23 +96,35 @@ void testPointerFloodCoalescesBeforeGuiDelivery()
     CHECK(components.supported);
     CHECK(components.input != nullptr);
 
-    // Deliberately do not process the GUI event loop while producing this burst. A one-invocation-
-    // per-packet implementation would queue 10k Qt events here. The bounded sink instead keeps one
-    // drain invocation and collapses adjacent motion to the freshest coordinate.
-    for (int i = 0; i < 10000; ++i) {
+    // Raw pointer history is Qt semantic input. The bounded Runtime therefore keeps every accepted
+    // move instead of collapsing excursions and trying to reconstruct their meaning later.
+    for (int i = 0; i < 64; ++i) {
         hyremote::InputEvent move;
         move.kind = hyremote::InputEventKind::PointerMove;
         move.sourceViewport = {100U, 50U, 1.0F};
-        move.x = static_cast<float>(i % 100);
+        move.x = static_cast<float>(i);
         move.y = static_cast<float>(i % 50);
         components.input->post(move);
     }
 
+    hyremote::InputEvent overflow;
+    overflow.kind = hyremote::InputEventKind::PointerMove;
+    overflow.sourceViewport = {100U, 50U, 1.0F};
+    overflow.x = 64.0F;
+    overflow.y = 14.0F;
+    bool backpressured = false;
+    try {
+        components.input->post(overflow);
+    } catch (const std::runtime_error &) {
+        backpressured = true;
+    }
+    CHECK(backpressured);
     CHECK(target.moves == 0);
-    CHECK(pumpUntil([&] { return target.moves != 0; }));
-    CHECK(target.moves == 1);
-    CHECK(std::fabs(target.lastPosition.x() - 99.0) <= 1.0);
-    CHECK(std::fabs(target.lastPosition.y() - 49.0) <= 1.0);
+
+    CHECK(pumpUntil([&] { return target.moves == 64; }));
+    CHECK(target.moves == 64);
+    CHECK(std::fabs(target.lastPosition.x() - 63.0) <= 1.0);
+    CHECK(std::fabs(target.lastPosition.y() - 13.0) <= 1.0);
 
     components.input.reset();
 }
@@ -151,9 +163,6 @@ void testProtectedReleaseSurvivesNormalMailboxSaturation()
 
     CHECK(pumpUntil([&] { return target.buttonPresses == 1 && target.keyPresses == 1; }));
 
-    // Saturate the normal 64-event budget without processing the GUI queue. These committed-text
-    // events do not alter logical held state but reproduce the condition that previously rejected
-    // disconnect cleanup releases with "bounded Qt input mailbox is full".
     for (int i = 0; i < 64; ++i) {
         hyremote::InputEvent text;
         text.kind = hyremote::InputEventKind::Text;
@@ -173,8 +182,6 @@ void testProtectedReleaseSurvivesNormalMailboxSaturation()
     }
     CHECK(!protectedReleaseThrew);
 
-    // A new press cannot enter the saturated normal lane. Its later release must be recognized as
-    // unmatched by adapter admission and dropped without consuming the protected release reserve.
     hyremote::InputEvent rejectedPress;
     rejectedPress.kind = hyremote::InputEventKind::Key;
     rejectedPress.key = hyremote::KeyCode::B;
@@ -201,8 +208,8 @@ void testProtectedReleaseSurvivesNormalMailboxSaturation()
     CHECK(pumpUntil([&] { return target.buttonReleases == 1 && target.keyReleases == 1; }));
     CHECK(target.buttonPresses == 1);
     CHECK(target.buttonReleases == 1);
-    CHECK(target.keyPresses == 1);   // rejected B never reached QWidget
-    CHECK(target.keyReleases == 1); // only the accepted Shift lifecycle was released
+    CHECK(target.keyPresses == 1);
+    CHECK(target.keyReleases == 1);
 
     components.input.reset();
 }
@@ -243,8 +250,6 @@ void testShutdownBalancesDeliveredStateAndDropsPendingInput()
     CHECK(target.buttonReleases == 0);
     CHECK(target.keyReleases == 0);
 
-    // This key is accepted into the adapter mailbox but deliberately not allowed to reach the GUI.
-    // shutdown() must discard it, then balance only the button/Shift that were already delivered.
     hyremote::InputEvent pendingKey;
     pendingKey.kind = hyremote::InputEventKind::Key;
     pendingKey.key = hyremote::KeyCode::A;
@@ -255,14 +260,13 @@ void testShutdownBalancesDeliveredStateAndDropsPendingInput()
     components.input->shutdown();
     CHECK(target.buttonReleases == 1);
     CHECK(target.keyReleases == 1);
-    CHECK(target.keyPresses == 1);  // pending A never reached QWidget
+    CHECK(target.keyPresses == 1);
 
     QCoreApplication::processEvents();
     CHECK(target.buttonReleases == 1);
     CHECK(target.keyReleases == 1);
     CHECK(target.keyPresses == 1);
 
-    // Destruction after terminal shutdown must not synthesize a second release sequence.
     components.input.reset();
     QCoreApplication::processEvents();
     CHECK(target.buttonReleases == 1);
@@ -274,7 +278,7 @@ void testShutdownBalancesDeliveredStateAndDropsPendingInput()
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    testPointerFloodCoalescesBeforeGuiDelivery();
+    testPointerFloodBackpressuresWithoutSemanticLoss();
     testProtectedReleaseSurvivesNormalMailboxSaturation();
     testShutdownBalancesDeliveredStateAndDropsPendingInput();
     HyRemote::detail::resetFactories();
