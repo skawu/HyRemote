@@ -394,6 +394,9 @@ private:
         if (!target)
             return;
 
+        if (auto *interactive = dynamic_cast<InteractiveCompositeTarget *>(target))
+            interactive->refreshSurfaces();
+
         const CompositeTargetSnapshot snapshot = target->captureSnapshot();
         pruneChildInputs(state, snapshot);
 
@@ -442,6 +445,17 @@ private:
 };
 
 }  // namespace
+
+void InteractiveCompositeTarget::setSurfaceRefreshHandler(SurfaceRefreshHandler handler)
+{
+    m_surfaceRefreshHandler = std::move(handler);
+}
+
+void InteractiveCompositeTarget::refreshSurfaces()
+{
+    if (m_surfaceRefreshHandler)
+        m_surfaceRefreshHandler();
+}
 
 ::HyRemote::detail::TargetComponents InteractiveCompositeTarget::createTargetComponents(
     bool remoteInputEnabled,
