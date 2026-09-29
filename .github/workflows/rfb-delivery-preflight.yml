@@ -1,0 +1,72 @@
+name: RFB delivery preflight
+
+on:
+  pull_request:
+    paths:
+      - 'tests/preflight/rfb-delivery/**'
+      - '.github/workflows/rfb-delivery-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rfb-delivery-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trle-candidate:
+    name: ${{ matrix.name }} / TRLE candidate
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-24.04
+          - name: Windows x86_64
+            os: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure, build and run
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ runner.os }}' -eq 'Windows') {
+            cmake -S tests/preflight/rfb-delivery -B build-rfb-delivery -A x64
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cmake --build build-rfb-delivery --config Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & './build-rfb-delivery/Release/hyremote-rfb-delivery-preflight.exe' 2>&1 | Tee-Object -FilePath rfb-delivery-preflight.log
+          } else {
+            cmake -S tests/preflight/rfb-delivery -B build-rfb-delivery -G Ninja -DCMAKE_BUILD_TYPE=Release
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            cmake --build build-rfb-delivery
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & './build-rfb-delivery/hyremote-rfb-delivery-preflight' 2>&1 | Tee-Object -FilePath rfb-delivery-preflight.log
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Evidence summary
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path rfb-delivery-preflight.log)) {
+            Write-Error 'RFB delivery preflight transcript is missing'
+          }
+          $lines = Get-Content rfb-delivery-preflight.log
+          Add-Content $env:GITHUB_STEP_SUMMARY "## RFB delivery preflight — ${{ matrix.name }}"
+          Add-Content $env:GITHUB_STEP_SUMMARY '```text'
+          $evidence = $lines | Where-Object { $_ -match '^(CASE=|TRLE_RAW_CPIXEL_BOUND=|PREFLIGHT_RESULT=)' }
+          $evidence | ForEach-Object { Add-Content $env:GITHUB_STEP_SUMMARY $_ }
+          Add-Content $env:GITHUB_STEP_SUMMARY '```'
+          if (-not ($lines -contains 'TRLE_RAW_CPIXEL_BOUND=PASS')) {
+            Write-Error 'TRLE raw-CPIXEL structural bound did not pass'
+          }
+          if (-not ($lines -contains 'PREFLIGHT_RESULT=PASS')) {
+            Write-Error 'TRLE delivery preflight did not pass'
+          }
