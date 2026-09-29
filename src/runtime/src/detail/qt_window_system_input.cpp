@@ -14,6 +14,9 @@
 namespace HyRemote::detail {
 namespace {
 
+thread_local bool g_hasAcceptedTimestamp = false;
+thread_local unsigned long g_acceptedTimestamp = 0;
+
 Qt::KeyboardModifiers toQtModifiers(hyremote::InputModifiers modifiers)
 {
     Qt::KeyboardModifiers result = Qt::NoModifier;
@@ -55,8 +58,26 @@ QPointF nativeGlobal(const QPointF &logical, QWindow *window)
 
 }  // namespace
 
+QtWindowSystemAcceptedTimestampScope::QtWindowSystemAcceptedTimestampScope(
+    unsigned long timestamp) noexcept
+    : m_previousTimestamp(g_acceptedTimestamp)
+    , m_hadPreviousTimestamp(g_hasAcceptedTimestamp)
+{
+    g_acceptedTimestamp = timestamp;
+    g_hasAcceptedTimestamp = true;
+}
+
+QtWindowSystemAcceptedTimestampScope::~QtWindowSystemAcceptedTimestampScope()
+{
+    g_acceptedTimestamp = m_previousTimestamp;
+    g_hasAcceptedTimestamp = m_hadPreviousTimestamp;
+}
+
 unsigned long qtWindowSystemTimestamp() noexcept
 {
+    if (g_hasAcceptedTimestamp)
+        return g_acceptedTimestamp;
+
     // QWindowSystemInterface only requires a monotonic timestamp domain for relative input timing.
     // Keep remote input on its own steady-clock domain: consecutive remote facts preserve their
     // real acceptance spacing, while a local physical press can never accidentally combine with a
