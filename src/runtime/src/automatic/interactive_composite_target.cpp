@@ -49,10 +49,13 @@ public:
     //   * A child adapter that rejects an event during the drain is recorded as a deferred error and **surfaces on
     //     the next `post`**, which then throws **without accepting its own event** - so a caller always learns
     //     about a failed delivery before its next event is taken, and never after.
-    //   * Acceptance covers the queued batch, not the child delivery: if queueing the drain itself fails, the
-    //     queued events are discarded and the call throws, because they can no longer be delivered.
+    //   * Queueing the first GUI turn is part of acceptance. Later continuation turns are internal to the already
+    //     accepted sequence; if one cannot be queued, the remaining pending sequence is discarded and the failure
+    //     is surfaced through the same deferred-error channel.
     //   * The timestamp captured here is replayed through a Runtime-private thread-local scope when the leaf sink is
     //     invoked on the GUI thread. Queue delay therefore cannot change Qt's click classification.
+    //   * One composite GUI turn forwards exactly one accepted event. The leaf drain is therefore enqueued before
+    //     the next composite turn, preserving global A -> B -> A chronology across different child surfaces.
     void post(const hyremote::InputEvent &event) override
     {
         QObject *dispatcher = QCoreApplication::instance();
@@ -89,8 +92,9 @@ public:
                     state->admission.acceptNormal(event);
                 }
 
-                state->pending.push_back(
-                    QueuedInput{event, ::HyRemote::detail::qtWindowSystemTimestamp()});
+                state->pending.push_back(QueuedInput{event,
+                                                     ::HyRemote::detail::qtWindowSystemTimestamp(),
+                                                     admissionClass});
                 if (!state->drainScheduled) {
                     state->drainScheduled = true;
                     scheduleDrain = true;
@@ -150,6 +154,8 @@ private:
     {
         hyremote::InputEvent event;
         unsigned long acceptedTimestamp = 0;
+        ::HyRemote::detail::InputMailboxAdmission::Class admissionClass =
+            ::HyRemote::detail::InputMailboxAdmission::Class::Normal;
     };
 
     struct ChildInput
@@ -417,7 +423,7 @@ private:
 
     static void drainOnGuiThread(const std::shared_ptr<State> &state)
     {
-        std::deque<QueuedInput> batch;
+        QueuedInput queued;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active) {
@@ -426,18 +432,49 @@ private:
                 state->drainScheduled = false;
                 return;
             }
-            batch.swap(state->pending);
-            state->admission.pendingBatchTaken();
-            state->drainScheduled = false;
+            if (state->pending.empty()) {
+                state->drainScheduled = false;
+                return;
+            }
+
+            queued = std::move(state->pending.front());
+            state->pending.pop_front();
+            if (queued.admissionClass
+                == ::HyRemote::detail::InputMailboxAdmission::Class::ProtectedRelease) {
+                state->admission.removePendingProtectedRelease();
+            } else {
+                state->admission.removePendingNormal();
+            }
         }
 
-        for (const QueuedInput &queued : batch) {
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                if (!state->active)
-                    return;
+        // Forward exactly one event before scheduling the next composite turn. Built-in leaf sinks
+        // post their own GUI drain here, so Qt's FIFO queue keeps cross-surface chronology intact.
+        deliverOnGuiThread(state, queued);
+
+        QObject *dispatcher = QCoreApplication::instance();
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active)
+                return;
+            if (state->pending.empty()) {
+                state->drainScheduled = false;
+                return;
             }
-            deliverOnGuiThread(state, queued);
+        }
+
+        if (!dispatcher
+            || !QMetaObject::invokeMethod(
+                dispatcher,
+                [state] { drainOnGuiThread(state); },
+                Qt::QueuedConnection)) {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->drainScheduled = false;
+            state->pending.clear();
+            state->admission.resetAll();
+            if (state->deferredError.empty()) {
+                state->deferredError =
+                    "failed to queue automatic composite continuation drain to the Qt GUI thread";
+            }
         }
     }
 
