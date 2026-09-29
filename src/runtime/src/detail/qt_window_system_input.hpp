@@ -20,7 +20,26 @@ struct QtWindowSystemPointerState
     bool positionKnown = false;
 };
 
-// Capture the remote fact's monotonic acceptance time before GUI queue delay.
+// Composite Runtime layers may need GUI-thread surface arbitration before they can call a normal
+// leaf input sink. This scope lets that leaf keep using qtWindowSystemTimestamp() while observing
+// the timestamp captured when the composite originally accepted the remote fact. It is strictly
+// thread-local and Runtime-private; no timestamp enters the public normalized-input contract.
+class QtWindowSystemAcceptedTimestampScope final
+{
+public:
+    explicit QtWindowSystemAcceptedTimestampScope(unsigned long timestamp) noexcept;
+    ~QtWindowSystemAcceptedTimestampScope();
+
+    QtWindowSystemAcceptedTimestampScope(const QtWindowSystemAcceptedTimestampScope &) = delete;
+    QtWindowSystemAcceptedTimestampScope &operator=(const QtWindowSystemAcceptedTimestampScope &) = delete;
+
+private:
+    unsigned long m_previousTimestamp = 0;
+    bool m_hadPreviousTimestamp = false;
+};
+
+// Capture the remote fact's monotonic acceptance time before GUI queue delay. While an accepted
+// timestamp scope is active, return that already-captured value instead of sampling the clock again.
 unsigned long qtWindowSystemTimestamp() noexcept;
 
 // Deliver one transport-neutral pointer fact at Qt's window-system boundary.
