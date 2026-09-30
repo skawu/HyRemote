@@ -2,6 +2,8 @@
 
 #include "access_types.hpp"
 
+#include <HyRemote/RemoteAccessExport.h>
+
 #include <QHostAddress>
 #include <QString>
 
@@ -36,7 +38,8 @@ struct DiagnosticSnapshot
 
 // One bounded formatter shared by every integration route. It renders only the snapshot truth and
 // explicit unknown/none placeholders for fields whose authoritative owners have not been wired yet.
-// No environment probing, filesystem reads, backend objects or secret-bearing paths belong here.
-QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot);
+// The symbol is exported only so peer frontend modules can call the one Runtime implementation; this
+// private header remains uninstalled and therefore does not create an application SDK/ABI promise.
+HYREMOTE_REMOTEACCESS_EXPORT QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot);
 
 }  // namespace HyRemote::Runtime
