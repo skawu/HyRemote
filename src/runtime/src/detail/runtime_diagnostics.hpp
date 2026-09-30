@@ -1,6 +1,7 @@
 #pragma once
 
 #include "access_types.hpp"
+#include "detail/integration_route.hpp"
 
 #include <HyRemote/RemoteAccessExport.h>
 
@@ -21,6 +22,7 @@ namespace HyRemote::Runtime {
 // must never infer effective values from configured values on their own.
 struct DiagnosticSnapshot
 {
+    IntegrationRoute integrationRoute = IntegrationRoute::Unknown;
     AccessState state = AccessState::Stopped;
 
     QHostAddress configuredListenAddress;

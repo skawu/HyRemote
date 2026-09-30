@@ -20,6 +20,7 @@ using HyRemote::Runtime::AccessState;
 using HyRemote::Runtime::DiagnosticSnapshot;
 using HyRemote::Runtime::Error;
 using HyRemote::Runtime::ErrorCode;
+using HyRemote::Runtime::IntegrationRoute;
 using HyRemote::Runtime::SecurityProfile;
 using HyRemote::Runtime::formatDiagnosticReport;
 
@@ -31,6 +32,7 @@ void checkDefaultReport()
 
     const QString report = formatDiagnosticReport(snapshot);
     CHECK(report.contains(QStringLiteral("HYREMOTE_VERSION=unknown\n")));
+    CHECK(report.contains(QStringLiteral("INTEGRATION_ROUTE=unknown\n")));
     CHECK(report.contains(QStringLiteral("STATE=Stopped\n")));
     CHECK(report.contains(QStringLiteral("LISTENER_CONFIGURED=address:0.0.0.0:5920\n")));
     CHECK(report.contains(QStringLiteral("LISTENER_EFFECTIVE=none\n")));
@@ -45,6 +47,7 @@ void checkDefaultReport()
 void checkRunningReport()
 {
     DiagnosticSnapshot snapshot;
+    snapshot.integrationRoute = IntegrationRoute::Generic;
     snapshot.state = AccessState::Running;
     snapshot.configuredListenInterface = QStringLiteral("eth0");
     snapshot.configuredPort = 5921;
@@ -56,6 +59,7 @@ void checkRunningReport()
     snapshot.connectedClientCount = 2;
 
     const QString report = formatDiagnosticReport(snapshot);
+    CHECK(report.contains(QStringLiteral("INTEGRATION_ROUTE=generic\n")));
     CHECK(report.contains(QStringLiteral("STATE=Running\n")));
     CHECK(report.contains(QStringLiteral("LISTENER_CONFIGURED=interface:eth0:5921\n")));
     CHECK(report.contains(QStringLiteral("LISTENER_EFFECTIVE=192.0.2.10:5921\n")));
@@ -63,6 +67,13 @@ void checkRunningReport()
     CHECK(report.contains(QStringLiteral("SECURITY_ENABLED=true\n")));
     CHECK(report.contains(QStringLiteral("REMOTE_INPUT=true\n")));
     CHECK(report.contains(QStringLiteral("CONNECTED_CLIENTS=2\n")));
+
+    snapshot.integrationRoute = IntegrationRoute::Qpa;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("INTEGRATION_ROUTE=qpa\n")));
+    snapshot.integrationRoute = IntegrationRoute::Cpp;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("INTEGRATION_ROUTE=cpp\n")));
+    snapshot.integrationRoute = IntegrationRoute::Qml;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("INTEGRATION_ROUTE=qml\n")));
 }
 
 void checkErrorIsBoundedAndSingleLine()
