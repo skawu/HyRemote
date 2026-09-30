@@ -118,7 +118,7 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
-            "Common runtime contains the Qt Quick target adapter" FORCE)
+            "Common runtime was built with the Qt Quick target adapter" FORCE)
     else()
         message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
     endif()
