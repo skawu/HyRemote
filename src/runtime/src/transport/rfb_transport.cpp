@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "hyremote/core/storage.hpp"
+#include "rfb_delivery.hpp"
 
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
 // The VNC challenge/response primitive is compiled only when the transport-security capability is available, so the
@@ -45,6 +46,7 @@ constexpr std::uint32_t kMaxCutTextBytes = 64 * 1024;
 constexpr std::size_t kMaxHeldKeys = 64;
 constexpr std::size_t kKeyCodeCount = static_cast<std::size_t>(hyremote::KeyCode::F12) + 1U;
 constexpr std::int32_t kEncodingRaw = 0;
+constexpr std::int32_t kEncodingTrle = 15;
 constexpr std::int32_t kEncodingDesktopSize = -223;
 
 std::uint8_t byteAt(const QByteArray &data, qsizetype offset)
@@ -107,6 +109,22 @@ struct PixelSpec
 PixelSpec nativePixelSpec()
 {
     return {};
+}
+
+rfb_delivery::PixelFormat deliveryPixelFormat(const PixelSpec &spec)
+{
+    return {
+        spec.bitsPerPixel,
+        spec.depth,
+        spec.bigEndian,
+        spec.trueColor,
+        spec.redMax,
+        spec.greenMax,
+        spec.blueMax,
+        spec.redShift,
+        spec.greenShift,
+        spec.blueShift,
+    };
 }
 
 bool pixelSpecSupported(const PixelSpec &spec)
@@ -343,12 +361,8 @@ struct ClientState
     QByteArray authChallenge;
     PixelSpec pixels = nativePixelSpec();
     bool supportsDesktopSize = false;
-    bool updateRequested = false;
-    bool incrementalRequest = false;
-    std::uint16_t requestX = 0;
-    std::uint16_t requestY = 0;
-    std::uint16_t requestWidth = 0;
-    std::uint16_t requestHeight = 0;
+    bool supportsTrle = false;
+    rfb_delivery::ViewerState delivery;
     std::uint16_t framebufferWidth = 0;
     std::uint16_t framebufferHeight = 0;
     std::uint8_t buttonMask = 0;
@@ -421,6 +435,7 @@ public:
         m_clients.clear();
         m_keyHolderCounts.fill(0);
         m_buttonHolderCounts.fill(0);
+        m_observedFrame.reset();
         m_onInput = {};
         m_onEvent = {};
     }
@@ -432,12 +447,30 @@ public:
             m_frames->notificationPending = false;
         }
 
+        const auto frame = latestFrame();
+        if (!frame)
+            return;
+
+        const bool geometryChanged = m_observedFrame
+                                     && !rfb_delivery::sameDiffGeometry(*m_observedFrame, *frame);
+        const rfb_delivery::BoundedRegion damage
+            = rfb_delivery::changedTiles(m_observedFrame ? &*m_observedFrame : nullptr, *frame);
+        m_observedFrame = *frame;
+
         for (auto &entry : m_clients) {
             ClientState &client = *entry.second;
             if (client.phase == ClientPhase::AwaitInitialFrame)
                 sendServerInit(client);
-            if (client.phase == ClientPhase::Normal)
-                trySendUpdate(client);
+            if (client.phase != ClientPhase::Normal)
+                continue;
+
+            if (geometryChanged) {
+                client.delivery.invalidateFull(static_cast<int>(frame->geometry.size.width),
+                                               static_cast<int>(frame->geometry.size.height));
+            } else {
+                client.delivery.accumulate(damage);
+            }
+            trySendUpdate(client);
         }
     }
 
@@ -642,7 +675,7 @@ private:
                         return;
                     }
                     QString challengeError;
-                    if (!generateVncAuthChallenge(client.authChallenge, challengeError)) {
+                    if (!generateVncAuthChallenge(client.authChallenge, verifyError)) {
                         protocolFailure(client, "the authentication challenge could not be generated");
                         return;
                     }
@@ -742,11 +775,14 @@ private:
                 if (client.input.size() < size)
                     return;
                 client.supportsDesktopSize = false;
+                client.supportsTrle = false;
                 for (std::uint16_t i = 0; i < count; ++i) {
-                    if (readS32(client.input, 4 + static_cast<qsizetype>(i) * 4)
-                        == kEncodingDesktopSize) {
+                    const std::int32_t encoding
+                        = readS32(client.input, 4 + static_cast<qsizetype>(i) * 4);
+                    if (encoding == kEncodingDesktopSize)
                         client.supportsDesktopSize = true;
-                    }
+                    if (encoding == kEncodingTrle)
+                        client.supportsTrle = true;
                 }
                 client.input.remove(0, size);
                 continue;
@@ -755,13 +791,25 @@ private:
             if (type == 3) {  // FramebufferUpdateRequest
                 if (client.input.size() < 10)
                     return;
-                client.incrementalRequest = byteAt(client.input, 1) != 0;
-                client.requestX = readU16(client.input, 2);
-                client.requestY = readU16(client.input, 4);
-                client.requestWidth = readU16(client.input, 6);
-                client.requestHeight = readU16(client.input, 8);
-                client.updateRequested = true;  // coalesced: never one queued work item per request
+                const bool incremental = byteAt(client.input, 1) != 0;
+                const rfb_delivery::Rect rawRequest{
+                    static_cast<int>(readU16(client.input, 2)),
+                    static_cast<int>(readU16(client.input, 4)),
+                    static_cast<int>(readU16(client.input, 6)),
+                    static_cast<int>(readU16(client.input, 8)),
+                };
                 client.input.remove(0, 10);
+
+                const auto frame = latestFrame();
+                if (!frame)
+                    continue;
+                const rfb_delivery::Rect requested
+                    = rfb_delivery::intersection(rawRequest, rfb_delivery::fullRect(*frame));
+                if (requested.empty()) {
+                    client.delivery.cancelRequest();
+                    continue;
+                }
+                client.delivery.request(incremental, requested);
                 trySendUpdate(client);
                 continue;
             }
@@ -831,6 +879,7 @@ private:
         client.socket->write(init);
         client.framebufferWidth = static_cast<std::uint16_t>(width);
         client.framebufferHeight = static_cast<std::uint16_t>(height);
+        client.delivery.markInitialFull(static_cast<int>(width), static_cast<int>(height));
         client.phase = ClientPhase::Normal;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
@@ -1037,10 +1086,7 @@ private:
     bool appendRawRectangle(QByteArray &message,
                             const hyremote::RemoteFrame &frame,
                             const PixelSpec &pixels,
-                            std::uint16_t x,
-                            std::uint16_t y,
-                            std::uint16_t width,
-                            std::uint16_t height)
+                            const rfb_delivery::Rect &rect)
     {
         if (frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888 || !frame.storage)
             return false;
@@ -1052,39 +1098,57 @@ private:
         if (plane->stride < frameWidth * 4U || plane->bytes < plane->stride * frameHeight)
             return false;
 
-        appendU16(message, x);
-        appendU16(message, y);
-        appendU16(message, width);
-        appendU16(message, height);
+        appendU16(message, static_cast<std::uint16_t>(rect.x));
+        appendU16(message, static_cast<std::uint16_t>(rect.y));
+        appendU16(message, static_cast<std::uint16_t>(rect.width));
+        appendU16(message, static_cast<std::uint16_t>(rect.height));
         appendS32(message, kEncodingRaw);
 
         const int bytesPerPixel = pixels.bitsPerPixel / 8;
-        const std::uint64_t pixelBytes = static_cast<std::uint64_t>(width) * height * bytesPerPixel;
+        const std::uint64_t pixelBytes = static_cast<std::uint64_t>(rect.width)
+                                         * static_cast<std::uint64_t>(rect.height) * bytesPerPixel;
         if (pixelBytes > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
             return false;
         message.reserve(message.size() + static_cast<qsizetype>(pixelBytes));
 
         const auto *base = reinterpret_cast<const std::uint8_t *>(plane->data);
-        for (std::uint32_t row = 0; row < height; ++row) {
-            const std::uint8_t *source = base + (static_cast<std::size_t>(y) + row) * plane->stride
-                                         + static_cast<std::size_t>(x) * 4U;
-            for (std::uint32_t col = 0; col < width; ++col) {
+        for (int row = 0; row < rect.height; ++row) {
+            const std::uint8_t *source
+                = base + static_cast<std::size_t>(rect.y + row) * plane->stride
+                  + static_cast<std::size_t>(rect.x) * 4U;
+            for (int col = 0; col < rect.width; ++col) {
                 appendEncodedPixel(message,
-                                   source[col * 4U],
-                                   source[col * 4U + 1U],
-                                   source[col * 4U + 2U],
+                                   source[static_cast<std::size_t>(col) * 4U],
+                                   source[static_cast<std::size_t>(col) * 4U + 1U],
+                                   source[static_cast<std::size_t>(col) * 4U + 2U],
                                    pixels);
             }
         }
         return true;
     }
 
+    bool appendTrleRectangle(QByteArray &message,
+                             const hyremote::RemoteFrame &frame,
+                             const PixelSpec &pixels,
+                             const rfb_delivery::Rect &rect)
+    {
+        appendU16(message, static_cast<std::uint16_t>(rect.x));
+        appendU16(message, static_cast<std::uint16_t>(rect.y));
+        appendU16(message, static_cast<std::uint16_t>(rect.width));
+        appendU16(message, static_cast<std::uint16_t>(rect.height));
+        appendS32(message, kEncodingTrle);
+        return rfb_delivery::appendTrlePayload(message, frame, rect, deliveryPixelFormat(pixels));
+    }
+
     void trySendUpdate(ClientState &client)
     {
-        if (!client.socket || client.phase != ClientPhase::Normal || !client.updateRequested)
+        if (!client.socket || client.phase != ClientPhase::Normal
+            || !client.delivery.hasOutstandingRequest()) {
             return;
+        }
         // QTcpSocket's write buffer is itself a queue. Never append another framebuffer while the
-        // previous one still has pending bytes; update requests remain a single coalesced flag.
+        // previous one still has pending bytes; the viewer request stays outstanding and accumulated
+        // damage remains per-client until one current update is successfully queued.
         if (client.socket->bytesToWrite() != 0)
             return;
 
@@ -1106,35 +1170,27 @@ private:
                             "RFB viewer does not advertise DesktopSize; reconnect after target resize");
             return;
         }
+        if (resized)
+            client.delivery.invalidateFull(static_cast<int>(width), static_cast<int>(height));
 
-        std::uint16_t x = client.requestX;
-        std::uint16_t y = client.requestY;
-        std::uint16_t rectWidth = client.requestWidth;
-        std::uint16_t rectHeight = client.requestHeight;
-        if (resized) {
-            x = 0;
-            y = 0;
-            rectWidth = width;
-            rectHeight = height;
-        } else {
-            if (x >= width || y >= height) {
-                client.updateRequested = false;
-                return;
-            }
-            rectWidth = static_cast<std::uint16_t>(
-                std::min<std::uint32_t>(rectWidth, static_cast<std::uint32_t>(width - x)));
-            rectHeight = static_cast<std::uint16_t>(
-                std::min<std::uint32_t>(rectHeight, static_cast<std::uint32_t>(height - y)));
+        const auto selected = client.delivery.selectEligible();
+        if (!selected)
+            return;  // static incremental request remains pending until later damage arrives.
+        if (selected->empty()) {
+            client.delivery.cancelRequest();
+            return;
         }
-        if (rectWidth == 0 || rectHeight == 0) {
-            client.updateRequested = false;
+        if (selected->rectCount() + (resized ? 1U : 0U)
+            > static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max())) {
+            protocolFailure(client, "RFB update exceeded the rectangle-count limit");
             return;
         }
 
         QByteArray update;
         update.append(char(0));  // FramebufferUpdate
         update.append(char(0));
-        appendU16(update, resized ? 2 : 1);
+        appendU16(update,
+                  static_cast<std::uint16_t>(selected->rectCount() + (resized ? 1U : 0U)));
         if (resized) {
             appendU16(update, 0);
             appendU16(update, 0);
@@ -1142,16 +1198,32 @@ private:
             appendU16(update, height);
             appendS32(update, kEncodingDesktopSize);
         }
-        if (!appendRawRectangle(update, *frame, client.pixels, x, y, rectWidth, rectHeight)) {
-            protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
-            return;
+
+        for (const rfb_delivery::Rect &rect : selected->rects()) {
+            if (rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0
+                || rect.right() > width || rect.bottom() > height) {
+                protocolFailure(client, "RFB delivery selected an invalid framebuffer rectangle");
+                return;
+            }
+            const bool encoded = client.supportsTrle
+                                     ? appendTrleRectangle(update, *frame, client.pixels, rect)
+                                     : appendRawRectangle(update, *frame, client.pixels, rect);
+            if (!encoded) {
+                protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
+                return;
+            }
         }
 
-        if (client.socket->write(update) < 0) {
+        const qint64 written = client.socket->write(update);
+        if (written != update.size()) {
             protocolFailure(client, "RFB socket write failed");
             return;
         }
-        client.updateRequested = false;
+
+        // Selection is intentionally separate from commit: failed mapping/encoding/write leaves the
+        // request and accumulated damage intact. Once QTcpSocket accepts the complete update into its
+        // bounded write queue, the current pixels satisfy every pending change inside these rectangles.
+        client.delivery.commitDelivered(*selected);
         client.framebufferWidth = width;
         client.framebufferHeight = height;
     }
@@ -1166,6 +1238,7 @@ private:
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
+    std::optional<hyremote::RemoteFrame> m_observedFrame;
     bool m_stopping = false;
 };
 
