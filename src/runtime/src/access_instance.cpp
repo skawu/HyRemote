@@ -794,6 +794,35 @@ std::optional<Error> AccessInstance::lastError() const
     return m_impl->effectiveError();
 }
 
+DiagnosticSnapshot AccessInstance::diagnosticSnapshot() const
+{
+    DiagnosticSnapshot result;
+    if (!m_impl)
+        return result;
+
+    result.state = m_impl->projectedState();
+    result.configuredListenAddress = m_impl->listenAddress;
+    result.configuredListenInterface = m_impl->listenInterface;
+    result.configuredPort = m_impl->port;
+    result.configuredSecurityProfile = m_impl->securityProfile;
+    result.remoteInputEnabled = m_impl->remoteInputEnabled;
+    result.connectedClientCount = m_impl->connectedClients
+                                      ? m_impl->connectedClients->load(std::memory_order_relaxed)
+                                      : 0;
+    result.lastError = m_impl->effectiveError();
+
+    // #335: effective values are observations of a live successful run, never configuration guesses.
+    // Runtime start is fail-closed for security, so Running proves the configured profile is the one
+    // actually satisfied; Starting/Unavailable/failure/stop intentionally expose no effective facts.
+    if (result.state == AccessState::Running && m_impl->effectiveAddress) {
+        result.effectiveListenAddress = m_impl->effectiveAddress;
+        result.effectivePort = m_impl->port;
+        result.effectiveSecurityProfile = m_impl->securityProfile;
+    }
+
+    return result;
+}
+
 void AccessInstance::clearError()
 {
     if (!m_impl)

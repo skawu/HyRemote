@@ -42,6 +42,7 @@ using ::HyRemote::Runtime::AccessInstance;
 using ::HyRemote::Runtime::Error;
 using ::HyRemote::Runtime::ErrorCode;
 using ::HyRemote::Runtime::RuntimeNotificationHandlers;
+using ::HyRemote::Runtime::SecurityProfile;
 
 const char *stateName(AccessState state)
 {
@@ -265,8 +266,25 @@ void testStartOrderingAndStopOrdering()
     Recorder recorder;
     CHECK(instance.subscribeNotifications(recorder.handlers()).isValid());
 
+    const auto stopped = instance.diagnosticSnapshot();
+    CHECK(stopped.state == AccessState::Stopped);
+    CHECK(stopped.configuredListenAddress == instance.listenAddress());
+    CHECK(stopped.configuredPort == instance.port());
+    CHECK(stopped.configuredSecurityProfile == SecurityProfile::Insecure);
+    CHECK(!stopped.effectiveListenAddress.has_value());
+    CHECK(!stopped.effectivePort.has_value());
+    CHECK(!stopped.effectiveSecurityProfile.has_value());
+
     CHECK(instance.start());
     CHECK(instance.state() == AccessState::Running);
+    const auto running = instance.diagnosticSnapshot();
+    CHECK(running.state == AccessState::Running);
+    CHECK(running.effectiveListenAddress.has_value());
+    CHECK(*running.effectiveListenAddress == instance.listenAddress());
+    CHECK(running.effectivePort.has_value());
+    CHECK(*running.effectivePort == instance.port());
+    CHECK(running.effectiveSecurityProfile.has_value());
+    CHECK(*running.effectiveSecurityProfile == SecurityProfile::Insecure);
     CHECK(recorder.only("state:").size() == 2u);
     CHECK(indexOf(recorder.only("state:"), "state:Starting") == 0u);
     CHECK(indexOf(recorder.only("state:"), "state:Running") == 1u);
@@ -279,6 +297,10 @@ void testStartOrderingAndStopOrdering()
     recorder.clear();
     instance.stop();
     CHECK(instance.state() == AccessState::Stopped);
+    const auto stoppedAgain = instance.diagnosticSnapshot();
+    CHECK(!stoppedAgain.effectiveListenAddress.has_value());
+    CHECK(!stoppedAgain.effectivePort.has_value());
+    CHECK(!stoppedAgain.effectiveSecurityProfile.has_value());
     CHECK(recorder.only("state:").size() == 2u);
     CHECK(indexOf(recorder.only("state:"), "state:Stopping") == 0u);
     CHECK(indexOf(recorder.only("state:"), "state:Stopped") == 1u);
@@ -303,6 +325,13 @@ void testStartFailurePublishesErrorThenStopped()
     CHECK(instance.state() == AccessState::Stopped);
     CHECK(instance.lastError().has_value());
     CHECK(instance.lastError()->code == ErrorCode::TargetAdapterUnavailable);
+    const auto failed = instance.diagnosticSnapshot();
+    CHECK(failed.state == AccessState::Stopped);
+    CHECK(failed.lastError.has_value());
+    CHECK(failed.lastError->code == ErrorCode::TargetAdapterUnavailable);
+    CHECK(!failed.effectiveListenAddress.has_value());
+    CHECK(!failed.effectivePort.has_value());
+    CHECK(!failed.effectiveSecurityProfile.has_value());
 
     const std::vector<std::string> states = recorder.only("state:");
     CHECK(states.size() == 2u);
@@ -331,8 +360,10 @@ void testClientCountIsEventDrivenAndNotRepeated()
     recorder.clear();
     emitTransport(state, hyremote::TransportEventCode::ClientConnected);
     CHECK(instance.connectedClientCount() == 1u);
+    CHECK(instance.diagnosticSnapshot().connectedClientCount == 1u);
     emitTransport(state, hyremote::TransportEventCode::ClientConnected);
     CHECK(instance.connectedClientCount() == 2u);
+    CHECK(instance.diagnosticSnapshot().connectedClientCount == 2u);
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
     CHECK(instance.connectedClientCount() == 1u);
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
