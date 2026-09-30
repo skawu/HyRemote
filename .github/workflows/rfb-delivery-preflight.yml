@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   delivery-candidates:
-    name: ${{ matrix.name }} / TRLE + ZRLE candidates
+    name: ${{ matrix.name }} / TRLE + ZRLE + incremental
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -61,6 +61,8 @@ jobs:
             & './build-rfb-delivery/Release/hyremote-rfb-delivery-preflight.exe' 2>&1 | Tee-Object -FilePath rfb-delivery-trle.log
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & './build-rfb-delivery/Release/hyremote-rfb-zrle-preflight.exe' 2>&1 | Tee-Object -FilePath rfb-delivery-zrle.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & './build-rfb-delivery/Release/hyremote-rfb-incremental-preflight.exe' 2>&1 | Tee-Object -FilePath rfb-delivery-incremental.log
           } else {
             cmake -S tests/preflight/rfb-delivery -B build-rfb-delivery -G Ninja `
               -DCMAKE_BUILD_TYPE=Release `
@@ -71,6 +73,8 @@ jobs:
             & './build-rfb-delivery/hyremote-rfb-delivery-preflight' 2>&1 | Tee-Object -FilePath rfb-delivery-trle.log
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & './build-rfb-delivery/hyremote-rfb-zrle-preflight' 2>&1 | Tee-Object -FilePath rfb-delivery-zrle.log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & './build-rfb-delivery/hyremote-rfb-incremental-preflight' 2>&1 | Tee-Object -FilePath rfb-delivery-incremental.log
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -79,15 +83,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if (-not (Test-Path rfb-delivery-trle.log)) {
-            Write-Error 'TRLE preflight transcript is missing'
-          }
-          if (-not (Test-Path rfb-delivery-zrle.log)) {
-            Write-Error 'ZRLE preflight transcript is missing'
+          foreach ($log in @('rfb-delivery-trle.log', 'rfb-delivery-zrle.log', 'rfb-delivery-incremental.log')) {
+            if (-not (Test-Path $log)) { Write-Error "$log is missing" }
           }
 
           $trle = Get-Content rfb-delivery-trle.log
           $zrle = Get-Content rfb-delivery-zrle.log
+          $incremental = Get-Content rfb-delivery-incremental.log
           Add-Content $env:GITHUB_STEP_SUMMARY "## RFB delivery preflight — ${{ matrix.name }}"
           Add-Content $env:GITHUB_STEP_SUMMARY '### TRLE'
           Add-Content $env:GITHUB_STEP_SUMMARY '```text'
@@ -99,19 +101,33 @@ jobs:
           ($zrle | Where-Object { $_ -match '^(ZLIB_VERSION=|CASE=|PERSISTENT_STREAM_ORDER=|ZRLE_RAW_CPIXEL_BOUND=|PREFLIGHT_RESULT=)' }) |
             ForEach-Object { Add-Content $env:GITHUB_STEP_SUMMARY $_ }
           Add-Content $env:GITHUB_STEP_SUMMARY '```'
+          Add-Content $env:GITHUB_STEP_SUMMARY '### Incremental state'
+          Add-Content $env:GITHUB_STEP_SUMMARY '```text'
+          ($incremental | Where-Object { $_ -match '^(CASE=|STATIC_NO_REDUNDANT_PAYLOAD=|SLOW_VIEWER_ABC_ACCUMULATION=|PARTIAL_REQUEST_PRESERVES_UNSENT_DAMAGE=|NON_INCREMENTAL_ALWAYS_REFRESH=|RESIZE_FORCES_FULL_REFRESH=|BOUNDED_REGION_COALESCING=|WORKLOAD_SHAPE_|PREFLIGHT_RESULT=)' }) |
+            ForEach-Object { Add-Content $env:GITHUB_STEP_SUMMARY $_ }
+          Add-Content $env:GITHUB_STEP_SUMMARY '```'
 
-          if (-not ($trle -contains 'TRLE_RAW_CPIXEL_BOUND=PASS')) {
-            Write-Error 'TRLE raw-CPIXEL structural bound did not pass'
-          }
-          if (-not ($trle -contains 'PREFLIGHT_RESULT=PASS')) {
+          if (-not ($trle -contains 'TRLE_RAW_CPIXEL_BOUND=PASS') -or -not ($trle -contains 'PREFLIGHT_RESULT=PASS')) {
             Write-Error 'TRLE delivery preflight did not pass'
           }
-          if (-not ($zrle -contains 'PERSISTENT_STREAM_ORDER=PASS')) {
-            Write-Error 'ZRLE persistent stream/order contract did not pass'
-          }
-          if (-not ($zrle -contains 'ZRLE_RAW_CPIXEL_BOUND=PASS')) {
-            Write-Error 'ZRLE raw-CPIXEL structural bound did not pass'
-          }
-          if (-not ($zrle -contains 'PREFLIGHT_RESULT=PASS')) {
+          if (-not ($zrle -contains 'PERSISTENT_STREAM_ORDER=PASS') -or
+              -not ($zrle -contains 'ZRLE_RAW_CPIXEL_BOUND=PASS') -or
+              -not ($zrle -contains 'PREFLIGHT_RESULT=PASS')) {
             Write-Error 'ZRLE delivery preflight did not pass'
+          }
+          foreach ($required in @(
+              'STATIC_NO_REDUNDANT_PAYLOAD=PASS',
+              'SLOW_VIEWER_ABC_ACCUMULATION=PASS',
+              'PARTIAL_REQUEST_PRESERVES_UNSENT_DAMAGE=PASS',
+              'NON_INCREMENTAL_ALWAYS_REFRESH=PASS',
+              'RESIZE_FORCES_FULL_REFRESH=PASS',
+              'WORKLOAD_SHAPE_STATIC_EMPTY=PASS',
+              'WORKLOAD_SHAPE_LOCALIZED=PASS',
+              'WORKLOAD_SHAPE_INTERACTIVE=PASS',
+              'WORKLOAD_SHAPE_HIGH_MOTION=PASS',
+              'PREFLIGHT_RESULT=PASS')) {
+            if (-not ($incremental -contains $required)) { Write-Error "incremental evidence missing $required" }
+          }
+          if (-not ($incremental | Where-Object { $_ -match '^BOUNDED_REGION_COALESCING=PASS MAX_RECTS=64$' })) {
+            Write-Error 'incremental region bound evidence is missing'
           }
