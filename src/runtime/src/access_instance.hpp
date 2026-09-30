@@ -23,8 +23,7 @@ namespace HyRemote::Runtime {
 class HYREMOTE_REMOTEACCESS_EXPORT AccessInstance
 {
 public:
-    explicit AccessInstance(QObject *target = nullptr,
-                            IntegrationRoute integrationRoute = IntegrationRoute::Unknown);
+    explicit AccessInstance(QObject *target = nullptr);
     ~AccessInstance();
 
     AccessInstance(const AccessInstance &) = delete;
