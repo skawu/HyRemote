@@ -5,6 +5,18 @@
 namespace HyRemote::Runtime {
 namespace {
 
+QString integrationRouteName(IntegrationRoute route)
+{
+    switch (route) {
+    case IntegrationRoute::Unknown: return QStringLiteral("unknown");
+    case IntegrationRoute::Cpp: return QStringLiteral("cpp");
+    case IntegrationRoute::Qml: return QStringLiteral("qml");
+    case IntegrationRoute::Generic: return QStringLiteral("generic");
+    case IntegrationRoute::Qpa: return QStringLiteral("qpa");
+    }
+    return QStringLiteral("unknown");
+}
+
 QString stateName(AccessState state)
 {
     switch (state) {
@@ -87,7 +99,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
           << QStringLiteral("QT_VERSION=unknown")
           << QStringLiteral("OS=unknown")
           << QStringLiteral("ARCH=unknown")
-          << QStringLiteral("INTEGRATION_ROUTE=unknown")
+          << QStringLiteral("INTEGRATION_ROUTE=%1").arg(integrationRouteName(snapshot.integrationRoute))
           << QStringLiteral("UI_FAMILY=unknown")
           << QStringLiteral("STATE=%1").arg(stateName(snapshot.state))
           << QStringLiteral("LISTENER_CONFIGURED=%1").arg(configuredListener(snapshot))
