@@ -162,6 +162,24 @@ if(HYREMOTE_WITH_VNC)
     )
     add_test(NAME hyremote-rfb-wire-robustness-test COMMAND hyremote-rfb-wire-robustness-test)
     set_tests_properties(hyremote-rfb-wire-robustness-test PROPERTIES TIMEOUT 30)
+
+    # #144: production wire acceptance for TRLE negotiation plus bounded incremental request/damage state.
+    add_executable(hyremote-rfb-delivery-test
+        test_rfb_delivery.cpp
+    )
+    target_link_libraries(hyremote-rfb-delivery-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Network
+    )
+    target_include_directories(hyremote-rfb-delivery-test
+        PRIVATE
+            ../src
+    )
+    add_test(NAME hyremote-rfb-delivery-test COMMAND hyremote-rfb-delivery-test)
+    set_tests_properties(hyremote-rfb-delivery-test PROPERTIES TIMEOUT 30)
 endif()
 
 # Private VNC Authentication contracts. They need the real capability pair - the RFB transport has to
@@ -490,6 +508,7 @@ hyremote_label_test_family("component;runtime;fast"
 hyremote_label_test_family("integration;rfb;fast"
     hyremote-rfb-multi-client-input-test
     hyremote-rfb-wire-robustness-test
+    hyremote-rfb-delivery-test
     hyremote-vnc-auth-test
     hyremote-rfb-vnc-auth-handshake-test
     hyremote-rfb-widget-disconnect-backpressure-test
