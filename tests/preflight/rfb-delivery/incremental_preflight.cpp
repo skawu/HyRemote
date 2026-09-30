@@ -6,6 +6,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -241,29 +242,61 @@ class ViewerState {
 public:
     void accumulate(const BoundedRegion &damage) { m_pending.add(damage); }
     bool hasPending() const { return !m_pending.empty(); }
+    bool hasOutstandingRequest() const { return m_request.has_value(); }
     std::size_t pendingRectCount() const { return m_pending.rectCount(); }
 
-    BoundedRegion request(bool incremental, Rect requested)
+    void request(bool incremental, Rect requested)
     {
-        BoundedRegion delivered;
-        if (incremental) {
-            delivered = m_pending.intersected(requested);
-            if (delivered.empty()) return delivered;
-        } else {
-            delivered.add(requested);
+        m_request = Request{incremental, requested};
+    }
+
+    std::optional<BoundedRegion> selectEligible() const
+    {
+        if (!m_request)
+            return std::nullopt;
+
+        BoundedRegion selected;
+        if (m_forcedRefresh) {
+            selected.add(*m_forcedRefresh);
+            return selected;
         }
+
+        if (m_request->incremental) {
+            selected = m_pending.intersected(m_request->requested);
+            if (selected.empty())
+                return std::nullopt;
+        } else {
+            selected.add(m_request->requested);
+        }
+        return selected;
+    }
+
+    void commitDelivered(const BoundedRegion &delivered)
+    {
+        if (!m_request)
+            throw std::logic_error("cannot commit without an outstanding request");
         m_pending.subtract(delivered);
-        return delivered;
+        m_forcedRefresh.reset();
+        m_request.reset();
     }
 
     void invalidateFull(int width, int height)
     {
+        const Rect full{0, 0, width, height};
         m_pending.clear();
-        m_pending.add({0, 0, width, height});
+        m_pending.add(full);
+        m_forcedRefresh = full;
     }
 
 private:
+    struct Request {
+        bool incremental = false;
+        Rect requested;
+    };
+
     BoundedRegion m_pending;
+    std::optional<Request> m_request;
+    std::optional<Rect> m_forcedRefresh;
 };
 
 double percentile(std::vector<double> samples, double p)
@@ -318,10 +351,26 @@ bool runStateContracts(const Frame &base)
     const Rect full{0, 0, kWidth, kHeight};
 
     ViewerState staticViewer;
-    staticViewer.accumulate(changedTiles(base, base));
-    const bool staticPass = staticViewer.request(true, full).empty() && !staticViewer.hasPending();
+    staticViewer.request(true, full);
+    const auto staticBeforeDamage = staticViewer.selectEligible();
+    const bool staticPass = !staticBeforeDamage && staticViewer.hasOutstandingRequest()
+                            && !staticViewer.hasPending();
     std::cout << "STATIC_NO_REDUNDANT_PAYLOAD=" << (staticPass ? "PASS" : "FAIL") << '\n';
     pass = pass && staticPass;
+
+    Frame staticChanged = base;
+    fillRect(staticChanged, {960, 512, 128, 64}, 0xe0a030U);
+    staticViewer.accumulate(changedTiles(base, staticChanged));
+    const auto awakened = staticViewer.selectEligible();
+    Frame staticPixels = base;
+    if (awakened) {
+        copyRegion(staticPixels, staticChanged, *awakened);
+        staticViewer.commitDelivered(*awakened);
+    }
+    const bool wakePass = awakened && staticPixels == staticChanged && !staticViewer.hasPending()
+                          && !staticViewer.hasOutstandingRequest();
+    std::cout << "STATIC_PENDING_REQUEST_WAKES_ON_DAMAGE=" << (wakePass ? "PASS" : "FAIL") << '\n';
+    pass = pass && wakePass;
 
     Frame b = base;
     fillRect(b, {256, 256, 128, 64}, 0xe0a030U);
@@ -332,23 +381,58 @@ bool runStateContracts(const Frame &base)
 
     ViewerState fast;
     ViewerState slow;
+    slow.request(true, full);
     Frame fastPixels = base;
     Frame slowPixels = base;
     const std::array<const Frame *, 4> sequence{{&base, &b, &c, &d}};
+    bool fastPass = true;
     for (std::size_t i = 1; i < sequence.size(); ++i) {
         const BoundedRegion damage = changedTiles(*sequence[i - 1], *sequence[i]);
         fast.accumulate(damage);
         slow.accumulate(damage);
-        const BoundedRegion delivered = fast.request(true, full);
-        copyRegion(fastPixels, *sequence[i], delivered);
+        fast.request(true, full);
+        const auto delivered = fast.selectEligible();
+        if (!delivered) {
+            fastPass = false;
+            continue;
+        }
+        copyRegion(fastPixels, *sequence[i], *delivered);
+        fast.commitDelivered(*delivered);
     }
-    const bool slowHadAccumulated = slow.hasPending();
-    const BoundedRegion slowDelivered = slow.request(true, full);
-    copyRegion(slowPixels, d, slowDelivered);
-    const bool accumulatedPass = slowHadAccumulated && fastPixels == d && slowPixels == d
-                                 && !fast.hasPending() && !slow.hasPending();
+    const bool slowHadAccumulated = slow.hasPending() && slow.hasOutstandingRequest();
+    const auto slowDelivered = slow.selectEligible();
+    if (slowDelivered) {
+        copyRegion(slowPixels, d, *slowDelivered);
+        slow.commitDelivered(*slowDelivered);
+    }
+    const bool accumulatedPass = fastPass && slowHadAccumulated && slowDelivered
+                                 && fastPixels == d && slowPixels == d
+                                 && !fast.hasPending() && !slow.hasPending()
+                                 && !fast.hasOutstandingRequest() && !slow.hasOutstandingRequest();
     std::cout << "SLOW_VIEWER_ABC_ACCUMULATION=" << (accumulatedPass ? "PASS" : "FAIL") << '\n';
     pass = pass && accumulatedPass;
+
+    Frame retryTarget = base;
+    fillRect(retryTarget, {512, 576, 192, 64}, 0xb8c4ccU);
+    ViewerState retry;
+    retry.accumulate(changedTiles(base, retryTarget));
+    retry.request(true, full);
+    const auto firstAttempt = retry.selectEligible();
+    const bool retainedAfterFailure = firstAttempt && retry.hasPending() && retry.hasOutstandingRequest();
+    // Simulate encode/write failure by deliberately not committing the first selected update.
+    const auto secondAttempt = retry.selectEligible();
+    Frame retryPixels = base;
+    if (secondAttempt) {
+        copyRegion(retryPixels, retryTarget, *secondAttempt);
+        retry.commitDelivered(*secondAttempt);
+    }
+    const bool retryPass = retainedAfterFailure && secondAttempt
+                           && firstAttempt->rectCount() == secondAttempt->rectCount()
+                           && firstAttempt->conservativeArea() == secondAttempt->conservativeArea()
+                           && retryPixels == retryTarget && !retry.hasPending()
+                           && !retry.hasOutstandingRequest();
+    std::cout << "FAILED_SEND_RETAINS_DAMAGE=" << (retryPass ? "PASS" : "FAIL") << '\n';
+    pass = pass && retryPass;
 
     Frame partialTarget = d;
     const Rect left{128, 704, 256, 128};
@@ -358,29 +442,47 @@ bool runStateContracts(const Frame &base)
     ViewerState partial;
     Frame partialPixels = d;
     partial.accumulate(changedTiles(d, partialTarget));
-    const BoundedRegion leftDelivered = partial.request(true, left);
-    copyRegion(partialPixels, partialTarget, leftDelivered);
+    partial.request(true, left);
+    const auto leftDelivered = partial.selectEligible();
+    if (leftDelivered) {
+        copyRegion(partialPixels, partialTarget, *leftDelivered);
+        partial.commitDelivered(*leftDelivered);
+    }
     const bool rightRemains = partial.hasPending();
-    const bool leftSecondEmpty = partial.request(true, left).empty();
-    const BoundedRegion rightDelivered = partial.request(true, right);
-    copyRegion(partialPixels, partialTarget, rightDelivered);
-    const bool partialPass = rightRemains && leftSecondEmpty && partialPixels == partialTarget
-                             && !partial.hasPending();
+    partial.request(true, left);
+    const auto leftSecond = partial.selectEligible();
+    const bool leftSecondEmptyButPending = !leftSecond && partial.hasOutstandingRequest();
+    partial.request(true, right); // coalesced latest request replaces the still-empty left request.
+    const auto rightDelivered = partial.selectEligible();
+    if (rightDelivered) {
+        copyRegion(partialPixels, partialTarget, *rightDelivered);
+        partial.commitDelivered(*rightDelivered);
+    }
+    const bool partialPass = leftDelivered && rightRemains && leftSecondEmptyButPending
+                             && rightDelivered && partialPixels == partialTarget
+                             && !partial.hasPending() && !partial.hasOutstandingRequest();
     std::cout << "PARTIAL_REQUEST_PRESERVES_UNSENT_DAMAGE=" << (partialPass ? "PASS" : "FAIL") << '\n';
     pass = pass && partialPass;
 
     ViewerState nonIncremental;
-    const BoundedRegion forced = nonIncremental.request(false, {320, 192, 256, 128});
-    const bool nonIncrementalPass = forced.rectCount() == 1
-                                    && forced.rects().front() == Rect{320, 192, 256, 128};
+    const Rect forcedRect{320, 192, 256, 128};
+    nonIncremental.request(false, forcedRect);
+    const auto forced = nonIncremental.selectEligible();
+    if (forced) nonIncremental.commitDelivered(*forced);
+    const bool nonIncrementalPass = forced && forced->rectCount() == 1
+                                    && forced->rects().front() == forcedRect
+                                    && !nonIncremental.hasOutstandingRequest();
     std::cout << "NON_INCREMENTAL_ALWAYS_REFRESH=" << (nonIncrementalPass ? "PASS" : "FAIL") << '\n';
     pass = pass && nonIncrementalPass;
 
     ViewerState resize;
+    resize.request(true, {0, 0, 64, 64});
     resize.invalidateFull(1280, 720);
-    const BoundedRegion resized = resize.request(true, {0, 0, 1280, 720});
-    const bool resizePass = resized.rectCount() == 1 && resized.rects().front() == Rect{0, 0, 1280, 720}
-                            && !resize.hasPending();
+    const auto resized = resize.selectEligible();
+    if (resized) resize.commitDelivered(*resized);
+    const bool resizePass = resized && resized->rectCount() == 1
+                            && resized->rects().front() == Rect{0, 0, 1280, 720}
+                            && !resize.hasPending() && !resize.hasOutstandingRequest();
     std::cout << "RESIZE_FORCES_FULL_REFRESH=" << (resizePass ? "PASS" : "FAIL") << '\n';
     pass = pass && resizePass;
 
@@ -394,9 +496,14 @@ bool runStateContracts(const Frame &base)
     Frame boundedPixels = base;
     bounded.accumulate(fragmentedDamage);
     const bool wasBounded = bounded.pendingRectCount() <= kMaxDamageRects;
-    const BoundedRegion all = bounded.request(true, full);
-    copyRegion(boundedPixels, fragmented, all);
-    const bool boundPass = wasBounded && boundedPixels == fragmented && !bounded.hasPending();
+    bounded.request(true, full);
+    const auto all = bounded.selectEligible();
+    if (all) {
+        copyRegion(boundedPixels, fragmented, *all);
+        bounded.commitDelivered(*all);
+    }
+    const bool boundPass = wasBounded && all && boundedPixels == fragmented
+                           && !bounded.hasPending() && !bounded.hasOutstandingRequest();
     std::cout << "BOUNDED_REGION_COALESCING=" << (boundPass ? "PASS" : "FAIL")
               << " MAX_RECTS=" << kMaxDamageRects << '\n';
     pass = pass && boundPass;
