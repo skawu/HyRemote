@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QByteArray>
+#include <QColor>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -122,7 +123,10 @@ quint16 freePort()
     return probe.serverPort();
 }
 
-bool connectRawRfb(QTcpSocket &socket, quint16 port)
+bool connectRawRfb(QTcpSocket &socket,
+                   quint16 port,
+                   std::uint16_t *framebufferWidth = nullptr,
+                   std::uint16_t *framebufferHeight = nullptr)
 {
     socket.connectToHost(QHostAddress::LocalHost, port);
     if (!socket.waitForConnected(3000))
@@ -151,49 +155,12 @@ bool connectRawRfb(QTcpSocket &socket, quint16 port)
     const QByteArray serverInit = readExact(socket, 24);
     if (serverInit.size() != 24)
         return false;
-    const std::uint32_t nameLength = readU32(serverInit, 20);
-    return readExact(socket, static_cast<qsizetype>(nameLength)).size()
-           == static_cast<qsizetype>(nameLength);
-}
-
-bool connectRawRfbPumping(QTcpSocket &socket,
-                          quint16 port,
-                          std::uint16_t *framebufferWidth,
-                          std::uint16_t *framebufferHeight)
-{
-    socket.connectToHost(QHostAddress::LocalHost, port);
-    if (!socket.waitForConnected(3000))
-        return false;
-    if (readExactPumpingEvents(socket, 12) != QByteArray("RFB 003.008\n", 12))
-        return false;
-    if (!writeAll(socket, QByteArray("RFB 003.008\n", 12)))
-        return false;
-
-    const QByteArray securityCount = readExactPumpingEvents(socket, 1);
-    if (securityCount.size() != 1)
-        return false;
-    const int count = static_cast<unsigned char>(securityCount.at(0));
-    const QByteArray securityTypes = readExactPumpingEvents(socket, count);
-    if (securityTypes.size() != count || !securityTypes.contains(char(1)))
-        return false;
-    if (!writeAll(socket, QByteArray(1, char(1))))
-        return false;
-
-    const QByteArray securityResult = readExactPumpingEvents(socket, 4);
-    if (securityResult.size() != 4 || readU32(securityResult, 0) != 0U)
-        return false;
-    if (!writeAll(socket, QByteArray(1, char(1))))
-        return false;
-
-    const QByteArray serverInit = readExactPumpingEvents(socket, 24);
-    if (serverInit.size() != 24)
-        return false;
     if (framebufferWidth)
         *framebufferWidth = readU16(serverInit, 0);
     if (framebufferHeight)
         *framebufferHeight = readU16(serverInit, 2);
     const std::uint32_t nameLength = readU32(serverInit, 20);
-    return readExactPumpingEvents(socket, static_cast<qsizetype>(nameLength)).size()
+    return readExact(socket, static_cast<qsizetype>(nameLength)).size()
            == static_cast<qsizetype>(nameLength);
 }
 
@@ -600,10 +567,14 @@ void testWidgetVisibleResponseLatency()
         return;
     }
 
+    // Let the real asynchronous Widgets capture produce the initial frame before the blocking RFB
+    // handshake. This keeps one handshake implementation while still allowing GUI-thread capture.
+    CHECK(pumpUntil([&] { return session.stats().framesDispatched >= 1U; }));
+
     QTcpSocket viewer;
     std::uint16_t width = 0;
     std::uint16_t height = 0;
-    CHECK(connectRawRfbPumping(viewer, port, &width, &height));
+    CHECK(connectRawRfb(viewer, port, &width, &height));
     CHECK(width > 0 && height > 0);
     CHECK(sendSetEncodingsRaw(viewer));
     CHECK(sendUpdateRequest(viewer, false, width, height));
