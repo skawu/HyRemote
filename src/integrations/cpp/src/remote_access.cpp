@@ -207,9 +207,8 @@ std::optional<RemoteAccessError> RemoteAccess::lastError() const
 
 QString RemoteAccess::diagnosticReport() const
 {
-    Runtime::DiagnosticSnapshot snapshot = m_impl ? m_impl->access.diagnosticSnapshot()
-                                                 : Runtime::DiagnosticSnapshot{};
-    snapshot.integrationRoute = Runtime::IntegrationRoute::Cpp;
+    const Runtime::DiagnosticSnapshot snapshot = m_impl ? m_impl->access.diagnosticSnapshot()
+                                                        : Runtime::DiagnosticSnapshot{};
     return Runtime::formatDiagnosticReport(snapshot);
 }
 
