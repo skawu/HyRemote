@@ -12,6 +12,14 @@
 
 namespace HyRemote::Runtime {
 
+enum class IntegrationRoute {
+    Unknown,
+    Cpp,
+    Qml,
+    Generic,
+    Qpa,
+};
+
 // #335 private one-Runtime diagnostic truth. This type is intentionally not installed and is not a
 // public SDK/ABI promise. Frontends may project/format this snapshot, but must not maintain their own
 // copies of the represented Runtime state.
@@ -21,6 +29,7 @@ namespace HyRemote::Runtime {
 // must never infer effective values from configured values on their own.
 struct DiagnosticSnapshot
 {
+    IntegrationRoute integrationRoute = IntegrationRoute::Unknown;
     AccessState state = AccessState::Stopped;
 
     QHostAddress configuredListenAddress;
