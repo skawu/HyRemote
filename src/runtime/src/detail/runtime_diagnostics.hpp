@@ -34,4 +34,9 @@ struct DiagnosticSnapshot
     std::optional<Error> lastError;
 };
 
+// One bounded formatter shared by every integration route. It renders only the snapshot truth and
+// explicit unknown/none placeholders for fields whose authoritative owners have not been wired yet.
+// No environment probing, filesystem reads, backend objects or secret-bearing paths belong here.
+QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot);
+
 }  // namespace HyRemote::Runtime
