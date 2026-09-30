@@ -647,13 +647,10 @@ private:
                     protocolFailure(client, "RFB client protocol version is unsupported; 3.7/3.8 required");
                     return;
                 }
-                // Exactly one type is offered, and it is the configured one: a client is never invited to pick a
-                // weaker mode, and 'None' is only ever offered when the insecure profile asked for it explicitly.
-                // The RFB 3.8 form is a count followed by the type values.
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
                 const char security[] = {1, m_security.vncAuthenticationRequired ? char(2) : char(1)};
 #else
-                const char security[] = {1, 1};  // one type: None; this build has no authentication to offer
+                const char security[] = {1, 1};
 #endif
                 client.socket->write(security, 2);
                 client.phase = ClientPhase::AwaitSecurityChoice;
@@ -668,14 +665,12 @@ private:
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
                 if (m_security.vncAuthenticationRequired) {
                     if (selected != 2) {
-                        // Never downgrade: a connection refusing the only configured authentication type is an
-                        // authentication rejection, not a generic protocol diagnostic.
                         authenticationRejected(client,
                                                "RFB client did not select the configured authentication type");
                         return;
                     }
                     QString challengeError;
-                    if (!generateVncAuthChallenge(client.authChallenge, verifyError)) {
+                    if (!generateVncAuthChallenge(client.authChallenge, challengeError)) {
                         protocolFailure(client, "the authentication challenge could not be generated");
                         return;
                     }
@@ -689,7 +684,7 @@ private:
                     return;
                 }
                 QByteArray result;
-                appendU32(result, 0);  // SecurityResult OK
+                appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
                 continue;
@@ -697,8 +692,6 @@ private:
 
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
             if (client.phase == ClientPhase::AwaitAuthResponse) {
-                // Bounded by construction: one challenge per connection, no retry, and the 16-byte read is the
-                // only thing this phase waits for - the handshake timeout closes a client that stalls.
                 if (client.input.size() < kVncAuthChallengeBytes)
                     return;
                 const QByteArray response = client.input.left(kVncAuthChallengeBytes);
@@ -707,12 +700,9 @@ private:
                 QString verifyError;
                 if (!verifyVncAuthResponse(m_security.password, client.authChallenge, response, verifyError)) {
                     QByteArray failed;
-                    appendU32(failed, 1);  // SecurityResult failed: the client is told, and not asked to retry
+                    appendU32(failed, 1);
                     if (client.socket) {
                         client.socket->write(failed);
-                        // The result has to reach the client before the connection goes away, or the peer sees an
-                        // abrupt reset instead of the protocol's own failure answer. Bounded, and only on the
-                        // failure path, which ends this connection anyway.
                         client.socket->flush();
                         client.socket->waitForBytesWritten(kHandshakeFlushMs);
                     }
@@ -724,7 +714,7 @@ private:
 
                 client.authChallenge.clear();
                 QByteArray result;
-                appendU32(result, 0);  // SecurityResult OK
+                appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
                 continue;
@@ -734,7 +724,7 @@ private:
             if (client.phase == ClientPhase::AwaitClientInit) {
                 if (client.input.size() < 1)
                     return;
-                client.input.remove(0, 1);  // shared flag; HyRemote always allows bounded sharing
+                client.input.remove(0, 1);
                 if (latestFrame())
                     sendServerInit(client);
                 else
@@ -744,12 +734,11 @@ private:
 
             if (client.phase == ClientPhase::AwaitInitialFrame)
                 return;
-
             if (client.input.isEmpty())
                 return;
 
             const std::uint8_t type = byteAt(client.input, 0);
-            if (type == 0) {  // SetPixelFormat
+            if (type == 0) {
                 if (client.input.size() < 20)
                     return;
                 const QByteArray message = client.input.left(20);
@@ -763,7 +752,7 @@ private:
                 continue;
             }
 
-            if (type == 2) {  // SetEncodings
+            if (type == 2) {
                 if (client.input.size() < 4)
                     return;
                 const std::uint16_t count = readU16(client.input, 2);
@@ -794,7 +783,7 @@ private:
                 continue;
             }
 
-            if (type == 3) {  // FramebufferUpdateRequest
+            if (type == 3) {
                 if (client.input.size() < 10)
                     return;
                 client.delivery.request(
@@ -808,7 +797,7 @@ private:
                 continue;
             }
 
-            if (type == 4) {  // KeyEvent
+            if (type == 4) {
                 if (client.input.size() < 8)
                     return;
                 const bool pressed = byteAt(client.input, 1) != 0;
@@ -819,7 +808,7 @@ private:
                 continue;
             }
 
-            if (type == 5) {  // PointerEvent
+            if (type == 5) {
                 if (client.input.size() < 6)
                     return;
                 const std::uint8_t mask = byteAt(client.input, 1);
@@ -830,7 +819,7 @@ private:
                 continue;
             }
 
-            if (type == 6) {  // ClientCutText; deliberately ignored but consumed safely
+            if (type == 6) {
                 if (client.input.size() < 8)
                     return;
                 const std::uint32_t length = readU32(client.input, 4);
@@ -884,9 +873,6 @@ private:
         if (m_stopping || !client.connectedEventSent)
             return;
 
-        // Each client owns only its contribution to the shared target's logical held state. A
-        // disconnect decrements those contributions, but it may publish a button release only when
-        // that client was the last holder of the logical button.
         if (client.pointerPositionKnown && client.buttonMask != 0
             && hyremote::isValidInputViewport(client.lastPointerViewport)) {
             for (std::size_t index = 0; index < kButtons.size(); ++index) {
@@ -912,9 +898,6 @@ private:
         }
         client.buttonMask = 0;
 
-        // Release ordinary keys before modifiers so combinations such as Shift+A preserve the same
-        // modifier state on A-up that a normal viewer would have sent. deliverKey() removes only
-        // this client's holder contribution and emits the logical release only for the last holder.
         const std::vector<std::uint32_t> held = client.heldKeysyms;
         for (const std::uint32_t keysym : held) {
             if (!modifierForKey(keyCodeFromKeysym(keysym)))
@@ -947,8 +930,6 @@ private:
                     client.heldKeysyms.push_back(keysym);
                     ++holderCount;
                 } else {
-                    // Preserve same-viewer repeated key-down behavior. A second viewer becoming an
-                    // additional holder is not a new physical transition on the shared Qt target.
                     publishTransition = true;
                 }
             } else if (held != client.heldKeysyms.end()) {
@@ -957,7 +938,6 @@ private:
                     --holderCount;
                 publishTransition = holderCount == 0U;
             } else {
-                // An unmatched release from one viewer must never release another viewer's hold.
                 publishTransition = false;
             }
         }
@@ -1163,9 +1143,6 @@ private:
             || !client.delivery.hasOutstandingRequest()) {
             return;
         }
-        // QTcpSocket's write buffer is itself a queue. Never append another framebuffer while the
-        // previous one still has pending bytes. Damage and the one outstanding request remain in
-        // ClientState until the socket can accept the newest useful update.
         if (client.socket->bytesToWrite() != 0)
             return;
 
@@ -1192,7 +1169,7 @@ private:
 
         const auto eligible = client.delivery.selectEligible();
         if (!eligible)
-            return;  // incremental request remains pending until required damage arrives.
+            return;
 
         const RfbRect frameBounds{0, 0, width, height};
         RfbDamageRegion selected = eligible->intersected(frameBounds);
@@ -1206,7 +1183,7 @@ private:
         }
 
         QByteArray update;
-        update.append(char(0));  // FramebufferUpdate
+        update.append(char(0));
         update.append(char(0));
         appendU16(update, static_cast<std::uint16_t>(selected.size() + (resized ? 1U : 0U)));
         if (resized) {
@@ -1228,8 +1205,6 @@ private:
             protocolFailure(client, "RFB socket write failed");
             return;
         }
-        // Selection is not delivery. Only after the complete protocol message has been accepted by
-        // QTcpSocket may this viewer forget the damage/request that the update satisfies.
         client.delivery.commitDelivered(selected);
         client.framebufferWidth = width;
         client.framebufferHeight = height;
@@ -1315,8 +1290,6 @@ public:
             m_frames->latest.reset();
             m_frames->notificationPending = false;
         } catch (...) {
-            // Transport::stop() is noexcept. Qt teardown above is designed not to throw; retain the
-            // Core contract even if a platform allocation/standard-library edge case occurs.
         }
     }
 
@@ -1329,7 +1302,7 @@ public:
         bool notify = false;
         {
             std::lock_guard<std::mutex> frameLock(m_frames->mutex);
-            m_frames->latest = std::move(frame);  // latest-frame-wins; capacity exactly one
+            m_frames->latest = std::move(frame);
             if (!m_frames->notificationPending) {
                 m_frames->notificationPending = true;
                 notify = true;
