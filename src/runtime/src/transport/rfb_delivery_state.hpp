@@ -228,23 +228,39 @@ inline RfbDamageRegion fullRfbDamage(std::uint32_t width, std::uint32_t height)
     return result;
 }
 
+constexpr RfbRect clipCoreDamageRect(const hyremote::Rect &rect,
+                                     std::uint32_t frameWidth,
+                                     std::uint32_t frameHeight) noexcept
+{
+    const std::int64_t fw = static_cast<std::int64_t>(frameWidth);
+    const std::int64_t fh = static_cast<std::int64_t>(frameHeight);
+    const std::int64_t left = std::max<std::int64_t>(0, static_cast<std::int64_t>(rect.x));
+    const std::int64_t top = std::max<std::int64_t>(0, static_cast<std::int64_t>(rect.y));
+    const std::int64_t right = std::min<std::int64_t>(
+        fw, static_cast<std::int64_t>(rect.x) + static_cast<std::int64_t>(rect.width));
+    const std::int64_t bottom = std::min<std::int64_t>(
+        fh, static_cast<std::int64_t>(rect.y) + static_cast<std::int64_t>(rect.height));
+    if (right <= left || bottom <= top)
+        return {};
+    return {static_cast<std::int32_t>(left),
+            static_cast<std::int32_t>(top),
+            static_cast<std::int32_t>(right - left),
+            static_cast<std::int32_t>(bottom - top)};
+}
+
+constexpr auto kWideDamageClipRegression = clipCoreDamageRect(
+    hyremote::Rect{-10, -5, UINT32_MAX, UINT32_MAX}, 100U, 80U);
+static_assert(kWideDamageClipRegression.x == 0 && kWideDamageClipRegression.y == 0
+              && kWideDamageClipRegression.width == 100 && kWideDamageClipRegression.height == 80);
+
 inline RfbDamageRegion regionsFromFrameDamage(const hyremote::RemoteFrame &frame)
 {
     RfbDamageRegion result;
     if (frame.damage.kind != hyremote::DamageKind::Regions)
         return result;
 
-    const RfbRect frameBounds{0,
-                              0,
-                              static_cast<std::int32_t>(frame.geometry.size.width),
-                              static_cast<std::int32_t>(frame.geometry.size.height)};
-    for (const hyremote::Rect &rect : frame.damage.regions) {
-        const RfbRect candidate{rect.x,
-                                rect.y,
-                                static_cast<std::int32_t>(rect.width),
-                                static_cast<std::int32_t>(rect.height)};
-        result.add(intersectRfbRect(candidate, frameBounds));
-    }
+    for (const hyremote::Rect &rect : frame.damage.regions)
+        result.add(clipCoreDamageRect(rect, frame.geometry.size.width, frame.geometry.size.height));
     return result;
 }
 
