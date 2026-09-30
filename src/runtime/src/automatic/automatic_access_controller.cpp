@@ -2,6 +2,7 @@
 
 #include "access_instance.hpp"
 #include "automatic/interactive_composite_target.hpp"
+#include "detail/runtime_diagnostics.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -13,6 +14,7 @@
 #include <QPointer>
 #include <QRect>
 #include <QSet>
+#include <QThread>
 #include <QTimer>
 #include <QWindow>
 
@@ -38,19 +40,6 @@ bool isEligibleWindowType(Qt::WindowType type)
     // are deliberately excluded. Real application Popup/Tool/Dialog windows remain eligible.
     return type != Qt::Desktop && type != Qt::SplashScreen && type != Qt::ToolTip
            && type != Qt::ForeignWindow;
-}
-
-const char *securityProfileName(Runtime::SecurityProfile profile)
-{
-    switch (profile) {
-    case Runtime::SecurityProfile::Insecure:
-        return "insecure";
-    case Runtime::SecurityProfile::Authenticated:
-        return "authenticated";
-    case Runtime::SecurityProfile::AuthenticatedEncrypted:
-        return "authenticated-encrypted";
-    }
-    return "unknown";
 }
 
 }  // namespace
@@ -208,6 +197,80 @@ private:
             ensureRuntimeStarted();
     }
 
+    DiagnosticSnapshot diagnosticSnapshot(const Runtime::AccessInstance &instance) const
+    {
+        DiagnosticSnapshot snapshot = instance.diagnosticSnapshot();
+        snapshot.integrationRoute = config.integrationRoute;
+        return snapshot;
+    }
+
+    void writeDiagnosticReport(const Runtime::AccessInstance &instance) const
+    {
+        const DiagnosticSnapshot snapshot = diagnosticSnapshot(instance);
+        const QString report = formatDiagnosticReport(snapshot);
+        if (snapshot.lastError)
+            qWarning().noquote() << report;
+        else
+            qInfo().noquote() << report;
+    }
+
+    void writeCurrentDiagnosticReport() const
+    {
+        if (access)
+            writeDiagnosticReport(*access);
+    }
+
+    void queueDiagnosticReportOnOwnerThread()
+    {
+        if (!access || diagnosticReportQueued)
+            return;
+        diagnosticReportQueued = true;
+        QTimer::singleShot(0, this, [this] {
+            diagnosticReportQueued = false;
+            writeCurrentDiagnosticReport();
+        });
+    }
+
+    void requestDiagnosticReport()
+    {
+        if (QThread::currentThread() == thread()) {
+            queueDiagnosticReportOnOwnerThread();
+            return;
+        }
+
+        const QPointer<Impl> guard(this);
+        QMetaObject::invokeMethod(this, [guard] {
+            if (guard)
+                guard->queueDiagnosticReportOnOwnerThread();
+        }, Qt::QueuedConnection);
+    }
+
+    void subscribeDiagnostics()
+    {
+        if (!access || diagnosticToken.isValid())
+            return;
+
+        const QPointer<Impl> guard(this);
+        const auto notify = [guard] {
+            if (guard)
+                guard->requestDiagnosticReport();
+        };
+
+        RuntimeNotificationHandlers handlers;
+        handlers.stateChanged = [notify](AccessState) { notify(); };
+        handlers.connectedClientCountChanged = [notify](std::size_t) { notify(); };
+        handlers.errorChanged = [notify](std::optional<Error>) { notify(); };
+        diagnosticToken = access->subscribeNotifications(std::move(handlers));
+    }
+
+    void unsubscribeDiagnostics() noexcept
+    {
+        if (access && diagnosticToken.isValid())
+            access->unsubscribeNotifications(diagnosticToken);
+        diagnosticToken = RuntimeNotificationToken{};
+        diagnosticReportQueued = false;
+    }
+
     bool ensureRuntimeStarted()
     {
         if (access)
@@ -227,34 +290,30 @@ private:
             || !instance->setRemoteInputEnabled(config.remoteInputEnabled)
             || !instance->setSecurityProfile(config.securityProfile)
             || !instance->setSecurityConfigFile(config.securityConfigFile)) {
-            const auto error = instance->lastError();
-            qWarning() << "HyRemote automatic access rejected its configuration:"
-                       << (error ? error->message : QStringLiteral("unknown configuration error"));
+            writeDiagnosticReport(*instance);
             return false;
         }
 
         if (!instance->start()) {
-            const auto error = instance->lastError();
-            qWarning() << "HyRemote automatic access could not start the composite runtime:"
-                       << (error ? error->message : QStringLiteral("unknown runtime error"));
+            writeDiagnosticReport(*instance);
             return false;
         }
 
         access = std::move(instance);
-        qInfo() << "HyRemote automatic application access active on"
-                << (config.listenInterface.isEmpty()
-                        ? config.listenAddress.toString()
-                        : QStringLiteral("interface %1").arg(config.listenInterface))
-                << config.port
-                << "remote input:" << config.remoteInputEnabled
-                << "security profile:" << securityProfileName(config.securityProfile);
+        subscribeDiagnostics();
+        writeCurrentDiagnosticReport();
         return true;
     }
 
     void stopCurrent() noexcept
     {
-        if (access)
+        // Stop live notifications before teardown; the final stopped snapshot is emitted synchronously
+        // after Runtime quiescence so no queued worker notification can dereference a destroyed instance.
+        unsubscribeDiagnostics();
+        if (access) {
             access->stop();
+            writeCurrentDiagnosticReport();
+        }
         access.reset();
 
         activeSurfaceId.reset();
@@ -350,6 +409,7 @@ private:
 
     AccessConfig config;
     std::unique_ptr<Runtime::AccessInstance> access;
+    RuntimeNotificationToken diagnosticToken;
     std::unique_ptr<::HyRemote::Runtime::Automatic::InteractiveCompositeTarget> compositeTarget;
     QHash<QObject *, quint64> surfaceIds;
     QSet<QObject *> raisePending;
@@ -357,6 +417,7 @@ private:
     std::optional<quint64> activeSurfaceId;
     bool started = false;
     bool refreshQueued = false;
+    bool diagnosticReportQueued = false;
 };
 
 AccessController::AccessController(AccessConfig config)
