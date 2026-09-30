@@ -144,7 +144,7 @@ public:
         }
     }
 
-    void shutdown() noexcept {}
+    void shutdown() noexcept override {}
 
 private:
     std::shared_ptr<RuntimeState> m_state;
