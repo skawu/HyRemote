@@ -15,12 +15,16 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "detail/component_factories.hpp"
@@ -34,6 +38,7 @@
 namespace {
 
 int failures = 0;
+constexpr int latencySampleCount = 12;
 
 #define CHECK(expr)                                                                                \
     do {                                                                                           \
@@ -403,16 +408,139 @@ protected:
     }
 };
 
+std::uint32_t visualColorForSample(int sample)
+{
+    const std::uint32_t r = static_cast<std::uint32_t>(40 + sample * 11);
+    const std::uint32_t g = static_cast<std::uint32_t>(70 + sample * 9);
+    const std::uint32_t b = static_cast<std::uint32_t>(100 + sample * 7);
+    return (r << 16U) | (g << 8U) | b;
+}
+
+struct VisualLatencyTrace
+{
+    std::mutex mutex;
+    std::array<std::optional<hyremote::TimePoint>, latencySampleCount> qtChanges;
+    std::array<std::optional<hyremote::TimePoint>, latencySampleCount> captures;
+
+    void recordQtChange(int sample, hyremote::TimePoint time)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        qtChanges.at(static_cast<std::size_t>(sample)) = time;
+        captures.at(static_cast<std::size_t>(sample)).reset();
+    }
+
+    void recordCapture(int sample, hyremote::TimePoint time)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const std::size_t index = static_cast<std::size_t>(sample);
+        if (!qtChanges[index] || time < *qtChanges[index] || captures[index])
+            return;
+        captures[index] = time;
+    }
+
+    std::pair<std::optional<hyremote::TimePoint>, std::optional<hyremote::TimePoint>> sample(int index)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const std::size_t offset = static_cast<std::size_t>(index);
+        return {qtChanges[offset], captures[offset]};
+    }
+};
+
+std::optional<std::uint32_t> frameCenterRgb(const hyremote::RemoteFrame &frame)
+{
+    if (!frame.storage || frame.geometry.size.width == 0 || frame.geometry.size.height == 0)
+        return std::nullopt;
+    const auto plane = frame.storage->mapRead(0);
+    if (!plane || !plane->data)
+        return std::nullopt;
+
+    const std::uint32_t x = frame.geometry.size.width / 2U;
+    const std::uint32_t y = frame.geometry.size.height / 2U;
+    const auto *row = reinterpret_cast<const unsigned char *>(plane->data)
+                      + static_cast<std::size_t>(y) * plane->stride;
+    const auto *pixel = row + static_cast<std::size_t>(x) * 4U;
+
+    switch (frame.geometry.pixelFormat) {
+    case hyremote::PixelFormat::Rgba8888:
+    case hyremote::PixelFormat::Rgbx8888:
+        return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+               | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+               | static_cast<std::uint32_t>(pixel[2]);
+    case hyremote::PixelFormat::Bgra8888:
+    case hyremote::PixelFormat::Bgrx8888:
+        return (static_cast<std::uint32_t>(pixel[2]) << 16U)
+               | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+               | static_cast<std::uint32_t>(pixel[0]);
+    default:
+        return std::nullopt;
+    }
+}
+
+class CaptureTimingObserver final : public hyremote::CaptureSource
+{
+public:
+    CaptureTimingObserver(std::unique_ptr<hyremote::CaptureSource> inner, VisualLatencyTrace &trace)
+        : m_inner(std::move(inner)), m_trace(trace)
+    {
+    }
+
+    hyremote::CaptureCapabilities capabilities() const override
+    {
+        return m_inner->capabilities();
+    }
+
+    bool start(hyremote::FrameReadyHandler onFrame,
+               hyremote::CaptureEventHandler onEvent) override
+    {
+        return m_inner->start(
+            [this, downstream = std::move(onFrame)](hyremote::RemoteFrame frame) mutable {
+                observe(frame);
+                if (downstream)
+                    downstream(std::move(frame));
+            },
+            std::move(onEvent));
+    }
+
+    void stop() noexcept override
+    {
+        m_inner->stop();
+    }
+
+    bool requestFrame(const hyremote::CaptureRequest &request) override
+    {
+        return m_inner->requestFrame(request);
+    }
+
+private:
+    void observe(const hyremote::RemoteFrame &frame)
+    {
+        if (!frame.timing.completionTime)
+            return;
+        const auto rgb = frameCenterRgb(frame);
+        if (!rgb)
+            return;
+        for (int sample = 0; sample < latencySampleCount; ++sample) {
+            if (*rgb == visualColorForSample(sample)) {
+                m_trace.recordCapture(sample, *frame.timing.completionTime);
+                return;
+            }
+        }
+    }
+
+    std::unique_ptr<hyremote::CaptureSource> m_inner;
+    VisualLatencyTrace &m_trace;
+};
+
 class VisualProbeWidget final : public QWidget
 {
 public:
-    static constexpr std::uint32_t darkRgb = 0x183048U;
-    static constexpr std::uint32_t lightRgb = 0xd09030U;
+    static constexpr std::uint32_t initialRgb = 0x183048U;
 
-    VisualProbeWidget()
+    explicit VisualProbeWidget(VisualLatencyTrace &trace)
+        : m_trace(trace)
     {
         setAutoFillBackground(true);
-        applyColor(darkRgb);
+        applyColor(initialRgb);
     }
 
     int visualChanges = 0;
@@ -421,13 +549,13 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *event) override
     {
-        toggle();
+        advanceVisualState();
         event->accept();
     }
 
     void mouseDoubleClickEvent(QMouseEvent *event) override
     {
-        toggle();
+        advanceVisualState();
         event->accept();
     }
 
@@ -449,15 +577,40 @@ private:
         update();
     }
 
-    void toggle()
+    void advanceVisualState()
     {
+        if (visualChanges >= latencySampleCount)
+            return;
+        const int sample = visualChanges;
+        m_trace.recordQtChange(sample, hyremote::Clock::now());
         ++visualChanges;
-        m_light = !m_light;
-        applyColor(m_light ? lightRgb : darkRgb);
+        applyColor(visualColorForSample(sample));
     }
 
-    bool m_light = false;
+    VisualLatencyTrace &m_trace;
 };
+
+void emitLatencySummary(const char *slice,
+                        const std::vector<std::chrono::microseconds> &samples)
+{
+    CHECK(samples.size() == static_cast<std::size_t>(latencySampleCount));
+    if (samples.size() != static_cast<std::size_t>(latencySampleCount))
+        return;
+
+    const auto summary = HyRemote::test::summarizeInteractionLatencies(samples);
+    CHECK(summary.sampleCount == static_cast<std::size_t>(latencySampleCount));
+    CHECK(summary.minUs <= summary.p50Us);
+    CHECK(summary.p50Us <= summary.p95Us);
+    CHECK(summary.p95Us <= summary.maxUs);
+    std::cout << "HYREMOTE_INTERACTION_LATENCY"
+              << " slice=" << slice
+              << " encoding=raw"
+              << " samples=" << summary.sampleCount
+              << " min_us=" << summary.minUs
+              << " p50_us=" << summary.p50Us
+              << " p95_us=" << summary.p95Us
+              << " max_us=" << summary.maxUs << '\n';
+}
 
 void testDisconnectCleanupCrossesSaturatedAdapterMailbox()
 {
@@ -539,7 +692,8 @@ void testWidgetVisibleResponseLatency()
 {
     HyRemote::detail::resetFactories();
 
-    VisualProbeWidget target;
+    VisualLatencyTrace trace;
+    VisualProbeWidget target(trace);
     target.resize(96, 64);
     target.show();
     QCoreApplication::processEvents();
@@ -557,7 +711,8 @@ void testWidgetVisibleResponseLatency()
         return;
 
     hyremote::Session session;
-    CHECK(session.setCaptureSource(std::move(targetComponents.capture)));
+    CHECK(session.setCaptureSource(std::make_unique<CaptureTimingObserver>(
+        std::move(targetComponents.capture), trace)));
     CHECK(session.setTransport(HyRemote::detail::createRfbTransport(
         QHostAddress::LocalHost, port, HyRemote::detail::RfbSecurityConfig{})));
     session.setInputSink(targetComponents.input);
@@ -584,44 +739,55 @@ void testWidgetVisibleResponseLatency()
     CHECK(readRawFramebufferUpdatePumping(viewer, framebuffer));
     const std::uint16_t sampleX = static_cast<std::uint16_t>(width / 2U);
     const std::uint16_t sampleY = static_cast<std::uint16_t>(height / 2U);
-    CHECK(framebuffer.get(sampleX, sampleY) == VisualProbeWidget::darkRgb);
+    CHECK(framebuffer.get(sampleX, sampleY) == VisualProbeWidget::initialRgb);
 
-    constexpr int sampleCount = 12;
-    std::vector<std::chrono::microseconds> samples;
-    samples.reserve(sampleCount);
+    std::vector<std::chrono::microseconds> overallSamples;
+    std::vector<std::chrono::microseconds> inputToQtSamples;
+    std::vector<std::chrono::microseconds> qtToCaptureSamples;
+    std::vector<std::chrono::microseconds> captureToViewerSamples;
+    overallSamples.reserve(latencySampleCount);
+    inputToQtSamples.reserve(latencySampleCount);
+    qtToCaptureSamples.reserve(latencySampleCount);
+    captureToViewerSamples.reserve(latencySampleCount);
 
-    for (int sample = 0; sample < sampleCount; ++sample) {
-        const std::uint32_t expected = (sample % 2) == 0 ? VisualProbeWidget::lightRgb
-                                                         : VisualProbeWidget::darkRgb;
+    for (int sample = 0; sample < latencySampleCount; ++sample) {
+        const std::uint32_t expected = visualColorForSample(sample);
         CHECK(sendUpdateRequest(viewer, true, width, height));
 
-        const auto started = std::chrono::steady_clock::now();
+        const auto started = hyremote::Clock::now();
         CHECK(sendPointer(viewer, 0x01U, sampleX, sampleY));
         CHECK(readRawFramebufferUpdatePumping(viewer, framebuffer));
-        const auto finished = std::chrono::steady_clock::now();
+        const auto finished = hyremote::Clock::now();
 
         CHECK(framebuffer.get(sampleX, sampleY) == expected);
-        samples.push_back(std::chrono::duration_cast<std::chrono::microseconds>(finished - started));
+        const auto [qtChange, captureVisible] = trace.sample(sample);
+        CHECK(qtChange.has_value());
+        CHECK(captureVisible.has_value());
+        if (qtChange && captureVisible) {
+            CHECK(*qtChange >= started);
+            CHECK(*captureVisible >= *qtChange);
+            CHECK(finished >= *captureVisible);
+            if (*qtChange >= started && *captureVisible >= *qtChange && finished >= *captureVisible) {
+                inputToQtSamples.push_back(
+                    std::chrono::duration_cast<std::chrono::microseconds>(*qtChange - started));
+                qtToCaptureSamples.push_back(
+                    std::chrono::duration_cast<std::chrono::microseconds>(*captureVisible - *qtChange));
+                captureToViewerSamples.push_back(
+                    std::chrono::duration_cast<std::chrono::microseconds>(finished - *captureVisible));
+                overallSamples.push_back(
+                    std::chrono::duration_cast<std::chrono::microseconds>(finished - started));
+            }
+        }
 
         CHECK(sendPointer(viewer, 0x00U, sampleX, sampleY));
         CHECK(pumpUntil([&] { return target.buttonReleases >= sample + 1; }));
     }
 
-    CHECK(target.visualChanges == sampleCount);
-    CHECK(samples.size() == static_cast<std::size_t>(sampleCount));
-    const auto summary = HyRemote::test::summarizeInteractionLatencies(samples);
-    CHECK(summary.sampleCount == static_cast<std::size_t>(sampleCount));
-    CHECK(summary.minUs <= summary.p50Us);
-    CHECK(summary.p50Us <= summary.p95Us);
-    CHECK(summary.p95Us <= summary.maxUs);
-    std::cout << "HYREMOTE_INTERACTION_LATENCY"
-              << " slice=widgets_visible_response"
-              << " encoding=raw"
-              << " samples=" << summary.sampleCount
-              << " min_us=" << summary.minUs
-              << " p50_us=" << summary.p50Us
-              << " p95_us=" << summary.p95Us
-              << " max_us=" << summary.maxUs << '\n';
+    CHECK(target.visualChanges == latencySampleCount);
+    emitLatencySummary("widgets_input_to_qt", inputToQtSamples);
+    emitLatencySummary("widgets_qt_to_capture_visible", qtToCaptureSamples);
+    emitLatencySummary("widgets_capture_to_viewer", captureToViewerSamples);
+    emitLatencySummary("widgets_visible_response", overallSamples);
 
     viewer.disconnectFromHost();
     viewer.waitForDisconnected(1000);
