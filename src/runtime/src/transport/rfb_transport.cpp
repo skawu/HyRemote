@@ -455,8 +455,14 @@ public:
                                             != frame->geometry.size.width
                                      || m_observedFrame->geometry.size.height
                                             != frame->geometry.size.height;
-        const RfbDamageRegion damage = changedRfbTiles(
-            m_observedFrame ? &*m_observedFrame : nullptr, *frame);
+        const bool hasNormalClient = std::any_of(
+            m_clients.begin(), m_clients.end(), [](const auto &entry) {
+                return entry.second->phase == ClientPhase::Normal;
+            });
+        std::optional<RfbDamageRegion> damage;
+        if (hasNormalClient && !geometryChanged) {
+            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *frame);
+        }
 
         for (auto &entry : m_clients) {
             ClientState &client = *entry.second;
@@ -467,8 +473,8 @@ public:
 
             if (geometryChanged)
                 client.delivery.invalidateFull(frame->geometry.size.width, frame->geometry.size.height);
-            else
-                client.delivery.accumulate(damage);
+            else if (damage)
+                client.delivery.accumulate(*damage);
             trySendUpdate(client);
         }
         m_observedFrame = *frame;
