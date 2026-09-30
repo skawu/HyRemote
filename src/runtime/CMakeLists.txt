@@ -13,6 +13,7 @@ add_library(hyremote-remoteaccess SHARED
     src/access_instance.cpp
     src/detail/component_factories.cpp
     src/detail/runtime_notifications.cpp
+    src/detail/runtime_diagnostics.cpp
     src/detail/security_descriptor.cpp
     src/detail/composition_support.cpp
     src/detail/listener_binding.cpp
@@ -117,7 +118,7 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
-            "Common runtime was built with the Qt Quick target adapter" FORCE)
+            "Common runtime contains the Qt Quick target adapter" FORCE)
     else()
         message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
     endif()
@@ -170,6 +171,15 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
 endif()
 
 if(HYREMOTE_BUILD_TESTS)
+    add_executable(hyremote-runtime-diagnostics-test
+        tests/test_runtime_diagnostics.cpp
+    )
+    target_compile_features(hyremote-runtime-diagnostics-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-runtime-diagnostics-test PRIVATE src)
+    target_link_libraries(hyremote-runtime-diagnostics-test PRIVATE Qt6::Core HyRemote::RemoteAccess)
+    add_test(NAME hyremote-runtime-diagnostics-test COMMAND hyremote-runtime-diagnostics-test)
+    set_tests_properties(hyremote-runtime-diagnostics-test PROPERTIES TIMEOUT 15)
+
     add_subdirectory(tests)
 endif()
 
