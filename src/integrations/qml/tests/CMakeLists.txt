@@ -64,6 +64,35 @@ add_test(
 )
 set_tests_properties(hyremote-qml-notifications-test PROPERTIES TIMEOUT 60)
 
+# #335: when both public C++ and QML surfaces are built, they must render the exact same Shared
+# Runtime snapshot through the one formatter rather than growing route-specific report logic.
+if(HYREMOTE_BUILD_CPP_API)
+    add_executable(hyremote-qml-diagnostic-report-parity-test
+        test_diagnostic_report_parity.cpp
+    )
+    target_compile_features(hyremote-qml-diagnostic-report-parity-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qml-diagnostic-report-parity-test
+        PRIVATE
+            Qt6::Core
+            Qt6::Qml
+            HyRemote::RemoteAccess
+    )
+    target_compile_definitions(hyremote-qml-diagnostic-report-parity-test
+        PRIVATE
+            HYREMOTE_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml"
+    )
+    add_dependencies(hyremote-qml-diagnostic-report-parity-test hyremote-qml hyremote-qmlplugin)
+    add_test(
+        NAME hyremote-qml-diagnostic-report-parity-test
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_EXE=$<TARGET_FILE:hyremote-qml-diagnostic-report-parity-test>
+            -DMODULE_RUNTIME_DIR=$<TARGET_FILE_DIR:hyremote-qml>
+            -DADDITIONAL_RUNTIME_DIR=$<TARGET_FILE_DIR:HyRemote::RemoteAccess>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qml_module_test.cmake
+    )
+    set_tests_properties(hyremote-qml-diagnostic-report-parity-test PROPERTIES TIMEOUT 30)
+endif()
+
 # The public SDK owns one deployment helper. These configure-only fixtures use deterministic Qt
 # command doubles to prove that ordinary applications select qt_generate_deploy_app_script() while
 # declarative applications select qt_generate_deploy_qml_app_script() exclusively.
@@ -90,6 +119,11 @@ hyremote_label_test_family("integration;qml;fast"
     hyremote-qml-module-test
     hyremote-qml-notifications-test
 )
+if(HYREMOTE_BUILD_CPP_API)
+    hyremote_label_test_family("integration;qml;cpp;fast"
+        hyremote-qml-diagnostic-report-parity-test
+    )
+endif()
 hyremote_label_test_family("contract;qml;installed"
     hyremote-qml-deploy-helper-non-qml
     hyremote-qml-deploy-helper-qml
