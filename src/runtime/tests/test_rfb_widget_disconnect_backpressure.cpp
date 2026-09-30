@@ -446,21 +446,22 @@ struct VisualLatencyTrace
     }
 };
 
-std::optional<std::uint32_t> frameCenterRgb(const hyremote::RemoteFrame &frame)
+std::optional<std::uint32_t> frameCenterRgb(const std::shared_ptr<const hyremote::FrameStorage> &storage,
+                                            const hyremote::FrameGeometry &geometry)
 {
-    if (!frame.storage || frame.geometry.size.width == 0 || frame.geometry.size.height == 0)
+    if (!storage || geometry.size.width == 0 || geometry.size.height == 0)
         return std::nullopt;
-    const auto plane = frame.storage->mapRead(0);
+    const auto plane = storage->mapRead(0);
     if (!plane || !plane->data)
         return std::nullopt;
 
-    const std::uint32_t x = frame.geometry.size.width / 2U;
-    const std::uint32_t y = frame.geometry.size.height / 2U;
+    const std::uint32_t x = geometry.size.width / 2U;
+    const std::uint32_t y = geometry.size.height / 2U;
     const auto *row = reinterpret_cast<const unsigned char *>(plane->data)
                       + static_cast<std::size_t>(y) * plane->stride;
     const auto *pixel = row + static_cast<std::size_t>(x) * 4U;
 
-    switch (frame.geometry.pixelFormat) {
+    switch (geometry.pixelFormat) {
     case hyremote::PixelFormat::Rgba8888:
     case hyremote::PixelFormat::Rgbx8888:
         return (static_cast<std::uint32_t>(pixel[0]) << 16U)
@@ -494,9 +495,16 @@ public:
     {
         return m_inner->start(
             [this, downstream = std::move(onFrame)](hyremote::RemoteFrame frame) mutable {
-                observe(frame);
+                const auto storage = frame.storage;
+                const auto geometry = frame.geometry;
+                const auto completionTime = frame.timing.completionTime;
+
+                // Delivery stays authoritative: Core receives the frame before test-only pixel mapping,
+                // sample scanning or trace locking can run. The shared storage anchor keeps the immutable
+                // pixels alive for observation after the downstream callback returns.
                 if (downstream)
                     downstream(std::move(frame));
+                observe(storage, geometry, completionTime);
             },
             std::move(onEvent));
     }
@@ -512,16 +520,18 @@ public:
     }
 
 private:
-    void observe(const hyremote::RemoteFrame &frame)
+    void observe(const std::shared_ptr<const hyremote::FrameStorage> &storage,
+                 const hyremote::FrameGeometry &geometry,
+                 const std::optional<hyremote::TimePoint> &completionTime)
     {
-        if (!frame.timing.completionTime)
+        if (!completionTime)
             return;
-        const auto rgb = frameCenterRgb(frame);
+        const auto rgb = frameCenterRgb(storage, geometry);
         if (!rgb)
             return;
         for (int sample = 0; sample < latencySampleCount; ++sample) {
             if (*rgb == visualColorForSample(sample)) {
-                m_trace.recordCapture(sample, *frame.timing.completionTime);
+                m_trace.recordCapture(sample, *completionTime);
                 return;
             }
         }
