@@ -201,6 +201,8 @@ public:
         m_request.reset();
     }
 
+    void cancelRequest() noexcept { m_request.reset(); }
+
     void markInitialFull(int width, int height)
     {
         m_pending.clear();
@@ -323,6 +325,80 @@ inline BoundedRegion changedTiles(const hyremote::RemoteFrame *before,
     return result;
 }
 
+struct PixelFormat
+{
+    std::uint8_t bitsPerPixel = 32;
+    std::uint8_t depth = 24;
+    bool bigEndian = false;
+    bool trueColor = true;
+    std::uint16_t redMax = 255;
+    std::uint16_t greenMax = 255;
+    std::uint16_t blueMax = 255;
+    std::uint8_t redShift = 0;
+    std::uint8_t greenShift = 8;
+    std::uint8_t blueShift = 16;
+};
+
+inline std::uint32_t scaleChannel(std::uint8_t value, std::uint16_t max) noexcept
+{
+    return (static_cast<std::uint32_t>(value) * static_cast<std::uint32_t>(max) + 127U) / 255U;
+}
+
+inline std::uint32_t encodedPixel(std::uint32_t rgb, const PixelFormat &format) noexcept
+{
+    const auto r = static_cast<std::uint8_t>((rgb >> 16U) & 0xffU);
+    const auto g = static_cast<std::uint8_t>((rgb >> 8U) & 0xffU);
+    const auto b = static_cast<std::uint8_t>(rgb & 0xffU);
+    return (scaleChannel(r, format.redMax) << format.redShift)
+           | (scaleChannel(g, format.greenMax) << format.greenShift)
+           | (scaleChannel(b, format.blueMax) << format.blueShift);
+}
+
+inline int bytesPerCpixel(const PixelFormat &format) noexcept
+{
+    const int bytesPerPixel = format.bitsPerPixel / 8;
+    if (!format.trueColor || format.bitsPerPixel != 32 || format.depth > 24)
+        return bytesPerPixel;
+
+    const std::uint32_t usedMask = (static_cast<std::uint32_t>(format.redMax) << format.redShift)
+                                   | (static_cast<std::uint32_t>(format.greenMax) << format.greenShift)
+                                   | (static_cast<std::uint32_t>(format.blueMax) << format.blueShift);
+    const bool fitsLowThree = (usedMask & 0xff000000U) == 0U;
+    const bool fitsHighThree = (usedMask & 0x000000ffU) == 0U;
+    return (fitsLowThree || fitsHighThree) ? 3 : bytesPerPixel;
+}
+
+inline void appendCpixel(QByteArray &out, std::uint32_t rgb, const PixelFormat &format)
+{
+    const std::uint32_t value = encodedPixel(rgb, format);
+    const int bytesPerPixel = format.bitsPerPixel / 8;
+    std::array<std::uint8_t, 4> bytes{};
+    if (format.bigEndian) {
+        for (int i = 0; i < bytesPerPixel; ++i)
+            bytes[static_cast<std::size_t>(i)]
+                = static_cast<std::uint8_t>((value >> ((bytesPerPixel - 1 - i) * 8)) & 0xffU);
+    } else {
+        for (int i = 0; i < bytesPerPixel; ++i)
+            bytes[static_cast<std::size_t>(i)]
+                = static_cast<std::uint8_t>((value >> (i * 8)) & 0xffU);
+    }
+
+    if (bytesPerCpixel(format) != 3) {
+        for (int i = 0; i < bytesPerPixel; ++i)
+            out.append(static_cast<char>(bytes[static_cast<std::size_t>(i)]));
+        return;
+    }
+
+    const std::uint32_t usedMask = (static_cast<std::uint32_t>(format.redMax) << format.redShift)
+                                   | (static_cast<std::uint32_t>(format.greenMax) << format.greenShift)
+                                   | (static_cast<std::uint32_t>(format.blueMax) << format.blueShift);
+    const bool fitsLowThree = (usedMask & 0xff000000U) == 0U;
+    // RFC 6143 chooses the least-significant three bytes when both choices can hold all used bits.
+    const int first = fitsLowThree ? (format.bigEndian ? 1 : 0) : (format.bigEndian ? 0 : 1);
+    for (int i = 0; i < 3; ++i)
+        out.append(static_cast<char>(bytes[static_cast<std::size_t>(first + i)]));
+}
+
 inline std::uint32_t rgbPixel(const MappedRgbaFrame &frame, int x, int y) noexcept
 {
     const auto *pixel = frame.data + static_cast<std::size_t>(y) * frame.stride
@@ -330,13 +406,6 @@ inline std::uint32_t rgbPixel(const MappedRgbaFrame &frame, int x, int y) noexce
     return (static_cast<std::uint32_t>(pixel[0]) << 16U)
            | (static_cast<std::uint32_t>(pixel[1]) << 8U)
            | static_cast<std::uint32_t>(pixel[2]);
-}
-
-inline void appendCpixel(QByteArray &out, std::uint32_t pixel)
-{
-    out.append(static_cast<char>((pixel >> 16U) & 0xffU));
-    out.append(static_cast<char>((pixel >> 8U) & 0xffU));
-    out.append(static_cast<char>(pixel & 0xffU));
 }
 
 inline int packedBits(std::size_t paletteSize) noexcept
@@ -350,7 +419,8 @@ inline int packedBits(std::size_t paletteSize) noexcept
 
 inline bool appendTrlePayload(QByteArray &out,
                               const hyremote::RemoteFrame &frame,
-                              Rect rectangle)
+                              Rect rectangle,
+                              const PixelFormat &format)
 {
     const auto mapped = mapRgbaFrame(frame);
     if (!mapped)
@@ -359,11 +429,11 @@ inline bool appendTrlePayload(QByteArray &out,
     if (rectangle.empty())
         return false;
 
-    const std::uint64_t rawUpperBound = static_cast<std::uint64_t>(rectangle.width)
-                                        * static_cast<std::uint64_t>(rectangle.height) * 3U;
-    if (rawUpperBound > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
+    const std::uint64_t pixelCount = static_cast<std::uint64_t>(rectangle.width)
+                                     * static_cast<std::uint64_t>(rectangle.height);
+    if (pixelCount * 4U > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
         return false;
-    out.reserve(out.size() + static_cast<qsizetype>(rawUpperBound));
+    out.reserve(out.size() + static_cast<qsizetype>(pixelCount * bytesPerCpixel(format)));
 
     for (int tileY = rectangle.y; tileY < rectangle.bottom(); tileY += kTrleTile) {
         const int tileHeight = std::min(kTrleTile, rectangle.bottom() - tileY);
@@ -396,20 +466,20 @@ inline bool appendTrlePayload(QByteArray &out,
                 out.append(char(0));
                 for (int y = 0; y < tileHeight; ++y) {
                     for (int x = 0; x < tileWidth; ++x)
-                        appendCpixel(out, rgbPixel(*mapped, tileX + x, tileY + y));
+                        appendCpixel(out, rgbPixel(*mapped, tileX + x, tileY + y), format);
                 }
                 continue;
             }
 
             if (paletteSize == 1U) {
                 out.append(char(1));
-                appendCpixel(out, palette[0]);
+                appendCpixel(out, palette[0], format);
                 continue;
             }
 
             out.append(static_cast<char>(paletteSize));
             for (std::size_t i = 0; i < paletteSize; ++i)
-                appendCpixel(out, palette[i]);
+                appendCpixel(out, palette[i], format);
 
             const int bits = packedBits(paletteSize);
             for (int y = 0; y < tileHeight; ++y) {
