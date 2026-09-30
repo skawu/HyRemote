@@ -256,7 +256,15 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
     if (width == 0 || height == 0)
         return {};
 
-    if (current.damage.kind == hyremote::DamageKind::Regions)
+    // A Regions list describes the delta from the immediately preceding accepted frame. The
+    // RFB transport mailbox is latest-frame-wins, so more than one accepted frame may be
+    // coalesced before the worker observes it. Only trust Regions when FrameId proves that no
+    // accepted frame was skipped; otherwise diff the actual last-observed pixels against the
+    // newest frame so a delta from a discarded intermediate frame cannot be lost.
+    const bool adjacentAcceptedFrame = previous && previous->id != 0 && current.id != 0
+                                       && current.id > previous->id
+                                       && current.id - previous->id == 1U;
+    if (current.damage.kind == hyremote::DamageKind::Regions && adjacentAcceptedFrame)
         return regionsFromFrameDamage(current);
 
     if (!previous || previous->geometry.size.width != width
