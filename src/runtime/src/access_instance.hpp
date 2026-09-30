@@ -70,9 +70,9 @@ public:
 
     // #335 phase-1 private projection. Every field is read from the existing Runtime getters at the
     // instant of the call; no diagnostic state is cached and no frontend owns a second copy.
-    detail::DiagnosticSnapshot diagnosticSnapshot() const
+    DiagnosticSnapshot diagnosticSnapshot() const
     {
-        detail::DiagnosticSnapshot result;
+        DiagnosticSnapshot result;
         result.state = state();
         result.configuredListenAddress = listenAddress();
         result.configuredListenInterface = listenInterface();
