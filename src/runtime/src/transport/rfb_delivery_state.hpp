@@ -248,6 +248,16 @@ inline RfbDamageRegion regionsFromFrameDamage(const hyremote::RemoteFrame &frame
     return result;
 }
 
+constexpr bool rfbFrameIdsAreAdjacent(hyremote::FrameId previous, hyremote::FrameId current) noexcept
+{
+    return previous != 0 && current != 0 && current > previous && current - previous == 1U;
+}
+
+static_assert(rfbFrameIdsAreAdjacent(10U, 11U));
+static_assert(!rfbFrameIdsAreAdjacent(10U, 12U));
+static_assert(!rfbFrameIdsAreAdjacent(0U, 1U));
+static_assert(!rfbFrameIdsAreAdjacent(11U, 10U));
+
 inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
                                        const hyremote::RemoteFrame &current)
 {
@@ -261,9 +271,8 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
     // coalesced before the worker observes it. Only trust Regions when FrameId proves that no
     // accepted frame was skipped; otherwise diff the actual last-observed pixels against the
     // newest frame so a delta from a discarded intermediate frame cannot be lost.
-    const bool adjacentAcceptedFrame = previous && previous->id != 0 && current.id != 0
-                                       && current.id > previous->id
-                                       && current.id - previous->id == 1U;
+    const bool adjacentAcceptedFrame
+        = previous && rfbFrameIdsAreAdjacent(previous->id, current.id);
     if (current.damage.kind == hyremote::DamageKind::Regions && adjacentAcceptedFrame)
         return regionsFromFrameDamage(current);
 
