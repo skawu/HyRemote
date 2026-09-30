@@ -1,6 +1,7 @@
 #include <HyRemote/RemoteAccess.h>
 
 #include "access_instance.hpp"
+#include "detail/runtime_diagnostics.hpp"
 
 #include <utility>
 
@@ -202,6 +203,13 @@ std::optional<RemoteAccessError> RemoteAccess::lastError() const
         return std::nullopt;
     const std::optional<Runtime::Error> error = m_impl->access.lastError();
     return error ? std::optional<RemoteAccessError>{mapError(*error)} : std::nullopt;
+}
+
+QString RemoteAccess::diagnosticReport() const
+{
+    const Runtime::DiagnosticSnapshot snapshot = m_impl ? m_impl->access.diagnosticSnapshot()
+                                                        : Runtime::DiagnosticSnapshot{};
+    return Runtime::formatDiagnosticReport(snapshot);
 }
 
 void RemoteAccess::clearError()
