@@ -1,7 +1,7 @@
 #pragma once
 
 #include "access_types.hpp"
-#include "detail/runtime_diagnostics.hpp"
+#include "detail/integration_route.hpp"
 
 #include <QHostAddress>
 #include <QString>
