@@ -14,7 +14,6 @@
 #include <QPointer>
 #include <QRect>
 #include <QSet>
-#include <QThread>
 #include <QTimer>
 #include <QWindow>
 
@@ -231,20 +230,6 @@ private:
         });
     }
 
-    void requestDiagnosticReport()
-    {
-        if (QThread::currentThread() == thread()) {
-            queueDiagnosticReportOnOwnerThread();
-            return;
-        }
-
-        const QPointer<Impl> guard(this);
-        QMetaObject::invokeMethod(this, [guard] {
-            if (guard)
-                guard->queueDiagnosticReportOnOwnerThread();
-        }, Qt::QueuedConnection);
-    }
-
     void subscribeDiagnostics()
     {
         if (!access || diagnosticToken.isValid())
@@ -252,8 +237,12 @@ private:
 
         const QPointer<Impl> guard(this);
         const auto notify = [guard] {
-            if (guard)
-                guard->requestDiagnosticReport();
+            if (!guard)
+                return;
+            QMetaObject::invokeMethod(guard.data(), [guard] {
+                if (guard)
+                    guard->queueDiagnosticReportOnOwnerThread();
+            }, Qt::QueuedConnection);
         };
 
         RuntimeNotificationHandlers handlers;
