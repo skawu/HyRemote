@@ -7,7 +7,7 @@
 #include "rfb_interaction_latency_stats.hpp"
 
 #define main hyremote_rfb_wire_robustness_base_main
-#include "test_rfb_wire_robustness.cpp"
+#include "test_rfb_wire_robustness_base.cpp"
 #undef main
 
 namespace {
