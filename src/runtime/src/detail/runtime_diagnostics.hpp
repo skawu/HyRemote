@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <optional>
 
-namespace HyRemote::Runtime::detail {
+namespace HyRemote::Runtime {
 
 // #335 private one-Runtime diagnostic truth. This type is intentionally not installed and is not a
 // public SDK/ABI promise. Frontends may project/format this snapshot, but must not maintain their own
@@ -31,4 +31,4 @@ struct DiagnosticSnapshot
     std::optional<Error> lastError;
 };
 
-}  // namespace HyRemote::Runtime::detail
+}  // namespace HyRemote::Runtime
