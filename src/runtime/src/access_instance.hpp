@@ -68,21 +68,9 @@ public:
     std::optional<Error> lastError() const;
     void clearError();
 
-    // #335 phase-1 private projection. Every field is read from the existing Runtime getters at the
-    // instant of the call; no diagnostic state is cached and no frontend owns a second copy.
-    DiagnosticSnapshot diagnosticSnapshot() const
-    {
-        DiagnosticSnapshot result;
-        result.state = state();
-        result.configuredListenAddress = listenAddress();
-        result.configuredListenInterface = listenInterface();
-        result.configuredPort = port();
-        result.configuredSecurityProfile = securityProfile();
-        result.remoteInputEnabled = remoteInputEnabled();
-        result.connectedClientCount = connectedClientCount();
-        result.lastError = lastError();
-        return result;
-    }
+    // #335 private projection of the one Runtime truth. The implementation lives next to Impl so it
+    // can expose effective listener facts without adding frontend-facing getters or duplicating state.
+    DiagnosticSnapshot diagnosticSnapshot() const;
 
     // Private Runtime notification seam (#259). A frontend subscribes instead of polling: the handlers
     // are typed (see detail/runtime_notifications.hpp), the returned token unregisters them, and the
