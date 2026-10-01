@@ -345,3 +345,21 @@ These additions must preserve the normal product principle: ordinary application
 Other product capabilities intentionally remain behind internal seams as well, including richer session and programmable application-control APIs.
 
 Those capabilities must preserve one Core + one Shared Runtime and must not create parallel performance semantics for different integration frontends.
+
+## 18. Product testing and qualification architecture
+
+HyRemote tests the **product promise and support claims**, not the current implementation topology or raw CTest count. The canonical product-test design is layered as follows:
+
+1. [`internal/test-strategy.md`](internal/test-strategy.md) — product-test strategy and PAC authority;
+2. [`internal/test-system-architecture.md`](internal/test-system-architecture.md) — detailed evidence/selection/gate/qualification architecture;
+3. [`internal/test-evidence-requirements.md`](internal/test-evidence-requirements.md) — stable product Evidence Requirement baseline that TS-1 maps current executable tests against.
+
+The strategy defines ten Product Acceptance Contracts covering low-intrusion integration, native non-interference, remote experience, frontend equivalence, deployability, reliability/boundedness, security truth, responsiveness/efficiency, compatibility truth, and operability/maintainability. Self-service adoption is a vertical product journey across those contracts rather than an additional overlapping PAC: compatibility evaluation, integration, deployment, remote use, diagnostics and maintenance each consume the contract that owns that product property.
+
+Core, Runtime, adapters, frontends, transport, packaging/deployment and product-path qualification provide the cheapest sufficient evidence for those contracts. Implementation-specific evidence such as RFB or a particular capture/backend path stays subordinate to the stable product contract. Every retained Evidence Requirement defines an explicit oracle/pass condition and invalidation rule so logs, screenshots, benchmark values and manual observations are not treated as self-interpreting proof.
+
+Testing is intentionally staged into verification, product validation, qualification and exact-candidate release acceptance. An execution gate determines **when** evidence is collected; it does not by itself confer evidence strength. A nightly run counts as Qualification only when the requirement, environment, oracle, fixture identity and artifact binding satisfy the applicable qualification contract. Hosted/headless verification does not substitute for physical/native evidence when a support claim includes local display/input, native platform, graphics or loader behavior, while physical evidence does not substitute for clean build/install/deploy evidence.
+
+Development velocity is itself a test-system constraint, including both runtime and maintenance/cognitive overhead. Ordinary edit/PR loops use risk-based selection and cheap deterministic evidence; expensive clean deployment, viewer, stress/soak, broad compatibility and physical qualification run only at the gates whose product risk requires them. Suite-level inherited metadata and automated evidence capture are preferred over per-case Issue/CTest/job/manual-ledger growth.
+
+A positive support or maintenance claim is accepted only when it can be traced from the declared product boundary to the required Product Acceptance Contracts, explicit Evidence Requirements, qualification cells or maintenance edges, and executed evidence for the applicable artifact/environment/fixture identity. Exact Release Acceptance follows the RC-FROZEN identity rules; CI status or raw test count alone is never a support claim.
