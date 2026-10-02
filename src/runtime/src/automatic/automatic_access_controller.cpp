@@ -26,6 +26,7 @@
 #include <QtQuick/QQuickWindow>
 #endif
 
+#include <atomic>
 #include <optional>
 #include <utility>
 
@@ -219,12 +220,24 @@ private:
             writeDiagnosticReport(*access);
     }
 
-    void queueDiagnosticReportOnOwnerThread()
+    bool isCurrentDiagnosticRun(const std::shared_ptr<std::atomic<bool>> &activity) const noexcept
     {
-        if (!access || diagnosticReportQueued)
+        return activity && activity->load(std::memory_order_acquire)
+               && diagnosticRunActive == activity;
+    }
+
+    void queueDiagnosticReportOnOwnerThread(const std::shared_ptr<std::atomic<bool>> &activity)
+    {
+        if (!isCurrentDiagnosticRun(activity) || !access || diagnosticReportQueued)
             return;
+
         diagnosticReportQueued = true;
-        QTimer::singleShot(0, this, [this] {
+        QTimer::singleShot(0, this, [this, activity] {
+            // A callback queued by an old run must not clear the new run's coalescing flag or read its
+            // replacement AccessInstance. Teardown invalidates the captured activity token first.
+            if (!isCurrentDiagnosticRun(activity))
+                return;
+
             diagnosticReportQueued = false;
             writeCurrentDiagnosticReport();
         });
@@ -235,13 +248,16 @@ private:
         if (!access || diagnosticToken.isValid())
             return;
 
+        diagnosticRunActive = std::make_shared<std::atomic<bool>>(true);
+        const auto activity = diagnosticRunActive;
         const QPointer<Impl> guard(this);
-        const auto notify = [guard] {
-            if (!guard)
+        const auto notify = [guard, activity] {
+            if (!guard || !activity->load(std::memory_order_acquire))
                 return;
-            QMetaObject::invokeMethod(guard.data(), [guard] {
-                if (guard)
-                    guard->queueDiagnosticReportOnOwnerThread();
+
+            QMetaObject::invokeMethod(guard.data(), [guard, activity] {
+                if (guard && activity->load(std::memory_order_acquire))
+                    guard->queueDiagnosticReportOnOwnerThread(activity);
             }, Qt::QueuedConnection);
         };
 
@@ -254,8 +270,13 @@ private:
 
     void unsubscribeDiagnostics() noexcept
     {
+        // Invalidate every copied/queued handler before removing the live subscription or touching the
+        // current coalescing flag. Already-posted callbacks then become inert across stop/restart.
+        if (diagnosticRunActive)
+            diagnosticRunActive->store(false, std::memory_order_release);
         if (access && diagnosticToken.isValid())
             access->unsubscribeNotifications(diagnosticToken);
+        diagnosticRunActive.reset();
         diagnosticToken = RuntimeNotificationToken{};
         diagnosticReportQueued = false;
     }
@@ -399,6 +420,7 @@ private:
     AccessConfig config;
     std::unique_ptr<Runtime::AccessInstance> access;
     RuntimeNotificationToken diagnosticToken;
+    std::shared_ptr<std::atomic<bool>> diagnosticRunActive;
     std::unique_ptr<::HyRemote::Runtime::Automatic::InteractiveCompositeTarget> compositeTarget;
     QHash<QObject *, quint64> surfaceIds;
     QSet<QObject *> raisePending;
