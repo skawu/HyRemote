@@ -60,9 +60,10 @@ QT_LANE_ON_REFERENCE=PASS            Qt 6 sits on the current V0.3.0 reference l
 LICENCE_FILES_READ=PASS              COPYING (GPL-3.0)
 UPSTREAM_PATCH=0
 GENERIC_MECHANISM_ON_CURRENT_LANE=PASS   verified with a pristine Qt 6.8.3 application, zero HyRemote code:
-                                         process alive, listening 0.0.0.0:5921, application log
-                                         "HyRemote automatic application access active on \"0.0.0.0\" 5921
-                                          remote input: false security profile: insecure"
+                                         process alive, listening 0.0.0.0:5921, shared diagnostic report includes
+                                         INTEGRATION_ROUTE=generic
+                                         STATE=Running
+                                         LISTENER_EFFECTIVE=0.0.0.0:5921
 GENERIC_RUN_ON_SHOTCUT_ITSELF=NOT PERFORMED  obtaining or building Shotcut (MLT/FFmpeg toolchain) was not
                                              carried out in this slice, so no listener/viewer result is
                                              claimed for Shotcut itself
