@@ -89,6 +89,7 @@ void testDeclarativeImportAndSafeDefaults()
     CHECK(QMetaObject::invokeMethod(object.get(),
                                     "diagnosticReport",
                                     Q_RETURN_ARG(QString, qmlReport)));
+    CHECK(qmlReport.contains(QStringLiteral("INTEGRATION_ROUTE=qml\n")));
     CHECK(qmlReport.contains(QStringLiteral("STATE=Stopped\n")));
     CHECK(qmlReport.contains(QStringLiteral("LISTENER_CONFIGURED=address:0.0.0.0:5901\n")));
     CHECK(qmlReport.contains(QStringLiteral("REMOTE_INPUT=true\n")));
@@ -96,7 +97,16 @@ void testDeclarativeImportAndSafeDefaults()
     HyRemote::RemoteAccess cppAccess;
     CHECK(cppAccess.setPort(5901));
     CHECK(cppAccess.setRemoteInputEnabled(true));
-    CHECK(cppAccess.diagnosticReport() == qmlReport);
+    const QString cppReport = cppAccess.diagnosticReport();
+    CHECK(cppReport.contains(QStringLiteral("INTEGRATION_ROUTE=cpp\n")));
+
+    QString normalizedQmlReport = qmlReport;
+    QString normalizedCppReport = cppReport;
+    normalizedQmlReport.replace(QStringLiteral("INTEGRATION_ROUTE=qml"),
+                                QStringLiteral("INTEGRATION_ROUTE=route"));
+    normalizedCppReport.replace(QStringLiteral("INTEGRATION_ROUTE=cpp"),
+                                QStringLiteral("INTEGRATION_ROUTE=route"));
+    CHECK(normalizedCppReport == normalizedQmlReport);
 #endif
 
     CHECK(!object->setProperty("connectedClientCount", QVariant::fromValue<qulonglong>(1)));
