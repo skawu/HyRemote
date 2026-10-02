@@ -216,6 +216,7 @@ cmake -S <MY_APP_SOURCE> -B <MY_APP_BUILD> -G Ninja `
 ```
 
 ```sh
+# POSIX
 cmake -S <MY_APP_SOURCE> -B <MY_APP_BUILD> -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="<MY_APP_DEPLOY>" \
@@ -494,9 +495,7 @@ export LD_LIBRARY_PATH="$HYREMOTE_SDK_ROOT/bin:$LD_LIBRARY_PATH"
 <UpstreamApp> -plugin hyremote
 ```
 
-实测（pristine Qt 6.8.3 应用，零 HyRemote 代码）：进程正常存活，监听 `0.0.0.0:5921`，应用本身打印
-`HyRemote automatic application access active on "0.0.0.0" 5921 remote input: false security profile: insecure`。
-不传 `-plugin hyremote` 时，同一个二进制就是普通应用（原生平台仍是 `windows`/`xcb`）。
+实测（pristine Qt 6.8.3 应用，零 HyRemote 代码）：进程正常存活并监听 `0.0.0.0:5921`。应用会输出与其他路线相同的 Shared Runtime 有界诊断报告。健康的 Generic 运行请看稳定字段：`INTEGRATION_ROUTE=generic`、`STATE=Running`、`LISTENER_EFFECTIVE=0.0.0.0:5921`；失败时看 `LAST_ERROR_CODE` / `LAST_ERROR_MESSAGE`，不要再匹配某一句启动文案。不传 `-plugin hyremote` 时，同一个二进制就是普通应用（原生平台仍是 `windows`/`xcb`）。
 
 ### QPA（Transparent QPA Proxy，零代码）
 

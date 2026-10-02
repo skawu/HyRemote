@@ -111,10 +111,12 @@ require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above 
 require_file_token("src/integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "class PortReservation final" "deterministic occupied-port QPA failure setup")
 require_file_token("src/integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "SO_EXCLUSIVEADDRUSE" "deterministic Windows occupied-port ownership")
 require_file_token("src/integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "gRemoteStartFailureSeen" "proof that the QPA remote runtime actually attempted and failed startup")
+require_file_token("src/integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "LAST_ERROR_CODE=StartFailed" "QPA failure smoke consumes the stable shared diagnostic error code")
+require_file_token("src/integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "INTEGRATION_ROUTE=qpa" "QPA failure smoke identifies the shared diagnostic route")
 require_file_token("src/integrations/qpa/tests/qpa_remote_failure_native_survival_smoke.cpp" "forced remote bind failure was observed and the native QPA application remained live" "native-survival assertion after observed remote bind failure")
 require_file_token("src/integrations/qpa/tests/CMakeLists.txt" "hyremote-qpa-remote-failure-native-survival-smoke" "registered QPA native-survival CTest")
 require_file_token("src/integrations/qpa/tests/CMakeLists.txt" "PRIVATE ws2_32" "Windows native socket support for QPA failure smoke")
-require_file_token("src/runtime/src/automatic/automatic_access_controller.cpp" "HyRemote automatic access could not start the composite runtime" "shared automatic runtime failure remains diagnostic rather than native-fatal")
+require_file_token("src/runtime/src/automatic/automatic_access_controller.cpp" "formatDiagnosticReport(snapshot)" "shared automatic runtime failures use the bounded common diagnostic formatter")
 require_file_token("docs/internal/v1-ga-acceptance.md" "remote-capability failure only" "canonical GA native-survival rule for QPA remote startup failure")
 
 message(STATUS

@@ -229,6 +229,7 @@ cmake -S <MY_APP_SOURCE> -B <MY_APP_BUILD> -G Ninja `
 ```
 
 ```sh
+# POSIX
 cmake -S <MY_APP_SOURCE> -B <MY_APP_BUILD> -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="<MY_APP_DEPLOY>" \
@@ -500,10 +501,12 @@ export LD_LIBRARY_PATH="$HYREMOTE_SDK_ROOT/bin:$LD_LIBRARY_PATH"
 <UpstreamApp> -plugin hyremote
 ```
 
-Measured on a pristine Qt 6.8.3 application with zero HyRemote code: the process stays alive, listens on
-`0.0.0.0:5921`, and the application itself prints
-`HyRemote automatic application access active on "0.0.0.0" 5921 remote input: false security profile: insecure`.
-Without `-plugin hyremote` the same binary is an ordinary application (native platform stays `windows`/`xcb`).
+Measured on a pristine Qt 6.8.3 application with zero HyRemote code: the process stays alive and listens on
+`0.0.0.0:5921`. The application emits the same bounded Shared Runtime diagnostic report used by the other routes.
+For a healthy Generic run, check stable facts such as `INTEGRATION_ROUTE=generic`, `STATE=Running`, and
+`LISTENER_EFFECTIVE=0.0.0.0:5921`; on failure, use `LAST_ERROR_CODE` / `LAST_ERROR_MESSAGE` rather than matching a prose
+startup sentence. Without `-plugin hyremote` the same binary is an ordinary application (native platform stays
+`windows`/`xcb`).
 
 ### QPA (Transparent QPA Proxy, zero code)
 

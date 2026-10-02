@@ -60,9 +60,10 @@ QT_LANE_ON_REFERENCE=PASS            Qt 6 sits on the current V0.3.0 reference l
 LICENCE_FILES_READ=PASS              LICENSE-APACHE (plus LICENSE-GPL for parts)
 UPSTREAM_PATCH=0
 GENERIC_MECHANISM_ON_CURRENT_LANE=PASS   verified with a pristine Qt 6.8.3 application, zero HyRemote code:
-                                         process alive, listening 0.0.0.0:5921, application log
-                                         "HyRemote automatic application access active on \"0.0.0.0\" 5921
-                                          remote input: false security profile: insecure"
+                                         process alive, listening 0.0.0.0:5921, shared diagnostic report includes
+                                         INTEGRATION_ROUTE=generic
+                                         STATE=Running
+                                         LISTENER_EFFECTIVE=0.0.0.0:5921
 GENERIC_RUN_ON_QGC_ITSELF=NOT PERFORMED  obtaining or building QGC is a large third-party operation
                                          (upstream needs CMake 3.25+, submodules and an upstream-fetched
                                          Vulkan SDK); it was not carried out in this slice, so no

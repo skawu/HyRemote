@@ -63,9 +63,10 @@ Or copy the payload next to the application (still no upstream change):
   libHyRemoteRemoteAccess.dll           <- from <HYREMOTE_SDK_ROOT>/bin/
 ```
 
-The mechanism is verified: a pristine Qt 6.8.3 application with zero HyRemote code started this way stays alive, listens
-on `0.0.0.0:5921`, and prints
-`HyRemote automatic application access active on "0.0.0.0" 5921 remote input: false security profile: insecure`.
+The mechanism is verified: a pristine Qt 6.8.3 application with zero HyRemote code started this way stays alive and
+listens on `0.0.0.0:5921`. The process now emits the shared bounded diagnostic report; for a healthy Generic run, use
+stable facts such as `INTEGRATION_ROUTE=generic`, `STATE=Running`, and `LISTENER_EFFECTIVE=0.0.0.0:5921` instead of
+matching a prose startup sentence. Failures are reported through `LAST_ERROR_CODE` / `LAST_ERROR_MESSAGE`.
 
 ## Current capability boundary (stated, not fudged)
 

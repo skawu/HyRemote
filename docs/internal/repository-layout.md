@@ -47,7 +47,7 @@ Widgets and Qt Quick are target/UI families implemented below the frontend bound
 
 ### `src/core`
 
-`src/core` owns product-neutral semantics and abstractions such as:
+`src/core` is the shared Core implementation and owns product-neutral semantics and abstractions such as:
 
 - lifecycle/state/error semantics;
 - `RemoteFrame` metadata and storage lifetime;
@@ -59,7 +59,7 @@ Core remains independent from QWidget/Qt Quick/QML, concrete RFB types, Qt priva
 
 ### `src/runtime`
 
-`src/runtime` owns shared Qt/product implementation used by multiple/all frontends, including:
+`src/runtime` owns implementation shared by multiple/all integration frontends, including:
 
 - Widgets and Quick target adapters;
 - concrete transport/security implementation;
