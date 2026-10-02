@@ -30,12 +30,12 @@ std::atomic_bool gRemoteStartFailureSeen{false};
 
 void captureRemoteFailure(QtMsgType, const QMessageLogContext &, const QString &message)
 {
-    // Automatic application access is runtime-owned and shared by Generic + QPA. The QPA smoke
-    // therefore observes the frontend-neutral runtime diagnostic rather than a historical QPA-only
-    // controller string. This still proves that the QPA bootstrap attempted remote startup and that
-    // the native delegate survived the forced listener failure.
-    if (message.contains(
-            QStringLiteral("HyRemote automatic access could not start the composite runtime"))) {
+    // Automatic application access is runtime-owned and shared by Generic + QPA. Observe stable
+    // report facts instead of a prose controller message so diagnostics can evolve without creating
+    // a second frontend-specific logging contract.
+    if (message.contains(QStringLiteral("INTEGRATION_ROUTE=qpa"))
+        && message.contains(QStringLiteral("STATE=Stopped"))
+        && message.contains(QStringLiteral("LAST_ERROR_CODE=StartFailed"))) {
         gRemoteStartFailureSeen.store(true, std::memory_order_relaxed);
     }
 
@@ -92,9 +92,9 @@ public:
         sockaddr_in address{};
         address.sin_family = AF_INET;
         // #174: the listener defaults to the wildcard, so the blocker must occupy the same address it will ask for.
-    // A loopback blocker would only collide with a loopback listener, and relying on how a wildcard and a
-    // loopback bind happen to overlap is exactly the platform detail this smoke must not depend on.
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
+        // A loopback blocker would only collide with a loopback listener, and relying on how a wildcard and a
+        // loopback bind happen to overlap is exactly the platform detail this smoke must not depend on.
+        address.sin_addr.s_addr = htonl(INADDR_ANY);
         address.sin_port = htons(0);
 
 #if defined(_WIN32)
