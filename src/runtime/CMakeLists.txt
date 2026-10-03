@@ -39,6 +39,35 @@ endif()
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
+# #335 build/process identity. SOURCE_SHA deliberately uses the same git fact that build.cmd install writes into
+# HYREMOTE-MANIFEST.txt; source archives or non-git consumers fall back to "unknown" rather than inventing an id.
+set(_hyremote_diagnostic_source_sha "unknown")
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+    RESULT_VARIABLE _hyremote_diagnostic_git_rc
+    OUTPUT_VARIABLE _hyremote_diagnostic_git_out
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(_hyremote_diagnostic_git_rc EQUAL 0 AND NOT _hyremote_diagnostic_git_out STREQUAL "")
+    set(_hyremote_diagnostic_source_sha "${_hyremote_diagnostic_git_out}")
+endif()
+set(_hyremote_diagnostic_arch "${CMAKE_SYSTEM_PROCESSOR}")
+if(_hyremote_diagnostic_arch STREQUAL "")
+    set(_hyremote_diagnostic_arch "unknown")
+endif()
+target_compile_definitions(hyremote-remoteaccess PRIVATE
+    HYREMOTE_DIAGNOSTIC_VERSION="${PROJECT_VERSION}"
+    HYREMOTE_DIAGNOSTIC_SOURCE_SHA="${_hyremote_diagnostic_source_sha}"
+    HYREMOTE_DIAGNOSTIC_OS="${CMAKE_SYSTEM_NAME}"
+    HYREMOTE_DIAGNOSTIC_ARCH="${_hyremote_diagnostic_arch}"
+    HYREMOTE_DIAGNOSTIC_BUILD_TYPE="$<CONFIG>"
+)
+unset(_hyremote_diagnostic_arch)
+unset(_hyremote_diagnostic_git_out)
+unset(_hyremote_diagnostic_git_rc)
+unset(_hyremote_diagnostic_source_sha)
+
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h

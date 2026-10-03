@@ -1,5 +1,7 @@
 #include "detail/runtime_diagnostics.hpp"
 
+#include <QtGlobal>
+
 #include <QStringList>
 
 namespace HyRemote::Runtime {
@@ -87,6 +89,28 @@ QString effectiveListener(const DiagnosticSnapshot &snapshot)
         .arg(*snapshot.effectivePort);
 }
 
+QString hyremoteVersion()
+{
+    const QString version = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_VERSION);
+    return version == QStringLiteral("0.0.0") || version.isEmpty() ? QStringLiteral("unknown") : version;
+}
+
+QString buildIdentity()
+{
+    const QString sourceSha = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_SHA);
+    const QString buildType = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_BUILD_TYPE);
+    if (sourceSha.isEmpty() || sourceSha == QStringLiteral("unknown"))
+        return QStringLiteral("unknown");
+    return QStringLiteral("source_sha=%1,build_type=%2")
+        .arg(sourceSha, buildType.isEmpty() ? QStringLiteral("unknown") : buildType);
+}
+
+QString buildFact(const char *value)
+{
+    const QString fact = QString::fromLatin1(value);
+    return fact.isEmpty() ? QStringLiteral("unknown") : fact;
+}
+
 }  // namespace
 
 QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
@@ -94,11 +118,11 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
     QStringList lines;
     lines.reserve(18);
 
-    lines << QStringLiteral("HYREMOTE_VERSION=unknown")
-          << QStringLiteral("BUILD_IDENTITY=unknown")
-          << QStringLiteral("QT_VERSION=unknown")
-          << QStringLiteral("OS=unknown")
-          << QStringLiteral("ARCH=unknown")
+    lines << QStringLiteral("HYREMOTE_VERSION=%1").arg(hyremoteVersion())
+          << QStringLiteral("BUILD_IDENTITY=%1").arg(buildIdentity())
+          << QStringLiteral("QT_VERSION=%1").arg(QString::fromLatin1(QT_VERSION_STR))
+          << QStringLiteral("OS=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_OS))
+          << QStringLiteral("ARCH=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_ARCH))
           << QStringLiteral("INTEGRATION_ROUTE=%1").arg(integrationRouteName(snapshot.integrationRoute))
           << QStringLiteral("UI_FAMILY=unknown")
           << QStringLiteral("STATE=%1").arg(stateName(snapshot.state))
