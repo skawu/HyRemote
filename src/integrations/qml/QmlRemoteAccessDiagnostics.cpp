@@ -7,8 +7,9 @@ namespace HyRemote::Qml {
 
 QString QmlRemoteAccess::diagnosticReport() const
 {
-    const ::HyRemote::Runtime::DiagnosticSnapshot snapshot =
+    ::HyRemote::Runtime::DiagnosticSnapshot snapshot =
         m_access ? m_access->diagnosticSnapshot() : ::HyRemote::Runtime::DiagnosticSnapshot{};
+    snapshot.integrationRoute = ::HyRemote::Runtime::IntegrationRoute::Qml;
     return ::HyRemote::Runtime::formatDiagnosticReport(snapshot);
 }
 
