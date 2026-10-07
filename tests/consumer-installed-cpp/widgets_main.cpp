@@ -58,8 +58,7 @@ int main(int argc, char **argv)
     // Clean installed consumer: the report must classify the actual Qt target, not the cpp route.
     const QString diagnostics = remote.diagnosticReport();
     if (!diagnostics.contains(QStringLiteral("UI_FAMILY=widgets\n"))
-        || !diagnostics.contains(QStringLiteral("STATE=Running\n"))
-) {
+        || !diagnostics.contains(QStringLiteral("STATE=Running\n"))) {
         std::fprintf(stderr, "FAIL: installed SDK diagnostic report misclassified the widgets target\n");
         remote.stop();
         return 8;
