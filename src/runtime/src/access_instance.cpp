@@ -800,6 +800,15 @@ DiagnosticSnapshot AccessInstance::diagnosticSnapshot() const
     if (!m_impl)
         return result;
 
+    // Direct API targets reveal their UI family; an Automatic composite is classified from
+    // its admitted surfaces by AccessController, not guessed from the frontend route.
+    const QObject *targetObject = m_impl->target.data();
+    // QObject's metaobject ancestry remains available even when a capture adapter is not
+    // compiled/linked. This identifies unsupported real targets in failure diagnostics too.
+    if (targetObject && targetObject->inherits("QWidget"))
+        result.uiFamily = UiFamily::Widgets;
+    else if (targetObject && targetObject->inherits("QQuickWindow"))
+        result.uiFamily = UiFamily::Quick;
     result.state = m_impl->projectedState();
     result.configuredListenAddress = m_impl->listenAddress;
     result.configuredListenInterface = m_impl->listenInterface;

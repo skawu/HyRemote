@@ -20,9 +20,19 @@ namespace HyRemote::Runtime {
 // Configured facts describe user intent. Effective facts are observations of a successfully running
 // listener only; they are absent while stopped/starting/unavailable or after a failed start. Frontends
 // must never infer effective values from configured values on their own.
+enum class UiFamily { Unknown, Widgets, Quick, Mixed };
+
+// Classify only actual admitted target families, never the integration route.
+constexpr UiFamily classifyUiFamily(bool widgets, bool quick) noexcept
+{
+    return widgets ? (quick ? UiFamily::Mixed : UiFamily::Widgets)
+                   : (quick ? UiFamily::Quick : UiFamily::Unknown);
+}
+
 struct DiagnosticSnapshot
 {
     IntegrationRoute integrationRoute = IntegrationRoute::Unknown;
+    UiFamily uiFamily = UiFamily::Unknown;
     AccessState state = AccessState::Stopped;
 
     QHostAddress configuredListenAddress;

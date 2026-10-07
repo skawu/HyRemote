@@ -19,6 +19,17 @@ QString integrationRouteName(IntegrationRoute route)
     return QStringLiteral("unknown");
 }
 
+QString uiFamilyName(UiFamily family)
+{
+    switch (family) {
+    case UiFamily::Unknown: return QStringLiteral("unknown");
+    case UiFamily::Widgets: return QStringLiteral("widgets");
+    case UiFamily::Quick: return QStringLiteral("quick");
+    case UiFamily::Mixed: return QStringLiteral("mixed");
+    }
+    return QStringLiteral("unknown");
+}
+
 QString stateName(AccessState state)
 {
     switch (state) {
@@ -124,7 +135,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
           << QStringLiteral("OS=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_OS))
           << QStringLiteral("ARCH=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_ARCH))
           << QStringLiteral("INTEGRATION_ROUTE=%1").arg(integrationRouteName(snapshot.integrationRoute))
-          << QStringLiteral("UI_FAMILY=unknown")
+          << QStringLiteral("UI_FAMILY=%1").arg(uiFamilyName(snapshot.uiFamily))
           << QStringLiteral("STATE=%1").arg(stateName(snapshot.state))
           << QStringLiteral("LISTENER_CONFIGURED=%1").arg(configuredListener(snapshot))
           << QStringLiteral("LISTENER_EFFECTIVE=%1").arg(effectiveListener(snapshot))

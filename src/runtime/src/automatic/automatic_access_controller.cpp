@@ -201,6 +201,21 @@ private:
     {
         DiagnosticSnapshot snapshot = instance.diagnosticSnapshot();
         snapshot.integrationRoute = config.integrationRoute;
+        // Re-evaluate the same eligible, visible surface set used by refresh(). No retained
+        // frontend counter or guessed family based on the Generic/QPA route.
+        bool hasWidgets = false;
+        bool hasQuick = false;
+        for (const SurfaceCandidate &surface : candidateSurfaces()) {
+            if (!surface.visible || !surface.target)
+                continue;
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+            hasWidgets = hasWidgets || qobject_cast<QWidget *>(surface.target.data());
+#endif
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+            hasQuick = hasQuick || qobject_cast<QQuickWindow *>(surface.target.data());
+#endif
+        }
+        snapshot.uiFamily = classifyUiFamily(hasWidgets, hasQuick);
         return snapshot;
     }
 
