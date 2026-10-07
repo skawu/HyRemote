@@ -22,6 +22,8 @@ using HyRemote::Runtime::Error;
 using HyRemote::Runtime::ErrorCode;
 using HyRemote::Runtime::IntegrationRoute;
 using HyRemote::Runtime::SecurityProfile;
+using HyRemote::Runtime::UiFamily;
+using HyRemote::Runtime::classifyUiFamily;
 using HyRemote::Runtime::formatDiagnosticReport;
 
 void checkDefaultReport()
@@ -84,6 +86,24 @@ void checkRunningReport()
     CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("INTEGRATION_ROUTE=qml\n")));
 }
 
+void checkUiFamilyClassification()
+{
+    CHECK(classifyUiFamily(false, false) == UiFamily::Unknown);
+    CHECK(classifyUiFamily(true, false) == UiFamily::Widgets);
+    CHECK(classifyUiFamily(false, true) == UiFamily::Quick);
+    CHECK(classifyUiFamily(true, true) == UiFamily::Mixed);
+
+    DiagnosticSnapshot snapshot;
+    snapshot.uiFamily = UiFamily::Widgets;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("UI_FAMILY=widgets\n")));
+    snapshot.uiFamily = UiFamily::Quick;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("UI_FAMILY=quick\n")));
+    snapshot.uiFamily = UiFamily::Mixed;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("UI_FAMILY=mixed\n")));
+    snapshot.uiFamily = UiFamily::Unknown;
+    CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("UI_FAMILY=unknown\n")));
+}
+
 void checkErrorIsBoundedAndSingleLine()
 {
     DiagnosticSnapshot snapshot;
@@ -117,6 +137,7 @@ int main(int argc, char **argv)
 
     checkDefaultReport();
     checkRunningReport();
+    checkUiFamilyClassification();
     checkErrorIsBoundedAndSingleLine();
 
     if (failures == 0) {
