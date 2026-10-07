@@ -58,6 +58,16 @@ int main(int argc, char **argv)
         remote.stop();
         return 5;
     }
+    // Clean installed consumer: the report must classify the actual Qt target, not the cpp route.
+    const QString diagnostics = remote.diagnosticReport();
+    if (!diagnostics.contains(QStringLiteral("UI_FAMILY=quick\n"))
+        || !diagnostics.contains(QStringLiteral("STATE=Running\n"))
+        || !diagnostics.contains(QStringLiteral("INTEGRATION_ROUTE=unknown\n"))) {
+        std::fprintf(stderr, "FAIL: installed SDK diagnostic report misclassified the quick target\n");
+        remote.stop();
+        return 8;
+    }
+    std::printf("HYREMOTE_CPP_QUICK_DIAGNOSTIC_UI_FAMILY=quick\n");
     std::printf("HYREMOTE_CPP_QUICK_START=Running\n");
     std::printf("HYREMOTE_CPP_QUICK_PLATFORM=%s\n", qPrintable(QGuiApplication::platformName()));
     std::printf("HYREMOTE_CPP_QUICK_PORT=%u\n", static_cast<unsigned>(remote.port()));
