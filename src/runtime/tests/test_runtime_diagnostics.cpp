@@ -32,7 +32,15 @@ void checkDefaultReport()
 
     const QString report = formatDiagnosticReport(snapshot);
     CHECK(report.contains(QStringLiteral("HYREMOTE_VERSION=unknown\n")));
+    CHECK(report.contains(QStringLiteral("BUILD_IDENTITY=source_sha="))
+          || report.contains(QStringLiteral("BUILD_IDENTITY=unknown\n")));
+    CHECK(report.contains(QStringLiteral("QT_VERSION=%1\n").arg(QString::fromLatin1(QT_VERSION_STR))));
+    CHECK(report.contains(QStringLiteral("OS=")));
+    CHECK(!report.contains(QStringLiteral("OS=\n")));
+    CHECK(report.contains(QStringLiteral("ARCH=")));
+    CHECK(!report.contains(QStringLiteral("ARCH=\n")));
     CHECK(report.contains(QStringLiteral("INTEGRATION_ROUTE=unknown\n")));
+    CHECK(report.contains(QStringLiteral("UI_FAMILY=unknown\n")));
     CHECK(report.contains(QStringLiteral("STATE=Stopped\n")));
     CHECK(report.contains(QStringLiteral("LISTENER_CONFIGURED=address:0.0.0.0:5920\n")));
     CHECK(report.contains(QStringLiteral("LISTENER_EFFECTIVE=none\n")));

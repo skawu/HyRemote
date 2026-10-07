@@ -1183,13 +1183,25 @@ if(HYB_INSTALL)
         endif()
     endif()
     set(_hyb_source_sha "unknown")
+    # Match the Runtime's source-identity rule: reject an enclosing consumer Git repository.
     execute_process(
-        COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse HEAD
-        RESULT_VARIABLE _hyb_git_rc
-        OUTPUT_VARIABLE _hyb_git_out
+        COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse --show-toplevel
+        RESULT_VARIABLE _hyb_git_root_rc
+        OUTPUT_VARIABLE _hyb_git_root
         ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(_hyb_git_rc EQUAL 0 AND NOT _hyb_git_out STREQUAL "")
-        set(_hyb_source_sha "${_hyb_git_out}")
+    if(_hyb_git_root_rc EQUAL 0 AND NOT _hyb_git_root STREQUAL "")
+        file(REAL_PATH "${HYREMOTE_SOURCE_DIR}" _hyb_source_root)
+        file(REAL_PATH "${_hyb_git_root}" _hyb_git_root)
+        if(_hyb_source_root STREQUAL _hyb_git_root)
+            execute_process(
+                COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse HEAD
+                RESULT_VARIABLE _hyb_git_rc
+                OUTPUT_VARIABLE _hyb_git_out
+                ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(_hyb_git_rc EQUAL 0 AND NOT _hyb_git_out STREQUAL "")
+                set(_hyb_source_sha "${_hyb_git_out}")
+            endif()
+        endif()
     endif()
 
     # CMAKE_HOST_SYSTEM_PROCESSOR is not populated by every generator/host pair, and an empty ARCH= line would be a
