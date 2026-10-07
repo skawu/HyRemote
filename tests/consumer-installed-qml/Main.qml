@@ -18,5 +18,7 @@ Window {
     }
 
     readonly property bool contractOk:
-        !remote.enabled && remote.state === RemoteAccess.Stopped && remote.target === root
+        !remote.enabled && remote.state === RemoteAccess.Stopped && remote.target === root &&
+        remote.diagnosticReport().includes("UI_FAMILY=quick\n") &&
+        remote.diagnosticReport().includes("STATE=Stopped\n")
 }
