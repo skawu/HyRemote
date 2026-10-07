@@ -4,6 +4,20 @@
 
 本文覆盖 C++ API、Generic Plugin、QML API 与 QPA 四条产品路径。优先检查产品级错误、部署结果和兼容矩阵，不需要先进入 HyRemote 内部实现。
 
+## 收集同一份诊断报告并核对安装身份
+
+先从**实际运行的应用进程**收集 Runtime 报告，不要用 build tree 中的程序替代已部署程序：
+
+- **C++**：在持有的 `HyRemote::RemoteAccess` 对象上调用 `diagnosticReport()`，复制返回的完整文本。
+- **QML**：在 `RemoteAccess` 对象上调用 `diagnosticReport()`，复制返回的完整文本。
+- **Generic / QPA**：从**应用进程日志**复制 Shared Runtime 输出的完整 `KEY=value` 块；零代码接入不需要链接 C++ SDK 或新增诊断工具。如果插件根本没有加载，则不会有 Runtime 报告，这首先是加载/部署问题，不能据此判断 Runtime 已启动。
+
+优先依次核对 `INTEGRATION_ROUTE`、`STATE`、`LAST_ERROR_CODE` / `LAST_ERROR_MESSAGE`、`LISTENER_CONFIGURED` 和 `LISTENER_EFFECTIVE`。仅当 `STATE=Running` 且 `LISTENER_EFFECTIVE` 有值时，才说明监听已建立；`0.0.0.0` 是监听通配地址，不是 viewer 要输入的远端主机 IP。再用 `SECURITY_PROFILE` / `SECURITY_ENABLED`、`REMOTE_INPUT`、`CONNECTED_CLIENTS` 排查策略和连接变化。不要在故障报告里粘贴密码、密钥或安全描述文件。
+
+**安装候选身份**来自执行 `build.cmd install` 时输出的 `HYREMOTE_INSTALL_ROOT` 下的 `HYREMOTE-MANIFEST.txt`。核对该文件的 `SOURCE_SHA`、`QT_VERSION`、`OS`、`ARCH`、`BUILD_TYPE` 和选定的 `CPP/QML/GENERIC/QPA`；将其与运行报告的 `BUILD_IDENTITY`、`QT_VERSION`、`OS`、`ARCH` 比较。安装 manifest 表示**安装根目录候选**，不自动证明最终应用部署目录加载的就是该候选；若用户复制、更新或回滚过 payload，还需确认实际运行的二进制和 plugin 来源。
+
+当前 `HYREMOTE_VERSION`、`UI_FAMILY` 或 `DEPLOYMENT_IDENTITY` 可以明确报告 `unknown`；`unknown` 表示缺少可信证据，不代表匹配，也不代表失败。若源码包嵌入另一 Git 仓库，无法验证 HyRemote 自身 SHA 时，`BUILD_IDENTITY=unknown` 是预期的诚实回退。不要仅凭文件名或构建目录猜测版本一致。
+
 ## `find_package(HyRemote)` 找不到包
 
 `find_package(HyRemote CONFIG REQUIRED)` 面向 installed SDK。
