@@ -5,13 +5,6 @@
 #include <QObject>
 #include <QPointer>
 
-#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
-#include <QWidget>
-#endif
-#ifdef HYREMOTE_HAS_QUICK_ADAPTER
-#include <QtQuick/QQuickWindow>
-#endif
-
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -810,14 +803,12 @@ DiagnosticSnapshot AccessInstance::diagnosticSnapshot() const
     // Direct API targets reveal their UI family; an Automatic composite is classified from
     // its admitted surfaces by AccessController, not guessed from the frontend route.
     const QObject *targetObject = m_impl->target.data();
-#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
-    if (qobject_cast<const QWidget *>(targetObject))
+    // QObject's metaobject ancestry remains available even when a capture adapter is not
+    // compiled/linked. This identifies unsupported real targets in failure diagnostics too.
+    if (targetObject && targetObject->inherits("QWidget"))
         result.uiFamily = UiFamily::Widgets;
-#endif
-#ifdef HYREMOTE_HAS_QUICK_ADAPTER
-    if (qobject_cast<const QQuickWindow *>(targetObject))
+    else if (targetObject && targetObject->inherits("QQuickWindow"))
         result.uiFamily = UiFamily::Quick;
-#endif
     result.state = m_impl->projectedState();
     result.configuredListenAddress = m_impl->listenAddress;
     result.configuredListenInterface = m_impl->listenInterface;
