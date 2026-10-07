@@ -42,15 +42,28 @@ target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 # #335 build/process identity. SOURCE_SHA deliberately uses the same git fact that build.cmd install writes into
 # HYREMOTE-MANIFEST.txt; source archives or non-git consumers fall back to "unknown" rather than inventing an id.
 set(_hyremote_diagnostic_source_sha "unknown")
+# git -C can walk up into a consuming application's repository. Accept a SHA only when the
+# Git worktree root is this HyRemote source tree, not an enclosing checkout.
 execute_process(
-    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
-    RESULT_VARIABLE _hyremote_diagnostic_git_rc
-    OUTPUT_VARIABLE _hyremote_diagnostic_git_out
-    ERROR_QUIET
-    OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse --show-toplevel
+    RESULT_VARIABLE _hyremote_diagnostic_root_rc
+    OUTPUT_VARIABLE _hyremote_diagnostic_git_root
+    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-if(_hyremote_diagnostic_git_rc EQUAL 0 AND NOT _hyremote_diagnostic_git_out STREQUAL "")
-    set(_hyremote_diagnostic_source_sha "${_hyremote_diagnostic_git_out}")
+if(_hyremote_diagnostic_root_rc EQUAL 0 AND NOT _hyremote_diagnostic_git_root STREQUAL "")
+    file(REAL_PATH "${PROJECT_SOURCE_DIR}" _hyremote_diagnostic_source_root)
+    file(REAL_PATH "${_hyremote_diagnostic_git_root}" _hyremote_diagnostic_git_root)
+    if(_hyremote_diagnostic_source_root STREQUAL _hyremote_diagnostic_git_root)
+        execute_process(
+            COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+            RESULT_VARIABLE _hyremote_diagnostic_git_rc
+            OUTPUT_VARIABLE _hyremote_diagnostic_git_out
+            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_hyremote_diagnostic_git_rc EQUAL 0 AND NOT _hyremote_diagnostic_git_out STREQUAL "")
+            set(_hyremote_diagnostic_source_sha "${_hyremote_diagnostic_git_out}")
+        endif()
+    endif()
 endif()
 set(_hyremote_diagnostic_arch "${CMAKE_SYSTEM_PROCESSOR}")
 if(_hyremote_diagnostic_arch STREQUAL "")
