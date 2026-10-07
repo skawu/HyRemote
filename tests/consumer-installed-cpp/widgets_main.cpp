@@ -55,6 +55,15 @@ int main(int argc, char **argv)
         remote.stop();
         return 5;
     }
+    // Clean installed consumer: the report must classify the actual Qt target, not the cpp route.
+    const QString diagnostics = remote.diagnosticReport();
+    if (!diagnostics.contains(QStringLiteral("UI_FAMILY=widgets\n"))
+        || !diagnostics.contains(QStringLiteral("STATE=Running\n"))) {
+        std::fprintf(stderr, "FAIL: installed SDK diagnostic report misclassified the widgets target\n");
+        remote.stop();
+        return 8;
+    }
+    std::printf("HYREMOTE_CPP_WIDGETS_DIAGNOSTIC_UI_FAMILY=widgets\n");
     std::printf("HYREMOTE_CPP_WIDGETS_START=Running\n");
     std::printf("HYREMOTE_CPP_WIDGETS_PLATFORM=%s\n", qPrintable(QGuiApplication::platformName()));
     std::printf("HYREMOTE_CPP_WIDGETS_PORT=%u\n", static_cast<unsigned>(remote.port()));
