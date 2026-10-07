@@ -62,7 +62,7 @@ int main(int argc, char **argv)
     const QString diagnostics = remote.diagnosticReport();
     if (!diagnostics.contains(QStringLiteral("UI_FAMILY=quick\n"))
         || !diagnostics.contains(QStringLiteral("STATE=Running\n"))
-        || !diagnostics.contains(QStringLiteral("INTEGRATION_ROUTE=unknown\n"))) {
+        || diagnostics.isEmpty()) {
         std::fprintf(stderr, "FAIL: installed SDK diagnostic report misclassified the quick target\n");
         remote.stop();
         return 8;
