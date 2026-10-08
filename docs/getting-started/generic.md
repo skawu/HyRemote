@@ -2,7 +2,7 @@
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/generic.md)
 
-Generic Plugin 是四个 peer 前端之一，并且与 Embedded C++ 一起构成 V0.1 的两个**主要（primary）**接入面。它是一个公开的
+Generic Plugin 是四个 peer 前端之一。它是一个公开的
 Qt **generic** 插件：你的应用保持为一个普通 Qt 应用，不链接任何 HyRemote 目标，运行期通过 Qt 自己的插件机制获得远程接入。
 
 它的决定性属性是**不替换应用的 Qt 平台集成**：Windows 仍是 `qwindows`，Linux/X11 仍是 `xcb`，HyRemote 只是把同一个
@@ -19,7 +19,7 @@ Shared Runtime 挂在原生平台路径旁边。
 当你希望：既有应用源码尽量不动；应用继续以自己的平台身份运行；集成在**部署/运行期**完成而不是编译期。适合普通 Qt
 Widgets / Qt Quick 应用。
 
-若你愿意改应用代码并使用 C++ 门面，请改用 [Embedded C++](cpp.md) —— 那是另一条 V0.1 主要接入面。
+若你愿意改应用代码并使用 C++ 门面，请改用 [Embedded C++](cpp.md) —— 那是另一条并列产品路线。
 
 ## 接入步骤
 
@@ -75,11 +75,12 @@ Generic 部署**不会**安装任何 HyRemote 平台插件：如果部署树里�
 
 更完整的部署说明见 [`../guide/deployment.md`](../guide/deployment.md)。
 
-## V0.1 边界
+## 当前产品边界
 
 - 参考矩阵：**Windows x86_64** 与 **Linux x86_64**，**Qt 6.8.3**；
-- V0.2 是 **LAN-capable Developer Preview**：监听默认在本机全部 IPv4 接口上可达，远程输入默认关闭，需要显式启用；
-- **没有**可用的加密档：`AuthenticatedEncrypted` 在 V0.1 不可用，且在开始监听前就会以 SecurityUnavailable 失败，不做降级；
-- VeNCrypt/TLS 属于 **V0.2**，由 #143 跟踪，**不是** V1.0 专属工作；
-- 不要把 V0.1 部署描述成 production ready、authenticated、encrypted 或 GA。详见
+- 默认监听 `0.0.0.0:5921`，在本机 IPv4 接口上可达；远程输入默认关闭，需要显式启用；
+- `Insecure` 未认证、未加密，只适用于可信 LAN / 显式保护网络；
+- `Authenticated` 是条件能力，取决于构建 capability 与有效 descriptor；
+- `AuthenticatedEncrypted` 当前不可用，且在开始监听前以 `SecurityUnavailable` 失败，不做降级；
+- 不要把当前产品描述成具有未交付的 TLS、Session/IAM 或 Internet-facing 安全能力。详见
   [`../known-limitations.md`](../known-limitations.md) 与 [`../security-model.md`](../security-model.md)。
