@@ -124,6 +124,12 @@ public:
 
         auto *statusForm = new QFormLayout;
         m_state = new QLabel(remoteBox);
+        m_buildIdentity = new QLabel(remoteBox);
+        m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_deploymentIdentity = new QLabel(remoteBox);
+        m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_platform = new QLabel(remoteBox);
+        m_security = new QLabel(remoteBox);
         m_configuredListener = new QLabel(remoteBox);
         m_endpoint = new QLabel(remoteBox);
         m_viewerEndpoints = new QLabel(remoteBox);
@@ -136,6 +142,10 @@ public:
         m_error = new QLabel(QStringLiteral("None"), remoteBox);
         m_error->setWordWrap(true);
         statusForm->addRow(QStringLiteral("State"), m_state);
+        statusForm->addRow(QStringLiteral("Build identity"), m_buildIdentity);
+        statusForm->addRow(QStringLiteral("Deployment identity"), m_deploymentIdentity);
+        statusForm->addRow(QStringLiteral("Platform"), m_platform);
+        statusForm->addRow(QStringLiteral("Security"), m_security);
         statusForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
         statusForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
         statusForm->addRow(QStringLiteral("Viewer endpoints"), m_viewerEndpoints);
@@ -447,6 +457,19 @@ private:
             m_lastDiagnosticTrigger = diagnosticTrigger;
             const QString report = m_remote.diagnosticReport();
             m_diagnostics->setPlainText(report);
+            m_buildIdentity->setText(
+                diagnosticValue(report, QStringLiteral("BUILD_IDENTITY")));
+            m_deploymentIdentity->setText(
+                diagnosticValue(report, QStringLiteral("DEPLOYMENT_IDENTITY")));
+            m_platform->setText(
+                QStringLiteral("Qt %1 / %2 / %3")
+                    .arg(diagnosticValue(report, QStringLiteral("QT_VERSION")),
+                         diagnosticValue(report, QStringLiteral("OS")),
+                         diagnosticValue(report, QStringLiteral("ARCH"))));
+            m_security->setText(
+                QStringLiteral("%1 (%2)")
+                    .arg(diagnosticValue(report, QStringLiteral("SECURITY_PROFILE")),
+                         diagnosticValue(report, QStringLiteral("SECURITY_ENABLED"))));
             m_configuredListener->setText(
                 diagnosticValue(report, QStringLiteral("LISTENER_CONFIGURED")));
             const QString effectiveListener =
@@ -501,6 +524,10 @@ private:
     QString m_lastActivityRemoteInput;
     QString m_lastActivityError;
     QLabel *m_state = nullptr;
+    QLabel *m_buildIdentity = nullptr;
+    QLabel *m_deploymentIdentity = nullptr;
+    QLabel *m_platform = nullptr;
+    QLabel *m_security = nullptr;
     QLabel *m_configuredListener = nullptr;
     QLabel *m_endpoint = nullptr;
     QLabel *m_viewerEndpoints = nullptr;
