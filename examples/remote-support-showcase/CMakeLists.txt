@@ -36,4 +36,22 @@ if(HYREMOTE_BUILD_TESTS)
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-diagnostic-export-test)
     endif()
+
+    # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
+    # Register fail-closed so candidate qualification cannot pass merely because Python/viewer tooling is absent.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-tool-product-fit
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/product-e2e/showcase_product_fit.py"
+                --showcase $<TARGET_FILE:hyremote-remote-support-showcase>
+        )
+    else()
+        add_test(NAME hyremote-tool-product-fit COMMAND "${CMAKE_COMMAND}" -E false)
+    endif()
+    set_tests_properties(hyremote-tool-product-fit PROPERTIES
+        TIMEOUT 900
+        LABELS "candidate-evidence"
+    )
 endif()
