@@ -88,12 +88,14 @@ public:
         m_endpoint = new QLabel(QStringLiteral("0.0.0.0:%1 (this host's IPv4 interfaces; trusted LAN only)").arg(port), remoteBox);
         m_clients = new QLabel(QStringLiteral("0"), remoteBox);
         m_policy = new QLabel(remoteBox);
+        m_focus = new QLabel(remoteBox);
         m_error = new QLabel(QStringLiteral("None"), remoteBox);
         m_error->setWordWrap(true);
         statusForm->addRow(QStringLiteral("State"), m_state);
         statusForm->addRow(QStringLiteral("Listener"), m_endpoint);
         statusForm->addRow(QStringLiteral("Connected clients"), m_clients);
         statusForm->addRow(QStringLiteral("Policy"), m_policy);
+        statusForm->addRow(QStringLiteral("Target window"), m_focus);
         statusForm->addRow(QStringLiteral("Last error"), m_error);
         remoteLayout->addLayout(statusForm);
 
@@ -112,6 +114,15 @@ public:
             remoteBox);
         policyNote->setWordWrap(true);
         remoteLayout->addWidget(policyNote);
+
+        m_focusWarning = new QLabel(
+            QStringLiteral("Remote input is application-scoped. This HyRemoteTool window is not "
+                           "the active OS window, so remote pointer/text input may not reactivate it. "
+                           "Activate HyRemoteTool locally to restore reliable remote input."),
+            remoteBox);
+        m_focusWarning->setWordWrap(true);
+        m_focusWarning->setVisible(false);
+        remoteLayout->addWidget(m_focusWarning);
 
         auto *security = new QLabel(
             QStringLiteral("Security boundary: the current RFB correctness baseline uses "
@@ -247,6 +258,11 @@ private:
                               ? QStringLiteral("Remote view + control")
                               : QStringLiteral("View-only (safe default)"));
 
+        const bool windowActive = isActiveWindow();
+        m_focus->setText(windowActive ? QStringLiteral("Active OS window")
+                                      : QStringLiteral("Not active"));
+        m_focusWarning->setVisible(m_remote.remoteInputEnabled() && !windowActive);
+
         const std::size_t clientCount = m_remote.connectedClientCount();
         m_clients->setText(QString::number(static_cast<qulonglong>(clientCount)));
         if (clientCount != m_lastReportedClientCount) {
@@ -288,6 +304,8 @@ private:
     QLabel *m_endpoint = nullptr;
     QLabel *m_clients = nullptr;
     QLabel *m_policy = nullptr;
+    QLabel *m_focus = nullptr;
+    QLabel *m_focusWarning = nullptr;
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
     QPushButton *m_startStop = nullptr;
