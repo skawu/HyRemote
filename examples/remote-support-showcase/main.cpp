@@ -269,7 +269,7 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Production-like HyRemote local + remote support workflow"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote host-side product experience and validation tool"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Listener port the viewer connects to."),
