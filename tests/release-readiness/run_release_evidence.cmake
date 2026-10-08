@@ -526,6 +526,9 @@ endif()
 function(run_deployed_qml_consumer cell)
     # QML deploys a module payload of its own. Validate relocation, then execute Main.qml's
     # contractOk from the detached tree so module/load/diagnostic truth is observed, not inferred.
+    if("${FAILED_CELLS}" MATCHES "${cell}")
+        return()
+    endif()
     deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
     if("${FAILED_CELLS}" MATCHES "${cell}")
         return()
