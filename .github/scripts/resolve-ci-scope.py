@@ -346,6 +346,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         "qpa_evidence": "true" if (qpa_evidence and product) else "false",
         "readiness_evidence": "true" if readiness_evidence else "false",
         "rfb_product_fit_evidence": "true" if (rfb_product_fit_evidence and product) else "false",
+        "tool_product_fit_evidence": "true" if (tool_product_fit_evidence and product) else "false",
         "governance": "true" if governance else "false",
         "security_evidence": "true" if (security_evidence and product) else "false",
         "test_exclude": test_exclude,
