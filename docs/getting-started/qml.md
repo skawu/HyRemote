@@ -24,9 +24,7 @@ QML API 是 HyRemote 面向 Qt Quick 应用的声明式接入方式。它是 Sha
 - Linux x86_64；
 - Qt 6.8.3。
 
-QML API 目前按 Preview 提供；精确支持状态见 [`../compatibility.md`](../compatibility.md)。
-
-> **Open work (current product line):** 完成 installed-SDK、部署、双语示例和完整产品资格后，属于 QML 路线上的未完成工作。
+QML API 是当前 Windows/Linux Qt 6.8.3 参考矩阵上的并列产品路线；其它 Qt/平台组合的精确状态见 [`../compatibility.md`](../compatibility.md)。
 
 ## 最小接入
 
@@ -138,11 +136,11 @@ hyremote_deploy(TARGET MyQmlApp QML QPA)
 
 ## 安全边界
 
-V0.1 的 Shared Runtime 采用回环优先策略：
+QML 复用与其他三条路线完全相同的 Shared Runtime 安全/访问语义：
 
-- 默认绑定 `0.0.0.0`（本机全部 IPv4 接口），也可指定一个精确的本机 IPv4，或指定网卡；
+- 默认绑定 `0.0.0.0:5921`（本机 IPv4 接口），也可指定一个精确的本机 IPv4，或指定网卡；
 - 远程输入默认关闭；
-- 未认证非回环监听被拒绝；
+- `Insecure` 未认证且未加密，只适用于可信 LAN / 显式保护网络；
 - `Authenticated` 可使用 RFB VNC authentication，但数据流不加密；
 - `AuthenticatedEncrypted` 在加密后端不可用时失败关闭。
 
