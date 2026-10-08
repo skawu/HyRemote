@@ -24,9 +24,8 @@ QML API 是 HyRemote 面向 Qt Quick 应用的声明式接入方式。它是 Sha
 - Linux x86_64；
 - Qt 6.8.3。
 
-QML API 目前按 Preview 提供；精确支持状态见 [`../compatibility.md`](../compatibility.md)。
-
-> **Open work (current product line):** 完成 installed-SDK、部署、双语示例和完整产品资格后，属于 QML 路线上的未完成工作。
+QML API 是四个 peer 产品接入路线之一；它与 C++ / Generic / QPA 共用同一个 Shared Runtime。精确的平台、Qt 与部署限制见
+[`../compatibility.md`](../compatibility.md)。
 
 ## 最小接入
 

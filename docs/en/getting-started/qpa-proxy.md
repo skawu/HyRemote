@@ -153,7 +153,7 @@ See [`../../compatibility.md`](../../compatibility.md).
 
 QPA reuses the Shared Runtime security policy:
 
-- default bind is loopback;
+- default bind is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
 - remote input is disabled by default;
 - `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;

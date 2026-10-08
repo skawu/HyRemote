@@ -24,9 +24,8 @@ Current reference environment:
 - Linux x86_64;
 - Qt 6.8.3.
 
-The QML API is currently provided as Preview. See [`../../compatibility.md`](../../compatibility.md) for the exact compatibility statement.
-
-> **Open work (current product line):** complete installed-SDK, deployment, bilingual examples, and product qualification before promoting QML API to a formal product path.
+The QML API is one of four peer product integration routes and uses the same Shared Runtime as C++ / Generic / QPA. See
+[`../../compatibility.md`](../../compatibility.md) for the exact platform, Qt, and deployment constraints.
 
 ## Minimal integration
 

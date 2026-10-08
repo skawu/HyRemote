@@ -130,13 +130,13 @@ See [`../../compatibility.md`](../../compatibility.md) for other environments.
 
 ## Security boundary
 
-V0.1 is a Developer Preview:
+Current security boundary:
 
-- loopback is the default bind;
+- the default bind is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
 - remote control is disabled by default;
 - `Insecure` is unauthenticated and unencrypted, so keep it on a trusted LAN;
-- `Authenticated` is a conditional capability and must not be assumed to exist in the default package;
-- `AuthenticatedEncrypted` is not implemented and always fails closed;
+- `Authenticated` is a conditional capability and must be verified from the current package/diagnostics;
+- `AuthenticatedEncrypted` fails closed with `SecurityUnavailable` while the encrypted backend is unavailable;
 - do not expose the current product directly to the public Internet.
 
 See [`../security.md`](../security.md).

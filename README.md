@@ -202,7 +202,7 @@ HyRemote is delivered progressively:
 
 | Product line | Product promise |
 | --- | --- |
-| **V0.1 — Use It** | Developer Preview: C++ API + Generic Plugin as the primary paths |
+| **V0.1 — Use It** | Historical Developer Preview milestone that first productized C++ API + Generic Plugin |
 | **V0.2 — Trust It** | Security, authenticated sessions, and production network behavior |
 | **V0.3 — Productize It** | All four integrations fully packaged, deployed, documented, and taught |
 | **V0.4 — Qualify It** | Compatibility, real-world applications, performance and release-candidate qualification |
@@ -224,12 +224,12 @@ User guides:
 - [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) - diagnosing a deployment or connection problem;
 - [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) - Embedded C++ (peer route);
 - [`docs/getting-started/generic.md`](docs/getting-started/generic.md) - Generic Plugin (peer route);
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) - Declarative QML (V0.1 preview);
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) - Transparent QPA (V0.1 preview).
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) - Declarative QML (peer route);
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) - Transparent QPA (peer route).
 
 Start with [`docs/README.md`](docs/README.md).
 
-Primary product guides:
+Peer product guides:
 
 - [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — C++ API
 - [`docs/getting-started/generic.md`](docs/getting-started/generic.md) — Generic Plugin

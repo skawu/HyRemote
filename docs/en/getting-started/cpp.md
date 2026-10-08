@@ -2,7 +2,7 @@
 
 > Language / 语言: **English** | [中文](../../getting-started/cpp.md)
 
-The C++ API is one of the primary HyRemote V0.1 integration paths. An application links the public `HyRemote::RemoteAccess` target to add remote viewing and optional remote control to a Qt Widgets or Qt Quick top-level window.
+The C++ API is one of four peer HyRemote product integration routes. An application links the public `HyRemote::RemoteAccess` target to add remote viewing and optional remote control to a Qt Widgets or Qt Quick top-level window.
 
 Applications do not need to understand Core, Session, RFB, capture backends, or input backends.
 
