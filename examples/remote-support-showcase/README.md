@@ -37,7 +37,7 @@ hyremote-tool --auto-start --remote-input --port 5901 --test-seconds 30
 
 `--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
 
-The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
+The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the separate physical local-display/local-input coexistence gate.
 
 ## Agent-assisted physical pointer acceptance
 
