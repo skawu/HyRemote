@@ -117,6 +117,15 @@ READINESS_TEST_PREFIX = "hyremote-release-readiness-"
 RFB_PRODUCT_FIT_TEST = "hyremote-v01-rfb-product-fit$"
 RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 
+# HyRemoteTool's standard-viewer product fit is the same class of exact-candidate evidence. Ordinary
+# feature PRs do not acquire Pillow/vncdotool merely because Tool product code changed; the wiring/script
+# PR itself and FULL_GATE execute it fail-closed.
+TOOL_PRODUCT_FIT_TEST = "hyremote-tool-product-fit$"
+TOOL_PRODUCT_FIT_PREFIXES = (
+    "examples/remote-support-showcase/CMakeLists.txt",
+    "tests/product-e2e/showcase_product_fit.py",
+)
+
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
 # selection scripts over the repository itself. They run in a lightweight governance job, and they must not drag the
 # product matrix along just to execute a policy script.
@@ -276,9 +285,12 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         path.startswith(READINESS_PREFIXES) for path in changed
     )
 
-    # Candidate acceptance evidence rather than a regression: see RFB_PRODUCT_FIT_TEST above.
+    # Candidate acceptance evidence rather than a regression.
     rfb_product_fit_evidence = full_gate or any(
         path.startswith(RFB_PRODUCT_FIT_PREFIXES) for path in changed
+    )
+    tool_product_fit_evidence = full_gate or any(
+        path.startswith(TOOL_PRODUCT_FIT_PREFIXES) for path in changed
     )
 
     governance = full_gate or any(
@@ -312,6 +324,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         excluded.append("hyremote-qpa-installed-product-fit$")
     if not rfb_product_fit_evidence:
         excluded.append(RFB_PRODUCT_FIT_TEST)
+    if not tool_product_fit_evidence:
+        excluded.append(TOOL_PRODUCT_FIT_TEST)
     # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
     # test name: CTest then excluded everything, reported success, and a lane that promised full integration
     # executed nothing. That is a false green, not a formatting detail. A lane that runs no product job has no
