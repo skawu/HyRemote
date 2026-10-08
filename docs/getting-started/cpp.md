@@ -7,10 +7,9 @@ HyRemote 的参考接入方式是一个很小的 C++ 门面，以**一个共享�
 
 ## 前置条件
 
-V0.1 参考矩阵是 **Windows x86_64** 与 **Linux x86_64**，针对 **Qt 6.8.3**。其它 Qt 版本不会因此
-被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。V0.2 是 **LAN-capable Developer
-Preview**：Embedded C++ 与 Generic Plugin 是**主要（primary）**接入面，Declarative QML 与 Transparent QPA 是**预览
-（preview）**接入面，支持承诺更窄。
+当前参考矩阵是 **Windows x86_64** 与 **Linux x86_64**，针对 **Qt 6.8.3**。其它 Qt 版本不会因此
+被暗示为受支持，除非记录在 [`compatibility.md`](../compatibility.md) 中。C++ API、QML API、Generic Plugin
+与 QPA 是四条**并列产品路线**；QPA 仍有额外的 Qt 私有 ABI 精确版本约束。
 
 二选一获取方式：
 
@@ -76,8 +75,7 @@ remote.start();
 Widgets 与 Quick 共用**同一个**公开门面；采集/输入的实现选择属于内部细节。
 
 用一个 `QQuickWindow` 的 Quick 应用走的就是这条 **C++** 路径：它**不需要**使用 HyRemote 的 QML 前端，也**不需要**
-`import HyRemote`。Quick 是 UI 家族，QML 是另一个前端（见 [`qml.md`](qml.md)）；两者不是同一件事。V0.1 中
-Embedded C++ 是**主要（primary）**接入面，而 QML 前端是**预览（preview）**面，支持承诺更窄。
+`import HyRemote`。Quick 是 UI 家族，QML 是另一条并列前端路线（见 [`qml.md`](qml.md)）；两者不是同一件事。
 
 ## 可选配置
 
@@ -111,7 +109,7 @@ if (!remote.start()) {
 
 ## 部署
 
-V0.1 的 C++ 运行期产物是共享库 `HyRemoteRemoteAccess`，与所有前端共享同一个 Shared Runtime。Core 静态组合在它之后，所以用户**不需要**再部署第二个 HyRemote Core 运行时。
+当前 C++ 运行期产物是共享库 `HyRemoteRemoteAccess`，与所有前端共享同一个 Shared Runtime。Core 静态组合在它之后，所以用户**不需要**再部署第二个 HyRemote Core 运行时。
 
 使用唯一那个包助手：
 
