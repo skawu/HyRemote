@@ -26,7 +26,7 @@ The safe startup policy is therefore two-dimensional: the service is explicitly 
 Build the normal examples graph with `HYREMOTE_BUILD_EXAMPLES=ON`, then run:
 
 ```text
-hyremote-remote-support-showcase
+hyremote-tool
 ```
 
 Optional acceptance helpers are explicit and do not change normal safe defaults:
