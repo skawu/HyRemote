@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standard-viewer product-fit for the HyRemote remote support showcase."""
+"""Standard-viewer product-fit for HyRemoteTool."""
 
 from __future__ import annotations
 
@@ -68,6 +68,7 @@ def start_showcase(executable: Path, port: int):
             "--port", str(port),
             "--auto-start",
             "--remote-input",
+            "--diagnostic-report",
             "--test-seconds", "10",
         ],
         stdout=subprocess.PIPE,
@@ -107,7 +108,7 @@ def start_showcase(executable: Path, port: int):
 
 
 def verify_showcase(executable: Path) -> None:
-    require(executable.exists(), f"showcase executable not found: {executable}")
+    require(executable.exists(), f"HyRemoteTool executable not found: {executable}")
     port = free_port()
     process, reader, lines = start_showcase(executable, port)
 
@@ -142,7 +143,9 @@ def verify_showcase(executable: Path) -> None:
 
         result = process.wait(timeout=14)
         reader.join(timeout=2)
-        require(result == 0, f"showcase exited with {result}: {lines}")
+        require(result == 0, f"HyRemoteTool exited with {result}: {lines}")
+        for required in ("INTEGRATION_ROUTE=cpp", "UI_FAMILY=widgets", "STATE=Running"):
+            require(required in lines, f"HyRemoteTool diagnostic report is missing {required}: {lines}")
         require(any(line.startswith("SHOWCASE_POINTER") for line in lines),
                 "remote pointer did not reach the showcase Qt application")
         require(any(line.startswith("SHOWCASE_KEY") for line in lines),
@@ -161,7 +164,7 @@ def verify_showcase(executable: Path) -> None:
             check.close()
 
         print(
-            "PASS: remote-support-showcase -> client-count 0/1/reconnect -> "
+            "PASS: HyRemoteTool -> client-count 0/1/reconnect -> diagnostics -> "
             "standard viewer -> Qt input -> listener release"
         )
     finally:
