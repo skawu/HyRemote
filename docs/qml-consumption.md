@@ -146,16 +146,17 @@ A non-recoverable Runtime fault remains visible until the application explicitly
 
 ## 8. Security boundary
 
-The QML frontend does not weaken the shared security defaults.
+The QML frontend does not weaken or replace the Shared Runtime security/access defaults.
 
-V0.1 behavior:
+Current shipped behavior:
 
-- loopback by default;
-- remote input disabled by default;
-- `Insecure` is unauthenticated and unencrypted: trusted LAN only, not Internet-safe;
-- `Authenticated` may use RFB VNC authentication;
+- the listener defaults to `0.0.0.0:5921` on local IPv4 interfaces; this is a wildcard bind address, not a viewer host address;
+- remote input is disabled by default and must be enabled explicitly;
+- `Insecure` is unauthenticated and unencrypted: trusted LAN / explicitly protected network only, not Internet-safe;
+- `Authenticated` may use RFB VNC authentication when configured;
 - the current stream is not encrypted;
-- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.
+- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable;
+- `diagnosticReport()` reports configured/effective listener, security, input, client and bounded error facts from the same Runtime used by the C++/Generic/QPA routes.
 
 Do not expose the current product directly to the public Internet. See [`security.md`](security.md).
 
