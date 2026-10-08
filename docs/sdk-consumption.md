@@ -149,7 +149,7 @@ QT_QPA_GENERIC_PLUGINS=hyremote
 
 Generic compatibility is based on public Qt plugin APIs. It must preserve the application's native Qt platform identity.
 
-## 6. QML API consumption — Preview
+## 6. QML API consumption
 
 ```qml
 import HyRemote
@@ -168,9 +168,8 @@ Deployment uses:
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-> **Open work (current product line):** complete full productization, bilingual examples, and deployment qualification on the QML route.
 
-## 7. QPA consumption — Preview
+## 7. QPA consumption
 
 QPA keeps the application Qt-only:
 
@@ -237,13 +236,13 @@ The same rule applies to future DMA-BUF, RKMPP, VAAPI, D3D, or alternative trans
 
 ## 11. Current SDK compatibility
 
-V0.1 reference:
+Current reference matrix:
 
 - Windows x86_64;
 - Linux x86_64;
 - Qt 6.8.3;
-- C++ API + Generic Plugin as primary paths;
-- QML API + QPA as Preview paths.
+- C++ API, QML API, Generic Plugin, and QPA as peer routes;
+- QPA additionally requires exact Qt/private-ABI compatibility.
 
 > **TODO V0.4:** qualify the planned Qt 5.15 LTS compatibility line before adding it to the supported installed-SDK matrix.
 >
