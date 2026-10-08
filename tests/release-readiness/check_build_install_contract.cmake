@@ -21,13 +21,14 @@ endif()
 
 set(source_dir "${HYREMOTE_SOURCE_DIR}")
 set(build_script "${source_dir}/cmake/HyRemoteBuild.cmake")
+set(install_module "${source_dir}/cmake/HyRemoteInstall.cmake")
 set(entry_point "${source_dir}/build.cmd")
 if(NOT DEFINED HYREMOTE_INSTALL_ROOT OR HYREMOTE_INSTALL_ROOT STREQUAL "")
     set(HYREMOTE_INSTALL_ROOT "${source_dir}/build/install")
 endif()
 set(install_root "${HYREMOTE_INSTALL_ROOT}")
 
-foreach(required "${entry_point}" "${build_script}")
+foreach(required "${entry_point}" "${build_script}" "${install_module}")
     if(NOT EXISTS "${required}")
         message(FATAL_ERROR "build-install-contract: missing ${required}")
     endif()
@@ -70,6 +71,7 @@ endfunction()
 # ---------------------------------------------------------------- 1. one entry point, and it is the only one
 _read("${entry_point}" entry)
 _read("${build_script}" build_system)
+_read("${install_module}" install_system)
 
 foreach(command IN ITEMS build install test clean rebuild help)
     _require_text("${entry}" "${command}" "the entry point must advertise every command")
@@ -159,10 +161,14 @@ foreach(key IN ITEMS
         LISTENER_DEFAULT AUTHENTICATION_ENABLED AUTHENTICATION_PROFILE
         TRANSPORT_ENCRYPTION_ENABLED TRANSPORT_ENCRYPTION_PROFILE REMOTE_INPUT_DEFAULT
         TRANSPORT_SECURITY_CAPABILITY)
-    _require_text("${build_system}" "${key}=" "the manifest must state ${key}")
+    _require_text("${install_system}" "${key}=" "the canonical install manifest must state ${key}")
 endforeach()
-_forbid_text("${build_system}" "SECURITY_STATE="
+_forbid_text("${install_system}" "SECURITY_STATE="
              "the manifest must not conflate the build capability with the shipped state")
+_require_text("${install_system}" "install(FILES \"\${_hyremote_manifest_file}\" DESTINATION \".\" RENAME \"HYREMOTE-MANIFEST.txt\")"
+              "the canonical manifest must be a normal CMake install artifact")
+_forbid_text("${build_system}" "file(WRITE \"\${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt\""
+             "build.cmd must not maintain a second manifest writer")
 
 # The defaults the manifest states have to be the runtime's own defaults, or the manifest is a claim rather than a fact.
 _read("${source_dir}/src/runtime/src/access_instance.cpp" runtime_defaults)
