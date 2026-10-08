@@ -259,19 +259,31 @@ private:
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
                                     : QStringLiteral("Start remote access"));
 
-        if (const auto error = m_remote.lastError())
-            m_error->setText(error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message);
-        else
-            m_error->setText(QStringLiteral("None"));
+        QString errorText = QStringLiteral("None");
+        int errorCode = -1;
+        if (const auto error = m_remote.lastError()) {
+            errorText = error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message;
+            errorCode = static_cast<int>(error->code);
+        }
+        m_error->setText(errorText);
 
-        const QString report = m_remote.diagnosticReport();
-        if (m_diagnostics->toPlainText() != report)
-            m_diagnostics->setPlainText(report);
+        const QString diagnosticTrigger =
+            QStringLiteral("%1|%2|%3|%4|%5")
+                .arg(static_cast<int>(state))
+                .arg(static_cast<qulonglong>(clientCount))
+                .arg(m_remote.remoteInputEnabled() ? 1 : 0)
+                .arg(errorCode)
+                .arg(errorText);
+        if (diagnosticTrigger != m_lastDiagnosticTrigger) {
+            m_lastDiagnosticTrigger = diagnosticTrigger;
+            m_diagnostics->setPlainText(m_remote.diagnosticReport());
+        }
     }
 
     HyRemote::RemoteAccess m_remote;
     quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
+    QString m_lastDiagnosticTrigger;
     QLabel *m_state = nullptr;
     QLabel *m_endpoint = nullptr;
     QLabel *m_clients = nullptr;
