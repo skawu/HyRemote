@@ -32,7 +32,7 @@ hyremote-tool
 Optional acceptance helpers are explicit and do not change normal safe defaults:
 
 ```text
-hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-seconds 30
+hyremote-tool --auto-start --remote-input --port 5901 --test-seconds 30
 ```
 
 `--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
