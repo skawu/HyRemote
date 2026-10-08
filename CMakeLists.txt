@@ -339,6 +339,32 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         set_tests_properties(hyremote-generic-installed-consumers PROPERTIES TIMEOUT 900)
     endif()
 
+    # QML and QPA must also execute the clean installed/deployed evidence in normal L1 CI. Merely
+    # supporting these cells in the release runner is not evidence that the productized routes work.
+    if(TARGET hyremote-qml)
+        add_test(
+            NAME hyremote-qml-installed-consumer
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-qml"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-qml-installed-consumer PROPERTIES TIMEOUT 1200)
+    endif()
+
+    if(TARGET hyremote-qpa-platform)
+        add_test(
+            NAME hyremote-qpa-installed-product-fit
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-qpa-product-fit"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-qpa-installed-product-fit PROPERTIES TIMEOUT 1200)
+    endif()
+
     # Release-train authority selection and its acceptance matrix, registered as an ordinary product test so the
     # canonical build authority runs it: a release scope must be selected by the requested version, fail closed on
     # anything it cannot classify, and never treat a representable train as a blocker for an earlier one.

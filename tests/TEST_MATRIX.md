@@ -48,10 +48,10 @@ Reference configuration is top-level tests with `cpp,qml,generic,qpa`, VNC enabl
 
 | Configuration | Linux | Windows | Explanation |
 | --- | ---: | ---: | --- |
-| final Phase-D security enabled | 108 | 107 | includes the two conditional VNC-auth tests |
-| final Phase-D security off | 106 | 105 | same graph minus auth primitive/handshake |
+| current #335 security enabled | 113 | 112 | includes the two conditional VNC-auth tests and the installed QML/QPA evidence |
+| current #335 security off | 111 | 110 | exact hosted Linux/Windows full-config execution proved by CI #581 |
 
-The single Linux-only name is `hyremote-qpa-source-payload-relocation`. #274 final authority reconciliation adds no CTest identity, so these counts remain stable.
+The single Linux-only name remains `hyremote-qpa-source-payload-relocation`. The post-#358 graph also includes `hyremote-runtime-diagnostics-test`; #335 then adds the two cross-platform installed QML/QPA evidence identities.
 
 The historical 95/94 numbers are Phase-A/#300 before-refactor baseline only; see `EXECUTION_BASELINE.md`.
 

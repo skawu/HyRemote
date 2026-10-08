@@ -16,8 +16,8 @@ Final implementation authority before this reconciliation is `develop@bee774e76a
 
 Reference all-frontends/VNC Qt 6.8.3 registration after Phase D is:
 
-- security enabled: Linux **108**, Windows **107**;
-- security off: Linux **106**, Windows **105**.
+- security enabled: Linux **113**, Windows **112**;
+- security off: Linux **111**, Windows **110**.
 
 The single Linux-only identity is `hyremote-qpa-source-payload-relocation`. The historical 95/94 Phase-A inventory is no longer current authority.
 

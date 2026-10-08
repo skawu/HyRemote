@@ -16,7 +16,7 @@
 
 **安装候选身份**来自执行 `build.cmd install` 时输出的 `HYREMOTE_INSTALL_ROOT` 下的 `HYREMOTE-MANIFEST.txt`。核对该文件的 `SOURCE_SHA`、`QT_VERSION`、`OS`、`ARCH`、`BUILD_TYPE` 和选定的 `CPP/QML/GENERIC/QPA`；将其与运行报告的 `BUILD_IDENTITY`、`QT_VERSION`、`OS`、`ARCH` 比较。安装 manifest 表示**安装根目录候选**，不自动证明最终应用部署目录加载的就是该候选；若用户复制、更新或回滚过 payload，还需确认实际运行的二进制和 plugin 来源。
 
-当前 `HYREMOTE_VERSION`、`UI_FAMILY` 或 `DEPLOYMENT_IDENTITY` 可以明确报告 `unknown`；`unknown` 表示缺少可信证据，不代表匹配，也不代表失败。若源码包嵌入另一 Git 仓库，无法验证 HyRemote 自身 SHA 时，`BUILD_IDENTITY=unknown` 是预期的诚实回退。不要仅凭文件名或构建目录猜测版本一致。
+`UI_FAMILY` 现在来自实际 Qt target（C++/QML）或当前已接纳且可见的 surface（Generic/QPA）；因此 `unknown` 表示当前没有可观测的受支持 UI family。`DEPLOYMENT_IDENTITY` 表示运行中可执行文件旁边找到并通过边界校验的 canonical `HYREMOTE-MANIFEST.txt`。干净的 **installed** `hyremote_deploy()` 部署会携带这份 manifest，因此可以做候选关联；干净的 source/add_subdirectory 部署不会携带它，预期报告 `unknown`。如果复用或自定义部署目录，目录里也可能由其他操作遗留 manifest，所以这个字段识别的是**可执行文件旁的 manifest**，并不能证明应用是通过哪种 acquisition 得到的。在 canonical project version 仍为 `0.0.0` 时，`HYREMOTE_VERSION` 继续报告 `unknown`。若源码包嵌入另一 Git 仓库，无法验证 HyRemote 自身 SHA 时，`BUILD_IDENTITY=unknown` 也是预期的诚实回退。所有这些 `unknown` 都表示**缺少可信事实**，不代表匹配或失败；不要仅凭文件名或构建目录猜测身份一致。
 
 ## `find_package(HyRemote)` 找不到包
 

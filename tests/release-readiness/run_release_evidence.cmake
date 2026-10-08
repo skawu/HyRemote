@@ -44,6 +44,7 @@ endif()
 set(all_cells
     clean-install
     installed-sdk
+    installed-qml
     installed-qml-qpa
     installed-qpa-product-fit
     source-consumer
@@ -197,7 +198,13 @@ endfunction()
 # execute the given command with an explicitly constructed PATH, capturing output and exit code.
 function(run_capture cell label path_value)
     execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env "PATH=${path_value}"
+        COMMAND ${CMAKE_COMMAND} -E env
+                --unset=LD_LIBRARY_PATH
+                --unset=QT_PLUGIN_PATH
+                --unset=QT_QPA_PLATFORM_PLUGIN_PATH
+                --unset=QML_IMPORT_PATH
+                --unset=QML2_IMPORT_PATH
+                "PATH=${path_value}"
                 ${ARGN}
         RESULT_VARIABLE _result
         OUTPUT_VARIABLE _out
@@ -485,17 +492,20 @@ function(acquire_installed cell fixture)
             ${ARGN})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer configure failed")
+        set(FAILED_CELLS "${FAILED_CELLS}" PARENT_SCOPE)
         return()
     endif()
     run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer build failed")
+        set(FAILED_CELLS "${FAILED_CELLS}" PARENT_SCOPE)
         return()
     endif()
     run_toolchain("${cell}" "install"
         "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer deployment failed")
+        set(FAILED_CELLS "${FAILED_CELLS}" PARENT_SCOPE)
         return()
     endif()
     set(${cell}_deployed "${RUN_DIR}/${cell}/deployed" PARENT_SCOPE)
@@ -522,32 +532,46 @@ if("installed-sdk" IN_LIST EVIDENCE_CELLS)
     endif()
 endif()
 
+function(run_deployed_qml_consumer cell)
+    # QML deploys a module payload of its own. Validate relocation, then execute Main.qml's
+    # contractOk from the detached tree so module/load/diagnostic truth is observed, not inferred.
+    if("${FAILED_CELLS}" MATCHES "${cell}")
+        return()
+    endif()
+    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
+    if("${FAILED_CELLS}" MATCHES "${cell}")
+        return()
+    endif()
+
+    set(_qml_exe "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-qml-consumer")
+    if(WIN32)
+        set(_qml_exe "${_qml_exe}.exe")
+    endif()
+    set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+    record_runtime_env("${cell}" "${_path}")
+    record("${cell}" "EXECUTABLE" "${_qml_exe}")
+    run_capture("${cell}" "deployed_qml_diagnostics" "${_path}" "${_qml_exe}")
+    if(${cell}_result EQUAL 0)
+        record("${cell}" "RESULT_DETAIL"
+            "deployed QML consumer executed Main.qml diagnostics and exited successfully")
+        record("${cell}" "RESULT" "PASS")
+    else()
+        fail_cell("${cell}" "deployed QML consumer diagnostic contract did not run successfully")
+    endif()
+endfunction()
+
+if("installed-qml" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-qml")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (QML only)")
+    acquire_installed("${cell}" "tests/consumer-installed-qml")
+    run_deployed_qml_consumer("${cell}")
+endif()
+
 if("installed-qml-qpa" IN_LIST EVIDENCE_CELLS)
     set(cell "installed-qml-qpa")
     record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (combined QML + QPA)")
     acquire_installed("${cell}" "tests/consumer-installed-qml" "-DHYREMOTE_CONSUMER_WITH_QPA=ON")
-    # The QML route deploys a module payload of its own, so the same shared ELF contract runs for it: the module
-    # beside the deployed application must be the relocatable one, not the copy the build tree handed the QML
-    # import deployment.
-    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
-    # Deployment/layout success alone never executes Main.qml's contractOk. Launch the actual
-    # clean deployed QML consumer under the same isolated product runtime path as other cells.
-    if(NOT "${FAILED_CELLS}" MATCHES "${cell}")
-        set(_qml_exe "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-qml-consumer")
-        if(WIN32)
-            set(_qml_exe "${_qml_exe}.exe")
-        endif()
-        set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
-        record_runtime_env("${cell}" "${_path}")
-        record("${cell}" "EXECUTABLE" "${_qml_exe}")
-        run_capture("${cell}" "deployed_qml_diagnostics" "${_path}" "${_qml_exe}")
-        if(${cell}_result EQUAL 0)
-            record("${cell}" "RESULT_DETAIL" "deployed QML consumer executed Main.qml diagnostics and exited successfully")
-            record("${cell}" "RESULT" "PASS")
-        else()
-            fail_cell("${cell}" "deployed QML consumer diagnostic contract did not run successfully")
-        endif()
-    endif()
+    run_deployed_qml_consumer("${cell}")
 endif()
 
 if("source-consumer" IN_LIST EVIDENCE_CELLS)
@@ -618,9 +642,21 @@ function(qpa_product_fit cell fixture)
     set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
-    record("${cell}" "HARNESS_COMMAND" "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe}")
+    if(cell STREQUAL "installed-qpa-product-fit")
+        set(_qpa_identity_expectation "correlated")
+        set(_qpa_port 5991)
+    else()
+        set(_qpa_identity_expectation "unknown")
+        set(_qpa_port 5992)
+    endif()
+    set(_qpa_diagnostic_args
+        --port "${_qpa_port}"
+        --expect-deployment-identity "${_qpa_identity_expectation}")
+    record("${cell}" "HARNESS_COMMAND"
+        "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe} ${_qpa_diagnostic_args}")
     run_capture("${cell}" "product_fit" "${_path}"
-        "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py" --app "${_exe}")
+        "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py"
+        --app "${_exe}" ${_qpa_diagnostic_args})
     if(${cell}_result EQUAL 0)
         record("${cell}" "RESULT_DETAIL" "product-fit ran the deployed consumer to a live RFB listener")
         record("${cell}" "RESULT" "PASS")
@@ -759,12 +795,57 @@ function(generic_product_fit cell consumer_target)
     set(_path "${_deployed}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
-    run_capture("${cell}" "deployed_smoke" "${_path}" "${_exe}")
+    # Qt GUI logging is routed to the debugger on Windows by default. Force Qt log output onto
+    # stderr so the same zero-code Runtime diagnostic block is observable by this evidence harness.
+    run_capture("${cell}" "deployed_smoke" "${_path}"
+        "QT_FORCE_STDERR_LOGGING=1" "${_exe}")
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "deployed Generic consumer did not exit successfully")
         return()
     endif()
-    record("${cell}" "RESULT_DETAIL" "deployed Generic consumer preserved native platform identity and discovered the plugin")
+
+    file(READ "${RUN_DIR}/${cell}/deployed_smoke.log" _generic_smoke_log)
+    if(consumer_target STREQUAL "generic-widgets-consumer")
+        set(_expected_ui_family "widgets")
+    else()
+        set(_expected_ui_family "quick")
+    endif()
+    foreach(_required_diagnostic IN ITEMS
+            "INTEGRATION_ROUTE=generic"
+            "UI_FAMILY=${_expected_ui_family}"
+            "STATE=Running")
+        string(FIND "${_generic_smoke_log}" "${_required_diagnostic}" _diagnostic_hit)
+        if(_diagnostic_hit EQUAL -1)
+            fail_cell("${cell}"
+                "deployed Generic diagnostic report is missing ${_required_diagnostic}")
+            return()
+        endif()
+    endforeach()
+
+    string(REGEX MATCHALL "BUILD_IDENTITY=[^\r\n]+" _generic_build_lines "${_generic_smoke_log}")
+    string(REGEX MATCHALL "DEPLOYMENT_IDENTITY=[^\r\n]+" _generic_deploy_lines "${_generic_smoke_log}")
+    list(REMOVE_DUPLICATES _generic_build_lines)
+    list(REMOVE_DUPLICATES _generic_deploy_lines)
+    list(LENGTH _generic_build_lines _generic_build_count)
+    list(LENGTH _generic_deploy_lines _generic_deploy_count)
+    if(NOT _generic_build_count EQUAL 1 OR NOT _generic_deploy_count EQUAL 1)
+        fail_cell("${cell}" "deployed Generic diagnostic identity values are missing or inconsistent")
+        return()
+    endif()
+    list(GET _generic_build_lines 0 _generic_build_identity)
+    list(GET _generic_deploy_lines 0 _generic_deploy_identity)
+    string(REGEX REPLACE "^BUILD_IDENTITY=" "" _generic_build_identity "${_generic_build_identity}")
+    string(REGEX REPLACE "^DEPLOYMENT_IDENTITY=" "" _generic_deploy_identity "${_generic_deploy_identity}")
+    if(_generic_build_identity STREQUAL "unknown"
+       OR _generic_deploy_identity STREQUAL "unknown"
+       OR NOT _generic_build_identity STREQUAL _generic_deploy_identity)
+        fail_cell("${cell}"
+            "deployed Generic build/deployment identities do not correlate: build=${_generic_build_identity}; deployment=${_generic_deploy_identity}")
+        return()
+    endif()
+
+    record("${cell}" "RESULT_DETAIL"
+        "deployed Generic consumer preserved native platform identity and emitted a correlated shared Runtime diagnostic report")
     record("${cell}" "RESULT" "PASS")
     # One auditable line per required consumer in the runner's own output, so a passing run still states which
     # consumers actually executed rather than leaving that to be inferred from a cell count.

@@ -129,6 +129,8 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-acquisition-audit-self-test` | Consumer/repository — proves clean-consumer cache auditing cannot hide source/build-tree acquisition. TG-012 closed. |
 | `hyremote-cpp-installed-consumers` | Consumer/C++ — real installed Widgets+C++ and Quick+C++ lifecycle through a clean SDK. |
 | `hyremote-generic-installed-consumers` | Consumer/Generic — real installed Generic Widgets/Quick with native platform identity. |
+| `hyremote-qml-installed-consumer` | Consumer/QML — clean installed QML-only module is deployed, loaded and executes its shared diagnostic contract. |
+| `hyremote-qpa-installed-product-fit` | Consumer/QPA — clean installed QPA payload/delegate chain reaches a live RFB listener and emits correlated shared diagnostics. |
 | `hyremote-qml-deploy-helper-non-qml` | Consumer/QML — ordinary deploy dispatch remains non-QML. |
 | `hyremote-qml-deploy-helper-qml` | Consumer/QML — QML-aware deploy dispatch/import-root preservation. |
 | `hyremote-release-readiness-security-runtime-deploy` | Consumer — deployed Runtime/security closure and runtime dependency availability. |
@@ -200,9 +202,10 @@ The release-profile matrix intentionally uses separate CTest identities because 
 
 Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests.
 
-- final Phase-D #358 exact-head security-enabled inventory: Linux **108**, Windows **107**;
-- security-off equivalent: Linux **106**, Windows **105**;
-- the one platform-only identity is Linux `hyremote-qpa-source-payload-relocation`;
+- current #335 exact-head security-enabled inventory: Linux **113**, Windows **112**;
+- security-off equivalent: Linux **111**, Windows **110**; CI #581 executed those exact full-config counts;
+- the one platform-only identity remains Linux `hyremote-qpa-source-payload-relocation`;
+- the post-#358 graph includes `hyremote-runtime-diagnostics-test`, then #335 adds `hyremote-qml-installed-consumer` and `hyremote-qpa-installed-product-fit` cross-platform;
 - the two security-only identities are `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`;
 - #274 final reconciliation adds no CTest identity, so these counts remain unchanged.
 
