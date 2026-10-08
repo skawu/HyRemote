@@ -87,6 +87,51 @@ if(TARGET hyremote-generic-plugin)
     hyremote_target_artifact_name(hyremote-generic-plugin HYREMOTE_PACKAGE_GENERIC_PLUGIN_FILENAME)
 endif()
 
+# One canonical human-readable install manifest for every CMake install entry point. The source
+# identity uses the same fail-closed rule as Runtime build diagnostics: an enclosing consumer repository
+# is never accepted as HyRemote's source SHA. file(GENERATE) keeps BUILD_TYPE truthful for both single-
+# and multi-config generators, then install() places the exact same file at the install root.
+set(_hyremote_manifest_source_sha "unknown")
+execute_process(
+    COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse --show-toplevel
+    RESULT_VARIABLE _hyremote_manifest_root_rc
+    OUTPUT_VARIABLE _hyremote_manifest_git_root
+    ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(_hyremote_manifest_root_rc EQUAL 0 AND NOT _hyremote_manifest_git_root STREQUAL "")
+    file(REAL_PATH "${PROJECT_SOURCE_DIR}" _hyremote_manifest_source_root)
+    file(REAL_PATH "${_hyremote_manifest_git_root}" _hyremote_manifest_git_root)
+    if(_hyremote_manifest_source_root STREQUAL _hyremote_manifest_git_root)
+        execute_process(
+            COMMAND git -C "${PROJECT_SOURCE_DIR}" rev-parse HEAD
+            RESULT_VARIABLE _hyremote_manifest_git_rc
+            OUTPUT_VARIABLE _hyremote_manifest_git_out
+            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_hyremote_manifest_git_rc EQUAL 0 AND NOT _hyremote_manifest_git_out STREQUAL "")
+            set(_hyremote_manifest_source_sha "${_hyremote_manifest_git_out}")
+        endif()
+    endif()
+endif()
+
+set(_hyremote_manifest_arch "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+if(_hyremote_manifest_arch STREQUAL "")
+    set(_hyremote_manifest_arch "$ENV{PROCESSOR_ARCHITECTURE}")
+endif()
+if(_hyremote_manifest_arch STREQUAL "")
+    set(_hyremote_manifest_arch "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+if(_hyremote_manifest_arch STREQUAL "")
+    set(_hyremote_manifest_arch "unknown")
+endif()
+set(_hyremote_manifest_qt_version "${Qt6_VERSION}")
+if(_hyremote_manifest_qt_version STREQUAL "")
+    set(_hyremote_manifest_qt_version "unknown")
+endif()
+
+set(_hyremote_manifest_file "${CMAKE_CURRENT_BINARY_DIR}/HYREMOTE-MANIFEST-$<CONFIG>.txt")
+file(GENERATE OUTPUT "${_hyremote_manifest_file}" CONTENT
+"SOURCE_SHA=${_hyremote_manifest_source_sha}\nOS=${CMAKE_HOST_SYSTEM_NAME}\nARCH=${_hyremote_manifest_arch}\nQT_VERSION=${_hyremote_manifest_qt_version}\nBUILD_TYPE=$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>,unknown>\nCPP=${HYREMOTE_BUILD_CPP_API}\nQML=${HYREMOTE_BUILD_QML_API}\nGENERIC=${HYREMOTE_WITH_GENERIC_PLUGIN}\nQPA=${HYREMOTE_WITH_QPA_PROXY}\nLISTENER_DEFAULT=0.0.0.0:${HYREMOTE_DEFAULT_PORT}\nAUTHENTICATION_ENABLED=OFF\nAUTHENTICATION_PROFILE=none\nTRANSPORT_ENCRYPTION_ENABLED=OFF\nTRANSPORT_ENCRYPTION_PROFILE=none\nREMOTE_INPUT_DEFAULT=OFF\nTRANSPORT_SECURITY_CAPABILITY=${HYREMOTE_TRANSPORT_SECURITY_AVAILABLE}\n")
+install(FILES "${_hyremote_manifest_file}" DESTINATION "." RENAME "HYREMOTE-MANIFEST.txt")
+
 # The transport security runtime, installed as a package-owned private payload beside the shared runtime. It is
 # resolved from the OpenSSL this build links against (cmake/HyRemoteProjectOptions.cmake), because the deploy helper
 # runs before these rules are processed. There is no consumer target, no link interface and no OpenSSL dependency a
