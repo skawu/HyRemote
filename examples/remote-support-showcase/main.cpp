@@ -268,6 +268,7 @@ public:
         if (recordRequest)
             appendActivity(QStringLiteral("Start remote access requested"));
         m_remote.clearError();
+        m_lastActivityError = QStringLiteral("None");
         if (!m_remote.start()) {
             refreshStatus();
             appendActivity(QStringLiteral("Remote access start failed"));
