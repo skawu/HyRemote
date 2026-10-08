@@ -764,7 +764,27 @@ function(generic_product_fit cell consumer_target)
         fail_cell("${cell}" "deployed Generic consumer did not exit successfully")
         return()
     endif()
-    record("${cell}" "RESULT_DETAIL" "deployed Generic consumer preserved native platform identity and discovered the plugin")
+
+    file(READ "${RUN_DIR}/${cell}/deployed_smoke.log" _generic_smoke_log)
+    if(consumer_target STREQUAL "generic-widgets-consumer")
+        set(_expected_ui_family "widgets")
+    else()
+        set(_expected_ui_family "quick")
+    endif()
+    foreach(_required_diagnostic IN ITEMS
+            "INTEGRATION_ROUTE=generic"
+            "UI_FAMILY=${_expected_ui_family}"
+            "STATE=Running"
+            "DEPLOYMENT_IDENTITY=source_sha=")
+        string(FIND "${_generic_smoke_log}" "${_required_diagnostic}" _diagnostic_hit)
+        if(_diagnostic_hit EQUAL -1)
+            fail_cell("${cell}"
+                "deployed Generic diagnostic report is missing ${_required_diagnostic}")
+            return()
+        endif()
+    endforeach()
+
+    record("${cell}" "RESULT_DETAIL" "deployed Generic consumer preserved native platform identity and emitted the shared Runtime diagnostic report")
     record("${cell}" "RESULT" "PASS")
     # One auditable line per required consumer in the runner's own output, so a passing run still states which
     # consumers actually executed rather than leaving that to be inferred from a cell count.
