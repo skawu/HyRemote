@@ -15,7 +15,7 @@ V0.2 LAN trial currently references:
 | C++ API | peer route |
 | Generic Plugin | peer route |
 | QML API | peer route |
-| QPA | **Preview, Qt 6.8.3 exact private ABI** |
+| QPA | peer route, **Qt 6.8.3 exact private ABI** |
 | Embedded Linux / ARM64 | TODO - mandatory pre-GA V0.3-family compatibility baseline (#343); no exact Feature version pre-assigned |
 | Qt 5.15 LTS | TODO - mandatory pre-GA V0.3-family adaptation/qualification; V0.4 only qualifies the frozen completed matrix |
 
@@ -44,14 +44,7 @@ PowerShell:  .\build.cmd build --show-config
 POSIX:       sh ./build.cmd build --show-config
 ```
 
-Build the primary V0.1 paths:
-
-```text
-PowerShell:  .\build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
-POSIX:       sh ./build.cmd build --integrations=cpp,generic --qt-prefix=<path>/Qt/6.8.3/<kit>
-```
-
-Build all four frontends for development:
+Build the four peer frontends when you want the complete reference product surface:
 
 ```text
 PowerShell:  .\build.cmd install --integrations=cpp,qml,generic,qpa --qt-prefix=<path>/Qt/6.8.3/<kit>
