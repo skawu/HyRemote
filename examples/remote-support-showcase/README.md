@@ -11,7 +11,8 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - Remote input is disabled by default, so the initial policy is view-only.
 - The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
 - Stop releases the listener while the local application continues running.
-- The local status panel shows stopped/running/faulted state, endpoint, connected-client count, current policy and the latest product-level error.
+- The local status panel shows stopped/running/faulted state, configured/effective listener, connected-client count, current policy and the latest product-level error.
+- The Connection Assistant lists current non-loopback IPv4 viewer endpoints separately from the listener bind address, exposes Waiting/Connected state, and can refresh/copy the current candidates. A wildcard bind such as `0.0.0.0:5921` is never presented as the remote host address to type into a viewer.
 - The Diagnostics panel renders the same bounded, secret-safe public `diagnosticReport()` used by support/troubleshooting and can copy it to the clipboard; HyRemoteTool does not invent a second diagnostic truth.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
 - The status panel shows whether HyRemoteTool is the active OS window. When remote input is enabled but the Tool is inactive, it displays the real application-scoped focus limitation from #362 and tells the local operator to reactivate this window; HyRemoteTool does not simulate desktop-wide focus stealing.
