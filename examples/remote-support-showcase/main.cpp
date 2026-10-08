@@ -1,5 +1,6 @@
 #include <HyRemote/RemoteAccess.h>
 
+#include <QAbstractSocket>
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -17,6 +18,7 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
