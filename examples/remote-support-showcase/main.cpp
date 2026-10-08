@@ -457,8 +457,13 @@ int main(int argc, char **argv)
                                      QStringLiteral("0"));
     parser.addOption(portOption);
     parser.addOption(inputOption);
+    QCommandLineOption diagnosticReportFileOption(
+        QStringLiteral("diagnostic-report-file"),
+        QStringLiteral("Write one bounded public diagnostic report after startup handling."),
+        QStringLiteral("path"));
     parser.addOption(autoStartOption);
     parser.addOption(secondsOption);
+    parser.addOption(diagnosticReportFileOption);
     parser.process(app);
 
     const int parsedPort = readPositiveInt(parser, portOption, 5921);
@@ -471,10 +476,19 @@ int main(int argc, char **argv)
     SupportWindow window(static_cast<quint16>(parsedPort), parser.isSet(inputOption));
     window.show();
 
-    if (parser.isSet(autoStartOption)) {
-        QTimer::singleShot(0, &window, [&window] {
-            if (!window.startRemoteAccess())
+    const bool autoStart = parser.isSet(autoStartOption);
+    const QString diagnosticReportFile = parser.value(diagnosticReportFileOption);
+    if (autoStart || !diagnosticReportFile.isEmpty()) {
+        QTimer::singleShot(0, &window, [&window, autoStart, diagnosticReportFile] {
+            if (autoStart && !window.startRemoteAccess())
                 std::cerr << "START_FAILED" << std::endl;
+
+            if (!diagnosticReportFile.isEmpty()) {
+                if (window.saveDiagnosticReport(diagnosticReportFile))
+                    std::cout << "DIAGNOSTIC_SAVED " << diagnosticReportFile.toStdString() << std::endl;
+                else
+                    std::cerr << "DIAGNOSTIC_SAVE_FAILED " << diagnosticReportFile.toStdString() << std::endl;
+            }
         });
     }
 
