@@ -795,8 +795,7 @@ function(generic_product_fit cell consumer_target)
     foreach(_required_diagnostic IN ITEMS
             "INTEGRATION_ROUTE=generic"
             "UI_FAMILY=${_expected_ui_family}"
-            "STATE=Running"
-            "DEPLOYMENT_IDENTITY=source_sha=")
+            "STATE=Running")
         string(FIND "${_generic_smoke_log}" "${_required_diagnostic}" _diagnostic_hit)
         if(_diagnostic_hit EQUAL -1)
             fail_cell("${cell}"
@@ -805,8 +804,30 @@ function(generic_product_fit cell consumer_target)
         endif()
     endforeach()
 
+    string(REGEX MATCHALL "BUILD_IDENTITY=[^\r\n]+" _generic_build_lines "${_generic_smoke_log}")
+    string(REGEX MATCHALL "DEPLOYMENT_IDENTITY=[^\r\n]+" _generic_deploy_lines "${_generic_smoke_log}")
+    list(REMOVE_DUPLICATES _generic_build_lines)
+    list(REMOVE_DUPLICATES _generic_deploy_lines)
+    list(LENGTH _generic_build_lines _generic_build_count)
+    list(LENGTH _generic_deploy_lines _generic_deploy_count)
+    if(NOT _generic_build_count EQUAL 1 OR NOT _generic_deploy_count EQUAL 1)
+        fail_cell("${cell}" "deployed Generic diagnostic identity values are missing or inconsistent")
+        return()
+    endif()
+    list(GET _generic_build_lines 0 _generic_build_identity)
+    list(GET _generic_deploy_lines 0 _generic_deploy_identity)
+    string(REGEX REPLACE "^BUILD_IDENTITY=" "" _generic_build_identity "${_generic_build_identity}")
+    string(REGEX REPLACE "^DEPLOYMENT_IDENTITY=" "" _generic_deploy_identity "${_generic_deploy_identity}")
+    if(_generic_build_identity STREQUAL "unknown"
+       OR _generic_deploy_identity STREQUAL "unknown"
+       OR NOT _generic_build_identity STREQUAL _generic_deploy_identity)
+        fail_cell("${cell}"
+            "deployed Generic build/deployment identities do not correlate: build=${_generic_build_identity}; deployment=${_generic_deploy_identity}")
+        return()
+    endif()
+
     record("${cell}" "RESULT_DETAIL"
-        "deployed Generic consumer preserved native platform identity and emitted the shared Runtime diagnostic report")
+        "deployed Generic consumer preserved native platform identity and emitted a correlated shared Runtime diagnostic report")
     record("${cell}" "RESULT" "PASS")
     # One auditable line per required consumer in the runner's own output, so a passing run still states which
     # consumers actually executed rather than leaving that to be inferred from a cell count.
