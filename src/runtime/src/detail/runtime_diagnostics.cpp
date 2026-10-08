@@ -2,6 +2,9 @@
 
 #include <QtGlobal>
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QStringList>
 
 namespace HyRemote::Runtime {
@@ -122,6 +125,66 @@ QString buildFact(const char *value)
     return fact.isEmpty() ? QStringLiteral("unknown") : fact;
 }
 
+bool isSafeIdentityToken(const QString &value)
+{
+    if (value.isEmpty() || value.size() > 128)
+        return false;
+    for (const QChar ch : value) {
+        if (!ch.isLetterOrNumber() && ch != QLatin1Char('.') && ch != QLatin1Char('_')
+            && ch != QLatin1Char('+') && ch != QLatin1Char('-'))
+            return false;
+    }
+    return true;
+}
+
+QString deploymentIdentity()
+{
+    // An early C++ diagnostic call may precede QCoreApplication construction. Do not let that
+    // provisional state permanently cache "unknown"; once an application exists, deployment
+    // identity is immutable for the process and can be parsed exactly once.
+    if (!QCoreApplication::instance())
+        return QStringLiteral("unknown");
+
+    // Deployment identity cannot change meaningfully while this process is running. Cache the
+    // bounded manifest parse so event-driven diagnostic reports never turn into filesystem polling.
+    static const QString identity = [] {
+        const QString applicationDir = QCoreApplication::applicationDirPath();
+        if (applicationDir.isEmpty())
+            return QStringLiteral("unknown");
+
+        QFile manifest(QDir(applicationDir).filePath(QStringLiteral("HYREMOTE-MANIFEST.txt")));
+        if (!manifest.open(QIODevice::ReadOnly | QIODevice::Text) || manifest.size() <= 0
+            || manifest.size() > 64 * 1024)
+            return QStringLiteral("unknown");
+
+        QString sourceSha;
+        QString buildType;
+        bool sawSourceSha = false;
+        bool sawBuildType = false;
+        const QStringList lines = QString::fromUtf8(manifest.readAll()).split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (line.startsWith(QStringLiteral("SOURCE_SHA="))) {
+                if (sawSourceSha)
+                    return QStringLiteral("unknown");
+                sawSourceSha = true;
+                sourceSha = line.mid(QStringLiteral("SOURCE_SHA=").size()).trimmed();
+            } else if (line.startsWith(QStringLiteral("BUILD_TYPE="))) {
+                if (sawBuildType)
+                    return QStringLiteral("unknown");
+                sawBuildType = true;
+                buildType = line.mid(QStringLiteral("BUILD_TYPE=").size()).trimmed();
+            }
+        }
+
+        if (sourceSha == QStringLiteral("unknown") || !isSafeIdentityToken(sourceSha)
+            || !isSafeIdentityToken(buildType))
+            return QStringLiteral("unknown");
+
+        return QStringLiteral("source_sha=%1,build_type=%2").arg(sourceSha, buildType);
+    }();
+    return identity;
+}
+
 }  // namespace
 
 QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
@@ -159,7 +222,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
               << QStringLiteral("LAST_ERROR_RECOVERABLE=none");
     }
 
-    lines << QStringLiteral("DEPLOYMENT_IDENTITY=unknown");
+    lines << QStringLiteral("DEPLOYMENT_IDENTITY=%1").arg(deploymentIdentity());
     return lines.join(QLatin1Char('\n'));
 }
 
