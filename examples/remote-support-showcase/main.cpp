@@ -350,6 +350,11 @@ private:
     {
         const auto state = m_remote.state();
         m_state->setText(stateName(state));
+        if (!m_hasActivityState || state != m_lastActivityState) {
+            m_hasActivityState = true;
+            m_lastActivityState = state;
+            appendActivity(QStringLiteral("Runtime state: %1").arg(stateName(state)));
+        }
         m_policy->setText(m_remote.remoteInputEnabled()
                               ? QStringLiteral("Remote view + control")
                               : QStringLiteral("View-only (safe default)"));
@@ -424,6 +429,8 @@ private:
     std::size_t m_lastReportedClientCount = 0;
     QString m_lastDiagnosticTrigger;
     QString m_lastActivityError = QStringLiteral("None");
+    HyRemote::RemoteAccessState m_lastActivityState = HyRemote::RemoteAccessState::Stopped;
+    bool m_hasActivityState = false;
     QLabel *m_state = nullptr;
     QLabel *m_configuredListener = nullptr;
     QLabel *m_endpoint = nullptr;
