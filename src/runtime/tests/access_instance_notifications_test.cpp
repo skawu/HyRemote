@@ -346,6 +346,47 @@ void testStartFailurePublishesErrorThenStopped()
     HyRemote::detail::resetFactories();
 }
 
+void testEncryptedSecurityFailsClosedInDiagnostics()
+{
+    QObject target;
+    AccessInstance instance(&target);
+    Recorder recorder;
+    instance.subscribeNotifications(recorder.handlers());
+
+    CHECK(instance.setSecurityProfile(SecurityProfile::AuthenticatedEncrypted));
+    CHECK(!instance.start());
+    CHECK(instance.state() == AccessState::Stopped);
+
+    const auto snapshot = instance.diagnosticSnapshot();
+    CHECK(snapshot.configuredSecurityProfile == SecurityProfile::AuthenticatedEncrypted);
+    CHECK(!snapshot.effectiveSecurityProfile.has_value());
+    CHECK(!snapshot.effectiveListenAddress.has_value());
+    CHECK(!snapshot.effectivePort.has_value());
+    CHECK(snapshot.lastError.has_value());
+    if (snapshot.lastError)
+        CHECK(snapshot.lastError->code == ErrorCode::SecurityUnavailable);
+
+    const QString report = HyRemote::Runtime::formatDiagnosticReport(snapshot);
+    CHECK(report.contains(QStringLiteral("STATE=Stopped\n")));
+    CHECK(report.contains(QStringLiteral("SECURITY_PROFILE=AuthenticatedEncrypted\n")));
+    CHECK(report.contains(QStringLiteral("SECURITY_ENABLED=true\n")));
+    CHECK(report.contains(QStringLiteral("LISTENER_EFFECTIVE=none\n")));
+    CHECK(report.contains(QStringLiteral("LAST_ERROR_CODE=SecurityUnavailable\n")));
+
+    const std::vector<std::string> states = recorder.only("state:");
+    CHECK(states.size() == 2u);
+    CHECK(indexOf(states, "state:Starting") == 0u);
+    CHECK(indexOf(states, "state:Stopped") == 1u);
+
+    const std::vector<std::string> errors = recorder.only("error:");
+    CHECK(errors.size() == 1u);
+    CHECK(recorder.errors.size() == 1u);
+    if (!recorder.errors.empty() && recorder.errors.front()) {
+        CHECK(recorder.errors.front()->code == ErrorCode::SecurityUnavailable);
+        CHECK(indexOf(recorder.sequence, errors.front()) < indexOf(recorder.sequence, "state:Stopped"));
+    }
+}
+
 void testClientCountIsEventDrivenAndNotRepeated()
 {
     const auto state = std::make_shared<RuntimeState>();
@@ -639,6 +680,7 @@ int main(int argc, char **argv)
 
     testStartOrderingAndStopOrdering();
     testStartFailurePublishesErrorThenStopped();
+    testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
