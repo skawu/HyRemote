@@ -4,7 +4,7 @@ HyRemote is remote-access infrastructure. A working viewer connection does not b
 
 This page describes the **current product security behavior**. Capabilities that are not available yet are marked as TODO.
 
-## V0.1 security boundary
+## Current security boundary
 
 The released product has a truthful security boundary.
 
@@ -30,11 +30,11 @@ Do not expose the product directly to the public Internet.
 
 ### Insecure
 
-`Insecure` is the normal V0.1 development profile.
+`Insecure` is the default security profile.
 
 - no viewer authentication;
 - no transport encryption;
-- loopback is required;
+- listener scope follows the configured bind address (default `0.0.0.0:5921`);
 - remote input remains a separate opt-in policy.
 
 The `Insecure` listener is unauthenticated and unencrypted and it is reachable wherever it is bound. HyRemote states that plainly instead of narrowing the bind: it is for a trusted LAN only and is not Internet-safe.
@@ -55,7 +55,7 @@ The stream is still **not encrypted**.
 
 If the required build capability is absent, `start()` fails with `SecurityUnavailable` before target, transport, or listener creation. If the descriptor is missing or invalid, startup fails rather than falling back to a weaker profile.
 
-The default V0.1 developer build/profile should therefore be treated as **unauthenticated and unencrypted unless the authenticated capability was explicitly built and configured, and reachable on the host's IPv4 interfaces either way**.
+The default build/profile should therefore be treated as **unauthenticated and unencrypted unless the authenticated capability was explicitly built and configured, and reachable on the host's IPv4 interfaces either way**.
 
 ### AuthenticatedEncrypted
 
@@ -73,7 +73,7 @@ AuthenticatedEncrypted
 
 A readable certificate/private-key descriptor does not make encrypted transport available by itself.
 
-> **TODO V0.2:** implement the final encrypted transport profile, certificate/private-key policy, protocol/cipher policy, and authenticated encrypted sessions.
+> **Unavailable today:** encrypted transport / `AuthenticatedEncrypted`; it fails closed until a real encrypted backend is shipped.
 
 ## Remote viewing versus remote control
 
@@ -103,7 +103,7 @@ Leaving remote input disabled keeps the session view-only. View-only is **not** 
 
 ## Listener exposure
 
-The safest and default V0.1 listener is:
+The default listener is:
 
 ```text
 0.0.0.0:5921
@@ -121,7 +121,7 @@ Exact address-family behavior is documented in [`known-limitations.md`](known-li
 
 `connectedClientCount()` is operational information. It is not a user identity, role, or authorization result.
 
-> **TODO V0.2:** authenticated Session Registry, bounded admission policy, session events, and explicit session termination APIs.
+> Session registry/admission/termination is not part of the current product contract.
 
 ## Input safety
 
@@ -145,7 +145,7 @@ Security configuration should use an external descriptor/configuration mechanism
 
 A descriptor confirms what the operator configured; it does not prove that the selected security mechanism exists in the build.
 
-## Recommended V0.1 deployment profiles
+## Recommended current deployment profiles
 
 ### Local developer / same machine
 
@@ -157,27 +157,27 @@ Use `Authenticated` only when the package was explicitly built with the required
 
 ### Public Internet
 
-**Not supported as a direct V0.1 deployment profile.**
+**Not supported as a direct current deployment profile.**
 
 Do not expose the current HyRemote listener directly to the public Internet.
 
 ## Current security capability matrix
 
-| Capability | V0.1 status |
+| Capability | Current status |
 | --- | --- |
 | LAN-capable default (`0.0.0.0:5921`) | Available |
 | Remote input off by default | Available |
 | Truthful unauthenticated/unencrypted state | Available |
 | `Authenticated` API/configuration surface | Available |
 | RFB VNC authentication | **Conditional: requires transport-security-enabled build + valid descriptor** |
-| Default V0.1 build includes authenticated transport | **No** |
+| Every build/package includes authenticated transport | **No** |
 | `AuthenticatedEncrypted` | **Unavailable; fail-closed** |
-| Stream encryption | **TODO V0.2** |
-| Certificate/private-key production policy | **TODO V0.2** |
-| Authenticated session identity/registry | **TODO V0.2** |
-| Per-session admission/termination | **TODO V0.2** |
+| Stream encryption | **Unavailable in the current product** |
+| Certificate/private-key production policy | **Not part of the current product contract** |
+| Authenticated session identity/registry | **Not part of the current product contract** |
+| Per-session admission/termination | **Not part of the current product contract** |
 | VPN/tunnel/firewall provisioning | Outside HyRemote product scope |
 
-The concise V0.1 statement is:
+The concise current statement is:
 
-> HyRemote V0.1 defaults to an unauthenticated, unencrypted listener on `0.0.0.0:5921` with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose the product directly to the public Internet.
+> HyRemote defaults to an unauthenticated, unencrypted listener on `0.0.0.0:5921` with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose the product directly to the public Internet.
