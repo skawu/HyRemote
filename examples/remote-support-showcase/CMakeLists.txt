@@ -2,15 +2,17 @@ cmake_minimum_required(VERSION 3.21)
 
 project(HyRemoteTool LANGUAGES CXX)
 
-add_executable(hyremote-tool
+add_executable(hyremote-remote-support-showcase
     main.cpp
     input_probe.cpp
     ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
 
-target_compile_features(hyremote-tool PRIVATE cxx_std_17)
-target_link_libraries(hyremote-tool
+set_target_properties(hyremote-remote-support-showcase PROPERTIES OUTPUT_NAME hyremote-tool)
+
+target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
+target_link_libraries(hyremote-remote-support-showcase
     PRIVATE
         Qt6::Widgets
         HyRemote::RemoteAccess
@@ -18,5 +20,5 @@ target_link_libraries(hyremote-tool
 
 # It is a user-facing example like the learning ones: it installs into the same shared prefix and is deployed by the
 # same helper, so it is reachable from the product tree instead of only from the build tree.
-install(TARGETS hyremote-tool RUNTIME DESTINATION bin)
-hyremote_deploy(TARGET hyremote-tool)
+install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET hyremote-remote-support-showcase)
