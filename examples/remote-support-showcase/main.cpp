@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -16,6 +17,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStringList>
@@ -195,8 +197,13 @@ public:
         m_diagnostics->setMaximumBlockCount(64);
         m_diagnostics->setMinimumHeight(150);
         diagnosticsLayout->addWidget(m_diagnostics);
+        auto *diagnosticActions = new QHBoxLayout;
         auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy diagnostic report"), diagnosticsBox);
-        diagnosticsLayout->addWidget(copyDiagnostics, 0, Qt::AlignLeft);
+        auto *saveDiagnostics = new QPushButton(QStringLiteral("Save diagnostic report"), diagnosticsBox);
+        diagnosticActions->addWidget(copyDiagnostics);
+        diagnosticActions->addWidget(saveDiagnostics);
+        diagnosticActions->addStretch(1);
+        diagnosticsLayout->addLayout(diagnosticActions);
         root->addWidget(diagnosticsBox);
 
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
@@ -238,6 +245,15 @@ public:
         QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
         });
+        QObject::connect(saveDiagnostics, &QPushButton::clicked, this, [this] {
+            const QString path = QFileDialog::getSaveFileName(
+                this,
+                QStringLiteral("Save HyRemote diagnostic report"),
+                QStringLiteral("hyremote-diagnostic.txt"),
+                QStringLiteral("Text files (*.txt);;All files (*)"));
+            if (!path.isEmpty() && !saveDiagnosticReport(path))
+                m_error->setText(QStringLiteral("Could not save diagnostic report"));
+        });
 
         auto *timer = new QTimer(this);
         timer->setInterval(100);
@@ -251,6 +267,22 @@ public:
     ~SupportWindow() override
     {
         m_remote.stop();
+    }
+
+    bool saveDiagnosticReport(const QString &path) const
+    {
+        if (path.isEmpty())
+            return false;
+
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+            return false;
+
+        const QByteArray payload = m_remote.diagnosticReport().toUtf8();
+        if (file.write(payload) != payload.size())
+            return false;
+
+        return file.commit();
     }
 
     bool startRemoteAccess()
