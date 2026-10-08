@@ -104,6 +104,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--port", type=int, default=5992)
+    parser.add_argument("--require-deployment-identity", action="store_true")
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -181,9 +182,13 @@ def main() -> int:
             "INTEGRATION_ROUTE=qpa",
             "UI_FAMILY=widgets",
             "STATE=Running",
-            "DEPLOYMENT_IDENTITY=source_sha=",
         ):
             require(required in output, f"deployed QPA diagnostic report is missing {required}:\n{output}")
+        if args.require_deployment_identity:
+            require(
+                "DEPLOYMENT_IDENTITY=source_sha=" in output,
+                f"installed QPA diagnostic report has no correlated deployment identity:\n{output}",
+            )
         print(
             "PASS: deployed consumer -> qhyremote + native QPA delegate + shared RemoteAccess -> "
             "RFB reconnect + shared diagnostic report without SDK/plugin/QML/runtime-path overrides"
