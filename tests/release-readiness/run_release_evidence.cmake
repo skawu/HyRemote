@@ -44,6 +44,7 @@ endif()
 set(all_cells
     clean-install
     installed-sdk
+    installed-qml
     installed-qml-qpa
     installed-qpa-product-fit
     source-consumer
@@ -522,32 +523,43 @@ if("installed-sdk" IN_LIST EVIDENCE_CELLS)
     endif()
 endif()
 
+function(run_deployed_qml_consumer cell)
+    # QML deploys a module payload of its own. Validate relocation, then execute Main.qml's
+    # contractOk from the detached tree so module/load/diagnostic truth is observed, not inferred.
+    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
+    if("${FAILED_CELLS}" MATCHES "${cell}")
+        return()
+    endif()
+
+    set(_qml_exe "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-qml-consumer")
+    if(WIN32)
+        set(_qml_exe "${_qml_exe}.exe")
+    endif()
+    set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+    record_runtime_env("${cell}" "${_path}")
+    record("${cell}" "EXECUTABLE" "${_qml_exe}")
+    run_capture("${cell}" "deployed_qml_diagnostics" "${_path}" "${_qml_exe}")
+    if(${cell}_result EQUAL 0)
+        record("${cell}" "RESULT_DETAIL"
+            "deployed QML consumer executed Main.qml diagnostics and exited successfully")
+        record("${cell}" "RESULT" "PASS")
+    else()
+        fail_cell("${cell}" "deployed QML consumer diagnostic contract did not run successfully")
+    endif()
+endfunction()
+
+if("installed-qml" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-qml")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (QML only)")
+    acquire_installed("${cell}" "tests/consumer-installed-qml")
+    run_deployed_qml_consumer("${cell}")
+endif()
+
 if("installed-qml-qpa" IN_LIST EVIDENCE_CELLS)
     set(cell "installed-qml-qpa")
     record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (combined QML + QPA)")
     acquire_installed("${cell}" "tests/consumer-installed-qml" "-DHYREMOTE_CONSUMER_WITH_QPA=ON")
-    # The QML route deploys a module payload of its own, so the same shared ELF contract runs for it: the module
-    # beside the deployed application must be the relocatable one, not the copy the build tree handed the QML
-    # import deployment.
-    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
-    # Deployment/layout success alone never executes Main.qml's contractOk. Launch the actual
-    # clean deployed QML consumer under the same isolated product runtime path as other cells.
-    if(NOT "${FAILED_CELLS}" MATCHES "${cell}")
-        set(_qml_exe "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-qml-consumer")
-        if(WIN32)
-            set(_qml_exe "${_qml_exe}.exe")
-        endif()
-        set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
-        record_runtime_env("${cell}" "${_path}")
-        record("${cell}" "EXECUTABLE" "${_qml_exe}")
-        run_capture("${cell}" "deployed_qml_diagnostics" "${_path}" "${_qml_exe}")
-        if(${cell}_result EQUAL 0)
-            record("${cell}" "RESULT_DETAIL" "deployed QML consumer executed Main.qml diagnostics and exited successfully")
-            record("${cell}" "RESULT" "PASS")
-        else()
-            fail_cell("${cell}" "deployed QML consumer diagnostic contract did not run successfully")
-        endif()
-    endif()
+    run_deployed_qml_consumer("${cell}")
 endif()
 
 if("source-consumer" IN_LIST EVIDENCE_CELLS)
