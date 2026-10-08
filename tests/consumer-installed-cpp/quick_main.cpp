@@ -66,6 +66,21 @@ int main(int argc, char **argv)
         remote.stop();
         return 8;
     }
+    const QString buildIdentity =
+        diagnostics.section(QStringLiteral("BUILD_IDENTITY="), 1, 1).section(QLatin1Char('\n'), 0, 0);
+    const QString deploymentIdentity =
+        diagnostics.section(QStringLiteral("DEPLOYMENT_IDENTITY="), 1, 1).section(QLatin1Char('\n'), 0, 0);
+    if (buildIdentity == QStringLiteral("unknown") || deploymentIdentity == QStringLiteral("unknown")
+        || buildIdentity != deploymentIdentity) {
+        std::fprintf(stderr,
+                     "FAIL: installed SDK diagnostic build/deployment identity did not correlate "
+                     "(build=%s deployment=%s)\n",
+                     qPrintable(buildIdentity),
+                     qPrintable(deploymentIdentity));
+        remote.stop();
+        return 9;
+    }
+    std::printf("HYREMOTE_CPP_QUICK_DIAGNOSTIC_IDENTITY=correlated\n");
     std::printf("HYREMOTE_CPP_QUICK_DIAGNOSTIC_UI_FAMILY=quick\n");
     std::printf("HYREMOTE_CPP_QUICK_START=Running\n");
     std::printf("HYREMOTE_CPP_QUICK_PLATFORM=%s\n", qPrintable(QGuiApplication::platformName()));
