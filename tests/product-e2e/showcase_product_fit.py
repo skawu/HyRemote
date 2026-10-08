@@ -59,7 +59,7 @@ def verify_rendered_image(path: Path) -> tuple[int, int]:
     return width, height
 
 
-def start_showcase(executable: Path, port: int):
+def start_showcase(executable: Path, port: int, diagnostic_report: Path):
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
     process = subprocess.Popen(
@@ -69,6 +69,7 @@ def start_showcase(executable: Path, port: int):
             "--auto-start",
             "--remote-input",
             "--test-seconds", "10",
+            "--diagnostic-report-file", str(diagnostic_report),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -109,10 +110,32 @@ def start_showcase(executable: Path, port: int):
 def verify_showcase(executable: Path) -> None:
     require(executable.exists(), f"showcase executable not found: {executable}")
     port = free_port()
-    process, reader, lines = start_showcase(executable, port)
 
     try:
         with tempfile.TemporaryDirectory(prefix="hyremote-showcase-") as temp_dir:
+            diagnostic_report = Path(temp_dir) / "diagnostic.txt"
+            process, reader, lines = start_showcase(executable, port, diagnostic_report)
+
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                if diagnostic_report.exists() and any(
+                    line == f"DIAGNOSTIC_SAVED {diagnostic_report}" for line in lines
+                ):
+                    break
+                if process.poll() is not None:
+                    raise RuntimeError(f"showcase exited before diagnostic export: {lines}")
+                time.sleep(0.05)
+
+            require(diagnostic_report.exists(), "showcase did not save its public diagnostic report")
+            report = diagnostic_report.read_text(encoding="utf-8")
+            for required in (
+                "INTEGRATION_ROUTE=cpp\n",
+                "STATE=Running\n",
+                "REMOTE_INPUT=true\n",
+                f"LISTENER_CONFIGURED=0.0.0.0:{port}\n",
+            ):
+                require(required in report, f"saved diagnostic report is missing {required!r}: {report}")
+
             first = Path(temp_dir) / "first.png"
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(first))
@@ -165,7 +188,8 @@ def verify_showcase(executable: Path) -> None:
             "standard viewer -> Qt input -> listener release"
         )
     finally:
-        if process.poll() is None:
+        process = locals().get("process")
+        if process is not None and process.poll() is None:
             process.kill()
             process.wait(timeout=5)
 
