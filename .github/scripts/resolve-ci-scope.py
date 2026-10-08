@@ -542,6 +542,20 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
             failures += 1
 
+    for description, event, changed, expected_excluded in (
+            ("the Tool product-fit wiring change runs it", "pull_request",
+             ["tests/product-e2e/showcase_product_fit.py"], False),
+            ("an ordinary Tool implementation PR still excludes it", "pull_request",
+             ["examples/remote-support-showcase/main.cpp"], True),
+            ("an unrelated pull request excludes Tool product fit", "pull_request",
+             ["src/core/session/session.cpp"], True),
+            ("the full gate requires Tool product fit", "workflow_dispatch", [], False)):
+        resolved = resolve(event, changed)
+        excluded_now = TOOL_PRODUCT_FIT_TEST in resolved["test_exclude"]
+        if excluded_now != expected_excluded:
+            print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
+            failures += 1
+
     # Whatever the lane, an exclusion must never be able to exclude everything: "^()" is the shape that turned a
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
