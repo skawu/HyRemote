@@ -2,8 +2,8 @@
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/generic.md)
 
-Generic Plugin 是四个 peer 前端之一，并且与 Embedded C++ 一起构成 V0.1 的两个**主要（primary）**接入面。它是一个公开的
-Qt **generic** 插件：你的应用保持为一个普通 Qt 应用，不链接任何 HyRemote 目标，运行期通过 Qt 自己的插件机制获得远程接入。
+Generic Plugin 是四个 peer 产品前端之一。它是一个公开的 Qt **generic** 插件：你的应用保持为一个普通 Qt 应用，
+不链接任何 HyRemote 目标，运行期通过 Qt 自己的插件机制获得远程接入。
 
 它的决定性属性是**不替换应用的 Qt 平台集成**：Windows 仍是 `qwindows`，Linux/X11 仍是 `xcb`，HyRemote 只是把同一个
 Shared Runtime 挂在原生平台路径旁边。
