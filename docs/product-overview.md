@@ -81,7 +81,7 @@ RemoteAccess {
 
 The QML object is intentionally thin and reuses the same Runtime behavior as the C++ API.
 
-> **TODO:** complete the final installed-SDK examples and qualification required to promote the QML API from Preview.
+QML uses the same installed/deployed Shared Runtime contract as the other peer routes.
 
 ### QPA
 
@@ -93,7 +93,7 @@ QPA is different from a replacement-only `qvnc`/offscreen platform. `qhyremote` 
 
 Because QPA uses Qt private ABI, support is exact-version qualified. The current reference is Qt 6.8.3.
 
-> **TODO:** complete broader exact-version and physical local+remote qualification before promoting QPA from Preview.
+QPA is a peer route with an additional exact Qt/private-ABI qualification boundary; unsupported rows remain unsupported rather than being inferred.
 
 ## 3. One product Runtime
 
@@ -154,9 +154,7 @@ Combined payloads are allowed only when the selected integration semantics make 
 
 Applications should not manually copy internal HyRemote libraries/plugins or depend on source/build-tree runtime paths.
 
-## 6. Current product line — V0.2 LAN trial
-
-V0.1 is the first usable product slice. Its goal is to let a Qt developer integrate HyRemote and obtain a working remote-access path before the full production feature set is complete.
+## 6. Current product line
 
 Current reference environment:
 
@@ -165,8 +163,8 @@ Current reference environment:
 - Qt 6.8.3 reference SDK;
 - Widgets and Qt Quick target adapters;
 - RFB 3.8 correctness transport;
-- C++ API and Generic Plugin as the primary product paths;
-- QML API and QPA available as Preview paths.
+- C++ API, QML API, Generic Plugin, and QPA as peer product routes;
+- QPA additionally constrained by exact Qt/private-ABI qualification.
 
 ## 7. Security model
 
