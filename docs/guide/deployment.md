@@ -20,7 +20,7 @@ hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 
 `QML` 与 `QPA` 用于选择**可选载荷**：它们必须已经存在于所选的那份 HyRemote 构建/包中。它们不是构建开关——`hyremote_deploy()` 不会在应用配置阶段把一个只有 C++ 的 SDK 变成 QML/QPA SDK。请求了而实际不可用的可选载荷会在**配置阶段即失败**（fail-closed），而不是产出一个日后在运行期才失败的不完整部署。
 
-## V0.1 固定产物模型
+## 当前固定产物模型
 
 正常部署刻意保持简单：
 
@@ -63,7 +63,7 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 ## Generic Plugin 部署
 
-Generic Plugin 是四个 peer 前端之一，在 V0.1 中是**主要（primary）**接入面。它给普通 Qt 应用提供**零代码**接入：
+Generic Plugin 是四个 peer 前端之一。它给普通 Qt 应用提供**零代码**接入：
 应用不链接任何 HyRemote 目标，集成在运行期以 Qt generic plugin 的形式出现。
 
 ```cmake
