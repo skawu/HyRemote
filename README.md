@@ -202,7 +202,7 @@ HyRemote is delivered progressively:
 
 | Product line | Product promise |
 | --- | --- |
-| **V0.1 — Use It** | Developer Preview: C++ API + Generic Plugin as the primary paths |
+| **V0.1 — Use It** | Historical Developer Preview milestone that first productized C++ API + Generic Plugin |
 | **V0.2 — Trust It** | Security, authenticated sessions, and production network behavior |
 | **V0.3 — Productize It** | All four integrations fully packaged, deployed, documented, and taught |
 | **V0.4 — Qualify It** | Compatibility, real-world applications, performance and release-candidate qualification |
