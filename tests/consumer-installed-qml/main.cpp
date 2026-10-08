@@ -10,7 +10,9 @@
 #include <link.h>
 
 #include <filesystem>
+#include <iostream>
 #include <string>
+#include <vector>
 #endif
 
 namespace {
@@ -23,6 +25,7 @@ struct LoadedLibraryCheck
     bool sawQmlBacking = false;
     bool sawQt = false;
     bool escapedPrefix = false;
+    std::vector<std::string> escapedLibraries;
 };
 
 bool isWithin(const std::filesystem::path &path, const std::filesystem::path &prefix)
@@ -57,8 +60,10 @@ int inspectLoadedLibrary(dl_phdr_info *info, std::size_t, void *opaque)
     check.sawRemoteAccess = check.sawRemoteAccess || isRemoteAccess;
     check.sawQmlBacking = check.sawQmlBacking || isQmlBacking;
     check.sawQt = check.sawQt || isQt;
-    if (!isWithin(libraryPath, check.prefix))
+    if (!isWithin(libraryPath, check.prefix)) {
         check.escapedPrefix = true;
+        check.escapedLibraries.push_back(libraryPath.string());
+    }
     return 0;
 }
 
@@ -69,7 +74,18 @@ bool loadedProductLibrariesComeFromDeployment()
 
     LoadedLibraryCheck check{prefix};
     dl_iterate_phdr(&inspectLoadedLibrary, &check);
-    return check.sawRemoteAccess && check.sawQmlBacking && check.sawQt && !check.escapedPrefix;
+    const bool ok =
+        check.sawRemoteAccess && check.sawQmlBacking && check.sawQt && !check.escapedPrefix;
+    if (!ok) {
+        std::cerr << "HYREMOTE_QML_DEPLOY_ORIGIN_CHECK"
+                  << " remoteaccess=" << check.sawRemoteAccess
+                  << " qml_backing=" << check.sawQmlBacking
+                  << " qt=" << check.sawQt
+                  << " escaped=" << check.escapedPrefix << '\n';
+        for (const std::string &escaped : check.escapedLibraries)
+            std::cerr << "HYREMOTE_QML_ESCAPED_LIBRARY=" << escaped << '\n';
+    }
+    return ok;
 }
 #endif
 
