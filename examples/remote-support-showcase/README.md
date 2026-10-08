@@ -17,7 +17,7 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - A bounded in-memory Activity view records start/stop, viewer connect/disconnect, remote-input policy/restart actions and product-level errors. It keeps at most 100 lines and is not a persistent session audit database.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
 - The status panel shows whether HyRemoteTool is the active OS window. When remote input is enabled but the Tool is inactive, it displays the real application-scoped focus limitation from #362 and tells the local operator to reactivate this window; HyRemoteTool does not simulate desktop-wide focus stealing.
-- The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
+- The remote-control test workspace exposes a push button with visible activation feedback, checkbox, draggable slider, wheel-sensitive numeric field, editable single-line and multiline text, normal Tab/keyboard focus traversal, and live window-size feedback for resize validation. These are ordinary Qt controls; HyRemoteTool does not add a test-only input path.
 
 ## Security boundary
 
