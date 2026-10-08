@@ -17,6 +17,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStringList>
@@ -209,7 +210,7 @@ public:
         activityLayout->addWidget(m_activity);
         root->addWidget(activityBox);
 
-        auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
+        auto *workBox = new QGroupBox(QStringLiteral("Remote-control test workspace"), this);
         auto *workLayout = new QFormLayout(workBox);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
         auto *speed = new QSpinBox(workBox);
@@ -222,19 +223,34 @@ public:
         loadValue->setRange(0, 100);
         loadValue->setValue(load->value());
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
+        auto *commandButton = new QPushButton(QStringLiteral("Activate command"), workBox);
+        auto *commandResult = new QLabel(QStringLiteral("Not activated"), workBox);
+        m_workspaceSize = new QLabel(workBox);
         auto *notes = new QPlainTextEdit(workBox);
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
+        speed->setToolTip(QStringLiteral("Use the mouse wheel while this numeric field is focused."));
+        m_workspaceSize->setText(
+            QStringLiteral("%1 x %2").arg(width()).arg(height()));
 
         workLayout->addRow(QStringLiteral("Asset"), asset);
         workLayout->addRow(QStringLiteral("Command setpoint"), speed);
         workLayout->addRow(QStringLiteral("Process load"), load);
         workLayout->addRow(QStringLiteral("Load indicator"), loadValue);
         workLayout->addRow(QString(), maintenance);
+        workLayout->addRow(QStringLiteral("Push button"), commandButton);
+        workLayout->addRow(QStringLiteral("Button result"), commandResult);
+        workLayout->addRow(QStringLiteral("Window size"), m_workspaceSize);
         workLayout->addRow(QStringLiteral("Notes"), notes);
         root->addWidget(workBox, 1);
 
         QObject::connect(load, &QSlider::valueChanged, loadValue, &QProgressBar::setValue);
+        QObject::connect(commandButton, &QPushButton::clicked, this, [this, commandResult] {
+            ++m_commandActivationCount;
+            commandResult->setText(
+                QStringLiteral("Activated %1 time(s)").arg(m_commandActivationCount));
+            appendActivity(QStringLiteral("Workspace push button activated"));
+        });
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
             applyRemoteInputPolicy(enabled);
@@ -263,6 +279,17 @@ public:
         m_remote.stop();
     }
 
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        if (m_workspaceSize) {
+            m_workspaceSize->setText(
+                QStringLiteral("%1 x %2").arg(event->size().width()).arg(event->size().height()));
+        }
+    }
+
+public:
     bool startRemoteAccess()
     {
         appendActivity(QStringLiteral("Start remote access requested"));
@@ -429,6 +456,7 @@ private:
     HyRemote::RemoteAccess m_remote;
     quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
+    int m_commandActivationCount = 0;
     QString m_lastDiagnosticTrigger;
     QString m_lastActivityError = QStringLiteral("None");
     HyRemote::RemoteAccessState m_lastActivityState = HyRemote::RemoteAccessState::Stopped;
@@ -443,6 +471,7 @@ private:
     QLabel *m_focus = nullptr;
     QLabel *m_focusWarning = nullptr;
     QLabel *m_error = nullptr;
+    QLabel *m_workspaceSize = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
     QPushButton *m_startStop = nullptr;
