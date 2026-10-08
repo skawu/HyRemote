@@ -6,7 +6,7 @@ HyRemote is remote-access infrastructure. A working viewer connection does not b
 
 This page describes the **current product security behavior**. Capabilities that are not available yet are marked as TODO.
 
-## V0.1 security boundary
+## Current security boundary
 
 The released product has a truthful security boundary.
 
@@ -22,17 +22,17 @@ Default behavior:
 - requested security capabilities fail closed instead of silently downgrading;
 - secrets must not be written to normal diagnostics.
 
-Do not expose V0.1 directly to the public Internet.
+Do not expose the current product directly to the public Internet.
 
 ## Security profiles
 
 ### Insecure
 
-`Insecure` is the normal V0.1 development profile.
+`Insecure` is the default security profile.
 
 - no viewer authentication;
 - no stream encryption;
-- loopback is required;
+- listener scope follows the configured bind address (default `0.0.0.0:5921`);
 - remote input remains a separate opt-in policy.
 
 An `Insecure` listener is unauthenticated and unencrypted: it is for a trusted LAN only and is not Internet-safe.
@@ -62,21 +62,21 @@ AuthenticatedEncrypted
   -> no fallback to Insecure
 ```
 
-> **TODO V0.2:** encrypted transport, certificate/private-key policy, authenticated sessions, and production network policy.
+> **Unavailable today:** encrypted transport / `AuthenticatedEncrypted`; it fails closed until a real encrypted backend is shipped. Session-registry/IAM capabilities remain outside the current product contract.
 
 ## Security capability matrix
 
-| Capability | V0.1 status |
+| Capability | Current status |
 | --- | --- |
 | LAN-capable default (`0.0.0.0:5921`) | **Available** |
 | Remote input off by default | **Available** |
 | Truthful unauthenticated/unencrypted state | **Available** |
 | `Authenticated` API/configuration surface | **Available** |
 | RFB VNC authentication | **Conditional: transport-security-enabled build + valid descriptor** |
-| Default V0.1 build includes authenticated transport | **No** |
+| Every build/package includes authenticated transport | **No** |
 | `AuthenticatedEncrypted` | **Unavailable; fail-closed** |
-| Stream encryption | **TODO V0.2** |
-| Authenticated session registry/admission | **TODO V0.2** |
+| Stream encryption | **Unavailable in the current product** |
+| Authenticated session registry/admission | **Not part of the current product contract** |
 
 ## Remote viewing versus remote control
 
@@ -84,7 +84,7 @@ Remote viewing and remote input are separate policies. View-only mode is not a s
 
 ## Listener exposure
 
-The safest/default V0.1 listener is:
+The default listener is:
 
 ```text
 0.0.0.0:5921
