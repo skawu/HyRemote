@@ -90,6 +90,12 @@ function(hyremote_apply_root_semantic_test_labels)
     hyremote_label_test_family("consumer;generic;installed"
         hyremote-generic-installed-consumers
     )
+    hyremote_label_test_family("consumer;qml;installed"
+        hyremote-qml-installed-consumer
+    )
+    hyremote_label_test_family("consumer;qpa;installed"
+        hyremote-qpa-installed-product-fit
+    )
 
     hyremote_label_test_family("e2e;cpp;e2e"
         hyremote-v01-example-smoke
