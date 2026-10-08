@@ -309,10 +309,13 @@ public:
             return false;
         }
         // Preserve the pre-start observed count so refreshStatus() can record a viewer that
-        // connected while the listener was becoming ready.
+        // connected while the listener was becoming ready. Emit the explicit startup count only
+        // when refreshStatus() did not already publish a real client-count transition.
+        const std::size_t observedBeforeStart = m_lastReportedClientCount;
         refreshStatus();
         std::cout << "REMOTE_STARTED " << m_port << std::endl;
-        std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
+        if (m_lastReportedClientCount == observedBeforeStart)
+            std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
         return true;
     }
 
