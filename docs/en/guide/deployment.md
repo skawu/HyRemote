@@ -43,7 +43,7 @@ Applications should not locate `HyRemoteRemoteAccess.dll` or `libHyRemoteRemoteA
 
 ## Generic Plugin deployment
 
-Generic Plugin is the primary V0.1 zero-code route. The application remains Qt-only:
+Generic Plugin is a peer zero-code route. The application remains Qt-only:
 
 ```cmake
 target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
@@ -76,7 +76,7 @@ QT_QPA_GENERIC_PLUGINS=hyremote
 
 See [`../getting-started/generic.md`](../getting-started/generic.md).
 
-## QML API deployment — Preview
+## QML API deployment
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
@@ -89,9 +89,8 @@ QML deployment adds the `HyRemote` import module and reuses the same Shared Runt
 
 If the selected SDK does not contain the QML payload, configuration fails instead of producing an incomplete package that cannot resolve `import HyRemote`.
 
-> **TODO:** complete the final installed-SDK example and product qualification before promoting QML API from Preview.
 
-## QPA deployment — Preview
+## QPA deployment
 
 The application remains Qt-only at the source/link layer:
 
