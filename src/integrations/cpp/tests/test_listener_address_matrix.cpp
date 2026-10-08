@@ -27,6 +27,23 @@ int failures = 0;
         }                                                                                          \
     } while (false)
 
+void checkFailedDiagnosticReport(const HyRemote::RemoteAccess &remote)
+{
+    const QString report = remote.diagnosticReport();
+    CHECK(report.contains(QStringLiteral("INTEGRATION_ROUTE=cpp\n")));
+    CHECK(report.contains(QStringLiteral("UI_FAMILY=widgets\n")));
+    CHECK(report.contains(QStringLiteral("STATE=Stopped\n")));
+    CHECK(report.contains(QStringLiteral("LISTENER_EFFECTIVE=none\n")));
+    const QString errorCode =
+        report.section(QStringLiteral("LAST_ERROR_CODE="), 1, 1).section(QLatin1Char('\n'), 0, 0);
+    const QString errorMessage =
+        report.section(QStringLiteral("LAST_ERROR_MESSAGE="), 1, 1).section(QLatin1Char('\n'), 0, 0);
+    CHECK(!errorCode.isEmpty());
+    CHECK(errorCode != QStringLiteral("none"));
+    CHECK(!errorMessage.isEmpty());
+    CHECK(errorMessage != QStringLiteral("none"));
+}
+
 class PortProbe
 {
 public:
@@ -97,6 +114,7 @@ void testOccupiedPortFailsBeforeRunning()
         CHECK(!error->message.isEmpty());
         std::cout << "occupied-port error code=" << static_cast<int>(error->code) << '\n';
     }
+    checkFailedDiagnosticReport(remote);
 
     probe.release();
 }
@@ -124,6 +142,7 @@ void testUnavailableAddressFailsBeforeRunning()
         std::cout << "unavailable-address error code=" << static_cast<int>(error->code)
                   << " message=" << error->message.toStdString() << '\n';
     }
+    checkFailedDiagnosticReport(remote);
 }
 
 void testIpv6IsRejectedAndNeverFallsBack()
@@ -137,6 +156,8 @@ void testIpv6IsRejectedAndNeverFallsBack()
         CHECK(remote.lastError().has_value());
         if (remote.lastError())
             CHECK(remote.lastError()->code == HyRemote::RemoteAccessErrorCode::InvalidConfiguration);
+        checkFailedDiagnosticReport(remote);
+        CHECK(remote.diagnosticReport().contains(QStringLiteral("LAST_ERROR_CODE=InvalidConfiguration\n")));
         CHECK(remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4));
         std::cout << "row ipv6-rejected (" << ipv6 << ") refused=1\n";
     }
