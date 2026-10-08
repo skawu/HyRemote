@@ -11,6 +11,7 @@
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
+#include <QNetworkInterface>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -48,6 +49,40 @@ int readPositiveInt(const QCommandLineParser &parser,
     bool ok = false;
     const int value = parser.value(option).toInt(&ok);
     return ok && value > 0 ? value : fallback;
+}
+
+QString diagnosticValue(const QString &report, const QString &key)
+{
+    const QString prefix = key + QLatin1Char('=');
+    for (const QString &line : report.split(QLatin1Char('\n'))) {
+        if (line.startsWith(prefix))
+            return line.mid(prefix.size());
+    }
+    return QStringLiteral("unknown");
+}
+
+QStringList viewerEndpoints(quint16 port)
+{
+    QStringList endpoints;
+    for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
+        const auto flags = interface.flags();
+        if (!flags.testFlag(QNetworkInterface::IsUp)
+            || !flags.testFlag(QNetworkInterface::IsRunning))
+            continue;
+
+        for (const QNetworkAddressEntry &entry : interface.addressEntries()) {
+            const QHostAddress address = entry.ip();
+            if (address.protocol() != QAbstractSocket::IPv4Protocol || address.isLoopback()
+                || address.isLinkLocal() || address.isNull())
+                continue;
+
+            const QString endpoint = QStringLiteral("%1:%2").arg(address.toString()).arg(port);
+            if (!endpoints.contains(endpoint))
+                endpoints.push_back(endpoint);
+        }
+    }
+    endpoints.sort(Qt::CaseInsensitive);
+    return endpoints;
 }
 
 class SupportWindow final : public QWidget
