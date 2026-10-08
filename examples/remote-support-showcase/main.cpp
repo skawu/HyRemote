@@ -266,7 +266,7 @@ private:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Remote Support Showcase"));
+    QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Production-like HyRemote local + remote support workflow"));
