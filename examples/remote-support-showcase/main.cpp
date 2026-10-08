@@ -214,6 +214,11 @@ public:
         std::cout << "REMOTE_STOPPED" << std::endl;
     }
 
+    QString diagnosticReport() const
+    {
+        return m_remote.diagnosticReport();
+    }
+
 private:
     void toggleRemoteAccess()
     {
@@ -310,6 +315,8 @@ int main(int argc, char **argv)
                                    QStringLiteral("Enable remote input when remote access starts."));
     QCommandLineOption autoStartOption(QStringLiteral("auto-start"),
                                        QStringLiteral("Explicit test/acceptance helper: start after the local window is shown."));
+    QCommandLineOption diagnosticOption(QStringLiteral("diagnostic-report"),
+                                        QStringLiteral("Print the bounded Shared Runtime diagnostic report after initial setup."));
     QCommandLineOption secondsOption(QStringLiteral("test-seconds"),
                                      QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
                                      QStringLiteral("seconds"),
@@ -317,6 +324,7 @@ int main(int argc, char **argv)
     parser.addOption(portOption);
     parser.addOption(inputOption);
     parser.addOption(autoStartOption);
+    parser.addOption(diagnosticOption);
     parser.addOption(secondsOption);
     parser.process(app);
 
@@ -330,11 +338,16 @@ int main(int argc, char **argv)
     SupportWindow window(static_cast<quint16>(parsedPort), parser.isSet(inputOption));
     window.show();
 
-    if (parser.isSet(autoStartOption)) {
-        QTimer::singleShot(0, &window, [&window] {
-            if (!window.startRemoteAccess())
-                std::cerr << "START_FAILED" << std::endl;
-        });
+    if (parser.isSet(autoStartOption) || parser.isSet(diagnosticOption)) {
+        QTimer::singleShot(
+            0,
+            &window,
+            [&window, &parser, &autoStartOption, &diagnosticOption] {
+                if (parser.isSet(autoStartOption) && !window.startRemoteAccess())
+                    std::cerr << "START_FAILED" << std::endl;
+                if (parser.isSet(diagnosticOption))
+                    std::cout << window.diagnosticReport().toStdString();
+            });
     }
 
     if (testSeconds > 0)
