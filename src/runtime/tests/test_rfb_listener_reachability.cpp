@@ -164,11 +164,23 @@ void testInterfaceFollowing()
     *liveAddresses = QStringList{QStringLiteral("127.0.0.1")};
     CHECK(instance.start());
     CHECK(instance.state() == AccessState::Running);
+    {
+        const auto diagnostics = instance.diagnosticSnapshot();
+        CHECK(diagnostics.effectiveListenAddress.has_value());
+        CHECK(diagnostics.effectiveListenAddress == QHostAddress(QStringLiteral("127.0.0.1")));
+        CHECK(diagnostics.effectivePort == port);
+    }
     CHECK(dials("127.0.0.1", port));
 
     *liveAddresses = QStringList{QStringLiteral("127.0.0.2")};
     instance.reconcileInterfaceBinding();
     CHECK(instance.state() == AccessState::Running);
+    {
+        const auto diagnostics = instance.diagnosticSnapshot();
+        CHECK(diagnostics.effectiveListenAddress.has_value());
+        CHECK(diagnostics.effectiveListenAddress == QHostAddress(QStringLiteral("127.0.0.2")));
+        CHECK(diagnostics.effectivePort == port);
+    }
     CHECK(dials("127.0.0.2", port));
     CHECK(!dials("127.0.0.1", port));
     CHECK(instance.listenInterface() == identity);
@@ -176,6 +188,12 @@ void testInterfaceFollowing()
     liveAddresses->clear();
     instance.reconcileInterfaceBinding();
     CHECK(instance.state() == AccessState::Unavailable);
+    {
+        const auto diagnostics = instance.diagnosticSnapshot();
+        CHECK(!diagnostics.effectiveListenAddress.has_value());
+        CHECK(!diagnostics.effectivePort.has_value());
+        CHECK(diagnostics.lastError.has_value());
+    }
     CHECK(!dials("127.0.0.1", port));
     CHECK(!dials("127.0.0.2", port));
     CHECK(instance.lastError().has_value());
@@ -190,11 +208,22 @@ void testInterfaceFollowing()
     *liveAddresses = QStringList{QStringLiteral("127.0.0.2")};
     instance.reconcileInterfaceBinding();
     CHECK(instance.state() == AccessState::Running);
+    {
+        const auto diagnostics = instance.diagnosticSnapshot();
+        CHECK(diagnostics.effectiveListenAddress == QHostAddress(QStringLiteral("127.0.0.2")));
+        CHECK(diagnostics.effectivePort == port);
+        CHECK(!diagnostics.lastError.has_value());
+    }
     CHECK(dials("127.0.0.2", port));
     CHECK(!instance.lastError().has_value());
 
     instance.stop();
     CHECK(instance.state() == AccessState::Stopped);
+    {
+        const auto diagnostics = instance.diagnosticSnapshot();
+        CHECK(!diagnostics.effectiveListenAddress.has_value());
+        CHECK(!diagnostics.effectivePort.has_value());
+    }
     *liveAddresses = QStringList{QStringLiteral("127.0.0.1")};
     instance.reconcileInterfaceBinding();
     CHECK(instance.state() == AccessState::Stopped);
