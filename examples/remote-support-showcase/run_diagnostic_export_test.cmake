@@ -56,3 +56,13 @@ string(FIND "${_stdout}" "DIAGNOSTIC_SAVED " _saved_marker)
 if(_saved_marker EQUAL -1)
     message(FATAL_ERROR "HyRemoteTool did not confirm diagnostic export:\n${_stdout}")
 endif()
+
+foreach(_required_activity IN ITEMS
+        "TOOL_ACTIVITY Tool ready"
+        "TOOL_ACTIVITY Runtime state: Stopped"
+        "TOOL_ACTIVITY Remote input: disabled")
+    string(FIND "${_stdout}" "${_required_activity}" _activity_hit)
+    if(_activity_hit EQUAL -1)
+        message(FATAL_ERROR "HyRemoteTool activity log is missing ${_required_activity}:\n${_stdout}")
+    endif()
+endforeach()
