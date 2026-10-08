@@ -357,7 +357,7 @@ jobs:
           SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
           TOOL_PRODUCT_FIT_EVIDENCE: ${{ needs.classify.outputs.tool_product_fit_evidence }}
         run: |
-          for /f "usebackq tokens=*"  %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "SECURITY_ARG="
           if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
@@ -377,7 +377,7 @@ jobs:
           SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
           TOOL_PRODUCT_FIT_EVIDENCE: ${{ needs.classify.outputs.tool_product_fit_evidence }}
         run: |
-          for /f "usebackq tokens=*"  %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "SECURITY_ARG="
           if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
