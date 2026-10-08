@@ -59,6 +59,7 @@ jobs:
       qpa_evidence: ${{ steps.scope.outputs.qpa_evidence }}
       readiness_evidence: ${{ steps.scope.outputs.readiness_evidence }}
       rfb_product_fit_evidence: ${{ steps.scope.outputs.rfb_product_fit_evidence }}
+      tool_product_fit_evidence: ${{ steps.scope.outputs.tool_product_fit_evidence }}
       governance: ${{ steps.scope.outputs.governance }}
       security_evidence: ${{ steps.scope.outputs.security_evidence }}
       test_exclude: ${{ steps.scope.outputs.test_exclude }}
@@ -318,6 +319,7 @@ jobs:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
           SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
+          TOOL_PRODUCT_FIT_EVIDENCE: ${{ needs.classify.outputs.tool_product_fit_evidence }}
         run: |
           set -euo pipefail
           # Ordinary builds stay security-off. Only a diff that can invalidate the VNC-auth/private-security path
@@ -327,12 +329,16 @@ jobs:
           if [[ "$SECURITY_EVIDENCE" == "true" ]]; then
             security_args+=(--security "--cmake=OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR}")
           fi
+          examples_arg=--no-examples
+          if [[ "$TOOL_PRODUCT_FIT_EVIDENCE" == "true" ]]; then
+            examples_arg=--examples
+          fi
           sh ./build.cmd build \
             --integrations="$INTEGRATIONS" \
             --qt-prefix="$QT_PREFIX" \
             --build-type=Release \
             --build-dir=build-ci \
-            --tests --run-tests --no-examples \
+            --tests --run-tests "$examples_arg" \
             --test-exclude="$TEST_EXCLUDE" \
             --xvfb -j4 \
             --env=QT_QUICK_BACKEND=software \
@@ -345,12 +351,15 @@ jobs:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
           TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
           SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
+          TOOL_PRODUCT_FIT_EVIDENCE: ${{ needs.classify.outputs.tool_product_fit_evidence }}
         run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          for /f "usebackq tokens=*"  %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "SECURITY_ARG="
           if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
-          call build.cmd build --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" %SECURITY_ARG% -j4
+          set "EXAMPLES_ARG=--no-examples"
+          if "%TOOL_PRODUCT_FIT_EVIDENCE%"=="true" set "EXAMPLES_ARG=--examples"
+          call build.cmd build --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --run-tests %EXAMPLES_ARG% "--test-exclude=%TEST_EXCLUDE%" %SECURITY_ARG% -j4
 
       # The lane proves the deployment path, not only the build path: the same canonical entry point runs one bounded
       # install that reuses the build tree the step above produced, so nothing is recompiled and the run states the
@@ -362,12 +371,15 @@ jobs:
         env:
           INTEGRATIONS: ${{ needs.classify.outputs.integrations }}
           SECURITY_EVIDENCE: ${{ needs.classify.outputs.security_evidence }}
+          TOOL_PRODUCT_FIT_EVIDENCE: ${{ needs.classify.outputs.tool_product_fit_evidence }}
         run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          for /f "usebackq tokens=*"  %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           set "SECURITY_ARG="
           if "%SECURITY_EVIDENCE%"=="true" set "SECURITY_ARG=--security --cmake=OPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR%"
-          call build.cmd install --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests --no-examples %SECURITY_ARG% -j4
+          set "EXAMPLES_ARG=--no-examples"
+          if "%TOOL_PRODUCT_FIT_EVIDENCE%"=="true" set "EXAMPLES_ARG=--examples"
+          call build.cmd install --integrations="%INTEGRATIONS%" --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-ci --tests %EXAMPLES_ARG% %SECURITY_ARG% -j4
 
       - name: Test evidence summary
         if: always()
