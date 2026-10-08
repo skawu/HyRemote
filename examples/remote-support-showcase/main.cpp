@@ -308,7 +308,8 @@ public:
             appendActivity(QStringLiteral("Start failed"));
             return false;
         }
-        m_lastReportedClientCount = m_remote.connectedClientCount();
+        // Preserve the pre-start observed count so refreshStatus() can record a viewer that
+        // connected while the listener was becoming ready.
         refreshStatus();
         std::cout << "REMOTE_STARTED " << m_port << std::endl;
         std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
@@ -351,8 +352,8 @@ private:
         if (wasRunning) {
             appendActivity(QStringLiteral("Applying remote input policy; restarting remote access"));
             m_remote.stop();
-            // Observe the stopped/client-zero facts before startRemoteAccess() resets its baseline,
-            // otherwise a policy restart can hide the forced viewer disconnect from Activity.
+            // Observe the stopped/client-zero facts before restarting, otherwise a policy
+            // restart can hide the forced viewer disconnect from Activity.
             refreshStatus();
         }
 
