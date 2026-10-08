@@ -1,6 +1,6 @@
-# HyRemote remote support showcase
+# HyRemoteTool
 
-This example demonstrates the V1.0 production-facing remote-support workflow through the public `HyRemote::RemoteAccess` facade only.
+HyRemoteTool is HyRemote's first-party host-side product experience and validation application. The source directory remains `examples/remote-support-showcase` as an implementation detail, but the installed/runnable product name is **HyRemoteTool**. It uses only the public `HyRemote::RemoteAccess` facade.
 
 ## Product behavior
 
