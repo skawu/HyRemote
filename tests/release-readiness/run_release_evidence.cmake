@@ -44,6 +44,7 @@ endif()
 set(all_cells
     clean-install
     installed-sdk
+    installed-hyremote-tool
     installed-qml
     installed-qml-qpa
     installed-qpa-product-fit
@@ -528,6 +529,56 @@ if("installed-sdk" IN_LIST EVIDENCE_CELLS)
         else()
             record("${cell}" "EXECUTABLE" "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-consumer")
             fail_cell("${cell}" "deployed installed consumer did not run")
+        endif()
+    endif()
+endif()
+
+if("installed-hyremote-tool" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-hyremote-tool")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "HyRemoteTool canonical installed artifact")
+    set(_tool_exe "${INSTALL_PREFIX}/bin/hyremote-tool")
+    if(WIN32)
+        set(_tool_exe "${_tool_exe}.exe")
+    endif()
+    record("${cell}" "EXECUTABLE" "${_tool_exe}")
+
+    if(NOT EXISTS "${_tool_exe}")
+        fail_cell("${cell}" "canonical install tree does not contain HyRemoteTool: ${_tool_exe}")
+    else()
+        record_runtime_isolation("${cell}" "${INSTALL_PREFIX}")
+        if(NOT "${FAILED_CELLS}" MATCHES "${cell}")
+            set(_path "${INSTALL_PREFIX}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+            set(_report "${RUN_DIR}/${cell}/hyremote-tool-diagnostic.txt")
+            record_runtime_env("${cell}" "${_path}")
+            run_capture("${cell}" "run_tool" "${_path}"
+                "${CMAKE_COMMAND}" -E env
+                    "QT_QPA_PLATFORM=offscreen"
+                    "${_tool_exe}"
+                    --diagnostic-report-file "${_report}"
+                    --test-seconds 1)
+            if(NOT ${cell}_result EQUAL 0)
+                fail_cell("${cell}" "installed HyRemoteTool did not start and exit successfully")
+            elseif(NOT EXISTS "${_report}")
+                fail_cell("${cell}" "installed HyRemoteTool did not export its diagnostic report")
+            else()
+                file(READ "${_report}" _tool_report)
+                foreach(_required_tool_fact IN ITEMS
+                        "INTEGRATION_ROUTE=cpp"
+                        "STATE=Stopped"
+                        "REMOTE_INPUT=false")
+                    string(FIND "${_tool_report}" "${_required_tool_fact}" _tool_fact_hit)
+                    if(_tool_fact_hit EQUAL -1)
+                        fail_cell("${cell}"
+                            "installed HyRemoteTool diagnostic report is missing ${_required_tool_fact}")
+                        break()
+                    endif()
+                endforeach()
+                if(NOT "${FAILED_CELLS}" MATCHES "${cell}")
+                    record("${cell}" "RESULT_DETAIL"
+                        "canonical installed HyRemoteTool started from the clean prefix and exported public diagnostics")
+                    record("${cell}" "RESULT" "PASS")
+                endif()
+            endif()
         endif()
     endif()
 endif()
