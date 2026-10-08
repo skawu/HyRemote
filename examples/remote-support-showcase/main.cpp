@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFormLayout>
@@ -122,6 +123,18 @@ public:
         remoteLayout->addWidget(security);
         root->addWidget(remoteBox);
 
+        auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), this);
+        auto *diagnosticsLayout = new QVBoxLayout(diagnosticsBox);
+        m_diagnostics = new QPlainTextEdit(diagnosticsBox);
+        m_diagnostics->setReadOnly(true);
+        m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
+        m_diagnostics->setMaximumBlockCount(64);
+        m_diagnostics->setMinimumHeight(150);
+        diagnosticsLayout->addWidget(m_diagnostics);
+        auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy diagnostic report"), diagnosticsBox);
+        diagnosticsLayout->addWidget(copyDiagnostics, 0, Qt::AlignLeft);
+        root->addWidget(diagnosticsBox);
+
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
         auto *workLayout = new QFormLayout(workBox);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
@@ -151,6 +164,9 @@ public:
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
             applyRemoteInputPolicy(enabled);
+        });
+        QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
+            QApplication::clipboard()->setText(m_remote.diagnosticReport());
         });
 
         auto *timer = new QTimer(this);
@@ -247,6 +263,10 @@ private:
             m_error->setText(error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message);
         else
             m_error->setText(QStringLiteral("None"));
+
+        const QString report = m_remote.diagnosticReport();
+        if (m_diagnostics->toPlainText() != report)
+            m_diagnostics->setPlainText(report);
     }
 
     HyRemote::RemoteAccess m_remote;
@@ -257,6 +277,7 @@ private:
     QLabel *m_clients = nullptr;
     QLabel *m_policy = nullptr;
     QLabel *m_error = nullptr;
+    QPlainTextEdit *m_diagnostics = nullptr;
     QPushButton *m_startStop = nullptr;
     QCheckBox *m_input = nullptr;
 };
