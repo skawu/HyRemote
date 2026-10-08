@@ -251,13 +251,17 @@ jobs:
       # resolves from PATH for the test command. Without that, a Windows runner can install into one interpreter and
       # run the test with another, which shows up as a viewer that is "installed" but cannot be imported.
       - name: Set up the candidate product-fit interpreter
-        if: needs.classify.outputs.rfb_product_fit_evidence == 'true'
+        if: >-
+          needs.classify.outputs.rfb_product_fit_evidence == 'true' ||
+          needs.classify.outputs.tool_product_fit_evidence == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install candidate product-fit viewer tooling
-        if: needs.classify.outputs.rfb_product_fit_evidence == 'true'
+        if: >-
+          needs.classify.outputs.rfb_product_fit_evidence == 'true' ||
+          needs.classify.outputs.tool_product_fit_evidence == 'true'
         shell: bash
         run: |
           set -euo pipefail
