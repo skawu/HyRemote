@@ -351,6 +351,9 @@ private:
         if (wasRunning) {
             appendActivity(QStringLiteral("Applying remote input policy; restarting remote access"));
             m_remote.stop();
+            // Observe the stopped/client-zero facts before startRemoteAccess() resets its baseline,
+            // otherwise a policy restart can hide the forced viewer disconnect from Activity.
+            refreshStatus();
         }
 
         if (!m_remote.setRemoteInputEnabled(enabled)) {
