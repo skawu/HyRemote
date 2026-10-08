@@ -41,6 +41,6 @@ The hosted product-fit uses a standard viewer to require the observable client-c
 
 ## Agent-assisted physical pointer acceptance
 
-For the maintained-Viewer #400 pointer gate, use `tests/physical_input_agent.py` with the exact candidate SHA and the executable built from that same clean checkout. The Agent verifies identity, launches this normal public-API showcase, observes its Qt event trace and writes the evidence bundle; the Human performs the requested RealVNC and local physical actions and confirms visible behavior.
+For the maintained-Viewer #400 pointer gate, use `tests/physical_input_agent.py` with the exact candidate SHA and the executable built from that same clean checkout. The Agent verifies identity, launches this normal public-API HyRemoteTool application, observes its Qt event trace and writes the evidence bundle; the Human performs the requested RealVNC and local physical actions and confirms visible behavior.
 
 See `docs/internal/q400-physical-input-acceptance.md` for the bounded procedure and scope. A generated Agent trace alone is not physical acceptance, and a remote transient popup visibility problem remains #404 rather than being folded into the #400 pointer ingress gate.
