@@ -82,7 +82,7 @@ route additionally requires Qt to match exactly. Use them when your situation ac
   declarative API;
 - [`examples/qpa-proxy-existing-app`](qpa-proxy-existing-app) and
   [`docs/getting-started/qpa-proxy.md`](../docs/getting-started/qpa-proxy.md) - the platform-level route;
-- [`examples/remote-support-showcase`](remote-support-showcase) - a wider operator-workflow sample over the C++ API.
+- **HyRemoteTool** ([source directory](remote-support-showcase)) - the first-party host-side product experience and validation application over the public C++ API.
 
 No route is more primary than another.
 

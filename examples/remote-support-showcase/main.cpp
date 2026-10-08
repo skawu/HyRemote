@@ -57,7 +57,7 @@ public:
         , m_remote(this)
         , m_port(port)
     {
-        setWindowTitle(QStringLiteral("HyRemote Remote Support Showcase"));
+        setWindowTitle(QStringLiteral("HyRemoteTool"));
         resize(780, 580);
 
         m_remote.setPort(port);
@@ -65,7 +65,7 @@ public:
 
         auto *root = new QVBoxLayout(this);
 
-        auto *heading = new QLabel(QStringLiteral("HyRemote · Remote Support Showcase"), this);
+        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), this);
         QFont headingFont = heading->font();
         headingFont.setPointSize(16);
         headingFont.setBold(true);
@@ -266,10 +266,10 @@ private:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Remote Support Showcase"));
+    QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Production-like HyRemote local + remote support workflow"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote host-side product experience and validation tool"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Listener port the viewer connects to."),

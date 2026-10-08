@@ -8,6 +8,7 @@ add_executable(hyremote-remote-support-showcase
     ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
+set_target_properties(hyremote-remote-support-showcase PROPERTIES OUTPUT_NAME hyremote-tool)
 
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
 target_link_libraries(hyremote-remote-support-showcase

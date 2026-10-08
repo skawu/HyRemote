@@ -230,7 +230,7 @@ def main() -> int:
     )
     parser.add_argument("--expected-sha", required=True, help="exact candidate commit (full SHA or resolvable ref)")
     parser.add_argument("--viewer", required=True, help='viewer identity/version, e.g. "RealVNC Viewer 7.13.0"')
-    parser.add_argument("--showcase", required=True, type=Path, help="built hyremote-remote-support-showcase executable")
+    parser.add_argument("--showcase", required=True, type=Path, help="built HyRemoteTool (hyremote-tool) executable")
     parser.add_argument("--port", type=int, default=5921)
     parser.add_argument("--evidence-dir", type=Path, default=Path("physical-evidence-q400"))
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds allowed for each Human action")
