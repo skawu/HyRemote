@@ -120,14 +120,22 @@ public:
 
         auto *statusForm = new QFormLayout;
         m_state = new QLabel(remoteBox);
-        m_endpoint = new QLabel(QStringLiteral("0.0.0.0:%1 (this host's IPv4 interfaces; trusted LAN only)").arg(port), remoteBox);
+        m_configuredListener = new QLabel(remoteBox);
+        m_endpoint = new QLabel(remoteBox);
+        m_viewerEndpoints = new QLabel(remoteBox);
+        m_viewerEndpoints->setWordWrap(true);
+        m_viewerEndpoints->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_connection = new QLabel(remoteBox);
         m_clients = new QLabel(QStringLiteral("0"), remoteBox);
         m_policy = new QLabel(remoteBox);
         m_focus = new QLabel(remoteBox);
         m_error = new QLabel(QStringLiteral("None"), remoteBox);
         m_error->setWordWrap(true);
         statusForm->addRow(QStringLiteral("State"), m_state);
-        statusForm->addRow(QStringLiteral("Listener"), m_endpoint);
+        statusForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
+        statusForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
+        statusForm->addRow(QStringLiteral("Viewer endpoints"), m_viewerEndpoints);
+        statusForm->addRow(QStringLiteral("Connection"), m_connection);
         statusForm->addRow(QStringLiteral("Connected clients"), m_clients);
         statusForm->addRow(QStringLiteral("Policy"), m_policy);
         statusForm->addRow(QStringLiteral("Target window"), m_focus);
@@ -142,6 +150,14 @@ public:
         actions->addWidget(m_input);
         actions->addStretch(1);
         remoteLayout->addLayout(actions);
+
+        auto *connectionActions = new QHBoxLayout;
+        auto *refreshEndpoints = new QPushButton(QStringLiteral("Refresh viewer endpoints"), remoteBox);
+        m_copyEndpoints = new QPushButton(QStringLiteral("Copy viewer endpoints"), remoteBox);
+        connectionActions->addWidget(refreshEndpoints);
+        connectionActions->addWidget(m_copyEndpoints);
+        connectionActions->addStretch(1);
+        remoteLayout->addLayout(connectionActions);
 
         auto *policyNote = new QLabel(
             QStringLiteral("Changing remote-control policy while running performs an explicit "
@@ -211,6 +227,12 @@ public:
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
             applyRemoteInputPolicy(enabled);
         });
+        QObject::connect(refreshEndpoints, &QPushButton::clicked, this, [this] {
+            refreshViewerEndpoints();
+        });
+        QObject::connect(m_copyEndpoints, &QPushButton::clicked, this, [this] {
+            QApplication::clipboard()->setText(m_viewerEndpointList.join(QLatin1Char('\n')));
+        });
         QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
         });
@@ -220,6 +242,7 @@ public:
         timer->setTimerType(Qt::CoarseTimer);
         QObject::connect(timer, &QTimer::timeout, this, [this] { refreshStatus(); });
         timer->start();
+        refreshViewerEndpoints();
         refreshStatus();
     }
 
