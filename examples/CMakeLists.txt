@@ -54,7 +54,7 @@ endif()
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
     add_subdirectory(remote-support-showcase)
 else()
-    message(STATUS "  remote-support-showcase example skipped: Widgets adapter/Qt Widgets unavailable")
+    message(STATUS "  HyRemoteTool skipped: Widgets adapter/Qt Widgets unavailable")
 endif()
 
 if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml AND TARGET Qt6::Qml AND TARGET Qt6::Quick)
