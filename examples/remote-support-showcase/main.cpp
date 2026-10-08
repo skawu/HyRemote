@@ -379,11 +379,13 @@ private:
             const std::size_t previousClientCount = m_lastReportedClientCount;
             m_lastReportedClientCount = clientCount;
             if (clientCount > previousClientCount)
-                appendActivity(QStringLiteral("Viewer connected (%1 client(s))").arg(clientCount));
+                appendActivity(QStringLiteral("Viewer connected (%1 client(s))")
+                                   .arg(static_cast<qulonglong>(clientCount)));
             else if (clientCount == 0)
                 appendActivity(QStringLiteral("Viewer disconnected"));
             else
-                appendActivity(QStringLiteral("Viewer count changed to %1").arg(clientCount));
+                appendActivity(QStringLiteral("Viewer count changed to %1")
+                                   .arg(static_cast<qulonglong>(clientCount)));
             std::cout << "SHOWCASE_CLIENTS " << clientCount << std::endl;
         }
 
