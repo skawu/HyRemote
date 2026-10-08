@@ -270,6 +270,10 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     cpp_evidence = evidence_for((
         "src/integrations/cpp/", "tests/consumer-installed-sdk/", "tests/consumer-installed-cpp/",
     ))
+    tool_evidence = evidence_for((
+        "examples/remote-support-showcase/",
+        "tests/product-e2e/showcase_product_fit.py",
+    ))
 
     # The full gate always runs readiness. A ready pull request runs it only when the change can invalidate it.
     readiness_evidence = full_gate or any(
@@ -310,6 +314,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     if not qpa_evidence:
         excluded.append("hyremote-qpa-deploy-helper-")
         excluded.append("hyremote-qpa-installed-product-fit$")
+    if not tool_evidence:
+        excluded.append("hyremote-tool-installed-smoke$")
     if not rfb_product_fit_evidence:
         excluded.append(RFB_PRODUCT_FIT_TEST)
     # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
@@ -490,7 +496,8 @@ def self_test() -> int:
         print("CASE FAILED: fast lane must still exclude unrelated clean-consumer sub-builds")
         failures += 1
     for expected in ("hyremote-generic-installed-consumers$", "hyremote-cpp-installed-consumers$",
-                     "hyremote-qml-deploy-helper-", "hyremote-qpa-deploy-helper-"):
+                     "hyremote-qml-deploy-helper-", "hyremote-qpa-deploy-helper-",
+                     "hyremote-tool-installed-smoke$"):
         if expected not in fast["test_exclude"]:
             print(f"CASE FAILED: fast PR must exclude the sub-build it cannot affect: {expected}")
             failures += 1
@@ -498,6 +505,19 @@ def self_test() -> int:
     cpp_only = resolve("pull_request", ["src/integrations/cpp/cpp_remote_access.cpp"])
     if "hyremote-cpp-installed-consumers$" in cpp_only["test_exclude"]:
         print("CASE FAILED: a C++ PR must keep its own clean consumer evidence")
+        failures += 1
+
+    tool_change = resolve("pull_request", ["examples/remote-support-showcase/main.cpp"])
+    if "hyremote-tool-installed-smoke$" in tool_change["test_exclude"]:
+        print("CASE FAILED: a HyRemoteTool PR must keep installed Tool evidence")
+        failures += 1
+    tool_harness = resolve("pull_request", ["tests/product-e2e/showcase_product_fit.py"])
+    if "hyremote-tool-installed-smoke$" in tool_harness["test_exclude"]:
+        print("CASE FAILED: the HyRemoteTool product-fit harness must keep installed Tool evidence")
+        failures += 1
+    full_gate_tool = resolve("workflow_dispatch", [])
+    if "hyremote-tool-installed-smoke$" in full_gate_tool["test_exclude"]:
+        print("CASE FAILED: the full gate must keep installed HyRemoteTool evidence")
         failures += 1
 
     # The candidate product fit is candidate acceptance evidence: the exact-candidate full gate requires it, the change
