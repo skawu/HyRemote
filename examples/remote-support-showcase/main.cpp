@@ -65,7 +65,7 @@ public:
 
         auto *root = new QVBoxLayout(this);
 
-        auto *heading = new QLabel(QStringLiteral("HyRemote · Remote Support Showcase"), this);
+        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), this);
         QFont headingFont = heading->font();
         headingFont.setPointSize(16);
         headingFont.setBold(true);
