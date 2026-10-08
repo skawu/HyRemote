@@ -17,7 +17,7 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 
 ## Security boundary
 
-The current bounded RFB correctness baseline uses `SecurityType None`. This example therefore does **not** present the connection as authenticated or encrypted. Keep the listener on this LAN or another explicitly trusted network path; production authentication and encryption are not part of this release.
+The default `Insecure` profile is unauthenticated and unencrypted. Keep that mode on a trusted LAN or another explicitly protected network path. `Authenticated` is a conditional installed capability; `AuthenticatedEncrypted` fails closed while an encrypted transport backend is unavailable. HyRemoteTool must not imply stronger security than the active Runtime policy actually provides.
 
 The safe startup policy is therefore two-dimensional: the service is explicitly started, and remote control remains independently opt-in. A connected-client count is operational diagnostics only; it is not an authenticated identity count.
 
