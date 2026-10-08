@@ -170,7 +170,7 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
-| `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys are missing. |
+| `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys or initial bounded Activity markers are missing. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 
