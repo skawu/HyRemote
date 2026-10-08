@@ -107,6 +107,6 @@ Such optimizations remain behind the Shared Runtime and Core contracts. Normal a
 
 Qt Quick through the C++ API and Generic Plugin is one of the peer routes in the current reference environment.
 
-The QML API and QPA paths are currently Preview. QPA additionally requires exact Qt private-ABI qualification.
+C++ API, QML API, Generic Plugin, and QPA are peer product routes. QPA additionally requires exact Qt private-ABI qualification.
 
 See [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md) for exact product status.
