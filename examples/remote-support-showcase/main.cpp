@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFormLayout>
@@ -57,15 +58,15 @@ public:
         , m_remote(this)
         , m_port(port)
     {
-        setWindowTitle(QStringLiteral("HyRemote Remote Support Showcase"));
-        resize(780, 580);
+        setWindowTitle(QStringLiteral("HyRemoteTool"));
+        resize(860, 760);
 
         m_remote.setPort(port);
         m_remote.setRemoteInputEnabled(initialInputEnabled);
 
         auto *root = new QVBoxLayout(this);
 
-        auto *heading = new QLabel(QStringLiteral("HyRemote · Remote Support Showcase"), this);
+        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), this);
         QFont headingFont = heading->font();
         headingFont.setPointSize(16);
         headingFont.setBold(true);
@@ -79,7 +80,7 @@ public:
         intro->setWordWrap(true);
         root->addWidget(intro);
 
-        auto *remoteBox = new QGroupBox(QStringLiteral("Remote support"), this);
+        auto *remoteBox = new QGroupBox(QStringLiteral("Remote access"), this);
         auto *remoteLayout = new QVBoxLayout(remoteBox);
 
         auto *statusForm = new QFormLayout;
@@ -121,6 +122,31 @@ public:
         security->setWordWrap(true);
         remoteLayout->addWidget(security);
         root->addWidget(remoteBox);
+
+        auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), this);
+        auto *diagnosticsLayout = new QVBoxLayout(diagnosticsBox);
+        auto *diagnosticsIntro = new QLabel(
+            QStringLiteral("Shared Runtime report. Safe to copy into a support issue; secrets and "
+                           "security descriptor contents are not included."),
+            diagnosticsBox);
+        diagnosticsIntro->setWordWrap(true);
+        diagnosticsLayout->addWidget(diagnosticsIntro);
+
+        m_diagnostics = new QPlainTextEdit(diagnosticsBox);
+        m_diagnostics->setReadOnly(true);
+        m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
+        m_diagnostics->setMaximumBlockCount(64);
+        diagnosticsLayout->addWidget(m_diagnostics);
+
+        auto *diagnosticsActions = new QHBoxLayout;
+        auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy diagnostic report"), diagnosticsBox);
+        QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
+            QApplication::clipboard()->setText(m_remote.diagnosticReport());
+        });
+        diagnosticsActions->addWidget(copyDiagnostics);
+        diagnosticsActions->addStretch(1);
+        diagnosticsLayout->addLayout(diagnosticsActions);
+        root->addWidget(diagnosticsBox);
 
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
         auto *workLayout = new QFormLayout(workBox);
@@ -247,6 +273,10 @@ private:
             m_error->setText(error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message);
         else
             m_error->setText(QStringLiteral("None"));
+
+        const QString diagnostics = m_remote.diagnosticReport();
+        if (m_diagnostics->toPlainText() != diagnostics)
+            m_diagnostics->setPlainText(diagnostics);
     }
 
     HyRemote::RemoteAccess m_remote;
@@ -257,6 +287,7 @@ private:
     QLabel *m_clients = nullptr;
     QLabel *m_policy = nullptr;
     QLabel *m_error = nullptr;
+    QPlainTextEdit *m_diagnostics = nullptr;
     QPushButton *m_startStop = nullptr;
     QCheckBox *m_input = nullptr;
 };
@@ -266,10 +297,10 @@ private:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Remote Support Showcase"));
+    QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Production-like HyRemote local + remote support workflow"));
+    parser.setApplicationDescription(QStringLiteral("HyRemote host-side reference and diagnostics tool"));
     parser.addHelpOption();
     QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
                                   QStringLiteral("Listener port the viewer connects to."),
