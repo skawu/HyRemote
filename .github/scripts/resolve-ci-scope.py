@@ -638,6 +638,10 @@ def main() -> int:
             handle.write(f"- Generic/C++/QML/QPA deploy evidence: {outputs['generic_evidence']}/"
                          f"{outputs['cpp_evidence']}/{outputs['qml_evidence']}/{outputs['qpa_evidence']}\n")
             handle.write(f"- release readiness: {outputs['readiness_evidence']}\n")
+            handle.write(
+                f"- candidate product-fit evidence (RFB/Tool): "
+                f"{outputs['rfb_product_fit_evidence']}/{outputs['tool_product_fit_evidence']}\n"
+            )
             handle.write(f"- release-authority governance: {outputs['governance']}\n")
             handle.write(f"- security-on evidence: {outputs['security_evidence']}\n")
     return 0
