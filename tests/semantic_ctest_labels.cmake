@@ -100,6 +100,9 @@ function(hyremote_apply_root_semantic_test_labels)
     hyremote_label_test_family("e2e;cpp;e2e"
         hyremote-v01-example-smoke
     )
+    hyremote_label_test_family("e2e;tool;installed"
+        hyremote-tool-installed-smoke
+    )
 
     hyremote_label_test_family("release;repository;qualification"
         hyremote-release-readiness-metadata
