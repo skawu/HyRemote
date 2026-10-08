@@ -263,9 +263,10 @@ public:
         m_remote.stop();
     }
 
-    bool startRemoteAccess()
+    bool startRemoteAccess(bool recordRequest = true)
     {
-        appendActivity(QStringLiteral("Start remote access requested"));
+        if (recordRequest)
+            appendActivity(QStringLiteral("Start remote access requested"));
         m_remote.clearError();
         if (!m_remote.start()) {
             refreshStatus();
@@ -274,7 +275,6 @@ public:
         }
         m_lastReportedClientCount = m_remote.connectedClientCount();
         refreshStatus();
-        appendActivity(QStringLiteral("Remote access running"));
         std::cout << "REMOTE_STARTED " << m_port << std::endl;
         std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
         return true;
@@ -285,7 +285,6 @@ public:
         appendActivity(QStringLiteral("Stop remote access requested"));
         m_remote.stop();
         refreshStatus();
-        appendActivity(QStringLiteral("Remote access stopped"));
         std::cout << "SHOWCASE_CLIENTS " << m_remote.connectedClientCount() << std::endl;
         std::cout << "REMOTE_STOPPED" << std::endl;
     }
@@ -309,6 +308,7 @@ private:
         if (wasRunning) {
             appendActivity(QStringLiteral("Applying remote-input policy requires restart"));
             m_remote.stop();
+            refreshStatus();
         }
 
         if (!m_remote.setRemoteInputEnabled(enabled)) {
@@ -316,16 +316,21 @@ private:
             m_input->setChecked(m_remote.remoteInputEnabled());
             m_input->blockSignals(false);
             refreshStatus();
-            if (wasRunning)
-                startRemoteAccess();
+            if (wasRunning) {
+                appendActivity(
+                    QStringLiteral("Remote-input policy change rejected; restoring remote access"));
+                startRemoteAccess(false);
+            }
             return;
         }
 
         appendActivity(enabled ? QStringLiteral("Remote input enabled")
                                : QStringLiteral("Remote input disabled"));
         std::cout << "REMOTE_INPUT " << (enabled ? "enabled" : "disabled") << std::endl;
-        if (wasRunning)
-            startRemoteAccess();
+        if (wasRunning) {
+            appendActivity(QStringLiteral("Restarting remote access after policy change"));
+            startRemoteAccess(false);
+        }
         refreshStatus();
     }
 
