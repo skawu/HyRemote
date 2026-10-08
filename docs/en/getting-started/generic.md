@@ -130,12 +130,12 @@ See [`../../compatibility.md`](../../compatibility.md) for other environments.
 
 ## Security boundary
 
-V0.1 is a Developer Preview:
+The Generic route uses the same Shared Runtime security/access boundary as the other three routes:
 
-- loopback is the default bind;
+- the default listener is `0.0.0.0:5921` on the host's IPv4 interfaces;
 - remote control is disabled by default;
-- `Insecure` is unauthenticated and unencrypted, so keep it on a trusted LAN;
-- `Authenticated` is a conditional capability and must not be assumed to exist in the default package;
+- `Insecure` is unauthenticated and unencrypted, so keep it on a trusted LAN or another explicitly protected network;
+- `Authenticated` is a conditional capability and must not be assumed to exist in every package;
 - `AuthenticatedEncrypted` is not implemented and always fails closed;
 - do not expose the current product directly to the public Internet.
 
