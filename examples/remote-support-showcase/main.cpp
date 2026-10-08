@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QDateTime>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -199,6 +200,15 @@ public:
         diagnosticsLayout->addWidget(copyDiagnostics, 0, Qt::AlignLeft);
         root->addWidget(diagnosticsBox);
 
+        auto *activityBox = new QGroupBox(QStringLiteral("Activity"), this);
+        auto *activityLayout = new QVBoxLayout(activityBox);
+        m_activity = new QPlainTextEdit(activityBox);
+        m_activity->setReadOnly(true);
+        m_activity->setMaximumBlockCount(100);
+        m_activity->setMinimumHeight(120);
+        activityLayout->addWidget(m_activity);
+        root->addWidget(activityBox);
+
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
         auto *workLayout = new QFormLayout(workBox);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
@@ -255,13 +265,16 @@ public:
 
     bool startRemoteAccess()
     {
+        appendActivity(QStringLiteral("Start remote access requested"));
         m_remote.clearError();
         if (!m_remote.start()) {
             refreshStatus();
+            appendActivity(QStringLiteral("Remote access start failed"));
             return false;
         }
         m_lastReportedClientCount = m_remote.connectedClientCount();
         refreshStatus();
+        appendActivity(QStringLiteral("Remote access running"));
         std::cout << "REMOTE_STARTED " << m_port << std::endl;
         std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
         return true;
@@ -269,8 +282,10 @@ public:
 
     void stopRemoteAccess()
     {
+        appendActivity(QStringLiteral("Stop remote access requested"));
         m_remote.stop();
         refreshStatus();
+        appendActivity(QStringLiteral("Remote access stopped"));
         std::cout << "SHOWCASE_CLIENTS " << m_remote.connectedClientCount() << std::endl;
         std::cout << "REMOTE_STOPPED" << std::endl;
     }
@@ -291,8 +306,10 @@ private:
     void applyRemoteInputPolicy(bool enabled)
     {
         const bool wasRunning = m_remote.state() == HyRemote::RemoteAccessState::Running;
-        if (wasRunning)
+        if (wasRunning) {
+            appendActivity(QStringLiteral("Applying remote-input policy requires restart"));
             m_remote.stop();
+        }
 
         if (!m_remote.setRemoteInputEnabled(enabled)) {
             m_input->blockSignals(true);
@@ -304,10 +321,20 @@ private:
             return;
         }
 
+        appendActivity(enabled ? QStringLiteral("Remote input enabled")
+                               : QStringLiteral("Remote input disabled"));
         std::cout << "REMOTE_INPUT " << (enabled ? "enabled" : "disabled") << std::endl;
         if (wasRunning)
             startRemoteAccess();
         refreshStatus();
+    }
+
+    void appendActivity(const QString &message)
+    {
+        if (!m_activity)
+            return;
+        const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+        m_activity->appendPlainText(QStringLiteral("[%1] %2").arg(timestamp, message));
     }
 
     void refreshViewerEndpoints()
@@ -344,7 +371,14 @@ private:
             m_connection->setText(QStringLiteral("Remote access stopped"));
         }
         if (clientCount != m_lastReportedClientCount) {
+            const std::size_t previousClientCount = m_lastReportedClientCount;
             m_lastReportedClientCount = clientCount;
+            if (clientCount > previousClientCount)
+                appendActivity(QStringLiteral("Viewer connected (%1 client(s))").arg(clientCount));
+            else if (clientCount == 0)
+                appendActivity(QStringLiteral("Viewer disconnected"));
+            else
+                appendActivity(QStringLiteral("Viewer count changed to %1").arg(clientCount));
             std::cout << "SHOWCASE_CLIENTS " << clientCount << std::endl;
         }
 
@@ -360,6 +394,11 @@ private:
             errorCode = static_cast<int>(error->code);
         }
         m_error->setText(errorText);
+        if (errorText != m_lastActivityError) {
+            m_lastActivityError = errorText;
+            if (errorText != QStringLiteral("None"))
+                appendActivity(QStringLiteral("Error: %1").arg(errorText));
+        }
 
         const QString diagnosticTrigger =
             QStringLiteral("%1|%2|%3|%4|%5")
@@ -384,6 +423,7 @@ private:
     quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
     QString m_lastDiagnosticTrigger;
+    QString m_lastActivityError = QStringLiteral("None");
     QLabel *m_state = nullptr;
     QLabel *m_configuredListener = nullptr;
     QLabel *m_endpoint = nullptr;
@@ -395,6 +435,7 @@ private:
     QLabel *m_focusWarning = nullptr;
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
+    QPlainTextEdit *m_activity = nullptr;
     QPushButton *m_startStop = nullptr;
     QPushButton *m_copyEndpoints = nullptr;
     QCheckBox *m_input = nullptr;
