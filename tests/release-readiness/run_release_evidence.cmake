@@ -198,7 +198,13 @@ endfunction()
 # execute the given command with an explicitly constructed PATH, capturing output and exit code.
 function(run_capture cell label path_value)
     execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env "PATH=${path_value}"
+        COMMAND ${CMAKE_COMMAND} -E env
+                --unset=LD_LIBRARY_PATH
+                --unset=QT_PLUGIN_PATH
+                --unset=QT_QPA_PLATFORM_PLUGIN_PATH
+                --unset=QML_IMPORT_PATH
+                --unset=QML2_IMPORT_PATH
+                "PATH=${path_value}"
                 ${ARGN}
         RESULT_VARIABLE _result
         OUTPUT_VARIABLE _out
@@ -635,10 +641,13 @@ function(qpa_product_fit cell fixture)
     record("${cell}" "EXECUTABLE" "${_exe}")
     if(cell STREQUAL "installed-qpa-product-fit")
         set(_qpa_identity_expectation "correlated")
+        set(_qpa_port 5991)
     else()
         set(_qpa_identity_expectation "unknown")
+        set(_qpa_port 5992)
     endif()
     set(_qpa_diagnostic_args
+        --port "${_qpa_port}"
         --expect-deployment-identity "${_qpa_identity_expectation}")
     record("${cell}" "HARNESS_COMMAND"
         "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe} ${_qpa_diagnostic_args}")
