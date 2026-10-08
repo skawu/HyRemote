@@ -6,6 +6,8 @@
 #include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QFile>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -122,6 +124,12 @@ public:
 
         auto *statusForm = new QFormLayout;
         m_state = new QLabel(remoteBox);
+        m_buildIdentity = new QLabel(remoteBox);
+        m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_deploymentIdentity = new QLabel(remoteBox);
+        m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_platform = new QLabel(remoteBox);
+        m_security = new QLabel(remoteBox);
         m_configuredListener = new QLabel(remoteBox);
         m_endpoint = new QLabel(remoteBox);
         m_viewerEndpoints = new QLabel(remoteBox);
@@ -134,6 +142,10 @@ public:
         m_error = new QLabel(QStringLiteral("None"), remoteBox);
         m_error->setWordWrap(true);
         statusForm->addRow(QStringLiteral("State"), m_state);
+        statusForm->addRow(QStringLiteral("Build identity"), m_buildIdentity);
+        statusForm->addRow(QStringLiteral("Deployment identity"), m_deploymentIdentity);
+        statusForm->addRow(QStringLiteral("Platform"), m_platform);
+        statusForm->addRow(QStringLiteral("Security"), m_security);
         statusForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
         statusForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
         statusForm->addRow(QStringLiteral("Viewer endpoints"), m_viewerEndpoints);
@@ -195,9 +207,23 @@ public:
         m_diagnostics->setMaximumBlockCount(64);
         m_diagnostics->setMinimumHeight(150);
         diagnosticsLayout->addWidget(m_diagnostics);
+        auto *diagnosticActions = new QHBoxLayout;
         auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy diagnostic report"), diagnosticsBox);
-        diagnosticsLayout->addWidget(copyDiagnostics, 0, Qt::AlignLeft);
+        auto *saveDiagnostics = new QPushButton(QStringLiteral("Save diagnostic report"), diagnosticsBox);
+        diagnosticActions->addWidget(copyDiagnostics);
+        diagnosticActions->addWidget(saveDiagnostics);
+        diagnosticActions->addStretch(1);
+        diagnosticsLayout->addLayout(diagnosticActions);
         root->addWidget(diagnosticsBox);
+
+        auto *activityBox = new QGroupBox(QStringLiteral("Activity"), this);
+        auto *activityLayout = new QVBoxLayout(activityBox);
+        m_activity = new QPlainTextEdit(activityBox);
+        m_activity->setReadOnly(true);
+        m_activity->setMaximumBlockCount(80);
+        m_activity->setMinimumHeight(100);
+        activityLayout->addWidget(m_activity);
+        root->addWidget(activityBox);
 
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
         auto *workLayout = new QFormLayout(workBox);
@@ -237,6 +263,28 @@ public:
         });
         QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
+            appendActivity(QStringLiteral("Diagnostic report copied to clipboard"));
+        });
+        QObject::connect(saveDiagnostics, &QPushButton::clicked, this, [this] {
+            const QString fileName = QFileDialog::getSaveFileName(
+                this,
+                QStringLiteral("Save HyRemote diagnostic report"),
+                QStringLiteral("hyremote-diagnostic.txt"),
+                QStringLiteral("Text files (*.txt);;All files (*)"));
+            if (fileName.isEmpty())
+                return;
+
+            QFile file(fileName);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                appendActivity(QStringLiteral("Failed to save diagnostic report"));
+                return;
+            }
+            const QByteArray report = m_remote.diagnosticReport().toUtf8();
+            if (file.write(report) != report.size()) {
+                appendActivity(QStringLiteral("Failed to save complete diagnostic report"));
+                return;
+            }
+            appendActivity(QStringLiteral("Diagnostic report saved"));
         });
 
         auto *timer = new QTimer(this);
@@ -276,6 +324,13 @@ public:
     }
 
 private:
+    void appendActivity(const QString &message)
+    {
+        if (!m_activity)
+            return;
+        m_activity->appendPlainText(message);
+    }
+
     void toggleRemoteAccess()
     {
         const auto state = m_remote.state();
@@ -305,6 +360,8 @@ private:
         }
 
         std::cout << "REMOTE_INPUT " << (enabled ? "enabled" : "disabled") << std::endl;
+        appendActivity(enabled ? QStringLiteral("Remote input enabled")
+                               : QStringLiteral("Remote input disabled"));
         if (wasRunning)
             startRemoteAccess();
         refreshStatus();
@@ -322,7 +379,12 @@ private:
     void refreshStatus()
     {
         const auto state = m_remote.state();
-        m_state->setText(stateName(state));
+        const QString stateText = stateName(state);
+        m_state->setText(stateText);
+        if (stateText != m_lastActivityState) {
+            m_lastActivityState = stateText;
+            appendActivity(QStringLiteral("Runtime state -> %1").arg(stateText));
+        }
         m_policy->setText(m_remote.remoteInputEnabled()
                               ? QStringLiteral("Remote view + control")
                               : QStringLiteral("View-only (safe default)"));
@@ -346,6 +408,8 @@ private:
         if (clientCount != m_lastReportedClientCount) {
             m_lastReportedClientCount = clientCount;
             std::cout << "SHOWCASE_CLIENTS " << clientCount << std::endl;
+            appendActivity(QStringLiteral("Connected clients -> %1")
+                               .arg(static_cast<qulonglong>(clientCount)));
         }
 
         const bool active = state == HyRemote::RemoteAccessState::Running ||
@@ -360,6 +424,11 @@ private:
             errorCode = static_cast<int>(error->code);
         }
         m_error->setText(errorText);
+        if (errorText != m_lastActivityError) {
+            m_lastActivityError = errorText;
+            if (errorText != QStringLiteral("None"))
+                appendActivity(QStringLiteral("Runtime error: %1").arg(errorText));
+        }
 
         const QString diagnosticTrigger =
             QStringLiteral("%1|%2|%3|%4|%5")
@@ -372,6 +441,18 @@ private:
             m_lastDiagnosticTrigger = diagnosticTrigger;
             const QString report = m_remote.diagnosticReport();
             m_diagnostics->setPlainText(report);
+            m_buildIdentity->setText(diagnosticValue(report, QStringLiteral("BUILD_IDENTITY")));
+            m_deploymentIdentity->setText(
+                diagnosticValue(report, QStringLiteral("DEPLOYMENT_IDENTITY")));
+            m_platform->setText(
+                QStringLiteral("Qt %1 / %2 / %3")
+                    .arg(diagnosticValue(report, QStringLiteral("QT_VERSION")),
+                         diagnosticValue(report, QStringLiteral("OS")),
+                         diagnosticValue(report, QStringLiteral("ARCH"))));
+            m_security->setText(
+                QStringLiteral("%1 (%2)")
+                    .arg(diagnosticValue(report, QStringLiteral("SECURITY_PROFILE")),
+                         diagnosticValue(report, QStringLiteral("SECURITY_ENABLED"))));
             m_configuredListener->setText(
                 diagnosticValue(report, QStringLiteral("LISTENER_CONFIGURED")));
             m_endpoint->setText(
@@ -384,7 +465,13 @@ private:
     quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
     QString m_lastDiagnosticTrigger;
+    QString m_lastActivityState;
+    QString m_lastActivityError = QStringLiteral("None");
     QLabel *m_state = nullptr;
+    QLabel *m_buildIdentity = nullptr;
+    QLabel *m_deploymentIdentity = nullptr;
+    QLabel *m_platform = nullptr;
+    QLabel *m_security = nullptr;
     QLabel *m_configuredListener = nullptr;
     QLabel *m_endpoint = nullptr;
     QLabel *m_viewerEndpoints = nullptr;
@@ -395,6 +482,7 @@ private:
     QLabel *m_focusWarning = nullptr;
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
+    QPlainTextEdit *m_activity = nullptr;
     QPushButton *m_startStop = nullptr;
     QPushButton *m_copyEndpoints = nullptr;
     QCheckBox *m_input = nullptr;
