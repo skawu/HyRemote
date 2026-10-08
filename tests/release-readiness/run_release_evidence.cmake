@@ -618,10 +618,13 @@ function(qpa_product_fit cell fixture)
     set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
-    set(_qpa_diagnostic_args "")
     if(cell STREQUAL "installed-qpa-product-fit")
-        list(APPEND _qpa_diagnostic_args --require-deployment-identity)
+        set(_qpa_identity_expectation "correlated")
+    else()
+        set(_qpa_identity_expectation "unknown")
     endif()
+    set(_qpa_diagnostic_args
+        --expect-deployment-identity "${_qpa_identity_expectation}")
     record("${cell}" "HARNESS_COMMAND"
         "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe} ${_qpa_diagnostic_args}")
     run_capture("${cell}" "product_fit" "${_path}"
