@@ -306,8 +306,10 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         excluded.append("hyremote-cpp-installed-consumers$")
     if not qml_evidence:
         excluded.append("hyremote-qml-deploy-helper-")
+        excluded.append("hyremote-qml-installed-consumer$")
     if not qpa_evidence:
         excluded.append("hyremote-qpa-deploy-helper-")
+        excluded.append("hyremote-qpa-installed-product-fit$")
     if not rfb_product_fit_evidence:
         excluded.append(RFB_PRODUCT_FIT_TEST)
     # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
