@@ -41,6 +41,15 @@ def captured(lines: list[str]) -> str:
     return "\n".join(lines) if lines else "<no child output captured>"
 
 
+def diagnostic_value(output: str, key: str) -> str:
+    prefix = f"{key}="
+    values = [line[len(prefix):].strip() for line in output.splitlines() if line.startswith(prefix)]
+    require(values, f"diagnostic report is missing {key}:\n{output}")
+    unique_values = set(values)
+    require(len(unique_values) == 1, f"diagnostic report disagrees on {key}: {values!r}\n{output}")
+    return values[0]
+
+
 def wait_for_rfb(port: int, process: subprocess.Popen[str], lines: list[str]) -> bytes:
     deadline = time.monotonic() + 8.0
     last_error: Exception | None = None
@@ -188,14 +197,19 @@ def main() -> int:
             "STATE=Running",
         ):
             require(required in output, f"deployed QPA diagnostic report is missing {required}:\n{output}")
+        build_identity = diagnostic_value(output, "BUILD_IDENTITY")
+        deployment_identity = diagnostic_value(output, "DEPLOYMENT_IDENTITY")
         if args.expect_deployment_identity == "correlated":
             require(
-                "DEPLOYMENT_IDENTITY=source_sha=" in output,
-                f"installed QPA diagnostic report has no correlated deployment identity:\n{output}",
+                build_identity != "unknown"
+                and deployment_identity != "unknown"
+                and build_identity == deployment_identity,
+                "installed QPA build/deployment identities do not correlate: "
+                f"build={build_identity!r} deployment={deployment_identity!r}\n{output}",
             )
         elif args.expect_deployment_identity == "unknown":
             require(
-                "DEPLOYMENT_IDENTITY=unknown" in output,
+                deployment_identity == "unknown",
                 f"source QPA diagnostic report unexpectedly resolved deployment identity:\n{output}",
             )
         print(
