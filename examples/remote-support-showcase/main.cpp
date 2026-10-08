@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFormLayout>
@@ -122,6 +123,18 @@ public:
         remoteLayout->addWidget(security);
         root->addWidget(remoteBox);
 
+        auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), this);
+        auto *diagnosticsLayout = new QVBoxLayout(diagnosticsBox);
+        m_diagnostics = new QPlainTextEdit(diagnosticsBox);
+        m_diagnostics->setReadOnly(true);
+        m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
+        m_diagnostics->setMaximumBlockCount(64);
+        m_diagnostics->setMinimumHeight(150);
+        diagnosticsLayout->addWidget(m_diagnostics);
+        auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy diagnostic report"), diagnosticsBox);
+        diagnosticsLayout->addWidget(copyDiagnostics, 0, Qt::AlignLeft);
+        root->addWidget(diagnosticsBox);
+
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
         auto *workLayout = new QFormLayout(workBox);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
@@ -151,6 +164,9 @@ public:
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
             applyRemoteInputPolicy(enabled);
+        });
+        QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
+            QApplication::clipboard()->setText(m_remote.diagnosticReport());
         });
 
         auto *timer = new QTimer(this);
@@ -243,20 +259,37 @@ private:
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
                                     : QStringLiteral("Start remote access"));
 
-        if (const auto error = m_remote.lastError())
-            m_error->setText(error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message);
-        else
-            m_error->setText(QStringLiteral("None"));
+        QString errorText = QStringLiteral("None");
+        int errorCode = -1;
+        if (const auto error = m_remote.lastError()) {
+            errorText = error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message;
+            errorCode = static_cast<int>(error->code);
+        }
+        m_error->setText(errorText);
+
+        const QString diagnosticTrigger =
+            QStringLiteral("%1|%2|%3|%4|%5")
+                .arg(static_cast<int>(state))
+                .arg(static_cast<qulonglong>(clientCount))
+                .arg(m_remote.remoteInputEnabled() ? 1 : 0)
+                .arg(errorCode)
+                .arg(errorText);
+        if (diagnosticTrigger != m_lastDiagnosticTrigger) {
+            m_lastDiagnosticTrigger = diagnosticTrigger;
+            m_diagnostics->setPlainText(m_remote.diagnosticReport());
+        }
     }
 
     HyRemote::RemoteAccess m_remote;
     quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
+    QString m_lastDiagnosticTrigger;
     QLabel *m_state = nullptr;
     QLabel *m_endpoint = nullptr;
     QLabel *m_clients = nullptr;
     QLabel *m_policy = nullptr;
     QLabel *m_error = nullptr;
+    QPlainTextEdit *m_diagnostics = nullptr;
     QPushButton *m_startStop = nullptr;
     QCheckBox *m_input = nullptr;
 };

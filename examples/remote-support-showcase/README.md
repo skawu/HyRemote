@@ -12,6 +12,7 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
 - Stop releases the listener while the local application continues running.
 - The local status panel shows stopped/running/faulted state, endpoint, connected-client count, current policy and the latest product-level error.
+- The Diagnostics panel renders the same bounded, secret-safe public `diagnosticReport()` used by support/troubleshooting and can copy it to the clipboard; HyRemoteTool does not invent a second diagnostic truth.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
 - The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
 
