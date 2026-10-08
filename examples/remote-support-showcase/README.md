@@ -14,6 +14,7 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - The local status panel shows stopped/running/faulted state, endpoint, connected-client count, current policy and the latest product-level error.
 - The Diagnostics panel renders the same bounded, secret-safe public `diagnosticReport()` used by support/troubleshooting and can copy it to the clipboard; HyRemoteTool does not invent a second diagnostic truth.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
+- The status panel shows whether HyRemoteTool is the active OS window. When remote input is enabled but the Tool is inactive, it displays the real application-scoped focus limitation from #362 and tells the local operator to reactivate this window; HyRemoteTool does not simulate desktop-wide focus stealing.
 - The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
 
 ## Security boundary
