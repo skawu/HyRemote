@@ -783,7 +783,10 @@ function(generic_product_fit cell consumer_target)
     set(_path "${_deployed}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
-    run_capture("${cell}" "deployed_smoke" "${_path}" "${_exe}")
+    # Qt GUI logging is routed to the debugger on Windows by default. Force Qt log output onto
+    # stderr so the same zero-code Runtime diagnostic block is observable by this evidence harness.
+    run_capture("${cell}" "deployed_smoke" "${_path}"
+        "QT_FORCE_STDERR_LOGGING=1" "${_exe}")
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "deployed Generic consumer did not exit successfully")
         return()
