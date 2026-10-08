@@ -104,7 +104,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--port", type=int, default=5992)
-    parser.add_argument("--require-deployment-identity", action="store_true")
+    parser.add_argument(
+        "--expect-deployment-identity",
+        choices=("correlated", "unknown"),
+        default=None,
+    )
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -184,10 +188,15 @@ def main() -> int:
             "STATE=Running",
         ):
             require(required in output, f"deployed QPA diagnostic report is missing {required}:\n{output}")
-        if args.require_deployment_identity:
+        if args.expect_deployment_identity == "correlated":
             require(
                 "DEPLOYMENT_IDENTITY=source_sha=" in output,
                 f"installed QPA diagnostic report has no correlated deployment identity:\n{output}",
+            )
+        elif args.expect_deployment_identity == "unknown":
+            require(
+                "DEPLOYMENT_IDENTITY=unknown" in output,
+                f"source QPA diagnostic report unexpectedly resolved deployment identity:\n{output}",
             )
         print(
             "PASS: deployed consumer -> qhyremote + native QPA delegate + shared RemoteAccess -> "
