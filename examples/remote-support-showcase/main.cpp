@@ -57,7 +57,7 @@ public:
         , m_remote(this)
         , m_port(port)
     {
-        setWindowTitle(QStringLiteral("HyRemote Remote Support Showcase"));
+        setWindowTitle(QStringLiteral("HyRemoteTool"));
         resize(780, 580);
 
         m_remote.setPort(port);
