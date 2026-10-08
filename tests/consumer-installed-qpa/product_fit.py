@@ -175,10 +175,18 @@ def main() -> int:
 
         result = process.wait(timeout=10)
         reader.join(timeout=1.0)
-        require(result == 0, f"deployed QPA consumer exited with {result}:\n{captured(lines)}")
+        output = captured(lines)
+        require(result == 0, f"deployed QPA consumer exited with {result}:\n{output}")
+        for required in (
+            "INTEGRATION_ROUTE=qpa",
+            "UI_FAMILY=widgets",
+            "STATE=Running",
+            "DEPLOYMENT_IDENTITY=source_sha=",
+        ):
+            require(required in output, f"deployed QPA diagnostic report is missing {required}:\n{output}")
         print(
             "PASS: deployed consumer -> qhyremote + native QPA delegate + shared RemoteAccess -> "
-            "RFB reconnect without SDK/plugin/QML/runtime-path overrides"
+            "RFB reconnect + shared diagnostic report without SDK/plugin/QML/runtime-path overrides"
         )
         return 0
     finally:
