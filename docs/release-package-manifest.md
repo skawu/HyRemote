@@ -71,7 +71,7 @@ The deployed application keeps its native Qt platform plugin (`qwindows`, `qxcb`
 
 Generic Plugin is based on public Qt APIs and does not inherit QPA private-ABI compatibility constraints.
 
-## QML payload — Preview
+## QML payload
 
 When QML API is included, the SDK contains the `HyRemote` QML module over the same Shared Runtime.
 
@@ -83,9 +83,8 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 The QML backing payload is not a second public C++ Runtime target.
 
-> **Open work (current product line):** complete full QML package/example qualification before promoting this payload from Preview.
 
-## QPA payload — Preview
+## QPA payload
 
 When QPA is included, the SDK contains the `qhyremote` platform plugin and package metadata required by:
 
