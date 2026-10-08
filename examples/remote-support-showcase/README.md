@@ -13,7 +13,9 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - Stop releases the listener while the local application continues running.
 - The local status panel shows stopped/running/faulted state, configured/effective listener, connected-client count, current policy and the latest product-level error.
 - The Connection Assistant lists current non-loopback IPv4 viewer endpoints separately from the listener bind address, exposes Waiting/Connected state, and can refresh/copy the current candidates. A wildcard bind such as `0.0.0.0:5921` is never presented as the remote host address to type into a viewer.
-- The Diagnostics panel renders the same bounded, secret-safe public `diagnosticReport()` used by support/troubleshooting and can copy it to the clipboard; HyRemoteTool does not invent a second diagnostic truth.
+- The status panel projects build/deployment identity, Qt/OS/architecture and security facts from the same bounded public `diagnosticReport()`; HyRemoteTool does not maintain a second diagnostic model.
+- The Diagnostics panel renders that complete secret-safe report and can copy it to the clipboard or save it as a plain-text support artifact.
+- A bounded in-memory Activity view records product-level lifecycle, client-count, remote-input and error changes without becoming a persistent session/audit database.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
 - The status panel shows whether HyRemoteTool is the active OS window. When remote input is enabled but the Tool is inactive, it displays the real application-scoped focus limitation from #362 and tells the local operator to reactivate this window; HyRemoteTool does not simulate desktop-wide focus stealing.
 - The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
