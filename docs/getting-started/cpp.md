@@ -75,8 +75,7 @@ remote.start();
 Widgets 与 Quick 共用**同一个**公开门面；采集/输入的实现选择属于内部细节。
 
 用一个 `QQuickWindow` 的 Quick 应用走的就是这条 **C++** 路径：它**不需要**使用 HyRemote 的 QML 前端，也**不需要**
-`import HyRemote`。Quick 是 UI 家族，QML 是另一个前端（见 [`qml.md`](qml.md)）；两者不是同一件事。V0.1 中
-Embedded C++ 是**主要（primary）**接入面，而 QML 前端是**预览（preview）**面，支持承诺更窄。
+`import HyRemote`。Quick 是 UI 家族，QML 是另一个 peer 接入前端（见 [`qml.md`](qml.md)）；两者不是同一件事。
 
 ## 可选配置
 
