@@ -170,10 +170,11 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
+| `hyremote-tool-installed-product-fit` | Clean-installed HyRemoteTool is launched from the installed tree and driven by a standard VNC client through framebuffer, pointer/key input, disconnect/reconnect and listener release. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 
-Unregistered assets `tests/product-e2e/example_product_fit.py`, `qml_product_fit.py`, and `showcase_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; source files without execution authority are not counted as evidence.
+Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; `showcase_product_fit.py` now has installed HyRemoteTool execution authority.
 
 ## T6 — release/candidate authority
 
