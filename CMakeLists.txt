@@ -365,6 +365,18 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         set_tests_properties(hyremote-qpa-installed-product-fit PROPERTIES TIMEOUT 1200)
     endif()
 
+    if(TARGET hyremote-remote-support-showcase)
+        add_test(
+            NAME hyremote-tool-installed-smoke
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-hyremote-tool"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-tool-installed-smoke PROPERTIES TIMEOUT 900)
+    endif()
+
     # Release-train authority selection and its acceptance matrix, registered as an ordinary product test so the
     # canonical build authority runs it: a release scope must be selected by the requested version, fail closed on
     # anything it cannot classify, and never treat a representable train as a blocker for an earlier one.
