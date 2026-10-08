@@ -1,6 +1,6 @@
-# HyRemote remote support showcase
+# HyRemoteTool
 
-This example demonstrates the V1.0 production-facing remote-support workflow through the public `HyRemote::RemoteAccess` facade only.
+HyRemoteTool is HyRemote's host-side reference application and self-service validation/diagnostics surface. It demonstrates the complete local + remote lifecycle through the public `HyRemote::RemoteAccess` facade only; it is not a VNC viewer and does not attach to arbitrary processes.
 
 ## Product behavior
 
@@ -12,12 +12,13 @@ This example demonstrates the V1.0 production-facing remote-support workflow thr
 - The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
 - Stop releases the listener while the local application continues running.
 - The local status panel shows stopped/running/faulted state, endpoint, connected-client count, current policy and the latest product-level error.
+- The Diagnostics panel renders the exact bounded `RemoteAccess::diagnosticReport()` used by the product and can copy it directly for support/issue triage.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
 - The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
 
 ## Security boundary
 
-The current bounded RFB correctness baseline uses `SecurityType None`. This example therefore does **not** present the connection as authenticated or encrypted. Keep the listener on this LAN or another explicitly trusted network path; production authentication and encryption are not part of this release.
+HyRemoteTool starts with the product's default `Insecure` profile: unauthenticated and unencrypted. Keep that listener on a trusted LAN or another explicitly protected network path. If authentication is configured, the same Shared Runtime security semantics apply; `AuthenticatedEncrypted` still fails closed while encrypted transport is unavailable.
 
 The safe startup policy is therefore two-dimensional: the service is explicitly started, and remote control remains independently opt-in. A connected-client count is operational diagnostics only; it is not an authenticated identity count.
 
@@ -26,21 +27,21 @@ The safe startup policy is therefore two-dimensional: the service is explicitly 
 Build the normal examples graph with `HYREMOTE_BUILD_EXAMPLES=ON`, then run:
 
 ```text
-hyremote-remote-support-showcase
+hyremote-tool
 ```
 
 Optional acceptance helpers are explicit and do not change normal safe defaults:
 
 ```text
-hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-seconds 30
+hyremote-tool --auto-start --remote-input --port 5901 --test-seconds 30
 ```
 
-`--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
+`--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access. `--diagnostic-report` prints the same bounded report shown in the Diagnostics panel and can be combined with `--auto-start` for automation.
 
 The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
 
 ## Agent-assisted physical pointer acceptance
 
-For the maintained-Viewer #400 pointer gate, use `tests/physical_input_agent.py` with the exact candidate SHA and the executable built from that same clean checkout. The Agent verifies identity, launches this normal public-API showcase, observes its Qt event trace and writes the evidence bundle; the Human performs the requested RealVNC and local physical actions and confirms visible behavior.
+For the maintained-Viewer #400 pointer gate, use `tests/physical_input_agent.py` with the exact candidate SHA and the `hyremote-tool` executable built from that same clean checkout. The Agent verifies identity, launches this normal public-API HyRemoteTool application, observes its Qt event trace and writes the evidence bundle; the Human performs the requested RealVNC and local physical actions and confirms visible behavior.
 
 See `docs/internal/q400-physical-input-acceptance.md` for the bounded procedure and scope. A generated Agent trace alone is not physical acceptance, and a remote transient popup visibility problem remains #404 rather than being folded into the #400 pointer ingress gate.
