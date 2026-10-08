@@ -26,12 +26,12 @@ Start with [`../product-overview.md`](../product-overview.md) for product positi
 
 The current release focuses on **getting users to a working remote-access path quickly**:
 
-- C++ API and Generic Plugin are the primary integration paths;
+- C++ / QML / Generic / QPA are peer product integration routes with different mechanics, not different product rank;
 - Windows x86_64 and Linux x86_64 with Qt 6.8.3 are the current reference environments;
 - Widgets and Qt Quick use the same Shared Runtime;
-- loopback is the default bind and remote input is disabled by default;
-- QML API and QPA exist as Preview paths;
-- incomplete capabilities are marked **TODO**.
+- the default listener is `0.0.0.0:5921` and remote input is disabled by default;
+- route-specific compatibility limits are documented explicitly rather than expressed as Primary/Preview status;
+- unshipped capabilities remain identified as limitations and must not be presented as available.
 
 ## Product reference
 
