@@ -195,14 +195,14 @@ def write_summary(
 - Viewer: `{viewer}`
 - Host: `{platform.platform()}`
 - Python: `{platform.python_version()}`
-- Showcase: `{showcase}`
+- HyRemoteTool: `{showcase}`
 - Listener port: `{port}`
 - Host IPv4 candidates: `{', '.join(addresses) if addresses else '<none discovered>'}`
 - Launch command: `{' '.join(command)}`
 - Raw target trace: `{raw_log.name}`
 
 This is **Agent-assisted Human physical evidence**. The agent verified the immutable checkout,
-launched the normal public-API showcase, observed the application's Qt event trace and recorded the
+launched the normal public-API HyRemoteTool application, observed the application's Qt event trace and recorded the
 evidence. A human performed the physical RealVNC/local interactions and confirmed the visible control
 semantics. Neither side alone is sufficient for a PASS.
 
@@ -230,7 +230,7 @@ def main() -> int:
     )
     parser.add_argument("--expected-sha", required=True, help="exact candidate commit (full SHA or resolvable ref)")
     parser.add_argument("--viewer", required=True, help='viewer identity/version, e.g. "RealVNC Viewer 7.13.0"')
-    parser.add_argument("--showcase", required=True, type=Path, help="built hyremote-remote-support-showcase executable")
+    parser.add_argument("--showcase", required=True, type=Path, help="built hyremote-tool executable (legacy --showcase parameter name retained for compatibility)")
     parser.add_argument("--port", type=int, default=5921)
     parser.add_argument("--evidence-dir", type=Path, default=Path("physical-evidence-q400"))
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds allowed for each Human action")
@@ -256,7 +256,7 @@ def main() -> int:
     if not showcase.is_absolute():
         showcase = (repo / showcase).resolve()
     if not showcase.is_file():
-        print(f"FAIL: showcase executable not found: {showcase}", file=sys.stderr)
+        print(f"FAIL: HyRemoteTool executable not found: {showcase}", file=sys.stderr)
         return 2
 
     evidence_dir = args.evidence_dir
@@ -296,7 +296,7 @@ def main() -> int:
     try:
         start = trace.mark()
         if not trace.wait_for(lambda lines: contains(lines, "REMOTE_STARTED"), start, 20.0):
-            print("FAIL: showcase did not report REMOTE_STARTED", file=sys.stderr)
+            print("FAIL: HyRemoteTool did not report REMOTE_STARTED", file=sys.stderr)
             return 3
 
         print("\nOpen RealVNC Viewer and connect to one endpoint above.")
