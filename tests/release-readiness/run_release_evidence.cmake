@@ -44,6 +44,7 @@ endif()
 set(all_cells
     clean-install
     installed-sdk
+    installed-hyremote-tool-product-fit
     installed-qml
     installed-qml-qpa
     installed-qpa-product-fit
@@ -511,6 +512,37 @@ function(acquire_installed cell fixture)
     set(${cell}_deployed "${RUN_DIR}/${cell}/deployed" PARENT_SCOPE)
     pass_cell("${cell}")
 endfunction()
+
+if("installed-hyremote-tool-product-fit" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-hyremote-tool-product-fit")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}"
+        "HyRemoteTool + tests/product-e2e/showcase_product_fit.py")
+    if(NOT HARNESS_EXECUTOR)
+        skip_cell("${cell}" "no Python interpreter available to execute the HyRemoteTool product-fit harness")
+    else()
+        set(_tool_exe "${INSTALL_PREFIX}/bin/hyremote-tool")
+        if(WIN32)
+            set(_tool_exe "${_tool_exe}.exe")
+        endif()
+        if(NOT EXISTS "${_tool_exe}")
+            fail_cell("${cell}" "installed HyRemoteTool executable is missing: ${_tool_exe}")
+        else()
+            set(_path "${INSTALL_PREFIX}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+            record_runtime_env("${cell}" "${_path}")
+            record("${cell}" "EXECUTABLE" "${_tool_exe}")
+            run_capture("${cell}" "product_fit" "${_path}"
+                "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/product-e2e/showcase_product_fit.py"
+                --showcase "${_tool_exe}")
+            if(${cell}_result EQUAL 0)
+                record("${cell}" "RESULT_DETAIL"
+                    "clean installed HyRemoteTool passed viewer framebuffer/input/reconnect/listener-release product fit")
+                record("${cell}" "RESULT" "PASS")
+            else()
+                fail_cell("${cell}" "clean installed HyRemoteTool product-fit did not pass")
+            endif()
+        endif()
+    endif()
+endif()
 
 if("installed-sdk" IN_LIST EVIDENCE_CELLS)
     set(cell "installed-sdk")
