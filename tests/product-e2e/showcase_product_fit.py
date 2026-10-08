@@ -174,6 +174,16 @@ def verify_showcase(executable: Path) -> None:
                 f"showcase did not expose connect/reconnect status: {lines}")
         require(line_count(lines, "SHOWCASE_CLIENTS 0") >= 3,
                 f"showcase did not expose disconnected/listening status: {lines}")
+        for required_activity in (
+            "TOOL_ACTIVITY Runtime state: Running",
+            "TOOL_ACTIVITY Remote input: enabled",
+            "TOOL_ACTIVITY Viewer connected",
+            "TOOL_ACTIVITY Viewer disconnected",
+        ):
+            require(
+                any(line == required_activity for line in lines),
+                f"showcase activity log is missing {required_activity!r}: {lines}",
+            )
 
         check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
