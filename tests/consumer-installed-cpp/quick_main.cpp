@@ -60,7 +60,8 @@ int main(int argc, char **argv)
     }
     // Clean installed consumer: the report must classify the actual Qt target, not the cpp route.
     const QString diagnostics = remote.diagnosticReport();
-    if (!diagnostics.contains(QStringLiteral("UI_FAMILY=quick\n"))
+    if (!diagnostics.contains(QStringLiteral("INTEGRATION_ROUTE=cpp\n"))
+        || !diagnostics.contains(QStringLiteral("UI_FAMILY=quick\n"))
         || !diagnostics.contains(QStringLiteral("STATE=Running\n"))) {
         std::fprintf(stderr, "FAIL: installed SDK diagnostic report misclassified the quick target\n");
         remote.stop();
