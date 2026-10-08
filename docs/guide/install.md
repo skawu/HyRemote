@@ -15,7 +15,7 @@
 | C++ API | 并列路线 |
 | Generic Plugin | 并列路线 |
 | QML API | peer route |
-| QPA | **Preview，Qt 6.8.3 exact private ABI** |
+| QPA | 并列路线，**Qt 6.8.3 exact private ABI** |
 | Embedded Linux / ARM64 | TODO - mandatory pre-GA V0.3-family compatibility baseline（#343）；不预分配 exact Feature 版本号 |
 | Qt 5.15 LTS | TODO - mandatory pre-GA V0.3-family adaptation/qualification；V0.4 仅确认已冻结完成的矩阵 |
 
@@ -258,11 +258,11 @@ hyremote_deploy(TARGET ExistingQtApp QPA)
 
 ## 安全默认值
 
-V0.1 默认：
+当前默认与安全边界：
 
 - `0.0.0.0:5921`；
 - 远程输入关闭；
-- `Insecure` 仅允许回环监听；
+- `Insecure` 未认证、未加密，监听范围由绑定配置决定，因此只适用于可信 LAN / 显式保护网络；
 - `Authenticated` 只有在 HyRemote 构建包含 transport-security capability 且配置了有效 security descriptor 时才可用；当前提供 VNC authentication，但流量不加密；
 - 默认 build/profile 不代表 authenticated transport 已编译进产品；
 - `AuthenticatedEncrypted` 尚未实现，始终在监听器创建前 fail-closed，且不会降级到较弱 profile。
