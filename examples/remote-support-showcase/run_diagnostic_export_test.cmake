@@ -26,6 +26,7 @@ if(WIN32)
 else()
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env
+            --unset=LD_LIBRARY_PATH
             "QT_QPA_PLATFORM=offscreen"
             "${TEST_EXE}"
             --diagnostic-report-file "${OUTPUT_FILE}" --test-seconds 1
