@@ -27,38 +27,44 @@ jobs:
             os: ubuntu-24.04
             qt_version: 5.15.2
             aqt_host: linux
-            aqt_arch: linux_gcc_64
+            aqt_arch: gcc_64
             qt_dir: gcc_64
+            subset_archives: true
           - name: Windows x86_64 / Qt 5.15.2
             os: windows-2022
             qt_version: 5.15.2
             aqt_host: windows
             aqt_arch: win64_msvc2019_64
             qt_dir: msvc2019_64
+            subset_archives: false
           - name: Linux x86_64 / Qt 6.5.3
             os: ubuntu-24.04
             qt_version: 6.5.3
             aqt_host: linux
-            aqt_arch: linux_gcc_64
+            aqt_arch: gcc_64
             qt_dir: gcc_64
+            subset_archives: true
           - name: Windows x86_64 / Qt 6.5.3
             os: windows-2022
             qt_version: 6.5.3
             aqt_host: windows
             aqt_arch: win64_msvc2019_64
             qt_dir: msvc2019_64
+            subset_archives: false
           - name: Linux x86_64 / Qt 6.8.3
             os: ubuntu-24.04
             qt_version: 6.8.3
             aqt_host: linux
             aqt_arch: linux_gcc_64
             qt_dir: gcc_64
+            subset_archives: false
           - name: Windows x86_64 / Qt 6.8.3
             os: windows-2022
             qt_version: 6.8.3
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
+            subset_archives: false
 
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +84,18 @@ jobs:
           python -m pip install --disable-pip-version-check aqtinstall ninja
           if [[ ! -d "$QT_PREFIX" ]]; then
             rm -rf "$QT_ROOT"
-            aqt install-qt "${{ matrix.aqt_host }}" desktop "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+            if [[ "${{ matrix.subset_archives }}" == "true" ]]; then
+              available="$(aqt list-qt "${{ matrix.aqt_host }}" desktop --archives "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}")"
+              archives=(qtbase qtdeclarative)
+              if grep -qw icu <<<"$available"; then
+                archives+=(icu)
+              fi
+              echo "Historical SDK archives: ${archives[*]}"
+              aqt install-qt "${{ matrix.aqt_host }}" desktop "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}" \
+                --outputdir "$QT_ROOT" --archives "${archives[@]}"
+            else
+              aqt install-qt "${{ matrix.aqt_host }}" desktop "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+            fi
           fi
           test -d "$QT_PREFIX"
           echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
@@ -106,7 +123,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX"
           cmake --build build-qt-lts
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            export PATH="$QT_PREFIX/bin:$PATH"
+            QT_BIN="$(cygpath -u "$QT_PREFIX/bin")"
+            export PATH="$QT_BIN:$PATH"
             ./build-qt-lts/hyremote-qt-lts-public-probe.exe | tee qt-lts-runtime.log
           else
             ./build-qt-lts/hyremote-qt-lts-public-probe | tee qt-lts-runtime.log
