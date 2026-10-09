@@ -37,6 +37,21 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-diagnostic-export-test)
     endif()
 
+    # No viewer needed: execute the canonical installed Tool with a hermetic loader environment.
+    # Do not register when examples/Tool is absent; an explicitly selected release-evidence cell fails closed.
+    add_test(
+        NAME hyremote-tool-installed-diagnostic
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DHYREMOTE_BUILD_DIR=${CMAKE_BINARY_DIR}
+            "-DEVIDENCE_CELLS=installed-tool"
+            -P "${CMAKE_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+    )
+    set_tests_properties(hyremote-tool-installed-diagnostic PROPERTIES TIMEOUT 600)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("consumer;tool;installed" hyremote-tool-installed-diagnostic)
+    endif()
+
     if(HYREMOTE_WITH_VNC)
         # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
         # Register fail-closed so candidate qualification cannot pass because viewer tooling is absent.
