@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <utility>
 
@@ -143,6 +144,54 @@ private:
     bool m_stopped = true;
 };
 
+// Drains QObject::destroyed notifications independently of Core's callback
+// gate. The Core gate stops callbacks into Session; this gate also protects
+// the subsequent Runtime observation closure, which captures Impl.
+class TargetLossCallbackGate final
+{
+public:
+    void notify(const hyremote::CaptureEventHandler &report)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_closed)
+                return;
+            ++m_inFlight;
+        }
+
+        try {
+            const hyremote::CaptureEvent event{
+                hyremote::CaptureEventCode::TargetLost,
+                "the attached Qt target was destroyed",
+                false};
+            report(event);
+        } catch (...) {
+            // Never propagate a Runtime notification exception through a
+            // QObject destructor; the completion must always be accounted.
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            --m_inFlight;
+            if (m_inFlight == 0)
+                m_drained.notify_all();
+        }
+    }
+
+    void closeAndDrain() noexcept
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_closed = true;
+        m_drained.wait(lock, [this] { return m_inFlight == 0; });
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_drained;
+    std::size_t m_inFlight = 0;
+    bool m_closed = false;
+};
+
 // Wraps the transport so the shared Runtime keeps the one authoritative client count and observes the
 // *result* of every transport event rather than racing the Core for it: the Core handler runs first,
 // and only then does the Runtime read and publish what the Session made of the event.
@@ -239,8 +288,18 @@ public:
         // The transport has accepted a real, Core-validated frame. RFB can
         // now complete ServerInit for the first client without a capture
         // bootstrap deadlock; clientless capture may go idle.
+        // AccessInstance's default transport is RFB, whose ServerInit width
+        // and height fields are unsigned 16-bit. Core-valid pixels larger than
+        // that cannot complete a first viewer handshake. Keep bootstrap demand
+        // alive until a frame can actually provide a ServerInit geometry.
+        const auto geometry = frame.geometry.size;
+        const bool usableForServerInit =
+            geometry.width > 0 && geometry.height > 0
+            && geometry.width <= std::numeric_limits<std::uint16_t>::max()
+            && geometry.height <= std::numeric_limits<std::uint16_t>::max();
         m_transport->enqueueFrame(std::move(frame));
-        m_demand->frameQueued();
+        if (usableForServerInit)
+            m_demand->frameQueued();
     }
 
 private:
@@ -300,19 +359,11 @@ public:
         // Capture only per-run shared data: a late signal after stop cannot
         // access this ObservedCaptureSource or a destroyed AccessInstance.
         if (QObject *target = m_target.data()) {
-            auto watchActive = m_targetWatchActive;
-            watchActive->store(true, std::memory_order_release);
+            const auto gate = std::make_shared<TargetLossCallbackGate>();
+            m_targetLossGate = gate;
             m_targetDestroyedConnection = QObject::connect(
                 target, &QObject::destroyed,
-                [watchActive, reportEvent](QObject *) {
-                    if (!watchActive->load(std::memory_order_acquire))
-                        return;
-                    const hyremote::CaptureEvent event{
-                        hyremote::CaptureEventCode::TargetLost,
-                        "the attached Qt target was destroyed",
-                        false};
-                    reportEvent(event);
-                });
+                [gate, reportEvent](QObject *) { gate->notify(reportEvent); });
         }
         return true;
     }
@@ -321,7 +372,11 @@ public:
     {
         // Core calls CaptureSource::stop() before joining its scheduler. Wake
         // the scheduler here even if no viewer ever connected.
-        m_targetWatchActive->store(false, std::memory_order_release);
+        // QObject::disconnect cannot wait for a signal already running on
+        // another thread. Drain the entire event + Runtime notification before
+        // releasing the per-run Impl captured by its reportEvent closure.
+        if (m_targetLossGate)
+            m_targetLossGate->closeAndDrain();
         QObject::disconnect(m_targetDestroyedConnection);
         m_demand->stop();
         m_source->stop();
@@ -338,8 +393,7 @@ private:
     std::unique_ptr<hyremote::CaptureSource> m_source;
     QPointer<QObject> m_target;
     QMetaObject::Connection m_targetDestroyedConnection;
-    std::shared_ptr<std::atomic<bool>> m_targetWatchActive =
-        std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<TargetLossCallbackGate> m_targetLossGate;
     std::shared_ptr<std::atomic<bool>> m_runActive;
     std::shared_ptr<ViewerCaptureDemand> m_demand;
     std::function<void()> m_onRuntimeObservation;
