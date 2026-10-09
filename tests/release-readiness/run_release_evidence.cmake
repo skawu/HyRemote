@@ -1087,7 +1087,7 @@ if("installed-tool" IN_LIST EVIDENCE_CELLS)
                 list(APPEND _missing "DIAGNOSTIC_SAVED confirmation")
             endif()
             foreach(_key IN ITEMS BUILD_IDENTITY DEPLOYMENT_IDENTITY)
-                string(REGEX MATCH "(^|\\n)${_key}=([^\\r\\n]*)" _match "${_tool_diagnostics}")
+                string(REGEX MATCH "(^|\n)${_key}=([^\r\n]*)" _match "${_tool_diagnostics}")
                 set("_tool_${_key}" "${CMAKE_MATCH_2}")
             endforeach()
             if(_tool_BUILD_IDENTITY STREQUAL "" OR
