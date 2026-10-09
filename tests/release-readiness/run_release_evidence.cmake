@@ -448,7 +448,7 @@ function(record_runtime_isolation cell deployed_root)
 endfunction()
 
 foreach(cell IN LISTS EVIDENCE_CELLS)
-    if(NOT cell IN_LIST all_cells)
+    if(NOT cell IN_LIST all_cells AND NOT cell STREQUAL "installed-tool")
         message(FATAL_ERROR "release-evidence: unknown evidence cell '${cell}'")
     endif()
     evidence_dir_for("${cell}")
@@ -1033,6 +1033,86 @@ if("deploy-helper" IN_LIST EVIDENCE_CELLS)
         record("${cell}" "RESULT" "PASS")
     else()
         fail_cell("${cell}" "deploy-helper fixture failed")
+    endif()
+endif()
+
+
+# ---------------------------------------------------------------- installed HyRemoteTool
+#
+# Optional explicit cell: HyRemoteTool is only built when examples are enabled. It must not be added to
+# the runner's default all_cells, which is also used by configurations with examples disabled. When selected
+# from its capability-guarded CTest, it tests the exact canonical *installed* product prefix (not a build-tree
+# executable), with the same hermetic product runtime PATH as the other release evidence.
+if("installed-tool" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-tool")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "installed HyRemoteTool diagnostic export")
+
+    set(_installed_tool "${INSTALL_PREFIX}/bin/hyremote-tool")
+    if(WIN32)
+        string(APPEND _installed_tool ".exe")
+    endif()
+    set(_tool_manifest "${INSTALL_PREFIX}/bin/HYREMOTE-MANIFEST.txt")
+    set(_tool_report "${RUN_DIR}/${cell}/diagnostic-report.txt")
+
+    if(NOT EXISTS "${_installed_tool}")
+        fail_cell("${cell}" "canonical install did not produce bin/hyremote-tool")
+    elseif(NOT EXISTS "${_tool_manifest}")
+        fail_cell("${cell}" "installed Tool has no adjacent canonical manifest")
+    else()
+        set(_tool_path "${INSTALL_PREFIX}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+        record_runtime_env("${cell}" "${_tool_path}")
+        record("${cell}" "EXECUTABLE" "${_installed_tool}")
+        record("${cell}" "MANIFEST" "${_tool_manifest}")
+        # The clean deployment carries the native platform plugin, not the SDK's
+        # offscreen test plugin. Linux runs under the CI's Xvfb display; Windows
+        # uses the installed windows platform plugin. Never repair Qt plugin paths.
+        if(WIN32)
+            set(_tool_qpa "windows")
+        else()
+            set(_tool_qpa "xcb")
+        endif()
+        record("${cell}" "QPA_PLATFORM" "${_tool_qpa}")
+        run_capture("${cell}" "installed_run" "${_tool_path}"
+            "${CMAKE_COMMAND}" -E env "QT_QPA_PLATFORM=${_tool_qpa}"
+            "${_installed_tool}"
+                --diagnostic-report-file "${_tool_report}" --test-seconds 1)
+
+        if(NOT ${cell}_result EQUAL 0 OR NOT EXISTS "${_tool_report}")
+            fail_cell("${cell}" "installed Tool did not run and export a diagnostic report")
+        else()
+            file(READ "${_tool_report}" _tool_diagnostics)
+            file(READ "${RUN_DIR}/${cell}/installed_run.log" _tool_run_log)
+            set(_missing "")
+            foreach(_required IN ITEMS
+                    "INTEGRATION_ROUTE=cpp" "STATE=Stopped" "REMOTE_INPUT=false"
+                    "LISTENER_EFFECTIVE=none")
+                string(FIND "${_tool_diagnostics}" "${_required}" _found)
+                if(_found EQUAL -1)
+                    list(APPEND _missing "${_required}")
+                endif()
+            endforeach()
+            string(FIND "${_tool_run_log}" "DIAGNOSTIC_SAVED " _saved)
+            if(_saved EQUAL -1)
+                list(APPEND _missing "DIAGNOSTIC_SAVED confirmation")
+            endif()
+            foreach(_key IN ITEMS BUILD_IDENTITY DEPLOYMENT_IDENTITY)
+                string(REGEX MATCH "(^|\n)${_key}=([^\r\n]*)" _match "${_tool_diagnostics}")
+                set("_tool_${_key}" "${CMAKE_MATCH_2}")
+            endforeach()
+            if(_tool_BUILD_IDENTITY STREQUAL "" OR
+                    _tool_BUILD_IDENTITY STREQUAL "unknown" OR
+                    NOT _tool_BUILD_IDENTITY STREQUAL _tool_DEPLOYMENT_IDENTITY OR
+                    NOT _tool_BUILD_IDENTITY MATCHES "source_sha=${SOURCE_SHA}")
+                list(APPEND _missing "correlated non-unknown build/deployment identity")
+            endif()
+            if(_missing)
+                string(JOIN ", " _reason ${_missing})
+                fail_cell("${cell}" "installed Tool diagnostic contract failed: ${_reason}")
+            else()
+                record("${cell}" "RESULT_DETAIL" "canonical installed Tool ran with isolated loader path and exported correlated Shared Runtime facts")
+                pass_cell("${cell}")
+            endif()
+        endif()
     endif()
 endif()
 

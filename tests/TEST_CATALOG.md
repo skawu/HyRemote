@@ -131,6 +131,7 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-generic-installed-consumers` | Consumer/Generic — real installed Generic Widgets/Quick with native platform identity. |
 | `hyremote-qml-installed-consumer` | Consumer/QML — clean installed QML-only module is deployed, loaded and executes its shared diagnostic contract. |
 | `hyremote-qpa-installed-product-fit` | Consumer/QPA — clean installed QPA payload/delegate chain reaches a live RFB listener and emits correlated shared diagnostics. |
+| `hyremote-tool-installed-diagnostic` | Consumer/Tool — when Tool/examples are built, a fresh canonical installed prefix launches the real installed hyremote-tool with its shipped native QPA (`xcb` under Xvfb on Linux, `windows` on Windows) and a loader PATH restricted to the install tree and OS; its saved public Shared Runtime report must correlate build/deployment manifest identity. Separate build-tree diagnostic smoke uses `offscreen`; viewer product-fit remains separately owned. |
 | `hyremote-qml-deploy-helper-non-qml` | Consumer/QML — ordinary deploy dispatch remains non-QML. |
 | `hyremote-qml-deploy-helper-qml` | Consumer/QML — QML-aware deploy dispatch/import-root preservation. |
 | `hyremote-release-readiness-security-runtime-deploy` | Consumer — deployed Runtime/security closure and runtime dependency availability. |

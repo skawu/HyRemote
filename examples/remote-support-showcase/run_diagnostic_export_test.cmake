@@ -10,25 +10,29 @@ endif()
 
 file(REMOVE "${OUTPUT_FILE}")
 
+# The build-tree executable must find Qt/Runtime through its CMake build RPATH on Unix.
+# Do not give it a loader-path repair that would be forbidden for deployed consumers.
+# On Windows the build-tree DLL directory is needed, and the PATH assignment
+# must stay quoted: inherited PATH contains semicolons.
 if(WIN32)
-    set(_loader_env "PATH=${RUNTIME_DIR};$ENV{PATH}")
-elseif(APPLE)
-    set(_loader_env "DYLD_LIBRARY_PATH=${RUNTIME_DIR}:$ENV{DYLD_LIBRARY_PATH}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "QT_QPA_PLATFORM=offscreen"
+            "PATH=${RUNTIME_DIR};$ENV{PATH}"
+            "${TEST_EXE}"
+            --diagnostic-report-file "${OUTPUT_FILE}" --test-seconds 1
+        RESULT_VARIABLE _result OUTPUT_VARIABLE _stdout ERROR_VARIABLE _stderr
+    )
 else()
-    set(_loader_env "LD_LIBRARY_PATH=${RUNTIME_DIR}:$ENV{LD_LIBRARY_PATH}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env
+            --unset=LD_LIBRARY_PATH
+            "QT_QPA_PLATFORM=offscreen"
+            "${TEST_EXE}"
+            --diagnostic-report-file "${OUTPUT_FILE}" --test-seconds 1
+        RESULT_VARIABLE _result OUTPUT_VARIABLE _stdout ERROR_VARIABLE _stderr
+    )
 endif()
-
-execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env
-        "QT_QPA_PLATFORM=offscreen"
-        "${_loader_env}"
-        "${TEST_EXE}"
-        --diagnostic-report-file "${OUTPUT_FILE}"
-        --test-seconds 1
-    RESULT_VARIABLE _result
-    OUTPUT_VARIABLE _stdout
-    ERROR_VARIABLE _stderr
-)
 
 if(NOT _result EQUAL 0)
     message(FATAL_ERROR

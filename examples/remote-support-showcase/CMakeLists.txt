@@ -37,6 +37,24 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-diagnostic-export-test)
     endif()
 
+    # This is repository-level release evidence, not a test of an external add_subdirectory() consumer.
+    # The nested showcase has its own project(), so PROJECT_IS_TOP_LEVEL is not the root authority here.
+    # Register only when HyRemote itself is the top-level source tree.
+    if(CMAKE_SOURCE_DIR STREQUAL HyRemote_SOURCE_DIR)
+        add_test(
+            NAME hyremote-tool-installed-diagnostic
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${HyRemote_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${HyRemote_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-tool"
+                -P "${HyRemote_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-tool-installed-diagnostic PROPERTIES TIMEOUT 600)
+        if(COMMAND hyremote_label_test_family)
+            hyremote_label_test_family("consumer;tool;installed" hyremote-tool-installed-diagnostic)
+        endif()
+    endif()
+
     if(HYREMOTE_WITH_VNC)
         # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
         # Register fail-closed so candidate qualification cannot pass because viewer tooling is absent.

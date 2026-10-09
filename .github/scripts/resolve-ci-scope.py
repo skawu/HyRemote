@@ -65,7 +65,7 @@ FRONTEND_PREFIXES = {
 # all four frontends and started two Qt runners to build nothing.
 EXAMPLE_SOURCE_ROOTS = ("examples/", "logo/")
 EXAMPLE_BUILD_SUFFIXES = (
-    ".cmake", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".qml", ".qrc", ".ui", ".ts", ".json",
+    ".cmake", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".qml", ".qrc", ".ui", ".ts", ".json", ".png",
 )
 EXAMPLE_BUILD_NAMES = ("CMakeLists.txt",)
 
@@ -120,6 +120,21 @@ RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 # HyRemoteTool's standard-viewer product fit is the same class of exact-candidate evidence. Ordinary
 # feature PRs do not acquire Pillow/vncdotool merely because Tool product code changed; the wiring/script
 # PR itself and FULL_GATE execute it fail-closed.
+# Installed Tool is T4 evidence, independent from the expensive viewer product-fit.
+TOOL_INSTALLED_TEST = "hyremote-tool-installed-diagnostic$"
+TOOL_INSTALLED_PREFIXES = (
+    "examples/remote-support-showcase/",
+    # Direct shared Tool sources and parent registration also need to build Tool.
+    "examples/hyremote_branding.",
+    "examples/CMakeLists.txt",
+    "logo/hyremote-branding.qrc",
+    "logo/huayan-logo-single.png",
+    "cmake/HyRemoteInstall.cmake",
+    "cmake/HyRemoteDeploy.cmake",
+    "tests/release-readiness/run_release_evidence.cmake",
+    ".github/scripts/resolve-ci-scope.py",
+    ".github/workflows/ci.yml",
+)
 TOOL_PRODUCT_FIT_TEST = "hyremote-tool-product-fit$"
 TOOL_PRODUCT_FIT_PREFIXES = (
     ".github/scripts/resolve-ci-scope.py",
@@ -295,6 +310,9 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     tool_product_fit_evidence = full_gate or any(
         path.startswith(TOOL_PRODUCT_FIT_PREFIXES) for path in changed
     )
+    tool_installed_evidence = full_gate or any(
+        path.startswith(TOOL_INSTALLED_PREFIXES) for path in changed
+    )
 
     governance = full_gate or any(
         path.startswith(GOVERNANCE_PREFIXES) or path in GOVERNANCE_ONLY_PATHS for path in changed
@@ -329,6 +347,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         excluded.append(RFB_PRODUCT_FIT_TEST)
     if not tool_product_fit_evidence:
         excluded.append(TOOL_PRODUCT_FIT_TEST)
+    if not tool_installed_evidence:
+        excluded.append(TOOL_INSTALLED_TEST)
     # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
     # test name: CTest then excluded everything, reported success, and a lane that promised full integration
     # executed nothing. That is a false green, not a formatting detail. A lane that runs no product job has no
@@ -350,6 +370,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         "readiness_evidence": "true" if readiness_evidence else "false",
         "rfb_product_fit_evidence": "true" if (rfb_product_fit_evidence and product) else "false",
         "tool_product_fit_evidence": "true" if (tool_product_fit_evidence and product) else "false",
+        "tool_installed_evidence": "true" if (tool_installed_evidence and product) else "false",
         "governance": "true" if governance else "false",
         "security_evidence": "true" if (security_evidence and product) else "false",
         "test_exclude": test_exclude,
@@ -566,6 +587,34 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
             failures += 1
 
+    # The build-tree viewer fit and installed Tool are separately selected.
+    for description, event, changed, should_run in (
+            ("Tool main selects installed execution", "pull_request",
+             ["examples/remote-support-showcase/main.cpp"], True),
+            ("Tool registration selects installed execution", "pull_request",
+             ["examples/remote-support-showcase/CMakeLists.txt"], True),
+            ("Tool shared branding source selects installed execution", "pull_request",
+             ["examples/hyremote_branding.cpp"], True),
+            ("Tool shared branding header selects installed execution", "pull_request",
+             ["examples/hyremote_branding.h"], True),
+            ("Tool canonical logo qrc selects installed execution", "pull_request",
+             ["logo/hyremote-branding.qrc"], True),
+            ("Tool canonical logo image selects installed execution", "pull_request",
+             ["logo/huayan-logo-single.png"], True),
+            ("parent example registration selects installed execution", "pull_request",
+             ["examples/CMakeLists.txt"], True),
+            ("deploy change selects installed Tool", "pull_request",
+             ["cmake/HyRemoteDeploy.cmake"], True),
+            ("runner change selects installed Tool", "pull_request",
+             ["tests/release-readiness/run_release_evidence.cmake"], True),
+            ("unrelated core change excludes Tool", "pull_request",
+             ["src/core/session/session.cpp"], False),
+            ("full gate selects installed Tool", "workflow_dispatch", [], True)):
+        resolved = resolve(event, changed)
+        if (TOOL_INSTALLED_TEST not in resolved["test_exclude"]) != should_run:
+            print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
+            failures += 1
+
     # Whatever the lane, an exclusion must never be able to exclude everything: "^()" is the shape that turned a
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
@@ -651,6 +700,7 @@ def main() -> int:
                 f"- candidate product-fit evidence (RFB/Tool): "
                 f"{outputs['rfb_product_fit_evidence']}/{outputs['tool_product_fit_evidence']}\n"
             )
+            handle.write(f"- installed Tool evidence: {outputs['tool_installed_evidence']}\n")
             handle.write(f"- release-authority governance: {outputs['governance']}\n")
             handle.write(f"- security-on evidence: {outputs['security_evidence']}\n")
     return 0
