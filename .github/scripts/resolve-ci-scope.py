@@ -125,6 +125,7 @@ TOOL_PRODUCT_FIT_PREFIXES = (
     ".github/scripts/resolve-ci-scope.py",
     ".github/workflows/ci.yml",
     "examples/remote-support-showcase/CMakeLists.txt",
+    "examples/remote-support-showcase/input_probe.cpp",
     "tests/product-e2e/showcase_product_fit.py",
 )
 
@@ -552,6 +553,8 @@ def self_test() -> int:
              [".github/workflows/ci.yml"], False),
             ("CI scope classifier wiring runs Tool product fit", "pull_request",
              [".github/scripts/resolve-ci-scope.py"], False),
+            ("showcase input probe contract runs Tool product fit", "pull_request",
+             ["examples/remote-support-showcase/input_probe.cpp"], False),
             ("an ordinary Tool implementation PR still excludes it", "pull_request",
              ["examples/remote-support-showcase/main.cpp"], True),
             ("an unrelated pull request excludes Tool product fit", "pull_request",
