@@ -352,8 +352,18 @@ public:
     {
         const auto runActive = m_runActive;
         const auto observe = m_onRuntimeObservation;
+        // Both QObject::destroyed and a previously queued widget/Quick capture
+        // request may discover the same target loss. Count the first fatal
+        // TargetLost event once per Runtime run, regardless of which producer
+        // wins. Other backend failures are independent occurrences.
+        const auto targetLossReported = std::make_shared<std::atomic<bool>>(false);
         const auto reportEvent =
-            [runActive, observe, onEvent = std::move(onEvent)](const hyremote::CaptureEvent &event) {
+            [runActive, observe, targetLossReported,
+             onEvent = std::move(onEvent)](const hyremote::CaptureEvent &event) {
+                if (event.code == hyremote::CaptureEventCode::TargetLost
+                    && targetLossReported->exchange(true, std::memory_order_acq_rel)) {
+                    return;
+                }
                 if (onEvent)
                     onEvent(event);
 
