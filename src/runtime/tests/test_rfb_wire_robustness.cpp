@@ -719,6 +719,10 @@ void testContinuousUpdatesAndRequestFallback()
     }));
     CHECK(waitForDisconnected(rejected));
 
+    // A stale request-driven incremental for the RIGHT tile must not
+    // prevent enabling continuous updates for the LEFT tile.
+    CHECK(sendUpdateRequest(continuous, true, 64, 0, 64, 64));
+    CHECK(noFramebufferData(continuous));
     CHECK(sendContinuousUpdates(continuous, true, 0, 0, 64, 64));
     CHECK(noFramebufferData(continuous));
     transport->enqueueFrame(makeFrame(128, 128, background,
@@ -774,6 +778,59 @@ void testContinuousUpdatesAndRequestFallback()
     standard.disconnectFromHost();
     waitForDisconnected(continuous);
     waitForDisconnected(standard);
+    transport->stop();
+}
+
+void testContinuousUpdatesForcedRefreshBounds()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+    Recorder recorder;
+    constexpr std::uint32_t background = 0x182838U;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, background));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-313, -223, 0}));
+    CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+
+    // The first update is still a forced refresh from ServerInit. It may not
+    // leak the entire framebuffer outside the 32x32 enabled region.
+    CHECK(sendContinuousUpdates(socket, true, 32, 32, 32, 32));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 32
+          && rectangles.front().y == 32 && rectangles.front().width == 32
+          && rectangles.front().height == 32 && rectangles.front().encoding == 0);
+    CHECK(frame.get(40, 40) == background);
+    CHECK(frame.get(0, 0) == 0U);
+
+    // A resize must still communicate DesktopSize, but automatic pixel
+    // updates remain clipped to the enabled region.
+    transport->enqueueFrame(makeFrame(96, 96, 0x224466U));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 2U);
+    CHECK(rectangles.size() == 2U && rectangles.front().encoding == -223);
+    CHECK(rectangles.size() == 2U && rectangles.back().x == 32
+          && rectangles.back().y == 32 && rectangles.back().width == 32
+          && rectangles.back().height == 32);
+    CHECK(frame.width == 96 && frame.height == 96);
+    CHECK(frame.get(40, 40) == 0x224466U);
+    CHECK(frame.get(0, 0) == 0U);
+
+    CHECK(sendContinuousUpdates(socket, false, 0, 0, 0, 0));
+    CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
     transport->stop();
 }
 
@@ -1132,6 +1189,7 @@ int main(int argc, char **argv)
     testTrleRawAndIncrementalDelivery();
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
+    testContinuousUpdatesForcedRefreshBounds();
     testFragmentedHandshakeAndInput();
     testNegotiatedFenceAndRequestFallback();
     testOversizedSetEncodingsFailsClosed();
