@@ -12,6 +12,7 @@
 
 #include "access_instance.hpp"
 #include "detail/component_factories.hpp"
+#include "hyremote/core/storage.hpp"
 
 #include <QCoreApplication>
 #include <QObject>
@@ -123,7 +124,9 @@ struct RuntimeState
     std::atomic<int> captureStarts{0};
     std::atomic<int> captureStops{0};
     std::atomic<int> captureRequests{0};
+    std::atomic<int> framesQueued{0};
     std::atomic<int> transportStops{0};
+    bool emitOneBootstrapFrame = false;
     int inputPosts = 0;
     bool throwOnInputPost = false;
     hyremote::InputHandler inputHandler;
@@ -170,10 +173,12 @@ public:
         return result;
     }
 
-    bool start(hyremote::FrameReadyHandler, hyremote::CaptureEventHandler onEvent) override
+    bool start(hyremote::FrameReadyHandler onFrame, hyremote::CaptureEventHandler onEvent) override
     {
         ++m_state->captureStarts;
         m_state->captureEventHandler = std::move(onEvent);
+        m_onFrame = std::move(onFrame);
+        m_bootstrapSent = false;
         return true;
     }
 
@@ -181,16 +186,35 @@ public:
     {
         ++m_state->captureStops;
         m_state->captureEventHandler = {};
+        m_onFrame = {};
     }
 
     bool requestFrame(const hyremote::CaptureRequest &) override
     {
         ++m_state->captureRequests;
-        return false;
+        if (!m_state->emitOneBootstrapFrame || m_bootstrapSent || !m_onFrame)
+            return false;
+        m_bootstrapSent = true;
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(8, 2);
+        if (!storage)
+            return false;
+        hyremote::RemoteFrame frame;
+        frame.geometry.size = {2, 2};
+        frame.geometry.pixelFormat = hyremote::PixelFormat::Bgra8888;
+        frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
+        frame.geometry.planeCount = 1;
+        frame.storage = std::move(storage);
+        frame.timing.completionTime = hyremote::Clock::now();
+        frame.timing.ptsSource = hyremote::PtsSource::Completion;
+        frame.damage = hyremote::Damage::fullFrame();
+        m_onFrame(std::move(frame));
+        return true;
     }
 
 private:
     std::shared_ptr<RuntimeState> m_state;
+    hyremote::FrameReadyHandler m_onFrame;
+    bool m_bootstrapSent = false;
 };
 
 class FakeTransport final : public hyremote::Transport
@@ -223,7 +247,10 @@ public:
         m_state->transportEventHandler = {};
     }
 
-    void enqueueFrame(hyremote::RemoteFrame) override {}
+    void enqueueFrame(hyremote::RemoteFrame) override
+    {
+        ++m_state->framesQueued;
+    }
 
 private:
     std::shared_ptr<RuntimeState> m_state;
@@ -398,34 +425,45 @@ void testEncryptedSecurityFailsClosedInDiagnostics()
 void testCaptureSleepsWithoutViewersAndResumesOnConnect()
 {
     const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
     installRuntime(state);
     QObject target;
     AccessInstance instance(&target);
 
-    // A running listener is not a capture demand: in a clientless run
-    // the Shared Runtime must not repeatedly call the Qt capture adapter.
+    // RFB needs one real framebuffer before ServerInit can finish and
+    // ClientConnected can occur. Only after that bootstrap frame is queued
+    // may a listener without viewers pause actual Qt capture work.
     CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
-    CHECK(state->captureRequests.load() == 0);
+    const int bootstrapRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == bootstrapRequests);
 
     emitTransport(state, hyremote::TransportEventCode::ClientConnected);
-    for (int i = 0; i < 200 && state->captureRequests.load() == 0; ++i)
+    for (int i = 0; i < 200 && state->captureRequests.load() == bootstrapRequests; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    CHECK(state->captureRequests.load() > 0);
+    CHECK(state->captureRequests.load() > bootstrapRequests);
 
-    // The fake capture source refuses requests; even with that retry
-    // pressure, disconnect must put the scheduler back to sleep.
+    // The fake source refuses requests after the initial frame. Once all
+    // viewers disconnect, a retry may finish, then actual capture must stop.
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
     const int idleRequests = state->captureRequests.load();
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
     CHECK(state->captureRequests.load() == idleRequests);
 
-    // Stop while waiting for a viewer must wake the blocked scheduler,
-    // allow a fresh session run, and never reactivate stale demand.
+    // Stop while the scheduler is blocked must not deadlock. Rebuilding the
+    // same AccessInstance creates a fresh gate, bootstrap and viewer count.
     instance.stop();
     CHECK(instance.state() == AccessState::Stopped);
     CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
     const int restartedRequests = state->captureRequests.load();
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
     CHECK(state->captureRequests.load() == restartedRequests);
