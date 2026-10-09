@@ -124,6 +124,10 @@ RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 TOOL_INSTALLED_TEST = "hyremote-tool-installed-diagnostic$"
 TOOL_INSTALLED_PREFIXES = (
     "examples/remote-support-showcase/",
+    # Direct shared Tool sources and parent registration also need to build Tool.
+    "examples/hyremote_branding.",
+    "examples/CMakeLists.txt",
+    "logo/hyremote-branding.qrc",
     "cmake/HyRemoteInstall.cmake",
     "cmake/HyRemoteDeploy.cmake",
     "tests/release-readiness/run_release_evidence.cmake",
@@ -588,6 +592,14 @@ def self_test() -> int:
              ["examples/remote-support-showcase/main.cpp"], True),
             ("Tool registration selects installed execution", "pull_request",
              ["examples/remote-support-showcase/CMakeLists.txt"], True),
+            ("Tool shared branding source selects installed execution", "pull_request",
+             ["examples/hyremote_branding.cpp"], True),
+            ("Tool shared branding header selects installed execution", "pull_request",
+             ["examples/hyremote_branding.h"], True),
+            ("Tool canonical logo qrc selects installed execution", "pull_request",
+             ["logo/hyremote-branding.qrc"], True),
+            ("parent example registration selects installed execution", "pull_request",
+             ["examples/CMakeLists.txt"], True),
             ("deploy change selects installed Tool", "pull_request",
              ["cmake/HyRemoteDeploy.cmake"], True),
             ("runner change selects installed Tool", "pull_request",
