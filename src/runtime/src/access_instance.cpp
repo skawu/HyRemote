@@ -370,14 +370,21 @@ public:
         // Target adapters normally detect TargetLost while requestFrame runs.
         // The zero-viewer demand gate intentionally stops those requests, so
         // preserve fault/lifecycle notifications independently via QObject.
-        // Capture only per-run shared data: a late signal after stop cannot
-        // access this ObservedCaptureSource or a destroyed AccessInstance.
+        // The QObject context was created on AccessInstance's composition
+        // thread. A destroyed signal originating on another thread is queued
+        // to this context instead of invoking the raw Impl observer from the
+        // foreign QObject destructor. Normal same-thread target loss remains
+        // synchronous, including the reentrant stop() path.
+        //
+        // A queued delivery left behind after stop is rejected by the gate;
+        // destruction of the context also drops any undelivered Qt events.
         if (QObject *target = m_target.data()) {
             const auto gate = std::make_shared<TargetLossCallbackGate>();
             m_targetLossGate = gate;
             m_targetDestroyedConnection = QObject::connect(
-                target, &QObject::destroyed,
-                [gate, reportEvent](QObject *) { gate->notify(reportEvent); });
+                target, &QObject::destroyed, &m_targetEventReceiver,
+                [gate, reportEvent](QObject *) { gate->notify(reportEvent); },
+                Qt::AutoConnection);
         }
         return true;
     }
@@ -406,6 +413,9 @@ public:
 private:
     std::unique_ptr<hyremote::CaptureSource> m_source;
     QPointer<QObject> m_target;
+    // Owned by the capture wrapper, created on the AccessInstance lifecycle
+    // thread and never moved to the source/transport worker threads.
+    QObject m_targetEventReceiver;
     QMetaObject::Connection m_targetDestroyedConnection;
     std::shared_ptr<TargetLossCallbackGate> m_targetLossGate;
     std::shared_ptr<std::atomic<bool>> m_runActive;
