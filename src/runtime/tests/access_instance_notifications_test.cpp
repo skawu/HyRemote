@@ -19,7 +19,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -127,6 +129,7 @@ struct RuntimeState
     std::atomic<int> framesQueued{0};
     std::atomic<int> transportStops{0};
     bool emitOneBootstrapFrame = false;
+    bool oversizedBootstrapFirst = false;
     int inputPosts = 0;
     bool throwOnInputPost = false;
     hyremote::InputHandler inputHandler;
@@ -178,7 +181,7 @@ public:
         ++m_state->captureStarts;
         m_state->captureEventHandler = std::move(onEvent);
         m_onFrame = std::move(onFrame);
-        m_bootstrapSent = false;
+        m_bootstrapFramesSent = 0;
         return true;
     }
 
@@ -194,14 +197,18 @@ public:
     bool requestFrame(const hyremote::CaptureRequest &) override
     {
         ++m_state->captureRequests;
-        if (!m_state->emitOneBootstrapFrame || m_bootstrapSent || !m_onFrame)
+        if (!m_state->emitOneBootstrapFrame || !m_onFrame
+            || m_bootstrapFramesSent >= (m_state->oversizedBootstrapFirst ? 2 : 1))
             return false;
-        m_bootstrapSent = true;
-        auto storage = hyremote::CpuFrameStorage::createSinglePlane(8, 2);
+        const bool oversized = m_state->oversizedBootstrapFirst && m_bootstrapFramesSent == 0;
+        ++m_bootstrapFramesSent;
+        const std::uint32_t width = oversized ? 65536U : 2U;
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(
+            static_cast<std::size_t>(width) * 4U, 2);
         if (!storage)
             return false;
         hyremote::RemoteFrame frame;
-        frame.geometry.size = {2, 2};
+        frame.geometry.size = {width, 2};
         frame.geometry.pixelFormat = hyremote::PixelFormat::Bgra8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
@@ -216,7 +223,7 @@ public:
 private:
     std::shared_ptr<RuntimeState> m_state;
     hyremote::FrameReadyHandler m_onFrame;
-    bool m_bootstrapSent = false;
+    int m_bootstrapFramesSent = 0;
 };
 
 class FakeTransport final : public hyremote::Transport
@@ -504,6 +511,116 @@ void testTargetDestroyedWhileCaptureIsIdle()
 
     // The idle capture gate must still be cancellable after TargetLost.
     instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+void testOversizedBootstrapCannotSuspendBeforeRfbServerInit()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    state->oversizedBootstrapFirst = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    CHECK(instance.start());
+    // The first otherwise-valid Core frame is wider than RFB ServerInit's
+    // uint16 geometry. It must not suspend capture: a subsequent valid
+    // framebuffer still has to be captured so a viewer can connect.
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() >= 2);
+    CHECK(state->captureRequests.load() >= 2);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int idleRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == idleRequests);
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->captureRequests.load() == idleRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > idleRequests);
+    instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testConcurrentTargetLossIsDrainedBeforeOwnerStop()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+
+    // The target lives and dies on its own QObject owner thread. This
+    // simulates a destruction signal concurrently entering Runtime teardown,
+    // including the phase AFTER Core has finished the capture event callback.
+    std::mutex targetMutex;
+    std::condition_variable targetCv;
+    QObject *target = nullptr;
+    bool destroyTarget = false;
+    std::thread destroyer([&] {
+        QObject targetOnThisThread;
+        {
+            std::lock_guard<std::mutex> lock(targetMutex);
+            target = &targetOnThisThread;
+        }
+        targetCv.notify_all();
+        std::unique_lock<std::mutex> lock(targetMutex);
+        targetCv.wait(lock, [&] { return destroyTarget; });
+    });
+    {
+        std::unique_lock<std::mutex> lock(targetMutex);
+        targetCv.wait(lock, [&] { return target != nullptr; });
+    }
+
+    std::mutex callbackMutex;
+    std::condition_variable callbackCv;
+    bool observingFailure = false;
+    bool releaseObservation = false;
+    std::atomic<bool> stopReturned{false};
+    std::atomic<bool> returnedBeforeDrain{false};
+
+    AccessInstance instance(target);
+    RuntimeNotificationHandlers handlers;
+    handlers.errorChanged = [&](std::optional<Error> error) {
+        if (!error || error->code != ErrorCode::RuntimeFailure)
+            return;
+        std::unique_lock<std::mutex> lock(callbackMutex);
+        observingFailure = true;
+        callbackCv.notify_all();
+        callbackCv.wait(lock, [&] { return releaseObservation; });
+    };
+    instance.subscribeNotifications(std::move(handlers));
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() >= 1);
+    {
+        std::lock_guard<std::mutex> lock(targetMutex);
+        destroyTarget = true;
+    }
+    targetCv.notify_all();
+    {
+        std::unique_lock<std::mutex> lock(callbackMutex);
+        callbackCv.wait(lock, [&] { return observingFailure; });
+    }
+
+    std::thread releaser([&] {
+        // Target-loss delivery has finished the Core callback and entered
+        // the Runtime notification; stop must drain that entire observation.
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+        returnedBeforeDrain.store(stopReturned.load());
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            releaseObservation = true;
+        }
+        callbackCv.notify_all();
+    });
+    instance.stop();
+    stopReturned.store(true);
+    releaser.join();
+    destroyer.join();
+    CHECK(!returnedBeforeDrain.load());
     CHECK(instance.state() == AccessState::Stopped);
     HyRemote::detail::resetFactories();
 }
@@ -805,6 +922,8 @@ int main(int argc, char **argv)
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testTargetDestroyedWhileCaptureIsIdle();
+    testOversizedBootstrapCannotSuspendBeforeRfbServerInit();
+    testConcurrentTargetLossIsDrainedBeforeOwnerStop();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
     testTargetLossPublishesErrorThenFaulted();
