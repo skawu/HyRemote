@@ -883,8 +883,13 @@ private:
                     protocolFailure(client, "RFB ContinuousUpdates requires a nonempty region");
                     return;
                 }
-                if (client.continuousRequestArmed)
+                // The extension discards any older request-driven incremental
+                // request even if the original region differs from the new area.
+                // A pending explicit non-incremental refresh still has priority.
+                if (client.continuousRequestArmed
+                    || (enable && client.delivery.hasOutstandingIncrementalRequest())) {
                     client.delivery.cancelRequest();
+                }
                 client.continuousRequestArmed = false;
                 client.continuousEnabled = enable;
                 if (enable) {
@@ -1325,7 +1330,14 @@ private:
 
         const RfbRect frameBounds{0, 0, width, height};
         RfbDamageRegion selected = eligible->intersected(frameBounds);
-        if (selected.empty()) {
+        if (client.continuousEnabled && client.continuousRequestArmed) {
+            // Forced full refreshes (notably ServerInit and resize) may request
+            // a larger area internally, but ContinuousUpdates may send pixels
+            // only inside the viewer-selected region. DesktopSize below is a
+            // separate correctness notification and must still be emitted.
+            selected = selected.intersected(client.continuousRegion);
+        }
+        if (selected.empty() && !resized) {
             client.delivery.cancelRequest();
             client.continuousRequestArmed = false;
             return;
