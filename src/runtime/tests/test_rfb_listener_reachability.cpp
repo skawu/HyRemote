@@ -105,7 +105,7 @@ bool connectRfb38AndReadBootstrap(QTcpSocket &socket, quint16 port)
     socket.connectToHost(QHostAddress::LocalHost, port);
     if (!socket.waitForConnected(3000))
         return false;
-    const QByteArray version("RFB 003.008\\n", 12);
+    const QByteArray version("RFB 003.008\n", 12);
     if (readRfbExact(socket, 12) != version || !sendRfb(socket, version))
         return false;
     const QByteArray countBytes = readRfbExact(socket, 1);
@@ -137,11 +137,11 @@ bool connectRfb38AndReadBootstrap(QTcpSocket &socket, quint16 port)
 
     // Force a full refresh: a connected client must still obtain the already
     // captured bootstrap framebuffer without depending on another request.
-    const QByteArray fullRequest("\\x03\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\x02", 10);
+    const QByteArray fullRequest("\x03\x00\x00\x00\x00\x00\x00\x02\x00\x02", 10);
     if (!sendRfb(socket, fullRequest))
         return false;
     const QByteArray reply = readRfbExact(socket, 4);
-    if (reply != QByteArray("\\x00\\x00\\x00\\x01", 4))
+    if (reply != QByteArray("\x00\x00\x00\x01", 4))
         return false;
     const QByteArray rect = readRfbExact(socket, 12);
     if (rect.size() != 12 || static_cast<unsigned char>(rect[5]) != 2
