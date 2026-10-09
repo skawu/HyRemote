@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 #include "detail/component_factories.hpp"
@@ -95,11 +96,14 @@ public:
         m_bootstrapFrameQueued = false;
     }
 
-    void frameQueued()
+    void frameQueued(bool usableForServerInit)
     {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_bootstrapFrameQueued = true;
+            // This tracks the *latest* framebuffer, not whether we once
+            // had usable geometry. An oversized resize after a valid frame
+            // must re-enable capture demand until ServerInit can succeed.
+            m_bootstrapFrameQueued = usableForServerInit;
         }
         m_changed.notify_all();
     }
@@ -157,6 +161,7 @@ public:
             if (m_closed)
                 return;
             ++m_inFlight;
+            m_callbackThread = std::this_thread::get_id();
         }
 
         try {
@@ -173,8 +178,10 @@ public:
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             --m_inFlight;
-            if (m_inFlight == 0)
+            if (m_inFlight == 0) {
+                m_callbackThread = {};
                 m_drained.notify_all();
+            }
         }
     }
 
@@ -182,6 +189,13 @@ public:
     {
         std::unique_lock<std::mutex> lock(m_mutex);
         m_closed = true;
+        // QObject::destroyed is emitted once per target. A notification
+        // handler may synchronously call AccessInstance::stop() on this
+        // SAME callback stack; waiting for ourselves would deadlock.
+        // That callback holds only shared run state after its observer
+        // returns. A different thread must still await complete drain.
+        if (m_callbackThread == std::this_thread::get_id())
+            return;
         m_drained.wait(lock, [this] { return m_inFlight == 0; });
     }
 
@@ -189,6 +203,7 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_drained;
     std::size_t m_inFlight = 0;
+    std::thread::id m_callbackThread;
     bool m_closed = false;
 };
 
@@ -298,8 +313,7 @@ public:
             && geometry.width <= std::numeric_limits<std::uint16_t>::max()
             && geometry.height <= std::numeric_limits<std::uint16_t>::max();
         m_transport->enqueueFrame(std::move(frame));
-        if (usableForServerInit)
-            m_demand->frameQueued();
+        m_demand->frameQueued(usableForServerInit);
     }
 
 private:
