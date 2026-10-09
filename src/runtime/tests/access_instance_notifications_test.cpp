@@ -12,16 +12,21 @@
 
 #include "access_instance.hpp"
 #include "detail/component_factories.hpp"
+#include "hyremote/core/storage.hpp"
 
 #include <QCoreApplication>
 #include <QObject>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -120,7 +125,14 @@ struct RuntimeState
 {
     std::atomic<int> captureStarts{0};
     std::atomic<int> captureStops{0};
+    std::atomic<int> captureRequests{0};
+    std::atomic<int> framesQueued{0};
     std::atomic<int> transportStops{0};
+    bool emitOneBootstrapFrame = false;
+    bool oversizedBootstrapFirst = false;
+    bool oversizedAfterValid = false;
+    std::atomic<bool> allowOversizedFrame{false};
+    std::atomic<bool> allowRecoveryFrame{false};
     int inputPosts = 0;
     bool throwOnInputPost = false;
     hyremote::InputHandler inputHandler;
@@ -167,10 +179,12 @@ public:
         return result;
     }
 
-    bool start(hyremote::FrameReadyHandler, hyremote::CaptureEventHandler onEvent) override
+    bool start(hyremote::FrameReadyHandler onFrame, hyremote::CaptureEventHandler onEvent) override
     {
         ++m_state->captureStarts;
         m_state->captureEventHandler = std::move(onEvent);
+        m_onFrame = std::move(onFrame);
+        m_bootstrapFramesSent = 0;
         return true;
     }
 
@@ -178,12 +192,55 @@ public:
     {
         ++m_state->captureStops;
         m_state->captureEventHandler = {};
+        // Session joins its scheduler after stop(); do not mutate this
+        // callback while requestFrame might still be unwinding.
+        // The fake's Core callback gate already makes late delivery inert.
     }
 
-    bool requestFrame(const hyremote::CaptureRequest &) override { return false; }
+    bool requestFrame(const hyremote::CaptureRequest &) override
+    {
+        ++m_state->captureRequests;
+        const int frameBudget = m_state->oversizedAfterValid ? 3
+                               : m_state->oversizedBootstrapFirst ? 2 : 1;
+        if (!m_state->emitOneBootstrapFrame || !m_onFrame
+            || m_bootstrapFramesSent >= frameBudget)
+            return false;
+        // The fake's asynchronous request boundaries are explicit: Core can
+        // have two requests in flight before the first frame reaches
+        // Transport, so a test must withhold the second frame until a viewer
+        // has actually connected, rather than assuming one-at-a-time capture.
+        if (m_state->oversizedAfterValid && m_bootstrapFramesSent == 1
+            && !m_state->allowOversizedFrame.load())
+            return false;
+        if (m_state->oversizedAfterValid && m_bootstrapFramesSent == 2
+            && !m_state->allowRecoveryFrame.load())
+            return false;
+        const bool oversized =
+            (m_state->oversizedBootstrapFirst && m_bootstrapFramesSent == 0)
+            || (m_state->oversizedAfterValid && m_bootstrapFramesSent == 1);
+        ++m_bootstrapFramesSent;
+        const std::uint32_t width = oversized ? 65536U : 2U;
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(
+            static_cast<std::size_t>(width) * 4U, 2);
+        if (!storage)
+            return false;
+        hyremote::RemoteFrame frame;
+        frame.geometry.size = {width, 2};
+        frame.geometry.pixelFormat = hyremote::PixelFormat::Bgra8888;
+        frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
+        frame.geometry.planeCount = 1;
+        frame.storage = std::move(storage);
+        frame.timing.completionTime = hyremote::Clock::now();
+        frame.timing.ptsSource = hyremote::PtsSource::Completion;
+        frame.damage = hyremote::Damage::fullFrame();
+        m_onFrame(std::move(frame));
+        return true;
+    }
 
 private:
     std::shared_ptr<RuntimeState> m_state;
+    hyremote::FrameReadyHandler m_onFrame;
+    int m_bootstrapFramesSent = 0;
 };
 
 class FakeTransport final : public hyremote::Transport
@@ -216,7 +273,10 @@ public:
         m_state->transportEventHandler = {};
     }
 
-    void enqueueFrame(hyremote::RemoteFrame) override {}
+    void enqueueFrame(hyremote::RemoteFrame) override
+    {
+        ++m_state->framesQueued;
+    }
 
 private:
     std::shared_ptr<RuntimeState> m_state;
@@ -386,6 +446,345 @@ void testEncryptedSecurityFailsClosedInDiagnostics()
         CHECK(recorder.errors.front()->code == ErrorCode::SecurityUnavailable);
         CHECK(indexOf(recorder.sequence, errors.front()) < indexOf(recorder.sequence, "state:Stopped"));
     }
+}
+
+void testCaptureSleepsWithoutViewersAndResumesOnConnect()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    // RFB needs one real framebuffer before ServerInit can finish and
+    // ClientConnected can occur. Only after that bootstrap frame is queued
+    // may a listener without viewers pause actual Qt capture work.
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int bootstrapRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == bootstrapRequests);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->captureRequests.load() == bootstrapRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > bootstrapRequests);
+
+    // The fake source refuses requests after the initial frame. Once all
+    // viewers disconnect, a retry may finish, then actual capture must stop.
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int idleRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == idleRequests);
+
+    // Stop while the scheduler is blocked must not deadlock. Rebuilding the
+    // same AccessInstance creates a fresh gate, bootstrap and viewer count.
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int restartedRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == restartedRequests);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->captureRequests.load() == restartedRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > restartedRequests);
+    instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testTargetDestroyedWhileCaptureIsIdle()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    auto target = std::make_unique<QObject>();
+    AccessInstance instance(target.get());
+    Recorder recorder;
+    instance.subscribeNotifications(recorder.handlers());
+
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    CHECK(instance.connectedClientCount() == 0u);
+
+    // No capture request can discover this loss after the bootstrap frame,
+    // so the shared Runtime must observe QObject lifetime independently.
+    target.reset();
+    CHECK(instance.state() == AccessState::Faulted);
+    CHECK(instance.lastError().has_value());
+    CHECK(instance.lastError() && instance.lastError()->code == ErrorCode::RuntimeFailure);
+    CHECK(indexOf(recorder.only("state:"), "state:Faulted") < recorder.only("state:").size());
+
+    // The idle capture gate must still be cancellable after TargetLost.
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+void testTargetLossReportedOnceAcrossWatcherAndPendingCapture()
+{
+    for (const bool lifetimeFirst : {true, false}) {
+        const auto state = std::make_shared<RuntimeState>();
+        state->emitOneBootstrapFrame = true;
+        installRuntime(state);
+        auto target = std::make_unique<QObject>();
+        AccessInstance instance(target.get());
+        Recorder recorder;
+        instance.subscribeNotifications(recorder.handlers());
+
+        CHECK(instance.start());
+        for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        CHECK(state->framesQueued.load() == 1);
+        CHECK(static_cast<bool>(state->captureEventHandler));
+
+        // The adapter may already have queued a capture request before
+        // QObject::destroyed fires; exercise BOTH callback orderings.
+        const hyremote::CaptureEvent pendingRequestLoss{
+            hyremote::CaptureEventCode::TargetLost,
+            "the attached Qt target no longer exists",
+            false};
+        recorder.clear();
+        if (lifetimeFirst) {
+            target.reset();
+            if (state->captureEventHandler)
+                state->captureEventHandler(pendingRequestLoss);
+        } else {
+            if (state->captureEventHandler)
+                state->captureEventHandler(pendingRequestLoss);
+            target.reset();
+        }
+
+        CHECK(instance.state() == AccessState::Faulted);
+        CHECK(instance.lastError().has_value());
+        CHECK(instance.lastError() && instance.lastError()->code == ErrorCode::RuntimeFailure);
+        CHECK(recorder.only("error:").size() == 1U);
+        CHECK(recorder.only("state:").size() == 1U);
+        CHECK(indexOf(recorder.only("state:"), "state:Faulted") == 0U);
+        instance.stop();
+        HyRemote::detail::resetFactories();
+    }
+}
+
+void testOversizedBootstrapCannotSuspendBeforeRfbServerInit()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    state->oversizedBootstrapFirst = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    CHECK(instance.start());
+    // The first otherwise-valid Core frame is wider than RFB ServerInit's
+    // uint16 geometry. It must not suspend capture: a subsequent valid
+    // framebuffer still has to be captured so a viewer can connect.
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() >= 2);
+    CHECK(state->captureRequests.load() >= 2);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int idleRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == idleRequests);
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->captureRequests.load() == idleRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > idleRequests);
+    instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testValidThenOversizedFramebufferReopensCaptureAfterDisconnect()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    state->oversizedAfterValid = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+
+    // A viewer resumes capture; the newer second frame is too wide for
+    // ServerInit. A future fresh viewer needs a subsequent usable frame.
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    state->allowOversizedFrame.store(true);
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 2);
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+
+    // The fake holds the valid recovery frame until the last viewer has
+    // disconnected. If idle demand still records the *old* valid frame,
+    // this recovery frame never reaches Transport.
+    state->allowRecoveryFrame.store(true);
+    for (int i = 0; i < 200 && state->framesQueued.load() < 3; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 3);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int settled = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == settled);
+    instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testReentrantStopInsideTargetLossNotification()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    auto target = std::make_unique<QObject>();
+    AccessInstance instance(target.get());
+    bool stoppedInsideCallback = false;
+    RuntimeNotificationHandlers handlers;
+    handlers.errorChanged = [&](std::optional<Error> error) {
+        if (!error || error->code != ErrorCode::RuntimeFailure || stoppedInsideCallback)
+            return;
+        // This callback runs inside TargetLossCallbackGate::notify().
+        // Closing its OWN in-flight notification must not self-deadlock.
+        stoppedInsideCallback = true;
+        instance.stop();
+    };
+    instance.subscribeNotifications(std::move(handlers));
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    target.reset();
+    CHECK(stoppedInsideCallback);
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+void testForeignThreadTargetLossIsSerializedOnLifecycleThread()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    QObject *target = nullptr;
+    bool destroyTarget = false;
+    std::thread targetOwner([&] {
+        QObject targetOnThisThread;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            target = &targetOnThisThread;
+        }
+        cv.notify_all();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return destroyTarget; });
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return target != nullptr; });
+    }
+
+    AccessInstance instance(target);
+    const auto lifecycleThread = std::this_thread::get_id();
+    std::thread::id notificationThread;
+    int faultNotifications = 0;
+    RuntimeNotificationHandlers handlers;
+    handlers.errorChanged = [&](std::optional<Error> error) {
+        if (!error || error->code != ErrorCode::RuntimeFailure)
+            return;
+        notificationThread = std::this_thread::get_id();
+        ++faultNotifications;
+    };
+    instance.subscribeNotifications(std::move(handlers));
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() >= 1);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        destroyTarget = true;
+    }
+    cv.notify_all();
+    targetOwner.join();
+
+    // Cross-thread QObject::destroyed is queued to the wrapper's lifecycle
+    // QObject context. No raw Impl observation runs on the target's thread.
+    CHECK(instance.state() == AccessState::Running);
+    for (int i = 0; i < 200 && instance.state() != AccessState::Faulted; ++i) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(instance.state() == AccessState::Faulted);
+    CHECK(faultNotifications == 1);
+    CHECK(notificationThread == lifecycleThread);
+    instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testQueuedTargetLossIsIgnoredAfterStop()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    std::mutex mutex;
+    std::condition_variable cv;
+    QObject *target = nullptr;
+    bool destroyTarget = false;
+    std::thread targetOwner([&] {
+        QObject targetOnThisThread;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            target = &targetOnThisThread;
+        }
+        cv.notify_all();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return destroyTarget; });
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return target != nullptr; });
+    }
+    AccessInstance instance(target);
+    int lateFaultNotifications = 0;
+    RuntimeNotificationHandlers handlers;
+    handlers.errorChanged = [&](std::optional<Error> error) {
+        if (error && error->code == ErrorCode::RuntimeFailure)
+            ++lateFaultNotifications;
+    };
+    instance.subscribeNotifications(std::move(handlers));
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() >= 1);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        destroyTarget = true;
+    }
+    cv.notify_all();
+    targetOwner.join();
+
+    // Queued delivery was not pumped before stop; teardown closes the run
+    // gate and destroys its QObject context. Late events cannot access Impl.
+    instance.stop();
+    QCoreApplication::processEvents();
+    CHECK(instance.state() == AccessState::Stopped);
+    CHECK(lateFaultNotifications == 0);
+    HyRemote::detail::resetFactories();
 }
 
 void testClientCountIsEventDrivenAndNotRepeated()
@@ -683,6 +1082,14 @@ int main(int argc, char **argv)
     testStartFailurePublishesErrorThenStopped();
     testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
+    testCaptureSleepsWithoutViewersAndResumesOnConnect();
+    testTargetDestroyedWhileCaptureIsIdle();
+    testTargetLossReportedOnceAcrossWatcherAndPendingCapture();
+    testOversizedBootstrapCannotSuspendBeforeRfbServerInit();
+    testValidThenOversizedFramebufferReopensCaptureAfterDisconnect();
+    testReentrantStopInsideTargetLossNotification();
+    testForeignThreadTargetLossIsSerializedOnLifecycleThread();
+    testQueuedTargetLossIsIgnoredAfterStop();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
     testTargetLossPublishesErrorThenFaulted();
