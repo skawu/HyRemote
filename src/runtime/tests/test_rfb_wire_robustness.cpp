@@ -1282,8 +1282,8 @@ int main(int argc, char **argv)
     testOversizedCutTextFailsClosed();
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
     testBoundedInputBurstFailsClosed();
-    runInteractionLatencyProbe({15, 0}, 15, "trle-request");
-    runInteractionLatencyProbe({0}, 0, "raw-request");
+    runInteractionLatencyProbe({15, 0}, 15, "trle");
+    runInteractionLatencyProbe({0}, 0, "raw");
     runInteractionLatencyProbe({15, 0}, 15, "trle-continuous", true);
     runInteractionLatencyProbe({0}, 0, "raw-continuous", true);
 
