@@ -131,6 +131,7 @@ struct RuntimeState
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
     bool oversizedAfterValid = false;
+    std::atomic<bool> allowOversizedFrame{false};
     std::atomic<bool> allowRecoveryFrame{false};
     int inputPosts = 0;
     bool throwOnInputPost = false;
@@ -203,6 +204,13 @@ public:
                                : m_state->oversizedBootstrapFirst ? 2 : 1;
         if (!m_state->emitOneBootstrapFrame || !m_onFrame
             || m_bootstrapFramesSent >= frameBudget)
+            return false;
+        // The fake's asynchronous request boundaries are explicit: Core can
+        // have two requests in flight before the first frame reaches
+        // Transport, so a test must withhold the second frame until a viewer
+        // has actually connected, rather than assuming one-at-a-time capture.
+        if (m_state->oversizedAfterValid && m_bootstrapFramesSent == 1
+            && !m_state->allowOversizedFrame.load())
             return false;
         if (m_state->oversizedAfterValid && m_bootstrapFramesSent == 2
             && !m_state->allowRecoveryFrame.load())
@@ -571,6 +579,7 @@ void testValidThenOversizedFramebufferReopensCaptureAfterDisconnect()
     // A viewer resumes capture; the newer second frame is too wide for
     // ServerInit. A future fresh viewer needs a subsequent usable frame.
     emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    state->allowOversizedFrame.store(true);
     for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->framesQueued.load() == 2);
