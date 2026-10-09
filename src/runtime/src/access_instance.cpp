@@ -6,8 +6,10 @@
 #include <QPointer>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <utility>
 
 #include "detail/component_factories.hpp"
@@ -76,6 +78,54 @@ void decrementConnectedClients(const std::shared_ptr<std::atomic<std::size_t>> &
     }
 }
 
+// Runtime-private demand gate. It waits instead of polling or asking Qt to
+// capture without a viewer. The source's stop() opens the gate before Core
+// joins its scheduler thread, so a clientless session can always stop cleanly.
+// This stays in the single Shared Runtime; generic Core Session clients are
+// not given new application-visible capture knobs or changed semantics.
+class ViewerCaptureDemand final
+{
+public:
+    void start()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_stopped = false;
+        m_viewers = 0;
+    }
+
+    void setViewerCount(std::size_t viewers)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_viewers = viewers;
+        }
+        m_changed.notify_all();
+    }
+
+    bool waitForViewer()
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_changed.wait(lock, [this] { return m_stopped || m_viewers != 0; });
+        return !m_stopped;
+    }
+
+    void stop()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stopped = true;
+            m_viewers = 0;
+        }
+        m_changed.notify_all();
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_changed;
+    std::size_t m_viewers = 0;
+    bool m_stopped = true;
+};
+
 // Wraps the transport so the shared Runtime keeps the one authoritative client count and observes the
 // *result* of every transport event rather than racing the Core for it: the Core handler runs first,
 // and only then does the Runtime read and publish what the Session made of the event.
@@ -90,10 +140,12 @@ public:
     ClientCountingTransport(std::unique_ptr<hyremote::Transport> transport,
                             std::shared_ptr<std::atomic<std::size_t>> connectedClients,
                             std::shared_ptr<std::atomic<bool>> runActive,
+                            std::shared_ptr<ViewerCaptureDemand> demand,
                             std::function<void()> onRuntimeObservation)
         : m_transport(std::move(transport))
         , m_connectedClients(std::move(connectedClients))
         , m_runActive(std::move(runActive))
+        , m_demand(std::move(demand))
         , m_onRuntimeObservation(std::move(onRuntimeObservation))
     {
     }
@@ -108,6 +160,7 @@ public:
         m_connectedClients->store(0, std::memory_order_relaxed);
         const auto connectedClients = m_connectedClients;
         const auto runActive = m_runActive;
+        const auto demand = m_demand;
         const auto observe = m_onRuntimeObservation;
         const bool started = m_transport->start(
             // The input path is observed here rather than on the sink because the Core owns the outcome:
@@ -124,7 +177,7 @@ public:
                 if (observe)
                     observe();
             },
-            [connectedClients, runActive, observe, onEvent = std::move(onEvent)](
+            [connectedClients, runActive, demand, observe, onEvent = std::move(onEvent)](
                 const hyremote::TransportEvent &event) mutable {
                 if (onEvent)
                     onEvent(event);
@@ -146,6 +199,9 @@ public:
                     break;
                 }
 
+                // Publish the post-Core count into the capture gate; one
+                // connected client wakes an otherwise sleeping scheduler.
+                demand->setViewerCount(connectedClients->load(std::memory_order_relaxed));
                 if (observe)
                     observe();
             });
@@ -158,6 +214,7 @@ public:
     {
         m_transport->stop();
         m_connectedClients->store(0, std::memory_order_relaxed);
+        m_demand->setViewerCount(0);
     }
 
     void enqueueFrame(hyremote::RemoteFrame frame) override
@@ -169,6 +226,7 @@ private:
     std::unique_ptr<hyremote::Transport> m_transport;
     std::shared_ptr<std::atomic<std::size_t>> m_connectedClients;
     std::shared_ptr<std::atomic<bool>> m_runActive;
+    std::shared_ptr<ViewerCaptureDemand> m_demand;
     std::function<void()> m_onRuntimeObservation;
 };
 
@@ -180,9 +238,11 @@ class ObservedCaptureSource final : public hyremote::CaptureSource
 public:
     ObservedCaptureSource(std::unique_ptr<hyremote::CaptureSource> source,
                           std::shared_ptr<std::atomic<bool>> runActive,
+                          std::shared_ptr<ViewerCaptureDemand> demand,
                           std::function<void()> onRuntimeObservation)
         : m_source(std::move(source))
         , m_runActive(std::move(runActive))
+        , m_demand(std::move(demand))
         , m_onRuntimeObservation(std::move(onRuntimeObservation))
     {
     }
@@ -196,7 +256,7 @@ public:
     {
         const auto runActive = m_runActive;
         const auto observe = m_onRuntimeObservation;
-        return m_source->start(
+        const bool started = m_source->start(
             std::move(onFrame),
             [runActive, observe, onEvent = std::move(onEvent)](const hyremote::CaptureEvent &event) mutable {
                 if (onEvent)
@@ -208,21 +268,30 @@ public:
                 if (observe)
                     observe();
             });
+        if (started)
+            m_demand->start();
+        return started;
     }
 
     void stop() noexcept override
     {
+        // Core calls CaptureSource::stop() before joining its scheduler. Wake
+        // the scheduler here even if no viewer ever connected.
+        m_demand->stop();
         m_source->stop();
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
+        if (!m_demand->waitForViewer())
+            return false;
         return m_source->requestFrame(request);
     }
 
 private:
     std::unique_ptr<hyremote::CaptureSource> m_source;
     std::shared_ptr<std::atomic<bool>> m_runActive;
+    std::shared_ptr<ViewerCaptureDemand> m_demand;
     std::function<void()> m_onRuntimeObservation;
 };
 
@@ -899,16 +968,21 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     // The run's activity token is created before the components are composed so both wrappers can hold it. It is
     // activated immediately before the Session starts and cleared by every teardown.
     runActive = std::make_shared<std::atomic<bool>>(false);
+    const auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
     const auto observeRuntime = [impl = this] { impl->publishSnapshotNoexcept(); };
 
     transport.transport = std::make_unique<ClientCountingTransport>(std::move(transport.transport),
                                                                     connectedClients,
                                                                     runActive,
+                                                                    viewerDemand,
                                                                     observeRuntime);
 
     auto freshSession = std::make_unique<hyremote::Session>();
     auto observedCapture =
-        std::make_unique<ObservedCaptureSource>(std::move(targetComponents.capture), runActive, observeRuntime);
+        std::make_unique<ObservedCaptureSource>(std::move(targetComponents.capture),
+                                                runActive,
+                                                viewerDemand,
+                                                observeRuntime);
     if (!freshSession->setCaptureSource(std::move(observedCapture))
         || !freshSession->setTransport(std::move(transport.transport))) {
         setError(ErrorCode::RuntimeFailure, QStringLiteral("failed to compose the internal HyRemote session"));
