@@ -136,6 +136,15 @@ file(GENERATE OUTPUT "${_hyremote_manifest_file}" CONTENT
 "SOURCE_SHA=${_hyremote_manifest_source_sha}\nOS=${_hyremote_manifest_os}\nARCH=${_hyremote_manifest_arch}\nQT_VERSION=${_hyremote_manifest_qt_version}\nBUILD_TYPE=$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>,unknown>\nCPP=${_hyremote_manifest_cpp}\nQML=${HYREMOTE_PACKAGE_WITH_QML}\nGENERIC=${HYREMOTE_PACKAGE_WITH_GENERIC}\nQPA=${HYREMOTE_PACKAGE_WITH_QPA}\nLISTENER_DEFAULT=0.0.0.0:${HYREMOTE_DEFAULT_PORT}\nAUTHENTICATION_ENABLED=OFF\nAUTHENTICATION_PROFILE=none\nTRANSPORT_ENCRYPTION_ENABLED=OFF\nTRANSPORT_ENCRYPTION_PROFILE=none\nREMOTE_INPUT_DEFAULT=OFF\nTRANSPORT_SECURITY_CAPABILITY=${HYREMOTE_TRANSPORT_SECURITY_AVAILABLE}\n")
 install(FILES "${_hyremote_manifest_file}" DESTINATION "." RENAME "HYREMOTE-MANIFEST.txt")
 
+# HyRemoteTool is a product executable installed by this source build, not an external source consumer.
+# Place a byte-identical copy of the already-generated canonical manifest next to the installed Tool,
+# where Runtime resolves deployment identity. Do not generate another manifest or change generic
+# source/add_subdirectory deployment semantics (which correctly retain unknown identity).
+if(TARGET hyremote-remote-support-showcase)
+    install(FILES "${_hyremote_manifest_file}"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}" RENAME "HYREMOTE-MANIFEST.txt")
+endif()
+
 # The transport security runtime, installed as a package-owned private payload beside the shared runtime. It is
 # resolved from the OpenSSL this build links against (cmake/HyRemoteProjectOptions.cmake), because the deploy helper
 # runs before these rules are processed. There is no consumer target, no link interface and no OpenSSL dependency a
