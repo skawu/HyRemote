@@ -1063,8 +1063,17 @@ if("installed-tool" IN_LIST EVIDENCE_CELLS)
         record_runtime_env("${cell}" "${_tool_path}")
         record("${cell}" "EXECUTABLE" "${_installed_tool}")
         record("${cell}" "MANIFEST" "${_tool_manifest}")
+        # The clean deployment carries the native platform plugin, not the SDK's
+        # offscreen test plugin. Linux runs under the CI's Xvfb display; Windows
+        # uses the installed windows platform plugin. Never repair Qt plugin paths.
+        if(WIN32)
+            set(_tool_qpa "windows")
+        else()
+            set(_tool_qpa "xcb")
+        endif()
+        record("${cell}" "QPA_PLATFORM" "${_tool_qpa}")
         run_capture("${cell}" "installed_run" "${_tool_path}"
-            "${CMAKE_COMMAND}" -E env "QT_QPA_PLATFORM=offscreen"
+            "${CMAKE_COMMAND}" -E env "QT_QPA_PLATFORM=${_tool_qpa}"
             "${_installed_tool}"
                 --diagnostic-report-file "${_tool_report}" --test-seconds 1)
 
