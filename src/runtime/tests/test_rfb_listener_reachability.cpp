@@ -167,7 +167,7 @@ struct CaptureDemandCounters
     std::atomic<int> bootstrapFrames{0};
 };
 
-// The first request publishes an owned 2x2 BGRA framebuffer; later requests
+// The first request publishes an owned 2x2 RGBA framebuffer; later requests
 // are refused so we can count admitted demands without flooding the network.
 // Every AccessInstance run constructs a new source with fresh bootstrap state.
 class BootstrapProbeCapture final : public hyremote::CaptureSource
@@ -181,7 +181,7 @@ public:
         hyremote::CaptureCapabilities caps;
         caps.asynchronous = true;
         caps.cpuReadable = true;
-        caps.cpuFormats = {hyremote::PixelFormat::Bgra8888};
+        caps.cpuFormats = {hyremote::PixelFormat::Rgba8888};
         return caps;
     }
 
@@ -209,7 +209,7 @@ public:
         std::memset(storage->mutablePlane(0), 0, 16);
         hyremote::RemoteFrame frame;
         frame.geometry.size = {2, 2};
-        frame.geometry.pixelFormat = hyremote::PixelFormat::Bgra8888;
+        frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
         frame.storage = std::move(storage);
@@ -256,6 +256,9 @@ void testRealRfbConnectionWakesViewerlessCapture()
     CHECK(instance.setPort(port));
     const bool started = instance.start();
     CHECK(started);
+    if (!started && instance.lastError())
+        std::cerr << "real RFB fixture start error: "
+                  << instance.lastError()->message.toStdString() << '\n';
     if (started) {
         CHECK(waitForDemand([&] { return counters->bootstrapFrames.load() == 1; }));
         CHECK(instance.connectedClientCount() == 0u);
