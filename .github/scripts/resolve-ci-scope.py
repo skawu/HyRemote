@@ -65,7 +65,7 @@ FRONTEND_PREFIXES = {
 # all four frontends and started two Qt runners to build nothing.
 EXAMPLE_SOURCE_ROOTS = ("examples/", "logo/")
 EXAMPLE_BUILD_SUFFIXES = (
-    ".cmake", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".qml", ".qrc", ".ui", ".ts", ".json",
+    ".cmake", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".qml", ".qrc", ".ui", ".ts", ".json", ".png",
 )
 EXAMPLE_BUILD_NAMES = ("CMakeLists.txt",)
 
@@ -128,6 +128,7 @@ TOOL_INSTALLED_PREFIXES = (
     "examples/hyremote_branding.",
     "examples/CMakeLists.txt",
     "logo/hyremote-branding.qrc",
+    "logo/huayan-logo-single.png",
     "cmake/HyRemoteInstall.cmake",
     "cmake/HyRemoteDeploy.cmake",
     "tests/release-readiness/run_release_evidence.cmake",
@@ -598,6 +599,8 @@ def self_test() -> int:
              ["examples/hyremote_branding.h"], True),
             ("Tool canonical logo qrc selects installed execution", "pull_request",
              ["logo/hyremote-branding.qrc"], True),
+            ("Tool canonical logo image selects installed execution", "pull_request",
+             ["logo/huayan-logo-single.png"], True),
             ("parent example registration selects installed execution", "pull_request",
              ["examples/CMakeLists.txt"], True),
             ("deploy change selects installed Tool", "pull_request",
