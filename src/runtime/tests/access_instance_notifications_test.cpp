@@ -126,6 +126,12 @@ struct RuntimeState
     std::atomic<int> captureStarts{0};
     std::atomic<int> captureStops{0};
     std::atomic<int> captureRequests{0};
+    std::atomic<int> heldCaptureRequests{0};
+    // Test-only asynchronous source: accept requests but deliberately never
+    // complete them. This proves the Shared Runtime/Core in-flight bound
+    // under a permanently slow/stalled backend rather than relying on sleeps
+    // between synthetic synchronous frames.
+    std::atomic<bool> holdCaptureRequests{false};
     std::atomic<int> framesQueued{0};
     std::atomic<int> transportStops{0};
     bool emitOneBootstrapFrame = false;
@@ -200,6 +206,10 @@ public:
     bool requestFrame(const hyremote::CaptureRequest &) override
     {
         ++m_state->captureRequests;
+        if (m_state->holdCaptureRequests.load(std::memory_order_acquire)) {
+            ++m_state->heldCaptureRequests;
+            return true;  // asynchronous work accepted, completion withheld
+        }
         const int frameBudget = m_state->oversizedAfterValid ? 3
                                : m_state->oversizedBootstrapFirst ? 2 : 1;
         if (!m_state->emitOneBootstrapFrame || !m_onFrame
@@ -499,6 +509,80 @@ void testCaptureSleepsWithoutViewersAndResumesOnConnect()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->captureRequests.load() > restartedRequests);
     instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testSlowCaptureIsBoundedWithViewerInputAndStopRestart()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+    CHECK(instance.setRemoteInputEnabled(true));
+    CHECK(instance.start());
+
+    // The first real frame must arrive before viewer-side ServerInit can
+    // complete. Do not hold this bootstrap frame; the stalled workload begins
+    // only once a real viewer has connected.
+    for (int i = 0; i < 200 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    state->holdCaptureRequests.store(true, std::memory_order_release);
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+
+    // The Core scheduler admits at most two unfinished captures per run.
+    // The fake never invokes the completion callback for either one.
+    for (int i = 0; i < 200 && state->heldCaptureRequests.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->heldCaptureRequests.load() == 2);
+    const int issuedAtSaturation = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(160));
+    CHECK(state->heldCaptureRequests.load() == 2);
+    CHECK(state->captureRequests.load() == issuedAtSaturation);
+
+    // Remote input is independent of capture admission. An input burst may
+    // still reach the Qt-facing InputSink, but it must not create additional
+    // capture requests while both slots are occupied by slow work.
+    CHECK(static_cast<bool>(state->inputHandler));
+    if (state->inputHandler) {
+        for (int i = 0; i < 64; ++i)
+            state->inputHandler(hyremote::InputEvent{});
+    }
+    CHECK(state->inputPosts == 64);
+    CHECK(state->heldCaptureRequests.load() == 2);
+    CHECK(state->captureRequests.load() == issuedAtSaturation);
+
+    // The backend has accepted but never finished its frames. Last viewer
+    // disconnect and owner stop must still terminate without waiting for
+    // those uncompleted asynchronous captures.
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    CHECK(instance.connectedClientCount() == 0u);
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+
+    // A new run gets a fresh per-run capture depth and demand gate rather
+    // than inheriting the old run's two unfinished requests.
+    state->holdCaptureRequests.store(false, std::memory_order_release);
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int idleRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == idleRequests);
+    CHECK(state->heldCaptureRequests.load() == 2);
+
+    state->holdCaptureRequests.store(true, std::memory_order_release);
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->heldCaptureRequests.load() < 4; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->heldCaptureRequests.load() == 4);
+    std::this_thread::sleep_for(std::chrono::milliseconds(160));
+    CHECK(state->heldCaptureRequests.load() == 4);
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
     HyRemote::detail::resetFactories();
 }
 
@@ -1083,6 +1167,7 @@ int main(int argc, char **argv)
     testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
+    testSlowCaptureIsBoundedWithViewerInputAndStopRestart();
     testTargetDestroyedWhileCaptureIsIdle();
     testTargetLossReportedOnceAcrossWatcherAndPendingCapture();
     testOversizedBootstrapCannotSuspendBeforeRfbServerInit();
