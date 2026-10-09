@@ -50,6 +50,8 @@ constexpr std::int32_t kEncodingRaw = 0;
 constexpr std::int32_t kEncodingDesktopSize = -223;
 // RFB Fence is an optional per-viewer capability, not a general application API.
 constexpr std::int32_t kEncodingFence = -312;
+constexpr std::int32_t kEncodingContinuousUpdates = -313;
+constexpr std::uint8_t kEnableContinuousUpdates = 150;
 constexpr std::uint8_t kClientFence = 248;
 constexpr std::uint8_t kMaxFencePayload = 64;
 constexpr std::uint32_t kFenceRequest = 0x80000000U;
@@ -370,6 +372,10 @@ struct ClientState
     PixelSpec pixels = nativePixelSpec();
     bool supportsDesktopSize = false;
     bool supportsFence = false;
+    bool supportsContinuousUpdates = false;
+    bool continuousEnabled = false;
+    bool continuousRequestArmed = false;
+    RfbRect continuousRegion;
     ClientEncoding preferredEncoding = ClientEncoding::Raw;
     RfbUpdateState delivery;
     std::uint16_t framebufferWidth = 0;
@@ -647,6 +653,27 @@ private:
         processClient(client);
     }
 
+    bool endContinuousUpdates(ClientState &client)
+    {
+        if (!client.socket)
+            return false;
+        // EndOfContinuousUpdates is a one-byte server-to-client message, not
+        // a FramebufferUpdate pseudo-rectangle.
+        if (client.socket->write(QByteArray(1, static_cast<char>(kEnableContinuousUpdates))) != 1) {
+            protocolFailure(client, "RFB ContinuousUpdates acknowledgment write failed");
+            return false;
+        }
+        return true;
+    }
+
+    void armContinuousRequest(ClientState &client)
+    {
+        if (!client.continuousEnabled || client.delivery.hasOutstandingRequest())
+            return;
+        client.delivery.request(true, client.continuousRegion);
+        client.continuousRequestArmed = true;
+    }
+
     bool sendFence(ClientState &client, std::uint32_t flags, const QByteArray &payload)
     {
         if (!client.socket)
@@ -798,7 +825,9 @@ private:
                     return;
                 client.supportsDesktopSize = false;
                 const bool fenceWasSupported = client.supportsFence;
+                const bool continuousWasSupported = client.supportsContinuousUpdates;
                 client.supportsFence = false;
+                client.supportsContinuousUpdates = false;
                 client.preferredEncoding = ClientEncoding::Raw;
                 bool selectedEncoding = false;
                 for (std::uint16_t i = 0; i < count; ++i) {
@@ -808,6 +837,8 @@ private:
                         client.supportsDesktopSize = true;
                     if (encoding == kEncodingFence)
                         client.supportsFence = true;
+                    if (encoding == kEncodingContinuousUpdates)
+                        client.supportsContinuousUpdates = true;
                     if (!selectedEncoding && encoding == kRfbEncodingTrle) {
                         client.preferredEncoding = ClientEncoding::Trle;
                         selectedEncoding = true;
@@ -819,6 +850,50 @@ private:
                 client.input.remove(0, size);
                 if (client.supportsFence && !fenceWasSupported
                     && !sendFence(client, 0U, {})) {
+                    return;
+                }
+                if (client.supportsContinuousUpdates && !continuousWasSupported
+                    && !endContinuousUpdates(client)) {
+                    return;
+                }
+                if (!client.supportsContinuousUpdates && continuousWasSupported) {
+                    client.continuousEnabled = false;
+                    if (client.continuousRequestArmed)
+                        client.delivery.cancelRequest();
+                    client.continuousRequestArmed = false;
+                }
+                continue;
+            }
+
+            if (type == kEnableContinuousUpdates) {
+                if (client.input.size() < 10)
+                    return;
+                if (!client.supportsContinuousUpdates) {
+                    protocolFailure(client, "RFB client sent unnegotiated ContinuousUpdates");
+                    return;
+                }
+                const bool enable = byteAt(client.input, 1) != 0;
+                const RfbRect region{
+                    static_cast<std::int32_t>(readU16(client.input, 2)),
+                    static_cast<std::int32_t>(readU16(client.input, 4)),
+                    static_cast<std::int32_t>(readU16(client.input, 6)),
+                    static_cast<std::int32_t>(readU16(client.input, 8))};
+                client.input.remove(0, 10);
+                if (enable && region.empty()) {
+                    protocolFailure(client, "RFB ContinuousUpdates requires a nonempty region");
+                    return;
+                }
+                if (client.continuousRequestArmed)
+                    client.delivery.cancelRequest();
+                client.continuousRequestArmed = false;
+                client.continuousEnabled = enable;
+                if (enable) {
+                    // The latest enable message replaces the active area.
+                    client.continuousRegion = region;
+                    armContinuousRequest(client);
+                    trySendUpdate(client);
+                } else if (!endContinuousUpdates(client)) {
+                    // A disable acknowledgment is mandatory even if already disabled.
                     return;
                 }
                 continue;
@@ -854,8 +929,16 @@ private:
             if (type == 3) {
                 if (client.input.size() < 10)
                     return;
+                const bool incremental = byteAt(client.input, 1) != 0;
+                if (client.continuousEnabled && incremental) {
+                    // The extension suppresses request-driven incremental updates,
+                    // but explicit full refreshes must still work.
+                    client.input.remove(0, 10);
+                    continue;
+                }
+                client.continuousRequestArmed = false;
                 client.delivery.request(
-                    byteAt(client.input, 1) != 0,
+                    incremental,
                     {static_cast<std::int32_t>(readU16(client.input, 2)),
                      static_cast<std::int32_t>(readU16(client.input, 4)),
                      static_cast<std::int32_t>(readU16(client.input, 6)),
@@ -1207,10 +1290,11 @@ private:
 
     void trySendUpdate(ClientState &client)
     {
-        if (!client.socket || client.phase != ClientPhase::Normal
-            || !client.delivery.hasOutstandingRequest()) {
+        if (!client.socket || client.phase != ClientPhase::Normal)
             return;
-        }
+        armContinuousRequest(client);
+        if (!client.delivery.hasOutstandingRequest())
+            return;
         if (client.socket->bytesToWrite() != 0)
             return;
 
@@ -1243,6 +1327,7 @@ private:
         RfbDamageRegion selected = eligible->intersected(frameBounds);
         if (selected.empty()) {
             client.delivery.cancelRequest();
+            client.continuousRequestArmed = false;
             return;
         }
         if (selected.size() + (resized ? 1U : 0U) > std::numeric_limits<std::uint16_t>::max()) {
@@ -1274,6 +1359,10 @@ private:
             return;
         }
         client.delivery.commitDelivered(selected);
+        client.continuousRequestArmed = false;
+        // A continuously enabled viewer keeps one outstanding incremental
+        // demand, but only one framebuffer may queue per socket at a time.
+        armContinuousRequest(client);
         client.framebufferWidth = width;
         client.framebufferHeight = height;
     }
