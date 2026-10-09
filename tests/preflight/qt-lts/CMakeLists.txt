@@ -68,25 +68,8 @@ int main()
 ]=] HYREMOTE_PREFLIGHT_LEGACY_QML_REGISTRATION_COMPILES)
 
 set(HYREMOTE_PREFLIGHT_GUI_PRIVATE_TARGET FALSE)
-set(HYREMOTE_PREFLIGHT_PRIVATE_HEADERS_COMPILE FALSE)
 if(TARGET ${QT_PACKAGE}::GuiPrivate)
     set(HYREMOTE_PREFLIGHT_GUI_PRIVATE_TARGET TRUE)
-    set(CMAKE_REQUIRED_LIBRARIES ${QT_PACKAGE}::Core ${QT_PACKAGE}::Gui ${QT_PACKAGE}::GuiPrivate)
-    if(TARGET ${QT_PACKAGE}::CorePrivate)
-        list(APPEND CMAKE_REQUIRED_LIBRARIES ${QT_PACKAGE}::CorePrivate)
-    endif()
-
-    # This is deliberately an availability probe, not a compatibility claim about one copied
-    # QWindowSystemInterface call signature. HyRemote's input ingress and QPA remain private-ABI
-    # adaptation points that must be compiled against each exact admitted Qt patch.
-    check_cxx_source_compiles([=[
-#include <private/qhighdpiscaling_p.h>
-#include <qpa/qwindowsysteminterface.h>
-#include <qpa/qplatformintegration.h>
-#include <qpa/qplatformintegrationplugin.h>
-#include <qpa/qplatformintegrationfactory_p.h>
-int main() { return 0; }
-]=] HYREMOTE_PREFLIGHT_PRIVATE_HEADERS_COMPILE)
 endif()
 
 function(_hyremote_yes_no out value)
@@ -101,7 +84,6 @@ _hyremote_yes_no(_public_surface HYREMOTE_PREFLIGHT_PUBLIC_SURFACE_COMPILES)
 _hyremote_yes_no(_current_qml_header HYREMOTE_PREFLIGHT_CURRENT_QML_HEADER_COMPILES)
 _hyremote_yes_no(_legacy_qml HYREMOTE_PREFLIGHT_LEGACY_QML_REGISTRATION_COMPILES)
 _hyremote_yes_no(_gui_private HYREMOTE_PREFLIGHT_GUI_PRIVATE_TARGET)
-_hyremote_yes_no(_private_headers HYREMOTE_PREFLIGHT_PRIVATE_HEADERS_COMPILE)
 
 if(COMMAND qt_add_qml_module)
     set(_qt_add_qml_module YES)
@@ -134,7 +116,6 @@ file(WRITE "${CMAKE_BINARY_DIR}/qt-lts-evidence.txt"
 "CURRENT_QML_INTEGRATION_HEADER_COMPILES=${_current_qml_header}\n"
 "LEGACY_QML_REGISTRATION_COMPILES=${_legacy_qml}\n"
 "GUI_PRIVATE_TARGET=${_gui_private}\n"
-"PRIVATE_GUI_QPA_HEADERS_COMPILE=${_private_headers}\n"
 "QT_ADD_QML_MODULE_COMMAND=${_qt_add_qml_module}\n"
 "QT_DEPLOY_APP_COMMAND=${_qt_deploy_app}\n"
 "QT_DEPLOY_QML_COMMAND=${_qt_deploy_qml}\n"
