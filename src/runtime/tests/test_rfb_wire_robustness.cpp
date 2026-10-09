@@ -1153,7 +1153,8 @@ void testBoundedInputBurstFailsClosed()
 
 void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
                                 std::int32_t expectedEncoding,
-                                const char *encodingLabel)
+                                const char *encodingLabel,
+                                bool continuousUpdates = false)
 {
     constexpr std::size_t sampleCount = 12;
     constexpr std::uint32_t background = 0x203040U;
@@ -1195,7 +1196,15 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
     std::uint16_t height = 0;
     CHECK(connectRawRfb(socket, port, false, &width, &height));
     CHECK(width == 64 && height == 48);
-    CHECK(sendSetEncodings(socket, encodings));
+    std::vector<std::int32_t> negotiated = encodings;
+    if (continuousUpdates)
+        negotiated.insert(negotiated.begin(), -313);
+    CHECK(sendSetEncodings(socket, negotiated));
+    if (continuousUpdates) {
+        // A client explicitly advertises ContinuousUpdates (-313); the
+        // server confirms it with one EndOfContinuousUpdates byte (150).
+        CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+    }
     CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
 
     TestFramebuffer frame;
@@ -1205,11 +1214,22 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
     CHECK(rectangles.size() == 1U && rectangles.front().encoding == expectedEncoding);
     CHECK(frame.get(markerRect.x, markerRect.y) == background);
 
+    if (continuousUpdates) {
+        CHECK(sendContinuousUpdates(socket, true, 0, 0, width, height));
+        // A static scene may not generate redundant updates just because
+        // ContinuousUpdates is armed; subsequent pixels require new damage.
+        CHECK(noFramebufferData(socket));
+    }
+
     std::vector<std::chrono::microseconds> samples;
     samples.reserve(sampleCount);
 
     for (std::size_t index = 0; index < sampleCount; ++index) {
-        CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+        // The legacy reference path requests one incremental update per
+        // interaction. ContinuousUpdates must deliver all later changes
+        // without any additional FramebufferUpdateRequest messages.
+        if (!continuousUpdates)
+            CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
 
         const auto started = std::chrono::steady_clock::now();
         CHECK(sendPointerButton(socket, true));
@@ -1233,6 +1253,12 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
     CHECK(summary.p95Us >= summary.p50Us);
     CHECK(summary.maxUs >= summary.p95Us);
     HyRemote::test::printInteractionLatencySummary(std::cout, encodingLabel, summary);
+
+    if (continuousUpdates) {
+        CHECK(sendContinuousUpdates(socket, false, 0, 0, 0, 0));
+        CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+        CHECK(noFramebufferData(socket));
+    }
 
     socket.disconnectFromHost();
     waitForDisconnected(socket);
@@ -1258,6 +1284,8 @@ int main(int argc, char **argv)
     testBoundedInputBurstFailsClosed();
     runInteractionLatencyProbe({15, 0}, 15, "trle");
     runInteractionLatencyProbe({0}, 0, "raw");
+    runInteractionLatencyProbe({15, 0}, 15, "trle-continuous", true);
+    runInteractionLatencyProbe({0}, 0, "raw-continuous", true);
 
     if (failures != 0)
         std::cerr << failures << " RFB wire-robustness checks failed\n";
