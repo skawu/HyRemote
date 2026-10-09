@@ -132,7 +132,8 @@ def verify_showcase(executable: Path) -> None:
                 "INTEGRATION_ROUTE=cpp\n",
                 "STATE=Running\n",
                 "REMOTE_INPUT=true\n",
-                f"LISTENER_CONFIGURED=0.0.0.0:{port}\n",
+                f"LISTENER_CONFIGURED=address:0.0.0.0:{port}\n",
+                f"LISTENER_EFFECTIVE=0.0.0.0:{port}\n",
             ):
                 require(required in report, f"saved diagnostic report is missing {required!r}: {report}")
 

@@ -122,6 +122,8 @@ RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 # PR itself and FULL_GATE execute it fail-closed.
 TOOL_PRODUCT_FIT_TEST = "hyremote-tool-product-fit$"
 TOOL_PRODUCT_FIT_PREFIXES = (
+    ".github/scripts/resolve-ci-scope.py",
+    ".github/workflows/ci.yml",
     "examples/remote-support-showcase/CMakeLists.txt",
     "tests/product-e2e/showcase_product_fit.py",
 )
@@ -546,6 +548,10 @@ def self_test() -> int:
     for description, event, changed, expected_excluded in (
             ("the Tool product-fit wiring change runs it", "pull_request",
              ["tests/product-e2e/showcase_product_fit.py"], False),
+            ("CI workflow wiring runs Tool product fit", "pull_request",
+             [".github/workflows/ci.yml"], False),
+            ("CI scope classifier wiring runs Tool product fit", "pull_request",
+             [".github/scripts/resolve-ci-scope.py"], False),
             ("an ordinary Tool implementation PR still excludes it", "pull_request",
              ["examples/remote-support-showcase/main.cpp"], True),
             ("an unrelated pull request excludes Tool product fit", "pull_request",

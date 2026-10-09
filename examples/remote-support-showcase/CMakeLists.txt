@@ -39,6 +39,8 @@ if(HYREMOTE_BUILD_TESTS)
 
     # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
     # Register fail-closed so candidate qualification cannot pass merely because Python/viewer tooling is absent.
+    set(Python3_FIND_REGISTRY NEVER)
+    set(Python3_FIND_STRATEGY LOCATION)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(

@@ -175,7 +175,7 @@ All entries are distinct positive/negative deployment contracts; a failure means
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 
-Unregistered assets `tests/product-e2e/example_product_fit.py`, `qml_product_fit.py`, and `showcase_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; source files without execution authority are not counted as evidence.
+Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; source files without execution authority are not counted as evidence.
 
 ## T6 — release/candidate authority
 
