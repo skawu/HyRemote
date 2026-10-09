@@ -532,6 +532,51 @@ void testTargetDestroyedWhileCaptureIsIdle()
     HyRemote::detail::resetFactories();
 }
 
+void testTargetLossReportedOnceAcrossWatcherAndPendingCapture()
+{
+    for (const bool lifetimeFirst : {true, false}) {
+        const auto state = std::make_shared<RuntimeState>();
+        state->emitOneBootstrapFrame = true;
+        installRuntime(state);
+        auto target = std::make_unique<QObject>();
+        AccessInstance instance(target.get());
+        Recorder recorder;
+        instance.subscribeNotifications(recorder.handlers());
+
+        CHECK(instance.start());
+        for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        CHECK(state->framesQueued.load() == 1);
+        CHECK(static_cast<bool>(state->captureEventHandler));
+
+        // The adapter may already have queued a capture request before
+        // QObject::destroyed fires; exercise BOTH callback orderings.
+        const hyremote::CaptureEvent pendingRequestLoss{
+            hyremote::CaptureEventCode::TargetLost,
+            "the attached Qt target no longer exists",
+            false};
+        recorder.clear();
+        if (lifetimeFirst) {
+            target.reset();
+            if (state->captureEventHandler)
+                state->captureEventHandler(pendingRequestLoss);
+        } else {
+            if (state->captureEventHandler)
+                state->captureEventHandler(pendingRequestLoss);
+            target.reset();
+        }
+
+        CHECK(instance.state() == AccessState::Faulted);
+        CHECK(instance.lastError().has_value());
+        CHECK(instance.lastError() && instance.lastError()->code == ErrorCode::RuntimeFailure);
+        CHECK(recorder.only("error:").size() == 1U);
+        CHECK(recorder.only("state:").size() == 1U);
+        CHECK(indexOf(recorder.only("state:"), "state:Faulted") == 0U);
+        instance.stop();
+        HyRemote::detail::resetFactories();
+    }
+}
+
 void testOversizedBootstrapCannotSuspendBeforeRfbServerInit()
 {
     const auto state = std::make_shared<RuntimeState>();
@@ -1039,6 +1084,7 @@ int main(int argc, char **argv)
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testTargetDestroyedWhileCaptureIsIdle();
+    testTargetLossReportedOnceAcrossWatcherAndPendingCapture();
     testOversizedBootstrapCannotSuspendBeforeRfbServerInit();
     testValidThenOversizedFramebufferReopensCaptureAfterDisconnect();
     testReentrantStopInsideTargetLossNotification();
