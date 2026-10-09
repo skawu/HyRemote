@@ -160,6 +160,10 @@ public:
     void accumulate(const RfbDamageRegion &damage) { m_pending.add(damage); }
     bool hasPendingDamage() const noexcept { return !m_pending.empty(); }
     bool hasOutstandingRequest() const noexcept { return m_request.has_value(); }
+    bool hasOutstandingIncrementalRequest() const noexcept
+    {
+        return m_request.has_value() && m_request->incremental;
+    }
 
     void request(bool incremental, RfbRect requested)
     {
