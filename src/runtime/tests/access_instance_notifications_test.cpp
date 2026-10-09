@@ -629,50 +629,41 @@ void testReentrantStopInsideTargetLossNotification()
     HyRemote::detail::resetFactories();
 }
 
-void testConcurrentTargetLossIsDrainedBeforeOwnerStop()
+void testForeignThreadTargetLossIsSerializedOnLifecycleThread()
 {
     const auto state = std::make_shared<RuntimeState>();
     state->emitOneBootstrapFrame = true;
     installRuntime(state);
 
-    // The target lives and dies on its own QObject owner thread. This
-    // simulates a destruction signal concurrently entering Runtime teardown,
-    // including the phase AFTER Core has finished the capture event callback.
-    std::mutex targetMutex;
-    std::condition_variable targetCv;
+    std::mutex mutex;
+    std::condition_variable cv;
     QObject *target = nullptr;
     bool destroyTarget = false;
-    std::thread destroyer([&] {
+    std::thread targetOwner([&] {
         QObject targetOnThisThread;
         {
-            std::lock_guard<std::mutex> lock(targetMutex);
+            std::lock_guard<std::mutex> lock(mutex);
             target = &targetOnThisThread;
         }
-        targetCv.notify_all();
-        std::unique_lock<std::mutex> lock(targetMutex);
-        targetCv.wait(lock, [&] { return destroyTarget; });
+        cv.notify_all();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return destroyTarget; });
     });
     {
-        std::unique_lock<std::mutex> lock(targetMutex);
-        targetCv.wait(lock, [&] { return target != nullptr; });
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return target != nullptr; });
     }
 
-    std::mutex callbackMutex;
-    std::condition_variable callbackCv;
-    bool observingFailure = false;
-    bool releaseObservation = false;
-    std::atomic<bool> stopReturned{false};
-    std::atomic<bool> returnedBeforeDrain{false};
-
     AccessInstance instance(target);
+    const auto lifecycleThread = std::this_thread::get_id();
+    std::thread::id notificationThread;
+    int faultNotifications = 0;
     RuntimeNotificationHandlers handlers;
     handlers.errorChanged = [&](std::optional<Error> error) {
         if (!error || error->code != ErrorCode::RuntimeFailure)
             return;
-        std::unique_lock<std::mutex> lock(callbackMutex);
-        observingFailure = true;
-        callbackCv.notify_all();
-        callbackCv.wait(lock, [&] { return releaseObservation; });
+        notificationThread = std::this_thread::get_id();
+        ++faultNotifications;
     };
     instance.subscribeNotifications(std::move(handlers));
     CHECK(instance.start());
@@ -680,32 +671,74 @@ void testConcurrentTargetLossIsDrainedBeforeOwnerStop()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->framesQueued.load() >= 1);
     {
-        std::lock_guard<std::mutex> lock(targetMutex);
+        std::lock_guard<std::mutex> lock(mutex);
         destroyTarget = true;
     }
-    targetCv.notify_all();
-    {
-        std::unique_lock<std::mutex> lock(callbackMutex);
-        callbackCv.wait(lock, [&] { return observingFailure; });
-    }
+    cv.notify_all();
+    targetOwner.join();
 
-    std::thread releaser([&] {
-        // Target-loss delivery has finished the Core callback and entered
-        // the Runtime notification; stop must drain that entire observation.
-        std::this_thread::sleep_for(std::chrono::milliseconds(120));
-        returnedBeforeDrain.store(stopReturned.load());
-        {
-            std::lock_guard<std::mutex> lock(callbackMutex);
-            releaseObservation = true;
-        }
-        callbackCv.notify_all();
-    });
+    // Cross-thread QObject::destroyed is queued to the wrapper's lifecycle
+    // QObject context. No raw Impl observation runs on the target's thread.
+    CHECK(instance.state() == AccessState::Running);
+    for (int i = 0; i < 200 && instance.state() != AccessState::Faulted; ++i) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(instance.state() == AccessState::Faulted);
+    CHECK(faultNotifications == 1);
+    CHECK(notificationThread == lifecycleThread);
     instance.stop();
-    stopReturned.store(true);
-    releaser.join();
-    destroyer.join();
-    CHECK(!returnedBeforeDrain.load());
+    HyRemote::detail::resetFactories();
+}
+
+void testQueuedTargetLossIsIgnoredAfterStop()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    std::mutex mutex;
+    std::condition_variable cv;
+    QObject *target = nullptr;
+    bool destroyTarget = false;
+    std::thread targetOwner([&] {
+        QObject targetOnThisThread;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            target = &targetOnThisThread;
+        }
+        cv.notify_all();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return destroyTarget; });
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&] { return target != nullptr; });
+    }
+    AccessInstance instance(target);
+    int lateFaultNotifications = 0;
+    RuntimeNotificationHandlers handlers;
+    handlers.errorChanged = [&](std::optional<Error> error) {
+        if (error && error->code == ErrorCode::RuntimeFailure)
+            ++lateFaultNotifications;
+    };
+    instance.subscribeNotifications(std::move(handlers));
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() >= 1);
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        destroyTarget = true;
+    }
+    cv.notify_all();
+    targetOwner.join();
+
+    // Queued delivery was not pumped before stop; teardown closes the run
+    // gate and destroys its QObject context. Late events cannot access Impl.
+    instance.stop();
+    QCoreApplication::processEvents();
     CHECK(instance.state() == AccessState::Stopped);
+    CHECK(lateFaultNotifications == 0);
     HyRemote::detail::resetFactories();
 }
 
@@ -1009,7 +1042,8 @@ int main(int argc, char **argv)
     testOversizedBootstrapCannotSuspendBeforeRfbServerInit();
     testValidThenOversizedFramebufferReopensCaptureAfterDisconnect();
     testReentrantStopInsideTargetLossNotification();
-    testConcurrentTargetLossIsDrainedBeforeOwnerStop();
+    testForeignThreadTargetLossIsSerializedOnLifecycleThread();
+    testQueuedTargetLossIsIgnoredAfterStop();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
     testTargetLossPublishesErrorThenFaulted();
