@@ -38,24 +38,27 @@ if(HYREMOTE_BUILD_TESTS)
     endif()
 
     if(HYREMOTE_WITH_VNC)
-    # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
-    # Register fail-closed so candidate qualification cannot pass merely because Python/viewer tooling is absent.
-    set(Python3_FIND_REGISTRY NEVER)
-    set(Python3_FIND_STRATEGY LOCATION)
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND)
-        add_test(
-            NAME hyremote-tool-product-fit
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/product-e2e/showcase_product_fit.py"
-                --showcase $<TARGET_FILE:hyremote-remote-support-showcase>
+        # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
+        # Register fail-closed so candidate qualification cannot pass because viewer tooling is absent.
+        set(Python3_FIND_REGISTRY NEVER)
+        set(Python3_FIND_STRATEGY LOCATION)
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            add_test(
+                NAME hyremote-tool-product-fit
+                COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/product-e2e/showcase_product_fit.py"
+                    --showcase $<TARGET_FILE:hyremote-remote-support-showcase>
+            )
+        else()
+            add_test(NAME hyremote-tool-product-fit COMMAND "${CMAKE_COMMAND}" -E false)
+        endif()
+        set_tests_properties(hyremote-tool-product-fit PROPERTIES
+            TIMEOUT 900
+            LABELS "candidate-evidence"
         )
-    else()
-        add_test(NAME hyremote-tool-product-fit COMMAND "${CMAKE_COMMAND}" -E false)
-    endif()
-    set_tests_properties(hyremote-tool-product-fit PROPERTIES
-        TIMEOUT 900
-        LABELS "candidate-evidence"
-    )
+        if(COMMAND hyremote_label_test_family)
+            hyremote_label_test_family("e2e;tool;qualification" hyremote-tool-product-fit)
+        endif()
     endif()
 endif()

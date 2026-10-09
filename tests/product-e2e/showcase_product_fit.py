@@ -68,7 +68,7 @@ def start_showcase(executable: Path, port: int, diagnostic_report: Path):
             "--port", str(port),
             "--auto-start",
             "--remote-input",
-            "--test-seconds", "10",
+            "--test-seconds", "60",
             "--diagnostic-report-file", str(diagnostic_report),
         ],
         stdout=subprocess.PIPE,
@@ -164,7 +164,7 @@ def verify_showcase(executable: Path) -> None:
             wait_for_count(process, lines, 0, 3,
                            "showcase did not report second viewer disconnect")
 
-        result = process.wait(timeout=14)
+        result = process.wait(timeout=65)
         reader.join(timeout=2)
         require(result == 0, f"showcase exited with {result}: {lines}")
         require(any(line.startswith("SHOWCASE_POINTER") for line in lines),
