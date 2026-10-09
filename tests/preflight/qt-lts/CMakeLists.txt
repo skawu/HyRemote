@@ -71,7 +71,10 @@ set(HYREMOTE_PREFLIGHT_GUI_PRIVATE_TARGET FALSE)
 set(HYREMOTE_PREFLIGHT_PRIVATE_HEADERS_COMPILE FALSE)
 if(TARGET ${QT_PACKAGE}::GuiPrivate)
     set(HYREMOTE_PREFLIGHT_GUI_PRIVATE_TARGET TRUE)
-    set(CMAKE_REQUIRED_LIBRARIES ${QT_PACKAGE}::Gui ${QT_PACKAGE}::GuiPrivate)
+    set(CMAKE_REQUIRED_LIBRARIES ${QT_PACKAGE}::Core ${QT_PACKAGE}::Gui ${QT_PACKAGE}::GuiPrivate)
+    if(TARGET ${QT_PACKAGE}::CorePrivate)
+        list(APPEND CMAKE_REQUIRED_LIBRARIES ${QT_PACKAGE}::CorePrivate)
+    endif()
 
     # This is deliberately an availability probe, not a compatibility claim about one copied
     # QWindowSystemInterface call signature. HyRemote's input ingress and QPA remain private-ABI
