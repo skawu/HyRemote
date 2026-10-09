@@ -522,17 +522,18 @@ void testSlowCaptureIsBoundedWithViewerInputAndStopRestart()
     CHECK(instance.setRemoteInputEnabled(true));
     CHECK(instance.start());
 
-    // The first real frame must arrive before viewer-side ServerInit can
-    // complete. Do not hold this bootstrap frame; the stalled workload begins
-    // only once a real viewer has connected.
+    // This seam substitutes FakeTransport: it proves the Runtime demand
+    // boundary after a synthetic ClientConnected event, NOT an actual RFB
+    // socket handshake or ServerInit. Those are tested separately in the
+    // production RFB wire tests. Do not hold the first bootstrap frame.
     for (int i = 0; i < 200 && state->framesQueued.load() < 1; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->framesQueued.load() == 1);
     state->holdCaptureRequests.store(true, std::memory_order_release);
     emitTransport(state, hyremote::TransportEventCode::ClientConnected);
 
-    // The Core scheduler admits at most two unfinished captures per run.
-    // The fake never invokes the completion callback for either one.
+    // With the synthetic client-count event accepted, Core admits at most
+    // two unfinished captures per run. Neither receives a completion.
     for (int i = 0; i < 200 && state->heldCaptureRequests.load() < 2; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->heldCaptureRequests.load() == 2);
@@ -553,16 +554,17 @@ void testSlowCaptureIsBoundedWithViewerInputAndStopRestart()
     CHECK(state->heldCaptureRequests.load() == 2);
     CHECK(state->captureRequests.load() == issuedAtSaturation);
 
-    // The backend has accepted but never finished its frames. Last viewer
-    // disconnect and owner stop must still terminate without waiting for
-    // those uncompleted asynchronous captures.
+    // The fake backend accepted but never finished its frames. A synthetic
+    // ClientDisconnected event and owner stop must still terminate without
+    // waiting for those uncompleted asynchronous captures.
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
     CHECK(instance.connectedClientCount() == 0u);
     instance.stop();
     CHECK(instance.state() == AccessState::Stopped);
 
     // A new run gets a fresh per-run capture depth and demand gate rather
-    // than inheriting the old run's two unfinished requests.
+    // than inheriting the old run's two unfinished requests. The synthetic
+    // transport event must wake the same Runtime policy on this new run.
     state->holdCaptureRequests.store(false, std::memory_order_release);
     CHECK(instance.start());
     for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
