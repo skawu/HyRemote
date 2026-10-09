@@ -315,6 +315,23 @@ QByteArray readFence(QTcpSocket &socket)
     return header;
 }
 
+bool sendContinuousUpdates(QTcpSocket &socket,
+                           bool enable,
+                           std::uint16_t x,
+                           std::uint16_t y,
+                           std::uint16_t width,
+                           std::uint16_t height)
+{
+    QByteArray message;
+    message.append(char(150));
+    message.append(static_cast<char>(enable ? 1 : 0));
+    appendU16(message, x);
+    appendU16(message, y);
+    appendU16(message, width);
+    appendU16(message, height);
+    return writeAll(socket, message);
+}
+
 bool sendUpdateRequest(QTcpSocket &socket,
                        bool incremental,
                        std::uint16_t x,
@@ -660,6 +677,103 @@ void testPartialIncrementalAndResize()
 
     socket.disconnectFromHost();
     waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testContinuousUpdatesAndRequestFallback()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+    Recorder recorder;
+    constexpr std::uint32_t background = 0x101820U;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, background));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket continuous;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(continuous, port, false, &width, &height));
+    CHECK(width == 128 && height == 128);
+    CHECK(sendSetEncodings(continuous, {-313, 0, -223}));
+    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(sendUpdateRequest(continuous, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+
+    QTcpSocket standard;
+    CHECK(connectRawRfb(standard, port, false));
+    CHECK(sendSetEncodings(standard, {0}));
+    // Only the negotiated viewer may issue ContinuousUpdates.
+    QTcpSocket rejected;
+    CHECK(connectRawRfb(rejected, port, false));
+    CHECK(sendContinuousUpdates(rejected, true, 0, 0, 64, 64));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return hasRecoverableFailure(events, "unnegotiated ContinuousUpdates");
+    }));
+    CHECK(waitForDisconnected(rejected));
+
+    CHECK(sendContinuousUpdates(continuous, true, 0, 0, 64, 64));
+    CHECK(noFramebufferData(continuous));
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0xaa3300U},
+                                       {{80, 8, 8, 8}, 0x00aa66U}}));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 0
+          && rectangles.front().width == 64 && rectangles.front().encoding == 0);
+    CHECK(frame.get(8, 8) == 0xaa3300U);
+    CHECK(frame.get(80, 8) == background);
+    CHECK(noFramebufferData(standard));
+    CHECK(noFramebufferData(continuous));
+
+    // An incremental request while continuous is enabled must be ignored,
+    // even if it names a different region. No out-of-region push is allowed.
+    CHECK(sendUpdateRequest(continuous, true, 64, 0, 64, 64));
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0xaa3300U},
+                                       {{80, 8, 8, 8}, 0xcc8844U}}));
+    CHECK(noFramebufferData(continuous));
+    // A non-incremental request still works outside the continuous region.
+    CHECK(sendUpdateRequest(continuous, false, 64, 0, 64, 64));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 64);
+    CHECK(frame.get(80, 8) == 0xcc8844U);
+
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0x0055ddU},
+                                       {{80, 8, 8, 8}, 0xcc8844U}}));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(frame.get(8, 8) == 0x0055ddU);
+
+    // Disable sends the mandatory one-byte end marker, even if already off.
+    CHECK(sendContinuousUpdates(continuous, false, 0, 0, 0, 0));
+    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+    CHECK(sendContinuousUpdates(continuous, false, 0, 0, 0, 0));
+    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0x22bb33U}}));
+    CHECK(noFramebufferData(continuous));
+    CHECK(sendUpdateRequest(continuous, true, 0, 0, 64, 64));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(frame.get(8, 8) == 0x22bb33U);
+
+    // A non-extension viewer remains fully request-driven and independent.
+    TestFramebuffer standardFrame;
+    standardFrame.resize(width, height);
+    CHECK(sendUpdateRequest(standard, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(standard, standardFrame, rectangles));
+    CHECK(standardFrame.get(8, 8) == 0x22bb33U);
+
+    continuous.disconnectFromHost();
+    standard.disconnectFromHost();
+    waitForDisconnected(continuous);
+    waitForDisconnected(standard);
     transport->stop();
 }
 
@@ -1017,6 +1131,7 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testPartialIncrementalAndResize();
+    testContinuousUpdatesAndRequestFallback();
     testFragmentedHandshakeAndInput();
     testNegotiatedFenceAndRequestFallback();
     testOversizedSetEncodingsFailsClosed();
