@@ -130,6 +130,8 @@ struct RuntimeState
     std::atomic<int> transportStops{0};
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
+    bool oversizedAfterValid = false;
+    std::atomic<bool> allowRecoveryFrame{false};
     int inputPosts = 0;
     bool throwOnInputPost = false;
     hyremote::InputHandler inputHandler;
@@ -197,10 +199,17 @@ public:
     bool requestFrame(const hyremote::CaptureRequest &) override
     {
         ++m_state->captureRequests;
+        const int frameBudget = m_state->oversizedAfterValid ? 3
+                               : m_state->oversizedBootstrapFirst ? 2 : 1;
         if (!m_state->emitOneBootstrapFrame || !m_onFrame
-            || m_bootstrapFramesSent >= (m_state->oversizedBootstrapFirst ? 2 : 1))
+            || m_bootstrapFramesSent >= frameBudget)
             return false;
-        const bool oversized = m_state->oversizedBootstrapFirst && m_bootstrapFramesSent == 0;
+        if (m_state->oversizedAfterValid && m_bootstrapFramesSent == 2
+            && !m_state->allowRecoveryFrame.load())
+            return false;
+        const bool oversized =
+            (m_state->oversizedBootstrapFirst && m_bootstrapFramesSent == 0)
+            || (m_state->oversizedAfterValid && m_bootstrapFramesSent == 1);
         ++m_bootstrapFramesSent;
         const std::uint32_t width = oversized ? 65536U : 2U;
         auto storage = hyremote::CpuFrameStorage::createSinglePlane(
@@ -542,6 +551,72 @@ void testOversizedBootstrapCannotSuspendBeforeRfbServerInit()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->captureRequests.load() > idleRequests);
     instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testValidThenOversizedFramebufferReopensCaptureAfterDisconnect()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    state->oversizedAfterValid = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+
+    // A viewer resumes capture; the newer second frame is too wide for
+    // ServerInit. A future fresh viewer needs a subsequent usable frame.
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->framesQueued.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 2);
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+
+    // The fake holds the valid recovery frame until the last viewer has
+    // disconnected. If idle demand still records the *old* valid frame,
+    // this recovery frame never reaches Transport.
+    state->allowRecoveryFrame.store(true);
+    for (int i = 0; i < 200 && state->framesQueued.load() < 3; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 3);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int settled = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == settled);
+    instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+void testReentrantStopInsideTargetLossNotification()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    auto target = std::make_unique<QObject>();
+    AccessInstance instance(target.get());
+    bool stoppedInsideCallback = false;
+    RuntimeNotificationHandlers handlers;
+    handlers.errorChanged = [&](std::optional<Error> error) {
+        if (!error || error->code != ErrorCode::RuntimeFailure || stoppedInsideCallback)
+            return;
+        // This callback runs inside TargetLossCallbackGate::notify().
+        // Closing its OWN in-flight notification must not self-deadlock.
+        stoppedInsideCallback = true;
+        instance.stop();
+    };
+    instance.subscribeNotifications(std::move(handlers));
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    target.reset();
+    CHECK(stoppedInsideCallback);
+    CHECK(instance.state() == AccessState::Stopped);
     HyRemote::detail::resetFactories();
 }
 
@@ -923,6 +998,8 @@ int main(int argc, char **argv)
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testTargetDestroyedWhileCaptureIsIdle();
     testOversizedBootstrapCannotSuspendBeforeRfbServerInit();
+    testValidThenOversizedFramebufferReopensCaptureAfterDisconnect();
+    testReentrantStopInsideTargetLossNotification();
     testConcurrentTargetLossIsDrainedBeforeOwnerStop();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
