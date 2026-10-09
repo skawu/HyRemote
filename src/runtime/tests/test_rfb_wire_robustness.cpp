@@ -743,11 +743,11 @@ void testNegotiatedFenceAndRequestFallback()
     CHECK(sendSetEncodings(negotiated, {-312, 0}));
     CHECK(readFence(negotiated) == makeFence(0U));
 
-    // Fragmented Request + BlockBefore/After + unsupported SyncNext/reserved
-    // bits. The response must clear unsupported bits and preserve the payload.
+    // Fragmented Request + BlockBefore/After/SyncNext/reserved bits. None
+    // of the ordering modes is claimed until Qt socket/Runtime barriers exist.
     const QByteArray payload("fence", 5);
     CHECK(writeBytewise(negotiated, makeFence(0xc0000007U, payload)));
-    CHECK(readFence(negotiated) == makeFence(3U, payload));
+    CHECK(readFence(negotiated) == makeFence(0U, payload));
 
     CHECK(sendUpdateRequest(negotiated, false, 0, 0, width, height));
     TestFramebuffer frame;
@@ -766,7 +766,18 @@ void testNegotiatedFenceAndRequestFallback()
     CHECK(waitForDisconnected(unnegotiated));
 
     CHECK(writeAll(negotiated, makeFence(0x80000001U, QByteArray("ok", 2))));
-    CHECK(readFence(negotiated) == makeFence(1U, QByteArray("ok", 2)));
+    CHECK(readFence(negotiated) == makeFence(0U, QByteArray("ok", 2)));
+
+    // One TCP write can pipeline Fence + a state-changing input message.
+    // We must still clear BlockAfter because QTcpSocket::write is not a drain
+    // barrier, regardless of how the server dispatches the following input.
+    QByteArray pipelined = makeFence(0x80000002U, QByteArray("pipe", 4));
+    pipelined.append(char(5));  // PointerEvent, left button down
+    pipelined.append(char(1));
+    appendU16(pipelined, 17);
+    appendU16(pipelined, 19);
+    CHECK(writeAll(negotiated, pipelined));
+    CHECK(readFence(negotiated) == makeFence(0U, QByteArray("pipe", 4)));
 
     // Reject the 65-byte claim from the fixed header; do not await the data.
     QTcpSocket oversized;
