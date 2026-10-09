@@ -476,6 +476,36 @@ void testCaptureSleepsWithoutViewersAndResumesOnConnect()
     HyRemote::detail::resetFactories();
 }
 
+void testTargetDestroyedWhileCaptureIsIdle()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    auto target = std::make_unique<QObject>();
+    AccessInstance instance(target.get());
+    Recorder recorder;
+    instance.subscribeNotifications(recorder.handlers());
+
+    CHECK(instance.start());
+    for (int i = 0; i < 200 && state->framesQueued.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    CHECK(instance.connectedClientCount() == 0u);
+
+    // No capture request can discover this loss after the bootstrap frame,
+    // so the shared Runtime must observe QObject lifetime independently.
+    target.reset();
+    CHECK(instance.state() == AccessState::Faulted);
+    CHECK(instance.lastError().has_value());
+    CHECK(instance.lastError() && instance.lastError()->code == ErrorCode::RuntimeFailure);
+    CHECK(indexOf(recorder.only("state:"), "state:Faulted") < recorder.only("state:").size());
+
+    // The idle capture gate must still be cancellable after TargetLost.
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
 void testClientCountIsEventDrivenAndNotRepeated()
 {
     const auto state = std::make_shared<RuntimeState>();
@@ -772,6 +802,7 @@ int main(int argc, char **argv)
     testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
+    testTargetDestroyedWhileCaptureIsIdle();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
     testTargetLossPublishesErrorThenFaulted();
