@@ -167,10 +167,11 @@ def verify_showcase(executable: Path) -> None:
         result = process.wait(timeout=65)
         reader.join(timeout=2)
         require(result == 0, f"showcase exited with {result}: {lines}")
-        require(any(line.startswith("SHOWCASE_POINTER") for line in lines),
-                "remote pointer did not reach the showcase Qt application")
-        require(any(line.startswith("SHOWCASE_KEY") for line in lines),
-                "remote keyboard did not reach the showcase Qt application")
+        for event_type in ("MouseButtonPress", "MouseButtonRelease", "KeyPress", "KeyRelease"):
+            require(
+                any(line.startswith(f"SHOWCASE_INPUT type={event_type} ") for line in lines),
+                f"remote {event_type} did not reach the showcase Qt application: {lines[-30:]}",
+            )
         require(line_count(lines, "SHOWCASE_CLIENTS 1") >= 2,
                 f"showcase did not expose connect/reconnect status: {lines}")
         require(line_count(lines, "SHOWCASE_CLIENTS 0") >= 3,
