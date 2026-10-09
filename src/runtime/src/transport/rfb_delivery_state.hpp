@@ -160,6 +160,10 @@ public:
     void accumulate(const RfbDamageRegion &damage) { m_pending.add(damage); }
     bool hasPendingDamage() const noexcept { return !m_pending.empty(); }
     bool hasOutstandingRequest() const noexcept { return m_request.has_value(); }
+    bool hasOutstandingIncrementalRequest() const noexcept
+    {
+        return m_request.has_value() && m_request->incremental;
+    }
 
     void request(bool incremental, RfbRect requested)
     {
@@ -175,7 +179,10 @@ public:
 
         RfbDamageRegion selected;
         if (m_forcedRefresh) {
-            selected.add(*m_forcedRefresh);
+            // A resize/ServerInit invalidation requires fresh pixels, but must
+            // never enlarge either an explicit FBU request or the synthetic
+            // ContinuousUpdates request beyond the viewer-selected region.
+            selected.add(intersectRfbRect(*m_forcedRefresh, m_request->requested));
             return selected;
         }
 

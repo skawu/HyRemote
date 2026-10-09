@@ -20,6 +20,7 @@
 #include "hyremote/core/storage.hpp"
 #include "hyremote/core/transport.hpp"
 #include "rfb_interaction_latency_stats.hpp"
+#include "transport/rfb_delivery_state.hpp"
 #include "transport/rfb_transport.hpp"
 
 namespace {
@@ -313,6 +314,23 @@ QByteArray readFence(QTcpSocket &socket)
     const qsizetype length = static_cast<unsigned char>(header.at(8));
     header += readExact(socket, length);
     return header;
+}
+
+bool sendContinuousUpdates(QTcpSocket &socket,
+                           bool enable,
+                           std::uint16_t x,
+                           std::uint16_t y,
+                           std::uint16_t width,
+                           std::uint16_t height)
+{
+    QByteArray message;
+    message.append(char(150));
+    message.append(static_cast<char>(enable ? 1 : 0));
+    appendU16(message, x);
+    appendU16(message, y);
+    appendU16(message, width);
+    appendU16(message, height);
+    return writeAll(socket, message);
 }
 
 bool sendUpdateRequest(QTcpSocket &socket,
@@ -658,6 +676,218 @@ void testPartialIncrementalAndResize()
     CHECK(frame.width == 80 && frame.height == 60);
     CHECK(frame.get(0, 0) == 0x445566U);
 
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testContinuousUpdatesAndRequestFallback()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+    Recorder recorder;
+    constexpr std::uint32_t background = 0x101820U;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, background));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket continuous;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(continuous, port, false, &width, &height));
+    CHECK(width == 128 && height == 128);
+    CHECK(sendSetEncodings(continuous, {-313, 0, -223}));
+    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(sendUpdateRequest(continuous, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+
+    QTcpSocket standard;
+    CHECK(connectRawRfb(standard, port, false));
+    CHECK(sendSetEncodings(standard, {0}));
+    // Only the negotiated viewer may issue ContinuousUpdates.
+    QTcpSocket rejected;
+    CHECK(connectRawRfb(rejected, port, false));
+    CHECK(sendContinuousUpdates(rejected, true, 0, 0, 64, 64));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return hasRecoverableFailure(events, "unnegotiated ContinuousUpdates");
+    }));
+    CHECK(waitForDisconnected(rejected));
+
+    // A stale request-driven incremental for the RIGHT tile must not
+    // prevent enabling continuous updates for the LEFT tile.
+    CHECK(sendUpdateRequest(continuous, true, 64, 0, 64, 64));
+    CHECK(noFramebufferData(continuous));
+    CHECK(sendContinuousUpdates(continuous, true, 0, 0, 64, 64));
+    CHECK(noFramebufferData(continuous));
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0xaa3300U},
+                                       {{80, 8, 8, 8}, 0x00aa66U}}));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 0
+          && rectangles.front().width == 64 && rectangles.front().encoding == 0);
+    CHECK(frame.get(8, 8) == 0xaa3300U);
+    CHECK(frame.get(80, 8) == background);
+    CHECK(noFramebufferData(standard));
+    CHECK(noFramebufferData(continuous));
+
+    // An incremental request while continuous is enabled must be ignored,
+    // even if it names a different region. No out-of-region push is allowed.
+    CHECK(sendUpdateRequest(continuous, true, 64, 0, 64, 64));
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0xaa3300U},
+                                       {{80, 8, 8, 8}, 0xcc8844U}}));
+    CHECK(noFramebufferData(continuous));
+    // A non-incremental request still works outside the continuous region.
+    CHECK(sendUpdateRequest(continuous, false, 64, 0, 64, 64));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 64);
+    CHECK(frame.get(80, 8) == 0xcc8844U);
+
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0x0055ddU},
+                                       {{80, 8, 8, 8}, 0xcc8844U}}));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(frame.get(8, 8) == 0x0055ddU);
+
+    // Disable sends the mandatory one-byte end marker, even if already off.
+    CHECK(sendContinuousUpdates(continuous, false, 0, 0, 0, 0));
+    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+    CHECK(sendContinuousUpdates(continuous, false, 0, 0, 0, 0));
+    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{{8, 8, 8, 8}, 0x22bb33U}}));
+    CHECK(noFramebufferData(continuous));
+    CHECK(sendUpdateRequest(continuous, true, 0, 0, 64, 64));
+    CHECK(readFramebufferUpdate(continuous, frame, rectangles));
+    CHECK(frame.get(8, 8) == 0x22bb33U);
+
+    // A non-extension viewer remains fully request-driven and independent.
+    TestFramebuffer standardFrame;
+    standardFrame.resize(width, height);
+    CHECK(sendUpdateRequest(standard, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(standard, standardFrame, rectangles));
+    CHECK(standardFrame.get(8, 8) == 0x22bb33U);
+
+    continuous.disconnectFromHost();
+    standard.disconnectFromHost();
+    waitForDisconnected(continuous);
+    waitForDisconnected(standard);
+    transport->stop();
+}
+
+void testForcedRefreshHonorsExplicitRegion()
+{
+    // Deterministic regression for a non-incremental request parked behind
+    // queued socket bytes while a geometry invalidation arrives. This exercises
+    // the same transport-private RfbUpdateState without timing assumptions.
+    HyRemote::detail::RfbUpdateState delivery;
+    delivery.request(false, {64, 8, 64, 48});
+    delivery.invalidateFull(96, 80);
+
+    const auto eligible = delivery.selectEligible();
+    CHECK(eligible.has_value());
+    if (eligible) {
+        CHECK(eligible->size() == 1U);
+        CHECK(eligible->rects().front() == (HyRemote::detail::RfbRect{64, 8, 32, 48}));
+        delivery.commitDelivered(*eligible);
+    }
+
+    // A subsequent forced refresh must also obey an incremental request's
+    // requested area. Empty intersection means a resize can send DesktopSize
+    // without inventing an out-of-region pixel rectangle.
+    delivery.request(true, {110, 110, 8, 8});
+    delivery.invalidateFull(96, 80);
+    const auto empty = delivery.selectEligible();
+    CHECK(empty.has_value());
+    CHECK(empty && empty->empty());
+
+    // Neither a resize nor an initial forced refresh may enlarge the normal
+    // request-driven path when no ContinuousUpdates capability was advertised.
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x314159U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-223, 0}));
+    CHECK(sendUpdateRequest(socket, false, 32, 16, 24, 12));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U);
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 32
+          && rectangles.front().y == 16 && rectangles.front().width == 24
+          && rectangles.front().height == 12);
+    CHECK(frame.get(40, 20) == 0x314159U);
+    CHECK(frame.get(0, 0) == 0U);
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testContinuousUpdatesForcedRefreshBounds()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+    Recorder recorder;
+    constexpr std::uint32_t background = 0x182838U;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, background));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-313, -223, 0}));
+    CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+
+    // The first update is still a forced refresh from ServerInit. It may not
+    // leak the entire framebuffer outside the 32x32 enabled region.
+    CHECK(sendContinuousUpdates(socket, true, 32, 32, 32, 32));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 32
+          && rectangles.front().y == 32 && rectangles.front().width == 32
+          && rectangles.front().height == 32 && rectangles.front().encoding == 0);
+    CHECK(frame.get(40, 40) == background);
+    CHECK(frame.get(0, 0) == 0U);
+
+    // A resize must still communicate DesktopSize, but automatic pixel
+    // updates remain clipped to the enabled region.
+    transport->enqueueFrame(makeFrame(96, 96, 0x224466U));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 2U);
+    CHECK(rectangles.size() == 2U && rectangles.front().encoding == -223);
+    CHECK(rectangles.size() == 2U && rectangles.back().x == 32
+          && rectangles.back().y == 32 && rectangles.back().width == 32
+          && rectangles.back().height == 32);
+    CHECK(frame.width == 96 && frame.height == 96);
+    CHECK(frame.get(40, 40) == 0x224466U);
+    CHECK(frame.get(0, 0) == 0U);
+
+    CHECK(sendContinuousUpdates(socket, false, 0, 0, 0, 0));
+    CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
     socket.disconnectFromHost();
     waitForDisconnected(socket);
     transport->stop();
@@ -1017,6 +1247,9 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testPartialIncrementalAndResize();
+    testContinuousUpdatesAndRequestFallback();
+    testContinuousUpdatesForcedRefreshBounds();
+    testForcedRefreshHonorsExplicitRegion();
     testFragmentedHandshakeAndInput();
     testNegotiatedFenceAndRequestFallback();
     testOversizedSetEncodingsFailsClosed();
