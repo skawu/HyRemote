@@ -286,8 +286,15 @@ void testRealRfbConnectionWakesViewerlessCapture()
         CHECK(instance.start());
         CHECK(waitForDemand([&] { return counters->bootstrapFrames.load() == 2; }));
         CHECK(instance.connectedClientCount() == 0u);
-        QTcpSocket second;
+
+        // Restart must not inherit the previous viewer's demand before
+        // reconnect. Let refused-request backoff settle, then prove idle.
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
         const int beforeReconnect = counters->requests.load();
+        std::this_thread::sleep_for(std::chrono::milliseconds(120));
+        CHECK(counters->requests.load() == beforeReconnect);
+
+        QTcpSocket second;
         CHECK(connectRfb38AndReadBootstrap(second, port));
         CHECK(waitForDemand([&] { return instance.connectedClientCount() == 1u; }));
         CHECK(waitForDemand([&] { return counters->requests.load() > beforeReconnect; }));
