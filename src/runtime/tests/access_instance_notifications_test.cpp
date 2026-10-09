@@ -17,11 +17,13 @@
 #include <QObject>
 
 #include <atomic>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -120,6 +122,7 @@ struct RuntimeState
 {
     std::atomic<int> captureStarts{0};
     std::atomic<int> captureStops{0};
+    std::atomic<int> captureRequests{0};
     std::atomic<int> transportStops{0};
     int inputPosts = 0;
     bool throwOnInputPost = false;
@@ -180,7 +183,11 @@ public:
         m_state->captureEventHandler = {};
     }
 
-    bool requestFrame(const hyremote::CaptureRequest &) override { return false; }
+    bool requestFrame(const hyremote::CaptureRequest &) override
+    {
+        ++m_state->captureRequests;
+        return false;
+    }
 
 private:
     std::shared_ptr<RuntimeState> m_state;
@@ -386,6 +393,49 @@ void testEncryptedSecurityFailsClosedInDiagnostics()
         CHECK(recorder.errors.front()->code == ErrorCode::SecurityUnavailable);
         CHECK(indexOf(recorder.sequence, errors.front()) < indexOf(recorder.sequence, "state:Stopped"));
     }
+}
+
+void testCaptureSleepsWithoutViewersAndResumesOnConnect()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    // A running listener is not a capture demand: in a clientless run
+    // the Shared Runtime must not repeatedly call the Qt capture adapter.
+    CHECK(instance.start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == 0);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->captureRequests.load() == 0; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > 0);
+
+    // The fake capture source refuses requests; even with that retry
+    // pressure, disconnect must put the scheduler back to sleep.
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const int idleRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == idleRequests);
+
+    // Stop while waiting for a viewer must wake the blocked scheduler,
+    // allow a fresh session run, and never reactivate stale demand.
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    CHECK(instance.start());
+    const int restartedRequests = state->captureRequests.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    CHECK(state->captureRequests.load() == restartedRequests);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 200 && state->captureRequests.load() == restartedRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > restartedRequests);
+    instance.stop();
+    HyRemote::detail::resetFactories();
 }
 
 void testClientCountIsEventDrivenAndNotRepeated()
@@ -683,6 +733,7 @@ int main(int argc, char **argv)
     testStartFailurePublishesErrorThenStopped();
     testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
+    testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testStopPublishesClientCountZeroBeforeStopped();
     testClearErrorAndRepeatedRecoverableOccurrence();
     testTargetLossPublishesErrorThenFaulted();
