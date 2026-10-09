@@ -48,6 +48,15 @@ constexpr std::size_t kMaxHeldKeys = 64;
 constexpr std::size_t kKeyCodeCount = static_cast<std::size_t>(hyremote::KeyCode::F12) + 1U;
 constexpr std::int32_t kEncodingRaw = 0;
 constexpr std::int32_t kEncodingDesktopSize = -223;
+// RFB Fence is an optional per-viewer capability, not a general application API.
+constexpr std::int32_t kEncodingFence = -312;
+constexpr std::uint8_t kClientFence = 248;
+constexpr std::uint8_t kMaxFencePayload = 64;
+constexpr std::uint32_t kFenceRequest = 0x80000000U;
+// Qt socket writes are buffered and Runtime input can be dispatched asynchronously.
+// No Fence ordering mode is advertised until we can prove it across those boundaries.
+// An empty-flags response still provides a bounded interoperable Fence round trip.
+constexpr std::uint32_t kSupportedFenceFlags = 0U;
 
 std::uint8_t byteAt(const QByteArray &data, qsizetype offset)
 {
@@ -360,6 +369,7 @@ struct ClientState
     QByteArray authChallenge;
     PixelSpec pixels = nativePixelSpec();
     bool supportsDesktopSize = false;
+    bool supportsFence = false;
     ClientEncoding preferredEncoding = ClientEncoding::Raw;
     RfbUpdateState delivery;
     std::uint16_t framebufferWidth = 0;
@@ -637,6 +647,23 @@ private:
         processClient(client);
     }
 
+    bool sendFence(ClientState &client, std::uint32_t flags, const QByteArray &payload)
+    {
+        if (!client.socket)
+            return false;
+        QByteArray message;
+        message.append(static_cast<char>(kClientFence));
+        message.append("\0\0\0", 3);
+        appendU32(message, flags & kSupportedFenceFlags);
+        message.append(static_cast<char>(payload.size()));
+        message += payload;
+        if (client.socket->write(message) != message.size()) {
+            protocolFailure(client, "RFB Fence response socket write failed");
+            return false;
+        }
+        return true;
+    }
+
     void processClient(ClientState &client)
     {
         for (;;) {
@@ -770,6 +797,8 @@ private:
                 if (client.input.size() < size)
                     return;
                 client.supportsDesktopSize = false;
+                const bool fenceWasSupported = client.supportsFence;
+                client.supportsFence = false;
                 client.preferredEncoding = ClientEncoding::Raw;
                 bool selectedEncoding = false;
                 for (std::uint16_t i = 0; i < count; ++i) {
@@ -777,6 +806,8 @@ private:
                         client.input, 4 + static_cast<qsizetype>(i) * 4);
                     if (encoding == kEncodingDesktopSize)
                         client.supportsDesktopSize = true;
+                    if (encoding == kEncodingFence)
+                        client.supportsFence = true;
                     if (!selectedEncoding && encoding == kRfbEncodingTrle) {
                         client.preferredEncoding = ClientEncoding::Trle;
                         selectedEncoding = true;
@@ -786,6 +817,37 @@ private:
                     }
                 }
                 client.input.remove(0, size);
+                if (client.supportsFence && !fenceWasSupported
+                    && !sendFence(client, 0U, {})) {
+                    return;
+                }
+                continue;
+            }
+
+            if (type == kClientFence) {
+                if (client.input.size() < 9)
+                    return;
+                if (!client.supportsFence) {
+                    protocolFailure(client, "RFB client sent an unnegotiated Fence message");
+                    return;
+                }
+                const std::uint8_t length = byteAt(client.input, 8);
+                if (length > kMaxFencePayload) {
+                    protocolFailure(client, "RFB client Fence payload exceeded the bounded limit");
+                    return;
+                }
+                const qsizetype size = 9 + static_cast<qsizetype>(length);
+                if (client.input.size() < size)
+                    return;
+                const std::uint32_t flags = readU32(client.input, 4);
+                const QByteArray payload = client.input.mid(9, length);
+                client.input.remove(0, size);
+                // Only the bounded request/response is supported. Do not echo
+                // BlockBefore/BlockAfter/SyncNext: queued socket bytes do not prove
+                // physical send order or downstream Qt input completion.
+                // A later #371 slice must implement these modes before advertising them.
+                if ((flags & kFenceRequest) != 0U && !sendFence(client, flags, payload))
+                    return;
                 continue;
             }
 

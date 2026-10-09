@@ -294,6 +294,27 @@ bool sendSetEncodings(QTcpSocket &socket, const std::vector<std::int32_t> &encod
     return writeAll(socket, message);
 }
 
+QByteArray makeFence(std::uint32_t flags, const QByteArray &payload = {})
+{
+    QByteArray message;
+    message.append(char(248));
+    message.append("\0\0\0", 3);
+    appendU32(message, flags);
+    message.append(static_cast<char>(payload.size()));
+    message += payload;
+    return message;
+}
+
+QByteArray readFence(QTcpSocket &socket)
+{
+    QByteArray header = readExact(socket, 9);
+    if (header.size() != 9)
+        return {};
+    const qsizetype length = static_cast<unsigned char>(header.at(8));
+    header += readExact(socket, length);
+    return header;
+}
+
 bool sendUpdateRequest(QTcpSocket &socket,
                        bool incremental,
                        std::uint16_t x,
@@ -698,6 +719,84 @@ void testFragmentedHandshakeAndInput()
     transport->stop();
 }
 
+void testNegotiatedFenceAndRequestFallback()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                          HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket negotiated;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(negotiated, port, false, &width, &height));
+    CHECK(sendSetEncodings(negotiated, {-312, 0}));
+    CHECK(readFence(negotiated) == makeFence(0U));
+
+    // Fragmented Request + BlockBefore/After/SyncNext/reserved bits. None
+    // of the ordering modes is claimed until Qt socket/Runtime barriers exist.
+    const QByteArray payload("fence", 5);
+    CHECK(writeBytewise(negotiated, makeFence(0xc0000007U, payload)));
+    CHECK(readFence(negotiated) == makeFence(0U, payload));
+
+    CHECK(sendUpdateRequest(negotiated, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(negotiated, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    // One client's negotiation cannot enable the extension for another.
+    QTcpSocket unnegotiated;
+    CHECK(connectRawRfb(unnegotiated, port, false));
+    CHECK(writeAll(unnegotiated, makeFence(0x80000000U)));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return hasRecoverableFailure(events, "unnegotiated Fence");
+    }));
+    CHECK(waitForDisconnected(unnegotiated));
+
+    CHECK(writeAll(negotiated, makeFence(0x80000001U, QByteArray("ok", 2))));
+    CHECK(readFence(negotiated) == makeFence(0U, QByteArray("ok", 2)));
+
+    // One TCP write can pipeline Fence + a state-changing input message.
+    // We must still clear BlockAfter because QTcpSocket::write is not a drain
+    // barrier, regardless of how the server dispatches the following input.
+    QByteArray pipelined = makeFence(0x80000002U, QByteArray("pipe", 4));
+    pipelined.append(char(5));  // PointerEvent, left button down
+    pipelined.append(char(1));
+    appendU16(pipelined, 17);
+    appendU16(pipelined, 19);
+    CHECK(writeAll(negotiated, pipelined));
+    CHECK(readFence(negotiated) == makeFence(0U, QByteArray("pipe", 4)));
+
+    // Reject the 65-byte claim from the fixed header; do not await the data.
+    QTcpSocket oversized;
+    CHECK(connectRawRfb(oversized, port, false));
+    CHECK(sendSetEncodings(oversized, {-312, 0}));
+    CHECK(readFence(oversized) == makeFence(0U));
+    QByteArray invalid = makeFence(0x80000000U);
+    invalid[8] = char(65);
+    CHECK(writeAll(oversized, invalid));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return hasRecoverableFailure(events, "Fence payload exceeded");
+    }));
+    CHECK(waitForDisconnected(oversized));
+
+    negotiated.disconnectFromHost();
+    waitForDisconnected(negotiated);
+    transport->stop();
+}
+
 void testOversizedSetEncodingsFailsClosed()
 {
     const quint16 port = freePort();
@@ -919,6 +1018,7 @@ int main(int argc, char **argv)
     testTrleRawAndIncrementalDelivery();
     testPartialIncrementalAndResize();
     testFragmentedHandshakeAndInput();
+    testNegotiatedFenceAndRequestFallback();
     testOversizedSetEncodingsFailsClosed();
     testOversizedCutTextFailsClosed();
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
