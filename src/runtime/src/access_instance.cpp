@@ -78,8 +78,8 @@ void decrementConnectedClients(const std::shared_ptr<std::atomic<std::size_t>> &
     }
 }
 
-// Runtime-private demand gate. It waits instead of polling or asking Qt to
-// capture without a viewer. The source's stop() opens the gate before Core
+// Runtime-private demand gate. It waits instead of polling or repeatedly asking
+// Qt to capture without a viewer after a valid ServerInit bootstrap frame. The source's stop() opens the gate before Core
 // joins its scheduler thread, so a clientless session can always stop cleanly.
 // This stays in the single Shared Runtime; generic Core Session clients are
 // not given new application-visible capture knobs or changed semantics.
@@ -91,6 +91,16 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         m_stopped = false;
         m_viewers = 0;
+        m_bootstrapFrameQueued = false;
+    }
+
+    void frameQueued()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_bootstrapFrameQueued = true;
+        }
+        m_changed.notify_all();
     }
 
     void setViewerCount(std::size_t viewers)
@@ -105,7 +115,13 @@ public:
     bool waitForViewer()
     {
         std::unique_lock<std::mutex> lock(m_mutex);
-        m_changed.wait(lock, [this] { return m_stopped || m_viewers != 0; });
+        // RFB ServerInit needs the first framebuffer geometry before a
+        // viewer can enter the Normal phase and emit ClientConnected.
+        // Permit bootstrap capture until a valid frame reached Transport.
+        // Only then suspend requests until a viewer is connected.
+        m_changed.wait(lock, [this] {
+            return m_stopped || !m_bootstrapFrameQueued || m_viewers != 0;
+        });
         return !m_stopped;
     }
 
@@ -123,6 +139,7 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_changed;
     std::size_t m_viewers = 0;
+    bool m_bootstrapFrameQueued = false;
     bool m_stopped = true;
 };
 
@@ -219,7 +236,11 @@ public:
 
     void enqueueFrame(hyremote::RemoteFrame frame) override
     {
+        // The transport has accepted a real, Core-validated frame. RFB can
+        // now complete ServerInit for the first client without a capture
+        // bootstrap deadlock; clientless capture may go idle.
         m_transport->enqueueFrame(std::move(frame));
+        m_demand->frameQueued();
     }
 
 private:
