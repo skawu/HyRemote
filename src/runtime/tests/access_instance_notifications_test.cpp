@@ -186,7 +186,9 @@ public:
     {
         ++m_state->captureStops;
         m_state->captureEventHandler = {};
-        m_onFrame = {};
+        // Session joins its scheduler after stop(); do not mutate this
+        // callback while requestFrame might still be unwinding.
+        // The fake's Core callback gate already makes late delivery inert.
     }
 
     bool requestFrame(const hyremote::CaptureRequest &) override
