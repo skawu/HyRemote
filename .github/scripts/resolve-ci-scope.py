@@ -117,6 +117,18 @@ READINESS_TEST_PREFIX = "hyremote-release-readiness-"
 RFB_PRODUCT_FIT_TEST = "hyremote-v01-rfb-product-fit$"
 RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 
+# HyRemoteTool's standard-viewer product fit is the same class of exact-candidate evidence. Ordinary
+# feature PRs do not acquire Pillow/vncdotool merely because Tool product code changed; the wiring/script
+# PR itself and FULL_GATE execute it fail-closed.
+TOOL_PRODUCT_FIT_TEST = "hyremote-tool-product-fit$"
+TOOL_PRODUCT_FIT_PREFIXES = (
+    ".github/scripts/resolve-ci-scope.py",
+    ".github/workflows/ci.yml",
+    "examples/remote-support-showcase/CMakeLists.txt",
+    "examples/remote-support-showcase/input_probe.cpp",
+    "tests/product-e2e/showcase_product_fit.py",
+)
+
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
 # selection scripts over the repository itself. They run in a lightweight governance job, and they must not drag the
 # product matrix along just to execute a policy script.
@@ -276,9 +288,12 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         path.startswith(READINESS_PREFIXES) for path in changed
     )
 
-    # Candidate acceptance evidence rather than a regression: see RFB_PRODUCT_FIT_TEST above.
+    # Candidate acceptance evidence rather than a regression.
     rfb_product_fit_evidence = full_gate or any(
         path.startswith(RFB_PRODUCT_FIT_PREFIXES) for path in changed
+    )
+    tool_product_fit_evidence = full_gate or any(
+        path.startswith(TOOL_PRODUCT_FIT_PREFIXES) for path in changed
     )
 
     governance = full_gate or any(
@@ -312,6 +327,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         excluded.append("hyremote-qpa-installed-product-fit$")
     if not rfb_product_fit_evidence:
         excluded.append(RFB_PRODUCT_FIT_TEST)
+    if not tool_product_fit_evidence:
+        excluded.append(TOOL_PRODUCT_FIT_TEST)
     # An empty exclusion must stay empty. Building "^(" + "|".join([]) + ")" produced "^()", which matches every
     # test name: CTest then excluded everything, reported success, and a lane that promised full integration
     # executed nothing. That is a false green, not a formatting detail. A lane that runs no product job has no
@@ -332,6 +349,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         "qpa_evidence": "true" if (qpa_evidence and product) else "false",
         "readiness_evidence": "true" if readiness_evidence else "false",
         "rfb_product_fit_evidence": "true" if (rfb_product_fit_evidence and product) else "false",
+        "tool_product_fit_evidence": "true" if (tool_product_fit_evidence and product) else "false",
         "governance": "true" if governance else "false",
         "security_evidence": "true" if (security_evidence and product) else "false",
         "test_exclude": test_exclude,
@@ -528,6 +546,26 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
             failures += 1
 
+    for description, event, changed, expected_excluded in (
+            ("the Tool product-fit wiring change runs it", "pull_request",
+             ["tests/product-e2e/showcase_product_fit.py"], False),
+            ("CI workflow wiring runs Tool product fit", "pull_request",
+             [".github/workflows/ci.yml"], False),
+            ("CI scope classifier wiring runs Tool product fit", "pull_request",
+             [".github/scripts/resolve-ci-scope.py"], False),
+            ("showcase input probe contract runs Tool product fit", "pull_request",
+             ["examples/remote-support-showcase/input_probe.cpp"], False),
+            ("an ordinary Tool implementation PR still excludes it", "pull_request",
+             ["examples/remote-support-showcase/main.cpp"], True),
+            ("an unrelated pull request excludes Tool product fit", "pull_request",
+             ["src/core/session/session.cpp"], True),
+            ("the full gate requires Tool product fit", "workflow_dispatch", [], False)):
+        resolved = resolve(event, changed)
+        excluded_now = TOOL_PRODUCT_FIT_TEST in resolved["test_exclude"]
+        if excluded_now != expected_excluded:
+            print(f"CASE FAILED: {description}: test_exclude={resolved['test_exclude']!r}")
+            failures += 1
+
     # Whatever the lane, an exclusion must never be able to exclude everything: "^()" is the shape that turned a
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
@@ -609,6 +647,10 @@ def main() -> int:
             handle.write(f"- Generic/C++/QML/QPA deploy evidence: {outputs['generic_evidence']}/"
                          f"{outputs['cpp_evidence']}/{outputs['qml_evidence']}/{outputs['qpa_evidence']}\n")
             handle.write(f"- release readiness: {outputs['readiness_evidence']}\n")
+            handle.write(
+                f"- candidate product-fit evidence (RFB/Tool): "
+                f"{outputs['rfb_product_fit_evidence']}/{outputs['tool_product_fit_evidence']}\n"
+            )
             handle.write(f"- release-authority governance: {outputs['governance']}\n")
             handle.write(f"- security-on evidence: {outputs['security_evidence']}\n")
     return 0

@@ -171,10 +171,11 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
 | `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys or initial bounded Activity markers are missing. |
+| `hyremote-tool-product-fit` | Exact-candidate maintained-viewer evidence for HyRemoteTool behavior: framebuffer, public diagnostics, client 0/1 reconnect lifecycle, pointer/key ingress and clean listener release. It is registered fail-closed and excluded from ordinary fast PRs unless its own candidate-evidence wiring changes; clean-installed/deployed launch evidence is a separate delivery contract. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 
-Unregistered assets `tests/product-e2e/example_product_fit.py`, `qml_product_fit.py`, and `showcase_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; source files without execution authority are not counted as evidence.
+Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_fit.py` remain explicit deferred P2 execution-ownership debt in `COVERAGE_GAPS.md`; source files without execution authority are not counted as evidence.
 
 ## T6 — release/candidate authority
 

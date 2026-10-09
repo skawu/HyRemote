@@ -68,7 +68,7 @@ def start_showcase(executable: Path, port: int, diagnostic_report: Path):
             "--port", str(port),
             "--auto-start",
             "--remote-input",
-            "--test-seconds", "10",
+            "--test-seconds", "60",
             "--diagnostic-report-file", str(diagnostic_report),
         ],
         stdout=subprocess.PIPE,
@@ -132,7 +132,8 @@ def verify_showcase(executable: Path) -> None:
                 "INTEGRATION_ROUTE=cpp\n",
                 "STATE=Running\n",
                 "REMOTE_INPUT=true\n",
-                f"LISTENER_CONFIGURED=0.0.0.0:{port}\n",
+                f"LISTENER_CONFIGURED=address:0.0.0.0:{port}\n",
+                f"LISTENER_EFFECTIVE=0.0.0.0:{port}\n",
             ):
                 require(required in report, f"saved diagnostic report is missing {required!r}: {report}")
 
@@ -163,13 +164,14 @@ def verify_showcase(executable: Path) -> None:
             wait_for_count(process, lines, 0, 3,
                            "showcase did not report second viewer disconnect")
 
-        result = process.wait(timeout=14)
+        result = process.wait(timeout=65)
         reader.join(timeout=2)
         require(result == 0, f"showcase exited with {result}: {lines}")
-        require(any(line.startswith("SHOWCASE_POINTER") for line in lines),
-                "remote pointer did not reach the showcase Qt application")
-        require(any(line.startswith("SHOWCASE_KEY") for line in lines),
-                "remote keyboard did not reach the showcase Qt application")
+        for event_type in ("MouseButtonPress", "MouseButtonRelease", "KeyPress", "KeyRelease"):
+            require(
+                any(line.startswith(f"SHOWCASE_INPUT type={event_type} ") for line in lines),
+                f"remote {event_type} did not reach the showcase Qt application: {lines[-30:]}",
+            )
         require(line_count(lines, "SHOWCASE_CLIENTS 1") >= 2,
                 f"showcase did not expose connect/reconnect status: {lines}")
         require(line_count(lines, "SHOWCASE_CLIENTS 0") >= 3,
