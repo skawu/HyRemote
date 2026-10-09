@@ -37,6 +37,7 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-diagnostic-export-test)
     endif()
 
+    if(HYREMOTE_WITH_VNC)
     # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
     # Register fail-closed so candidate qualification cannot pass merely because Python/viewer tooling is absent.
     set(Python3_FIND_REGISTRY NEVER)
@@ -56,4 +57,5 @@ if(HYREMOTE_BUILD_TESTS)
         TIMEOUT 900
         LABELS "candidate-evidence"
     )
+    endif()
 endif()
