@@ -53,9 +53,10 @@ constexpr std::int32_t kEncodingFence = -312;
 constexpr std::uint8_t kClientFence = 248;
 constexpr std::uint8_t kMaxFencePayload = 64;
 constexpr std::uint32_t kFenceRequest = 0x80000000U;
-// The serial transport worker currently provides only these two ordering modes.
-// SyncNext requires a later atomic-next-message implementation (#371).
-constexpr std::uint32_t kSupportedFenceFlags = 0x00000003U;
+// Qt socket writes are buffered and Runtime input can be dispatched asynchronously.
+// No Fence ordering mode is advertised until we can prove it across those boundaries.
+// An empty-flags response still provides a bounded interoperable Fence round trip.
+constexpr std::uint32_t kSupportedFenceFlags = 0U;
 
 std::uint8_t byteAt(const QByteArray &data, qsizetype offset)
 {
@@ -841,9 +842,10 @@ private:
                 const std::uint32_t flags = readU32(client.input, 4);
                 const QByteArray payload = client.input.mid(9, length);
                 client.input.remove(0, size);
-                // This worker processes prior client messages in order and queues the
-                // reply on the same ordered TCP stream before subsequent messages.
-                // SyncNext and unknown flags are cleared; no server Fence requests yet.
+                // Only the bounded request/response is supported. Do not echo
+                // BlockBefore/BlockAfter/SyncNext: queued socket bytes do not prove
+                // physical send order or downstream Qt input completion.
+                // A later #371 slice must implement these modes before advertising them.
                 if ((flags & kFenceRequest) != 0U && !sendFence(client, flags, payload))
                     return;
                 continue;
