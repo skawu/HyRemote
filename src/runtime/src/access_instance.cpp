@@ -258,10 +258,12 @@ class ObservedCaptureSource final : public hyremote::CaptureSource
 {
 public:
     ObservedCaptureSource(std::unique_ptr<hyremote::CaptureSource> source,
+                          QObject *target,
                           std::shared_ptr<std::atomic<bool>> runActive,
                           std::shared_ptr<ViewerCaptureDemand> demand,
                           std::function<void()> onRuntimeObservation)
         : m_source(std::move(source))
+        , m_target(target)
         , m_runActive(std::move(runActive))
         , m_demand(std::move(demand))
         , m_onRuntimeObservation(std::move(onRuntimeObservation))
@@ -277,27 +279,50 @@ public:
     {
         const auto runActive = m_runActive;
         const auto observe = m_onRuntimeObservation;
-        const bool started = m_source->start(
-            std::move(onFrame),
-            [runActive, observe, onEvent = std::move(onEvent)](const hyremote::CaptureEvent &event) mutable {
+        const auto reportEvent =
+            [runActive, observe, onEvent = std::move(onEvent)](const hyremote::CaptureEvent &event) {
                 if (onEvent)
                     onEvent(event);
 
-                if (!runActive->load(std::memory_order_acquire)) {
+                if (!runActive->load(std::memory_order_acquire))
                     return;
-                }
                 if (observe)
                     observe();
-            });
-        if (started)
-            m_demand->start();
-        return started;
+            };
+        const bool started = m_source->start(std::move(onFrame), reportEvent);
+        if (!started)
+            return false;
+        m_demand->start();
+
+        // Target adapters normally detect TargetLost while requestFrame runs.
+        // The zero-viewer demand gate intentionally stops those requests, so
+        // preserve fault/lifecycle notifications independently via QObject.
+        // Capture only per-run shared data: a late signal after stop cannot
+        // access this ObservedCaptureSource or a destroyed AccessInstance.
+        if (QObject *target = m_target.data()) {
+            auto watchActive = m_targetWatchActive;
+            watchActive->store(true, std::memory_order_release);
+            m_targetDestroyedConnection = QObject::connect(
+                target, &QObject::destroyed,
+                [watchActive, reportEvent](QObject *) {
+                    if (!watchActive->load(std::memory_order_acquire))
+                        return;
+                    const hyremote::CaptureEvent event{
+                        hyremote::CaptureEventCode::TargetLost,
+                        "the attached Qt target was destroyed",
+                        false};
+                    reportEvent(event);
+                });
+        }
+        return true;
     }
 
     void stop() noexcept override
     {
         // Core calls CaptureSource::stop() before joining its scheduler. Wake
         // the scheduler here even if no viewer ever connected.
+        m_targetWatchActive->store(false, std::memory_order_release);
+        QObject::disconnect(m_targetDestroyedConnection);
         m_demand->stop();
         m_source->stop();
     }
@@ -311,6 +336,10 @@ public:
 
 private:
     std::unique_ptr<hyremote::CaptureSource> m_source;
+    QPointer<QObject> m_target;
+    QMetaObject::Connection m_targetDestroyedConnection;
+    std::shared_ptr<std::atomic<bool>> m_targetWatchActive =
+        std::make_shared<std::atomic<bool>>(false);
     std::shared_ptr<std::atomic<bool>> m_runActive;
     std::shared_ptr<ViewerCaptureDemand> m_demand;
     std::function<void()> m_onRuntimeObservation;
@@ -1001,6 +1030,7 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     auto freshSession = std::make_unique<hyremote::Session>();
     auto observedCapture =
         std::make_unique<ObservedCaptureSource>(std::move(targetComponents.capture),
+                                                targetObject,
                                                 runActive,
                                                 viewerDemand,
                                                 observeRuntime);
