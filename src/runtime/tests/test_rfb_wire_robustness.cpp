@@ -20,6 +20,7 @@
 #include "hyremote/core/storage.hpp"
 #include "hyremote/core/transport.hpp"
 #include "rfb_interaction_latency_stats.hpp"
+#include "transport/rfb_delivery_state.hpp"
 #include "transport/rfb_transport.hpp"
 
 namespace {
@@ -781,6 +782,64 @@ void testContinuousUpdatesAndRequestFallback()
     transport->stop();
 }
 
+void testForcedRefreshHonorsExplicitRegion()
+{
+    // Deterministic regression for a non-incremental request parked behind
+    // queued socket bytes while a geometry invalidation arrives. This exercises
+    // the same transport-private RfbUpdateState without timing assumptions.
+    HyRemote::detail::RfbUpdateState delivery;
+    delivery.request(false, {64, 8, 64, 48});
+    delivery.invalidateFull(96, 80);
+
+    const auto eligible = delivery.selectEligible();
+    CHECK(eligible.has_value());
+    if (eligible) {
+        CHECK(eligible->size() == 1U);
+        CHECK(eligible->rects().front() == (HyRemote::detail::RfbRect{64, 8, 32, 48}));
+        delivery.commitDelivered(*eligible);
+    }
+
+    // A subsequent forced refresh must also obey an incremental request's
+    // requested area. Empty intersection means a resize can send DesktopSize
+    // without inventing an out-of-region pixel rectangle.
+    delivery.request(true, {110, 110, 8, 8});
+    delivery.invalidateFull(96, 80);
+    const auto empty = delivery.selectEligible();
+    CHECK(empty.has_value());
+    CHECK(empty && empty->empty());
+
+    // Neither a resize nor an initial forced refresh may enlarge the normal
+    // request-driven path when no ContinuousUpdates capability was advertised.
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x314159U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-223, 0}));
+    CHECK(sendUpdateRequest(socket, false, 32, 16, 24, 12));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U);
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 32
+          && rectangles.front().y == 16 && rectangles.front().width == 24
+          && rectangles.front().height == 12);
+    CHECK(frame.get(40, 20) == 0x314159U);
+    CHECK(frame.get(0, 0) == 0U);
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
 void testContinuousUpdatesForcedRefreshBounds()
 {
     const quint16 port = freePort();
@@ -1190,6 +1249,7 @@ int main(int argc, char **argv)
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testContinuousUpdatesForcedRefreshBounds();
+    testForcedRefreshHonorsExplicitRegion();
     testFragmentedHandshakeAndInput();
     testNegotiatedFenceAndRequestFallback();
     testOversizedSetEncodingsFailsClosed();
