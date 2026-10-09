@@ -1,0 +1,171 @@
+name: Qt LTS preflight
+
+on:
+  pull_request:
+    paths:
+      - 'tests/preflight/qt-lts/**'
+      - '.github/workflows/qt-lts-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qt-lts-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qt-lts:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64 / Qt 5.15.2
+            os: ubuntu-24.04
+            qt_version: 5.15.2
+            aqt_host: linux
+            aqt_arch: gcc_64
+            qt_dir: gcc_64
+            subset_archives: true
+          - name: Windows x86_64 / Qt 5.15.2
+            os: windows-2022
+            qt_version: 5.15.2
+            aqt_host: windows
+            aqt_arch: win64_msvc2019_64
+            qt_dir: msvc2019_64
+            subset_archives: false
+          - name: Linux x86_64 / Qt 6.5.3
+            os: ubuntu-24.04
+            qt_version: 6.5.3
+            aqt_host: linux
+            aqt_arch: gcc_64
+            qt_dir: gcc_64
+            subset_archives: true
+          - name: Windows x86_64 / Qt 6.5.3
+            os: windows-2022
+            qt_version: 6.5.3
+            aqt_host: windows
+            aqt_arch: win64_msvc2019_64
+            qt_dir: msvc2019_64
+            subset_archives: false
+          - name: Linux x86_64 / Qt 6.8.3
+            os: ubuntu-24.04
+            qt_version: 6.8.3
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+            qt_dir: gcc_64
+            subset_archives: false
+          - name: Windows x86_64 / Qt 6.8.3
+            os: windows-2022
+            qt_version: 6.8.3
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            qt_dir: msvc2022_64
+            subset_archives: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache exact Qt preflight SDK
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-lts-preflight-v1-${{ runner.os }}-${{ matrix.qt_version }}-${{ matrix.aqt_arch }}
+
+      - name: Install exact Qt SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          QT_PREFIX="$QT_ROOT/${{ matrix.qt_version }}/${{ matrix.qt_dir }}"
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if [[ ! -d "$QT_PREFIX" ]]; then
+            rm -rf "$QT_ROOT"
+            if [[ "${{ matrix.subset_archives }}" == "true" ]]; then
+              available="$(aqt list-qt "${{ matrix.aqt_host }}" desktop --archives "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}")"
+              archives=(qtbase qtdeclarative)
+              if grep -qw icu <<<"$available"; then
+                archives+=(icu)
+              fi
+              echo "Historical SDK archives: ${archives[*]}"
+              aqt install-qt "${{ matrix.aqt_host }}" desktop "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}" \
+                --outputdir "$QT_ROOT" --archives "${archives[@]}"
+            else
+              aqt install-qt "${{ matrix.aqt_host }}" desktop "${{ matrix.qt_version }}" "${{ matrix.aqt_arch }}" --outputdir "$QT_ROOT"
+            fi
+          fi
+          test -d "$QT_PREFIX"
+          echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Linux link prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb-cursor0
+
+      - name: Configure, build and run the standalone capability probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tests/preflight/qt-lts -B build-qt-lts -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX"
+          cmake --build build-qt-lts
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            QT_BIN="$(cygpath -u "$QT_PREFIX/bin")"
+            export PATH="$QT_BIN:$PATH"
+            ./build-qt-lts/hyremote-qt-lts-public-probe.exe | tee qt-lts-runtime.log
+          else
+            ./build-qt-lts/hyremote-qt-lts-public-probe | tee qt-lts-runtime.log
+          fi
+
+      - name: Capture current product configure boundary
+        shell: bash
+        run: |
+          set +e
+          cmake -S . -B build-product-probe -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_BUILD_TESTS=OFF -DHYREMOTE_BUILD_EXAMPLES=OFF \
+            -DHYREMOTE_BUILD_QML_API=OFF -DHYREMOTE_WITH_GENERIC_PLUGIN=OFF \
+            -DHYREMOTE_WITH_QPA_PROXY=OFF > product-configure.log 2>&1
+          rc=$?
+          set -e
+          echo "PRODUCT_CONFIGURE_RC=$rc" > product-configure-result.txt
+
+      - name: Evidence summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "## Qt LTS preflight — ${{ matrix.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '~~~text' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f build-qt-lts/qt-lts-evidence.txt ]]; then
+            cat build-qt-lts/qt-lts-evidence.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PROBE_EVIDENCE=MISSING" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [[ -f qt-lts-runtime.log ]]; then
+            cat qt-lts-runtime.log | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PUBLIC_LINK_PROBE=MISSING" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          cat product-configure-result.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E 'Qt [0-9]|Common Runtime skipped|requires Qt|only qualified line|Configuring HyRemote' product-configure.log \
+            | tail -20 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '~~~' >> "$GITHUB_STEP_SUMMARY"
+
+          grep -q '^PUBLIC_SURFACE_COMPILES=YES$' build-qt-lts/qt-lts-evidence.txt
+          grep -q '^PUBLIC_LINK_PROBE=PASS$' qt-lts-runtime.log
