@@ -220,14 +220,41 @@ if(NOT EXISTS "${v030_notes_path}")
     message(FATAL_ERROR "release-readiness: missing v0.3.0.0 bilingual candidate notes")
 endif()
 file(READ "${v030_notes_path}" v030_notes)
-# The development sentinel is not a released candidate. A final accepted
-# release branch may remove this exact marker only after changing the root
-# project version and completing the release-specific gate.
+# On develop, an unreleased V0.3 candidate MUST retain the acceptance-
+# pending marker. After the formal release and audited backmerge, develop
+# returns to project version 0.0.0 while the accepted release notes remain
+# finalized. That history can only be accepted if a real annotated release
+# tag exists and its commit is an ancestor of the checked-out source history.
+# A tag name string in release notes or a lightweight tag is insufficient.
 if(source_project_version STREQUAL "0.0.0")
     string(FIND "${v030_notes}" "Status: **candidate / acceptance pending**" v030_candidate_marker_at)
     if(NOT v030_candidate_marker_at EQUAL 0)
-        message(FATAL_ERROR
-            "release-readiness: develop may not claim v0.3.0.0 accepted/released; candidate marker is required")
+        execute_process(
+            COMMAND git -C "${HYREMOTE_SOURCE_DIR}" cat-file -t refs/tags/v0.3.0.0
+            RESULT_VARIABLE v030_tag_type_result
+            OUTPUT_VARIABLE v030_tag_type
+            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT v030_tag_type_result EQUAL 0 OR NOT v030_tag_type STREQUAL "tag")
+            message(FATAL_ERROR
+                "release-readiness: finalized v0.3.0.0 notes on develop require an existing annotated release tag")
+        endif()
+        execute_process(
+            COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse "refs/tags/v0.3.0.0^{commit}"
+            RESULT_VARIABLE v030_tag_commit_result
+            OUTPUT_VARIABLE v030_tag_commit
+            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT v030_tag_commit_result EQUAL 0 OR NOT v030_tag_commit MATCHES "^[0-9a-fA-F]+$")
+            message(FATAL_ERROR
+                "release-readiness: finalized v0.3.0.0 notes require a resolvable annotated release commit")
+        endif()
+        execute_process(
+            COMMAND git -C "${HYREMOTE_SOURCE_DIR}" merge-base --is-ancestor "${v030_tag_commit}" HEAD
+            RESULT_VARIABLE v030_tag_ancestry_result
+            OUTPUT_QUIET ERROR_QUIET)
+        if(NOT v030_tag_ancestry_result EQUAL 0)
+            message(FATAL_ERROR
+                "release-readiness: finalized v0.3.0.0 notes require release tag commit in current source ancestry")
+        endif()
     endif()
 endif()
 string(FIND "${v030_notes}" "# 中文" v030_zh_at)
@@ -244,7 +271,7 @@ if(v030_zh_size LESS 400 OR v030_en_size LESS 400)
     message(FATAL_ERROR "release-readiness: v0.3.0.0 bilingual note surface is empty")
 endif()
 foreach(required_fact IN ITEMS
-        "V0.3.0.0" "v0.3.0.0" "release/v0.3.0.0" "0.0.0.0:5921" "SecurityType None"
+        "V0.3.0.0" "release/v0.3.0.0" "0.0.0.0:5921" "SecurityType None"
         "C++" "QML" "Generic" "QPA" "L2 FULL_GATE" "HYREMOTE-MANIFEST.txt")
     string(FIND "${v030_zh}" "${required_fact}" v030_zh_fact_at)
     string(FIND "${v030_en}" "${required_fact}" v030_en_fact_at)
@@ -253,6 +280,15 @@ foreach(required_fact IN ITEMS
             "release-readiness: v0.3.0.0 bilingual notes missing candidate fact '${required_fact}'")
     endif()
 endforeach()
+# A standalone intended tag is distinct from the substring inside
+# release/v0.3.0.0. Require a backtick-delimited tag in EACH language;
+# removing both independent tag references must fail even if branches remain.
+string(FIND "${v030_zh}" "`v0.3.0.0`" v030_zh_tag_at)
+string(FIND "${v030_en}" "`v0.3.0.0`" v030_en_tag_at)
+if(v030_zh_tag_at EQUAL -1 OR v030_en_tag_at EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: v0.3.0.0 bilingual notes must independently identify the intended annotated tag")
+endif()
 foreach(required_zh_fact IN ITEMS "默认认证：**关闭**" "默认传输**未加密**" "远程输入默认关闭" "不适合暴露到 Internet")
     string(FIND "${v030_zh}" "${required_zh_fact}" v030_fact_at)
     if(v030_fact_at EQUAL -1)
