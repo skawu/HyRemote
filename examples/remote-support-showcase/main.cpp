@@ -344,10 +344,16 @@ public:
         QApplication::processEvents();
 
         auto *vertical = m_scrollArea->verticalScrollBar();
+        auto *horizontal = m_scrollArea->horizontalScrollBar();
         const bool compact = width() <= 480 && height() <= 360;
         const bool overflow = vertical && vertical->maximum() > 0;
         if (overflow) {
+            // The remote-support forms can exceed a 480px viewport's
+            // width, so verify actual two-axis navigation rather than
+            // assuming a user can reach a widget beyond the right edge.
             vertical->setValue(vertical->maximum());
+            if (horizontal)
+                horizontal->setValue(horizontal->maximum());
             QApplication::processEvents();
         }
         // An operator panel's border could be visible while its actual
@@ -360,6 +366,7 @@ public:
                                                      : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
+                  << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
                   << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
                   << ',' << notesRect.width() << 'x' << notesRect.height()
                   << " viewport=" << m_scrollArea->viewport()->width()
