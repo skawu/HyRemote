@@ -228,29 +228,55 @@ jobs:
           base_tree = "refs/remotes/origin/" + base
           old_cmake = git("show", base_tree + ":CMakeLists.txt")
           new_cmake = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8").strip()
-          from_line = 'project(HyRemote VERSION 0.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
-          to_line = f'project(HyRemote VERSION {version} DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
-          if old_cmake.count(from_line) != 1 or new_cmake != old_cmake.replace(from_line, to_line):
-              raise SystemExit("protected release-preparation PR must change only root project VERSION 0.0.0 to the exact target version")
+          develop_line = 'project(HyRemote VERSION 0.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
+          release_line = f'project(HyRemote VERSION {version} DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
+          if develop_line == release_line:
+              raise SystemExit("release preparation cannot target the development sentinel")
 
           notes_name = f"docs/releases/v{version}.md"
+          marker = "Status: **candidate / acceptance pending**"
+          old_notes = git("show", base_tree + ":" + notes_name)
           notes = pathlib.Path(notes_name).read_text(encoding="utf-8")
-          if not notes.startswith("Status: **candidate / acceptance pending**"):
-              raise SystemExit("release-preparation PR must preserve unaccepted candidate release notes")
           for required in (f"release/v{version}", f"`v{version}`", "## Security boundary", "# 中文", "# English"):
               if required not in notes:
                   raise SystemExit(f"release-preparation notes missing {required}")
 
           changed = set(git("diff", "--name-only", base_tree, "HEAD").splitlines())
-          allowed = {"CMakeLists.txt", notes_name}
-          bootstrap = head == "feature/466-release-preparation" and version == "0.3.0.0"
-          if bootstrap:
-              allowed.update((".github/scripts/check-pr-branch-name.sh",
-                              ".github/workflows/git-flow-policy.yml",
-                              "docs/internal/git-flow-release.md"))
-          if "CMakeLists.txt" not in changed or not changed <= allowed:
+          if old_cmake.count(develop_line) == 1:
+              # Stage 1: exact source VERSION bump, but still unaccepted.
+              stage = "version-preparation"
+              if new_cmake != old_cmake.replace(develop_line, release_line).strip():
+                  raise SystemExit("first preparation must change only root VERSION 0.0.0 to exact release version")
+              if not old_notes.startswith(marker) or not notes.startswith(marker):
+                  raise SystemExit("initial release preparation must keep candidate notes pending")
+              allowed = {"CMakeLists.txt", notes_name}
+              bootstrap = head == "feature/466-release-preparation" and version == "0.3.0.0"
+              if bootstrap:
+                  allowed.update((".github/scripts/check-pr-branch-name.sh",
+                                  ".github/workflows/git-flow-policy.yml",
+                                  "docs/internal/git-flow-release.md"))
+              if "CMakeLists.txt" not in changed:
+                  raise SystemExit("initial release preparation did not actually bump the project version")
+          elif old_cmake.count(release_line) == 1:
+              # Stage 2, ONLY after separate owner acceptance: finalize the
+              # previously versioned release's bilingual notes via a reviewable
+              # PR. Never allow an SDK change or an unauthorized version bump.
+              stage = "notes-finalization"
+              if new_cmake != old_cmake.strip():
+                  raise SystemExit("release finalization may not alter product VERSION or CMake sources")
+              if not old_notes.startswith(marker) or marker in notes:
+                  raise SystemExit("notes finalization must replace pending notes with accepted wording")
+              if "pending" in notes.lower() and "acceptance" in notes.lower():
+                  raise SystemExit("final notes still describe acceptance as pending")
+              allowed = {notes_name}
+              if changed != allowed:
+                  raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
+          else:
+              raise SystemExit("protected release PR base must be 0.0.0 or its exact four-part version")
+
+          if not changed <= allowed:
               raise SystemExit(f"release-preparation PR has out-of-scope changes: {sorted(changed - allowed)}")
-          print(f"protected release preparation gate PASS: {head} -> {base}; scope={sorted(changed)}")
+          print(f"protected release preparation gate PASS: {head} -> {base} phase={stage} scope={sorted(changed)}")
 
       - name: Keep develop on the development version sentinel
         if: github.base_ref == 'develop'
