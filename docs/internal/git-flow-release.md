@@ -16,9 +16,9 @@ Current authorized release trains are progressive, and every one of them is a re
 support contract than GA (#24, #95):
 
 ```text
-v0.1.0.0   Use It / Developer Preview        (loopback-only, primary C++/Generic paths)
-v0.2.0.0   Trust It / Operational Preview    (security, session, network)
-v0.3.0.0   Productize It / Product Preview   (four product-deliverable integrations, deployment, examples)
+v0.1.0.0   Developer Preview                (early bounded developer integration; historical release)
+v0.2.0.0   First User Trial                 (second-machine LAN, truthful default-off access and unencrypted RFB)
+v0.3.0.0   Product Preview                  (four peer clean SDK/deploy paths, self-service docs and diagnostics)
 v0.4.0.0   Qualify It / Release Candidate Line - qualification only; conditional on #235 until the V0.3 family completes (#333), with v0.4.0.x maintenance releases after activation
 v1.0.0.0   Stabilize It / first GA, promoted from one mature V0.4 lineage
 ```
