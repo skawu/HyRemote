@@ -837,7 +837,10 @@ void testRequestPausedViewerDoesNotStallContinuousPeer()
         return;
     }
     CHECK(pausedWidth == width && pausedHeight == height);
-    CHECK(sendSetEncodings(paused, {0}));
+    // Fence is used only as a per-socket request-PARSE barrier below:
+    // no BlockBefore/After transport-drain semantics are assumed.
+    CHECK(sendSetEncodings(paused, {-312, 0}));
+    CHECK(readFence(paused) == makeFence(0U));
     TestFramebuffer pausedFrame;
     pausedFrame.resize(pausedWidth, pausedHeight);
     CHECK(sendUpdateRequest(paused, false, 0, 0, pausedWidth, pausedHeight));
@@ -876,6 +879,13 @@ void testRequestPausedViewerDoesNotStallContinuousPeer()
     CHECK(pausedFrame.get(80, 8) == rightColor);
 
     CHECK(sendUpdateRequest(paused, true, 0, 0, pausedWidth, pausedHeight));
+    // The server replies only after parsing preceding messages from this
+    // socket. Prove the incremental request is installed BEFORE enqueuing
+    // the identical frame; otherwise this static-scene assertion can pass
+    // even if a zero-damage frame incorrectly consumes pending requests.
+    const QByteArray requestBarrier("idle", 4);
+    CHECK(writeAll(paused, makeFence(0x80000000U, requestBarrier)));
+    CHECK(readFence(paused) == makeFence(0U, requestBarrier));
     transport->enqueueFrame(makeFrame(128, 128, background,
                                       {{leftRect, leftColor}, {rightRect, rightColor}}));
     CHECK(noFramebufferData(paused));
