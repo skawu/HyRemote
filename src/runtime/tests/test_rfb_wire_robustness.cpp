@@ -782,6 +782,132 @@ void testContinuousUpdatesAndRequestFallback()
     transport->stop();
 }
 
+void testRequestPausedViewerDoesNotStallContinuousPeer()
+{
+    // #371: an otherwise connected request-driven viewer may go idle without
+    // issuing another FBU request. Its accumulated damage must remain private;
+    // it must neither stall a continuously updating peer nor replay stale
+    // intermediate pixels when its own requests resume. This deliberately
+    // models request inactivity, NOT socket backpressure or a shaped LAN.
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    constexpr std::uint32_t background = 0x182838U;
+    const hyremote::Rect leftRect{8, 8, 8, 8};
+    const hyremote::Rect rightRect{80, 8, 8, 8};
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, background));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket fast;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    const bool fastConnected = connectRawRfb(fast, port, false, &width, &height);
+    CHECK(fastConnected);
+    if (!fastConnected) {
+        transport->stop();
+        return;
+    }
+    CHECK(width == 128 && height == 128);
+    CHECK(sendSetEncodings(fast, {-313, 0}));
+    CHECK(readExact(fast, 1) == QByteArray(1, char(150)));
+
+    TestFramebuffer fastFrame;
+    fastFrame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(sendUpdateRequest(fast, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(fast, fastFrame, rectangles));
+    CHECK(sendContinuousUpdates(fast, true, 0, 0, width, height));
+    CHECK(noFramebufferData(fast));
+
+    // The second real socket uses ordinary request-driven Raw only.
+    QTcpSocket paused;
+    std::uint16_t pausedWidth = 0;
+    std::uint16_t pausedHeight = 0;
+    const bool pausedConnected = connectRawRfb(paused, port, false, &pausedWidth, &pausedHeight);
+    CHECK(pausedConnected);
+    if (!pausedConnected) {
+        fast.disconnectFromHost();
+        waitForDisconnected(fast);
+        transport->stop();
+        return;
+    }
+    CHECK(pausedWidth == width && pausedHeight == height);
+    // Fence is used only as a per-socket request-PARSE barrier below:
+    // no BlockBefore/After transport-drain semantics are assumed.
+    CHECK(sendSetEncodings(paused, {-312, 0}));
+    CHECK(readFence(paused) == makeFence(0U));
+    TestFramebuffer pausedFrame;
+    pausedFrame.resize(pausedWidth, pausedHeight);
+    CHECK(sendUpdateRequest(paused, false, 0, 0, pausedWidth, pausedHeight));
+    CHECK(readFramebufferUpdate(paused, pausedFrame, rectangles));
+
+    std::uint32_t leftColor = background;
+    std::uint32_t rightColor = background;
+    for (std::uint32_t step = 0; step < 16; ++step) {
+        const bool leftChanged = (step % 2U) == 0U;
+        if (leftChanged)
+            leftColor = 0x880000U + step;
+        else
+            rightColor = 0x008800U + step;
+
+        transport->enqueueFrame(makeFrame(128, 128, background,
+                                          {{leftRect, leftColor}, {rightRect, rightColor}}));
+        // Each iteration is acknowledged by the fast real socket before the
+        // next frame. No timing-based assumption about worker coalescing.
+        CHECK(readFramebufferUpdate(fast, fastFrame, rectangles));
+        CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+        CHECK(rectangles.size() == 1U
+              && rectangles.front().x == (leftChanged ? 0 : 64));
+        CHECK(fastFrame.get(8, 8) == leftColor);
+        CHECK(fastFrame.get(80, 8) == rightColor);
+    }
+
+    CHECK(noFramebufferData(paused));  // no request, no unsolicited payload
+    CHECK(noFramebufferData(fast));    // static scene, no duplicate payload
+
+    // The paused viewer must catch up in one incremental reply with the
+    // latest state of BOTH independent tiles, not 16 intermediate updates.
+    CHECK(sendUpdateRequest(paused, true, 0, 0, pausedWidth, pausedHeight));
+    CHECK(readFramebufferUpdate(paused, pausedFrame, rectangles));
+    CHECK(rectangles.size() == 2U);
+    CHECK(pausedFrame.get(8, 8) == leftColor);
+    CHECK(pausedFrame.get(80, 8) == rightColor);
+
+    CHECK(sendUpdateRequest(paused, true, 0, 0, pausedWidth, pausedHeight));
+    // A Fence round trip confirms the server parsed this pending request
+    // before the next changed frame is queued. No TCP-drain/order flags are
+    // claimed. The separate static-scene tests own zero-damage handling;
+    // this case proves request-paused peer isolation and later recovery.
+    const QByteArray requestBarrier("next", 4);
+    CHECK(writeAll(paused, makeFence(0x80000000U, requestBarrier)));
+    CHECK(readFence(paused) == makeFence(0U, requestBarrier));
+    CHECK(noFramebufferData(paused));
+    CHECK(noFramebufferData(fast));
+
+    // Both peers remain live after catch-up, independently receiving one
+    // later changed tile without a new request from the continuous viewer.
+    leftColor = 0xaa44ccU;
+    transport->enqueueFrame(makeFrame(128, 128, background,
+                                      {{leftRect, leftColor}, {rightRect, rightColor}}));
+    CHECK(readFramebufferUpdate(fast, fastFrame, rectangles));
+    CHECK(fastFrame.get(8, 8) == leftColor);
+    CHECK(readFramebufferUpdate(paused, pausedFrame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 0);
+    CHECK(pausedFrame.get(8, 8) == leftColor);
+    CHECK(pausedFrame.get(80, 8) == rightColor);
+
+    paused.disconnectFromHost();
+    fast.disconnectFromHost();
+    waitForDisconnected(paused);
+    waitForDisconnected(fast);
+    transport->stop();
+}
+
 void testForcedRefreshHonorsExplicitRegion()
 {
     // Deterministic regression for a non-incremental request parked behind
@@ -1274,6 +1400,7 @@ int main(int argc, char **argv)
     testTrleRawAndIncrementalDelivery();
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
+    testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();
     testFragmentedHandshakeAndInput();
