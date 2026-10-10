@@ -76,9 +76,9 @@ Historical Issue/PR/commit evidence is durable audit history; a stale branch ref
 
 Create only for a feature-complete milestone candidate.
 
-- create from `develop`;
-- change root `project(VERSION ...)` to the exact four-part milestone version;
-- target `main` as Draft;
+- create from the accepted, frozen exact `develop` candidate;
+- if repository rules protect `release/v*` from direct edits, use an issue-linked `feature/<issue>-release-preparation` PR **targeting that exact release branch**. This is a two-stage **protected PR-only** process: first, from a `0.0.0` release-branch base, change only root `project(VERSION ...)` to the exact four-part version while keeping bilingual notes pending; later, **only after all mandatory release/user acceptance and owner risk decisions**, use a **separate** `feature/<issue>-release-preparation` PR from the already-versioned base to finalize **only** `docs/releases/vX.Y.Z.W.md`, removing all pending wording and replacing each language's former candidate identity with `- 已验收版本：\`Vx.y.z.w\`` / `- Accepted version: \`Vx.y.z.w\`` (substitute the exact release version). Git Flow rejects stale candidate-version/reference labels even if the initial pending status line has been removed. Git Flow checks current base-version phase, scope, notes state, issue reference and fresh base; unrelated SDK/product code is not admitted. These are not authorizations to merge either PR. Never bypass branch protection, push directly, or perform an unreviewed ref update;
+- target `main` as Draft only after the protected release branch contains the exact four-part version, preserving `Status: **candidate / acceptance pending**` while any physical or release acceptance remains open;
 - no new product capability is added on the release branch;
 - only release blockers, acceptance corrections, security/license/compatibility/release metadata and docs may change;
 - run the milestone-specific acceptance matrix;
