@@ -244,7 +244,7 @@ if(v030_zh_size LESS 400 OR v030_en_size LESS 400)
     message(FATAL_ERROR "release-readiness: v0.3.0.0 bilingual note surface is empty")
 endif()
 foreach(required_fact IN ITEMS
-        "V0.3.0.0" "0.0.0.0:5921" "SecurityType None"
+        "V0.3.0.0" "v0.3.0.0" "release/v0.3.0.0" "0.0.0.0:5921" "SecurityType None"
         "C++" "QML" "Generic" "QPA" "L2 FULL_GATE" "HYREMOTE-MANIFEST.txt")
     string(FIND "${v030_zh}" "${required_fact}" v030_zh_fact_at)
     string(FIND "${v030_en}" "${required_fact}" v030_en_fact_at)
@@ -259,7 +259,7 @@ foreach(required_zh_fact IN ITEMS "默认认证：**关闭**" "默认传输**未
         message(FATAL_ERROR "release-readiness: v0.3.0.0 Chinese security boundary missing '${required_zh_fact}'")
     endif()
 endforeach()
-foreach(required_en_fact IN ITEMS "Authentication is **off** by default" "Transport is **unencrypted** by default" "Remote input is **off** by default" "not Internet-safe")
+foreach(required_en_fact IN ITEMS "## Security boundary" "Authentication is **off** by default" "Transport is **unencrypted** by default" "Remote input is **off** by default" "not Internet-safe")
     string(FIND "${v030_en}" "${required_en_fact}" v030_fact_at)
     if(v030_fact_at EQUAL -1)
         message(FATAL_ERROR "release-readiness: v0.3.0.0 English security boundary missing '${required_en_fact}'")
