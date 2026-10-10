@@ -211,6 +211,64 @@ foreach(v02_notes_path IN LISTS v02_notes_paths)
     endif()
 endforeach()
 
+# V0.3.0.0 candidate truth is drafted on develop before the release branch is
+# frozen. Assert independent, non-empty bilingual surfaces and the minimum
+# identity/integration/security/deployment facts without declaring candidate
+# acceptance from documentation alone.
+set(v030_notes_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v0.3.0.0.md")
+if(NOT EXISTS "${v030_notes_path}")
+    message(FATAL_ERROR "release-readiness: missing v0.3.0.0 bilingual candidate notes")
+endif()
+file(READ "${v030_notes_path}" v030_notes)
+# Release-note candidate/accepted lifecycle is enforced by the full-history
+# Git Flow PR gate (including the annotated tag/main ancestry after backmerge).
+# This metadata check intentionally works in shallow installed/product builds
+# without fetching tags, and validates bilingual product facts independently.
+string(FIND "${v030_notes}" "# 中文" v030_zh_at)
+string(FIND "${v030_notes}" "# English" v030_en_at)
+if(v030_zh_at EQUAL -1 OR v030_en_at EQUAL -1 OR NOT v030_zh_at LESS v030_en_at)
+    message(FATAL_ERROR "release-readiness: v0.3.0.0 requires separate Chinese and English surfaces")
+endif()
+math(EXPR v030_zh_len "${v030_en_at} - ${v030_zh_at}")
+string(SUBSTRING "${v030_notes}" ${v030_zh_at} ${v030_zh_len} v030_zh)
+string(SUBSTRING "${v030_notes}" ${v030_en_at} -1 v030_en)
+string(LENGTH "${v030_zh}" v030_zh_size)
+string(LENGTH "${v030_en}" v030_en_size)
+if(v030_zh_size LESS 400 OR v030_en_size LESS 400)
+    message(FATAL_ERROR "release-readiness: v0.3.0.0 bilingual note surface is empty")
+endif()
+foreach(required_fact IN ITEMS
+        "V0.3.0.0" "release/v0.3.0.0" "0.0.0.0:5921" "SecurityType None"
+        "C++" "QML" "Generic" "QPA" "L2 FULL_GATE" "HYREMOTE-MANIFEST.txt")
+    string(FIND "${v030_zh}" "${required_fact}" v030_zh_fact_at)
+    string(FIND "${v030_en}" "${required_fact}" v030_en_fact_at)
+    if(v030_zh_fact_at EQUAL -1 OR v030_en_fact_at EQUAL -1)
+        message(FATAL_ERROR
+            "release-readiness: v0.3.0.0 bilingual notes missing candidate fact '${required_fact}'")
+    endif()
+endforeach()
+# A standalone intended tag is distinct from the substring inside
+# release/v0.3.0.0. Require a backtick-delimited tag in EACH language;
+# removing both independent tag references must fail even if branches remain.
+string(FIND "${v030_zh}" "`v0.3.0.0`" v030_zh_tag_at)
+string(FIND "${v030_en}" "`v0.3.0.0`" v030_en_tag_at)
+if(v030_zh_tag_at EQUAL -1 OR v030_en_tag_at EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: v0.3.0.0 bilingual notes must independently identify the intended annotated tag")
+endif()
+foreach(required_zh_fact IN ITEMS "默认认证：**关闭**" "默认传输**未加密**" "远程输入默认关闭" "不适合暴露到 Internet")
+    string(FIND "${v030_zh}" "${required_zh_fact}" v030_fact_at)
+    if(v030_fact_at EQUAL -1)
+        message(FATAL_ERROR "release-readiness: v0.3.0.0 Chinese security boundary missing '${required_zh_fact}'")
+    endif()
+endforeach()
+foreach(required_en_fact IN ITEMS "## Security boundary" "Authentication is **off** by default" "Transport is **unencrypted** by default" "Remote input is **off** by default" "not Internet-safe")
+    string(FIND "${v030_en}" "${required_en_fact}" v030_fact_at)
+    if(v030_fact_at EQUAL -1)
+        message(FATAL_ERROR "release-readiness: v0.3.0.0 English security boundary missing '${required_en_fact}'")
+    endif()
+endforeach()
+
 set(v020_notes_path "${HYREMOTE_SOURCE_DIR}/docs/releases/v0.2.0.0.md")
 file(READ "${v020_notes_path}" v020_notes)
 

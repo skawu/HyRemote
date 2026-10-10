@@ -71,7 +71,7 @@ The deployed application keeps its native Qt platform plugin (`qwindows`, `qxcb`
 
 Generic Plugin is based on public Qt APIs and does not inherit QPA private-ABI compatibility constraints.
 
-## QML payload — Preview
+## QML payload — peer integration route
 
 When QML API is included, the SDK contains the `HyRemote` QML module over the same Shared Runtime.
 
@@ -83,9 +83,9 @@ hyremote_deploy(TARGET MyQmlApp QML)
 
 The QML backing payload is not a second public C++ Runtime target.
 
-> **Open work (current product line):** complete full QML package/example qualification before promoting this payload from Preview.
+> The installed QML-only consumer and deployed diagnostic path have L1 regression evidence. Formal V0.3.0.0 release qualification still requires the exact frozen-candidate L2 Windows/Linux four-route gate; peer status is not itself a claim for unqualified Qt/platform combinations.
 
-## QPA payload — Preview
+## QPA payload — peer integration route (exact private ABI)
 
 When QPA is included, the SDK contains the `qhyremote` platform plugin and package metadata required by:
 
@@ -103,7 +103,7 @@ The application remains Qt-only at link level. The installed SDK does not expose
 
 QPA uses Qt private ABI and therefore has an exact-version compatibility boundary. The current reference is Qt 6.8.3 on Windows x86_64 and Linux x86_64.
 
-> **Open work (current product line):** complete formal QPA productization and expand exact Qt/OS rows only after qualification.
+> QPA installed-consumer/product-fit tests exist on the Qt 6.8.3 Windows/Linux reference cells. An exact frozen-candidate L2 gate remains necessary for V0.3.0.0 acceptance; do not infer compatibility with another Qt patch, QPA delegate or graphics stack.
 
 ## Deployment forms
 
@@ -182,7 +182,7 @@ Current package focus:
 | QML module | peer route |
 | QPA plugin | peer route (exact Qt/private ABI) |
 | Qt 6.8.3 Windows/Linux package line | Current reference |
-| Qt 5.15 package line | **TODO V0.4** |
+| Qt 5.15 package line | Mandatory V0.3-family pre-GA work under #343; not part of the V0.3.0.0 reference release |
 | ARM64 / Embedded Linux packages | TODO - mandatory pre-GA V0.3-family compatibility baseline under #343; no exact Feature version pre-reserved |
 
 The package contract stays centered on one Runtime even as later releases add platform/dependency slicing or hardware acceleration.
