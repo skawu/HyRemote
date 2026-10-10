@@ -879,15 +879,13 @@ void testRequestPausedViewerDoesNotStallContinuousPeer()
     CHECK(pausedFrame.get(80, 8) == rightColor);
 
     CHECK(sendUpdateRequest(paused, true, 0, 0, pausedWidth, pausedHeight));
-    // The server replies only after parsing preceding messages from this
-    // socket. Prove the incremental request is installed BEFORE enqueuing
-    // the identical frame; otherwise this static-scene assertion can pass
-    // even if a zero-damage frame incorrectly consumes pending requests.
-    const QByteArray requestBarrier("idle", 4);
+    // A Fence round trip confirms the server parsed this pending request
+    // before the next changed frame is queued. No TCP-drain/order flags are
+    // claimed. The separate static-scene tests own zero-damage handling;
+    // this case proves request-paused peer isolation and later recovery.
+    const QByteArray requestBarrier("next", 4);
     CHECK(writeAll(paused, makeFence(0x80000000U, requestBarrier)));
     CHECK(readFence(paused) == makeFence(0U, requestBarrier));
-    transport->enqueueFrame(makeFrame(128, 128, background,
-                                      {{leftRect, leftColor}, {rightRect, rightColor}}));
     CHECK(noFramebufferData(paused));
     CHECK(noFramebufferData(fast));
 
