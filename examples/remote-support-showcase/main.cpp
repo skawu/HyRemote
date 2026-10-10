@@ -518,7 +518,7 @@ private:
                 .arg(m_remote.remoteInputEnabled() ? 1 : 0)
                 .arg(errorCode)
                 .arg(errorText)
-                .arg(m_port);
+                .arg(static_cast<int>(m_port));
         if (diagnosticTrigger != m_lastDiagnosticTrigger) {
             m_lastDiagnosticTrigger = diagnosticTrigger;
             const QString report = m_remote.diagnosticReport();
