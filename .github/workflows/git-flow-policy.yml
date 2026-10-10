@@ -159,7 +159,7 @@ jobs:
       # describes what merges. Requiring a fresh base here makes the stale case visible at merge time instead of
       # relying on a duplicate full run after the merge - which is the duplication this lane change removes.
       - name: Require a fresh base before merge
-        if: github.base_ref == 'develop' || github.base_ref == 'main'
+        if: github.base_ref == 'develop' || github.base_ref == 'main' || startsWith(github.base_ref, 'release/v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,6 +197,57 @@ jobs:
             exit 1
           fi
           echo "issue reference accepted: #${issue}"
+
+      # #466: protected release branches reject direct pushes. The only
+      # release-preparation PR into such a branch is issue-linked and
+      # constrained to the exact version change/notes plus the initial
+      # governance bootstrap for this protection fix. This is NOT the
+      # release/v* -> main promotion or permission to cut a release tag.
+      - name: Validate protected release preparation PR
+        if: startsWith(github.base_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          import os, pathlib, re, subprocess
+
+          head = os.environ["HEAD_REF"]
+          base = os.environ["BASE_REF"]
+          branch = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", base)
+          if not branch or not re.fullmatch(r"feature/[0-9]+-release-preparation", head):
+              raise SystemExit("only issue-linked feature/<issue>-release-preparation may target an exact release branch")
+          version = branch.group(1)
+
+          def git(*args):
+              return subprocess.check_output(("git", *args), text=True).strip()
+
+          base_tree = "refs/remotes/origin/" + base
+          old_cmake = git("show", base_tree + ":CMakeLists.txt")
+          new_cmake = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8").strip()
+          from_line = 'project(HyRemote VERSION 0.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
+          to_line = f'project(HyRemote VERSION {version} DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
+          if old_cmake.count(from_line) != 1 or new_cmake != old_cmake.replace(from_line, to_line):
+              raise SystemExit("protected release-preparation PR must change only root project VERSION 0.0.0 to the exact target version")
+
+          notes_name = f"docs/releases/v{version}.md"
+          notes = pathlib.Path(notes_name).read_text(encoding="utf-8")
+          if not notes.startswith("Status: **candidate / acceptance pending**"):
+              raise SystemExit("release-preparation PR must preserve unaccepted candidate release notes")
+          for required in (f"release/v{version}", f"`v{version}`", "## Security boundary", "# 中文", "# English"):
+              if required not in notes:
+                  raise SystemExit(f"release-preparation notes missing {required}")
+
+          changed = set(git("diff", "--name-only", base_tree, "HEAD").splitlines())
+          allowed = {"CMakeLists.txt", notes_name}
+          bootstrap = head == "feature/466-release-preparation" and version == "0.3.0.0"
+          if bootstrap:
+              allowed.update((".github/scripts/check-pr-branch-name.sh",
+                              ".github/workflows/git-flow-policy.yml",
+                              "docs/internal/git-flow-release.md"))
+          if "CMakeLists.txt" not in changed or not changed <= allowed:
+              raise SystemExit(f"release-preparation PR has out-of-scope changes: {sorted(changed - allowed)}")
+          print(f"protected release preparation gate PASS: {head} -> {base}; scope={sorted(changed)}")
 
       - name: Keep develop on the development version sentinel
         if: github.base_ref == 'develop'
