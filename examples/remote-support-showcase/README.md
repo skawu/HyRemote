@@ -18,6 +18,7 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
 - The status panel shows whether HyRemoteTool is the active OS window. When remote input is enabled but the Tool is inactive, it displays the real application-scoped focus limitation from #362 and tells the local operator to reactivate this window; HyRemoteTool does not simulate desktop-wide focus stealing.
 - The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
+- The window starts inside the usable desktop height and can be resized smaller even on compact/high-DPI displays. Scroll the **main content vertically**, and horizontally if the viewport is exceptionally narrow, to reach Diagnostics, Activity and Local operator controls at the bottom; diagnostics/activity editors continue to scroll independently, and long build/deployment IDs wrap instead of forcing an excessive native window width. This is local UI layout only and does not change capture, networking or remote-input semantics.
 
 ## Security boundary
 

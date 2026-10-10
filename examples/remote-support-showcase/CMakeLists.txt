@@ -24,6 +24,21 @@ install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET hyremote-remote-support-showcase)
 
 if(HYREMOTE_BUILD_TESTS)
+    # Regress the real user complaint on compact/high-DPI desktops. This
+    # headless widget check must prove the native window can shrink AND that
+    # scrolling reaches the bottom operator panel; no listener is started.
+    add_test(
+        NAME hyremote-tool-compact-layout
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-compact-layout
+    )
+    set_tests_properties(hyremote-tool-compact-layout PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-compact-layout)
+    endif()
+
     add_test(
         NAME hyremote-tool-diagnostic-export-test
         COMMAND "${CMAKE_COMMAND}"
