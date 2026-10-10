@@ -251,6 +251,14 @@ jobs:
                           subprocess.run(
                               ("git", "merge-base", "--is-ancestor", release_sha, descendant),
                               check=True, capture_output=True, text=True)
+                      # A release-branch tip may become a *second-parent*
+                      # ancestor of main, but only the accepted mainline
+                      # release commit may own the annotated release tag.
+                      main_first_parent = git(
+                          "rev-list", "--first-parent", "refs/remotes/origin/main").splitlines()
+                      if release_sha not in main_first_parent:
+                          raise ValueError(
+                              "tagged commit is not on accepted main's first-parent history")
                   except (subprocess.CalledProcessError, ValueError) as exc:
                       raise SystemExit(
                           "Finalized V0.3 notes on develop require a genuine "
