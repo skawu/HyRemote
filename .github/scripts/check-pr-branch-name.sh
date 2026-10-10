@@ -4,6 +4,7 @@
 # Only four families may open a pull request, and only with the shape the policy names:
 #
 #   feature/<issue>-<topic>    -> develop
+#   feature/<issue>-release-preparation -> release/vX.Y.Z.W (version/docs only; separate scope gate)
 #   hotfix/<issue>-<topic>     -> main or develop
 #   release/vX.Y.Z.W           -> main
 #   backmerge/vX.Y.Z.W         -> develop
@@ -26,8 +27,16 @@ check_name() {
     case "${head}" in
         feature/*)
             if [[ "${base}" != "develop" ]]; then
-                echo "feature/* PRs must target develop"
-                return 1
+                # Release branches are protected against direct writes. Admit
+                # one auditable PR path exclusively for their exact-version
+                # preparation; the workflow also enforces a strict file scope.
+                if [[ "${base}" =~ ^release/v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ &&
+                      "${head}" =~ ^feature/[0-9]+-release-preparation$ ]]; then
+                    :
+                else
+                    echo "feature/* targets develop; only feature/<issue>-release-preparation may target an exact release/vX.Y.Z.W"
+                    return 1
+                fi
             fi
             local topic="${head#feature/}"
             issue="${topic%%-*}"
@@ -102,6 +111,10 @@ self_test() {
     run_case "feature without an issue number" feature/foo develop 1
     run_case "feature without a topic" feature/237 develop 1
     run_case "feature targeting main" feature/237-examples main 1
+    run_case "release preparation PR to exact protected release branch" feature/466-release-preparation release/v0.3.0.0 0
+    run_case "ordinary feature PR into protected release denied" feature/466-unrelated-feature release/v0.3.0.0 1
+    run_case "release preparation PR to malformed release branch denied" feature/466-release-preparation release/v0.3 1
+    run_case "release preparation PR to main denied" feature/466-release-preparation main 1
     run_case "release/vX.Y.Z.W topology" release/v0.1.0.0 main 0
     run_case "backmerge/vX.Y.Z.W topology" backmerge/v0.1.0.0 develop 0
     run_case "hotfix/<issue>-<topic> to main" hotfix/123-topic main 0
