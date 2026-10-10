@@ -24,6 +24,21 @@ install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET hyremote-remote-support-showcase)
 
 if(HYREMOTE_BUILD_TESTS)
+    # This is a real listener/TCP GUI regression. Do not register it when
+    # the RFB backend is disabled and RemoteAccess has no default transport.
+    if(HYREMOTE_WITH_VNC)
+        add_executable(hyremote-tool-listener-port-test test_listener_port_gui.cpp)
+        target_compile_features(hyremote-tool-listener-port-test PRIVATE cxx_std_17)
+        target_link_libraries(hyremote-tool-listener-port-test PRIVATE
+            Qt6::Widgets Qt6::Network HyRemote::RemoteAccess)
+        add_test(NAME hyremote-tool-listener-port-test COMMAND hyremote-tool-listener-port-test)
+        set_tests_properties(hyremote-tool-listener-port-test PROPERTIES
+            TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+        if(COMMAND hyremote_label_test_family)
+            hyremote_label_test_family("e2e;tool;fast" hyremote-tool-listener-port-test)
+        endif()
+    endif()
+
     add_test(
         NAME hyremote-tool-diagnostic-export-test
         COMMAND "${CMAKE_COMMAND}"

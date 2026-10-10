@@ -8,6 +8,7 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - Remote access is **off initially**. The local operator must press **Start remote access**.
 - The listener uses HyRemote's LAN-capable default (`0.0.0.0`) and the effective port is displayed locally.
 - Listener/runtime state and viewer connection state are distinct: **Running does not mean a viewer is connected**. The local status panel displays the backend-neutral `connectedClientCount()` from the public facade.
+- Listener port can be edited inside HyRemoteTool (1–65535) and applied with **Apply listener port**. Editing alone does not interrupt viewers; applying while running performs stop/configure/start on the same public `RemoteAccess` instance, disconnects existing viewers and refreshes the effective endpoint/connection assistant. Applying while stopped changes only configuration. `--port` supplies the initial GUI value and keeps its existing CLI semantics.
 - Remote input is disabled by default, so the initial policy is view-only.
 - The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
 - Stop releases the listener while the local application continues running.

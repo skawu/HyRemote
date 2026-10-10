@@ -42,6 +42,8 @@ QString stateName(HyRemote::RemoteAccessState state)
         return QStringLiteral("Stopping");
     case HyRemote::RemoteAccessState::Faulted:
         return QStringLiteral("Faulted");
+    case HyRemote::RemoteAccessState::Unavailable:
+        return QStringLiteral("Unavailable");
     }
     return QStringLiteral("Unknown");
 }
@@ -156,6 +158,23 @@ public:
         statusForm->addRow(QStringLiteral("Last error"), m_error);
         remoteLayout->addLayout(statusForm);
 
+        // Changing the listener's endpoint is an explicit operator action:
+        // editing the field must not silently disconnect an active viewer.
+        auto *listenerActions = new QHBoxLayout;
+        auto *portLabel = new QLabel(QStringLiteral("Listener port"), remoteBox);
+        m_portEditor = new QSpinBox(remoteBox);
+        m_portEditor->setObjectName(QStringLiteral("hyremoteToolListenerPort"));
+        m_portEditor->setRange(1, 65535);
+        m_portEditor->setValue(m_port);
+        m_applyPort = new QPushButton(QStringLiteral("Apply listener port"), remoteBox);
+        m_applyPort->setObjectName(QStringLiteral("hyremoteToolApplyListenerPort"));
+        m_applyPort->setEnabled(false);
+        listenerActions->addWidget(portLabel);
+        listenerActions->addWidget(m_portEditor);
+        listenerActions->addWidget(m_applyPort);
+        listenerActions->addStretch(1);
+        remoteLayout->addLayout(listenerActions);
+
         auto *actions = new QHBoxLayout;
         m_startStop = new QPushButton(QStringLiteral("Start remote access"), remoteBox);
         m_input = new QCheckBox(QStringLiteral("Allow remote control"), remoteBox);
@@ -255,6 +274,13 @@ public:
 
         QObject::connect(load, &QSlider::valueChanged, loadValue, &QProgressBar::setValue);
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
+        QObject::connect(m_portEditor, qOverload<int>(&QSpinBox::valueChanged), this,
+                         [this](int value) {
+                             m_applyPort->setEnabled(value != static_cast<int>(m_port));
+                         });
+        QObject::connect(m_applyPort, &QPushButton::clicked, this, [this] {
+            applyListenerPort();
+        });
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
             applyRemoteInputPolicy(enabled);
         });
@@ -352,11 +378,47 @@ private:
         const auto state = m_remote.state();
         if (state == HyRemote::RemoteAccessState::Running ||
             state == HyRemote::RemoteAccessState::Starting ||
+            state == HyRemote::RemoteAccessState::Unavailable ||
             state == HyRemote::RemoteAccessState::Faulted) {
             stopRemoteAccess();
             return;
         }
         startRemoteAccess();
+    }
+
+    void applyListenerPort()
+    {
+        const quint16 requested = static_cast<quint16>(m_portEditor->value());
+        if (requested == m_port)
+            return;
+
+        const auto state = m_remote.state();
+        const bool resume = state == HyRemote::RemoteAccessState::Running
+                            || state == HyRemote::RemoteAccessState::Starting
+                            || state == HyRemote::RemoteAccessState::Unavailable;
+        if (state != HyRemote::RemoteAccessState::Stopped) {
+            appendActivity(QStringLiteral("Applying listener port; stopping remote access"));
+            m_remote.stop();
+            refreshStatus();
+        }
+
+        if (!m_remote.setPort(requested)) {
+            m_portEditor->setValue(static_cast<int>(m_port));
+            appendActivity(QStringLiteral("Listener port change rejected"));
+            refreshStatus();
+            if (resume)
+                startRemoteAccess();
+            return;
+        }
+
+        m_port = requested;
+        m_applyPort->setEnabled(false);
+        appendActivity(QStringLiteral("Listener port configured: %1").arg(m_port));
+        refreshViewerEndpoints();
+        if (resume)
+            startRemoteAccess();
+        else
+            refreshStatus();
     }
 
     void applyRemoteInputPolicy(bool enabled)
@@ -417,6 +479,8 @@ private:
                                       : QStringLiteral("Waiting for viewer"));
         } else if (state == HyRemote::RemoteAccessState::Starting) {
             m_connection->setText(QStringLiteral("Starting listener"));
+        } else if (state == HyRemote::RemoteAccessState::Unavailable) {
+            m_connection->setText(QStringLiteral("Waiting for listener interface"));
         } else {
             m_connection->setText(QStringLiteral("Remote access stopped"));
         }
@@ -434,7 +498,8 @@ private:
         }
 
         const bool active = state == HyRemote::RemoteAccessState::Running ||
-                            state == HyRemote::RemoteAccessState::Starting;
+                            state == HyRemote::RemoteAccessState::Starting ||
+                            state == HyRemote::RemoteAccessState::Unavailable;
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
                                     : QStringLiteral("Start remote access"));
 
@@ -447,12 +512,13 @@ private:
         m_error->setText(errorText);
 
         const QString diagnosticTrigger =
-            QStringLiteral("%1|%2|%3|%4|%5")
+            QStringLiteral("%1|%2|%3|%4|%5|%6")
                 .arg(static_cast<int>(state))
                 .arg(static_cast<qulonglong>(clientCount))
                 .arg(m_remote.remoteInputEnabled() ? 1 : 0)
                 .arg(errorCode)
-                .arg(errorText);
+                .arg(errorText)
+                .arg(static_cast<int>(m_port));
         if (diagnosticTrigger != m_lastDiagnosticTrigger) {
             m_lastDiagnosticTrigger = diagnosticTrigger;
             const QString report = m_remote.diagnosticReport();
@@ -540,6 +606,8 @@ private:
     QPlainTextEdit *m_diagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
     QPushButton *m_startStop = nullptr;
+    QSpinBox *m_portEditor = nullptr;
+    QPushButton *m_applyPort = nullptr;
     QPushButton *m_copyEndpoints = nullptr;
     QCheckBox *m_input = nullptr;
     QStringList m_viewerEndpointList;
