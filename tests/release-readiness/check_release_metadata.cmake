@@ -220,43 +220,10 @@ if(NOT EXISTS "${v030_notes_path}")
     message(FATAL_ERROR "release-readiness: missing v0.3.0.0 bilingual candidate notes")
 endif()
 file(READ "${v030_notes_path}" v030_notes)
-# On develop, an unreleased V0.3 candidate MUST retain the acceptance-
-# pending marker. After the formal release and audited backmerge, develop
-# returns to project version 0.0.0 while the accepted release notes remain
-# finalized. That history can only be accepted if a real annotated release
-# tag exists and its commit is an ancestor of the checked-out source history.
-# A tag name string in release notes or a lightweight tag is insufficient.
-if(source_project_version STREQUAL "0.0.0")
-    string(FIND "${v030_notes}" "Status: **candidate / acceptance pending**" v030_candidate_marker_at)
-    if(NOT v030_candidate_marker_at EQUAL 0)
-        execute_process(
-            COMMAND git -C "${HYREMOTE_SOURCE_DIR}" cat-file -t refs/tags/v0.3.0.0
-            RESULT_VARIABLE v030_tag_type_result
-            OUTPUT_VARIABLE v030_tag_type
-            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
-        if(NOT v030_tag_type_result EQUAL 0 OR NOT v030_tag_type STREQUAL "tag")
-            message(FATAL_ERROR
-                "release-readiness: finalized v0.3.0.0 notes on develop require an existing annotated release tag")
-        endif()
-        execute_process(
-            COMMAND git -C "${HYREMOTE_SOURCE_DIR}" rev-parse "refs/tags/v0.3.0.0^{commit}"
-            RESULT_VARIABLE v030_tag_commit_result
-            OUTPUT_VARIABLE v030_tag_commit
-            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
-        if(NOT v030_tag_commit_result EQUAL 0 OR NOT v030_tag_commit MATCHES "^[0-9a-fA-F]+$")
-            message(FATAL_ERROR
-                "release-readiness: finalized v0.3.0.0 notes require a resolvable annotated release commit")
-        endif()
-        execute_process(
-            COMMAND git -C "${HYREMOTE_SOURCE_DIR}" merge-base --is-ancestor "${v030_tag_commit}" HEAD
-            RESULT_VARIABLE v030_tag_ancestry_result
-            OUTPUT_QUIET ERROR_QUIET)
-        if(NOT v030_tag_ancestry_result EQUAL 0)
-            message(FATAL_ERROR
-                "release-readiness: finalized v0.3.0.0 notes require release tag commit in current source ancestry")
-        endif()
-    endif()
-endif()
+# Release-note candidate/accepted lifecycle is enforced by the full-history
+# Git Flow PR gate (including the annotated tag/main ancestry after backmerge).
+# This metadata check intentionally works in shallow installed/product builds
+# without fetching tags, and validates bilingual product facts independently.
 string(FIND "${v030_notes}" "# 中文" v030_zh_at)
 string(FIND "${v030_notes}" "# English" v030_en_at)
 if(v030_zh_at EQUAL -1 OR v030_en_at EQUAL -1 OR NOT v030_zh_at LESS v030_en_at)
