@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - develop
+      # Protected release/v* must be updated through a PR; actually
+      # run this exact branch topology/metadata gate on that PR.
+      - 'release/v*'
     types:
       - opened
       - synchronize
