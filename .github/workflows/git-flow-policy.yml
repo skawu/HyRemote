@@ -297,12 +297,12 @@ jobs:
                           "This is a pre-release note source",
                           "- Candidate:", "- Candidate reference environment:",
                           "This candidate")
-              for phrase in stale_zh:
-                  if phrase in zh_notes:
-                      raise SystemExit(f"final Chinese release notes still claim candidate state: {phrase}")
-              for phrase in stale_en:
-                  if phrase in en_notes:
-                      raise SystemExit(f"final English release notes still claim candidate state: {phrase}")
+              # Scan the WHOLE committed bilingual source. A stale Chinese or
+              # English candidate claim must not be hidden above the headings
+              # or moved into the other language section to bypass the check.
+              for phrase in stale_zh + stale_en:
+                  if phrase in notes:
+                      raise SystemExit(f"final release notes still claim candidate state: {phrase}")
               allowed = {notes_name}
               if changed != allowed:
                   raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
