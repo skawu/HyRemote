@@ -267,6 +267,9 @@ public:
         m_operatorControls = workBox;
         auto *workLayout = new QFormLayout(workBox);
         workLayout->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        // A style's ExpandingFieldsGrow default varies across platforms.
+        // Keep editors expanding even when rows wrap on narrow desktops.
+        workLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
         auto *speed = new QSpinBox(workBox);
         speed->setRange(0, 100);
@@ -280,11 +283,8 @@ public:
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
         auto *notes = new QPlainTextEdit(workBox);
         m_operatorNotes = notes;
-        // QTextEdit's preferred width is only a hint: let the field shrink
-        // when the form wraps at a compact native window width.
-        auto notesPolicy = notes->sizePolicy();
-        notesPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
-        notes->setSizePolicy(notesPolicy);
+        // Retain QPlainTextEdit's normal Expanding width policy: an Ignored
+        // policy can collapse the editor to zero width with some Qt styles.
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
 
@@ -361,7 +361,9 @@ public:
         // itself is fully reachable, not just a corner of the group box.
         const QRect notesRect(m_operatorNotes->mapTo(m_scrollArea->viewport(), QPoint()),
                               m_operatorNotes->size());
-        const bool reachable = m_scrollArea->viewport()->rect().contains(notesRect);
+        const bool usableEditor = notesRect.width() >= 160 && notesRect.height() >= 64;
+        const bool reachable = usableEditor
+                               && m_scrollArea->viewport()->rect().contains(notesRect);
         std::cout << (compact && overflow && reachable ? "TOOL_COMPACT_LAYOUT_PASS"
                                                      : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
