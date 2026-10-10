@@ -50,7 +50,10 @@ QString reportFrom(const SupportWindow &window, const QString &path)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return {};
-    return QString::fromUtf8(file.readAll());
+    // QSaveFile opened with QIODevice::Text writes CRLF on Windows.
+    // Compare the same logical diagnostic contract on every host platform.
+    QString report = QString::fromUtf8(file.readAll());
+    return report.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
 }
 
 } // namespace
