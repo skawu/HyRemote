@@ -790,17 +790,34 @@ void testPerViewerPendingDamageRemainsBounded()
     // This exercises the transport-private region state, not a slow TCP socket.
     HyRemote::detail::RfbUpdateState paused;
     HyRemote::detail::RfbUpdateState active;
+    // Exercise the exact private accumulator in isolation, before
+    // selectEligible() can independently coalesce its output.
+    HyRemote::detail::RfbDamageRegion pendingRegion;
     const HyRemote::detail::RfbRect viewport{0, 0, 256, 256};
     std::vector<HyRemote::detail::RfbRect> changes;
     constexpr std::size_t count = HyRemote::detail::kRfbMaxDamageRects + 8U;
     changes.reserve(count);
 
     for (std::size_t index = 0; index < count; ++index) {
+        // First 65 regions force coalescing inside the upper 176 rows.
+        // Remaining regions are BELOW that merged bound: dropping new
+        // damage after first coalescence must make this test fail.
+        const bool afterCoalescing
+            = index > HyRemote::detail::kRfbMaxDamageRects;
         const HyRemote::detail::RfbRect changed{
-            static_cast<std::int32_t>((index % 9U) * 24U),
-            static_cast<std::int32_t>((index / 9U) * 24U), 8, 8};
+            static_cast<std::int32_t>(
+                (afterCoalescing
+                     ? index - HyRemote::detail::kRfbMaxDamageRects - 1U
+                     : index % 9U) * 24U),
+            static_cast<std::int32_t>(
+                afterCoalescing ? 216U : (index / 9U) * 24U),
+            8, 8};
         HyRemote::detail::RfbDamageRegion delta;
         delta.add(changed);
+        pendingRegion.add(delta);
+        // Bound ORIGINAL pending metadata, not only the region selected
+        // later for one request (which separately normalizes its output).
+        CHECK(pendingRegion.size() <= HyRemote::detail::kRfbMaxDamageRects);
         paused.accumulate(delta);
         changes.push_back(changed);
 
@@ -819,6 +836,15 @@ void testPerViewerPendingDamageRemainsBounded()
 
     CHECK(paused.hasPendingDamage());
     CHECK(!paused.hasOutstandingRequest());
+    CHECK(pendingRegion.size() <= HyRemote::detail::kRfbMaxDamageRects);
+    for (const auto &changed : changes) {
+        const bool preserved = std::any_of(
+            pendingRegion.rects().begin(), pendingRegion.rects().end(),
+            [&changed](const auto &rect) {
+                return HyRemote::detail::containsRfbRect(rect, changed);
+            });
+        CHECK(preserved);
+    }
     paused.request(true, viewport);
     const auto catchUp = paused.selectEligible();
     CHECK(catchUp.has_value());
