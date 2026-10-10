@@ -145,6 +145,9 @@ public:
         auto *remoteLayout = new QVBoxLayout(remoteBox);
 
         auto *statusForm = new QFormLayout;
+        // On narrow/high-DPI desktops, break labels onto their own row
+        // instead of forcing the content widget wider than the viewport.
+        statusForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
         m_state = new QLabel(remoteBox);
         m_buildIdentity = new QLabel(remoteBox);
         m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -263,6 +266,7 @@ public:
         auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), content);
         m_operatorControls = workBox;
         auto *workLayout = new QFormLayout(workBox);
+        workLayout->setRowWrapPolicy(QFormLayout::WrapLongRows);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
         auto *speed = new QSpinBox(workBox);
         speed->setRange(0, 100);
@@ -276,6 +280,11 @@ public:
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
         auto *notes = new QPlainTextEdit(workBox);
         m_operatorNotes = notes;
+        // QTextEdit's preferred width is only a hint: let the field shrink
+        // when the form wraps at a compact native window width.
+        auto notesPolicy = notes->sizePolicy();
+        notesPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        notes->setSizePolicy(notesPolicy);
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
 
