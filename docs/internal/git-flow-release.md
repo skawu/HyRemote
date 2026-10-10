@@ -76,9 +76,9 @@ Historical Issue/PR/commit evidence is durable audit history; a stale branch ref
 
 Create only for a feature-complete milestone candidate.
 
-- create from `develop`;
-- change root `project(VERSION ...)` to the exact four-part milestone version;
-- target `main` as Draft;
+- create from the accepted, frozen exact `develop` candidate;
+- if repository rules protect `release/v*` from direct edits, use an issue-linked `feature/<issue>-release-preparation` PR **targeting that exact release branch** to change only the root `project(VERSION ...)` and candidate release metadata. The Git Flow release-preparation gate checks target-version identity, allowed changed files, fresh base and the pending bilingual notes marker. Never bypass branch protection, push directly, or perform an unreviewed ref update;
+- target `main` as Draft only after the protected release branch contains the exact four-part version, preserving `Status: **candidate / acceptance pending**` while any physical or release acceptance remains open;
 - no new product capability is added on the release branch;
 - only release blockers, acceptance corrections, security/license/compatibility/release metadata and docs may change;
 - run the milestone-specific acceptance matrix;
