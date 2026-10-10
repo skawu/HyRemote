@@ -149,11 +149,17 @@ public:
         m_buildIdentity = new QLabel(remoteBox);
         m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
         m_buildIdentity->setWordWrap(true);
-        m_buildIdentity->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        auto buildIdentityPolicy = m_buildIdentity->sizePolicy();
+        buildIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        buildIdentityPolicy.setHeightForWidth(true);
+        m_buildIdentity->setSizePolicy(buildIdentityPolicy);
         m_deploymentIdentity = new QLabel(remoteBox);
         m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
         m_deploymentIdentity->setWordWrap(true);
-        m_deploymentIdentity->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        auto deploymentIdentityPolicy = m_deploymentIdentity->sizePolicy();
+        deploymentIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        deploymentIdentityPolicy.setHeightForWidth(true);
+        m_deploymentIdentity->setSizePolicy(deploymentIdentityPolicy);
         m_platform = new QLabel(remoteBox);
         m_security = new QLabel(remoteBox);
         m_configuredListener = new QLabel(remoteBox);
@@ -269,6 +275,7 @@ public:
         loadValue->setValue(load->value());
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
         auto *notes = new QPlainTextEdit(workBox);
+        m_operatorNotes = notes;
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
 
@@ -334,15 +341,20 @@ public:
             vertical->setValue(vertical->maximum());
             QApplication::processEvents();
         }
-        const QPoint bottom = m_operatorControls->mapTo(
-            m_scrollArea->viewport(), QPoint(0, m_operatorControls->height() - 1));
-        const bool reachable = m_scrollArea->viewport()->rect().contains(bottom);
+        // An operator panel's border could be visible while its actual
+        // controls are clipped. Demand that the final editable Notes control
+        // itself is fully reachable, not just a corner of the group box.
+        const QRect notesRect(m_operatorNotes->mapTo(m_scrollArea->viewport(), QPoint()),
+                              m_operatorNotes->size());
+        const bool reachable = m_scrollArea->viewport()->rect().contains(notesRect);
         std::cout << (compact && overflow && reachable ? "TOOL_COMPACT_LAYOUT_PASS"
                                                      : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
-                  << " operator_bottom_y=" << bottom.y()
-                  << " viewport_h=" << m_scrollArea->viewport()->height() << std::endl;
+                  << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
+                  << ',' << notesRect.width() << 'x' << notesRect.height()
+                  << " viewport=" << m_scrollArea->viewport()->width()
+                  << 'x' << m_scrollArea->viewport()->height() << std::endl;
         return compact && overflow && reachable;
     }
 
@@ -594,6 +606,7 @@ private:
     QPlainTextEdit *m_activity = nullptr;
     QScrollArea *m_scrollArea = nullptr;
     QWidget *m_operatorControls = nullptr;
+    QPlainTextEdit *m_operatorNotes = nullptr;
     QPushButton *m_startStop = nullptr;
     QPushButton *m_copyEndpoints = nullptr;
     QCheckBox *m_input = nullptr;
