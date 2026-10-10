@@ -171,6 +171,7 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
+| `hyremote-tool-compact-layout` | Starts the real HyRemoteTool Qt Widgets window offscreen without a listener, resizes it to a 480×360 desktop viewport, requires a live vertical scroll range, and proves the bottom local operator controls become visible after scrolling. Fails if the native window gets an excessive minimum size, bottom actions stay clipped or scrollbar reachability regresses. |
 | `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys or initial bounded Activity markers are missing. |
 | `hyremote-tool-product-fit` | Exact-candidate maintained-viewer evidence for HyRemoteTool behavior: framebuffer, public diagnostics, client 0/1 reconnect lifecycle, pointer/key ingress and clean listener release. It is registered fail-closed and excluded from ordinary fast PRs unless its own candidate-evidence wiring changes; clean-installed/deployed launch evidence is a separate delivery contract. |
 
