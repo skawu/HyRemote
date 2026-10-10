@@ -30,6 +30,28 @@ historical V0.2.0.0 First User Trial used the same reference environment).
 
 The matrix above describes the current product line. It does not imply that every graphics configuration inside a Widgets/Quick application is already qualified.
 
+### Test-evidence obligation profile binding
+
+The status values and product scopes above remain the compatibility authority. For the TS-0 product-evidence architecture, every current positive integration row has a stable **Claim Obligation Profile** binding defined in [`internal/test-evidence-requirements.md`](internal/test-evidence-requirements.md):
+
+- current `Supported` rows whose Integration is **C++ API**, **QML API**, or **Generic Plugin** bind to `COP-V020-DESKTOP-PUBLIC-QT`;
+- current `Limited` **QPA** rows bind to `COP-V020-DESKTOP-QPA-EXACT`;
+- a `Widgets / Quick` row expands to two atomic qualification cells (`Widgets` and `Qt Quick`) under the same row status/profile, so evidence for one target does not qualify the other;
+- `TODO` and `Unsupported` rows are not positive support claims and do not become positive evidence-completeness obligations merely by appearing here.
+
+The current product-behavior statements later in this document also have explicit evidence families rather than being left for TS-2 to infer:
+
+- bounded RFB 3.8 viewing + active listener exposure/reconnect/bounded-peer behavior → `COP-V020-RFB38`;
+- listener pre-activation / failed-start / stop resource lifecycle, where no usable transport exists and no transport fact may be invented → `COP-V020-LISTENER-LIFECYCLE`;
+- optional remote input with view-only default/policy enforcement → `COP-V020-REMOTE-INPUT`;
+- `Insecure` unauthenticated/unencrypted trusted-LAN semantics → `COP-V020-SECURITY-INSECURE`;
+- conditional `Authenticated` with transport-security capability available and a valid descriptor → `COP-V020-SECURITY-AUTH-AVAILABLE`;
+- the same capability-available `Authenticated` family with a missing/invalid descriptor, which must fail before listener/session creation → `COP-V020-SECURITY-AUTH-CONFIG-INVALID`;
+- `Authenticated` requested when that build capability is absent → `COP-V020-SECURITY-AUTH-UNAVAILABLE`;
+- `AuthenticatedEncrypted` unavailable with no downgrade, whether authenticated capability is present or absent → `COP-V020-SECURITY-AUTHENC-UNAVAILABLE`.
+
+These bindings are **evidence metadata, not status/product-scope changes**. They project only behavior already declared here and in the current security authority. They do not create named-viewer support, Internet-safe deployment, stream encryption, live per-client authorization, or any frontend-specific security personality. Future positive claim families must receive an applicable authority-owned profile/binding before the evidence system can call them complete.
+
 ## Qt LTS policy
 
 HyRemote is intended to support selected Qt LTS families rather than promise every Qt release automatically.
@@ -167,7 +189,6 @@ The product deployment entry point is `hyremote_deploy()`; see [`guide/deploymen
 
 > Per this convergence: the currently released V0.2.0.1 matrix is desktop x86_64. ARM64/Embedded Linux/EGLFS are not supported by that released version, but they are mandatory pre-GA V0.3-family compatibility baseline work under the position-derived baseline authority and must converge before V0.4 RC entry. Additional BSP/SoC/platform expansion beyond the declared GA reference cells is separately admitted as later coherent outcomes. Hardware/vendor acceleration has no pre-assigned version or pre/post-GA placement: it is admitted only through its recorded activation authority when measured evidence proves a portable-baseline SLO/resource blocker under the performance programme.
 
-
 Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
 
 Planned directions include:
@@ -185,7 +206,7 @@ Desktop evidence does not imply embedded support, and one BSP does not imply an 
 
 ## Compatibility rules
 
-1. Primary/Preview/TODO statuses are not interchangeable.
+1. `Supported`, `Limited`, `TODO`, and `Unsupported` statuses are not interchangeable.
 2. Windows results do not substitute for Linux results, or vice versa.
 3. Public Qt API compatibility does not imply QPA private-ABI compatibility.
 4. Basic Widgets/Quick support does not automatically qualify every graphics/rendering configuration.
