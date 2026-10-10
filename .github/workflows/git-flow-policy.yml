@@ -228,10 +228,21 @@ jobs:
           base_tree = "refs/remotes/origin/" + base
           old_cmake = git("show", base_tree + ":CMakeLists.txt")
           new_cmake = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8").strip()
-          develop_line = 'project(HyRemote VERSION 0.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
-          release_line = f'project(HyRemote VERSION {version} DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)'
-          if develop_line == release_line:
-              raise SystemExit("release preparation cannot target the development sentinel")
+          # Match the HyRemote root project VERSION token, not a frozen
+          # whole-line spelling of project(). Whitespace and unrelated valid
+          # metadata may evolve; only the VERSION token may change.
+          project_expr = re.compile(
+              r"^[ \\t]*project\\s*\\(\\s*HyRemote\\b(?:(?!\\)).)*?"
+              r"\\bVERSION\\s+(?P<version>[0-9]+(?:\\.[0-9]+){2,3})(?=\\s|\\))",
+              re.M | re.S,
+          )
+          project_matches = list(project_expr.finditer(old_cmake))
+          if len(project_matches) != 1:
+              raise SystemExit("release branch base must declare exactly one unambiguous HyRemote project VERSION")
+          base_version_match = project_matches[0]
+          base_version = base_version_match.group("version")
+          if version == "0.0.0":
+              raise SystemExit("release branch cannot use the development sentinel")
 
           notes_name = f"docs/releases/v{version}.md"
           marker = "Status: **candidate / acceptance pending**"
@@ -242,11 +253,13 @@ jobs:
                   raise SystemExit(f"release-preparation notes missing {required}")
 
           changed = set(git("diff", "--name-only", base_tree, "HEAD").splitlines())
-          if old_cmake.count(develop_line) == 1:
-              # Stage 1: exact source VERSION bump, but still unaccepted.
+          if base_version == "0.0.0":
+              # Stage 1: exact source VERSION token bump, but still unaccepted.
               stage = "version-preparation"
-              if new_cmake != old_cmake.replace(develop_line, release_line).strip():
-                  raise SystemExit("first preparation must change only root VERSION 0.0.0 to exact release version")
+              updated_cmake = (old_cmake[:base_version_match.start("version")] + version
+                               + old_cmake[base_version_match.end("version"):])
+              if new_cmake != updated_cmake.strip():
+                  raise SystemExit("first preparation must change only root project VERSION token to exact release version")
               if not old_notes.startswith(marker) or not notes.startswith(marker):
                   raise SystemExit("initial release preparation must keep candidate notes pending")
               allowed = {"CMakeLists.txt", notes_name}
@@ -257,7 +270,7 @@ jobs:
                                   "docs/internal/git-flow-release.md"))
               if "CMakeLists.txt" not in changed:
                   raise SystemExit("initial release preparation did not actually bump the project version")
-          elif old_cmake.count(release_line) == 1:
+          elif base_version == version:
               # Stage 2, ONLY after separate owner acceptance: finalize the
               # previously versioned release's bilingual notes via a reviewable
               # PR. Never allow an SDK change or an unauthorized version bump.
@@ -266,11 +279,27 @@ jobs:
                   raise SystemExit("release finalization may not alter product VERSION or CMake sources")
               if not old_notes.startswith(marker) or marker in notes:
                   raise SystemExit("notes finalization must replace pending notes with accepted wording")
-              for pending_phrase in ("**候选待验收**", "**Acceptance pending:**",
-                                     "This is a pre-release note source",
-                                     "这份文件是预发布说明"):
-                  if pending_phrase in notes:
-                      raise SystemExit(f"final release notes retain an unaccepted candidate statement: {pending_phrase}")
+              zh_notes = notes.split("# 中文", 1)[1].split("# English", 1)[0]
+              en_notes = notes.split("# English", 1)[1]
+              # Positive bilingual accepted identities are required. Merely
+              # removing a few "pending" lines could leave explicit candidate
+              # identity claims on an allegedly finalized release.
+              if f"- 已验收版本：`V{version}`" not in zh_notes:
+                  raise SystemExit("final Chinese release notes need an exact accepted-version identity")
+              if f"- Accepted version: `V{version}`" not in en_notes:
+                  raise SystemExit("final English release notes need an exact accepted-version identity")
+              stale_zh = ("**候选待验收**", "这份文件是预发布说明",
+                          "- 候选版本：", "- 候选参考环境：", "当前候选")
+              stale_en = ("**Acceptance pending:**",
+                          "This is a pre-release note source",
+                          "- Candidate:", "- Candidate reference environment:",
+                          "This candidate")
+              for phrase in stale_zh:
+                  if phrase in zh_notes:
+                      raise SystemExit(f"final Chinese release notes still claim candidate state: {phrase}")
+              for phrase in stale_en:
+                  if phrase in en_notes:
+                      raise SystemExit(f"final English release notes still claim candidate state: {phrase}")
               allowed = {notes_name}
               if changed != allowed:
                   raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
