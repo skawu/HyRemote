@@ -223,43 +223,43 @@ jobs:
           version = branch.group(1)
 
           def git(*args):
-              # Preserve raw file contents exactly; stripping the result of
-              # git show would silently authorize whitespace-only edits to
-              # protected VERSION/notes payloads.
-              return subprocess.check_output(("git", *args), text=True)
+              # Read the committed Git blob bytes, never the checkout's
+              # line-ending-filtered worktree or text=True universal-newline
+              # translation. Only the exact VERSION token may change.
+              return subprocess.check_output(("git", *args))
 
           base_tree = "refs/remotes/origin/" + base
           old_cmake = git("show", base_tree + ":CMakeLists.txt")
-          new_cmake = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
+          new_cmake = git("show", "HEAD:CMakeLists.txt")
           # Match the HyRemote root project VERSION token, not a frozen
           # whole-line spelling of project(). Whitespace and unrelated valid
           # metadata may evolve; only the VERSION token may change.
           project_expr = re.compile(
-              r"^[ \t]*project\s*\(\s*HyRemote\b(?:(?!\)).)*?"
-              r"\bVERSION\s+(?P<version>[0-9]+(?:\.[0-9]+){2,3})(?=\s|\))",
+              rb"^[ \t]*project\s*\(\s*HyRemote\b(?:(?!\)).)*?"
+              rb"\bVERSION\s+(?P<version>[0-9]+(?:\.[0-9]+){2,3})(?=\s|\))",
               re.M | re.S,
           )
           project_matches = list(project_expr.finditer(old_cmake))
           if len(project_matches) != 1:
               raise SystemExit("release branch base must declare exactly one unambiguous HyRemote project VERSION")
           base_version_match = project_matches[0]
-          base_version = base_version_match.group("version")
+          base_version = base_version_match.group("version").decode("ascii")
           if version == "0.0.0":
               raise SystemExit("release branch cannot use the development sentinel")
 
           notes_name = f"docs/releases/v{version}.md"
           marker = "Status: **candidate / acceptance pending**"
-          old_notes = git("show", base_tree + ":" + notes_name)
-          notes = pathlib.Path(notes_name).read_text(encoding="utf-8")
+          old_notes = git("show", base_tree + ":" + notes_name).decode("utf-8")
+          notes = git("show", "HEAD:" + notes_name).decode("utf-8")
           for required in (f"release/v{version}", f"`v{version}`", "## Security boundary", "# 中文", "# English"):
               if required not in notes:
                   raise SystemExit(f"release-preparation notes missing {required}")
 
-          changed = set(git("diff", "--name-only", base_tree, "HEAD").splitlines())
+          changed = set(git("diff", "--name-only", base_tree, "HEAD").decode("utf-8").splitlines())
           if base_version == "0.0.0":
               # Stage 1: exact source VERSION token bump, but still unaccepted.
               stage = "version-preparation"
-              updated_cmake = (old_cmake[:base_version_match.start("version")] + version
+              updated_cmake = (old_cmake[:base_version_match.start("version")] + version.encode("ascii")
                                + old_cmake[base_version_match.end("version"):])
               if new_cmake != updated_cmake:
                   raise SystemExit("first preparation must change only root project VERSION token to exact release version")
