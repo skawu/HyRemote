@@ -58,8 +58,8 @@ HyRemote is delivered progressively before the first GA:
 
 | Version | Name | User promise |
 | --- | --- | --- |
-| **V0.1.0.0** | **Use It / Developer Preview** | A developer can integrate HyRemote and get a working remote-access path through the primary C++ API or Generic Plugin routes |
-| **V0.2.0.0** | **Trust It / Operational Preview** | Security, authenticated sessions, and production network behavior become usable product capabilities |
+| **V0.1.0.0** | **Developer Preview** | A developer can integrate HyRemote and establish an early, limited remote-access path; this historical release is not a hierarchy of integration routes |
+| **V0.2.0.0** | **First User Trial** | A real user can use application-scoped remote view/input from a second LAN machine, with explicit default-off access and truthful unencrypted security limits |
 | **V0.3.0.0** | **Productize It / Product Preview** | All four integration frontends are packaged, deployed, documented, and taught as product paths |
 | **V0.4.0.0** | **Qualify It / Release Candidate Line** | Feature freeze, Qt/application compatibility, performance, physical qualification, and release-candidate hardening |
 | **V1.0.0.0** | **Stabilize It / First GA** | First formal stable support contract for the mature V0.4 lineage |
@@ -80,7 +80,7 @@ is not part of the product version model and must not be revived.
 
 V0.1 is intentionally narrow and usable:
 
-- C++ API and Generic Plugin are the primary product paths;
+- C++ / QML / Generic / QPA are peer integration technologies; the historical narrow trial/qualification evidence for one route does not demote any other route;
 - Windows x86_64 and Linux x86_64 are the desktop reference platforms;
 - Qt 6.8.3 is the current reference SDK;
 - Widgets and Qt Quick share one Runtime;
@@ -88,18 +88,18 @@ V0.1 is intentionally narrow and usable:
 - security is unauthenticated and unencrypted and is not yet production-Internet ready;
 - The four integration routes are peers; QML API and QPA are not secondary paths.
 
-## V0.2 — Trust It
+## V0.2 — First User Trial
 
-V0.2 adds the operational security/session layer:
+V0.2.0.0 delivered a bounded, real second-machine LAN trial of application-scoped remote view/input, listener lifecycle and reconnect. Its accepted security/access facts were:
 
-- encrypted authenticated transport;
-- certificate/key policy;
-- authenticated session identity/registry;
-- bounded admission;
-- session events and termination;
-- production network policy.
+- default listener `0.0.0.0:5921` on the host's IPv4 interfaces;
+- default `Insecure` / RFB `SecurityType None`, **no authentication and no transport encryption**;
+- remote input disabled by default, enabled only through an explicit operator choice;
+- conditional RFB VNC password authentication when its optional build capability is enabled and configured, **still without stream encryption**;
+- unavailable stronger `AuthenticatedEncrypted` profile fails closed with no silent downgrade;
+- a trusted-LAN-only exposure boundary, **not Internet-safe**.
 
-The goal is to move from “it works” to “it can be operated safely in the intended environment.”
+Native TLS/VeNCrypt, certificate lifecycle, authenticated Session Registry, roles, admission and per-session termination are **not shipped V0.2 capabilities**. V0.2.0.1 is a maintenance repair to the same accepted First User Trial lineage, not a security or session Feature release.
 
 ## V0.3 — Productize It
 
