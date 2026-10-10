@@ -223,11 +223,14 @@ jobs:
           version = branch.group(1)
 
           def git(*args):
-              return subprocess.check_output(("git", *args), text=True).strip()
+              # Preserve raw file contents exactly; stripping the result of
+              # git show would silently authorize whitespace-only edits to
+              # protected VERSION/notes payloads.
+              return subprocess.check_output(("git", *args), text=True)
 
           base_tree = "refs/remotes/origin/" + base
           old_cmake = git("show", base_tree + ":CMakeLists.txt")
-          new_cmake = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8").strip()
+          new_cmake = pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8")
           # Match the HyRemote root project VERSION token, not a frozen
           # whole-line spelling of project(). Whitespace and unrelated valid
           # metadata may evolve; only the VERSION token may change.
@@ -258,7 +261,7 @@ jobs:
               stage = "version-preparation"
               updated_cmake = (old_cmake[:base_version_match.start("version")] + version
                                + old_cmake[base_version_match.end("version"):])
-              if new_cmake != updated_cmake.strip():
+              if new_cmake != updated_cmake:
                   raise SystemExit("first preparation must change only root project VERSION token to exact release version")
               if not old_notes.startswith(marker) or not notes.startswith(marker):
                   raise SystemExit("initial release preparation must keep candidate notes pending")
@@ -275,7 +278,7 @@ jobs:
               # previously versioned release's bilingual notes via a reviewable
               # PR. Never allow an SDK change or an unauthorized version bump.
               stage = "notes-finalization"
-              if new_cmake != old_cmake.strip():
+              if new_cmake != old_cmake:
                   raise SystemExit("release finalization may not alter product VERSION or CMake sources")
               if not old_notes.startswith(marker) or marker in notes:
                   raise SystemExit("notes finalization must replace pending notes with accepted wording")
