@@ -266,8 +266,11 @@ jobs:
                   raise SystemExit("release finalization may not alter product VERSION or CMake sources")
               if not old_notes.startswith(marker) or marker in notes:
                   raise SystemExit("notes finalization must replace pending notes with accepted wording")
-              if "pending" in notes.lower() and "acceptance" in notes.lower():
-                  raise SystemExit("final notes still describe acceptance as pending")
+              for pending_phrase in ("**候选待验收**", "**Acceptance pending:**",
+                                     "This is a pre-release note source",
+                                     "这份文件是预发布说明"):
+                  if pending_phrase in notes:
+                      raise SystemExit(f"final release notes retain an unaccepted candidate statement: {pending_phrase}")
               allowed = {notes_name}
               if changed != allowed:
                   raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
