@@ -17,6 +17,10 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScreen>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSizePolicy>
 #include <QSaveFile>
 #include <QSlider>
 #include <QSpinBox>
@@ -98,14 +102,32 @@ public:
         , m_port(port)
     {
         setWindowTitle(QStringLiteral("HyRemoteTool"));
-        resize(780, 580);
+        // Keep the native window within the usable desktop height even at
+        // high DPI and on compact displays. Overflow belongs to the content
+        // scroller below, not to the top-level window's minimum height.
+        const QScreen *screen = QApplication::primaryScreen();
+        const QRect available = screen ? screen->availableGeometry() : QRect(0, 0, 780, 720);
+        resize(qMin(780, qMax(360, available.width() - 48)),
+               qMin(700, qMax(280, available.height() - 80)));
 
         m_remote.setPort(port);
         m_remote.setRemoteInputEnabled(initialInputEnabled);
 
-        auto *root = new QVBoxLayout(this);
+        // The operator panel is taller than many desktop viewports. Without
+        // this scroll area, the nested forms and diagnostics editors force a
+        // native minimum height larger than the screen and hide bottom actions.
+        auto *windowLayout = new QVBoxLayout(this);
+        windowLayout->setContentsMargins(0, 0, 0, 0);
+        m_scrollArea = new QScrollArea(this);
+        m_scrollArea->setWidgetResizable(true);
+        m_scrollArea->setFrameShape(QFrame::NoFrame);
+        m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        windowLayout->addWidget(m_scrollArea);
+        auto *content = new QWidget(m_scrollArea);
+        auto *root = new QVBoxLayout(content);
+        m_scrollArea->setWidget(content);
 
-        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), this);
+        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), content);
         QFont headingFont = heading->font();
         headingFont.setPointSize(16);
         headingFont.setBold(true);
@@ -115,19 +137,32 @@ public:
         auto *intro = new QLabel(
             QStringLiteral("The local application remains authoritative. Remote access is off until "
                            "the local operator explicitly starts it."),
-            this);
+            content);
         intro->setWordWrap(true);
         root->addWidget(intro);
 
-        auto *remoteBox = new QGroupBox(QStringLiteral("Remote support"), this);
+        auto *remoteBox = new QGroupBox(QStringLiteral("Remote support"), content);
         auto *remoteLayout = new QVBoxLayout(remoteBox);
 
         auto *statusForm = new QFormLayout;
+        // On narrow/high-DPI desktops, break labels onto their own row
+        // instead of forcing the content widget wider than the viewport.
+        statusForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
         m_state = new QLabel(remoteBox);
         m_buildIdentity = new QLabel(remoteBox);
         m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_buildIdentity->setWordWrap(true);
+        auto buildIdentityPolicy = m_buildIdentity->sizePolicy();
+        buildIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        buildIdentityPolicy.setHeightForWidth(true);
+        m_buildIdentity->setSizePolicy(buildIdentityPolicy);
         m_deploymentIdentity = new QLabel(remoteBox);
         m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_deploymentIdentity->setWordWrap(true);
+        auto deploymentIdentityPolicy = m_deploymentIdentity->sizePolicy();
+        deploymentIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        deploymentIdentityPolicy.setHeightForWidth(true);
+        m_deploymentIdentity->setSizePolicy(deploymentIdentityPolicy);
         m_platform = new QLabel(remoteBox);
         m_security = new QLabel(remoteBox);
         m_configuredListener = new QLabel(remoteBox);
@@ -199,7 +234,7 @@ public:
         remoteLayout->addWidget(security);
         root->addWidget(remoteBox);
 
-        auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), this);
+        auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), content);
         auto *diagnosticsLayout = new QVBoxLayout(diagnosticsBox);
         m_diagnostics = new QPlainTextEdit(diagnosticsBox);
         m_diagnostics->setReadOnly(true);
@@ -216,7 +251,7 @@ public:
         diagnosticsLayout->addLayout(diagnosticActions);
         root->addWidget(diagnosticsBox);
 
-        auto *activityBox = new QGroupBox(QStringLiteral("Activity"), this);
+        auto *activityBox = new QGroupBox(QStringLiteral("Activity"), content);
         auto *activityLayout = new QVBoxLayout(activityBox);
         m_activity = new QPlainTextEdit(activityBox);
         m_activity->setReadOnly(true);
@@ -228,8 +263,13 @@ public:
         activityLayout->addWidget(clearActivity, 0, Qt::AlignLeft);
         root->addWidget(activityBox);
 
-        auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
+        auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), content);
+        m_operatorControls = workBox;
         auto *workLayout = new QFormLayout(workBox);
+        workLayout->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        // A style's ExpandingFieldsGrow default varies across platforms.
+        // Keep editors expanding even when rows wrap on narrow desktops.
+        workLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
         auto *speed = new QSpinBox(workBox);
         speed->setRange(0, 100);
@@ -242,6 +282,9 @@ public:
         loadValue->setValue(load->value());
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
         auto *notes = new QPlainTextEdit(workBox);
+        m_operatorNotes = notes;
+        // Retain QPlainTextEdit's normal Expanding width policy: an Ignored
+        // policy can collapse the editor to zero width with some Qt styles.
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
 
@@ -291,6 +334,46 @@ public:
     ~SupportWindow() override
     {
         m_remote.stop();
+    }
+
+    // Offscreen/desktop regression oracle: the native top-level window must
+    // shrink, and scrolling must expose the entire bottom operator panel.
+    bool verifyCompactLayout()
+    {
+        resize(480, 360);
+        QApplication::processEvents();
+
+        auto *vertical = m_scrollArea->verticalScrollBar();
+        auto *horizontal = m_scrollArea->horizontalScrollBar();
+        const bool compact = width() <= 480 && height() <= 360;
+        const bool overflow = vertical && vertical->maximum() > 0;
+        if (overflow) {
+            // The remote-support forms can exceed a 480px viewport's
+            // width, so verify actual two-axis navigation rather than
+            // assuming a user can reach a widget beyond the right edge.
+            vertical->setValue(vertical->maximum());
+            if (horizontal)
+                horizontal->setValue(horizontal->maximum());
+            QApplication::processEvents();
+        }
+        // An operator panel's border could be visible while its actual
+        // controls are clipped. Demand that the final editable Notes control
+        // itself is fully reachable, not just a corner of the group box.
+        const QRect notesRect(m_operatorNotes->mapTo(m_scrollArea->viewport(), QPoint()),
+                              m_operatorNotes->size());
+        const bool usableEditor = notesRect.width() >= 160 && notesRect.height() >= 64;
+        const bool reachable = usableEditor
+                               && m_scrollArea->viewport()->rect().contains(notesRect);
+        std::cout << (compact && overflow && reachable ? "TOOL_COMPACT_LAYOUT_PASS"
+                                                     : "TOOL_COMPACT_LAYOUT_FAIL")
+                  << " window=" << width() << 'x' << height()
+                  << " scroll_max=" << (vertical ? vertical->maximum() : -1)
+                  << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
+                  << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
+                  << ',' << notesRect.width() << 'x' << notesRect.height()
+                  << " viewport=" << m_scrollArea->viewport()->width()
+                  << 'x' << m_scrollArea->viewport()->height() << std::endl;
+        return compact && overflow && reachable;
     }
 
     bool saveDiagnosticReport(const QString &path) const
@@ -539,6 +622,9 @@ private:
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
+    QScrollArea *m_scrollArea = nullptr;
+    QWidget *m_operatorControls = nullptr;
+    QPlainTextEdit *m_operatorNotes = nullptr;
     QPushButton *m_startStop = nullptr;
     QPushButton *m_copyEndpoints = nullptr;
     QCheckBox *m_input = nullptr;
@@ -567,6 +653,9 @@ int main(int argc, char **argv)
                                      QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
                                      QStringLiteral("seconds"),
                                      QStringLiteral("0"));
+    QCommandLineOption compactLayoutOption(
+        QStringLiteral("verify-compact-layout"),
+        QStringLiteral("CI-only check: compact native window and bottom-panel scrolling."));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     QCommandLineOption diagnosticReportFileOption(
@@ -575,6 +664,7 @@ int main(int argc, char **argv)
         QStringLiteral("path"));
     parser.addOption(autoStartOption);
     parser.addOption(secondsOption);
+    parser.addOption(compactLayoutOption);
     parser.addOption(diagnosticReportFileOption);
     parser.process(app);
 
@@ -587,6 +677,15 @@ int main(int argc, char **argv)
     const int testSeconds = readPositiveInt(parser, secondsOption, 0);
     SupportWindow window(static_cast<quint16>(parsedPort), parser.isSet(inputOption));
     window.show();
+
+    if (parser.isSet(compactLayoutOption)) {
+        // Keep this isolated from --auto-start: a UI layout smoke must not
+        // open a listener, change the input policy or require a VNC viewer.
+        QTimer::singleShot(0, &window, [&window, &app] {
+            app.exit(window.verifyCompactLayout() ? 0 : 1);
+        });
+        return app.exec();
+    }
 
     const bool autoStart = parser.isSet(autoStartOption);
     const QString diagnosticReportFile = parser.value(diagnosticReportFileOption);

@@ -268,6 +268,28 @@ jobs:
               allowed = {"CMakeLists.txt", notes_name}
               bootstrap = head == "feature/466-release-preparation" and version == "0.3.0.0"
               if bootstrap:
+                  # One-time #466/#469 bridge: release was frozen at the previous
+                  # accepted source SHA. Copy only the Owner-approved compact Tool
+                  # fix, byte-for-byte from the newly frozen develop candidate.
+                  # No other product/SDK path is admitted through this exception.
+                  original_sha = "3368a17a113318b9d805cd7bc42a4263970c1c86"
+                  accepted_sha = "bc9de14e47f193c2eee4de4623ecdc96aaeef3da"
+                  tool_paths = {
+                      "examples/remote-support-showcase/CMakeLists.txt",
+                      "examples/remote-support-showcase/README.md",
+                      "examples/remote-support-showcase/main.cpp",
+                      "tests/TEST_CATALOG.md",
+                  }
+                  actual_base = git("rev-parse", base_tree).decode("ascii").strip()
+                  if actual_base != original_sha:
+                      raise SystemExit("one-time #469 bridge requires the exact original release base SHA")
+                  candidate_delta = set(git("diff", "--name-only", original_sha, accepted_sha).decode("utf-8").splitlines())
+                  if candidate_delta != tool_paths:
+                      raise SystemExit("accepted candidate diff no longer matches the four-file #469 scope")
+                  product_drift = set(git("diff", "--name-only", accepted_sha, "HEAD", "--", *sorted(tool_paths)).decode("utf-8").splitlines())
+                  if product_drift:
+                      raise SystemExit(f"release preparation does not match accepted candidate Tool blobs: {sorted(product_drift)}")
+                  allowed.update(tool_paths)
                   allowed.update((".github/scripts/check-pr-branch-name.sh",
                                   ".github/workflows/git-flow-policy.yml",
                                   "docs/internal/git-flow-release.md"))
