@@ -729,11 +729,18 @@ private:
                             state == HyRemote::RemoteAccessState::Starting;
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
                                     : QStringLiteral("Start remote access"));
-        m_state->setStyleSheet(state == HyRemote::RemoteAccessState::Running
-                                   ? QStringLiteral("background:#e6f7ec;color:#11603a;padding:7px 12px;border-radius:12px;font-weight:700;")
-                                   : state == HyRemote::RemoteAccessState::Faulted
-                                         ? QStringLiteral("background:#ffebeb;color:#9b2424;padding:7px 12px;border-radius:12px;font-weight:700;")
-                                         : QStringLiteral("background:#eaf0fa;color:#234d78;padding:7px 12px;border-radius:12px;font-weight:700;"));
+        // The status poll runs every 100ms. Re-polishing a visible QLabel on
+        // each tick costs layout/paint work and can itself trigger captured
+        // framebuffer updates. Style only on actual state transitions.
+        const int currentState = static_cast<int>(state);
+        if (currentState != m_lastStyledState) {
+            m_lastStyledState = currentState;
+            m_state->setStyleSheet(state == HyRemote::RemoteAccessState::Running
+                                       ? QStringLiteral("background:#e6f7ec;color:#11603a;padding:7px 12px;border-radius:12px;font-weight:700;")
+                                       : state == HyRemote::RemoteAccessState::Faulted
+                                             ? QStringLiteral("background:#ffebeb;color:#9b2424;padding:7px 12px;border-radius:12px;font-weight:700;")
+                                             : QStringLiteral("background:#eaf0fa;color:#234d78;padding:7px 12px;border-radius:12px;font-weight:700;"));
+        }
 
         QString errorText = QStringLiteral("None");
         int errorCode = -1;
@@ -815,6 +822,7 @@ private:
     HyRemote::RemoteAccess m_remote;
     quint16 m_port = 5921;
     std::size_t m_lastReportedClientCount = 0;
+    int m_lastStyledState = -1;
     QString m_lastDiagnosticTrigger;
     QString m_lastActivityRuntimeState;
     QString m_lastActivityEffectiveListener;
