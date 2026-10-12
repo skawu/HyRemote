@@ -233,12 +233,13 @@ public:
         auto *actions = new QHBoxLayout;
         m_startStop = new QPushButton(QStringLiteral("Start remote access"), connectCard);
         m_startStop->setObjectName(QStringLiteral("primaryAction"));
+        m_input = new QCheckBox(QStringLiteral("Allow remote control"), connectCard);
+        m_input->setChecked(initialInputEnabled);
         actions->addWidget(m_startStop);
+        actions->addSpacing(8);
+        actions->addWidget(m_input);
         actions->addStretch(1);
         connectCardLayout->addLayout(actions);
-        m_input = new QCheckBox(QStringLiteral("Allow remote control (otherwise view-only)"), connectCard);
-        m_input->setChecked(initialInputEnabled);
-        connectCardLayout->addWidget(m_input);
         m_policy = new QLabel(connectCard);
         m_policy->setObjectName(QStringLiteral("mutedLabel"));
         connectCardLayout->addWidget(m_policy);
@@ -464,9 +465,12 @@ public:
         QApplication::processEvents();
         const QRect actionRect(m_startStop->mapTo(m_connectionScroll->viewport(), QPoint()),
                                m_startStop->size());
+        const QRect inputRect(m_input->mapTo(m_connectionScroll->viewport(), QPoint()),
+                              m_input->size());
         const bool firstScreen = m_connectionScroll->viewport()->rect().contains(actionRect)
+                                 && m_connectionScroll->viewport()->rect().contains(inputRect)
                                  && actionRect.width() >= 100 && actionRect.height() >= 25
-                                 && m_input->isVisible();
+                                 && inputRect.width() >= 110 && inputRect.height() >= 18;
 
         m_tabs->setCurrentIndex(1);
         QApplication::processEvents();
@@ -499,6 +503,8 @@ public:
                   << " window=" << width() << 'x' << height()
                   << " tabs=" << m_tabs->count()
                   << " first_screen=" << firstScreen
+                  << " input_rect=" << inputRect.x() << ',' << inputRect.y()
+                  << ',' << inputRect.width() << 'x' << inputRect.height()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
                   << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
                   << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
