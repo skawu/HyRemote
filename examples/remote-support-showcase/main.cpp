@@ -3,10 +3,12 @@
 #include <QAbstractSocket>
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QClipboard>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFileDialog>
+#include <QFrame>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -26,6 +28,7 @@
 #include <QSpinBox>
 #include <QStringList>
 #include <QTimer>
+#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -113,162 +116,186 @@ public:
         m_remote.setPort(port);
         m_remote.setRemoteInputEnabled(initialInputEnabled);
 
-        // The operator panel is taller than many desktop viewports. Without
-        // this scroll area, the nested forms and diagnostics editors force a
-        // native minimum height larger than the screen and hide bottom actions.
+        // A host-side product console must answer: is it running, how do I
+        // connect, and what can the remote side control? Low-level diagnostic
+        // truth stays accessible in its own tab rather than swallowing the
+        // first screen. Every page owns its compact scroll range.
+        setObjectName(QStringLiteral("hyremoteToolWindow"));
+        setStyleSheet(QStringLiteral(R"(
+            QWidget#hyremoteToolWindow { background: #f5f7fb; }
+            QWidget#toolHeader { background: #ffffff; border-bottom: 1px solid #dce3ed; }
+            QFrame#toolCard { background: #ffffff; border: 1px solid #dce3ed; border-radius: 10px; }
+            QLabel#toolTitle { font-size: 20px; font-weight: 700; color: #17243b; }
+            QLabel#sectionTitle { font-size: 16px; font-weight: 650; color: #17243b; }
+            QLabel#eyebrow { font-size: 10px; font-weight: 700; color: #52657e; }
+            QLabel#mutedLabel { color: #52657e; }
+            QLabel#stateBadge { background: #eaf0fa; color: #234d78; padding: 7px 12px; border-radius: 12px; font-weight: 700; }
+            QLabel#securityNote { background: #fff3dc; color: #734a00; border: 1px solid #f1d9a0; border-radius: 6px; padding: 9px; }
+            QLabel#focusNote { background: #fff3dc; color: #734a00; border-radius: 6px; padding: 9px; }
+            QPushButton#primaryAction { background: #2067d5; color: white; border: 1px solid #1557bb; border-radius: 6px; padding: 9px 15px; font-weight: 700; min-height: 24px; }
+            QPushButton#primaryAction:hover { background: #1557bb; }
+            QPushButton#primaryAction:focus { border: 2px solid #0c438f; }
+            QTabWidget::pane { border: none; }
+            QTabBar::tab { background: #edf1f7; color: #3c526d; padding: 10px 13px; border: 1px solid #dce3ed; }
+            QTabBar::tab:selected { background: #ffffff; color: #1557bb; border-bottom: 2px solid #2067d5; }
+            QComboBox#viewerAddress { padding: 7px; min-height: 26px; }
+        )"));
+
         auto *windowLayout = new QVBoxLayout(this);
         windowLayout->setContentsMargins(0, 0, 0, 0);
-        m_scrollArea = new QScrollArea(this);
-        m_scrollArea->setWidgetResizable(true);
-        m_scrollArea->setFrameShape(QFrame::NoFrame);
-        m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-        windowLayout->addWidget(m_scrollArea);
-        auto *content = new QWidget(m_scrollArea);
-        auto *root = new QVBoxLayout(content);
-        m_scrollArea->setWidget(content);
+        windowLayout->setSpacing(0);
 
-        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), content);
-        QFont headingFont = heading->font();
-        headingFont.setPointSize(16);
-        headingFont.setBold(true);
-        heading->setFont(headingFont);
-        root->addWidget(heading);
+        auto *header = new QWidget(this);
+        header->setObjectName(QStringLiteral("toolHeader"));
+        auto *headerLayout = new QHBoxLayout(header);
+        headerLayout->setContentsMargins(18, 11, 18, 11);
+        auto *nameLayout = new QVBoxLayout;
+        nameLayout->setSpacing(2);
+        auto *heading = new QLabel(QStringLiteral("HyRemoteTool"), header);
+        heading->setObjectName(QStringLiteral("toolTitle"));
+        nameLayout->addWidget(heading);
+        auto *subheading = new QLabel(QStringLiteral("Remote support  /  Host console"), header);
+        subheading->setObjectName(QStringLiteral("mutedLabel"));
+        nameLayout->addWidget(subheading);
+        headerLayout->addLayout(nameLayout, 1);
+        m_state = new QLabel(QStringLiteral("Stopped"), header);
+        m_state->setObjectName(QStringLiteral("stateBadge"));
+        headerLayout->addWidget(m_state, 0, Qt::AlignTop);
+        windowLayout->addWidget(header);
 
-        auto *intro = new QLabel(
-            QStringLiteral("The local application remains authoritative. Remote access is off until "
-                           "the local operator explicitly starts it."),
-            content);
-        intro->setWordWrap(true);
-        root->addWidget(intro);
+        m_tabs = new QTabWidget(this);
+        m_tabs->setObjectName(QStringLiteral("toolTabs"));
+        m_tabs->setDocumentMode(true);
+        windowLayout->addWidget(m_tabs, 1);
 
-        auto *remoteBox = new QGroupBox(QStringLiteral("Remote support"), content);
-        auto *remoteLayout = new QVBoxLayout(remoteBox);
+        const auto newPage = [this](const QString &name, const QString &title) {
+            auto *scroll = new QScrollArea(m_tabs);
+            scroll->setObjectName(name);
+            scroll->setWidgetResizable(true);
+            scroll->setFrameShape(QFrame::NoFrame);
+            scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            auto *body = new QWidget(scroll);
+            auto *layout = new QVBoxLayout(body);
+            layout->setContentsMargins(18, 16, 18, 16);
+            layout->setSpacing(14);
+            scroll->setWidget(body);
+            m_tabs->addTab(scroll, title);
+            return scroll;
+        };
+        const auto card = [](QWidget *parent) {
+            auto *surface = new QFrame(parent);
+            surface->setObjectName(QStringLiteral("toolCard"));
+            auto *layout = new QVBoxLayout(surface);
+            layout->setContentsMargins(16, 16, 16, 16);
+            layout->setSpacing(10);
+            return surface;
+        };
+        const auto sectionLabel = [](const QString &text, QWidget *parent) {
+            auto *label = new QLabel(text, parent);
+            label->setObjectName(QStringLiteral("sectionTitle"));
+            return label;
+        };
 
-        auto *statusForm = new QFormLayout;
-        // On narrow/high-DPI desktops, break labels onto their own row
-        // instead of forcing the content widget wider than the viewport.
-        statusForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
-        m_state = new QLabel(remoteBox);
-        m_buildIdentity = new QLabel(remoteBox);
-        m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        m_buildIdentity->setWordWrap(true);
-        auto buildIdentityPolicy = m_buildIdentity->sizePolicy();
-        buildIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
-        buildIdentityPolicy.setHeightForWidth(true);
-        m_buildIdentity->setSizePolicy(buildIdentityPolicy);
-        m_deploymentIdentity = new QLabel(remoteBox);
-        m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        m_deploymentIdentity->setWordWrap(true);
-        auto deploymentIdentityPolicy = m_deploymentIdentity->sizePolicy();
-        deploymentIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
-        deploymentIdentityPolicy.setHeightForWidth(true);
-        m_deploymentIdentity->setSizePolicy(deploymentIdentityPolicy);
-        m_platform = new QLabel(remoteBox);
-        m_security = new QLabel(remoteBox);
-        m_configuredListener = new QLabel(remoteBox);
-        m_endpoint = new QLabel(remoteBox);
-        m_viewerEndpoints = new QLabel(remoteBox);
-        m_viewerEndpoints->setWordWrap(true);
-        m_viewerEndpoints->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        m_connection = new QLabel(remoteBox);
-        m_clients = new QLabel(QStringLiteral("0"), remoteBox);
-        m_policy = new QLabel(remoteBox);
-        m_focus = new QLabel(remoteBox);
-        m_error = new QLabel(QStringLiteral("None"), remoteBox);
-        m_error->setWordWrap(true);
-        statusForm->addRow(QStringLiteral("State"), m_state);
-        statusForm->addRow(QStringLiteral("Build identity"), m_buildIdentity);
-        statusForm->addRow(QStringLiteral("Deployment identity"), m_deploymentIdentity);
-        statusForm->addRow(QStringLiteral("Platform"), m_platform);
-        statusForm->addRow(QStringLiteral("Security"), m_security);
-        statusForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
-        statusForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
-        statusForm->addRow(QStringLiteral("Viewer endpoints"), m_viewerEndpoints);
-        statusForm->addRow(QStringLiteral("Connection"), m_connection);
-        statusForm->addRow(QStringLiteral("Connected clients"), m_clients);
-        statusForm->addRow(QStringLiteral("Policy"), m_policy);
-        statusForm->addRow(QStringLiteral("Target window"), m_focus);
-        statusForm->addRow(QStringLiteral("Last error"), m_error);
-        remoteLayout->addLayout(statusForm);
+        // Connection: the primary job must be actionable without scrolling
+        // past build IDs, every interface address and raw diagnostics.
+        m_connectionScroll = newPage(QStringLiteral("connectionPage"), QStringLiteral("Connection"));
+        auto *connectBody = m_connectionScroll->widget();
+        auto *connectLayout = qobject_cast<QVBoxLayout *>(connectBody->layout());
+        auto *connectCard = card(connectBody);
+        auto *connectCardLayout = qobject_cast<QVBoxLayout *>(connectCard->layout());
+        connectCardLayout->addWidget(sectionLabel(QStringLiteral("Viewer connection"), connectCard));
+        auto *connectionSummary = new QHBoxLayout;
+        m_connection = new QLabel(QStringLiteral("Remote access stopped"), connectCard);
+        m_connection->setObjectName(QStringLiteral("mutedLabel"));
+        connectionSummary->addWidget(m_connection, 1);
+        m_clients = new QLabel(QStringLiteral("0 clients"), connectCard);
+        m_clients->setObjectName(QStringLiteral("mutedLabel"));
+        connectionSummary->addWidget(m_clients);
+        connectCardLayout->addLayout(connectionSummary);
+
+        auto *endpointHint = new QLabel(
+            QStringLiteral("Select a reachable host address, then paste it into your VNC Viewer."),
+            connectCard);
+        endpointHint->setWordWrap(true);
+        endpointHint->setObjectName(QStringLiteral("mutedLabel"));
+        connectCardLayout->addWidget(endpointHint);
+        auto *addressRow = new QHBoxLayout;
+        m_endpointChoices = new QComboBox(connectCard);
+        m_endpointChoices->setObjectName(QStringLiteral("viewerAddress"));
+        m_endpointChoices->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        m_endpointChoices->setAccessibleName(QStringLiteral("Viewer connection address"));
+        m_endpointChoices->setPlaceholderText(QStringLiteral("Select a LAN address"));
+        addressRow->addWidget(m_endpointChoices, 1);
+        m_copySelected = new QPushButton(QStringLiteral("Copy address"), connectCard);
+        addressRow->addWidget(m_copySelected);
+        connectCardLayout->addLayout(addressRow);
 
         auto *actions = new QHBoxLayout;
-        m_startStop = new QPushButton(QStringLiteral("Start remote access"), remoteBox);
-        m_input = new QCheckBox(QStringLiteral("Allow remote control"), remoteBox);
-        m_input->setChecked(initialInputEnabled);
+        m_startStop = new QPushButton(QStringLiteral("Start remote access"), connectCard);
+        m_startStop->setObjectName(QStringLiteral("primaryAction"));
         actions->addWidget(m_startStop);
-        actions->addWidget(m_input);
         actions->addStretch(1);
-        remoteLayout->addLayout(actions);
+        connectCardLayout->addLayout(actions);
+        m_input = new QCheckBox(QStringLiteral("Allow remote control (otherwise view-only)"), connectCard);
+        m_input->setChecked(initialInputEnabled);
+        connectCardLayout->addWidget(m_input);
+        m_policy = new QLabel(connectCard);
+        m_policy->setObjectName(QStringLiteral("mutedLabel"));
+        connectCardLayout->addWidget(m_policy);
 
         auto *connectionActions = new QHBoxLayout;
-        auto *refreshEndpoints = new QPushButton(QStringLiteral("Refresh viewer endpoints"), remoteBox);
-        m_copyEndpoints = new QPushButton(QStringLiteral("Copy viewer endpoints"), remoteBox);
+        auto *refreshEndpoints = new QPushButton(QStringLiteral("Refresh addresses"), connectCard);
+        m_copyEndpoints = new QPushButton(QStringLiteral("Copy all addresses"), connectCard);
         connectionActions->addWidget(refreshEndpoints);
         connectionActions->addWidget(m_copyEndpoints);
         connectionActions->addStretch(1);
-        remoteLayout->addLayout(connectionActions);
+        connectCardLayout->addLayout(connectionActions);
+        connectLayout->addWidget(connectCard);
 
-        auto *policyNote = new QLabel(
-            QStringLiteral("Changing remote-control policy while running performs an explicit "
-                           "stop/apply/start cycle on the same RemoteAccess instance."),
-            remoteBox);
-        policyNote->setWordWrap(true);
-        remoteLayout->addWidget(policyNote);
-
+        auto *securityCard = card(connectBody);
+        auto *securityLayout = qobject_cast<QVBoxLayout *>(securityCard->layout());
+        auto *security = new QLabel(
+            QStringLiteral("Unencrypted connection - trusted LAN only. "
+                           "SecurityType None has no authentication or transport encryption."),
+            securityCard);
+        security->setObjectName(QStringLiteral("securityNote"));
+        security->setWordWrap(true);
+        securityLayout->addWidget(security);
         m_focusWarning = new QLabel(
-            QStringLiteral("Remote input is application-scoped. This HyRemoteTool window is not "
-                           "the active OS window, so remote pointer/text input may not reactivate it. "
-                           "Activate HyRemoteTool locally to restore reliable remote input."),
-            remoteBox);
+            QStringLiteral("Remote control is application-scoped. Activate this HyRemoteTool "
+                           "window locally if remote pointer or text input stops responding."),
+            securityCard);
+        m_focusWarning->setObjectName(QStringLiteral("focusNote"));
         m_focusWarning->setWordWrap(true);
         m_focusWarning->setVisible(false);
-        remoteLayout->addWidget(m_focusWarning);
+        securityLayout->addWidget(m_focusWarning);
+        auto *policyNote = new QLabel(
+            QStringLiteral("Changing remote-control permission while running restarts "
+                           "the listener and disconnects current viewers."),
+            securityCard);
+        policyNote->setWordWrap(true);
+        policyNote->setObjectName(QStringLiteral("mutedLabel"));
+        securityLayout->addWidget(policyNote);
+        connectLayout->addWidget(securityCard);
+        connectLayout->addStretch(1);
 
-        auto *security = new QLabel(
-            QStringLiteral("Security boundary: the current RFB correctness baseline uses "
-                           "SecurityType None. The listener is unencrypted, so keep it on this LAN or another trusted, "
-                           "explicitly protected network path; this example does not simulate "
-                           "authentication or encryption."),
-            remoteBox);
-        security->setWordWrap(true);
-        remoteLayout->addWidget(security);
-        root->addWidget(remoteBox);
-
-        auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), content);
-        auto *diagnosticsLayout = new QVBoxLayout(diagnosticsBox);
-        m_diagnostics = new QPlainTextEdit(diagnosticsBox);
-        m_diagnostics->setReadOnly(true);
-        m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
-        m_diagnostics->setMaximumBlockCount(64);
-        m_diagnostics->setMinimumHeight(150);
-        diagnosticsLayout->addWidget(m_diagnostics);
-        auto *diagnosticActions = new QHBoxLayout;
-        auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy diagnostic report"), diagnosticsBox);
-        auto *saveDiagnostics = new QPushButton(QStringLiteral("Save diagnostic report"), diagnosticsBox);
-        diagnosticActions->addWidget(copyDiagnostics);
-        diagnosticActions->addWidget(saveDiagnostics);
-        diagnosticActions->addStretch(1);
-        diagnosticsLayout->addLayout(diagnosticActions);
-        root->addWidget(diagnosticsBox);
-
-        auto *activityBox = new QGroupBox(QStringLiteral("Activity"), content);
-        auto *activityLayout = new QVBoxLayout(activityBox);
-        m_activity = new QPlainTextEdit(activityBox);
-        m_activity->setReadOnly(true);
-        m_activity->setLineWrapMode(QPlainTextEdit::NoWrap);
-        m_activity->setMaximumBlockCount(100);
-        m_activity->setMinimumHeight(110);
-        activityLayout->addWidget(m_activity);
-        auto *clearActivity = new QPushButton(QStringLiteral("Clear activity"), activityBox);
-        activityLayout->addWidget(clearActivity, 0, Qt::AlignLeft);
-        root->addWidget(activityBox);
-
-        auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), content);
+        // Controls stay meaningful and editable on the real host and Viewer.
+        // Keep the original Widgets and RemoteAccess relationships intact.
+        m_scrollArea = newPage(QStringLiteral("operatorPage"), QStringLiteral("Controls"));
+        auto *workBody = m_scrollArea->widget();
+        auto *workRoot = qobject_cast<QVBoxLayout *>(workBody->layout());
+        auto *workBox = card(workBody);
         m_operatorControls = workBox;
-        auto *workLayout = new QFormLayout(workBox);
+        auto *workOuter = qobject_cast<QVBoxLayout *>(workBox->layout());
+        workOuter->addWidget(sectionLabel(QStringLiteral("Local operator controls"), workBox));
+        auto *workDescription = new QLabel(
+            QStringLiteral("Changes appear in the shared framebuffer. Local controls remain authoritative."),
+            workBox);
+        workDescription->setObjectName(QStringLiteral("mutedLabel"));
+        workDescription->setWordWrap(true);
+        workOuter->addWidget(workDescription);
+        auto *workLayout = new QFormLayout;
         workLayout->setRowWrapPolicy(QFormLayout::WrapLongRows);
-        // A style's ExpandingFieldsGrow default varies across platforms.
-        // Keep editors expanding even when rows wrap on narrow desktops.
         workLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
         auto *speed = new QSpinBox(workBox);
@@ -283,18 +310,97 @@ public:
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
         auto *notes = new QPlainTextEdit(workBox);
         m_operatorNotes = notes;
-        // Retain QPlainTextEdit's normal Expanding width policy: an Ignored
-        // policy can collapse the editor to zero width with some Qt styles.
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
-
+        notes->setMinimumHeight(104);
         workLayout->addRow(QStringLiteral("Asset"), asset);
         workLayout->addRow(QStringLiteral("Command setpoint"), speed);
         workLayout->addRow(QStringLiteral("Process load"), load);
         workLayout->addRow(QStringLiteral("Load indicator"), loadValue);
         workLayout->addRow(QString(), maintenance);
         workLayout->addRow(QStringLiteral("Notes"), notes);
-        root->addWidget(workBox, 1);
+        workOuter->addLayout(workLayout);
+        workRoot->addWidget(workBox);
+        workRoot->addStretch(1);
+
+        // Diagnostics is secondary, but contains every fact formerly exposed
+        // in the unprioritized status form and the same public report bytes.
+        auto *diagnosticsScroll = newPage(QStringLiteral("diagnosticsPage"), QStringLiteral("Diagnostics"));
+        auto *diagnosticsBody = diagnosticsScroll->widget();
+        auto *diagnosticsRoot = qobject_cast<QVBoxLayout *>(diagnosticsBody->layout());
+        auto *detailCard = card(diagnosticsBody);
+        auto *detailLayout = qobject_cast<QVBoxLayout *>(detailCard->layout());
+        detailLayout->addWidget(sectionLabel(QStringLiteral("System and runtime"), detailCard));
+        auto *statusForm = new QFormLayout;
+        statusForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        statusForm->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+        m_buildIdentity = new QLabel(detailCard);
+        m_deploymentIdentity = new QLabel(detailCard);
+        for (QLabel *identity : {m_buildIdentity, m_deploymentIdentity}) {
+            identity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            identity->setWordWrap(true);
+            auto policy = identity->sizePolicy();
+            policy.setHorizontalPolicy(QSizePolicy::Ignored);
+            policy.setHeightForWidth(true);
+            identity->setSizePolicy(policy);
+        }
+        m_platform = new QLabel(detailCard);
+        m_security = new QLabel(detailCard);
+        m_configuredListener = new QLabel(detailCard);
+        m_endpoint = new QLabel(detailCard);
+        m_viewerEndpoints = new QLabel(detailCard);
+        m_viewerEndpoints->setWordWrap(true);
+        m_viewerEndpoints->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_focus = new QLabel(detailCard);
+        m_error = new QLabel(QStringLiteral("None"), detailCard);
+        m_error->setWordWrap(true);
+        statusForm->addRow(QStringLiteral("Build identity"), m_buildIdentity);
+        statusForm->addRow(QStringLiteral("Deployment identity"), m_deploymentIdentity);
+        statusForm->addRow(QStringLiteral("Platform"), m_platform);
+        statusForm->addRow(QStringLiteral("Security"), m_security);
+        statusForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
+        statusForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
+        statusForm->addRow(QStringLiteral("All viewer addresses"), m_viewerEndpoints);
+        statusForm->addRow(QStringLiteral("Target window"), m_focus);
+        statusForm->addRow(QStringLiteral("Last error"), m_error);
+        detailLayout->addLayout(statusForm);
+        diagnosticsRoot->addWidget(detailCard);
+
+        auto *diagnosticsBox = card(diagnosticsBody);
+        auto *diagnosticsLayout = qobject_cast<QVBoxLayout *>(diagnosticsBox->layout());
+        diagnosticsLayout->addWidget(sectionLabel(QStringLiteral("Diagnostic report"), diagnosticsBox));
+        m_diagnostics = new QPlainTextEdit(diagnosticsBox);
+        m_diagnostics->setReadOnly(true);
+        m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
+        m_diagnostics->setMaximumBlockCount(64);
+        m_diagnostics->setMinimumHeight(160);
+        diagnosticsLayout->addWidget(m_diagnostics);
+        auto *diagnosticActions = new QHBoxLayout;
+        auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy report"), diagnosticsBox);
+        auto *saveDiagnostics = new QPushButton(QStringLiteral("Save report"), diagnosticsBox);
+        diagnosticActions->addWidget(copyDiagnostics);
+        diagnosticActions->addWidget(saveDiagnostics);
+        diagnosticActions->addStretch(1);
+        diagnosticsLayout->addLayout(diagnosticActions);
+        diagnosticsRoot->addWidget(diagnosticsBox);
+        diagnosticsRoot->addStretch(1);
+
+        auto *activityScroll = newPage(QStringLiteral("activityPage"), QStringLiteral("Activity"));
+        auto *activityBody = activityScroll->widget();
+        auto *activityRoot = qobject_cast<QVBoxLayout *>(activityBody->layout());
+        auto *activityBox = card(activityBody);
+        auto *activityLayout = qobject_cast<QVBoxLayout *>(activityBox->layout());
+        activityLayout->addWidget(sectionLabel(QStringLiteral("Recent activity"), activityBox));
+        m_activity = new QPlainTextEdit(activityBox);
+        m_activity->setReadOnly(true);
+        m_activity->setLineWrapMode(QPlainTextEdit::NoWrap);
+        m_activity->setMaximumBlockCount(100);
+        m_activity->setMinimumHeight(175);
+        activityLayout->addWidget(m_activity);
+        auto *clearActivity = new QPushButton(QStringLiteral("Clear activity"), activityBox);
+        activityLayout->addWidget(clearActivity, 0, Qt::AlignLeft);
+        activityRoot->addWidget(activityBox);
+        activityRoot->addStretch(1);
 
         QObject::connect(load, &QSlider::valueChanged, loadValue, &QProgressBar::setValue);
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
@@ -306,6 +412,16 @@ public:
         });
         QObject::connect(m_copyEndpoints, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_viewerEndpointList.join(QLatin1Char('\n')));
+        });
+        QObject::connect(m_copySelected, &QPushButton::clicked, this, [this] {
+            const QString address = m_endpointChoices->currentText();
+            if (m_viewerEndpointList.contains(address))
+                QApplication::clipboard()->setText(address);
+        });
+        QObject::connect(m_endpointChoices, &QComboBox::currentIndexChanged, this,
+                         [this](int) {
+            m_copySelected->setEnabled(
+                m_viewerEndpointList.contains(m_endpointChoices->currentText()));
         });
         QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
@@ -336,44 +452,62 @@ public:
         m_remote.stop();
     }
 
-    // Offscreen/desktop regression oracle: the native top-level window must
-    // shrink, and scrolling must expose the entire bottom operator panel.
+    // Offscreen/desktop regression oracle: primary connection actions and
+    // all operator/diagnostic tabs must be navigable on compact screens.
     bool verifyCompactLayout()
     {
         resize(480, 360);
         QApplication::processEvents();
+        const bool compact = width() <= 480 && height() <= 360;
+        const bool tabsPresent = m_tabs->count() == 4;
+        m_tabs->setCurrentIndex(0);
+        QApplication::processEvents();
+        const QRect actionRect(m_startStop->mapTo(m_connectionScroll->viewport(), QPoint()),
+                               m_startStop->size());
+        const bool firstScreen = m_connectionScroll->viewport()->rect().contains(actionRect)
+                                 && actionRect.width() >= 100 && actionRect.height() >= 25
+                                 && m_input->isVisible();
 
+        m_tabs->setCurrentIndex(1);
+        QApplication::processEvents();
         auto *vertical = m_scrollArea->verticalScrollBar();
         auto *horizontal = m_scrollArea->horizontalScrollBar();
-        const bool compact = width() <= 480 && height() <= 360;
         const bool overflow = vertical && vertical->maximum() > 0;
-        if (overflow) {
-            // The remote-support forms can exceed a 480px viewport's
-            // width, so verify actual two-axis navigation rather than
-            // assuming a user can reach a widget beyond the right edge.
+        if (vertical)
             vertical->setValue(vertical->maximum());
-            if (horizontal)
-                horizontal->setValue(horizontal->maximum());
-            QApplication::processEvents();
-        }
-        // An operator panel's border could be visible while its actual
-        // controls are clipped. Demand that the final editable Notes control
-        // itself is fully reachable, not just a corner of the group box.
+        if (horizontal)
+            horizontal->setValue(horizontal->maximum());
+        QApplication::processEvents();
         const QRect notesRect(m_operatorNotes->mapTo(m_scrollArea->viewport(), QPoint()),
                               m_operatorNotes->size());
         const bool usableEditor = notesRect.width() >= 160 && notesRect.height() >= 64;
         const bool reachable = usableEditor
                                && m_scrollArea->viewport()->rect().contains(notesRect);
-        std::cout << (compact && overflow && reachable ? "TOOL_COMPACT_LAYOUT_PASS"
-                                                     : "TOOL_COMPACT_LAYOUT_FAIL")
+
+        m_tabs->setCurrentIndex(2);
+        QApplication::processEvents();
+        const bool diagnosticsReachable = m_diagnostics->isVisible()
+                                          && !m_buildIdentity->text().isEmpty();
+        m_tabs->setCurrentIndex(3);
+        QApplication::processEvents();
+        const bool activityReachable = m_activity->isVisible();
+        m_tabs->setCurrentIndex(0);
+        const bool pass = compact && tabsPresent && firstScreen && overflow
+                          && reachable && diagnosticsReachable && activityReachable
+                          && m_remote.state() == HyRemote::RemoteAccessState::Stopped;
+        std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
+                  << " tabs=" << m_tabs->count()
+                  << " first_screen=" << firstScreen
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
                   << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
                   << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
                   << ',' << notesRect.width() << 'x' << notesRect.height()
                   << " viewport=" << m_scrollArea->viewport()->width()
-                  << 'x' << m_scrollArea->viewport()->height() << std::endl;
-        return compact && overflow && reachable;
+                  << 'x' << m_scrollArea->viewport()->height()
+                  << " diagnostics=" << diagnosticsReachable
+                  << " activity=" << activityReachable << std::endl;
+        return pass;
     }
 
     bool saveDiagnosticReport(const QString &path) const
@@ -472,10 +606,21 @@ private:
 
     void refreshViewerEndpoints()
     {
+        const QString previous = m_endpointChoices->currentText();
         m_viewerEndpointList = viewerEndpoints(m_port);
         m_viewerEndpoints->setText(m_viewerEndpointList.isEmpty()
                                        ? QStringLiteral("No non-loopback IPv4 address detected")
                                        : m_viewerEndpointList.join(QStringLiteral("\n")));
+        m_endpointChoices->blockSignals(true);
+        m_endpointChoices->clear();
+        m_endpointChoices->addItems(m_viewerEndpointList);
+        if (m_viewerEndpointList.size() > 1 && !m_viewerEndpointList.contains(previous))
+            m_endpointChoices->setCurrentIndex(-1);
+        else if (m_viewerEndpointList.contains(previous))
+            m_endpointChoices->setCurrentText(previous);
+        m_endpointChoices->blockSignals(false);
+        const bool selected = m_viewerEndpointList.contains(m_endpointChoices->currentText());
+        m_copySelected->setEnabled(selected);
         m_copyEndpoints->setEnabled(!m_viewerEndpointList.isEmpty());
     }
 
@@ -493,7 +638,9 @@ private:
         m_focusWarning->setVisible(m_remote.remoteInputEnabled() && !windowActive);
 
         const std::size_t clientCount = m_remote.connectedClientCount();
-        m_clients->setText(QString::number(static_cast<qulonglong>(clientCount)));
+        m_clients->setText(QStringLiteral("%1 client%2")
+                               .arg(static_cast<qulonglong>(clientCount))
+                               .arg(clientCount == 1 ? QString() : QStringLiteral("s")));
         if (state == HyRemote::RemoteAccessState::Running) {
             m_connection->setText(clientCount > 0
                                       ? QStringLiteral("Viewer connected")
@@ -520,6 +667,11 @@ private:
                             state == HyRemote::RemoteAccessState::Starting;
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
                                     : QStringLiteral("Start remote access"));
+        m_state->setStyleSheet(state == HyRemote::RemoteAccessState::Running
+                                   ? QStringLiteral("background:#e6f7ec;color:#11603a;padding:7px 12px;border-radius:12px;font-weight:700;")
+                                   : state == HyRemote::RemoteAccessState::Faulted
+                                         ? QStringLiteral("background:#ffebeb;color:#9b2424;padding:7px 12px;border-radius:12px;font-weight:700;")
+                                         : QStringLiteral("background:#eaf0fa;color:#234d78;padding:7px 12px;border-radius:12px;font-weight:700;"));
 
         QString errorText = QStringLiteral("None");
         int errorCode = -1;
@@ -622,7 +774,11 @@ private:
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
+    QTabWidget *m_tabs = nullptr;
+    QScrollArea *m_connectionScroll = nullptr;
     QScrollArea *m_scrollArea = nullptr;
+    QComboBox *m_endpointChoices = nullptr;
+    QPushButton *m_copySelected = nullptr;
     QWidget *m_operatorControls = nullptr;
     QPlainTextEdit *m_operatorNotes = nullptr;
     QPushButton *m_startStop = nullptr;
