@@ -145,6 +145,10 @@ public:
         auto *windowLayout = new QVBoxLayout(this);
         windowLayout->setContentsMargins(0, 0, 0, 0);
         windowLayout->setSpacing(0);
+        // Child native style size hints must not impose a top-level minimum:
+        // the tab pages own horizontal/vertical scrolling at compact widths.
+        windowLayout->setSizeConstraint(QLayout::SetNoConstraint);
+        setMinimumSize(0, 0);
 
         auto *header = new QWidget(this);
         header->setObjectName(QStringLiteral("toolHeader"));
@@ -297,6 +301,7 @@ public:
             QStringLiteral("Unencrypted connection - trusted LAN only"), actionDock);
         m_dockSecurity->setObjectName(QStringLiteral("mutedLabel"));
         m_dockSecurity->setWordWrap(true);
+        m_dockSecurity->setMinimumHeight(18);
         dockLayout->addWidget(m_dockSecurity);
         windowLayout->addWidget(actionDock, 0);
 
@@ -388,7 +393,6 @@ public:
         statusForm->addRow(QStringLiteral("Target window"), m_focus);
         statusForm->addRow(QStringLiteral("Last error"), m_error);
         detailLayout->addLayout(statusForm);
-        diagnosticsRoot->addWidget(detailCard);
 
         auto *diagnosticsBox = card(diagnosticsBody);
         auto *diagnosticsLayout = qobject_cast<QVBoxLayout *>(diagnosticsBox->layout());
@@ -397,7 +401,7 @@ public:
         m_diagnostics->setReadOnly(true);
         m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
         m_diagnostics->setMaximumBlockCount(64);
-        m_diagnostics->setMinimumHeight(160);
+        m_diagnostics->setMinimumHeight(128);
         diagnosticsLayout->addWidget(m_diagnostics);
         auto *diagnosticActions = new QHBoxLayout;
         auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy report"), diagnosticsBox);
@@ -407,6 +411,9 @@ public:
         diagnosticActions->addStretch(1);
         diagnosticsLayout->addLayout(diagnosticActions);
         diagnosticsRoot->addWidget(diagnosticsBox);
+        // Put the frequently used report in the first viewport; full build,
+        // platform and endpoint metadata follows below as deeper detail.
+        diagnosticsRoot->addWidget(detailCard);
         diagnosticsRoot->addStretch(1);
 
         auto *activityScroll = newPage(QStringLiteral("activityPage"), QStringLiteral("Log"));
@@ -551,6 +558,9 @@ public:
                   << " safety_rect=" << safetyRect.x() << ',' << safetyRect.y()
                   << ',' << safetyRect.width() << 'x' << safetyRect.height()
                   << " tabs_min=" << m_tabs->minimumSizeHint().width()
+                  << " window_min=" << minimumSizeHint().width()
+                  << " connection_min=" << m_connectionScroll->minimumSizeHint().width()
+                  << " dock_min=" << m_dockSecurity->parentWidget()->minimumSizeHint().width()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
                   << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
                   << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
