@@ -125,6 +125,7 @@ public:
             QWidget#hyremoteToolWindow { background: #f5f7fb; }
             QWidget#toolHeader { background: #ffffff; border-bottom: 1px solid #dce3ed; }
             QFrame#toolCard { background: #ffffff; border: 1px solid #dce3ed; border-radius: 10px; }
+            QFrame#actionDock { background: #ffffff; border-top: 1px solid #dce3ed; }
             QLabel#toolTitle { font-size: 20px; font-weight: 700; color: #17243b; }
             QLabel#sectionTitle { font-size: 16px; font-weight: 650; color: #17243b; }
             QLabel#eyebrow { font-size: 10px; font-weight: 700; color: #52657e; }
@@ -230,16 +231,7 @@ public:
         addressRow->addWidget(m_copySelected);
         connectCardLayout->addLayout(addressRow);
 
-        auto *actions = new QHBoxLayout;
-        m_startStop = new QPushButton(QStringLiteral("Start remote access"), connectCard);
-        m_startStop->setObjectName(QStringLiteral("primaryAction"));
-        m_input = new QCheckBox(QStringLiteral("Allow remote control"), connectCard);
-        m_input->setChecked(initialInputEnabled);
-        actions->addWidget(m_startStop);
-        actions->addSpacing(8);
-        actions->addWidget(m_input);
-        actions->addStretch(1);
-        connectCardLayout->addLayout(actions);
+
         m_policy = new QLabel(connectCard);
         m_policy->setObjectName(QStringLiteral("mutedLabel"));
         connectCardLayout->addWidget(m_policy);
@@ -279,6 +271,33 @@ public:
         securityLayout->addWidget(policyNote);
         connectLayout->addWidget(securityCard);
         connectLayout->addStretch(1);
+
+        // Native Windows styles may give checkboxes much wider size hints
+        // than Linux. A side-by-side action row imposes a >480px top-level
+        // minimum width, even with scroll areas. The primary start/stop and
+        // consent control therefore live in a full-width fixed bottom dock:
+        // always visible, never clipped by page content or a tab scroll.
+        auto *actionDock = new QFrame(this);
+        actionDock->setObjectName(QStringLiteral("actionDock"));
+        auto *dockLayout = new QVBoxLayout(actionDock);
+        dockLayout->setContentsMargins(18, 7, 18, 7);
+        dockLayout->setSpacing(5);
+        auto *startRow = new QHBoxLayout;
+        m_startStop = new QPushButton(QStringLiteral("Start remote access"), actionDock);
+        m_startStop->setObjectName(QStringLiteral("primaryAction"));
+        startRow->addWidget(m_startStop, 0);
+        startRow->addStretch(1);
+        dockLayout->addLayout(startRow);
+        m_input = new QCheckBox(QStringLiteral("Allow remote control"), actionDock);
+        m_input->setChecked(initialInputEnabled);
+        dockLayout->addWidget(m_input, 0, Qt::AlignLeft);
+        auto *dockSecurity = new QLabel(
+            QStringLiteral("Unencrypted connection - trusted LAN only"), actionDock);
+        dockSecurity->setObjectName(QStringLiteral("mutedLabel"));
+        dockSecurity->setWordWrap(true);
+        dockLayout->addWidget(dockSecurity);
+        windowLayout->addWidget(actionDock, 0);
+
 
         // Controls stay meaningful and editable on the real host and Viewer.
         // Keep the original Widgets and RemoteAccess relationships intact.
@@ -463,14 +482,13 @@ public:
         const bool tabsPresent = m_tabs->count() == 4;
         m_tabs->setCurrentIndex(0);
         QApplication::processEvents();
-        const QRect actionRect(m_startStop->mapTo(m_connectionScroll->viewport(), QPoint()),
-                               m_startStop->size());
-        const QRect inputRect(m_input->mapTo(m_connectionScroll->viewport(), QPoint()),
-                              m_input->size());
-        const bool firstScreen = m_connectionScroll->viewport()->rect().contains(actionRect)
-                                 && m_connectionScroll->viewport()->rect().contains(inputRect)
+        const QRect actionRect(m_startStop->mapTo(this, QPoint()), m_startStop->size());
+        const QRect inputRect(m_input->mapTo(this, QPoint()), m_input->size());
+        const bool firstScreen = rect().contains(actionRect)
+                                 && rect().contains(inputRect)
                                  && actionRect.width() >= 100 && actionRect.height() >= 25
-                                 && inputRect.width() >= 110 && inputRect.height() >= 18;
+                                 && inputRect.width() >= 110 && inputRect.height() >= 18
+                                 && m_startStop->isVisible() && m_input->isVisible();
 
         m_tabs->setCurrentIndex(1);
         QApplication::processEvents();
@@ -503,6 +521,8 @@ public:
                   << " window=" << width() << 'x' << height()
                   << " tabs=" << m_tabs->count()
                   << " first_screen=" << firstScreen
+                  << " action_rect=" << actionRect.x() << ',' << actionRect.y()
+                  << ',' << actionRect.width() << 'x' << actionRect.height()
                   << " input_rect=" << inputRect.x() << ',' << inputRect.y()
                   << ',' << inputRect.width() << 'x' << inputRect.height()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
