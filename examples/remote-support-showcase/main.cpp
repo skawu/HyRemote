@@ -167,6 +167,8 @@ public:
         m_tabs = new QTabWidget(this);
         m_tabs->setObjectName(QStringLiteral("toolTabs"));
         m_tabs->setDocumentMode(true);
+        m_tabs->setUsesScrollButtons(true);
+        m_tabs->setElideMode(Qt::ElideRight);
         windowLayout->addWidget(m_tabs, 1);
 
         const auto newPage = [this](const QString &name, const QString &title) {
@@ -199,7 +201,7 @@ public:
 
         // Connection: the primary job must be actionable without scrolling
         // past build IDs, every interface address and raw diagnostics.
-        m_connectionScroll = newPage(QStringLiteral("connectionPage"), QStringLiteral("Connection"));
+        m_connectionScroll = newPage(QStringLiteral("connectionPage"), QStringLiteral("Connect"));
         auto *connectBody = m_connectionScroll->widget();
         auto *connectLayout = qobject_cast<QVBoxLayout *>(connectBody->layout());
         auto *connectCard = card(connectBody);
@@ -291,17 +293,17 @@ public:
         m_input = new QCheckBox(QStringLiteral("Allow remote control"), actionDock);
         m_input->setChecked(initialInputEnabled);
         dockLayout->addWidget(m_input, 0, Qt::AlignLeft);
-        auto *dockSecurity = new QLabel(
+        m_dockSecurity = new QLabel(
             QStringLiteral("Unencrypted connection - trusted LAN only"), actionDock);
-        dockSecurity->setObjectName(QStringLiteral("mutedLabel"));
-        dockSecurity->setWordWrap(true);
-        dockLayout->addWidget(dockSecurity);
+        m_dockSecurity->setObjectName(QStringLiteral("mutedLabel"));
+        m_dockSecurity->setWordWrap(true);
+        dockLayout->addWidget(m_dockSecurity);
         windowLayout->addWidget(actionDock, 0);
 
 
         // Controls stay meaningful and editable on the real host and Viewer.
         // Keep the original Widgets and RemoteAccess relationships intact.
-        m_scrollArea = newPage(QStringLiteral("operatorPage"), QStringLiteral("Controls"));
+        m_scrollArea = newPage(QStringLiteral("operatorPage"), QStringLiteral("Control"));
         auto *workBody = m_scrollArea->widget();
         auto *workRoot = qobject_cast<QVBoxLayout *>(workBody->layout());
         auto *workBox = card(workBody);
@@ -332,7 +334,9 @@ public:
         m_operatorNotes = notes;
         notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
         notes->setMaximumBlockCount(20);
-        notes->setMinimumHeight(104);
+        // Keep the full editor reachable on a 480x360 native window even
+        // with a persistent safety/operation dock. Its own text scrolls.
+        notes->setFixedHeight(96);
         workLayout->addRow(QStringLiteral("Asset"), asset);
         workLayout->addRow(QStringLiteral("Command setpoint"), speed);
         workLayout->addRow(QStringLiteral("Process load"), load);
@@ -345,7 +349,7 @@ public:
 
         // Diagnostics is secondary, but contains every fact formerly exposed
         // in the unprioritized status form and the same public report bytes.
-        auto *diagnosticsScroll = newPage(QStringLiteral("diagnosticsPage"), QStringLiteral("Diagnostics"));
+        auto *diagnosticsScroll = newPage(QStringLiteral("diagnosticsPage"), QStringLiteral("Details"));
         auto *diagnosticsBody = diagnosticsScroll->widget();
         auto *diagnosticsRoot = qobject_cast<QVBoxLayout *>(diagnosticsBody->layout());
         auto *detailCard = card(diagnosticsBody);
@@ -405,7 +409,7 @@ public:
         diagnosticsRoot->addWidget(diagnosticsBox);
         diagnosticsRoot->addStretch(1);
 
-        auto *activityScroll = newPage(QStringLiteral("activityPage"), QStringLiteral("Activity"));
+        auto *activityScroll = newPage(QStringLiteral("activityPage"), QStringLiteral("Log"));
         auto *activityBody = activityScroll->widget();
         auto *activityRoot = qobject_cast<QVBoxLayout *>(activityBody->layout());
         auto *activityBox = card(activityBody);
@@ -484,11 +488,15 @@ public:
         QApplication::processEvents();
         const QRect actionRect(m_startStop->mapTo(this, QPoint()), m_startStop->size());
         const QRect inputRect(m_input->mapTo(this, QPoint()), m_input->size());
+        const QRect safetyRect(m_dockSecurity->mapTo(this, QPoint()), m_dockSecurity->size());
         const bool firstScreen = rect().contains(actionRect)
                                  && rect().contains(inputRect)
+                                 && rect().contains(safetyRect)
                                  && actionRect.width() >= 100 && actionRect.height() >= 25
                                  && inputRect.width() >= 110 && inputRect.height() >= 18
-                                 && m_startStop->isVisible() && m_input->isVisible();
+                                 && safetyRect.width() >= 150 && safetyRect.height() >= 14
+                                 && m_startStop->isVisible() && m_input->isVisible()
+                                 && m_dockSecurity->isVisible();
 
         m_tabs->setCurrentIndex(1);
         QApplication::processEvents();
@@ -506,13 +514,28 @@ public:
         const bool reachable = usableEditor
                                && m_scrollArea->viewport()->rect().contains(notesRect);
 
+        const auto visibleEditor = [](QScrollArea *page, QWidget *editor) {
+            // QWidget::isVisible() is true even when the editor is clipped
+            // below a page viewport. Prove that scrolling exposes usable
+            // text/editing area, rather than accepting the mere existence of
+            // a QWidget in the hierarchy.
+            page->ensureWidgetVisible(editor, 0, 0);
+            QApplication::processEvents();
+            const QRect editorRect(editor->mapTo(page->viewport(), QPoint()),
+                                   editor->size());
+            const QRect exposed = editorRect.intersected(page->viewport()->rect());
+            return editor->isVisible() && exposed.width() >= 160
+                   && exposed.height() >= 60;
+        };
         m_tabs->setCurrentIndex(2);
         QApplication::processEvents();
-        const bool diagnosticsReachable = m_diagnostics->isVisible()
+        auto *detailsPage = qobject_cast<QScrollArea *>(m_tabs->widget(2));
+        const bool diagnosticsReachable = detailsPage && visibleEditor(detailsPage, m_diagnostics)
                                           && !m_buildIdentity->text().isEmpty();
         m_tabs->setCurrentIndex(3);
         QApplication::processEvents();
-        const bool activityReachable = m_activity->isVisible();
+        auto *eventsPage = qobject_cast<QScrollArea *>(m_tabs->widget(3));
+        const bool activityReachable = eventsPage && visibleEditor(eventsPage, m_activity);
         m_tabs->setCurrentIndex(0);
         const bool pass = compact && tabsPresent && firstScreen && overflow
                           && reachable && diagnosticsReachable && activityReachable
@@ -525,6 +548,9 @@ public:
                   << ',' << actionRect.width() << 'x' << actionRect.height()
                   << " input_rect=" << inputRect.x() << ',' << inputRect.y()
                   << ',' << inputRect.width() << 'x' << inputRect.height()
+                  << " safety_rect=" << safetyRect.x() << ',' << safetyRect.y()
+                  << ',' << safetyRect.width() << 'x' << safetyRect.height()
+                  << " tabs_min=" << m_tabs->minimumSizeHint().width()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
                   << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
                   << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
@@ -797,6 +823,7 @@ private:
     QLabel *m_policy = nullptr;
     QLabel *m_focus = nullptr;
     QLabel *m_focusWarning = nullptr;
+    QLabel *m_dockSecurity = nullptr;
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
