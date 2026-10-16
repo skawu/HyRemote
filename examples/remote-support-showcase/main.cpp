@@ -522,6 +522,9 @@ public:
         auto *vertical = m_scrollArea->verticalScrollBar();
         auto *horizontal = m_scrollArea->horizontalScrollBar();
         const bool overflow = vertical && vertical->maximum() > 0;
+        // A tall, narrow viewport may show the entire form: no scrollbar is
+        // needed in that case. Still fail if Notes cannot be reached either
+        // without scrolling or at the actual scrollbar maximum.
         if (vertical)
             vertical->setValue(vertical->maximum());
         if (horizontal)
@@ -532,6 +535,7 @@ public:
         const bool usableEditor = notesRect.width() >= 160 && notesRect.height() >= 64;
         const bool reachable = usableEditor
                                && m_scrollArea->viewport()->rect().contains(notesRect);
+        const bool scrollContract = vertical && (overflow || reachable);
 
         const auto visibleEditor = [](QScrollArea *page, QWidget *editor) {
             // QWidget::isVisible() is true even when the editor is clipped
@@ -557,7 +561,7 @@ public:
         const bool activityReachable = eventsPage && visibleEditor(eventsPage, m_activity);
         m_tabs->setCurrentIndex(0);
         const bool addressSelector = verifyAddressSelectionWithoutNetwork();
-        const bool pass = compact && tabsPresent && firstScreen && overflow
+        const bool pass = compact && tabsPresent && firstScreen && scrollContract
                           && reachable && diagnosticsReachable && activityReachable && addressSelector
                           && m_remote.state() == HyRemote::RemoteAccessState::Stopped;
         std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
@@ -745,6 +749,16 @@ private:
                             && m_addressHelp->text().contains(QStringLiteral("this address"));
         m_copySelected->click();
         const bool singleCopied = QApplication::clipboard()->text() == a;
+        std::cout << "TOOL_ADDRESS_ORACLE"
+                  << " multi=" << multi
+                  << " selected=" << selected
+                  << " copied=" << copied
+                  << " preserved=" << preserved
+                  << " empty=" << empty
+                  << " single=" << single
+                  << " single_copied=" << singleCopied
+                  << " state=" << m_endpointChoices->currentIndex()
+                  << std::endl;
         QApplication::clipboard()->setText(originalClipboard);
         refreshViewerEndpoints();
         return multi && selected && copied && preserved && empty && single && singleCopied;
