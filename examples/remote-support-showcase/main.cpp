@@ -10,6 +10,7 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFileDialog>
+#include <QFile>
 #include <QFrame>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -34,6 +35,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QTabWidget>
+#include <QTemporaryDir>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -443,12 +445,17 @@ public:
         m_diagnostics->setMinimumHeight(128);
         diagnosticsLayout->addWidget(m_diagnostics);
         auto *diagnosticActions = new QHBoxLayout;
-        auto *copyDiagnostics = new QPushButton(QStringLiteral("Copy report"), diagnosticsBox);
+        m_copyDiagnostics = new QPushButton(QStringLiteral("Copy report"), diagnosticsBox);
         auto *saveDiagnostics = new QPushButton(QStringLiteral("Save report"), diagnosticsBox);
-        diagnosticActions->addWidget(copyDiagnostics);
+        diagnosticActions->addWidget(m_copyDiagnostics);
         diagnosticActions->addWidget(saveDiagnostics);
         diagnosticActions->addStretch(1);
         diagnosticsLayout->addLayout(diagnosticActions);
+        m_exportStatus = new QLabel(QStringLiteral("Ready to copy or save."), diagnosticsBox);
+        m_exportStatus->setObjectName(QStringLiteral("mutedLabel"));
+        m_exportStatus->setAccessibleName(QStringLiteral("Diagnostic report export status"));
+        m_exportStatus->setWordWrap(true);
+        diagnosticsLayout->addWidget(m_exportStatus);
         diagnosticsRoot->addWidget(diagnosticsBox);
         // Put the frequently used report in the first viewport; full build,
         // platform and endpoint metadata follows below as deeper detail.
@@ -497,8 +504,10 @@ public:
             m_copySelected->setEnabled(
                 m_viewerEndpointList.contains(m_endpointChoices->currentText()));
         });
-        QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
+        QObject::connect(m_copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
+            setLabelIfChanged(m_exportStatus, QStringLiteral("Diagnostic report copied to clipboard."));
+            appendActivity(QStringLiteral("Diagnostic report copied"));
         });
         QObject::connect(saveDiagnostics, &QPushButton::clicked, this, [this] {
             const QString path = QFileDialog::getSaveFileName(
@@ -506,8 +515,8 @@ public:
                 QStringLiteral("Save HyRemote diagnostic report"),
                 QStringLiteral("hyremote-diagnostic.txt"),
                 QStringLiteral("Text files (*.txt);;All files (*)"));
-            if (!path.isEmpty() && !saveDiagnosticReport(path))
-                m_error->setText(QStringLiteral("Could not save diagnostic report"));
+            if (!path.isEmpty())
+                exportDiagnosticReport(path);
         });
         QObject::connect(clearActivity, &QPushButton::clicked, m_activity, &QPlainTextEdit::clear);
 
@@ -600,15 +609,17 @@ public:
         const bool addressSelector = verifyAddressSelectionWithoutNetwork();
         const bool policyDialog = verifyPolicyRestartConfirmation();
         const bool darkPalette = verifyDarkPaletteContrast();
+        const bool diagnosticsExport = verifyDiagnosticExport();
         const bool pass = compact && tabsPresent && firstScreen && scrollContract
                           && reachable && diagnosticsReachable && activityReachable && addressSelector
-                          && policyDialog && darkPalette
+                          && policyDialog && darkPalette && diagnosticsExport
                           && m_remote.state() == HyRemote::RemoteAccessState::Stopped;
         std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
                   << " tabs=" << m_tabs->count()
                   << " policy_dialog=" << policyDialog
                   << " dark_palette=" << darkPalette
+                  << " diagnostics_export=" << diagnosticsExport
                   << " first_screen=" << firstScreen
                   << " action_rect=" << actionRect.x() << ',' << actionRect.y()
                   << ',' << actionRect.width() << 'x' << actionRect.height()
@@ -741,6 +752,75 @@ public:
         std::cout << "TOOL_DARK_PALETTE permission=" << permissionDarkText
                   << " form=" << formDarkText << std::endl;
         return permissionDarkText && formDarkText;
+    }
+
+    // Keep report export feedback separate from the public Runtime error
+    // field: a local filesystem failure must never impersonate an RFB error
+    // or disappear when the 100ms diagnostic state is refreshed.
+    bool exportDiagnosticReport(const QString &path)
+    {
+        const bool saved = saveDiagnosticReport(path);
+        setLabelIfChanged(
+            m_exportStatus,
+            saved ? QStringLiteral("Diagnostic report saved.")
+                  : QStringLiteral("Could not save diagnostic report. Check path and permissions."));
+        appendActivity(saved ? QStringLiteral("Diagnostic report saved")
+                             : QStringLiteral("Diagnostic report save failed"));
+        return saved;
+    }
+
+    bool verifyDiagnosticExport()
+    {
+        const QString priorClipboard = QApplication::clipboard()->text();
+        const QString runtimeErrorBefore = m_error->text();
+        const auto runtimeBefore = m_remote.state();
+        const QString originalStatus = m_exportStatus->text();
+        QTemporaryDir dir;
+        if (!dir.isValid()) {
+            std::cout << "TOOL_DIAGNOSTIC_EXPORT temp_dir=0" << std::endl;
+            return false;
+        }
+
+        // Drive the real Copy action and compare the *exact* public report.
+        m_tabs->setCurrentIndex(2);
+        QApplication::processEvents();
+        m_copyDiagnostics->click();
+        const bool copied = QApplication::clipboard()->text() == m_remote.diagnosticReport()
+                            && m_exportStatus->text().contains(QStringLiteral("copied to clipboard"));
+
+        // Verify QSaveFile's committed on-disk bytes, not a fabricated success.
+        const QString goodPath = dir.filePath(QStringLiteral("diagnostic.txt"));
+        const bool saved = exportDiagnosticReport(goodPath);
+        QFile output(goodPath);
+        const bool exactBytes = saved && output.open(QIODevice::ReadOnly)
+                                && output.readAll() == m_remote.diagnosticReport().toUtf8();
+        const bool successStatus =
+            m_exportStatus->text() == QStringLiteral("Diagnostic report saved.");
+
+        // The parent directory deliberately doesn't exist. No privileged
+        // paths, permissions mutations or real user files are touched.
+        const bool rejected = !exportDiagnosticReport(
+            dir.filePath(QStringLiteral("missing-parent/diagnostic.txt")));
+        const bool failedStatus = m_exportStatus->text().contains(
+            QStringLiteral("Could not save diagnostic report"));
+        refreshStatus();
+        const bool runtimeUnaffected = m_error->text() == runtimeErrorBefore
+                                       && m_remote.state() == runtimeBefore
+                                       && m_exportStatus->text().contains(
+                                              QStringLiteral("Could not save diagnostic report"));
+
+        QApplication::clipboard()->setText(priorClipboard);
+        setLabelIfChanged(m_exportStatus, originalStatus);
+        m_tabs->setCurrentIndex(0);
+        std::cout << "TOOL_DIAGNOSTIC_EXPORT copied=" << copied
+                  << " saved=" << saved
+                  << " exact_bytes=" << exactBytes
+                  << " success_status=" << successStatus
+                  << " failed_path_rejected=" << rejected
+                  << " failure_status=" << failedStatus
+                  << " runtime_unchanged=" << runtimeUnaffected << std::endl;
+        return copied && exactBytes && successStatus && rejected
+               && failedStatus && runtimeUnaffected;
     }
 
     bool saveDiagnosticReport(const QString &path) const
@@ -1126,6 +1206,8 @@ private:
     QLabel *m_dockSecurity = nullptr;
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
+    QLabel *m_exportStatus = nullptr;
+    QPushButton *m_copyDiagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
     QTabWidget *m_tabs = nullptr;
     QScrollArea *m_connectionScroll = nullptr;
