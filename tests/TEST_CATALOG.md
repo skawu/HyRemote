@@ -171,7 +171,9 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
-| `hyremote-tool-compact-layout` | Starts the real HyRemoteTool Qt Widgets window offscreen without a listener, resizes it to a 480×360 desktop viewport, requires a live vertical scroll range, and proves the bottom local operator controls become visible after scrolling. Fails if the native window gets an excessive minimum size, bottom actions stay clipped or scrollbar reachability regresses. |
+| `hyremote-tool-compact-layout` | Offscreen no-listener 480×360 QWidget geometry: real Connect/Control/Details/Log tabs, permanent Start/Stop/permission/trusted-LAN warning, full Notes reachability, exposed Details/Log editors, deterministic zero/one/multiple-address selection and copy; **real modal confirmation** verifies cancel-default, accept, current-viewer warning, truthful shared-input limitation in dialog and accessibility description, and listener remaining stopped; a synthetic dark Qt application palette checks the permission/form text on forced-light surfaces. The same oracle drives real Diagnostics Copy and QSaveFile export, verifies canonical public UTF-8/LF report bytes on Windows and Linux (without `QIODevice::Text` translation), non-existent-parent failure, **actual result-label viewport containment after Copy/Save success/failure**, and Runtime-error separation. |
+| `hyremote-tool-narrow-layout` | Same strict 360×640 task-first UI and multi-NIC oracle, modelling a narrow Windows work area; not a physical monitor claim. |
+| `hyremote-tool-compact-dpi125` | Same strict 480×360 layout/address oracle at Qt 125% fractional scale factor; does not substitute for real Windows 125%-DPI/native Viewer acceptance. |
 | `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys or initial bounded Activity markers are missing. |
 | `hyremote-tool-product-fit` | Exact-candidate maintained-viewer evidence for HyRemoteTool behavior: framebuffer, public diagnostics, client 0/1 reconnect lifecycle, pointer/key ingress and clean listener release. It is registered fail-closed and excluded from ordinary fast PRs unless its own candidate-evidence wiring changes; clean-installed/deployed launch evidence is a separate delivery contract. |
 
@@ -206,12 +208,14 @@ The release-profile matrix intentionally uses separate CTest identities because 
 
 Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests.
 
-- current #335 exact-head security-enabled inventory: Linux **113**, Windows **112**;
-- security-off equivalent: Linux **111**, Windows **110**; CI #581 executed those exact full-config counts;
+- current #470 PR head security-enabled full-registration inventory: Linux **115**, Windows **114** (two added cross-platform Tool layout identities);
+- current security-off equivalent: Linux **113**, Windows **112**;
+- historical #335 security-enabled inventory: Linux **113**, Windows **112**;
+- historical security-off full-config evidence from CI #581: Linux **111**, Windows **110**;
 - the one platform-only identity remains Linux `hyremote-qpa-source-payload-relocation`;
 - the post-#358 graph includes `hyremote-runtime-diagnostics-test`, then #335 adds `hyremote-qml-installed-consumer` and `hyremote-qpa-installed-product-fit` cross-platform;
 - the two security-only identities are `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`;
-- #274 final reconciliation adds no CTest identity, so these counts remain unchanged.
+- #274 final reconciliation added no CTest identities at the time; #470 adds `hyremote-tool-narrow-layout` and `hyremote-tool-compact-dpi125` (+2 on both platforms).
 
 The historical Phase-A/#300 95/94 inventory is retained only as a before-refactor baseline in `EXECUTION_BASELINE.md`; it is no longer current registration authority.
 

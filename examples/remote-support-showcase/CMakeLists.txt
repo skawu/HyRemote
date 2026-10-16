@@ -39,6 +39,31 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-compact-layout)
     endif()
 
+    # The real user had a narrow physical Windows desktop. Keep distinct
+    # offscreen compact, narrow, and fractional-DPI acceptance cells.
+    add_test(
+        NAME hyremote-tool-narrow-layout
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+            --verify-compact-layout --verify-compact-size 360x640
+    )
+    set_tests_properties(hyremote-tool-narrow-layout PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
+    add_test(
+        NAME hyremote-tool-compact-dpi125
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-compact-layout
+    )
+    set_tests_properties(hyremote-tool-compact-dpi125 PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.25"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-narrow-layout)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-compact-dpi125)
+    endif()
+
     add_test(
         NAME hyremote-tool-diagnostic-export-test
         COMMAND "${CMAKE_COMMAND}"
