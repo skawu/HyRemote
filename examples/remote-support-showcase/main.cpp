@@ -707,10 +707,16 @@ private:
         m_endpointChoices->blockSignals(true);
         m_endpointChoices->clear();
         m_endpointChoices->addItems(endpoints);
-        if (endpoints.size() > 1 && !endpoints.contains(previous))
+        if (endpoints.size() == 1) {
+            // Qt's QComboBox may retain index -1 after clearing a previously
+            // unselected multi-address list. A single available candidate
+            // needs an explicit selection on every Qt desktop style.
+            m_endpointChoices->setCurrentIndex(0);
+        } else if (endpoints.size() > 1 && !endpoints.contains(previous)) {
             m_endpointChoices->setCurrentIndex(-1);
-        else if (endpoints.contains(previous))
+        } else if (endpoints.contains(previous)) {
             m_endpointChoices->setCurrentText(previous);
+        }
         m_endpointChoices->blockSignals(false);
         m_copySelected->setEnabled(endpoints.contains(m_endpointChoices->currentText()));
         m_copyEndpoints->setEnabled(!endpoints.isEmpty());
