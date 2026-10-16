@@ -1,6 +1,7 @@
 #include <HyRemote/RemoteAccess.h>
 
 #include <QAbstractSocket>
+#include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -16,6 +17,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QNetworkInterface>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -308,6 +310,11 @@ public:
         dockLayout->addLayout(startRow);
         m_input = new QCheckBox(QStringLiteral("Allow remote control"), actionDock);
         m_input->setChecked(initialInputEnabled);
+        m_input->setToolTip(QStringLiteral(
+            "Changing remote-control permission while remote access is running "
+            "will restart the listener and disconnect connected Viewers."));
+        m_input->setAccessibleDescription(QStringLiteral(
+            "Running session policy changes require local confirmation and reconnect Viewers."));
         dockLayout->addWidget(m_input, 0, Qt::AlignLeft);
         m_dockSecurity = new QLabel(
             QStringLiteral("Unencrypted connection - trusted LAN only"), actionDock);
@@ -448,7 +455,7 @@ public:
         QObject::connect(load, &QSlider::valueChanged, loadValue, &QProgressBar::setValue);
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
-            applyRemoteInputPolicy(enabled);
+            requestRemoteInputPolicy(enabled);
         });
         QObject::connect(refreshEndpoints, &QPushButton::clicked, this, [this] {
             refreshViewerEndpoints();
@@ -571,12 +578,15 @@ public:
         const bool activityReachable = eventsPage && visibleEditor(eventsPage, m_activity);
         m_tabs->setCurrentIndex(0);
         const bool addressSelector = verifyAddressSelectionWithoutNetwork();
+        const bool policyDialog = verifyPolicyRestartConfirmation();
         const bool pass = compact && tabsPresent && firstScreen && scrollContract
                           && reachable && diagnosticsReachable && activityReachable && addressSelector
+                          && policyDialog
                           && m_remote.state() == HyRemote::RemoteAccessState::Stopped;
         std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
                   << " tabs=" << m_tabs->count()
+                  << " policy_dialog=" << policyDialog
                   << " first_screen=" << firstScreen
                   << " action_rect=" << actionRect.x() << ',' << actionRect.y()
                   << ',' << actionRect.width() << 'x' << actionRect.height()
@@ -597,6 +607,79 @@ public:
                   << " diagnostics=" << diagnosticsReachable
                   << " activity=" << activityReachable << std::endl;
         return pass;
+    }
+
+    // A consent toggle in the persistent footer is available from *every*
+    // tab. Restarting without a warning would silently disconnect a live
+    // Viewer; confirmation is local-only and defaults to Cancel.
+    bool confirmPolicyRestart(std::size_t connectedClients)
+    {
+        QMessageBox dialog(this);
+        dialog.setIcon(QMessageBox::Warning);
+        dialog.setWindowTitle(QStringLiteral("Restart remote access?"));
+        dialog.setText(QStringLiteral(
+            "Changing remote-control permission restarts remote access."));
+        dialog.setInformativeText(
+            connectedClients == 0
+                ? QStringLiteral(
+                      "The listener will restart. Any Viewer connecting now may be disconnected.")
+                : QStringLiteral(
+                      "%1 connected Viewer(s) will be disconnected and must reconnect.")
+                      .arg(static_cast<qulonglong>(connectedClients)));
+        auto *restart = dialog.addButton(QStringLiteral("Restart access"),
+                                         QMessageBox::AcceptRole);
+        auto *cancel = dialog.addButton(QMessageBox::Cancel);
+        dialog.setDefaultButton(cancel);
+        dialog.setEscapeButton(cancel);
+        dialog.exec();
+        return dialog.clickedButton() == restart;
+    }
+
+    // Headless Qt Widgets regression: exercise the *real* modal controls
+    // through the local event loop, with no network listener or mock facade.
+    bool verifyPolicyRestartConfirmation()
+    {
+        if (m_remote.state() != HyRemote::RemoteAccessState::Stopped
+            || m_remote.remoteInputEnabled())
+            return false;
+
+        const auto exercise = [this](bool approve) {
+            bool correctDialog = false;
+            QTimer::singleShot(0, this, [this, approve, &correctDialog] {
+                auto *box = findChild<QMessageBox *>();
+                if (!box)
+                    return;
+                auto *cancel = box->button(QMessageBox::Cancel);
+                QAbstractButton *restart = nullptr;
+                for (QAbstractButton *button : box->buttons()) {
+                    if (box->buttonRole(button) == QMessageBox::AcceptRole)
+                        restart = button;
+                }
+                correctDialog = cancel && restart
+                                && box->defaultButton() == cancel
+                                && box->escapeButton() == cancel
+                                && box->text().contains(QStringLiteral("restarts remote access"))
+                                && box->informativeText().contains(QStringLiteral("2 connected"))
+                                && restart->text() == QStringLiteral("Restart access");
+                if (approve && restart)
+                    restart->click();
+                else if (cancel)
+                    cancel->click();
+                else
+                    box->reject();
+            });
+            const bool accepted = confirmPolicyRestart(2);
+            return correctDialog && accepted == approve;
+        };
+
+        const bool canceled = exercise(false);
+        const bool accepted = exercise(true);
+        const bool unchanged = m_remote.state() == HyRemote::RemoteAccessState::Stopped
+                               && !m_remote.remoteInputEnabled();
+        std::cout << "TOOL_POLICY_CONFIRMATION cancel=" << canceled
+                  << " accept=" << accepted
+                  << " listener_stopped=" << unchanged << std::endl;
+        return canceled && accepted && unchanged;
     }
 
     bool saveDiagnosticReport(const QString &path) const
@@ -663,6 +746,24 @@ private:
             return;
         }
         startRemoteAccess();
+    }
+
+    void requestRemoteInputPolicy(bool enabled)
+    {
+        if (enabled == m_remote.remoteInputEnabled())
+            return;
+        if (m_remote.state() == HyRemote::RemoteAccessState::Running
+            && !confirmPolicyRestart(m_remote.connectedClientCount())) {
+            // Revert the local check state without recursively requesting
+            // another policy change. A canceled action does not restart the
+            // listener, drop Viewers, or alter Runtime permissions.
+            m_input->blockSignals(true);
+            m_input->setChecked(m_remote.remoteInputEnabled());
+            m_input->blockSignals(false);
+            appendActivity(QStringLiteral("Remote input permission change canceled"));
+            return;
+        }
+        applyRemoteInputPolicy(enabled);
     }
 
     void applyRemoteInputPolicy(bool enabled)

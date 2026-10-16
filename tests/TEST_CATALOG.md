@@ -171,7 +171,7 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
-| `hyremote-tool-compact-layout` | Offscreen no-listener 480×360 QWidget geometry: real Connect/Control/Details/Log tabs, permanent Start/Stop/permission/trusted-LAN warning, full Notes reachability, exposed Details/Log editors and deterministic zero/one/multiple-address selection, selection preservation and copy behavior. |
+| `hyremote-tool-compact-layout` | Offscreen no-listener 480×360 QWidget geometry: real Connect/Control/Details/Log tabs, permanent Start/Stop/permission/trusted-LAN warning, full Notes reachability, exposed Details/Log editors, deterministic zero/one/multiple-address selection and copy; **real modal confirmation** verifies cancel-default, accept, current-viewer warning and listener remaining stopped. |
 | `hyremote-tool-narrow-layout` | Same strict 360×640 task-first UI and multi-NIC oracle, modelling a narrow Windows work area; not a physical monitor claim. |
 | `hyremote-tool-compact-dpi125` | Same strict 480×360 layout/address oracle at Qt 125% fractional scale factor; does not substitute for real Windows 125%-DPI/native Viewer acceptance. |
 | `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys or initial bounded Activity markers are missing. |
