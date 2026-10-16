@@ -4,6 +4,7 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QClipboard>
 #include <QCommandLineOption>
@@ -19,6 +20,7 @@
 #include <QNetworkInterface>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPalette>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScreen>
@@ -136,6 +138,21 @@ public:
             QWidget#toolHeader { background: #ffffff; border-bottom: 1px solid #dce3ed; }
             QFrame#toolCard { background: #ffffff; border: 1px solid #dce3ed; border-radius: 10px; }
             QFrame#actionDock { background: #ffffff; border-top: 1px solid #dce3ed; }
+            /* Forced-light cards need matching foregrounds under dark Qt palettes. */
+            QFrame#toolCard QLabel, QFrame#actionDock QLabel,
+            QFrame#toolCard QCheckBox, QFrame#actionDock QCheckBox {
+                color: #17243b;
+            }
+            QFrame#toolCard QLineEdit, QFrame#toolCard QSpinBox,
+            QFrame#toolCard QPlainTextEdit, QFrame#toolCard QComboBox {
+                color: #17243b; background: #ffffff;
+            }
+            QFrame#toolCard QLabel#mutedLabel, QFrame#actionDock QLabel#mutedLabel {
+                color: #52657e;
+            }
+            QFrame#toolCard QLabel#securityNote, QFrame#toolCard QLabel#focusNote {
+                color: #734a00;
+            }
             QLabel#toolTitle { font-size: 20px; font-weight: 700; color: #17243b; }
             QLabel#sectionTitle { font-size: 16px; font-weight: 650; color: #17243b; }
             QLabel#eyebrow { font-size: 10px; font-weight: 700; color: #52657e; }
@@ -367,6 +384,7 @@ public:
         workLayout->addRow(QStringLiteral("Load indicator"), loadValue);
         workLayout->addRow(QString(), maintenance);
         workLayout->addRow(QStringLiteral("Notes"), notes);
+        m_assetFormLabel = qobject_cast<QLabel *>(workLayout->labelForField(asset));
         workOuter->addLayout(workLayout);
         workRoot->addWidget(workBox);
         workRoot->addStretch(1);
@@ -579,14 +597,16 @@ public:
         m_tabs->setCurrentIndex(0);
         const bool addressSelector = verifyAddressSelectionWithoutNetwork();
         const bool policyDialog = verifyPolicyRestartConfirmation();
+        const bool darkPalette = verifyDarkPaletteContrast();
         const bool pass = compact && tabsPresent && firstScreen && scrollContract
                           && reachable && diagnosticsReachable && activityReachable && addressSelector
-                          && policyDialog
+                          && policyDialog && darkPalette
                           && m_remote.state() == HyRemote::RemoteAccessState::Stopped;
         std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
                   << " tabs=" << m_tabs->count()
                   << " policy_dialog=" << policyDialog
+                  << " dark_palette=" << darkPalette
                   << " first_screen=" << firstScreen
                   << " action_rect=" << actionRect.x() << ',' << actionRect.y()
                   << ',' << actionRect.width() << 'x' << actionRect.height()
@@ -610,8 +630,9 @@ public:
     }
 
     // A consent toggle in the persistent footer is available from *every*
-    // tab. Restarting without a warning would silently disconnect a live
-    // Viewer; confirmation is local-only and defaults to Cancel.
+    // tab. Restarting without a warning would silently disconnect a Viewer.
+    // This is a shared in-app confirmation, NOT local-only authorization:
+    // an already-permitted remote Viewer can interact with its dialog.
     bool confirmPolicyRestart(std::size_t connectedClients)
     {
         QMessageBox dialog(this);
@@ -619,13 +640,15 @@ public:
         dialog.setWindowTitle(QStringLiteral("Restart remote access?"));
         dialog.setText(QStringLiteral(
             "Changing remote-control permission restarts remote access."));
+        const QString impact = connectedClients == 0
+                                   ? QStringLiteral(
+                                         "The listener will restart. A connecting Viewer may be disconnected.")
+                                   : QStringLiteral(
+                                         "%1 connected Viewer(s) will be disconnected and must reconnect.")
+                                         .arg(static_cast<qulonglong>(connectedClients));
         dialog.setInformativeText(
-            connectedClients == 0
-                ? QStringLiteral(
-                      "The listener will restart. Any Viewer connecting now may be disconnected.")
-                : QStringLiteral(
-                      "%1 connected Viewer(s) will be disconnected and must reconnect.")
-                      .arg(static_cast<qulonglong>(connectedClients)));
+            impact + QStringLiteral(
+                "\nViewers with remote control may also interact with this dialog."));
         auto *restart = dialog.addButton(QStringLiteral("Restart access"),
                                          QMessageBox::AcceptRole);
         auto *cancel = dialog.addButton(QMessageBox::Cancel);
@@ -660,6 +683,8 @@ public:
                                 && box->escapeButton() == cancel
                                 && box->text().contains(QStringLiteral("restarts remote access"))
                                 && box->informativeText().contains(QStringLiteral("2 connected"))
+                                && box->informativeText().contains(
+                                       QStringLiteral("remote control may also interact"))
                                 && restart->text() == QStringLiteral("Restart access");
                 if (approve && restart)
                     restart->click();
@@ -680,6 +705,33 @@ public:
                   << " accept=" << accepted
                   << " listener_stopped=" << unchanged << std::endl;
         return canceled && accepted && unchanged;
+    }
+
+    // Verify forced-light card text remains readable with a dark native
+    // application palette. This is a headless style/palette oracle; real
+    // desktop themes still require physical visual acceptance.
+    bool verifyDarkPaletteContrast()
+    {
+        const QPalette original = QApplication::palette();
+        QPalette dark = original;
+        dark.setColor(QPalette::Window, QColor(28, 32, 40));
+        dark.setColor(QPalette::WindowText, QColor(244, 246, 252));
+        dark.setColor(QPalette::Base, QColor(28, 32, 40));
+        dark.setColor(QPalette::Text, QColor(244, 246, 252));
+        QApplication::setPalette(dark);
+        QApplication::processEvents();
+
+        const bool permissionDarkText =
+            m_input->palette().color(QPalette::WindowText).lightness() < 165;
+        const bool formDarkText =
+            m_assetFormLabel
+            && m_assetFormLabel->palette().color(QPalette::WindowText).lightness() < 165;
+
+        QApplication::setPalette(original);
+        QApplication::processEvents();
+        std::cout << "TOOL_DARK_PALETTE permission=" << permissionDarkText
+                  << " form=" << formDarkText << std::endl;
+        return permissionDarkText && formDarkText;
     }
 
     bool saveDiagnosticReport(const QString &path) const
@@ -1061,6 +1113,7 @@ private:
     QLabel *m_policy = nullptr;
     QLabel *m_focus = nullptr;
     QLabel *m_focusWarning = nullptr;
+    QLabel *m_assetFormLabel = nullptr;
     QLabel *m_dockSecurity = nullptr;
     QLabel *m_error = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
