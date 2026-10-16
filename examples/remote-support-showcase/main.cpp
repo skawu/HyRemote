@@ -455,6 +455,11 @@ public:
         m_exportStatus->setObjectName(QStringLiteral("mutedLabel"));
         m_exportStatus->setAccessibleName(QStringLiteral("Diagnostic report export status"));
         m_exportStatus->setWordWrap(true);
+        // The Details body can keep a wide native Windows form minimum; do
+        // not let that width make an operation result larger than the narrow
+        // scroll viewport where the operator must be able to read it.
+        m_exportStatus->setMaximumWidth(280);
+        m_exportStatus->setMinimumHeight(20);
         diagnosticsLayout->addWidget(m_exportStatus);
         diagnosticsRoot->addWidget(diagnosticsBox);
         // Put the frequently used report in the first viewport; full build,
@@ -760,8 +765,13 @@ public:
         // The report and action row may be taller than the compact Details
         // viewport. Automatically scroll the actual result into view rather
         // than relying on a QLabel below the fold.
-        if (auto *details = qobject_cast<QScrollArea *>(m_tabs->widget(2)))
+        if (auto *details = qobject_cast<QScrollArea *>(m_tabs->widget(2))) {
+            // Compute wrapped label geometry before scrolling; on native
+            // Windows styles the size hint can change after a text update.
+            if (auto *layout = m_exportStatus->parentWidget()->layout())
+                layout->activate();
             details->ensureWidgetVisible(m_exportStatus, 0, 0);
+        }
     }
 
     // Keep report export feedback separate from the public Runtime error
@@ -795,19 +805,30 @@ public:
         m_tabs->setCurrentIndex(2);
         QApplication::processEvents();
         auto *detailsPage = qobject_cast<QScrollArea *>(m_tabs->widget(2));
-        const auto statusExposed = [this, detailsPage]() {
-            if (!detailsPage || !m_exportStatus->isVisible())
+        const auto statusExposed = [this, detailsPage](const char *phase) {
+            if (!detailsPage || !m_exportStatus->isVisible()) {
+                std::cout << "TOOL_EXPORT_VISIBILITY phase=" << phase
+                          << " visible=0" << std::endl;
                 return false;
+            }
             QApplication::processEvents();
             const QRect actual(m_exportStatus->mapTo(detailsPage->viewport(), QPoint()),
                                m_exportStatus->size());
-            return actual.width() >= 160 && actual.height() >= 14
-                   && detailsPage->viewport()->rect().contains(actual);
+            const QRect viewport = detailsPage->viewport()->rect();
+            const bool visible = actual.width() >= 160 && actual.height() >= 14
+                                 && viewport.contains(actual);
+            std::cout << "TOOL_EXPORT_VISIBILITY phase=" << phase
+                      << " contained=" << visible
+                      << " label=" << actual.x() << ',' << actual.y()
+                      << ',' << actual.width() << 'x' << actual.height()
+                      << " viewport=" << viewport.width() << 'x' << viewport.height()
+                      << std::endl;
+            return visible;
         };
         m_copyDiagnostics->click();
         const bool copied = QApplication::clipboard()->text() == m_remote.diagnosticReport()
                             && m_exportStatus->text().contains(QStringLiteral("copied to clipboard"))
-                            && statusExposed();
+                            && statusExposed("copy");
 
         // Verify QSaveFile's committed on-disk bytes, not a fabricated success.
         const QString goodPath = dir.filePath(QStringLiteral("diagnostic.txt"));
@@ -817,14 +838,14 @@ public:
                                 && output.readAll() == m_remote.diagnosticReport().toUtf8();
         const bool successStatus =
             m_exportStatus->text() == QStringLiteral("Diagnostic report saved.")
-            && statusExposed();
+            && statusExposed("save");
 
         // The parent directory deliberately doesn't exist. No privileged
         // paths, permissions mutations or real user files are touched.
         const bool rejected = !exportDiagnosticReport(
             dir.filePath(QStringLiteral("missing-parent/diagnostic.txt")));
         const bool failedStatus = m_exportStatus->text().contains(
-            QStringLiteral("Could not save diagnostic report")) && statusExposed();
+            QStringLiteral("Could not save diagnostic report")) && statusExposed("failure");
         refreshStatus();
         const bool runtimeUnaffected = m_error->text() == runtimeErrorBefore
                                        && m_remote.state() == runtimeBefore
