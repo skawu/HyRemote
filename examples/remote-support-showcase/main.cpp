@@ -22,6 +22,7 @@
 #include <QScreen>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSize>
 #include <QSizePolicy>
 #include <QSaveFile>
 #include <QSlider>
@@ -70,6 +71,13 @@ QString diagnosticValue(const QString &report, const QString &key)
             return line.mid(prefix.size());
     }
     return QStringLiteral("unknown");
+}
+
+// An unchanged 100ms poll must not dirty the captured framebuffer.
+void setLabelIfChanged(QLabel *label, const QString &value)
+{
+    if (label->text() != value)
+        label->setText(value);
 }
 
 QStringList viewerEndpoints(quint16 port)
@@ -236,6 +244,10 @@ public:
         m_copySelected = new QPushButton(QStringLiteral("Copy address"), connectCard);
         addressRow->addWidget(m_copySelected);
         connectCardLayout->addLayout(addressRow);
+        m_addressHelp = new QLabel(connectCard);
+        m_addressHelp->setObjectName(QStringLiteral("mutedLabel"));
+        m_addressHelp->setWordWrap(true);
+        connectCardLayout->addWidget(m_addressHelp);
 
 
         m_policy = new QLabel(connectCard);
@@ -485,11 +497,11 @@ public:
 
     // Offscreen/desktop regression oracle: primary connection actions and
     // all operator/diagnostic tabs must be navigable on compact screens.
-    bool verifyCompactLayout()
+    bool verifyCompactLayout(const QSize &target)
     {
-        resize(480, 360);
+        resize(target);
         QApplication::processEvents();
-        const bool compact = width() <= 480 && height() <= 360;
+        const bool compact = width() <= target.width() && height() <= target.height();
         const bool tabsPresent = m_tabs->count() == 4;
         m_tabs->setCurrentIndex(0);
         QApplication::processEvents();
@@ -544,8 +556,9 @@ public:
         auto *eventsPage = qobject_cast<QScrollArea *>(m_tabs->widget(3));
         const bool activityReachable = eventsPage && visibleEditor(eventsPage, m_activity);
         m_tabs->setCurrentIndex(0);
+        const bool addressSelector = verifyAddressSelectionWithoutNetwork();
         const bool pass = compact && tabsPresent && firstScreen && overflow
-                          && reachable && diagnosticsReachable && activityReachable
+                          && reachable && diagnosticsReachable && activityReachable && addressSelector
                           && m_remote.state() == HyRemote::RemoteAccessState::Stopped;
         std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
@@ -668,49 +681,91 @@ private:
 
     void refreshViewerEndpoints()
     {
+        presentViewerEndpoints(viewerEndpoints(m_port));
+    }
+
+    // Address selection is UI-only; never infer that a VPN/VM NIC is reachable.
+    void presentViewerEndpoints(const QStringList &endpoints)
+    {
         const QString previous = m_endpointChoices->currentText();
-        m_viewerEndpointList = viewerEndpoints(m_port);
-        m_viewerEndpoints->setText(m_viewerEndpointList.isEmpty()
-                                       ? QStringLiteral("No non-loopback IPv4 address detected")
-                                       : m_viewerEndpointList.join(QStringLiteral("\n")));
+        m_viewerEndpointList = endpoints;
+        setLabelIfChanged(m_viewerEndpoints,
+                          endpoints.isEmpty()
+                              ? QStringLiteral("No non-loopback IPv4 address detected")
+                              : endpoints.join(QStringLiteral("\n")));
+        setLabelIfChanged(
+            m_addressHelp,
+            endpoints.isEmpty()
+                ? QStringLiteral("No LAN IPv4 address found. Check network adapters.")
+                : endpoints.size() == 1
+                      ? QStringLiteral("Use this address only if the Viewer can reach this LAN.")
+                      : QStringLiteral("Multiple adapters: choose an IP on the Viewer's trusted LAN."));
         m_endpointChoices->blockSignals(true);
         m_endpointChoices->clear();
-        m_endpointChoices->addItems(m_viewerEndpointList);
-        if (m_viewerEndpointList.size() > 1 && !m_viewerEndpointList.contains(previous))
+        m_endpointChoices->addItems(endpoints);
+        if (endpoints.size() > 1 && !endpoints.contains(previous))
             m_endpointChoices->setCurrentIndex(-1);
-        else if (m_viewerEndpointList.contains(previous))
+        else if (endpoints.contains(previous))
             m_endpointChoices->setCurrentText(previous);
         m_endpointChoices->blockSignals(false);
-        const bool selected = m_viewerEndpointList.contains(m_endpointChoices->currentText());
-        m_copySelected->setEnabled(selected);
-        m_copyEndpoints->setEnabled(!m_viewerEndpointList.isEmpty());
+        m_copySelected->setEnabled(endpoints.contains(m_endpointChoices->currentText()));
+        m_copyEndpoints->setEnabled(!endpoints.isEmpty());
+    }
+
+    bool verifyAddressSelectionWithoutNetwork()
+    {
+        // Test-only TEST-NET fixtures do not touch listener or network state.
+        const QString originalClipboard = QApplication::clipboard()->text();
+        const QString a = QStringLiteral("192.0.2.10:5921");
+        const QString b = QStringLiteral("198.51.100.20:5921");
+        presentViewerEndpoints({a, b});
+        const bool multi = m_endpointChoices->count() == 2
+                           && m_endpointChoices->currentIndex() == -1
+                           && !m_copySelected->isEnabled()
+                           && m_copyEndpoints->isEnabled()
+                           && m_addressHelp->text().contains(QStringLiteral("Multiple"));
+        m_endpointChoices->setCurrentIndex(1);
+        const bool selected = m_copySelected->isEnabled();
+        m_copySelected->click();
+        const bool copied = QApplication::clipboard()->text() == b;
+        presentViewerEndpoints({b, a});
+        const bool preserved = m_endpointChoices->currentText() == b
+                               && m_copySelected->isEnabled();
+        presentViewerEndpoints({});
+        const bool empty = m_endpointChoices->count() == 0
+                           && !m_copySelected->isEnabled()
+                           && !m_copyEndpoints->isEnabled()
+                           && m_addressHelp->text().contains(QStringLiteral("No LAN"));
+        QApplication::clipboard()->setText(originalClipboard);
+        refreshViewerEndpoints();
+        return multi && selected && copied && preserved && empty;
     }
 
     void refreshStatus()
     {
         const auto state = m_remote.state();
-        m_state->setText(stateName(state));
-        m_policy->setText(m_remote.remoteInputEnabled()
+        setLabelIfChanged(m_state, stateName(state));
+        setLabelIfChanged(m_policy, m_remote.remoteInputEnabled()
                               ? QStringLiteral("Remote view + control")
                               : QStringLiteral("View-only (safe default)"));
 
         const bool windowActive = isActiveWindow();
-        m_focus->setText(windowActive ? QStringLiteral("Active OS window")
+        setLabelIfChanged(m_focus, windowActive ? QStringLiteral("Active OS window")
                                       : QStringLiteral("Not active"));
         m_focusWarning->setVisible(m_remote.remoteInputEnabled() && !windowActive);
 
         const std::size_t clientCount = m_remote.connectedClientCount();
-        m_clients->setText(QStringLiteral("%1 client%2")
+        setLabelIfChanged(m_clients, QStringLiteral("%1 client%2")
                                .arg(static_cast<qulonglong>(clientCount))
                                .arg(clientCount == 1 ? QString() : QStringLiteral("s")));
         if (state == HyRemote::RemoteAccessState::Running) {
-            m_connection->setText(clientCount > 0
+            setLabelIfChanged(m_connection, clientCount > 0
                                       ? QStringLiteral("Viewer connected")
                                       : QStringLiteral("Waiting for viewer"));
         } else if (state == HyRemote::RemoteAccessState::Starting) {
-            m_connection->setText(QStringLiteral("Starting listener"));
+            setLabelIfChanged(m_connection, QStringLiteral("Starting listener"));
         } else {
-            m_connection->setText(QStringLiteral("Remote access stopped"));
+            setLabelIfChanged(m_connection, QStringLiteral("Remote access stopped"));
         }
         if (clientCount != m_lastReportedClientCount) {
             const std::size_t previousClientCount = m_lastReportedClientCount;
@@ -727,8 +782,10 @@ private:
 
         const bool active = state == HyRemote::RemoteAccessState::Running ||
                             state == HyRemote::RemoteAccessState::Starting;
-        m_startStop->setText(active ? QStringLiteral("Stop remote access")
-                                    : QStringLiteral("Start remote access"));
+        const QString actionText = active ? QStringLiteral("Stop remote access")
+                                          : QStringLiteral("Start remote access");
+        if (m_startStop->text() != actionText)
+            m_startStop->setText(actionText);
         // The status poll runs every 100ms. Re-polishing a visible QLabel on
         // each tick costs layout/paint work and can itself trigger captured
         // framebuffer updates. Style only on actual state transitions.
@@ -748,7 +805,7 @@ private:
             errorText = error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message;
             errorCode = static_cast<int>(error->code);
         }
-        m_error->setText(errorText);
+        setLabelIfChanged(m_error, errorText);
 
         const QString diagnosticTrigger =
             QStringLiteral("%1|%2|%3|%4|%5")
@@ -849,6 +906,7 @@ private:
     QScrollArea *m_connectionScroll = nullptr;
     QScrollArea *m_scrollArea = nullptr;
     QComboBox *m_endpointChoices = nullptr;
+    QLabel *m_addressHelp = nullptr;
     QPushButton *m_copySelected = nullptr;
     QWidget *m_operatorControls = nullptr;
     QPlainTextEdit *m_operatorNotes = nullptr;
@@ -883,6 +941,10 @@ int main(int argc, char **argv)
     QCommandLineOption compactLayoutOption(
         QStringLiteral("verify-compact-layout"),
         QStringLiteral("CI-only check: compact native window and bottom-panel scrolling."));
+    QCommandLineOption compactSizeOption(
+        QStringLiteral("verify-compact-size"),
+        QStringLiteral("CI-only geometry for --verify-compact-layout (WxH)."),
+        QStringLiteral("WxH"), QStringLiteral("480x360"));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     QCommandLineOption diagnosticReportFileOption(
@@ -892,6 +954,7 @@ int main(int argc, char **argv)
     parser.addOption(autoStartOption);
     parser.addOption(secondsOption);
     parser.addOption(compactLayoutOption);
+    parser.addOption(compactSizeOption);
     parser.addOption(diagnosticReportFileOption);
     parser.process(app);
 
@@ -908,8 +971,19 @@ int main(int argc, char **argv)
     if (parser.isSet(compactLayoutOption)) {
         // Keep this isolated from --auto-start: a UI layout smoke must not
         // open a listener, change the input policy or require a VNC viewer.
-        QTimer::singleShot(0, &window, [&window, &app] {
-            app.exit(window.verifyCompactLayout() ? 0 : 1);
+        const QStringList dimensions = parser.value(compactSizeOption).split(QLatin1Char('x'));
+        bool validWidth = false;
+        bool validHeight = false;
+        const int testWidth = dimensions.value(0).toInt(&validWidth);
+        const int testHeight = dimensions.value(1).toInt(&validHeight);
+        if (dimensions.size() != 2 || !validWidth || !validHeight
+            || testWidth < 320 || testHeight < 320
+            || testWidth > 1600 || testHeight > 1200) {
+            std::cerr << "Invalid --verify-compact-size; expected WxH" << std::endl;
+            return 64;
+        }
+        QTimer::singleShot(0, &window, [&window, &app, testWidth, testHeight] {
+            app.exit(window.verifyCompactLayout(QSize(testWidth, testHeight)) ? 0 : 1);
         });
         return app.exec();
     }
