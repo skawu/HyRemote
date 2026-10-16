@@ -506,7 +506,7 @@ public:
         });
         QObject::connect(m_copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
-            setLabelIfChanged(m_exportStatus, QStringLiteral("Diagnostic report copied to clipboard."));
+            presentExportStatus(QStringLiteral("Diagnostic report copied to clipboard."));
             appendActivity(QStringLiteral("Diagnostic report copied"));
         });
         QObject::connect(saveDiagnostics, &QPushButton::clicked, this, [this] {
@@ -754,14 +754,23 @@ public:
         return permissionDarkText && formDarkText;
     }
 
+    void presentExportStatus(const QString &status)
+    {
+        setLabelIfChanged(m_exportStatus, status);
+        // The report and action row may be taller than the compact Details
+        // viewport. Automatically scroll the actual result into view rather
+        // than relying on a QLabel below the fold.
+        if (auto *details = qobject_cast<QScrollArea *>(m_tabs->widget(2)))
+            details->ensureWidgetVisible(m_exportStatus, 0, 0);
+    }
+
     // Keep report export feedback separate from the public Runtime error
     // field: a local filesystem failure must never impersonate an RFB error
     // or disappear when the 100ms diagnostic state is refreshed.
     bool exportDiagnosticReport(const QString &path)
     {
         const bool saved = saveDiagnosticReport(path);
-        setLabelIfChanged(
-            m_exportStatus,
+        presentExportStatus(
             saved ? QStringLiteral("Diagnostic report saved.")
                   : QStringLiteral("Could not save diagnostic report. Check path and permissions."));
         appendActivity(saved ? QStringLiteral("Diagnostic report saved")
@@ -781,12 +790,24 @@ public:
             return false;
         }
 
-        // Drive the real Copy action and compare the *exact* public report.
+        // Drive the real Copy action and prove that the status becomes
+        // visible in the *actual* Details viewport, not just in the widget tree.
         m_tabs->setCurrentIndex(2);
         QApplication::processEvents();
+        auto *detailsPage = qobject_cast<QScrollArea *>(m_tabs->widget(2));
+        const auto statusExposed = [this, detailsPage]() {
+            if (!detailsPage || !m_exportStatus->isVisible())
+                return false;
+            QApplication::processEvents();
+            const QRect actual(m_exportStatus->mapTo(detailsPage->viewport(), QPoint()),
+                               m_exportStatus->size());
+            return actual.width() >= 160 && actual.height() >= 14
+                   && detailsPage->viewport()->rect().contains(actual);
+        };
         m_copyDiagnostics->click();
         const bool copied = QApplication::clipboard()->text() == m_remote.diagnosticReport()
-                            && m_exportStatus->text().contains(QStringLiteral("copied to clipboard"));
+                            && m_exportStatus->text().contains(QStringLiteral("copied to clipboard"))
+                            && statusExposed();
 
         // Verify QSaveFile's committed on-disk bytes, not a fabricated success.
         const QString goodPath = dir.filePath(QStringLiteral("diagnostic.txt"));
@@ -795,14 +816,15 @@ public:
         const bool exactBytes = saved && output.open(QIODevice::ReadOnly)
                                 && output.readAll() == m_remote.diagnosticReport().toUtf8();
         const bool successStatus =
-            m_exportStatus->text() == QStringLiteral("Diagnostic report saved.");
+            m_exportStatus->text() == QStringLiteral("Diagnostic report saved.")
+            && statusExposed();
 
         // The parent directory deliberately doesn't exist. No privileged
         // paths, permissions mutations or real user files are touched.
         const bool rejected = !exportDiagnosticReport(
             dir.filePath(QStringLiteral("missing-parent/diagnostic.txt")));
         const bool failedStatus = m_exportStatus->text().contains(
-            QStringLiteral("Could not save diagnostic report"));
+            QStringLiteral("Could not save diagnostic report")) && statusExposed();
         refreshStatus();
         const bool runtimeUnaffected = m_error->text() == runtimeErrorBefore
                                        && m_remote.state() == runtimeBefore
