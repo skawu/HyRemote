@@ -771,6 +771,22 @@ public:
             if (auto *layout = m_exportStatus->parentWidget()->layout())
                 layout->activate();
             details->ensureWidgetVisible(m_exportStatus, 0, 0);
+            // Qt's ensureWidgetVisible may leave a few bottom pixels
+            // clipped under the native Windows style (observed 6px in
+            // #750). Enforce complete viewport containment using the
+            // actual mapped label geometry, without changing test or
+            // shrinking the useful message.
+            auto *scroll = details->verticalScrollBar();
+            const QRect view = details->viewport()->rect();
+            const QRect status(m_exportStatus->mapTo(details->viewport(), QPoint()),
+                               m_exportStatus->size());
+            if (scroll && status.bottom() > view.bottom()) {
+                const int overflow = status.bottom() - view.bottom();
+                scroll->setValue(qMin(scroll->maximum(), scroll->value() + overflow + 4));
+            } else if (scroll && status.top() < view.top()) {
+                const int overshoot = view.top() - status.top();
+                scroll->setValue(qMax(scroll->minimum(), scroll->value() - overshoot - 4));
+            }
         }
     }
 
