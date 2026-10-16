@@ -829,7 +829,10 @@ public:
             return false;
 
         QSaveFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        // QIODevice::Text would rewrite LF to CRLF on Windows, so the
+        // exported file would no longer match public diagnosticReport()
+        // byte-for-byte. Save the canonical UTF-8/LF payload verbatim.
+        if (!file.open(QIODevice::WriteOnly))
             return false;
 
         const QByteArray payload = m_remote.diagnosticReport().toUtf8();
