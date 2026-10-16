@@ -462,7 +462,11 @@ public:
                 QApplication::clipboard()->setText(address);
         });
         QObject::connect(m_endpointChoices, &QComboBox::currentIndexChanged, this,
-                         [this](int) {
+                         [this](int index) {
+            // This signal is blocked during programmatic refresh. A positive
+            // index here represents an explicit operator selection, not an
+            // automatically selected sole host address.
+            m_endpointSelectionExplicit = index >= 0;
             m_copySelected->setEnabled(
                 m_viewerEndpointList.contains(m_endpointChoices->currentText()));
         });
@@ -535,7 +539,13 @@ public:
         const bool usableEditor = notesRect.width() >= 160 && notesRect.height() >= 64;
         const bool reachable = usableEditor
                                && m_scrollArea->viewport()->rect().contains(notesRect);
-        const bool scrollContract = vertical && (overflow || reachable);
+        // Preserve the original landscape regression: at 480x360 the Tool
+        // must expose actual vertical scrolling. Only 360x640, which may fit
+        // all controls, is allowed a zero-range scrollbar if Notes is visible.
+        const bool scrollContract = vertical
+                                    && (target == QSize(360, 640)
+                                            ? (overflow || reachable)
+                                            : overflow);
 
         const auto visibleEditor = [](QScrollArea *page, QWidget *editor) {
             // QWidget::isVisible() is true even when the editor is clipped
@@ -692,6 +702,8 @@ private:
     void presentViewerEndpoints(const QStringList &endpoints)
     {
         const QString previous = m_endpointChoices->currentText();
+        const bool preserveExplicitChoice =
+            m_endpointSelectionExplicit && endpoints.contains(previous);
         m_viewerEndpointList = endpoints;
         setLabelIfChanged(m_viewerEndpoints,
                           endpoints.isEmpty()
@@ -708,14 +720,18 @@ private:
         m_endpointChoices->clear();
         m_endpointChoices->addItems(endpoints);
         if (endpoints.size() == 1) {
-            // Qt's QComboBox may retain index -1 after clearing a previously
-            // unselected multi-address list. A single available candidate
-            // needs an explicit selection on every Qt desktop style.
+            // A unique candidate may be auto-selected, but must never count
+            // as operator consent if a second host address later appears.
             m_endpointChoices->setCurrentIndex(0);
-        } else if (endpoints.size() > 1 && !endpoints.contains(previous)) {
-            m_endpointChoices->setCurrentIndex(-1);
-        } else if (endpoints.contains(previous)) {
+            m_endpointSelectionExplicit = false;
+        } else if (endpoints.size() > 1 && preserveExplicitChoice) {
             m_endpointChoices->setCurrentText(previous);
+            m_endpointSelectionExplicit = true;
+        } else {
+            // No address, changed adapter list, or a formerly automatic
+            // singleton that has become ambiguous: require local selection.
+            m_endpointChoices->setCurrentIndex(-1);
+            m_endpointSelectionExplicit = false;
         }
         m_endpointChoices->blockSignals(false);
         m_copySelected->setEnabled(endpoints.contains(m_endpointChoices->currentText()));
@@ -755,6 +771,18 @@ private:
                             && m_addressHelp->text().contains(QStringLiteral("this address"));
         m_copySelected->click();
         const bool singleCopied = QApplication::clipboard()->text() == a;
+        presentViewerEndpoints({a, b});
+        const bool automaticCleared = m_endpointChoices->count() == 2
+                                      && m_endpointChoices->currentIndex() == -1
+                                      && !m_endpointSelectionExplicit
+                                      && !m_copySelected->isEnabled();
+        m_endpointChoices->setCurrentIndex(0);
+        const bool explicitChosen = m_endpointSelectionExplicit
+                                    && m_copySelected->isEnabled();
+        presentViewerEndpoints({b, a});
+        const bool explicitPersisted = m_endpointChoices->currentText() == a
+                                       && m_endpointSelectionExplicit
+                                       && m_copySelected->isEnabled();
         std::cout << "TOOL_ADDRESS_ORACLE"
                   << " multi=" << multi
                   << " selected=" << selected
@@ -763,11 +791,16 @@ private:
                   << " empty=" << empty
                   << " single=" << single
                   << " single_copied=" << singleCopied
+                  << " auto_cleared=" << automaticCleared
+                  << " explicit_chosen=" << explicitChosen
+                  << " explicit_persisted=" << explicitPersisted
                   << " state=" << m_endpointChoices->currentIndex()
                   << std::endl;
         QApplication::clipboard()->setText(originalClipboard);
         refreshViewerEndpoints();
-        return multi && selected && copied && preserved && empty && single && singleCopied;
+        return multi && selected && copied && preserved && empty && single
+               && singleCopied && automaticCleared && explicitChosen
+               && explicitPersisted;
     }
 
     void refreshStatus()
@@ -935,6 +968,7 @@ private:
     QScrollArea *m_connectionScroll = nullptr;
     QScrollArea *m_scrollArea = nullptr;
     QComboBox *m_endpointChoices = nullptr;
+    bool m_endpointSelectionExplicit = false;
     QLabel *m_addressHelp = nullptr;
     QPushButton *m_copySelected = nullptr;
     QWidget *m_operatorControls = nullptr;

@@ -208,12 +208,14 @@ The release-profile matrix intentionally uses separate CTest identities because 
 
 Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests.
 
-- current #335 exact-head security-enabled inventory: Linux **113**, Windows **112**;
-- security-off equivalent: Linux **111**, Windows **110**; CI #581 executed those exact full-config counts;
+- current #470 PR head security-enabled full-registration inventory: Linux **115**, Windows **114** (two added cross-platform Tool layout identities);
+- current security-off equivalent: Linux **113**, Windows **112**;
+- historical #335 security-enabled inventory: Linux **113**, Windows **112**;
+- historical security-off full-config evidence from CI #581: Linux **111**, Windows **110**;
 - the one platform-only identity remains Linux `hyremote-qpa-source-payload-relocation`;
 - the post-#358 graph includes `hyremote-runtime-diagnostics-test`, then #335 adds `hyremote-qml-installed-consumer` and `hyremote-qpa-installed-product-fit` cross-platform;
 - the two security-only identities are `hyremote-vnc-auth-test` and `hyremote-rfb-vnc-auth-handshake-test`;
-- #274 final reconciliation adds no CTest identity, so these counts remain unchanged.
+- #274 final reconciliation added no CTest identities at the time; #470 adds `hyremote-tool-narrow-layout` and `hyremote-tool-compact-dpi125` (+2 on both platforms).
 
 The historical Phase-A/#300 95/94 inventory is retained only as a before-refactor baseline in `EXECUTION_BASELINE.md`; it is no longer current registration authority.
 

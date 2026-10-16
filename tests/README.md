@@ -14,10 +14,12 @@ The completed test-architecture workstream is represented by:
 
 Final implementation authority before this reconciliation is `develop@bee774e76a48c7a23020b5386b42ac7a2bbb56f8`.
 
-Reference all-frontends/VNC Qt 6.8.3 registration after Phase D is:
+Current #470 PR head all-frontends/VNC Qt 6.8.3 full registration (adds two Tool compact/scale CTests):
 
-- security enabled: Linux **113**, Windows **112**;
-- security off: Linux **111**, Windows **110**.
+- security enabled: Linux **115**, Windows **114**;
+- security off: Linux **113**, Windows **112**.
+
+Historical Phase-D/#335 baseline was security enabled **113/112** and security off **111/110** (Linux/Windows); the historical CI #581 proof remains specific to that earlier configuration.
 
 The single Linux-only identity is `hyremote-qpa-source-payload-relocation`. The historical 95/94 Phase-A inventory is no longer current authority.
 

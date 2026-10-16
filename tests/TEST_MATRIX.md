@@ -48,8 +48,10 @@ Reference configuration is top-level tests with `cpp,qml,generic,qpa`, VNC enabl
 
 | Configuration | Linux | Windows | Explanation |
 | --- | ---: | ---: | --- |
-| current #335 security enabled | 113 | 112 | includes the two conditional VNC-auth tests and the installed QML/QPA evidence |
-| current #335 security off | 111 | 110 | exact hosted Linux/Windows full-config execution proved by CI #581 |
+| current #470 security enabled | 115 | 114 | #335 graph plus two cross-platform Tool narrow/DPI layout tests |
+| current #470 security off | 113 | 112 | conditional VNC-auth identities omitted |
+| historical #335 security enabled | 113 | 112 | earlier #335 exact graph, before #470 |
+| historical #335 security off | 111 | 110 | earlier hosted full-config counts proved by CI #581 |
 
 The single Linux-only name remains `hyremote-qpa-source-payload-relocation`. The post-#358 graph also includes `hyremote-runtime-diagnostics-test`; #335 then adds the two cross-platform installed QML/QPA evidence identities.
 
