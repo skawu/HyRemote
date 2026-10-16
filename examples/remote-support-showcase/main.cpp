@@ -331,7 +331,9 @@ public:
             "Changing remote-control permission while remote access is running "
             "will restart the listener and disconnect connected Viewers."));
         m_input->setAccessibleDescription(QStringLiteral(
-            "Running session policy changes require local confirmation and reconnect Viewers."));
+            "Changing permission while running opens a restart confirmation; "
+            "connected Viewers will disconnect. A Viewer with remote-control "
+            "permission may also use this in-app confirmation."));
         dockLayout->addWidget(m_input, 0, Qt::AlignLeft);
         m_dockSecurity = new QLabel(
             QStringLiteral("Unencrypted connection - trusted LAN only"), actionDock);
@@ -697,14 +699,21 @@ public:
             return correctDialog && accepted == approve;
         };
 
+        const QString accessiblePermission = m_input->accessibleDescription();
+        const bool truthfulAccessibility =
+            accessiblePermission.contains(QStringLiteral("Viewer with remote-control"))
+            && accessiblePermission.contains(QStringLiteral("may also"))
+            && !accessiblePermission.contains(QStringLiteral("local confirmation"),
+                                               Qt::CaseInsensitive);
         const bool canceled = exercise(false);
         const bool accepted = exercise(true);
         const bool unchanged = m_remote.state() == HyRemote::RemoteAccessState::Stopped
                                && !m_remote.remoteInputEnabled();
         std::cout << "TOOL_POLICY_CONFIRMATION cancel=" << canceled
                   << " accept=" << accepted
+                  << " truthful_accessibility=" << truthfulAccessibility
                   << " listener_stopped=" << unchanged << std::endl;
-        return canceled && accepted && unchanged;
+        return canceled && accepted && truthfulAccessibility && unchanged;
     }
 
     // Verify forced-light card text remains readable with a dark native
