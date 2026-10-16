@@ -699,7 +699,7 @@ private:
                 ? QStringLiteral("No LAN IPv4 address found. Check network adapters.")
                 : endpoints.size() == 1
                       ? QStringLiteral("Use this address only if the Viewer can reach this LAN.")
-                      : QStringLiteral("Multiple adapters: choose an IP on the Viewer's trusted LAN."));
+                      : QStringLiteral("Multiple host addresses: select the one on the Viewer's trusted LAN."));
         m_endpointChoices->blockSignals(true);
         m_endpointChoices->clear();
         m_endpointChoices->addItems(endpoints);
@@ -736,9 +736,18 @@ private:
                            && !m_copySelected->isEnabled()
                            && !m_copyEndpoints->isEnabled()
                            && m_addressHelp->text().contains(QStringLiteral("No LAN"));
+        presentViewerEndpoints({a});
+        const bool single = m_endpointChoices->count() == 1
+                            && m_endpointChoices->currentIndex() == 0
+                            && m_endpointChoices->currentText() == a
+                            && m_copySelected->isEnabled()
+                            && m_copyEndpoints->isEnabled()
+                            && m_addressHelp->text().contains(QStringLiteral("this address"));
+        m_copySelected->click();
+        const bool singleCopied = QApplication::clipboard()->text() == a;
         QApplication::clipboard()->setText(originalClipboard);
         refreshViewerEndpoints();
-        return multi && selected && copied && preserved && empty;
+        return multi && selected && copied && preserved && empty && single && singleCopied;
     }
 
     void refreshStatus()
