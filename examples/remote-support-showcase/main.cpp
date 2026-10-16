@@ -438,6 +438,18 @@ public:
         auto *diagnosticsBox = card(diagnosticsBody);
         auto *diagnosticsLayout = qobject_cast<QVBoxLayout *>(diagnosticsBox->layout());
         diagnosticsLayout->addWidget(sectionLabel(QStringLiteral("Diagnostic report"), diagnosticsBox));
+        // Operation status belongs above the raw report: a compact Windows
+        // viewport can always display this short, bounded feedback at top.
+        m_exportStatus = new QLabel(QStringLiteral("Ready to copy or save."), diagnosticsBox);
+        m_exportStatus->setObjectName(QStringLiteral("mutedLabel"));
+        m_exportStatus->setAccessibleName(QStringLiteral("Diagnostic report export status"));
+        m_exportStatus->setWordWrap(true);
+        // The Details body can keep a wide native Windows form minimum; do
+        // not let that width make an operation result larger than the narrow
+        // scroll viewport where the operator must be able to read it.
+        m_exportStatus->setMaximumWidth(280);
+        m_exportStatus->setMinimumHeight(20);
+        diagnosticsLayout->addWidget(m_exportStatus);
         m_diagnostics = new QPlainTextEdit(diagnosticsBox);
         m_diagnostics->setReadOnly(true);
         m_diagnostics->setLineWrapMode(QPlainTextEdit::NoWrap);
@@ -451,16 +463,6 @@ public:
         diagnosticActions->addWidget(saveDiagnostics);
         diagnosticActions->addStretch(1);
         diagnosticsLayout->addLayout(diagnosticActions);
-        m_exportStatus = new QLabel(QStringLiteral("Ready to copy or save."), diagnosticsBox);
-        m_exportStatus->setObjectName(QStringLiteral("mutedLabel"));
-        m_exportStatus->setAccessibleName(QStringLiteral("Diagnostic report export status"));
-        m_exportStatus->setWordWrap(true);
-        // The Details body can keep a wide native Windows form minimum; do
-        // not let that width make an operation result larger than the narrow
-        // scroll viewport where the operator must be able to read it.
-        m_exportStatus->setMaximumWidth(280);
-        m_exportStatus->setMinimumHeight(20);
-        diagnosticsLayout->addWidget(m_exportStatus);
         diagnosticsRoot->addWidget(diagnosticsBox);
         // Put the frequently used report in the first viewport; full build,
         // platform and endpoint metadata follows below as deeper detail.
@@ -762,31 +764,12 @@ public:
     void presentExportStatus(const QString &status)
     {
         setLabelIfChanged(m_exportStatus, status);
-        // The report and action row may be taller than the compact Details
-        // viewport. Automatically scroll the actual result into view rather
-        // than relying on a QLabel below the fold.
+        // Export results are immediately under the Details heading, not
+        // below a long report editor. Return to the beginning of the page so
+        // the operator sees the complete result in compact native windows.
         if (auto *details = qobject_cast<QScrollArea *>(m_tabs->widget(2))) {
-            // Compute wrapped label geometry before scrolling; on native
-            // Windows styles the size hint can change after a text update.
-            if (auto *layout = m_exportStatus->parentWidget()->layout())
-                layout->activate();
-            details->ensureWidgetVisible(m_exportStatus, 0, 0);
-            // Qt's ensureWidgetVisible may leave a few bottom pixels
-            // clipped under the native Windows style (observed 6px in
-            // #750). Enforce complete viewport containment using the
-            // actual mapped label geometry, without changing test or
-            // shrinking the useful message.
-            auto *scroll = details->verticalScrollBar();
-            const QRect view = details->viewport()->rect();
-            const QRect status(m_exportStatus->mapTo(details->viewport(), QPoint()),
-                               m_exportStatus->size());
-            if (scroll && status.bottom() > view.bottom()) {
-                const int overflow = status.bottom() - view.bottom();
-                scroll->setValue(qMin(scroll->maximum(), scroll->value() + overflow + 4));
-            } else if (scroll && status.top() < view.top()) {
-                const int overshoot = view.top() - status.top();
-                scroll->setValue(qMax(scroll->minimum(), scroll->value() - overshoot - 4));
-            }
+            if (auto *vertical = details->verticalScrollBar())
+                vertical->setValue(vertical->minimum());
         }
     }
 
