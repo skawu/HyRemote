@@ -40,6 +40,18 @@ if(HYREMOTE_BUILD_TESTS)
     endif()
 
     add_test(
+        NAME hyremote-tool-listener-controls
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-listener-controls
+    )
+    set_tests_properties(hyremote-tool-listener-controls PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-listener-controls)
+    endif()
+
+    add_test(
         NAME hyremote-tool-diagnostic-export-test
         COMMAND "${CMAKE_COMMAND}"
             -DTEST_EXE=$<TARGET_FILE:hyremote-remote-support-showcase>
