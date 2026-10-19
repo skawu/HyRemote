@@ -79,3 +79,4 @@ Clipboard, scaling/fullscreen, multi-monitor selection, TLS/VeNCrypt and other v
 - The tool is built from the exact accepted tag and installed under `bin/`.
 - A Tool implementation change changes the candidate SHA: the release branch must be re-frozen and the same-SHA L2 re-run before any tag.
 - The tool is part of V0.3.0.0's companion surface, but a Tool change never authorizes a release by itself.
+- The tool is **not one of the release-trains required-evidence cells**. Its own client core/UI tests and the installed-client smoke are companion evidence, not a substitute for the four-frontend SDK/deploy evidence.

@@ -131,7 +131,6 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-generic-installed-consumers` | Consumer/Generic — real installed Generic Widgets/Quick with native platform identity. |
 | `hyremote-qml-installed-consumer` | Consumer/QML — clean installed QML-only module is deployed, loaded and executes its shared diagnostic contract. |
 | `hyremote-qpa-installed-product-fit` | Consumer/QPA — clean installed QPA payload/delegate chain reaches a live RFB listener and emits correlated shared diagnostics. |
-| `hyremote-tool-installed-diagnostic` | Consumer/Tool — when Tool/examples are built, a fresh canonical installed prefix launches the real installed hyremote-tool with its shipped native QPA (`xcb` under Xvfb on Linux, `windows` on Windows) and a loader PATH restricted to the install tree and OS; its saved public Shared Runtime report must correlate build/deployment manifest identity. Separate build-tree diagnostic smoke uses `offscreen`; viewer product-fit remains separately owned. |
 | `hyremote-qml-deploy-helper-non-qml` | Consumer/QML — ordinary deploy dispatch remains non-QML. |
 | `hyremote-qml-deploy-helper-qml` | Consumer/QML — QML-aware deploy dispatch/import-root preservation. |
 | `hyremote-release-readiness-security-runtime-deploy` | Consumer — deployed Runtime/security closure and runtime dependency availability. |
@@ -172,10 +171,8 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | --- | --- |
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
 | `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
-| `hyremote-tool-compact-layout` | Starts the real HyRemoteTool Qt Widgets window offscreen without a listener, resizes it to a 480×360 desktop viewport, requires a live vertical scroll range, and proves the bottom local operator controls become visible after scrolling. Fails if the native window gets an excessive minimum size, bottom actions stay clipped or scrollbar reachability regresses. |
-| `hyremote-tool-listener-controls` | Drives the real HyRemoteTool listener editor offscreen without opening a socket: requires AnyIPv4, explicit-address and interface modes to round-trip through the public RemoteAccess facade, and fails if the Apply wiring, port validation or mode fallback regresses. |
-| `hyremote-tool-diagnostic-export-test` | Runs HyRemoteTool offscreen without a viewer, exports the same public bounded diagnostic report used by the GUI Save action, and fails if the file/confirmation/stable Stopped-state keys or initial bounded Activity markers are missing. |
-| `hyremote-tool-product-fit` | Exact-candidate maintained-viewer evidence for HyRemoteTool behavior: framebuffer, public diagnostics, client 0/1 reconnect lifecycle, pointer/key ingress and clean listener release. It is registered fail-closed and excluded from ordinary fast PRs unless its own candidate-evidence wiring changes; clean-installed/deployed launch evidence is a separate delivery contract. |
+| `hyremote-tool-client-ui` | Constructs the real HyRemoteTool client window offscreen and verifies the connection bar, framebuffer view and telemetry surface exist; it must not connect or open a listener. |
+| `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 

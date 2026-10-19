@@ -90,7 +90,7 @@ foreach(legacy IN ITEMS compile.cmd clean.cmd)
 endforeach()
 file(GLOB build_related_entries "${source_dir}/*.cmd" "${source_dir}/*.sh" "${source_dir}/*.ps1")
 list(LENGTH build_related_entries build_related_count)
-if(NOT build_related_count EQUAL 1 OR NOT build_related_entries MATCHES "/build\.cmd$")
+if(NOT build_related_count EQUAL 1 OR NOT build_related_entries MATCHES "/build[.]cmd$")
     message(FATAL_ERROR
         "build-install-contract: the repository root must hold exactly one build entry point, build.cmd; found: "
         "${build_related_entries}")
@@ -203,6 +203,19 @@ foreach(list_file IN LISTS example_cmakelists)
         continue()
     endif()
     math(EXPR example_consumers "${example_consumers} + 1")
+    if(list_file MATCHES "/examples/remote-support-showcase/CMakeLists.txt$")
+        # HyRemoteTool is the single out-of-process companion client. It must
+        # not link or deploy the HyRemote Runtime, so it uses Qt's own
+        # deployment script instead of hyremote_deploy. This is one companion
+        # exception, not a second per-example Qt-closure route.
+        _forbid_text("${list_text}" "HyRemote::RemoteAccess"
+                     "${list_file} is a companion client and must not link the Runtime")
+        _forbid_text("${list_text}" "hyremote_deploy("
+                     "${list_file} is a companion client and must not deploy the Runtime")
+        _require_text("${list_text}" "qt_generate_deploy_app_script("
+                      "${list_file} must deploy its own Qt runtime with Qt's deployment script")
+        continue()
+    endif()
     _require_text("${list_text}" "hyremote_deploy("
                   "${list_file} installs a runnable but does not use the shared deploy family")
     _forbid_text("${list_text}" "windeployqt" "${list_file} must not deploy a Qt closure itself")
