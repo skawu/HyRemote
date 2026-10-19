@@ -15,6 +15,7 @@
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QNetworkInterface>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -688,6 +689,22 @@ private:
     {
         const bool wasRunning = m_remote.state() == HyRemote::RemoteAccessState::Running;
         if (wasRunning) {
+            // A policy change while running is a real stop/apply/start cycle
+            // that disconnects viewers. Do not do that silently.
+            const auto choice = QMessageBox::question(
+                this,
+                QStringLiteral("Restart remote access?"),
+                QStringLiteral("Changing the remote-control policy stops and restarts the listener, "
+                               "so connected viewers are disconnected. Continue?"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No);
+            if (choice != QMessageBox::Yes) {
+                m_input->blockSignals(true);
+                m_input->setChecked(m_remote.remoteInputEnabled());
+                m_input->blockSignals(false);
+                appendActivity(QStringLiteral("Remote input policy change cancelled"));
+                return;
+            }
             appendActivity(QStringLiteral("Applying remote input policy; restarting remote access"));
             m_remote.stop();
             // Observe the stopped/client-zero facts before restarting, otherwise a policy
