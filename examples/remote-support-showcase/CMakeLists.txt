@@ -5,10 +5,15 @@ project(HyRemoteRemoteSupportShowcase LANGUAGES CXX)
 add_executable(hyremote-remote-support-showcase
     main.cpp
     input_probe.cpp
+    rfb_client.cpp
+    rfb_client.h
     ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
-set_target_properties(hyremote-remote-support-showcase PROPERTIES OUTPUT_NAME hyremote-tool)
+set_target_properties(hyremote-remote-support-showcase PROPERTIES
+    OUTPUT_NAME hyremote-tool
+    AUTOMOC ON
+)
 
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
 target_link_libraries(hyremote-remote-support-showcase
@@ -24,6 +29,25 @@ install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET hyremote-remote-support-showcase)
 
 if(HYREMOTE_BUILD_TESTS)
+    add_executable(hyremote-tool-rfb-client-test
+        test_rfb_client.cpp
+        rfb_client.cpp
+        rfb_client.h
+    )
+    target_compile_features(hyremote-tool-rfb-client-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-rfb-client-test
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network)
+    set_target_properties(hyremote-tool-rfb-client-test PROPERTIES AUTOMOC ON)
+    add_test(NAME hyremote-tool-rfb-client
+             COMMAND $<TARGET_FILE:hyremote-tool-rfb-client-test>)
+    set_tests_properties(hyremote-tool-rfb-client PROPERTIES
+        TIMEOUT 30
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-rfb-client)
+    endif()
+
     # Regress the real user complaint on compact/high-DPI desktops. This
     # headless widget check must prove the native window can shrink AND that
     # scrolling reaches the bottom operator panel; no listener is started.
