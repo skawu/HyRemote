@@ -110,7 +110,7 @@ V0.3 turns all four integration frontends into complete product-deliverable path
 - Generic Plugin;
 - QPA.
 
-This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335).
+This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335). V0.3.0.0 additionally ships the **HyRemoteTool access-plane companion client**: an out-of-process RFB client that connects to a remote HyRemote-enabled application by explicit IP/port and provides framebuffer viewing, view-only/control input, FPS/throughput telemetry and connection diagnostics. Its management-plane capabilities are explicitly not part of V0.3.0.0. See `docs/internal/hyremote-tool-plan.md`.
 
 The V0.3 family carries two strictly separate classes of work:
 
@@ -120,7 +120,7 @@ Qt 5.15, Qt 6.5 and Qt 6.8 compatibility; Windows and Linux; x86_64 and ARM64/AA
 
 ### Optional / quality / differentiating outcomes
 
-Session Registry / Session Operations, full branding expansion, HyRemoteTool enhancements, native TLS, and additional BSP/SoC/platform expansion beyond the declared GA reference cells - each activated separately as a coherent product outcome.
+Session Registry / Session Operations, full branding expansion, **HyRemoteTool management-plane enhancements**, native TLS, and additional BSP/SoC/platform expansion beyond the declared GA reference cells - each activated separately as a coherent product outcome. The V0.3.0.0 access-plane companion baseline is part of that release, not an optional enhancement.
 
 ## V0.4 — Qualify It
 

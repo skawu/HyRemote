@@ -1,5 +1,7 @@
 # HyRemoteTool
 
+> **Status (2026-10-19):** the host-side prototype described below is being replaced by the out-of-process companion client planned in [`docs/internal/hyremote-tool-plan.md`](../../docs/internal/hyremote-tool-plan.md). The V0.3.0.0 client connects to a remote HyRemote-enabled application by explicit IP/port; it does not host remote access or share its own window. This document will be rewritten with the client implementation.
+
 HyRemoteTool is HyRemote's first-party host-side product experience and validation application. The source directory remains `examples/remote-support-showcase` as an implementation detail, but the installed/runnable product name is **HyRemoteTool**. It uses only the public `HyRemote::RemoteAccess` facade.
 
 ## Product behavior
