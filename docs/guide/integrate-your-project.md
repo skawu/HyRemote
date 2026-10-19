@@ -461,8 +461,9 @@ import QtQuick
 import HyRemote
 
 Item {
-    HyRemote.RemoteAccess {
+    RemoteAccess {
         target: window
+        enabled: true          // 显式启动；仅构造不会打开监听
         remoteInputEnabled: true
     }
 }
@@ -529,7 +530,7 @@ hyremote_deploy(TARGET MyApp QPA)
 | `:5921` 被占用 | 别的进程已在监听 | 换端口：`remote.setPort(...)`（仅在 `Stopped` 时可改），或先停掉占用者 |
 | viewer 连不上，但本机能连 | 选了 loopback，或连错 IP | 用 `<HOST_LAN_IP>`；确认 `0.0.0.0:5921` 在监听 |
 | 另一台机器彻底连不上 | Windows Firewall 拦截，或不在同一 LAN | 在 Host 上允许该应用的入站连接（或放行 TCP 5921）；确认两台机器在同一子网 |
-| 能看画面，但鼠标键盘无效 | 远程输入默认是关的 | `remote.setRemoteInputEnabled(true)`（QML 下 `remoteInputEnabled: true`） |
+| 能看画面，但鼠标键盘无效 | 远程输入默认是关的 | `remote.setRemoteInputEnabled(true)`（QML 下 `enabled: true` + `remoteInputEnabled: true`） |
 | 本机切到别的应用后再回来，远程端对焦行为异常 | application-scoped focus 限制 | 这是已知限制：焦点语义按应用作用域工作，不承诺跨应用的 OS 级焦点跟随 |
 
 ---
