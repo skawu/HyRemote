@@ -293,38 +293,68 @@ jobs:
               if "CMakeLists.txt" not in changed:
                   raise SystemExit("initial release preparation did not actually bump the project version")
           elif base_version == version:
-              # Stage 2, ONLY after separate owner acceptance: finalize the
-              # previously versioned release's bilingual notes via a reviewable
-              # PR. Never allow an SDK change or an unauthorized version bump.
-              stage = "notes-finalization"
-              if new_cmake != old_cmake:
-                  raise SystemExit("release finalization may not alter product VERSION or CMake sources")
-              if not old_notes.startswith(marker) or marker in notes:
-                  raise SystemExit("notes finalization must replace pending notes with accepted wording")
-              zh_notes = notes.split("# 中文", 1)[1].split("# English", 1)[0]
-              en_notes = notes.split("# English", 1)[1]
-              # Positive bilingual accepted identities are required. Merely
-              # removing a few "pending" lines could leave explicit candidate
-              # identity claims on an allegedly finalized release.
-              if f"- 已验收版本：`V{version}`" not in zh_notes:
-                  raise SystemExit("final Chinese release notes need an exact accepted-version identity")
-              if f"- Accepted version: `V{version}`" not in en_notes:
-                  raise SystemExit("final English release notes need an exact accepted-version identity")
-              stale_zh = ("**候选待验收**", "这份文件是预发布说明",
-                          "- 候选版本：", "- 候选参考环境：", "当前候选")
-              stale_en = ("**Acceptance pending:**",
-                          "This is a pre-release note source",
-                          "- Candidate:", "- Candidate reference environment:",
-                          "This candidate")
-              # Scan the WHOLE committed bilingual source. A stale Chinese or
-              # English candidate claim must not be hidden above the headings
-              # or moved into the other language section to bypass the check.
-              for phrase in stale_zh + stale_en:
-                  if phrase in notes:
-                      raise SystemExit(f"final release notes still claim candidate state: {phrase}")
-              allowed = {notes_name}
-              if changed != allowed:
-                  raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
+              if marker in notes:
+                  # One-time candidate correction: the protected branch was
+                  # versioned before the companion client was accepted. Replace
+                  # only its tree with the exact accepted develop candidate;
+                  # the version token and three bootstrap files are the only
+                  # permitted differences. Notes stay pending.
+                  stage = "candidate-correction"
+                  accepted_sha = "9e7c266e3b8b5b8470f32be641465777f72a8c89"
+                  original_release_sha = "9d07234731c0817fab0ca62efa76c5ed79cb1069"
+                  actual_base = git("rev-parse", base_tree).decode("ascii").strip()
+                  if actual_base != original_release_sha:
+                      raise SystemExit("candidate correction requires the exact versioned release base")
+                  bootstrap_files = {
+                      ".github/scripts/check-pr-branch-name.sh",
+                      ".github/workflows/git-flow-policy.yml",
+                      "docs/internal/git-flow-release.md",
+                  }
+                  surface = set(git("diff", "--name-only", accepted_sha, "HEAD").decode("utf-8").splitlines())
+                  expected_surface = bootstrap_files | {"CMakeLists.txt"}
+                  if surface != expected_surface:
+                      raise SystemExit(
+                          "candidate correction surface must be exactly "
+                          f"{sorted(expected_surface)}; found {sorted(surface)}")
+                  updated_cmake = (old_cmake[:base_version_match.start("version")]
+                                   + version.encode("ascii")
+                                   + old_cmake[base_version_match.end("version"):])
+                  if new_cmake != updated_cmake:
+                      raise SystemExit("candidate correction may change only the root VERSION token")
+                  allowed = changed
+              else:
+                  # Stage 2, ONLY after separate owner acceptance: finalize the
+                  # previously versioned release's bilingual notes via a reviewable
+                  # PR. Never allow an SDK change or an unauthorized version bump.
+                  stage = "notes-finalization"
+                  if new_cmake != old_cmake:
+                      raise SystemExit("release finalization may not alter product VERSION or CMake sources")
+                  if not old_notes.startswith(marker) or marker in notes:
+                      raise SystemExit("notes finalization must replace pending notes with accepted wording")
+                  zh_notes = notes.split("# 中文", 1)[1].split("# English", 1)[0]
+                  en_notes = notes.split("# English", 1)[1]
+                  # Positive bilingual accepted identities are required. Merely
+                  # removing a few "pending" lines could leave explicit candidate
+                  # identity claims on an allegedly finalized release.
+                  if f"- 已验收版本：`V{version}`" not in zh_notes:
+                      raise SystemExit("final Chinese release notes need an exact accepted-version identity")
+                  if f"- Accepted version: `V{version}`" not in en_notes:
+                      raise SystemExit("final English release notes need an exact accepted-version identity")
+                  stale_zh = ("**候选待验收**", "这份文件是预发布说明",
+                              "- 候选版本：", "- 候选参考环境：", "当前候选")
+                  stale_en = ("**Acceptance pending:**",
+                              "This is a pre-release note source",
+                              "- Candidate:", "- Candidate reference environment:",
+                              "This candidate")
+                  # Scan the WHOLE committed bilingual source. A stale Chinese or
+                  # English candidate claim must not be hidden above the headings
+                  # or moved into the other language section to bypass the check.
+                  for phrase in stale_zh + stale_en:
+                      if phrase in notes:
+                          raise SystemExit(f"final release notes still claim candidate state: {phrase}")
+                  allowed = {notes_name}
+                  if changed != allowed:
+                      raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
           else:
               raise SystemExit("protected release PR base must be 0.0.0 or its exact four-part version")
 

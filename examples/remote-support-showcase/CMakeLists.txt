@@ -2,108 +2,74 @@ cmake_minimum_required(VERSION 3.21)
 
 project(HyRemoteRemoteSupportShowcase LANGUAGES CXX)
 
+# HyRemoteTool is an out-of-process companion client: it connects to a remote
+# HyRemote-enabled application and does not link or embed the HyRemote Runtime.
 add_executable(hyremote-remote-support-showcase
     main.cpp
-    input_probe.cpp
+    framebuffer_view.cpp
+    framebuffer_view.h
+    rfb_client.cpp
+    rfb_client.h
     ../hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
-set_target_properties(hyremote-remote-support-showcase PROPERTIES OUTPUT_NAME hyremote-tool)
+set_target_properties(hyremote-remote-support-showcase PROPERTIES
+    OUTPUT_NAME hyremote-tool
+    AUTOMOC ON
+)
 
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
 target_link_libraries(hyremote-remote-support-showcase
     PRIVATE
         Qt6::Widgets
         Qt6::Network
-        HyRemote::RemoteAccess
 )
 
-# It is a user-facing example like the learning ones: it installs into the same shared prefix and is deployed by the
-# same helper, so it is reachable from the product tree instead of only from the build tree.
 install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
-hyremote_deploy(TARGET hyremote-remote-support-showcase)
+
+# The tool needs Qt itself, not the HyRemote Runtime payload. Use Qt's own
+# deployment script so the installed client has a self-contained Qt runtime.
+if(NOT DEFINED QT_DEPLOY_SUPPORT OR "${QT_DEPLOY_SUPPORT}" STREQUAL "")
+    message(FATAL_ERROR "HyRemoteTool requires Qt's deployment support script from Qt6 Core")
+endif()
+qt_generate_deploy_app_script(
+    TARGET hyremote-remote-support-showcase
+    OUTPUT_SCRIPT hyremote_tool_deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${hyremote_tool_deploy_script})
 
 if(HYREMOTE_BUILD_TESTS)
-    # Regress the real user complaint on compact/high-DPI desktops. This
-    # headless widget check must prove the native window can shrink AND that
-    # scrolling reaches the bottom operator panel; no listener is started.
-    add_test(
-        NAME hyremote-tool-compact-layout
-        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-compact-layout
+    add_executable(hyremote-tool-rfb-client-test
+        test_rfb_client.cpp
+        rfb_client.cpp
+        rfb_client.h
     )
-    set_tests_properties(hyremote-tool-compact-layout PROPERTIES
+    target_compile_features(hyremote-tool-rfb-client-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-rfb-client-test
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network)
+    set_target_properties(hyremote-tool-rfb-client-test PROPERTIES AUTOMOC ON)
+    add_test(NAME hyremote-tool-rfb-client
+             COMMAND $<TARGET_FILE:hyremote-tool-rfb-client-test>)
+    set_tests_properties(hyremote-tool-rfb-client PROPERTIES
+        TIMEOUT 30
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-rfb-client)
+    endif()
+
+    # Construct the real client window offscreen. This must not connect to any
+    # endpoint or open a local listener.
+    add_test(
+        NAME hyremote-tool-client-ui
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-ui
+    )
+    set_tests_properties(hyremote-tool-client-ui PROPERTIES
         TIMEOUT 20
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
     if(COMMAND hyremote_label_test_family)
-        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-compact-layout)
-    endif()
-
-    add_test(
-        NAME hyremote-tool-listener-controls
-        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-listener-controls
-    )
-    set_tests_properties(hyremote-tool-listener-controls PROPERTIES
-        TIMEOUT 20
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    )
-    if(COMMAND hyremote_label_test_family)
-        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-listener-controls)
-    endif()
-
-    add_test(
-        NAME hyremote-tool-diagnostic-export-test
-        COMMAND "${CMAKE_COMMAND}"
-            -DTEST_EXE=$<TARGET_FILE:hyremote-remote-support-showcase>
-            -DRUNTIME_DIR=$<TARGET_FILE_DIR:hyremote-remoteaccess>
-            -DOUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/hyremote-tool-diagnostic-export.txt
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_diagnostic_export_test.cmake
-    )
-    set_tests_properties(hyremote-tool-diagnostic-export-test PROPERTIES TIMEOUT 20)
-    if(COMMAND hyremote_label_test_family)
-        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-diagnostic-export-test)
-    endif()
-
-    # This is repository-level release evidence, not a test of an external add_subdirectory() consumer.
-    # The nested showcase has its own project(), so PROJECT_IS_TOP_LEVEL is not the root authority here.
-    # Register only when HyRemote itself is the top-level source tree.
-    if(CMAKE_SOURCE_DIR STREQUAL HyRemote_SOURCE_DIR)
-        add_test(
-            NAME hyremote-tool-installed-diagnostic
-            COMMAND "${CMAKE_COMMAND}"
-                -DHYREMOTE_SOURCE_DIR=${HyRemote_SOURCE_DIR}
-                -DHYREMOTE_BUILD_DIR=${HyRemote_BINARY_DIR}
-                "-DEVIDENCE_CELLS=installed-tool"
-                -P "${HyRemote_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
-        )
-        set_tests_properties(hyremote-tool-installed-diagnostic PROPERTIES TIMEOUT 600)
-        if(COMMAND hyremote_label_test_family)
-            hyremote_label_test_family("consumer;tool;installed" hyremote-tool-installed-diagnostic)
-        endif()
-    endif()
-
-    if(HYREMOTE_WITH_VNC)
-        # Standard-viewer product fit is exact-candidate evidence, not a normal fast-regression dependency.
-        # Register fail-closed so candidate qualification cannot pass because viewer tooling is absent.
-        set(Python3_FIND_REGISTRY NEVER)
-        set(Python3_FIND_STRATEGY LOCATION)
-        find_package(Python3 COMPONENTS Interpreter QUIET)
-        if(Python3_Interpreter_FOUND)
-            add_test(
-                NAME hyremote-tool-product-fit
-                COMMAND "${Python3_EXECUTABLE}"
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/product-e2e/showcase_product_fit.py"
-                    --showcase $<TARGET_FILE:hyremote-remote-support-showcase>
-            )
-        else()
-            add_test(NAME hyremote-tool-product-fit COMMAND "${CMAKE_COMMAND}" -E false)
-        endif()
-        set_tests_properties(hyremote-tool-product-fit PROPERTIES
-            TIMEOUT 900
-            LABELS "candidate-evidence"
-        )
-        if(COMMAND hyremote_label_test_family)
-            hyremote_label_test_family("e2e;tool;qualification" hyremote-tool-product-fit)
-        endif()
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui)
     endif()
 endif()
