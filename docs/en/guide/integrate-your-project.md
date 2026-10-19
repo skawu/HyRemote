@@ -467,8 +467,9 @@ import QtQuick
 import HyRemote
 
 Item {
-    HyRemote.RemoteAccess {
+    RemoteAccess {
         target: window
+        enabled: true          // explicit start; construction alone opens no listener
         remoteInputEnabled: true
     }
 }
@@ -541,7 +542,7 @@ application's (reference: Qt 6.8.3 MinGW/x86_64).
 | `:5921` in use | Another process listening | `remote.setPort(...)` while `Stopped`, or stop the other process |
 | Viewer cannot connect, locally it works | Loopback used, or wrong address | Use `<HOST_LAN_IP>`; confirm `0.0.0.0:5921` |
 | Another machine cannot connect at all | Windows Firewall, or different LAN | Allow inbound for the application (or TCP 5921); same subnet |
-| Picture works, input does nothing | Remote input is off by default | `remote.setRemoteInputEnabled(true)` |
+| Picture works, input does nothing | Remote input is off by default | `remote.setRemoteInputEnabled(true)` (QML: `enabled: true` + `remoteInputEnabled: true`) |
 | Odd focus behaviour after switching applications locally | application-scoped focus limitation | Known limitation: focus semantics are application-scoped |
 
 ---

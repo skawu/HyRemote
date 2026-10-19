@@ -486,17 +486,16 @@ bool decodeTrle(QTcpSocket &socket, TestFramebuffer &frame, const UpdateRect &re
     return true;
 }
 
-bool readFramebufferUpdate(QTcpSocket &socket,
-                           TestFramebuffer &frame,
-                           std::vector<UpdateRect> &rectangles)
+bool readFramebufferUpdateBody(QTcpSocket &socket,
+                               const QByteArray &header,
+                               TestFramebuffer &frame,
+                               std::vector<UpdateRect> &rectangles,
+                               int timeoutMs = 3000)
 {
     rectangles.clear();
-    const QByteArray header = readExact(socket, 4);
-    if (header.size() != 4 || header.at(0) != char(0))
-        return false;
     const std::uint16_t count = readU16(header, 2);
     for (std::uint16_t index = 0; index < count; ++index) {
-        const QByteArray rectBytes = readExact(socket, 12);
+        const QByteArray rectBytes = readExact(socket, 12, timeoutMs);
         if (rectBytes.size() != 12)
             return false;
         UpdateRect rect;
@@ -513,7 +512,7 @@ bool readFramebufferUpdate(QTcpSocket &socket,
         }
         if (rect.encoding == 0) {
             const qsizetype size = static_cast<qsizetype>(rect.width) * rect.height * 4;
-            const QByteArray raw = readExact(socket, size);
+            const QByteArray raw = readExact(socket, size, timeoutMs);
             if (raw.size() != size)
                 return false;
             qsizetype offset = 0;
@@ -539,6 +538,50 @@ bool readFramebufferUpdate(QTcpSocket &socket,
         return false;
     }
     return true;
+}
+
+bool readFramebufferUpdate(QTcpSocket &socket,
+                           TestFramebuffer &frame,
+                           std::vector<UpdateRect> &rectangles)
+{
+    rectangles.clear();
+    const QByteArray header = readExact(socket, 4);
+    if (header.size() != 4 || header.at(0) != char(0))
+        return false;
+    return readFramebufferUpdateBody(socket, header, frame, rectangles);
+}
+
+// EndOfContinuousUpdates (150) is a server-to-client message, not a promise
+// that it is the next byte on the wire. A viewer that already had an
+// outstanding update may legitimately receive a queued FramebufferUpdate
+// before the acknowledgment, so consume complete updates until the marker
+// arrives instead of asserting a particular socket interleaving.
+bool readEndOfContinuousUpdates(QTcpSocket &socket, int timeoutMs = 3000)
+{
+    TestFramebuffer discarded;
+    std::vector<UpdateRect> rectangles;
+    QElapsedTimer timer;
+    timer.start();
+    while (true) {
+        const int remaining = timeoutMs - static_cast<int>(timer.elapsed());
+        if (remaining <= 0)
+            return false;
+        const QByteArray type = readExact(socket, 1, remaining);
+        if (type.size() != 1)
+            return false;
+        const auto value = static_cast<unsigned char>(type.at(0));
+        if (value == 150)
+            return true;
+        if (value != 0)
+            return false;
+        const QByteArray rest = readExact(socket, 3, remaining);
+        if (rest.size() != 3)
+            return false;
+        QByteArray header(1, char(0));
+        header += rest;
+        if (!readFramebufferUpdateBody(socket, header, discarded, rectangles, remaining))
+            return false;
+    }
 }
 
 bool noFramebufferData(QTcpSocket &socket, int timeoutMs = 150)
@@ -758,9 +801,9 @@ void testContinuousUpdatesAndRequestFallback()
 
     // Disable sends the mandatory one-byte end marker, even if already off.
     CHECK(sendContinuousUpdates(continuous, false, 0, 0, 0, 0));
-    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+    CHECK(readEndOfContinuousUpdates(continuous));
     CHECK(sendContinuousUpdates(continuous, false, 0, 0, 0, 0));
-    CHECK(readExact(continuous, 1) == QByteArray(1, char(150)));
+    CHECK(readEndOfContinuousUpdates(continuous));
     transport->enqueueFrame(makeFrame(128, 128, background,
                                       {{{8, 8, 8, 8}, 0x22bb33U}}));
     CHECK(noFramebufferData(continuous));
@@ -1113,7 +1156,7 @@ void testContinuousUpdatesForcedRefreshBounds()
     CHECK(frame.get(0, 0) == 0U);
 
     CHECK(sendContinuousUpdates(socket, false, 0, 0, 0, 0));
-    CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+    CHECK(readEndOfContinuousUpdates(socket));
     socket.disconnectFromHost();
     waitForDisconnected(socket);
     transport->stop();
@@ -1482,7 +1525,7 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
 
     if (continuousUpdates) {
         CHECK(sendContinuousUpdates(socket, false, 0, 0, 0, 0));
-        CHECK(readExact(socket, 1) == QByteArray(1, char(150)));
+        CHECK(readEndOfContinuousUpdates(socket));
         CHECK(noFramebufferData(socket));
     }
 
