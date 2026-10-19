@@ -99,8 +99,10 @@ if(NOT "${actual_classified_referenced}" STREQUAL "${expected_classified_referen
 endif()
 
 # The train map must stay selectable for the trains the release lifecycle is allowed to name, and the conditional
-# train must stay conditional: a version number existing never authorizes a release scope by itself.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.1.0 0.3.0.0 0.3.1.0 0.3.2.0 0.4.0.0 1.0.0.0 1.1.0.0)
+# train must stay conditional: a version number existing never authorizes a release scope by itself. #333: the
+# pre-reserved technical slots (0.2.1.0/0.3.1.0/0.3.2.0), the qualification-only 0.4.0.0 and the post-GA fixed slot
+# 1.1.0.0 are no longer selectable trains and are asserted as refused/fail-closed further down.
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 1.0.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
@@ -119,17 +121,20 @@ foreach(index RANGE 0 ${conditional_last})
     string(JSON entry_version GET "${authority_json}" conditional_trains ${index} version)
     string(JSON entry_active GET "${authority_json}" conditional_trains ${index} active)
     string(JSON entry_activation GET "${authority_json}" conditional_trains ${index} activation_authority)
-    if(entry_version STREQUAL "1.2.0.0")
-        if(NOT entry_activation STREQUAL "123")
+    if(entry_version STREQUAL "0.4.0.0")
+        # #333: V0.4.0.0 is qualification only. The number existing never authorizes it; the activation authority
+        # (#235) is recorded so activation evidence has somewhere to land, and until then no selectable train of
+        # that version may exist.
+        if(NOT entry_activation STREQUAL "235")
             message(FATAL_ERROR
-                "release-authority-policy: V1.2 activation authority must remain #123; found #${entry_activation}")
+                "release-authority-policy: V0.4.0.0 activation authority must remain #235; found #${entry_activation}")
         endif()
         if(entry_active STREQUAL "true")
             message(FATAL_ERROR
-                "release-authority-policy: V1.2 must not be active until its activation evidence exists")
+                "release-authority-policy: V0.4.0.0 must not be active until its activation evidence exists")
         endif()
-        string(JSON v12_train_type ERROR_VARIABLE v12_train_error TYPE "${authority_json}" trains "1.2.0.0")
-        if(NOT v12_train_error AND v12_train_type STREQUAL "OBJECT")
+        string(JSON v040_train_type ERROR_VARIABLE v040_train_error TYPE "${authority_json}" trains "0.4.0.0")
+        if(NOT v040_train_error AND v040_train_type STREQUAL "OBJECT")
             message(FATAL_ERROR
                 "release-authority-policy: an inactive conditional train must not also exist as a selectable train")
         endif()
@@ -220,17 +225,15 @@ foreach(forbidden_v01_evidence IN ITEMS "bilingual" "branded")
     endforeach()
 endforeach()
 
-# Every exact Feature must carry its own closeable set, prerequisites and lineage: the whole point of the migration is
-# that 0.2.0.0/0.2.1.0 and 0.3.0.0/0.3.1.0/0.3.2.0 are distinct decisions rather than one another's placeholders.
+# Every selectable exact Feature must carry its own closeable set, prerequisites and lineage. #333: V0.3.0.0 is the
+# self-service adoption foundation built directly on the accepted V0.2.0.0 lineage; the retired technical slots are
+# asserted as fail-closed separately below.
 # A semicolon cannot appear inside a foreach(ITEMS) element - it would split the element itself - so the issue lists
 # below are written with commas and converted before they are compared against a CMake list.
 foreach(exact_expectation IN ITEMS
         "0.2.0.0|143,174,259,326,271|258,332|0.1.0.0"
-        "0.2.1.0|170,239||0.2.0.0"
-        "0.3.0.0|240,241,264||0.2.1.0"
-        "0.3.1.0|265|260|0.3.0.0"
-        "0.3.2.0|144,175|261|0.3.1.0"
-        "0.4.0.0|9,57,109,134,165,242||0.3.2.0")
+        "0.2.0.1|382,387,389,390,391,392||0.2.0.0"
+        "0.3.0.0|264,240,335||0.2.0.0")
     string(REPLACE "|" ";" exact_parts "${exact_expectation}")
     list(GET exact_parts 0 exact_version)
     list(GET exact_parts 1 exact_children)
@@ -278,7 +281,9 @@ foreach(exact_expectation IN ITEMS
 endforeach()
 
 # Preflight is risk work, not product implementation: it is classified as a prerequisite, never as a Feature child.
-foreach(preflight_expectation IN ITEMS "0.2.0.0;258" "0.3.1.0;260" "0.3.2.0;261")
+# #333: the #260/#261 preflights are #343 pre-GA baseline work; the trains that used to carry them are retired, and
+# the preflights are declared non-blockers of V0.3.0.0 instead.
+foreach(preflight_expectation IN ITEMS "0.2.0.0;258")
     list(GET preflight_expectation 0 preflight_version)
     list(GET preflight_expectation 1 preflight_issue)
     list(FIND seen_exact_children "${preflight_issue}" preflight_placeholder)
@@ -321,16 +326,45 @@ if(v020_customer_trial EQUAL -1)
     message(FATAL_ERROR "release-authority-policy: #271 customer trial must be a 0.2.0.0 mandatory child")
 endif()
 
-# V0.4 is qualification, not a hidden Feature train: the V0.3 implementation children must not reappear as V0.4 work.
-string(JSON v040_child_count LENGTH "${authority_json}" trains "0.4.0.0" mandatory_children)
-math(EXPR v040_child_last "${v040_child_count} - 1")
-foreach(index RANGE 0 ${v040_child_last})
-    string(JSON child GET "${authority_json}" trains "0.4.0.0" mandatory_children ${index})
-    if(child IN_LIST v020_children OR child EQUAL 264 OR child EQUAL 265 OR child EQUAL 144 OR child EQUAL 175
-       OR child EQUAL 240 OR child EQUAL 241)
+# #333: V0.4.0.0 is qualification only (its conditional record and activation authority are asserted above), and the
+# pre-reserved technical train slots keep their records as historical provenance with scope_status retired, so the
+# selector refuses them (proved by the release-scope self test).
+foreach(retired_slot IN ITEMS 0.2.1.0 0.3.1.0 0.3.2.0)
+    string(JSON slot_status ERROR_VARIABLE slot_status_error GET
+           "${authority_json}" trains "${retired_slot}" scope_status)
+    if(slot_status_error OR NOT slot_status STREQUAL "retired")
         message(FATAL_ERROR
-            "release-authority-policy: #${child} is V0.2/V0.3 implementation work and must not be re-developed "
-            "under the V0.4 qualification Feature")
+            "release-authority-policy: retired technical train slot ${retired_slot} must keep scope_status=retired; "
+            "found '${slot_status}'")
+    endif()
+endforeach()
+
+# #333: V0.3.0.0 is the self-service adoption foundation. Branding (#241) and HyRemoteTool (#378) are V0.3-family
+# breadth and must never re-enter its mandatory set; #260/#261 preflights and the retired slots' work stay
+# non-blocking for it.
+string(JSON v030_child_count LENGTH "${authority_json}" trains "0.3.0.0" mandatory_children)
+math(EXPR v030_child_last "${v030_child_count} - 1")
+foreach(index RANGE 0 ${v030_child_last})
+    string(JSON child GET "${authority_json}" trains "0.3.0.0" mandatory_children ${index})
+    foreach(forbidden_child IN ITEMS 241 378 170 239 265 144 175)
+        if(child STREQUAL "${forbidden_child}")
+            message(FATAL_ERROR
+                "release-authority-policy: #${child} must not be a V0.3.0.0 mandatory child")
+        endif()
+    endforeach()
+endforeach()
+string(JSON v030_non_blocker_count LENGTH "${authority_json}" trains "0.3.0.0" non_blockers)
+math(EXPR v030_non_blocker_last "${v030_non_blocker_count} - 1")
+set(v030_non_blockers)
+foreach(index RANGE 0 ${v030_non_blocker_last})
+    string(JSON entry GET "${authority_json}" trains "0.3.0.0" non_blockers ${index})
+    list(APPEND v030_non_blockers "${entry}")
+endforeach()
+foreach(expected_non_blocker IN ITEMS 241 378 260 261)
+    list(FIND v030_non_blockers "${expected_non_blocker}" found_non_blocker)
+    if(found_non_blocker EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: #${expected_non_blocker} must be a declared V0.3.0.0 non-blocker")
     endif()
 endforeach()
 string(JSON v01_reference_count LENGTH "${authority_json}" trains "0.1.0.0" cross_version_references)
@@ -379,7 +413,7 @@ foreach(_train_key IN LISTS _train_keys)
         endforeach()
     endforeach()
 endforeach()
-list(APPEND known_issue_numbers 123)
+list(APPEND known_issue_numbers 123 235)
 list(REMOVE_DUPLICATES known_issue_numbers)
 foreach(document IN LISTS declared_authority_documents)
     set(document_path "${HYREMOTE_SOURCE_DIR}/${document}")

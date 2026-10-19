@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
-project(HyRemote VERSION 0.2.0.1 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
-
+project(HyRemote VERSION 0.3.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
 include(HyRemoteReleaseProfile)
@@ -173,6 +172,18 @@ if(TARGET hyremote-remoteaccess)
 endif()
 
 if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
+    # Build/bootstrap authority is a repository/T3 contract rather than Runtime behavior. Keep the
+    # historical automatic-runtime capability guard so the ownership move does not expand registration.
+    if(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+        add_test(
+            NAME hyremote-build-authority-selftest
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+                -P "${CMAKE_SOURCE_DIR}/tests/build-authority/check_build_authority.cmake"
+        )
+        set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
+    endif()
+
     add_test(
         NAME hyremote-release-readiness-metadata
         COMMAND "${CMAKE_COMMAND}"
@@ -328,6 +339,32 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         set_tests_properties(hyremote-generic-installed-consumers PROPERTIES TIMEOUT 900)
     endif()
 
+    # QML and QPA must also execute the clean installed/deployed evidence in normal L1 CI. Merely
+    # supporting these cells in the release runner is not evidence that the productized routes work.
+    if(TARGET hyremote-qml)
+        add_test(
+            NAME hyremote-qml-installed-consumer
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-qml"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-qml-installed-consumer PROPERTIES TIMEOUT 1200)
+    endif()
+
+    if(TARGET hyremote-qpa-platform)
+        add_test(
+            NAME hyremote-qpa-installed-product-fit
+            COMMAND "${CMAKE_COMMAND}"
+                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                "-DEVIDENCE_CELLS=installed-qpa-product-fit"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
+        )
+        set_tests_properties(hyremote-qpa-installed-product-fit PROPERTIES TIMEOUT 1200)
+    endif()
+
     # Release-train authority selection and its acceptance matrix, registered as an ordinary product test so the
     # canonical build authority runs it: a release scope must be selected by the requested version, fail closed on
     # anything it cannot classify, and never treat a representable train as a blocker for an earlier one.
@@ -480,11 +517,9 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
     hyremote_add_release_profile_test(
         hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v040-all 0.4.0.0 ON ON ON ON ON FALSE)
-    # V0.4.0.x maintenance releases stay inside the V0.4 line.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v040-maintenance 0.4.0.5 ON ON ON ON ON FALSE)
+    # #333: V0.4.0.0 is qualification only - conditional on #235 until the V0.3 family completes - so it is not a
+    # selectable release profile and has no release-profile test here. Its selection refusal is proved by the
+    # release-scope self test (V0.4.0.0 conditional on #235) and its maintenance numbers fail as unknown versions.
 
     # V1 is the first formal GA. Frontend subsets do not encode version semantics.
     hyremote_add_release_profile_test(

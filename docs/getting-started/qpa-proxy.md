@@ -1,10 +1,10 @@
-# QPA 接入（Preview）
+# QPA 接入
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/qpa-proxy.md)
 
 QPA 是 HyRemote 的专用零代码接入路径。它适合确实需要从 Qt platform entry 进入的应用；如果 Generic Plugin 已经能满足需求，应优先使用 [`generic.md`](generic.md)，因为 Generic 使用 Qt public plugin API，不引入 QPA private ABI 约束。
 
-当前产品状态：**Preview**。
+当前产品状态：peer route。
 
 ## 产品模型
 
@@ -34,7 +34,7 @@ QPA 依赖 Qt private ABI，因此兼容性按**精确 Qt patch**声明。
 
 不要从这些组合推断其它 Qt patch、Wayland、EGLFS、macOS 或其它 native platform 已经受支持。
 
-> **TODO V0.3/V0.4：** 完成正式产品化、更多精确 Qt/OS 组合和物理本地+远程并存资格后，再扩大 QPA 支持声明。
+> **Open work (current product line):** 完成正式产品化、更多精确 Qt/OS 组合和物理本地+远程并存资格后，再扩大 QPA 支持声明。
 
 精确状态见 [`../compatibility.md`](../compatibility.md)。
 
@@ -189,4 +189,4 @@ QPA 是 exact-private-ABI 路径。当前参考为 Qt 6.8.3；不同 patch 不�
 
 新的 Example 体系会单独教学 Generic 与 QPA，避免把两种零代码方案混为一谈。
 
-> **TODO V0.3：** 完成 `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` 的双语、品牌化正式示例。
+> **Open work (current product line):** 完成 `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` 的双语、品牌化正式示例。

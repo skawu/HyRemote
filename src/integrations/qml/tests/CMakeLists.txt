@@ -8,6 +8,11 @@ target_link_libraries(hyremote-qml-module-test
         Qt6::Qml
 )
 
+if(HYREMOTE_BUILD_CPP_API)
+    target_link_libraries(hyremote-qml-module-test PRIVATE HyRemote::RemoteAccess)
+    target_compile_definitions(hyremote-qml-module-test PRIVATE HYREMOTE_TEST_CPP_DIAGNOSTIC_PARITY=1)
+endif()
+
 target_compile_definitions(hyremote-qml-module-test
     PRIVATE
         HYREMOTE_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/qml"
@@ -23,6 +28,7 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DTEST_EXE=$<TARGET_FILE:hyremote-qml-module-test>
         -DMODULE_RUNTIME_DIR=$<TARGET_FILE_DIR:hyremote-qml>
+        -DADDITIONAL_RUNTIME_DIR=$<TARGET_FILE_DIR:HyRemote::RemoteAccess>
         -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qml_module_test.cmake
 )
 
@@ -83,4 +89,14 @@ add_test(
         -B ${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
         -DHYREMOTE_SOURCE_DIR=${PROJECT_SOURCE_DIR}
         -DTEST_QML=ON
+)
+
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;qml;fast"
+    hyremote-qml-module-test
+    hyremote-qml-notifications-test
+)
+hyremote_label_test_family("contract;qml;installed"
+    hyremote-qml-deploy-helper-non-qml
+    hyremote-qml-deploy-helper-qml
 )

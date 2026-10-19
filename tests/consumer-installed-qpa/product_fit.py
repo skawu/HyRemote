@@ -41,6 +41,15 @@ def captured(lines: list[str]) -> str:
     return "\n".join(lines) if lines else "<no child output captured>"
 
 
+def diagnostic_value(output: str, key: str) -> str:
+    prefix = f"{key}="
+    values = [line[len(prefix):].strip() for line in output.splitlines() if line.startswith(prefix)]
+    require(values, f"diagnostic report is missing {key}:\n{output}")
+    unique_values = set(values)
+    require(len(unique_values) == 1, f"diagnostic report disagrees on {key}: {values!r}\n{output}")
+    return values[0]
+
+
 def wait_for_rfb(port: int, process: subprocess.Popen[str], lines: list[str]) -> bytes:
     deadline = time.monotonic() + 8.0
     last_error: Exception | None = None
@@ -104,6 +113,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--port", type=int, default=5992)
+    parser.add_argument(
+        "--expect-deployment-identity",
+        choices=("correlated", "unknown"),
+        default=None,
+    )
     args = parser.parse_args()
 
     app = args.app.resolve()
@@ -175,10 +189,32 @@ def main() -> int:
 
         result = process.wait(timeout=10)
         reader.join(timeout=1.0)
-        require(result == 0, f"deployed QPA consumer exited with {result}:\n{captured(lines)}")
+        output = captured(lines)
+        require(result == 0, f"deployed QPA consumer exited with {result}:\n{output}")
+        for required in (
+            "INTEGRATION_ROUTE=qpa",
+            "UI_FAMILY=widgets",
+            "STATE=Running",
+        ):
+            require(required in output, f"deployed QPA diagnostic report is missing {required}:\n{output}")
+        build_identity = diagnostic_value(output, "BUILD_IDENTITY")
+        deployment_identity = diagnostic_value(output, "DEPLOYMENT_IDENTITY")
+        if args.expect_deployment_identity == "correlated":
+            require(
+                build_identity != "unknown"
+                and deployment_identity != "unknown"
+                and build_identity == deployment_identity,
+                "installed QPA build/deployment identities do not correlate: "
+                f"build={build_identity!r} deployment={deployment_identity!r}\n{output}",
+            )
+        elif args.expect_deployment_identity == "unknown":
+            require(
+                deployment_identity == "unknown",
+                f"source QPA diagnostic report unexpectedly resolved deployment identity:\n{output}",
+            )
         print(
             "PASS: deployed consumer -> qhyremote + native QPA delegate + shared RemoteAccess -> "
-            "RFB reconnect without SDK/plugin/QML/runtime-path overrides"
+            "RFB reconnect + shared diagnostic report without SDK/plugin/QML/runtime-path overrides"
         )
         return 0
     finally:

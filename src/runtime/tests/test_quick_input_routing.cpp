@@ -11,10 +11,12 @@
 #include <QEvent>
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QStyleHints>
 #include <QHoverEvent>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QThread>
 #include <QQuickItem>
 #include <QQuickWindow>
 
@@ -170,6 +172,9 @@ void testQuickItemLevelRouting()
     check(a.releases >= 1, "item-level routing: the release reaches the same item");
 
     // 1b. Drag while held: with the button down, moves must keep reaching the same item even outside it.
+    // #400: this second press must be an independent gesture, not a double-click pair with the press
+    // above, so its accepted-arrival time is placed outside Qt's double-click interval.
+    QThread::msleep(static_cast<unsigned long>(QGuiApplication::styleHints()->mouseDoubleClickInterval()) + 250);
     postEvent(components, window, hyremote::InputEventKind::PointerButton, QPointF(100, 100),
               hyremote::PointerButton::Left);
     const int aMovesBeforeDrag = a.moves;

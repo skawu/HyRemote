@@ -155,3 +155,21 @@ if(TARGET Qt6::Quick)
         TIMEOUT 30
     )
 endif()
+
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;qpa;fast"
+    hyremote-qpa-proxy-smoke
+    hyremote-qpa-native-semantics
+    hyremote-qpa-auto-remoteaccess-smoke
+    hyremote-qpa-remote-failure-native-survival-smoke
+    hyremote-qpa-multi-surface-connection-smoke
+    hyremote-qpa-widget-popup-connection-smoke
+    hyremote-qpa-widget-opengl-capture-smoke
+    hyremote-qpa-quick-multi-window-connection-smoke
+)
+hyremote_label_test_family("contract;qpa;fast"
+    hyremote-qpa-remote-config-test
+)
+
+# The parent QPA directory registers the T4 deployment matrix after this subdirectory returns.
+cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.." CALL hyremote_apply_qpa_deploy_semantic_test_labels)

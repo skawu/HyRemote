@@ -1,40 +1,50 @@
-# HyRemote remote support showcase
+# HyRemoteTool
 
-This example demonstrates the V1.0 production-facing remote-support workflow through the public `HyRemote::RemoteAccess` facade only.
+HyRemoteTool is HyRemote's **out-of-process companion client**. It runs outside the business application, connects to a remote HyRemote-enabled application by explicit IP and port, and provides access-plane viewing, input and telemetry. It does not host remote access, does not share its own window and does not link the HyRemote Runtime.
 
-## Product behavior
+The source directory remains `examples/remote-support-showcase` as an implementation detail; the installed executable is `hyremote-tool`.
 
-- The local Qt Widgets application starts normally and remains the authoritative UI.
-- Remote access is **off initially**. The local operator must press **Start remote access**.
-- The listener uses HyRemote's LAN-capable default (`0.0.0.0`) and the effective port is displayed locally.
-- Listener/runtime state and viewer connection state are distinct: **Running does not mean a viewer is connected**. The local status panel displays the backend-neutral `connectedClientCount()` from the public facade.
-- Remote input is disabled by default, so the initial policy is view-only.
-- The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
-- Stop releases the listener while the local application continues running.
-- The local status panel shows stopped/running/faulted state, endpoint, connected-client count, current policy and the latest product-level error.
-- Viewer disconnect/reconnect updates the client count without recreating the local application.
-- The operator surface contains editable text and multiple controls so remote viewing/control is exercised against a meaningful application rather than a static capture target.
+## V0.3.0.0 scope
 
-## Security boundary
+- connect to `<remote-ip>:<port>` — the operator supplies the endpoint; there is no discovery;
+- RFB 3.8 / `SecurityType None`;
+- framebuffer view with aspect-preserving window scaling;
+- view-only by default; pointer, wheel and keyboard are sent only when **Remote control** is checked;
+- frame-rate (FPS), throughput (Mbit/s), frame count, byte count and resolution telemetry;
+- explicit Connecting / Connected / Disconnected / Failed state and last error;
+- disconnect and reconnect without restarting the tool.
 
-The current bounded RFB correctness baseline uses `SecurityType None`. This example therefore does **not** present the connection as authenticated or encrypted. Keep the listener on this LAN or another explicitly trusted network path; production authentication and encryption are not part of this release.
+## Not supported in V0.3.0.0 (stated, not faked)
 
-The safe startup policy is therefore two-dimensional: the service is explicitly started, and remote control remains independently opt-in. A connected-client count is operational diagnostics only; it is not an authenticated identity count.
+- management-plane actions (remote start/stop, policy or host-password changes);
+- VNC-auth connection passwords;
+- clipboard, fullscreen, multi-monitor, TLS/VeNCrypt and file transfer.
+
+The UI has no disabled placeholder buttons for those features. They are planned for later companion-tool phases; see [`docs/internal/hyremote-tool-plan.md`](../../docs/internal/hyremote-tool-plan.md).
 
 ## Run
 
-Build the normal examples graph with `HYREMOTE_BUILD_EXAMPLES=ON`, then run:
+Build with examples enabled, then:
 
 ```text
-hyremote-remote-support-showcase
+hyremote-tool
 ```
 
-Optional acceptance helpers are explicit and do not change normal safe defaults:
+Enter the remote application's IP and port and press **Connect**. A HyRemote-enabled host example can be started with:
 
 ```text
-hyremote-remote-support-showcase --auto-start --remote-input --port 5901 --test-seconds 30
+hyremote-learning-01-widgets --port 5931 --remote-input
 ```
 
-`--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access.
+Optional helpers:
 
-The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the final physical local-display/local-input coexistence evidence required by the V1 acceptance gate.
+```text
+hyremote-tool --connect 192.168.1.6:5921
+hyremote-tool --verify-ui
+```
+
+`--verify-ui` constructs the client window offscreen and does not connect or open a listener. `--test-seconds N` bounds a run for automation.
+
+## Security boundary
+
+The V0.3.0.0 client accepts only unauthenticated `SecurityType None` endpoints. Use it on a trusted LAN or another explicitly protected path; it is not Internet-safe. Do not treat the client as a replacement for TLS, authentication or access control.

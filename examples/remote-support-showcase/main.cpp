@@ -1,19 +1,15 @@
-#include <HyRemote/RemoteAccess.h>
+#include "framebuffer_view.h"
+#include "rfb_client.h"
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QFormLayout>
-#include <QGroupBox>
 #include <QHBoxLayout>
-#include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPlainTextEdit>
-#include <QProgressBar>
 #include <QPushButton>
-#include <QSlider>
 #include <QSpinBox>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -23,242 +19,233 @@
 
 namespace {
 
-QString stateName(HyRemote::RemoteAccessState state)
+QString humanBytes(quint64 bytes)
+{
+    constexpr double kKiB = 1024.0;
+    constexpr double kMiB = kKiB * 1024.0;
+    constexpr double kGiB = kMiB * 1024.0;
+    if (bytes >= static_cast<quint64>(kGiB))
+        return QStringLiteral("%1 GiB").arg(bytes / kGiB, 0, 'f', 2);
+    if (bytes >= static_cast<quint64>(kMiB))
+        return QStringLiteral("%1 MiB").arg(bytes / kMiB, 0, 'f', 1);
+    if (bytes >= static_cast<quint64>(kKiB))
+        return QStringLiteral("%1 KiB").arg(bytes / kKiB, 0, 'f', 1);
+    return QStringLiteral("%1 B").arg(bytes);
+}
+
+QString stateText(RfbClient::State state)
 {
     switch (state) {
-    case HyRemote::RemoteAccessState::Stopped:
-        return QStringLiteral("Stopped");
-    case HyRemote::RemoteAccessState::Starting:
-        return QStringLiteral("Starting");
-    case HyRemote::RemoteAccessState::Running:
-        return QStringLiteral("Running");
-    case HyRemote::RemoteAccessState::Stopping:
-        return QStringLiteral("Stopping");
-    case HyRemote::RemoteAccessState::Faulted:
-        return QStringLiteral("Faulted");
+    case RfbClient::State::Disconnected:
+        return QStringLiteral("Disconnected");
+    case RfbClient::State::Connecting:
+        return QStringLiteral("Connecting");
+    case RfbClient::State::Handshaking:
+        return QStringLiteral("Handshaking");
+    case RfbClient::State::Connected:
+        return QStringLiteral("Connected");
+    case RfbClient::State::Failed:
+        return QStringLiteral("Failed");
     }
     return QStringLiteral("Unknown");
 }
 
-int readPositiveInt(const QCommandLineParser &parser,
-                    const QCommandLineOption &option,
-                    int fallback)
-{
-    bool ok = false;
-    const int value = parser.value(option).toInt(&ok);
-    return ok && value > 0 ? value : fallback;
-}
-
-class SupportWindow final : public QWidget
+class ClientWindow final : public QWidget
 {
 public:
-    explicit SupportWindow(quint16 port, bool initialInputEnabled, QWidget *parent = nullptr)
+    explicit ClientWindow(QWidget *parent = nullptr)
         : QWidget(parent)
-        , m_remote(this)
-        , m_port(port)
+        , m_client(new RfbClient(this))
+        , m_view(new FramebufferView(this))
     {
-        setWindowTitle(QStringLiteral("HyRemote Remote Support Showcase"));
-        resize(780, 580);
-
-        m_remote.setPort(port);
-        m_remote.setRemoteInputEnabled(initialInputEnabled);
+        setWindowTitle(QStringLiteral("HyRemoteTool — Remote access client"));
 
         auto *root = new QVBoxLayout(this);
+        root->setContentsMargins(10, 10, 10, 10);
+        root->setSpacing(8);
 
-        auto *heading = new QLabel(QStringLiteral("HyRemote · Remote Support Showcase"), this);
-        QFont headingFont = heading->font();
-        headingFont.setPointSize(16);
-        headingFont.setBold(true);
-        heading->setFont(headingFont);
-        root->addWidget(heading);
+        auto *connectionRow = new QHBoxLayout;
+        auto *remoteLabel = new QLabel(QStringLiteral("Remote"), this);
+        m_host = new QLineEdit(this);
+        m_host->setPlaceholderText(QStringLiteral("192.168.1.6"));
+        m_host->setClearButtonEnabled(true);
+        auto *portLabel = new QLabel(QStringLiteral("Port"), this);
+        m_port = new QSpinBox(this);
+        m_port->setRange(1, 65535);
+        m_port->setValue(5921);
+        m_connect = new QPushButton(QStringLiteral("Connect"), this);
+        m_status = new QLabel(QStringLiteral("Disconnected"), this);
+        connectionRow->addWidget(remoteLabel);
+        connectionRow->addWidget(m_host, 1);
+        connectionRow->addWidget(portLabel);
+        connectionRow->addWidget(m_port);
+        connectionRow->addWidget(m_connect);
+        connectionRow->addWidget(m_status);
+        root->addLayout(connectionRow);
 
-        auto *intro = new QLabel(
-            QStringLiteral("The local application remains authoritative. Remote access is off until "
-                           "the local operator explicitly starts it."),
-            this);
-        intro->setWordWrap(true);
-        root->addWidget(intro);
+        root->addWidget(m_view, 1);
 
-        auto *remoteBox = new QGroupBox(QStringLiteral("Remote support"), this);
-        auto *remoteLayout = new QVBoxLayout(remoteBox);
+        auto *telemetryRow = new QHBoxLayout;
+        m_control = new QCheckBox(QStringLiteral("Remote control"), this);
+        m_control->setToolTip(QStringLiteral(
+            "When unchecked the session is view-only and no pointer or keyboard events are sent."));
+        m_fps = new QLabel(QStringLiteral("FPS 0.0"), this);
+        m_mbps = new QLabel(QStringLiteral("0.00 Mbit/s"), this);
+        m_frames = new QLabel(QStringLiteral("Frames 0"), this);
+        m_bytes = new QLabel(QStringLiteral("Bytes 0 B"), this);
+        m_resolution = new QLabel(QStringLiteral("No frame"), this);
+        telemetryRow->addWidget(m_control);
+        telemetryRow->addSpacing(16);
+        telemetryRow->addWidget(m_fps);
+        telemetryRow->addWidget(m_mbps);
+        telemetryRow->addWidget(m_frames);
+        telemetryRow->addWidget(m_bytes);
+        telemetryRow->addWidget(m_resolution);
+        telemetryRow->addStretch(1);
+        root->addLayout(telemetryRow);
 
-        auto *statusForm = new QFormLayout;
-        m_state = new QLabel(remoteBox);
-        m_endpoint = new QLabel(QStringLiteral("0.0.0.0:%1 (this host's IPv4 interfaces; trusted LAN only)").arg(port), remoteBox);
-        m_clients = new QLabel(QStringLiteral("0"), remoteBox);
-        m_policy = new QLabel(remoteBox);
-        m_error = new QLabel(QStringLiteral("None"), remoteBox);
+        m_error = new QLabel(this);
         m_error->setWordWrap(true);
-        statusForm->addRow(QStringLiteral("State"), m_state);
-        statusForm->addRow(QStringLiteral("Listener"), m_endpoint);
-        statusForm->addRow(QStringLiteral("Connected clients"), m_clients);
-        statusForm->addRow(QStringLiteral("Policy"), m_policy);
-        statusForm->addRow(QStringLiteral("Last error"), m_error);
-        remoteLayout->addLayout(statusForm);
+        m_error->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_error->setVisible(false);
+        root->addWidget(m_error);
 
-        auto *actions = new QHBoxLayout;
-        m_startStop = new QPushButton(QStringLiteral("Start remote access"), remoteBox);
-        m_input = new QCheckBox(QStringLiteral("Allow remote control"), remoteBox);
-        m_input->setChecked(initialInputEnabled);
-        actions->addWidget(m_startStop);
-        actions->addWidget(m_input);
-        actions->addStretch(1);
-        remoteLayout->addLayout(actions);
+        m_view->onPointer = [this](quint8 mask, quint16 x, quint16 y) {
+            m_client->sendPointer(mask, x, y);
+        };
+        m_view->onKey = [this](quint32 keysym, bool pressed) {
+            m_client->sendKey(keysym, pressed);
+        };
 
-        auto *policyNote = new QLabel(
-            QStringLiteral("Changing remote-control policy while running performs an explicit "
-                           "stop/apply/start cycle on the same RemoteAccess instance."),
-            remoteBox);
-        policyNote->setWordWrap(true);
-        remoteLayout->addWidget(policyNote);
-
-        auto *security = new QLabel(
-            QStringLiteral("Security boundary: the current RFB correctness baseline uses "
-                           "SecurityType None. The listener is unencrypted, so keep it on this LAN or another trusted, "
-                           "explicitly protected network path; this example does not simulate "
-                           "authentication or encryption."),
-            remoteBox);
-        security->setWordWrap(true);
-        remoteLayout->addWidget(security);
-        root->addWidget(remoteBox);
-
-        auto *workBox = new QGroupBox(QStringLiteral("Local operator controls"), this);
-        auto *workLayout = new QFormLayout(workBox);
-        auto *asset = new QLineEdit(QStringLiteral("Conveyor-01"), workBox);
-        auto *speed = new QSpinBox(workBox);
-        speed->setRange(0, 100);
-        speed->setValue(42);
-        auto *load = new QSlider(Qt::Horizontal, workBox);
-        load->setRange(0, 100);
-        load->setValue(58);
-        auto *loadValue = new QProgressBar(workBox);
-        loadValue->setRange(0, 100);
-        loadValue->setValue(load->value());
-        auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
-        auto *notes = new QPlainTextEdit(workBox);
-        notes->setPlainText(QStringLiteral("Operator notes remain editable locally while remote support is active."));
-        notes->setMaximumBlockCount(20);
-
-        workLayout->addRow(QStringLiteral("Asset"), asset);
-        workLayout->addRow(QStringLiteral("Command setpoint"), speed);
-        workLayout->addRow(QStringLiteral("Process load"), load);
-        workLayout->addRow(QStringLiteral("Load indicator"), loadValue);
-        workLayout->addRow(QString(), maintenance);
-        workLayout->addRow(QStringLiteral("Notes"), notes);
-        root->addWidget(workBox, 1);
-
-        QObject::connect(load, &QSlider::valueChanged, loadValue, &QProgressBar::setValue);
-        QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
-        QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
-            applyRemoteInputPolicy(enabled);
+        connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
+        connect(m_control, &QCheckBox::toggled, this, [this](bool enabled) {
+            m_client->setRemoteControlEnabled(enabled);
+            m_view->setInputEnabled(enabled);
+        });
+        connect(m_client, &RfbClient::stateChanged, this, [this](RfbClient::State state) {
+            applyState(state);
+        });
+        connect(m_client, &RfbClient::frameUpdated, this, [this](const QImage &frame) {
+            m_view->setFrame(frame);
+            m_resolution->setText(QStringLiteral("%1 × %2").arg(frame.width()).arg(frame.height()));
+            std::cout << "TOOL_CLIENT_FRAME " << frame.width() << 'x' << frame.height() << std::endl;
+        });
+        connect(m_client, &RfbClient::statsUpdated, this, [this](const RfbClient::Stats &stats) {
+            m_fps->setText(QStringLiteral("FPS %1").arg(stats.fps, 0, 'f', 1));
+            m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(stats.mbitPerSecond, 0, 'f', 2));
+            m_frames->setText(QStringLiteral("Frames %1").arg(stats.frames));
+            m_bytes->setText(QStringLiteral("Bytes %1").arg(humanBytes(stats.bytes)));
+            std::cout << "TOOL_CLIENT_STATS fps=" << stats.fps
+                      << " mbit=" << stats.mbitPerSecond
+                      << " frames=" << stats.frames
+                      << " bytes=" << stats.bytes << std::endl;
+        });
+        connect(m_client, &RfbClient::errorOccurred, this, [this](const QString &message) {
+            m_error->setText(message);
+            m_error->setVisible(true);
+            std::cerr << "TOOL_CLIENT_ERROR " << message.toStdString() << std::endl;
         });
 
-        auto *timer = new QTimer(this);
-        timer->setInterval(100);
-        timer->setTimerType(Qt::CoarseTimer);
-        QObject::connect(timer, &QTimer::timeout, this, [this] { refreshStatus(); });
-        timer->start();
-        refreshStatus();
+        m_view->clearFrame(QStringLiteral(
+            "Not connected. Enter the remote application's IP and port, then Connect."));
+        m_view->setInputEnabled(false);
+        m_client->setRemoteControlEnabled(false);
+        applyState(RfbClient::State::Disconnected);
+        resize(1000, 700);
     }
 
-    ~SupportWindow() override
+    void connectTo(const QString &host, quint16 port)
     {
-        m_remote.stop();
+        m_host->setText(host);
+        m_port->setValue(port);
+        m_client->connectToHost(host, port);
     }
 
-    bool startRemoteAccess()
+    bool verifyUi() const
     {
-        m_remote.clearError();
-        if (!m_remote.start()) {
-            refreshStatus();
-            return false;
-        }
-        m_lastReportedClientCount = m_remote.connectedClientCount();
-        refreshStatus();
-        std::cout << "REMOTE_STARTED " << m_port << std::endl;
-        std::cout << "SHOWCASE_CLIENTS " << m_lastReportedClientCount << std::endl;
-        return true;
+        const bool ok = m_host && m_port && m_connect && m_view && m_status
+                        && m_control && m_fps && m_mbps && m_frames && m_bytes
+                        && m_resolution && m_error;
+        std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
+                  << " host=" << (m_host != nullptr)
+                  << " port=" << (m_port != nullptr)
+                  << " view=" << (m_view != nullptr)
+                  << " telemetry=" << (m_fps != nullptr && m_mbps != nullptr)
+                  << std::endl;
+        return ok;
     }
 
-    void stopRemoteAccess()
+protected:
+    void closeEvent(QCloseEvent *event) override
     {
-        m_remote.stop();
-        refreshStatus();
-        std::cout << "SHOWCASE_CLIENTS " << m_remote.connectedClientCount() << std::endl;
-        std::cout << "REMOTE_STOPPED" << std::endl;
+        m_client->disconnectFromHost();
+        QWidget::closeEvent(event);
     }
 
 private:
-    void toggleRemoteAccess()
+    void toggleConnection()
     {
-        const auto state = m_remote.state();
-        if (state == HyRemote::RemoteAccessState::Running ||
-            state == HyRemote::RemoteAccessState::Starting ||
-            state == HyRemote::RemoteAccessState::Faulted) {
-            stopRemoteAccess();
-            return;
-        }
-        startRemoteAccess();
-    }
-
-    void applyRemoteInputPolicy(bool enabled)
-    {
-        const bool wasRunning = m_remote.state() == HyRemote::RemoteAccessState::Running;
-        if (wasRunning)
-            m_remote.stop();
-
-        if (!m_remote.setRemoteInputEnabled(enabled)) {
-            m_input->blockSignals(true);
-            m_input->setChecked(m_remote.remoteInputEnabled());
-            m_input->blockSignals(false);
-            refreshStatus();
-            if (wasRunning)
-                startRemoteAccess();
+        const auto state = m_client->state();
+        if (state == RfbClient::State::Connected || state == RfbClient::State::Connecting
+            || state == RfbClient::State::Handshaking) {
+            m_client->disconnectFromHost();
             return;
         }
 
-        std::cout << "REMOTE_INPUT " << (enabled ? "enabled" : "disabled") << std::endl;
-        if (wasRunning)
-            startRemoteAccess();
-        refreshStatus();
-    }
-
-    void refreshStatus()
-    {
-        const auto state = m_remote.state();
-        m_state->setText(stateName(state));
-        m_policy->setText(m_remote.remoteInputEnabled()
-                              ? QStringLiteral("Remote view + control")
-                              : QStringLiteral("View-only (safe default)"));
-
-        const std::size_t clientCount = m_remote.connectedClientCount();
-        m_clients->setText(QString::number(static_cast<qulonglong>(clientCount)));
-        if (clientCount != m_lastReportedClientCount) {
-            m_lastReportedClientCount = clientCount;
-            std::cout << "SHOWCASE_CLIENTS " << clientCount << std::endl;
+        const QString host = m_host->text().trimmed();
+        if (host.isEmpty()) {
+            m_error->setText(QStringLiteral("Enter the remote application IP or hostname."));
+            m_error->setVisible(true);
+            return;
         }
-
-        const bool active = state == HyRemote::RemoteAccessState::Running ||
-                            state == HyRemote::RemoteAccessState::Starting;
-        m_startStop->setText(active ? QStringLiteral("Stop remote access")
-                                    : QStringLiteral("Start remote access"));
-
-        if (const auto error = m_remote.lastError())
-            m_error->setText(error->message.isEmpty() ? QStringLiteral("Runtime failure") : error->message);
-        else
-            m_error->setText(QStringLiteral("None"));
+        m_error->setVisible(false);
+        m_client->connectToHost(host, static_cast<quint16>(m_port->value()));
     }
 
-    HyRemote::RemoteAccess m_remote;
-    quint16 m_port = 5921;
-    std::size_t m_lastReportedClientCount = 0;
-    QLabel *m_state = nullptr;
-    QLabel *m_endpoint = nullptr;
-    QLabel *m_clients = nullptr;
-    QLabel *m_policy = nullptr;
+    void applyState(RfbClient::State state)
+    {
+        m_status->setText(stateText(state));
+        std::cout << "TOOL_CLIENT_STATE " << stateText(state).toStdString() << std::endl;
+
+        const bool busy = state == RfbClient::State::Connecting
+                          || state == RfbClient::State::Handshaking;
+        const bool connected = state == RfbClient::State::Connected;
+        m_host->setEnabled(!busy && !connected);
+        m_port->setEnabled(!busy && !connected);
+        m_connect->setText(busy || connected ? QStringLiteral("Disconnect")
+                                            : QStringLiteral("Connect"));
+        m_connect->setEnabled(true);
+        m_control->setEnabled(connected);
+        if (!connected) {
+            m_control->setChecked(false);
+            m_view->setInputEnabled(false);
+            m_client->setRemoteControlEnabled(false);
+        }
+        if (state == RfbClient::State::Disconnected) {
+            m_view->clearFrame(QStringLiteral(
+                "Not connected. Enter the remote application's IP and port, then Connect."));
+            m_resolution->setText(QStringLiteral("No frame"));
+            m_error->setVisible(false);
+        }
+        if (state == RfbClient::State::Failed) {
+            m_view->clearFrame(QStringLiteral("Connection failed. Check the remote endpoint and try again."));
+            m_resolution->setText(QStringLiteral("No frame"));
+        }
+    }
+
+    RfbClient *m_client = nullptr;
+    FramebufferView *m_view = nullptr;
+    QLineEdit *m_host = nullptr;
+    QSpinBox *m_port = nullptr;
+    QPushButton *m_connect = nullptr;
+    QLabel *m_status = nullptr;
     QLabel *m_error = nullptr;
-    QPushButton *m_startStop = nullptr;
-    QCheckBox *m_input = nullptr;
+    QLabel *m_fps = nullptr;
+    QLabel *m_mbps = nullptr;
+    QLabel *m_frames = nullptr;
+    QLabel *m_bytes = nullptr;
+    QLabel *m_resolution = nullptr;
+    QCheckBox *m_control = nullptr;
 };
 
 }  // namespace
@@ -266,46 +253,60 @@ private:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("HyRemote Remote Support Showcase"));
+    QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Production-like HyRemote local + remote support workflow"));
+    parser.setApplicationDescription(
+        QStringLiteral("HyRemoteTool — connect to a remote HyRemote-enabled application."));
     parser.addHelpOption();
-    QCommandLineOption portOption(QStringList{QStringLiteral("p"), QStringLiteral("port")},
-                                  QStringLiteral("Listener port the viewer connects to."),
-                                  QStringLiteral("port"),
-                                  QStringLiteral("5921"));
-    QCommandLineOption inputOption(QStringLiteral("remote-input"),
-                                   QStringLiteral("Enable remote input when remote access starts."));
-    QCommandLineOption autoStartOption(QStringLiteral("auto-start"),
-                                       QStringLiteral("Explicit test/acceptance helper: start after the local window is shown."));
-    QCommandLineOption secondsOption(QStringLiteral("test-seconds"),
-                                     QStringLiteral("Exit after N seconds (CI/product-fit helper)."),
-                                     QStringLiteral("seconds"),
-                                     QStringLiteral("0"));
-    parser.addOption(portOption);
-    parser.addOption(inputOption);
-    parser.addOption(autoStartOption);
+
+    QCommandLineOption connectOption(
+        QStringLiteral("connect"),
+        QStringLiteral("Connect to <host>:<port> after startup."),
+        QStringLiteral("host:port"));
+    QCommandLineOption secondsOption(
+        QStringLiteral("test-seconds"),
+        QStringLiteral("Exit after N seconds (CI helper)."),
+        QStringLiteral("seconds"),
+        QStringLiteral("0"));
+    QCommandLineOption verifyUiOption(
+        QStringLiteral("verify-ui"),
+        QStringLiteral("CI-only check: construct the client window without connecting."));
+    parser.addOption(connectOption);
     parser.addOption(secondsOption);
+    parser.addOption(verifyUiOption);
     parser.process(app);
 
-    const int parsedPort = readPositiveInt(parser, portOption, 5921);
-    if (parsedPort > 65535) {
-        std::cerr << "invalid port" << std::endl;
-        return 64;
-    }
-
-    const int testSeconds = readPositiveInt(parser, secondsOption, 0);
-    SupportWindow window(static_cast<quint16>(parsedPort), parser.isSet(inputOption));
+    ClientWindow window;
     window.show();
 
-    if (parser.isSet(autoStartOption)) {
-        QTimer::singleShot(0, &window, [&window] {
-            if (!window.startRemoteAccess())
-                std::cerr << "START_FAILED" << std::endl;
+    if (parser.isSet(verifyUiOption)) {
+        QTimer::singleShot(0, &window, [&window, &app] {
+            app.exit(window.verifyUi() ? 0 : 1);
+        });
+        return app.exec();
+    }
+
+    const QString connectTarget = parser.value(connectOption);
+    if (!connectTarget.isEmpty()) {
+        const int separator = connectTarget.lastIndexOf(QLatin1Char(':'));
+        if (separator <= 0) {
+            std::cerr << "invalid --connect; expected host:port" << std::endl;
+            return 64;
+        }
+        bool ok = false;
+        const int port = connectTarget.mid(separator + 1).toInt(&ok);
+        if (!ok || port <= 0 || port > 65535) {
+            std::cerr << "invalid --connect port" << std::endl;
+            return 64;
+        }
+        const QString host = connectTarget.left(separator);
+        QTimer::singleShot(0, &window, [&window, host, port] {
+            window.connectTo(host, static_cast<quint16>(port));
         });
     }
 
+    const int testSeconds = parser.value(secondsOption).toInt();
     if (testSeconds > 0)
         QTimer::singleShot(testSeconds * 1000, &app, &QCoreApplication::quit);
 

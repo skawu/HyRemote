@@ -2,7 +2,7 @@
 
 This document defines the **intended application-facing stability contract for HyRemote V1 GA**.
 
-It is a product contract, not a release checklist. Before `V1.0.0.0`, a capability may still be marked **Preview** or **TODO** in the product documentation. V1 GA begins only when the published compatibility matrix and release package declare the corresponding surface stable.
+It is a product contract, not a release checklist. Before `V1.0.0.0`, a capability may still be described as open work in the product documentation. V1 GA begins only when the published compatibility matrix and release package declare the corresponding surface stable.
 
 The central rule is simple:
 
@@ -97,9 +97,9 @@ The intended V1 stable QML contract includes:
 
 The C++ implementation class behind the QML type is not itself a consumer API.
 
-Current product status: **Preview**.
+Current product status: a peer route, backed by the same shared runtime.
 
-> **TODO V0.3/V1.0:** complete the final QML API surface, installed-SDK examples, and compatibility qualification before declaring the QML contract stable.
+> **Open work (current product line):** complete the final QML API surface, installed-SDK examples, and compatibility qualification before declaring the QML contract stable.
 
 ## 4. Generic Plugin stability
 
@@ -152,9 +152,9 @@ QPA itself uses Qt private ABI. Therefore its binary compatibility is qualified 
 
 Private QPA classes, native handles, controller/composition/provider types, and Qt private headers are not part of HyRemote's stable application API.
 
-Current product status: **Preview**.
+Current product status: a peer route, backed by the same shared runtime.
 
-> **TODO V0.3/V0.4:** complete QPA productization and exact-version qualification before including a QPA row in the final V1 supported matrix.
+> **Open work (current product line):** complete QPA productization and exact-version qualification before including a QPA row in the final V1 supported matrix.
 
 ## 6. Installed CMake/package stability
 

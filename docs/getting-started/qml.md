@@ -1,10 +1,10 @@
-# QML API 接入（Preview）
+# QML API 接入
 
 > 语言 / Language：**中文** ｜ [English](../en/getting-started/qml.md)
 
 QML API 是 HyRemote 面向 Qt Quick 应用的声明式接入方式。它是 Shared Runtime 之上的薄前端，不会创建第二套 Session、采集、传输、输入或安全实现。
 
-当前产品状态：**Preview**。
+当前产品状态：peer route。
 
 ## 适合谁
 
@@ -24,9 +24,8 @@ QML API 是 HyRemote 面向 Qt Quick 应用的声明式接入方式。它是 Sha
 - Linux x86_64；
 - Qt 6.8.3。
 
-QML API 目前按 Preview 提供；精确支持状态见 [`../compatibility.md`](../compatibility.md)。
-
-> **TODO V0.3：** 完成 installed-SDK、部署、双语示例和完整产品资格后，将 QML API 提升为正式产品路径。
+QML API 是四个 peer 产品接入路线之一；它与 C++ / Generic / QPA 共用同一个 Shared Runtime。精确的平台、Qt 与部署限制见
+[`../compatibility.md`](../compatibility.md)。
 
 ## 最小接入
 
@@ -152,13 +151,13 @@ V0.1 的 Shared Runtime 采用回环优先策略：
 
 新的 Example 体系会提供独立的 Quick + QML 学习路径，并和 Quick + C++ 示例明确区分。
 
-> **TODO V0.3：** 完成 `examples/learning/04-quick-qml` 的双语、品牌化正式示例。
+> **Open work (current product line):** 完成 `examples/learning/04-quick-qml` 的双语、品牌化正式示例。
 
 ## 下一步
 
 - Quick + C++：[`cpp.md`](cpp.md)；
 - Generic 零代码接入：[`generic.md`](generic.md)；
-- QPA（Preview）：[`qpa-proxy.md`](qpa-proxy.md)；
+- QPA：[`qpa-proxy.md`](qpa-proxy.md)；
 - 部署：[`../guide/deployment.md`](../guide/deployment.md)；
 - 查看器连接：[`../guide/viewer-connection.md`](../guide/viewer-connection.md)；
 - 安全：[`../security.md`](../security.md)；

@@ -44,6 +44,7 @@ endif()
 set(all_cells
     clean-install
     installed-sdk
+    installed-qml
     installed-qml-qpa
     installed-qpa-product-fit
     source-consumer
@@ -197,7 +198,13 @@ endfunction()
 # execute the given command with an explicitly constructed PATH, capturing output and exit code.
 function(run_capture cell label path_value)
     execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env "PATH=${path_value}"
+        COMMAND ${CMAKE_COMMAND} -E env
+                --unset=LD_LIBRARY_PATH
+                --unset=QT_PLUGIN_PATH
+                --unset=QT_QPA_PLATFORM_PLUGIN_PATH
+                --unset=QML_IMPORT_PATH
+                --unset=QML2_IMPORT_PATH
+                "PATH=${path_value}"
                 ${ARGN}
         RESULT_VARIABLE _result
         OUTPUT_VARIABLE _out
@@ -441,7 +448,7 @@ function(record_runtime_isolation cell deployed_root)
 endfunction()
 
 foreach(cell IN LISTS EVIDENCE_CELLS)
-    if(NOT cell IN_LIST all_cells)
+    if(NOT cell IN_LIST all_cells AND NOT cell STREQUAL "installed-tool")
         message(FATAL_ERROR "release-evidence: unknown evidence cell '${cell}'")
     endif()
     evidence_dir_for("${cell}")
@@ -485,17 +492,20 @@ function(acquire_installed cell fixture)
             ${ARGN})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer configure failed")
+        set(FAILED_CELLS "${FAILED_CELLS}" PARENT_SCOPE)
         return()
     endif()
     run_toolchain("${cell}" "build" "${CMAKE_COMMAND}" --build "${_build}" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer build failed")
+        set(FAILED_CELLS "${FAILED_CELLS}" PARENT_SCOPE)
         return()
     endif()
     run_toolchain("${cell}" "install"
         "${CMAKE_COMMAND}" --install "${_build}" --prefix "${RUN_DIR}/${cell}/deployed" ${CONSUMER_CONFIG_ARGS})
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "installed consumer deployment failed")
+        set(FAILED_CELLS "${FAILED_CELLS}" PARENT_SCOPE)
         return()
     endif()
     set(${cell}_deployed "${RUN_DIR}/${cell}/deployed" PARENT_SCOPE)
@@ -522,14 +532,46 @@ if("installed-sdk" IN_LIST EVIDENCE_CELLS)
     endif()
 endif()
 
+function(run_deployed_qml_consumer cell)
+    # QML deploys a module payload of its own. Validate relocation, then execute Main.qml's
+    # contractOk from the detached tree so module/load/diagnostic truth is observed, not inferred.
+    if("${FAILED_CELLS}" MATCHES "${cell}")
+        return()
+    endif()
+    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
+    if("${FAILED_CELLS}" MATCHES "${cell}")
+        return()
+    endif()
+
+    set(_qml_exe "${RUN_DIR}/${cell}/deployed/bin/hyremote-installed-qml-consumer")
+    if(WIN32)
+        set(_qml_exe "${_qml_exe}.exe")
+    endif()
+    set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+    record_runtime_env("${cell}" "${_path}")
+    record("${cell}" "EXECUTABLE" "${_qml_exe}")
+    run_capture("${cell}" "deployed_qml_diagnostics" "${_path}" "${_qml_exe}")
+    if(${cell}_result EQUAL 0)
+        record("${cell}" "RESULT_DETAIL"
+            "deployed QML consumer executed Main.qml diagnostics and exited successfully")
+        record("${cell}" "RESULT" "PASS")
+    else()
+        fail_cell("${cell}" "deployed QML consumer diagnostic contract did not run successfully")
+    endif()
+endfunction()
+
+if("installed-qml" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-qml")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (QML only)")
+    acquire_installed("${cell}" "tests/consumer-installed-qml")
+    run_deployed_qml_consumer("${cell}")
+endif()
+
 if("installed-qml-qpa" IN_LIST EVIDENCE_CELLS)
     set(cell "installed-qml-qpa")
     record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "tests/consumer-installed-qml (combined QML + QPA)")
     acquire_installed("${cell}" "tests/consumer-installed-qml" "-DHYREMOTE_CONSUMER_WITH_QPA=ON")
-    # The QML route deploys a module payload of its own, so the same shared ELF contract runs for it: the module
-    # beside the deployed application must be the relocatable one, not the copy the build tree handed the QML
-    # import deployment.
-    deployed_elf_paths("${cell}" "${RUN_DIR}/${cell}/deployed")
+    run_deployed_qml_consumer("${cell}")
 endif()
 
 if("source-consumer" IN_LIST EVIDENCE_CELLS)
@@ -600,9 +642,21 @@ function(qpa_product_fit cell fixture)
     set(_path "${RUN_DIR}/${cell}/deployed/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
-    record("${cell}" "HARNESS_COMMAND" "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe}")
+    if(cell STREQUAL "installed-qpa-product-fit")
+        set(_qpa_identity_expectation "correlated")
+        set(_qpa_port 5991)
+    else()
+        set(_qpa_identity_expectation "unknown")
+        set(_qpa_port 5992)
+    endif()
+    set(_qpa_diagnostic_args
+        --port "${_qpa_port}"
+        --expect-deployment-identity "${_qpa_identity_expectation}")
+    record("${cell}" "HARNESS_COMMAND"
+        "${HARNESS_EXECUTOR} ${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py --app ${_exe} ${_qpa_diagnostic_args}")
     run_capture("${cell}" "product_fit" "${_path}"
-        "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py" --app "${_exe}")
+        "${HARNESS_EXECUTOR}" "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/product_fit.py"
+        --app "${_exe}" ${_qpa_diagnostic_args})
     if(${cell}_result EQUAL 0)
         record("${cell}" "RESULT_DETAIL" "product-fit ran the deployed consumer to a live RFB listener")
         record("${cell}" "RESULT" "PASS")
@@ -741,12 +795,57 @@ function(generic_product_fit cell consumer_target)
     set(_path "${_deployed}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
     record_runtime_env("${cell}" "${_path}")
     record("${cell}" "EXECUTABLE" "${_exe}")
-    run_capture("${cell}" "deployed_smoke" "${_path}" "${_exe}")
+    # Qt GUI logging is routed to the debugger on Windows by default. Force Qt log output onto
+    # stderr so the same zero-code Runtime diagnostic block is observable by this evidence harness.
+    run_capture("${cell}" "deployed_smoke" "${_path}"
+        "QT_FORCE_STDERR_LOGGING=1" "${_exe}")
     if(NOT ${cell}_result EQUAL 0)
         fail_cell("${cell}" "deployed Generic consumer did not exit successfully")
         return()
     endif()
-    record("${cell}" "RESULT_DETAIL" "deployed Generic consumer preserved native platform identity and discovered the plugin")
+
+    file(READ "${RUN_DIR}/${cell}/deployed_smoke.log" _generic_smoke_log)
+    if(consumer_target STREQUAL "generic-widgets-consumer")
+        set(_expected_ui_family "widgets")
+    else()
+        set(_expected_ui_family "quick")
+    endif()
+    foreach(_required_diagnostic IN ITEMS
+            "INTEGRATION_ROUTE=generic"
+            "UI_FAMILY=${_expected_ui_family}"
+            "STATE=Running")
+        string(FIND "${_generic_smoke_log}" "${_required_diagnostic}" _diagnostic_hit)
+        if(_diagnostic_hit EQUAL -1)
+            fail_cell("${cell}"
+                "deployed Generic diagnostic report is missing ${_required_diagnostic}")
+            return()
+        endif()
+    endforeach()
+
+    string(REGEX MATCHALL "BUILD_IDENTITY=[^\r\n]+" _generic_build_lines "${_generic_smoke_log}")
+    string(REGEX MATCHALL "DEPLOYMENT_IDENTITY=[^\r\n]+" _generic_deploy_lines "${_generic_smoke_log}")
+    list(REMOVE_DUPLICATES _generic_build_lines)
+    list(REMOVE_DUPLICATES _generic_deploy_lines)
+    list(LENGTH _generic_build_lines _generic_build_count)
+    list(LENGTH _generic_deploy_lines _generic_deploy_count)
+    if(NOT _generic_build_count EQUAL 1 OR NOT _generic_deploy_count EQUAL 1)
+        fail_cell("${cell}" "deployed Generic diagnostic identity values are missing or inconsistent")
+        return()
+    endif()
+    list(GET _generic_build_lines 0 _generic_build_identity)
+    list(GET _generic_deploy_lines 0 _generic_deploy_identity)
+    string(REGEX REPLACE "^BUILD_IDENTITY=" "" _generic_build_identity "${_generic_build_identity}")
+    string(REGEX REPLACE "^DEPLOYMENT_IDENTITY=" "" _generic_deploy_identity "${_generic_deploy_identity}")
+    if(_generic_build_identity STREQUAL "unknown"
+       OR _generic_deploy_identity STREQUAL "unknown"
+       OR NOT _generic_build_identity STREQUAL _generic_deploy_identity)
+        fail_cell("${cell}"
+            "deployed Generic build/deployment identities do not correlate: build=${_generic_build_identity}; deployment=${_generic_deploy_identity}")
+        return()
+    endif()
+
+    record("${cell}" "RESULT_DETAIL"
+        "deployed Generic consumer preserved native platform identity and emitted a correlated shared Runtime diagnostic report")
     record("${cell}" "RESULT" "PASS")
     # One auditable line per required consumer in the runner's own output, so a passing run still states which
     # consumers actually executed rather than leaving that to be inferred from a cell count.
@@ -937,6 +1036,86 @@ if("deploy-helper" IN_LIST EVIDENCE_CELLS)
     endif()
 endif()
 
+
+# ---------------------------------------------------------------- installed HyRemoteTool
+#
+# Optional explicit cell: HyRemoteTool is only built when examples are enabled. It must not be added to
+# the runner's default all_cells, which is also used by configurations with examples disabled. When selected
+# from its capability-guarded CTest, it tests the exact canonical *installed* product prefix (not a build-tree
+# executable), with the same hermetic product runtime PATH as the other release evidence.
+if("installed-tool" IN_LIST EVIDENCE_CELLS)
+    set(cell "installed-tool")
+    record_common("${cell}" "INSTALLED" "${INSTALL_PREFIX}" "installed HyRemoteTool diagnostic export")
+
+    set(_installed_tool "${INSTALL_PREFIX}/bin/hyremote-tool")
+    if(WIN32)
+        string(APPEND _installed_tool ".exe")
+    endif()
+    set(_tool_manifest "${INSTALL_PREFIX}/bin/HYREMOTE-MANIFEST.txt")
+    set(_tool_report "${RUN_DIR}/${cell}/diagnostic-report.txt")
+
+    if(NOT EXISTS "${_installed_tool}")
+        fail_cell("${cell}" "canonical install did not produce bin/hyremote-tool")
+    elseif(NOT EXISTS "${_tool_manifest}")
+        fail_cell("${cell}" "installed Tool has no adjacent canonical manifest")
+    else()
+        set(_tool_path "${INSTALL_PREFIX}/bin${RUNTIME_PATH_SEP}${OS_RUNTIME_PATH}")
+        record_runtime_env("${cell}" "${_tool_path}")
+        record("${cell}" "EXECUTABLE" "${_installed_tool}")
+        record("${cell}" "MANIFEST" "${_tool_manifest}")
+        # The clean deployment carries the native platform plugin, not the SDK's
+        # offscreen test plugin. Linux runs under the CI's Xvfb display; Windows
+        # uses the installed windows platform plugin. Never repair Qt plugin paths.
+        if(WIN32)
+            set(_tool_qpa "windows")
+        else()
+            set(_tool_qpa "xcb")
+        endif()
+        record("${cell}" "QPA_PLATFORM" "${_tool_qpa}")
+        run_capture("${cell}" "installed_run" "${_tool_path}"
+            "${CMAKE_COMMAND}" -E env "QT_QPA_PLATFORM=${_tool_qpa}"
+            "${_installed_tool}"
+                --diagnostic-report-file "${_tool_report}" --test-seconds 1)
+
+        if(NOT ${cell}_result EQUAL 0 OR NOT EXISTS "${_tool_report}")
+            fail_cell("${cell}" "installed Tool did not run and export a diagnostic report")
+        else()
+            file(READ "${_tool_report}" _tool_diagnostics)
+            file(READ "${RUN_DIR}/${cell}/installed_run.log" _tool_run_log)
+            set(_missing "")
+            foreach(_required IN ITEMS
+                    "INTEGRATION_ROUTE=cpp" "STATE=Stopped" "REMOTE_INPUT=false"
+                    "LISTENER_EFFECTIVE=none")
+                string(FIND "${_tool_diagnostics}" "${_required}" _found)
+                if(_found EQUAL -1)
+                    list(APPEND _missing "${_required}")
+                endif()
+            endforeach()
+            string(FIND "${_tool_run_log}" "DIAGNOSTIC_SAVED " _saved)
+            if(_saved EQUAL -1)
+                list(APPEND _missing "DIAGNOSTIC_SAVED confirmation")
+            endif()
+            foreach(_key IN ITEMS BUILD_IDENTITY DEPLOYMENT_IDENTITY)
+                string(REGEX MATCH "(^|\n)${_key}=([^\r\n]*)" _match "${_tool_diagnostics}")
+                set("_tool_${_key}" "${CMAKE_MATCH_2}")
+            endforeach()
+            if(_tool_BUILD_IDENTITY STREQUAL "" OR
+                    _tool_BUILD_IDENTITY STREQUAL "unknown" OR
+                    NOT _tool_BUILD_IDENTITY STREQUAL _tool_DEPLOYMENT_IDENTITY OR
+                    NOT _tool_BUILD_IDENTITY MATCHES "source_sha=${SOURCE_SHA}")
+                list(APPEND _missing "correlated non-unknown build/deployment identity")
+            endif()
+            if(_missing)
+                string(JOIN ", " _reason ${_missing})
+                fail_cell("${cell}" "installed Tool diagnostic contract failed: ${_reason}")
+            else()
+                record("${cell}" "RESULT_DETAIL" "canonical installed Tool ran with isolated loader path and exported correlated Shared Runtime facts")
+                pass_cell("${cell}")
+            endif()
+        endif()
+    endif()
+endif()
+
 # ---------------------------------------------------------------- summary
 
 set(passed 0)
@@ -947,10 +1126,11 @@ foreach(cell IN LISTS EVIDENCE_CELLS)
         continue()
     endif()
     file(READ "${RUN_DIR}/${cell}/evidence.txt" _cell_text)
-    if(_cell_text MATCHES "RESULT=PASS")
-        math(EXPR passed "${passed} + 1")
-    elseif(_cell_text MATCHES "RESULT=FAIL")
+    # An acquisition/setup PASS must never mask a later runtime/deployment FAIL.
+    if(_cell_text MATCHES "RESULT=FAIL")
         math(EXPR failed "${failed} + 1")
+    elseif(_cell_text MATCHES "RESULT=PASS")
+        math(EXPR passed "${passed} + 1")
     elseif(_cell_text MATCHES "RESULT=SKIPPED")
         math(EXPR skipped "${skipped} + 1")
     endif()

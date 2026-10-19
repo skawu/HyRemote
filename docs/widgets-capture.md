@@ -101,7 +101,7 @@ Such changes remain behind the Runtime boundary and must not require ordinary ap
 
 ## Current status
 
-Widgets through C++ API and Generic Plugin are part of the V0.1 primary product path for the current reference environment.
+Widgets through C++ API and Generic Plugin are peer routes for the current reference environment.
 
 QPA Widgets support remains subject to its exact Qt private-ABI compatibility boundary.
 

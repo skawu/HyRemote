@@ -12,9 +12,12 @@ if(TARGET Qt6::Widgets)
     )
     add_dependencies(hyremote-generic-plugin-smoke hyremote-generic-plugin)
 
+    # #405: keep one Generic integration smoke and strengthen its responsibility. The plugin is still loaded by
+    # Qt's public generic-plugin mechanism and keeps the native platform selected, but now the same smoke also proves
+    # that a production RFB PointerEvent reaches a normal Qt Widgets target when remote input is explicitly enabled.
     add_test(NAME hyremote-generic-plugin-smoke COMMAND hyremote-generic-plugin-smoke)
     set_tests_properties(hyremote-generic-plugin-smoke PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_GENERIC_PLUGINS=hyremote:port=5992;QT_PLUGIN_PATH=${PROJECT_BINARY_DIR}/plugins"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_GENERIC_PLUGINS=hyremote:port=5992\;input=true;QT_PLUGIN_PATH=${PROJECT_BINARY_DIR}/plugins"
         TIMEOUT 10
     )
 endif()
@@ -30,3 +33,11 @@ target_include_directories(hyremote-generic-config-test PRIVATE ${CMAKE_SOURCE_D
 target_link_libraries(hyremote-generic-config-test PRIVATE Qt6::Core Qt6::Network)
 add_test(NAME hyremote-generic-config-test COMMAND hyremote-generic-config-test)
 set_tests_properties(hyremote-generic-config-test PROPERTIES TIMEOUT 15)
+
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;generic;fast"
+    hyremote-generic-plugin-smoke
+)
+hyremote_label_test_family("contract;generic;fast"
+    hyremote-generic-config-test
+)

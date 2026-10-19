@@ -2,13 +2,13 @@
 
 HyRemote is remote-access infrastructure and should be treated as security-sensitive software.
 
-The current product line is **V0.1 Developer Preview**. It is intended for development, evaluation, and trusted-network use; it is **not** an Internet-facing production remote-access service.
+The current product line is the **V0.2 LAN trial release**. It is intended for development, evaluation, and trusted-network use; it is **not** an Internet-facing production remote-access service.
 
 ## Supported product versions
 
 No HyRemote version has reached the V1 GA security-support contract yet.
 
-Current product documentation describes the behavior and limitations of the V0.x preview line. Security capabilities marked **TODO** or **Preview** are not production-security claims.
+Current product documentation describes the current product line behaviour and limitations in plain terms. Security capability that is not implemented is stated as such in the product documentation.
 
 See [`docs/security.md`](docs/security.md) and [`docs/compatibility.md`](docs/compatibility.md) for the current product boundary.
 

@@ -90,6 +90,12 @@ public:
             --m_normalPending;
     }
 
+    void removePendingProtectedRelease() noexcept
+    {
+        if (m_protectedReleasePending != 0U)
+            --m_protectedReleasePending;
+    }
+
     // The pending deque has been moved to the GUI-thread batch. Accepted logical hold state spans
     // batches because a later protocol release must still be recognized after its press was drained.
     void pendingBatchTaken() noexcept

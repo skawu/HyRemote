@@ -120,6 +120,8 @@ public:
     ErrorCode errorCode() const noexcept;
     bool recoverableError() const noexcept;
 
+    // #335: same bounded Shared Runtime support report as the C++ facade.
+    Q_INVOKABLE QString diagnosticReport() const;
     Q_INVOKABLE void clearError();
 
 signals:

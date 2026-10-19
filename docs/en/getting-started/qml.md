@@ -1,10 +1,10 @@
-# QML API Getting Started (Preview)
+# QML API Getting Started 
 
 > Language / 语言: **English** | [中文](../../getting-started/qml.md)
 
 The QML API is HyRemote's declarative integration path for Qt Quick applications. It is a thin frontend over the Shared Runtime and does not create a second Session, capture, transport, input, or security implementation.
 
-Current product status: **Preview**.
+Current product status: peer route.
 
 ## Who this is for
 
@@ -24,9 +24,8 @@ Current reference environment:
 - Linux x86_64;
 - Qt 6.8.3.
 
-The QML API is currently provided as Preview. See [`../../compatibility.md`](../../compatibility.md) for the exact compatibility statement.
-
-> **TODO V0.3:** complete installed-SDK, deployment, bilingual examples, and product qualification before promoting QML API to a formal product path.
+The QML API is one of four peer product integration routes and uses the same Shared Runtime as C++ / Generic / QPA. See
+[`../../compatibility.md`](../../compatibility.md) for the exact platform, Qt, and deployment constraints.
 
 ## Minimal integration
 
@@ -152,13 +151,13 @@ Do not expose the current product directly to the public Internet. See [`../../s
 
 The new Example curriculum provides a dedicated Quick + QML learning path and keeps it distinct from Quick + C++.
 
-> **TODO V0.3:** complete the bilingual, branded `examples/learning/04-quick-qml` product example.
+> **Open work (current product line):** complete the bilingual, branded `examples/learning/04-quick-qml` product example.
 
 ## Next steps
 
 - Quick + C++: [`cpp.md`](cpp.md);
 - Generic zero-code integration: [`generic.md`](generic.md);
-- QPA (Preview): [`qpa-proxy.md`](qpa-proxy.md);
+- QPA : [`qpa-proxy.md`](qpa-proxy.md);
 - deployment: [`../guide/deployment.md`](../guide/deployment.md);
 - viewer workflow: [`../guide/viewer-connection.md`](../guide/viewer-connection.md);
 - security: [`../../security.md`](../../security.md);

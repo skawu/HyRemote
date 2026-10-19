@@ -99,4 +99,4 @@ The platform name is the whole point: it must be the same in both launches.
   [`docs/getting-started/generic.md`](../../../docs/getting-started/generic.md) for the integration guide.
 
 Using HyRemote from application code instead? See [example 01](../01-widgets-cpp) and
-[example 02](../02-quick-cpp) - that is the Embedded C++ frontend, the other V0.1 primary surface.
+[example 02](../02-quick-cpp) - that is the Embedded C++ frontend, another peer route.

@@ -79,7 +79,7 @@ protected:
     }
 };
 
-void testPointerFloodCoalescesBeforeGuiDelivery()
+void testPointerFloodBackpressuresWithoutSemanticLoss()
 {
     HyRemote::detail::resetFactories();
 
@@ -96,20 +96,33 @@ void testPointerFloodCoalescesBeforeGuiDelivery()
     CHECK(components.supported);
     CHECK(components.input != nullptr);
 
-    for (int i = 0; i < 10000; ++i) {
+    for (int i = 0; i < 64; ++i) {
         hyremote::InputEvent move;
         move.kind = hyremote::InputEventKind::PointerMove;
         move.sourceViewport = {100U, 50U, 1.0F};
-        move.x = static_cast<float>(i % 100);
+        move.x = static_cast<float>(i);
         move.y = static_cast<float>(i % 50);
         components.input->post(move);
     }
 
+    hyremote::InputEvent overflow;
+    overflow.kind = hyremote::InputEventKind::PointerMove;
+    overflow.sourceViewport = {100U, 50U, 1.0F};
+    overflow.x = 64.0F;
+    overflow.y = 14.0F;
+    bool backpressured = false;
+    try {
+        components.input->post(overflow);
+    } catch (const std::runtime_error &) {
+        backpressured = true;
+    }
+    CHECK(backpressured);
     CHECK(probe.moves == 0);
-    CHECK(pumpUntil([&] { return probe.moves != 0; }));
-    CHECK(probe.moves == 1);
-    CHECK(std::fabs(probe.lastPosition.x() - 99.0) <= 1.0);
-    CHECK(std::fabs(probe.lastPosition.y() - 49.0) <= 1.0);
+
+    CHECK(pumpUntil([&] { return probe.moves == 64; }));
+    CHECK(probe.moves == 64);
+    CHECK(std::fabs(probe.lastPosition.x() - 63.0) <= 1.0);
+    CHECK(std::fabs(probe.lastPosition.y() - 13.0) <= 1.0);
 
     components.input.reset();
 }
@@ -249,7 +262,7 @@ void testShutdownBalancesDeliveredStateAndDropsPendingInput()
     components.input->shutdown();
     CHECK(probe.buttonReleases == 1);
     CHECK(probe.keyReleases == 1);
-    CHECK(probe.keyPresses == 1);  // queued A was discarded before QQuickWindow delivery
+    CHECK(probe.keyPresses == 1);
 
     QCoreApplication::processEvents();
     CHECK(probe.buttonReleases == 1);
@@ -267,7 +280,7 @@ void testShutdownBalancesDeliveredStateAndDropsPendingInput()
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
-    testPointerFloodCoalescesBeforeGuiDelivery();
+    testPointerFloodBackpressuresWithoutSemanticLoss();
     testProtectedReleaseSurvivesNormalMailboxSaturation();
     testShutdownBalancesDeliveredStateAndDropsPendingInput();
     HyRemote::detail::resetFactories();

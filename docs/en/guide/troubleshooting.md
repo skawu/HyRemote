@@ -4,6 +4,20 @@
 
 This guide covers all four product paths: C++ API, Generic Plugin, QML API, and QPA. Start with product-level errors, deployed payloads, and the compatibility matrix instead of internal implementation details.
 
+## Collect one diagnostic report and correlate the installed candidate
+
+Collect the Runtime report from the **actual application process**, not from a substitute executable in the build tree:
+
+- **C++**: call `diagnosticReport()` on the application's `HyRemote::RemoteAccess` object and copy the complete text.
+- **QML**: call `diagnosticReport()` on the `RemoteAccess` object and copy the complete text.
+- **Generic / QPA**: copy the complete Shared Runtime `KEY=value` block from the **application process log**. Zero-code routes need no extra C++ SDK link or diagnostic tool. If the plugin never loads, there may be no Runtime report at all: investigate loading/deployment first rather than inferring a running listener.
+
+Check `INTEGRATION_ROUTE`, `STATE`, `LAST_ERROR_CODE` / `LAST_ERROR_MESSAGE`, `LISTENER_CONFIGURED`, and `LISTENER_EFFECTIVE` first. Only `STATE=Running` with a populated `LISTENER_EFFECTIVE` indicates an established listener; `0.0.0.0` is a wildcard bind address, **not** the remote host address to enter in the viewer. Then inspect `SECURITY_PROFILE` / `SECURITY_ENABLED`, `REMOTE_INPUT`, and `CONNECTED_CLIENTS` to isolate policy or connection changes. Never include passwords, keys, or security descriptor contents in a bug report.
+
+The **installed candidate identity** is recorded in `HYREMOTE-MANIFEST.txt` below the `HYREMOTE_INSTALL_ROOT` printed by `build.cmd install`. Compare its `SOURCE_SHA`, `QT_VERSION`, `OS`, `ARCH`, `BUILD_TYPE`, and selected `CPP/QML/GENERIC/QPA` fields against the runtime report's `BUILD_IDENTITY`, `QT_VERSION`, `OS`, and `ARCH`. The manifest identifies the **install root**, not necessarily the exact libraries loaded by a separately deployed application. If payloads were copied, upgraded, or rolled back, verify the actual binary and plugin locations as well.
+
+`UI_FAMILY` is derived from the actual Qt target (C++/QML) or the currently admitted visible surfaces (Generic/QPA), so `unknown` means no supported UI family is currently observable. `DEPLOYMENT_IDENTITY` reflects a bounded canonical `HYREMOTE-MANIFEST.txt` found beside the running executable. A clean **installed** `hyremote_deploy()` deployment carries that manifest and can therefore be correlated; a clean source/add_subdirectory deployment does not carry one and is expected to report `unknown`. A reused or custom deployment directory can contain a manifest from some other action, so this field identifies the manifest beside the executable rather than proving how the application was acquired. `HYREMOTE_VERSION` remains `unknown` while the canonical project version is `0.0.0`. If a HyRemote source archive is nested in another Git repository, `BUILD_IDENTITY=unknown` is the expected fallback when its own source SHA cannot be established. In every case, `unknown` means **no verified fact**, not a match or a failure; never infer identity from filenames or build-tree paths.
+
 ## `find_package(HyRemote)` cannot find the package
 
 `find_package(HyRemote CONFIG REQUIRED)` is for an installed SDK.
@@ -27,7 +41,7 @@ Inspect `lastError()` and verify:
 - the selected security profile is configured correctly;
 - `AuthenticatedEncrypted` is not being treated as an implemented V0.1 capability.
 
-Selecting `AuthenticatedEncrypted` in V0.1 intentionally fails with security unavailable and opens no listener.
+Selecting `AuthenticatedEncrypted` intentionally fails with security unavailable and opens no listener.
 
 ## QML `enabled: true` returns to false
 

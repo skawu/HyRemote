@@ -127,6 +127,11 @@ public:
 
     std::optional<RemoteAccessError> lastError() const;
 
+    // #335: bounded support report from the one Shared Runtime diagnostic snapshot/formatter.
+    // The report contains product-support facts only and never exposes backend objects or security
+    // descriptor/material paths.
+    QString diagnosticReport() const;
+
     // Acknowledge/clear product-level and live recoverable diagnostics. A new occurrence becomes
     // visible again. An active non-recoverable Session fault remains visible while state()==Faulted;
     // call stop() to quiesce the failed runtime, then clearError() if the retained diagnostic has

@@ -98,67 +98,9 @@ if(HYREMOTE_WITH_VNC)
         LABELS "candidate-evidence")
 endif()
 
+# Public listener configuration/error/lifecycle rows are a C++ facade contract. Real Runtime/RFB
+# reachability and interface reconciliation are registered independently from src/runtime/tests.
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
-    add_executable(hyremote-widgets-capture-test
-        test_widgets_capture.cpp
-    )
-    target_link_libraries(hyremote-widgets-capture-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Widgets
-    )
-    target_include_directories(hyremote-widgets-capture-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-widgets-capture-test COMMAND hyremote-widgets-capture-test)
-    set_tests_properties(hyremote-widgets-capture-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    )
-
-    add_executable(hyremote-widgets-input-backpressure-test
-        test_widgets_input_backpressure.cpp
-    )
-    target_link_libraries(hyremote-widgets-input-backpressure-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Widgets
-    )
-    target_include_directories(hyremote-widgets-input-backpressure-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-widgets-input-backpressure-test COMMAND hyremote-widgets-input-backpressure-test)
-    set_tests_properties(hyremote-widgets-input-backpressure-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    )
-
-    add_executable(hyremote-widgets-input-routing-test
-        test_widgets_input_routing.cpp
-    )
-    target_link_libraries(hyremote-widgets-input-routing-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Widgets
-    )
-    target_include_directories(hyremote-widgets-input-routing-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-widgets-input-routing-test COMMAND hyremote-widgets-input-routing-test)
-    set_tests_properties(hyremote-widgets-input-routing-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    )
-
     add_executable(hyremote-listener-address-matrix-test
         test_listener_address_matrix.cpp
     )
@@ -170,97 +112,21 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
             Qt6::Network
             Qt6::Widgets
     )
-    target_include_directories(hyremote-listener-address-matrix-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
     add_test(NAME hyremote-listener-address-matrix-test COMMAND hyremote-listener-address-matrix-test)
     set_tests_properties(hyremote-listener-address-matrix-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     )
-
-    add_executable(hyremote-rfb-widget-disconnect-backpressure-test
-        test_rfb_widget_disconnect_backpressure.cpp
-    )
-    target_link_libraries(hyremote-rfb-widget-disconnect-backpressure-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Network
-            Qt6::Widgets
-    )
-    target_include_directories(hyremote-rfb-widget-disconnect-backpressure-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-rfb-widget-disconnect-backpressure-test
-             COMMAND hyremote-rfb-widget-disconnect-backpressure-test)
-    set_tests_properties(hyremote-rfb-widget-disconnect-backpressure-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    )
 endif()
 
-if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
-    add_executable(hyremote-quick-capture-test
-        test_quick_capture.cpp
-    )
-    target_link_libraries(hyremote-quick-capture-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Quick
-    )
-    target_include_directories(hyremote-quick-capture-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-quick-capture-test COMMAND hyremote-quick-capture-test)
-    set_tests_properties(hyremote-quick-capture-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
-    )
-
-    add_executable(hyremote-quick-input-routing-test
-        test_quick_input_routing.cpp
-    )
-    target_link_libraries(hyremote-quick-input-routing-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Quick
-    )
-    target_include_directories(hyremote-quick-input-routing-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-quick-input-routing-test COMMAND hyremote-quick-input-routing-test)
-    set_tests_properties(hyremote-quick-input-routing-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
-    )
-
-    add_executable(hyremote-quick-input-backpressure-test
-        test_quick_input_backpressure.cpp
-    )
-    target_link_libraries(hyremote-quick-input-backpressure-test
-        PRIVATE
-            hyremote-remoteaccess
-            HyRemote::Core
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Quick
-    )
-    target_include_directories(hyremote-quick-input-backpressure-test
-        PRIVATE
-            ${_hyremote_runtime_src}
-    )
-    add_test(NAME hyremote-quick-input-backpressure-test COMMAND hyremote-quick-input-backpressure-test)
-    set_tests_properties(hyremote-quick-input-backpressure-test PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
-    )
-endif()
+include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
+hyremote_label_test_family("integration;cpp;fast"
+    hyremote-remoteaccess-test
+    hyremote-remoteaccess-error-ack-test
+    hyremote-remoteaccess-target-loss-test
+    hyremote-listener-address-matrix-test
+)
+hyremote_label_test_family("e2e;rfb;qualification"
+    hyremote-v01-rfb-product-fit
+)
 
 unset(_hyremote_runtime_src)

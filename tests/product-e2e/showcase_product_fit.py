@@ -59,7 +59,7 @@ def verify_rendered_image(path: Path) -> tuple[int, int]:
     return width, height
 
 
-def start_showcase(executable: Path, port: int):
+def start_showcase(executable: Path, port: int, diagnostic_report: Path):
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
     process = subprocess.Popen(
@@ -68,7 +68,8 @@ def start_showcase(executable: Path, port: int):
             "--port", str(port),
             "--auto-start",
             "--remote-input",
-            "--test-seconds", "10",
+            "--test-seconds", "60",
+            "--diagnostic-report-file", str(diagnostic_report),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -109,10 +110,33 @@ def start_showcase(executable: Path, port: int):
 def verify_showcase(executable: Path) -> None:
     require(executable.exists(), f"showcase executable not found: {executable}")
     port = free_port()
-    process, reader, lines = start_showcase(executable, port)
 
     try:
         with tempfile.TemporaryDirectory(prefix="hyremote-showcase-") as temp_dir:
+            diagnostic_report = Path(temp_dir) / "diagnostic.txt"
+            process, reader, lines = start_showcase(executable, port, diagnostic_report)
+
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                if diagnostic_report.exists() and any(
+                    line == f"DIAGNOSTIC_SAVED {diagnostic_report}" for line in lines
+                ):
+                    break
+                if process.poll() is not None:
+                    raise RuntimeError(f"showcase exited before diagnostic export: {lines}")
+                time.sleep(0.05)
+
+            require(diagnostic_report.exists(), "showcase did not save its public diagnostic report")
+            report = diagnostic_report.read_text(encoding="utf-8")
+            for required in (
+                "INTEGRATION_ROUTE=cpp\n",
+                "STATE=Running\n",
+                "REMOTE_INPUT=true\n",
+                f"LISTENER_CONFIGURED=address:0.0.0.0:{port}\n",
+                f"LISTENER_EFFECTIVE=0.0.0.0:{port}\n",
+            ):
+                require(required in report, f"saved diagnostic report is missing {required!r}: {report}")
+
             first = Path(temp_dir) / "first.png"
             with api.connect(f"127.0.0.1::{port}", password=None, timeout=5) as client:
                 client.captureScreen(str(first))
@@ -140,17 +164,28 @@ def verify_showcase(executable: Path) -> None:
             wait_for_count(process, lines, 0, 3,
                            "showcase did not report second viewer disconnect")
 
-        result = process.wait(timeout=14)
+        result = process.wait(timeout=65)
         reader.join(timeout=2)
         require(result == 0, f"showcase exited with {result}: {lines}")
-        require(any(line.startswith("SHOWCASE_POINTER") for line in lines),
-                "remote pointer did not reach the showcase Qt application")
-        require(any(line.startswith("SHOWCASE_KEY") for line in lines),
-                "remote keyboard did not reach the showcase Qt application")
+        for event_type in ("MouseButtonPress", "MouseButtonRelease", "KeyPress", "KeyRelease"):
+            require(
+                any(line.startswith(f"SHOWCASE_INPUT type={event_type} ") for line in lines),
+                f"remote {event_type} did not reach the showcase Qt application: {lines[-30:]}",
+            )
         require(line_count(lines, "SHOWCASE_CLIENTS 1") >= 2,
                 f"showcase did not expose connect/reconnect status: {lines}")
         require(line_count(lines, "SHOWCASE_CLIENTS 0") >= 3,
                 f"showcase did not expose disconnected/listening status: {lines}")
+        for required_activity in (
+            "TOOL_ACTIVITY Runtime state: Running",
+            "TOOL_ACTIVITY Remote input: enabled",
+            "TOOL_ACTIVITY Viewer connected",
+            "TOOL_ACTIVITY Viewer disconnected",
+        ):
+            require(
+                any(line == required_activity for line in lines),
+                f"showcase activity log is missing {required_activity!r}: {lines}",
+            )
 
         check = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -165,7 +200,8 @@ def verify_showcase(executable: Path) -> None:
             "standard viewer -> Qt input -> listener release"
         )
     finally:
-        if process.poll() is None:
+        process = locals().get("process")
+        if process is not None and process.poll() is None:
             process.kill()
             process.wait(timeout=5)
 

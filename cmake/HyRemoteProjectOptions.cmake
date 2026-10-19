@@ -14,6 +14,13 @@ option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when 
 option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)
 option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)
 
+# Runtime publishes this configure-local capability through an INTERNAL cache entry so sibling
+# frontends can consume it after src/runtime is configured. Clear any value left by a previous
+# configuration before the optional Runtime subdirectory is considered; otherwise reconfiguring an
+# existing build tree with Runtime disabled can make a stale TRUE look like a capability of this run.
+set(HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE FALSE CACHE INTERNAL
+    "Common runtime contains the application-level automatic access controller" FORCE)
+
 # Four peer application integration frontends over the same Common Runtime.
 # Embedded C++ supports both Widgets and Qt Quick targets; Widgets/Quick are Runtime adapter
 # dimensions and are deliberately not represented as frontend choices.

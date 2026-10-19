@@ -3,19 +3,20 @@ name: V0.2 TLS preflight (OpenSSL backend)
 # Focused evidence lane for issue #258's Preflight B: the same-socket plaintext -> TLS transition of the V0.2.0.0
 # authenticated/encrypted profile on the **OpenSSL** TLS backend, on both reference platforms.
 #
-# This lane is deliberately not an acceptance lane and does not build the product. Product acceptance stays with
-# `ci.yml` and its capability classifier; this one exists because the preflight harness needs an OpenSSL development
-# package and an OpenSSL runtime that the product build only requires when the transport-security capability is enabled,
-# and because the harness must fail closed when that backend is missing - which is correct behaviour for the capability
-# and the wrong behaviour for an ordinary developer's default test suite. It therefore runs only when the preflight
-# harness, its record or this workflow changes, or on demand.
+# #380 disposition: this is historical/specialized evidence, not a development or release wait gate. Its owning
+# authority (#258) is closed and no active release/candidate authority consumes this lane's automatic pull-request
+# results, so the automatic paths trigger is removed and the lane is explicit-dispatch only. The record that
+# references it stays at docs/internal/v0.2-technical-preflight.md. This lane is deliberately not an acceptance lane
+# and does not build the product; it must never be documented or consumed as a normal development/release wait gate
+# unless a future activated security capability explicitly re-adopts it. Nothing here re-activates a TLS product
+# scope: the ordinary product matrix stays security-off and its security evidence selection is unchanged.
+#
+# It exists because the preflight harness needs an OpenSSL development package and an OpenSSL runtime that the
+# product build only requires when the transport-security capability is enabled, and because the harness must fail
+# closed when that backend is missing - which is correct behaviour for the capability and the wrong behaviour for an
+# ordinary developer's default test suite.
 
 on:
-  pull_request:
-    paths:
-      - 'tests/preflight/**'
-      - 'docs/internal/v0.2-technical-preflight.md'
-      - '.github/workflows/tls-preflight.yml'
   workflow_dispatch:
 
 permissions:

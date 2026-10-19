@@ -12,6 +12,7 @@ qt_add_qml_module(hyremote-qml
     SOURCES
         QmlRemoteAccess.h
         QmlRemoteAccess.cpp
+        QmlRemoteAccessDiagnostics.cpp
 )
 
 # This backing library is implementation of the declarative `import HyRemote` module, not a second

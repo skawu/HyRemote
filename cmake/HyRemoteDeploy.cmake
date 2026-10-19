@@ -784,6 +784,19 @@ function(hyremote_deploy)
 
     _hyremote_target_is_local(HyRemote::RemoteAccess _hyremote_source_acquisition)
 
+    # Installed acquisition already has one canonical #264 manifest. Carry that exact file into
+    # the deployed application's executable directory so Runtime can correlate the loaded candidate
+    # without source/build-tree knowledge or directory scanning. Source/add_subdirectory acquisition
+    # has no canonical installed manifest and deliberately keeps deployment identity unavailable.
+    if(NOT _hyremote_source_acquisition)
+        get_property(_hyremote_installed_prefix GLOBAL PROPERTY HYREMOTE_INSTALLED_PACKAGE_PREFIX)
+        set(_hyremote_install_manifest "${_hyremote_installed_prefix}/HYREMOTE-MANIFEST.txt")
+        if(_hyremote_installed_prefix AND EXISTS "${_hyremote_install_manifest}")
+            include(GNUInstallDirs)
+            install(FILES "${_hyremote_install_manifest}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+        endif()
+    endif()
+
     if(HYREMOTE_DEPLOY_QML)
         if(_hyremote_source_acquisition AND NOT TARGET hyremote-qml)
             message(FATAL_ERROR

@@ -21,13 +21,14 @@ endif()
 
 set(source_dir "${HYREMOTE_SOURCE_DIR}")
 set(build_script "${source_dir}/cmake/HyRemoteBuild.cmake")
+set(install_module "${source_dir}/cmake/HyRemoteInstall.cmake")
 set(entry_point "${source_dir}/build.cmd")
 if(NOT DEFINED HYREMOTE_INSTALL_ROOT OR HYREMOTE_INSTALL_ROOT STREQUAL "")
     set(HYREMOTE_INSTALL_ROOT "${source_dir}/build/install")
 endif()
 set(install_root "${HYREMOTE_INSTALL_ROOT}")
 
-foreach(required "${entry_point}" "${build_script}")
+foreach(required "${entry_point}" "${build_script}" "${install_module}")
     if(NOT EXISTS "${required}")
         message(FATAL_ERROR "build-install-contract: missing ${required}")
     endif()
@@ -70,6 +71,7 @@ endfunction()
 # ---------------------------------------------------------------- 1. one entry point, and it is the only one
 _read("${entry_point}" entry)
 _read("${build_script}" build_system)
+_read("${install_module}" install_system)
 
 foreach(command IN ITEMS build install test clean rebuild help)
     _require_text("${entry}" "${command}" "the entry point must advertise every command")
@@ -88,7 +90,7 @@ foreach(legacy IN ITEMS compile.cmd clean.cmd)
 endforeach()
 file(GLOB build_related_entries "${source_dir}/*.cmd" "${source_dir}/*.sh" "${source_dir}/*.ps1")
 list(LENGTH build_related_entries build_related_count)
-if(NOT build_related_count EQUAL 1 OR NOT build_related_entries MATCHES "/build\.cmd$")
+if(NOT build_related_count EQUAL 1 OR NOT build_related_entries MATCHES "/build[.]cmd$")
     message(FATAL_ERROR
         "build-install-contract: the repository root must hold exactly one build entry point, build.cmd; found: "
         "${build_related_entries}")
@@ -159,10 +161,14 @@ foreach(key IN ITEMS
         LISTENER_DEFAULT AUTHENTICATION_ENABLED AUTHENTICATION_PROFILE
         TRANSPORT_ENCRYPTION_ENABLED TRANSPORT_ENCRYPTION_PROFILE REMOTE_INPUT_DEFAULT
         TRANSPORT_SECURITY_CAPABILITY)
-    _require_text("${build_system}" "${key}=" "the manifest must state ${key}")
+    _require_text("${install_system}" "${key}=" "the canonical install manifest must state ${key}")
 endforeach()
-_forbid_text("${build_system}" "SECURITY_STATE="
+_forbid_text("${install_system}" "SECURITY_STATE="
              "the manifest must not conflate the build capability with the shipped state")
+_require_text("${install_system}" "install(FILES \"\${_hyremote_manifest_file}\" DESTINATION \".\" RENAME \"HYREMOTE-MANIFEST.txt\")"
+              "the canonical manifest must be a normal CMake install artifact")
+_forbid_text("${build_system}" "file(WRITE \"\${HYB_INSTALL_ROOT}/HYREMOTE-MANIFEST.txt\""
+             "build.cmd must not maintain a second manifest writer")
 
 # The defaults the manifest states have to be the runtime's own defaults, or the manifest is a claim rather than a fact.
 _read("${source_dir}/src/runtime/src/access_instance.cpp" runtime_defaults)
@@ -197,6 +203,19 @@ foreach(list_file IN LISTS example_cmakelists)
         continue()
     endif()
     math(EXPR example_consumers "${example_consumers} + 1")
+    if(list_file MATCHES "/examples/remote-support-showcase/CMakeLists.txt$")
+        # HyRemoteTool is the single out-of-process companion client. It must
+        # not link or deploy the HyRemote Runtime, so it uses Qt's own
+        # deployment script instead of hyremote_deploy. This is one companion
+        # exception, not a second per-example Qt-closure route.
+        _forbid_text("${list_text}" "HyRemote::RemoteAccess"
+                     "${list_file} is a companion client and must not link the Runtime")
+        _forbid_text("${list_text}" "hyremote_deploy("
+                     "${list_file} is a companion client and must not deploy the Runtime")
+        _require_text("${list_text}" "qt_generate_deploy_app_script("
+                      "${list_file} must deploy its own Qt runtime with Qt's deployment script")
+        continue()
+    endif()
     _require_text("${list_text}" "hyremote_deploy("
                   "${list_file} installs a runnable but does not use the shared deploy family")
     _forbid_text("${list_text}" "windeployqt" "${list_file} must not deploy a Qt closure itself")

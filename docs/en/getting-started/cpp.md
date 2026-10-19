@@ -2,7 +2,7 @@
 
 > Language / 语言: **English** | [中文](../../getting-started/cpp.md)
 
-The C++ API is one of the primary HyRemote V0.1 integration paths. An application links the public `HyRemote::RemoteAccess` target to add remote viewing and optional remote control to a Qt Widgets or Qt Quick top-level window.
+The C++ API is one of four peer HyRemote product integration routes. An application links the public `HyRemote::RemoteAccess` target to add remote viewing and optional remote control to a Qt Widgets or Qt Quick top-level window.
 
 Applications do not need to understand Core, Session, RFB, capture backends, or input backends.
 
@@ -165,12 +165,14 @@ Do not expose V0.1 directly to the public Internet. See [`../../security.md`](..
 
 The new Example curriculum follows a “from zero to real use” journey with dedicated C++ Widgets and C++ Quick onboarding paths.
 
-> **TODO V0.1:** complete the bilingual, branded `examples/learning/01-widgets-cpp` and `examples/learning/02-quick-cpp` product examples.
+The canonical walkthrough for integrating this route into your own project - acquisition, CMake discovery, build,
+deploy, run and viewer connection - is [`../guide/integrate-your-project.md`](../guide/integrate-your-project.md).
+Owned examples live in `examples/learning/`, and real open-source integration studies in `examples/real-world/`.
 
 ## Next steps
 
 - zero-code integration: [`generic.md`](generic.md);
-- QML API (Preview): [`qml.md`](qml.md);
+- QML API: [`qml.md`](qml.md);
 - deployment: [`../guide/deployment.md`](../guide/deployment.md);
 - viewer workflow: [`../guide/viewer-connection.md`](../guide/viewer-connection.md);
 - troubleshooting: [`../guide/troubleshooting.md`](../guide/troubleshooting.md);

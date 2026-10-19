@@ -1,10 +1,10 @@
-# QPA Getting Started (Preview)
+# QPA Getting Started 
 
 > Language / 语言: **English** | [中文](../../getting-started/qpa-proxy.md)
 
 QPA is HyRemote's specialized zero-code integration path. Use it when the application genuinely needs a Qt platform-entry route. If Generic Plugin is sufficient, prefer [`generic.md`](generic.md) because Generic uses public Qt plugin APIs and does not introduce QPA private-ABI coupling.
 
-Current product status: **Preview**.
+Current product status: peer route.
 
 ## Product model
 
@@ -34,7 +34,7 @@ Current reference pairs:
 
 Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another native platform from these pairs.
 
-> **TODO V0.3/V0.4:** complete formal productization, additional exact Qt/OS combinations, and physical local+remote coexistence qualification before broadening the QPA support statement.
+> **Open work (current product line):** complete formal productization, additional exact Qt/OS combinations, and physical local+remote coexistence qualification before broadening the QPA support statement.
 
 See [`../../compatibility.md`](../../compatibility.md).
 
@@ -153,7 +153,7 @@ See [`../../compatibility.md`](../../compatibility.md).
 
 QPA reuses the Shared Runtime security policy:
 
-- default bind is loopback;
+- default bind is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
 - remote input is disabled by default;
 - `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
 - `Authenticated` may use RFB VNC authentication, while the stream remains unencrypted;
@@ -189,4 +189,4 @@ Prefer Generic when it satisfies the application. Use QPA when platform-entry be
 
 The new Example curriculum teaches Generic and QPA separately so the two zero-code routes remain easy to compare.
 
-> **TODO V0.3:** complete the bilingual, branded `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` product examples.
+> **Open work (current product line):** complete the bilingual, branded `examples/learning/07-zero-code-qpa/{widgets-app,quick-app}` product examples.

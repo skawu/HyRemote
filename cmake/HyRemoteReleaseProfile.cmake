@@ -1,5 +1,13 @@
 include_guard(GLOBAL)
 
+# Phase-C root test metadata must not depend on Core being enabled. This module is loaded by the
+# top-level project immediately after project options, so schedule the root-directory callback here;
+# the deferred call runs after the repository/release tests have been registered.
+if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
+    include("${CMAKE_CURRENT_LIST_DIR}/../tests/semantic_ctest_labels.cmake")
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL hyremote_apply_root_semantic_test_labels)
+endif()
+
 # Validate release-version authority without encoding integration frontends into version digits.
 #
 # 0.0.0 is the development/integration sentinel. V1.0.0.0 is the first formal HyRemote GA.

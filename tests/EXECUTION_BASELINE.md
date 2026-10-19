@@ -1,177 +1,93 @@
 # HyRemote Hosted Test Execution Baseline
 
-> Phase A execution reconciliation for #274.
->
-> Repository baseline: `develop@e3fcf2fd06f8feca00b83b6c49c48588264cfd81`.
+> Final #274 execution reconciliation. Historical counts are retained as before-refactor evidence; current counts are taken from the final Phase-D exact-head hosted gate.
 
-## What the current numbers mean
+## Current reference configuration
 
-Two different facts must not be conflated:
+Reference configuration: top-level product build, Qt 6.8.3, `cpp,qml,generic,qpa`, VNC enabled. Transport security is conditional and adds two RFB auth tests when available.
 
-1. **Current all-frontends registration inventory** — PR #300 exact-head CI run `35675915625` configured the current tree and reported:
-   - Linux Qt 6.8.3: **95 discovered**, 62 selected/executed by the PR fast lane, 62/62 PASS;
-   - Windows Qt 6.8.3: **94 discovered**, 61 selected/executed, 61/61 PASS.
-2. **Latest one-run execution of the previous complete inventory** — PR #280 run `35591928798` executed Linux 94/94 and Windows 93/93 PASS. After that, #281 added one cross-platform CTest, `hyremote-v01-rfb-product-fit`, deliberately labeled `candidate-evidence` and excluded from ordinary PR fast lanes.
+Final Phase-D PR #358 exact head `0eacc6127349aa3a5687271fcac937467c1b3f96`, CI run `35819190493`:
 
-Therefore **95/94 is the current registration authority**. Do not claim a single normal PR run executed all 95/94 tests; candidate/full authority owns the extra maintained-viewer test.
+| Platform | Security | Discovered | Executed by affected PR lane | Result | Executed test time |
+| --- | --- | ---: | ---: | --- | ---: |
+| Linux | enabled | 108 | 73 | 73/73 PASS | 34.38s |
+| Windows | enabled | 107 | 72 | 72/72 PASS | hosted job PASS |
 
-The only platform-name difference in the default all-frontends/security-off set is Linux-only `hyremote-qpa-source-payload-relocation`.
+The affected PR lane deliberately excludes release-readiness, installed-consumer, deploy-helper and candidate-product-fit classes; therefore discovered count is not execution count. Zero execution remains invalid evidence.
 
-Security-enabled configurations additionally register:
+Security-off equivalent registration is Linux **106** / Windows **105** because these two identities are absent:
+
 - `hyremote-vnc-auth-test`;
 - `hyremote-rfb-vnc-auth-handshake-test`.
 
-## Current default all-frontends CTest inventory — Linux superset (95)
+Linux has exactly one additional platform-specific identity versus Windows:
 
-### Release / repository / package authority
+- `hyremote-qpa-source-payload-relocation`.
 
-1. `hyremote-release-readiness-deployment-relocation`
-2. `hyremote-release-readiness-runtime-contract`
-3. `hyremote-release-readiness-consumer-simplicity`
-4. `hyremote-release-readiness-metadata`
-5. `hyremote-release-readiness-repository-layout`
-6. `hyremote-release-readiness-release-documentation-layout`
-7. `hyremote-release-readiness-release-authority-policy`
-8. `hyremote-release-readiness-licensing-boundary`
-9. `hyremote-release-readiness-ci-environment-baseline`
-10. `hyremote-release-readiness-documentation-paths`
-11. `hyremote-release-readiness-deploy-helper-contract`
-12. `hyremote-release-readiness-package-acquisition-isolation`
-13. `hyremote-release-scope-self-test`
-14. `hyremote-acquisition-audit-self-test`
-15. `hyremote-ci-scope-self-test`
-16. `hyremote-mainline-audit-self-test`
-17. `hyremote-branch-name-gate-self-test`
-18. `hyremote-release-readiness-source-qpa-authority`
-19. `hyremote-release-profile-develop-all`
-20. `hyremote-release-profile-develop-runtime-only`
-21. `hyremote-release-profile-retire-v001`
-22. `hyremote-release-profile-retire-v002`
-23. `hyremote-release-profile-retire-v003`
-24. `hyremote-release-profile-v010-cpp-only`
-25. `hyremote-release-profile-v020-runtime`
-26. `hyremote-release-profile-v030-all`
-27. `hyremote-release-profile-v040-all`
-28. `hyremote-release-profile-v040-maintenance`
-29. `hyremote-release-profile-v100-all`
-30. `hyremote-release-profile-v100-cpp-only`
-31. `hyremote-release-profile-v100-generic-only`
+The #274 final authority reconciliation adds no CTest registration, so these counts remain unchanged.
 
-### Core
+## Before/after inventory
 
-32. `hyremote-core-test-frame-lifetime`
-33. `hyremote-core-test-damage`
-34. `hyremote-core-test-timing`
-35. `hyremote-core-test-mailbox`
-36. `hyremote-core-test-transport-handoff`
-37. `hyremote-core-test-session-lifecycle`
-38. `hyremote-core-test-session-defaults`
-39. `hyremote-core-test-input-routing`
-40. `hyremote-core-test-input-normalization`
-41. `hyremote-core-test-callback-lifetime`
-42. `hyremote-core-test-callback-exception-boundary`
-43. `hyremote-core-test-dependency-boundary`
+| Milestone | Linux | Windows | Meaning |
+| --- | ---: | ---: | --- |
+| Phase-A/#300 baseline | 95 | 94 | all-frontends, security off; historical starting inventory |
+| Phase C completed | 105 | 104 | final semantic-label tree under the then-triggered security-enabled reference configuration |
+| Phase D completed | 108 | 107 | + Widgets forced-DPR, Quick forced-DPR, RFB wire robustness |
 
-### Shared Runtime / build authority
+Do not use 95/94 as current authority. It is retained only to explain the structural delta from the audit baseline.
 
-44. `hyremote-runtime-automatic-surface-model-test`
-45. `hyremote-runtime-automatic-composite-capture-test`
-46. `hyremote-runtime-automatic-composite-input-test`
-47. `hyremote-build-authority-selftest`
+## Explained identity changes after Phase A
 
-### C++ registration area, including historically misowned Runtime/RFB/adapters
+Cross-platform identities added after the 95/94 baseline:
 
-48. `hyremote-remoteaccess-test`
-49. `hyremote-security-descriptor-test`
-50. `hyremote-remoteaccess-error-ack-test`
-51. `hyremote-remoteaccess-target-loss-test`
-52. `hyremote-target-component-provider-test`
-53. `hyremote-input-mailbox-admission-test`
-54. `hyremote-rfb-multi-client-input-test`
-55. `hyremote-v01-rfb-product-fit` — candidate-evidence, added by #281
-56. `hyremote-widgets-capture-test`
-57. `hyremote-widgets-input-backpressure-test`
-58. `hyremote-widgets-input-routing-test`
-59. `hyremote-listener-address-matrix-test`
-60. `hyremote-rfb-widget-disconnect-backpressure-test`
-61. `hyremote-quick-capture-test`
-62. `hyremote-quick-input-routing-test`
-63. `hyremote-quick-input-backpressure-test`
+- `hyremote-runtime-listener-binding-test` — deterministic Runtime listener policy;
+- `hyremote-rfb-listener-reachability-test` — B4 Runtime/RFB real-socket reachability split;
+- `hyremote-runtime-notifications-test` — Runtime typed notifications;
+- `hyremote-qml-notifications-test` — QML notification observability;
+- `hyremote-generic-config-test` — Generic launch/config mapping;
+- `hyremote-release-readiness-security-runtime-deploy` — durable deployment/security closure;
+- `hyremote-release-readiness-build-install-contract` — build/install contract;
+- `hyremote-release-authority-v02-user-first` — V0.2 user-first release authority;
+- `hyremote-widgets-capture-forced-dpr-test` — TG-001;
+- `hyremote-quick-capture-forced-dpr-test` — TG-002;
+- `hyremote-rfb-wire-robustness-test` — TG-013/TG-014.
 
-### QML / Generic / QPA / deploy / adoption
+Security-enabled configurations additionally register the two VNC-auth identities listed above. B1/B2/B3 moved ownership without renaming existing CTests. B4 deliberately added exactly one identity because the old mixed listener executable was split into two semantic owners while preserving the existing C++ facade identity.
 
-64. `hyremote-qml-module-test`
-65. `hyremote-qml-deploy-helper-non-qml`
-66. `hyremote-qml-deploy-helper-qml`
-67. `hyremote-generic-plugin-smoke`
-68. `hyremote-qpa-deploy-helper-ordinary`
-69. `hyremote-qpa-deploy-helper-qml-only`
-70. `hyremote-qpa-deploy-helper-qml-composed`
-71. `hyremote-qpa-deploy-helper-installed-payload`
-72. `hyremote-qpa-deploy-helper-installed-payload-qml-only`
-73. `hyremote-qpa-deploy-helper-installed-payload-qml`
-74. `hyremote-qpa-deploy-helper-reject-missing-qml`
-75. `hyremote-qpa-deploy-helper-reject-stale-qml-metadata`
-76. `hyremote-qpa-deploy-helper-reject-missing-qml-root`
-77. `hyremote-qpa-deploy-helper-reject-missing-qml-module-dir`
-78. `hyremote-qpa-deploy-helper-reject-stale-qpa-metadata`
-79. `hyremote-qpa-deploy-helper-reject-qt-mismatch`
-80. `hyremote-qpa-deploy-helper-reject-missing-package`
-81. `hyremote-qpa-deploy-helper-single-config-generator`
-82. `hyremote-qpa-deploy-helper-multi-config-generator`
-83. `hyremote-qpa-source-payload-relocation` — Linux only
-84. `hyremote-qpa-proxy-smoke`
-85. `hyremote-qpa-native-semantics`
-86. `hyremote-qpa-remote-config-test`
-87. `hyremote-qpa-auto-remoteaccess-smoke`
-88. `hyremote-qpa-remote-failure-native-survival-smoke`
-89. `hyremote-qpa-multi-surface-connection-smoke`
-90. `hyremote-qpa-widget-popup-connection-smoke`
-91. `hyremote-qpa-widget-opengl-capture-smoke`
-92. `hyremote-cpp-installed-consumers`
-93. `hyremote-qpa-quick-multi-window-connection-smoke`
-94. `hyremote-generic-installed-consumers`
-95. `hyremote-v01-example-smoke`
+## Final Phase-D new-test evidence
 
-Windows has the same default names except #83, hence 94.
+Both final exact-head artifacts show all three Phase-D additions actually started and passed on Linux and Windows:
 
-## Reduced-capability evidence that changed Phase A conclusions
+- `hyremote-widgets-capture-forced-dpr-test`;
+- `hyremote-quick-capture-forced-dpr-test`;
+- `hyremote-rfb-wire-robustness-test`.
 
-PR #296 fresh exact-head run `35676277901` selected **QPA-only** and is important because all-frontends inventory cannot expose capability-guard defects:
+No retry, skip or `WILL_FAIL` was used to manufacture green status.
 
-| Platform | CPP | QPA | Discovered | Executed | Result |
-| --- | --- | --- | ---: | ---: | --- |
-| Linux | OFF | ON | 72 | 59 | 59/59 PASS |
-| Windows | OFF | ON | 71 | 58 | 58/58 PASS |
+## Reduced-capability evidence retained from the workstream
 
-Both uploaded `test.log` artifacts prove:
-- `hyremote-qpa-widget-popup-connection-smoke` passes with the #296 bounded-condition fix;
-- `hyremote-v01-example-smoke` is absent when the C++ API is OFF after #300;
-- the suite remains nonzero.
+Important capability-guard evidence is not replaceable by the all-frontends inventory:
 
-This closes TG-019 and TG-021 without a local-only rerun.
+- #327 Local A/B/C proved Widgets/Quick adapter registrations are independent of the C++ frontend and that `hyremote-rfb-widget-disconnect-backpressure-test` has registration count zero when VNC is off;
+- qpa-only run `35676277901` proved `hyremote-v01-example-smoke` is absent when C++ API is off while the remaining suite executes nonzero/pass;
+- QPA popup bounded synchronization passed fresh on both platforms without retry.
 
-## Meaningful assets outside the normal product CTest inventory
+## Semantic-label evidence
 
-| Asset | Execution authority | Phase-A treatment |
+Phase-C PR #357 preserved CTest identities/guards and added type/owner/cost labels. Hosted `Label Time Summary` demonstrated nonzero classes across Core, Runtime/RFB, frontend, repository/contract, consumer and release/qualification families while retaining `candidate-evidence`.
+
+Labels are metadata, not capability gates. Ordinary PR selection still must execute a nonzero suite and explain exclusions.
+
+## Assets outside normal product CTest inventory
+
+| Asset | Authority | Treatment |
 | --- | --- | --- |
-| `tests/preflight/hyremote-tls-transition-preflight` | standalone `tests/preflight` CMake project + `.github/workflows/tls-preflight.yml` on Win/Linux | KEEP PRE evidence; deliberately outside normal product build/test graph |
-| `tests/preflight/run_vencrypt_interop_probe.py` / `vencrypt_interop_spike.py` | #258 bounded preflight workflow/manual evidence | KEEP PRE; feasibility evidence, not product acceptance |
-| `tests/product-e2e/example_product_fit.py` | no current hosted authority found | KEEP asset, TG-010 |
-| `tests/product-e2e/qml_product_fit.py` | no current hosted authority found | KEEP asset, TG-011 |
-| `tests/product-e2e/showcase_product_fit.py` | no current hosted authority found | KEEP asset, TG-011 |
+| `tests/preflight/hyremote-tls-transition-preflight` | standalone preflight CMake project + `tls-preflight.yml` | PRE evidence; not counted in product CTest inventory |
+| VeNCrypt probe scripts | bounded preflight/manual authority | feasibility evidence only |
+| `tests/product-e2e/example_product_fit.py` | no active execution owner | deferred P2 TG-010 |
+| `tests/product-e2e/qml_product_fit.py` | no active execution owner | deferred P2 TG-011 |
+| `tests/product-e2e/showcase_product_fit.py` | no active execution owner | deferred P2 TG-011 |
 
-`rfb_product_fit.py` is **no longer outside CTest authority**: #281 registered it as `hyremote-v01-rfb-product-fit` while preserving its maintained-viewer/mainline role.
+## Final reconciliation rule
 
-## Reconciled findings
-
-- TG-001/TG-002 remain: only one normal Widgets/Quick capture CTest is registered; intended forced-DPR second executions are absent.
-- TG-009 is closed: candidate product-fit is now registered/fail-closed.
-- TG-012 is closed: acquisition self-test is in the normal inventory.
-- TG-019 is closed: popup synchronization is bounded and fresh qpa-only Win/Linux passed first attempt.
-- TG-020 remains: all-frontends VNC-enabled inventory cannot prove the Widgets-only registration guard is correct; source inspection proves it is not.
-- TG-021 is closed: qpa-only hosted evidence proves the adoption smoke no longer registers without C++ API.
-
-## Scope rule
-
-This file distinguishes **registration**, **selection**, and **execution**. A discovered count is not execution evidence; a source file is not evidence; and a green job with zero selected tests is non-evidence. `TEST_CATALOG.md` decides necessity/ownership, while `TEST_MATRIX.md` records required capability guards and execution tiers.
+`TEST_CATALOG.md` is now configure-time checked against every registered CTest identity. A future registration/rename that does not update the catalog fails configuration, preventing this baseline/catalog drift from recurring silently.

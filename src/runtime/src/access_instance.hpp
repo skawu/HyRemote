@@ -1,6 +1,7 @@
 #pragma once
 
 #include "access_types.hpp"
+#include "detail/runtime_diagnostics.hpp"
 #include "detail/runtime_notifications.hpp"
 
 #include <HyRemote/RemoteAccessExport.h>
@@ -66,6 +67,10 @@ public:
     std::size_t connectedClientCount() const noexcept;
     std::optional<Error> lastError() const;
     void clearError();
+
+    // #335 private projection of the one Runtime truth. The implementation lives next to Impl so it
+    // can expose effective listener facts without adding frontend-facing getters or duplicating state.
+    DiagnosticSnapshot diagnosticSnapshot() const;
 
     // Private Runtime notification seam (#259). A frontend subscribes instead of polling: the handlers
     // are typed (see detail/runtime_notifications.hpp), the returned token unregisters them, and the

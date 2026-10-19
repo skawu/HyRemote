@@ -2,9 +2,13 @@
 
 HyRemote's QML API is a thin declarative frontend over the same Shared Runtime used by the C++ API. It does not introduce a second Session, capture, input, or transport stack, and its backing implementation is not a second public C++ SDK target.
 
-Current product status: **Preview**.
+Current product status: a peer route, on the same shared runtime as the C++ API.
 
-> **TODO V0.3:** complete the final QML learning examples, clean installed-SDK qualification, and deployment matrix before promoting this path to the same product-support level as the V0.1 primary paths.
+> The QML route is a peer of the other three: none of them is primary. The end-to-end walkthrough covers
+> acquisition, deployment and viewer connection for it like any other route
+> ([`guide/integrate-your-project.md`](guide/integrate-your-project.md)). Worth knowing when choosing it:
+> the QML module must be deployed with the `QML` keyword, and QML exposes the same runtime rather than a
+> second one.
 
 ## 1. Installed SDK
 
@@ -142,16 +146,17 @@ A non-recoverable Runtime fault remains visible until the application explicitly
 
 ## 8. Security boundary
 
-The QML frontend does not weaken the shared security defaults.
+The QML frontend does not weaken or replace the Shared Runtime security/access defaults.
 
-V0.1 behavior:
+Current shipped behavior:
 
-- loopback by default;
-- remote input disabled by default;
-- `Insecure` is unauthenticated and unencrypted: trusted LAN only, not Internet-safe;
-- `Authenticated` may use RFB VNC authentication;
+- the listener defaults to `0.0.0.0:5921` on local IPv4 interfaces; this is a wildcard bind address, not a viewer host address;
+- remote input is disabled by default and must be enabled explicitly;
+- `Insecure` is unauthenticated and unencrypted: trusted LAN / explicitly protected network only, not Internet-safe;
+- `Authenticated` may use RFB VNC authentication when configured;
 - the current stream is not encrypted;
-- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.
+- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable;
+- `diagnosticReport()` reports configured/effective listener, security, input, client and bounded error facts from the same Runtime used by the C++/Generic/QPA routes.
 
 Do not expose the current product directly to the public Internet. See [`security.md`](security.md).
 
@@ -162,7 +167,7 @@ Current reference environment:
 - Windows x86_64 + Qt 6.8.3;
 - Linux x86_64 + Qt 6.8.3.
 
-The QML API is currently **Preview**. Basic Qt Quick operation does not automatically qualify every Quick3D, custom FBO, mixed `QQuickWidget`, graphics-backend, or native-window configuration.
+The QML API is a peer route. Basic Qt Quick operation does not automatically qualify every Quick3D, custom FBO, mixed `QQuickWidget`, graphics-backend, or native-window configuration.
 
 See [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md) for the current product boundary.
 

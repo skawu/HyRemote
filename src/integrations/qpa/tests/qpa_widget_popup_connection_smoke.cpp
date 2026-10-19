@@ -34,8 +34,37 @@ bool waitForPopupCondition(Condition condition, int timeoutMs)
     return condition();
 }
 
+// A native window manager may continue to clamp/reposition a QMenu after QWidget::popup() has
+// synchronously made the widget visible. The remote contract is therefore not one transient local
+// union rectangle; it is that the same viewer observes the composite canvas expand while the popup
+// is present. Poll full framebuffer updates until that semantic condition becomes true.
+bool waitForExpandedViewerGeometry(HyRemote::Qpa::Test::RfbTestClient &viewer,
+                                   const QSize &baseline,
+                                   int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs) {
+        HyRemote::Qpa::Test::pumpEvents(80);
+        const int remaining = timeoutMs - static_cast<int>(timer.elapsed());
+        const int attemptTimeout = qMax(1, qMin(1500, remaining));
+        if (!viewer.requestFramebuffer(attemptTimeout))
+            return false;
+
+        const QSize observed = viewer.geometry().size();
+        if (observed != baseline && observed.width() >= baseline.width()
+            && observed.height() >= baseline.height()) {
+            return true;
+        }
+    }
+    const QSize observed = viewer.geometry().size();
+    return observed != baseline && observed.width() >= baseline.width()
+           && observed.height() >= baseline.height();
+}
+
 constexpr int kPopupMaterializeTimeoutMs = 5000;
 constexpr int kPopupWithdrawTimeoutMs = 5000;
+constexpr int kRemoteCanvasChangeTimeoutMs = 5000;
 }
 
 int main(int argc, char **argv)
@@ -65,8 +94,9 @@ int main(int argc, char **argv)
         const QSize primarySize = viewer.geometry().size();
 
         // Position far enough to the right that an independent native QWidget popup must expand
-        // the application canvas. The actual post-show geometry is authoritative because native
-        // window managers may clamp/reposition popups.
+        // the application canvas. This local check proves the placement is discriminating; the
+        // remote assertion below deliberately waits on semantic expansion instead of requiring the
+        // window manager to preserve this exact transient rectangle.
         menu.popup(QPoint(primary.x() + primary.width() + 80, primary.y() + 20));
         if (!waitForPopupCondition([&menu] { return menu.isVisible() && menu.isWindow(); },
                                    kPopupMaterializeTimeoutMs)) {
@@ -78,15 +108,19 @@ int main(int argc, char **argv)
 
         const QRect primaryGeometry(primary.mapToGlobal(QPoint(0, 0)), primary.size());
         const QRect popupGeometry(menu.mapToGlobal(QPoint(0, 0)), menu.size());
-        const QSize popupCanvas = primaryGeometry.united(popupGeometry).size();
-        if (popupCanvas == primarySize) {
-            std::cerr << "FAIL: QMenu popup did not enlarge the test canvas; placement was not discriminating\n";
+        const QSize localPopupCanvas = primaryGeometry.united(popupGeometry).size();
+        if (localPopupCanvas == primarySize) {
+            std::cerr << "FAIL: QMenu popup did not enlarge the local test canvas; placement was not discriminating\n";
             app.quit();
             return;
         }
 
-        if (!viewer.waitForGeometry(popupCanvas) || !viewer.connected()) {
-            std::cerr << "FAIL: same viewer did not observe QWidget popup in composite canvas\n";
+        if (!waitForExpandedViewerGeometry(viewer, primarySize, kRemoteCanvasChangeTimeoutMs)
+            || !viewer.connected()) {
+            const QSize observed = viewer.geometry().size();
+            std::cerr << "FAIL: same viewer did not observe QWidget popup expanding composite canvas; baseline="
+                      << primarySize.width() << 'x' << primarySize.height() << " observed="
+                      << observed.width() << 'x' << observed.height() << '\n';
             app.quit();
             return;
         }

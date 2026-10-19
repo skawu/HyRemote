@@ -145,17 +145,17 @@ foreach(forbidden_trust_token IN ITEMS basic_trusted_lan open_trusted_lan authen
     endif()
 endforeach()
 
-# F. Every other train keeps its product authority. The snapshots below are the values that were in place when the
-#    0.2.0.0 decision was aligned, so any drift in another release is a failure here rather than a quiet edit.
+# F. Every other train keeps its product authority. The snapshots below are the converged #333 values, so any drift
+#    in another release is a failure here rather than a quiet edit. The retired technical slots keep their historical
+#    records (their selection is refused by the release-scope selector); 0.4.0.0 and 1.1.0.0 are no longer trains at
+#    all and are asserted as absent further down.
 foreach(unchanged_expectation IN ITEMS
         "0.1.0.0|230,231,232,237,238,253|250|-|converged-one-core-shared-runtime-four-peer-frontends,exact-head-integrated-windows-linux-evidence,clean-installed-cpp-consumer-smoke,clean-installed-generic-consumer-smoke-preserving-native-qpa,minimal-developer-entry-and-01-02-03-learning-flow,truthful-v01-security-version-output,fail-closed-security-negative-evidence,release-scope-machine-gate-selecting-only-this-train,nonzero-hosted-normal-and-release-readiness-tests,release-notes-preview-support-boundaries-and-known-limitations"
         "0.2.1.0|170,239|-|0.2.0.0|accepted-v0.2.0.0-lineage,session-operations-evidence"
-        "0.3.0.0|240,241,264|-|0.2.1.0|accepted-v0.2.1.0-lineage,four-frontend-clean-sdk-deploy-productization-evidence,example-and-localization-productization-evidence,productized-gui-branding-evidence"
+        "0.3.0.0|264,240,335|-|0.2.0.0|accepted-v0.2.0.0-lineage,four-frontend-clean-sdk-deploy-productization-evidence,example-and-localization-productization-evidence,minimum-self-service-diagnostics-evidence"
         "0.3.1.0|265|260|0.3.0.0|accepted-v0.3.0.0-lineage,qt5-adaptation-candidate-evidence"
         "0.3.2.0|144,175|261|0.3.1.0|accepted-v0.3.1.0-lineage,damage-compression-delivery-evidence,maintained-viewer-interoperability-evidence"
-        "0.4.0.0|9,57,109,134,165,242|-|0.3.2.0|accepted-v0.3.2.0-lineage,qt-compatibility-qualification-evidence,production-performance-qualification-evidence,real-world-verification-evidence,physical-native-acceptance-evidence,exact-candidate-freeze-under-165"
         "1.0.0.0|9,30,31,32,33,39,41,57,101,104,107,109,143,144,157,158,159,162,163,164,165,170,174,175,176,209|-|-|accepted-milestone-authorities,exact-candidate-freeze-under-165,physical-acceptance-under-109,ga-acceptance-under-33"
-        "1.1.0.0|-|-|-|-"
 )
     string(REPLACE "|" ";" unchanged_parts "${unchanged_expectation}")
     list(GET unchanged_parts 0 unchanged_version)
@@ -194,7 +194,27 @@ foreach(unchanged_expectation IN ITEMS
     endif()
 endforeach()
 
+# #333 convergence: the qualification-only 0.4.0.0 and the post-GA fixed slot 1.1.0.0 are no longer trains at all,
+# and the retired technical slots keep scope_status retired so the selector refuses them.
+foreach(removed_train IN ITEMS 0.4.0.0 1.1.0.0)
+    string(JSON removed_type ERROR_VARIABLE removed_error TYPE "${authority_json}" trains "${removed_train}")
+    if(NOT removed_error AND removed_type STREQUAL "OBJECT")
+        message(FATAL_ERROR
+            "release-authority-v02-user-first: ${removed_train} must not exist as a selectable train after #333")
+    endif()
+endforeach()
+foreach(retired_slot IN ITEMS 0.2.1.0 0.3.1.0 0.3.2.0)
+    string(JSON slot_status ERROR_VARIABLE slot_status_error GET
+           "${authority_json}" trains "${retired_slot}" scope_status)
+    if(slot_status_error OR NOT slot_status STREQUAL "retired")
+        message(FATAL_ERROR
+            "release-authority-v02-user-first: retired technical train slot ${retired_slot} must keep "
+            "scope_status=retired")
+    endif()
+endforeach()
+
 message(STATUS
     "release-authority-v02-user-first: PASS (0.2.0.0 = 143,174,259,326,271 with prerequisites 258,332 and non-blockers "
     "170,239; the LAN trial, the truthful security state and the customer trial are required; no encrypted profile is "
-    "required of the first candidate; every other train unchanged)")
+    "required of the first candidate; V0.3.0.0 converged to 264,240,335 on the 0.2.0.0 lineage; retired technical "
+    "slots stay refused and 0.4.0.0/1.1.0.0 are not trains)")

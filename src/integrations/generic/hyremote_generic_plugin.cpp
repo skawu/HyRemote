@@ -50,6 +50,7 @@ public:
             qWarning() << "HyRemote Generic Plugin rejected its specification:" << error;
             return nullptr;
         }
+        config.integrationRoute = Runtime::IntegrationRoute::Generic;
 
         auto runtime = std::make_unique<GenericRuntime>(std::move(config));
         if (!runtime->start()) {

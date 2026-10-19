@@ -85,6 +85,7 @@ QString requestedDelegate(QStringList &parameters)
 AutomaticConfig automaticConfig(::HyRemote::Qpa::RemoteConfig config)
 {
     AutomaticConfig result;
+    result.integrationRoute = ::HyRemote::Runtime::IntegrationRoute::Qpa;
     result.listenAddress = std::move(config.listenAddress);
     result.port = config.port;
     result.remoteInputEnabled = config.remoteInputEnabled;

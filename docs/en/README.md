@@ -10,10 +10,10 @@ This area provides product integration, deployment, security, compatibility, and
 
 | Your scenario | Recommended entry | Current status |
 | --- | --- | --- |
-| Add a small amount of C++ and control the remote-access lifecycle explicitly | [`getting-started/cpp.md`](getting-started/cpp.md) | **V0.1 primary** |
-| Keep the application Qt-only and preserve its native Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | **V0.1 primary** |
-| Prefer declarative configuration in a Qt Quick application | [`getting-started/qml.md`](getting-started/qml.md) | **Preview** |
-| Need the specialized `-platform hyremote` zero-code route | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | **Preview** |
+| Add a small amount of C++ and control the remote-access lifecycle explicitly | [`getting-started/cpp.md`](getting-started/cpp.md) | peer route |
+| Keep the application Qt-only and preserve its native Qt platform | [`getting-started/generic.md`](getting-started/generic.md) | peer route |
+| Prefer declarative configuration in a Qt Quick application | [`getting-started/qml.md`](getting-started/qml.md) | peer route |
+| Need the specialized `-platform hyremote` zero-code route | [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) | peer route |
 | Install, build, and acquire the SDK | [`guide/install.md`](guide/install.md) · [中文](../guide/install.md) | Product guide |
 | Package and deploy | [`guide/deployment.md`](guide/deployment.md) · [中文](../guide/deployment.md) | Product guide |
 | Connect a viewer, enable control, and reconnect | [`guide/viewer-connection.md`](guide/viewer-connection.md) | Product guide |
@@ -24,14 +24,14 @@ This area provides product integration, deployment, security, compatibility, and
 
 Start with [`../product-overview.md`](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
 
-The V0.1 Developer Preview focuses on **getting users to a working remote-access path quickly**:
+The current release focuses on **getting users to a working remote-access path quickly**:
 
-- C++ API and Generic Plugin are the primary integration paths;
+- C++ / QML / Generic / QPA are peer product integration routes with different mechanics, not different product rank;
 - Windows x86_64 and Linux x86_64 with Qt 6.8.3 are the current reference environments;
 - Widgets and Qt Quick use the same Shared Runtime;
-- loopback is the default bind and remote input is disabled by default;
-- QML API and QPA exist as Preview paths;
-- incomplete capabilities are marked **TODO**.
+- the default listener is `0.0.0.0:5921` and remote input is disabled by default;
+- route-specific compatibility limits are documented explicitly rather than expressed as Primary/Preview status;
+- unshipped capabilities remain identified as limitations and must not be presented as available.
 
 ## Product reference
 
@@ -68,11 +68,10 @@ The four frontends are peers:
 
 No frontend creates a second Session, capture, input, or transport architecture.
 
-## Product status labels
+## Capability boundaries
 
-- **Primary** — the recommended path for the current product line;
-- **Preview** — implemented and usable, but not yet promoted to the current line's full supported status;
-- **TODO** — planned capability that is not yet an availability or compatibility commitment.
+The four integration routes are **peers**; each has its own stated conditions (QPA needs an **exact** Qt private-ABI
+match). Capability that does not exist is stated as such rather than parked behind a placeholder label.
 
 Security, compatibility, and platform claims are limited to the explicitly stated matrix; similar environments are not assumed to be supported.
 

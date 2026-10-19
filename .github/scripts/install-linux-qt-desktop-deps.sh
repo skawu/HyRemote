@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Install only host packages missing from the ephemeral GitHub runner. Public Qt deployment carries the
 # application's native qxcb platform plugin, so the public profile owns that plugin's non-Qt runtime closure
-# as well as the configure-time OpenGL support needed by clean installed/example consumers. The qpa profile
-# adds only the development dependencies needed to qualify the private-QPA path. ubuntu-24.04 already provides
-# xvfb, so it is intentionally not an apt dependency here.
+# as well as the configure-time OpenGL/XKB support needed by ordinary Runtime and clean consumer builds. The
+# qpa profile adds only the development dependencies unique to qualifying the private-QPA path. ubuntu-24.04
+# already provides xvfb, so it is intentionally not an apt dependency here.
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "install-linux-qt-desktop-deps.sh is Linux-only" >&2
   exit 2
@@ -19,11 +19,14 @@ fi
 
 # Runtime and configure-time support used by the official Qt desktop archive for normal public-Qt GUI lanes.
 # Installed/example consumers run their own find_package(Qt6 Gui), so WrapOpenGL must resolve independently of
-# the runner image. hyremote_deploy() also carries the consumer's native qxcb platform plugin, so its runtime
-# XCB dependencies are explicit public-lane prerequisites instead of accidental runner-image dependencies.
+# the runner image. The shared Runtime also resolves Qt6::GuiPrivate, whose Qt 6.8.3 imported link interface
+# references XKB::XKB, so the base XKB development package is a public-lane prerequisite rather than QPA-only.
+# hyremote_deploy() also carries the consumer's native qxcb platform plugin, so its runtime XCB dependencies are
+# explicit public-lane prerequisites instead of accidental runner-image dependencies.
 packages=(
   libx11-xcb1
   libxcb-cursor0
+  libxkbcommon-dev
   libxkbcommon-x11-0
   libgl1
   libgl1-mesa-dev
@@ -43,7 +46,6 @@ packages=(
 # QPA qualification additionally compiles against native/private platform integration surfaces.
 if [[ "$profile" == "qpa" ]]; then
   packages+=(
-    libxkbcommon-dev
     libxkbcommon-x11-dev
   )
 fi

@@ -1,7 +1,12 @@
+#ifdef HYREMOTE_TEST_CPP_DIAGNOSTIC_PARITY
+#include <HyRemote/RemoteAccess.h>
+#endif
+
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QEventLoop>
+#include <QMetaObject>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QTimer>
@@ -79,6 +84,28 @@ void testDeclarativeImportAndSafeDefaults()
     CHECK(object->property("securityProfile").toInt() == 0); // Insecure compatibility profile
     CHECK(object->property("securityConfigFile").toString().isEmpty());
     CHECK(object->property("errorCode").toInt() == 0); // NoError
+
+    QString qmlReport;
+    CHECK(QMetaObject::invokeMethod(object.get(),
+                                    "diagnosticReport",
+                                    Q_RETURN_ARG(QString, qmlReport)));
+    CHECK(qmlReport.contains(QStringLiteral("STATE=Stopped\n")));
+    CHECK(qmlReport.contains(QStringLiteral("LISTENER_CONFIGURED=address:0.0.0.0:5901\n")));
+    CHECK(qmlReport.contains(QStringLiteral("REMOTE_INPUT=true\n")));
+    CHECK(qmlReport.contains(QStringLiteral("INTEGRATION_ROUTE=qml\n")));
+#ifdef HYREMOTE_TEST_CPP_DIAGNOSTIC_PARITY
+    HyRemote::RemoteAccess cppAccess;
+    CHECK(cppAccess.setPort(5901));
+    CHECK(cppAccess.setRemoteInputEnabled(true));
+    QString cppReport = cppAccess.diagnosticReport();
+    CHECK(cppReport.contains(QStringLiteral("INTEGRATION_ROUTE=cpp\n")));
+    // Only the integration-route label may differ. All other Runtime report facts remain identical.
+    cppReport.replace(QStringLiteral("INTEGRATION_ROUTE=cpp\n"),
+                      QStringLiteral("INTEGRATION_ROUTE=route\n"));
+    qmlReport.replace(QStringLiteral("INTEGRATION_ROUTE=qml\n"),
+                      QStringLiteral("INTEGRATION_ROUTE=route\n"));
+    CHECK(cppReport == qmlReport);
+#endif
 
     CHECK(!object->setProperty("connectedClientCount", QVariant::fromValue<qulonglong>(1)));
     CHECK(object->property("connectedClientCount").toULongLong() == 0);

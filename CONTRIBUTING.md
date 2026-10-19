@@ -17,13 +17,13 @@ For non-trivial changes, start with a GitHub Issue describing:
 
 Architecture-affecting changes should be discussed and recorded before implementation.
 
+Before editing, read the current `develop`, the target Issue and its latest authoritative comments, and search open Issues/PRs for overlapping ownership. Current repository/machine facts beat old chat, branch and proposal prose.
+
 ## Repository and branch ownership
 
 Repository paths are architecture boundaries, not arbitrary folders. Follow [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md):
 
-- `src/` is the shipping tree: one directory per deliverable (`core/` is the internal base, then `cpp/`, `qml/` and
-  `qpa/` for the three integration technologies - the same words the product uses on every user-facing surface), and
-  every payload reuses the same shared runtime;
+- `src/` is the shipping tree: one Core, one Shared Runtime, then the four peer integration frontends under `src/integrations/{cpp,qml,generic,qpa}`; every frontend reuses the same Shared Runtime;
 - `tests/` holds what a unit test is not: cross-module integration, clean consumers, product E2E, the public-surface
   contract, the third-party matrix and the release gates;
 - module-private tests stay with their module (`src/*/tests/`) and are never moved here;
@@ -40,7 +40,9 @@ Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`
 
 HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/versioning.md`](docs/versioning.md).
 
-Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable.
+The current product phase is **V0.3.0.0 Product Preview / self-service adoption**. V0.1.0.0, V0.2.0.0 and bounded maintenance V0.2.0.1 are released history. The active V0.3.0 mandatory productization children are #264 (four-route SDK/deploy), #240 (task-oriented self-service learning/docs) and #335 (minimum self-service diagnostics). After V0.3.0, the mandatory #343 Qt/platform/RFB/performance breadth converges across coherent V0.3.x outcomes before V0.4 qualification-only RC entry.
+
+Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable. No exact V0.3.x number being preassigned makes a #343 hard requirement optional.
 
 ## Core boundaries
 
@@ -54,15 +56,18 @@ Do not introduce dependencies that make the core permanently depend on:
 
 Such dependencies belong behind adapters/backends.
 
-## Integration modes
+## Integration technologies
 
-HyRemote intentionally supports three product integration styles. A contribution must not remove another mode merely to simplify one implementation:
+HyRemote intentionally supports four **peer product integration technologies**. A contribution must not remove, rank or reimplement another route merely to simplify one implementation:
 
-- Embedded C++ API;
-- Declarative QML API;
-- Transparent QPA Proxy.
+- C++ (`HyRemote::RemoteAccess`);
+- QML (`import HyRemote`);
+- Generic Plugin (public-Qt zero-code integration that preserves the application's native platform identity);
+- QPA (exact-compatible private-ABI platform-entry/native-delegate integration).
 
-The Embedded C++ API is the stable reference integration. The QML API wraps the same core. The QPA Proxy is optional and may have stronger Qt-version constraints.
+All four consume one Shared Runtime. Peer product status does not imply every route is Supported on every Qt/OS/QPA cell: per-cell `Supported`, `Qualified`, `Preview`, `Experimental`, `Unsupported` and `Not Applicable` outcomes remain truthful. Generic must not depend on Qt private/QPA interfaces; QPA is the only frontend that may own the exact private-ABI/native-delegate boundary.
+
+Widgets and Qt Quick are target/UI families, not additional frontends or Runtime personalities.
 
 ## Qt application types
 
@@ -81,10 +86,12 @@ Do not claim compatibility without repeatable validation.
 
 Prefer Qt public APIs for stable functionality. If Qt private/QPA APIs are unavoidable:
 
-1. isolate them in a dedicated optional adapter;
+1. isolate them in the QPA/private compatibility seam;
 2. document the exact Qt versions tested;
 3. keep private types out of HyRemote public headers;
-4. add compatibility tests before enabling support for a new Qt minor version.
+4. add compatibility tests before enabling support for a new Qt minor/patch cell.
+
+Do not create a second Qt5, embedded or accelerated Runtime to absorb version/platform differences.
 
 ## Dependencies
 
@@ -116,14 +123,14 @@ After a PR is merged, superseded or closed and no other open PR uses its head, d
 
 ## Compatibility claims
 
-A feature is considered **supported** only when it has:
+A feature or matrix cell is considered **supported** only when the current product authority and exact evidence justify that status. At minimum the claim needs:
 
-- a reproducible build;
-- a functional test or example;
-- a compatibility entry;
+- a reproducible build/install/deploy path;
+- applicable functional/product evidence;
+- an explicit compatibility entry;
 - documented known limitations.
 
-Everything else should be marked experimental, planned, or unverified.
+Do not infer a Qt/OS/CPU/QPA/graphics cell from another platform's result. QPA private-ABI compatibility is exact-cell truth, separate from public-Qt family claims.
 
 ## Documentation and comment language
 
@@ -154,7 +161,7 @@ Rules for the user-facing zones:
   still lists may keep a short pointer file until the gate's path list is updated. Such pointers carry no
   documentation content, and removing them is a maintainer change rather than an authoring one.
 
-Source comments are **not** under a mandatory bilingual policy for V1:
+Source comments are **not** under a mandatory bilingual policy:
 
 - keep existing source comments as they are - there is no bulk comment-only migration across public headers,
   internal code or tests;
@@ -194,10 +201,47 @@ lane may start:
 
 | Lane | Trigger | What runs |
 | --- | --- | --- |
-| `PR_DRAFT` | draft pull request | Git Flow/topology, the classifier self test, release-authority governance. No Qt runner. |
+| `PR_DRAFT` | draft pull request | Git Flow/topology, release-authority governance when release authority changed. No Qt runner. |
 | `PR_FAST` | ready pull request | Only what the real `base...head` diff can affect: affected capabilities, the deploy evidence for contracts it touches, readiness when it touches a readiness-consumed surface. |
 | `DEVELOP_SENTINEL` | push to `develop` | Repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform matrix is not repeated on every merge. |
-| `FULL_GATE` | `workflow_dispatch` (`validation_level: full`) | Both platforms, all four frontends, all readiness gates, all applicable clean-deploy evidence. This is the lane for an exact candidate, a release-branch readiness run, main/GA validation or a deliberate diagnostic. |
+| `FULL_GATE` | admitted `workflow_dispatch` (`purpose` + `expected_sha` == the dispatched commit) | Both platforms, all four frontends, all readiness gates, all applicable clean-deploy evidence. This is the lane for an exact candidate, a release-branch readiness run, main/GA validation or a deliberate diagnostic. |
+
+### The three decision layers
+
+Every CI run reports one **decision** — what the run may be waited on for. The decisions map to three layers of
+development cadence:
+
+| Decision | Layer | Meaning | Who waits |
+| --- | --- | --- | --- |
+| `OBSERVE` | L0 — Local development feedback | Fire-and-observe: no merge or release decision is waiting on this lane (draft PRs, the develop sentinel, no-product reporting, maintenance and audit-only runs). | Nobody. **OBSERVE workflows do not block sequencing of independent work** — a later red result opens a defect owner, it is not a reason to idle. |
+| `MERGE` | L1 — Ready PR merge decision | Hosted evidence for a ready pull request's merge decision. Decided by the lane, not by matrix size: a ready docs-only PR is still a MERGE decision. | The author of that pull request, before merging it. |
+| `CANDIDATE` | L2 — Frozen exact-candidate qualification | Full qualification of one frozen, exact SHA for candidate/release purposes. | Whoever will act on the candidate evidence. |
+
+### Candidate standard flow
+
+For candidate-producing work, run the layers in order and never start the expensive one while edits are still
+pending:
+
+```text
+local canonical checks
+→ user-path preflight
+→ freeze exact SHA
+→ admitted FULL_GATE
+→ physical/user validation only if required
+```
+
+A `FULL_GATE` is admitted, not generic: it requires `purpose` (`candidate`, `release-readiness` or `diagnostic`) and
+an `expected_sha` that must equal the dispatched commit. The gate fails closed before any Qt runner starts when the
+SHA is malformed or does not match, so a branch-name dispatch can never be mistaken for candidate evidence.
+
+**A candidate SHA, once changed, invalidates the previous candidate evidence automatically.** Re-running for the new
+SHA is legitimate and must be recorded as such; reusing evidence from a superseded SHA never is.
+
+### Specialized historical evidence
+
+`tls-preflight.yml` is historical/specialized evidence for the closed #258 preflight and is explicit-dispatch only.
+It is not a development or release wait gate and must never be consumed as one unless a future activated security
+capability explicitly re-adopts it. Nothing in this cadence re-activates a TLS product scope.
 
 Working rules that keep that cadence meaningful:
 
@@ -210,9 +254,10 @@ Working rules that keep that cadence meaningful:
   so a hosted run against an older base no longer describes what merges. The Git Flow policy checks this at merge
   time: if the base moved, merge the base into the branch, re-run the gate, and merge only afterwards. That is what
   makes it safe not to repeat the full matrix after every merge.
-- **Wait only where a decision is pending**: the final ready-pull-request gate and an exact-candidate `FULL_GATE`. Do
-  not wait on ordinary commits, drafts or post-merge duplicates; poll by run id and stop as soon as the run reports
-  completion, because an empty answer is "unknown", never "finished".
+- **Wait only where a decision is pending**: an `OBSERVE` run is never one of them. Wait on the `MERGE` decision of
+  your own ready pull request and on an admitted `CANDIDATE` gate. Do not wait on ordinary commits, drafts,
+  post-merge duplicates or maintenance runs; poll by run id and stop as soon as the run reports completion, because
+  an empty answer is "unknown", never "finished".
 - **Artifacts are evidence, not routine.** Build evidence is uploaded for a failure, for the clean SDK/deploy
   acceptance contracts a run was asked to prove, and for `FULL_GATE`. A documentation or governance change does not
   need a build-evidence bundle.

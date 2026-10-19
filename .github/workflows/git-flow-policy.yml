@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - develop
+      # Protected release/v* must be updated through a PR; actually
+      # run this exact branch topology/metadata gate on that PR.
+      - 'release/v*'
     types:
       - opened
       - synchronize
@@ -37,10 +40,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # #380: whether the release-audit authority changed is decided from the real diff, not by the resolver deciding
+  # for itself. Only PR and branch-push events carry a meaningful diff; a tag push audits through the release-tag
+  # job (which now validates the resolver it uses), and a deliberate dispatch is rare enough to re-prove the
+  # resolver there.
+  release-authority-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      authority_changed: ${{ steps.changed.outputs.authority_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: changed
+        name: Detect release-authority changes from the real diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_REF_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          authority_changed=false
+          range=""
+          case "${EVENT_NAME}" in
+            pull_request) range="${BASE_SHA}...${HEAD_REF_SHA}" ;;
+            push)
+              # A tag push is audited by the release-tag job itself and carries no diff-based signal here.
+              if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+                :
+              elif [[ "${BEFORE_SHA}" =~ ^0+$ || -z "${BEFORE_SHA}" ]]; then
+                range="${HEAD_REF_SHA}~1..${HEAD_REF_SHA}"
+              else
+                range="${BEFORE_SHA}..${HEAD_REF_SHA}"
+              fi ;;
+          esac
+          if [[ -n "${range}" ]] && git diff --name-only "${range}" -- \
+               '.github/release/**' '.github/workflows/git-flow-policy.yml' | grep -q .; then
+            authority_changed=true
+          fi
+          echo "release-authority changed: ${authority_changed}"
+          echo "authority_changed=${authority_changed}" >> "$GITHUB_OUTPUT"
+
   release-tag-audit-self-test:
-    # Which tag a run audits, and whether it audits one at all, is decided by a script with its own self test, so the
-    # decision is proved on every policy run instead of only when a tag happens to be pushed. No Qt, no product build:
-    # the release-train authority is exercised through the machine selector, which is CMake only.
+    # #380: the resolver's self test is release-authority evidence, not a per-event ritual. It runs when the
+    # release-audit authority changed, or on a deliberate dispatch. Ordinary PR/develop policy events skip it; a
+    # real tag push always validates the resolver inside the release-tag audit job itself. Nothing about PR
+    # topology, base freshness, train selection, candidate prerequisites, mainline audits or tag fail-closed
+    # behavior changes.
+    needs: release-authority-scope
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.release-authority-scope.outputs.authority_changed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -108,7 +162,7 @@ jobs:
       # describes what merges. Requiring a fresh base here makes the stale case visible at merge time instead of
       # relying on a duplicate full run after the merge - which is the duplication this lane change removes.
       - name: Require a fresh base before merge
-        if: github.base_ref == 'develop' || github.base_ref == 'main'
+        if: github.base_ref == 'develop' || github.base_ref == 'main' || startsWith(github.base_ref, 'release/v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -147,6 +201,167 @@ jobs:
           fi
           echo "issue reference accepted: #${issue}"
 
+      # #466: protected release branches reject direct pushes. The only
+      # release-preparation PR into such a branch is issue-linked and
+      # constrained to the exact version change/notes plus the initial
+      # governance bootstrap for this protection fix. This is NOT the
+      # release/v* -> main promotion or permission to cut a release tag.
+      - name: Validate protected release preparation PR
+        if: startsWith(github.base_ref, 'release/v')
+        shell: python
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          import os, pathlib, re, subprocess
+
+          head = os.environ["HEAD_REF"]
+          base = os.environ["BASE_REF"]
+          branch = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", base)
+          if not branch or not re.fullmatch(r"feature/[0-9]+-release-preparation", head):
+              raise SystemExit("only issue-linked feature/<issue>-release-preparation may target an exact release branch")
+          version = branch.group(1)
+
+          def git(*args):
+              # Read the committed Git blob bytes, never the checkout's
+              # line-ending-filtered worktree or text=True universal-newline
+              # translation. Only the exact VERSION token may change.
+              return subprocess.check_output(("git", *args))
+
+          base_tree = "refs/remotes/origin/" + base
+          old_cmake = git("show", base_tree + ":CMakeLists.txt")
+          new_cmake = git("show", "HEAD:CMakeLists.txt")
+          # Match the HyRemote root project VERSION token, not a frozen
+          # whole-line spelling of project(). Whitespace and unrelated valid
+          # metadata may evolve; only the VERSION token may change.
+          project_expr = re.compile(
+              rb"^[ \t]*project\s*\(\s*HyRemote\b(?:(?!\)).)*?"
+              rb"\bVERSION\s+(?P<version>[0-9]+(?:\.[0-9]+){2,3})(?=\s|\))",
+              re.M | re.S,
+          )
+          project_matches = list(project_expr.finditer(old_cmake))
+          if len(project_matches) != 1:
+              raise SystemExit("release branch base must declare exactly one unambiguous HyRemote project VERSION")
+          base_version_match = project_matches[0]
+          base_version = base_version_match.group("version").decode("ascii")
+          if version == "0.0.0":
+              raise SystemExit("release branch cannot use the development sentinel")
+
+          notes_name = f"docs/releases/v{version}.md"
+          marker = "Status: **candidate / acceptance pending**"
+          old_notes = git("show", base_tree + ":" + notes_name).decode("utf-8")
+          notes = git("show", "HEAD:" + notes_name).decode("utf-8")
+          for required in (f"release/v{version}", f"`v{version}`", "## Security boundary", "# 中文", "# English"):
+              if required not in notes:
+                  raise SystemExit(f"release-preparation notes missing {required}")
+
+          changed = set(git("diff", "--name-only", base_tree, "HEAD").decode("utf-8").splitlines())
+          if base_version == "0.0.0":
+              # Stage 1: exact source VERSION token bump, but still unaccepted.
+              stage = "version-preparation"
+              updated_cmake = (old_cmake[:base_version_match.start("version")] + version.encode("ascii")
+                               + old_cmake[base_version_match.end("version"):])
+              if new_cmake != updated_cmake:
+                  raise SystemExit("first preparation must change only root project VERSION token to exact release version")
+              if not old_notes.startswith(marker) or not notes.startswith(marker):
+                  raise SystemExit("initial release preparation must keep candidate notes pending")
+              allowed = {"CMakeLists.txt", notes_name}
+              bootstrap = head == "feature/466-release-preparation" and version == "0.3.0.0"
+              if bootstrap:
+                  # The protected release branch was frozen at the previous
+                  # accepted source SHA. This one-time bridge admits exactly the
+                  # accepted develop candidate tree, byte-for-byte. Only the root
+                  # version token and the three release-bootstrap files may differ
+                  # from that candidate; it is not a general file allowlist.
+                  original_sha = "3368a17a113318b9d805cd7bc42a4263970c1c86"
+                  accepted_sha = "8b3a413731dad52bf309a7eb2fd275fdeedbe539"
+                  actual_base = git("rev-parse", base_tree).decode("ascii").strip()
+                  if actual_base != original_sha:
+                      raise SystemExit("release-preparation bridge requires the exact original release base SHA")
+                  bootstrap_files = {
+                      ".github/scripts/check-pr-branch-name.sh",
+                      ".github/workflows/git-flow-policy.yml",
+                      "docs/internal/git-flow-release.md",
+                  }
+                  surface = set(git("diff", "--name-only", accepted_sha, "HEAD").decode("utf-8").splitlines())
+                  expected_surface = bootstrap_files | {"CMakeLists.txt"}
+                  if surface != expected_surface:
+                      raise SystemExit(
+                          "release preparation surface must be exactly "
+                          f"{sorted(expected_surface)}; found {sorted(surface)}")
+                  allowed = changed
+              if "CMakeLists.txt" not in changed:
+                  raise SystemExit("initial release preparation did not actually bump the project version")
+          elif base_version == version:
+              if marker in notes:
+                  # One-time candidate correction: the protected branch was
+                  # versioned before the companion client was accepted. Replace
+                  # only its tree with the exact accepted develop candidate;
+                  # the version token and three bootstrap files are the only
+                  # permitted differences. Notes stay pending.
+                  stage = "candidate-correction"
+                  accepted_sha = "9e7c266e3b8b5b8470f32be641465777f72a8c89"
+                  original_release_sha = "9d07234731c0817fab0ca62efa76c5ed79cb1069"
+                  actual_base = git("rev-parse", base_tree).decode("ascii").strip()
+                  if actual_base != original_release_sha:
+                      raise SystemExit("candidate correction requires the exact versioned release base")
+                  bootstrap_files = {
+                      ".github/scripts/check-pr-branch-name.sh",
+                      ".github/workflows/git-flow-policy.yml",
+                      "docs/internal/git-flow-release.md",
+                  }
+                  surface = set(git("diff", "--name-only", accepted_sha, "HEAD").decode("utf-8").splitlines())
+                  expected_surface = bootstrap_files | {"CMakeLists.txt"}
+                  if surface != expected_surface:
+                      raise SystemExit(
+                          "candidate correction surface must be exactly "
+                          f"{sorted(expected_surface)}; found {sorted(surface)}")
+                  updated_cmake = (old_cmake[:base_version_match.start("version")]
+                                   + version.encode("ascii")
+                                   + old_cmake[base_version_match.end("version"):])
+                  if new_cmake != updated_cmake:
+                      raise SystemExit("candidate correction may change only the root VERSION token")
+                  allowed = changed
+              else:
+                  # Stage 2, ONLY after separate owner acceptance: finalize the
+                  # previously versioned release's bilingual notes via a reviewable
+                  # PR. Never allow an SDK change or an unauthorized version bump.
+                  stage = "notes-finalization"
+                  if new_cmake != old_cmake:
+                      raise SystemExit("release finalization may not alter product VERSION or CMake sources")
+                  if not old_notes.startswith(marker) or marker in notes:
+                      raise SystemExit("notes finalization must replace pending notes with accepted wording")
+                  zh_notes = notes.split("# 中文", 1)[1].split("# English", 1)[0]
+                  en_notes = notes.split("# English", 1)[1]
+                  # Positive bilingual accepted identities are required. Merely
+                  # removing a few "pending" lines could leave explicit candidate
+                  # identity claims on an allegedly finalized release.
+                  if f"- 已验收版本：`V{version}`" not in zh_notes:
+                      raise SystemExit("final Chinese release notes need an exact accepted-version identity")
+                  if f"- Accepted version: `V{version}`" not in en_notes:
+                      raise SystemExit("final English release notes need an exact accepted-version identity")
+                  stale_zh = ("**候选待验收**", "这份文件是预发布说明",
+                              "- 候选版本：", "- 候选参考环境：", "当前候选")
+                  stale_en = ("**Acceptance pending:**",
+                              "This is a pre-release note source",
+                              "- Candidate:", "- Candidate reference environment:",
+                              "This candidate")
+                  # Scan the WHOLE committed bilingual source. A stale Chinese or
+                  # English candidate claim must not be hidden above the headings
+                  # or moved into the other language section to bypass the check.
+                  for phrase in stale_zh + stale_en:
+                      if phrase in notes:
+                          raise SystemExit(f"final release notes still claim candidate state: {phrase}")
+                  allowed = {notes_name}
+                  if changed != allowed:
+                      raise SystemExit("notes finalization may change ONLY the bilingual release-note file")
+          else:
+              raise SystemExit("protected release PR base must be 0.0.0 or its exact four-part version")
+
+          if not changed <= allowed:
+              raise SystemExit(f"release-preparation PR has out-of-scope changes: {sorted(changed - allowed)}")
+          print(f"protected release preparation gate PASS: {head} -> {base} phase={stage} scope={sorted(changed)}")
+
       - name: Keep develop on the development version sentinel
         if: github.base_ref == 'develop'
         shell: python
@@ -160,6 +375,60 @@ jobs:
           if version != "0.0.0":
               raise SystemExit(f"PRs targeting develop must keep version sentinel 0.0.0; found {version}")
           print("develop version sentinel gate passed: 0.0.0")
+
+      # #234/#95: candidate/released state is a Git Flow decision, not an
+      # installed CMake metadata decision. This PR lane has fetch-depth: 0,
+      # whereas product CI deliberately has a shallow checkout.
+      - name: Verify V0.3 release notes lifecycle on develop PRs
+        if: github.base_ref == 'develop'
+        shell: python
+        run: |
+          import pathlib, re, subprocess
+
+          notes_path = pathlib.Path("docs/releases/v0.3.0.0.md")
+          if not notes_path.is_file():
+              print("V0.3 notes not yet present on this older topic branch")
+          else:
+              notes = notes_path.read_text(encoding="utf-8")
+              marker = "Status: **candidate / acceptance pending**"
+              if notes.startswith(marker):
+                  print("Unreleased V0.3 candidate status correctly retained")
+              else:
+                  def git(*args):
+                      return subprocess.check_output(
+                          ("git", *args), text=True, stderr=subprocess.PIPE).strip()
+
+                  tag = "refs/tags/v0.3.0.0"
+                  try:
+                      if git("cat-file", "-t", tag) != "tag":
+                          raise ValueError("release tag is lightweight or is not an annotated tag")
+                      release_sha = git("rev-parse", tag + "^{commit}")
+                      tagged_cmake = git("show", release_sha + ":CMakeLists.txt")
+                      tagged_notes = git("show", release_sha + ":docs/releases/v0.3.0.0.md")
+                      if not re.search(
+                          r"project\s*\(\s*HyRemote\s+VERSION\s+0\.3\.0\.0(?=\s|\))",
+                          tagged_cmake, re.S):
+                          raise ValueError("tagged source does not declare release VERSION 0.3.0.0")
+                      if marker in tagged_notes or "## Security boundary" not in tagged_notes:
+                          raise ValueError("tagged release notes are unfinalized or missing security boundary")
+                      for descendant in ("HEAD", "refs/remotes/origin/main"):
+                          subprocess.run(
+                              ("git", "merge-base", "--is-ancestor", release_sha, descendant),
+                              check=True, capture_output=True, text=True)
+                      # A release-branch tip may become a *second-parent*
+                      # ancestor of main, but only the accepted mainline
+                      # release commit may own the annotated release tag.
+                      main_first_parent = git(
+                          "rev-list", "--first-parent", "refs/remotes/origin/main").splitlines()
+                      if release_sha not in main_first_parent:
+                          raise ValueError(
+                              "tagged commit is not on accepted main's first-parent history")
+                  except (subprocess.CalledProcessError, ValueError) as exc:
+                      raise SystemExit(
+                          "Finalized V0.3 notes on develop require a genuine "
+                          "annotated v0.3.0.0 on accepted main history and in "
+                          "the current backmerge ancestry: " + str(exc))
+                  print("Finalized V0.3 notes match accepted tagged release and audited backmerge history")
 
       - name: Resolve requested release train
         if: startsWith(github.head_ref, 'release/v') || startsWith(github.head_ref, 'backmerge/v') || startsWith(github.ref, 'refs/tags/v')
@@ -380,6 +649,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # #380: the audit validates the resolver it is about to use, so the resolver is proved on every real tag
+      # audit even though the standalone self-test job no longer runs on unrelated policy events.
+      - name: Self-test the release-tag audit target resolver
+        shell: bash
+        run: python3 .github/release/resolve-release-tag.py --self-test
 
       - name: Resolve the release tag to audit
         id: target
