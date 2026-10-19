@@ -172,7 +172,6 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
 | `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
 | `hyremote-tool-client-ui` | Constructs the real HyRemoteTool client window offscreen and verifies the connection bar, framebuffer view and telemetry surface exist; it must not connect or open a listener. |
-| `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 
