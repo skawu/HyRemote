@@ -9,10 +9,13 @@ HyRemoteTool is HyRemote's first-party host-side product experience and validati
 - The listener uses HyRemote's LAN-capable default (`0.0.0.0`) and the effective port is displayed locally.
 - Listener/runtime state and viewer connection state are distinct: **Running does not mean a viewer is connected**. The local status panel displays the backend-neutral `connectedClientCount()` from the public facade.
 - Remote input is disabled by default, so the initial policy is view-only.
-- The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the example does not create a second Session or transport stack.
+- The local operator can explicitly enable or disable remote control. With the current public facade, a policy change while running is applied by stopping and restarting the same `RemoteAccess` instance; the Tool asks for confirmation first because that cycle disconnects viewers. The example does not create a second Session or transport stack.
 - Stop releases the listener while the local application continues running.
 - The local status panel shows stopped/running/faulted state, build/deployment identity, Qt/OS/architecture, active security profile, configured/effective listener, connected-client count, current policy and the latest product-level error. These facts come from the same public bounded diagnostic report rather than a Tool-owned model.
-- The Connection Assistant lists current non-loopback IPv4 viewer endpoints separately from the listener bind address, exposes Waiting/Connected state, and can refresh/copy the current candidates. A wildcard bind such as `0.0.0.0:5921` is never presented as the remote host address to type into a viewer.
+- The Connection Assistant lists current non-loopback IPv4 viewer endpoints separately from the listener bind address, exposes Waiting/Connected state, lets the operator choose one endpoint and copy it (or copy all candidates), and can refresh the current list. A wildcard bind such as `0.0.0.0:5921` is never presented as the remote host address to type into a viewer.
+- Listener configuration is part of the product surface: port, **all IPv4 interfaces**, an explicit IPv4 address, or a named network interface. Configuration is accepted only while remote access is stopped and takes effect on the next start; the Tool never silently rebinds a running listener.
+- The first screen keeps state, connection, client count, effective listener, policy, Start/Stop and the remote-input switch together, so the operator can stop remote access without scrolling. Build identity, diagnostics, activity, the local control workspace and documentation links follow below.
+- A Documentation section links the integration guide, viewer connection, troubleshooting and security model, so the Tool exposes the same learning path instead of inventing tool-only instructions.
 - The Diagnostics panel renders the same bounded, secret-safe public `diagnosticReport()` used by support/troubleshooting and can copy or save that exact report; HyRemoteTool does not invent a second diagnostic truth.
 - The Activity panel keeps at most 100 in-memory entries for operator actions and public Runtime facts (start/stop/restart, state/listener, viewer connect/disconnect, remote-input policy and bounded product errors). It is an operational view, not a persistent session-audit database.
 - Viewer disconnect/reconnect updates the client count without recreating the local application.
@@ -39,9 +42,11 @@ Optional acceptance helpers are explicit and do not change normal safe defaults:
 ```text
 hyremote-tool --auto-start --remote-input --port 5901 --test-seconds 30
 hyremote-tool --auto-start --diagnostic-report-file hyremote-diagnostic.txt --test-seconds 5
+hyremote-tool --verify-compact-layout
+hyremote-tool --verify-listener-controls
 ```
 
-`--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access. `--diagnostic-report-file` writes the same bounded public report as the GUI Save action after startup handling; it does not expose a second diagnostic surface.
+`--auto-start` is intended for deterministic product-fit automation. Normal interactive launches remain stopped until the local operator starts remote access. `--diagnostic-report-file` writes the same bounded public report as the GUI Save action after startup handling; it does not expose a second diagnostic surface. The two `--verify-*` helpers are CI-only: they never open a listener, and `--verify-listener-controls` drives the real listener widgets and observes the public facade.
 
 The hosted product-fit uses a standard viewer to require the observable client-count lifecycle `0 -> 1 -> 0 -> 1 -> 0` across connection, disconnect and reconnect. Hosted offscreen execution does not substitute for the separate physical local-display/local-input coexistence gate.
 

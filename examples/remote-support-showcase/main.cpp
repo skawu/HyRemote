@@ -4,8 +4,10 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QComboBox>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QDateTime>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -13,6 +15,7 @@
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QNetworkInterface>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -69,9 +72,9 @@ QString diagnosticValue(const QString &report, const QString &key)
     return QStringLiteral("unknown");
 }
 
-QStringList viewerEndpoints(quint16 port)
+QStringList ipv4Addresses()
 {
-    QStringList endpoints;
+    QStringList addresses;
     for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
         const auto flags = interface.flags();
         if (!flags.testFlag(QNetworkInterface::IsUp)
@@ -84,14 +87,69 @@ QStringList viewerEndpoints(quint16 port)
                 || address.isLinkLocal() || address.isNull())
                 continue;
 
-            const QString endpoint = QStringLiteral("%1:%2").arg(address.toString()).arg(port);
-            if (!endpoints.contains(endpoint))
-                endpoints.push_back(endpoint);
+            const QString text = address.toString();
+            if (!addresses.contains(text))
+                addresses.push_back(text);
         }
     }
+    addresses.sort(Qt::CaseInsensitive);
+    return addresses;
+}
+
+QStringList viewerEndpoints(quint16 port)
+{
+    QStringList endpoints;
+    for (const QString &address : ipv4Addresses())
+        endpoints.push_back(QStringLiteral("%1:%2").arg(address).arg(port));
     endpoints.sort(Qt::CaseInsensitive);
     return endpoints;
 }
+
+struct InterfaceChoice
+{
+    QString display;
+    QString identity;
+};
+
+QList<InterfaceChoice> ipv4Interfaces()
+{
+    QList<InterfaceChoice> choices;
+    for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
+        const auto flags = interface.flags();
+        if (!flags.testFlag(QNetworkInterface::IsUp)
+            || !flags.testFlag(QNetworkInterface::IsRunning))
+            continue;
+
+        bool hasIpv4 = false;
+        for (const QNetworkAddressEntry &entry : interface.addressEntries()) {
+            const QHostAddress address = entry.ip();
+            if (address.protocol() == QAbstractSocket::IPv4Protocol && !address.isLoopback()
+                && !address.isLinkLocal() && !address.isNull()) {
+                hasIpv4 = true;
+                break;
+            }
+        }
+        if (!hasIpv4)
+            continue;
+
+        const QString readable = interface.humanReadableName().trimmed();
+        choices.push_back(InterfaceChoice{
+            readable.isEmpty() ? interface.name()
+                               : QStringLiteral("%1 (%2)").arg(readable, interface.name()),
+            interface.name()});
+    }
+    std::sort(choices.begin(), choices.end(), [](const InterfaceChoice &left,
+                                                 const InterfaceChoice &right) {
+        return left.display.compare(right.display, Qt::CaseInsensitive) < 0;
+    });
+    return choices;
+}
+
+enum class ListenMode {
+    AnyIpv4 = 0,
+    Address = 1,
+    Interface = 2,
+};
 
 class SupportWindow final : public QWidget
 {
@@ -141,72 +199,91 @@ public:
         intro->setWordWrap(true);
         root->addWidget(intro);
 
+        // Connection and control first: the operator must see whether remote
+        // access is on, and be able to stop it, without scrolling.
         auto *remoteBox = new QGroupBox(QStringLiteral("Remote support"), content);
         auto *remoteLayout = new QVBoxLayout(remoteBox);
 
-        auto *statusForm = new QFormLayout;
+        auto *summaryForm = new QFormLayout;
         // On narrow/high-DPI desktops, break labels onto their own row
         // instead of forcing the content widget wider than the viewport.
-        statusForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        summaryForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
         m_state = new QLabel(remoteBox);
-        m_buildIdentity = new QLabel(remoteBox);
-        m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        m_buildIdentity->setWordWrap(true);
-        auto buildIdentityPolicy = m_buildIdentity->sizePolicy();
-        buildIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
-        buildIdentityPolicy.setHeightForWidth(true);
-        m_buildIdentity->setSizePolicy(buildIdentityPolicy);
-        m_deploymentIdentity = new QLabel(remoteBox);
-        m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        m_deploymentIdentity->setWordWrap(true);
-        auto deploymentIdentityPolicy = m_deploymentIdentity->sizePolicy();
-        deploymentIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
-        deploymentIdentityPolicy.setHeightForWidth(true);
-        m_deploymentIdentity->setSizePolicy(deploymentIdentityPolicy);
-        m_platform = new QLabel(remoteBox);
-        m_security = new QLabel(remoteBox);
-        m_configuredListener = new QLabel(remoteBox);
-        m_endpoint = new QLabel(remoteBox);
-        m_viewerEndpoints = new QLabel(remoteBox);
-        m_viewerEndpoints->setWordWrap(true);
-        m_viewerEndpoints->setTextInteractionFlags(Qt::TextSelectableByMouse);
         m_connection = new QLabel(remoteBox);
         m_clients = new QLabel(QStringLiteral("0"), remoteBox);
+        m_endpoint = new QLabel(remoteBox);
+        m_endpoint->setWordWrap(true);
+        m_endpoint->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_configuredListener = new QLabel(remoteBox);
+        m_configuredListener->setWordWrap(true);
         m_policy = new QLabel(remoteBox);
-        m_focus = new QLabel(remoteBox);
-        m_error = new QLabel(QStringLiteral("None"), remoteBox);
-        m_error->setWordWrap(true);
-        statusForm->addRow(QStringLiteral("State"), m_state);
-        statusForm->addRow(QStringLiteral("Build identity"), m_buildIdentity);
-        statusForm->addRow(QStringLiteral("Deployment identity"), m_deploymentIdentity);
-        statusForm->addRow(QStringLiteral("Platform"), m_platform);
-        statusForm->addRow(QStringLiteral("Security"), m_security);
-        statusForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
-        statusForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
-        statusForm->addRow(QStringLiteral("Viewer endpoints"), m_viewerEndpoints);
-        statusForm->addRow(QStringLiteral("Connection"), m_connection);
-        statusForm->addRow(QStringLiteral("Connected clients"), m_clients);
-        statusForm->addRow(QStringLiteral("Policy"), m_policy);
-        statusForm->addRow(QStringLiteral("Target window"), m_focus);
-        statusForm->addRow(QStringLiteral("Last error"), m_error);
-        remoteLayout->addLayout(statusForm);
+        summaryForm->addRow(QStringLiteral("State"), m_state);
+        summaryForm->addRow(QStringLiteral("Connection"), m_connection);
+        summaryForm->addRow(QStringLiteral("Connected clients"), m_clients);
+        summaryForm->addRow(QStringLiteral("Effective listener"), m_endpoint);
+        summaryForm->addRow(QStringLiteral("Configured listener"), m_configuredListener);
+        summaryForm->addRow(QStringLiteral("Policy"), m_policy);
+        remoteLayout->addLayout(summaryForm);
 
         auto *actions = new QHBoxLayout;
         m_startStop = new QPushButton(QStringLiteral("Start remote access"), remoteBox);
+        m_startStop->setObjectName(QStringLiteral("startStop"));
         m_input = new QCheckBox(QStringLiteral("Allow remote control"), remoteBox);
+        m_input->setObjectName(QStringLiteral("remoteInput"));
         m_input->setChecked(initialInputEnabled);
         actions->addWidget(m_startStop);
         actions->addWidget(m_input);
         actions->addStretch(1);
         remoteLayout->addLayout(actions);
 
-        auto *connectionActions = new QHBoxLayout;
-        auto *refreshEndpoints = new QPushButton(QStringLiteral("Refresh viewer endpoints"), remoteBox);
-        m_copyEndpoints = new QPushButton(QStringLiteral("Copy viewer endpoints"), remoteBox);
-        connectionActions->addWidget(refreshEndpoints);
-        connectionActions->addWidget(m_copyEndpoints);
-        connectionActions->addStretch(1);
-        remoteLayout->addLayout(connectionActions);
+        auto *listenerBox = new QGroupBox(QStringLiteral("Listener"), remoteBox);
+        auto *listenerForm = new QFormLayout(listenerBox);
+        listenerForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        m_portEditor = new QSpinBox(listenerBox);
+        m_portEditor->setObjectName(QStringLiteral("portEditor"));
+        m_portEditor->setRange(1, 65535);
+        m_portEditor->setValue(m_port);
+        m_listenMode = new QComboBox(listenerBox);
+        m_listenMode->setObjectName(QStringLiteral("listenMode"));
+        m_listenMode->addItem(QStringLiteral("All IPv4 interfaces"),
+                              static_cast<int>(ListenMode::AnyIpv4));
+        m_listenMode->addItem(QStringLiteral("Specific IPv4 address"),
+                              static_cast<int>(ListenMode::Address));
+        m_listenMode->addItem(QStringLiteral("Network interface"),
+                              static_cast<int>(ListenMode::Interface));
+        m_listenTarget = new QComboBox(listenerBox);
+        m_listenTarget->setObjectName(QStringLiteral("listenTarget"));
+        m_applyListener = new QPushButton(QStringLiteral("Apply listener settings"), listenerBox);
+        m_applyListener->setObjectName(QStringLiteral("applyListener"));
+        listenerForm->addRow(QStringLiteral("Port"), m_portEditor);
+        listenerForm->addRow(QStringLiteral("Listen on"), m_listenMode);
+        listenerForm->addRow(QStringLiteral("Address / interface"), m_listenTarget);
+        listenerForm->addRow(QString(), m_applyListener);
+        m_listenerHint = new QLabel(
+            QStringLiteral("Stop remote access before changing the listener. The configured "
+                           "value takes effect on the next start."),
+            listenerBox);
+        m_listenerHint->setWordWrap(true);
+        listenerForm->addRow(QString(), m_listenerHint);
+        remoteLayout->addWidget(listenerBox);
+
+        auto *endpointForm = new QFormLayout;
+        endpointForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        auto *endpointRow = new QWidget(remoteBox);
+        auto *endpointLayout = new QHBoxLayout(endpointRow);
+        endpointLayout->setContentsMargins(0, 0, 0, 0);
+        m_endpointChoices = new QComboBox(endpointRow);
+        m_endpointChoices->setObjectName(QStringLiteral("viewerAddress"));
+        m_endpointChoices->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        m_copySelectedEndpoint = new QPushButton(QStringLiteral("Copy selected"), endpointRow);
+        m_copyEndpoints = new QPushButton(QStringLiteral("Copy all"), endpointRow);
+        auto *refreshEndpoints = new QPushButton(QStringLiteral("Refresh"), endpointRow);
+        endpointLayout->addWidget(m_endpointChoices, 1);
+        endpointLayout->addWidget(m_copySelectedEndpoint);
+        endpointLayout->addWidget(m_copyEndpoints);
+        endpointLayout->addWidget(refreshEndpoints);
+        endpointForm->addRow(QStringLiteral("Viewer endpoint"), endpointRow);
+        remoteLayout->addLayout(endpointForm);
 
         auto *policyNote = new QLabel(
             QStringLiteral("Changing remote-control policy while running performs an explicit "
@@ -234,6 +311,36 @@ public:
         remoteLayout->addWidget(security);
         root->addWidget(remoteBox);
 
+        auto *identityBox = new QGroupBox(QStringLiteral("Build and environment"), content);
+        auto *identityForm = new QFormLayout(identityBox);
+        identityForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        m_buildIdentity = new QLabel(identityBox);
+        m_buildIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_buildIdentity->setWordWrap(true);
+        auto buildIdentityPolicy = m_buildIdentity->sizePolicy();
+        buildIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        buildIdentityPolicy.setHeightForWidth(true);
+        m_buildIdentity->setSizePolicy(buildIdentityPolicy);
+        m_deploymentIdentity = new QLabel(identityBox);
+        m_deploymentIdentity->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_deploymentIdentity->setWordWrap(true);
+        auto deploymentIdentityPolicy = m_deploymentIdentity->sizePolicy();
+        deploymentIdentityPolicy.setHorizontalPolicy(QSizePolicy::Ignored);
+        deploymentIdentityPolicy.setHeightForWidth(true);
+        m_deploymentIdentity->setSizePolicy(deploymentIdentityPolicy);
+        m_platform = new QLabel(identityBox);
+        m_security = new QLabel(identityBox);
+        m_focus = new QLabel(identityBox);
+        m_error = new QLabel(QStringLiteral("None"), identityBox);
+        m_error->setWordWrap(true);
+        identityForm->addRow(QStringLiteral("Build identity"), m_buildIdentity);
+        identityForm->addRow(QStringLiteral("Deployment identity"), m_deploymentIdentity);
+        identityForm->addRow(QStringLiteral("Platform"), m_platform);
+        identityForm->addRow(QStringLiteral("Security profile"), m_security);
+        identityForm->addRow(QStringLiteral("Target window"), m_focus);
+        identityForm->addRow(QStringLiteral("Last error"), m_error);
+        root->addWidget(identityBox);
+
         auto *diagnosticsBox = new QGroupBox(QStringLiteral("Diagnostics"), content);
         auto *diagnosticsLayout = new QVBoxLayout(diagnosticsBox);
         m_diagnostics = new QPlainTextEdit(diagnosticsBox);
@@ -249,6 +356,10 @@ public:
         diagnosticActions->addWidget(saveDiagnostics);
         diagnosticActions->addStretch(1);
         diagnosticsLayout->addLayout(diagnosticActions);
+        m_diagnosticStatus = new QLabel(QStringLiteral("No export yet."), diagnosticsBox);
+        m_diagnosticStatus->setObjectName(QStringLiteral("diagnosticStatus"));
+        m_diagnosticStatus->setWordWrap(true);
+        diagnosticsLayout->addWidget(m_diagnosticStatus);
         root->addWidget(diagnosticsBox);
 
         auto *activityBox = new QGroupBox(QStringLiteral("Activity"), content);
@@ -281,6 +392,8 @@ public:
         loadValue->setRange(0, 100);
         loadValue->setValue(load->value());
         auto *maintenance = new QCheckBox(QStringLiteral("Maintenance mode"), workBox);
+        auto *testClick = new QPushButton(QStringLiteral("Send test click"), workBox);
+        auto *testClickCount = new QLabel(QStringLiteral("0 clicks"), workBox);
         auto *notes = new QPlainTextEdit(workBox);
         m_operatorNotes = notes;
         // Retain QPlainTextEdit's normal Expanding width policy: an Ignored
@@ -293,22 +406,64 @@ public:
         workLayout->addRow(QStringLiteral("Process load"), load);
         workLayout->addRow(QStringLiteral("Load indicator"), loadValue);
         workLayout->addRow(QString(), maintenance);
+        workLayout->addRow(QStringLiteral("Pointer test"), testClick);
+        workLayout->addRow(QStringLiteral("Test clicks"), testClickCount);
         workLayout->addRow(QStringLiteral("Notes"), notes);
         root->addWidget(workBox, 1);
 
+        auto *helpBox = new QGroupBox(QStringLiteral("Documentation"), content);
+        auto *helpLayout = new QVBoxLayout(helpBox);
+        auto *helpLinks = new QLabel(
+            QStringLiteral("<a href=\"https://github.com/skawu/HyRemote/blob/develop/docs/guide/"
+                           "integrate-your-project.md\">Integration guide</a> &middot; "
+                           "<a href=\"https://github.com/skawu/HyRemote/blob/develop/docs/guide/"
+                           "viewer-connection.md\">Viewer connection</a> &middot; "
+                           "<a href=\"https://github.com/skawu/HyRemote/blob/develop/docs/guide/"
+                           "troubleshooting.md\">Troubleshooting</a> &middot; "
+                           "<a href=\"https://github.com/skawu/HyRemote/blob/develop/docs/"
+                           "security-model.md\">Security boundary</a>"),
+            helpBox);
+        helpLinks->setOpenExternalLinks(true);
+        helpLinks->setWordWrap(true);
+        helpLayout->addWidget(helpLinks);
+        root->addWidget(helpBox);
+
         QObject::connect(load, &QSlider::valueChanged, loadValue, &QProgressBar::setValue);
+        QObject::connect(testClick, &QPushButton::clicked, this, [this, testClickCount] {
+            ++m_testClicks;
+            testClickCount->setText(QStringLiteral("%1 clicks").arg(m_testClicks));
+        });
         QObject::connect(m_startStop, &QPushButton::clicked, this, [this] { toggleRemoteAccess(); });
         QObject::connect(m_input, &QCheckBox::toggled, this, [this](bool enabled) {
             applyRemoteInputPolicy(enabled);
         });
+        QObject::connect(m_listenMode, &QComboBox::currentIndexChanged, this, [this] {
+            refreshListenerTargets();
+        });
+        QObject::connect(m_applyListener, &QPushButton::clicked, this, [this] {
+            applyListenerSettings();
+        });
         QObject::connect(refreshEndpoints, &QPushButton::clicked, this, [this] {
             refreshViewerEndpoints();
+        });
+        QObject::connect(m_endpointChoices, &QComboBox::currentIndexChanged, this, [this] {
+            m_copySelectedEndpoint->setEnabled(m_endpointChoices->currentIndex() >= 0
+                                               && !m_endpointChoices->currentData().toString().isEmpty());
+        });
+        QObject::connect(m_copySelectedEndpoint, &QPushButton::clicked, this, [this] {
+            const QString endpoint = m_endpointChoices->currentData().toString();
+            if (!endpoint.isEmpty())
+                QApplication::clipboard()->setText(endpoint);
         });
         QObject::connect(m_copyEndpoints, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_viewerEndpointList.join(QLatin1Char('\n')));
         });
         QObject::connect(copyDiagnostics, &QPushButton::clicked, this, [this] {
             QApplication::clipboard()->setText(m_remote.diagnosticReport());
+            m_diagnosticStatus->setText(
+                QStringLiteral("Copied %1 bytes to the clipboard at %2.")
+                    .arg(m_remote.diagnosticReport().toUtf8().size())
+                    .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))));
         });
         QObject::connect(saveDiagnostics, &QPushButton::clicked, this, [this] {
             const QString path = QFileDialog::getSaveFileName(
@@ -316,8 +471,16 @@ public:
                 QStringLiteral("Save HyRemote diagnostic report"),
                 QStringLiteral("hyremote-diagnostic.txt"),
                 QStringLiteral("Text files (*.txt);;All files (*)"));
-            if (!path.isEmpty() && !saveDiagnosticReport(path))
+            if (path.isEmpty())
+                return;
+            if (saveDiagnosticReport(path)) {
+                m_diagnosticStatus->setText(
+                    QStringLiteral("Saved %1 at %2.")
+                        .arg(path, QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))));
+            } else {
+                m_diagnosticStatus->setText(QStringLiteral("Could not save %1.").arg(path));
                 m_error->setText(QStringLiteral("Could not save diagnostic report"));
+            }
         });
         QObject::connect(clearActivity, &QPushButton::clicked, m_activity, &QPlainTextEdit::clear);
 
@@ -327,6 +490,7 @@ public:
         QObject::connect(timer, &QTimer::timeout, this, [this] { refreshStatus(); });
         timer->start();
         appendActivity(QStringLiteral("Tool ready"));
+        refreshListenerTargets();
         refreshViewerEndpoints();
         refreshStatus();
     }
@@ -347,6 +511,13 @@ public:
         auto *horizontal = m_scrollArea->horizontalScrollBar();
         const bool compact = width() <= 480 && height() <= 360;
         const bool overflow = vertical && vertical->maximum() > 0;
+        if (vertical)
+            vertical->setValue(0);
+        QApplication::processEvents();
+        // The first screen must expose the primary action without scrolling.
+        const QRect primaryRect(m_startStop->mapTo(m_scrollArea->viewport(), QPoint()),
+                                m_startStop->size());
+        const bool primaryActionVisible = m_scrollArea->viewport()->rect().contains(primaryRect);
         if (overflow) {
             // The remote-support forms can exceed a 480px viewport's
             // width, so verify actual two-axis navigation rather than
@@ -364,16 +535,88 @@ public:
         const bool usableEditor = notesRect.width() >= 160 && notesRect.height() >= 64;
         const bool reachable = usableEditor
                                && m_scrollArea->viewport()->rect().contains(notesRect);
-        std::cout << (compact && overflow && reachable ? "TOOL_COMPACT_LAYOUT_PASS"
-                                                     : "TOOL_COMPACT_LAYOUT_FAIL")
+        const bool pass = compact && overflow && reachable && primaryActionVisible;
+        std::cout << (pass ? "TOOL_COMPACT_LAYOUT_PASS" : "TOOL_COMPACT_LAYOUT_FAIL")
                   << " window=" << width() << 'x' << height()
                   << " scroll_max=" << (vertical ? vertical->maximum() : -1)
                   << " horizontal_max=" << (horizontal ? horizontal->maximum() : -1)
+                  << " primary_rect=" << primaryRect.x() << ',' << primaryRect.y()
+                  << ',' << primaryRect.width() << 'x' << primaryRect.height()
                   << " notes_rect=" << notesRect.x() << ',' << notesRect.y()
                   << ',' << notesRect.width() << 'x' << notesRect.height()
                   << " viewport=" << m_scrollArea->viewport()->width()
                   << 'x' << m_scrollArea->viewport()->height() << std::endl;
-        return compact && overflow && reachable;
+        return pass;
+    }
+
+    // Deterministic offscreen/CI oracle for the listener editor. It drives the
+    // same widgets an operator uses, then observes the public facade. No
+    // listener is started and no network traffic is produced.
+    bool verifyListenerControls()
+    {
+        auto *portEditor = findChild<QSpinBox *>(QStringLiteral("portEditor"));
+        auto *apply = findChild<QPushButton *>(QStringLiteral("applyListener"));
+        auto *target = findChild<QComboBox *>(QStringLiteral("listenTarget"));
+        auto *modeBox = findChild<QComboBox *>(QStringLiteral("listenMode"));
+        if (!portEditor || !apply || !target || !modeBox || !m_endpointChoices) {
+            std::cout << "TOOL_LISTENER_CONTROLS_FAIL missing_widget" << std::endl;
+            return false;
+        }
+
+        const auto selectMode = [modeBox](ListenMode mode) {
+            const int index = modeBox->findData(static_cast<int>(mode));
+            if (index >= 0)
+                modeBox->setCurrentIndex(index);
+            QApplication::processEvents();
+        };
+        bool ok = true;
+
+        // Any IPv4 plus a valid port round-trip.
+        selectMode(ListenMode::AnyIpv4);
+        portEditor->setValue(5921);
+        QApplication::processEvents();
+        apply->click();
+        QApplication::processEvents();
+        ok = ok && m_remote.port() == 5921
+             && m_remote.listenAddress() == QHostAddress(QHostAddress::AnyIPv4)
+             && m_remote.listenInterface().isEmpty();
+
+        // Explicit address: the editor is editable in this mode, so the check
+        // does not depend on a live non-loopback interface.
+        selectMode(ListenMode::Address);
+        target->setEditText(QStringLiteral("127.0.0.1"));
+        QApplication::processEvents();
+        apply->click();
+        QApplication::processEvents();
+        ok = ok && m_remote.listenAddress() == QHostAddress(QHostAddress::LocalHost)
+             && m_remote.listenInterface().isEmpty();
+
+        // Interface mode: exercise the first real IPv4 interface when present.
+        const QList<InterfaceChoice> interfaces = ipv4Interfaces();
+        if (!interfaces.isEmpty()) {
+            selectMode(ListenMode::Interface);
+            target->setCurrentIndex(0);
+            QApplication::processEvents();
+            apply->click();
+            QApplication::processEvents();
+            ok = ok && m_remote.listenInterface() == interfaces.first().identity;
+        } else {
+            std::cout << "TOOL_LISTENER_CONTROLS_NOTE no_interface_choice" << std::endl;
+        }
+
+        // Restore the safe default and a normal port for later checks.
+        selectMode(ListenMode::AnyIpv4);
+        portEditor->setValue(5921);
+        QApplication::processEvents();
+        apply->click();
+        QApplication::processEvents();
+
+        std::cout << (ok ? "TOOL_LISTENER_CONTROLS_PASS" : "TOOL_LISTENER_CONTROLS_FAIL")
+                  << " port=" << m_remote.port()
+                  << " address=" << m_remote.listenAddress().toString().toStdString()
+                  << " interface=" << m_remote.listenInterface().toStdString()
+                  << " endpoints=" << m_endpointChoices->count() << std::endl;
+        return ok;
     }
 
     bool saveDiagnosticReport(const QString &path) const
@@ -446,6 +689,22 @@ private:
     {
         const bool wasRunning = m_remote.state() == HyRemote::RemoteAccessState::Running;
         if (wasRunning) {
+            // A policy change while running is a real stop/apply/start cycle
+            // that disconnects viewers. Do not do that silently.
+            const auto choice = QMessageBox::question(
+                this,
+                QStringLiteral("Restart remote access?"),
+                QStringLiteral("Changing the remote-control policy stops and restarts the listener, "
+                               "so connected viewers are disconnected. Continue?"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No);
+            if (choice != QMessageBox::Yes) {
+                m_input->blockSignals(true);
+                m_input->setChecked(m_remote.remoteInputEnabled());
+                m_input->blockSignals(false);
+                appendActivity(QStringLiteral("Remote input policy change cancelled"));
+                return;
+            }
             appendActivity(QStringLiteral("Applying remote input policy; restarting remote access"));
             m_remote.stop();
             // Observe the stopped/client-zero facts before restarting, otherwise a policy
@@ -470,13 +729,111 @@ private:
         refreshStatus();
     }
 
+    void refreshListenerTargets()
+    {
+        const auto mode = static_cast<ListenMode>(m_listenMode->currentData().toInt());
+        m_listenTarget->blockSignals(true);
+        m_listenTarget->clear();
+        if (mode == ListenMode::Address) {
+            for (const QString &address : ipv4Addresses())
+                m_listenTarget->addItem(address, address);
+        } else if (mode == ListenMode::Interface) {
+            for (const InterfaceChoice &choice : ipv4Interfaces())
+                m_listenTarget->addItem(choice.display, choice.identity);
+        }
+        m_listenTarget->blockSignals(false);
+        // Address mode also accepts a manually typed address; interface mode
+        // must stay a closed list because the identity is an exact interface name.
+        m_listenTarget->setEditable(mode == ListenMode::Address);
+
+        const bool configurable = m_remote.state() == HyRemote::RemoteAccessState::Stopped;
+        m_listenTarget->setEnabled(configurable && mode != ListenMode::AnyIpv4);
+        m_applyListener->setEnabled(configurable);
+        if (mode != ListenMode::AnyIpv4 && m_listenTarget->count() == 0) {
+            m_listenerHint->setText(
+                QStringLiteral("No usable IPv4 address or interface was detected. "
+                               "Use all IPv4 interfaces instead."));
+        } else if (!configurable) {
+            m_listenerHint->setText(
+                QStringLiteral("Stop remote access before changing the listener. "
+                               "The configured value takes effect on the next start."));
+        } else {
+            m_listenerHint->setText(
+                QStringLiteral("The configured value takes effect on the next start."));
+        }
+    }
+
+    void applyListenerSettings()
+    {
+        if (m_remote.state() != HyRemote::RemoteAccessState::Stopped) {
+            appendActivity(QStringLiteral("Listener change rejected: stop remote access first"));
+            return;
+        }
+
+        const auto mode = static_cast<ListenMode>(m_listenMode->currentData().toInt());
+        bool ok = false;
+        QString description;
+        if (mode == ListenMode::AnyIpv4) {
+            ok = m_remote.setListenAddress(QHostAddress(QHostAddress::AnyIPv4));
+            description = QStringLiteral("all IPv4 interfaces");
+        } else if (mode == ListenMode::Address) {
+            // Editable on purpose: a selected entry and a manually typed
+            // address must both work, and the visible text is the truth.
+            QString address = m_listenTarget->currentText().trimmed();
+            if (address.isEmpty())
+                address = m_listenTarget->currentData().toString();
+            ok = !address.isEmpty() && m_remote.setListenAddress(QHostAddress(address));
+            description = address;
+        } else {
+            const QString identity = m_listenTarget->currentData().toString();
+            ok = !identity.isEmpty() && m_remote.setListenInterface(identity);
+            description = identity;
+        }
+
+        if (ok)
+            ok = m_remote.setPort(static_cast<quint16>(m_portEditor->value()));
+
+        if (!ok) {
+            m_error->setText(QStringLiteral("Listener settings were rejected"));
+            appendActivity(QStringLiteral("Listener settings rejected"));
+            refreshStatus();
+            return;
+        }
+
+        m_port = static_cast<quint16>(m_portEditor->value());
+        appendActivity(QStringLiteral("Listener configured: port %1 on %2")
+                           .arg(m_port)
+                           .arg(description));
+        refreshViewerEndpoints();
+        refreshStatus();
+    }
+
+    void setListenerEditorsEnabled(bool enabled)
+    {
+        const auto mode = static_cast<ListenMode>(m_listenMode->currentData().toInt());
+        m_portEditor->setEnabled(enabled);
+        m_listenMode->setEnabled(enabled);
+        m_applyListener->setEnabled(enabled);
+        m_listenTarget->setEnabled(enabled && mode != ListenMode::AnyIpv4);
+        m_listenerHint->setVisible(!enabled);
+    }
+
     void refreshViewerEndpoints()
     {
+        const QString previous = m_endpointChoices->currentData().toString();
         m_viewerEndpointList = viewerEndpoints(m_port);
-        m_viewerEndpoints->setText(m_viewerEndpointList.isEmpty()
-                                       ? QStringLiteral("No non-loopback IPv4 address detected")
-                                       : m_viewerEndpointList.join(QStringLiteral("\n")));
+        const QSignalBlocker blocker(m_endpointChoices);
+        m_endpointChoices->clear();
+        for (const QString &endpoint : m_viewerEndpointList)
+            m_endpointChoices->addItem(endpoint, endpoint);
+        const int restored = m_viewerEndpointList.indexOf(previous);
+        if (restored >= 0)
+            m_endpointChoices->setCurrentIndex(restored);
+        else if (!m_viewerEndpointList.isEmpty())
+            m_endpointChoices->setCurrentIndex(0);
         m_copyEndpoints->setEnabled(!m_viewerEndpointList.isEmpty());
+        m_copySelectedEndpoint->setEnabled(m_endpointChoices->currentIndex() >= 0
+                                           && !m_endpointChoices->currentData().toString().isEmpty());
     }
 
     void refreshStatus()
@@ -520,6 +877,7 @@ private:
                             state == HyRemote::RemoteAccessState::Starting;
         m_startStop->setText(active ? QStringLiteral("Stop remote access")
                                     : QStringLiteral("Start remote access"));
+        setListenerEditorsEnabled(state == HyRemote::RemoteAccessState::Stopped);
 
         QString errorText = QStringLiteral("None");
         int errorCode = -1;
@@ -613,21 +971,29 @@ private:
     QLabel *m_security = nullptr;
     QLabel *m_configuredListener = nullptr;
     QLabel *m_endpoint = nullptr;
-    QLabel *m_viewerEndpoints = nullptr;
     QLabel *m_connection = nullptr;
     QLabel *m_clients = nullptr;
     QLabel *m_policy = nullptr;
     QLabel *m_focus = nullptr;
     QLabel *m_focusWarning = nullptr;
     QLabel *m_error = nullptr;
+    QLabel *m_diagnosticStatus = nullptr;
+    QLabel *m_listenerHint = nullptr;
     QPlainTextEdit *m_diagnostics = nullptr;
     QPlainTextEdit *m_activity = nullptr;
     QScrollArea *m_scrollArea = nullptr;
     QWidget *m_operatorControls = nullptr;
     QPlainTextEdit *m_operatorNotes = nullptr;
+    QSpinBox *m_portEditor = nullptr;
+    QComboBox *m_listenMode = nullptr;
+    QComboBox *m_listenTarget = nullptr;
+    QPushButton *m_applyListener = nullptr;
+    QComboBox *m_endpointChoices = nullptr;
     QPushButton *m_startStop = nullptr;
+    QPushButton *m_copySelectedEndpoint = nullptr;
     QPushButton *m_copyEndpoints = nullptr;
     QCheckBox *m_input = nullptr;
+    int m_testClicks = 0;
     QStringList m_viewerEndpointList;
 };
 
@@ -656,6 +1022,10 @@ int main(int argc, char **argv)
     QCommandLineOption compactLayoutOption(
         QStringLiteral("verify-compact-layout"),
         QStringLiteral("CI-only check: compact native window and bottom-panel scrolling."));
+    QCommandLineOption listenerControlsOption(
+        QStringLiteral("verify-listener-controls"),
+        QStringLiteral("CI-only check: drive the listener editor and observe the public facade; "
+                       "no listener is started."));
     parser.addOption(portOption);
     parser.addOption(inputOption);
     QCommandLineOption diagnosticReportFileOption(
@@ -665,6 +1035,7 @@ int main(int argc, char **argv)
     parser.addOption(autoStartOption);
     parser.addOption(secondsOption);
     parser.addOption(compactLayoutOption);
+    parser.addOption(listenerControlsOption);
     parser.addOption(diagnosticReportFileOption);
     parser.process(app);
 
@@ -683,6 +1054,15 @@ int main(int argc, char **argv)
         // open a listener, change the input policy or require a VNC viewer.
         QTimer::singleShot(0, &window, [&window, &app] {
             app.exit(window.verifyCompactLayout() ? 0 : 1);
+        });
+        return app.exec();
+    }
+
+    if (parser.isSet(listenerControlsOption)) {
+        // The listener editor is pure configuration: this check must not open
+        // a socket or change the remote-input policy.
+        QTimer::singleShot(0, &window, [&window, &app] {
+            app.exit(window.verifyListenerControls() ? 0 : 1);
         });
         return app.exec();
     }
