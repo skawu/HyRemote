@@ -144,7 +144,7 @@
         "240": "Task-oriented self-service docs/examples: closeable self-service adoption child.",
         "335": "Minimum self-service diagnostics: closeable adoption-foundation child so a blocked user can answer what is wrong without the maintainers.",
         "241": "Productized GUI branding is an optional/quality outcome, not a V0.3.0.0 mandatory child (#333).",
-        "378": "HyRemoteTool is an optional/differentiating capability, not a hidden V0.3.0.0 mandatory child (#333).",
+        "378": "HyRemoteTool ships with V0.3.0.0 as the out-of-process access-plane companion client (Owner decision, 2026-10-19), but it is not a required L2 evidence cell and never a hidden mandatory child; management-plane enhancements remain optional/differentiating (#333).",
         "176": "Delivery umbrella. Referenced as the parent of the closeable delivery child, never required to close as a whole for this Feature.",
         "57": "Qt 5.15 adaptation/qualification is mandatory pre-GA V0.3-family compatibility baseline work under #343; after #333 no exact Feature version is pre-reserved for it.",
         "144": "Practical compressed + incremental/damage delivery is mandatory pre-GA V0.3-family baseline work (#343); the concrete encoder is chosen by #261 evidence and no exact Feature version is pre-reserved.",
