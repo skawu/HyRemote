@@ -186,17 +186,7 @@ Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_
 | `hyremote-release-readiness-release-documentation-layout` | Candidate/release documentation layout required by delivery authority. |
 | `hyremote-release-scope-self-test` | Exact release-train scope selection/rejection logic. |
 | `hyremote-release-authority-v02-user-first` | V0.2 user-first release authority, including conditional secure-evidence semantics. |
-| `hyremote-release-profile-develop-all` | Development all-capability profile acceptance. |
-| `hyremote-release-profile-develop-runtime-only` | Development runtime-only profile acceptance. |
-| `hyremote-release-profile-retire-v001` | Retired pre-GA label rejection. |
-| `hyremote-release-profile-retire-v002` | Retired pre-GA label rejection. |
-| `hyremote-release-profile-retire-v003` | Retired pre-GA label rejection. |
-| `hyremote-release-profile-v010-cpp-only` | V0.1 representable C++ subset. |
-| `hyremote-release-profile-v020-runtime` | V0.2 representable Runtime profile. |
-| `hyremote-release-profile-v030-all` | V0.3 all-capability profile. |
-| `hyremote-release-profile-v100-all` | V1 all-capability profile. |
-| `hyremote-release-profile-v100-cpp-only` | V1 C++ subset profile. |
-| `hyremote-release-profile-v100-generic-only` | V1 Generic subset profile. |
+| `hyremote-release-profiles` | One table-driven CTest for every release-profile case: development sentinel, retired pre-GA labels, progressive V0.1/V0.2/V0.3 profiles, and V1 all/C++/Generic subsets. Each case is named in the PASS/FAIL output; rejected cases must fail closed. |
 
 The release-profile matrix intentionally uses separate CTest identities because each representable or retired profile is an independent fail-closed release-authority contract.
 
