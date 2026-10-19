@@ -1,6 +1,7 @@
 #include "detail/runtime_diagnostics.hpp"
 
 #include <QCoreApplication>
+#include <QRegularExpression>
 
 #include <iostream>
 
@@ -33,7 +34,13 @@ void checkDefaultReport()
     snapshot.configuredPort = 5920;
 
     const QString report = formatDiagnosticReport(snapshot);
-    CHECK(report.contains(QStringLiteral("HYREMOTE_VERSION=unknown\n")));
+    // The version token is a build fact: develop uses the 0.0.0 sentinel and
+    // reports "unknown", while a versioned release branch reports its four-part
+    // version. Assert a well-formed field rather than one branch's literal.
+    const QRegularExpression versionLine(
+        QStringLiteral("^HYREMOTE_VERSION=(?:unknown|[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)$"),
+        QRegularExpression::MultilineOption);
+    CHECK(versionLine.match(report).hasMatch());
     CHECK(report.contains(QStringLiteral("BUILD_IDENTITY=source_sha="))
           || report.contains(QStringLiteral("BUILD_IDENTITY=unknown\n")));
     CHECK(report.contains(QStringLiteral("QT_VERSION=%1\n").arg(QString::fromLatin1(QT_VERSION_STR))));
