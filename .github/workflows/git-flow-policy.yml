@@ -284,11 +284,11 @@ jobs:
                       "docs/internal/git-flow-release.md",
                   }
                   surface = set(git("diff", "--name-only", accepted_sha, "HEAD").decode("utf-8").splitlines())
-                  unexpected = surface - bootstrap_files - {"CMakeLists.txt"}
-                  if unexpected:
-                      raise SystemExit(f"release preparation differs from the accepted candidate: {sorted(unexpected)}")
-                  if "CMakeLists.txt" not in surface:
-                      raise SystemExit("release preparation did not bump the project version")
+                  expected_surface = bootstrap_files | {"CMakeLists.txt"}
+                  if surface != expected_surface:
+                      raise SystemExit(
+                          "release preparation surface must be exactly "
+                          f"{sorted(expected_surface)}; found {sorted(surface)}")
                   allowed = changed
               if "CMakeLists.txt" not in changed:
                   raise SystemExit("initial release preparation did not actually bump the project version")
