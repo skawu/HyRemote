@@ -1,8 +1,10 @@
-# HyRemote Product Architecture
+# HyRemote 产品架构
 
-HyRemote uses one Core, one Shared Runtime, and four peer integration frontends. The architecture is designed so that applications can choose how to enter the product without creating separate Session, capture, transport, input, security, or performance implementations.
+> 语言 / Language：**中文** ｜ [English](en/architecture.md)
 
-## 1. Product topology
+HyRemote 由一个 Core、一个共享 Runtime 和四个并列接入前端组成。应用可以选择接入方式，但不会因此产生独立的 Session、采集、传输、输入、安全或性能实现。
+
+## 1. 产品拓扑
 
 ```text
 src/
@@ -15,7 +17,7 @@ src/
     └── qpa/
 ```
 
-Dependency direction:
+依赖方向：
 
 ```text
 integrations/cpp --------\
@@ -24,67 +26,67 @@ integrations/generic ------> runtime -> core
 integrations/qpa ---------/
 ```
 
-The four integration frontends are peers:
+四个前端并列：
 
-- **C++ API** — explicit application API through `HyRemote::RemoteAccess`;
-- **QML API** — declarative frontend through `import HyRemote`;
-- **Generic Plugin** — public-Qt zero-code frontend that preserves the native Qt platform;
-- **QPA** — private-ABI zero-code frontend that enters through a Factory Trampoline and delegates to the native Qt platform integration.
+- **C++ API**：通过 `HyRemote::RemoteAccess` 提供显式应用 API；
+- **QML API**：通过 `import HyRemote` 提供声明式前端；
+- **Generic Plugin**：使用 Qt 公共插件机制的零代码前端，保留原生 Qt 平台；
+- **QPA**：使用 private ABI 的零代码前端，通过 Factory Trampoline 进入并委托给原生 Qt 平台实现。
 
-Widgets and Qt Quick are Runtime target-adapter dimensions, not integration modes.
+Widgets 和 Qt Quick 是 Runtime 的目标适配器维度，不是接入模式。
 
 ## 2. Core
 
-Core owns product semantics that do not depend on Qt UI technology, Qt private APIs, a concrete transport backend, or a specific platform graphics stack.
+Core 负责不依赖 Qt UI 技术、Qt private API、具体传输后端或特定平台图形栈的产品语义。
 
-Core responsibilities include:
+Core 的职责：
 
-- Session lifecycle/state semantics;
-- frame lifetime and transport-neutral frame metadata;
-- capture scheduling and bounded frame handoff;
-- queue/drop/backpressure policy;
-- normalized product errors and state;
-- normalized input routing abstractions;
-- transport-neutral capability description.
+- Session 生命周期和状态语义；
+- 帧生命周期和与传输无关的帧元数据；
+- 采集调度和有界帧交接；
+- 队列、丢弃和背压策略；
+- 规范化产品错误和状态；
+- 规范化输入路由抽象；
+- 与传输无关的能力描述。
 
-Core must not depend on:
+Core 不依赖：
 
-- Qt Widgets / Qt Quick / QML;
-- Qt private/QPA APIs;
-- concrete RFB implementation types;
-- OpenGL/RHI/EGLFS/DRM/GBM/DMA-BUF APIs;
-- hardware encoder SDKs;
-- integration-frontend policy.
+- Qt Widgets、Qt Quick、QML；
+- Qt private/QPA API；
+- 具体 RFB 实现类型；
+- OpenGL/RHI/EGLFS/DRM/GBM/DMA-BUF API；
+- 硬件编码 SDK；
+- 接入前端策略。
 
-This boundary keeps the product model stable while target, transport, platform, and acceleration implementations evolve.
+这条边界让产品模型在目标、传输、平台和加速实现变化时保持稳定。
 
-## 3. Shared Runtime
+## 3. 共享 Runtime
 
-The Shared Runtime is the one Qt-aware product implementation used by every frontend.
+共享 Runtime 是所有前端共用的唯一 Qt 感知产品实现。
 
-Runtime responsibilities include:
+Runtime 的职责：
 
-- Widgets and Qt Quick target adapters;
-- concrete RFB transport integration;
-- security-profile implementation and validation;
-- automatic application-surface discovery/composition;
-- application target/input routing;
-- runtime component factories and services;
-- cross-mode diagnostics and operational behavior;
-- automatic performance policy such as viewer-aware capture demand, input-triggered freshness and adaptive pacing.
+- Widgets 和 Qt Quick 目标适配器；
+- 具体 RFB 传输接入；
+- 安全配置实现与校验；
+- 应用 surface 自动发现和合成；
+- 应用目标与输入路由；
+- Runtime 组件工厂和服务；
+- 跨模式诊断和运行行为；
+- 自动性能策略，包括 viewer 感知采集需求、输入触发新鲜度和自适应节奏。
 
-The normal shared artifact remains:
+正常共享产物：
 
 ```text
 HyRemote::RemoteAccess
 HyRemoteRemoteAccess
 ```
 
-There is no separate Widgets Runtime, Quick Runtime, Generic Runtime, QPA Runtime, Embedded Runtime, or Accelerated Runtime product personality.
+不存在独立的 Widgets Runtime、Quick Runtime、Generic Runtime、QPA Runtime、Embedded Runtime 或 Accelerated Runtime 产品变体。
 
-## 4. C++ API frontend
+## 4. C++ API 前端
 
-The C++ API is the explicit programmable entry point:
+C++ API 是显式可编程入口：
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
@@ -98,15 +100,15 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-The C++ frontend is a product facade into the Shared Runtime. It does not own the Runtime implementation used by the other frontends.
+C++ 前端是共享 Runtime 的一层封装入口，不拥有其他前端使用的 Runtime 实现。
 
-Construction is inert. Configuration is performed while stopped, followed by explicit `start()`.
+构造本身不产生副作用。应用在停止状态完成配置，然后显式调用 `start()`。
 
-Current product state: a peer route.
+当前产品状态：并列路线。
 
-## 5. QML API frontend
+## 5. QML API 前端
 
-The QML frontend is a thin declarative layer over the same Shared Runtime:
+QML 前端是同一共享 Runtime 上的薄声明层：
 
 ```qml
 import HyRemote
@@ -117,15 +119,13 @@ RemoteAccess {
 }
 ```
 
-It does not create a second Session, transport, capture, state, error, or performance model.
+它不会创建第二套 Session、传输、采集、状态、错误或性能模型。
 
-Current product state: a peer route, on the same shared runtime.
+当前产品状态：并列路线，使用同一共享 Runtime。
 
-> **TODO:** complete the final installed-SDK examples and qualification required for full productization.
+## 6. Generic Plugin 前端
 
-## 6. Generic Plugin frontend
-
-The Generic Plugin uses Qt public plugin APIs (`QGenericPlugin`). It is a zero-code integration route that keeps the application's normal native Qt platform authoritative.
+Generic Plugin 使用 Qt 公共插件 API（`QGenericPlugin`）。它是零代码接入路线，应用原本的原生 Qt 平台继续负责窗口和输入。
 
 ```text
 Qt application
@@ -135,31 +135,31 @@ Qt application
     +--> HyRemote Generic Plugin -> Shared Runtime
 ```
 
-The application itself remains Qt-only. Deployment uses:
+应用本身保持纯 Qt。部署使用：
 
 ```cmake
 hyremote_deploy(TARGET MyApp GENERIC)
 ```
 
-Activation uses Qt's generic-plugin mechanism, for example:
+通过 Qt 通用插件机制启动：
 
 ```text
 MyApp -plugin hyremote
 ```
 
-Generic must not inherit QPA private-ABI requirements. Its defining contract is that the application's native platform identity remains normal.
+Generic 不继承 QPA 的 private ABI 要求。它的核心约束是应用的原生平台身份保持正常。
 
-Current product state: a peer route.
+当前产品状态：并列路线。
 
-## 7. QPA frontend
+## 7. QPA 前端
 
-QPA is a specialized zero-code integration path for cases where process-level platform interception is required.
+QPA 是专用零代码接入路径，用于需要进程级平台拦截的场景：
 
 ```text
 MyApp -platform hyremote
 ```
 
-The QPA frontend uses a Factory Trampoline:
+QPA 使用 Factory Trampoline：
 
 ```text
 qhyremote plugin
@@ -168,91 +168,89 @@ qhyremote plugin
     -> Shared Runtime attached alongside native behavior
 ```
 
-It does not reimplement a full platform integration and must not silently substitute an offscreen/minimal/qvnc-style backend.
+它不重新实现完整平台，也不会静默替换成 offscreen、minimal 或 qvnc 风格后端。
 
-Current reference delegates:
+当前参考 delegate：
 
-- Windows: `qwindows`;
-- Linux/X11: `qxcb`.
+- Windows：`qwindows`；
+- Linux/X11：`qxcb`。
 
-QPA alone owns the Qt private-ABI dependency. Qualification is exact-Qt-patch specific; the current reference is Qt 6.8.3.
+Qt private ABI 依赖只属于 QPA。资格认证按精确 Qt 补丁版本进行，当前参考是 Qt 6.8.3。
 
-Current product state: a peer route, on the same shared runtime.
+当前产品状态：并列路线，使用同一共享 Runtime。
 
-> **TODO:** broaden exact-version/platform qualification only where real compatibility evidence exists.
+## 8. Widgets 与 Qt Quick 目标适配器
 
-## 8. Widgets and Qt Quick target adapters
-
-Widgets and Qt Quick are handled behind the Shared Runtime.
+Widgets 和 Qt Quick 都由共享 Runtime 处理。
 
 ### Widgets
 
-Supported QWidget targets use the Widgets target adapter and a CPU-readable correctness capture path.
+受支持的 QWidget 目标使用 Widgets 适配器和 CPU 可读的正确性采集路径。
 
 ### Qt Quick
 
-Supported `QQuickWindow` targets use the Quick target adapter and the public asynchronous Quick capture path.
+受支持的 `QQuickWindow` 目标使用 Quick 适配器和公共异步 Quick 采集路径。
 
-Applications use the same product entry points regardless of target family. They do not select capture backend classes directly.
+应用无论使用哪种目标类型，都使用相同的产品入口，不直接选择采集后端类。
 
-Configuration-specific cases such as QOpenGLWidget, QQuickWidget, Quick3D, custom FBOs, or unusual native-window ownership require explicit compatibility qualification rather than being inferred from basic Widgets/Quick behavior.
+QOpenGLWidget、QQuickWidget、Quick3D、自定义 FBO 或特殊原生窗口归属等场景需要单独兼容性资格认证，不能从基础 Widgets/Quick 行为推断。
 
-Performance policy follows the same rule: adapters expose truthful capture/damage capability, while Shared Runtime and the transport decide how to use those capabilities. Applications do not choose internal capture/performance backends.
+性能策略遵循同一规则：适配器暴露采集和 damage 能力，共享 Runtime 与传输决定如何使用这些能力。应用不选择内部采集或性能后端。
 
-## 9. Automatic application surface model
+## 9. 应用 surface 自动模型
 
-Generic and QPA both need automatic access to application surfaces. That logic belongs once in Runtime rather than being duplicated in either frontend.
+Generic 和 QPA 都需要自动访问应用 surface。这部分逻辑只放在 Runtime 中，不在两个前端各复制一份。
 
-Runtime automatic access is responsible for:
+Runtime 自动访问负责：
 
-- discovering supported application-owned top-level surfaces;
-- composing them into the remote application view where required;
-- routing normalized remote input back to the appropriate target;
-- keeping local native platform behavior authoritative.
+- 发现受支持的应用顶层 surface；
+- 在需要时把它们合成为远端应用画面；
+- 把规范化远程输入路由到合适目标；
+- 保持本地原生平台行为优先。
 
-A frontend must not implement its own competing composition/controller stack.
+前端不得实现自己的竞争性合成或控制器栈。
 
-## 10. Frame, freshness and backpressure model
+## 10. 帧、新鲜度与背压模型
 
-`RemoteFrame` is transport-neutral and owns its storage lifetime.
+`RemoteFrame` 与传输无关，并拥有自己的存储生命周期。
 
-The frame contract carries information such as:
+帧契约携带：
 
-- dimensions and pixel/storage format;
-- owned storage lifetime;
-- content timing;
-- damage information;
-- backend-neutral capabilities.
+- 尺寸和像素/存储格式；
+- 自有存储生命周期；
+- 内容时间；
+- damage 信息；
+- 后端无关能力。
 
-Frames cross a bounded Core handoff before transport dispatch. Slow clients must not create unbounded frame retention or block the Qt GUI/render path.
+帧在进入传输分发前经过有界 Core 交接。慢客户端不能造成无界帧保留，也不能阻塞 Qt GUI/渲染路径。
 
-The near-live policy favors the newest relevant frame rather than building an ever-growing queue. Performance work therefore follows a **freshness-first** rule: stale intermediate work may be dropped or coalesced when a newer useful state exists.
+近实时策略只保留最新有效帧，不构建持续增长的队列。性能工作遵循 **新鲜度优先**：存在更新有效状态时，过期中间工作可以丢弃或合并。
 
-Core owns boundedness and transport-neutral freshness semantics. Shared Runtime owns automatic capture demand/pacing. The RFB transport owns compression, incremental-update state, Continuous Updates/Fence and per-viewer network delivery behavior. None of those protocol/platform-specific mechanisms are exposed as normal application tuning knobs.
+Core 负责有界性和与传输无关的新鲜度语义。共享 Runtime 负责自动采集需求和节奏。RFB 传输负责压缩、增量更新状态、Continuous Updates/Fence 和每 viewer 网络交付行为。这些协议或平台机制不作为普通应用调优参数暴露。
 
-See [`performance-optimization.md`](performance-optimization.md) for the long-lived interaction-latency SLO, adaptive capture/delivery model and regression programme.
+详细模型见 [`performance-optimization.md`](performance-optimization.md)。
 
-## 11. Input model
+## 11. 输入模型
 
-Remote input is normalized before it reaches a Qt target adapter.
+远程输入到达 Qt 目标适配器前会先规范化。
 
-The product distinguishes:
+产品区分：
 
-- pointer movement;
-- pointer buttons;
-- wheel/scroll;
-- keys and modifiers;
-- committed text when the protocol provides sufficient information.
+- 指针移动；
+- 指针按键；
+- 滚轮/滚动；
+- 按键和修饰键；
+- 协议信息足够时提交的文本。
 
-Input is application-scoped rather than desktop-wide. HyRemote does not use OS-wide virtual HID/uinput injection as the normal path.
+输入作用域是应用，不是整个桌面。HyRemote 不把操作系统级虚拟 HID/uinput 注入作为正常路径。
 
-Held key/button state is cleaned up on disconnect and on explicit Runtime stop so a remote peer cannot leave the local application in a stuck input state.
+断开连接或显式停止 Runtime 时会清理按住的键/按钮状态，避免远端把本地应用留在卡住状态。
 
-Remote input is also a performance signal: after the application processes a remote action and has an opportunity to update/render, Runtime may prioritize a fresh capture/update so interactive response does not depend solely on a periodic capture timer.
+远程输入也是性能信号：应用处理远程操作并有机会更新/渲染后，Runtime 可以优先安排一次新的采集/更新，使交互响应不只依赖周期采集定时器。
 
-## 12. Runtime state
+## 12. Runtime 状态
 
-The public Runtime state model is:
+公开 Runtime 状态模型：
 
 ```text
 Stopped -> Starting -> Running
@@ -261,39 +259,39 @@ Running  -> Faulted
 Running/Faulted -> stop -> Stopped
 ```
 
-`Running` means the Runtime/listener is active; it does not mean a viewer is authenticated or connected.
+`Running` 表示 Runtime/listener 已启动，不表示 viewer 已认证或已连接。
 
-Operational information such as `connectedClientCount()` is diagnostic state, not an authorization identity.
+`connectedClientCount()` 等运行信息是诊断状态，不是授权身份。
 
-Capture activity is not itself connection liveness: a static connected session may legitimately send no framebuffer payload until content changes while the TCP/RFB session remains alive.
+采集活动不等于连接存活：静态连接会话可以在内容变化前不发送帧数据，同时 TCP/RFB 会话保持正常。
 
-## 13. Transport boundary
+## 13. 传输边界
 
-The current correctness transport is bounded RFB 3.8 behind a private Runtime/Core seam.
+当前正确性传输是位于 Runtime/Core 私有边界后的有界 RFB 3.8。
 
-RFB is not part of the normal application API. A later transport may reuse the same integration frontends, Runtime target adapters, Core frame model, input model and freshness contract.
+RFB 不属于普通应用 API。后续传输可以复用相同的接入前端、Runtime 目标适配器、Core 帧模型、输入模型和新鲜度契约。
 
-RFB-specific performance mechanisms stay private to the transport, including:
+RFB 专用性能机制留在传输内部，包括：
 
-- encoding negotiation / Raw fallback;
-- practical compression;
-- incremental/non-incremental update state;
-- Continuous Updates / Fence where interoperable;
-- bounded per-viewer delivery flow;
-- cursor pseudo-encoding where useful.
+- 编码协商和 Raw fallback；
+- 实用压缩；
+- 增量/非增量更新状态；
+- 可互操作时的 Continuous Updates/Fence；
+- 有界的每 viewer 交付流控；
+- 有用时的 cursor pseudo-encoding。
 
-Current security behavior:
+当前安全行为：
 
-- listener on `0.0.0.0:5921` by default;
-- remote input disabled by default;
-- `Insecure` is unauthenticated and unencrypted: trusted LAN only, not Internet-safe;
-- authenticated profile may use RFB VNC authentication;
-- stream encryption is not implemented in the current baseline;
-- `AuthenticatedEncrypted` fails closed before a listener is opened while the encrypted backend is unavailable.
+- 默认监听 `0.0.0.0:5921`；
+- 远程输入默认关闭；
+- `Insecure` 未认证、未加密，仅限可信 LAN，不适合互联网；
+- 认证配置可以使用 RFB VNC 认证；
+- 当前基线没有实现流加密；
+- 加密后端不可用时，`AuthenticatedEncrypted` 在打开 listener 前失败关闭。
 
-## 14. Packaging and deployment
+## 14. 打包与部署
 
-`hyremote_deploy()` is the one product deployment entry point:
+`hyremote_deploy()` 是唯一产品部署入口：
 
 ```cmake
 hyremote_deploy(TARGET MyCppApp)
@@ -302,46 +300,46 @@ hyremote_deploy(TARGET ExistingQtApp GENERIC)
 hyremote_deploy(TARGET ExistingQtApp QPA)
 ```
 
-The helper owns HyRemote payload placement and Runtime closure. Applications should not manually copy internal libraries/plugins or point runtime search paths back at an SDK/build tree.
+该 helper 负责 HyRemote payload 放置和 Runtime 闭包。应用不要手工复制内部库/插件，也不要把运行时搜索路径指回 SDK 或构建树。
 
-Generic deployment carries both the HyRemote generic payload and the application's normal native Qt platform plugin. QPA deployment carries `qhyremote` plus its exact native delegate chain.
+Generic 部署同时携带 HyRemote Generic payload 和应用正常原生 Qt 平台插件。QPA 部署携带 `qhyremote` 及其精确原生 delegate 链。
 
-## 15. Compatibility boundary
+## 15. 兼容性边界
 
-The current desktop reference environment is:
+当前桌面参考环境：
 
-- Windows x86_64;
-- Linux x86_64;
-- Qt 6.8.3 reference SDK.
+- Windows x86_64；
+- Linux x86_64；
+- Qt 6.8.3 参考 SDK。
 
-Public-Qt integration paths and private-QPA compatibility are different claims:
+公共 Qt 接入路径和 private QPA 兼容性是两类声明：
 
-- C++ / QML / Generic primarily rely on Qt public APIs;
-- QPA is exact private-ABI qualified.
+- C++、QML、Generic 主要依赖 Qt 公共 API；
+- QPA 按精确 private ABI 做资格认证。
 
-A working configuration on one OS, Qt patch, graphics backend, application type, or performance profile does not automatically qualify another.
+在某个操作系统、Qt 补丁、图形后端、应用类型或性能配置上可用，不自动等于另一个环境也已认证。
 
-See [`compatibility.md`](compatibility.md).
+见 [`compatibility.md`](compatibility.md)。
 
-## 16. Performance extension seams
+## 16. 性能扩展点
 
-The architecture intentionally keeps performance-specific implementation choices behind internal seams:
+架构把性能相关实现选择留在内部扩展点之后：
 
-- demand-driven/adaptive capture policy in Shared Runtime;
-- more efficient graphics capture adapters;
-- external/GPU-backed frames;
-- DMA-BUF/GBM and embedded graphics paths;
-- RKMPP/VAAPI/D3D hardware encoding;
-- additional transports for high-motion workloads.
+- 共享 Runtime 中的按需/自适应采集策略；
+- 更高效的图形采集适配器；
+- 外部或 GPU 后备帧；
+- DMA-BUF/GBM 和嵌入式图形路径；
+- RKMPP/VAAPI/D3D 硬件编码；
+- 面向高动态负载的额外传输。
 
-The mandatory pre-GA performance baseline is defined by [`performance-optimization.md`](performance-optimization.md) / #370 and includes practical compression/incremental delivery plus low-latency Runtime/RFB behavior. Hardware/vendor-specific acceleration is **not** automatically mandatory: it is activated only when accepted measurements show the portable/product baseline misses a declared latency/resource budget.
+强制 GA 前性能基线由 [`performance-optimization.md`](performance-optimization.md) / #370 定义，包括实用压缩/增量交付和低延迟 Runtime/RFB 行为。硬件或厂商加速不自动成为强制项，只有在已接受测量显示可移植基线未达到声明的延迟/资源预算时才启用。
 
-H.264/H.265/AV1-style media delivery is a separate end-to-end transport/client product decision, not an automatic replacement for the ordinary RFB GUI path.
+H.264/H.265/AV1 风格媒体交付是独立的端到端传输/客户端产品决策，不自动替代普通 RFB GUI 路径。
 
-These additions must preserve the normal product principle: ordinary applications choose an integration frontend, not an internal capture/transport/hardware implementation.
+这些扩展必须保持普通产品原则：应用选择接入前端，不选择内部采集/传输/硬件实现。
 
-## 17. Other future extension seams
+## 17. 其他未来扩展点
 
-Other product capabilities intentionally remain behind internal seams as well, including richer session and programmable application-control APIs.
+更丰富的会话和应用控制 API 等能力同样留在内部扩展点之后。
 
-Those capabilities must preserve one Core + one Shared Runtime and must not create parallel performance semantics for different integration frontends.
+这些能力必须保持一个 Core 和一个共享 Runtime，不能为不同接入前端制造并行的性能语义。

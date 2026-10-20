@@ -31,7 +31,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 ## 产品概览
 
-先阅读 [`product-overview.md`](product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
+先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
 
 当前版本（V0.2 LAN trial）的实际事实：
 
@@ -46,8 +46,8 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 | 文档 | 说明 |
 | --- | --- |
-| [`product-overview.md`](product-overview.md) | 产品定位、集成方式、能力边界与路线 |
-| [`architecture.md`](architecture.md) | Core、Shared Runtime、四个 integration frontend 的产品架构 |
+| [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) | 产品定位、集成方式、能力边界与路线 |
+| [`architecture.md`](architecture.md) ｜ [English](en/architecture.md) | Core、Shared Runtime、四个 integration frontend 的产品架构 |
 | [`performance-optimization.md`](performance-optimization.md) | 长期性能专项：交互时延 SLO、Freshness-first、自适应采集/传输与回归 Gate |
 | [`compatibility.md`](compatibility.md) | 当前平台、Qt、接入方式兼容矩阵 |
 | [`security.md`](security.md) | 当前安全行为、默认值和不支持的安全能力 |
