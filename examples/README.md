@@ -64,7 +64,7 @@ one type, and the deployment helper is one call.
 
 Each example directory has its own `README.md` with build, run and viewer instructions.
 
-**HyRemoteTool** ([source directory](remote-support-showcase)) is the companion access-plane client, not a tutorial
+**HyRemoteTool** ([source directory](../tools/hyremote-tool)) is the companion access-plane client, not a tutorial
 example. It connects to a remote HyRemote-enabled application by explicit IP/port and provides viewing, input and
 telemetry; see [`docs/internal/hyremote-tool-plan.md`](../docs/internal/hyremote-tool-plan.md).
 

@@ -12,7 +12,7 @@ Status: post-V0.3.0.0 engineering-health plan. Authority: #41 / #240. This docum
 | `learning/04-qml` | QML `import HyRemote` | yes | declarative QML-API example | promoted (done) |
 | `learning/05-qpa` | QPA proxy / Widgets | yes | E4 ordinary-Qt fixture | promoted (done) |
 | `real-world` | Generic / three frozen upstream apps | studies | third-party verification, never a support claim | keep separate |
-| `remote-support-showcase` | HyRemoteTool client | yes | companion tool, not a learning example | move out of `examples/` later |
+| `tools/hyremote-tool` | HyRemoteTool client | yes | companion tool, not a learning example | moved out of `examples/` |
 
 The five routes are not missing runnable examples. The gap is **information architecture and task mapping**: `examples/README.md` links the QML and QPA routes to guides rather than to their runnable directories, and the tree does not present one ordered journey.
 

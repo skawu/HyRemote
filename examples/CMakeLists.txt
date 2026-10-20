@@ -49,14 +49,6 @@ else()
     message(STATUS "  learning/03-zero-code-generic/quick-app skipped: Quick adapter unavailable")
 endif()
 
-# ---------------------------------------------------------------- companion tool
-
-if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
-    add_subdirectory(remote-support-showcase)
-else()
-    message(STATUS "  HyRemoteTool skipped: Widgets adapter/Qt Widgets unavailable")
-endif()
-
 # ---------------------------------------------------------------- promoted learning routes
 
 if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml AND TARGET Qt6::Qml AND TARGET Qt6::Quick)

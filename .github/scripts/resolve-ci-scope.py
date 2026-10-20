@@ -123,10 +123,10 @@ RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 # Installed Tool is T4 evidence, independent from the expensive viewer product-fit.
 TOOL_INSTALLED_TEST = "hyremote-tool-installed-diagnostic$"
 TOOL_INSTALLED_PREFIXES = (
-    "examples/remote-support-showcase/",
+    "tools/hyremote-tool/",
     # Direct shared Tool sources and parent registration also need to build Tool.
     "examples/hyremote_branding.",
-    "examples/CMakeLists.txt",
+    "tools/CMakeLists.txt",
     "logo/hyremote-branding.qrc",
     "logo/huayan-logo-single.png",
     "cmake/HyRemoteInstall.cmake",
@@ -139,9 +139,9 @@ TOOL_PRODUCT_FIT_TEST = "hyremote-tool-product-fit$"
 TOOL_PRODUCT_FIT_PREFIXES = (
     ".github/scripts/resolve-ci-scope.py",
     ".github/workflows/ci.yml",
-    "examples/remote-support-showcase/CMakeLists.txt",
-    "examples/remote-support-showcase/input_probe.cpp",
-    "tests/product-e2e/showcase_product_fit.py",
+    "tools/hyremote-tool/CMakeLists.txt",
+    "tools/hyremote-tool/rfb_client.cpp",
+    "tools/hyremote-tool/test_rfb_client.cpp",
 )
 
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
@@ -282,6 +282,11 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         if matched:
             continue
         if is_built_example_path(path):
+            selected.update(PEERS)
+        elif path.startswith("tools/hyremote-tool/"):
+            # The companion client is built outside examples but still consumes
+            # the product's wire behavior and Qt deployment. Keep its changes
+            # on the ordinary product lane.
             selected.update(PEERS)
         elif path.startswith("tests/"):
             selected.update(PEERS)
@@ -569,15 +574,15 @@ def self_test() -> int:
 
     for description, event, changed, expected_excluded in (
             ("the Tool product-fit wiring change runs it", "pull_request",
-             ["tests/product-e2e/showcase_product_fit.py"], False),
+             ["tools/hyremote-tool/test_rfb_client.cpp"], False),
             ("CI workflow wiring runs Tool product fit", "pull_request",
              [".github/workflows/ci.yml"], False),
             ("CI scope classifier wiring runs Tool product fit", "pull_request",
              [".github/scripts/resolve-ci-scope.py"], False),
-            ("showcase input probe contract runs Tool product fit", "pull_request",
-             ["examples/remote-support-showcase/input_probe.cpp"], False),
+            ("Tool client contract runs Tool product fit", "pull_request",
+             ["tools/hyremote-tool/rfb_client.cpp"], False),
             ("an ordinary Tool implementation PR still excludes it", "pull_request",
-             ["examples/remote-support-showcase/main.cpp"], True),
+             ["tools/hyremote-tool/main.cpp"], True),
             ("an unrelated pull request excludes Tool product fit", "pull_request",
              ["src/core/session/session.cpp"], True),
             ("the full gate requires Tool product fit", "workflow_dispatch", [], False)):
@@ -590,9 +595,9 @@ def self_test() -> int:
     # The build-tree viewer fit and installed Tool are separately selected.
     for description, event, changed, should_run in (
             ("Tool main selects installed execution", "pull_request",
-             ["examples/remote-support-showcase/main.cpp"], True),
+             ["tools/hyremote-tool/main.cpp"], True),
             ("Tool registration selects installed execution", "pull_request",
-             ["examples/remote-support-showcase/CMakeLists.txt"], True),
+             ["tools/hyremote-tool/CMakeLists.txt"], True),
             ("Tool shared branding source selects installed execution", "pull_request",
              ["examples/hyremote_branding.cpp"], True),
             ("Tool shared branding header selects installed execution", "pull_request",
@@ -601,8 +606,8 @@ def self_test() -> int:
              ["logo/hyremote-branding.qrc"], True),
             ("Tool canonical logo image selects installed execution", "pull_request",
              ["logo/huayan-logo-single.png"], True),
-            ("parent example registration selects installed execution", "pull_request",
-             ["examples/CMakeLists.txt"], True),
+            ("parent tools registration selects installed execution", "pull_request",
+             ["tools/CMakeLists.txt"], True),
             ("deploy change selects installed Tool", "pull_request",
              ["cmake/HyRemoteDeploy.cmake"], True),
             ("runner change selects installed Tool", "pull_request",
