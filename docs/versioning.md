@@ -121,7 +121,7 @@ Session Registry/Session Operations、完整品牌扩展、HyRemoteTool 管理�
 
 **V0.3.3.0：Delivery Efficiency & Viewer Interoperability** 是 V0.3.0.0 之后第一个激活的 Product breadth Feature：
 
-- 实用 damage、ZRLE/压缩和增量交付；
+- 实用 damage、压缩和增量交付；profiling 已选择 Raw + TRLE，ZRLE 不是当前要求；
 - #370 性能基线；
 - 维护中标准 Viewer 互操作；
 - Windows/Linux x86_64、Qt 6.8.3，四前端保持一致。

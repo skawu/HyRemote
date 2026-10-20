@@ -100,21 +100,38 @@ Linux x86_64/Qt 6.8.3 run from the manual `rfb-profile.yml` lane (same frame siz
 
 These are local-loopback indicative numbers. They are consistent across Windows and Linux: the existing TRLE path
 already removes more than 99% of the repeated payload in the localized and full-refresh cases, and more than 99% in
-the synthetic high-motion case. That is enough to justify keeping Raw + TRLE + damage as the candidate baseline; it
-is not yet enough to justify adding zlib/ZRLE, whose dependency, licence and encode cost would need a measured viewer
-failure to be admitted.
+the synthetic high-motion case.
 
-The next required evidence is a maintained third-party viewer on both platforms, not another codec. The manual
+## Selected delivery baseline (2026-10-20)
+
+The profiling evidence selects:
+
+```text
+Raw       deterministic fallback
+TRLE      compressed region/full-frame path when the viewer advertises encoding 15
+damage    accumulated region delivery for incremental requests
+```
+
+ZRLE is **not selected**. It remains a candidate only if a maintained GUI viewer demonstrates a material failure of
+the Raw + TRLE path. No zlib dependency is added on the current evidence. Raw remains mandatory and is selected when
+the viewer does not advertise TRLE.
+
+This selection is a candidate-level decision, not release acceptance. It still requires maintained-viewer evidence
+and the #370 interaction/resource envelope before #144 can close.
+
+The next required evidence is a maintained third-party GUI viewer on both platforms, not another codec. The manual
 `rfb-profile.yml` lane records the Linux JSON; the Windows numbers remain from the local run until the same job is
 extended to Windows.
 
 ## Decision outputs
 
-- selected compressed path and fallback order;
-- measured improvement and regression bounds versus V0.3.0.0;
-- dependency/licence decision if zlib or another codec is required;
-- viewer matrix and known limitations;
-- concrete implementation tasks for #144, without exposing encoder/queue knobs to normal users.
+- selected compressed path and fallback order: **Raw + TRLE**, Raw fallback, damage-based incremental updates;
+- measured improvement and regression bounds versus V0.3.0.0: synthetic bytes and loopback latency recorded; no
+  interaction-SLO or CPU/memory envelope yet;
+- dependency/licence decision: **no zlib/ZRLE dependency** on current evidence;
+- viewer matrix and known limitations: **open**; no maintained GUI viewer evidence yet;
+- concrete implementation tasks for #144: no codec addition; close remaining viewer/performance evidence and decide
+  whether the ARM64 cell required by the issue text belongs to V0.3.3.0 or V0.3.4.0.
 
 ## Non-goals
 
