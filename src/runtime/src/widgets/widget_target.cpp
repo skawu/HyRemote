@@ -467,6 +467,13 @@ private:
                 state->heldKeys.erase(held);
         }
 
+        if (event.pressed) {
+            if (QWidget *window = receiver->window(); window && !window->isActiveWindow()) {
+                window->activateWindow();
+                window->raise();
+            }
+        }
+
         QKeyEvent keyEvent(event.pressed ? QEvent::KeyPress : QEvent::KeyRelease, key, state->modifiers);
         QCoreApplication::sendEvent(receiver, &keyEvent);
     }
