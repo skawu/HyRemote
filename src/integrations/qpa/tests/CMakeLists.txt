@@ -145,9 +145,14 @@ if(TARGET hyremote-qpa-widget-popup-connection-smoke)
     set(_hyremote_qpa_runtime_surfaces_has_case TRUE)
 endif()
 if(TARGET hyremote-qpa-quick-multi-window-connection-smoke)
-    list(APPEND _hyremote_qpa_runtime_surfaces
-        -DQUICK_MULTI_EXE=$<TARGET_FILE:hyremote-qpa-quick-multi-window-connection-smoke>)
-    set(_hyremote_qpa_runtime_surfaces_has_case TRUE)
+    # Keep the Quick multi-window case as its own CTest: it starts its viewer
+    # 500 ms after process launch and is sensitive to being run inside a group.
+    add_test(NAME hyremote-qpa-quick-multi-window-connection-smoke
+        COMMAND hyremote-qpa-quick-multi-window-connection-smoke)
+    set_tests_properties(hyremote-qpa-quick-multi-window-connection-smoke PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=hyremote:hyremote-port=5995;QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins;QT_QUICK_BACKEND=software"
+        TIMEOUT 30
+        RESOURCE_LOCK hyremote-qpa-runtime)
 endif()
 if(_hyremote_qpa_runtime_surfaces_has_case)
     add_test(NAME hyremote-qpa-runtime-surfaces
@@ -184,6 +189,7 @@ hyremote_label_test_family("integration;qpa;fast"
     hyremote-qpa-runtime-basic
     hyremote-qpa-runtime-surfaces
     hyremote-qpa-runtime-recovery
+    hyremote-qpa-quick-multi-window-connection-smoke
 )
 # The basic group includes the remote-config contract case; labels are additive.
 hyremote_label_test_family("contract;qpa;fast"
