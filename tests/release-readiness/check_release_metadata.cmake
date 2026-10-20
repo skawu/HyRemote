@@ -189,21 +189,19 @@ function(hyremote_notes_surfaces notes_text out_zh out_en out_ok)
     set(${out_ok} TRUE PARENT_SCOPE)
 endfunction()
 
-# Under CTest this resolves inside the build tree. When the script is invoked
-# directly with `cmake -P` from the repository root, CMAKE_CURRENT_BINARY_DIR is
-# the source tree; use the host temp directory instead of creating an
-# untracked fixture directory beside the checkout.
-set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/hyremote-release-notes-fixtures")
-if(CMAKE_CURRENT_BINARY_DIR STREQUAL HYREMOTE_SOURCE_DIR)
-    set(_fixture_temp_dir "$ENV{TEMP}")
-    if(NOT _fixture_temp_dir)
-        set(_fixture_temp_dir "$ENV{TMPDIR}")
-    endif()
-    if(_fixture_temp_dir)
-        set(notes_fixture_dir "${_fixture_temp_dir}/hyremote-release-notes-fixtures")
-    else()
-        set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/.hyremote-release-notes-fixtures")
-    endif()
+# These are negative-test artifacts. Keep them out of the source tree even when
+# a caller invokes `cmake -P` with the repository root as its working directory
+# and passes a different HYREMOTE_SOURCE_DIR. The host temp directory is the
+# stable location; the build-tree fallback is used only when neither TEMP nor
+# TMPDIR is available.
+set(_fixture_temp_dir "$ENV{TEMP}")
+if(NOT _fixture_temp_dir)
+    set(_fixture_temp_dir "$ENV{TMPDIR}")
+endif()
+if(_fixture_temp_dir)
+    set(notes_fixture_dir "${_fixture_temp_dir}/hyremote-release-notes-fixtures")
+else()
+    set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/.hyremote-release-notes-fixtures")
 endif()
 file(MAKE_DIRECTORY "${notes_fixture_dir}")
 
