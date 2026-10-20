@@ -1,150 +1,152 @@
-# ADR-0002: RemoteFrame Ownership, Damage and Timestamp Contract
+# ADR-0002：RemoteFrame 所有权、Damage 与时间戳契约
 
-Status: **Proposed for ARCH-01 (#5)**
+> 语言 / Language：**中文** ｜ [English](../en/adr/0002-remoteframe-lifetime-timestamps.md)
 
-## Evidence
+状态：**ARCH-01（#5）提议**
 
-#3/PR #15 and #16/PR #19 establish four requirements that the frame model must encode explicitly:
+## 证据
 
-1. publishing a borrowed pointer into producer-reused storage is unsafe;
-2. `QImage`/snapshot semantics can be safe but may trigger copy-on-write or allocation cost;
-3. damage can be known, full-frame, or unavailable depending on capture family;
-4. capture **request time is not content PTS**: pipelined `grabToImage()` requests can be serviced by a later render carrying a newer scene state.
+#3/PR #15 和 #16/PR #19 确立了 frame 模型必须显式编码的四项要求：
 
-## Decision
+1. 把 borrowed pointer 发布到生产者会复用的存储不安全；
+2. `QImage`/snapshot 语义可以安全，但可能触发 copy-on-write 或分配成本；
+3. damage 可能已知、整帧或不可用，取决于采集 family；
+4. **采集请求时间不是内容 PTS**：流水线化的 `grabToImage()` 请求可能由更晚的渲染完成，携带更新的场景状态。
 
-`RemoteFrame` is an **immutable metadata value plus shared ownership of immutable-for-the-frame storage**.
+## 决策
 
-Conceptually:
+`RemoteFrame` 是**不可变元数据值 + 对 frame 不可变存储的共享所有权**。
+
+概念上：
 
 ```text
 RemoteFrame
- ├─ FrameId                   monotonic completion id
+ ├─ FrameId                   单调完成 id
  ├─ FrameGeometry             width/height/format/planes
- ├─ shared_ptr<FrameStorage>  lifetime anchor
- ├─ FrameTiming               content PTS + diagnostics
+ ├─ shared_ptr<FrameStorage>  生命周期锚点
+ ├─ FrameTiming               内容 PTS + 诊断
  ├─ Damage                    Unknown | Full | Regions
- └─ metadata/capabilities     backend-neutral flags only
+ └─ metadata/capabilities     仅后端无关标志
 ```
 
-A `RemoteFrame` may be copied between queues/consumers; the underlying storage remains valid until the final owning reference is released.
+`RemoteFrame` 可以在队列/消费者之间复制；底层存储在最后一个所有权引用释放前保持有效。
 
-## Storage contract
+## 存储契约
 
-`FrameStorage` is the Core lifetime anchor.
+`FrameStorage` 是 Core 生命周期锚点。
 
-Required semantics:
+必需语义：
 
-- storage referenced by a published frame must remain readable/usable for the frame lifetime;
-- producer-owned reusable memory cannot be published without a lifetime/recycle object that prevents overwrite while referenced;
-- the storage implementation owns any recycle callback and any thread-affinity needed to release a buffer;
-- Core is allowed to destroy the last `shared_ptr` on any Core/transport thread; a storage implementation whose resource must be returned on another thread must marshal that release itself;
-- no consumer may retain a naked pointer/handle beyond the `RemoteFrame`/`FrameStorage` lifetime.
+- 已发布 frame 引用的存储必须在 frame 生命周期内可读/可用；
+- 生产者自有可复用内存不能在没有生命周期/回收对象防止覆盖时发布；
+- 存储实现拥有回收回调和释放 buffer 所需的线程亲和；
+- Core 可以在任意 Core/传输线程销毁最后一个 `shared_ptr`；资源必须在其他线程归还的存储实现要自己 marshal；
+- 消费者不得在 `RemoteFrame`/`FrameStorage` 生命周期外保留裸指针/handle。
 
-### Initial storage forms
+### 初始存储形式
 
-1. **CPU-readable storage** — exposes one or more read-only mapped planes while the storage object is alive.
-2. **External/platform storage** — opaque to generic Core; exposes a generic extension boundary and may optionally provide a CPU mapping.
+1. **CPU 可读存储**：存储对象存活时暴露一个或多个只读映射 plane。
+2. **外部/平台存储**：对通用 Core 不透明；暴露通用扩展边界，可选提供 CPU 映射。
 
-The exact DMA-BUF/GBM/native-handle descriptor is deliberately deferred to #17. #5 freezes only the fact that external storage is a first-class storage kind, not its Linux-specific shape.
+精确 DMA-BUF/GBM/native-handle descriptor 有意推迟到 #17。#5 只冻结“外部存储是一等存储类型”，不冻结 Linux 专用形状。
 
-## Immutability rule
+## 不可变规则
 
-Once submitted to Core, the pixels represented by a `RemoteFrame` are immutable from the perspective of all consumers.
+一旦提交给 Core，`RemoteFrame` 表示的像素对所有消费者不可变。
 
-A producer may implement this by:
+生产者可以通过以下方式实现：
 
-- transferring ownership;
-- publishing a deep immutable snapshot;
-- taking a buffer from a pool and recycling it only after the final reference drops;
-- publishing external storage whose reuse is protected by its storage/fence/recycle contract.
+- 转移所有权；
+- 发布深度不可变 snapshot；
+- 从池中取 buffer，并在最后一个引用释放后回收；
+- 发布外部存储，其复用由存储/fence/回收契约保护。
 
-## Geometry and pixel description
+## 几何与像素描述
 
-A frame describes logical image size and storage layout independently:
+frame 独立描述逻辑图像尺寸和存储布局：
 
-- width/height;
-- pixel format identifier;
-- plane count;
-- per-plane offset/stride/size where CPU mapping exists;
-- orientation/transform if the capture backend cannot normalize it cheaply.
+- width/height；
+- pixel format 标识；
+- plane 数；
+- CPU 映射存在时的每 plane offset/stride/size；
+- 采集后端无法低成本规范化时的 orientation/transform。
 
-v0.1 CPU baselines should normalize to a small set of packed RGB(A) formats. YUV/external formats remain legal extensions for optimized paths.
+v0.1 CPU baseline 应规范化到少量 packed RGB(A) 格式。YUV/外部格式仍可作为优化路径扩展。
 
-## Damage model
+## Damage 模型
 
-Damage is tri-state:
+Damage 是三态：
 
 ```text
-Unknown     backend cannot provide trustworthy region geometry
-FullFrame   backend declares the entire frame changed
-Regions     zero or more rectangles in frame/root coordinates
+Unknown     后端无法提供可信区域几何
+FullFrame   后端声明整帧变化
+Regions     零个或多个 frame/root 坐标矩形
 ```
 
-Rules:
+规则：
 
-- `Unknown` is not the same as an empty region;
-- transports must fall back to full-frame behavior for `Unknown` unless they have independent damage detection;
-- Widgets paint regions may be supplied only after mapping/clipping into the shared root coordinate system;
-- observed QWidget paint regions are an input signal, not automatically a protocol-ready guarantee;
-- public Qt Quick async capture may legitimately report `Unknown`.
+- `Unknown` 不等于空区域；
+- 传输必须对 `Unknown` 回退到整帧，除非有独立 damage 检测；
+- Widgets paint region 只有在映射/裁剪到共享 root 坐标系后才可使用；
+- 观察到的 QWidget paint region 是输入信号，不自动成为协议级保证；
+- 公共 Qt Quick async capture 可以合法报告 `Unknown`。
 
-## Timestamp contract
+## 时间戳契约
 
-### One content PTS
+### 一个内容 PTS
 
-Every frame carries one **content PTS** in HyRemote's monotonic time domain plus a `PtsSource` describing where it came from.
+每个 frame 在 HyRemote 单调时间域携带一个 **内容 PTS**，以及描述来源的 `PtsSource`。
 
-Allowed source quality, from least to most precise:
+允许的来源质量，从低到高：
 
-1. `Completion` — capture completion/`ready()` timestamp;
-2. `Render` — backend-observed render timestamp;
-3. `Presentation` — backend-observed presentation/scanout timestamp.
+1. `Completion`：采集完成/`ready()` 时间戳；
+2. `Render`：后端观察到的渲染时间戳；
+3. `Presentation`：后端观察到的呈现/scanout 时间戳。
 
-A backend may add more precise source detail later, but consumers compare the normalized PTS, not backend-native clocks.
+后端以后可以增加更精确的来源，但消费者比较规范化 PTS，而不是后端原生时钟。
 
-### Request time is diagnostic only
+### 请求时间仅用于诊断
 
-Capture request time is never automatically promoted to content PTS.
+采集请求时间永远不会自动提升为内容 PTS。
 
-It may be retained separately as optional diagnostics to calculate request-to-completion latency.
+它可以单独保留为可选诊断，用于计算 request-to-completion 延迟。
 
-For the public `QQuickItem::grabToImage()` v0.1 candidate, completion/`ready()` time is the safe fallback PTS because the request may be fulfilled by a later render with a newer scene state.
+对于公共 `QQuickItem::grabToImage()` v0.1 候选，completion/`ready()` 时间是安全 fallback PTS，因为请求可能由更晚的渲染完成，携带更新的场景状态。
 
-### Completion time
+### 完成时间
 
-`completionTime` is also recorded when available. When `PtsSource::Completion`, `pts == completionTime`. A lower-level backend may provide an earlier/more accurate render/presentation PTS while still recording completion time for latency analysis.
+可用时也记录 `completionTime`。当 `PtsSource::Completion` 时，`pts == completionTime`。更低层后端可以提供更早/更准确的 render/presentation PTS，同时记录 completion time 用于延迟分析。
 
-## Frame identity
+## Frame 身份
 
-`FrameId` is assigned at Core acceptance/completion order and is independent of capture-request sequence numbers.
+`FrameId` 按 Core 接受/完成顺序分配，独立于采集请求序号。
 
-Request sequence may be retained in diagnostics but must not be used as a proxy for visual age.
+请求序号可以保留在诊断中，但不得作为视觉年龄的代理。
 
-## Consumer freshness
+## 消费者新鲜度
 
-Transport/drop decisions should use:
+传输/丢弃决策应使用：
 
-- content PTS / wall-clock age;
-- queue depth;
-- transport state;
-- optional duplicate/content hints supplied by a backend.
+- 内容 PTS / wall-clock 年龄；
+- 队列深度；
+- 传输状态；
+- 后端提供的可选重复/内容提示。
 
-They must not infer visual freshness from request index arithmetic.
+不得从请求索引算术推断视觉新鲜度。
 
-## Multi-client consequence
+## 多客户端后果
 
-A transport may fan one `RemoteFrame` to multiple clients. Shared storage ownership is therefore intentional: the buffer is recycled only after all downstream users release it.
+传输可以把一个 `RemoteFrame` 扇出到多个客户端。共享存储所有权因此是有意的：只有所有下游用户释放后，buffer 才回收。
 
-Transport implementations must still bound per-client queues; Core's capture-to-transport mailbox only protects the application/capture side from a slow transport ingestion path.
+传输实现仍必须限制每客户端队列；Core 的 capture-to-transport mailbox 只保护应用/采集侧不受慢传输 ingestion 影响。
 
-## Failure behavior
+## 失败行为
 
-A capture request that produces no frame (for example `grabToImage()` returning a null result for a hidden window) does not create a placeholder `RemoteFrame`. It produces a capture event/error and allows the capture policy to retry or select a fallback.
+不产生 frame 的采集请求（例如隐藏窗口的 `grabToImage()` 返回空）不会创建占位 `RemoteFrame`。它产生采集事件/错误，允许采集策略重试或选择 fallback。
 
-## Consequences
+## 结果
 
-- CPU and future DMA-BUF paths share one lifetime model.
-- slow clients can drop frame objects safely without producer-specific cleanup knowledge.
-- transport/encoder modules can retain a frame asynchronously.
-- content PTS remains meaningful across public and future optimized capture backends.
+- CPU 和未来 DMA-BUF 路径共享一个生命周期模型；
+- 慢客户端可以安全丢弃 frame 对象，不需要生产者专用清理知识；
+- 传输/encoder 模块可以异步保留 frame；
+- 内容 PTS 在公共和未来优化采集后端之间保持有意义。
