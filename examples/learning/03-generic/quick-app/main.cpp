@@ -42,7 +42,7 @@ int main(int argc, char **argv)
     view.setTitle(QStringLiteral("Learning 03 - ordinary Qt Quick application"));
     view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.resize(460, 190);
-    view.setSource(QUrl(QStringLiteral("qrc:/hyremote/learning/03-zero-code-generic/Main.qml")));
+    view.setSource(QUrl(QStringLiteral("qrc:/hyremote/learning/03-generic/Main.qml")));
     if (view.status() == QQuickView::Error) {
         for (const QQmlError &error : view.errors())
             std::cerr << error.toString().toStdString() << std::endl;
