@@ -10,7 +10,7 @@ add_executable(hyremote-remote-support-showcase
     framebuffer_view.h
     rfb_client.cpp
     rfb_client.h
-    ../hyremote_branding.cpp
+    ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
 set_target_properties(hyremote-remote-support-showcase PROPERTIES

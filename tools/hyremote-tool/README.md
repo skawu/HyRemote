@@ -2,7 +2,7 @@
 
 HyRemoteTool is HyRemote's **out-of-process companion client**. It runs outside the business application, connects to a remote HyRemote-enabled application by explicit IP and port, and provides access-plane viewing, input and telemetry. It does not host remote access, does not share its own window and does not link the HyRemote Runtime.
 
-The source directory remains `examples/remote-support-showcase` as an implementation detail; the installed executable is `hyremote-tool`.
+The source directory is `tools/hyremote-tool`; the installed executable is `hyremote-tool`.
 
 ## V0.3.0.0 scope
 

@@ -47,8 +47,8 @@ set(required_files
     "examples/learning/05-qpa/CMakeLists.txt"
     "examples/learning/05-qpa/main.cpp"
     "examples/learning/05-qpa/README.md"
-    "examples/remote-support-showcase/CMakeLists.txt"
-    "examples/remote-support-showcase/README.md"
+    "tools/hyremote-tool/CMakeLists.txt"
+    "tools/hyremote-tool/README.md"
     "tests/consumer-installed-sdk/CMakeLists.txt"
     "tests/consumer-source/CMakeLists.txt"
     "tests/consumer-installed-qml/CMakeLists.txt"
@@ -554,14 +554,20 @@ foreach(required_example
         "add_subdirectory(learning/03-zero-code-generic/widgets-app)"
         "add_subdirectory(learning/03-zero-code-generic/quick-app)"
         "add_subdirectory(learning/04-qml)"
-        "add_subdirectory(learning/05-qpa)"
-        "add_subdirectory(remote-support-showcase)")
+        "add_subdirectory(learning/05-qpa)")
     string(FIND "${examples_cmake}" "${required_example}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
             "release-readiness: common V1 examples graph missing required example: ${required_example}")
     endif()
 endforeach()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/tools/CMakeLists.txt" tools_cmake)
+string(FIND "${tools_cmake}" "add_subdirectory(hyremote-tool)" tool_registration)
+if(tool_registration EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: companion tools graph no longer registers HyRemoteTool")
+endif()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/examples/learning/05-qpa/CMakeLists.txt" e4_cmake)
 foreach(required_token
