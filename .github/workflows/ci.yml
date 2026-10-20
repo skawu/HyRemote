@@ -165,24 +165,13 @@ jobs:
     # matrix: the product is unchanged, while the full gate and every product change still run both platforms.
     if: >-
       needs.classify.outputs.product == 'true' &&
-      (needs.classify.outputs.test_only != 'true' || matrix.os == 'windows-2022') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Linux x86_64 / Qt 6.8.3
-            os: ubuntu-24.04
-            aqt_host: linux
-            aqt_arch: linux_gcc_64
-            qt_dir: gcc_64
-          - name: Windows x86_64 / Qt 6.8.3
-            os: windows-2022
-            aqt_host: windows
-            aqt_arch: win64_msvc2022_64
-            qt_dir: msvc2022_64
+        include: ${{ fromJSON(needs.classify.outputs.product_matrix) }}
 
     steps:
       - uses: actions/checkout@v4

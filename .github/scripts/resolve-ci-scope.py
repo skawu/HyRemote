@@ -37,12 +37,33 @@ Decisions (``decision``) - what the run can be waited on for (#380):
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 
 PEERS = ["cpp", "qml", "generic", "qpa"]
+
+# Product matrix entries. The full gate and ordinary product PRs run both; a
+# test-only ready PR runs the Windows entry only (it still builds and executes
+# the complete test set).
+PRODUCT_MATRIX = [
+    {
+        "name": "Linux x86_64 / Qt 6.8.3",
+        "os": "ubuntu-24.04",
+        "aqt_host": "linux",
+        "aqt_arch": "linux_gcc_64",
+        "qt_dir": "gcc_64",
+    },
+    {
+        "name": "Windows x86_64 / Qt 6.8.3",
+        "os": "windows-2022",
+        "aqt_host": "windows",
+        "aqt_arch": "win64_msvc2022_64",
+        "qt_dir": "msvc2022_64",
+    },
+]
 
 COMMON_FILES = {
     "CMakeLists.txt", "build.cmd", "build.yml", ".github/workflows/ci.yml",
@@ -274,6 +295,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     full_gate = lane == "FULL_GATE"
     product_lane = lane in ("PR_FAST", "FULL_GATE")
     test_only = product_lane and not full_gate and is_test_only(changed)
+    product_matrix = [PRODUCT_MATRIX[1]] if test_only else PRODUCT_MATRIX
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
@@ -377,6 +399,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         "lane": lane,
         "decision": decision_for(lane),
         "test_only": "true" if test_only else "false",
+        "product_matrix": json.dumps(product_matrix, separators=(",", ":")),
         "product": "true" if product else "false",
         "integrations": integrations if product else "",
         "qpa": "true" if ("qpa" in selected and product) else "false",
@@ -664,6 +687,15 @@ def self_test() -> int:
         actual = resolved["test_only"] == "true"
         if actual != expected:
             print(f"CASE FAILED: {description}: test_only={resolved['test_only']!r}")
+            failures += 1
+        matrix = json.loads(resolved["product_matrix"])
+        expected_platforms = 1 if expected else 2
+        if len(matrix) != expected_platforms:
+            print(f"CASE FAILED: {description}: product_matrix has {len(matrix)} entries, "
+                  f"expected {expected_platforms}")
+            failures += 1
+        if expected and matrix and matrix[0].get("os") != "windows-2022":
+            print(f"CASE FAILED: {description}: test-only lane must keep Windows, got {matrix[0].get('os')!r}")
             failures += 1
 
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
