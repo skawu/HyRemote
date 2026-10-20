@@ -78,4 +78,7 @@ Security, compatibility, and platform claims are limited to the explicitly state
 
 ## Maintainer material
 
-Architecture decisions, repository governance, release procedures, research records, and acceptance material live under `docs/adr/`, `docs/internal/`, `docs/releases/`, and `docs/proposals/`. Ordinary application integration does not require those files.
+Architecture decisions, repository governance, release procedures, research records, and acceptance material live under `docs/adr/`, `docs/internal/`, `docs/releases/`, and `docs/proposals/`. Ordinary application integration does not require those files.\n
+## Documentation style
+
+See [STYLE.md](STYLE.md) ｜ [中文](../STYLE.md). The checker usage is in section 5.
