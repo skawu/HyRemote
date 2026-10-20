@@ -1,89 +1,91 @@
-# HyRemote Performance Optimization Program
+# HyRemote 性能优化专项
 
-> Status: long-lived technical programme. GitHub authority: #370.
->
-> This document describes HyRemote's performance architecture, latency contract, optimization order and regression discipline. It is intentionally maintained across releases so later feature work cannot silently erode accepted responsiveness, frame freshness or local Qt behavior.
+> 语言 / Language：**中文** ｜ [English](en/performance-optimization.md)
 
-## 1. Product position
+状态：长期技术专项。GitHub 权威：#370。
 
-HyRemote is a **low-intrusion remote-access Runtime / SDK for existing Qt applications**. Performance work exists to make remote use responsive without turning performance engineering into a new integration burden for application developers, deployment engineers or remote operators.
+本文定义 HyRemote 的性能架构、延迟契约、优化顺序和回归纪律。它会跨版本维护，防止后续功能悄悄破坏已接受的响应性、画面新鲜度和本地 Qt 行为。
 
-Normal users should continue to think in product concepts such as:
+## 1. 产品定位
 
-- target/application surface;
-- listener address/port;
-- access/security mode;
-- remote input policy;
-- start/stop and diagnostics.
+HyRemote 是面向现有 Qt 应用的低侵入远程访问 Runtime/SDK。性能工作要让远程使用保持响应，同时不把性能工程变成应用开发者、部署工程师或远程操作者的新负担。
 
-They should **not** be required to choose or tune:
+普通用户继续使用产品概念：
 
-- RFB encodings;
-- compression levels;
-- damage modes;
-- capture FPS;
-- capture in-flight depth;
-- flow-control windows;
-- socket buffer sizes;
-- GPU/DMA-BUF/vendor-specific backends.
+- 目标和应用 surface；
+- listener 地址/端口；
+- 访问/安全模式；
+- 远程输入策略；
+- 启动/停止和诊断。
 
-HyRemote therefore optimizes for interactive Qt remote access, not for maximum benchmark throughput or video-streaming FPS.
+普通用户不需要选择或调优：
 
-Performance priority is:
+- RFB 编码；
+- 压缩级别；
+- damage 模式；
+- 采集 FPS；
+- 采集在途深度；
+- 流控窗口；
+- socket 缓冲大小；
+- GPU/DMA-BUF/厂商后端。
 
-1. remote interaction remains responsive;
-2. the viewer receives the newest useful state rather than a backlog of stale frames;
-3. local Qt rendering/input remains healthy;
-4. static/localized UI avoids unnecessary capture/encode/network work;
-5. queues, memory and per-viewer work remain bounded;
-6. only after those are satisfied, maximize sustainable delivered cadence.
+HyRemote 优化交互式 Qt 远程访问，不追求最大基准吞吐或视频流 FPS。
 
-Canonical principle:
+性能优先级：
 
-> **Freshness > throughput > frame completeness.**
+1. 远程交互保持响应；
+2. viewer 收到最新有效状态，不接收陈旧帧积压；
+3. 本地 Qt 渲染/输入保持健康；
+4. 静态/局部 UI 避免不必要的采集、编码和网络工作；
+5. 队列、内存和每 viewer 工作保持有界；
+6. 满足以上条件后，再提高可持续交付节奏。
 
-Dropping/coalescing stale intermediate frames is preferred to delivering every historical frame late.
+核心原则：
 
-## 2. Primary user-facing metric: Remote Interaction Latency
+> **新鲜度 > 吞吐 > 帧完整性。**
 
-Capture time alone is not a product latency metric. The primary metric is the time from a remote user's action to the corresponding visible result reaching the viewer.
+丢弃或合并陈旧中间帧，优于把每个历史帧迟到地送达。
+
+## 2. 主要用户指标：远程交互延迟
+
+采集时间本身不是产品延迟指标。主要指标是远程用户动作到对应可见结果到达 viewer 的时间。
 
 ```text
-viewer sends input
-  -> network / RFB input
-  -> Runtime / Core / input adapter
-  -> Qt application handles event
-  -> UI/render state changes
-  -> capture
-  -> Core / Runtime scheduling
-  -> encode / delivery
-  -> viewer receives / decodes / displays corresponding visual change
+viewer 发送输入
+  -> 网络 / RFB 输入
+  -> Runtime / Core / 输入适配器
+  -> Qt 应用处理事件
+  -> UI/渲染状态变化
+  -> 采集
+  -> Core / Runtime 调度
+  -> 编码 / 交付
+  -> viewer 接收 / 解码 / 显示对应视觉变化
 ```
 
-Define:
+定义：
 
 ```text
 T_interaction =
-  t(viewer observes first corresponding visual change)
-  - t(viewer sends input)
+  t(viewer 观察到第一个对应视觉变化)
+  - t(viewer 发送输入)
 ```
 
-Where possible, both timestamps should be recorded on the viewer/test-client side so no cross-machine clock synchronization is required.
+条件允许时，两个时间戳都记录在 viewer/测试客户端侧，避免跨机器时钟同步。
 
-Useful segment measurements include:
+常用分段：
 
-- input-to-Qt-event latency;
-- Qt-event/render-to-capture availability;
-- capture request-to-completion latency;
-- frame age / PTS age;
-- encode latency;
-- bytes/update and bytes/time;
-- application-level RTT / Fence RTT;
-- socket/backlog observations;
-- viewer decode/display latency where measurable;
-- CPU/GPU/memory and local UI impact.
+- 输入到 Qt 事件延迟；
+- Qt 事件/渲染到采集可用；
+- 采集请求到完成；
+- 帧年龄/PTS 年龄；
+- 编码延迟；
+- 每次更新字节数和字节/时间；
+- 应用级 RTT/Fence RTT；
+- socket/backlog 观察；
+- viewer 解码/显示延迟；
+- CPU/GPU/内存和本地 UI 影响。
 
-A useful decomposition is:
+分解：
 
 ```text
 T_interaction =
@@ -97,505 +99,505 @@ T_interaction =
 + T_viewer
 ```
 
-The purpose of segment budgets is diagnosis: when a candidate misses the end-to-end SLO, the project must identify the dominant component rather than guessing at a lower-level optimization.
+分段预算用于诊断。候选版本未达到端到端 SLO 时，必须先定位主要组成部分，不能直接猜测低层优化。
 
-## 3. Initial pre-GA reference SLO
+## 3. GA 前参考 SLO
 
-For the ordinary interactive Qt UI reference profile:
+普通交互式 Qt UI 参考配置：
 
 ```text
-1920x1080 target
-one qualified maintained viewer
-direct wired LAN
+1920x1080 目标
+一个合格维护中 viewer
+有线直连 LAN
 RTT <= 20 ms
-effective available bandwidth >= 100 Mbps
-ordinary Widgets/HMI/Form/low-to-moderate-change Quick workload
-selected supported RFB delivery profile
+有效可用带宽 >= 100 Mbps
+普通 Widgets/HMI/表单/低到中等变化 Quick 负载
+选定的受支持 RFB 交付配置
 ```
 
-Initial target:
+初始目标：
 
 ```text
-Interaction latency P50 <= 200 ms
-Interaction latency P95 <= 500 ms
+交互延迟 P50 <= 200 ms
+交互延迟 P95 <= 500 ms
 ```
 
-`500 ms` is an acceptance ceiling for this bounded reference profile. It is **not** a promise for every network, every viewer, every high-motion workload or every unsupported platform.
+`500 ms` 是这个有界参考配置的验收上限，不是对所有网络、viewer、高动态负载或未支持平台的承诺。
 
-Every published result must record the exact environment:
+每个公开结果必须记录：
 
-- candidate SHA;
-- Qt version/anchor;
-- OS and CPU architecture;
-- QPA / graphics stack;
-- UI family;
-- HyRemote integration route;
-- resolution / DPR;
-- viewer/version;
-- RTT and effective bandwidth or shaping profile;
-- selected encoding/update strategy;
-- workload class.
+- 候选 SHA；
+- Qt 版本/锚点；
+- OS 和 CPU 架构；
+- QPA/图形栈；
+- UI 类型；
+- HyRemote 接入路线；
+- 分辨率和 DPR；
+- viewer/版本；
+- RTT 和有效带宽或限速配置；
+- 选定编码/更新策略；
+- 负载类别。
 
-High-motion/media-like workloads may have a different qualified envelope. Ordinary RFB GUI guarantees must not be presented as video-streaming guarantees.
+高动态/媒体型负载可以有不同验收范围。不能把普通 RFB GUI 保证说成视频流保证。
 
-## 4. Standard workloads
+## 4. 标准负载
 
-Performance evidence is meaningful only when the workload is repeatable.
+性能证据只有在负载可重复时才有意义。
 
-### W1 — Static
+### W1：静态
 
-A fully synchronized UI with no visible changes.
+UI 完全同步，没有可见变化。
 
-Required behavior:
+要求：
 
-- connection remains alive;
-- an incremental request may remain pending;
-- no repeated identical framebuffer payload is sent merely to keep the connection alive;
-- capture/encode work becomes quiescent or near-zero according to the active policy;
-- memory and queued work remain bounded.
+- 连接保持存活；
+- 增量请求可以保持 pending；
+- 不为保活重复发送相同 framebuffer payload；
+- 采集/编码工作按当前策略进入静默或接近零；
+- 内存和排队工作保持有界。
 
-### W2 — Localized UI
+### W2：局部 UI
 
-Examples: button state, text update, small status region, localized widget repaint.
+例如按钮状态、文本更新、小状态区、局部 widget 重绘。
 
-Measure:
+测量：
 
-- changed region/bytes;
-- bytes/update;
-- encode latency;
-- frame age;
-- interaction latency.
+- 变化区域/字节；
+- 每次更新字节；
+- 编码延迟；
+- 帧年龄；
+- 交互延迟。
 
-This workload validates whether damage/incremental delivery avoids full-screen work when that work would be wasteful.
+该负载验证 damage/增量交付在浪费时避免全屏工作。
 
-### W3 — Interactive
+### W3：交互
 
-Examples: click, typing, focus change, drag or control action that produces a deterministic visible response.
+例如点击、输入、焦点变化、拖拽或产生确定可见响应的控制动作。
 
-This is the primary P50/P95 interaction-latency workload and validates input-triggered freshness.
+这是主要 P50/P95 交互延迟负载，验证输入触发的新鲜度。
 
-### W4 — High Motion
+### W4：高动态
 
-Examples: Qt Quick animation, fade, swipe, large dashboard movement or sustained full-area change.
+例如 Qt Quick 动画、淡入淡出、滑动、大屏仪表运动或持续全区域变化。
 
-Measure:
+测量：
 
-- full-frame compressed behavior;
-- frame age/freshness;
-- delivered cadence;
-- CPU/memory;
-- bytes/time;
-- local UI impact.
+- 整帧压缩行为；
+- 帧年龄/新鲜度；
+- 交付节奏；
+- CPU/内存；
+- 字节/时间；
+- 本地 UI 影响。
 
-Do not force expensive partial-update analysis when measurement shows the scene is effectively full-frame motion.
+测量显示场景实际上接近整帧运动时，不要强行做昂贵的局部更新分析。
 
-## 5. Architecture responsibilities
+## 5. 架构职责
 
-Performance must preserve HyRemote's one-Core / one-Shared-Runtime architecture.
+性能工作必须保持一个 Core 和一个共享 Runtime。
 
 ### 5.1 Core
 
-Core owns only protocol/platform-neutral facts and boundedness:
+Core 只拥有协议/平台无关事实和有界性：
 
-- `RemoteFrame` ownership and PTS;
-- `Damage` = Unknown / FullFrame / Regions;
-- bounded capture/frame queue semantics;
-- nonblocking transport handoff;
-- latest/freshness-first backpressure semantics.
+- `RemoteFrame` 所有权和 PTS；
+- `Damage` 的 Unknown/FullFrame/Regions；
+- 有界采集/帧队列语义；
+- 非阻塞传输交接；
+- 最新帧优先/新鲜度优先背压语义。
 
-Core must not learn:
+Core 不得学习：
 
-- RFB encodings;
-- Continuous Updates / Fence protocol objects;
-- Qt platform/graphics backend details;
-- vendor GPU/encoder APIs;
-- network tuning policy.
+- RFB 编码；
+- Continuous Updates/Fence 协议对象；
+- Qt 平台/图形后端细节；
+- 厂商 GPU/编码器 API；
+- 网络调优策略。
 
-### 5.2 Shared Runtime
+### 5.2 共享 Runtime
 
-Shared Runtime owns automatic product performance policy shared by C++ / QML / Generic / QPA:
+共享 Runtime 拥有 C++/QML/Generic/QPA 共用的自动性能策略：
 
-- viewer activity;
-- remote-input activity;
-- capture demand/pacing;
-- adaptive policy coordination;
-- product diagnostics/observations where appropriate.
+- viewer 活动；
+- 远程输入活动；
+- 采集需求和节奏；
+- 自适应策略协调；
+- 合适的产品诊断/观察。
 
-There is no second Widgets, Quick, Embedded or Accelerated Runtime personality.
+不存在第二套 Widgets、Quick、Embedded 或 Accelerated Runtime 变体。
 
-### 5.3 Qt target adapters
+### 5.3 Qt 目标适配器
 
-Widgets and Quick adapters own the most appropriate supported capture path and truthful damage capability.
+Widgets 和 Quick 适配器负责最合适的受支持采集路径和真实的 damage 能力。
 
-Rules:
+规则：
 
-- public Qt API first;
-- preserve local display/input behavior;
-- report damage capability truthfully;
-- lower-level/private/platform capture only after measured SLO/resource evidence demonstrates a real blocker.
+- 公共 Qt API 优先；
+- 保持本地显示/输入行为；
+- 如实报告 damage 能力；
+- 只有测量证明 SLO/资源阻塞后，才使用更低层/私有/平台采集。
 
-### 5.4 RFB transport
+### 5.4 RFB 传输
 
-RFB transport owns protocol/network-specific performance mechanisms:
+RFB 传输负责协议/网络相关性能机制：
 
-- encoding negotiation and Raw fallback;
-- practical compression;
-- incremental/non-incremental request semantics;
-- accumulated per-viewer damage/update state;
-- Continuous Updates / Fence where interoperable;
-- bounded per-viewer flow/backpressure;
-- stale encoded-work suppression;
-- cursor pseudo-encoding where useful;
-- protocol-specific RTT/delivery observations.
+- 编码协商和 Raw fallback；
+- 实用压缩；
+- 增量/非增量请求语义；
+- 按 viewer 累积的 damage/更新状态；
+- 可互操作时的 Continuous Updates/Fence；
+- 有界的每 viewer 流控/背压；
+- 陈旧编码工作抑制；
+- 有用时的 cursor pseudo-encoding；
+- 协议相关 RTT/交付观察。
 
-## 6. Demand-driven capture
+## 6. 按需采集
 
-Capture should happen because it improves a connected user's experience, not simply because a periodic timer exists.
+采集应因为能改善已连接用户体验而发生，不能只因为周期定时器存在。
 
-Target policy:
-
-```text
-0 viewers
--> no unnecessary continuous capture
-
-viewer connected + static scene
--> no repeated identical framebuffer payload
-
-ordinary interaction
--> bounded interactive cadence
-
-remote input occurs
--> prioritize the next fresh result after the corresponding Qt update/render opportunity
-
-sustained high motion
--> stable bounded cadence, not unbounded capture production
-```
-
-Connection liveness, capture activity and framebuffer-delivery activity are three separate concerns. A static screen is not a disconnected screen.
-
-## 7. Input-triggered fresh capture
-
-Remote input is an interaction-priority signal.
-
-Preferred behavior:
+目标策略：
 
 ```text
-remote input received
--> delivered to Qt
--> application state/render changes
--> prioritize next fresh capture/update
--> viewer receives newest corresponding state
+0 个 viewer
+-> 不做不必要的持续采集
+
+viewer 已连接 + 静态场景
+-> 不重复发送相同 framebuffer payload
+
+普通交互
+-> 有界交互节奏
+
+发生远程输入
+-> 在对应 Qt 更新/渲染机会后，优先下一次新鲜结果
+
+持续高动态
+-> 稳定的有界节奏，不产生无界采集
 ```
 
-This lowers perceived interaction latency without forcing a permanently high capture FPS on mostly static HMI/configuration interfaces.
+连接存活、采集活动和 framebuffer 交付是三个独立问题。静态画面不是断开连接。
 
-The policy must remain bounded: input bursts must not create unbounded capture requests or timers.
+## 7. 输入触发的新鲜采集
 
-## 8. Shallow capture pipeline
+远程输入是交互优先信号。
 
-Remote access should optimize freshness, not offline throughput.
-
-Historical Quick evidence shows that deeper asynchronous capture pipelines can increase throughput while also increasing request latency, duplicate content and GUI jitter. Interactive defaults should therefore stay shallow, normally around one or two outstanding captures unless an exact reference cell proves another value is better.
-
-A later platform may tune this internally, but normal users do not choose it.
-
-## 9. Stale-work suppression
-
-Expensive work on a frame that is already obsolete hurts latency twice: it consumes CPU and delays the newer useful frame.
-
-Target per-viewer encoder scheduling:
+首选行为：
 
 ```text
-<= 1 update currently encoding/sending
-+ <= 1 latest pending useful update
+收到远程输入
+-> 交给 Qt
+-> 应用状态/渲染变化
+-> 优先下一次新鲜采集/更新
+-> viewer 收到最新对应状态
 ```
 
-If a newer useful frame supersedes pending work before expensive encoding begins, replace/drop the stale pending work.
+这能降低交互感知延迟，同时不强迫大部分静态 HMI/配置界面长期高采集 FPS。
 
-Do not build a historical framebuffer playlist.
+策略必须保持有界：输入突发不能产生无界采集请求或定时器。
 
-## 10. Adaptive ordinary-GUI vs high-motion delivery
+## 8. 浅采集管线
 
-HyRemote uses two complementary strategies rather than one universal update mode.
+远程访问优化新鲜度，不优化离线吞吐。
 
-### 10.1 Region path
+历史 Quick 证据显示，更深的异步采集管线可能提高吞吐，同时增加请求延迟、重复内容和 GUI 抖动。交互默认应保持浅管线，通常一到两个在途采集；只有精确参考单元证明其他值更好时才调整。
 
-For static/localized ordinary Qt UI:
+后续平台可以在内部调优，普通用户不选择。
+
+## 9. 陈旧工作抑制
+
+对已经过期的帧做昂贵工作会伤害延迟两次：消耗 CPU，并推迟更新的有效帧。
+
+目标每 viewer 编码调度：
 
 ```text
-capture/change observation
--> accumulated pending damage
--> viewer requested region intersection
--> encode/send changed rectangles
+<= 1 个正在编码/发送的更新
++ <= 1 个最新 pending 有效更新
 ```
 
-This is the preferred path for forms, controls, ordinary Widgets/HMI screens and low-change Quick interfaces when the damage savings are material.
+更新有效帧在昂贵编码开始前取代 pending 工作时，替换或丢弃陈旧 pending 工作。
 
-### 10.2 Full-frame path
+不要构建历史 framebuffer 播放列表。
 
-For sustained large/full-area motion:
+## 10. 普通 GUI 与高动态的自适应交付
+
+HyRemote 使用两种互补策略，不用一个通用更新模式。
+
+### 10.1 区域路径
+
+静态/局部普通 Qt UI：
 
 ```text
-latest full frame
--> practical compression
--> bounded delivery
+采集/变化观察
+-> 累积 pending damage
+-> 与 viewer 请求区域求交
+-> 编码/发送变化矩形
 ```
 
-This avoids spending excessive CPU on damage analysis when nearly every pixel changes anyway.
+表单、控件、普通 Widgets/HMI 屏幕和低变化 Quick 界面在 damage 节省明显时使用该路径。
 
-### 10.3 Automatic selection
+### 10.2 整帧路径
 
-Runtime/transport may use measured change ratio and hysteresis to choose the appropriate path. This is an implementation detail, not a normal-user `DamageMode` setting.
-
-## 11. Compression policy
-
-Before GA:
-
-- Raw remains a deterministic interoperability fallback;
-- at least one practical maintained-viewer-compatible compressed path is required;
-- selection is based on **end-to-end latency/resource behavior**, not compression ratio alone.
-
-Candidate comparison should include:
+持续大范围/全区域运动：
 
 ```text
-encode P50/P95
-wire bytes / serialization time
-viewer compatibility/decode behavior
-CPU/memory cost
-final interaction latency and frame age
-cross-platform dependency/package cost
+最新整帧
+-> 实用压缩
+-> 有界交付
 ```
 
-A fast LAN may favor lower compression effort because encoding dominates. A constrained network may favor stronger compression because wire time dominates. The Runtime/transport should make the normal decision automatically rather than requiring users to understand compression internals.
+几乎每个像素都变化时，避免把 CPU 花在 damage 分析上。
 
-Tight/JPEG or another lossy profile should be added only if representative high-motion Quick/embedded evidence shows the selected ordinary lossless profile is insufficient.
+### 10.3 自动选择
 
-## 12. Correct incremental semantics
+Runtime/传输可以使用测量变化比例和滞回选择路径。这是实现细节，不是普通用户的 `DamageMode` 设置。
 
-Per-viewer state must include the smallest bounded facts required for correct RFB updates:
+## 11. 压缩策略
 
-- requested region;
-- incremental/non-incremental mode;
-- pending accumulated damage;
-- resize/full-refresh invalidation;
-- negotiated encoding capability/order;
-- outstanding request/update/continuous state;
-- bounded coalescing/reset state.
+GA 前：
 
-Correctness property:
+- Raw 保持确定性互操作 fallback；
+- 至少需要一个维护中 viewer 兼容的实用压缩路径；
+- 选择依据是**端到端延迟/资源行为**，不只是压缩比。
+
+候选比较包括：
 
 ```text
-A/B/C change while viewer is not ready
--> next eligible incremental update contains all still-required change
-   inside the viewer's requested region
+编码 P50/P95
+线上字节 / 序列化时间
+viewer 兼容性/解码行为
+CPU/内存成本
+最终交互延迟和帧年龄
+跨平台依赖/打包成本
 ```
 
-For `incremental=true` and no damage:
+快速 LAN 可能偏向低压缩工作量，因为编码占主导；受限网络可能偏向更强压缩，因为线上时间占主导。Runtime/传输应自动做正常决策，不要求用户理解压缩内部。
 
-- keep the request pending;
-- send no redundant framebuffer payload;
-- later required damage wakes/satisfies the request.
+Tight/JPEG 或其他有损配置只有在有代表性的高动态 Quick/嵌入式证据证明普通无损配置不足时才加入。
 
-For `incremental=false`:
+## 12. 正确的增量语义
 
-- return the current requested content even when it matches previously delivered content.
+每 viewer 状态只包含正确 RFB 更新所需的最小有界事实：
 
-Resize or format invalidation forces a correct refresh.
+- 请求区域；
+- 增量/非增量模式；
+- pending 累积 damage；
+- resize/全刷新失效；
+- 协商编码能力/顺序；
+- 未完成请求/更新/continuous 状态；
+- 有界合并/重置状态。
 
-## 13. Connection liveness is not framebuffer traffic
+正确性属性：
 
-A static session may legitimately produce no framebuffer payload for a long time while remaining connected.
+```text
+viewer 未就绪时发生 A/B/C 变化
+-> 下一次合格增量更新包含请求区域内
+   所有仍然需要的变化
+```
 
-Do not use repeated duplicate full frames as a keepalive.
+`incremental=true` 且没有 damage：
 
-Where liveness support is required, use appropriate TCP keepalive and/or lightweight RFB synchronization such as Fence where interoperable. Network liveness policy remains independent of framebuffer change detection.
+- 保持请求 pending；
+- 不发送冗余 framebuffer payload；
+- 后续必要 damage 唤醒/满足请求。
 
-## 14. RFB latency control
+`incremental=false`：
+
+- 返回当前请求内容，即使它和之前交付内容相同。
+
+Resize 或格式失效强制正确刷新。
+
+## 13. 连接存活不是 framebuffer 流量
+
+静态会话可以长时间不产生 framebuffer payload，同时保持连接。
+
+不要用重复整帧作为 keepalive。
+
+需要存活支持时，使用合适的 TCP keepalive 和/或可互操作的轻量 RFB 同步（如 Fence）。网络存活策略独立于 framebuffer 变化检测。
+
+## 14. RFB 延迟控制
 
 ### 14.1 Continuous Updates
 
-When a maintained viewer supports RFB Continuous Updates, HyRemote should use it to avoid requiring a new FramebufferUpdateRequest round trip for every update.
+维护中 viewer 支持 RFB Continuous Updates 时，HyRemote 应使用它，避免每次更新都要新的 FramebufferUpdateRequest 往返。
 
-Unsupported viewers fall back automatically to standard request-driven behavior.
+不支持的 viewer 自动回退到标准请求驱动行为。
 
 ### 14.2 Fence
 
-Fence may be used where supported for stream synchronization and bounded application-level RTT observation.
+Fence 可以在支持时用于流同步和有界应用级 RTT 观察。
 
-Protocol objects remain transport-private.
+协议对象保持传输私有。
 
-### 14.3 Per-viewer flow control
+### 14.3 每 viewer 流控
 
-`socket bytesToWrite()==0` is useful but does not prove that no stale framebuffer data remains in kernel/network/proxy/viewer buffers.
+`socket bytesToWrite()==0` 有用，但不能证明内核/网络/代理/viewer 缓冲中没有陈旧 framebuffer 数据。
 
-A bounded per-viewer controller may observe:
+有界每 viewer 控制器可以观察：
 
-- base/current/Fence RTT;
-- recent bytes/update;
-- encode duration;
-- socket backlog;
-- frame age;
-- outstanding delivery state;
-- Continuous Updates state.
+- base/current/Fence RTT；
+- 最近每次更新字节；
+- 编码时长；
+- socket backlog；
+- 帧年龄；
+- 未完成交付状态；
+- Continuous Updates 状态。
 
-Its goal is to minimize stale framebuffer age in the end-to-end path, not to maximize TCP throughput.
+目标是降低端到端陈旧 framebuffer 年龄，不是最大化 TCP 吞吐。
 
-HyRemote must **not** implement a second TCP congestion-control algorithm. TCP manages packet congestion; HyRemote decides whether an old framebuffer is still worth sending.
+HyRemote 不得实现第二套 TCP 拥塞控制。TCP 管理包级拥塞；HyRemote 决定旧 framebuffer 是否还值得发送。
 
-### 14.4 Multi-viewer isolation
+### 14.4 多 viewer 隔离
 
-Encoding negotiation, pending damage, RTT/flow state and delivery windows are per viewer. A slow or high-RTT viewer must not force a fast LAN viewer to receive stale frames.
+编码协商、pending damage、RTT/流状态和交付窗口都按 viewer 隔离。慢或高 RTT viewer 不能迫使快速 LAN viewer 收到陈旧帧。
 
-## 15. Cursor and perceived latency
+## 15. Cursor 与感知延迟
 
-Evaluate RFB cursor pseudo-encoding so a supporting viewer can render the cursor locally rather than waiting for a framebuffer round trip for every pointer movement.
+评估 RFB cursor pseudo-encoding，让支持的 viewer 本地渲染 cursor，不必为每次指针移动等待 framebuffer 往返。
 
-This is a transport-private optimization with automatic fallback, not an application API.
+这是传输私有优化，自动回退，不是应用 API。
 
-## 16. Automatic fallback model
+## 16. 自动回退模型
 
-Every optimization is additive. Unsupported capability falls back to a correct lower-capability path:
+每个优化都是增量能力。不支持的能力回退到正确的低能力路径：
 
 ```text
-Damage unavailable             -> full-frame path
-Compression unsupported        -> Raw fallback
-Continuous Updates unsupported -> standard FramebufferUpdateRequest
-Fence unsupported              -> conservative request-driven flow
-Optimized capture unavailable  -> public Qt baseline
-GPU/native buffer unavailable  -> CPU frame path
-Adaptive policy unavailable    -> bounded conservative policy
+Damage 不可用             -> 整帧路径
+压缩不支持                -> Raw fallback
+Continuous Updates 不支持 -> 标准 FramebufferUpdateRequest
+Fence 不支持              -> 保守请求驱动流控
+优化采集不可用            -> 公共 Qt 基线
+GPU/原生缓冲不可用        -> CPU 帧路径
+自适应策略不可用          -> 有界保守策略
 ```
 
-Optimization failure must not become product failure when a supported fallback exists.
+存在受支持回退时，优化失败不能变成产品失败。
 
-## 17. Platform acceleration gate
+## 17. 平台加速门禁
 
-Do not start DMA-BUF/RKMPP/VAAPI/D3D/private-RHI work merely because it could be faster.
+不要仅因为可能更快就启动 DMA-BUF/RKMPP/VAAPI/D3D/私有 RHI 工作。
 
-First implement and measure the portable/product baseline:
+先实现并测量可移植/产品基线：
 
-- demand-driven capture;
-- input-triggered freshness;
-- practical compression;
-- incremental/damage;
-- stale-work suppression;
-- Continuous/Fence where selected;
-- bounded per-viewer flow control;
-- adaptive capture policy.
+- 按需采集；
+- 输入触发新鲜度；
+- 实用压缩；
+- 增量/damage；
+- 陈旧工作抑制；
+- 选定场景的 Continuous/Fence；
+- 有界每 viewer 流控；
+- 自适应采集策略。
 
-Only a measured reference-cell failure against this programme may activate bounded platform acceleration through #123.
+只有测量到的参考单元失败才能通过 #123 激活有界平台加速。
 
-Valid activation evidence includes:
+有效激活证据包括：
 
-- capture/readback P95 consumes the latency budget;
-- CPU frame copy materially harms the local HMI;
-- encoder P95 is the dominant blocker on a declared ARM64/desktop cell;
-- power/CPU/GPU budget cannot be met by the portable baseline.
+- 采集/回读 P95 吃掉延迟预算；
+- CPU 帧复制明显伤害本地 HMI；
+- 编码 P95 是声明 ARM64/桌面单元的主要阻塞；
+- 可移植基线无法满足功耗/CPU/GPU 预算。
 
-Optimized backends remain private/replaceable and preserve the same public integration semantics.
+优化后端保持私有/可替换，并保持相同的公共接入语义。
 
-## 18. High-motion/media boundary
+## 18. 高动态/媒体边界
 
-H.264/H.265/AV1 is not an automatic continuation of ordinary RFB optimization.
+H.264/H.265/AV1 不是普通 RFB 优化的自动延续。
 
-If real product evidence requires video-like or full-screen high-motion behavior beyond the qualified RFB profile, admit a separate high-motion/media capability with an end-to-end transport/client story.
+真实产品证据要求超出合格 RFB 配置的视频型或全屏高动态行为时，单独准入一个带端到端传输/客户端方案的高动态/媒体能力。
 
-Hardware encoding by itself is not an end-to-end product.
+硬件编码本身不是端到端产品。
 
-## 19. Regression policy
+## 19. 回归策略
 
-Performance is a long-lived product property, not a one-time milestone.
+性能是长期产品属性，不是一次性里程碑。
 
-Later changes touching capture, Runtime scheduling, Core frame lifecycle, encoding, RFB client state, networking, graphics backends or multi-viewer behavior must be evaluated against the applicable accepted baseline.
+后续改动涉及采集、Runtime 调度、Core 帧生命周期、编码、RFB 客户端状态、网络、图形后端或多 viewer 行为时，必须对照适用的已接受基线评估。
 
-Rules:
+规则：
 
-- compare exact candidate SHA against an accepted exact-SHA baseline;
-- record environment and workload with every number;
-- use P50/P95 and P99 where useful, not averages alone;
-- correctness/boundedness regressions are hard failures;
-- a material performance regression must be classified even when functional tests are green;
-- do not widen thresholds merely to make a regression pass;
-- if a feature intentionally trades performance for user value, record the Product Owner decision and new accepted envelope explicitly.
+- 用精确候选 SHA 对照已接受的精确 SHA 基线；
+- 每个数字都记录环境和负载；
+- 使用 P50/P95，必要时 P99，不只看平均值；
+- 正确性/有界性回归是硬失败；
+- 明显性能回归必须分类，即使功能测试全绿；
+- 不要为了通过而放宽阈值；
+- 功能有意用性能换用户价值时，明确记录 Product Owner 决策和新接受范围。
 
-Initial automated policy:
+初始自动策略：
 
-> A reproducible degradation greater than 10% in a comparable primary metric is investigation-worthy. The hard release boundary remains the published SLO/resource budget for the qualified profile.
+> 可复现的、可比主要指标超过 10% 的退化值得调查。硬发布边界仍是合格配置已发布的 SLO/资源预算。
 
-The 10% number is not a universal release failure threshold; it is an early warning against silent drift.
+10% 不是通用发布失败阈值，而是防止静默漂移的早期警告。
 
-## 20. Machine evidence and GitHub Workflow
+## 20. 机器证据与 GitHub Workflow
 
-GitHub Workflow is the default evidence path when it can reproduce the behavior honestly.
+GitHub Workflow 能如实复现行为时，是默认证据路径。
 
-Suitable hosted evidence includes:
+适合 hosted 证据的内容：
 
-- deterministic/synthetic input-to-visible latency fixtures;
-- encoder benchmarks;
-- damage/incremental correctness;
-- stale-work/coalescing bounds;
-- Continuous/Fence/fallback protocol behavior;
-- slow-viewer and multi-viewer isolation;
-- memory/queue/backlog bounds;
-- controlled network shaping where runner capabilities permit it;
-- Windows/Linux x86 performance regressions.
+- 确定性/合成输入到可见延迟测试；
+- 编码器基准；
+- damage/增量正确性；
+- 陈旧工作/合并边界；
+- Continuous/Fence/fallback 协议行为；
+- 慢 viewer 和多 viewer 隔离；
+- 内存/队列/backlog 边界；
+- runner 能力允许的受控网络整形；
+- Windows/Linux x86 性能回归。
 
-Performance artifacts should be machine-readable and record candidate/environment/workload/strategy/results.
+性能制品应机器可读，并记录候选/环境/负载/策略/结果。
 
-See #374 for the regression-gate implementation programme.
+回归门禁实现计划见 #374。
 
-## 21. Physical/reference evidence
+## 21. 物理/参考证据
 
-Hosted CI must not substitute for physical evidence when hardware/graphics reality is part of the claim.
+硬件/图形现实属于声明的一部分时，hosted CI 不能替代物理证据。
 
-Real-environment validation is required for claims involving:
+以下声明需要真实环境验证：
 
-- RK3588 or another declared ARM64 reference board;
-- real EGLFS/Wayland graphics stacks;
-- GPU/readback/BSP behavior;
-- local physical HMI display/input responsiveness;
-- board-specific CPU/GPU/resource budgets;
-- network/device behavior that cannot be reproduced faithfully in CI.
+- RK3588 或其他声明 ARM64 参考板；
+- 真实 EGLFS/Wayland 图形栈；
+- GPU/回读/BSP 行为；
+- 本地物理 HMI 显示/输入响应；
+- 板级 CPU/GPU/资源预算；
+- CI 无法如实复现的网络/设备行为。
 
-When physical validation is required, the task must state the exact environment, steps and evidence Human/CodeBuddy must return.
+需要物理验证时，任务必须说明精确环境、步骤和 Human/CodeBuddy 需要返回的证据。
 
-## 22. Issue map
+## 22. Issue 映射
 
-Current authority/work split:
+当前权威/工作拆分：
 
-- **#370** — long-lived performance/SLO/regression programme;
-- **#343** — product/competitive baseline consumes the performance contract;
-- **#261** — select practical compression/update profile;
-- **#144** — implement compressed/incremental/damage delivery;
-- **#371** — Continuous Updates, Fence and bounded per-viewer RFB delivery flow;
-- **#372** — demand-driven/input-triggered/adaptive Shared Runtime capture;
-- **#374** — machine-readable performance evidence and regression gates;
-- **#9** — final V1 production performance qualification;
-- **#236/#18/#154** — physical ARM64/EGLFS performance evidence;
-- **#123** — only measured post-baseline platform/vendor acceleration;
-- **#180** — deeper metrics only when a concrete operational/performance diagnosis needs them.
+- **#370**：长期性能/SLO/回归专项；
+- **#343**：产品/竞争基线消费性能契约；
+- **#261**：选择实用压缩/更新配置；
+- **#144**：实现压缩/增量/damage 交付；
+- **#371**：Continuous Updates、Fence 和有界每 viewer RFB 交付流控；
+- **#372**：按需/输入触发/自适应共享 Runtime 采集；
+- **#374**：机器可读性能证据和回归门禁；
+- **#9**：最终 V1 生产性能资格；
+- **#236/#18/#154**：物理 ARM64/EGLFS 性能证据；
+- **#123**：只有测量到的基线后平台/厂商加速；
+- **#180**：只有具体运维/性能诊断需要时才增加更深指标。
 
-## 23. Version placement
+## 23. 版本位置
 
-- **V0.2** remains First User Trial; do not derail its critical path with this full programme.
-- **V0.3 family** implements the mandatory practical performance baseline before RC.
-- **V0.4** is qualification only; it must not discover missing performance architecture.
-- **V1** publishes/fixes qualified support and performance envelopes.
-- **Post-GA** feature work continues to run the regression programme so feature accumulation cannot silently erode accepted performance.
+- **V0.2** 是 First User Trial，不让完整专项偏离其关键路径；
+- **V0.3 家族** 在 RC 前实现强制实用性能基线；
+- **V0.4** 只做资格认证，不能在这里才发现缺失性能架构；
+- **V1** 发布/固定合格支持和性能范围；
+- **GA 后** 功能工作继续运行回归专项，防止功能累积悄悄侵蚀已接受性能。
 
-## 24. Current status table
+## 24. 当前状态
 
-Do not invent measurements. Update this table only with exact accepted evidence.
+不要编造测量。只使用精确接受的证据更新此表。
 
-| Release/candidate | Reference cell/workload | Exact SHA | Result | Evidence / remaining gap |
+| 版本/候选 | 参考单元/负载 | 精确 SHA | 结果 | 证据/剩余缺口 |
 | --- | --- | --- | --- | --- |
-| Current development baseline | Host-side historical capture research | historical spike SHAs | Partial evidence only | Useful for architecture direction; not an end-to-end product SLO claim |
-| V0.3-family practical delivery | W1-W4 / declared desktop + embedded cells | TBD | Pending | #261/#144/#371/#372/#374 |
-| V0.4 RC | complete declared RC matrix | TBD | Pending | qualification only |
-| V1 GA | qualified support matrix | TBD | Pending | #9 + physical/reference evidence |
+| 当前开发基线 | 宿主侧历史采集研究 | 历史 spike SHA | 仅有部分证据 | 用于架构方向；不是端到端产品 SLO 声明 |
+| V0.3 家族实用交付 | W1-W4 / 声明的桌面+嵌入式单元 | TBD | 待完成 | #261/#144/#371/#372/#374 |
+| V0.4 RC | 完整声明的 RC 矩阵 | TBD | 待完成 | 只做资格认证 |
+| V1 GA | 合格支持矩阵 | TBD | 待完成 | #9 + 物理/参考证据 |
 
-## 25. Maintenance rule
+## 25. 维护规则
 
-This document must be updated when an accepted performance strategy, SLO, workload definition, fallback policy or release performance envelope changes.
+已接受的性能策略、SLO、负载定义、回退策略或发布性能范围变化时，必须更新本文。
 
-The performance programme is intentionally long-lived. Completing one optimization does not close the responsibility to prevent later regressions.
+性能专项是长期责任。完成一次优化，不会关闭防止后续回归的责任。

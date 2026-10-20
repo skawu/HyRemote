@@ -48,7 +48,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | --- | --- |
 | [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) | 产品定位、集成方式、能力边界与路线 |
 | [`architecture.md`](architecture.md) ｜ [English](en/architecture.md) | Core、Shared Runtime、四个 integration frontend 的产品架构 |
-| [`performance-optimization.md`](performance-optimization.md) | 长期性能专项：交互时延 SLO、Freshness-first、自适应采集/传输与回归 Gate |
+| [`performance-optimization.md`](performance-optimization.md) ｜ [English](en/performance-optimization.md) | 长期性能专项：交互时延 SLO、Freshness-first、自适应采集/传输与回归 Gate |
 | [`compatibility.md`](compatibility.md) ｜ [English](en/compatibility.md) | 当前平台、Qt、接入方式兼容矩阵 |
 | [`security.md`](security.md) ｜ [English](en/security.md) | 当前安全行为、默认值和不支持的安全能力 |
 | [`security-model.md`](security-model.md) ｜ [English](en/security-model.md) | 信任边界、威胁模型与后续安全要求 |
