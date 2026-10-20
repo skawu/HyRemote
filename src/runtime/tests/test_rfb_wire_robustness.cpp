@@ -14,11 +14,25 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <ctime>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifdef Q_OS_WIN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <psapi.h>
+#  ifdef _MSC_VER
+#    pragma comment(lib, "Psapi.lib")
+#  endif
+#else
+#  include <unistd.h>
+#endif
 
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
@@ -1602,6 +1616,30 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
     transport->stop();
 }
 
+double processCpuMs()
+{
+    return 1000.0 * static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC);
+}
+
+qint64 processWorkingSetKb()
+{
+#ifdef Q_OS_WIN
+    PROCESS_MEMORY_COUNTERS counters{};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
+        return static_cast<qint64>(counters.WorkingSetSize / 1024U);
+#else
+    QFile statm(QStringLiteral("/proc/self/statm"));
+    if (statm.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> fields = statm.readAll().simplified().split(' ');
+        if (fields.size() >= 2) {
+            const long pageSize = sysconf(_SC_PAGESIZE);
+            return static_cast<qint64>(fields.at(1).toLongLong()) * pageSize / 1024;
+        }
+    }
+#endif
+    return 0;
+}
+
 struct ProfileSample
 {
     QString encoding;
@@ -1610,9 +1648,13 @@ struct ProfileSample
     qint64 bytes = 0;
     double p50Ms = 0.0;
     double p95Ms = 0.0;
+    double cpuMs = 0.0;
+    qint64 workingSetKb = 0;
 };
 
 std::vector<ProfileSample> profileSamples;
+constexpr int kProfileWidth = 256;
+constexpr int kProfileHeight = 256;
 
 double profilePercentile(std::vector<double> values, double percentile)
 {
@@ -1630,7 +1672,9 @@ void recordProfileSample(const QString &encoding,
                          const QString &workload,
                          int frames,
                          qint64 bytes,
-                         std::vector<double> latenciesMs)
+                         std::vector<double> latenciesMs,
+                         double cpuMs,
+                         qint64 workingSetKb)
 {
     ProfileSample sample;
     sample.encoding = encoding;
@@ -1639,10 +1683,13 @@ void recordProfileSample(const QString &encoding,
     sample.bytes = bytes;
     sample.p50Ms = profilePercentile(latenciesMs, 0.50);
     sample.p95Ms = profilePercentile(latenciesMs, 0.95);
+    sample.cpuMs = cpuMs;
+    sample.workingSetKb = workingSetKb;
     profileSamples.push_back(sample);
     std::cerr << "PROFILE " << encoding.toStdString() << ' ' << workload.toStdString()
               << " frames=" << frames << " bytes=" << bytes << " p50_ms=" << sample.p50Ms
-              << " p95_ms=" << sample.p95Ms << '\n';
+              << " p95_ms=" << sample.p95Ms << " cpu_ms=" << sample.cpuMs
+              << " working_set_kb=" << sample.workingSetKb << '\n';
 }
 
 void runProfileWorkload(const std::vector<std::int32_t> &encodings,
@@ -1657,6 +1704,7 @@ void runProfileWorkload(const std::vector<std::int32_t> &encodings,
     const quint16 port = freePort();
     if (port == 0)
         return;
+    const double cpuStartMs = processCpuMs();
     Recorder recorder;
     auto transport = startTransport(port, recorder, makeFrame(kWidth, kHeight, 0x203040U));
     if (!transport)
@@ -1730,7 +1778,13 @@ void runProfileWorkload(const std::vector<std::int32_t> &encodings,
         }
     }
 
-    recordProfileSample(encodingLabel, workload, measuredFrames, measuredBytes, latenciesMs);
+    recordProfileSample(encodingLabel,
+                        workload,
+                        measuredFrames,
+                        measuredBytes,
+                        latenciesMs,
+                        processCpuMs() - cpuStartMs,
+                        processWorkingSetKb());
     socket.disconnectFromHost();
     waitForDisconnected(socket);
     transport->stop();
@@ -1756,6 +1810,8 @@ void runDeliveryProfile(const QString &outputPath)
         entry.insert(QStringLiteral("bytes"), static_cast<double>(sample.bytes));
         entry.insert(QStringLiteral("p50_ms"), sample.p50Ms);
         entry.insert(QStringLiteral("p95_ms"), sample.p95Ms);
+        entry.insert(QStringLiteral("cpu_ms"), sample.cpuMs);
+        entry.insert(QStringLiteral("working_set_kb"), static_cast<double>(sample.workingSetKb));
         samples.append(entry);
     }
 
@@ -1763,8 +1819,8 @@ void runDeliveryProfile(const QString &outputPath)
     root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-delivery-profile/1"));
     root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
     root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
-    root.insert(QStringLiteral("width"), 64);
-    root.insert(QStringLiteral("height"), 48);
+    root.insert(QStringLiteral("width"), kProfileWidth);
+    root.insert(QStringLiteral("height"), kProfileHeight);
     root.insert(QStringLiteral("samples"), samples);
 
     QFile file(outputPath);
