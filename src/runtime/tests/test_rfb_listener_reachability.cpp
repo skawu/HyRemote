@@ -132,7 +132,9 @@ bool connectRfb38AndReadBootstrap(QTcpSocket &socket, quint16 port)
     const auto byte = [&](int i) { return static_cast<std::uint32_t>(static_cast<unsigned char>(init[i])); };
     const std::uint32_t nameBytes = (byte(20) << 24U) | (byte(21) << 16U)
                                     | (byte(22) << 8U) | byte(23);
-    if (nameBytes > 128U || readRfbExact(socket, static_cast<qsizetype>(nameBytes)) != "HyRemote")
+    const QByteArray serverName = readRfbExact(socket, static_cast<qsizetype>(nameBytes));
+    if (nameBytes > 128U
+        || (serverName != "HyRemote" && serverName != "HyRemote (view-only)"))
         return false;
 
     // Force a full refresh: a connected client must still obtain the already
