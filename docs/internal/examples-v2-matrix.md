@@ -8,9 +8,9 @@ Status: post-V0.3.0.0 engineering-health plan. Authority: #41 / #240. This docum
 | --- | --- | --- | --- | --- |
 | `learning/01-widgets-cpp` | C++ API / Widgets | yes | canonical first C++ example | keep as `01-cpp-widgets` |
 | `learning/02-quick-cpp` | C++ API / Qt Quick | yes | shows Quick UI does not require the QML API | keep as `02-cpp-quick` |
-| `learning/03-zero-code-generic` | Generic plugin / Widgets + Quick | yes | untouched-app route | promote to `04-generic` |
-| `qml-basic` | QML `import HyRemote` | yes | only runnable QML-API example | promote to `03-qml` |
-| `qpa-proxy-existing-app` | QPA proxy / Widgets | yes | E4 ordinary-Qt fixture | promote to `05-qpa` |
+| `learning/03-zero-code-generic` | Generic plugin / Widgets + Quick | yes | untouched-app route | keep as `03-generic` |
+| `learning/04-qml` | QML `import HyRemote` | yes | declarative QML-API example | promoted (done) |
+| `learning/05-qpa` | QPA proxy / Widgets | yes | E4 ordinary-Qt fixture | promoted (done) |
 | `real-world` | Generic / three frozen upstream apps | studies | third-party verification, never a support claim | keep separate |
 | `remote-support-showcase` | HyRemoteTool client | yes | companion tool, not a learning example | move out of `examples/` later |
 
@@ -43,8 +43,8 @@ examples/
   learning/
     01-cpp-widgets/
     02-cpp-quick/
-    03-qml/
-    04-generic/
+    03-generic/
+    04-qml/
     05-qpa/
   real-world/
   README.md          # one task journey, five runnable route entries
@@ -78,7 +78,7 @@ After v2, `example_product_fit.py` and `qml_product_fit.py` should either become
 ## Sequence
 
 1. **Inventory/sign-off (2 days):** confirm the five-route target and the Tool move; no code moves yet.
-2. **Tree + README (3 days):** move the two existing runnable examples into `learning/`, update CMake/test references in one PR, rewrite the route chooser.
+2. **Tree + README (3 days):** move the two existing runnable examples into `learning/`, update CMake/test references in one PR, rewrite the route chooser. **The QML/QPA promotion and route chooser are done; renaming `03-generic` remains optional.**
 3. **Task docs (3 days):** add the disable/update/rollback walkthrough and point troubleshooting/security tasks at the right guide.
 4. **Test mapping (3 days):** consolidate the example E2E harnesses; remove obsolete per-example UI assertions.
 5. **Validation (2 days):** installed example smoke + one E2E per route on Windows/Linux Qt 6.8.3.

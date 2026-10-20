@@ -57,7 +57,7 @@ endif()
 # this fixture contributes only HyRemote acquisition/deployment and a bounded executable name used
 # by the product-fit harness.
 set(_hyremote_e4_source
-    "${CMAKE_CURRENT_LIST_DIR}/../../examples/qpa-proxy-existing-app/main.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/../../examples/learning/05-qpa/main.cpp")
 if(NOT EXISTS "${_hyremote_e4_source}")
     message(FATAL_ERROR "E4 source is missing: ${_hyremote_e4_source}")
 endif()

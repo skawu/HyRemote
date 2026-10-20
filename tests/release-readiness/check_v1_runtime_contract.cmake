@@ -99,10 +99,10 @@ require_file_token("tests/product-e2e/example_product_fit.py" "\"--policy-transi
 require_file_token("tests/product-e2e/example_product_fit.py" "The first disconnect is the deterministic trigger" "E1/E2 lifecycle-driven policy transition")
 require_file_token("tests/product-e2e/example_product_fit.py" "public stop/configure/start" "E1/E2 same-process acceptance result")
 
-require_file_token("examples/qml-basic/Main.qml" "property bool acceptanceSawViewer" "E3 first-viewer lifecycle observation")
-require_file_token("examples/qml-basic/Main.qml" "function applyAcceptancePolicyTransition()" "E3 public-QML policy transition helper")
-require_file_token("examples/qml-basic/Main.qml" "window.applyAcceptancePolicyTransition()" "E3 disconnect-driven policy transition")
-require_file_token("examples/qml-basic/Main.qml" "policyTransitionTimer.stop()" "E3 watchdog cancellation after lifecycle trigger")
+require_file_token("examples/learning/04-qml/Main.qml" "property bool acceptanceSawViewer" "E3 first-viewer lifecycle observation")
+require_file_token("examples/learning/04-qml/Main.qml" "function applyAcceptancePolicyTransition()" "E3 public-QML policy transition helper")
+require_file_token("examples/learning/04-qml/Main.qml" "window.applyAcceptancePolicyTransition()" "E3 disconnect-driven policy transition")
+require_file_token("examples/learning/04-qml/Main.qml" "policyTransitionTimer.stop()" "E3 watchdog cancellation after lifecycle trigger")
 require_file_token("tests/product-e2e/qml_product_fit.py" "\"--policy-transition-ms\", \"15000\"" "E3 bounded policy-transition watchdog")
 require_file_token("tests/product-e2e/qml_product_fit.py" "The disconnect above is also the deterministic policy-transition trigger" "E3 product-fit binds policy transition to viewer lifecycle")
 

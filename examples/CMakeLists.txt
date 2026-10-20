@@ -1,10 +1,10 @@
 # HyRemote examples.
 #
-# V0.1 canonical adoption paths live under examples/learning: 01 Widgets + C++, 02 Quick + C++, 03 Generic zero-code.
-# They are the paths a new application developer is expected to follow, and they use only the public product surface.
+# Canonical adoption paths live under examples/learning: 01 C++ Widgets, 02 C++ Quick, 03 Generic zero-code,
+# 04 QML API and 05 QPA proxy. They are the paths a new application developer is expected to follow, and they use
+# only the public product surface.
 #
-# The remaining directories are earlier milestone examples and product showcases. They stay built so their evidence
-# keeps working, but they are not the V0.1 teaching authority.
+# The remaining directory is the companion HyRemoteTool, not a tutorial example.
 
 # ---------------------------------------------------------------- V0.1 canonical adoption paths
 
@@ -49,7 +49,7 @@ else()
     message(STATUS "  learning/03-zero-code-generic/quick-app skipped: Quick adapter unavailable")
 endif()
 
-# ---------------------------------------------------------------- earlier milestone examples
+# ---------------------------------------------------------------- companion tool
 
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND TARGET Qt6::Widgets)
     add_subdirectory(remote-support-showcase)
@@ -57,18 +57,18 @@ else()
     message(STATUS "  HyRemoteTool skipped: Widgets adapter/Qt Widgets unavailable")
 endif()
 
+# ---------------------------------------------------------------- promoted learning routes
+
 if(HYREMOTE_BUILD_QML_API AND TARGET hyremote-qml AND TARGET Qt6::Qml AND TARGET Qt6::Quick)
-    add_subdirectory(qml-basic)
+    add_subdirectory(learning/04-qml)
 else()
-    message(STATUS "  qml-basic example skipped: declarative HyRemote module unavailable")
+    message(STATUS "  learning/04-qml skipped: declarative HyRemote module unavailable")
 endif()
 
-# E4 belongs to the Transparent QPA milestone and intentionally carries the exact Qt 6.8.3
-# qualification boundary. Do not let that private-ABI version coupling narrow Embedded C++ or QML
-# example builds when the QPA mode is not selected. The ordinary Qt-only example remains independently
-# buildable from its own directory for source inspection/demo purposes.
+# 05 QPA intentionally carries the exact Qt 6.8.3 qualification boundary. Do not let that
+# private-ABI version coupling narrow Embedded C++ or QML example builds when QPA is not selected.
 if(HYREMOTE_WITH_QPA_PROXY AND TARGET Qt6::Widgets)
-    add_subdirectory(qpa-proxy-existing-app)
+    add_subdirectory(learning/05-qpa)
 else()
-    message(STATUS "  qpa-proxy-existing-app example skipped: Transparent QPA mode unavailable")
+    message(STATUS "  learning/05-qpa skipped: Transparent QPA mode unavailable")
 endif()

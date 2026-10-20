@@ -21,11 +21,11 @@ same remote-access runtime, not different products. Every route follows the same
 
 | Your application | Route | Runnable example |
 | --- | --- | --- |
-| An editable Qt Widgets application | C++ API | [01 - Widgets + C++](learning/01-widgets-cpp) |
-| An editable Qt Quick / QML UI, keeping C++ control | C++ API | [02 - Quick + C++](learning/02-quick-cpp) |
-| You specifically want a declarative HyRemote API | QML API | [QML basic](qml-basic) |
+| An editable Qt Widgets application | Embedded C++ API | [01 - Widgets + C++](learning/01-widgets-cpp) |
+| An editable Qt Quick / QML UI, keeping C++ control | Embedded C++ API | [02 - Quick + C++](learning/02-quick-cpp) |
+| You specifically want a declarative HyRemote API | Declarative QML API | [04 - QML API](learning/04-qml) |
 | An existing application you would rather not modify | Generic Plugin | [03 - Generic zero-code](learning/03-zero-code-generic) |
-| You need platform-entry or exact Qt private-ABI behaviour | QPA Proxy | [QPA existing app](qpa-proxy-existing-app) |
+| You need platform-entry or exact Qt private-ABI behaviour | Transparent QPA | [05 - QPA proxy](learning/05-qpa) |
 
 The five entries above are **runnable peers**. The QPA route requires the exact qualified Qt build; the QML route
 requires the QML frontend to be built and deployed. Neither is a replacement for the C++ route.
@@ -42,6 +42,8 @@ four integration frontends. A Qt Quick application normally takes the **C++ API*
 3. **Pick your route** from the table above and open its `README.md`.
 4. **Then read the task guides:**
    - [Install and find the SDK](../docs/guide/install.md);
+   - [Embedded C++ guide](../docs/getting-started/cpp.md);
+   - [Generic Plugin guide](../docs/getting-started/generic.md);
    - [Integrate your project](../docs/guide/integrate-your-project.md);
    - [Deploy and run](../docs/guide/deployment.md);
    - [Connect a viewer](../docs/guide/viewer-connection.md);
@@ -56,9 +58,9 @@ one type, and the deployment helper is one call.
 | --- | --- | --- |
 | [01 - Widgets + C++](learning/01-widgets-cpp) | C++ API / Widgets | The shortest real C++ path: a `QMainWindow`, `HyRemote::RemoteAccess`, an explicit `start()`, listener `0.0.0.0:5921`, view-only by default, explicit `stop()`. |
 | [02 - Quick + C++](learning/02-quick-cpp) | C++ API / Qt Quick | The same C++ path on a Qt Quick window. It never imports `HyRemote`: **Quick UI does not require the QML frontend.** |
-| [QML basic](qml-basic) | QML API | `import HyRemote` and a declarative `RemoteAccess` object over the same runtime. |
+| [04 - QML API](learning/04-qml) | QML API | `import HyRemote` and a declarative `RemoteAccess` object over the same runtime. |
 | [03 - Generic zero-code](learning/03-zero-code-generic) | Generic plugin | Two ordinary Qt applications - Widgets and Quick - with zero HyRemote headers, API calls or link dependencies; run normally, or add `-plugin hyremote`. |
-| [QPA existing app](qpa-proxy-existing-app) | QPA proxy | An ordinary Qt Widgets application using `-platform hyremote`; exact Qt 6.8.3/private-ABI boundary, no HyRemote application API in its source. |
+| [05 - QPA proxy](learning/05-qpa) | QPA proxy | An ordinary Qt Widgets application using `-platform hyremote`; exact Qt 6.8.3/private-ABI boundary, no HyRemote application API in its source. |
 
 Each example directory has its own `README.md` with build, run and viewer instructions.
 
@@ -71,7 +73,7 @@ telemetry; see [`docs/internal/hyremote-tool-plan.md`](../docs/internal/hyremote
 - **Reference matrix:** Windows x86_64 and Linux x86_64, with **Qt 6.8.3**.
 - These are the V0.3.0.0 reference cells. A different Qt version is not implied to be supported unless it is recorded in
   [`docs/compatibility.md`](../docs/compatibility.md).
-- **Qt 5.15 is not qualified for V0.3.0.0**; it remains a later preflight decision.
+- **Qt 5.15 is not yet qualified** for V0.3.0.0; it remains a later preflight decision.
 
 ## Security boundary
 
