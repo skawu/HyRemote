@@ -43,7 +43,7 @@ The current release focuses on **getting users to a working remote-access path q
 | [`compatibility.md`](compatibility.md) ｜ [中文](../compatibility.md) | Current platform, Qt, and integration compatibility matrix |
 | [`security.md`](security.md) ｜ [中文](../security.md) | Current security behavior, defaults, and unsupported security capabilities |
 | [`security-model.md`](security-model.md) ｜ [中文](../security-model.md) | Trust boundaries, threat model, and later security requirements |
-| [`../known-limitations.md`](../known-limitations.md) | Known product limitations |
+| [`known-limitations.md`](known-limitations.md) ｜ [中文](../known-limitations.md) | Known product limitations |
 | [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
 | [`../v1-api-stability.md`](../v1-api-stability.md) | Public API stability boundary |
 | [`../widgets-capture.md`](../widgets-capture.md) | Widgets capture model |
