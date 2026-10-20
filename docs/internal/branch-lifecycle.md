@@ -14,7 +14,11 @@ The normal steady-state repository keeps only:
 
 During a release or hotfix lifecycle, the corresponding `release/v*`, `backmerge/v*` or `hotfix/*` branch exists only while that workflow is active.
 
-The exact set of short-lived refs is therefore discovered from current open PR facts; this document does not hard-code a historical PR branch as a permanent exception.
+### Protected release history exception
+
+The repository ruleset `protect main and release branches` keeps `main` and the released `release/v0.1.0.0`, `release/v0.2.0.0`, `release/v0.2.0.1` and `release/v0.3.0.0` refs protected from deletion and non-fast-forward updates. These refs are retained as historical release lines for audit and possible maintenance; they are not active feature-development lines.
+
+`branch-hygiene.yml` therefore excludes `release/*` from automatic deletion. New release branches still follow the normal lifecycle above. Do not add new historical `release/*` refs merely to preserve old work; tags, `main` and PR history remain the durable record.
 
 ## Repository setting and scheduled enforcement
 
