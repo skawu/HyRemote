@@ -22,7 +22,7 @@ This area provides product integration, deployment, security, compatibility, and
 
 ## Product overview
 
-Start with [`../product-overview.md`](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
+Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
 
 The current release focuses on **getting users to a working remote-access path quickly**:
 
@@ -37,8 +37,8 @@ The current release focuses on **getting users to a working remote-access path q
 
 | Document | Purpose |
 | --- | --- |
-| [`../product-overview.md`](../product-overview.md) | Product positioning, integration frontends, capability boundaries, roadmap |
-| [`../architecture.md`](../architecture.md) | Core, Shared Runtime, and four integration frontends |
+| [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) | Product positioning, integration frontends, capability boundaries, roadmap |
+| [`architecture.md`](architecture.md) ｜ [中文](../architecture.md) | Core, Shared Runtime, and four integration frontends |
 | [`../compatibility.md`](../compatibility.md) | Current platform, Qt, and integration compatibility matrix |
 | [`security.md`](security.md) | Current security behavior, defaults, and unsupported security capabilities |
 | [`../known-limitations.md`](../known-limitations.md) | Known product limitations |
