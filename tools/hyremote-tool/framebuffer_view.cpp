@@ -43,6 +43,14 @@ void FramebufferView::clearFrame(const QString &placeholder)
     update();
 }
 
+void FramebufferView::setPlaceholder(const QString &placeholder)
+{
+    if (m_frame.isNull()) {
+        m_placeholder = placeholder;
+        update();
+    }
+}
+
 void FramebufferView::setInputEnabled(bool enabled)
 {
     m_inputEnabled = enabled;

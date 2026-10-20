@@ -19,6 +19,8 @@ public:
     void setFrame(const QImage &frame);
     void setCursorImage(const QImage &cursor, const QPoint &hotspot);
     void clearFrame(const QString &placeholder);
+    void setPlaceholder(const QString &placeholder);
+    bool hasFrame() const { return !m_frame.isNull(); }
     void setInputEnabled(bool enabled);
     bool inputEnabled() const { return m_inputEnabled; }
 
