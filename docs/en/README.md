@@ -49,8 +49,8 @@ The current release focuses on **getting users to a working remote-access path q
 | [`../widgets-capture.md`](../widgets-capture.md) | Widgets capture model |
 | [`../quick-capture.md`](../quick-capture.md) | Qt Quick capture model |
 | [`input-model.md`](input-model.md) ｜ [中文](../input-model.md) | Remote-input model |
-| [`../dependency-policy.md`](../dependency-policy.md) | Product dependency policy |
-| [`../release-package-manifest.md`](../release-package-manifest.md) | SDK/runtime payload definition |
+| [`dependency-policy.md`](dependency-policy.md) ｜ [中文](../dependency-policy.md) | Product dependency policy |
+| [`release-package-manifest.md`](release-package-manifest.md) ｜ [中文](../release-package-manifest.md) | SDK/runtime payload definition |
 
 ## How the four frontends relate
 

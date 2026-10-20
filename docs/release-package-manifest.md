@@ -1,113 +1,115 @@
-# HyRemote Package Manifest
+# HyRemote 包清单
 
-This document defines the application-facing SDK and deployment payload model. It describes product artifacts, not repository acceptance procedure.
+> 语言 / Language：**中文** ｜ [English](en/release-package-manifest.md)
 
-HyRemote deliberately keeps the installed product small: **one Shared Runtime**, optional frontend payloads, CMake package metadata, and product documentation/licenses.
+本文定义面向应用的 SDK 和部署 payload 模型，描述产品制品，不描述仓库验收流程。
 
-## Package metadata
+HyRemote 有意保持安装产品精简：**一个共享 Runtime**、可选前端 payload、CMake 包元数据和产品文档/许可证。
 
-An installed HyRemote SDK provides:
+## 包元数据
 
-- `HyRemoteConfig.cmake` and version/package metadata;
-- `HyRemoteTargets.cmake` for exported application targets;
-- `HyRemoteDeploy.cmake` / `hyremote_deploy()`;
-- public headers for exported APIs;
-- the selected frontend payloads;
-- Apache-2.0 `LICENSE`;
-- `NOTICE.md`;
-- applicable product documentation.
+安装后的 HyRemote SDK 提供：
 
-The installed SDK is separate from the user's Qt installation. HyRemote does not require copying files into the Qt SDK tree.
+- `HyRemoteConfig.cmake` 和版本/包元数据；
+- 导出应用目标的 `HyRemoteTargets.cmake`；
+- `HyRemoteDeploy.cmake` / `hyremote_deploy()`；
+- 导出 API 的公共头文件；
+- 选定的前端 payload；
+- Apache-2.0 `LICENSE`；
+- `NOTICE.md`；
+- 适用的产品文档。
 
-## Shared Runtime
+安装 SDK 与用户 Qt 安装分离。HyRemote 不要求把文件复制到 Qt SDK 树。
 
-The normal Runtime artifact is:
+## 共享 Runtime
+
+正常 Runtime 制品：
 
 ```text
 HyRemote::RemoteAccess
 HyRemoteRemoteAccess
 ```
 
-It is the single shared C++ Runtime used by all frontends.
+它是所有前端共用的单一共享 C++ Runtime。
 
-Core is internal composition and is not a second application Runtime or ordinary exported SDK target.
+Core 是内部组合，不是第二个应用 Runtime 或普通导出 SDK 目标。
 
-`BUILD_SHARED_LIBS` does not create separate public HyRemote product personalities.
+`BUILD_SHARED_LIBS` 不会创建独立公共 HyRemote 产品变体。
 
 ## C++ API payload
 
-The installed SDK exports:
+安装 SDK 导出：
 
-- `HyRemote::RemoteAccess`;
-- `HyRemote/RemoteAccess.h` and other explicitly public application types;
-- `HyRemoteRemoteAccess` runtime payload.
+- `HyRemote::RemoteAccess`；
+- `HyRemote/RemoteAccess.h` 和其他明确公共应用类型；
+- `HyRemoteRemoteAccess` runtime payload。
 
-Typical application use:
+典型应用使用：
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
 target_link_libraries(MyApp PRIVATE HyRemote::RemoteAccess)
 ```
 
-Deployment:
+部署：
 
 ```cmake
 hyremote_deploy(TARGET MyApp)
 ```
 
-Applications do not need Core, Session, capture, input, transport, or target-adapter filenames.
+应用不需要 Core、Session、采集、输入、传输或目标适配器文件名。
 
 ## Generic Plugin payload
 
-When Generic Plugin is included, the SDK contains the HyRemote Qt Generic Plugin plus package metadata required by:
+包含 Generic Plugin 时，SDK 含有 HyRemote Qt Generic Plugin 以及以下命令需要的包元数据：
 
 ```cmake
 hyremote_deploy(TARGET ExistingQtApp GENERIC)
 ```
 
-The target application remains Qt-only and does not link a HyRemote application target.
+目标应用保持纯 Qt，不链接 HyRemote 应用目标。
 
-The deployed application keeps its native Qt platform plugin (`qwindows`, `qxcb`, or another qualified native platform) and loads HyRemote through Qt's generic-plugin mechanism.
+部署应用保留原生 Qt 平台插件（`qwindows`、`qxcb` 或其他合格原生平台），通过 Qt 通用插件机制加载 HyRemote。
 
-Generic Plugin is based on public Qt APIs and does not inherit QPA private-ABI compatibility constraints.
+Generic Plugin 基于公共 Qt API，不继承 QPA private-ABI 兼容约束。
 
-## QML payload — peer integration route
+## QML payload：并列接入路线
 
-When QML API is included, the SDK contains the `HyRemote` QML module over the same Shared Runtime.
+包含 QML API 时，SDK 含有同一共享 Runtime 上的 `HyRemote` QML 模块。
 
-Deployment:
+部署：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-The QML backing payload is not a second public C++ Runtime target.
+QML backing payload 不是第二个公共 C++ Runtime 目标。
 
-> The installed QML-only consumer and deployed diagnostic path have L1 regression evidence. Formal V0.3.0.0 release qualification still requires the exact frozen-candidate L2 Windows/Linux four-route gate; peer status is not itself a claim for unqualified Qt/platform combinations.
+> 安装 QML-only consumer 和部署诊断路径已有 L1 回归证据。正式 V0.3.0.0 发布资格仍需要精确 frozen-candidate L2 Windows/Linux 四路线门禁；并列状态本身不构成未认证 Qt/平台组合的声明。
 
-## QPA payload — peer integration route (exact private ABI)
+## QPA payload：并列接入路线（精确 private ABI）
 
-When QPA is included, the SDK contains the `qhyremote` platform plugin and package metadata required by:
+包含 QPA 时，SDK 含有 `qhyremote` 平台插件和以下命令需要的包元数据：
 
 ```cmake
 hyremote_deploy(TARGET ExistingQtApp QPA)
 ```
 
-or, for an application that also uses the HyRemote QML API:
+或者，应用同时使用 HyRemote QML API 时：
 
 ```cmake
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 ```
 
-The application remains Qt-only at link level. The installed SDK does not expose `HyRemote::QpaPlatform` as an application target.
+应用在链接层保持纯 Qt。安装 SDK 不暴露 HyRemote::QpaPlatform 作为应用目标。
 
-QPA uses Qt private ABI and therefore has an exact-version compatibility boundary. The current reference is Qt 6.8.3 on Windows x86_64 and Linux x86_64.
+QPA 使用 Qt private ABI，因此有精确版本兼容边界。当前参考是 Qt 6.8.3，Windows x86_64 和 Linux x86_64。
 
-> QPA installed-consumer/product-fit tests exist on the Qt 6.8.3 Windows/Linux reference cells. An exact frozen-candidate L2 gate remains necessary for V0.3.0.0 acceptance; do not infer compatibility with another Qt patch, QPA delegate or graphics stack.
+> QPA installed-consumer/product-fit 测试存在于 Qt 6.8.3 Windows/Linux 参考单元。V0.3.0.0 验收仍需要精确 frozen-candidate L2 门禁；不要推断其他 Qt 补丁、QPA delegate 或图形栈兼容。
 
-## Deployment forms
+## 部署形式
 
-The product deployment helper supports these application-facing forms:
+产品部署 helper 支持以下应用形式：
 
 ```cmake
 hyremote_deploy(TARGET MyCppApp)
@@ -117,72 +119,72 @@ hyremote_deploy(TARGET ExistingQtApp QPA)
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 ```
 
-Generic and QPA are alternative zero-code platform strategies and are not intended to be enabled together as one product mode.
+Generic 和 QPA 是并列零代码平台策略，不合并为同一产品模式。
 
-The helper owns placement of HyRemote Runtime/frontend payloads and cooperates with Qt deployment support for Qt runtime dependencies.
+Helper 负责 HyRemote Runtime/前端 payload 放置，并与 Qt 部署支持协作处理 Qt runtime 依赖。
 
-## Deployed tree expectations
+## 部署树预期
 
-The exact filenames vary by platform, but the conceptual deployed application tree is:
+精确文件名因平台而异，概念部署树：
 
 ```text
 MyApplication/
-├── bin/ or application executable
+├── bin/ 或应用可执行文件
 ├── HyRemote Shared Runtime
-├── Qt runtime libraries
+├── Qt runtime 库
 ├── plugins/
-│   ├── platforms/       # native Qt platform, and qhyremote when QPA is selected
-│   └── generic/         # HyRemote Generic Plugin when GENERIC is selected
+│   ├── platforms/       # 原生 Qt 平台；选择 QPA 时还有 qhyremote
+│   └── generic/         # 选择 GENERIC 时包含 HyRemote Generic Plugin
 └── qml/
-    └── HyRemote/        # when QML is selected
+    └── HyRemote/        # 选择 QML 时
 ```
 
-A clean deployment must not depend on the original HyRemote source/build tree.
+干净部署不能依赖原 HyRemote 源码/构建树。
 
-Do not use permanent SDK-path workarounds such as:
+不要使用永久 SDK 路径 workaround：
 
-- `QT_PLUGIN_PATH` pointing back to the developer SDK;
-- `QT_QPA_PLATFORM_PLUGIN_PATH` pointing back to a build tree;
-- `LD_LIBRARY_PATH` pointing back to HyRemote build output;
-- manual copying of internal Core/transport/capture files.
+- `QT_PLUGIN_PATH` 指回开发者 SDK；
+- `QT_QPA_PLATFORM_PLUGIN_PATH` 指回构建树；
+- `LD_LIBRARY_PATH` 指回 HyRemote 构建输出；
+- 手工复制内部 Core/transport/capture 文件。
 
-## What is not part of the public SDK
+## 不属于公共 SDK 的内容
 
-Repository implementation/testing material does not become application API merely because it exists in source control.
+仓库实现/测试材料不会因为存在于源码控制中就成为应用 API。
 
-The following are internal or development assets unless a future product explicitly promotes them:
+以下为内部或开发资产，除非未来产品明确提升：
 
-- Core implementation classes;
-- Session/transport/capture/input internals;
-- private Widgets/Quick target adapters;
-- QPA private controller/composition classes;
-- test clients/harnesses;
-- CI/workflow scripts;
-- research/benchmark utilities;
-- hardware-acceleration implementation details.
+- Core 实现类；
+- Session/transport/capture/input 内部；
+- 私有 Widgets/Quick 目标适配器；
+- QPA 私有 controller/composition 类；
+- 测试客户端/harness；
+- CI/workflow 脚本；
+- 研究/基准工具；
+- 硬件加速实现细节。
 
-Their internal shape may evolve without creating additional application integration modes.
+它们的内部形态可以演进，不产生额外应用接入模式。
 
-## Licenses and notices
+## 许可证与通知
 
-HyRemote package artifacts carry the project's Apache-2.0 `LICENSE` and `NOTICE.md`.
+HyRemote 包制品携带项目 Apache-2.0 `LICENSE` 和 `NOTICE.md`。
 
-Qt and other third-party runtime components remain governed by their own licenses. A distributor is responsible for satisfying the obligations of the exact third-party binaries shipped with an application.
+Qt 和其他第三方 runtime 组件仍受其自身许可证约束。分发者负责满足随应用发布的精确第三方二进制义务。
 
-Any newly bundled third-party component must update the package license/notice set deliberately.
+任何新捆绑第三方组件都必须有意识地更新包许可证/通知集。
 
-## Current product package status
+## 当前产品包状态
 
-Current package focus:
+当前包重点：
 
-| Payload | Status |
+| Payload | 状态 |
 | --- | --- |
-| Shared Runtime / C++ API | peer route |
-| Generic Plugin | peer route |
-| QML module | peer route |
-| QPA plugin | peer route (exact Qt/private ABI) |
-| Qt 6.8.3 Windows/Linux package line | Current reference |
-| Qt 5.15 package line | Mandatory V0.3-family pre-GA work under #343; not part of the V0.3.0.0 reference release |
-| ARM64 / Embedded Linux packages | TODO - mandatory pre-GA V0.3-family compatibility baseline under #343; no exact Feature version pre-reserved |
+| 共享 Runtime / C++ API | 并列路线 |
+| Generic Plugin | 并列路线 |
+| QML 模块 | 并列路线 |
+| QPA 插件 | 并列路线（精确 Qt/private ABI） |
+| Qt 6.8.3 Windows/Linux 包线 | 当前参考 |
+| Qt 5.15 包线 | #343 下 V0.3 家族 GA 前强制工作；不属于 V0.3.0.0 参考发布 |
+| ARM64/嵌入式 Linux 包 | TODO，V0.3 家族 GA 前强制兼容基线；不预留精确 Feature 版本 |
 
-The package contract stays centered on one Runtime even as later releases add platform/dependency slicing or hardware acceleration.
+即使后续发布增加平台/依赖切片或硬件加速，包契约仍以一个 Runtime 为中心。

@@ -432,8 +432,8 @@ endforeach()
 file(READ "${HYREMOTE_SOURCE_DIR}/docs/release-package-manifest.md" package_manifest)
 foreach(required_phrase
         "HyRemote::RemoteAccess"
-        "is not a second application Runtime or ordinary exported SDK target"
-        "does not expose `HyRemote::QpaPlatform` as an application target"
+        "不是第二个应用 Runtime 或普通导出 SDK 目标"
+        "不暴露 HyRemote::QpaPlatform 作为应用目标"
         "qhyremote"
         "hyremote_deploy(TARGET MyApp)")
     string(FIND "${package_manifest}" "${required_phrase}" found)
