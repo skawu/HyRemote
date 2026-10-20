@@ -52,6 +52,7 @@ The current release focuses on **getting users to a working remote-access path q
 | [`qml-consumption.md`](qml-consumption.md) ｜ [中文](../qml-consumption.md) | QML API consumption, deployment, and lifecycle |
 | [`dependency-policy.md`](dependency-policy.md) ｜ [中文](../dependency-policy.md) | Product dependency policy |
 | [`release-package-manifest.md`](release-package-manifest.md) ｜ [中文](../release-package-manifest.md) | SDK/runtime payload definition |
+| [`sdk-consumption.md`](sdk-consumption.md) ｜ [中文](../sdk-consumption.md) | SDK acquisition, integration, and deployment contract |
 
 ## How the four frontends relate
 
