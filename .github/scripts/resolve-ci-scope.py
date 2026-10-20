@@ -220,6 +220,18 @@ def is_built_example_path(path: str) -> bool:
     return name in EXAMPLE_BUILD_NAMES or name.endswith(EXAMPLE_BUILD_SUFFIXES)
 
 
+def is_test_only(changed: list[str]) -> bool:
+    """True when a ready PR touches only the repository test tree.
+
+    Test-only changes cannot alter the shipped product, so they do not need the
+    full Windows+Linux product matrix. The Windows product lane still builds and
+    runs the complete test set; the release/full gate always keeps both
+    platforms. A CMake or workflow change is not test-only because it can change
+    how the product is built.
+    """
+    return bool(changed) and all(path.startswith("tests/") for path in changed)
+
+
 def lane_for(event: str, draft: bool) -> str:
     if event == "workflow_dispatch":
         return "FULL_GATE"
@@ -261,6 +273,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     lane = lane_for(event, draft)
     full_gate = lane == "FULL_GATE"
     product_lane = lane in ("PR_FAST", "FULL_GATE")
+    test_only = product_lane and not full_gate and is_test_only(changed)
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
@@ -363,6 +376,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     return {
         "lane": lane,
         "decision": decision_for(lane),
+        "test_only": "true" if test_only else "false",
         "product": "true" if product else "false",
         "integrations": integrations if product else "",
         "qpa": "true" if ("qpa" in selected and product) else "false",
@@ -635,6 +649,23 @@ def self_test() -> int:
                   f"{resolved['test_exclude']!r}")
             failures += 1
 
+    # Test-only ready PRs keep the Windows product lane but skip the duplicate
+    # Linux matrix; product, docs, draft and full-gate changes are not test-only.
+    for description, event, changed, draft, expected in (
+            ("test-only ready PR", "pull_request", ["tests/TEST_CATALOG.md"], False, True),
+            ("test code ready PR", "pull_request",
+             ["tests/release-readiness/check_release_metadata.cmake"], False, True),
+            ("test plus product change", "pull_request",
+             ["tests/TEST_CATALOG.md", "src/core/session/session.cpp"], False, False),
+            ("docs change", "pull_request", ["docs/proposals/notes.md"], False, False),
+            ("test-only draft", "pull_request", ["tests/TEST_CATALOG.md"], True, False),
+            ("full gate", "workflow_dispatch", [], False, False)):
+        resolved = resolve(event, changed, draft)
+        actual = resolved["test_only"] == "true"
+        if actual != expected:
+            print(f"CASE FAILED: {description}: test_only={resolved['test_only']!r}")
+            failures += 1
+
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
     # start waiting on a lane whose purpose is not defined.
     expected_decisions = {
@@ -650,12 +681,12 @@ def self_test() -> int:
     if failures:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
-    print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, examples documentation "
-          "selects no capability, release authority is governance, empty exclusions stay empty, no exclusion can "
-          "match every test, fast lane preserved, readiness runs where it is consumed, the candidate-only product "
-          "fit runs where it is required rather than by default, security-on evidence is selected only by the "
-          "VNC-auth/private-security surfaces and never silently by the full gate, and the decision map is "
-          "OBSERVE/MERGE/CANDIDATE with PR_FAST always a merge decision)")
+    print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, test-only ready PRs keep "
+          "one product platform, examples documentation selects no capability, release authority is governance, "
+          "empty exclusions stay empty, no exclusion can match every test, fast lane preserved, readiness runs "
+          "where it is consumed, the candidate-only product fit runs where it is required rather than by default, "
+          "security-on evidence is selected only by the VNC-auth/private-security surfaces and never silently by "
+          "the full gate, and the decision map is OBSERVE/MERGE/CANDIDATE with PR_FAST always a merge decision)")
     return 0
 
 

@@ -161,8 +161,11 @@ jobs:
     # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
     # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
     # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
+    # A test-only ready PR keeps the Windows product lane (full build + test set) and skips the duplicate Linux
+    # matrix: the product is unchanged, while the full gate and every product change still run both platforms.
     if: >-
       needs.classify.outputs.product == 'true' &&
+      (needs.classify.outputs.test_only != 'true' || matrix.os == 'windows-2022') &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
