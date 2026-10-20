@@ -42,11 +42,11 @@ set(required_files
     "examples/learning/03-zero-code-generic/README.md"
     "examples/learning/03-zero-code-generic/widgets-app/CMakeLists.txt"
     "examples/learning/03-zero-code-generic/quick-app/CMakeLists.txt"
-    "examples/qml-basic/CMakeLists.txt"
-    "examples/qml-basic/README.md"
-    "examples/qpa-proxy-existing-app/CMakeLists.txt"
-    "examples/qpa-proxy-existing-app/main.cpp"
-    "examples/qpa-proxy-existing-app/README.md"
+    "examples/learning/04-qml/CMakeLists.txt"
+    "examples/learning/04-qml/README.md"
+    "examples/learning/05-qpa/CMakeLists.txt"
+    "examples/learning/05-qpa/main.cpp"
+    "examples/learning/05-qpa/README.md"
     "examples/remote-support-showcase/CMakeLists.txt"
     "examples/remote-support-showcase/README.md"
     "tests/consumer-installed-sdk/CMakeLists.txt"
@@ -553,8 +553,8 @@ foreach(required_example
         "add_subdirectory(learning/02-quick-cpp)"
         "add_subdirectory(learning/03-zero-code-generic/widgets-app)"
         "add_subdirectory(learning/03-zero-code-generic/quick-app)"
-        "add_subdirectory(qml-basic)"
-        "add_subdirectory(qpa-proxy-existing-app)"
+        "add_subdirectory(learning/04-qml)"
+        "add_subdirectory(learning/05-qpa)"
         "add_subdirectory(remote-support-showcase)")
     string(FIND "${examples_cmake}" "${required_example}" found)
     if(found EQUAL -1)
@@ -563,7 +563,7 @@ foreach(required_example
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/examples/qpa-proxy-existing-app/CMakeLists.txt" e4_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/learning/05-qpa/CMakeLists.txt" e4_cmake)
 foreach(required_token
         "target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)"
         "HYREMOTE_EXAMPLE_DEPLOY_QPA"
@@ -587,7 +587,7 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" clean_qpa_cmake)
 foreach(required_token
-        "examples/qpa-proxy-existing-app/main.cpp"
+        "examples/learning/05-qpa/main.cpp"
         "target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)"
         "hyremote_deploy(TARGET hyremote-installed-qpa-consumer QPA)")
     string(FIND "${clean_qpa_cmake}" "${required_token}" found)

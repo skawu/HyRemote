@@ -2,8 +2,8 @@ set(CMAKE_AUTOMOC ON)
 
 qt_add_executable(hyremote-qml-basic
     main.cpp
-    ../hyremote_branding.cpp
-    ../../logo/hyremote-branding.qrc
+    ../../hyremote_branding.cpp
+    ../../../logo/hyremote-branding.qrc
 )
 
 # The module this application loads is its own, and it loads it by name: main.cpp calls

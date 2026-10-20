@@ -33,7 +33,7 @@ if(TARGET Qt6::Widgets)
     # with Qt Widgets only; do not add HyRemote targets here. The platform plugin remains a launch /
     # deployment concern rather than an application-source dependency.
     add_executable(hyremote-qpa-existing-app-build-check
-        ${_hyremote_root_dir}/examples/qpa-proxy-existing-app/main.cpp
+        ${_hyremote_root_dir}/examples/learning/05-qpa/main.cpp
     )
     target_compile_features(hyremote-qpa-existing-app-build-check PRIVATE cxx_std_17)
     target_link_libraries(hyremote-qpa-existing-app-build-check PRIVATE Qt6::Widgets)

@@ -50,7 +50,7 @@ The SDK keeps its qualified proxy module under its own prefix. Normal applicatio
 The default example configuration requires only Qt:
 
 ```sh
-cmake -S examples/qpa-proxy-existing-app -B build-qpa-example \
+cmake -S examples/learning/05-qpa -B build-qpa-example \
   -DCMAKE_PREFIX_PATH=<Qt-6.8.3-prefix>
 cmake --build build-qpa-example --config Release
 ```
@@ -78,7 +78,7 @@ Verify local display, mouse, keyboard, text input, menus and the diagnostics win
 Configure the same source with the installed HyRemote prefix and the explicit packaging option:
 
 ```sh
-cmake -S examples/qpa-proxy-existing-app -B build-qpa-deployed \
+cmake -S examples/learning/05-qpa -B build-qpa-deployed \
   -DCMAKE_PREFIX_PATH="<Qt-6.8.3-prefix>;<hyremote-prefix>" \
   -DCMAKE_INSTALL_PREFIX=<application-prefix> \
   -DHYREMOTE_EXAMPLE_DEPLOY_QPA=ON

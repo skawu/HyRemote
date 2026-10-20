@@ -317,6 +317,12 @@ foreach(required_token
 endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/CMakeLists.txt" qpa_cmake)
+# The rejection cases moved into the table-driven negative runner; the parent
+# CMake and that runner are both QPA-owned, so the contract searches the
+# combined rejection wiring while the output-directory facts stay in CMake.
+file(READ "${HYREMOTE_SOURCE_DIR}/src/integrations/qpa/tests/run_deploy_helper_negative.cmake"
+     qpa_deploy_negative)
+set(qpa_rejection_text "${qpa_cmake}\n${qpa_deploy_negative}")
 foreach(required_token
         [=[LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
         [=[RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins/platforms"]=]
@@ -333,7 +339,7 @@ foreach(required_token
         [=[EXPECT_FAILURE_FRAGMENT=requires_the_current_HyRemote_source_build]=]
         [=[EXPECT_FAILURE_FRAGMENT=requires_exact_Qt_6.8.3]=]
         [=[EXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA]=])
-    string(FIND "${qpa_cmake}" "${required_token}" found)
+    string(FIND "${qpa_rejection_text}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR "deploy-helper-contract: deterministic deploy test lost canonical semantic rejection wiring: ${required_token}")
     endif()
@@ -344,7 +350,7 @@ foreach(forbidden_legacy_token
         [=[TEST_MISSING_QML_MODULE_DIR]=]
         [=[TEST_QT_MISMATCH]=]
         [=[TEST_MISSING_PACKAGE]=])
-    string(FIND "${qpa_cmake}" "${forbidden_legacy_token}" found)
+    string(FIND "${qpa_rejection_text}" "${forbidden_legacy_token}" found)
     if(NOT found EQUAL -1)
         message(FATAL_ERROR "deploy-helper-contract: legacy negative-fixture wiring returned: ${forbidden_legacy_token}")
     endif()
@@ -355,19 +361,8 @@ if(NOT leaked_host_output EQUAL -1)
 endif()
 
 foreach(required_test
-        "hyremote-qpa-deploy-helper-ordinary"
-        "hyremote-qpa-deploy-helper-qml-only"
-        "hyremote-qpa-deploy-helper-qml-composed"
-        "hyremote-qpa-deploy-helper-installed-payload"
-        "hyremote-qpa-deploy-helper-installed-payload-qml-only"
-        "hyremote-qpa-deploy-helper-installed-payload-qml"
-        "hyremote-qpa-deploy-helper-reject-missing-qml"
-        "hyremote-qpa-deploy-helper-reject-stale-qml-metadata"
-        "hyremote-qpa-deploy-helper-reject-missing-qml-root"
-        "hyremote-qpa-deploy-helper-reject-missing-qml-module-dir"
-        "hyremote-qpa-deploy-helper-reject-stale-qpa-metadata"
-        "hyremote-qpa-deploy-helper-reject-missing-package"
-        "hyremote-qpa-deploy-helper-reject-qt-mismatch"
+        "hyremote-qpa-deploy-helper-positive"
+        "hyremote-qpa-deploy-helper-negative"
         "hyremote-qpa-source-payload-relocation")
     string(FIND "${qpa_cmake}" "${required_test}" found)
     if(found EQUAL -1)
