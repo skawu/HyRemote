@@ -17,6 +17,7 @@ public:
     explicit FramebufferView(QWidget *parent = nullptr);
 
     void setFrame(const QImage &frame);
+    void setCursorImage(const QImage &cursor, const QPoint &hotspot);
     void clearFrame(const QString &placeholder);
     void setInputEnabled(bool enabled);
     bool inputEnabled() const { return m_inputEnabled; }

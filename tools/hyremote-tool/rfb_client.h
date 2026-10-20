@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QImage>
 #include <QObject>
+#include <QPoint>
 #include <QSize>
 #include <QTcpSocket>
 #include <QTimer>
@@ -48,6 +49,7 @@ public:
 signals:
     void stateChanged(RfbClient::State state);
     void frameUpdated(const QImage &frame);
+    void cursorUpdated(const QImage &cursor, const QPoint &hotspot);
     void statsUpdated(const RfbClient::Stats &stats);
     void errorOccurred(const QString &message);
 

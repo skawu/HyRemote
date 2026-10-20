@@ -130,6 +130,9 @@ public:
             m_resolution->setText(QStringLiteral("%1 × %2").arg(frame.width()).arg(frame.height()));
             std::cout << "TOOL_CLIENT_FRAME " << frame.width() << 'x' << frame.height() << std::endl;
         });
+        connect(m_client, &RfbClient::cursorUpdated, this, [this](const QImage &cursor, const QPoint &hotspot) {
+            m_view->setCursorImage(cursor, hotspot);
+        });
         connect(m_client, &RfbClient::statsUpdated, this, [this](const RfbClient::Stats &stats) {
             m_fps->setText(QStringLiteral("FPS %1").arg(stats.fps, 0, 'f', 1));
             m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(stats.mbitPerSecond, 0, 'f', 2));

@@ -1,9 +1,11 @@
 #include "framebuffer_view.h"
 
 #include <QColor>
+#include <QCursor>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPixmap>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -22,6 +24,15 @@ void FramebufferView::setFrame(const QImage &frame)
 {
     m_frame = frame;
     update();
+}
+
+void FramebufferView::setCursorImage(const QImage &cursor, const QPoint &hotspot)
+{
+    if (cursor.isNull()) {
+        unsetCursor();
+        return;
+    }
+    setCursor(QCursor(QPixmap::fromImage(cursor), hotspot.x(), hotspot.y()));
 }
 
 void FramebufferView::clearFrame(const QString &placeholder)
