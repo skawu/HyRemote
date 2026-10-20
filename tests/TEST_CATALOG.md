@@ -96,15 +96,10 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
-| `hyremote-qpa-proxy-smoke` | Platform-plugin load/delegate path. |
-| `hyremote-qpa-native-semantics` | Exact-private-ABI native delegate semantics. |
-| `hyremote-qpa-remote-config-test` | QPA launch/config vocabulary. |
-| `hyremote-qpa-auto-remoteaccess-smoke` | QPA starts the same Shared Runtime. |
-| `hyremote-qpa-remote-failure-native-survival-smoke` | Remote failure preserves the native/local application. |
-| `hyremote-qpa-multi-surface-connection-smoke` | Multiple QWidget surfaces share the intended remote session/composite semantics. |
-| `hyremote-qpa-widget-popup-connection-smoke` | Popup/transient surface behavior with bounded event-driven synchronization; TG-019 closed. |
-| `hyremote-qpa-widget-opengl-capture-smoke` | Conditional QOpenGLWidget classification/capture. |
-| `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. |
+| `hyremote-qpa-runtime-basic` | Grouped QPA runtime cases: platform-plugin load/delegate, exact-private-ABI native semantics, launch/config vocabulary, and conditional QOpenGLWidget capture. Each case is named in the PASS/FAIL output. |
+| `hyremote-qpa-runtime-surfaces` | Grouped QWidget surface cases: multi-surface and popup/transient behavior (TG-019). |
+| `hyremote-qpa-runtime-recovery` | Grouped recovery cases: QPA auto-remoteaccess and remote-failure native survival. |
+| `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. Kept as its own CTest because its 500 ms startup contract is sensitive to being run inside a group. |
 
 ## T3 — repository/product contracts
 
