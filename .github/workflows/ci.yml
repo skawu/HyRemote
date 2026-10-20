@@ -48,6 +48,8 @@ jobs:
       lane: ${{ steps.scope.outputs.lane }}
       decision: ${{ steps.scope.outputs.decision }}
       purpose: ${{ steps.admission.outputs.purpose }}
+      test_only: ${{ steps.scope.outputs.test_only }}
+      product_matrix: ${{ steps.scope.outputs.product_matrix }}
       product: ${{ steps.scope.outputs.product }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
@@ -161,6 +163,8 @@ jobs:
     # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
     # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
     # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
+    # A test-only ready PR keeps the Windows product lane (full build + test set) and skips the duplicate Linux
+    # matrix: the product is unchanged, while the full gate and every product change still run both platforms.
     if: >-
       needs.classify.outputs.product == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
@@ -169,17 +173,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Linux x86_64 / Qt 6.8.3
-            os: ubuntu-24.04
-            aqt_host: linux
-            aqt_arch: linux_gcc_64
-            qt_dir: gcc_64
-          - name: Windows x86_64 / Qt 6.8.3
-            os: windows-2022
-            aqt_host: windows
-            aqt_arch: win64_msvc2022_64
-            qt_dir: msvc2022_64
+        include: ${{ fromJSON(needs.classify.outputs.product_matrix) }}
 
     steps:
       - uses: actions/checkout@v4
