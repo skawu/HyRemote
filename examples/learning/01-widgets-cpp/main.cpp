@@ -18,8 +18,10 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QTimer>
+#include <QVBoxLayout>
 
 #include <iostream>
 
@@ -68,16 +70,24 @@ int main(int argc, char **argv)
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("HyRemote Learning 01 - Widgets + C++"));
-    window.resize(420, 180);
+    window.resize(480, 240);
 
-    auto *status = new QLabel(&window);
+    auto *central = new QWidget(&window);
+    auto *layout = new QVBoxLayout(central);
+    auto *status = new QLabel(central);
     status->setWordWrap(true);
     status->setText(QStringLiteral("remote control: %1\nlistener: 0.0.0.0:%2\nconnect a VNC viewer to this host's "
                                    "LAN IPv4 address on port %2")
                         .arg(remoteInput ? QStringLiteral("enabled explicitly") : QStringLiteral("view-only (default)"))
                         .arg(port));
-    window.setCentralWidget(status);
+    auto *editor = new QLineEdit(central);
+    editor->setPlaceholderText(QStringLiteral("Type here to test remote keyboard input"));
+    editor->setCursor(Qt::IBeamCursor);
+    layout->addWidget(status);
+    layout->addWidget(editor);
+    window.setCentralWidget(central);
     window.show();
+    editor->setFocus();
 
     HyRemote::RemoteAccess remote(&window);
     remote.setPort(static_cast<quint16>(port));

@@ -1,12 +1,16 @@
 #include "access_instance.hpp"
 
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
+#include <QApplication>
 #include <QBitmap>
 #include <QColor>
 #include <QCursor>
 #include <QGuiApplication>
 #include <QImage>
+#include <QPainter>
+#include <QPen>
 #include <QPixmap>
+#include <QPolygon>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QThread>
@@ -32,6 +36,142 @@
 
 namespace HyRemote::Runtime {
 namespace {
+
+QPoint cursorShapeHotspot(Qt::CursorShape shape)
+{
+    switch (shape) {
+    case Qt::IBeamCursor:
+    case Qt::CrossCursor:
+    case Qt::SizeVerCursor:
+    case Qt::SizeHorCursor:
+    case Qt::SizeBDiagCursor:
+    case Qt::SizeFDiagCursor:
+    case Qt::SizeAllCursor:
+    case Qt::ForbiddenCursor:
+    case Qt::WaitCursor:
+    case Qt::BusyCursor:
+        return QPoint(8, 8);
+    case Qt::PointingHandCursor:
+    case Qt::OpenHandCursor:
+    case Qt::ClosedHandCursor:
+        return QPoint(7, 1);
+    case Qt::UpArrowCursor:
+        return QPoint(8, 1);
+    default:
+        return QPoint(0, 0);
+    }
+}
+
+QImage cursorShapeImage(Qt::CursorShape shape)
+{
+    QImage image(16, 16, QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
+    const auto line = [&painter](int x1, int y1, int x2, int y2) {
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawLine(x1, y1, x2, y2);
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawLine(x1, y1, x2, y2);
+    };
+    const auto polygon = [&painter](const QPolygon &points) {
+        painter.setPen(QPen(Qt::black, 1));
+        painter.setBrush(Qt::white);
+        painter.drawPolygon(points);
+    };
+
+    switch (shape) {
+    case Qt::IBeamCursor:
+        line(8, 2, 8, 13);
+        line(5, 3, 11, 3);
+        line(5, 12, 11, 12);
+        break;
+    case Qt::CrossCursor:
+        line(8, 2, 8, 13);
+        line(2, 8, 13, 8);
+        break;
+    case Qt::SizeHorCursor:
+        line(2, 8, 13, 8);
+        line(2, 8, 5, 5);
+        line(2, 8, 5, 11);
+        line(13, 8, 10, 5);
+        line(13, 8, 10, 11);
+        break;
+    case Qt::SizeVerCursor:
+        line(8, 2, 8, 13);
+        line(8, 2, 5, 5);
+        line(8, 2, 11, 5);
+        line(8, 13, 5, 10);
+        line(8, 13, 11, 10);
+        break;
+    case Qt::SizeFDiagCursor:
+        line(3, 12, 12, 3);
+        line(3, 12, 3, 8);
+        line(3, 12, 7, 12);
+        line(12, 3, 8, 3);
+        line(12, 3, 12, 7);
+        break;
+    case Qt::SizeBDiagCursor:
+        line(3, 3, 12, 12);
+        line(3, 3, 7, 3);
+        line(3, 3, 3, 7);
+        line(12, 12, 8, 12);
+        line(12, 12, 12, 8);
+        break;
+    case Qt::SizeAllCursor:
+        line(8, 2, 8, 13);
+        line(2, 8, 13, 8);
+        line(8, 2, 5, 5);
+        line(8, 2, 11, 5);
+        line(8, 13, 5, 10);
+        line(8, 13, 11, 10);
+        line(2, 8, 5, 5);
+        line(2, 8, 5, 11);
+        line(13, 8, 10, 5);
+        line(13, 8, 10, 11);
+        break;
+    case Qt::PointingHandCursor:
+        polygon(QPolygon{{7, 1}, {9, 1}, {9, 7}, {12, 7}, {12, 14}, {4, 14}, {4, 7}, {6, 7}});
+        break;
+    case Qt::OpenHandCursor:
+        polygon(QPolygon{{4, 7}, {5, 2}, {6, 1}, {7, 2}, {7, 6}, {8, 1}, {9, 1},
+                         {9, 6}, {10, 2}, {11, 3}, {11, 7}, {12, 9}, {12, 14}, {4, 14}});
+        break;
+    case Qt::ClosedHandCursor:
+        polygon(QPolygon{{5, 5}, {12, 5}, {13, 8}, {13, 13}, {4, 13}, {4, 8}});
+        break;
+    case Qt::ForbiddenCursor:
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawEllipse(QRect(2, 2, 12, 12));
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawEllipse(QRect(2, 2, 12, 12));
+        line(4, 12, 12, 4);
+        break;
+    case Qt::WaitCursor:
+    case Qt::BusyCursor:
+        polygon(QPolygon{{4, 2}, {12, 2}, {9, 8}, {12, 14}, {4, 14}, {7, 8}});
+        break;
+    case Qt::UpArrowCursor:
+        polygon(QPolygon{{8, 1}, {3, 7}, {6, 7}, {6, 14}, {10, 14}, {10, 7}, {13, 7}});
+        break;
+    case Qt::WhatsThisCursor:
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawArc(QRect(5, 2, 7, 7), 20 * 16, 250 * 16);
+        painter.drawLine(9, 8, 9, 11);
+        painter.drawPoint(9, 14);
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawArc(QRect(5, 2, 7, 7), 20 * 16, 250 * 16);
+        painter.drawLine(9, 8, 9, 11);
+        painter.drawPoint(9, 14);
+        break;
+    case Qt::BlankCursor:
+        break;
+    default:
+        return {};
+    }
+    return image;
+}
 
 AccessState mapState(hyremote::SessionState state)
 {
@@ -1114,10 +1254,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 
         const auto readSnapshot = [object]() -> detail::RfbCursorSnapshot {
             QCursor cursor(Qt::ArrowCursor);
-            if (const QCursor *overrideCursor = QGuiApplication::overrideCursor())
+            if (const QCursor *overrideCursor = QGuiApplication::overrideCursor()) {
                 cursor = *overrideCursor;
-            else if (auto *widget = qobject_cast<QWidget *>(object))
-                cursor = widget->cursor();
+            } else if (auto *widget = qobject_cast<QWidget *>(object)) {
+                if (auto *underPointer = QApplication::widgetAt(QCursor::pos()))
+                    cursor = underPointer->cursor();
+                else
+                    cursor = widget->cursor();
+            }
             else if (auto *window = qobject_cast<QQuickWindow *>(object))
                 cursor = window->cursor();
             else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window())
@@ -1140,17 +1284,22 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                     }
                 }
             }
+
+            const bool usedShapeGlyph = image.isNull();
+            if (usedShapeGlyph)
+                image = cursorShapeImage(cursor.shape());
             if (image.isNull() || image.width() <= 0 || image.height() <= 0
                 || image.width() > 256 || image.height() > 256) {
                 return {};
             }
 
             const QImage rgba = image.convertToFormat(QImage::Format_RGBA8888);
+            const QPoint hotspot = usedShapeGlyph ? cursorShapeHotspot(cursor.shape()) : cursor.hotSpot();
             detail::RfbCursorSnapshot snapshot;
             snapshot.width = rgba.width();
             snapshot.height = rgba.height();
-            snapshot.hotspotX = std::clamp(cursor.hotSpot().x(), 0, rgba.width() - 1);
-            snapshot.hotspotY = std::clamp(cursor.hotSpot().y(), 0, rgba.height() - 1);
+            snapshot.hotspotX = std::clamp(hotspot.x(), 0, rgba.width() - 1);
+            snapshot.hotspotY = std::clamp(hotspot.y(), 0, rgba.height() - 1);
             snapshot.rgba8888 = QByteArray(reinterpret_cast<const char *>(rgba.constBits()),
                                            rgba.sizeInBytes());
             return snapshot;
