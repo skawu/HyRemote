@@ -1,78 +1,80 @@
-# Remote input architecture
+# 远程输入架构
 
-Status: **accepted direction for #400 input refactor**.
+> 语言 / Language：**中文** ｜ [English](../en/internal/remote-input-architecture.md)
 
-This note supersedes the input-ingress choice made by #401. The product constraints from #401 remain: HyRemote is application-scoped, low-intrusion, cross-platform Qt remote access; C++, QML, Generic and QPA are peer integration frontends. What changes is only the layer where pointer input enters Qt.
+状态：**#400 输入重构的已接受方向**。
 
-## Decision
+本文取代 #401 选择的输入入口层。#401 的产品约束不变：HyRemote 是应用作用域、低侵入、跨平台 Qt 远程访问框架；C++、QML、Generic、QPA 是并列接入前端。改变的只是指针输入进入 Qt 的层。
+
+## 决策
 
 ```text
-Viewer / protocol
-    -> transport-neutral raw InputEvent
-    -> Runtime admission / lifecycle / isolation
+Viewer / 协议
+    -> 传输无关的原始 InputEvent
+    -> Runtime 准入 / 生命周期 / 隔离
     -> Qt window-system ingress
-    -> Qt input processing
+    -> Qt 输入处理
     -> QWidgetWindow / QQuickWindow
     -> Widgets / Qt Quick
 ```
 
-Pointer input enters Qt through `QWindowSystemInterface`. HyRemote does not synthesize application-level `QMouseEvent`/`QWheelEvent` semantics for controls.
+指针输入通过 `QWindowSystemInterface` 进入 Qt。HyRemote 不为控件自行合成应用级 `QMouseEvent`/`QWheelEvent` 语义。
 
-The Qt private dependency is intentionally isolated to `src/runtime/src/detail/qt_window_system_input.*`. Frontends and target adapters do not include QPA/private headers.
+Qt private 依赖有意隔离在 `src/runtime/src/detail/qt_window_system_input.*`。前端和 target 适配器不包含 QPA/private 头文件。
 
-## HyRemote owns
+## HyRemote 负责
 
-- protocol -> transport-neutral raw input facts;
-- source framebuffer coordinates and mapping into the selected remote surface;
-- bounded input admission and explicit backpressure;
-- protected release admission and disconnect/shutdown balancing;
-- multi-viewer contribution/arbitration in the transport/runtime layer;
-- target/session/application isolation;
-- the thin Qt-version-specific window-system ingress shim;
-- surface discovery/selection as a separate Runtime concern.
+- 协议到传输无关原始输入事实的转换；
+- 源 framebuffer 坐标及其到所选远程 surface 的映射；
+- 有界输入准入和显式背压；
+- 受保护的释放准入，以及断开/停止时的平衡；
+- 传输/runtime 层的多 viewer 贡献与仲裁；
+- target/session/应用隔离；
+- 很薄的 Qt 版本相关 window-system ingress shim；
+- 作为独立 Runtime 事项的 surface 发现/选择。
 
-## Qt owns
+## Qt 负责
 
-After a raw pointer fact crosses the window-system boundary, Qt owns:
+原始指针事实跨过 window-system 边界后，Qt 负责：
 
-- child/item hit testing;
-- mouse grab and release routing;
-- single/double-click classification;
-- movement/distance click policy;
-- wheel propagation/routing;
-- enter/leave/hover;
-- context-menu synthesis and platform trigger convention;
-- Widgets and Qt Quick pointer delivery semantics;
-- control-specific behaviour.
+- 子控件/item 命中测试；
+- 鼠标 grab 和 release 路由；
+- 单击/双击分类；
+- 移动距离与点击策略；
+- 滚轮传播/路由；
+- enter/leave/hover；
+- 上下文菜单合成和平台触发约定；
+- Widgets 与 Qt Quick 指针交付语义；
+- 控件特有行为。
 
-HyRemote must not add control-specific compatibility rules for `QPushButton`, `QComboBox`, `QListView`, `QMenu`, `MouseArea`, `PointerHandler`, or similar controls.
+HyRemote 不得为 `QPushButton`、`QComboBox`、`QListView`、`QMenu`、`MouseArea`、`PointerHandler` 等控件增加兼容规则。
 
-## Pointer queue rule
+## 指针队列规则
 
-Pointer history is semantic input to Qt. Runtime therefore must not coalesce or evict accepted pointer moves and later reconstruct their meaning with a HyRemote state machine.
+指针历史是 Qt 的语义输入。Runtime 不得合并或丢弃已接受的 pointer move，再用 HyRemote 状态机重建其含义。
 
-The normal lane stays bounded. When full, admission fails explicitly and applies backpressure. Protected releases keep their reserved lane so accepted held state can always be balanced.
+普通通道保持有界。队列满时显式拒绝准入并施加背压。受保护释放保留专用通道，使已接受的按住状态总能被平衡。
 
-## Timestamp rule
+## 时间戳规则
 
-Runtime records a monotonic timestamp when the raw remote fact is accepted, before GUI-thread queue delay, and passes it to `QWindowSystemInterface`. The timestamp is a transport/runtime fact, not a HyRemote click-classification input. Remote input deliberately uses one consistent monotonic domain; it is not coupled to an uninstalled Qt private global timer.
+Runtime 在接受原始远程事实时记录单调时间戳，早于 GUI 线程排队延迟，并传给 `QWindowSystemInterface`。该时间戳是传输/runtime 事实，不是 HyRemote 点击分类输入。远程输入有意使用一致的单调时间域，不依赖未安装的 Qt private global timer。
 
-## Deliberate non-goals of this change
+## 本次改动的非目标
 
-This input-ingress change does not solve unrelated ownership layers:
+输入入口改动不解决其他所有权层：
 
-- #404 transient top-level capture/composition and surface selection;
-- #362 OS active-window activation;
-- RFB client framebuffer-generation / resize coordinate synchronization;
-- desktop-wide native input injection;
-- touch/tablet protocol expansion.
+- #404 临时顶层捕获/组合与 surface 选择；
+- #362 操作系统活动窗口激活；
+- RFB 客户端 framebuffer 代际/resize 坐标同步；
+- 桌面级原生输入注入；
+- 触摸/数位板协议扩展。
 
-Those concerns remain separate so the pointer ingress stays small.
+这些关注点保持分离，使指针入口保持小。
 
-## Private API maintenance
+## Private API 维护
 
-`QWindowSystemInterface` is QPA/private API. The maintenance rule is simple: compile the shim against the same Qt private development package used by the application, keep private includes confined to one translation unit, and qualify supported Qt versions with behavior tests. Do not mirror Qt private implementation details in HyRemote.
+`QWindowSystemInterface` 是 QPA/private API。维护规则很简单：用应用使用的同一 Qt private 开发包编译 shim，把 private include 限制在一个 translation unit 内，并用行为测试认证支持的 Qt 版本。不要在 HyRemote 中镜像 Qt private 实现细节。
 
-## Architecture invariant
+## 架构不变量
 
-If a future input bug appears, first ask whether Qt already owns that semantic below the window-system boundary. If yes, fix the ingress/surface/raw-fact correctness; do not add another HyRemote semantic emulator.
+以后出现输入 bug 时，先问 Qt 是否已经在 window-system 边界之下拥有该语义。如果是，修 ingress/surface/raw-fact 的正确性；不要新增另一个 HyRemote 语义模拟器。
