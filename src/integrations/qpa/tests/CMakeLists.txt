@@ -128,7 +128,9 @@ endif()
 add_test(NAME hyremote-qpa-runtime-basic
     COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_runtime_basic}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake)
-set_tests_properties(hyremote-qpa-runtime-basic PROPERTIES TIMEOUT 90)
+set_tests_properties(hyremote-qpa-runtime-basic PROPERTIES
+    TIMEOUT 90
+    RESOURCE_LOCK hyremote-qpa-runtime)
 
 set(_hyremote_qpa_runtime_surfaces ${_hyremote_qpa_runtime_common} -DGROUP=surfaces)
 set(_hyremote_qpa_runtime_surfaces_has_case FALSE)
@@ -151,7 +153,9 @@ if(_hyremote_qpa_runtime_surfaces_has_case)
     add_test(NAME hyremote-qpa-runtime-surfaces
         COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_runtime_surfaces}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake)
-    set_tests_properties(hyremote-qpa-runtime-surfaces PROPERTIES TIMEOUT 120)
+    set_tests_properties(hyremote-qpa-runtime-surfaces PROPERTIES
+        TIMEOUT 120
+        RESOURCE_LOCK hyremote-qpa-runtime)
 endif()
 
 set(_hyremote_qpa_runtime_recovery ${_hyremote_qpa_runtime_common} -DGROUP=recovery)
@@ -170,7 +174,9 @@ if(_hyremote_qpa_runtime_recovery_has_case)
     add_test(NAME hyremote-qpa-runtime-recovery
         COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_runtime_recovery}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake)
-    set_tests_properties(hyremote-qpa-runtime-recovery PROPERTIES TIMEOUT 90)
+    set_tests_properties(hyremote-qpa-runtime-recovery PROPERTIES
+        TIMEOUT 90
+        RESOURCE_LOCK hyremote-qpa-runtime)
 endif()
 
 include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
