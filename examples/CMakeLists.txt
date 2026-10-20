@@ -31,9 +31,9 @@ endif()
 # their deployment helper can also deploy the Generic payload is settled inside each of them: an SDK built without
 # Generic support still builds and runs these applications as plain Qt applications.
 if(TARGET Qt6::Widgets)
-    add_subdirectory(learning/03-zero-code-generic/widgets-app)
+    add_subdirectory(learning/03-generic/widgets-app)
 else()
-    message(STATUS "  learning/03-zero-code-generic/widgets-app skipped: Qt Widgets unavailable")
+    message(STATUS "  learning/03-generic/widgets-app skipped: Qt Widgets unavailable")
 endif()
 
 if(TARGET Qt6::Quick)
@@ -41,12 +41,12 @@ if(TARGET Qt6::Quick)
         find_package(Qt6 6.8 QUIET COMPONENTS Qml)
     endif()
     if(TARGET Qt6::Qml)
-        add_subdirectory(learning/03-zero-code-generic/quick-app)
+        add_subdirectory(learning/03-generic/quick-app)
     else()
-        message(STATUS "  learning/03-zero-code-generic/quick-app skipped: Qt Qml unavailable")
+        message(STATUS "  learning/03-generic/quick-app skipped: Qt Qml unavailable")
     endif()
 else()
-    message(STATUS "  learning/03-zero-code-generic/quick-app skipped: Quick adapter unavailable")
+    message(STATUS "  learning/03-generic/quick-app skipped: Quick adapter unavailable")
 endif()
 
 # ---------------------------------------------------------------- promoted learning routes

@@ -39,9 +39,9 @@ set(required_files
     "examples/learning/01-widgets-cpp/README.md"
     "examples/learning/02-quick-cpp/CMakeLists.txt"
     "examples/learning/02-quick-cpp/README.md"
-    "examples/learning/03-zero-code-generic/README.md"
-    "examples/learning/03-zero-code-generic/widgets-app/CMakeLists.txt"
-    "examples/learning/03-zero-code-generic/quick-app/CMakeLists.txt"
+    "examples/learning/03-generic/README.md"
+    "examples/learning/03-generic/widgets-app/CMakeLists.txt"
+    "examples/learning/03-generic/quick-app/CMakeLists.txt"
     "examples/learning/04-qml/CMakeLists.txt"
     "examples/learning/04-qml/README.md"
     "examples/learning/05-qpa/CMakeLists.txt"
@@ -511,7 +511,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/examples/README.md" examples_entry)
 foreach(required_entry_token IN ITEMS
         "learning/01-widgets-cpp"
         "learning/02-quick-cpp"
-        "learning/03-zero-code-generic"
+        "learning/03-generic"
         "docs/getting-started/cpp.md"
         "docs/getting-started/generic.md"
         "docs/guide/deployment.md"
@@ -551,8 +551,8 @@ file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
         "add_subdirectory(learning/01-widgets-cpp)"
         "add_subdirectory(learning/02-quick-cpp)"
-        "add_subdirectory(learning/03-zero-code-generic/widgets-app)"
-        "add_subdirectory(learning/03-zero-code-generic/quick-app)"
+        "add_subdirectory(learning/03-generic/widgets-app)"
+        "add_subdirectory(learning/03-generic/quick-app)"
         "add_subdirectory(learning/04-qml)"
         "add_subdirectory(learning/05-qpa)")
     string(FIND "${examples_cmake}" "${required_example}" found)

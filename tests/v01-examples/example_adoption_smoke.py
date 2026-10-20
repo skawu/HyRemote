@@ -215,8 +215,8 @@ def main():
         for name, relative, target in (
                 ("01-widgets-cpp", "examples/learning/01-widgets-cpp", "hyremote-learning-01-widgets"),
                 ("02-quick-cpp", "examples/learning/02-quick-cpp", "hyremote-learning-02-quick"),
-                ("03-widgets", "examples/learning/03-zero-code-generic/widgets-app", "hyremote-learning-03-widgets"),
-                ("03-quick", "examples/learning/03-zero-code-generic/quick-app", "hyremote-learning-03-quick")):
+                ("03-widgets", "examples/learning/03-generic/widgets-app", "hyremote-learning-03-widgets"),
+                ("03-quick", "examples/learning/03-generic/quick-app", "hyremote-learning-03-quick")):
             built[name] = prepare(source_dir, sdk_prefix, arguments.qt_prefix, work, arguments.cmake_arg,
                                   name, relative, target)
 

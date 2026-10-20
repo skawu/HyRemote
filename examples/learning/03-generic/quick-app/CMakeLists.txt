@@ -9,7 +9,7 @@ target_compile_features(hyremote-learning-03-quick PRIVATE cxx_std_17)
 target_link_libraries(hyremote-learning-03-quick PRIVATE Qt6::Quick Qt6::Qml)
 
 qt_add_resources(hyremote-learning-03-quick learning_03_quick_resources
-    PREFIX "/hyremote/learning/03-zero-code-generic"
+    PREFIX "/hyremote/learning/03-generic"
     FILES Main.qml
 )
 
