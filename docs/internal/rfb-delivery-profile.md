@@ -77,8 +77,9 @@ HYREMOTE_RFB_PROFILE_FILE="$PWD/build/rfb-delivery-profile.json" \
 ```
 
 It runs Raw and TRLE against W1 静态、W2 局部变化、W3 高动态、W4 full refresh and writes one JSON sample per
-encoding/workload. The numbers are local-loopback indicative measurements, not a release SLO and not a substitute
-for maintained-viewer evidence.
+encoding/workload. Each sample also records process CPU time (`cpu_ms`) and working set (`working_set_kb`), so the
+same run covers the #370 resource-cost side of the comparison. The numbers are local-loopback indicative
+measurements, not a release SLO and not a substitute for maintained-viewer evidence.
 
 Windows x86_64/Qt 6.8.3 run from `rfb-profile.yml` (16 samples per measurement, 256x256 frame):
 
