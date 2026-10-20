@@ -685,10 +685,10 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/docs/input-model.md" input_model)
 foreach(required_phrase
-        "the transport balances recognized held state contributed by that viewer"
-        "repeated teardown is idempotent and does not synthesize duplicate releases"
-        "rejected"
-        "delivered")
+        "传输会在丢弃该 viewer 的协议/客户端状态前，平衡它贡献的已识别按住状态"
+        "重复 teardown 是幂等的，不会合成重复释放"
+        "拒绝"
+        "已交付")
     string(FIND "${input_model}" "${required_phrase}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
