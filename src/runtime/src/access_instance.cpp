@@ -1,10 +1,21 @@
 #include "access_instance.hpp"
 
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
+#include <QBitmap>
+#include <QColor>
+#include <QCursor>
+#include <QGuiApplication>
+#include <QImage>
+#include <QPixmap>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QThread>
 #include <QTimer>
 #include <QObject>
 #include <QPointer>
+#include <QWidget>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
@@ -1094,7 +1105,67 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
         return false;
     }
 
-    detail::TransportComponent transport = detail::createDefaultTransport(address, port, security);
+    detail::RfbSecurityConfig effectiveSecurity = security;
+    effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject)]() -> detail::RfbCursorSnapshot {
+        QObject *object = guard.data();
+        if (!object)
+            return {};
+
+        const auto readSnapshot = [object]() -> detail::RfbCursorSnapshot {
+            QCursor cursor(Qt::ArrowCursor);
+            if (const QCursor *overrideCursor = QGuiApplication::overrideCursor())
+                cursor = *overrideCursor;
+            else if (auto *widget = qobject_cast<QWidget *>(object))
+                cursor = widget->cursor();
+            else if (auto *window = qobject_cast<QQuickWindow *>(object))
+                cursor = window->cursor();
+            else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window())
+                cursor = item->window()->cursor();
+
+            QImage image = cursor.pixmap().toImage().convertToFormat(QImage::Format_ARGB32);
+            if (image.isNull() && !cursor.bitmap().isNull() && !cursor.mask().isNull()) {
+                const QImage source = cursor.bitmap().toImage();
+                const QImage mask = cursor.mask().toImage();
+                if (source.size() == mask.size()) {
+                    image = QImage(source.size(), QImage::Format_ARGB32);
+                    for (int y = 0; y < source.height(); ++y) {
+                        for (int x = 0; x < source.width(); ++x) {
+                            const bool opaque = qGray(mask.pixelColor(x, y).rgb()) != 0;
+                            image.setPixelColor(x,
+                                                y,
+                                                opaque ? source.pixelColor(x, y)
+                                                       : QColor(0, 0, 0, 0));
+                        }
+                    }
+                }
+            }
+            if (image.isNull() || image.width() <= 0 || image.height() <= 0
+                || image.width() > 256 || image.height() > 256) {
+                return {};
+            }
+
+            const QImage rgba = image.convertToFormat(QImage::Format_RGBA8888);
+            detail::RfbCursorSnapshot snapshot;
+            snapshot.width = rgba.width();
+            snapshot.height = rgba.height();
+            snapshot.hotspotX = std::clamp(cursor.hotSpot().x(), 0, rgba.width() - 1);
+            snapshot.hotspotY = std::clamp(cursor.hotSpot().y(), 0, rgba.height() - 1);
+            snapshot.rgba8888 = QByteArray(reinterpret_cast<const char *>(rgba.constBits()),
+                                           rgba.sizeInBytes());
+            return snapshot;
+        };
+
+        if (QThread::currentThread() == object->thread())
+            return readSnapshot();
+
+        detail::RfbCursorSnapshot snapshot;
+        const bool invoked = QMetaObject::invokeMethod(
+            object, [&snapshot, &readSnapshot] { snapshot = readSnapshot(); },
+            Qt::BlockingQueuedConnection);
+        return invoked ? snapshot : detail::RfbCursorSnapshot{};
+    };
+
+    detail::TransportComponent transport = detail::createDefaultTransport(address, port, effectiveSecurity);
     if (!transport.transport) {
         const QString message = transport.error.isEmpty()
                                     ? QStringLiteral("no default HyRemote transport is available")

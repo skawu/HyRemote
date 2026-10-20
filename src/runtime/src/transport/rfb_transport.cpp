@@ -2,6 +2,7 @@
 
 #include <QAbstractSocket>
 #include <QByteArray>
+#include <QDateTime>
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
@@ -375,7 +376,8 @@ struct ClientState
     bool supportsFence = false;
     bool supportsContinuousUpdates = false;
     bool supportsCursor = false;
-    bool cursorSent = false;
+    QByteArray cursorSignature;
+    qint64 lastCursorPollMs = -1;
     bool continuousEnabled = false;
     bool continuousRequestArmed = false;
     RfbRect continuousRegion;
@@ -812,7 +814,7 @@ private:
                     return;
                 }
                 client.pixels = *spec;
-                client.cursorSent = false;
+                client.cursorSignature.clear();
                 sendCursor(client);
                 continue;
             }
@@ -857,7 +859,7 @@ private:
                 }
                 client.input.remove(0, size);
                 if (!client.supportsCursor) {
-                    client.cursorSent = false;
+                    client.cursorSignature.clear();
                 } else {
                     sendCursor(client);
                 }
@@ -1037,14 +1039,8 @@ private:
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
     }
 
-    void sendCursor(ClientState &client)
+    RfbCursorSnapshot fallbackCursor() const
     {
-        if (!client.socket || !client.supportsCursor || client.cursorSent)
-            return;
-
-        // A portable baseline cursor. The viewer renders it locally at the
-        // pointer position, so pointer movement no longer depends on a
-        // framebuffer round trip just to see a cursor.
         static constexpr const char *kCursorRows[16] = {
             "B...............",
             "BB..............",
@@ -1064,38 +1060,103 @@ private:
             ".....BWWB.......",
         };
 
+        RfbCursorSnapshot snapshot;
+        snapshot.width = 16;
+        snapshot.height = 16;
+        snapshot.rgba8888.resize(16 * 16 * 4);
+        snapshot.rgba8888.fill(char(0));
+        for (int row = 0; row < 16; ++row) {
+            for (int col = 0; col < 16; ++col) {
+                const char cell = kCursorRows[row][col];
+                if (cell == '.')
+                    continue;
+                const int offset = (row * 16 + col) * 4;
+                const int channel = cell == 'W' ? 255 : 0;
+                snapshot.rgba8888[offset] = static_cast<char>(channel);
+                snapshot.rgba8888[offset + 1] = static_cast<char>(channel);
+                snapshot.rgba8888[offset + 2] = static_cast<char>(channel);
+                snapshot.rgba8888[offset + 3] = static_cast<char>(255);
+            }
+        }
+        return snapshot;
+    }
+
+    void sendCursor(ClientState &client)
+    {
+        if (!client.socket || !client.supportsCursor)
+            return;
+
+        RfbCursorSnapshot snapshot;
+        if (m_security.cursorProvider)
+            snapshot = m_security.cursorProvider();
+
+        const qsizetype expectedBytes = static_cast<qsizetype>(snapshot.width) * snapshot.height * 4;
+        if (snapshot.width <= 0 || snapshot.height <= 0 || snapshot.width > 256
+            || snapshot.height > 256 || snapshot.rgba8888.size() != expectedBytes) {
+            snapshot = fallbackCursor();
+        }
+        snapshot.hotspotX = std::clamp(snapshot.hotspotX, 0, snapshot.width - 1);
+        snapshot.hotspotY = std::clamp(snapshot.hotspotY, 0, snapshot.height - 1);
+
+        QByteArray signature;
+        signature.append(reinterpret_cast<const char *>(&snapshot.hotspotX), sizeof(int));
+        signature.append(reinterpret_cast<const char *>(&snapshot.hotspotY), sizeof(int));
+        signature.append(snapshot.rgba8888);
+        if (signature == client.cursorSignature)
+            return;
+
         QByteArray update;
         update.append(char(0));  // FramebufferUpdate
         update.append(char(0));
         appendU16(update, 1);    // one cursor rectangle
-        appendU16(update, 0);    // hotspot x
-        appendU16(update, 0);    // hotspot y
-        appendU16(update, 16);
-        appendU16(update, 16);
+        appendU16(update, static_cast<std::uint16_t>(snapshot.hotspotX));
+        appendU16(update, static_cast<std::uint16_t>(snapshot.hotspotY));
+        appendU16(update, static_cast<std::uint16_t>(snapshot.width));
+        appendU16(update, static_cast<std::uint16_t>(snapshot.height));
         appendS32(update, kEncodingCursor);
 
-        for (int row = 0; row < 16; ++row) {
-            for (int col = 0; col < 16; ++col) {
-                const char cell = kCursorRows[row][col];
-                const std::uint8_t channel = cell == 'W' ? 255U : 0U;
-                appendEncodedPixel(update, channel, channel, channel, client.pixels);
+        const auto *rgba = reinterpret_cast<const unsigned char *>(snapshot.rgba8888.constData());
+        for (int row = 0; row < snapshot.height; ++row) {
+            for (int col = 0; col < snapshot.width; ++col) {
+                const int offset = (row * snapshot.width + col) * 4;
+                appendEncodedPixel(update,
+                                   rgba[offset],
+                                   rgba[offset + 1],
+                                   rgba[offset + 2],
+                                   client.pixels);
             }
         }
 
-        for (int row = 0; row < 16; ++row) {
-            std::uint16_t mask = 0;
-            for (int col = 0; col < 16; ++col)
-                if (kCursorRows[row][col] != '.')
-                    mask |= static_cast<std::uint16_t>(1U << (15 - col));
-            update.append(static_cast<char>((mask >> 8U) & 0xffU));
-            update.append(static_cast<char>(mask & 0xffU));
+        const int maskStride = (snapshot.width + 7) / 8;
+        for (int row = 0; row < snapshot.height; ++row) {
+            QByteArray rowMask(maskStride, char(0));
+            for (int col = 0; col < snapshot.width; ++col) {
+                const int offset = (row * snapshot.width + col) * 4;
+                if (rgba[offset + 3] != 0) {
+                    rowMask[col / 8] = static_cast<char>(
+                        static_cast<unsigned char>(rowMask.at(col / 8))
+                        | static_cast<unsigned char>(0x80U >> (col % 8)));
+                }
+            }
+            update += rowMask;
         }
 
         if (client.socket->write(update) != update.size()) {
             protocolFailure(client, "RFB cursor update write failed");
             return;
         }
-        client.cursorSent = true;
+        client.cursorSignature = signature;
+    }
+
+    void refreshCursor(ClientState &client)
+    {
+        if (!client.supportsCursor)
+            return;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (client.lastCursorPollMs >= 0 && now - client.lastCursorPollMs < 250)
+            return;
+        client.lastCursorPollMs = now;
+        sendCursor(client);
     }
 
     void releaseHeldInput(ClientState &client)
@@ -1222,6 +1283,7 @@ private:
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
+        refreshCursor(client);
         client.lastPointerViewport = viewport;
         client.lastPointerX = x;
         client.lastPointerY = y;
@@ -1371,6 +1433,7 @@ private:
     {
         if (!client.socket || client.phase != ClientPhase::Normal)
             return;
+        refreshCursor(client);
         armContinuousRequest(client);
         if (!client.delivery.hasOutstandingRequest())
             return;
