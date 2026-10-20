@@ -613,7 +613,12 @@ bool noFramebufferData(QTcpSocket &socket, int timeoutMs = 150)
     return !socket.waitForReadyRead(timeoutMs) && socket.bytesAvailable() == 0;
 }
 
-bool readCursorUpdate(QTcpSocket &socket, int timeoutMs = 3000)
+bool readCursorUpdate(QTcpSocket &socket,
+                      int *widthOut = nullptr,
+                      int *heightOut = nullptr,
+                      int *hotspotXOut = nullptr,
+                      int *hotspotYOut = nullptr,
+                      int timeoutMs = 3000)
 {
     const QByteArray header = readExact(socket, 4, timeoutMs);
     if (header.size() != 4 || header.at(0) != char(0) || readU16(header, 2) != 1)
@@ -625,17 +630,29 @@ bool readCursorUpdate(QTcpSocket &socket, int timeoutMs = 3000)
     const std::uint16_t height = readU16(rectangle, 6);
     if (width == 0 || height == 0)
         return false;
+    if (widthOut)
+        *widthOut = width;
+    if (heightOut)
+        *heightOut = height;
+    if (hotspotXOut)
+        *hotspotXOut = readU16(rectangle, 0);
+    if (hotspotYOut)
+        *hotspotYOut = readU16(rectangle, 2);
     const qsizetype pixels = static_cast<qsizetype>(width) * height * 4;
     const qsizetype mask = ((width + 7) / 8) * height;
     return readExact(socket, pixels + mask, timeoutMs).size() == pixels + mask;
 }
 
-std::unique_ptr<hyremote::Transport> startTransport(quint16 port,
-                                                    Recorder &recorder,
-                                                    hyremote::RemoteFrame initial)
+std::unique_ptr<hyremote::Transport> startTransport(
+    quint16 port,
+    Recorder &recorder,
+    hyremote::RemoteFrame initial,
+    HyRemote::detail::RfbCursorProvider cursorProvider = {})
 {
+    HyRemote::detail::RfbSecurityConfig security;
+    security.cursorProvider = std::move(cursorProvider);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
-                                                          HyRemote::detail::RfbSecurityConfig{});
+                                                          std::move(security));
     if (!transport)
         return {};
     if (!transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
@@ -747,6 +764,64 @@ void testCursorPseudoEncoding()
     rawSocket.disconnectFromHost();
     waitForDisconnected(cursorSocket);
     waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+void testVariableCursorSnapshot()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(
+        port,
+        recorder,
+        makeFrame(64, 48, 0x203040U),
+        [] {
+            HyRemote::detail::RfbCursorSnapshot snapshot;
+            snapshot.width = 4;
+            snapshot.height = 4;
+            snapshot.hotspotX = 2;
+            snapshot.hotspotY = 1;
+            snapshot.rgba8888 = QByteArray(4 * 4 * 4, char(0));
+            for (int index = 0; index < 4 * 4; ++index) {
+                snapshot.rgba8888[index * 4] = static_cast<char>(255);
+                snapshot.rgba8888[index * 4 + 3] = static_cast<char>(255);
+            }
+            return snapshot;
+        });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-239, 0}));
+
+    int cursorWidth = 0;
+    int cursorHeight = 0;
+    int hotspotX = -1;
+    int hotspotY = -1;
+    CHECK(readCursorUpdate(socket, &cursorWidth, &cursorHeight, &hotspotX, &hotspotY));
+    CHECK(cursorWidth == 4);
+    CHECK(cursorHeight == 4);
+    CHECK(hotspotX == 2);
+    CHECK(hotspotY == 1);
+
+    // A cursor-only update must not consume or satisfy the framebuffer request.
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
     transport->stop();
 }
 
@@ -1849,6 +1924,7 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testCursorPseudoEncoding();
+    testVariableCursorSnapshot();
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
