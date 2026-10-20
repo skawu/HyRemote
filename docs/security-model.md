@@ -1,267 +1,219 @@
-# HyRemote Security Model
+# HyRemote 安全模型
 
-Status: **V1 architecture/security model; release acceptance still pending**
+> 语言 / Language：**中文** ｜ [English](en/security-model.md)
 
-HyRemote is remote-access infrastructure. A working viewer connection is not, by itself, a secure deployment architecture.
+状态：当前产品 V0.3.0.0 的安全模型。本文说明已经实现的行为，以及后续产品必须保持的安全边界。
 
-This document defines the security architecture and threat boundaries that the V1 product must preserve. For the concise user-facing deployment rules and exact implemented behavior, see [`security.md`](security.md).
+HyRemote 是远程访问基础设施。viewer 能连上，不等于部署已经安全。面向用户的简明部署规则见 [`security.md`](security.md)。
 
-A requirement described as **future** here is not a V1 product claim.
+本文标为“后续”的能力，不是当前版本的产品承诺。
 
-## 1. V1 security baseline
+## 1. 当前安全基线
 
-The current V1 candidate uses HyRemote's bounded internal RFB 3.8 correctness transport across Embedded C++, Declarative QML and Transparent QPA.
+当前产品使用有界 RFB 3.8 传输，覆盖 C++、QML、Generic 和 QPA 四条前端。
 
-The implemented V1 security boundary is deliberately narrow and explicit:
+已实现的安全边界：
 
-- constructing `HyRemote::RemoteAccess` does **not** open a listener;
-- Embedded C++ starts remote access only through explicit `start()`;
-- QML starts only after an explicit `enabled: true` request is applied after component completion;
-- Transparent QPA starts only when the process is deliberately launched through `-platform hyremote`;
-- the default listener address is `0.0.0.0`, so a first run is reachable on the host's IPv4 interfaces; the
-  listener is intended for a **trusted LAN only and is not Internet-safe**, and the shipped security state says so;
-- remote input is disabled by default;
-- the current RFB transport negotiates **SecurityType None**;
-- V1 authenticates the viewer when an authenticated security profile is configured, and provides **no transport encryption** in any configuration;
-- passwords, TLS certificates/private keys, authenticated identities, roles and per-client authorization are not part of the V1 public product surface.
+- 构造 `HyRemote::RemoteAccess` 不会打开 listener；
+- C++ 只有显式 `start()` 才启动远程访问；
+- QML 只有显式 `enabled: true` 才启动；
+- QPA 只有进程通过 `-platform hyremote` 启动才生效；
+- 默认 listener 是 `0.0.0.0:5921`，主机 IPv4 接口可达，只面向可信 LAN，不适合 Internet；
+- 远程输入默认关闭；
+- 当前 RFB 传输可以协商 `SecurityType None`；
+- 配置认证时可以使用 RFB VNC 认证；
+- 当前任何配置都不提供传输加密；
+- 密码、证书、私钥、认证身份、角色和每客户端授权不在当前公开产品面内。
 
-These facts are release constraints. Documentation, examples and compatibility claims must not imply stronger security.
+文档、示例和兼容性声明不得暗示比这些事实更强的安全能力。
 
-## 2. Trust boundaries
+## 2. 信任边界
 
 ```text
-+-------------------- Qt application/process --------------------+
-|                                                               |
-| Application UI/business code                                  |
-|          |                                                    |
-| HyRemote public facade / QML facade / QPA controller          |
-|          |                                                    |
-| Core Session + target/capture/input adapters                  |
-|          |                                                    |
-| bounded internal RFB transport                                |
-+----------+----------------------------------------------------+
++-------------------- Qt 应用/进程 --------------------+
+|                                                     |
+| 应用 UI 与业务代码                                  |
+|          |                                          |
+| HyRemote 公共入口 / QML / QPA 控制                  |
+|          |                                          |
+| Core Session + 目标/采集/输入适配器                 |
+|          |                                          |
+| 有界内部 RFB 传输                                   |
++----------+------------------------------------------+
            |
-           | unencrypted; unauthenticated unless a profile is set
+           | 未加密；未配置认证时也未认证
            v
-       remote viewer
+       远端 viewer
 ```
 
-Transparent QPA additionally delegates native display/input behavior to the qualified native Qt platform plugin (`qwindows` or `qxcb` on the V1 reference line). HyRemote must remain additive to that native path rather than replacing local operation.
+QPA 还把本地显示/输入委托给经过资格认证的原生 Qt 平台插件（`qwindows` 或 `qxcb`）。HyRemote 必须保持附加能力，不替代本地操作。
 
-External boundaries may be placed around HyRemote, for example host/network ACLs, a VPN or another separately managed secure tunnel. Those controls are deployment infrastructure, not HyRemote V1 transport-security features.
+外部边界可以由部署方提供，例如主机/网络 ACL、VPN 或独立安全隧道。这些属于部署基础设施，不是 HyRemote 当前版本的传输安全功能。
 
-## 3. Threats considered
+## 3. 需要考虑的威胁
 
-At minimum, V1 design and documentation must account for:
+- listener 可达后出现未授权查看；
+- 启用远程输入后出现未授权控制；
+- 默认可达的 listener 被误暴露到公网；
+- 畸形或故意不完整的 RFB 客户端；
+- 慢客户端、过多连接或无界协议状态造成拒绝服务；
+- viewer 突然断开后留下按住的输入状态；
+- 诊断泄漏敏感信息；
+- 远程输入逃出目标 Qt 应用或 surface 边界；
+- QPA 干扰本地显示/输入；
+- 把后续安全配置误认为当前已实现能力。
 
-- unauthorized viewing when a listener becomes reachable;
-- unauthorized remote control when remote input is enabled;
-- accidental public-Internet exposure of a listener that is reachable by default;
-- malformed or deliberately incomplete RFB clients;
-- denial of service through slow clients, excessive connection attempts or unbounded protocol state;
-- stale input state after abrupt viewer disconnect;
-- sensitive information leaking through diagnostics;
-- remote input escaping the intended Qt application/surface boundary;
-- local display/input being disrupted by Transparent QPA operation;
-- future transport-security configuration being mistaken for already implemented V1 capability.
+## 4. 安全默认值
 
-## 4. Secure-default requirements
+### 4.1 不隐式打开 listener
 
-### 4.1 No implicit listener
+安装或构造 HyRemote 不应创建远程可达服务。
 
-Installing or constructing HyRemote must not create a remotely reachable service.
+- C++ 构造没有副作用；
+- QML 的 `enabled` 默认是 `false`；
+- QPA 必须显式选择 `hyremote` 平台路径。
 
-- C++ construction is inert.
-- QML defaults `enabled` to `false`.
-- QPA requires explicit selection of the `hyremote` platform path.
+### 4.2 默认可达范围如实说明
 
-### 4.2 Reachability by default, stated honestly
+默认 listener 是 `0.0.0.0:5921`，在主机 IPv4 接口上可达。绑定单个本地 IPv4 或命名接口只是缩小可达范围，不会增加认证或加密。
 
-The default listener is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces. Binding one exact local IPv4 or one named interface is a narrowing of that reachability; it does not add authentication or encryption.
+示例不得把绑定范围扩大到默认值之外。当前安全状态用于告诉用户这条可达边界应该信任到什么程度。
 
-Examples must not widen beyond the default, and the shipped security state is what tells the user how far to trust that reachability.
+### 4.3 查看与控制是独立策略
 
-### 4.3 View and control are separate policies
+远程输入默认关闭，必须显式启用。
 
-Remote input is disabled by default and must be explicitly enabled.
+当前应用契约：
 
-For the frozen V1 application contract:
+- C++ 和 QML 的远程输入配置只能在 Runtime 停止时修改；运行中修改要走 `stop -> configure -> start`；
+- QPA 使用启动策略 `hyremote-input=true`；回到只读需要重新启动并去掉该选项；
+- 当前版本不另造隐藏的运行时授权/控制通道来绕过这个生命周期；
+- 本地原生输入与远程输入策略相互独立。
 
-- Embedded C++ and QML remote-input configuration is mutable while the runtime is stopped; changing it for an active service uses the explicit `stop -> configure -> start` lifecycle;
-- Transparent QPA uses an explicit startup policy (`hyremote-input=true`); returning to view-only requires relaunch without that option;
-- V1 does **not** invent a hidden runtime authorization/control channel solely to avoid this lifecycle;
-- local native input remains independent from remote-input policy.
+后续可以增加实时降权或每客户端控制 API，但它们不是当前版本的验收要求，也不能从本文反推为已经存在。
 
-A future additive API may support live authorization downgrade or per-client control, but that is not a V1 acceptance requirement and must not be retroactively inferred from this threat model.
+### 4.4 连接状态不是授权
 
-### 4.4 Connection state is not authorization
+`Running` 表示 Remote Runtime/listener 已启动。`connectedClientCount()` 是连接诊断。两者都不是认证或授权结果。
 
-`Running` means the remote runtime/listener is active. `connectedClientCount()` is an operational connection diagnostic. Neither is an authentication or authorization result.
+`SecurityType None` 下，可达 viewer 没有经过 HyRemote 认证。配置认证后，viewer 会经过 RFB VNC 认证，但传输仍未加密。
 
-With SecurityType None - the mode in use when no authenticated profile is configured - a reachable viewer is not authenticated by HyRemote. A configured authenticated profile does authenticate it (RFB VNC authentication), which is still not encryption.
+## 5. 输入安全
 
-## 5. Input safety
+正常输入路径只把规范化输入送到目标 Qt 应用和受支持的 surface 语义。
 
-The normal V1 input path delivers normalized input only to the intended Qt application target/supported surface semantics.
+当前版本不使用 Linux `uinput`、Windows 虚拟 HID 注入或桌面级 OS 输入注入作为默认机制。
 
-HyRemote V1 does not use Linux `uinput`, Windows virtual-HID injection, or desktop-wide OS input injection as its default mechanism.
+输入边界区分指针移动/按键、滚轮、按键/修饰键状态，以及协议信息足够时的提交文本。不支持的按键、输入法和组合行为会被跳过或记录，不做猜测。
 
-The input boundary distinguishes pointer motion/buttons, wheel, key/modifier state and committed text where the protocol provides sufficient information. Unsupported key/IME/composition behavior must be skipped or documented rather than guessed.
+viewer 突然断开时，已识别的按住远程按键/按钮状态必须被平衡清理，避免本地 Qt 应用残留按下状态。
 
-Recognized held remote key/button state must be balanced when a viewer disconnects abruptly so stale remote state is not left inside the Qt application.
+## 6. 资源与拒绝服务边界
 
-## 6. Resource and denial-of-service boundaries
+无论是否认证 viewer，当前传输都必须保持有界。
 
-V1 must remain bounded whether or not the transport authenticates the viewer.
+已经实现或要求的有界行为：
 
-The current architecture includes or requires bounded behavior for:
+- 并发客户端槽位；
+- 每客户端协议输入缓冲；
+- 客户端声明的编码数量；
+- cut-text payload 长度，即使剪贴板不是当前功能；
+- 不完整握手的生命周期；
+- Core 帧 mailbox/背压；
+- 传输帧交接；
+- GUI 输入交付/合并；
+- 回调生命周期和静止停止。
 
-- concurrent client slots;
-- per-client protocol input buffering;
-- advertised encoding count;
-- cut-text payload length even though clipboard transfer is not a V1 feature;
-- incomplete-handshake lifetime;
-- Core frame mailbox/backpressure;
-- transport frame handoff;
-- GUI input delivery/coalescing;
-- callback lifetime and quiescent stop.
+慢客户端或畸形客户端不能造成无界内存增长，也不能无限阻塞 Qt GUI/渲染路径。
 
-A slow or malformed client must not create unbounded memory growth or indefinitely block the Qt GUI/render path.
+这些资源控制降低失败和 DoS 暴露，但不让 `SecurityType None` 适合敌对公网，viewer 认证本身也不等于公网安全。
 
-These resource controls reduce failure/DoS exposure. They do **not** make SecurityType None safe for a hostile public network, and viewer authentication alone does not either.
+## 7. 诊断与敏感数据
 
-## 7. Diagnostics and sensitive data
+当前版本没有密码/TLS 凭据面，示例和诊断不能虚构凭据或暗示认证身份。
 
-V1 has no password/TLS credential surface, so examples and diagnostics must not invent credentials or imply authentication identities.
+后续安全机制必须保持：
 
-Future security mechanisms must preserve these rules:
+- 密码、token、私钥和同类密钥不写入普通日志、错误或 trace；
+- 如果后续引入认证身份，必须与连接数或 socket 地址区分；
+- 安全相关失败应保持可观察，同时不泄漏密钥。
 
-- passwords, tokens, private keys and equivalent secrets are never written to normal logs/errors/traces;
-- an authenticated identity, if introduced later, must be distinguished from a connection count or socket address;
-- security-relevant failures should remain observable without disclosing secrets.
+## 8. 部署方式
 
-## 8. V1 deployment profiles
+### 本机开发
 
-### Local developer / same machine
+使用 `0.0.0.0:5921` 默认值，并保持在可信 LAN。只有测试或使用远程控制时才启用远程输入。
 
-Use the `0.0.0.0:5921` default and keep it on a trusted LAN. Enable remote input only when intentionally testing or using remote control.
+### 受控实验室或工业维护网络
 
-### Controlled lab / industrial maintenance network
+使用明确的绑定地址和适合该部署的外部可信访问边界。HyRemote RFB payload 本身未加密；未配置认证时也未认证。
 
-Use a specific bind address and an external trusted access boundary appropriate to the deployment. Treat the HyRemote RFB payload itself as unencrypted, and as unauthenticated unless an authenticated profile is configured.
+### VPN 或独立维护隧道
 
-### VPN / separately secured maintenance tunnel
+独立管理的安全隧道可以限制谁能到达 HyRemote listener。隧道不属于 HyRemote 当前版本，不能描述为内置认证或传输加密。
 
-A separately managed secure tunnel may constrain who can reach the HyRemote listener. The tunnel is outside HyRemote V1 and must not be described as built-in HyRemote authentication/TLS.
+### 直接公网
 
-### Direct public Internet
+**不是当前支持的部署方式。**
 
-**Not a supported V1 deployment profile.**
+不要把 `SecurityType None` listener 直接暴露到公网，也不要把非默认端口或 viewer 密码界面当成防护。
 
-Do not expose a SecurityType None listener directly to the public Internet or rely on a non-default port/viewer password UI as protection.
+## 9. QPA 安全边界
 
-## 9. Transparent QPA security boundary
+零代码或最小改动接入不能削弱默认值。
 
-Zero/minimal-source-change integration must not weaken defaults.
+QPA 启动配置支持显式设置：
 
-V1 QPA launch configuration supports explicit process-start policy for:
+- listener 地址；
+- 端口；
+- 远程输入开关。
 
-- listener address;
-- port;
-- remote input enabled/disabled.
+QPA 不增加隐藏凭据系统或动态策略服务。本地显示/输入仍委托给经过资格认证的原生平台实现；本地可见/可输入与远程共存的物理验收由 #109/#32 跟踪。
 
-The QPA path does not add a hidden credential system or dynamic policy service. Native local display/input remains delegated to the qualified native platform implementation; physical local-visible/local-input plus remote coexistence is a separate acceptance gate tracked by #109/#32.
+## 10. 后续传输安全要求
 
-## 10. Future transport-security requirements
+在当前后端存在之前，`Authenticated` 与 `AuthenticatedEncrypted` 不能互换：
 
-Until that backend exists, the two profiles are not interchangeable and the Runtime keeps them apart: `Authenticated` is RFB VNC authentication over an unencrypted stream, while `AuthenticatedEncrypted` is refused in the current product line with a deterministic `SecurityUnavailable` **before any listener is created** - no target, transport or socket is composed and nothing is left listening. It never falls back to `Authenticated` or to `SecurityType None`, and a syntactically valid certificate/private-key descriptor does not make it available, because descriptor validity and backend capability are separate facts. V0.1 remains a **loopback-only Developer Preview**: unencrypted, and unauthenticated unless an authenticated profile is configured.
+- `Authenticated` 是未加密流上的 RFB VNC 认证；
+- `AuthenticatedEncrypted` 在当前产品线中失败关闭，会在创建 listener 前返回 `SecurityUnavailable`，不会组合 target/transport/socket，也不会回退到 `Authenticated` 或 `SecurityType None`；
+- 语法有效的证书或私钥描述文件不会自动让加密配置可用，描述文件有效性和后端能力是两件事。
 
-Authenticated and encrypted transport is a **V1.0.0.0 requirement, not a `V1.x` track**: `[SEC-01]` #143 is x86 work, sequenced design -> authentication -> encryption -> per-client authorization/audit. This supersedes the earlier statement that it was a post-baseline capability accepted into some later release, which contradicted the release roadmap.
+认证加密传输是后续 V1.0.0.0 产品要求，不是当前版本能力。相关工作必须保持后端中立的公共边界，不能把后端专用类型或工具链强加给普通应用消费者。
 
-It is added behind the stable application model:
+历史 NeatVNC/rustvncserver 调研只是研究证据，不是当前传输选择或安全承诺。
 
-- password or stronger authentication;
-- TLS or equivalent encryption;
-- certificate/private-key provisioning;
-- authenticated identities;
-- per-client authorization/termination;
-- richer audit events.
+## 11. 非目标
 
-Such work must preserve backend-neutral public boundaries and must not force backend-specific types/toolchains on normal application consumers. A historical NeatVNC/rustvncserver investigation is research evidence only; it is not the selected V1 transport or a current security promise.
+当前版本不提供：
 
-### 10.1 Design frozen before implementation (2026-09-19)
+- 用户/账号管理；
+- 设备集群身份；
+- 云授权；
+- 集中审计存储；
+- VPN/隧道配置；
+- 防火墙管理；
+- 公网安全传输；
+- 每客户端身份/角色管理。
 
-**Status: the authentication step has landed; the encryption step has not.** The product statement is therefore
-"authenticated when an authenticated profile and a credential are configured, and not encrypted in any
-configuration". No user-facing document may claim transport encryption, and none may claim authentication for a
-build or profile that does not actually provide it - a build without the capability, or without a usable credential,
-refuses the authenticated profiles rather than serving them unauthenticated.
+产品可以把这些系统放在 HyRemote 外围，但它们属于独立信任边界。
 
-**Authentication step.** RFB VNC authentication (security type 2) with the RFB 3.8 challenge/response: the server
-sends a random 16-byte challenge and the client returns the DES-encrypted response, because that is what the
-mainstream viewers already implement. An earlier revision of this section called this "the blinding variant"; the RFB
-specification defines no such variant - security type 2 is simply VNC Authentication - so that unsupported wording is
-removed rather than implemented. What the standard exchange does require, and what this implementation relies on, is
-that each connection gets a freshly random challenge. `SecurityType None` stays available but only as an
-**explicitly selected** mode: a client that does not select the configured type is rejected and the failure is
-reported, never downgraded.
+## 12. 发布安全门禁
 
-**Encryption step.** Kept separate and later, so that viewer interoperability is not a precondition for the first
-authentication evidence. Until it lands, the release notes and the compatibility statements say the stream is
-**authenticated but not encrypted**, and no document may describe it as encrypted.
+授权 `v1.0.0.0` 前，证据至少需要确认：
 
-**Primitives and dependency.** VNC authentication needs DES and SHA-1, and the encryption step needs TLS. These come
-from **OpenSSL** deliberately, rather than from code written in this repository: a hand-written DES is a security
-anti-pattern. This is the repository's first third-party security dependency, carrying the obligations the release
-readiness authority already anticipates - `package`, `LICENSE`, `NOTICE` and the deployed payload list are updated
-in the change that lands the dependency, never in advance.
+- [x] Apache-2.0 项目许可冻结；
+- [x] 构造/安装不会隐式打开 listener；
+- [x] 默认绑定 `0.0.0.0:5921` 并如实说明；
+- [x] 远程输入默认关闭且显式控制；
+- [x] 当前 `SecurityType None` 限制在用户文档/发布说明中明确；
+- [x] 有界协议/帧/输入/握手行为有实现和测试；
+- [x] 当前文档不宣称密码/TLS/认证身份支持；
+- [x] Windows x86_64 参考验收已执行并通过；
+- [x] Linux x86_64 参考验收已执行并通过；
+- [ ] #109/#32 要求的物理本地显示/输入与远程共存证据通过。
 
-**Bind policy.** Reachability does not depend on the authentication mode (#174): the default listener is `0.0.0.0:5921` and it is reachable on this host's IPv4 interfaces with
-authentication enabled or disabled, which is exactly why the shipped state is reported truthfully rather than narrowed. The
-construction and listener defaults do not change (no implicit listener, loopback, remote input off), and
-authentication is not remote input - view-only remains the default input policy.
+没有拿到 runner 的 GitHub Actions job 既不是安全证据，也不是代码失败。#74 不能通过重新标记“没有 runner”来绕过。
 
-**Failure semantics.** Authentication failure closes the connection after a bounded number of attempts, with a
-bounded challenge/response exchange and no unbounded buffering, and is reported through the transport event already
-reserved for it (`TransportEventCode::AuthenticationRejected`) instead of being silently tolerated. Authentication is
-not authorization: an authenticated connection still has no licence to control input.
+当前面向用户的简明结论：
 
-**Documentation and gate consequence.** `SecurityType None` is currently pinned as a required phrase by
-`tests/release-readiness/check_release_metadata.cmake` and by the release-policy workflow, and is stated in roughly
-twenty user-facing documents. Landing authentication is therefore a coordinated, separately reviewed change: the
-gates that pin the current baseline move in the same change that lands the capability.
-## 11. Non-goals
-
-HyRemote V1 does not provide:
-
-- user/account management;
-- fleet identity;
-- cloud authorization;
-- centralized audit storage;
-- VPN/tunnel provisioning;
-- firewall management;
-- public-Internet-safe transport security;
-- per-client identity/role management.
-
-Products may place those systems around HyRemote, but they remain separate trust boundaries.
-
-## 12. V1 release security gate
-
-Before `v1.0.0.0` is authorized, evidence must confirm at least:
-
-- [x] Apache-2.0 project licensing is frozen;
-- [x] construction/installation does not implicitly open a listener;
-- [x] loopback is the default bind policy;
-- [x] remote input is disabled by default and explicitly controlled;
-- [x] the current SecurityType None limitation is explicit in user docs/release notes;
-- [x] bounded protocol/frame/input/handshake behavior is represented in implementation/tests;
-- [x] no V1 documentation claims password/TLS/authenticated identity support;
-- [ ] Windows x86_64 reference acceptance actually executes and passes;
-- [ ] Linux x86_64 reference acceptance actually executes and passes;
-- [ ] physical native local-display/local-input + remote coexistence evidence required by #109/#32 passes.
-
-A GitHub Actions job that never receives a runner is neither passing security evidence nor a code failure. #74 must not be bypassed by relabeling no-runner results.
-
-The concise V1 user-facing statement remains:
-
-> HyRemote V1 authenticates the viewer when an authenticated security profile is configured (RFB VNC authentication) and does not encrypt the stream. It defaults to loopback with remote input off. Keep a listener behind an appropriate trusted access boundary; do not expose it directly to the public Internet.
+> HyRemote 在配置认证安全描述文件时使用 RFB VNC 认证，当前不加密传输。默认监听 `0.0.0.0:5921`，远程输入关闭。listener 应放在合适的可信访问边界之后，不要直接暴露到公网。
