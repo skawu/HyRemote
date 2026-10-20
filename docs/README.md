@@ -61,6 +61,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | [`qml-consumption.md`](qml-consumption.md) ｜ [English](en/qml-consumption.md) | QML API 的使用、部署与生命周期 |
 | [`dependency-policy.md`](dependency-policy.md) ｜ [English](en/dependency-policy.md) | 产品依赖策略 |
 | [`release-package-manifest.md`](release-package-manifest.md) ｜ [English](en/release-package-manifest.md) | SDK / 运行时载荷定义 |
+| [`sdk-consumption.md`](sdk-consumption.md) ｜ [English](en/sdk-consumption.md) | SDK 获取、接入与部署契约 |
 
 ## 四种接入方式的关系
 
