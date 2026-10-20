@@ -146,21 +146,8 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 
 All entries are distinct positive/negative deployment contracts; a failure means the exact deployment mode or rejection reason is no longer trustworthy:
 
-- `hyremote-qpa-deploy-helper-ordinary`
-- `hyremote-qpa-deploy-helper-qml-only`
-- `hyremote-qpa-deploy-helper-qml-composed`
-- `hyremote-qpa-deploy-helper-installed-payload`
-- `hyremote-qpa-deploy-helper-installed-payload-qml-only`
-- `hyremote-qpa-deploy-helper-installed-payload-qml`
-- `hyremote-qpa-deploy-helper-reject-missing-qml`
-- `hyremote-qpa-deploy-helper-reject-stale-qml-metadata`
-- `hyremote-qpa-deploy-helper-reject-missing-qml-root`
-- `hyremote-qpa-deploy-helper-reject-missing-qml-module-dir`
-- `hyremote-qpa-deploy-helper-reject-stale-qpa-metadata`
-- `hyremote-qpa-deploy-helper-reject-qt-mismatch`
-- `hyremote-qpa-deploy-helper-reject-missing-package`
-- `hyremote-qpa-deploy-helper-single-config-generator`
-- `hyremote-qpa-deploy-helper-multi-config-generator`
+- `hyremote-qpa-deploy-helper-positive` — One table-driven run for the positive deploy-helper matrix: ordinary, QML-only, QML-composed, installed-payload variants and the explicit single/multi-config Ninja generators when available.
+- `hyremote-qpa-deploy-helper-negative` — One table-driven run for the fail-closed rejections: missing/stale QML payload, missing QML import root or module dir, stale QPA metadata, Qt-version mismatch and missing QPA package. Each case must match its expected failure fragment.
 - `hyremote-qpa-source-payload-relocation` — Linux-only source-payload relocation contract.
 
 `tests/consumer-installed-sdk` remains a distinct minimal release-evidence cell rather than a normal CTest: it proves the smallest public package/export/deploy closure and is not redundant with the stronger adapter consumers.
