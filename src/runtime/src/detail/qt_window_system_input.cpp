@@ -105,6 +105,16 @@ void deliverQtWindowSystemPointer(QWindow *window,
         return;
     }
 
+    // A remote click is the explicit activation step for an application-scoped
+    // session. Without it an inactive target receives the injected press but
+    // cannot take OS focus, so subsequent remote typing goes nowhere (#362).
+    // This still does not inject desktop-wide input or take focus without a
+    // remote click.
+    if (type == QEvent::MouseButtonPress && !window->isActive()) {
+        window->requestActivate();
+        window->raise();
+    }
+
     QWindowSystemInterface::handleMouseEvent<QWindowSystemInterface::SynchronousDelivery>(
         window,
         timestamp,
