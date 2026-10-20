@@ -31,7 +31,7 @@ require_file_token("src/runtime/tests/CMakeLists.txt" "TIMEOUT 15" "bounded conc
 require_file_token("docs/input-model.md" "Per-viewer protocol state remains separate" "canonical concurrent-viewer input model")
 require_file_token("docs/input-model.md" "the target release occurs when the final holder releases/disconnects" "final-holder release semantics")
 require_file_token("docs/input-model.md" "A release is protected only when its corresponding press was accepted" "protected-release admission semantics")
-require_file_token("docs/known-limitations.md" "multiple viewers contribute to one logical application input device" "truthful shared-target multi-viewer boundary")
+require_file_token("docs/known-limitations.md" "多个 viewer 共享一个逻辑应用输入设备" "shared-target multi-viewer boundary")
 require_file_token("docs/input-model.md" "distinguish ordinary bounded input from release delivery" "protected-release versus ordinary bounded input")
 require_file_token("docs/input-model.md" "If a press was rejected by backpressure" "rejected-press release suppression")
 require_file_token("docs/v1-api-stability.md" "stays observable as `Faulted` until the owner calls `stop()`" "non-recoverable failure stays Faulted until stop")

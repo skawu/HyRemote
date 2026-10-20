@@ -700,7 +700,7 @@ foreach(doc_check
         "docs/internal/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
         "docs/releases/v1.0.0.0.md|explicit HyRemote runtime stop/policy transition"
         "docs/compatibility.md|explicit Runtime lifecycle"
-        "docs/known-limitations.md|Stopping the runtime is explicit and complete")
+        "docs/known-limitations.md|停止 Runtime 是显式且完整的")
     string(REPLACE "|" ";" doc_parts "${doc_check}")
     list(GET doc_parts 0 doc_path)
     list(GET doc_parts 1 required_phrase)

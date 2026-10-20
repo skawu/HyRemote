@@ -1,222 +1,215 @@
-# Known Limitations
+# 已知限制
 
-This page lists product boundaries that matter to HyRemote users. It does not track development history, CI state, or acceptance workflow.
+> 语言 / Language：**中文** ｜ [English](en/known-limitations.md)
 
-For the exact current matrix, see [`compatibility.md`](compatibility.md).
+本文列出会影响 HyRemote 用户的产品边界，不记录开发历史、CI 状态或验收流程。
 
-## Current product line
+精确兼容矩阵见 [`compatibility.md`](compatibility.md)。
 
-The current product line is **V0.2.0.0 (First User Trial)**, and it references:
+## 当前产品线
 
-- Windows x86_64;
-- Linux x86_64;
-- Qt 6.8.3;
-- C++ API, QML API, Generic Plugin and QPA as **peer** integration technologies, with no primary or
-  preview hierarchy between them.
+当前产品线是 **V0.3.0.0 Product Preview**，参考环境：
 
-Qt 5.15 LTS, Embedded Linux, ARM64, and additional QPA private-ABI combinations are not part of the current V0.2.0.0 support statement.
+- Windows x86_64；
+- Linux x86_64；
+- Qt 6.8.3；
+- C++ API、QML API、Generic Plugin、QPA 是并列接入技术，没有主次或预览层级。
 
-## Security
+Qt 5.15 LTS、嵌入式 Linux、ARM64 和其他 QPA private-ABI 组合不在 V0.3.0.0 支持声明中。
 
-V0.2.0.0 is not an Internet-facing remote-access server.
+## 安全
 
-Current limitations:
+V0.3.0.0 不是面向 Internet 的远程访问服务器。
 
-- default listener is `0.0.0.0:5921`, reachable on the host's IPv4 interfaces;
-- remote input is disabled by default;
-- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
-- `Authenticated` is conditional and requires a transport-security-enabled build plus a valid security descriptor;
-- when `Authenticated` is available, it uses RFB VNC authentication but the stream remains unencrypted;
-- the default V0.2.0.0 build/profile does not imply authenticated transport is compiled in;
-- a requested `Authenticated` profile with no required build capability fails with `SecurityUnavailable` before target/transport/listener creation;
-- `AuthenticatedEncrypted` is not implemented and always fails with `SecurityUnavailable` before listener creation;
-- `AuthenticatedEncrypted` never falls back to `Authenticated` or `Insecure`, even if a certificate/private-key descriptor exists;
-- there is no production TLS/certificate policy yet;
-- there is no authenticated Session Registry or per-session role model yet.
+当前限制：
 
-Stopping the runtime is explicit and complete: `stop()` releases the held input state the runtime was maintaining for connected viewers and returns the listener and the target adapter to `Stopped`, so an application never has to undo synthetic remote held state itself.
+- 默认 listener 是 `0.0.0.0:5921`，在主机 IPv4 接口可达；
+- 远程输入默认关闭；
+- `Insecure` 未认证、未加密，只面向可信 LAN，不适合 Internet；
+- `Authenticated` 是条件能力，需要启用传输安全的构建和有效安全描述文件；
+- `Authenticated` 可用时使用 RFB VNC 认证，但传输仍未加密；
+- 默认构建不表示认证传输已经编译进来；
+- 请求 `Authenticated` 但构建能力不足时，在创建 target/transport/listener 前以 `SecurityUnavailable` 失败；
+- `AuthenticatedEncrypted` 未实现，始终在创建 listener 前以 `SecurityUnavailable` 失败；
+- `AuthenticatedEncrypted` 不会回退到 `Authenticated` 或 `Insecure`，即使存在证书/私钥描述文件；
+- 当前没有生产 TLS/证书策略；
+- 当前没有认证 Session Registry 或每会话角色模型。
 
-> **Later line:** encrypted transport, certificate policy, authenticated sessions, admission/termination controls, and production network policy.
+停止 Runtime 是显式且完整的：`stop()` 会释放 Runtime 为已连接 viewer 保持的输入状态，并把 listener 和目标适配器恢复到 `Stopped`，应用不需要自己撤销合成的远程按住状态。
 
-See [`security.md`](security.md).
+> **后续：** 加密传输、证书策略、认证会话、准入/终止控制和生产网络策略。
 
-## Listener addresses
+见 [`security.md`](security.md) 和 [`security-model.md`](security-model.md)。
 
-HyRemote currently accepts numeric IP addresses rather than hostnames/DNS names.
+## Listener 地址
 
-Important behavior:
+HyRemote 当前接受数字 IP 地址，不接受主机名/DNS 名称。
 
-- default: `0.0.0.0` (every IPv4 interface), or one exact local IPv4, or a named interface;
-- an invalid/unassigned bind address fails instead of silently widening to a wildcard;
-- an already occupied port fails startup;
-- `0.0.0.0` is the shipped default and widens IPv4 exposure to the host's interfaces; it is paired with
-  `Insecure` (unauthenticated and unencrypted), which is why the listener is for a **trusted LAN only**
-  and is **not Internet-safe**;
-- IPv6 wildcard behavior is platform-specific and must not be assumed to be dual-stack.
+重要行为：
 
-On the current Windows/Qt 6.8.3 reference path, `::` behaves as an IPv6-only listener rather than accepting IPv4 through the same socket.
+- 默认 `0.0.0.0`，即所有 IPv4 接口；也可以是一个精确本地 IPv4 或命名接口；
+- 无效/未分配的绑定地址会失败，不会静默扩大到 wildcard；
+- 端口已被占用时启动失败；
+- `0.0.0.0` 是默认值，会扩大 IPv4 暴露到主机接口；它配合 `Insecure` 使用，因此只面向可信 LAN，不适合 Internet；
+- IPv6 wildcard 行为因平台而异，不能假设双栈。
 
-> **TODO V0.4:** complete the same explicit address-family qualification across the final Windows/Linux compatibility matrix.
+在 Windows/Qt 6.8.3 参考路径上，`::` 是 IPv6-only listener，不会通过同一 socket 接受 IPv4。
 
-Changing the bind address changes the security boundary; see [`security.md`](security.md).
+> **TODO V0.4：** 在最终 Windows/Linux 兼容矩阵上完成显式地址族资格。
 
-## Capture scope
+修改绑定地址会改变安全边界，见 [`security.md`](security.md)。
 
-The portable correctness baseline supports qualified Qt application surfaces, not every possible graphics configuration.
+## 采集范围
 
-Current baseline:
+可移植正确性基线支持经过认证的 Qt 应用 surface，不覆盖所有图形配置。
 
-- QWidget top-level targets through the Widgets adapter;
-- QQuickWindow targets through the Qt Quick adapter;
-- automatic composition for supported application-owned top-level surfaces in Generic/QPA paths.
+当前基线：
 
-Do not automatically infer support for:
+- QWidget 顶层目标通过 Widgets 适配器；
+- QQuickWindow 目标通过 Qt Quick 适配器；
+- Generic/QPA 路径对受支持的应用自有顶层 surface 做自动组合。
 
-- every `QOpenGLWidget` configuration;
-- every `QQuickWidget` composition;
-- Quick3D;
-- custom FBO/render-node paths;
-- arbitrary `QOpenGLWindow`/native OS windows;
-- foreign windows not owned by the Qt application.
+不要自动推断支持：
 
-> **TODO V0.4:** qualify representative real-world complex rendering paths and document them as explicit compatibility rows.
+- 每一种 `QOpenGLWidget` 配置；
+- 每一种 `QQuickWidget` 组合；
+- Quick3D；
+- 自定义 FBO/渲染节点路径；
+- 任意 `QOpenGLWindow`/原生 OS 窗口；
+- 不属于 Qt 应用的外部窗口。
 
-## Input scope
+> **TODO V0.4：** 认证有代表性的真实复杂渲染路径，并写成显式兼容行。
 
-Remote input currently covers normalized application-scoped pointer, button, wheel, key/modifier, and committed-text behavior where the transport provides sufficient information.
+## 输入范围
 
-Limitations:
+远程输入当前覆盖规范化、应用作用域的指针、按钮、滚轮、按键/修饰键，以及协议信息足够时的提交文本。
 
-- HyRemote does not provide desktop-wide virtual HID / `uinput` control as the normal product path;
-- full IME composition/dead-key/international-layout parity is not guaranteed for every platform/viewer combination;
-- printable text is genuinely usable from a maintained VNC viewer on the qualified path: a real LAN user trial
-  entered Latin characters and digits, and Chinese text, from a second machine;
-- remote input is **application-scoped**. If the host locally activates another application or the desktop, the
-  remote pointer does not reliably reclaim OS activation for the target application, so remote typing can stop
-  working until the target application is activated locally again;
-- unsupported input semantics are not reconstructed by guesswork;
-- multiple viewers contribute to one logical application input device rather than separate independent cursors/focus domains.
+限制：
 
-Held supported key/button state is cleaned up across disconnect/Runtime stop so a remote peer should not intentionally leave the target stuck in a pressed state.
+- HyRemote 不把桌面级虚拟 HID/uinput 控制作为正常产品路径；
+- 不是每个平台/viewer 组合都保证完整 IME 组合、死键和国际布局一致；
+- 在合格路径上，维护中 VNC viewer 可以输入可打印文本：真实 LAN 试验输入过拉丁字符、数字和中文；
+- 远程输入是**应用作用域**。如果宿主本地激活了另一个应用或桌面，远程指针不能可靠地把 OS 激活抢回目标应用，远程输入可能停止，直到目标应用在本地重新激活；
+- 不支持的输入语义不通过猜测重建；
+- 多个 viewer 共享一个逻辑应用输入设备，而不是各自独立的 cursor/focus 域。
 
-## Session model
+断开连接或 Runtime 停止时，受支持的按住键/按钮状态会被清理，远端不应把目标留在按下状态。
 
-V0.2.0.0 exposes operational connection count, not a full authenticated session-management API.
+## 会话模型
 
-`connectedClientCount()` tells the application how many clients are currently connected. It does not provide:
+V0.3.0.0 暴露运行连接数，不提供完整认证会话管理 API。
 
-- authenticated user identity;
-- roles;
-- per-session admission policy;
-- per-session termination/ban controls;
-- independent per-viewer focus/cursor policy.
+`connectedClientCount()` 告诉应用当前连接了多少客户端，但不提供：
 
-> **Later line:** authenticated Session Registry and bounded admission/termination APIs.
+- 认证用户身份；
+- 角色；
+- 每会话准入策略；
+- 每会话终止/封禁控制；
+- 独立的每 viewer focus/cursor 策略。
+
+> **后续：** 认证 Session Registry 和有界准入/终止 API。
 
 ## QML API
 
-QML API is a peer integration technology of the V0.2.0.0 line, on the same Shared Runtime as the C++ API.
+QML API 是 V0.3.0.0 的并列接入技术，和 C++ API 使用同一共享 Runtime。
 
-It uses the same Shared Runtime as the C++ API and does not create a second Runtime. However, the final installed-SDK learning/deployment experience and broader qualification are still being completed.
+它不创建第二套 Runtime。安装后 SDK 的学习/部署体验和更广资格认证仍在完善。
 
-> **Later line:** further QML productization and example/deployment qualification.
+> **后续：** 进一步 QML 产品化和示例/部署资格。
 
 ## Generic Plugin
 
-Generic Plugin is a peer zero-code integration technology of the V0.2.0.0 line.
+Generic Plugin 是 V0.3.0.0 的并列零代码接入技术。
 
-Its contract is that the application's native Qt platform remains authoritative. A deployment that unexpectedly changes the application platform identity to `hyremote` is not a valid Generic configuration.
+它的契约是应用原生 Qt 平台保持权威。部署后如果应用平台身份意外变成 `hyremote`，就不是有效 Generic 配置。
 
-Generic does not inherit QPA private-ABI compatibility claims.
+Generic 不继承 QPA private-ABI 兼容声明。
 
 ## QPA
 
-QPA is a peer integration technology of the V0.2.0.0 line, and is intentionally narrower than Generic
-because it depends on Qt's exact private ABI.
+QPA 是 V0.3.0.0 的并列接入技术，比 Generic 更窄，因为它依赖 Qt 精确 private ABI。
 
-Limitations:
+限制：
 
-- Qt private ABI is involved;
-- current reference is **Qt 6.8.3 exact**;
-- Windows native delegate: `qwindows`;
-- Linux/X11 native delegate: `qxcb`;
-- another Qt patch/minor is not automatically compatible;
-- Wayland/EGLFS/macOS and other delegates are not implied by the reference pairs;
-- arbitrary foreign/native windows are outside the current QPA claim.
+- 涉及 Qt private ABI；
+- 当前参考是 **Qt 6.8.3 exact**；
+- Windows 原生 delegate：`qwindows`；
+- Linux/X11 原生 delegate：`qxcb`；
+- 另一个 Qt 补丁/次版本不自动兼容；
+- Wayland/EGLFS/macOS 和其他 delegate 不由参考组合推断；
+- 任意外部/原生窗口不在当前 QPA 声明内。
 
-Prefer Generic when it satisfies the application.
+满足应用需求时优先使用 Generic。
 
-> **Open work (current product line):** complete formal QPA productization and add exact compatibility rows only for qualified Qt/OS pairs.
+> **当前产品线未完成：** 正式 QPA 产品化；只有合格 Qt/OS 组合才增加精确兼容行。
 
-## Multi-window behavior
+## 多窗口行为
 
-HyRemote targets one Qt application, not a complete operating-system desktop.
+HyRemote 面向一个 Qt 应用，不面向完整操作系统桌面。
 
-Supported application-owned top-level surfaces may be represented in one logical remote application session. Opening or closing a supported dialog/tool window should not require a new listener.
+受支持的应用自有顶层 surface 可以表示在一个逻辑远程应用会话中。打开或关闭受支持对话框/工具窗口不应要求新建 listener。
 
-This does not create a blanket claim for arbitrary native/foreign windows.
+这不构成对任意原生/外部窗口的 blanket 声明。
 
-## Performance
+## 性能
 
-V0.2.0.0 is a correctness-first, CPU-readable baseline.
+V0.3.0.0 是正确性优先、CPU 可读的基线。
 
-It does not promise:
+它不承诺：
 
-- universal zero-copy capture;
-- DMA-BUF/GBM production paths;
-- hardware H.264/H.265 encoding;
-- RKMPP/VAAPI/D3D accelerated transport;
-- optimal per-surface damage for every Qt application type;
-- high-motion video/Quick3D performance equivalent to a media-streaming protocol.
+- 通用零拷贝采集；
+- DMA-BUF/GBM 生产路径；
+- 硬件 H.264/H.265 编码；
+- RKMPP/VAAPI/D3D 加速传输；
+- 每种 Qt 应用类型的最优 per-surface damage；
+- 与媒体流协议等价的高动态视频/Quick3D 性能。
 
-Remote interaction may be noticeably slower than local input while remaining usable: the first real LAN trial
-reported that the host reacts immediately while the remote view lags visibly. Performance work is driven by
-measured product bottlenecks rather than by platform API availability alone.
+远程交互可能明显慢于本地输入，但仍可用：首次真实 LAN 试验报告宿主立即响应，远程画面有明显延迟。性能工作由测量到的产品阻塞驱动，不由平台 API 可用性驱动。
 
-> **TODO later acceleration line:** add low-copy/hardware paths only where measurements justify them.
+> **后续加速线：** 只有测量证明必要时才加入低拷贝/硬件路径。
 
-## Deployment
+## 部署
 
-A valid product deployment should run from its own application tree.
+有效产品部署应从自己的应用树运行。
 
-It should not depend on:
+它不应依赖：
 
-- the original HyRemote build directory;
-- the original HyRemote SDK path;
-- a Qt SDK plugin path used as a runtime workaround;
-- manually copied internal Core/transport/capture files.
+- 原 HyRemote 构建目录；
+- 原 HyRemote SDK 路径；
+- 作为运行时 workaround 的 Qt SDK 插件路径；
+- 手工复制的内部 Core/transport/capture 文件。
 
-Use `hyremote_deploy()` for product payload placement. See [`guide/deployment.md`](guide/deployment.md).
+使用 `hyremote_deploy()` 放置产品 payload。见 [`guide/deployment.md`](guide/deployment.md)。
 
-## Physical local + remote coexistence
+## 物理本地+远程共存
 
-Headless/offscreen execution can demonstrate remote-protocol-to-application behavior, but it does not by itself prove that every physical display/input configuration behaves correctly while remote access is active.
+Headless/offscreen 执行可以证明远程协议到应用的行为，但不能单独证明每种物理显示/输入配置在远程访问期间都正确。
 
-The product goal is to preserve native local rendering/input while adding remote access.
+产品目标是在加入远程访问的同时保持本地原生渲染/输入。
 
-> **TODO V0.4:** complete physical Windows/Linux qualification for the final compatibility matrix, especially QPA and complex multi-window paths.
+> **TODO V0.4：** 完成最终兼容矩阵的 Windows/Linux 物理资格，尤其是 QPA 和复杂多窗口路径。
 
-## Qt versions
+## Qt 版本
 
-Current reference: **Qt 6.8.3 / Qt 6.8 LTS family**.
+当前参考：**Qt 6.8.3 / Qt 6.8 LTS 家族**。
 
-Qt 5.15 LTS is a planned compatibility line but is not yet a current product claim because the present Runtime requires Qt 6.8+.
+Qt 5.15 LTS 是计划中的兼容线，但不是当前产品声明，因为当前 Runtime 需要 Qt 6.8+。
 
-> **TODO V0.4:** qualify Qt 5.15 LTS and update the product matrix only after build, deployment, runtime, and applicable integration paths actually work.
+> **TODO V0.4：** 在构建、部署、运行时和相关接入路径实际可用后，再认证 Qt 5.15 LTS 并更新产品矩阵。
 
-## Embedded platforms
+## 嵌入式平台
 
-Desktop x86 results do not imply Embedded Linux support.
+桌面 x86 结果不表示嵌入式 Linux 支持。
 
-The following are later product directions:
+以下是后续产品方向：
 
-- ARM64 Embedded Linux;
-- RK3588;
-- EGLFS / Wayland;
-- NXP i.MX class;
-- DMA-BUF/GBM external-buffer paths;
-- RKMPP and other hardware encoders.
+- ARM64 嵌入式 Linux；
+- RK3588；
+- EGLFS/Wayland；
+- NXP i.MX 类；
+- DMA-BUF/GBM 外部缓冲路径；
+- RKMPP 和其他硬件编码器。
 
-> **TODO:** Embedded Linux / ARM64 / EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under the position-derived baseline authority and must converge before V0.4 RC entry; dependency slicing and additional BSP/SoC expansion beyond the declared GA cells are separately admitted later outcomes, with no version number pre-assigned by this convergence.
+> **TODO：** 嵌入式 Linux/ARM64/EGLFS 参考单元是 V0.3 家族 GA 前必须收敛的兼容基线，V0.4 RC 进入前必须完成；依赖切片和声明 GA 单元之外的 BSP/SoC 扩展作为后续结果单独准入，不通过本次收敛预分配版本号。
 >
-> **TODO later acceleration line:** hardware-accelerated capture/encode after embedded correctness is established.
+> **后续加速线：** 在嵌入式正确性建立后再做硬件加速采集/编码。
