@@ -80,14 +80,14 @@ It runs Raw and TRLE against W1 静态、W2 局部变化、W3 高动态、W4 ful
 encoding/workload. The numbers are local-loopback indicative measurements, not a release SLO and not a substitute
 for maintained-viewer evidence.
 
-Windows x86_64/Qt 6.8.3 run (16 samples per measurement, 256x256 frame):
+Windows x86_64/Qt 6.8.3 run from `rfb-profile.yml` (16 samples per measurement, 256x256 frame):
 
 | Workload | Raw bytes | TRLE bytes | Raw p50 ms | TRLE p50 ms |
 | --- | ---: | ---: | ---: | ---: |
 | static | 0 | 0 | 0 | 0 |
-| localized | 262,400 | 1,840 | 1.82 | 0.22 |
-| high-motion | 4,197,440 | 19,520 | 1.77 | 0.49 |
-| full-refresh | 262,160 | 1,040 | 1.98 | 0.31 |
+| localized | 262,400 | 1,840 | 0.23 | 0.19 |
+| high-motion | 4,197,440 | 19,520 | 2.08 | 0.51 |
+| full-refresh | 262,160 | 1,040 | 2.08 | 0.48 |
 
 Linux x86_64/Qt 6.8.3 run from the manual `rfb-profile.yml` lane (same frame size and workload definitions):
 
@@ -120,8 +120,7 @@ This selection is a candidate-level decision, not release acceptance. It still r
 and the #370 interaction/resource envelope before #144 can close.
 
 The next required evidence is a maintained third-party GUI viewer on both platforms, not another codec. The manual
-`rfb-profile.yml` lane records the Linux JSON; the Windows numbers remain from the local run until the same job is
-extended to Windows.
+`rfb-profile.yml` lane records both the Linux and Windows JSON artifacts with the same workload definitions.
 
 ## Decision outputs
 
