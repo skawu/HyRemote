@@ -1,12 +1,14 @@
-# Third-Party Dependency Policy
+# 第三方依赖政策
 
-HyRemote is licensed under the **Apache License 2.0** and is intended for reuse in commercial and open-source Qt products, including future embedded deployments.
+> 语言 / Language：**中文** ｜ [English](en/dependency-policy.md)
 
-Dependencies must be technically justified, maintainable, legally compatible, and invisible to normal application integration unless a product capability genuinely requires them.
+HyRemote 使用 **Apache License 2.0**，面向商业和开源 Qt 产品复用，也包括未来嵌入式部署。
 
-## Product toolchain rule
+依赖必须具备技术理由、可维护、法律兼容，并且对普通应用接入不可见，除非产品能力确实需要它。
 
-HyRemote has one Shared Runtime and four peer integration frontends:
+## 产品工具链规则
+
+HyRemote 有一个共享 Runtime 和四个并列接入前端：
 
 ```text
 C++ API ---------\
@@ -15,146 +17,152 @@ Generic Plugin ----> Shared Runtime -> Core
 QPA --------------/
 ```
 
-The normal product implementation uses C++17, CMake, and Qt.
+正常产品实现使用 C++17、CMake 和 Qt。
 
-C++/QML/Generic/QPA are integration frontends rather than separate backend toolchains. A normal Windows/Linux SDK consumer does not install Rust, Cargo, Go, Node, Python, or another backend-specific toolchain merely to use HyRemote.
+C++/QML/Generic/QPA 是接入前端，不是独立后端工具链。普通 Windows/Linux SDK 消费者不需要为了使用 HyRemote 安装 Rust、Cargo、Go、Node、Python 或其他后端专用工具链。
 
-A future implementation may use an additional language/toolchain internally only when the resulting SDK still preserves the documented application API, package, deployment, and platform contracts.
+未来实现可以在内部使用额外语言/工具链，前提是 SDK 仍保持文档化应用 API、包、部署和平台契约。
 
-## Dependency classes
+## 依赖类别
 
-HyRemote distinguishes three classes of dependency:
+HyRemote 区分三类依赖：
 
-| Class | Meaning |
+| 类别 | 含义 |
 | --- | --- |
-| **Application/runtime dependency** | Needed by a shipped HyRemote capability at runtime |
-| **Build dependency** | Needed to build an enabled capability but not exposed as an application API |
-| **Development/verification tool** | Used to build, test, benchmark, package, or qualify HyRemote; not part of the installed product contract |
+| **应用/runtime 依赖** | 已发布 HyRemote 能力在运行时需要 |
+| **构建依赖** | 构建某个启用能力需要，但不暴露为应用 API |
+| **开发/验证工具** | 用于构建、测试、基准、打包或认证 HyRemote，不属于安装产品契约 |
 
-Development tooling does not become an SDK/runtime prerequisite merely because the repository uses it.
+开发工具不会因为仓库使用它就成为 SDK/runtime 前提。
 
-## No hidden dependency downloads
+## 没有隐藏依赖下载
 
-The HyRemote product build does not silently download or patch major product dependencies.
+HyRemote 产品构建不会静默下载或补丁主要产品依赖。
 
-In particular:
+具体规则：
 
-- Qt is supplied by the selected developer/CI/toolchain environment;
-- OpenSSL, when a secure transport build requires it, is supplied by the environment or an explicitly selected prefix;
-- product dependencies are not silently added through hidden `FetchContent`/`ExternalProject` download flows;
-- third-party application sources used for qualification are not installed as part of the HyRemote SDK.
+- Qt 由选定的开发者/CI/工具链环境提供；
+- 安全传输构建需要 OpenSSL 时，由环境或显式选择的 prefix 提供；
+- 产品依赖不会通过隐藏的 `FetchContent`/`ExternalProject` 下载流被静默加入；
+- 用于资格认证的第三方应用源码不作为 HyRemote SDK 的一部分安装。
 
-This keeps offline, enterprise, and embedded build environments predictable.
+这样保持离线、企业和嵌入式构建环境可预测。
 
 ## Qt
 
-Core remains independent of Qt UI technology.
+Core 保持与 Qt UI 技术无关。
 
-The Shared Runtime and frontends use Qt according to these rules:
+共享 Runtime 和前端按以下规则使用 Qt：
 
-- public Qt APIs are preferred for normal product integration;
-- Generic Plugin stays on public Qt plugin APIs and preserves the application's native platform integration;
-- QPA is the only frontend allowed to depend on Qt private/QPA ABI as part of its product role;
-- QPA compatibility is qualified per exact Qt patch/platform combination;
-- public-API compatibility never implies QPA private-ABI compatibility.
+- 普通产品接入优先使用公共 Qt API；
+- Generic Plugin 保持公共 Qt 插件 API，并保留应用原生平台接入；
+- QPA 是唯一允许因产品角色依赖 Qt private/QPA ABI 的前端；
+- QPA 兼容性按精确 Qt 补丁/平台组合认证；
+- 公共 API 兼容不表示 QPA private-ABI 兼容。
 
-Current desktop reference: Qt **6.8.3**.
+当前桌面参考：Qt **6.8.3**。
 
-Qt remains under its own licensing terms. A distributor is responsible for the license, notice, relinking/source-availability, and other obligations associated with the exact Qt binaries it redistributes.
+Qt 仍受其自身许可条款约束。分发者负责其重新分发的精确 Qt 二进制所附带的许可、通知、重链接/源码可用性和其他义务。
 
-HyRemote does not change those obligations.
+HyRemote 不改变这些义务。
 
-## Transport security and OpenSSL
+## 传输安全与 OpenSSL
 
-Transport security is a Runtime capability, not a fifth integration mode.
+传输安全是 Runtime 能力，不是第五种接入模式。
 
-The build capability is represented by:
+构建能力由以下宏表示：
 
 ```text
 HYREMOTE_WITH_TRANSPORT_SECURITY
 ```
 
-When secure transport is requested:
+请求安全传输时：
 
-- the required cryptographic/TLS dependency must be explicitly available;
-- configuration fails closed when the dependency is unavailable;
-- HyRemote does not silently downgrade a requested secure build to an insecure one;
-- cryptographic implementation types remain private Runtime details rather than downstream SDK targets.
+- 所需加密/TLS 依赖必须显式可用；
+- 依赖不可用时配置失败关闭；
+- HyRemote 不会把请求的安全构建静默降级为不安全构建；
+- 加密实现类型保持私有 Runtime 细节，不作为下游 SDK 目标。
 
-Current V0.1 `AuthenticatedEncrypted` is unavailable and fails closed.
+当前 V0.1 `AuthenticatedEncrypted` 不可用，会失败关闭。
 
-> **TODO V0.2:** complete the encrypted transport/certificate product capability and publish its exact third-party runtime/package obligations.
+> **TODO V0.2：** 完成加密传输/证书产品能力，并发布精确第三方 runtime/包义务。
 
-## RFB/VNC transport baseline
+## RFB/VNC 传输基线
 
-The current Windows/Linux correctness baseline is HyRemote's bounded C++ RFB 3.8 transport behind the private Runtime transport boundary.
+当前 Windows/Linux 正确性基线是私有 Runtime 传输边界后的有界 C++ RFB 3.8 传输。
 
-RFB is an implementation and interoperability baseline, not the permanent public identity of HyRemote.
+RFB 是实现和互操作基线，不是 HyRemote 永久公共身份。
 
-All four frontends share the same transport-neutral Runtime/Core model, so a future accepted transport may replace or supplement RFB without creating frontend-specific Runtime personalities.
+四个前端共享同一传输无关 Runtime/Core 模型，未来接受的新传输可以替换或补充 RFB，不产生前端专用 Runtime 变体。
 
-Current security semantics:
+当前安全语义：
 
-- `Insecure` is appropriate only within the documented trusted/loopback boundary;
-- `Authenticated` may use RFB VNC authentication but remains unencrypted;
-- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable.
+- `Insecure` 只适用于文档化可信/loopback 边界；
+- `Authenticated` 可以使用 RFB VNC 认证，但仍未加密；
+- 加密传输不可用时 `AuthenticatedEncrypted` 失败关闭。
 
-## Adding a new product dependency
+## 增加新产品依赖
 
-A new dependency must have a documented product justification covering:
+新依赖必须有文档化产品理由，覆盖：
 
-1. upstream project and canonical source;
-2. selected release/tag/commit policy;
-3. license and attribution obligations;
-4. compatibility with HyRemote's distribution model;
-5. static/dynamic linking implications;
-6. activity, maintenance, and security-update posture;
-7. required versus optional status;
-8. supported platforms/toolchains;
-9. effect on C++/QML/Generic/QPA packaging and deployment;
-10. fallback/removal strategy;
-11. offline/cross-build impact;
-12. whether upstream contribution is preferable to maintaining a fork.
+1. 上游项目和规范源；
+2. 选定 release/tag/commit 政策；
+3. 许可证和归属义务；
+4. 与 HyRemote 分发模型兼容；
+5. 静态/动态链接影响；
+6. 活跃度、维护和安全更新状态；
+7. 必需或可选状态；
+8. 支持平台/工具链；
+9. 对 C++/QML/Generic/QPA 打包和部署的影响；
+10. fallback/移除策略；
+11. 离线/交叉构建影响；
+12. 上游贡献是否优于维护 fork。
 
-A dependency must not silently force downstream applications into an incompatible license or a new mandatory toolchain merely by using HyRemote.
+依赖不得仅因为使用 HyRemote 就静默强迫下游应用接受不兼容许可证或新的必需工具链。
 
-## Fork policy
+## Fork 政策
 
-Prefer upstream collaboration over a permanent HyRemote-specific fork when a change is generally useful.
+变更具有普遍价值时，优先上游协作，不建立永久 HyRemote 专用 fork。
 
-A temporary pinned patch or fork must have a clear product reason and a deletion/upstreaming plan. It must not become invisible long-term infrastructure that users are expected to understand or maintain.
+临时 pinned patch 或 fork 必须有清晰产品理由和删除/上游化计划，不能变成用户需要理解或维护的长期隐形基础设施。
 
-## Product-distribution rules
+## 产品分发规则
 
-Two product rules are especially important:
+两条规则尤其重要：
 
-### Qt remains external to the HyRemote source tree
+### Qt 保持在 HyRemote 源码树之外
 
-HyRemote consumes a selected Qt SDK rather than fetching, rebuilding, or patching Qt as part of the normal product build.
+HyRemote 使用选定 Qt SDK，不在正常产品构建中获取、重建或补丁 Qt。
 
-QPA may compile against qualified Qt private interfaces, but that does not turn Qt into vendored HyRemote source or broaden the QPA compatibility promise.
+QPA 可以针对合格 Qt private 接口编译，但这不会把 Qt 变成 HyRemote vendored 源码，也不会扩大 QPA 兼容承诺。
 
-### Third-party qualification applications are not HyRemote runtime payloads
+### 第三方资格应用不是 HyRemote runtime payload
 
-Real-world applications used to qualify HyRemote remain separate upstream projects. HyRemote records the exact upstream revision and test method, but does not rebrand or redistribute those applications as part of its own SDK unless a future distribution decision explicitly addresses the associated licensing obligations.
+用于认证 HyRemote 的真实应用保持独立上游项目。HyRemote 记录精确上游 revision 和测试方法，但不把这些应用重新品牌化或作为自身 SDK 的一部分再分发，除非未来分发决策显式处理相关许可义务。
 
-## Platform and hardware libraries
+## 平台和硬件库
 
-GBM, DRM, DMA-BUF-related libraries, RKMPP, V4L2, VA-API, D3D-class APIs, and similar platform/hardware dependencies remain optional implementation dependencies unless a product line explicitly requires them.
+GBM、DRM、DMA-BUF 相关库、RKMPP、V4L2、VA-API、D3D 类 API 和类似平台/硬件依赖保持可选实现依赖，除非产品线显式要求。
 
-They must not:
+它们不得：
 
-- enter the generic Core;
-- change the four application integration contracts;
-- force Generic/QPA applications to link SoC-specific libraries directly;
-- become prerequisites for ordinary desktop users merely to optimize one target platform.
+- 进入通用 Core；
+- 改变四个应用接入契约；
+- 强迫 Generic/QPA 应用直接链接 SoC 专用库；
+- 仅为了优化一个目标平台就成为普通桌面用户的前提。
 
-> **TODO:** publish exact embedded/platform dependency manifests per supported BSP/product package. Embedded Linux/ARM64/EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under #343; additional BSP/SoC expansion beyond the declared GA cells is separately admitted and no version number is pre-assigned (#333).
+> **TODO：** 按支持的 BSP/产品包发布精确嵌入式/平台依赖清单。嵌入式 Linux/ARM64/EGLFS 参考单元是 #343 下 V0.3 家族 GA 前强制兼容基线；声明 GA 单元之外的 BSP/SoC 扩展单独准入，不预分配版本号（#333）。
 
-## Historical and future candidates
+## 历史与未来候选
 
-Past experiments with other VNC/transport implementations remain engineering evidence, not current application dependencies.
+过去对其他 VNC/传输实现的实验是工程证据，不是当前应用依赖。
 
-A future transport or low-copy dependency is accepted only when it provides measurable product value while preserving the normal C++/Qt SDK and deployment experience.
+未来传输或低拷贝依赖只有在保持正常 C++/Qt SDK 和部署体验的同时提供可测量产品价值时才被接受。
 
-No dependency is promoted merely because it is technically interesting.
+依赖不会仅因为技术上有趣就被提升。
+
+## 当前限制
+
+当前产品线没有引入新的传输安全运行时依赖；加密传输仍未实现。
+
+任何新依赖必须同时更新 `LICENSE`、`NOTICE.md` 和部署 payload 列表，并在同一个变更中完成。
