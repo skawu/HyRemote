@@ -48,6 +48,8 @@ jobs:
       lane: ${{ steps.scope.outputs.lane }}
       decision: ${{ steps.scope.outputs.decision }}
       purpose: ${{ steps.admission.outputs.purpose }}
+      test_only: ${{ steps.scope.outputs.test_only }}
+      product_matrix: ${{ steps.scope.outputs.product_matrix }}
       product: ${{ steps.scope.outputs.product }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
