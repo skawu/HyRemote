@@ -17,15 +17,48 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 
 #include <iostream>
 
 namespace {
+
+// The example is also the manual validation target. Echo accepted input so an
+// external viewer run can prove that keyboard/pointer events reached Qt without
+// relying only on a visual inspection of the text field.
+class ValidationLineEdit final : public QLineEdit
+{
+public:
+    using QLineEdit::QLineEdit;
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        std::cout << "INPUT_KEY press key=" << event->key()
+                  << " text=" << event->text().toStdString() << std::endl;
+        QLineEdit::keyPressEvent(event);
+    }
+
+    void keyReleaseEvent(QKeyEvent *event) override
+    {
+        std::cout << "INPUT_KEY release key=" << event->key() << std::endl;
+        QLineEdit::keyReleaseEvent(event);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        std::cout << "INPUT_MOUSE press button=" << static_cast<int>(event->button())
+                  << " x=" << event->position().x()
+                  << " y=" << event->position().y() << std::endl;
+        QLineEdit::mousePressEvent(event);
+    }
+};
 
 int positiveInt(const QCommandLineParser &parser, const QCommandLineOption &option, int fallback)
 {
@@ -80,7 +113,7 @@ int main(int argc, char **argv)
                                    "LAN IPv4 address on port %2")
                         .arg(remoteInput ? QStringLiteral("enabled explicitly") : QStringLiteral("view-only (default)"))
                         .arg(port));
-    auto *editor = new QLineEdit(central);
+    auto *editor = new ValidationLineEdit(central);
     editor->setPlaceholderText(QStringLiteral("Type here to test remote keyboard input"));
     editor->setCursor(Qt::IBeamCursor);
     layout->addWidget(status);
