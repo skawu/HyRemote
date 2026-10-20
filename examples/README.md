@@ -24,7 +24,7 @@ same remote-access runtime, not different products. Every route follows the same
 | An editable Qt Widgets application | Embedded C++ API | [01 - Widgets + C++](learning/01-widgets-cpp) |
 | An editable Qt Quick / QML UI, keeping C++ control | Embedded C++ API | [02 - Quick + C++](learning/02-quick-cpp) |
 | You specifically want a declarative HyRemote API | Declarative QML API | [04 - QML API](learning/04-qml) |
-| An existing application you would rather not modify | Generic Plugin | [03 - Generic zero-code](learning/03-zero-code-generic) |
+| An existing application you would rather not modify | Generic Plugin | [03 - Generic zero-code](learning/03-generic) |
 | You need platform-entry or exact Qt private-ABI behaviour | Transparent QPA | [05 - QPA proxy](learning/05-qpa) |
 
 The five entries above are **runnable peers**. The QPA route requires the exact qualified Qt build; the QML route
@@ -59,7 +59,7 @@ one type, and the deployment helper is one call.
 | [01 - Widgets + C++](learning/01-widgets-cpp) | C++ API / Widgets | The shortest real C++ path: a `QMainWindow`, `HyRemote::RemoteAccess`, an explicit `start()`, listener `0.0.0.0:5921`, view-only by default, explicit `stop()`. |
 | [02 - Quick + C++](learning/02-quick-cpp) | C++ API / Qt Quick | The same C++ path on a Qt Quick window. It never imports `HyRemote`: **Quick UI does not require the QML frontend.** |
 | [04 - QML API](learning/04-qml) | QML API | `import HyRemote` and a declarative `RemoteAccess` object over the same runtime. |
-| [03 - Generic zero-code](learning/03-zero-code-generic) | Generic plugin | Two ordinary Qt applications - Widgets and Quick - with zero HyRemote headers, API calls or link dependencies; run normally, or add `-plugin hyremote`. |
+| [03 - Generic zero-code](learning/03-generic) | Generic plugin | Two ordinary Qt applications - Widgets and Quick - with zero HyRemote headers, API calls or link dependencies; run normally, or add `-plugin hyremote`. |
 | [05 - QPA proxy](learning/05-qpa) | QPA proxy | An ordinary Qt Widgets application using `-platform hyremote`; exact Qt 6.8.3/private-ABI boundary, no HyRemote application API in its source. |
 
 Each example directory has its own `README.md` with build, run and viewer instructions.

@@ -8,7 +8,7 @@ Status: post-V0.3.0.0 engineering-health plan. Authority: #41 / #240. This docum
 | --- | --- | --- | --- | --- |
 | `learning/01-widgets-cpp` | C++ API / Widgets | yes | canonical first C++ example | keep as `01-cpp-widgets` |
 | `learning/02-quick-cpp` | C++ API / Qt Quick | yes | shows Quick UI does not require the QML API | keep as `02-cpp-quick` |
-| `learning/03-zero-code-generic` | Generic plugin / Widgets + Quick | yes | untouched-app route | keep as `03-generic` |
+| `learning/03-generic` | Generic plugin / Widgets + Quick | yes | untouched-app route | keep as `03-generic` |
 | `learning/04-qml` | QML `import HyRemote` | yes | declarative QML-API example | promoted (done) |
 | `learning/05-qpa` | QPA proxy / Widgets | yes | E4 ordinary-Qt fixture | promoted (done) |
 | `real-world` | Generic / three frozen upstream apps | studies | third-party verification, never a support claim | keep separate |
