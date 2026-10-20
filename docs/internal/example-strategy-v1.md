@@ -1,6 +1,6 @@
 # HyRemote V1.0.0.0 Example Strategy
 
-This document records the V1 example information architecture owned by #41.
+This document records the V1 example information architecture owned by #41. Current tree inventory, task coverage and the post-V0.3.0.0 v2 sequence are tracked in [`examples-v2-matrix.md`](examples-v2-matrix.md); the topology below is the V1 target, not a statement that every directory already exists.
 
 ## Integration terminology
 
