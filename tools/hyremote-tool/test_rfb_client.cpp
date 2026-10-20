@@ -75,6 +75,28 @@ QByteArray framebufferMessage(int width, int height, bool desktopSizeFirst = fal
     return message;
 }
 
+QByteArray cursorMessage()
+{
+    QByteArray message;
+    message.append(char(0));
+    message.append(char(0));
+    appendU16(message, 1);
+    appendU16(message, 1);  // hotspot x
+    appendU16(message, 1);  // hotspot y
+    appendU16(message, 4);
+    appendU16(message, 4);
+    appendS32(message, -239);
+    for (int i = 0; i < 4 * 4; ++i) {
+        message.append(char(255));
+        message.append(char(255));
+        message.append(char(255));
+        message.append(char(0));
+    }
+    for (int row = 0; row < 4; ++row)
+        message.append(char(0xf0));  // four opaque pixels
+    return message;
+}
+
 class FakeRfbServer final : public QObject
 {
 public:
@@ -129,6 +151,10 @@ private:
                 m_in.remove(0, 1);
                 sendServerInit();
                 m_phase = Phase::Streaming;
+                QTimer::singleShot(10, this, [this] {
+                    if (m_socket)
+                        m_socket->write(cursorMessage());
+                });
                 QTimer::singleShot(20, this, [this] {
                     if (m_socket)
                         m_socket->write(framebufferMessage(4, 2));
@@ -144,9 +170,13 @@ private:
                 return;
             const int type = static_cast<unsigned char>(m_in.at(0));
             qsizetype needed = 0;
-            if (type == 2)
-                needed = 12;
-            else if (type == 3)
+            if (type == 2) {
+                if (m_in.size() < 4)
+                    return;
+                const int count = (static_cast<unsigned char>(m_in.at(2)) << 8)
+                                  | static_cast<unsigned char>(m_in.at(3));
+                needed = 4 + count * 4;
+            } else if (type == 3)
                 needed = 10;
             else if (type == 5)
                 needed = 6;
@@ -221,11 +251,12 @@ int main(int argc, char **argv)
 
     RfbClient client;
     int frames = 0;
+    bool cursorSeen = false;
     bool inputComplete = false;
     bool statsSeen = false;
 
     const auto maybeQuit = [&] {
-        if (frames >= 2 && inputComplete && statsSeen)
+        if (frames >= 2 && cursorSeen && inputComplete && statsSeen)
             QTimer::singleShot(50, &app, &QCoreApplication::quit);
     };
 
@@ -247,6 +278,15 @@ int main(int argc, char **argv)
             CHECK(image.pixelColor(1, 1).rgb() == qRgb(0x11, 0x21, 0x30));
         }
         maybeQuit();
+    });
+
+    QObject::connect(&client, &RfbClient::cursorUpdated, &app, [&](const QImage &cursor, const QPoint &hotspot) {
+        if (!cursor.isNull()) {
+            CHECK(cursor.size() == QSize(4, 4));
+            CHECK(hotspot == QPoint(1, 1));
+            cursorSeen = true;
+            maybeQuit();
+        }
     });
 
     QObject::connect(&client, &RfbClient::statsUpdated, &app, [&](const RfbClient::Stats &stats) {
@@ -272,6 +312,7 @@ int main(int argc, char **argv)
     app.exec();
 
     CHECK(frames >= 2);
+    CHECK(cursorSeen);
     CHECK(inputComplete);
     CHECK(statsSeen);
     CHECK(client.state() != RfbClient::State::Failed);

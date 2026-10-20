@@ -1,6 +1,7 @@
 #include "rfb_client.h"
 
 #include <QAbstractSocket>
+#include <QColor>
 #include <QStringList>
 #include <QVector>
 
@@ -11,6 +12,7 @@ namespace {
 constexpr qsizetype kMaxRawRectangleBytes = 64 * 1024 * 1024;
 constexpr qint32 kEncodingRaw = 0;
 constexpr qint32 kEncodingDesktopSize = -223;
+constexpr qint32 kEncodingCursor = -239;
 
 quint16 readU16(const QByteArray &data, qsizetype offset)
 {
@@ -149,6 +151,7 @@ void RfbClient::resetSession()
     m_frame = QImage();
     m_size = QSize();
     m_serverName.clear();
+    emit cursorUpdated(QImage(), QPoint());
     m_waitingForFrame = false;
     m_frames = 0;
     m_bytes = 0;
@@ -310,9 +313,10 @@ void RfbClient::sendSetEncodings()
     QByteArray message;
     message.append(char(2));
     message.append(char(0));
-    appendU16(message, 2);
+    appendU16(message, 3);
     appendS32(message, kEncodingRaw);
     appendS32(message, kEncodingDesktopSize);
+    appendS32(message, kEncodingCursor);
     writeMessage(message);
 }
 
@@ -374,6 +378,15 @@ bool RfbClient::parseFramebufferUpdate()
             rectangle.payloadBytes = static_cast<qsizetype>(bytes);
         } else if (rectangle.encoding == kEncodingDesktopSize) {
             rectangle.payloadBytes = 0;
+        } else if (rectangle.encoding == kEncodingCursor) {
+            if (rectangle.width <= 0 || rectangle.height <= 0
+                || rectangle.width > 256 || rectangle.height > 256) {
+                fail(QStringLiteral("remote cursor has an invalid size"));
+                return false;
+            }
+            const qint64 pixels = static_cast<qint64>(rectangle.width) * rectangle.height * 4;
+            const qint64 mask = static_cast<qint64>((rectangle.width + 7) / 8) * rectangle.height;
+            rectangle.payloadBytes = static_cast<qsizetype>(pixels + mask);
         } else {
             fail(QStringLiteral("unsupported rectangle encoding %1").arg(rectangle.encoding));
             return false;
@@ -386,6 +399,7 @@ bool RfbClient::parseFramebufferUpdate()
     }
 
     bool fullRequestNeeded = false;
+    bool framebufferChanged = false;
     for (const Rectangle &rectangle : rectangles) {
         if (rectangle.encoding == kEncodingDesktopSize) {
             if (rectangle.width <= 0 || rectangle.height <= 0) {
@@ -400,6 +414,34 @@ bool RfbClient::parseFramebufferUpdate()
             }
             m_frame.fill(Qt::black);
             fullRequestNeeded = true;
+            framebufferChanged = true;
+            continue;
+        }
+
+        if (rectangle.encoding == kEncodingCursor) {
+            QImage cursor(rectangle.width, rectangle.height, QImage::Format_ARGB32);
+            if (cursor.isNull()) {
+                fail(QStringLiteral("could not allocate the remote cursor"));
+                return false;
+            }
+            const char *pixels = m_in.constData() + rectangle.payloadOffset;
+            const char *mask = pixels + static_cast<qsizetype>(rectangle.width) * rectangle.height * 4;
+            const int maskStride = (rectangle.width + 7) / 8;
+            for (int row = 0; row < rectangle.height; ++row) {
+                for (int col = 0; col < rectangle.width; ++col) {
+                    const char *pixel = pixels + (static_cast<qsizetype>(row) * rectangle.width + col) * 4;
+                    const bool opaque = (static_cast<unsigned char>(mask[row * maskStride + col / 8])
+                                         & static_cast<unsigned char>(0x80U >> (col % 8)))
+                                        != 0;
+                    cursor.setPixelColor(col,
+                                         row,
+                                         opaque ? QColor(static_cast<unsigned char>(pixel[0]),
+                                                         static_cast<unsigned char>(pixel[1]),
+                                                         static_cast<unsigned char>(pixel[2]))
+                                                : QColor(0, 0, 0, 0));
+                }
+            }
+            emit cursorUpdated(cursor, QPoint(rectangle.x, rectangle.y));
             continue;
         }
 
@@ -416,14 +458,17 @@ bool RfbClient::parseFramebufferUpdate()
                         source + row * rowBytes,
                         static_cast<std::size_t>(rowBytes));
         }
+        framebufferChanged = true;
     }
 
     m_in.remove(0, offset);
-    ++m_frames;
-    m_waitingForFrame = false;
-    if (!m_frame.isNull())
-        emit frameUpdated(m_frame);
-    requestFrame(!fullRequestNeeded);
+    if (framebufferChanged) {
+        ++m_frames;
+        m_waitingForFrame = false;
+        if (!m_frame.isNull())
+            emit frameUpdated(m_frame);
+        requestFrame(!fullRequestNeeded);
+    }
     return true;
 }
 
