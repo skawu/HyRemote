@@ -1,112 +1,114 @@
-# Qt Quick Capture and Input Baseline
+# Qt Quick 采集与输入基线
 
-This document describes the current HyRemote product behavior for qualified Qt Quick targets.
+> 语言 / Language：**中文** ｜ [English](en/quick-capture.md)
 
-Applications attach a `QQuickWindow` through the public HyRemote frontend they selected. They do not construct capture sources or input sinks directly.
+本文描述 HyRemote 对合格 Qt Quick 目标的当前产品行为。
 
-## Product boundary
+应用通过所选 HyRemote 前端附着 `QQuickWindow`，不直接构造采集源或输入 sink。
 
-For the programmable C++ API:
+## 产品边界
+
+可编程 C++ API：
 
 ```cpp
 HyRemote::RemoteAccess remote(quickWindow);
 remote.start();
 ```
 
-The QML API provides a declarative frontend over the same Runtime, while Generic Plugin and QPA may discover supported application-owned Quick surfaces automatically.
+QML API 在同一 Runtime 上提供声明式前端；Generic Plugin 和 QPA 可以自动发现受支持的应用自有 Quick surface。
 
-The Quick target adapter remains an internal Runtime implementation detail.
+Quick 目标适配器是 Runtime 内部实现细节。
 
-## Capture baseline
+## 采集基线
 
-The portable correctness path is conceptually:
+可移植正确性路径：
 
 ```text
-Core scheduler
-    -> Quick target adapter
-    -> queued GUI-thread request
+Core 调度器
+    -> Quick 目标适配器
+    -> Qt GUI 线程排队请求
     -> QQuickWindow::contentItem()->grabToImage(...)
-    -> asynchronous ready callback
-    -> owned CPU-readable frame storage
+    -> 异步 ready 回调
+    -> 自有 CPU 可读帧存储
     -> RemoteFrame
-    -> bounded Core handoff
-    -> transport
+    -> 有界 Core 交接
+    -> 传输
 ```
 
-The production baseline intentionally avoids synchronous `QQuickWindow::grabWindow()` on the normal path.
+生产基线避免在正常路径同步调用 `QQuickWindow::grabWindow()`。
 
-Current properties:
+当前属性：
 
-- QQuickWindow/QQuickItem access occurs on the Qt GUI thread;
-- capture completion is asynchronous;
-- frame storage is independent of the temporary Qt grab result;
-- pixel dimensions are derived from current target size and DPR once;
-- completion time is used as the safe baseline content timestamp;
-- damage may be conservatively represented as full-frame;
-- completed-frame handoff remains bounded;
-- target destruction is surfaced as product-level target loss rather than leaving stale capture work alive.
+- QQuickWindow/QQuickItem 访问发生在 Qt GUI 线程；
+- 采集完成是异步的；
+- 帧存储独立于临时 Qt grab 结果；
+- 像素尺寸由当前目标尺寸和 DPR 计算一次；
+- 完成时间作为安全基线内容时间戳；
+- damage 可以保守表示为整帧；
+- 已完成帧交接保持有界；
+- 目标销毁以产品级 target loss 呈现，不留下陈旧采集工作。
 
-If a window becomes temporarily unavailable for capture, the Runtime avoids a busy loop and does not synchronously block the render/UI path waiting for a frame.
+窗口暂时不可采集时，Runtime 避免忙循环，也不同步阻塞渲染/UI 路径等待帧。
 
-## Remote input baseline
+## 远程输入基线
 
-Normalized remote input follows:
+规范化远程输入路径：
 
 ```text
-transport normalization
-    -> Core InputEvent routing
+传输规范化
+    -> Core InputEvent 路由
     -> Quick InputSink
-    -> queued GUI-thread delivery
+    -> GUI 线程排队交付
     -> QQuickWindow
-    -> normal Qt Quick focus/event routing
+    -> 正常 Qt Quick 焦点/事件路由
 ```
 
-The baseline supports the product input categories documented in [`input-model.md`](input-model.md): pointer movement/buttons, wheel steps, logical key transitions, modifiers, and committed text where the transport provides it.
+基线支持 [`input-model.md`](input-model.md) 中的输入类别：指针移动/按钮、滚轮步长、逻辑按键转换、修饰键，以及传输提供时的提交文本。
 
-Pointer coordinates map from the remote frame viewport to the current logical QQuickWindow geometry. DPR is not applied twice.
+指针坐标从远程帧 viewport 映射到当前逻辑 QQuickWindow 几何，不重复应用 DPR。
 
-Input delivery is asynchronous and bounded; the transport callback does not wait for the Qt GUI thread to process an event.
+输入交付异步且有界；传输回调不等待 Qt GUI 线程处理事件。
 
-## Visibility and lifecycle
+## 可见性与生命周期
 
-A hidden, minimized, destroyed, or rapidly changing Quick window is not treated as an ordinary static framebuffer.
+隐藏、最小化、已销毁或快速变化的 Quick 窗口不按普通静态 framebuffer 处理。
 
-The Runtime keeps capture work bounded and avoids publishing frames after the target is no longer valid. Normal viewer disconnect/reconnect does not require recreating the application or target window.
+Runtime 保持采集工作有界，目标不再有效后不发布帧。正常 viewer 断开/重连不要求重建应用或目标窗口。
 
-## Compatibility scope
+## 兼容范围
 
-The baseline covers qualified Qt Quick 2D application content, including ordinary controls, text focus, and same-scene overlays.
+基线覆盖合格 Qt Quick 2D 应用内容，包括普通控件、文本焦点和同场景 overlay。
 
-Basic Quick support does **not** automatically qualify every case involving:
+基础 Quick 支持**不会**自动覆盖：
 
-- Quick3D;
-- custom framebuffer/render-node pipelines;
-- unusual graphics backends;
-- `QQuickWidget` mixed Widgets/Quick composition;
-- native/windowed popup variants;
-- foreign/native windows outside the normal application-owned Qt surface model.
+- Quick3D；
+- 自定义 framebuffer/渲染节点管线；
+- 特殊图形后端；
+- `QQuickWidget` 混合 Widgets/Quick 组合；
+- 原生/窗口化 popup 变体；
+- 正常应用自有 Qt surface 模型之外的外部/原生窗口。
 
-These cases require explicit compatibility qualification.
+这些场景需要显式兼容资格。
 
-## Performance direction
+## 性能方向
 
-The current public Qt Quick readback path is a correctness baseline, not a zero-copy performance claim.
+当前公共 Qt Quick 回读路径是正确性基线，不是零拷贝性能声明。
 
-Future implementations may add:
+未来实现可以增加：
 
-- render-thread/RHI-aware capture;
-- external/GPU-backed frame storage;
-- more efficient readback/conversion;
-- damage-aware updates;
-- embedded low-copy paths;
-- hardware-assisted encoding.
+- 渲染线程/RHI 感知采集；
+- 外部/GPU 后备帧存储；
+- 更高效回读/转换；
+- damage 感知更新；
+- 嵌入式低拷贝路径；
+- 硬件辅助编码。
 
-Such optimizations remain behind the Shared Runtime and Core contracts. Normal applications should not need to replace their C++/QML/Generic/QPA integration model to adopt a faster backend.
+这些优化留在共享 Runtime 和 Core 契约之后。普通应用不需要替换 C++/QML/Generic/QPA 接入模型来采用更快的后端。
 
-## Current status
+## 当前状态
 
-Qt Quick through the C++ API and Generic Plugin is one of the peer routes in the current reference environment.
+当前参考环境中，C++ API 和 Generic Plugin 的 Qt Quick 路线是并列路线。
 
-The QML API and QPA paths are currently Preview. QPA additionally requires exact Qt private-ABI qualification.
+QML API 和 QPA 也是并列路线；QPA 还需要精确 Qt private-ABI 资格。
 
-See [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md) for exact product status.
+精确产品状态见 [`compatibility.md`](compatibility.md) 和 [`known-limitations.md`](known-limitations.md)。
