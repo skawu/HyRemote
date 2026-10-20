@@ -87,4 +87,7 @@ QPA --------------/
 
 ## 维护者资料
 
-架构决策、仓库治理、发布流程、研究记录和验收资料位于 `docs/adr/`、`docs/internal/`、`docs/releases/` 与 `docs/proposals/`。普通应用接入无需阅读这些内容。
+架构决策、仓库治理、发布流程、研究记录和验收资料位于 `docs/adr/`、`docs/internal/`、`docs/releases/` 与 `docs/proposals/`。普通应用接入无需阅读这些内容。\n
+## 文档写作规范
+
+写作规范见 [STYLE.md](STYLE.md) ｜ [English](en/STYLE.md)。扫描器用法见规范第 5 节。
