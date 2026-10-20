@@ -152,8 +152,16 @@ public:
         });
         connect(m_client, &RfbClient::cursorUpdated, this, [this](const QImage &cursor, const QPoint &hotspot) {
             m_view->setCursorImage(cursor, hotspot);
+            if (cursor.isNull()) {
+                std::cout << "TOOL_CLIENT_CURSOR clear=1" << std::endl;
+            } else {
+                std::cout << "TOOL_CLIENT_CURSOR width=" << cursor.width()
+                          << " height=" << cursor.height()
+                          << " hotspot=" << hotspot.x() << ',' << hotspot.y() << std::endl;
+            }
         });
         connect(m_client, &RfbClient::serverNameChanged, this, [this](const QString &name) {
+            std::cout << "TOOL_CLIENT_SERVER name=" << name.toStdString() << std::endl;
             m_serverInputAvailable = !name.contains(QStringLiteral("view-only"), Qt::CaseInsensitive);
             if (!m_serverInputAvailable) {
                 m_control->setChecked(false);
