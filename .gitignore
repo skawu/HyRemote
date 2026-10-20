@@ -54,3 +54,9 @@ __pycache__/
 # `aqt install-qt`, which the CI matrix and a local setup both run, writes its installer log into the working directory.
 # It is 300 lines of installer output rather than a repository artifact, and a plain `git add -A` committed it once.
 aqtinstall.log
+
+# `check_release_metadata.cmake` writes its bilingual note fixtures under
+# `${CMAKE_CURRENT_BINARY_DIR}`. When the check is invoked with `cmake -P` from
+# the repository root, that resolves to the root; the directory is generated
+# evidence, not product source.
+hyremote-release-notes-fixtures/
