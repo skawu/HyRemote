@@ -475,57 +475,17 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         )
     endif()
 
-    function(hyremote_add_release_profile_test
-             test_name version cpp_enabled qml_enabled generic_enabled qpa_enabled security_enabled expect_reject)
-        add_test(
-            NAME "${test_name}"
-            COMMAND "${CMAKE_COMMAND}"
-                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-                -DHYREMOTE_TEST_VERSION=${version}
-                -DHYREMOTE_TEST_CPP=${cpp_enabled}
-                -DHYREMOTE_TEST_QML=${qml_enabled}
-                -DHYREMOTE_TEST_GENERIC=${generic_enabled}
-                -DHYREMOTE_TEST_QPA=${qpa_enabled}
-                -DHYREMOTE_TEST_SECURITY=${security_enabled}
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
-        )
-        if(expect_reject)
-            set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
-        endif()
-    endfunction()
-
-    # Development sentinel accepts arbitrary capability combinations while V1 converges.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-develop-all 0.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-develop-runtime-only 0.0.0 OFF OFF OFF OFF OFF FALSE)
-
-    # Historical V0 labels are planning references only and must never become release profiles again.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-retire-v001 0.0.1.0 ON OFF OFF OFF OFF TRUE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-retire-v002 0.0.2.0 ON ON OFF OFF OFF TRUE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-retire-v003 0.0.3.0 ON ON OFF ON OFF TRUE)
-
-    # Progressive trains are real releases, so they must be accepted whatever frontends a build enables. A
-    # frontend subset is a capability choice, never a version meaning: these cases would have failed under the
-    # retired rule that rejected every value below the first GA.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v010-cpp-only 0.1.0.0 ON OFF OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
-    # #333: V0.4.0.0 is qualification only - conditional on #235 until the V0.3 family completes - so it is not a
-    # selectable release profile and has no release-profile test here. Its selection refusal is proved by the
-    # release-scope self test (V0.4.0.0 conditional on #235) and its maintenance numbers fail as unknown versions.
-
-    # V1 is the first formal GA. Frontend subsets do not encode version semantics.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v100-all 1.0.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v100-cpp-only 1.0.0.0 ON OFF OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v100-generic-only 1.0.0.0 OFF OFF ON OFF OFF FALSE)
+    # Every release-profile case lives in one table-driven CTest. The case
+    # names and accept/reject meaning live in the script's data table, so a
+    # failure still states the exact version/capability case while the build
+    # no longer spawns ten nearly identical CMake children.
+    # V0.4.0.0 remains qualification-only and is deliberately not a selectable
+    # release profile.
+    add_test(
+        NAME hyremote-release-profiles
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profiles.cmake"
+    )
+    set_tests_properties(hyremote-release-profiles PROPERTIES TIMEOUT 120)
 endif()

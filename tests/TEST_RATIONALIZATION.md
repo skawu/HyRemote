@@ -23,7 +23,7 @@ This is an inventory and removal plan, not a new release contract. Counts are fr
 |---|---|---|---|
 | QPA deploy-helper matrix | 15 processes | 2 (positive + rejection table) | Same script, different inputs |
 | QPA runtime smokes | 9 | 3 scenarios (native capture/input, multi-surface routing, failure/reconnect) | Repeated startup/connection/capture |
-| Release profiles | 10 | 1 table-driven run | Same scope logic over versions |
+| Release profiles | 10 | 1 table-driven run (done) | Same scope logic over versions |
 | Example/product-fit E2E | 3 harnesses | 1 task-level learning path | Duplicate setup and viewer logic |
 | Dead/unregistered assets | 3 files | 0 | No execution authority |
 

@@ -67,16 +67,27 @@ set(required_root_tokens
     [=[add_subdirectory(src/integrations/qml qml/HyRemote)]=]
     [=[add_subdirectory(src/integrations/generic generic)]=]
     [=[add_subdirectory(src/integrations/qpa qpa)]=]
-    [=[hyremote-release-profile-retire-v001]=]
-    [=[hyremote-release-profile-retire-v002]=]
-    [=[hyremote-release-profile-retire-v003]=]
-    [=[hyremote-release-profile-v100-all]=]
+    [=[hyremote-release-profiles]=]
+    [=[check_release_profiles.cmake]=]
 )
 foreach(required_token IN LISTS required_root_tokens)
     string(FIND "${root_cmake}" "${required_token}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
             "consumer-simplicity: root build/release graph lost required contract: ${required_token}")
+    endif()
+endforeach()
+
+# The profile cases moved into one table-driven CTest, so prove the important
+# version/capability cases are still present instead of pinning ten root-level
+# test names that no longer exist.
+file(READ "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/check_release_profiles.cmake" profile_cases)
+foreach(required_case IN ITEMS
+        retire-v001 retire-v002 retire-v003 v100-all v100-generic-only)
+    string(FIND "${profile_cases}" "${required_case}" found)
+    if(found EQUAL -1)
+        message(FATAL_ERROR
+            "consumer-simplicity: release-profile table lost required case: ${required_case}")
     endif()
 endforeach()
 
