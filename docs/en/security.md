@@ -1,58 +1,65 @@
-# HyRemote Security
+# HyRemote Security Boundary
 
 > Language / 语言: **English** | [中文](../security.md)
 
-HyRemote is remote-access infrastructure. A working viewer connection does not by itself make a deployment secure.
+HyRemote is remote-access infrastructure. A working viewer connection does not make a deployment secure.
 
-This page describes the **current product security behavior**. Capabilities that are not available yet are marked as TODO.
+This page describes the current product's actual security behavior. Capabilities that are not implemented are marked as such.
 
-## V0.1 security boundary
+## 1. Current security boundary
 
-The released product has a truthful security boundary.
-
-The same Shared Runtime security model applies to the C++ API, QML API, Generic Plugin, and QPA frontends.
+The Shared Runtime applies the same security model to the C++ API, QML API, Generic Plugin, and QPA.
 
 Default behavior:
 
-- bind address: `0.0.0.0` (every IPv4 interface of the host), or one exact local IPv4, or a named interface;
+- bind address: `0.0.0.0`, every IPv4 interface of the host, not only loopback;
 - port: `5921`;
 - remote input: disabled;
-- constructing `HyRemote::RemoteAccess` does not open a listener;
-- `Insecure` is unauthenticated and unencrypted: it is for a **trusted LAN only** and is not Internet-safe;
-- requested security capabilities fail closed instead of silently downgrading;
+- constructing a C++ `HyRemote::RemoteAccess` object does not open a listener;
+- QML starts only after `enabled: true` is requested;
+- Generic and QPA start only when explicitly activated through their Qt startup mechanisms;
+- `Insecure` is unauthenticated and unencrypted. It is for a trusted LAN only and is not Internet-safe;
+- malformed or incomplete clients remain subject to bounded transport limits;
 - secrets must not be written to normal diagnostics.
 
-Do not expose V0.1 directly to the public Internet.
+The default build may contain security-profile enum values without providing authenticated or encrypted transport.
 
-## Security profiles
+Do not expose the product directly to the public Internet.
+
+## 2. Security profiles
 
 ### Insecure
 
-`Insecure` is the normal V0.1 development profile.
+`Insecure` is the default development profile.
 
 - no viewer authentication;
-- no stream encryption;
-- loopback is required;
-- remote input remains a separate opt-in policy.
+- no transport encryption;
+- trusted LAN only;
+- remote input remains a separate policy.
 
-An `Insecure` listener is unauthenticated and unencrypted: it is for a trusted LAN only and is not Internet-safe.
+The `Insecure` listener is reachable wherever it is bound. HyRemote states that fact directly and does not create a security illusion by narrowing the bind address.
 
 ### Authenticated
 
-`Authenticated` is a **conditional capability**. It is usable only when:
+`Authenticated` is a conditional capability. It is usable only when all of the following are true:
 
-1. HyRemote was built with the transport-security capability; and
-2. a valid security descriptor is configured.
+1. the build includes the transport-security capability;
+2. a security descriptor path is configured;
+3. the descriptor is valid for the selected profile.
 
-When available, the current RFB transport uses VNC authentication. The stream is still **not encrypted**.
+When those conditions hold, the current transport uses RFB VNC authentication for viewer authentication.
 
-If the required build capability is absent, startup fails with `SecurityUnavailable` before target, transport, or listener creation. Missing/invalid descriptor configuration also fails instead of falling back to a weaker profile.
+The stream is still **not encrypted**.
+
+If the build capability is absent, `start()` fails with `SecurityUnavailable` before creating a target, transport, or listener. If the descriptor is missing or invalid, startup fails instead of falling back to a weaker profile.
+
+A default development build is therefore unauthenticated and unencrypted.
 
 ### AuthenticatedEncrypted
 
-`AuthenticatedEncrypted` is declared in the product model but is **not implemented in the current product line**.
+`AuthenticatedEncrypted` is declared in the product model but **not implemented in the current product line**.
 
-Selecting it always fails closed before listener creation, including in builds that can provide `Authenticated` VNC authentication:
+Selecting it fails closed even when the build can provide `Authenticated` VNC authentication:
 
 ```text
 AuthenticatedEncrypted
@@ -62,50 +69,113 @@ AuthenticatedEncrypted
   -> no fallback to Insecure
 ```
 
-> **TODO V0.2:** encrypted transport, certificate/private-key policy, authenticated sessions, and production network policy.
+A readable certificate or private-key descriptor does not make encrypted transport available.
 
-## Security capability matrix
+> **TODO:** encrypted transport, certificate and private-key policy, protocol and cipher policy, and authenticated encrypted sessions are later product work.
 
-| Capability | V0.1 status |
-| --- | --- |
-| LAN-capable default (`0.0.0.0:5921`) | **Available** |
-| Remote input off by default | **Available** |
-| Truthful unauthenticated/unencrypted state | **Available** |
-| `Authenticated` API/configuration surface | **Available** |
-| RFB VNC authentication | **Conditional: transport-security-enabled build + valid descriptor** |
-| Default V0.1 build includes authenticated transport | **No** |
-| `AuthenticatedEncrypted` | **Unavailable; fail-closed** |
-| Stream encryption | **TODO V0.2** |
-| Authenticated session registry/admission | **TODO V0.2** |
+## 3. Viewing and control are separate
 
-## Remote viewing versus remote control
+Viewing and control are separate policies.
 
-Remote viewing and remote input are separate policies. View-only mode is not a substitute for authentication or encryption.
+C++ example:
 
-## Listener exposure
+```cpp
+HyRemote::RemoteAccess remote(&window);
+remote.setRemoteInputEnabled(true);
+remote.start();
+```
 
-The safest/default V0.1 listener is:
+QML example:
+
+```qml
+RemoteAccess {
+    target: mainWindow
+    remoteInputEnabled: true
+    enabled: true
+}
+```
+
+Generic and QPA expose the corresponding startup configuration through their plugin specifications.
+
+Leaving remote input disabled keeps the session view-only. View-only is not authentication and is not encryption.
+
+## 4. Listener exposure
+
+The default listener is:
 
 ```text
 0.0.0.0:5921
 ```
 
-Changing the bind address changes the trust boundary; it does not automatically enable authentication or encryption.
+Changing the bind address changes the network trust boundary. It does not automatically enable authentication or encryption.
 
-## Connection state is not authorization
+`Insecure` is reachable wherever it is bound. `Authenticated` allows a non-loopback listener only when the authenticated build capability and descriptor are valid.
 
-`RemoteAccessState::Running` means the Runtime/listener is active. `connectedClientCount()` reports operational connection count. Neither value is a user identity, role, or authorization decision.
+Address-family behavior is documented in [`../known-limitations.md`](../known-limitations.md).
 
-## Secrets and diagnostics
+## 5. Connection state is not authorization
+
+`RemoteAccessState::Running` means the Runtime or listener is active. It does not mean a viewer is authenticated or connected.
+
+`connectedClientCount()` is operational information, not a user identity, role, or authorization result.
+
+> **TODO:** an authenticated Session Registry, bounded admission policy, session events, and explicit session termination APIs are later product work.
+
+## 6. Input safety
+
+Remote input is normalized and routed only to the attached Qt application target. HyRemote does not use OS-wide virtual HID or uinput injection as the normal product path.
+
+Supported held key and button state is cleaned up on viewer disconnect and Runtime stop, so a remote peer cannot leave the local application in a pressed state.
+
+Unsupported key, input-method, and composition cases are documented, not guessed.
+
+## 7. Resource boundaries
+
+The RFB baseline uses bounded behavior for concurrent clients, protocol buffering, handshake lifetime, frame handoff, and GUI input delivery.
+
+These limits reduce accidental or malicious resource growth. They do not make the current transport safe for direct public-Internet exposure.
+
+## 8. Secrets and diagnostics
 
 Passwords, tokens, private keys, and equivalent secrets must not be written to normal logs, error strings, UI diagnostics, or command examples.
 
-Use an external security descriptor/configuration mechanism instead of putting secrets on the process command line.
+Security configuration should use an external descriptor or configuration mechanism instead of placing secrets directly on a process command line.
 
-## Recommended profiles
+A descriptor confirms what the operator configured. It does not prove that the selected security mechanism exists in the build.
 
-- **Local developer / same machine:** a listener on `127.0.0.1` (set it explicitly) stays the tightest option.
-- **Trusted lab / maintenance network:** use `Authenticated` only when the package includes the required security capability and a valid descriptor is configured. The stream remains unencrypted.
-- **Public Internet:** direct exposure is **not supported** in the current product line.
+## 9. Recommended deployment
 
-See [`../known-limitations.md`](../known-limitations.md) for current product limits and [`../compatibility.md`](../compatibility.md) for the compatibility matrix.
+### Local development
+
+Use the `Insecure` `0.0.0.0:5921` default on a trusted LAN. Enable remote input only when needed.
+
+### Trusted lab or maintenance network
+
+Use `Authenticated` only when the package was explicitly built with the required security capability and a valid descriptor is configured. The stream remains unencrypted, so the network reachability still needs an appropriate trust boundary.
+
+### Public Internet
+
+**Not supported as a direct deployment profile for the current version.**
+
+Do not expose the current HyRemote listener directly to the public Internet.
+
+## 10. Current capability matrix
+
+| Capability | Current state |
+| --- | --- |
+| Default LAN listener (`0.0.0.0:5921`) | Available |
+| Remote input off by default | Available |
+| Explicit unauthenticated and unencrypted state | Available |
+| `Authenticated` API and configuration surface | Available |
+| RFB VNC authentication | **Conditional: transport-security-enabled build plus valid descriptor** |
+| Default build includes authenticated transport | **No** |
+| `AuthenticatedEncrypted` | **Unavailable; fails closed** |
+| Stream encryption | **Not implemented** |
+| Certificate and private-key production policy | **Not implemented** |
+| Authenticated session identity or registry | **Not implemented** |
+| Per-session admission or termination | **Not implemented** |
+| VPN, tunnel, or firewall provisioning | Outside HyRemote product scope |
+
+The concise current statement:
+
+> The current HyRemote release defaults to an unauthenticated, unencrypted listener on `0.0.0.0:5921` with remote input off. `Authenticated` exists only in a transport-security-enabled build with a valid security descriptor and provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose the product directly to the public Internet.
