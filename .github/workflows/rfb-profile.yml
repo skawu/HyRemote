@@ -1,0 +1,70 @@
+name: RFB delivery profile
+
+# #261: produce the Linux half of the W1-W4 profiling evidence without
+# changing the ordinary product matrix. The job is manual (or runs when this
+# workflow file changes) and uploads the JSON instead of asserting an SLO.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/rfb-profile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install exact Qt 6.8.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$QT_ROOT"
+          echo "QT_PREFIX=$QT_ROOT/6.8.3/gcc_64" >> "$GITHUB_ENV"
+
+      - name: Install Linux host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+          bash .github/scripts/install-linux-qt-desktop-deps.sh public
+
+      - name: Build the profiling test
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./build.cmd build \
+            --integrations=cpp \
+            --qt-prefix="$QT_PREFIX" \
+            --build-type=Release \
+            --build-dir=build-profile \
+            --tests --no-examples \
+            -j4
+
+      - name: Run W1-W4 profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-profile/profile
+          HYREMOTE_RFB_PROFILE_FILE="$PWD/build-profile/profile/rfb-delivery-profile.json" \
+            xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
+
+      - name: Upload profile JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: rfb-delivery-profile-linux
+          path: build-profile/profile/rfb-delivery-profile.json
+          if-no-files-found: error
+          retention-days: 14

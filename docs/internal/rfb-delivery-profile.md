@@ -80,7 +80,7 @@ It runs Raw and TRLE against W1 静态、W2 局部变化、W3 高动态、W4 ful
 encoding/workload. The numbers are local-loopback indicative measurements, not a release SLO and not a substitute
 for maintained-viewer evidence.
 
-Initial Windows x86_64/Qt 6.8.3 run (16 samples per measurement, 256x256 frame):
+Windows x86_64/Qt 6.8.3 run (16 samples per measurement, 256x256 frame):
 
 | Workload | Raw bytes | TRLE bytes | Raw p50 ms | TRLE p50 ms |
 | --- | ---: | ---: | ---: | ---: |
@@ -89,8 +89,24 @@ Initial Windows x86_64/Qt 6.8.3 run (16 samples per measurement, 256x256 frame):
 | high-motion | 4,197,440 | 19,520 | 1.77 | 0.49 |
 | full-refresh | 262,160 | 1,040 | 1.98 | 0.31 |
 
-These are one machine's indicative numbers; they do not yet select an encoding. The next step is the same harness
-on Linux and against a maintained third-party viewer, plus zlib/ZRLE cost if that candidate remains viable.
+Linux x86_64/Qt 6.8.3 run from the manual `rfb-profile.yml` lane (same frame size and workload definitions):
+
+| Workload | Raw bytes | TRLE bytes | Raw p50 ms | TRLE p50 ms |
+| --- | ---: | ---: | ---: | ---: |
+| static | 0 | 0 | 0 | 0 |
+| localized | 262,400 | 1,840 | 0.15 | 0.10 |
+| high-motion | 4,197,440 | 19,520 | 1.30 | 0.33 |
+| full-refresh | 262,160 | 1,040 | 1.48 | 0.47 |
+
+These are local-loopback indicative numbers. They are consistent across Windows and Linux: the existing TRLE path
+already removes more than 99% of the repeated payload in the localized and full-refresh cases, and more than 99% in
+the synthetic high-motion case. That is enough to justify keeping Raw + TRLE + damage as the candidate baseline; it
+is not yet enough to justify adding zlib/ZRLE, whose dependency, licence and encode cost would need a measured viewer
+failure to be admitted.
+
+The next required evidence is a maintained third-party viewer on both platforms, not another codec. The manual
+`rfb-profile.yml` lane records the Linux JSON; the Windows numbers remain from the local run until the same job is
+extended to Windows.
 
 ## Decision outputs
 
