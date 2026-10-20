@@ -189,7 +189,22 @@ function(hyremote_notes_surfaces notes_text out_zh out_en out_ok)
     set(${out_ok} TRUE PARENT_SCOPE)
 endfunction()
 
+# Under CTest this resolves inside the build tree. When the script is invoked
+# directly with `cmake -P` from the repository root, CMAKE_CURRENT_BINARY_DIR is
+# the source tree; use the host temp directory instead of creating an
+# untracked fixture directory beside the checkout.
 set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/hyremote-release-notes-fixtures")
+if(CMAKE_CURRENT_BINARY_DIR STREQUAL HYREMOTE_SOURCE_DIR)
+    set(_fixture_temp_dir "$ENV{TEMP}")
+    if(NOT _fixture_temp_dir)
+        set(_fixture_temp_dir "$ENV{TMPDIR}")
+    endif()
+    if(_fixture_temp_dir)
+        set(notes_fixture_dir "${_fixture_temp_dir}/hyremote-release-notes-fixtures")
+    else()
+        set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/.hyremote-release-notes-fixtures")
+    endif()
+endif()
 file(MAKE_DIRECTORY "${notes_fixture_dir}")
 
 # Every V0.2.x release note that exists carries the contract, so a later note in this train cannot be written in one
