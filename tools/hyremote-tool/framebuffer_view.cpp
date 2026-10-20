@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QCursor>
+#include <QFocusEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -37,9 +38,10 @@ void FramebufferView::setCursorImage(const QImage &cursor, const QPoint &hotspot
 
 void FramebufferView::clearFrame(const QString &placeholder)
 {
+    releaseHeldInput();
     m_frame = QImage();
     m_placeholder = placeholder;
-    m_buttons = 0;
+    m_lastImagePoint = QPoint(-1, -1);
     update();
 }
 
@@ -53,9 +55,9 @@ void FramebufferView::setPlaceholder(const QString &placeholder)
 
 void FramebufferView::setInputEnabled(bool enabled)
 {
-    m_inputEnabled = enabled;
     if (!enabled)
-        m_buttons = 0;
+        releaseHeldInput();
+    m_inputEnabled = enabled;
 }
 
 void FramebufferView::paintEvent(QPaintEvent *event)
@@ -107,8 +109,24 @@ void FramebufferView::sendPointer(const QPoint &widgetPoint, quint8 mask)
     const QPoint imagePoint = mapToImage(widgetPoint);
     if (imagePoint.x() < 0 || !onPointer)
         return;
+    m_lastImagePoint = imagePoint;
     onPointer(mask, static_cast<quint16>(imagePoint.x()),
               static_cast<quint16>(imagePoint.y()));
+}
+
+void FramebufferView::releaseHeldInput()
+{
+    if (onKey) {
+        for (quint32 keysym : m_heldKeys)
+            onKey(keysym, false);
+    }
+    m_heldKeys.clear();
+
+    if (m_buttons != 0 && onPointer && m_lastImagePoint.x() >= 0) {
+        onPointer(0, static_cast<quint16>(m_lastImagePoint.x()),
+                  static_cast<quint16>(m_lastImagePoint.y()));
+    }
+    m_buttons = 0;
 }
 
 quint8 FramebufferView::buttonMask(Qt::MouseButtons buttons)
@@ -250,6 +268,7 @@ void FramebufferView::keyPressEvent(QKeyEvent *event)
         QWidget::keyPressEvent(event);
         return;
     }
+    m_heldKeys.insert(keysym);
     onKey(keysym, true);
     event->accept();
 }
@@ -265,6 +284,13 @@ void FramebufferView::keyReleaseEvent(QKeyEvent *event)
         QWidget::keyReleaseEvent(event);
         return;
     }
+    m_heldKeys.remove(keysym);
     onKey(keysym, false);
     event->accept();
+}
+
+void FramebufferView::focusOutEvent(QFocusEvent *event)
+{
+    releaseHeldInput();
+    QWidget::focusOutEvent(event);
 }

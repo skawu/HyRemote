@@ -1,11 +1,14 @@
 #pragma once
 
 #include <QImage>
+#include <QPoint>
 #include <QRect>
+#include <QSet>
 #include <QWidget>
 
 #include <functional>
 
+class QFocusEvent;
 class QKeyEvent;
 class QMouseEvent;
 class QPaintEvent;
@@ -35,11 +38,13 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
 
 private:
     QRect imageRect() const;
     QPoint mapToImage(const QPoint &widgetPoint) const;
     void sendPointer(const QPoint &widgetPoint, quint8 buttonMask);
+    void releaseHeldInput();
     static quint8 buttonMask(Qt::MouseButtons buttons);
     static quint32 keysymFor(QKeyEvent *event);
 
@@ -47,4 +52,6 @@ private:
     QString m_placeholder;
     bool m_inputEnabled = false;
     quint8 m_buttons = 0;
+    QPoint m_lastImagePoint{-1, -1};
+    QSet<quint32> m_heldKeys;
 };
