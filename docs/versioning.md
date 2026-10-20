@@ -112,6 +112,8 @@ V0.3 turns all four integration frontends into complete product-deliverable path
 
 This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335). V0.3.0.0 additionally ships the **HyRemoteTool access-plane companion client**: an out-of-process RFB client that connects to a remote HyRemote-enabled application by explicit IP/port and provides framebuffer viewing, view-only/control input, FPS/throughput telemetry and connection diagnostics. Its management-plane capabilities are explicitly not part of V0.3.0.0. See `docs/internal/hyremote-tool-plan.md`.
 
+The first activated Product breadth Feature after V0.3.0.0 is **V0.3.3.0 — Delivery Efficiency & Viewer Interoperability**. It covers practical damage/ZRLE/incremental delivery, the #370 performance baseline and maintained-viewer interoperability. The retired `0.3.1.0`/`0.3.2.0` technical slots are not reused; platform breadth and management-plane work remain later outcomes. See `docs/internal/v0.3.3.0-plan.md`.
+
 The V0.3 family carries two strictly separate classes of work:
 
 ### Mandatory pre-GA V0.3-family baseline

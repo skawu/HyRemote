@@ -201,6 +201,34 @@
       },
       "rule": "RETIRED by #333 as a pre-reserved technical train slot (Bandwidth/ZRLE/compression). Compression and damage work remains V0.3-family breadth under #343/#370 without a pre-reserved exact Feature version; the maintained-viewer interoperability evidence stays with the V0.3 family. This record is historical provenance and cannot be selected."
     },
+    "0.3.3.0": {
+      "authority_parent": 234,
+      "candidate_freeze_authority": 234,
+      "lineage_parent": "0.3.0.0",
+      "mandatory_children": [ 144, 175 ],
+      "candidate_prerequisites": [ 261 ],
+      "required_evidence": [
+        "accepted-v0.3.0.0-lineage",
+        "damage-compression-delivery-evidence",
+        "maintained-viewer-interoperability-evidence",
+        "performance-slo-evidence"
+      ],
+      "cross_version_references": [ 57, 95, 144, 175, 261, 343, 370 ],
+      "conditional_items": [],
+      "non_blockers": [ 57, 260, 265, 378 ],
+      "notes": {
+        "144": "Practical damage/ZRLE/compression and incremental delivery are the bounded product capability of this Feature.",
+        "175": "Maintained viewer interoperability is the second bounded capability; the private Viewer is not a requirement.",
+        "261": "RFB delivery profiling is risk/evidence preflight, not product implementation.",
+        "343": "The mandatory pre-GA Qt/platform baseline remains the parent product authority; this Feature consumes it without closing the umbrella.",
+        "370": "The performance programme supplies the SLO and measurement method; it is not a closeable child of this Feature.",
+        "378": "HyRemoteTool consumes the access-plane improvements; management-plane work stays out of this Feature.",
+        "57": "Qt 5.15 qualification remains V0.4 baseline work and is not a blocker for this Feature.",
+        "260": "Qt5 entry preflight remains a V0.3-family prerequisite, not a child of this Feature.",
+        "265": "Qt5 adaptation implementation remains V0.4 baseline work; it is not a child of this Feature."
+      },
+      "rule": "V0.3.3.0 is the next coherent Product breadth Feature: practical delivery efficiency and maintained-viewer interoperability, built on the accepted V0.3.0.0 lineage. It is not the retired 0.3.1.0/0.3.2.0 technical slots and does not reserve management-plane, Qt5, ARM64 or TLS work."
+    },
     "1.0.0.0": {
       "authority_parent": 33,
       "scope_authority": 157,
