@@ -121,7 +121,7 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 
 **V0.3.3.0: Delivery Efficiency & Viewer Interoperability** is the first activated Product breadth Feature after V0.3.0.0:
 
-- practical damage, ZRLE/compression, and incremental delivery;
+- practical damage, compression, and incremental delivery; profiling selected Raw + TRLE, and ZRLE is not currently required;
 - the #370 performance baseline;
 - maintained standard-viewer interoperability;
 - Windows and Linux x86_64, Qt 6.8.3, with four consistent frontends.
