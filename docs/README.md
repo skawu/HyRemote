@@ -58,6 +58,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | [`widgets-capture.md`](widgets-capture.md) ｜ [English](en/widgets-capture.md) | Widgets 采集模型 |
 | [`quick-capture.md`](quick-capture.md) ｜ [English](en/quick-capture.md) | Qt Quick 采集模型 |
 | [`input-model.md`](input-model.md) ｜ [English](en/input-model.md) | 远程输入模型 |
+| [`qml-consumption.md`](qml-consumption.md) ｜ [English](en/qml-consumption.md) | QML API 的使用、部署与生命周期 |
 | [`dependency-policy.md`](dependency-policy.md) ｜ [English](en/dependency-policy.md) | 产品依赖策略 |
 | [`release-package-manifest.md`](release-package-manifest.md) ｜ [English](en/release-package-manifest.md) | SDK / 运行时载荷定义 |
 

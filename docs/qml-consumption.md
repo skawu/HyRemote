@@ -1,27 +1,25 @@
-# Declarative QML Consumption and Deployment
+# 声明式 QML 使用与部署
 
-HyRemote's QML API is a thin declarative frontend over the same Shared Runtime used by the C++ API. It does not introduce a second Session, capture, input, or transport stack, and its backing implementation is not a second public C++ SDK target.
+> 语言 / Language：**中文** ｜ [English](en/qml-consumption.md)
 
-Current product status: a peer route, on the same shared runtime as the C++ API.
+HyRemote QML API 是 C++ API 使用的同一共享 Runtime 上的薄声明式前端。它不引入第二套 Session、采集、输入或传输栈，背后实现也不是第二个公共 C++ SDK 目标。
 
-> The QML route is a peer of the other three: none of them is primary. The end-to-end walkthrough covers
-> acquisition, deployment and viewer connection for it like any other route
-> ([`guide/integrate-your-project.md`](guide/integrate-your-project.md)). Worth knowing when choosing it:
-> the QML module must be deployed with the `QML` keyword, and QML exposes the same runtime rather than a
-> second one.
+当前产品状态：并列路线，与 C++ API 使用同一共享 Runtime。
 
-## 1. Installed SDK
+QML 路由和其他三条并列，没有主次。端到端接入、部署和 viewer 连接流程与其他路线相同，见 [`guide/integrate-your-project.md`](guide/integrate-your-project.md)。选择时需要注意：QML 模块必须通过 `QML` 关键字部署，QML 暴露的是同一 Runtime。
 
-Use the Qt version supported by the selected HyRemote package and locate the standalone HyRemote prefix normally:
+## 1. 安装 SDK
+
+使用所选 HyRemote 包支持的 Qt 版本，并正常定位独立 HyRemote prefix：
 
 ```cmake
 find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS Core Gui Qml Quick)
 find_package(HyRemote CONFIG REQUIRED)
 ```
 
-When the installed package contains the QML payload, HyRemote publishes the QML import root needed by the deployment helper. Application developers do not copy HyRemote QML plugin files or internal libraries by filename.
+安装包包含 QML payload 时，HyRemote 发布部署 helper 需要的 QML import root。应用开发者不按文件名复制 HyRemote QML 插件或内部库。
 
-The application-facing boundary is simply:
+应用边界：
 
 ```qml
 import HyRemote
@@ -32,18 +30,18 @@ RemoteAccess {
 }
 ```
 
-`enabled: true` is an explicit declarative start request. The Runtime starts only after QML component construction is complete so initial target and policy bindings can settle.
+`enabled: true` 是显式声明式启动请求。Runtime 在 QML 组件构造完成后才启动，让初始目标和策略绑定稳定。
 
-Safe defaults are shared with the C++ API:
+安全默认与 C++ API 一致：
 
-- listener on `0.0.0.0:5921`;
-- port 5921;
-- remote input disabled;
-- no listener merely from importing the module.
+- listener `0.0.0.0:5921`；
+- 端口 5921；
+- 远程输入关闭；
+- 仅导入模块不会打开 listener。
 
-## 2. Define the application normally
+## 2. 正常定义应用
 
-A normal Qt Quick application keeps its own QML module and normal Qt dependencies:
+普通 Qt Quick 应用保留自己的 QML 模块和正常 Qt 依赖：
 
 ```cmake
 qt_add_executable(MyQmlApp
@@ -64,11 +62,11 @@ target_link_libraries(MyQmlApp PRIVATE
 )
 ```
 
-The application does not link HyRemote Core, Session, capture, input, transport, or QML implementation targets.
+应用不链接 HyRemote Core、Session、采集、输入、传输或 QML 实现目标。
 
-## 3. Deploy through `hyremote_deploy()`
+## 3. 通过 `hyremote_deploy()` 部署
 
-Install the application first, then use the HyRemote deployment helper:
+先安装应用，再使用 HyRemote 部署 helper：
 
 ```cmake
 install(TARGETS MyQmlApp
@@ -79,102 +77,102 @@ install(TARGETS MyQmlApp
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-`QML` selects an already-present HyRemote QML payload. It is not a build switch and cannot turn a C++-only SDK into a QML-enabled SDK at consumer configure time.
+`QML` 选择已经存在的 HyRemote QML payload。它不是构建开关，不能在消费者配置时把 C++-only SDK 变成 QML SDK。
 
-If the selected HyRemote package does not contain the QML payload, configuration fails instead of creating a partially deployable application.
+所选 HyRemote 包不包含 QML payload 时，配置失败，不产生部分可部署应用。
 
-The deployment helper integrates HyRemote's QML import root with Qt's normal QML deployment support and carries the same Shared Runtime used by the other frontends.
+部署 helper 把 HyRemote QML import root 与 Qt 正常 QML 部署支持结合，并携带其他前端使用的同一共享 Runtime。
 
-Applications should not:
+应用不要：
 
-- copy `qmldir` manually;
-- copy HyRemote QML plugin binaries by filename;
-- point `QML_IMPORT_PATH` back to the SDK as a permanent deployment workaround;
-- discover transport/capture implementation files.
+- 手工复制 `qmldir`；
+- 按文件名复制 HyRemote QML 插件二进制；
+- 把 `QML_IMPORT_PATH` 指回 SDK 作为永久部署 workaround；
+- 查找传输/采集实现文件。
 
-## 4. Source consumption
+## 4. 源码使用
 
-Source acquisition uses the same application-facing QML and deployment model.
+源码获取使用相同的应用 QML 和部署模型。
 
-Enable the QML frontend before adding HyRemote:
+先启用 QML 前端，再加入 HyRemote：
 
 ```cmake
 set(HYREMOTE_BUILD_QML_API ON CACHE BOOL "" FORCE)
 add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
 ```
 
-Then deploy exactly as with an installed SDK:
+之后像安装 SDK 一样部署：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-The source tree may create private build targets needed to materialize the QML payload, but those targets are not added to the application's public link contract.
+源码树可以创建生成 QML payload 所需的私有构建目标，但这些目标不加入应用公共链接契约。
 
 ## 5. QML + QPA
 
-A QML application may deliberately combine the declarative HyRemote API with the QPA deployment frontend:
+QML 应用可以有意把声明式 HyRemote API 与 QPA 部署前端组合：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML QPA)
 ```
 
-This packages both frontend payloads while still using one Shared Runtime. It does not create a new Runtime architecture.
+这会打包两个前端 payload，同时仍使用一个共享 Runtime，不创建新 Runtime 架构。
 
-QPA remains exact-Qt-private-ABI qualified; see [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) and [`compatibility.md`](compatibility.md).
+QPA 仍按精确 Qt private ABI 认证；见 [`getting-started/qpa-proxy.md`](getting-started/qpa-proxy.md) 和 [`compatibility.md`](compatibility.md)。
 
-## 6. Lifecycle semantics
+## 6. 生命周期语义
 
-The QML `RemoteAccess` surface follows the same product lifecycle as the C++ facade:
+QML `RemoteAccess` 面遵循与 C++ 入口相同的产品生命周期：
 
-- object construction/import does not open a listener;
-- `enabled: true` requests start after component completion;
-- `enabled: false` stops the owned Runtime;
-- configuration changes belong to the stopped state;
-- a failed start returns `enabled` to false and exposes product-level error state;
-- `Running` means the Runtime/listener is active, not that a viewer is connected;
-- `connectedClientCount` is operational state, not authentication or authorization;
-- destroying the QML object stops its owned Runtime.
+- 对象构造/导入不会打开 listener；
+- `enabled: true` 在组件完成后请求启动；
+- `enabled: false` 停止自有 Runtime；
+- 配置修改属于停止状态；
+- 启动失败会把 `enabled` 恢复为 false，并暴露产品级错误状态；
+- `Running` 表示 Runtime/listener 已启动，不表示 viewer 已连接；
+- `connectedClientCount` 是运行状态，不是认证或授权；
+- 销毁 QML 对象会停止其自有 Runtime。
 
-## 7. Error handling
+## 7. 错误处理
 
-The QML API exposes HyRemote product-level state and diagnostics rather than RFB/socket/backend objects.
+QML API 暴露 HyRemote 产品级状态和诊断，不暴露 RFB/socket/后端对象。
 
-Applications should react to the documented public state/error properties and avoid depending on internal implementation messages.
+应用应对文档化公共状态/错误属性作出反应，不要依赖内部实现消息。
 
-A non-recoverable Runtime fault remains visible until the application explicitly stops/disables the Runtime. Clearing a diagnostic does not silently recover or replace a failed Runtime instance.
+不可恢复 Runtime 故障保持可见，直到应用显式停止/禁用 Runtime。清除诊断不会静默恢复或替换失败的 Runtime 实例。
 
-## 8. Security boundary
+## 8. 安全边界
 
-The QML frontend does not weaken or replace the Shared Runtime security/access defaults.
+QML 前端不会削弱或替换共享 Runtime 安全/访问默认值。
 
-Current shipped behavior:
+当前发布行为：
 
-- the listener defaults to `0.0.0.0:5921` on local IPv4 interfaces; this is a wildcard bind address, not a viewer host address;
-- remote input is disabled by default and must be enabled explicitly;
-- `Insecure` is unauthenticated and unencrypted: trusted LAN / explicitly protected network only, not Internet-safe;
-- `Authenticated` may use RFB VNC authentication when configured;
-- the current stream is not encrypted;
-- `AuthenticatedEncrypted` fails closed while encrypted transport is unavailable;
-- `diagnosticReport()` reports configured/effective listener, security, input, client and bounded error facts from the same Runtime used by the C++/Generic/QPA routes.
+- listener 默认 `0.0.0.0:5921`，监听本地 IPv4 接口；这是 wildcard 绑定地址，不是 viewer 主机地址；
+- 远程输入默认关闭，必须显式启用；
+- `Insecure` 未认证、未加密，只面向可信 LAN/显式保护网络，不适合 Internet；
+- 配置后 `Authenticated` 可以使用 RFB VNC 认证；
+- 当前流未加密；
+- 加密传输不可用时 `AuthenticatedEncrypted` 失败关闭；
+- `diagnosticReport()` 从 C++/Generic/QPA 路由使用的同一 Runtime 报告配置/有效 listener、安全、输入、客户端和有界错误事实。
 
-Do not expose the current product directly to the public Internet. See [`security.md`](security.md).
+不要把当前产品直接暴露到公网。见 [`security.md`](security.md)。
 
-## 9. Compatibility
+## 9. 兼容性
 
-Current reference environment:
+当前参考环境：
 
-- Windows x86_64 + Qt 6.8.3;
-- Linux x86_64 + Qt 6.8.3.
+- Windows x86_64 + Qt 6.8.3；
+- Linux x86_64 + Qt 6.8.3。
 
-The QML API is a peer route. Basic Qt Quick operation does not automatically qualify every Quick3D, custom FBO, mixed `QQuickWidget`, graphics-backend, or native-window configuration.
+QML API 是并列路线。基础 Qt Quick 运行不会自动认证 Quick3D、自定义 FBO、混合 `QQuickWidget`、特殊图形后端或原生窗口配置。
 
-See [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md) for the current product boundary.
+当前产品边界见 [`compatibility.md`](compatibility.md) 和 [`known-limitations.md`](known-limitations.md)。
 
-## 10. Recommended next reading
+## 10. 推荐阅读
 
-- [`getting-started/qml.md`](getting-started/qml.md) — concise first integration
-- [`guide/deployment.md`](guide/deployment.md) — deployment model
-- [`guide/viewer-connection.md`](guide/viewer-connection.md) — viewer and remote-control workflow
-- [`security.md`](security.md) — security boundary
-- [`compatibility.md`](compatibility.md) — current support matrix
+- [`getting-started/qml.md`](getting-started/qml.md)：简明首次接入；
+- [`guide/deployment.md`](guide/deployment.md)：部署模型；
+- [`guide/viewer-connection.md`](guide/viewer-connection.md)：viewer 和远程控制流程；
+- [`security.md`](security.md)：安全边界；
+- [`compatibility.md`](compatibility.md)：当前支持矩阵。
