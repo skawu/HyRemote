@@ -599,6 +599,23 @@ bool noFramebufferData(QTcpSocket &socket, int timeoutMs = 150)
     return !socket.waitForReadyRead(timeoutMs) && socket.bytesAvailable() == 0;
 }
 
+bool readCursorUpdate(QTcpSocket &socket, int timeoutMs = 3000)
+{
+    const QByteArray header = readExact(socket, 4, timeoutMs);
+    if (header.size() != 4 || header.at(0) != char(0) || readU16(header, 2) != 1)
+        return false;
+    const QByteArray rectangle = readExact(socket, 12, timeoutMs);
+    if (rectangle.size() != 12 || readS32(rectangle, 8) != -239)
+        return false;
+    const std::uint16_t width = readU16(rectangle, 4);
+    const std::uint16_t height = readU16(rectangle, 6);
+    if (width == 0 || height == 0)
+        return false;
+    const qsizetype pixels = static_cast<qsizetype>(width) * height * 4;
+    const qsizetype mask = ((width + 7) / 8) * height;
+    return readExact(socket, pixels + mask, timeoutMs).size() == pixels + mask;
+}
+
 std::unique_ptr<hyremote::Transport> startTransport(quint16 port,
                                                     Recorder &recorder,
                                                     hyremote::RemoteFrame initial)
@@ -672,6 +689,49 @@ void testTrleRawAndIncrementalDelivery()
     trleSocket.disconnectFromHost();
     rawSocket.disconnectFromHost();
     waitForDisconnected(trleSocket);
+    waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+void testCursorPseudoEncoding()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(64, 48, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket cursorSocket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(cursorSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(cursorSocket, {-239, 0}));
+    CHECK(readCursorUpdate(cursorSocket));
+
+    // The cursor update is a separate FramebufferUpdate, not a framebuffer payload.
+    CHECK(sendUpdateRequest(cursorSocket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(cursorSocket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    // A viewer that does not advertise the pseudo-encoding must not receive it.
+    QTcpSocket rawSocket;
+    CHECK(connectRawRfb(rawSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(rawSocket, {0}));
+    CHECK(sendUpdateRequest(rawSocket, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(rawSocket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    cursorSocket.disconnectFromHost();
+    rawSocket.disconnectFromHost();
+    waitForDisconnected(cursorSocket);
     waitForDisconnected(rawSocket);
     transport->stop();
 }
@@ -1732,6 +1792,7 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testCursorPseudoEncoding();
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
