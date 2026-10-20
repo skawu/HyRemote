@@ -59,6 +59,39 @@ This table is a candidate list, not a selection. The decision must use the measu
 
 The harness must not require a visible GUI for the automated part; physical viewer checks are separate evidence.
 
+## Running the harness
+
+The profiler is a mode of the existing wire-robustness test binary; the normal test suite is unchanged when the
+environment variable is unset.
+
+```powershell
+# Windows
+$env:HYREMOTE_RFB_PROFILE_FILE="$PWD/build/rfb-delivery-profile.json"
+.\build\runtime\tests\hyremote-rfb-wire-robustness-test.exe
+```
+
+```sh
+# POSIX
+HYREMOTE_RFB_PROFILE_FILE="$PWD/build/rfb-delivery-profile.json" \
+  ./build/runtime/tests/hyremote-rfb-wire-robustness-test
+```
+
+It runs Raw and TRLE against W1 静态、W2 局部变化、W3 高动态、W4 full refresh and writes one JSON sample per
+encoding/workload. The numbers are local-loopback indicative measurements, not a release SLO and not a substitute
+for maintained-viewer evidence.
+
+Initial Windows x86_64/Qt 6.8.3 run (16 samples per measurement, 256x256 frame):
+
+| Workload | Raw bytes | TRLE bytes | Raw p50 ms | TRLE p50 ms |
+| --- | ---: | ---: | ---: | ---: |
+| static | 0 | 0 | 0 | 0 |
+| localized | 262,400 | 1,840 | 1.82 | 0.22 |
+| high-motion | 4,197,440 | 19,520 | 1.77 | 0.49 |
+| full-refresh | 262,160 | 1,040 | 1.98 | 0.31 |
+
+These are one machine's indicative numbers; they do not yet select an encoding. The next step is the same harness
+on Linux and against a maintained third-party viewer, plus zlib/ZRLE cost if that candidate remains viable.
+
 ## Decision outputs
 
 - selected compressed path and fallback order;

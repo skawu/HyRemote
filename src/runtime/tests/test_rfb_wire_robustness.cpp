@@ -1,7 +1,12 @@
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QHostAddress>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSysInfo>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -26,6 +31,7 @@
 namespace {
 
 int failures = 0;
+qsizetype profileBytesRead = 0;
 
 #define CHECK(expr)                                                                                \
     do {                                                                                           \
@@ -87,7 +93,9 @@ QByteArray readExact(QTcpSocket &socket, qsizetype size, int timeoutMs = 3000)
             if (!socket.waitForReadyRead(remaining))
                 break;
         }
-        result += socket.read(size - result.size());
+        const QByteArray chunk = socket.read(size - result.size());
+        result += chunk;
+        profileBytesRead += chunk.size();
     }
     return result;
 }
@@ -1534,11 +1542,194 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
     transport->stop();
 }
 
+struct ProfileSample
+{
+    QString encoding;
+    QString workload;
+    int frames = 0;
+    qint64 bytes = 0;
+    double p50Ms = 0.0;
+    double p95Ms = 0.0;
+};
+
+std::vector<ProfileSample> profileSamples;
+
+double profilePercentile(std::vector<double> values, double percentile)
+{
+    if (values.empty())
+        return 0.0;
+    std::sort(values.begin(), values.end());
+    const double position = (values.size() - 1) * percentile;
+    const auto lower = static_cast<std::size_t>(position);
+    const auto upper = std::min(lower + 1, values.size() - 1);
+    const double fraction = position - static_cast<double>(lower);
+    return values[lower] * (1.0 - fraction) + values[upper] * fraction;
+}
+
+void recordProfileSample(const QString &encoding,
+                         const QString &workload,
+                         int frames,
+                         qint64 bytes,
+                         std::vector<double> latenciesMs)
+{
+    ProfileSample sample;
+    sample.encoding = encoding;
+    sample.workload = workload;
+    sample.frames = frames;
+    sample.bytes = bytes;
+    sample.p50Ms = profilePercentile(latenciesMs, 0.50);
+    sample.p95Ms = profilePercentile(latenciesMs, 0.95);
+    profileSamples.push_back(sample);
+    std::cerr << "PROFILE " << encoding.toStdString() << ' ' << workload.toStdString()
+              << " frames=" << frames << " bytes=" << bytes << " p50_ms=" << sample.p50Ms
+              << " p95_ms=" << sample.p95Ms << '\n';
+}
+
+void runProfileWorkload(const std::vector<std::int32_t> &encodings,
+                        const QString &encodingLabel,
+                        const QString &workload)
+{
+    constexpr std::uint16_t kWidth = 256;
+    constexpr std::uint16_t kHeight = 256;
+    constexpr int kSamples = 16;
+    constexpr hyremote::Rect kMarker{32, 24, 8, 8};
+
+    const quint16 port = freePort();
+    if (port == 0)
+        return;
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(kWidth, kHeight, 0x203040U));
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    if (!connectRawRfb(socket, port, false, &width, &height)
+        || !sendSetEncodings(socket, encodings)
+        || !sendUpdateRequest(socket, false, 0, 0, width, height)) {
+        transport->stop();
+        return;
+    }
+
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    if (!readFramebufferUpdate(socket, frame, rectangles)) {
+        transport->stop();
+        return;
+    }
+
+    std::vector<double> latenciesMs;
+    qint64 measuredBytes = 0;
+    int measuredFrames = 0;
+
+    if (workload == QStringLiteral("static")) {
+        profileBytesRead = 0;
+        if (!sendUpdateRequest(socket, true, 0, 0, width, height)) {
+            transport->stop();
+            return;
+        }
+        noFramebufferData(socket, 250);
+        measuredBytes = profileBytesRead;
+        measuredFrames = 1;
+        latenciesMs.push_back(0.0);
+    } else if (workload == QStringLiteral("localized") || workload == QStringLiteral("high-motion")) {
+        for (int index = 0; index < kSamples; ++index) {
+            const std::uint32_t color = 0xd0a030U + static_cast<std::uint32_t>(index) * 0x000101U;
+            if (workload == QStringLiteral("localized")) {
+                auto changed = makeFrame(kWidth, kHeight, 0x203040U, {{kMarker, color}});
+                changed.damage = hyremote::Damage::fromRegions({kMarker});
+                transport->enqueueFrame(std::move(changed));
+            } else {
+                transport->enqueueFrame(makeFrame(kWidth, kHeight, color));
+            }
+
+            profileBytesRead = 0;
+            const auto started = std::chrono::steady_clock::now();
+            if (!sendUpdateRequest(socket, true, 0, 0, width, height)
+                || !readFramebufferUpdate(socket, frame, rectangles)) {
+                break;
+            }
+            const auto completed = std::chrono::steady_clock::now();
+            latenciesMs.push_back(
+                std::chrono::duration<double, std::milli>(completed - started).count());
+            measuredBytes += profileBytesRead;
+            ++measuredFrames;
+        }
+    } else if (workload == QStringLiteral("full-refresh")) {
+        profileBytesRead = 0;
+        const auto started = std::chrono::steady_clock::now();
+        if (sendUpdateRequest(socket, false, 0, 0, width, height)
+            && readFramebufferUpdate(socket, frame, rectangles)) {
+            const auto completed = std::chrono::steady_clock::now();
+            latenciesMs.push_back(
+                std::chrono::duration<double, std::milli>(completed - started).count());
+            measuredBytes += profileBytesRead;
+            measuredFrames = 1;
+        }
+    }
+
+    recordProfileSample(encodingLabel, workload, measuredFrames, measuredBytes, latenciesMs);
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void runDeliveryProfile(const QString &outputPath)
+{
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("static"));
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("localized"));
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("high-motion"));
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("full-refresh"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("static"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("localized"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("high-motion"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("full-refresh"));
+
+    QJsonArray samples;
+    for (const ProfileSample &sample : profileSamples) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("encoding"), sample.encoding);
+        entry.insert(QStringLiteral("workload"), sample.workload);
+        entry.insert(QStringLiteral("frames"), sample.frames);
+        entry.insert(QStringLiteral("bytes"), static_cast<double>(sample.bytes));
+        entry.insert(QStringLiteral("p50_ms"), sample.p50Ms);
+        entry.insert(QStringLiteral("p95_ms"), sample.p95Ms);
+        samples.append(entry);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-delivery-profile/1"));
+    root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    root.insert(QStringLiteral("width"), 64);
+    root.insert(QStringLiteral("height"), 48);
+    root.insert(QStringLiteral("samples"), samples);
+
+    QFile file(outputPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        std::cerr << "PROFILE failed to open " << outputPath.toStdString() << '\n';
+        ++failures;
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+    std::cerr << "PROFILE wrote " << profileSamples.size() << " samples to "
+              << outputPath.toStdString() << '\n';
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+
+    const QByteArray profilePath = qgetenv("HYREMOTE_RFB_PROFILE_FILE");
+    if (!profilePath.isEmpty()) {
+        runDeliveryProfile(QString::fromLocal8Bit(profilePath));
+        return failures == 0 ? 0 : 1;
+    }
 
     testTrleRawAndIncrementalDelivery();
     testPartialIncrementalAndResize();
