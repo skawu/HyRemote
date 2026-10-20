@@ -38,6 +38,7 @@ public:
 
     State state() const { return m_state; }
     QString lastError() const { return m_error; }
+    QString serverName() const { return m_serverName; }
     QSize framebufferSize() const { return m_size; }
     Stats stats() const { return m_stats; }
     bool remoteControlEnabled() const { return m_remoteControl; }
@@ -50,6 +51,7 @@ signals:
     void stateChanged(RfbClient::State state);
     void frameUpdated(const QImage &frame);
     void cursorUpdated(const QImage &cursor, const QPoint &hotspot);
+    void serverNameChanged(const QString &name);
     void statsUpdated(const RfbClient::Stats &stats);
     void errorOccurred(const QString &message);
 

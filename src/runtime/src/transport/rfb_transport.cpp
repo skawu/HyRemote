@@ -1027,7 +1027,9 @@ private:
         appendU16(init, static_cast<std::uint16_t>(width));
         appendU16(init, static_cast<std::uint16_t>(height));
         appendPixelSpec(init, nativePixelSpec());
-        static const QByteArray name("HyRemote");
+        const QByteArray name = m_security.remoteInputEnabled
+                                    ? QByteArray("HyRemote")
+                                    : QByteArray("HyRemote (view-only)");
         appendU32(init, static_cast<std::uint32_t>(name.size()));
         init += name;
         client.socket->write(init);

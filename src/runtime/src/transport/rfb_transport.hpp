@@ -33,6 +33,7 @@ using RfbCursorProvider = std::function<RfbCursorSnapshot()>;
 struct RfbSecurityConfig
 {
     bool vncAuthenticationRequired = false;
+    bool remoteInputEnabled = false;
     QByteArray password;
     // Optional product hook for the current target cursor. Tests and custom
     // compositions may leave it empty and receive the portable arrow fallback.
