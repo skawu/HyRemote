@@ -51,6 +51,7 @@ constexpr std::int32_t kEncodingDesktopSize = -223;
 // RFB Fence is an optional per-viewer capability, not a general application API.
 constexpr std::int32_t kEncodingFence = -312;
 constexpr std::int32_t kEncodingContinuousUpdates = -313;
+constexpr std::int32_t kEncodingCursor = -239;
 constexpr std::uint8_t kEnableContinuousUpdates = 150;
 constexpr std::uint8_t kClientFence = 248;
 constexpr std::uint8_t kMaxFencePayload = 64;
@@ -373,6 +374,8 @@ struct ClientState
     bool supportsDesktopSize = false;
     bool supportsFence = false;
     bool supportsContinuousUpdates = false;
+    bool supportsCursor = false;
+    bool cursorSent = false;
     bool continuousEnabled = false;
     bool continuousRequestArmed = false;
     RfbRect continuousRegion;
@@ -809,6 +812,8 @@ private:
                     return;
                 }
                 client.pixels = *spec;
+                client.cursorSent = false;
+                sendCursor(client);
                 continue;
             }
 
@@ -828,6 +833,7 @@ private:
                 const bool continuousWasSupported = client.supportsContinuousUpdates;
                 client.supportsFence = false;
                 client.supportsContinuousUpdates = false;
+                client.supportsCursor = false;
                 client.preferredEncoding = ClientEncoding::Raw;
                 bool selectedEncoding = false;
                 for (std::uint16_t i = 0; i < count; ++i) {
@@ -839,6 +845,8 @@ private:
                         client.supportsFence = true;
                     if (encoding == kEncodingContinuousUpdates)
                         client.supportsContinuousUpdates = true;
+                    if (encoding == kEncodingCursor)
+                        client.supportsCursor = true;
                     if (!selectedEncoding && encoding == kRfbEncodingTrle) {
                         client.preferredEncoding = ClientEncoding::Trle;
                         selectedEncoding = true;
@@ -848,6 +856,11 @@ private:
                     }
                 }
                 client.input.remove(0, size);
+                if (!client.supportsCursor) {
+                    client.cursorSent = false;
+                } else {
+                    sendCursor(client);
+                }
                 if (client.supportsFence && !fenceWasSupported
                     && !sendFence(client, 0U, {})) {
                     return;
@@ -1022,6 +1035,67 @@ private:
         client.phase = ClientPhase::Normal;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+    }
+
+    void sendCursor(ClientState &client)
+    {
+        if (!client.socket || !client.supportsCursor || client.cursorSent)
+            return;
+
+        // A portable baseline cursor. The viewer renders it locally at the
+        // pointer position, so pointer movement no longer depends on a
+        // framebuffer round trip just to see a cursor.
+        static constexpr const char *kCursorRows[16] = {
+            "B...............",
+            "BB..............",
+            "BWB.............",
+            "BWWB............",
+            "BWWWB...........",
+            "BWWWWB..........",
+            "BWWWWWB.........",
+            "BWWWWWWB........",
+            "BWWWWWWWB.......",
+            "BWWWWWWWWB......",
+            "BWWWWWBBBB......",
+            "BWWBWWB.........",
+            "BWB.BWWB........",
+            "BB..BWWB........",
+            "B....BWWB.......",
+            ".....BWWB.......",
+        };
+
+        QByteArray update;
+        update.append(char(0));  // FramebufferUpdate
+        update.append(char(0));
+        appendU16(update, 1);    // one cursor rectangle
+        appendU16(update, 0);    // hotspot x
+        appendU16(update, 0);    // hotspot y
+        appendU16(update, 16);
+        appendU16(update, 16);
+        appendS32(update, kEncodingCursor);
+
+        for (int row = 0; row < 16; ++row) {
+            for (int col = 0; col < 16; ++col) {
+                const char cell = kCursorRows[row][col];
+                const std::uint8_t channel = cell == 'W' ? 255U : 0U;
+                appendEncodedPixel(update, channel, channel, channel, client.pixels);
+            }
+        }
+
+        for (int row = 0; row < 16; ++row) {
+            std::uint16_t mask = 0;
+            for (int col = 0; col < 16; ++col)
+                if (kCursorRows[row][col] != '.')
+                    mask |= static_cast<std::uint16_t>(1U << (15 - col));
+            update.append(static_cast<char>((mask >> 8U) & 0xffU));
+            update.append(static_cast<char>(mask & 0xffU));
+        }
+
+        if (client.socket->write(update) != update.size()) {
+            protocolFailure(client, "RFB cursor update write failed");
+            return;
+        }
+        client.cursorSent = true;
     }
 
     void releaseHeldInput(ClientState &client)
