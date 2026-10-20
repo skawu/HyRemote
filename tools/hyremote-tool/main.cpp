@@ -153,6 +153,15 @@ public:
         connect(m_client, &RfbClient::cursorUpdated, this, [this](const QImage &cursor, const QPoint &hotspot) {
             m_view->setCursorImage(cursor, hotspot);
         });
+        connect(m_client, &RfbClient::serverNameChanged, this, [this](const QString &name) {
+            m_serverInputAvailable = !name.contains(QStringLiteral("view-only"), Qt::CaseInsensitive);
+            if (!m_serverInputAvailable) {
+                m_control->setChecked(false);
+                m_view->setInputEnabled(false);
+                m_client->setRemoteControlEnabled(false);
+            }
+            retranslateUi();
+        });
         connect(m_client, &RfbClient::statsUpdated, this, [this](const RfbClient::Stats &stats) {
             m_lastStats = stats;
             retranslateUi();
@@ -276,11 +285,17 @@ private:
                             || m_state == RfbClient::State::Handshaking)
                                ? text("断开", "Disconnect")
                                : text("连接", "Connect"));
-        m_status->setText(stateText(m_state, m_language));
+        QString status = stateText(m_state, m_language);
+        if (m_state == RfbClient::State::Connected && !m_serverInputAvailable)
+            status += text(" · 只读", " · view-only");
+        m_status->setText(status);
         m_control->setText(text("允许远程控制", "Remote control"));
-        m_control->setToolTip(text(
-            "未勾选时会话为只读，不发送鼠标或键盘事件。",
-            "When unchecked the session is view-only and no pointer or keyboard events are sent."));
+        m_control->setToolTip(m_serverInputAvailable
+                                  ? text("未勾选时会话为只读，不发送鼠标或键盘事件。",
+                                         "When unchecked the session is view-only and no pointer or keyboard events are sent.")
+                                  : text("远程应用未开启远程输入。",
+                                         "The remote application has remote input disabled."));
+        m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
         m_languageBox->setToolTip(text("界面语言", "Interface language"));
         m_fps->setText(QStringLiteral("FPS %1").arg(m_lastStats.fps, 0, 'f', 1));
         m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(m_lastStats.mbitPerSecond, 0, 'f', 2));
@@ -326,7 +341,6 @@ private:
         m_host->setEnabled(!busy && !connected);
         m_port->setEnabled(!busy && !connected);
         m_connect->setEnabled(true);
-        m_control->setEnabled(connected);
         if (!connected) {
             m_control->setChecked(false);
             m_view->setInputEnabled(false);
@@ -348,6 +362,7 @@ private:
     RfbClient::Stats m_lastStats;
     QSize m_frameSize;
     QString m_lastErrorRaw;
+    bool m_serverInputAvailable = true;
 
     QLabel *m_remoteLabel = nullptr;
     QLineEdit *m_host = nullptr;

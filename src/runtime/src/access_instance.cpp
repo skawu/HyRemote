@@ -1106,6 +1106,7 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     }
 
     detail::RfbSecurityConfig effectiveSecurity = security;
+    effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
     effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject)]() -> detail::RfbCursorSnapshot {
         QObject *object = guard.data();
         if (!object)

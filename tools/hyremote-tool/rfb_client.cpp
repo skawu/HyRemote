@@ -264,6 +264,7 @@ void RfbClient::process()
             if (nameLength > 4096 || m_in.size() < 24 + static_cast<qsizetype>(nameLength))
                 return;
             m_serverName = QString::fromUtf8(m_in.mid(24, static_cast<qsizetype>(nameLength)));
+            emit serverNameChanged(m_serverName);
             m_in.remove(0, 24 + static_cast<qsizetype>(nameLength));
             m_size = QSize(width, height);
             m_frame = QImage(width, height, QImage::Format_RGBX8888);
