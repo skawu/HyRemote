@@ -54,10 +54,10 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | [`security-model.md`](security-model.md) ｜ [English](en/security-model.md) | 信任边界、威胁模型与后续安全要求 |
 | [`known-limitations.md`](known-limitations.md) ｜ [English](en/known-limitations.md) | 已知限制 |
 | [`versioning.md`](versioning.md) ｜ [English](en/versioning.md) | 产品版本语义与 V0.1 → V1.x 演进 |
-| [`v1-api-stability.md`](v1-api-stability.md) | 公开 API 稳定性边界 |
+| [`v1-api-stability.md`](v1-api-stability.md) ｜ [English](en/v1-api-stability.md) | 公开 API 稳定性边界 |
 | [`widgets-capture.md`](widgets-capture.md) | Widgets 采集模型 |
 | [`quick-capture.md`](quick-capture.md) | Qt Quick 采集模型 |
-| [`input-model.md`](input-model.md) | 远程输入模型 |
+| [`input-model.md`](input-model.md) ｜ [English](en/input-model.md) | 远程输入模型 |
 | [`dependency-policy.md`](dependency-policy.md) | 产品依赖策略 |
 | [`release-package-manifest.md`](release-package-manifest.md) | SDK / 运行时载荷定义 |
 

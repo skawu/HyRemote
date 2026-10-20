@@ -28,15 +28,15 @@ require_file_token("src/runtime/tests/CMakeLists.txt" "hyremote-rfb-multi-client
 require_file_token("src/runtime/tests/CMakeLists.txt" "TIMEOUT 15" "bounded concurrent-viewer CTest runtime")
 # Pin the behaviour the document states rather than one historical sentence that used to state it: the document is a
 # product contract and rewording it is legitimate, while losing these three semantics is not.
-require_file_token("docs/input-model.md" "Per-viewer protocol state remains separate" "canonical concurrent-viewer input model")
-require_file_token("docs/input-model.md" "the target release occurs when the final holder releases/disconnects" "final-holder release semantics")
-require_file_token("docs/input-model.md" "A release is protected only when its corresponding press was accepted" "protected-release admission semantics")
+require_file_token("docs/input-model.md" "每个 viewer 的协议状态保持独立" "canonical concurrent-viewer input model")
+require_file_token("docs/input-model.md" "目标释放发生在最后一个持有者释放或断开时" "final-holder release semantics")
+require_file_token("docs/input-model.md" "只有当对应的按下被接受时，释放才受保护" "protected-release admission semantics")
 require_file_token("docs/known-limitations.md" "多个 viewer 共享一个逻辑应用输入设备" "shared-target multi-viewer boundary")
-require_file_token("docs/input-model.md" "distinguish ordinary bounded input from release delivery" "protected-release versus ordinary bounded input")
-require_file_token("docs/input-model.md" "If a press was rejected by backpressure" "rejected-press release suppression")
-require_file_token("docs/v1-api-stability.md" "stays observable as `Faulted` until the owner calls `stop()`" "non-recoverable failure stays Faulted until stop")
-require_file_token("docs/v1-api-stability.md" "acknowledging an error does not resurrect the session that produced it" "acknowledgment does not resurrect the failed session")
-require_file_token("docs/v1-api-stability.md" "the same condition occurs again after it was acknowledged" "a later occurrence becomes visible again")
+require_file_token("docs/input-model.md" "区分普通有界输入和释放交付" "protected-release versus ordinary bounded input")
+require_file_token("docs/input-model.md" "如果按下因背压被拒绝" "rejected-press release suppression")
+require_file_token("docs/v1-api-stability.md" "在 owner 调用 stop() 前保持 Faulted 可观察" "non-recoverable failure stays Faulted until stop")
+require_file_token("docs/v1-api-stability.md" "确认错误不会复活产生该错误的会话" "acknowledgment does not resurrect the failed session")
+require_file_token("docs/v1-api-stability.md" "同一条件在确认后再次发生" "a later occurrence becomes visible again")
 
 require_file_token("src/runtime/src/detail/input_mailbox_admission.hpp" "kProtectedReleaseCapacity =" "shared protected-release admission bound")
 require_file_token("src/runtime/src/detail/input_mailbox_admission.hpp" "kProtectedReleaseCapacity == 136U" "machine-pinned V1 protected-release capacity")
@@ -50,8 +50,8 @@ require_file_token("src/runtime/tests/test_quick_input_backpressure.cpp" "testPr
 require_file_token("src/runtime/tests/test_rfb_widget_disconnect_backpressure.cpp" "testDisconnectCleanupCrossesSaturatedAdapterMailbox" "RFB -> Session -> Widgets saturation/disconnect composition regression")
 require_file_token("src/runtime/tests/test_rfb_widget_disconnect_backpressure.cpp" "afterDisconnect.inputPostFailures == saturated.inputPostFailures" "disconnect release crosses Session without additional sink post failure")
 require_file_token("src/runtime/tests/CMakeLists.txt" "hyremote-rfb-widget-disconnect-backpressure-test" "registered real disconnect/backpressure composition CTest")
-require_file_token("docs/input-model.md" "must not create an unbounded queue" "canonical bounded-delivery rule")
-require_file_token("docs/input-model.md" "This keeps overload behavior bounded while preserving input neutrality" "canonical saturation invariant")
+require_file_token("docs/input-model.md" "不得创建无界队列" "canonical bounded-delivery rule")
+require_file_token("docs/input-model.md" "这保持过载行为有界，同时保持输入中立" "canonical saturation invariant")
 
 # Runtime state/error semantics moved into the private AccessInstance; the C++ facade is now only a type/API mapping.
 require_file_token("src/runtime/src/access_instance.cpp" "acknowledgedRecoverableError" "recoverable runtime error acknowledgement")
@@ -62,9 +62,9 @@ require_file_token("src/integrations/cpp/tests/CMakeLists.txt" "hyremote-remotea
 require_file_token("src/integrations/cpp/tests/test_remote_access.cpp" "testFaultedRuntimeRequiresExplicitStopAndKeepsFatalDiagnostic" "Faulted explicit-stop recovery regression")
 require_file_token("src/integrations/cpp/include/HyRemote/RemoteAccess.h" "A non-recoverable runtime failure is observable as" "installed-header Faulted lifecycle contract")
 require_file_token("src/integrations/cpp/include/HyRemote/RemoteAccess.h" "Acknowledge/clear product-level and live recoverable diagnostics" "installed-header clearError contract")
-require_file_token("docs/v1-api-stability.md" "a non-recoverable runtime failure stays observable as `Faulted` until the owner calls `stop()`" "V1 Faulted API freeze")
-require_file_token("docs/v1-api-stability.md" "unrelated viewer, capture or transport activity must not make the same acknowledged failure current again" "V1 clearError occurrence isolation")
-require_file_token("docs/v1-api-stability.md" "that later occurrence must become visible again" "V1 clearError recurrence semantics")
+require_file_token("docs/v1-api-stability.md" "在 owner 调用 stop() 前保持 Faulted 可观察" "V1 Faulted API freeze")
+require_file_token("docs/v1-api-stability.md" "无关 viewer、采集或传输活动不得让同一已确认失败重新变为当前" "V1 clearError occurrence isolation")
+require_file_token("docs/v1-api-stability.md" "后续发生必须再次可见" "V1 clearError recurrence semantics")
 
 require_file_token("src/integrations/cpp/tests/test_remote_access_target_loss.cpp" "testTargetLossFaultStopReplaceRestart" "facade target-loss stop/replace/restart regression")
 require_file_token("src/integrations/cpp/tests/test_remote_access_target_loss.cpp" "remote.connectedClientCount() == 1" "Faulted runtime retains viewer diagnostic until stop")
