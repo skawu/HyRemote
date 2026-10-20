@@ -51,200 +51,42 @@ if(HYREMOTE_BUILD_TESTS)
     set(_hyremote_qpa_deploy_fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/deploy_helper_fixture")
     set(_hyremote_qpa_deploy_runner "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_deploy_helper_fixture.cmake")
 
-    add_test(
-        NAME hyremote-qpa-deploy-helper-ordinary
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-ordinary
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=OFF
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-qml-only
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml-only
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=OFF
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-qml-composed
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-qml
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=ON
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-installed-payload
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=OFF
-            -DTEST_INSTALLED_PAYLOAD=ON
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-installed-payload-qml-only
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload-qml-only
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=OFF
-            -DTEST_INSTALLED_PAYLOAD=ON
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-installed-payload-qml
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-installed-payload-qml
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_DEPLOY_QPA=ON
-            -DTEST_INSTALLED_PAYLOAD=ON
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-missing-qml
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_QML_AVAILABLE=OFF
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requires_a_HyRemote_QML_payload
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-stale-qml-metadata
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-stale-qml-metadata
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_QML_AVAILABLE=OFF
-            -DTEST_STALE_QML_METADATA=ON
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requires_a_HyRemote_QML_payload
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-missing-qml-root
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml-root
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_INSTALLED_PAYLOAD=ON
-            -DTEST_QML_IMPORT_PATH_EXISTS=OFF
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=QML_import_root_does_not_exist
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-missing-qml-module-dir
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-qml-module-dir
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=ON
-            -DTEST_INSTALLED_PAYLOAD=ON
-            -DTEST_QML_MODULE_DIR_EXISTS=OFF
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=QML_module_directory_does_not_exist
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-stale-qpa-metadata
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-stale-qpa-metadata
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=OFF
-            -DTEST_STALE_QPA_METADATA=ON
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requires_the_current_HyRemote_source_build
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-qt-mismatch
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-qt-mismatch
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=OFF
-            -DTEST_QT_VERSION=6.8.2
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requires_exact_Qt_6.8.3
-            -P ${_hyremote_qpa_deploy_runner}
-    )
-
-    add_test(
-        NAME hyremote-qpa-deploy-helper-reject-missing-package
-        COMMAND ${CMAKE_COMMAND}
-            -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-            -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-reject-missing-package
-            -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-            -DTEST_QML=OFF
-            -DTEST_INSTALLED_PAYLOAD=ON
-            -DTEST_QPA_AVAILABLE=OFF
-            -DEXPECT_CONFIGURE_FAILURE=ON
-            -DEXPECT_FAILURE_FRAGMENT=requested_an_SDK_that_was_built_without_Transparent_QPA
-            -P ${_hyremote_qpa_deploy_runner}
+    # The deploy-helper matrix used to register fifteen near-identical CTests.
+    # The case data now lives in two scripts (positive acceptances and
+    # fail-closed rejections); each case still runs the real fixture runner with
+    # its own binary tree and names its PASS/FAIL line. This keeps one CTest
+    # process per group without weakening a rejection contract.
+    set(_hyremote_qpa_deploy_common
+        -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
+        -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
+        -DFIXTURE_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-cases
+        -DFIXTURE_RUNNER=${_hyremote_qpa_deploy_runner}
     )
 
     find_program(HYREMOTE_DEPLOY_FIXTURE_NINJA ninja)
     if(HYREMOTE_DEPLOY_FIXTURE_NINJA)
-        add_test(
-            NAME hyremote-qpa-deploy-helper-single-config-generator
-            COMMAND ${CMAKE_COMMAND}
-                -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-                -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-single-config-generator
-                -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-                -DFIXTURE_GENERATOR=Ninja
-                -DFIXTURE_MAKE_PROGRAM=${HYREMOTE_DEPLOY_FIXTURE_NINJA}
-                -DFIXTURE_BUILD_TYPE=Release
-                -DFIXTURE_EXPECTED_CONFIG=Release
-                -DTEST_QML=OFF
-                -P ${_hyremote_qpa_deploy_runner}
-        )
-        add_test(
-            NAME hyremote-qpa-deploy-helper-multi-config-generator
-            COMMAND ${CMAKE_COMMAND}
-                -DFIXTURE_SOURCE_DIR=${_hyremote_qpa_deploy_fixture}
-                -DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/deploy-helper-multi-config-generator
-                -DHYREMOTE_SOURCE_DIR=${_hyremote_root_dir}
-                "-DFIXTURE_GENERATOR=Ninja Multi-Config"
-                -DFIXTURE_MAKE_PROGRAM=${HYREMOTE_DEPLOY_FIXTURE_NINJA}
-                -DFIXTURE_EXPECTED_CONFIG=Release
-                -DTEST_QML=OFF
-                -P ${_hyremote_qpa_deploy_runner}
-        )
+        set(_hyremote_qpa_deploy_ninja "${HYREMOTE_DEPLOY_FIXTURE_NINJA}")
     else()
+        set(_hyremote_qpa_deploy_ninja "")
         message(STATUS
             "ninja was not found: the explicit single-config/multi-config deploy-helper generator "
             "coverage is provided by the hosted jobs' platform default generator")
     endif()
+
+    add_test(
+        NAME hyremote-qpa-deploy-helper-positive
+        COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_deploy_common}
+            -DFIXTURE_NINJA=${_hyremote_qpa_deploy_ninja}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_deploy_helper_positive.cmake
+    )
+    set_tests_properties(hyremote-qpa-deploy-helper-positive PROPERTIES TIMEOUT 600)
+
+    add_test(
+        NAME hyremote-qpa-deploy-helper-negative
+        COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_deploy_common}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_deploy_helper_negative.cmake
+    )
+    set_tests_properties(hyremote-qpa-deploy-helper-negative PROPERTIES TIMEOUT 600)
 
     if(UNIX AND NOT APPLE)
         add_test(
