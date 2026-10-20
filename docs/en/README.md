@@ -46,8 +46,8 @@ The current release focuses on **getting users to a working remote-access path q
 | [`known-limitations.md`](known-limitations.md) ｜ [中文](../known-limitations.md) | Known product limitations |
 | [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
 | [`v1-api-stability.md`](v1-api-stability.md) ｜ [中文](../v1-api-stability.md) | Public API stability boundary |
-| [`../widgets-capture.md`](../widgets-capture.md) | Widgets capture model |
-| [`../quick-capture.md`](../quick-capture.md) | Qt Quick capture model |
+| [`widgets-capture.md`](widgets-capture.md) ｜ [中文](../widgets-capture.md) | Widgets capture model |
+| [`quick-capture.md`](quick-capture.md) ｜ [中文](../quick-capture.md) | Qt Quick capture model |
 | [`input-model.md`](input-model.md) ｜ [中文](../input-model.md) | Remote-input model |
 | [`dependency-policy.md`](dependency-policy.md) ｜ [中文](../dependency-policy.md) | Product dependency policy |
 | [`release-package-manifest.md`](release-package-manifest.md) ｜ [中文](../release-package-manifest.md) | SDK/runtime payload definition |

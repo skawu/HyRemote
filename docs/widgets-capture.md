@@ -1,108 +1,110 @@
-# Qt Widgets Capture and Input Baseline
+# Qt Widgets 采集与输入基线
 
-This document describes the current HyRemote product behavior for qualified Qt Widgets targets.
+> 语言 / Language：**中文** ｜ [English](en/widgets-capture.md)
 
-Applications attach a `QWidget` through the public HyRemote frontend they selected; they do not construct capture sources or input sinks directly.
+本文描述 HyRemote 对合格 Qt Widgets 目标的当前产品行为。
 
-## Product boundary
+应用通过所选 HyRemote 前端附着 `QWidget`，不直接构造采集源或输入 sink。
 
-For the programmable C++ API, a normal application uses:
+## 产品边界
+
+可编程 C++ API 的正常用法：
 
 ```cpp
 HyRemote::RemoteAccess remote(&widget);
 remote.start();
 ```
 
-Generic Plugin and QPA may discover supported application-owned Widget surfaces automatically through the shared Runtime.
+Generic Plugin 和 QPA 可以通过共享 Runtime 自动发现受支持的应用自有 Widget surface。
 
-The Widgets adapter is an internal Runtime implementation detail. Applications do not select it explicitly.
+Widgets 适配器是 Runtime 内部实现细节，应用不显式选择。
 
-## Capture path
+## 采集路径
 
-The portable correctness path is conceptually:
+可移植正确性路径：
 
 ```text
-Core scheduler
-    -> Widgets target adapter
-    -> queued work on the Qt GUI thread
+Core 调度器
+    -> Widgets 目标适配器
+    -> Qt GUI 线程排队工作
     -> QWidget::render()
-    -> owned CPU-readable frame storage
+    -> 自有 CPU 可读帧存储
     -> RemoteFrame
-    -> bounded Core handoff
-    -> transport
+    -> 有界 Core 交接
+    -> 传输
 ```
 
-Current baseline properties:
+当前基线属性：
 
-- QWidget access occurs on the Qt GUI thread;
-- each published frame owns its pixel storage for the required frame lifetime;
-- no borrowed/reused `QImage` pointer is exposed as a remote frame;
-- device-pixel ratio is applied to captured dimensions once;
-- completion time is used as the safe baseline content timestamp;
-- damage may be conservatively represented as full-frame;
-- capture-to-transport handoff remains bounded;
-- stop/target teardown prevents stale queued capture from being published after the Runtime is no longer active.
+- QWidget 访问发生在 Qt GUI 线程；
+- 每个发布帧在所需生命周期内拥有自己的像素存储；
+- 不把借用/复用的 `QImage` 指针暴露为远程帧；
+- device pixel ratio 只应用一次到采集尺寸；
+- 完成时间作为安全基线内容时间戳；
+- damage 可以保守表示为整帧；
+- 采集到传输的交接保持有界；
+- stop/目标 teardown 阻止 Runtime 不再活跃后发布陈旧排队采集。
 
-This is a correctness baseline, not the final performance ceiling.
+这是正确性基线，不是最终性能上限。
 
-## Remote input path
+## 远程输入路径
 
-When remote input is enabled, normalized input follows:
+启用远程输入时，规范化输入路径：
 
 ```text
-transport normalization
-    -> Core InputEvent routing
+传输规范化
+    -> Core InputEvent 路由
     -> Widgets InputSink
-    -> queued GUI-thread delivery
-    -> QWidget / focused descendant
+    -> GUI 线程排队交付
+    -> QWidget / 聚焦子控件
 ```
 
-The baseline supports the normalized product input categories documented in [`input-model.md`](input-model.md), including pointer movement/buttons, wheel steps, logical key transitions, modifiers, and committed text where supported by the transport.
+基线支持 [`input-model.md`](input-model.md) 中的规范化输入类别：指针移动/按钮、滚轮步长、逻辑按键转换、修饰键，以及传输支持时的提交文本。
 
-Pointer coordinates are mapped from the remote frame viewport to the current QWidget target geometry without applying DPR twice.
+指针坐标从远程帧 viewport 映射到当前 QWidget 目标几何，不重复应用 DPR。
 
-Input delivery is asynchronous and bounded. Transport callbacks do not wait synchronously for QWidget event processing.
+输入交付异步且有界。传输回调不同步等待 QWidget 事件处理。
 
-## Window and surface scope
+## 窗口与 surface 范围
 
-A single explicit QWidget target does not automatically mean “capture the entire desktop”. HyRemote targets the application.
+单个显式 QWidget 目标不表示“采集整个桌面”。HyRemote 面向应用。
 
-Depending on the selected frontend, supported top-level dialogs, menus, popups, or additional application windows may be represented through the Runtime's automatic/composite surface model.
+取决于所选前端，受支持的顶层对话框、菜单、popup 或其他应用窗口可以通过 Runtime 的自动/组合 surface 模型表示。
 
-Arbitrary foreign/native OS windows are not automatically included.
+任意外部/原生 OS 窗口不会自动包含。
 
-See [`compatibility.md`](compatibility.md) for the current qualified surface scope.
+当前合格 surface 范围见 [`compatibility.md`](compatibility.md)。
 
-## Graphics-specific cases
+## 图形特例
 
-Basic QWidget qualification does not automatically qualify every configuration involving:
+基础 QWidget 资格不会自动覆盖：
 
-- `QOpenGLWidget`;
-- `QQuickWidget` mixed content;
-- native child windows;
-- custom rendering engines;
-- third-party components that bypass normal QWidget rendering assumptions.
+- `QOpenGLWidget`；
+- `QQuickWidget` 混合内容；
+- 原生子窗口；
+- 自定义渲染引擎；
+- 绕过正常 QWidget 渲染假设的第三方组件。
 
-These cases require explicit compatibility rows or real-world qualification rather than being inferred from raster Widgets support.
+这些场景需要显式兼容行或真实应用资格，不能从 raster Widgets 支持推断。
 
-## Performance direction
+## 性能方向
 
-The current Widgets path favors portable correctness and owned frame lifetime.
+当前 Widgets 路径优先可移植正确性和自有帧生命周期。
 
-Future improvements may introduce:
+未来改进可以包括：
 
-- reusable frame pools;
-- damage-aware capture;
-- more efficient graphics readback;
-- platform-specific low-copy paths;
-- hardware-assisted conversion/encoding.
+- 可复用帧池；
+- damage 感知采集；
+- 更高效的图形回读；
+- 平台专用低拷贝路径；
+- 硬件辅助转换/编码。
 
-Such changes remain behind the Runtime boundary and must not require ordinary applications to replace `HyRemote::RemoteAccess` or select internal capture classes.
+这些变化留在 Runtime 边界之后，不要求普通应用替换 `HyRemote::RemoteAccess` 或选择内部采集类。
 
-## Current status
+## 当前状态
 
-Widgets through C++ API and Generic Plugin are peer routes for the current reference environment.
+当前参考环境中，C++ API 和 Generic Plugin 的 Widgets 路线是并列路线。
 
-QPA Widgets support remains subject to its exact Qt private-ABI compatibility boundary.
+QPA Widgets 支持仍受其精确 Qt private-ABI 兼容边界约束。
 
-See [`compatibility.md`](compatibility.md) and [`known-limitations.md`](known-limitations.md) for exact product status.
+精确产品状态见 [`compatibility.md`](compatibility.md) 和 [`known-limitations.md`](known-limitations.md)。
