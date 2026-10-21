@@ -127,6 +127,18 @@ qt:
 
 ## 4. 部署与运行
 
+### Quick-only 运行时
+
+Quick-only 设备不应因为 HyRemote 有 Widgets 适配器而额外携带 Qt Widgets。构建 profile 中设置：
+
+```yaml
+cmake:
+  HYREMOTE_BUILD_WIDGETS_ADAPTER: OFF
+  HYREMOTE_BUILD_QUICK_ADAPTER: ON
+```
+
+生成的共享 Runtime 不得产生 `Qt6Widgets` 加载依赖。依赖契约记录在 `docs/compatibility.md`；ARM64/EGLFS 的运行证据仍需要目标板。
+
 交叉编译产物包含共享运行时、`qhyremote` 平台插件与原生 delegate 的依赖关系，需按与桌面相同的部署契约摆放
 （见 `docs/guide/deployment.md` 与 `hyremote_deploy()`）。QPA 接入在目标板上的启动方式与桌面一致：
 

@@ -87,6 +87,19 @@ These cases receive explicit qualification when they enter the product matrix.
 
 The portable correctness baseline supports qualified `QQuickWindow` targets through the public asynchronous Quick capture path.
 
+### Quick-only deployment
+
+A Quick-only application can disable the Widgets adapter so the shared Runtime does not load `Qt6Widgets` merely because another UI family exists:
+
+```text
+-DHYREMOTE_BUILD_WIDGETS_ADAPTER=OFF
+-DHYREMOTE_BUILD_QUICK_ADAPTER=ON
+```
+
+Set both in the `cmake` section of `build.yml`, then clean and rebuild. This keeps one Core and one Shared Runtime; Quick capture/input use the Quick adapter.
+
+On Windows x86_64, `dumpbin /dependents HyRemoteRemoteAccess.dll` has been used to verify that the Quick-only Runtime depends on `Qt6Quick/Qt6Gui/Qt6Core/Qt6Network` but not `Qt6Widgets`. Clean-rootfs ARM64/EGLFS runtime validation still requires the target board.
+
 Basic Qt Quick support does not automatically qualify configurations involving:
 
 - Quick3D;

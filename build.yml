@@ -45,6 +45,9 @@ cmake:
   HYREMOTE_DEFAULT_PORT: 5921   # 示例：6000
   # CMAKE_SYSROOT: /opt/aarch64-sysroot
   # HYREMOTE_TOOLCHAIN_PREFIX: /opt/gcc-arm/bin/aarch64-none-linux-gnu-
+  # Quick-only runtime（不部署 Qt Widgets）：
+  # HYREMOTE_BUILD_WIDGETS_ADAPTER: OFF
+  # HYREMOTE_BUILD_QUICK_ADAPTER: ON
 
 # env:
 #   PKG_CONFIG_PATH: /opt/aarch64-sysroot/usr/lib/pkgconfig
