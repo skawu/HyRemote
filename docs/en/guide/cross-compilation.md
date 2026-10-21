@@ -67,6 +67,8 @@ cp build.yml build.aarch64.yml
 #   qt.prefix             -> target Qt 6.8.3 prefix
 #   compiler.toolchain    -> cmake/toolchains/aarch64-linux-gnu.cmake
 #   cmake.CMAKE_SYSROOT   -> target sysroot
+#   build.examples        -> false (cross builds normally skip examples)
+#   integrations          -> keep only qpa: true, the rest false
 sh ./build.cmd clean
 sh ./build.cmd build --config=build.aarch64.yml
 ```

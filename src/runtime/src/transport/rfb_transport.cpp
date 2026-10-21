@@ -814,10 +814,12 @@ private:
                     return;
                 }
                 client.pixels = *spec;
-                // Do not send the cursor from this handler: the viewer may
-                // still be switching its expected pixel format. The next
-                // update request sends it in the settled format.
                 client.cursorSignature.clear();
+                client.lastCursorPollMs = -1;
+                // Wait for the current event batch to settle before writing the
+                // cursor. This sends without an extra frame/input request, but
+                // still lets a following SetPixelFormat choose the final format.
+                scheduleCursor(client);
                 continue;
             }
 
@@ -861,8 +863,7 @@ private:
                 }
                 client.input.remove(0, size);
                 client.cursorSignature.clear();
-                // Cursor is sent by the next update request, after any
-                // following SetPixelFormat has settled.
+                scheduleCursor(client);
                 if (client.supportsFence && !fenceWasSupported
                     && !sendFence(client, 0U, {})) {
                     return;
@@ -1097,7 +1098,9 @@ private:
         if (m_security.cursorProvider) {
             snapshot = m_security.cursorProvider(
                 client.pointerPositionKnown ? client.lastPointerX : -1,
-                client.pointerPositionKnown ? client.lastPointerY : -1);
+                client.pointerPositionKnown ? client.lastPointerY : -1,
+                client.lastPointerViewport.width,
+                client.lastPointerViewport.height);
         }
 
         const qsizetype expectedBytes = static_cast<qsizetype>(snapshot.width) * snapshot.height * 4;
@@ -1158,10 +1161,30 @@ private:
         client.cursorSignature = signature;
     }
 
+    void scheduleCursor(ClientState &client)
+    {
+        if (!client.socket)
+            return;
+        const QPointer<QTcpSocket> socket(client.socket);
+        QTimer::singleShot(0, this, [this, socket] {
+            if (!socket)
+                return;
+            const auto it = m_clients.find(socket);
+            if (it != m_clients.end())
+                refreshCursor(*it->second);
+        });
+    }
+
     void refreshCursor(ClientState &client)
     {
         if (!client.supportsCursor)
             return;
+        // Do not consume the polling interval while the viewer is still on a
+        // reduced-bpp format; a later 32-bpp format change must send promptly.
+        if (client.pixels.bitsPerPixel != 32) {
+            client.lastCursorPollMs = -1;
+            return;
+        }
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (client.lastCursorPollMs >= 0 && now - client.lastCursorPollMs < 250)
             return;

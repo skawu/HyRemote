@@ -29,9 +29,12 @@ struct RfbCursorSnapshot
 };
 
 // x/y are the last remote pointer position in target framebuffer coordinates,
-// or -1 when the viewer has not sent a pointer event yet. This lets the target
-// resolve the cursor shape under the remote pointer instead of the local one.
-using RfbCursorProvider = std::function<RfbCursorSnapshot(int x, int y)>;
+// or -1 when the viewer has not sent a pointer event yet. sourceWidth/sourceHeight
+// are the remembered framebuffer dimensions, so callers can map physical RFB
+// pixels to logical target coordinates. This lets the target resolve the cursor
+// shape under the remote pointer instead of the local one.
+using RfbCursorProvider =
+    std::function<RfbCursorSnapshot(int x, int y, std::uint32_t sourceWidth, std::uint32_t sourceHeight)>;
 
 struct RfbSecurityConfig
 {

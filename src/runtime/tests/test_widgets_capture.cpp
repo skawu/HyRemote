@@ -13,6 +13,7 @@
 #include <optional>
 
 #include "detail/component_factories.hpp"
+#include "detail/cursor_mapping.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -187,6 +188,24 @@ void testWidgetsFactoryAndOwnedFrame()
         CHECK(received->geometry.size.width == qRound(160.0 * dpr));
         CHECK(received->geometry.size.height == qRound(90.0 * dpr));
     }
+
+    // Remote cursor coordinates arrive in physical frame pixels. They must be
+    // mapped to logical target coordinates before QWidget::mapToGlobal().
+    const std::uint32_t sourceWidth = static_cast<std::uint32_t>(qRound(160.0 * dpr));
+    const std::uint32_t sourceHeight = static_cast<std::uint32_t>(qRound(90.0 * dpr));
+    const QPointF mappedCentre = HyRemote::detail::mapFramebufferCursorPoint(
+        static_cast<int>(sourceWidth / 2U),
+        static_cast<int>(sourceHeight / 2U),
+        sourceWidth,
+        sourceHeight,
+        160.0,
+        90.0);
+    CHECK(qAbs(mappedCentre.x() - 79.5) <= 0.6);
+    CHECK(qAbs(mappedCentre.y() - 44.5) <= 0.6);
+    const QPointF mappedEdge = HyRemote::detail::mapFramebufferCursorPoint(
+        static_cast<int>(sourceWidth), static_cast<int>(sourceHeight), sourceWidth, sourceHeight, 160.0, 90.0);
+    CHECK(qAbs(mappedEdge.x() - 159.0) < 0.01);
+    CHECK(qAbs(mappedEdge.y() - 89.0) < 0.01);
 
     // Resize transition: the same relation must hold for the new logical size, on the DPR in force.
     target.resize(320, 180);
@@ -459,6 +478,21 @@ void testNormalizedInputIsQueuedAndDeliveredToChild()
     key.pressed = false;
     components.input->post(key);
     CHECK(pumpUntil([&] { return probe.keyReleases == 1; }));
+
+    // A remote key must retain the target's intended focus child even when the
+    // application window is inactive and global focus is elsewhere.
+    QWidget other;
+    other.resize(80, 40);
+    other.show();
+    other.activateWindow();
+    other.setFocus();
+    QCoreApplication::processEvents();
+    key.pressed = true;
+    components.input->post(key);
+    CHECK(pumpUntil([&] { return probe.keyPresses == 2; }));
+    key.pressed = false;
+    components.input->post(key);
+    CHECK(pumpUntil([&] { return probe.keyReleases == 2; }));
 
     hyremote::InputEvent text;
     text.kind = hyremote::InputEventKind::Text;
