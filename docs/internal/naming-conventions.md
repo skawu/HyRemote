@@ -1,75 +1,60 @@
-# Naming Conventions
+# 命名规范
 
-This document codifies the naming conventions HyRemote **already** uses. It exists so that the conventions are
-written down for contributors instead of having to be inferred from the tree. It introduces no rename: see
-"What V1 does not do" at the end, and [`v1-api-stability.md`](../v1-api-stability.md) for the frozen public surface.
+> 语言 / Language：**中文** ｜ [English](../en/internal/naming-conventions.md)
 
-Placement rules (which directory a new thing belongs in) live in
-[`repository-layout.md`](repository-layout.md), together with the extension points for future work.
+本文记录 HyRemote **已经**使用的命名约定，目的是让贡献者有明确依据，不必从目录结构反推。本文不引入重命名；范围边界见文末“V1 不做什么”，公开 API 冻结面见 [`v1-api-stability.md`](../v1-api-stability.md)。
 
-## Product identity and the four spellings
+新对象放在哪个目录、未来扩展点如何组织，见 [`repository-layout.md`](repository-layout.md)。
 
-`HyRemote` is the product identity and the public namespace. Around it there are four deliberate spellings, and
-each is correct **only** in its own context:
+## 产品身份与四种拼写
 
-| Spelling | Applies to |
+`HyRemote` 是产品身份和公开命名空间。它周围有四种刻意保留的拼写，每种**只**在对应语境中正确：
+
+| 拼写 | 适用范围 |
 | --- | --- |
-| `HyRemote` | Product name, `HyRemote::` C++ namespace alias, installed header directory `HyRemote/`, QML module and URI `HyRemote`, artifact `HyRemoteRemoteAccess` |
-| `hyremote` | C++ namespace `hyremote`, internal source file names, and lower-case identifiers that never leave the library |
-| `HYREMOTE_` | CMake options and preprocessor macros |
-| `hyremote-` | CMake targets, library and test target names |
-| `qhyremote` | The Transparent QPA platform module, per Qt's own platform-plugin naming convention |
+| `HyRemote` | 产品名、`HyRemote::` C++ 命名空间别名、安装头目录 `HyRemote/`、QML 模块与 URI `HyRemote`、产物名 `HyRemoteRemoteAccess` |
+| `hyremote` | C++ 命名空间 `hyremote`、内部源文件名，以及不会离开库的小写标识符 |
+| `HYREMOTE_` | CMake 选项和预处理宏 |
+| `hyremote-` | CMake target、库和测试 target 名 |
+| `qhyremote` | Transparent QPA 平台模块，遵循 Qt 自己的平台插件命名约定 |
 
-A new globally exposed C-style symbol or macro carries the `HYREMOTE_` prefix. Public C++ types inside
-`HyRemote::` keep normal PascalCase names and are **not** additionally prefixed (no `HYRemoteAccess`-style
-duplication). Internal types stay normally scoped inside their own namespace or class.
+新增的全局 C 风格符号或宏使用 `HYREMOTE_` 前缀。`HyRemote::` 内的公开 C++ 类型保持正常 PascalCase，不再额外加前缀，避免出现 `HYRemoteAccess` 这类重复。内部类型留在自己的命名空间或类作用域内。
 
 ## C++
 
-- Namespace: `hyremote` for the implementation, `HyRemote::` as the public alias namespace.
-- Types, classes and structs: `PascalCase` (`RemoteAccess`, `RemoteFrame`, `SessionStats`).
-- Enumerations: `enum class` with `PascalCase` enumerators.
-- Functions and methods: `camelCase`.
-- Private data members: `m_` followed by camelCase, with the implementation behind a `struct Impl` pimpl in the
-  files that use one; member-name style therefore rarely appears in public headers.
-- Public headers: the file name may follow the public type it declares, as in
-  `src/cpp/include/HyRemote/RemoteAccess.h`. This is the one place where a `.h`/PascalCase file name is
-  the convention.
-- New internal source and test files: `snake_case`.
+- 命名空间：实现使用 `hyremote`，公开别名命名空间使用 `HyRemote::`。
+- 类型、类和结构体：`PascalCase`（`RemoteAccess`、`RemoteFrame`、`SessionStats`）。
+- 枚举：`enum class`，枚举值使用 `PascalCase`。
+- 函数和方法：`camelCase`。
+- 私有数据成员：`m_` 加 camelCase；使用 pimpl 的实现通常把数据放在 `struct Impl` 中，因此公开头文件很少出现成员命名。
+- 公开头文件：文件名可以跟随它声明的公开类型，例如 `src/cpp/include/HyRemote/RemoteAccess.h`。这是唯一使用 `.h`/PascalCase 文件名的地方。
+- 新增内部源文件和测试文件：`snake_case`。
 
-### The two public-header forms are deliberate
+### 两种公开头文件形式是刻意保留的
 
-Two forms coexist and both are intentional, not drift:
+两种形式同时存在，不是漂移：
 
-- `src/core/include/hyremote/core/*.hpp` - lower-case directory and extension, mirroring the internal namespace
-  of an internal STATIC target that is not an installed application SDK;
-- `src/cpp/include/HyRemote/RemoteAccess.h` - PascalCase directory and `.h`, matching the installed
-  public header directory name and the public type.
+- `src/core/include/hyremote/core/*.hpp`：小写目录和扩展名，对应内部 STATIC target 的内部命名空间，不是安装型应用 SDK；
+- `src/cpp/include/HyRemote/RemoteAccess.h`：PascalCase 目录和 `.h`，对应安装后的公开头目录名和公开类型。
 
-Keep new headers in whichever of the two forms their module already uses.
+新增头文件跟随所在模块已有的形式。
 
 ## CMake
 
-- Options and preprocessor macros: `HYREMOTE_` (`HYREMOTE_BUILD_TESTS`, `HYREMOTE_WITH_QPA_PROXY`).
-- Targets, libraries and test targets: `hyremote-` (`hyremote-core`, `hyremote-remoteaccess`,
-  `hyremote-qpa-native-semantics`).
-- Exported package and alias targets: `HyRemote::<Component>`.
-- The platform module keeps Qt's convention: `qhyremote`.
+- 选项和预处理宏：`HYREMOTE_`（`HYREMOTE_BUILD_TESTS`、`HYREMOTE_WITH_QPA_PROXY`）。
+- target、库和测试 target：`hyremote-`（`hyremote-core`、`hyremote-remoteaccess`、`hyremote-qpa-native-semantics`）。
+- 导出包和别名 target：`HyRemote::<Component>`。
+- 平台模块沿用 Qt 约定：`qhyremote`。
 
 ## QML
 
-- Module and URI: `HyRemote`, imported as `import HyRemote`.
-- The module directory must equal the URI, which is why the payload lives at `src/qml`
-  rather than in a flat directory; this is required by QML, not a style choice.
-- The element is `QML_NAMED_ELEMENT(RemoteAccess)`: it carries no prefix, because QML imports form one global
-  namespace. This is the single real collision risk in the naming surface and it is **accepted for 1.x**;
-  changing it would be a breaking public-API change.
+- 模块和 URI：`HyRemote`，使用 `import HyRemote`。
+- 模块目录必须等于 URI，因此 payload 位于 `src/qml`，不是扁平目录；这是 QML 的要求，不是风格选择。
+- 元素使用 `QML_NAMED_ELEMENT(RemoteAccess)`，没有前缀，因为 QML import 形成单一全局命名空间。这是命名面唯一真实的冲突风险，**1.x 接受该风险**；改变它会破坏公开 API。
 
-## What V1 does not do
+## V1 不做什么
 
-- No blanket rename to a unified spelling, and no rename of existing V1 files for style.
-- No rename of `src/cpp`, its target, `HyRemote::RemoteAccess`, its `EXPORT_NAME` or the installed
-  package contract; the layout, build and package expectations are frozen (see `repository-layout.md` and
-  `v1-api-stability.md`).
-- No prefix or alias for the QML element, and no V1.1 pre-commitment about one.
-- Identifiers, log tokens and CMake target names are never changed as part of a language or comment change.
+- 不为了统一拼写而批量重命名，也不为了风格重命名已有 V1 文件。
+- 不重命名 `src/cpp`、其 target、`HyRemote::RemoteAccess`、其 `EXPORT_NAME` 或安装包契约；布局、构建和包预期已经冻结（见 `repository-layout.md` 和 `v1-api-stability.md`）。
+- 不为 QML 元素增加前缀或别名，也不对 V1.1 做预先承诺。
+- 不因为语言或注释改动而修改标识符、日志 token 或 CMake target 名。
