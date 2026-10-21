@@ -35,9 +35,11 @@ Qt 6.12:    未安装
 
 ```text
 build.cmd clean
-build.cmd build --tests --examples --qt-prefix=<qt-6.12-prefix>
-ctest --output-on-failure
+build.cmd build --mode=cpp --tests --examples --qt-prefix=<qt-6.12-prefix>
+build.cmd test --mode=cpp --qt-prefix=<qt-6.12-prefix>
+build.cmd clean
 build.cmd build --mode=generic --tests --qt-prefix=<qt-6.12-prefix>
+build.cmd clean
 build.cmd build --mode=qml --tests --qt-prefix=<qt-6.12-prefix>
 ```
 
