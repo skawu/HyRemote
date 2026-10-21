@@ -54,6 +54,26 @@ Linux:    sh ./build.cmd build --integrations=qpa --qt-prefix /opt/Qt/6.8.3/gcc_
 
 ## 2. 指定交叉编译工具链
 
+日常命令行不应重复堆叠工具链和 Qt 参数。把目标配置写成独立的 `build.yml` 格式 profile，命令行只传该文件：
+
+```text
+cp build.aarch64.yml.example build.aarch64.yml
+# 编辑 build.aarch64.yml：
+#   qt.prefix             -> 目标 Qt 6.8.3 前缀
+#   compiler.toolchain    -> cmake/toolchains/aarch64-linux-gnu.cmake
+#   cmake.CMAKE_SYSROOT   -> 目标 sysroot
+sh ./build.cmd clean
+sh ./build.cmd build --config=build.aarch64.yml
+```
+
+`build.aarch64.yml.example` 中的字段都带有中文说明。仓库根目录的 `build.yml` 保持原生开发的默认配置，因此日常构建仍然是：
+
+```text
+build.cmd build
+```
+
+等价的单次命令行参数仍然可用，但它们是临时覆盖，不是日常工作流：
+
 ```text
 sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
