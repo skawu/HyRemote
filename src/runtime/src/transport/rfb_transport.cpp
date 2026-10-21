@@ -814,8 +814,10 @@ private:
                     return;
                 }
                 client.pixels = *spec;
+                // Do not send the cursor from this handler: the viewer may
+                // still be switching its expected pixel format. The next
+                // update request sends it in the settled format.
                 client.cursorSignature.clear();
-                sendCursor(client);
                 continue;
             }
 
@@ -858,11 +860,9 @@ private:
                     }
                 }
                 client.input.remove(0, size);
-                if (!client.supportsCursor) {
-                    client.cursorSignature.clear();
-                } else {
-                    sendCursor(client);
-                }
+                client.cursorSignature.clear();
+                // Cursor is sent by the next update request, after any
+                // following SetPixelFormat has settled.
                 if (client.supportsFence && !fenceWasSupported
                     && !sendFence(client, 0U, {})) {
                     return;
@@ -1086,6 +1086,11 @@ private:
     void sendCursor(ClientState &client)
     {
         if (!client.socket || !client.supportsCursor)
+            return;
+        // RealVNC promotes its initial 8/16-bpp framebuffer to 32 bpp but
+        // cannot parse the reduced CPIXEL cursor payload in between. Keep the
+        // local cursor until the viewer is on the native 32-bpp format.
+        if (client.pixels.bitsPerPixel != 32)
             return;
 
         RfbCursorSnapshot snapshot;
