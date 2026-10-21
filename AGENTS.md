@@ -25,28 +25,30 @@ Do not infer project status from chat memory alone.
 
 ## Current product phase
 
-The active public phase is **V0.3.0.0 Product Preview / self-service adoption**. `V0.1.0.0`, `V0.2.0.0` and bounded maintenance `V0.2.0.1` are accepted released history.
+**V0.3.0.0 Product Preview was released on 2026-10-19** (annotated `v0.3.0.0`). The current development priority is **V0.3-family product-breadth convergence**, with **V0.3.3.0** activated for practical RFB delivery (#144) and maintained GUI-viewer interoperability (#175), as recorded in `.github/release/release-trains.json`. V0.3.1.0 and V0.3.2.0 remain retired planning labels; V0.4.0.0 remains conditionally inactive and qualification-only until its entry gate passes.
+
+**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It sequences observed correctness/review debt, the current Feature's exact evidence gates, Qt 6.12 LTS *preflight only*, embedded Quick-only loader correctness and the V0.4/GA decision boundary. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
 
 Current execution order:
 
 ```text
-#266 repository execution entry
- -> #384 + #385 V0.3 preflights
- -> #335 + #264 V0.3 implementation
- -> #240 self-service closeout
- -> exact V0.3.0 Product Preview candidate
- -> V0.3.x mandatory product-breadth convergence
- -> V0.4 qualification-only RC
- -> V1.0 GA
+verify latest develop + Issue ownership + exact-SHA evidence
+ -> review/disposition known input/cursor/docs findings (#533/#544/#543/#546)
+ -> close V0.3.3.0 product outcome (#144 + #175, supported by #370)
+ -> finish remaining #343 mandatory Qt/platform/ARM64/performance breadth
+ -> enter V0.4 qualification-only RC after explicit activation
+ -> V1.0 GA on one accepted, qualified RC lineage
 ```
+
+Qt 6.12 LTS was released in 2026-09; it is a compatibility **preflight**, not a silently added GA support promise. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
 Cross-cutting test-system work under #393/#394 may progress independently when it does not overlap the active product-path owner; it must not block unrelated V0.3 implementation work merely because its PR is open.
 
 ## Requirement classes
 
-### V0.3.0 mandatory baseline
+### V0.3.0 accepted self-service baseline (historical)
 
-Owned by #234/#333:
+Owned by #234/#333; already released, not the active V0.3.3 task list:
 
 - #264: clean self-service SDK/install/deploy for C++ / QML / Generic / QPA;
 - #240: task-oriented docs and runnable learning paths;
