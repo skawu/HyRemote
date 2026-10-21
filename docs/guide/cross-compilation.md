@@ -80,6 +80,29 @@ sh ./build.cmd build --integrations=qpa \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```
 
+### 应该用哪个字段？
+
+| 需求 | 字段 | 规则 |
+| --- | --- | --- |
+| 目标 Qt 安装位置 | `qt.prefix` | 指向目标 Qt 6.8.3；它不是编译器设置。 |
+| 交叉编译器、sysroot 和 find-root 规则 | `compiler.toolchain` | 推荐。使用仓库工具链，或项目/Qt 生成的 CMake toolchain 文件。 |
+| 没有 toolchain 文件时临时指定编译器 | `compiler.c` / `compiler.cxx` | 仅高级回退。配置了 `compiler.toolchain` 时留空。 |
+
+不要把 `compiler.c`/`compiler.cxx` 和 `compiler.toolchain` 同时配置。构建脚本会在 toolchain 之后把显式编译器传给
+CMake，可能覆盖 toolchain 的编译器，同时丢失它的 sysroot 和 find-root 规则。
+
+使用 **Qt 自带**交叉工具链时：
+
+```yaml
+compiler:
+  toolchain: /opt/qt-6.8.3-aarch64/bin/qt.toolchain.cmake
+qt:
+  prefix: ""   # 或同一个目标 Qt 路径；不要指向主机 Qt
+```
+
+需要显式 GNU target triple/sysroot 时用仓库的 `aarch64-linux-gnu.cmake`；Qt 已经生成完整目标工具链时用
+`qt.toolchain.cmake`。两者都是普通 CMake toolchain 文件，选一个，不要同时使用。
+
 仓库自带两个示例工具链文件（详见 `cmake/toolchains/README.md`）：
 
 | 文件 | 目标 |
