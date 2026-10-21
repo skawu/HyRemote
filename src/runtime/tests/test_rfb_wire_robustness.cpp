@@ -742,10 +742,11 @@ void testCursorPseudoEncoding()
     std::uint16_t height = 0;
     CHECK(connectRawRfb(cursorSocket, port, false, &width, &height));
     CHECK(sendSetEncodings(cursorSocket, {-239, 0}));
-    CHECK(readCursorUpdate(cursorSocket));
 
-    // The cursor update is a separate FramebufferUpdate, not a framebuffer payload.
+    // The cursor is sent with the first update after the pixel format has
+    // settled, so request before reading it.
     CHECK(sendUpdateRequest(cursorSocket, false, 0, 0, width, height));
+    CHECK(readCursorUpdate(cursorSocket));
     TestFramebuffer frame;
     frame.resize(width, height);
     std::vector<UpdateRect> rectangles;
@@ -806,14 +807,13 @@ void testVariableCursorSnapshot()
     int cursorHeight = 0;
     int hotspotX = -1;
     int hotspotY = -1;
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
     CHECK(readCursorUpdate(socket, &cursorWidth, &cursorHeight, &hotspotX, &hotspotY));
     CHECK(cursorWidth == 4);
     CHECK(cursorHeight == 4);
     CHECK(hotspotX == 2);
     CHECK(hotspotY == 1);
 
-    // A cursor-only update must not consume or satisfy the framebuffer request.
-    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
     TestFramebuffer frame;
     frame.resize(width, height);
     std::vector<UpdateRect> rectangles;
