@@ -287,13 +287,22 @@ std::optional<Qt::KeyboardModifier> modifierForQtKey(int key)
     }
 }
 
-QWidget *keyboardReceiver(QWidget *root)
+QWidget *keyboardReceiver(QWidget *root, QWidget *preferred = nullptr)
 {
     if (!root)
         return nullptr;
-    QWidget *focus = QApplication::focusWidget();
-    if (focus && (focus == root || root->isAncestorOf(focus)))
+    const auto belongsToRoot = [root](QWidget *widget) {
+        return widget && (widget == root || root->isAncestorOf(widget));
+    };
+
+    if (QWidget *focus = QApplication::focusWidget(); belongsToRoot(focus))
         return focus;
+    if (QWidget *window = root->window()) {
+        if (QWidget *focus = window->focusWidget(); belongsToRoot(focus))
+            return focus;
+    }
+    if (belongsToRoot(preferred) && preferred->isVisible())
+        return preferred;
     return root;
 }
 
@@ -419,6 +428,7 @@ private:
         QtWindowSystemPointerState pointer;
         Qt::KeyboardModifiers modifiers = Qt::NoModifier;
         std::vector<HeldKey> heldKeys;
+        QPointer<QWidget> lastKeyboardReceiver;
     };
 
     static void deliverPointer(const std::shared_ptr<State> &state,
@@ -447,7 +457,7 @@ private:
                            QWidget *root,
                            const hyremote::InputEvent &event)
     {
-        QWidget *receiver = keyboardReceiver(root);
+        QWidget *receiver = keyboardReceiver(root, state->lastKeyboardReceiver);
         if (!receiver)
             return;
         const int key = toQtKey(event.key);
@@ -476,6 +486,8 @@ private:
 
         QKeyEvent keyEvent(event.pressed ? QEvent::KeyPress : QEvent::KeyRelease, key, state->modifiers);
         QCoreApplication::sendEvent(receiver, &keyEvent);
+        if (event.pressed)
+            state->lastKeyboardReceiver = keyboardReceiver(root, receiver);
     }
 
     static void deliverText(QWidget *root, const hyremote::InputEvent &event)

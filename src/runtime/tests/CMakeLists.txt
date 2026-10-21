@@ -230,6 +230,10 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS)
     set_tests_properties(hyremote-widgets-capture-forced-dpr-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
     )
+    add_test(NAME hyremote-widgets-capture-dpr2-test COMMAND hyremote-widgets-capture-test)
+    set_tests_properties(hyremote-widgets-capture-dpr2-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=2;HYREMOTE_EXPECT_DPR=2"
+    )
 
     # #404 physical follow-up: a real QLineEdit standard QMenu captured while it lies completely inside the
     # configured root. It needs a genuine window system, so it is gated on a native Windows build and is
@@ -370,6 +374,10 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     add_test(NAME hyremote-quick-capture-forced-dpr-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-forced-dpr-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
+    )
+    add_test(NAME hyremote-quick-capture-dpr2-test COMMAND hyremote-quick-capture-test)
+    set_tests_properties(hyremote-quick-capture-dpr2-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=2;HYREMOTE_EXPECT_DPR=2"
     )
 
     add_executable(hyremote-quick-input-routing-test

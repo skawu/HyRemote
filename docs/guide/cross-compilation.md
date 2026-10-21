@@ -62,6 +62,8 @@ cp build.yml build.aarch64.yml
 #   qt.prefix             -> 目标 Qt 6.8.3 前缀
 #   compiler.toolchain    -> cmake/toolchains/aarch64-linux-gnu.cmake
 #   cmake.CMAKE_SYSROOT   -> 目标 sysroot
+#   build.examples        -> false（交叉编译通常不构建示例）
+#   integrations          -> 只保留 qpa: true，其余 false
 sh ./build.cmd clean
 sh ./build.cmd build --config=build.aarch64.yml
 ```
