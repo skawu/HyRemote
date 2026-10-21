@@ -863,7 +863,8 @@ private:
                 }
                 client.input.remove(0, size);
                 client.cursorSignature.clear();
-                scheduleCursor(client);
+                // Wait for SetPixelFormat; the update path sends the cursor
+                // for viewers that keep the native format.
                 if (client.supportsFence && !fenceWasSupported
                     && !sendFence(client, 0U, {})) {
                     return;
@@ -1099,8 +1100,8 @@ private:
             snapshot = m_security.cursorProvider(
                 client.pointerPositionKnown ? client.lastPointerX : -1,
                 client.pointerPositionKnown ? client.lastPointerY : -1,
-                client.lastPointerViewport.width,
-                client.lastPointerViewport.height);
+                client.framebufferWidth,
+                client.framebufferHeight);
         }
 
         const qsizetype expectedBytes = static_cast<qsizetype>(snapshot.width) * snapshot.height * 4;
