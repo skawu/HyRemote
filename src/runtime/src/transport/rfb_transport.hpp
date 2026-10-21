@@ -28,7 +28,10 @@ struct RfbCursorSnapshot
     QByteArray rgba8888;
 };
 
-using RfbCursorProvider = std::function<RfbCursorSnapshot()>;
+// x/y are the last remote pointer position in target framebuffer coordinates,
+// or -1 when the viewer has not sent a pointer event yet. This lets the target
+// resolve the cursor shape under the remote pointer instead of the local one.
+using RfbCursorProvider = std::function<RfbCursorSnapshot(int x, int y)>;
 
 struct RfbSecurityConfig
 {

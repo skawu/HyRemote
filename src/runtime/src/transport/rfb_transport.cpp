@@ -1094,8 +1094,11 @@ private:
             return;
 
         RfbCursorSnapshot snapshot;
-        if (m_security.cursorProvider)
-            snapshot = m_security.cursorProvider();
+        if (m_security.cursorProvider) {
+            snapshot = m_security.cursorProvider(
+                client.pointerPositionKnown ? client.lastPointerX : -1,
+                client.pointerPositionKnown ? client.lastPointerY : -1);
+        }
 
         const qsizetype expectedBytes = static_cast<qsizetype>(snapshot.width) * snapshot.height * 4;
         if (snapshot.width <= 0 || snapshot.height <= 0 || snapshot.width > 256
@@ -1290,11 +1293,11 @@ private:
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
-        refreshCursor(client);
         client.lastPointerViewport = viewport;
         client.lastPointerX = x;
         client.lastPointerY = y;
         client.pointerPositionKnown = true;
+        refreshCursor(client);
         const hyremote::InputModifiers modifiers = aggregateModifiers();
 
         hyremote::InputEvent move;
