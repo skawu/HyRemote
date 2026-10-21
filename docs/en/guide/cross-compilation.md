@@ -58,6 +58,24 @@ Cleaning entry point: `build.cmd clean` (removes `build/`).
 
 ## 2. Selecting a cross-compilation toolchain
 
+The normal command line should not repeat toolchain and Qt flags. Put the target profile in a separate
+`build.yml`-format file and pass only that file:
+
+```text
+cp build.aarch64.yml.example build.aarch64.yml
+# Edit build.aarch64.yml:
+#   qt.prefix             -> target Qt 6.8.3 prefix
+#   compiler.toolchain    -> cmake/toolchains/aarch64-linux-gnu.cmake
+#   cmake.CMAKE_SYSROOT   -> target sysroot
+sh ./build.cmd clean
+sh ./build.cmd build --config=build.aarch64.yml
+```
+
+`build.aarch64.yml.example` documents every cross-specific field with Chinese comments. The checked-in
+`build.yml` remains the native developer profile, so normal builds stay `build.cmd build`.
+
+The equivalent one-off flags still work, but they are overrides, not the normal workflow:
+
 ```text
 sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
