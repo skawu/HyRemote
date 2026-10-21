@@ -20,42 +20,47 @@
 # 然后执行：
 #   build.cmd build --config=build.aarch64.yml
 # 这样命令行仍然只有一个参数，平台差异留在 profile 文件中。
-version: 1
+#
+# 示例约定：每项后面的“示例”只是说明可选值，不是当前生效值。
+version: 1  # 示例：1
 
 build:
-  # Release 或 Debug。日常开发通常保持 Release。
+  # 构建类型。
+  # 示例：Release、Debug、RelWithDebInfo。
   type: Release
   # 构建目录。项目只使用一个 build/，不要为不同模式创建多个目录。
+  # 示例：build、build-debug。
   directory: build
-  # Ninja 或平台可用的 CMake 生成器。
+  # CMake 生成器。
+  # 示例：Ninja、Visual Studio 17 2022、Unix Makefiles。
   generator: Ninja
   # 并行任务数；auto 表示交给构建系统决定。
+  # 示例：auto、4、8。
   jobs: auto
-  # 是否构建 examples。发布/安装构建可设为 false。
+  # 是否构建 examples。
+  # 示例：true、false。
   examples: true
 
 qt:
   # 留空时使用环境中的 QTDIR / CMAKE_PREFIX_PATH。
-  # 本机明确指定示例：
+  # 本机示例：
   #   Windows: C:/Qt/6.8.3/msvc2022_64
   #   Linux:   /opt/Qt/6.8.3/gcc_64
-  #
-  # 交叉编译时必须填写目标架构的 Qt 前缀，例如：
+  # 交叉编译示例：
   #   /opt/qt-6.8.3-aarch64
   # 不能填写主机 Qt；QPA proxy 依赖目标 Qt 的私有 ABI。
   prefix: ""
 
 compiler:
   # 原生构建通常留空，让 CMake 自动选择。
-  # 交叉编译可由 toolchain 文件选择编译器；也可以在这里显式指定绝对路径：
-  #   c:   C:/toolchains/arm-gnu/bin/aarch64-none-linux-gnu-gcc.exe
-  #   cxx: C:/toolchains/arm-gnu/bin/aarch64-none-linux-gnu-g++.exe
+  # 交叉编译可由 toolchain 文件选择编译器；也可以显式指定绝对路径。
+  # c 示例：C:/toolchains/arm-gnu/bin/aarch64-none-linux-gnu-gcc.exe
   c: ""
+  # cxx 示例：C:/toolchains/arm-gnu/bin/aarch64-none-linux-gnu-g++.exe
   cxx: ""
   # 交叉编译工具链文件。相对路径相对于仓库根目录。
-  # 例：
-  #   compiler:
-  #     toolchain: cmake/toolchains/aarch64-linux-gnu.cmake
+  # 示例：cmake/toolchains/aarch64-linux-gnu.cmake
+  # 示例：cmake/toolchains/arm-linux-gnueabihf.cmake
   toolchain: ""
 
 # 四个并列的应用集成前端，共用同一个 Common Runtime。
@@ -67,27 +72,35 @@ compiler:
 #   仅 QPA:       cpp: false, qml: false, generic: false, qpa: true
 #   仅 Runtime:   四个都设为 false
 integrations:
+  # 示例：true、false。
   cpp: true
+  # 示例：true、false。
   qml: true
+  # 示例：true、false。
   generic: true
+  # 示例：true、false。
   qpa: true
 
 # 传输安全是 Common Runtime 能力，不是集成模式。
-# 需要 VNC Authentication 时设为 true；默认关闭。
+# 示例：true 启用 VNC Authentication，false 保持无认证访问。
 transport:
   security: false
 
 tests:
   # 是否构建测试。
+  # 示例：true、false。
   build: false
   # build.cmd test 会同时构建并运行；单独 build 时通常保持 false。
+  # 示例：true、false。
   run: false
   # 并行测试进程数；auto 表示交给 CTest。
+  # 示例：auto、4、8。
   parallel: auto
-  # 测试名排除正则，例如：
-  #   exclude: "rfb-listener-reachability|qpa-.*"
+  # 测试名排除正则。
+  # 示例："rfb-listener-reachability|qpa-.*"
   exclude: ""
   # Linux 无显示器环境下由 CTest 启动 Xvfb。
+  # 示例：true、false。
   xvfb: false
 
 # 任何非结构性的 CMake cache 值都可以持久化在这里，
@@ -97,13 +110,14 @@ tests:
 #   build.yml 已有专用字段的值不能再放到这里，例如 CMAKE_PREFIX_PATH、
 #   CMAKE_TOOLCHAIN_FILE、HYREMOTE_BUILD_TESTS；应使用上面的 qt/compiler/tests 字段。
 #
-# 常用示例：
+# 示例：
 #   cmake:
 #     HYREMOTE_DEFAULT_PORT: 5921
 #     CMAKE_SYSROOT: /opt/aarch64-sysroot
 #     HYREMOTE_TOOLCHAIN_PREFIX: /opt/gcc-arm/bin/aarch64-none-linux-gnu-
 #     CMAKE_BUILD_TYPE: RelWithDebInfo
 cmake:
+  # 示例：5921、6000。
   HYREMOTE_DEFAULT_PORT: 5921
 
 # 可选环境变量，会一致地应用到 configure/build/test。
