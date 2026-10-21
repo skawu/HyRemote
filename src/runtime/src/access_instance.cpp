@@ -37,6 +37,22 @@
 namespace HyRemote::Runtime {
 namespace {
 
+QCursor quickCursorUnderPointer(QQuickWindow *window)
+{
+    if (!window)
+        return QCursor(Qt::ArrowCursor);
+    QQuickItem *item = window->contentItem();
+    if (!item)
+        return window->cursor();
+
+    QPointF point = window->mapFromGlobal(QCursor::pos());
+    while (QQuickItem *child = item->childAt(point.x(), point.y())) {
+        point = child->mapFromItem(item, point);
+        item = child;
+    }
+    return item == window->contentItem() ? window->cursor() : item->cursor();
+}
+
 QPoint cursorShapeHotspot(Qt::CursorShape shape)
 {
     switch (shape) {
@@ -1262,10 +1278,11 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                 else
                     cursor = widget->cursor();
             }
-            else if (auto *window = qobject_cast<QQuickWindow *>(object))
-                cursor = window->cursor();
-            else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window())
-                cursor = item->window()->cursor();
+            else if (auto *window = qobject_cast<QQuickWindow *>(object)) {
+                cursor = quickCursorUnderPointer(window);
+            } else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window()) {
+                cursor = quickCursorUnderPointer(item->window());
+            }
 
             QImage image = cursor.pixmap().toImage().convertToFormat(QImage::Format_ARGB32);
             if (image.isNull() && !cursor.bitmap().isNull() && !cursor.mask().isNull()) {
