@@ -82,6 +82,31 @@ sh ./build.cmd build --integrations=qpa \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```
 
+### Which field should I use?
+
+| Need | Field | Rule |
+| --- | --- | --- |
+| Target Qt installation | `qt.prefix` | Points at target Qt 6.8.3; this is not a compiler setting. |
+| Cross compiler, sysroot and find-root policy | `compiler.toolchain` | Preferred. Use the repository toolchain or a project/Qt-generated CMake toolchain file. |
+| One-off compiler override without a toolchain file | `compiler.c` / `compiler.cxx` | Advanced fallback only. Leave empty when `compiler.toolchain` is set. |
+
+Do not set `compiler.c`/`compiler.cxx` together with `compiler.toolchain`. The build script passes the explicit compiler
+values to CMake after the toolchain, so they can override the toolchain compiler while losing its sysroot and find-root
+rules.
+
+To use **Qt's own** cross-toolchain file:
+
+```yaml
+compiler:
+  toolchain: /opt/qt-6.8.3-aarch64/bin/qt.toolchain.cmake
+qt:
+  prefix: ""   # or the same target Qt path; do not point at host Qt
+```
+
+Use the repository `aarch64-linux-gnu.cmake` when you need an explicit GNU target triple/sysroot; use Qt's
+`qt.toolchain.cmake` when Qt already generated the complete target toolchain. Both are ordinary CMake toolchain files;
+choose one, not both.
+
 Two example toolchain files ship with the repository (see `cmake/toolchains/README.md`):
 
 | File | Target |
