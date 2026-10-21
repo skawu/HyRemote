@@ -1,7 +1,6 @@
 #include "access_instance.hpp"
 
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
-#include <QApplication>
 #include <QBitmap>
 #include <QColor>
 #include <QCursor>
@@ -17,7 +16,10 @@
 #include <QTimer>
 #include <QObject>
 #include <QPointer>
-#include <QWidget>
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+#  include <QApplication>
+#  include <QWidget>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -1278,7 +1280,9 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
             QCursor cursor(Qt::ArrowCursor);
             if (const QCursor *overrideCursor = QGuiApplication::overrideCursor()) {
                 cursor = *overrideCursor;
-            } else if (auto *widget = qobject_cast<QWidget *>(object)) {
+            }
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+            else if (auto *widget = qobject_cast<QWidget *>(object)) {
                 const QPointF logical = remoteX >= 0 && remoteY >= 0
                                             ? detail::mapFramebufferCursorPoint(remoteX,
                                                                                 remoteY,
@@ -1295,6 +1299,7 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                 else
                     cursor = widget->cursor();
             }
+#endif
             else if (auto *window = qobject_cast<QQuickWindow *>(object)) {
                 const QPointF logical = remoteX >= 0 && remoteY >= 0
                                             ? detail::mapFramebufferCursorPoint(remoteX,

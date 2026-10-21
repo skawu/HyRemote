@@ -87,6 +87,19 @@ HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 
 可移植正确性基线支持经过认证的 `QQuickWindow` 目标，通过公共异步 Quick 采集路径。
 
+### Quick-only 部署
+
+Quick-only 应用可以关闭 Widgets 适配器，避免共享 Runtime 因另一个 UI family 而加载 `Qt6Widgets`：
+
+```text
+-DHYREMOTE_BUILD_WIDGETS_ADAPTER=OFF
+-DHYREMOTE_BUILD_QUICK_ADAPTER=ON
+```
+
+在 `build.yml` 的 `cmake` 段设置这两个值后，先清理再构建。该组合仍保留同一个 Core 和一个 Shared Runtime；Quick 目标的采集与输入走 Quick 适配器。
+
+Windows x86_64 上已用 `dumpbin /dependents` 验证 `HyRemoteRemoteAccess.dll` 只依赖 `Qt6Quick/Qt6Gui/Qt6Core/Qt6Network`，不依赖 `Qt6Widgets`。ARM64/EGLFS 的干净 rootfs 运行验证仍需要目标板。
+
 基础 Qt Quick 支持不会自动认证以下配置：
 
 - Quick3D；
