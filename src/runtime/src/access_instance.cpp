@@ -37,7 +37,7 @@
 namespace HyRemote::Runtime {
 namespace {
 
-QCursor quickCursorUnderPointer(QQuickWindow *window)
+QCursor quickCursorUnderPointer(QQuickWindow *window, const QPoint &globalPoint = QPoint())
 {
     if (!window)
         return QCursor(Qt::ArrowCursor);
@@ -45,7 +45,8 @@ QCursor quickCursorUnderPointer(QQuickWindow *window)
     if (!item)
         return window->cursor();
 
-    QPointF point = window->mapFromGlobal(QCursor::pos());
+    const QPoint pointer = globalPoint.isNull() ? QCursor::pos() : globalPoint;
+    QPointF point = window->mapFromGlobal(pointer);
     while (QQuickItem *child = item->childAt(point.x(), point.y())) {
         point = child->mapFromItem(item, point);
         item = child;
@@ -1263,25 +1264,35 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 
     detail::RfbSecurityConfig effectiveSecurity = security;
     effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
-    effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject)]() -> detail::RfbCursorSnapshot {
+    effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject)](
+                                            int remoteX, int remoteY) -> detail::RfbCursorSnapshot {
         QObject *object = guard.data();
         if (!object)
             return {};
 
-        const auto readSnapshot = [object]() -> detail::RfbCursorSnapshot {
+        const auto readSnapshot = [object, remoteX, remoteY]() -> detail::RfbCursorSnapshot {
             QCursor cursor(Qt::ArrowCursor);
             if (const QCursor *overrideCursor = QGuiApplication::overrideCursor()) {
                 cursor = *overrideCursor;
             } else if (auto *widget = qobject_cast<QWidget *>(object)) {
-                if (auto *underPointer = QApplication::widgetAt(QCursor::pos()))
+                const QPoint pointer = remoteX >= 0 && remoteY >= 0
+                                           ? widget->mapToGlobal(QPoint(remoteX, remoteY))
+                                           : QCursor::pos();
+                if (auto *underPointer = QApplication::widgetAt(pointer))
                     cursor = underPointer->cursor();
                 else
                     cursor = widget->cursor();
             }
             else if (auto *window = qobject_cast<QQuickWindow *>(object)) {
-                cursor = quickCursorUnderPointer(window);
+                const QPoint pointer = remoteX >= 0 && remoteY >= 0
+                                           ? window->mapToGlobal(QPointF(remoteX, remoteY)).toPoint()
+                                           : QPoint();
+                cursor = quickCursorUnderPointer(window, pointer);
             } else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window()) {
-                cursor = quickCursorUnderPointer(item->window());
+                const QPoint pointer = remoteX >= 0 && remoteY >= 0
+                                           ? item->mapToGlobal(QPointF(remoteX, remoteY)).toPoint()
+                                           : QPoint();
+                cursor = quickCursorUnderPointer(item->window(), pointer);
             }
 
             QImage image = cursor.pixmap().toImage().convertToFormat(QImage::Format_ARGB32);

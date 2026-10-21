@@ -780,7 +780,7 @@ void testVariableCursorSnapshot()
         port,
         recorder,
         makeFrame(64, 48, 0x203040U),
-        [] {
+        [](int, int) {
             HyRemote::detail::RfbCursorSnapshot snapshot;
             snapshot.width = 4;
             snapshot.height = 4;
