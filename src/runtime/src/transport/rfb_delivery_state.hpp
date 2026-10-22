@@ -154,6 +154,10 @@ private:
     std::vector<RfbRect> m_rects;
 };
 
+inline RfbDamageRegion coalesceRfbDamageForPaint(RfbDamageRegion damage,
+                                                 std::uint32_t width,
+                                                 std::uint32_t height);
+
 class RfbUpdateState
 {
 public:
@@ -190,6 +194,14 @@ public:
             selected = m_pending.intersected(m_request->requested);
             if (selected.empty())
                 return std::nullopt;
+            // Damage may have accumulated across several frames while this
+            // viewer was idle. Re-apply the paint coalescing at delivery so a
+            // slow viewer does not receive a chain of narrow bands either.
+            selected = coalesceRfbDamageForPaint(std::move(selected),
+                                                 static_cast<std::uint32_t>(
+                                                     std::max(0, m_request->requested.width)),
+                                                 static_cast<std::uint32_t>(
+                                                     std::max(0, m_request->requested.height)));
         } else {
             selected.add(m_request->requested);
         }

@@ -277,6 +277,9 @@ void testConcurrentViewerHeldStateIsolation()
 
     auto inputs = recorder.inputSnapshot();
     CHECK(countKey(inputs, hyremote::KeyCode::Shift, true) == 1);
+    // Both viewers pressed 'b'. Text is per-client even though the global
+    // key-transition counter suppresses the duplicate Key event.
+    CHECK(countText(inputs, "b") == 2);
     CHECK(countKey(inputs, hyremote::KeyCode::B, true) == 1);
     CHECK(countButton(inputs, hyremote::PointerButton::Left, true) == 1);
 
