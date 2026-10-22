@@ -120,8 +120,9 @@ the viewer does not advertise TRLE.
 This selection is a candidate-level decision, not release acceptance. It still requires maintained-viewer evidence
 and the #370 interaction/resource envelope before #144 can close.
 
-The next required evidence is a maintained third-party GUI viewer on both platforms, not another codec. The manual
-`rfb-profile.yml` lane records both the Linux and Windows JSON artifacts with the same workload definitions.
+The next required evidence is a maintained third-party GUI viewer on the required Windows x86_64 target, not another
+codec. The manual `rfb-profile.yml` lane still records Windows and Linux JSON artifacts with the same workload
+definitions; Linux is optional user-validation evidence and cannot block the Windows-first decision (#563).
 
 ## Decision outputs
 
@@ -130,7 +131,7 @@ The next required evidence is a maintained third-party GUI viewer on both platfo
   interaction-SLO or CPU/memory envelope yet;
 - dependency/licence decision: **no zlib/ZRLE dependency** on current evidence;
 - viewer matrix and known limitations: **partial**; RealVNC 7.15.1 + TightVNC 2.8.85 Windows evidence at develop 26f77d9, but Linux maintained GUI viewer, cursor-shape and maintained-viewer interaction SLO remain open;
-- concrete implementation tasks for #144: no codec addition; close remaining Windows/Linux x86_64 desktop viewer/performance evidence for V0.3.3.0 under Owner decision #558. The ARM64/EGLFS equivalent is mandatory pre-V0.4 product breadth under #236/#154/#203/#343, not a V0.3.3 desktop freeze condition.
+- concrete implementation tasks for #144: no codec addition; close the remaining Windows x86_64 desktop viewer/performance evidence for V0.3.3.0 under Owner decisions #558/#563. Linux viewer/performance cells are non-blocking user-validation evidence; the ARM64/EGLFS equivalent is mandatory pre-V0.4 product breadth under #236/#154/#203/#343, not a V0.3.3 desktop freeze condition.
 
 ## Non-goals
 
