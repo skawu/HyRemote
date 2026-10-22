@@ -916,7 +916,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         # is given. A reporting run still finishes, because inspecting a machine with no usable kit is exactly when
         # the report is wanted.
         set(_qt_none_message
-            "Qt installations were found on this machine, but none can be used with this build configuration and available compiler. "
+            "Qt installations were found on this machine, but none of them can be used from this shell as it stands. "
             "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
             "developer environment first:\n"
             "Resolved tier: ${_qt_tier_name}\n"
