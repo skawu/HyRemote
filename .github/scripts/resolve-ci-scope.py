@@ -14,19 +14,16 @@ Contract:
 Lanes (``lane``):
   * ``PR_DRAFT`` - a draft pull request runs cheap governance only. Product jobs require a ready pull request, so a
     draft never starts the Windows/Linux Qt matrix.
-  * ``PR_FAST`` - legacy, self-tested classifier result only: the CI workflow no longer
-    subscribes to PR events; cheap Git Flow and code review remain pre-merge checks.
-  * ``POST_MERGE`` - protected develop push validates affected product changes on Windows.
-    Docs-only merges skip expensive Qt. Evidence is OBSERVE, not a pre-merge approval.
+  * ``PR_FAST`` - live ready-PR merge decision: scoped Windows tests must pass.
+  * ``POST_MERGE`` - retired classifier compatibility only; no CI develop push event.
   * ``FULL_GATE`` - explicit exact-SHA candidate/release qualification dispatched manually,
     never a side effect of a PR commit or ordinary develop merge.
 
 Decisions (``decision``) - what the run can be waited on for (#380):
   * ``OBSERVE`` - fire-and-observe. No merge or release decision is waiting on this lane: a draft pull request, the
-    post-merge Windows checks or any other no-premerge reporting run. OBSERVE does not
-    approve merging or shipping: a post-merge failure requires a bounded repair Issue.
-  * ``MERGE`` - legacy PR_FAST classification retained for self-test compatibility;
-    current merge control comes from independent Git Flow/review checks, not Qt CI.
+    non-PR/draft runs. OBSERVE cannot authorize a merge or release.
+  * ``MERGE`` - actual PR merge decision: require selected Windows Qt and governance
+    jobs via the stable ci-merge-verdict check plus code review.
   * ``CANDIDATE`` - an admitted exact-SHA full qualification. A candidate or release decision may wait on it.
 """
 
@@ -299,8 +296,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     full_gate = lane == "FULL_GATE"
     product_lane = lane in ("PR_FAST", "FULL_GATE", "POST_MERGE")
     test_only = product_lane and not full_gate and is_test_only(changed)
-    # Protected develop merges run only affected Windows Qt jobs (#571).
-    product_matrix = [PRODUCT_MATRIX[1]] if (test_only or lane == "POST_MERGE") else PRODUCT_MATRIX
+    # PR acceptance on Windows only; explicit release FULL_GATE is separate.
+    product_matrix = [PRODUCT_MATRIX[1]] if (test_only or lane in ("PR_DRAFT", "PR_FAST", "POST_MERGE")) else PRODUCT_MATRIX
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
@@ -371,8 +368,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
 
     ordered = [peer for peer in PEERS if peer in selected]
     integrations = ",".join(ordered)
-    # Only merge-push validation or explicit full-gate events actually subscribe to CI;
-    # PR_FAST remains represented only for regression testing the selector.
+    # Only ready-PR and explicitly dispatched FULL_GATE runs subscribe to CI.
     product = bool(ordered) and product_lane
 
     # Fast pull requests keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
@@ -699,7 +695,7 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test_only={resolved['test_only']!r}")
             failures += 1
         matrix = json.loads(resolved["product_matrix"])
-        expected_platforms = 1 if expected else 2
+        expected_platforms = 1 if (expected or event == "pull_request") else 2
         if len(matrix) != expected_platforms:
             print(f"CASE FAILED: {description}: product_matrix has {len(matrix)} entries, "
                   f"expected {expected_platforms}")
@@ -708,13 +704,17 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test-only lane must keep Windows, got {matrix[0].get('os')!r}")
             failures += 1
 
-    merged = resolve("push", ["src/runtime/session.cpp"])
-    merged_matrix = json.loads(merged["product_matrix"])
-    if len(merged_matrix) != 1 or merged_matrix[0]["os"] != "windows-2022":
-        print("CASE FAILED: protected develop merged product code must run Windows only")
-        failures += 1
-    if merged["product"] != "true" or merged["decision"] != "OBSERVE":
-        print("CASE FAILED: post-merge validation does not approve a PR or a release")
+    # Ready PRs require Windows Qt for product changes; docs-only PRs do not imply product PASS.
+    for affected in ("src/runtime/session.cpp", "cmake/HyRemoteBuild.cmake",
+                     "src/integrations/qpa/qpa_platform.cpp"):
+        result = resolve("pull_request", [affected])
+        matrix = json.loads(result["product_matrix"])
+        if result["product"] != "true" or len(matrix) != 1 or matrix[0]["os"] != "windows-2022":
+            print(f"CASE FAILED: ready PR did not select Windows for {affected}")
+            failures += 1
+    docs_only = resolve("pull_request", ["docs/proposals/notes.md"])
+    if docs_only["product"] != "false" or docs_only["decision"] != "MERGE":
+        print("CASE FAILED: docs-only merge has incorrect decision/Qt scope")
         failures += 1
 
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
