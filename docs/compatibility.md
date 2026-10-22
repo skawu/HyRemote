@@ -12,22 +12,22 @@ HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似�
 - **Unsupported**：超出声明产品契约，或已知在该组合下不可用。
 - **User-validation pending**：Qt 跨平台代码/构建路径存在，但用户目标系统尚未完成独立证明；不阻塞 Windows 版本，不等于 Supported。
 
-## 当前声明矩阵（V0.3.0.0 历史基础 / #563 新版本资格策略）
+## V0.3.0.0 已发布时的历史参考矩阵（保持原状）
 
-**当前新版本资格策略（Owner #563）仅要求 Windows x86_64 / Qt 6.8.3 真实验证。** 下表 Linux 行反映可使用的 Qt 跨平台接入路径，但尚未通过新策略下的用户/目标机独立资格验证。历史 V0.3.0.0 发布包和当时声明不回写；新版本不得将 Linux 标为已资格支持。
+**新版本资格策略（Owner #563）仅要求 Windows x86_64 / Qt 6.8.3 真实验证。** 下表 Linux 的 Supported/Limited 是 V0.3.0.0 **发布当时的历史声明**，并非新版本的实际资格状态；新版本 Linux 状态为 User-validation pending、非发布阻塞。历史 tag/包/Release Notes 不改写，未来支持声明必须以独立目标机证据为准。
 
 | Qt | 平台 | 接入方式 | UI 目标 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | 6.8.3 | Windows x86_64 | C++ API | Widgets | **Supported** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
 | 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口 |
-| 6.8.3 | Linux x86_64 | C++ API | Widgets | **User-validation pending** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
-| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **User-validation pending** | 同一个 `HyRemote::RemoteAccess` 入口 |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Supported** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口 |
 | 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 零代码路径，保留原生 Qt 平台 |
-| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **User-validation pending** | 零代码路径，保留原生 Qt 平台 |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 零代码路径，保留原生 Qt 平台 |
 | 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
-| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **User-validation pending** | 共享 Runtime 上的薄声明式前端 |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
 | 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qwindows` |
-| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **User-validation pending** | Private ABI；原生 delegate `qxcb` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qxcb` |
 
 这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。
 
