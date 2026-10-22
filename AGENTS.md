@@ -119,19 +119,19 @@ build.cmd + build.yml
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
 
-CI uses **post-merge product validation** (Owner #571):
+CI uses **PR-triggered, protected pre-merge product validation** (latest Owner #573 supersedes #571):
 
 ```text
-L0 local focused tests + fast Git Flow/review-disposition checks before merge (no automatic Qt CI)
-L1 protected develop merge push -> scoped Windows Qt compile/test/install, OBSERVE
+L0 ordinary feature-branch commit -> no hosted Qt CI
+L1 ready PR -> actual affected Windows Qt compile/CTest/install + Git Flow/review checks; all required statuses PASS before merge
 L2 explicit frozen-candidate workflow_dispatch -> exact-SHA FULL_GATE, CANDIDATE
 ```
 
 Rules:
 
 - Iterate locally with focused tests and the canonical build/install path.
-- Normal PR commits do **not** trigger the `CI` workflow. Only the protected `develop` merge push and explicit exact-SHA `workflow_dispatch` do. Post-merge red CI is a repair task, not a premerge veto. See [CI purpose and trigger policy](docs/internal/ci-purpose-and-trigger-policy-2026-10-22.md).
-- `OBSERVE`, post-merge, maintenance and specialized workflows are fire-and-observe for independent sequencing.
+- A bare feature-branch push does **not** invoke hosted Qt CI. Opening/readying a PR does; subsequent updates to a ready PR **must revalidate the newest head**. Do **not** merge on a failed, skipped, cancelled or pending `ci-merge-verdict`; `develop` ruleset must require it and `p1-p2-disposition`. No repeat Qt build after merging. See [CI policy](docs/internal/ci-purpose-and-trigger-policy-2026-10-22.md).
+- The PR `MERGE` decision is binding only after Windows selected tests and review gates PASS; `OBSERVE` and specialized diagnostic runs never authorize a merge.
 - Zero discovered/executed tests are invalid evidence.
 - Exact-head evidence/artifacts must support the claim being made.
 - Installed/deployed consumer evidence must not rely on source/build-tree/Qt-SDK PATH repair.
