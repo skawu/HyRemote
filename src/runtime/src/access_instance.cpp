@@ -1437,7 +1437,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                                                                     viewerDemand,
                                                                     observeRuntime);
 
-    auto freshSession = std::make_unique<hyremote::Session>();
+    // The Core scheduler is demand-gated at zero viewers, but an unpaced scheduler is free to issue
+    // capture requests as fast as the GUI event loop can render while a viewer is attached. A static
+    // 480x240 Widgets window was measured at ~135% of one core in that state. Pace the shared
+    // runtime at a normal desktop cadence; this still leaves headroom for input-to-visible updates
+    // while preventing an idle connected viewer from spinning the capture path.
+    hyremote::SessionConfig sessionConfig;
+    sessionConfig.capture.targetFramesPerSecond = 60.0;
+    auto freshSession = std::make_unique<hyremote::Session>(sessionConfig);
     auto observedCapture =
         std::make_unique<ObservedCaptureSource>(std::move(targetComponents.capture),
                                                 targetObject,

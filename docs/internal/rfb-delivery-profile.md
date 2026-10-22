@@ -103,15 +103,17 @@ These are local-loopback indicative numbers. They are consistent across Windows 
 already removes more than 99% of the repeated payload in the localized and full-refresh cases, and more than 99% in
 the synthetic high-motion case.
 
-Windows real-viewer input-to-visible at `5b98613` (480x240 color panel, 20 samples/viewer, 2 ms screen polling; see
+Windows real-viewer input-to-visible with 60 FPS capture pacing (480x240 color panel, 20 samples/viewer, 2 ms screen polling; see
 [windows-real-viewer-performance-2026-10-22.md](windows-real-viewer-performance-2026-10-22.md)):
 
 | Viewer | Samples | p50 | p95 | max |
 | --- | ---: | ---: | ---: | ---: |
-| RealVNC 7.15.1 | 20/20 | 17.20 ms | 50.10 ms | 50.36 ms |
-| TightVNC 2.8.85 | 20/20 | 17.00 ms | 28.36 ms | 51.04 ms |
+| RealVNC 7.15.1 | 20/20 | 49.74 ms | 84.46 ms | 95.29 ms |
+| TightVNC 2.8.85 | 20/20 | 52.26 ms | 84.41 ms | 117.35 ms |
 
-The 2 ms polling floor is about 16 ms, so p50 is capture-bound. Frame age, viewer CPU/RSS and wire bytes remain to be measured.
+The unpaced scheduler used ~135% of one core while idle with a viewer; 60 FPS pacing reduced that to
+1.3-3.4% and moved input-to-visible to about one viewer update cycle. Frame age, sustained viewer
+CPU/RSS and wire bytes remain to be measured.
 
 ## Selected delivery baseline (2026-10-20)
 
