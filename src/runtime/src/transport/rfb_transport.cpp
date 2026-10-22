@@ -1302,6 +1302,7 @@ private:
 
         client.modifiers = modifiersForHeldKeysyms(client.heldKeysyms);
         const hyremote::InputModifiers modifiers = aggregateModifiers();
+        const hyremote::InputModifiers clientModifiers = client.modifiers;
 
         if (publishTransition) {
             hyremote::InputEvent event;
@@ -1312,10 +1313,15 @@ private:
             publishInput(event);
         }
 
-        if (!pressed || !publishTransition
-            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Control)
-            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Alt)
-            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Meta)) {
+        // Text belongs to this client's press. A second viewer pressing the
+        // same key while another holds it must still receive its own text, and
+        // another viewer's Ctrl/Alt/Meta must not suppress it. Keep the global
+        // key transition above for cross-viewer shortcut arming, but evaluate
+        // text against this client's own held modifiers.
+        if (!pressed
+            || hyremote::hasModifier(clientModifiers, hyremote::InputModifier::Control)
+            || hyremote::hasModifier(clientModifiers, hyremote::InputModifier::Alt)
+            || hyremote::hasModifier(clientModifiers, hyremote::InputModifier::Meta)) {
             return true;
         }
 
@@ -1323,7 +1329,7 @@ private:
         if (!text.empty()) {
             hyremote::InputEvent textEvent;
             textEvent.kind = hyremote::InputEventKind::Text;
-            textEvent.modifiers = modifiers;
+            textEvent.modifiers = clientModifiers;
             textEvent.textUtf8 = std::move(text);
             publishInput(textEvent);
         }
