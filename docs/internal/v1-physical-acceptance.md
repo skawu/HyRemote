@@ -4,11 +4,13 @@ Status: **repository preparation only — this document is not physical acceptan
 
 Authority: #109, with final V1 release authority in #33.
 
+**Owner #563:** This runbook's Windows x86_64 E1–E4 native input/viewer/local-coexistence cells are the **only mandatory physical V1 qualification**. All Linux sections/fields below are optional `USER_VALIDATION_PENDING`; unavailable Linux environment, Qt platform, hardware or Viewer may never block release. Do not confuse nonexecution with PASS.
+
 This runbook turns the frozen #109 physical/native acceptance matrix into a repository-versioned execution record. It does not create a fourth integration mode, a test-only API, a second runtime, or a hidden live input-policy channel.
 
 ## Entry condition
 
-Do not execute the physical/native acceptance merely to compensate for hosted CI that has not run. The exact candidate under test must first be repository-complete enough that the corresponding hosted/reference Windows/Linux gates have actually executed far enough to make native validation meaningful.
+Do not execute the physical/native acceptance merely to compensate for hosted CI that has not run. The exact candidate must first pass the corresponding mandatory **Windows** hosted/reference gate; Linux execution is user validation and is not a prerequisite.
 
 A queued/no-step hosted job is not a reason to substitute a Local Agent run. The Local Agent or other physical host is appropriate only after #109 reaches this execution entry condition.
 
@@ -80,7 +82,7 @@ A partial/headless-only record cannot mark an OS/mode Supported.
 
 ## E1 — Embedded C++ / Widgets
 
-Run on both Windows x86_64 and Linux x86_64 using the normal E1 Widgets application and only the public `HyRemote::RemoteAccess` integration contract.
+**Mandatory:** run on Windows x86_64 with the normal E1 Widgets application and public `HyRemote::RemoteAccess`. **Optional:** repeat on Linux when user/test evidence exists; do not block release for its absence.
 
 1. Launch the target application on the native platform and prove visible local rendering plus local pointer, keyboard and text input before a remote viewer connects.
 2. Start HyRemote in the default view-only policy and connect the standard viewer. Prove local input remains authoritative/responsive and attempted remote input is not delivered.
@@ -208,4 +210,4 @@ Complete only after every required cell above has evidence on the exact candidat
 - Known limitations/anomalies: `<required, use none if none>`
 - #109 decision: `<OPEN until evidence reviewed; PASS only after review>`
 
-**Do not mark #109 or V1.0.0.0 accepted merely because this runbook exists or has been partially filled.** #109 closes only after the exact candidate has accepted physical/native Windows and Linux evidence. #104 hosted/reference execution and the remaining #33 release authorities remain independent mandatory gates.
+**Do not mark #109 or V1.0.0.0 accepted merely because this runbook exists.** #109 closes only after the exact candidate has accepted physical/native **Windows x86_64** evidence. Linux/embedded evidence may remain `NOT_RUN_NON_BLOCKING` under Owner #563. #104 hosted/reference execution and the remaining #33 release authorities remain independent mandatory gates.

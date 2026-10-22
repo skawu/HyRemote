@@ -35,12 +35,12 @@ Current execution order:
 verify latest develop + Issue ownership + exact-SHA evidence
  -> reuse merged #553 cursor/input/build-doc regressions; triage only new failures or open review debt
  -> close V0.3.3.0 product outcome (#144 + #175, supported by #370)
- -> finish remaining #343 mandatory Qt/platform/ARM64/performance breadth
+ -> finish Windows-applicable #343 Qt/performance/product breadth; accept Linux/embedded user Issues without blocking
  -> enter V0.4 qualification-only RC after explicit activation
  -> V1.0 GA on one accepted, qualified RC lineage
 ```
 
-**Version-scope Owner ruling #558 (2026-10-22):** V0.3.3.0 #144/#175 closure applies to desktop Qt 6.8.3 Windows/Linux x86_64 delivery/viewer evidence. ARM64/EGLFS is mandatory later in the V0.3 family under #236/#154/#203/#343 **before V0.4 activation**, not a hidden desktop Feature freeze condition. Do not preassign V0.3.4.0/V0.3.5.0 to technical packages; activate coherent user outcomes via #24/#95 and the reviewed machine release train. The #343/#33 GA scope is unchanged.
+**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; Qt5/6.5 require Windows proof before a Windows support claim. Do not preassign V0.3.4.0/V0.3.5.0. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
 Qt 6.12 LTS was released in 2026-09; it is a compatibility **preflight**, not a silently added GA support promise. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
@@ -59,12 +59,11 @@ Owned by #234/#333; already released, not the active V0.3.3 task list:
 
 ### Mandatory pre-GA baseline
 
-Owned by #343 and completed across the V0.3 family before V0.4 entry:
+Windows-qualified #343 capability baseline before V0.4 entry; **Linux/embedded evidence listed below is aspirational/user-validation only**, not a release gate (Owner #563):
 
 - Qt 5.15 / 6.5 / 6.8 product families;
-- Windows + Linux;
-- x86_64 + ARM64/AArch64;
-- required qwindows / qxcb / Wayland / EGLFS reference cells;
+- **Windows x86_64 / qwindows** as the mandatory actual test/deployment environment;
+- Linux x86_64, ARM64/AArch64, qxcb/Wayland/EGLFS as community/user-validation platform paths, with truthful per-cell states;
 - Widgets + Qt Quick/QML;
 - C++ / QML / Generic / QPA peer integration technologies with truthful per-cell status;
 - practical compressed + incremental delivery with Raw fallback;

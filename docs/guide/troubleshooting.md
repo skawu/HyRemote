@@ -202,7 +202,7 @@ Headless/offscreen 只说明对应代码路径能运行。
 - QPA native delegate 的全部行为正常；
 - 特殊 GPU/rendering path 已经兼容。
 
-> **TODO V0.4：** 完成最终物理 Windows/Linux local + remote coexistence qualification。
+> **Owner #563 / TODO V0.4：** 仅 Windows x86_64 local + remote coexistence 是强制物理资格；Linux/嵌入式缺少测试条件不阻塞版本，用户可带 Qt/BSP/日志提交 Issue 申请针对性 hotfix。
 
 ## 慢客户端导致资源增长
 

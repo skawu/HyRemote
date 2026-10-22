@@ -1,3 +1,5 @@
+> **2026-10-22 Owner #563 Windows-first platform evidence policy:** Windows x86_64 is the only mandatory physically/runtime-qualified platform for new Feature/RC/GA. Linux desktop, ARM64/EGLFS and Wayland are *User-validation pending*, not GA-Supported based on Qt portability alone. They do not block releases for lack of a runner/viewer/board. User-reported reproducible issues are triaged for bounded hotfixes. Historical V0.3.0.0 release artifacts and claims remain published history. See [platform policy](../internal/windows-first-platform-validation-policy-2026-10-22.md).
+
 # HyRemote Compatibility Matrix
 
 > Language / 语言: **English** | [中文](../compatibility.md)
@@ -11,9 +13,13 @@ HyRemote states compatibility only for environments with an explicit product sta
 - **TODO:** planned product coverage that is not yet available or qualified.
 - **Unsupported:** outside the stated product contract or known not to work for the stated combination.
 
-## Current released reference matrix (V0.3.0.0)
+## Historical released V0.3.0.0 reference matrix (unchanged at publication)
 
-The current released reference environment is **Qt 6.8.3 on Windows x86_64 and Linux x86_64**.
+The Linux Supported/Limited statuses immediately below are historical V0.3.0.0 *release-time claims*, **not** new Windows-first GA qualification results. For new Feature/RC/GA, Linux is `User-validation pending` and does not block releases; do not infer currently tested support from historical rows.
+
+**New-version support status:** `Supported`/ `Limited` = independently qualified within an exact Windows profile; `User-validation pending` = no current target-system acceptance, no automatic support claim; `Unsupported` = known unavailable target.
+
+The V0.3.0.0 publication historically named **Qt 6.8.3 on Windows and Linux x86_64**. Owner #563 changes the **forward-looking** qualification platform to Windows only.
 
 | Qt | Platform | Integration | UI target | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -57,7 +63,7 @@ Current desktop reference platforms:
 
 Passing on one operating system does not imply the same result on the other.
 
-> **TODO V0.4:** expand formal qualification across the selected Qt LTS matrix while keeping Windows and Linux results separate.
+> **Owner #563:** only the claimed Windows Qt LTS reference cells require formal V0.4 qualification. Linux may be reported by users, without blocking the candidate.
 
 ## Product payload compatibility
 
@@ -179,7 +185,7 @@ The product deployment entry point is `hyremote_deploy()`. See [`../guide/deploy
 
 ## Embedded and platform expansion
 
-The current V0.3.0.0 matrix is desktop x86_64. ARM64, embedded Linux, and EGLFS are not supported by this release, but they are mandatory pre-GA V0.3-family compatibility baseline work and must converge before V0.4 RC entry. Additional BSP, SoC, or platform expansion beyond the declared GA reference cells is admitted separately as later coherent outcomes. Hardware or vendor acceleration has no preassigned version or GA placement; it is admitted through its recorded activation authority only when measured performance evidence proves a portable-baseline SLO or resource blocker.
+The V0.3.0.0 historical matrix is desktop x86_64. For future versions under Owner #563, ARM64, embedded Linux and EGLFS/Wayland are *User-validation pending*, not mandatory pre-GA or pre-RC qualification. A real user issue may trigger a bounded bugfix/hotfix without delaying Windows releases. Additional BSP, SoC, or platform expansion beyond the declared GA reference cells is admitted separately as later coherent outcomes. Hardware or vendor acceleration has no preassigned version or GA placement; it is admitted through its recorded activation authority only when measured performance evidence proves a portable-baseline SLO or resource blocker.
 
 Embedded deployment is a later product line, not part of the current desktop claim.
 
@@ -187,8 +193,8 @@ Planned directions:
 
 | Direction | Current state |
 | --- | --- |
-| ARM64 embedded Linux | TODO, mandatory pre-GA V0.3-family baseline; no exact Feature version reserved |
-| RK3588 / EGLFS or Wayland | TODO, mandatory pre-GA V0.3-family reference cells; no exact Feature version reserved |
+| ARM64 embedded Linux | User-validation pending, nonblocking; no exact Feature version reserved |
+| RK3588 / EGLFS or Wayland | User-validation pending, nonblocking; no exact Feature version reserved |
 | NXP i.MX class | TODO, separately admitted platform expansion beyond the declared GA cells |
 | DMA-BUF / GBM / external-buffer paths | TODO, conditional implementation through recorded authority (#123) after measured performance evidence proves a blocker; no version placement |
 | RKMPP / VAAPI / platform hardware encoding | TODO, conditional implementation through recorded authority (#123) after measured performance evidence proves a blocker; no version placement |

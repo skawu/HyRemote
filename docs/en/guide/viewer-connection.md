@@ -156,7 +156,7 @@ Generic explicitly preserves the native Qt platform. QPA delegates to the native
 
 Headless/offscreen execution alone cannot qualify every physical display/keyboard/mouse combination.
 
-> **TODO V0.4:** complete physical Windows/Linux local-display + local-input + remote-access qualification for the final compatibility matrix.
+> **Owner #563 / TODO V0.4:** require real Windows x86_64 local-display, input and remote-access coexistence only; Linux/embedded are nonblocking user-validation targets and cannot be called qualified without evidence.
 
 ## Security boundary
 

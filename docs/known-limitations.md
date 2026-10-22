@@ -15,7 +15,7 @@
 - Qt 6.8.3；
 - C++ API、QML API、Generic Plugin、QPA 是并列接入技术，没有主次或预览层级。
 
-Qt 5.15 LTS、嵌入式 Linux、ARM64 和其他 QPA private-ABI 组合不在 V0.3.0.0 支持声明中。
+Qt 5.15 LTS、嵌入式 Linux、ARM64 和其他 QPA private-ABI 组合不在 V0.3.0.0 支持声明中。**新版本 Windows-first Owner 决策 #563：Linux/嵌入式/Wayland 为用户验证中，不阻塞开发或 V0.4/V1；不得从 Qt 跨平台性推断其已通过资格。**
 
 ## 安全
 
@@ -195,7 +195,7 @@ Headless/offscreen 执行可以证明远程协议到应用的行为，但不能�
 
 Qt 5.15 LTS 是计划中的兼容线，但不是当前产品声明，因为当前 Runtime 需要 Qt 6.8+。
 
-> **TODO V0.4：** 在构建、部署、运行时和相关接入路径实际可用后，再认证 Qt 5.15 LTS 并更新产品矩阵。
+> **Owner #563：** Qt 5.15 如需加入 GA Windows 支持，必须先在 Windows 完成构建/部署/运行验证；Linux 验证不再是 V0.4 准入条件。
 
 ## 嵌入式平台
 
@@ -210,6 +210,6 @@ Qt 5.15 LTS 是计划中的兼容线，但不是当前产品声明，因为当�
 - DMA-BUF/GBM 外部缓冲路径；
 - RKMPP 和其他硬件编码器。
 
-> **TODO：** 嵌入式 Linux/ARM64/EGLFS 参考单元是 V0.3 家族 GA 前必须收敛的兼容基线，V0.4 RC 进入前必须完成；依赖切片和声明 GA 单元之外的 BSP/SoC 扩展作为后续结果单独准入，不通过本次收敛预分配版本号。
+> **Owner #563（取代原硬门槛）：** 嵌入式 Linux/ARM64/EGLFS 属于 Qt 跨平台用户验证路径；无目标机/完整测试不阻塞开发、V0.4 或 V1。发现缺陷请提交附有 Qt/BSP/架构/日志/复现步骤的 Issue，按可行的维护/hotfix 流程处理；不预留版本或伪造 PASS。
 >
 > **后续加速线：** 在嵌入式正确性建立后再做硬件加速采集/编码。

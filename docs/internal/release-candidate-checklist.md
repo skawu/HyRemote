@@ -1,11 +1,13 @@
 # HyRemote milestone release-candidate checklist
 
+This is historical V1 release procedure context; exact selectable versions and current platform policy are governed by the release-train map and Owner #563. **Only Windows x86_64 actual qualification is release-blocking**; Linux/embedded/Wayland data is optional community validation. Subsequent historical Windows/Linux mentions below must not be treated as additional current gates.
+
 This is the canonical release procedure for the authorized milestones:
 
 - `v0.0.1.0` — Embedded C++ API
 - `v0.0.2.0` — Declarative QML API
 - `v0.0.3.0` — Transparent QPA Proxy
-- `v1.0.0.0` — x86 Windows + Linux GA
+- `v1.0.0.0` — Windows x86_64 GA; Linux/embedded user validation only
 
 A milestone is not a release because code exists or a branch builds. Its acceptance authorities must be **closed as completed**; `not_planned` is not release acceptance.
 
@@ -57,7 +59,7 @@ Do not begin final #109 evidence on a moving candidate.
 
 The canonical repository execution/evidence template for #109 is `docs/internal/v1-physical-acceptance.md`. The runbook is preparation/evidence structure, while #109 remains the acceptance authority.
 
-- Windows/Linux E1/E2/E3/E4 physical cells use the **same RC-FROZEN SHA**;
+- Mandatory Windows E1/E2/E3/E4 physical cells use the **same RC-FROZEN SHA**; Linux E1–E4 is `USER_VALIDATION_PENDING` and not a release condition (#563);
 - native local display and local input must coexist with remote view/control as required;
 - abrupt-disconnect held-state cleanup, reconnect, explicit HyRemote runtime stop/policy transition and no-late-input behavior are retained;
 - hosted/Xvfb evidence cannot substitute for physical local-display/local-input evidence;

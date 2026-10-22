@@ -24,7 +24,7 @@
       "version": "0.4.0.0",
       "activation_authority": 235,
       "active": false,
-      "rule": "V0.4.0.0 is qualification only (the Release Candidate line). It becomes a Feature record here and in trains only when its activation authority records that the V0.3.0.0 self-service foundation is complete, the activated V0.3-family pre-GA baseline (#343/#370) is complete, and the GA support matrix is frozen. At activation its lineage_parent is the completed, activated V0.3-family outcome - never a pre-reserved technical slot; the former 0.3.2.0 coupling was retired with #333."
+      "rule": "V0.4.0.0 remains inactive until Owner #235 authorizes RC after the Windows-applicable #343/370 product baseline and Windows QA/support matrix have been implemented and frozen. Linux desktop, ARM64/EGLFS and Wayland runtime/physical evidence are USER_VALIDATION_PENDING and are never activation or candidate gates under #563. At activation lineage follows the accepted V0.3 family Feature; qualification only, without speculative new capability."
     }
   ],
   "trains": {
@@ -213,21 +213,21 @@
         "maintained-viewer-interoperability-evidence",
         "performance-slo-evidence"
       ],
-      "cross_version_references": [ 57, 95, 144, 175, 261, 343, 370 ],
+      "cross_version_references": [ 57, 95, 144, 175, 261, 343, 370, 563 ],
       "conditional_items": [],
       "non_blockers": [ 57, 260, 265, 378 ],
       "notes": {
-        "144": "#144 is the closeable V0.3.3 desktop Qt 6.8.3 Windows/Linux x86_64 Raw + selected TRLE + incremental/damage delivery gate. Independent ARM64/EGLFS equivalent remains mandatory before V0.4 entry under #236/#154/#203 and #343, not this desktop Feature closure.",
-        "175": "#175 is the closeable V0.3.3 maintained-GUI-viewer gate: at least two maintained viewers on Windows and Linux hosts, covering the shipped desktop profiles and relevant input, cursor, resize, reconnect, view-only and applicable authentication. V0.4 repeats/finalizes additional GA cell qualification under #235.",
+        "144": "#144 is Windows x86_64 Qt 6.8.3 Raw+TRLE incremental/damage delivery with Windows real-viewer interaction/performance evidence; Linux desktop and ARM64/EGLFS/Wayland validation is USER_VALIDATION_PENDING and non-blocking per Owner #563.",
+        "175": "#175 closes on at least two maintained real GUI viewers against the Windows x86_64 Qt 6.8.3 target/viewer profile, with cursor, input, resize/reconnect, view-only and applicable auth; Linux viewer hosts and embedded viewer results are optional user-validation evidence per #563.",
         "261": "RFB delivery profiling is risk/evidence preflight, not product implementation.",
-        "343": "#343 remains mandatory before V0.4 entry across Qt LTS, Windows/Linux, x86_64/ARM64, Wayland/EGLFS and practical remote performance. Desktop V0.3.3 closure never waives ARM64/Embedded GA breadth.",
+        "343": "#343 must be rebaselined under #563: Windows-qualified GA cells are release gates. Linux/ARM64/EGLFS/Wayland physical/runtime evidence is community-validation pending and never a condition of V0.3.3/V0.4/V1; no blanket cross-platform Supported claim.",
         "370": "The performance programme supplies the SLO and measurement method; it is not a closeable child of this Feature.",
         "378": "HyRemoteTool consumes the access-plane improvements; management-plane work stays out of this Feature.",
         "57": "Qt 5.15/6.5/6.8 implementation is mandatory later in the V0.3 family before V0.4 entry; not a V0.3.3 exact Feature blocker.",
         "260": "Qt LTS preflight belongs to mandatory V0.3-family compatibility work, not an extra V0.3.3 candidate prerequisite. #261 remains the exact Feature preflight.",
         "265": "Qt5 adaptation implementation must complete in the V0.3 family before V0.4 entry; not a V0.3.3 mandatory child."
       },
-      "rule": "V0.3.3.0 is the activated desktop Product-breadth Feature on Qt 6.8.3 Windows/Linux x86_64: Raw + selected TRLE compressed/incremental/damage delivery (#144) and maintained GUI-viewer interoperability (#175), with #261 the candidate prerequisite. Release needs exact-SHA viewer/performance/same-SHA L2 evidence. ARM64/EGLFS/Wayland and Qt5/6.5 breadth stay mandatory before V0.4 entry under #343/#236/#154/#57, but are not hidden V0.3.3 children. No preallocated follow-up Feature numbers, management-plane or TLS work. Retired 0.3.1.0/0.3.2.0 remain retired."
+      "rule": "V0.3.3.0 is the activated Windows x86_64 Qt 6.8.3 Feature for #144 Raw+TRLE incremental/damage and #175 two maintained Windows real GUI viewers, #261 preflight, #370 real viewer SLO, exact-SHA Windows product and same-SHA release gates. Linux/ARM64/EGLFS/Wayland are unverified user-validation targets and their unavailable evidence is nonblocking per Owner #563. Qt5/6.5 Windows compatibility remains a separate explicit claim requirement; future Feature numbers and management/TLS are not preallocated."
     },
     "1.0.0.0": {
       "authority_parent": 33,
@@ -274,16 +274,16 @@
       "classified_referenced_issue_numbers": [ 14, 74, 90, 91, 95, 106, 134, 147, 156, 166 ],
       "notes": {
         "9": "V1 requires the x86-applicable damage/asynchronous-capture work or an evidence-backed disposition; embedded follow-up remains separate.",
-        "57": "V1 requires an evidence-backed qualification disposition; this does not automatically promote every Qt line to Supported.",
+        "57": "Qt family GA support claims must be qualified in the available Windows environment; Linux Qt LTS combinations are user-validation pending rather than mandatory tests under Owner #563. Do not claim Qt5/Qt6.5 Supported without actual Windows qualification.",
         "144": "Only B1/B2 are V1 x86 requirements; embedded B3/B4 continue in dedicated embedded issues.",
-        "109": "Final physical evidence must name the exact RC-FROZEN candidate declared under issue 165.",
+        "109": "The GA physical/native coexistence evidence gate is Windows x86_64 only per Owner #563. Linux, ARM64 and embedded physical absence never blocks V1; no inferred support. The exact Windows RC-frozen candidate #165 is still mandatory.",
         "170": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
         "174": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
         "175": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
         "176": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
         "209": "V1.0.0.0 must freeze repository, documentation, build/package and release infrastructure so post-V1 work does not repeatedly repair foundational structure."
       },
-      "rule": "The former standalone V1 manifest carried into the train map unchanged, in the same order, so no V1 authority lost its classification in the migration."
+      "rule": "The V1 candidate promotes one qualified Windows-first V0.4 RC lineage; exact Windows supported cells need physical native-use, input/viewer, performance, packaging, public API and security evidence. Linux/ARM64/EGLFS/Wayland are community/user-validation paths, not candidate blockers or blanket supported targets (Owner #563). This inherited legacy 26-child list still requires separate clean-up of superseded #157, optional #170 and ongoing #176/#209; no item may be used to force non-Windows testing."
     }
   }
 }

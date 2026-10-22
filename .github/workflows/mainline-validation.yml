@@ -17,6 +17,8 @@ jobs:
   mainline:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # Owner #563: available Linux hosted output is advisory; only Windows is a release blocker.
+    continue-on-error: ${{ matrix.os == 'ubuntu-24.04' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -27,7 +29,7 @@ jobs:
             aqt_host: windows
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
-          - name: Linux x86_64 / Qt 6.8.3 / four frontends
+          - name: Linux x86_64 / Qt 6.8.3 / four frontends (advisory, nonblocking)
             os: ubuntu-24.04
             aqt_host: linux
             aqt_arch: linux_gcc_64

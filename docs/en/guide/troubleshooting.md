@@ -202,7 +202,7 @@ It does not automatically prove:
 - all native QPA delegate behavior;
 - special GPU/rendering paths.
 
-> **TODO V0.4:** complete final physical Windows/Linux local + remote coexistence qualification.
+> **Owner #563 / TODO V0.4:** require physical Windows x86_64 local + remote coexistence only; Linux/embedded remain user-validation pending and are not release blockers. Report reproducible target issues with Qt/BSP and logs for bounded hotfix triage.
 
 ## Slow clients cause resource growth
 
