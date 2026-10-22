@@ -1,45 +1,41 @@
-# HyRemote CI: purpose, trigger and limits (Owner #571, 2026-10-22)
+# HyRemote CI: purpose, trigger and protected merge gate (Owner #573, 2026-10-22)
 
-## Why this policy exists
+> **This replaces Owner #571's incorrect post-merge CI policy.** Feature-branch ordinary pushes do **not** invoke Qt CI. Opening or readying a pull request to protected `develop` invokes it. **CI must pass before the PR may merge.**
 
-The old trigger ran costly full Windows+Linux Qt product builds every time an open PR was updated, repeatedly consuming runners and delaying feature work. Worse, the protected `develop` merge push used a policy-only sentinel, so the expensive work occurred **before every merge**, rather than after a meaningful integration event.
+## When CI runs
 
-**New rule:** normal feature branch commits and PR opening/updates **do not trigger the `CI` workflow**. Only a push to protected `develop` (normally a merged PR) automatically invokes it. A frozen release candidate or a deliberate diagnostic may trigger `CI` by manual `workflow_dispatch` with an exact commit SHA. This workflow has no scheduled trigger.
+| Action | Automatic CI? | Merge consequence |
+| --- | --- | --- |
+| A commit pushed on a feature branch **without a PR** | No | Development may continue without hosted Qt waits |
+| Open a ready PR to `develop` | Yes | Wait for actual affected Windows Qt product tests plus governance |
+| Open a draft PR | Lightweight CI classification only; Qt deferred | GitHub draft cannot be merged |
+| Mark PR ready for review | Yes | Full selected PR validation starts |
+| Push another commit to a **ready** open PR | Yes, cancels superseded run | Current PR head must pass; old green cannot authorize new commits |
+| Docs-only or governance-only ready PR | Yes, but Qt build skipped | Stable `ci-merge-verdict` requires classifier and relevant governance PASS; no false product-PASS claim |
+| Push/merge to `develop` | **No second Qt CI** | PR head was already validated before merging |
+| Manually dispatch frozen release candidate | Yes, separate `workflow_dispatch` | Admitted `FULL_GATE / CANDIDATE`, not ordinary PR approval |
 
-Git Flow and the independent `p1-p2-disposition` review check remain lightweight PR checks. GitHub's current protected `develop` ruleset requires `p1-p2-disposition`; it does not require CI to pass before merging. Agents still run local or focused checks on their changes when they have the toolchain. **This deliberately changes the risk model:** failures may be detected *after* merge, so a broken `develop` must be repaired immediately through an Issue-linked PR, without mislabeling it green.
+**Windows x86_64 Qt 6.8.3 is the mandatory hosted platform** (Owner #563). Linux desktop/ARM64/EGLFS/Wayland are user-validation pending and do not block development or releases. The historical manually-dispatched FULL_GATE matrix remains separate until its own reviewed rebaseline and must not silently overwrite the Windows-first PR scope.
 
-## Contract by event
+## Fail-closed merge authority
 
-| Event | Workflow | Required work | Decision |
-| --- | --- | --- | --- |
-| Ordinary feature commit, PR open/update, draft/review transition | **No `CI` run** | Git Flow topology and independent code/review-disposition checks; local/focused tests by agent as available | PR review, not hosted Qt acceptance |
-| Protected `develop` push after merge of product/build/tests code | `CI` automatically | Diff `before..sha`, select impacted frontends, **Windows x86_64 Qt product runner**, real compile/CTest and applicable install/deploy/consumer checks; zero executed tests invalid | `POST_MERGE / OBSERVE`, not a release/candidate approval |
-| Protected `develop` push with docs/governance-only scope | `CI` classification only | Seconds-scale scope/governance if relevant, **no Qt SDK install/build** | `POST_MERGE / OBSERVE` with explicit no-product-evidence label |
-| Manual `workflow_dispatch` with matching `expected_sha` | Explicit FULL_GATE | Frozen candidate/release profile and all exact-SHA, independently required evidence | `CANDIDATE`, only after admitted gate actually passes |
+A single stable GitHub Actions job, **`ci-merge-verdict`**, is the branch-protection target on `develop`. It checks, for the current ready PR head:
 
-The automatic post-merge Qt matrix selects **Windows only** as the sole physical/hosted qualified development platform (Owner #563). Linux/embedded user validation is nonblocking and must never be relabelled PASS from a Windows result. The separately dispatched FULL_GATE's pre-existing historical release profiles and exact-sha controls remain intact until independently revised; do not interpret a post-merge OBSERVE result as satisfying FULL_GATE or an old dual-platform historical maintenance contract.
+1. `Classify changes` completed successfully and reported `PR_FAST / MERGE`.
+2. If product/build/tests paths are affected, the selected Windows Qt matrix `product` job(s) have actually **succeeded**. `skipped`, `cancelled`, `failure` or missing checks are **not** PASS. Product jobs must actually compile and execute nonzero CTest.
+3. For affected release-authority paths, the `authority-governance` job completed successfully; no skipped governance claim is mislabelled PASS.
+4. If no Qt product change exists, product jobs are intentionally skipped with truthful no-product-evidence scope. This is legitimate for docs-only changes; it is **not** proof of Qt product validity.
 
-### What CI can verify
+**Repository ruleset `protect develop` (ID 25459896) must require BOTH `p1-p2-disposition` and `ci-merge-verdict`.** Editing the YAML alone does not protect merges. If GitHub account/connector permissions cannot edit the ruleset, a repository administrator must add the exact check, choosing GitHub Actions as its source. Until verified in live ruleset, the repository is **NOT FULLY ENFORCING** the Owner's fail-closed contract. Do not override/bypass this check or merge a PR with unverified CI.
 
-- **Reproducible build:** exact commit and declared Qt compiler Kit can configure and compile on the runner.
-- **Automated correctness and regressions:** actually discovered and executed CTest/protocol/regression cases pass; a skipped or zero-test result is not product PASS.
-- **Install/deploy quality where selected:** SDK installation, dependency closure, selected consumer/test binaries and release metadata satisfy automated contracts.
-- **Integration drift:** a merged change does not break the currently tested Windows reference build; failures are surfaced with logs and an affected SHA.
-- **Governance in context:** release authority scripts/policies match the repository where they are actually exercised.
+Git Flow topology and independent P1/P2 review-disposition still run as their separate premerge checks. No CI runs for each standalone local commit. For a PR that is already ready and receives new commits, re-running tests is necessary: merging untested new code would violate the acceptance contract.
 
-### What CI cannot prove
+## What CI proves and cannot prove
 
-- A code change was safe **before it merged** when no premerge product tests ran.
-- Absence of defects, full real GUI Viewer experience, physical keyboard/mouse/display coexistence, frame-age/interaction SLO unless the corresponding exact real measurements ran.
-- Linux/ARM64/EGLFS/Wayland operation or any specific user Qt/BSP combination; Qt source portability is not target qualification.
-- Network security, TLS or authorization not provided by the shipped RFB implementation; automated success cannot make plaintext RFB suitable for Internet exposure.
-- Support of Qt 5.15/6.12 or any unqualified Kit simply because Qt 6.8.3 Windows compiled.
-- V0.3 Feature acceptance, V0.4 RC qualification or V1 GA without all **separate** exact-SHA evidence and review authorities.
+CI **can** show that the exact tested PR merge ref configures, compiles, has executed the selected automated tests, meets relevant SDK installation/consumer packaging contracts and the repository governance rules within the selected Windows reference setup. Green means **only those executed checks passed**.
 
-## Failure and owner response
+CI **cannot** guarantee no latent bugs, real GUI Viewer input/keyboard/resize experience, physical local+remote coexistence without actual interaction, target Linux/ARM64/EGLFS/Wayland compatibility, all Qt5/6.12 Kit ABI combinations, Internet security of plaintext RFB, or Feature/RC/GA acceptance without their independent candidate evidence.
 
-A post-merge Windows CI failure is **not a green merge retrospectively**. Record exact `develop` SHA, failing Windows job/test/log, affected user claim, owning Issue and regression fix PR. Prefer a bounded repair/rollback decision before stacking unrelated product changes. A post-merge success only validates the tested surfaces and does not close release issues automatically.
+A failing PR CI is fixed on the same PR or withdrawn; **do not merge red and repair after merging as the normal workflow**. A new commit invalidates the old CI conclusion; cancelled superseded runs are normal and do not count as accepted tests. A release candidate separately needs exact-SHA FULL_GATE.
 
-If quick premerge validation is desired for a high-risk PR, the developer/agent can run canonical local tests or request a separate bounded manual diagnostic. Do not reintroduce automatic every-commit Qt CI or turn a docs-only PR into a full Qt build by convention.
-
-References: #24, #95, #343, #380, #563, #568, #571; `.github/workflows/ci.yml`, `.github/workflows/git-flow-policy.yml`, `.github/scripts/resolve-ci-scope.py` and branch ruleset "protect develop".
+Refs #24 #95 #343 #563 #571 (superseded) #573. Authorities: `.github/workflows/ci.yml`, `.github/workflows/git-flow-policy.yml`, `.github/workflows/review-gate.yml`, `.github/scripts/resolve-ci-scope.py` and branch ruleset `protect develop`.
