@@ -163,8 +163,8 @@ jobs:
     # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
     # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
     # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
-    # A test-only ready PR keeps the Windows product lane (full build + test set) and skips the duplicate Linux
-    # matrix: the product is unchanged, while the full gate and every product change still run both platforms.
+    # Owner #563: Windows x86_64 is the only blocking product and FULL_GATE matrix platform.
+    # Optional Linux diagnostics/user reports remain useful but cannot block PR, candidate, RC or GA.
     if: >-
       needs.classify.outputs.product == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
@@ -366,7 +366,7 @@ jobs:
       # The lane proves the deployment path, not only the build path: the same canonical entry point runs one bounded
       # install that reuses the build tree the step above produced, so nothing is recompiled and the run states the
       # install phase's own progress and the root it deployed into. This is the command a developer runs, not a
-      # second install mechanism, and the Linux lane keeps its own logic unchanged.
+      # second install mechanism. Linux platform qualification is optional per Owner #563.
       - name: Canonical install through HyRemote build system — Windows
         if: runner.os == 'Windows'
         shell: cmd
