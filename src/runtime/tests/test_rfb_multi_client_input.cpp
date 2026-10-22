@@ -206,6 +206,13 @@ std::size_t countButton(const std::vector<hyremote::InputEvent> &events,
     }));
 }
 
+std::size_t countText(const std::vector<hyremote::InputEvent> &events, const std::string &text)
+{
+    return static_cast<std::size_t>(std::count_if(events.begin(), events.end(), [&](const auto &event) {
+        return event.kind == hyremote::InputEventKind::Text && event.textUtf8 == text;
+    }));
+}
+
 void testConcurrentViewerHeldStateIsolation()
 {
     const quint16 port = freePort();
@@ -375,12 +382,89 @@ void testConcurrentViewerHeldStateIsolation()
     transport->stop();
 }
 
+void testKeypadKeysymMapping()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+
+    constexpr std::uint32_t width = 64;
+    constexpr std::uint32_t height = 48;
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(width * 4U, height);
+    CHECK(storage != nullptr);
+    if (!storage) {
+        transport->stop();
+        return;
+    }
+
+    hyremote::RemoteFrame frame;
+    frame.geometry.size = {width, height};
+    frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+    frame.geometry.alphaMode = hyremote::AlphaMode::Opaque;
+    frame.geometry.planeCount = 1;
+    frame.storage = std::move(storage);
+    frame.timing.pts = hyremote::Clock::now();
+    frame.timing.ptsSource = hyremote::PtsSource::Completion;
+    frame.damage = hyremote::Damage::fullFrame();
+    transport->enqueueFrame(std::move(frame));
+
+    QTcpSocket viewer;
+    CHECK(connectRawRfb(viewer, port));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::count_if(events.begin(), events.end(), [](const auto &event) {
+                   return event.code == hyremote::TransportEventCode::ClientConnected;
+               })
+               >= 1;
+    }));
+
+    for (std::uint32_t keypad = 0xffb0; keypad <= 0xffb9; ++keypad) {
+        CHECK(sendKey(viewer, keypad, true));
+        CHECK(sendKey(viewer, keypad, false));
+    }
+    CHECK(sendKey(viewer, 0xff8dU, true));  // KP_Enter
+    CHECK(sendKey(viewer, 0xff8dU, false));
+    CHECK(sendKey(viewer, 0xff96U, true));  // KP_Left
+    CHECK(sendKey(viewer, 0xff96U, false));
+    CHECK(sendKey(viewer, 0xffabU, true));  // KP_Add
+    CHECK(sendKey(viewer, 0xffabU, false));
+
+    CHECK(recorder.waitFor([](const auto &inputs, const auto &) {
+        bool digits = true;
+        for (int digit = 0; digit <= 9; ++digit) {
+            const auto key = static_cast<hyremote::KeyCode>(
+                static_cast<int>(hyremote::KeyCode::Digit0) + digit);
+            const std::string text(1, static_cast<char>('0' + digit));
+            digits = digits && countKey(inputs, key, true) == 1 && countText(inputs, text) == 1;
+        }
+        return digits && countKey(inputs, hyremote::KeyCode::Enter, true) == 1
+               && countKey(inputs, hyremote::KeyCode::ArrowLeft, true) == 1
+               && countText(inputs, "+") == 1;
+    }));
+
+    viewer.disconnectFromHost();
+    if (viewer.state() != QAbstractSocket::UnconnectedState)
+        viewer.waitForDisconnected(1000);
+    transport->stop();
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     testConcurrentViewerHeldStateIsolation();
+    testKeypadKeysymMapping();
     if (failures != 0)
         std::cerr << failures << " concurrent-viewer RFB input checks failed\n";
     return failures == 0 ? 0 : 1;

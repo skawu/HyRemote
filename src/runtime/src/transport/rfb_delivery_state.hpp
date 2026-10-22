@@ -235,6 +235,34 @@ inline RfbDamageRegion fullRfbDamage(std::uint32_t width, std::uint32_t height)
     return result;
 }
 
+// A large change must not reach a viewer as a sequence of narrow bands. Viewers
+// paint each RFB rectangle as they decode it, so many adjacent tiles read as a
+// top-to-bottom scan rather than one screen update. Keep small/local damage
+// precise, but collapse a damage set covering a meaningful fraction of the
+// frame to its bounding rectangle (one paint for a page transition).
+inline RfbDamageRegion coalesceRfbDamageForPaint(RfbDamageRegion damage,
+                                                 std::uint32_t width,
+                                                 std::uint32_t height)
+{
+    if (damage.size() <= 1U || width == 0U || height == 0U)
+        return damage;
+
+    std::uint64_t covered = 0;
+    RfbRect all;
+    for (const RfbRect &rect : damage.rects()) {
+        covered += static_cast<std::uint64_t>(rect.width) * static_cast<std::uint64_t>(rect.height);
+        all = boundRfbRects(all, rect);
+    }
+    constexpr std::uint64_t kCoalescePercent = 25U;
+    const std::uint64_t frameArea = static_cast<std::uint64_t>(width) * height;
+    if (covered * 100U < frameArea * kCoalescePercent)
+        return damage;
+
+    RfbDamageRegion result;
+    result.add(all);
+    return result;
+}
+
 constexpr RfbRect clipCoreDamageRect(const hyremote::Rect &rect,
                                      std::uint32_t frameWidth,
                                      std::uint32_t frameHeight) noexcept
@@ -268,7 +296,9 @@ inline RfbDamageRegion regionsFromFrameDamage(const hyremote::RemoteFrame &frame
 
     for (const hyremote::Rect &rect : frame.damage.regions)
         result.add(clipCoreDamageRect(rect, frame.geometry.size.width, frame.geometry.size.height));
-    return result;
+    return coalesceRfbDamageForPaint(std::move(result),
+                                     frame.geometry.size.width,
+                                     frame.geometry.size.height);
 }
 
 constexpr bool rfbFrameIdsAreAdjacent(hyremote::FrameId previous, hyremote::FrameId current) noexcept
@@ -353,7 +383,7 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
             }
         }
     }
-    return result;
+    return coalesceRfbDamageForPaint(std::move(result), width, height);
 }
 
 }  // namespace HyRemote::detail
