@@ -437,10 +437,12 @@ def self_test() -> int:
          {"lane": "PR_DRAFT", "product": "false", "integrations": ""}),
         ("draft governance PR runs no product job", "pull_request", ["README.md"], True,
          {"lane": "PR_DRAFT", "product": "false"}),
-        ("develop push is the sentinel lane", "push", [], False,
-         {"lane": "DEVELOP_SENTINEL", "product": "false", "integrations": "", "test_exclude": ""}),
-        ("develop sentinel runs no deploy evidence", "push", [], False,
+        ("develop docs merge skips Qt", "push", ["docs/proposals/notes.md"], False,
+         {"lane": "POST_MERGE", "product": "false", "integrations": "", "test_exclude": ""}),
+        ("develop docs merge does not need deploy evidence", "push", ["docs/proposals/notes.md"], False,
          {"generic_evidence": "false", "cpp_evidence": "false", "qml_evidence": "false", "qpa_evidence": "false"}),
+        ("develop source merge starts Qt", "push", ["src/runtime/session.cpp"], False,
+         {"lane": "POST_MERGE", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("manual dispatch is the full gate", "workflow_dispatch", [], False,
          {"lane": "FULL_GATE", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("full gate runs all evidence", "workflow_dispatch", [], False,
@@ -557,7 +559,7 @@ def self_test() -> int:
          [".github/release/release-trains.json"], False, {"decision": "MERGE", "product": "false"}),
         ("ready affected-product PR decides MERGE", "pull_request", ["src/runtime/runtime.cpp"], False,
          {"decision": "MERGE", "product": "true"}),
-        ("develop push decides OBSERVE", "push", [], False, {"decision": "OBSERVE"}),
+        ("develop push decides OBSERVE", "push", ["src/runtime/session.cpp"], False, {"decision": "OBSERVE"}),
         ("admitted full gate decides CANDIDATE", "workflow_dispatch", [], False, {"decision": "CANDIDATE"}),
     ]
 
@@ -673,7 +675,7 @@ def self_test() -> int:
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
     for description, event, changed, draft in (
-            ("develop sentinel", "push", [], False),
+            ("docs-only develop merge", "push", ["docs/proposals/notes.md"], False),
             ("full gate", "workflow_dispatch", [], False),
             ("fast PR", "pull_request", ["src/core/session/session.cpp"], False),
             ("documentation PR", "pull_request", ["docs/proposals/notes.md"], False),
@@ -710,10 +712,19 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test-only lane must keep Windows, got {matrix[0].get('os')!r}")
             failures += 1
 
+    merged = resolve("push", ["src/runtime/session.cpp"])
+    merged_matrix = json.loads(merged["product_matrix"])
+    if len(merged_matrix) != 1 or merged_matrix[0]["os"] != "windows-2022":
+        print("CASE FAILED: protected develop merged product code must run Windows only")
+        failures += 1
+    if merged["product"] != "true" or merged["decision"] != "OBSERVE":
+        print("CASE FAILED: post-merge validation does not approve a PR or a release")
+        failures += 1
+
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
     # start waiting on a lane whose purpose is not defined.
     expected_decisions = {
-        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "DEVELOP_SENTINEL": "OBSERVE", "FULL_GATE": "CANDIDATE",
+        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "POST_MERGE": "OBSERVE", "FULL_GATE": "CANDIDATE",
         "UNKNOWN": "OBSERVE",
     }
     for lane, expected in expected_decisions.items():
@@ -725,7 +736,7 @@ def self_test() -> int:
     if failures:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
-    print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, test-only ready PRs keep "
+    print("resolve-ci-scope self test: PASS (draft and docs-only merge skip Qt, merged code uses Windows, "
           "one product platform, examples documentation selects no capability, release authority is governance, "
           "empty exclusions stay empty, no exclusion can match every test, fast lane preserved, readiness runs "
           "where it is consumed, the candidate-only product fit runs where it is required rather than by default, "
