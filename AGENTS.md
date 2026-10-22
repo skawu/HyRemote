@@ -119,18 +119,18 @@ build.cmd + build.yml
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
 
-CI is decision-driven:
+CI uses **post-merge product validation** (Owner #571):
 
 ```text
-L0 local implementation feedback
-L1 exact Ready-PR merge decision
-L2 exact frozen-candidate qualification
+L0 local focused tests + fast Git Flow/review-disposition checks before merge (no automatic Qt CI)
+L1 protected develop merge push -> scoped Windows Qt compile/test/install, OBSERVE
+L2 explicit frozen-candidate workflow_dispatch -> exact-SHA FULL_GATE, CANDIDATE
 ```
 
 Rules:
 
 - Iterate locally with focused tests and the canonical build/install path.
-- Hosted CI is required where it owns the L1/L2 decision, not after every local iteration.
+- Normal PR commits do **not** trigger the `CI` workflow. Only the protected `develop` merge push and explicit exact-SHA `workflow_dispatch` do. Post-merge red CI is a repair task, not a premerge veto. See [CI purpose and trigger policy](docs/internal/ci-purpose-and-trigger-policy-2026-10-22.md).
 - `OBSERVE`, post-merge, maintenance and specialized workflows are fire-and-observe for independent sequencing.
 - Zero discovered/executed tests are invalid evidence.
 - Exact-head evidence/artifacts must support the claim being made.
