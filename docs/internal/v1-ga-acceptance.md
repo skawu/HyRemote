@@ -4,6 +4,8 @@ Status: **release-candidate gate definition; no GA acceptance claim while requir
 
 Authority: #33. Composes, but does not replace, milestone authorities #30, #31, #32, #39 and #41.
 
+**Owner #563 Windows-only GA qualification policy:** Only Windows x86_64 is required for the V1 acceptance/RC decision. Linux/ARM64/EGLFS/Wayland and their GUI/board/runner cells are optional user-validation, cannot block candidate/tag, and must not be declared Supported without separate evidence. All Linux columns and steps below, where retained for future community use, are **NON_BLOCKING / NOT_RUN_NON_BLOCKING**; Windows real installed Viewer/input/physical/SLO/candidate gates remain mandatory.
+
 ## 1. Release candidate environment
 
 The integrated GA workflow is `.github/workflows/v1-ga-acceptance.yml`.
@@ -189,7 +191,7 @@ The integrated workflow is necessary but not sufficient for `v1.0.0.0`.
 
 Physical/native evidence is tracked by #109. The repository execution runbook and evidence template is `docs/internal/v1-physical-acceptance.md`; it versions the exact candidate/environment/cell record but **does not itself authorize or prove physical acceptance**. #109 remains the acceptance authority.
 
-On the claimed Windows and Linux reference environments it must prove the applicable E1/E2/E3/E4 local-behavior cells, including:
+On the **required Windows x86_64** reference environment it must prove the applicable E1/E2/E3/E4 local-behavior cells. Linux, if a user provides it, is nonblocking diagnostic evidence, including:
 
 - a real local application window remains visibly rendered through the native path while remote viewing is active;
 - local pointer/keyboard/text input continues to reach the application while remote input is enabled as claimed;
@@ -207,7 +209,7 @@ Use the Local Developer Agent or equivalent physical host only when #109 reaches
 
 #74 runner-assignment failures (`steps=[]`/`steps=null`, no runner execution) are infrastructure failures. They are neither code failures nor passing product evidence.
 
-If either reference OS job does not actually execute, the GA workflow is **unexecuted** for that OS and cannot authorize a release branch or tag.
+If the mandatory **Windows** job does not execute and PASS, GA is unexecuted and cannot authorize a release. A Linux job that does not run is `NOT_RUN_NON_BLOCKING` and **does not** prevent the release branch/tag under #563.
 
 ## 10. Release authorization checklist
 
