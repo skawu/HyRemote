@@ -294,12 +294,17 @@ def changed_paths(event: str, base: str, head: str) -> list[str]:
     return []
 
 
-def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, str]:
+def resolve(event: str, changed: list[str], draft: bool = False,
+            legacy_dual_platform: bool = False) -> dict[str, str]:
     lane = lane_for(event, draft)
     full_gate = lane == "FULL_GATE"
     product_lane = lane in ("PR_FAST", "FULL_GATE")
     test_only = product_lane and not full_gate and is_test_only(changed)
-    product_matrix = [PRODUCT_MATRIX[1]]  # Windows mandatory; Linux CI/physical user-validation nonblocking (#563)
+    if legacy_dual_platform and not full_gate:
+        raise ValueError('legacy dual-platform qualification is only available on explicit FULL_GATE dispatch')
+    # New Features, Windows-first RC/GA and ordinary PRs: Windows only. Explicit historical
+    # v0.2.0.1 maintenance may still request the release-time Windows+Linux evidence contract.
+    product_matrix = PRODUCT_MATRIX if legacy_dual_platform else [PRODUCT_MATRIX[1]]
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
@@ -705,6 +710,19 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: mandatory product lane must keep Windows, got {matrix[0].get('os')!r}")
             failures += 1
 
+    # Historical maintenance may explicitly request both hosted platforms, never by default.
+    legacy = resolve('workflow_dispatch', [], False, legacy_dual_platform=True)
+    legacy_matrix = json.loads(legacy['product_matrix'])
+    if len(legacy_matrix) != 2 or {cell['os'] for cell in legacy_matrix} != {'windows-2022', 'ubuntu-24.04'}:
+        print('CASE FAILED: explicit legacy full gate must retain Windows+Linux evidence')
+        failures += 1
+    try:
+        resolve('pull_request', ['src/core/session/session.cpp'], False, legacy_dual_platform=True)
+        print('CASE FAILED: ordinary PR cannot opt into legacy release matrix')
+        failures += 1
+    except ValueError:
+        pass
+
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
     # start waiting on a lane whose purpose is not defined.
     expected_decisions = {
@@ -735,6 +753,7 @@ def main() -> int:
     parser.add_argument("--base", default=os.environ.get("BASE_SHA", ""))
     parser.add_argument("--head", default=os.environ.get("HEAD_SHA", ""))
     parser.add_argument("--draft", default=os.environ.get("PR_IS_DRAFT", ""))
+    parser.add_argument("--legacy-dual-platform", default=os.environ.get("LEGACY_DUAL_PLATFORM", "false"))
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -746,7 +765,9 @@ def main() -> int:
         return 2
 
     draft = str(args.draft).strip().lower() in ("1", "true", "yes")
-    outputs = resolve(args.event, changed_paths(args.event, args.base, args.head), draft)
+    legacy_dual = str(args.legacy_dual_platform).strip().lower() in ('true', '1', 'yes')
+    outputs = resolve(args.event, changed_paths(args.event, args.base, args.head), draft,
+                      legacy_dual_platform=legacy_dual)
 
     output_path = os.environ.get("GITHUB_OUTPUT")
     lines = [f"{key}={value}" for key, value in outputs.items()]
