@@ -1,3 +1,5 @@
+> **Current product direction, 2026-10-22 — D 综合工作台 (Product Owner selected):** The full forward-looking feature list, page flows, UI state machine, SDK-assistant boundaries, diagnostics model, portable-delivery investigation, secure-management deferral and phased acceptance now live in [HyRemoteTool 综合工作台 RFC](hyremote-tool-workbench-prd-2026-10-22.md) (tracking #579). This document remains the **historical V0.3.0.0 out-of-process RFB access-client contract** and records that release's limits; it is not sufficient as the integrated workbench roadmap. D1–D5 open details in the RFC require further Product Owner decisions before implementation claims. Nothing here retroactively changes the V0.3.0.0 release or authorizes host management over RFB.
+
 # HyRemoteTool companion plan
 
 Status: active companion-tool plan for the V0.3 line. Product authority: #378. V0.3.0.0 release authority: #234.
