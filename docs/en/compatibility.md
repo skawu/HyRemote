@@ -1,3 +1,5 @@
+> **2026-10-22 Owner #563 Windows-first platform evidence policy:** Windows x86_64 is the only mandatory physically/runtime-qualified platform for new Feature/RC/GA. Linux desktop, ARM64/EGLFS and Wayland are *User-validation pending*, not GA-Supported based on Qt portability alone. They do not block releases for lack of a runner/viewer/board. User-reported reproducible issues are triaged for bounded hotfixes. Historical V0.3.0.0 release artifacts and claims remain published history. See [platform policy](../internal/windows-first-platform-validation-policy-2026-10-22.md).
+
 # HyRemote Compatibility Matrix
 
 > Language / 语言: **English** | [中文](../compatibility.md)
@@ -19,14 +21,14 @@ The current released reference environment is **Qt 6.8.3 on Windows x86_64 and L
 | --- | --- | --- | --- | --- | --- |
 | 6.8.3 | Windows x86_64 | C++ API | Widgets | **Supported** | Public Qt APIs, explicit Runtime lifecycle |
 | 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` entry |
-| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Supported** | Public Qt APIs, explicit Runtime lifecycle |
-| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` entry |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **User-validation pending** | Public Qt APIs, explicit Runtime lifecycle |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **User-validation pending** | Same `HyRemote::RemoteAccess` entry |
 | 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Zero-code path, preserves native Qt platform |
-| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Zero-code path, preserves native Qt platform |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **User-validation pending** | Zero-code path, preserves native Qt platform |
 | 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
-| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **User-validation pending** | Thin declarative frontend over Shared Runtime |
 | 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qwindows` |
-| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qxcb` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **User-validation pending** | Private ABI; native delegate `qxcb` |
 
 The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified.
 
