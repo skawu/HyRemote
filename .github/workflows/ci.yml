@@ -31,6 +31,11 @@ on:
         description: "Exact 40-hex commit SHA this gate must run on (must equal the dispatched commit)"
         required: true
         type: string
+      legacy_dual_platform:
+        description: "Historical v0.2.0.1 maintenance only: require Windows+Linux as originally shipped"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -121,6 +126,8 @@ jobs:
           PURPOSE: ${{ inputs.purpose }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           DISPATCH_SHA: ${{ github.sha }}
+          LEGACY_DUAL_PLATFORM: ${{ inputs.legacy_dual_platform }}
+          DISPATCH_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           case "${PURPOSE}" in
@@ -135,6 +142,13 @@ jobs:
             echo "::error::expected_sha ${EXPECTED_SHA} does not match the dispatched commit ${DISPATCH_SHA}." >&2
             echo "A full gate is only evidence for the exact SHA it admits; a moving ref produces superseded evidence." >&2
             exit 1
+          fi
+          if [[ "${LEGACY_DUAL_PLATFORM:-false}" == "true" ]]; then
+            [[ "${PURPOSE}" == "release-readiness" ]] || { echo "::error::legacy dual platform is for release-readiness only"; exit 1; }
+            case "${DISPATCH_REF}" in
+              refs/heads/release/v0.2.0.1|refs/tags/v0.2.0.1) ;;
+              *) echo "::error::legacy dual-platform full gate must target historical v0.2.0.1"; exit 1 ;;
+            esac
           fi
           echo "purpose=${PURPOSE}" >> "$GITHUB_OUTPUT"
           echo "admitted full gate: purpose=${PURPOSE} sha=${DISPATCH_SHA} decision=CANDIDATE"
@@ -154,6 +168,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
+          LEGACY_DUAL_PLATFORM: ${{ inputs.legacy_dual_platform }}
         run: |
           python .github/scripts/resolve-ci-scope.py
 
