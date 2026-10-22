@@ -27,14 +27,26 @@ Local Qt installation:
 C:/Qt/5.15.2/msvc2019_64
 ```
 
-Current project configuration requires Qt 6.8 or exact Qt 6.8.3 for QPA. A direct Qt 5.15 build is therefore a separate adaptation workstream (#265), not a configuration-only operation. The first CMake probe did not run because Ninja was not on `PATH`; no Qt5 source/build result is claimed here.
+The Qt5 C++/Widgets lane now builds, installs and passes its test suite on this cell. See [qt5-adaptation-2026-10-22.md](qt5-adaptation-2026-10-22.md) for commands, evidence and the exact preview/experimental boundary.
+
+Current evidence:
+
+```text
+Qt5 CTest                         62/62 PASS
+Qt6 reference CTest               85/85 PASS
+installed C++ consumer            PASS
+Qt5 deployment (windeployqt)      PASS
+Qt5 Quick adapter                 COMPILES; tests EXPERIMENTAL
+```
+
+Qt5 QML API, Generic Plugin tests, QPA private ABI, Linux and ARM64 remain open. Qt5 stays a bounded legacy line under #57/#265; it is not a V0.3.3.0 child.
 
 Next bounded tasks:
 
-1. Add a Qt5-only configure probe to CI or a local toolchain shell, with an explicit Qt5 prefix.
-2. Inventory Qt6-only APIs in Runtime/Widgets/Quick/QML and QPA exact-private code.
-3. Keep Qt5 adaptation behind #260 GO and #265; do not make it a V0.3.3.0 blocker.
-4. Record the exact Qt5 patch/toolchain/compiler cell before any support statement.
+1. Decide whether the Qt5 Quick test failures are in the harness or the adapter, then either qualify or keep the lane build-only.
+2. Add the Qt5 Widgets lane to an obtainable CI/reference runner and keep the exact patch/toolchain cell.
+3. Continue QML/Generic/QPA/Linux/ARM64 only as separately recorded cells; do not infer them from this Windows Widgets proof.
+4. Keep Qt5 out of the V0.3.3.0 admission table and out of the ARM64/pre-V0.4 blocker list.
 
 ### ARM64 Windows / Linux
 

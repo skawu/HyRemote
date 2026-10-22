@@ -13,13 +13,19 @@ include(CMakePackageConfigHelpers)
 
 # Where the fixture world goes. This gate runs in script mode (`cmake -P`), where CMAKE_CURRENT_BINARY_DIR is **empty**,
 # so the original `${CMAKE_CURRENT_BINARY_DIR}/...` collapsed to a bare relative name and resolved against whatever
-# working directory the caller happened to have: running the gate by hand from the repository root wrote a 51-file
-# fixture tree into the source tree. CTest passes the real binary directory; a manual run falls back to the project's one
-# documented build directory, and either way the fixtures stay out of the source root.
+# working directory the caller happened to have. CTest passes an external scratch directory. A manual run must use the
+# caller's temp directory, never the source tree: writing a fixture tree under source/build is a repository-hygiene red
+# line and must fail closed if no safe temp location exists.
 if(DEFINED HYREMOTE_GATE_SCRATCH_DIR)
     set(_scratch_root "${HYREMOTE_GATE_SCRATCH_DIR}")
+elseif(DEFINED ENV{TEMP})
+    set(_scratch_root "$ENV{TEMP}/hyremote-gate-scratch")
+elseif(DEFINED ENV{TMPDIR})
+    set(_scratch_root "$ENV{TMPDIR}/hyremote-gate-scratch")
 else()
-    set(_scratch_root "${HYREMOTE_SOURCE_DIR}/build")
+    message(FATAL_ERROR
+        "package-acquisition-isolation: pass -DHYREMOTE_GATE_SCRATCH_DIR=<external directory>; "
+        "the gate refuses to create fixtures inside the source tree.")
 endif()
 file(TO_CMAKE_PATH "${_scratch_root}" _scratch_root)
 set(test_root "${_scratch_root}/hyremote-package-acquisition-isolation")

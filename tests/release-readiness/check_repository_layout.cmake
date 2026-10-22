@@ -222,8 +222,8 @@ endforeach()
 # Consolidated PR CI must select the affected frontend union rather than hard-coding all four for
 # every product edit. Common/runtime/build edits still resolve to all four in the classifier.
 read_repo_file(".github/workflows/ci.yml" ci_workflow)
-require_token("${ci_workflow}" "cancel-in-progress: true"
-              "ci.yml stopped cancelling superseded runs")
+require_token("${ci_workflow}" "cancel-in-progress: false"
+              "ci.yml stopped the per-commit concurrency isolation")
 require_token("${ci_workflow}" [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
               "ci.yml lost capability-scoped integration output")
 require_token("${ci_workflow}" [=[--integrations="$INTEGRATIONS"]=]

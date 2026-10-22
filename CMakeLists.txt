@@ -52,15 +52,45 @@ if(PROJECT_IS_TOP_LEVEL
         find_package(Qt6 QUIET COMPONENTS Core)
     endif()
     if(NOT TARGET Qt6::Core)
+        # Qt 5.15 LTS is the legacy compatibility line. Keep the public and shared-runtime
+        # sources in one tree; the Qt6 target names below are compatibility aliases over the
+        # Qt5 imported targets, not a second product implementation.
+        find_package(Qt5 5.15 QUIET COMPONENTS Core Network Gui Widgets Quick Qml)
+        if(TARGET Qt5::Core AND TARGET Qt5::Network AND TARGET Qt5::Gui AND TARGET Qt5::Widgets)
+            set(HYREMOTE_QT_MAJOR 5)
+            set(HYREMOTE_QT_VERSION "${Qt5_VERSION}")
+            add_library(Qt6::Core ALIAS Qt5::Core)
+            add_library(Qt6::Network ALIAS Qt5::Network)
+            add_library(Qt6::Gui ALIAS Qt5::Gui)
+            add_library(Qt6::Widgets ALIAS Qt5::Widgets)
+            if(TARGET Qt5::Quick)
+                add_library(Qt6::Quick ALIAS Qt5::Quick)
+            endif()
+            if(TARGET Qt5::Qml)
+                add_library(Qt6::Qml ALIAS Qt5::Qml)
+            endif()
+            if(TARGET Qt5::GuiPrivate)
+                add_library(Qt6::GuiPrivate ALIAS Qt5::GuiPrivate)
+            endif()
+            set(Qt6_VERSION "${Qt5_VERSION}")
+            set(Qt6_VERSION_MAJOR 5)
+            set(Qt6_VERSION_MINOR 15)
+            if(NOT HYREMOTE_QT5_ENABLE_QUICK)
+                set(HYREMOTE_BUILD_QUICK_ADAPTER OFF CACHE BOOL
+                    "Qt 5.15 Quick is experimental; enable explicitly with HYREMOTE_QT5_ENABLE_QUICK" FORCE)
+            endif()
+        endif()
+    endif()
+    if(NOT TARGET Qt6::Core)
         message(FATAL_ERROR
             "This top-level configure expects Qt and did not find it.\n"
             "  CMAKE_PREFIX_PATH          : '${CMAKE_PREFIX_PATH}'\n"
             "  HYREMOTE_BUILD_EXAMPLES    : ${HYREMOTE_BUILD_EXAMPLES}\n"
             "  HYREMOTE_BUILD_TESTS       : ${HYREMOTE_BUILD_TESTS}\n"
-            "Qt 6.8+ is the only qualified line today; Qt 5.15 qualification is tracked by issue #57 and is not\n"
-            "implemented, so a Qt 5.15 prefix cannot configure this product yet.\n"
-            "Pass a Qt 6.8.3 prefix, or build Core alone on purpose with -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF\n"
-            "-DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+            "Qt 6.8.3 is the reference line; Qt 5.15 is supported as a bounded legacy line when its\n"
+            "Core/Network/Gui/Widgets SDK is present. Pass a matching Qt prefix, or build Core alone\n"
+            "on purpose with -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF -DHYREMOTE_BUILD_EXAMPLES=OFF\n"
+            "-DHYREMOTE_BUILD_TESTS=OFF.")
     endif()
 endif()
 
@@ -224,6 +254,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         NAME hyremote-release-readiness-deploy-helper-contract
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_GATE_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/gate-scratch
             -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
             -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
             -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
@@ -314,12 +345,16 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     # test for a product surface that configuration never claimed - and a test that skips itself is not a substitute
     # for not registering it.
     if(HYREMOTE_BUILD_CPP_API AND TARGET hyremote-remoteaccess)
+        set(_hyremote_cpp_evidence_cells installed-cpp-widgets)
+        if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+            list(APPEND _hyremote_cpp_evidence_cells installed-cpp-quick)
+        endif()
         add_test(
             NAME hyremote-cpp-installed-consumers
             COMMAND "${CMAKE_COMMAND}"
                 -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                 -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-                "-DEVIDENCE_CELLS=installed-cpp-widgets;installed-cpp-quick"
+                "-DEVIDENCE_CELLS=${_hyremote_cpp_evidence_cells}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
         )
         set_tests_properties(hyremote-cpp-installed-consumers PROPERTIES TIMEOUT 1200)
@@ -424,6 +459,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
                 --source-dir "${CMAKE_CURRENT_SOURCE_DIR}"
                 --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
                 --qt-prefix "${CMAKE_PREFIX_PATH}"
+                --quick-enabled "${HYREMOTE_REMOTEACCESS_WITH_QUICK}"
                 "--cmake-arg=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
                 "--cmake-arg=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
         )

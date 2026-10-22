@@ -149,7 +149,11 @@ void FramebufferView::mousePressEvent(QMouseEvent *event)
     }
     setFocus(Qt::MouseFocusReason);
     m_buttons = buttonMask(event->buttons());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     sendPointer(event->position().toPoint(), m_buttons);
+#else
+    sendPointer(event->localPos().toPoint(), m_buttons);
+#endif
     event->accept();
 }
 
@@ -159,7 +163,11 @@ void FramebufferView::mouseMoveEvent(QMouseEvent *event)
         QWidget::mouseMoveEvent(event);
         return;
     }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     sendPointer(event->position().toPoint(), m_buttons);
+#else
+    sendPointer(event->localPos().toPoint(), m_buttons);
+#endif
     event->accept();
 }
 
@@ -170,7 +178,11 @@ void FramebufferView::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
     m_buttons = buttonMask(event->buttons());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     sendPointer(event->position().toPoint(), m_buttons);
+#else
+    sendPointer(event->localPos().toPoint(), m_buttons);
+#endif
     event->accept();
 }
 
@@ -180,7 +192,11 @@ void FramebufferView::wheelEvent(QWheelEvent *event)
         QWidget::wheelEvent(event);
         return;
     }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     const QPoint imagePoint = mapToImage(event->position().toPoint());
+#else
+    const QPoint imagePoint = mapToImage(event->posF().toPoint());
+#endif
     if (imagePoint.x() < 0)
         return;
     const int delta = event->angleDelta().y();

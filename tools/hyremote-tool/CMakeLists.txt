@@ -19,6 +19,9 @@ set_target_properties(hyremote-remote-support-showcase PROPERTIES
 )
 
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
+if(MSVC)
+    target_compile_options(hyremote-remote-support-showcase PRIVATE /utf-8)
+endif()
 target_link_libraries(hyremote-remote-support-showcase
     PRIVATE
         Qt6::Widgets
@@ -28,16 +31,18 @@ target_link_libraries(hyremote-remote-support-showcase
 install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
 
 # The tool needs Qt itself, not the HyRemote Runtime payload. Use Qt's own
-# deployment script so the installed client has a self-contained Qt runtime.
-if(NOT DEFINED QT_DEPLOY_SUPPORT OR "${QT_DEPLOY_SUPPORT}" STREQUAL "")
-    message(FATAL_ERROR "HyRemoteTool requires Qt's deployment support script from Qt6 Core")
+# deployment script when the Qt major provides it; the Qt 5.15 build is a
+# build-only compatibility lane until its packaging closure is qualified.
+if(DEFINED QT_DEPLOY_SUPPORT AND NOT "${QT_DEPLOY_SUPPORT}" STREQUAL "")
+    qt_generate_deploy_app_script(
+        TARGET hyremote-remote-support-showcase
+        OUTPUT_SCRIPT hyremote_tool_deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+    )
+    install(SCRIPT ${hyremote_tool_deploy_script})
+else()
+    message(STATUS "  HyRemoteTool: Qt deployment helper unavailable; build only")
 endif()
-qt_generate_deploy_app_script(
-    TARGET hyremote-remote-support-showcase
-    OUTPUT_SCRIPT hyremote_tool_deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-)
-install(SCRIPT ${hyremote_tool_deploy_script})
 
 if(HYREMOTE_BUILD_TESTS)
     add_executable(hyremote-tool-rfb-client-test

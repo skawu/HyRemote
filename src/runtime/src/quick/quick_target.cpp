@@ -533,7 +533,11 @@ private:
             return;
 
         const QPointF local(mapped->x, mapped->y);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         const QPointF global = window->mapToGlobal(local);
+#else
+        const QPointF global = QPointF(window->mapToGlobal(local.toPoint()));
+#endif
         deliverQtWindowSystemPointer(window, event, local, global, timestamp, state->pointer);
     }
 
