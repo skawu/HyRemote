@@ -45,9 +45,9 @@ import sys
 
 PEERS = ["cpp", "qml", "generic", "qpa"]
 
-# Product matrix entries. The full gate and ordinary product PRs run both; a
-# test-only ready PR runs the Windows entry only (it still builds and executes
-# the complete test set).
+# Historical product matrix lists both Windows and Linux. Owner #563 makes Windows
+# the only *required* product/RC/GA lane; Linux is user-validation/best-effort.
+# Keep the Linux entry as a diagnostic reference, not an automatic blocking gate.
 PRODUCT_MATRIX = [
     {
         "name": "Linux x86_64 / Qt 6.8.3",
@@ -299,11 +299,11 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     full_gate = lane == "FULL_GATE"
     product_lane = lane in ("PR_FAST", "FULL_GATE")
     test_only = product_lane and not full_gate and is_test_only(changed)
-    product_matrix = [PRODUCT_MATRIX[1]] if test_only else PRODUCT_MATRIX
+    product_matrix = [PRODUCT_MATRIX[1]]  # Windows mandatory; Linux CI/physical user-validation nonblocking (#563)
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
-    # because its whole purpose is the complete dual-platform acceptance run.
+    # because its whole purpose is the complete **Windows** acceptance run.
     if full_gate:
         selected.update(PEERS)
 
@@ -679,8 +679,8 @@ def self_test() -> int:
                   f"{resolved['test_exclude']!r}")
             failures += 1
 
-    # Test-only ready PRs keep the Windows product lane but skip the duplicate
-    # Linux matrix; product, docs, draft and full-gate changes are not test-only.
+    # All ready PR and full-gate matrices contain only the mandatory Windows lane;
+    # Linux is optional/manual and must never delay a Windows release (#563).
     for description, event, changed, draft, expected in (
             ("test-only ready PR", "pull_request", ["tests/TEST_CATALOG.md"], False, True),
             ("test code ready PR", "pull_request",
@@ -696,13 +696,13 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test_only={resolved['test_only']!r}")
             failures += 1
         matrix = json.loads(resolved["product_matrix"])
-        expected_platforms = 1 if expected else 2
+        expected_platforms = 1
         if len(matrix) != expected_platforms:
             print(f"CASE FAILED: {description}: product_matrix has {len(matrix)} entries, "
                   f"expected {expected_platforms}")
             failures += 1
-        if expected and matrix and matrix[0].get("os") != "windows-2022":
-            print(f"CASE FAILED: {description}: test-only lane must keep Windows, got {matrix[0].get('os')!r}")
+        if matrix and matrix[0].get("os") != "windows-2022":
+            print(f"CASE FAILED: {description}: mandatory product lane must keep Windows, got {matrix[0].get('os')!r}")
             failures += 1
 
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
@@ -721,7 +721,7 @@ def self_test() -> int:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
     print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, test-only ready PRs keep "
-          "one product platform, examples documentation selects no capability, release authority is governance, "
+          "Windows-only mandatory product platform, examples documentation selects no capability, release authority is governance, "
           "empty exclusions stay empty, no exclusion can match every test, fast lane preserved, readiness runs "
           "where it is consumed, the candidate-only product fit runs where it is required rather than by default, "
           "security-on evidence is selected only by the VNC-auth/private-security surfaces and never silently by "
