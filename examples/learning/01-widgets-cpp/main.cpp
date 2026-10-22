@@ -54,9 +54,14 @@ protected:
 
     void mousePressEvent(QMouseEvent *event) override
     {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QPointF position = event->position();
+#else
+        const QPointF position = event->localPos();
+#endif
         std::cout << "INPUT_MOUSE press button=" << static_cast<int>(event->button())
-                  << " x=" << event->position().x()
-                  << " y=" << event->position().y() << std::endl;
+                  << " x=" << position.x()
+                  << " y=" << position.y() << std::endl;
         QLineEdit::mousePressEvent(event);
     }
 

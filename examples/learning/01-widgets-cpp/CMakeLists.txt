@@ -12,7 +12,9 @@ if(NOT TARGET HyRemote::RemoteAccess)
     find_package(HyRemote CONFIG REQUIRED)
 endif()
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)
+if(NOT TARGET Qt6::Widgets)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)
+endif()
 
 add_executable(hyremote-learning-01-widgets main.cpp)
 target_compile_features(hyremote-learning-01-widgets PRIVATE cxx_std_17)
@@ -22,6 +24,8 @@ install(TARGETS hyremote-learning-01-widgets RUNTIME DESTINATION bin)
 
 # The ordinary deployment call: it carries the shared runtime and the Qt runtime closure the deployed application
 # needs, so the deployed tree runs without the SDK on its search path.
-if(COMMAND hyremote_deploy)
+if(COMMAND hyremote_deploy AND NOT HYREMOTE_QT_MAJOR STREQUAL "5")
     hyremote_deploy(TARGET hyremote-learning-01-widgets)
+elseif(HYREMOTE_QT_MAJOR STREQUAL "5")
+    message(STATUS "  hyremote-learning-01-widgets: Qt5 deployment helper is not qualified; build only")
 endif()

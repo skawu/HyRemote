@@ -7,6 +7,7 @@
 #include <QPalette>
 #include <QWidget>
 #include <QWheelEvent>
+#include <QtMath>
 
 #include <functional>
 #include <iostream>
@@ -65,7 +66,11 @@ protected:
     void mousePressEvent(QMouseEvent *event) override
     {
         ++mousePresses;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         lastMousePosition = event->position();
+#else
+        lastMousePosition = event->localPos();
+#endif
         lastModifiers = event->modifiers();
         event->accept();
     }
@@ -73,7 +78,11 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override
     {
         ++mouseMoves;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         lastMousePosition = event->position();
+#else
+        lastMousePosition = event->localPos();
+#endif
         event->accept();
     }
 
@@ -228,7 +237,11 @@ void testWidgetsFactoryAndOwnedFrame()
     probe.show();
     QCoreApplication::processEvents();
     const QPointF logicalCentre(100.0, 50.0);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     const QPointF globalCentre = probe.mapToGlobal(logicalCentre);
+#else
+    const QPointF globalCentre = probe.mapToGlobal(logicalCentre.toPoint());
+#endif
     QMouseEvent move(QEvent::MouseMove, logicalCentre, globalCentre, Qt::NoButton, Qt::NoButton,
                      Qt::NoModifier);
     QCoreApplication::sendEvent(&probe, &move);
