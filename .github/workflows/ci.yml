@@ -31,8 +31,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Per-commit identity: a later docs-only merge must never cancel Windows Qt tests
+  # for an earlier merge whose source changes still need validation (#571).
+  group: ci-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   classify:
