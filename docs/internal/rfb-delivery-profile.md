@@ -129,13 +129,12 @@ The next required evidence is a maintained third-party GUI viewer on both platfo
 - measured improvement and regression bounds versus V0.3.0.0: synthetic bytes and loopback latency recorded; no
   interaction-SLO or CPU/memory envelope yet;
 - dependency/licence decision: **no zlib/ZRLE dependency** on current evidence;
-- viewer matrix and known limitations: **open**; no maintained GUI viewer evidence yet;
-- concrete implementation tasks for #144: no codec addition; close remaining viewer/performance evidence and decide
-  whether the ARM64 cell required by the issue text belongs to V0.3.3.0 or V0.3.4.0.
+- viewer matrix and known limitations: **partial**; RealVNC 7.15.1 + TightVNC 2.8.85 Windows evidence at develop 26f77d9, but Linux maintained GUI viewer, cursor-shape and maintained-viewer interaction SLO remain open;
+- concrete implementation tasks for #144: no codec addition; close remaining Windows/Linux x86_64 desktop viewer/performance evidence for V0.3.3.0 under Owner decision #558. The ARM64/EGLFS equivalent is mandatory pre-V0.4 product breadth under #236/#154/#203/#343, not a V0.3.3 desktop freeze condition.
 
 ## Non-goals
 
 - no new frontend, public API or user-facing compression setting;
-- no ARM64/EGLFS/Wayland qualification in this profile (V0.3.4.0);
-- no management-plane or TLS work (V0.3.5.0);
+- no ARM64/EGLFS/Wayland qualification **in this exact desktop Feature**; they remain mandatory before V0.4 entry with future Feature numbers assigned only upon activation;
+- no management-plane or TLS work; optional later product outcomes require evidence/Owner admission and have no reserved Feature number;
 - no claim from synthetic-client data alone; maintained-viewer evidence is required.
