@@ -217,34 +217,47 @@ hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
     using hyremote::KeyCode;
     switch (keysym) {
     case 0xff0d:
+    case 0xff8d:  // XK_KP_Enter
         return KeyCode::Enter;
     case 0xff1b:
         return KeyCode::Escape;
     case 0xff09:
+    case 0xff89:  // XK_KP_Tab
         return KeyCode::Tab;
     case 0xff08:
         return KeyCode::Backspace;
     case 0xffff:
+    case 0xff9f:  // XK_KP_Delete
         return KeyCode::DeleteForward;
     case 0xff63:
+    case 0xff9e:  // XK_KP_Insert
         return KeyCode::Insert;
     case 0xff50:
+    case 0xff95:  // XK_KP_Home
         return KeyCode::Home;
     case 0xff57:
+    case 0xff9c:  // XK_KP_End
         return KeyCode::End;
     case 0xff55:
+    case 0xff9a:  // XK_KP_Prior
         return KeyCode::PageUp;
     case 0xff56:
+    case 0xff9b:  // XK_KP_Next
         return KeyCode::PageDown;
     case 0xff51:
+    case 0xff96:  // XK_KP_Left
         return KeyCode::ArrowLeft;
     case 0xff52:
+    case 0xff97:  // XK_KP_Up
         return KeyCode::ArrowUp;
     case 0xff53:
+    case 0xff98:  // XK_KP_Right
         return KeyCode::ArrowRight;
     case 0xff54:
+    case 0xff99:  // XK_KP_Down
         return KeyCode::ArrowDown;
     case 0x20:
+    case 0xff80:  // XK_KP_Space
         return KeyCode::Space;
     case 0xffe1:
     case 0xffe2:
@@ -268,6 +281,8 @@ hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
 
     if (keysym >= '0' && keysym <= '9')
         return static_cast<KeyCode>(static_cast<int>(KeyCode::Digit0) + keysym - '0');
+    if (keysym >= 0xffb0 && keysym <= 0xffb9)  // XK_KP_0..XK_KP_9
+        return static_cast<KeyCode>(static_cast<int>(KeyCode::Digit0) + keysym - 0xffb0);
     if (keysym >= 'A' && keysym <= 'Z')
         return static_cast<KeyCode>(static_cast<int>(KeyCode::A) + keysym - 'A');
     if (keysym >= 'a' && keysym <= 'z')
@@ -312,7 +327,25 @@ hyremote::InputModifiers modifiersForHeldKeysyms(const std::vector<std::uint32_t
 std::string utf8ForKeysym(std::uint32_t keysym)
 {
     std::uint32_t cp = 0;
-    if (keysym >= 0x20 && keysym <= 0x7e)
+    if (keysym >= 0xffb0 && keysym <= 0xffb9)  // XK_KP_0..XK_KP_9
+        cp = static_cast<std::uint32_t>('0') + (keysym - 0xffb0);
+    else if (keysym == 0xffae)  // XK_KP_Decimal
+        cp = '.';
+    else if (keysym == 0xffab)  // XK_KP_Add
+        cp = '+';
+    else if (keysym == 0xffad)  // XK_KP_Subtract
+        cp = '-';
+    else if (keysym == 0xffaa)  // XK_KP_Multiply
+        cp = '*';
+    else if (keysym == 0xffaf)  // XK_KP_Divide
+        cp = '/';
+    else if (keysym == 0xffbd)  // XK_KP_Equal
+        cp = '=';
+    else if (keysym == 0xffac)  // XK_KP_Separator
+        cp = ',';
+    else if (keysym == 0xff80)  // XK_KP_Space
+        cp = ' ';
+    else if (keysym >= 0x20 && keysym <= 0x7e)
         cp = keysym;
     else if (keysym >= 0xa0 && keysym <= 0xff)
         cp = keysym;

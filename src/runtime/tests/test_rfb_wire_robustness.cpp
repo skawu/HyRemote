@@ -1980,6 +1980,25 @@ void runDeliveryProfile(const QString &outputPath)
               << outputPath.toStdString() << '\n';
 }
 
+void testLargeDamageCoalescesForPaint()
+{
+    HyRemote::detail::RfbDamageRegion large;
+    for (int y = 0; y < 256; y += 64) {
+        for (int x = 0; x < 256; x += 64)
+            large.add({x, y, 64, 64});
+    }
+    const auto painted = HyRemote::detail::coalesceRfbDamageForPaint(large, 256U, 256U);
+    const HyRemote::detail::RfbRect expectedFull{0, 0, 256, 256};
+    CHECK(painted.size() == 1U);
+    if (painted.size() == 1U)
+        CHECK(painted.rects().front() == expectedFull);
+
+    HyRemote::detail::RfbDamageRegion smallDamage;
+    smallDamage.add({0, 0, 8, 8});
+    smallDamage.add({100, 100, 8, 8});
+    CHECK(HyRemote::detail::coalesceRfbDamageForPaint(smallDamage, 256U, 256U).size() == 2U);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -1999,6 +2018,7 @@ int main(int argc, char **argv)
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
+    testLargeDamageCoalescesForPaint();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();
