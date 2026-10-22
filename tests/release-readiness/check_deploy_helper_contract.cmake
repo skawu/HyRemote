@@ -381,9 +381,16 @@ foreach(package_probe_toolchain_key IN ITEMS GENERATOR MAKE_PROGRAM C_COMPILER C
     endif()
 endforeach()
 
+if(DEFINED HYREMOTE_GATE_SCRATCH_DIR AND NOT HYREMOTE_GATE_SCRATCH_DIR STREQUAL "")
+    set(package_probe_scratch "${HYREMOTE_GATE_SCRATCH_DIR}/deploy-helper-package-probe")
+else()
+    set(package_probe_scratch "$ENV{TEMP}/hyremote-deploy-helper-package-probe")
+endif()
+
 execute_process(
     COMMAND "${CMAKE_COMMAND}"
         -DHYREMOTE_SOURCE_DIR=${HYREMOTE_SOURCE_DIR}
+        -DHYREMOTE_GATE_SCRATCH_DIR=${package_probe_scratch}
         ${package_probe_toolchain}
         -P "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
     RESULT_VARIABLE package_probe_result
