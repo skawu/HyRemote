@@ -9,11 +9,13 @@ Add remote viewing and optional remote control to existing Qt Widgets and Qt Qui
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-  <img src="https://img.shields.io/badge/product-V0.2%20LAN%20trial-orange.svg" alt="Product: V0.2 LAN trial">
-  <img src="https://img.shields.io/badge/reference-Windows%20%7C%20Linux%20x86__64-lightgrey.svg" alt="Reference: Windows | Linux x86_64">
+  <img src="https://img.shields.io/badge/product-V0.3%20Product%20Preview-orange.svg" alt="Product: V0.3 Product Preview">
+  <img src="https://img.shields.io/badge/qualified-Windows%20x86__64-lightgrey.svg" alt="Validated platform: Windows x86_64">
   <img src="https://img.shields.io/badge/Qt-6.8.3%20reference-41CD52.svg" alt="Qt 6.8.3 reference">
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
 </p>
+
+**Platform validation policy (2026-10-22):** Windows x86_64 is the required, actually qualified development and release platform. Linux desktop, ARM64/embedded Linux and Wayland/EGLFS are Qt-based **user-validation pending** paths; lacking those target devices or tests does **not** block new Feature/RC/GA releases, and Qt portability alone does not make them Supported. Reproducible user reports are handled through Issues and reviewed maintenance/hotfixes. The historical v0.3.0.0 release notes are unchanged. See [compatibility](docs/compatibility.md) and the [Owner platform decision](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
 ## Start here
 
