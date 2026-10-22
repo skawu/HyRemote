@@ -28,6 +28,7 @@ set(HYB_EXAMPLES OFF)
 set(HYB_CLEAN OFF)
 set(HYB_VERBOSE OFF)
 set(HYB_SHOW_CONFIG OFF)
+set(HYB_NO_PROMPT OFF)
 # build.cmd's subcommand. Absent means build, so every historical invocation keeps its meaning.
 set(HYB_SUBCOMMAND "build")
 set(HYB_INSTALL OFF)
