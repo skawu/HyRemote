@@ -244,6 +244,19 @@ endfunction()
 function(make_qt_discovery_kit kit_dir marker)
     file(MAKE_DIRECTORY "${kit_dir}/lib/cmake/Qt6")
     file(WRITE "${kit_dir}/lib/cmake/Qt6/Qt6Config.cmake" "# ${marker}\n")
+    # The real package carries its own version; a Kit prefix need not be named <version>/<kit>.
+    set(_version "${ARGV2}")
+    if(_version STREQUAL "")
+        get_filename_component(_parent "${kit_dir}" DIRECTORY)
+        get_filename_component(_parent_name "${_parent}" NAME)
+        if(_parent_name MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+            set(_version "${_parent_name}")
+        endif()
+    endif()
+    if(NOT _version STREQUAL "")
+        file(WRITE "${kit_dir}/lib/cmake/Qt6/Qt6ConfigVersion.cmake"
+             "set(PACKAGE_VERSION \"${_version}\")\n")
+    endif()
 endfunction()
 
 set(qt_one_root "${scratch}/qt-discovery-one")
@@ -253,6 +266,12 @@ set(qt_empty_root "${scratch}/qt-discovery-empty")
 set(qt_invalid_environment_root "${scratch}/qt-discovery-invalid-environment")
 set(qt_one_kit "${qt_one_root}/6.8.3/gcc_64")
 make_qt_discovery_kit("${qt_one_kit}" kit-one)
+if(WIN32)
+    set(qt_custom_kit "${scratch}/vendor/qt-msvc2022_64")
+else()
+    set(qt_custom_kit "${scratch}/vendor/qt-gcc_64")
+endif()
+make_qt_discovery_kit("${qt_custom_kit}" custom-prefix 6.8.3)
 make_qt_discovery_kit("${qt_two_root}/6.8.3/gcc_64" kit-two-a)
 make_qt_discovery_kit("${qt_two_root}/6.8.4/gcc_64" kit-two-b)
 make_qt_discovery_kit("${qt_rejected_root}/6.8.3/wasm_32" kit-wasm)
@@ -276,6 +295,16 @@ run_env_success(qt-discovery-explicit-prefix-wins
 require_text_flat(qt-discovery-explicit-prefix-wins "${HYB_TEST_OUTPUT}"
     "Qt prefix : ${qt_two_root}/6.8.4/gcc_64")
 forbid_text_flat(qt-discovery-explicit-prefix-wins "${HYB_TEST_OUTPUT}" "(discovered)")
+
+# A valid vendor Kit outside the Online Installer <version>/<kit> layout must be
+# discovered by its own Qt CMake package version, not rejected because its parent
+# directory is named "vendor".
+run_env_success(qt-discovery-custom-prefix
+    "QTDIR=${qt_custom_kit};CMAKE_PREFIX_PATH="
+    --no-config --show-config)
+require_text_flat(qt-discovery-custom-prefix "${HYB_TEST_OUTPUT}"
+    "Qt prefix : ${qt_custom_kit}")
+forbid_text_flat(qt-discovery-custom-prefix "${HYB_TEST_OUTPUT}" "not buildable")
 
 # The platform-specific half of the rule: which install roots POSIX discovery scans, how a POSIX kit is
 # classified, and what a POSIX reader is told when nothing usable is installed. Windows keeps its own layout
