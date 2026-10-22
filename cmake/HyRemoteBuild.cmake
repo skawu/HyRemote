@@ -862,7 +862,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                     string(APPEND _qt_menu " (not a qualified reference Kit)")
                 endif()
             endforeach()
-            set(_qt_choice_help
+            string(CONCAT _qt_choice_help
                 "Several Qt 6.8+ kits on this machine could build HyRemote; none is a default.\n"
                 "Candidates:${_qt_menu}\n"
                 "Specify build.yml qt.prefix or ${_qt_choose_command} to skip selection.")
