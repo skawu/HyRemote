@@ -244,6 +244,19 @@ endfunction()
 function(make_qt_discovery_kit kit_dir marker)
     file(MAKE_DIRECTORY "${kit_dir}/lib/cmake/Qt6")
     file(WRITE "${kit_dir}/lib/cmake/Qt6/Qt6Config.cmake" "# ${marker}\n")
+    # The real package carries its own version; a Kit prefix need not be named <version>/<kit>.
+    set(_version "${ARGV2}")
+    if(_version STREQUAL "")
+        get_filename_component(_parent "${kit_dir}" DIRECTORY)
+        get_filename_component(_parent_name "${_parent}" NAME)
+        if(_parent_name MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+            set(_version "${_parent_name}")
+        endif()
+    endif()
+    if(NOT _version STREQUAL "")
+        file(WRITE "${kit_dir}/lib/cmake/Qt6/Qt6ConfigVersion.cmake"
+             "set(PACKAGE_VERSION \"${_version}\")\n")
+    endif()
 endfunction()
 
 set(qt_one_root "${scratch}/qt-discovery-one")
@@ -253,11 +266,26 @@ set(qt_empty_root "${scratch}/qt-discovery-empty")
 set(qt_invalid_environment_root "${scratch}/qt-discovery-invalid-environment")
 set(qt_one_kit "${qt_one_root}/6.8.3/gcc_64")
 make_qt_discovery_kit("${qt_one_kit}" kit-one)
+if(WIN32)
+    set(qt_custom_kit "${scratch}/vendor/qt-msvc2022_64")
+else()
+    set(qt_custom_kit "${scratch}/vendor/qt-gcc_64")
+endif()
+make_qt_discovery_kit("${qt_custom_kit}" custom-prefix 6.8.3)
 make_qt_discovery_kit("${qt_two_root}/6.8.3/gcc_64" kit-two-a)
 make_qt_discovery_kit("${qt_two_root}/6.8.4/gcc_64" kit-two-b)
 make_qt_discovery_kit("${qt_rejected_root}/6.8.3/wasm_32" kit-wasm)
 make_qt_discovery_kit("${qt_rejected_root}/6.8.4/gcc_arm64" kit-wrong-arch)
 file(MAKE_DIRECTORY "${qt_empty_root}" "${qt_invalid_environment_root}")
+
+# Qt 5.15 is inventoried but not selectable; Qt 6.12 is discoverable when QPA is off,
+# and never becomes a default ahead of Qt 6.8.3. A version does not identify a Kit.
+set(qt_versions_root "${scratch}/qt-discovery-versions")
+file(MAKE_DIRECTORY "${qt_versions_root}/5.15.2/gcc_64/lib/cmake/Qt5")
+file(WRITE "${qt_versions_root}/5.15.2/gcc_64/lib/cmake/Qt5/Qt5Config.cmake" "# Qt5 mock\n")
+make_qt_discovery_kit("${qt_versions_root}/6.8.3/gcc_64" version-683)
+make_qt_discovery_kit("${qt_versions_root}/6.12.0/gcc_64" version-612)
+
 
 # An explicit --qt-prefix is used exactly as given and never second-guessed by discovery. That precedence is the
 # same on every platform, so it is asserted on every platform.
@@ -268,12 +296,58 @@ require_text_flat(qt-discovery-explicit-prefix-wins "${HYB_TEST_OUTPUT}"
     "Qt prefix : ${qt_two_root}/6.8.4/gcc_64")
 forbid_text_flat(qt-discovery-explicit-prefix-wins "${HYB_TEST_OUTPUT}" "(discovered)")
 
+# A valid vendor Kit outside the Online Installer <version>/<kit> layout must be
+# discovered by its own Qt CMake package version, not rejected because its parent
+# directory is named "vendor".
+run_env_success(qt-discovery-custom-prefix
+    "QTDIR=${qt_custom_kit};CMAKE_PREFIX_PATH="
+    --no-config --show-config)
+require_text_flat(qt-discovery-custom-prefix "${HYB_TEST_OUTPUT}"
+    "Qt prefix : ${qt_custom_kit}")
+forbid_text_flat(qt-discovery-custom-prefix "${HYB_TEST_OUTPUT}" "not buildable")
+
 # The platform-specific half of the rule: which install roots POSIX discovery scans, how a POSIX kit is
 # classified, and what a POSIX reader is told when nothing usable is installed. Windows keeps its own layout
 # rule in the same function - the Online Installer tree and its msvc/mingw kit names - and that rule is
 # exercised by the Windows lane's real build, so it is not asserted here through POSIX kit names and POSIX
 # shell commands.
 if(UNIX AND NOT APPLE)
+    # Inventory includes Qt 5.15 (ineligible), Qt 6.8.3 and 6.12.0. Report only:
+    # display selectable Qt6 Kits without presenting Qt5 as a configurable target.
+    run_env_success(qt-discovery-multiple-versions-report
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_versions_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Qt 6.8.3 / gcc_64")
+    require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Qt 6.12.0 / gcc_64")
+    require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Not selectable")
+    forbid_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Qt Kit selected by user")
+
+    # An unattended build with more than one Kit must refuse to guess.
+    run_env_failure(qt-discovery-multiple-versions-no-prompt
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_versions_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config build --examples --no-prompt "--build-dir=${scratch}/qt-multiversion-build")
+    require_text_flat(qt-discovery-multiple-versions-no-prompt "${HYB_TEST_OUTPUT}" "No interactive selection")
+    forbid_text_flat(qt-discovery-multiple-versions-no-prompt "${HYB_TEST_OUTPUT}" "phase: configure")
+
+    # Exact user profile avoids the second prompt regardless of other installed Kits.
+    set(qt_user_profile "${scratch}/qt-user-profile.yml")
+    file(WRITE "${qt_user_profile}" "version: 1\nqt:\n  prefix: \"${qt_versions_root}/6.12.0/gcc_64\"\n")
+    run_env_success(qt-discovery-config-prefix-wins
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_versions_root};QTDIR=;CMAKE_PREFIX_PATH="
+        "--config=${qt_user_profile}" --no-prompt --no-qpa --show-config)
+    require_text_flat(qt-discovery-config-prefix-wins "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_versions_root}/6.12.0/gcc_64")
+    forbid_text_flat(qt-discovery-config-prefix-wins "${HYB_TEST_OUTPUT}" "Qt Kit selected by user")
+
+    # With QPA enabled only the exact 6.8.3 private-ABI target may be offered.
+    run_env_success(qt-discovery-qpa-abi-rejects-other
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_versions_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --qpa --show-config -v)
+    require_text_flat(qt-discovery-qpa-abi-rejects-other "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_versions_root}/6.8.3/gcc_64 (discovered)")
+    require_text_flat(qt-discovery-qpa-abi-rejects-other "${HYB_TEST_OUTPUT}"
+        "QPA needs exact Qt 6.8.3 private ABI")
+
     # One compatible kit is adopted, and the run says where the prefix came from.
     run_env_success(qt-discovery-one-kit
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_one_root};QTDIR=;CMAKE_PREFIX_PATH="
@@ -325,7 +399,7 @@ if(UNIX AND NOT APPLE)
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
         --no-config --show-config)
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.3/gcc_64")
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.4/gcc_64")
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
@@ -340,9 +414,9 @@ if(UNIX AND NOT APPLE)
     # a Core-only configuration legitimately needs no Qt at all, so asserting on that would prove nothing.
     run_env_failure(qt-discovery-two-kits-build-fails-closed
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
-        build --examples "--build-dir=${scratch}/qt-discovery-two-build")
+        --no-config build --examples --no-prompt "--build-dir=${scratch}/qt-discovery-two-build")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
         "sh ./build.cmd build --qt-prefix=<one-of-these>")
     # Fail closed means it stops before configuring anything, not after a configure that then fails for its own
@@ -373,7 +447,7 @@ if(UNIX AND NOT APPLE)
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_rejected_root};QTDIR=${qt_two_root}/6.8.3/gcc_64;CMAKE_PREFIX_PATH=${qt_two_root}/6.8.4/gcc_64"
         --no-config --show-config)
     require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
         "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
     require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
@@ -429,7 +503,7 @@ if(UNIX AND NOT APPLE)
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_same_class_root_a}\;${qt_same_class_root_b};QTDIR=;CMAKE_PREFIX_PATH="
         --no-config --show-config)
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
         "${qt_same_class_root_a}/6.8.3/gcc_64")
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
@@ -469,7 +543,7 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "No Qt 6.8+ installation was found")
     require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}"
         "sh ./build.cmd build --qt-prefix=<path-to-Qt/6.8.3/gcc_64>")
-    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/6.8.*/*")
+    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/<version>/<kit>")
     forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "C:/Qt")
     forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "mingw_64")
 

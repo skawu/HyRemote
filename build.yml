@@ -12,8 +12,13 @@ build:
   examples: true       # 示例：false
 
 qt:
-  # 目标平台 Qt 6.8.3；留空时使用 QTDIR/CMAKE_PREFIX_PATH。
-  # 示例：C:/Qt/6.8.3/msvc2022_64、/opt/qt-6.8.3-aarch64
+  # 显式指定完整 Qt Kit（版本 + 编译器 + 架构），无需二次确认。
+  # 示例：C:/Qt/6.8.3/msvc2022_64、C:/Qt/6.8.3/mingw_64
+  # 留空：先检查 QTDIR/CMAKE_PREFIX_PATH，再扫描本机 Qt；
+  # 多个可用 Kit 时在交互终端列出编号并由用户选择，不会默认选最新。
+  # CI / 无交互终端请明确指定 prefix 或使用 --qt-prefix=PATH；--no-prompt 禁止提问。
+  # 注意：Qt 5.15 尚不能配置当前 Qt6 代码；Qt 6.12 不是已认证版本，
+  #       QPA 当前必须使用精确的 Qt 6.8.3 private ABI。
   prefix: ""
 
 compiler:
