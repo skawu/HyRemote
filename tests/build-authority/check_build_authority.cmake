@@ -514,7 +514,7 @@ if(UNIX AND NOT APPLE)
     require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "No Qt 6.8+ installation was found")
     require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}"
         "sh ./build.cmd build --qt-prefix=<path-to-Qt/6.8.3/gcc_64>")
-    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/6.8.*/*")
+    require_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "/opt/Qt/<version>/<kit>")
     forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "C:/Qt")
     forbid_text_flat(qt-discovery-none-found "${HYB_TEST_OUTPUT}" "mingw_64")
 
