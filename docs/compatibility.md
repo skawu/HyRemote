@@ -10,23 +10,24 @@ HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似�
 - **Limited**：只在声明的窄条件下完成资格认证，例如 QPA 的精确 Qt private ABI。
 - **TODO**：计划中的产品覆盖，尚未可用或尚未认证。
 - **Unsupported**：超出声明产品契约，或已知在该组合下不可用。
+- **User-validation pending**：Qt 跨平台代码/构建路径存在，但用户目标系统尚未完成独立证明；不阻塞 Windows 版本，不等于 Supported。
 
-## 当前发布参考矩阵（V0.3.0.0）
+## 当前声明矩阵（V0.3.0.0 历史基础 / #563 新版本资格策略）
 
-当前发布参考环境是 **Qt 6.8.3，Windows x86_64 和 Linux x86_64**。
+**当前新版本资格策略（Owner #563）仅要求 Windows x86_64 / Qt 6.8.3 真实验证。** 下表 Linux 行反映可使用的 Qt 跨平台接入路径，但尚未通过新策略下的用户/目标机独立资格验证。历史 V0.3.0.0 发布包和当时声明不回写；新版本不得将 Linux 标为已资格支持。
 
 | Qt | 平台 | 接入方式 | UI 目标 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | 6.8.3 | Windows x86_64 | C++ API | Widgets | **Supported** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
 | 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口 |
-| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Supported** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
-| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口 |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **User-validation pending** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **User-validation pending** | 同一个 `HyRemote::RemoteAccess` 入口 |
 | 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 零代码路径，保留原生 Qt 平台 |
-| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 零代码路径，保留原生 Qt 平台 |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **User-validation pending** | 零代码路径，保留原生 Qt 平台 |
 | 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
-| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **User-validation pending** | 共享 Runtime 上的薄声明式前端 |
 | 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qwindows` |
-| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qxcb` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **User-validation pending** | Private ABI；原生 delegate `qxcb` |
 
 这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。
 
@@ -49,14 +50,14 @@ HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 
 ## 操作系统
 
-当前桌面参考平台：
+强制真实验证平台：
 
-- Windows x86_64；
-- Linux x86_64。
+- **Windows x86_64**（实际工作/GA 资格环境）；
+- Linux x86_64（Qt 跨平台路径；**用户验证中，不阻塞开发、V0.4 或 V1**）。
 
 一个操作系统通过，不表示另一个操作系统也会通过。
 
-> **TODO V0.4：** 在选定 Qt LTS 矩阵上扩大正式资格覆盖，同时继续分别记录 Windows/Linux 结果。
+> **Owner #563：** V0.4 只对已承诺 Windows 单元执行硬资格；Linux 可收集用户报告或已有 CI 诊断，但不得作为发布门槛。
 
 ## 产品 payload 兼容性
 
@@ -178,7 +179,7 @@ Viewer 互操作声明只应针对实际测试过的 Viewer 和版本。某个 V
 
 ## 嵌入式/平台扩展
 
-当前发布的 V0.3.0.0 矩阵是桌面 x86_64。ARM64、嵌入式 Linux、EGLFS 不在该版本支持范围内，但属于 V0.3 家族 GA 前必须收敛的兼容基线，V0.4 RC 进入前必须完成。声明 GA 参考单元之外的 BSP/SoC/平台扩展按后续连贯结果单独准入。硬件/厂商加速不预分配版本或 GA 前后位置，只有性能专项的测量证据证明可移植基线存在 SLO/资源阻塞时，才通过记录的激活权威准入。
+当前强制验证是 Windows x86_64。ARM64、嵌入式 Linux、EGLFS/Wayland 依托 Qt 跨平台能力供用户验证，未获得实机证据前不能称为 Supported；**不要求在 V0.4 RC 或 V1 前完成 Linux/嵌入式物理认证**（#563）。声明 GA 参考单元之外的 BSP/SoC/平台扩展按后续连贯结果单独准入。硬件/厂商加速不预分配版本或 GA 前后位置，只有性能专项的测量证据证明可移植基线存在 SLO/资源阻塞时，才通过记录的激活权威准入。
 
 嵌入式部署是后续产品线，不属于当前桌面声明。
 
@@ -186,8 +187,8 @@ Viewer 互操作声明只应针对实际测试过的 Viewer 和版本。某个 V
 
 | 方向 | 当前状态 |
 | --- | --- |
-| ARM64 嵌入式 Linux | TODO，V0.3 家族 GA 前兼容基线；不预留精确 Feature 版本 |
-| RK3588 / EGLFS 或 Wayland | TODO，V0.3 家族 GA 前参考单元；不预留精确 Feature 版本 |
+| ARM64 嵌入式 Linux | User-validation pending / 非发布阻塞；不预留精确 Feature 版本 |
+| RK3588 / EGLFS 或 Wayland | User-validation pending / 非发布阻塞；不预留精确 Feature 版本 |
 | NXP i.MX 类 | TODO，声明 GA 单元之外的平台扩展，单独准入 |
 | DMA-BUF / GBM / 外部缓冲路径 | TODO，性能专项测量证明阻塞后，通过记录权威（#123）条件实现；不预留版本 |
 | RKMPP / VAAPI / 平台硬件编码 | TODO，性能专项测量证明阻塞后，通过记录权威（#123）条件实现；不预留版本 |
@@ -197,7 +198,7 @@ Viewer 互操作声明只应针对实际测试过的 Viewer 和版本。某个 V
 
 ## 兼容性规则
 
-1. Supported、Limited、TODO、Unsupported 不能互换。
+1. Supported、Limited、User-validation pending、TODO、Unsupported 不能互换。
 2. Windows 结果不能替代 Linux 结果，反之亦然。
 3. 公共 Qt API 兼容不表示 QPA private ABI 兼容。
 4. 基础 Widgets/Quick 支持不会自动认证每一种图形/渲染配置。
