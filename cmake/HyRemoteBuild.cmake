@@ -864,6 +864,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             endforeach()
             string(CONCAT _qt_choice_help
                 "Several Qt 6.8+ kits on this machine could build HyRemote; none is a default.\n"
+                "Resolved tier: ${_qt_tier_name}\n"
                 "Candidates:${_qt_menu}\n"
                 "Specify build.yml qt.prefix or ${_qt_choose_command} to skip selection.")
             if(_qt_rejected)
