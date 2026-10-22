@@ -53,9 +53,9 @@ foreach(workflow IN LISTS required_workflows)
     endif()
     file(READ "${path}" workflow_text)
 
-    # Concurrency cancels superseded runs, but nothing stops a hung job from holding a runner for the platform's
-    # default six hours, so every job must state its own bound. The repository-layout gate claims
-    # "bounded/cancellable workflow fan-out"; this is the half of that claim which does not enforce itself.
+    # Concurrency is per-commit (#571): a later docs-only merge must not cancel an earlier source
+    # validation run. Nothing stops a hung job from holding a runner for the platform's default six
+    # hours, so every job must still state its own bound.
     string(REGEX MATCHALL "runs-on:" _runs_on_declarations "${workflow_text}")
     string(REGEX MATCHALL "timeout-minutes:" _timeout_declarations "${workflow_text}")
     list(LENGTH _runs_on_declarations _job_count)
@@ -122,7 +122,7 @@ endfunction()
 # builds exactly that union through the official entry point, and the Qt SDK contract is per capability rather than
 # one fixed requirement list.
 foreach(required_token IN ITEMS
-        "cancel-in-progress: true"
+        "cancel-in-progress: false"
         "Resolve affected capabilities"
         [=[integrations: ${{ steps.scope.outputs.integrations }}]=]
         "resolve-ci-scope.py"

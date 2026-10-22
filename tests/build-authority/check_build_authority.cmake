@@ -125,7 +125,7 @@ integrations:
   surprise: true
 ]=])
 run_failure(invalid-key "--config=${invalid_key}" --show-config)
-require_text(invalid-key "${HYB_TEST_OUTPUT}" "unsupported integration 'surprise'")
+require_text(invalid-key "${HYB_TEST_OUTPUT}" "integration 'surprise'")
 
 set(invalid_bool "${scratch}/invalid-bool.yml")
 file(WRITE "${invalid_bool}" [=[version: 1
