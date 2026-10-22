@@ -1,3 +1,5 @@
+> **2026-10-22 Owner #563 platform-scope override:** This is historical planning material, not current feature-gate authority. Windows x86_64 is the only mandatory physical/product/GA platform. Any old Linux/ARM64/EGLFS/Wayland mandatory language and preallocated V0.0.x/V1.x milestones below is superseded by #1, #24, #343, #563 and `.github/release/release-trains.json`. User reports drive optional portability Issue/hotfixes.
+
 # HyRemote Development Roadmap
 
 Status: execution roadmap toward **V1.0.0.0**.
