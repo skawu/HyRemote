@@ -290,7 +290,7 @@ if(UNIX AND NOT APPLE)
         --no-config --show-config)
     require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Qt 6.8.3 / gcc_64")
     require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Qt 6.12.0 / gcc_64")
-    require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "not selectable")
+    require_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Not selectable")
     forbid_text_flat(qt-discovery-multiple-versions-report "${HYB_TEST_OUTPUT}" "Qt Kit selected by user")
 
     # An unattended build with more than one Kit must refuse to guess.
