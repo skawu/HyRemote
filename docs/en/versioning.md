@@ -1,3 +1,5 @@
+> **Owner #563 (2026-10-22):** Windows x86_64 is the sole mandatory physically verified platform for Feature, V0.4 RC and first GA. Linux/embedded/ARM64/EGLFS/Wayland are Qt-based community/user-validation paths, **not release blockers** and not automatically GA-Supported. Confirmed reported defects are handled through issue-driven maintenance/hotfixes. This overrides older pre-V0.4 hardware gate wording below; see [policy](../internal/windows-first-platform-validation-policy-2026-10-22.md).
+
 # HyRemote Versioning and Product Milestones
 
 > Language / 语言: **English** | [中文](../versioning.md)
