@@ -28,6 +28,7 @@ set(HYB_EXAMPLES OFF)
 set(HYB_CLEAN OFF)
 set(HYB_VERBOSE OFF)
 set(HYB_SHOW_CONFIG OFF)
+set(HYB_NO_PROMPT OFF)
 # build.cmd's subcommand. Absent means build, so every historical invocation keeps its meaning.
 set(HYB_SUBCOMMAND "build")
 set(HYB_INSTALL OFF)
@@ -365,7 +366,7 @@ set(i 0)
 while(i LESS argc)
     list(GET HYB_ARGS ${i} arg)
     if(arg STREQUAL "--help")
-        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config")
+        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
         return()
     elseif(arg MATCHES "^--config=" OR arg STREQUAL "--no-config")
         # Already consumed in pass 1.
@@ -502,6 +503,8 @@ while(i LESS argc)
         set(HYB_VERBOSE ON)
     elseif(arg STREQUAL "--show-config")
         set(HYB_SHOW_CONFIG ON)
+    elseif(arg STREQUAL "--no-prompt")
+        set(HYB_NO_PROMPT ON)
     elseif(arg MATCHES "^-j([1-9][0-9]*)$")
         set(HYB_JOBS "${CMAKE_MATCH_1}")
     elseif(arg MATCHES "^--jobs=([1-9][0-9]*)$")
@@ -579,6 +582,30 @@ hyb_resolve_path(HYB_CXX_COMPILER TRUE "C++ compiler")
 # name states, and a name that states none - android_*, wasm_*, ios_* - is classified as unknown and rejected by the
 # compiler-family check instead of being guessed at. The kit is still validated by requiring the real Qt6Config.cmake
 # below, so the name can only reject, never invent, a candidate.
+# A Kit prefix does not have to follow the Online Installer's `<version>/<kit>` layout. Vendor/CI prefixes such as
+# `/opt/vendor/qt-gcc_64` are valid when they carry the Qt CMake package. Read the package's own version instead of
+# inferring it from a parent directory name, then fall back to the layout only for older/synthetic fixtures.
+function(hyb_qt_version_from_prefix prefix out_version)
+    set(_version "")
+    foreach(_config_version IN ITEMS
+            "lib/cmake/Qt6/Qt6ConfigVersion.cmake"
+            "lib/cmake/Qt5/Qt5ConfigVersion.cmake")
+        set(_path "${prefix}/${_config_version}")
+        if(EXISTS "${_path}")
+            file(READ "${_path}" _config_text)
+            if(_config_text MATCHES "PACKAGE_VERSION[ \t]+\"([0-9]+\\.[0-9]+\\.[0-9]+)\"")
+                set(_version "${CMAKE_MATCH_1}")
+                break()
+            endif()
+        endif()
+    endforeach()
+    if(_version STREQUAL "")
+        get_filename_component(_version_parent "${prefix}" DIRECTORY)
+        get_filename_component(_version "${_version_parent}" NAME)
+    endif()
+    set(${out_version} "${_version}" PARENT_SCOPE)
+endfunction()
+
 function(hyb_qt_kit_class kit_dir out_class)
     get_filename_component(_kit "${kit_dir}" NAME)
     if(_kit MATCHES "arm64|aarch64")
@@ -664,7 +691,7 @@ function(hyb_qt_platform_roots out_roots)
         if(_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_install_root}")
             continue()
         endif()
-        file(GLOB _version_dirs "${_install_root}/6.8.*")
+        file(GLOB _version_dirs "${_install_root}/5.*" "${_install_root}/6.*")
         foreach(_version_dir IN LISTS _version_dirs)
             file(GLOB _kit_dirs "${_version_dir}/*")
             foreach(_kit_dir IN LISTS _kit_dirs)
@@ -688,7 +715,8 @@ function(hyb_qt_tier_candidates roots out_list)
     set(_seen_prefixes "")
 
     foreach(_root IN LISTS roots)
-        if(NOT EXISTS "${_root}/lib/cmake/Qt6/Qt6Config.cmake")
+        if(NOT EXISTS "${_root}/lib/cmake/Qt6/Qt6Config.cmake"
+           AND NOT EXISTS "${_root}/lib/cmake/Qt5/Qt5Config.cmake")
             continue()
         endif()
         file(REAL_PATH "${_root}" _canonical)
@@ -779,11 +807,16 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         string(REPLACE "|" ";" _parts "${_candidate}")
         list(GET _parts 0 _prefix)
         list(GET _parts 1 _class)
+        hyb_qt_version_from_prefix("${_prefix}" _qt_version)
         string(REPLACE ":" ";" _fields "${_class}")
         list(GET _fields 0 _arch)
         list(GET _fields 1 _family)
         list(GET _fields 2 _needs)
-        if(NOT _arch STREQUAL _qt_host_arch)
+        if(NOT _qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$" OR _qt_version VERSION_LESS "6.8")
+            list(APPEND _qt_rejected "${_prefix} (not buildable: this product currently needs Qt6 >= 6.8)")
+        elseif(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
+            list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
+        elseif(NOT _arch STREQUAL _qt_host_arch)
             list(APPEND _qt_rejected "${_prefix}  (targets ${_arch}; this host is ${_qt_host_arch})")
         elseif(_family STREQUAL "unknown")
             list(APPEND _qt_rejected "${_prefix}  (its directory name states no compiler family)")
@@ -806,9 +839,9 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
     if(_qt_tier_name STREQUAL "environment (QTDIR / CMAKE_PREFIX_PATH)")
         set(_qt_searched "QTDIR and CMAKE_PREFIX_PATH (environment tier; platform discovery was not consulted)")
     elseif(WIN32)
-        set(_qt_searched "C:/Qt/6.8.*/*")
+        set(_qt_searched "C:/Qt/<version>/<kit> (Qt 5/6 inventoried)")
     else()
-        set(_qt_searched "/opt/Qt/6.8.*/* and \$HOME/Qt/6.8.*/*")
+        set(_qt_searched "/opt/Qt/<version>/<kit> and \$HOME/Qt/<version>/<kit>")
     endif()
 
     # A report-only run is not an execution. `--show-config` returns before any phase runs, so a discovery problem is
@@ -838,26 +871,67 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                 message(STATUS "  Qt kits found but not usable: ${_qt_rejected}")
             endif()
         else()
-            # Ambiguity is not a resolution and not a guess: a reporting run says so and carries on, a run that
-            # would have to build stops here with the candidates and the command to paste.
-            if(_qt_discovery_fatal)
-                message(FATAL_ERROR
-                    "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
-                    "about the compiler. Choose one explicitly:\n"
-                    "Resolved tier: ${_qt_tier_name}\n"
-                    "\n"
-                    "  ${_qt_choose_command}\n"
-                    "\n"
-                    "Candidates:\n    ${_qt_usable}")
+            # Multiple usable Qt versions/Kits are a product choice, not a heuristic.
+            # A typed number is required on a real console; CI and reports never prompt.
+            set(_qt_menu "")
+            set(_qt_num 0)
+            foreach(_prefix IN LISTS _qt_usable)
+                math(EXPR _qt_num "${_qt_num}+1")
+                hyb_qt_version_from_prefix("${_prefix}" _version)
+                get_filename_component(_kit "${_prefix}" NAME)
+                string(APPEND _qt_menu "\n  [${_qt_num}] Qt ${_version} / ${_kit}: ${_prefix}")
+                if(NOT _version STREQUAL "6.8.3")
+                    string(APPEND _qt_menu " (not a qualified reference Kit)")
+                endif()
+            endforeach()
+            string(CONCAT _qt_choice_help
+                "Several Qt 6.8+ kits on this machine could build HyRemote; none is a default.\n"
+                "Resolved tier: ${_qt_tier_name}\n"
+                "Candidates:${_qt_menu}\n"
+                "Specify build.yml qt.prefix or ${_qt_choose_command} to skip selection.")
+            if(_qt_rejected)
+                string(APPEND _qt_choice_help "\nNot selectable with this build configuration: ${_qt_rejected}")
+            endif()
+            set(_qt_no_console FALSE)
+            if(HYB_NO_PROMPT OR HYB_SHOW_CONFIG OR NOT _qt_discovery_fatal
+               OR "$ENV{CI}" STREQUAL "true" OR "$ENV{CI}" STREQUAL "1"
+               OR "$ENV{GITHUB_ACTIONS}" STREQUAL "true"
+               OR "$ENV{HYREMOTE_NO_PROMPT}" STREQUAL "1")
+                set(_qt_no_console TRUE)
+            endif()
+            if(_qt_no_console)
+                if(_qt_discovery_fatal)
+                    message(FATAL_ERROR "${_qt_choice_help}\nNo interactive selection in CI/--no-prompt. No Kit chosen.")
+                else()
+                    message(WARNING "${_qt_choice_help}\nRead-only report: no Kit chosen.")
+                endif()
             else()
-                message(WARNING
-                    "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
-                    "about the compiler. Choose one explicitly:\n"
-                    "Resolved tier: ${_qt_tier_name}\n"
-                    "\n"
-                    "  ${_qt_choose_command}\n"
-                    "\n"
-                    "Candidates:\n    ${_qt_usable}")
+                message(STATUS "${_qt_choice_help}")
+                if(WIN32)
+                    execute_process(
+                        COMMAND cmd.exe /C "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.cmd" "${_qt_usable_count}"
+                        RESULT_VARIABLE _qt_prompt_code OUTPUT_VARIABLE _qt_prompt_answer)
+                else()
+                    execute_process(
+                        COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.sh" "${_qt_usable_count}"
+                        RESULT_VARIABLE _qt_prompt_code OUTPUT_VARIABLE _qt_prompt_answer)
+                endif()
+                string(STRIP "${_qt_prompt_answer}" _qt_prompt_answer)
+                if(_qt_prompt_code EQUAL 0
+                   AND _qt_prompt_answer MATCHES "^HYREMOTE_QT_KIT_CHOICE=([1-9][0-9]*)$")
+                    set(_qt_choice "${CMAKE_MATCH_1}")
+                    if(_qt_choice GREATER _qt_usable_count)
+                        message(FATAL_ERROR "Qt Kit choice ${_qt_choice} is outside 1-${_qt_usable_count}; no Kit selected.")
+                    endif()
+                    math(EXPR _qt_index "${_qt_choice}-1")
+                    list(GET _qt_usable ${_qt_index} HYB_QT_PREFIX)
+                    cmake_path(NORMAL_PATH HYB_QT_PREFIX)
+                    message(STATUS "Qt Kit selected by user: ${HYB_QT_PREFIX}")
+                elseif(_qt_prompt_code EQUAL 0)
+                    message(FATAL_ERROR "Qt Kit choice cancelled or invalid. Rerun and choose a number, or set qt.prefix.")
+                else()
+                    message(FATAL_ERROR "Qt Kit selection requires a real interactive console. No Kit selected.\n${_qt_choice_help}")
+                endif()
             endif()
         endif()
     elseif(_qt_candidates)
@@ -865,7 +939,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         # is given. A reporting run still finishes, because inspecting a machine with no usable kit is exactly when
         # the report is wanted.
         set(_qt_none_message
-            "Qt 6.8 kits were found on this machine, but none of them can be used from this shell as it stands. "
+            "Qt installations were found on this machine, but none of them can be used from this shell as it stands. "
             "Choose one explicitly and, if it needs a compiler this shell does not have, start the matching "
             "developer environment first:\n"
             "Resolved tier: ${_qt_tier_name}\n"

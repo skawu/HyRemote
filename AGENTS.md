@@ -118,19 +118,19 @@ build.cmd + build.yml
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
 
-CI is decision-driven:
+CI uses **PR-triggered, protected pre-merge product validation** (latest Owner #573 supersedes #571):
 
 ```text
-L0 local implementation feedback
-L1 exact Ready-PR merge decision
-L2 exact frozen-candidate qualification
+L0 ordinary feature-branch commit -> no hosted Qt CI
+L1 ready PR -> actual affected Windows Qt compile/CTest/install + Git Flow/review checks; all required statuses PASS before merge
+L2 explicit frozen-candidate workflow_dispatch -> exact-SHA FULL_GATE, CANDIDATE
 ```
 
 Rules:
 
 - Iterate locally with focused tests and the canonical build/install path.
-- Hosted CI is required where it owns the L1/L2 decision, not after every local iteration.
-- `OBSERVE`, post-merge, maintenance and specialized workflows are fire-and-observe for independent sequencing.
+- A bare feature-branch push does **not** invoke hosted Qt CI. Opening/readying a PR does; subsequent updates to a ready PR **must revalidate the newest head**. Do **not** merge on a failed, skipped, cancelled or pending `ci-merge-verdict`; `develop` ruleset must require it and `p1-p2-disposition`. No repeat Qt build after merging. See [CI policy](docs/internal/ci-purpose-and-trigger-policy-2026-10-22.md).
+- The PR `MERGE` decision is binding only after Windows selected tests and review gates PASS; `OBSERVE` and specialized diagnostic runs never authorize a merge.
 - Zero discovered/executed tests are invalid evidence.
 - Exact-head evidence/artifacts must support the claim being made.
 - Installed/deployed consumer evidence must not rely on source/build-tree/Qt-SDK PATH repair.

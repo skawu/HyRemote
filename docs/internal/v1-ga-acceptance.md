@@ -225,7 +225,7 @@ If the mandatory **Windows** job does not execute and PASS, GA is unexecuted and
 - #101 API/artifact freeze accepted;
 - #107 release-readiness metadata accepted;
 - #109 required cross-mode physical/native evidence accepted, including explicit-stop/policy-transition input cleanup, with the exact-candidate record completed through `docs/internal/v1-physical-acceptance.md`;
-- #104 integrated GA workflow has actually passed on both reference OSes;
+- #104 integrated GA workflow has actually passed on the required Windows x86_64 reference OS; Linux remains NON_BLOCKING user-validation evidence;
 - clean deployed C++/source/QML/QPA consumers have passed the no-SDK-runtime-path gate;
 - compatibility/known-limitations/security documentation matches the candidate;
 - no mandatory acceptance item remains blocked, failed or merely inferred.

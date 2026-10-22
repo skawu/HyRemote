@@ -53,9 +53,9 @@ foreach(workflow IN LISTS required_workflows)
     endif()
     file(READ "${path}" workflow_text)
 
-    # Concurrency cancels superseded runs, but nothing stops a hung job from holding a runner for the platform's
-    # default six hours, so every job must state its own bound. The repository-layout gate claims
-    # "bounded/cancellable workflow fan-out"; this is the half of that claim which does not enforce itself.
+    # Concurrency is bound to the current PR/SHA (#573): a new head cancels superseded validation,
+    # while the replacement must still pass before merge. Nothing stops a hung job from holding a
+    # runner for the platform's default six hours, so every job must still state its own bound.
     string(REGEX MATCHALL "runs-on:" _runs_on_declarations "${workflow_text}")
     string(REGEX MATCHALL "timeout-minutes:" _timeout_declarations "${workflow_text}")
     list(LENGTH _runs_on_declarations _job_count)

@@ -3,7 +3,15 @@ project(HyRemoteLearning03GenericWidgets LANGUAGES CXX)
 
 # An ordinary Qt Widgets application. Note what is NOT here: the application target links no HyRemote target and
 # includes no HyRemote header, and that stays true whether or not HyRemote is present at all.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets)
+if(NOT TARGET Qt6::Widgets)
+    find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Widgets)
+endif()
+if(NOT TARGET Qt6::Widgets)
+    find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets)
+    add_library(Qt6::Core ALIAS Qt5::Core)
+    add_library(Qt6::Gui ALIAS Qt5::Gui)
+    add_library(Qt6::Widgets ALIAS Qt5::Widgets)
+endif()
 
 add_executable(hyremote-learning-03-widgets main.cpp)
 target_compile_features(hyremote-learning-03-widgets PRIVATE cxx_std_17)

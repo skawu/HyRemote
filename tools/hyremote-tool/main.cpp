@@ -133,7 +133,11 @@ public:
         };
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         connect(m_languageBox, &QComboBox::currentIndexChanged, this, [this](int index) {
+#else
+        connect(m_languageBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+#endif
             m_language = index == 1 ? Language::English : Language::Chinese;
             retranslateUi();
         });

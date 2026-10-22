@@ -102,21 +102,33 @@ protected:
         case QEvent::MouseButtonPress: {
             auto *mouse = static_cast<QMouseEvent *>(event);
             ++mousePresses;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastLocal = mouse->position();
+#else
+            lastLocal = mouse->localPos();
+#endif
             lastModifiers = mouse->modifiers();
             break;
         }
         case QEvent::MouseMove: {
             auto *mouse = static_cast<QMouseEvent *>(event);
             ++mouseMoves;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastLocal = mouse->position();
+#else
+            lastLocal = mouse->localPos();
+#endif
             lastModifiers = mouse->modifiers();
             break;
         }
         case QEvent::Wheel: {
             auto *wheel = static_cast<QWheelEvent *>(event);
             ++wheels;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastLocal = wheel->position();
+#else
+            lastLocal = wheel->posF();
+#endif
             lastAngleDelta = wheel->angleDelta();
             lastModifiers = wheel->modifiers();
             break;

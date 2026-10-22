@@ -70,7 +70,7 @@ RESULT=PASS|FAIL|BLOCKED|INSUFFICIENT_EVIDENCE
 OWNER_DECISION=required?|link; next owner + smallest next action
 ```
 
-- **G0 local:** self-tests, static rules and focused tests. **G1 PR:** affected Windows CI and available optional Linux diagnostics (absence nonblocking), actual steps, independent Review Gate. **G2 Feature:** Windows clean build/install/deploy, SDK consumer, maintained RFB viewer and W1-W4 exact-SHA evidence. **G3 RC/GA:** Windows-qualified compatibility, long-run, real apps, local+remote and tag/artifact/checksums. Linux/embedded are user-validation pending, not blocking.
+- **G0 local:** focused tests/static rules; bare feature-branch commits do not start CI. **G1 ready PR (Owner #573):** run affected Windows Qt build/CTest/install plus relevant governance, Git Flow and P1/P2 review disposition; a stable required `ci-merge-verdict` must PASS on the latest PR ref **before merging** (alongside `p1-p2-disposition`). New commits re-trigger validation, never merge red/pending/cancelled. **G2 Feature:** Windows SDK/Viewer/performance exact-SHA evidence. **G3 RC/GA:** separately admitted manual exact-SHA FULL_GATE, real apps and package/tag agreement. Linux/embedded user evidence remains nonblocking per #563. See [CI policy](ci-purpose-and-trigger-policy-2026-10-22.md).
 - A workflow success must distinguish `job/step executed`, `skipped` and `runner unavailable`. A pass on an earlier SHA is not a pass on the current SHA. Real GUI, board-level and local-input evidence cannot be replaced by hosted or offscreen runs.
 - When a physical environment is unavailable, keep cloud-verifiable checks moving and record the exact `PHYSICAL_BLOCKED` recipe. Ask for the smallest necessary one-off device or viewer interaction.
 

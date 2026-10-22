@@ -1242,9 +1242,11 @@ void testRequestPausedViewerDoesNotStallContinuousPeer()
 
     // The paused viewer must catch up in one incremental reply with the
     // latest state of BOTH independent tiles, not 16 intermediate updates.
+    // The two broad tiles are coalesced into one paint rectangle so a viewer
+    // does not render them as a scanline sequence.
     CHECK(sendUpdateRequest(paused, true, 0, 0, pausedWidth, pausedHeight));
     CHECK(readFramebufferUpdate(paused, pausedFrame, rectangles));
-    CHECK(rectangles.size() == 2U);
+    CHECK(rectangles.size() == 1U);
     CHECK(pausedFrame.get(8, 8) == leftColor);
     CHECK(pausedFrame.get(80, 8) == rightColor);
 
@@ -1980,6 +1982,46 @@ void runDeliveryProfile(const QString &outputPath)
               << outputPath.toStdString() << '\n';
 }
 
+void testPendingDamageCoalescesAtDelivery()
+{
+    HyRemote::detail::RfbUpdateState state;
+    const HyRemote::detail::RfbRect viewport{0, 0, 256, 256};
+    HyRemote::detail::RfbDamageRegion damage;
+    damage.add({0, 0, 128, 128});
+    damage.add({128, 0, 128, 128});
+    damage.add({0, 128, 128, 128});
+    damage.add({128, 128, 128, 128});
+    state.accumulate(damage);
+    state.request(true, viewport);
+    const auto selected = state.selectEligible();
+    CHECK(selected.has_value());
+    if (selected) {
+        const HyRemote::detail::RfbRect expectedFull{0, 0, 256, 256};
+        CHECK(selected->size() == 1U);
+        if (selected->size() == 1U)
+            CHECK(selected->rects().front() == expectedFull);
+    }
+}
+
+void testLargeDamageCoalescesForPaint()
+{
+    HyRemote::detail::RfbDamageRegion large;
+    for (int y = 0; y < 256; y += 64) {
+        for (int x = 0; x < 256; x += 64)
+            large.add({x, y, 64, 64});
+    }
+    const auto painted = HyRemote::detail::coalesceRfbDamageForPaint(large, 256U, 256U);
+    const HyRemote::detail::RfbRect expectedFull{0, 0, 256, 256};
+    CHECK(painted.size() == 1U);
+    if (painted.size() == 1U)
+        CHECK(painted.rects().front() == expectedFull);
+
+    HyRemote::detail::RfbDamageRegion smallDamage;
+    smallDamage.add({0, 0, 8, 8});
+    smallDamage.add({100, 100, 8, 8});
+    CHECK(HyRemote::detail::coalesceRfbDamageForPaint(smallDamage, 256U, 256U).size() == 2U);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -1999,6 +2041,8 @@ int main(int argc, char **argv)
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
+    testPendingDamageCoalescesAtDelivery();
+    testLargeDamageCoalescesForPaint();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();

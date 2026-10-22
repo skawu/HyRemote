@@ -28,6 +28,7 @@ HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似�
 | 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
 | 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qwindows` |
 | 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qxcb` |
+| 5.15.2 | Windows x86_64 | C++ API | Widgets | **Limited** | Qt5 遗留路径：Runtime、Tool、示例和安装消费者可构建/部署，62/62 CTest；Quick 为实验性 build-only，QML/QPA/Linux 未认证 |
 
 这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。
 
@@ -38,7 +39,7 @@ HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 当前状态：
 
 - **Qt 6.8 LTS**：当前参考家族；Qt 6.8.3 是 V0.3.0.0 使用的精确参考 SDK。
-- **Qt 5.15 LTS**：TODO。属于 V0.3 家族 GA 前必须完成的适配/资格工作；在能够构建、部署并认证前，不得描述为当前支持。
+- **Qt 5.15 LTS**：Windows x86_64 精确 cell 为 **Limited** 遗留路径。C++/Widgets Runtime、Tool、示例和安装消费者已构建/安装/测试通过；Qt5 Quick 仍为实验性 build-only；QML API、QPA、Linux 和 ARM64 Qt5 仍为 TODO，不得由 Windows Widgets cell 外推。
 - 其他 Qt LTS 或非 LTS 家族：没有明确兼容行时，不做支持声明。
 
 公共 Qt 前端和 QPA 的兼容规则不同：

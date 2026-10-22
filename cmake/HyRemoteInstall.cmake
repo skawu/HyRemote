@@ -8,6 +8,10 @@ set(HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS FALSE)
 if(TARGET hyremote-remoteaccess)
     set(HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS TRUE)
 endif()
+if(NOT DEFINED HYREMOTE_QT_MAJOR)
+    set(HYREMOTE_QT_MAJOR 6)
+endif()
+set(HYREMOTE_PACKAGE_QT_MAJOR "${HYREMOTE_QT_MAJOR}")
 
 # Widgets and Quick adapters are private implementation inside the shared RemoteAccess runtime. Each
 # application resolves only the Qt UI modules it actually uses.

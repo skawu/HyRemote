@@ -67,6 +67,21 @@ POSIX:       sh ./build.cmd test --integrations=cpp,generic --examples
 
 Command-line options override the corresponding `build.yml` fields. The four integrations are independent selections; enabling Generic, QML, or QPA does not make the C++ frontend their implementation parent.
 
+### Qt Kit selection (Windows and command-line builds)
+
+An explicit `qt.prefix` in `build.yml` is a full Qt **version + compiler/architecture Kit** selection, not a hint:
+
+```yaml
+qt:
+  prefix: "C:/Qt/6.8.3/msvc2022_64"
+```
+
+`--qt-prefix=C:/Qt/6.8.3/msvc2022_64` overrides this field and never asks twice. Version `6.8.3` alone is ambiguous if MSVC and MinGW Kits both exist.
+
+With no configured prefix, the build first respects `QTDIR/CMAKE_PREFIX_PATH`, then finds Qt installations. A unique usable Kit can be reported and used; **multiple usable Kits require a numbered choice at an interactive console**. There is no latest/first default and no automatic modification of the tracked profile. `--show-config` reports without asking. CI, redirected/headless or `--no-prompt` runs fail early on ambiguity and should supply the full prefix.
+
+Qt 5.15 is currently not buildable by the Qt6 Runtime; Qt 6.12 is an unqualified exploration version, with QPA limited to the **exact Qt 6.8.3 private ABI**. Finding a Kit is not an official compatibility claim.
+
 ## Direct CMake build
 
 HyRemote can also be configured as a normal CMake project:

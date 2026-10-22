@@ -1,19 +1,16 @@
 name: CI
 
 on:
+  # Owner #573: run CI on a merge request, not on ordinary branch commits or after merge.
+  # Drafts defer Qt until ready; updates to a ready PR invalidate the old CI result.
   pull_request:
-    # ready_for_review is not part of the default activity set, and without it a draft converted to ready would never
-    # start the product gate it was waiting for. converted_to_draft keeps the suppression honest in the other
-    # direction: turning a ready PR back into a draft stops being a product run.
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-  push:
     branches:
       - develop
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
-      # One manual mode, deliberately: a dispatch is the explicit full gate (an exact V0.1 candidate, a release
-      # branch readiness run, main/GA validation, or a deliberate diagnostic). Ordinary work reaches the product
-      # matrix through its own ready pull request instead.
+      # Explicit FULL_GATE qualifies a frozen release SHA independently of the PR merge gate.
+      # Normal development CI runs only on a PR; bare branch pushes never trigger it.
       #
       # #380: a dispatch is admitted, not generic. `purpose` says which decision this gate may produce and
       # `expected_sha` freezes the exact commit it claims to qualify. Both are checked fail-closed before any Qt
@@ -41,7 +38,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # One PR's current SHA is authoritative. Superseded runs are cancelled when the
+  # ready PR head changes; the replacement MUST pass before protected develop merges.
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -543,8 +542,45 @@ jobs:
           echo "decision=${{ needs.classify.outputs.decision }}"
           echo "capabilities=${{ needs.classify.outputs.integrations || 'none' }}"
           echo "governance=${{ needs.classify.outputs.governance }}"
-          if [ "${{ needs.classify.outputs.lane }}" = "DEVELOP_SENTINEL" ]; then
-            echo "develop sentinel: repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform Qt matrix is not repeated here."
+          if [ "${{ needs.classify.outputs.lane }}" = "PR_FAST" ]; then
+            echo "PR governance/docs-only: no affected product claim; Qt runners intentionally skipped; no product PASS claimed."
           else
-            echo "This change cannot affect a product contract; the Qt runners are intentionally skipped."
+            echo "No affected Qt product contract selected; the Qt runners are intentionally skipped."
           fi
+
+  # Stable required status context to add to the protected develop branch ruleset.
+  # Never allow skipped, cancelled or failing required Windows Qt jobs to look green.
+  ci-merge-verdict:
+    name: ci-merge-verdict
+    if: ${{ always() && github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    needs: [classify, product, authority-governance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      CLASSIFY: ${{ needs.classify.result }}
+      PRODUCT_REQUIRED: ${{ needs.classify.outputs.product }}
+      PRODUCT_RESULT: ${{ needs.product.result }}
+      GOVERNANCE_REQUIRED: ${{ needs.classify.outputs.governance }}
+      GOVERNANCE_RESULT: ${{ needs.authority-governance.result }}
+      CLASSIFIED_LANE: ${{ needs.classify.outputs.lane }}
+      EXPECTED_DECISION: ${{ needs.classify.outputs.decision }}
+    steps:
+      - name: Require all selected PR gates to pass (never green on skipped product)
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CLASSIFY" == success ]] || { echo "::error::CI classification not successful: $CLASSIFY"; exit 1; }
+          [[ "$CLASSIFIED_LANE" == PR_FAST && "$EXPECTED_DECISION" == MERGE ]] || {
+            echo "::error::CI PR merge lane/decision invalid: $CLASSIFIED_LANE/$EXPECTED_DECISION"; exit 1; }
+          if [[ "$PRODUCT_REQUIRED" == true ]]; then
+            [[ "$PRODUCT_RESULT" == success ]] || { echo "::error::Required Windows Qt product tests did not pass: $PRODUCT_RESULT"; exit 1; }
+          else
+            [[ "$PRODUCT_RESULT" == skipped ]] || { echo "::error::Unexpected product result on no-product PR: $PRODUCT_RESULT"; exit 1; }
+            echo "No product-affecting diff; no Qt tests required or implied."
+          fi
+          if [[ "$GOVERNANCE_REQUIRED" == true ]]; then
+            [[ "$GOVERNANCE_RESULT" == success ]] || { echo "::error::Required governance tests failed/skipped: $GOVERNANCE_RESULT"; exit 1; }
+          else
+            [[ "$GOVERNANCE_RESULT" == skipped ]] || { echo "::error::Unexpected governance result: $GOVERNANCE_RESULT"; exit 1; }
+          fi
+          echo "PR CI acceptance PASS for the exact tested PR merge ref; all required selected jobs passed."

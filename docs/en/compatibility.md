@@ -33,6 +33,7 @@ The V0.3.0.0 publication historically named **Qt 6.8.3 on Windows and Linux x86_
 | 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
 | 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qwindows` |
 | 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qxcb` |
+| 5.15.2 | Windows x86_64 | C++ API | Widgets | **Limited** | Legacy Qt5 lane: Runtime, Tool, examples and installed consumer build/deploy; 62/62 CTest. Quick is build-only/experimental; QML/QPA/Linux are not qualified |
 
 The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified.
 
@@ -43,7 +44,7 @@ HyRemote supports selected Qt LTS families and does not automatically promise ev
 Current state:
 
 - **Qt 6.8 LTS:** current reference family; Qt 6.8.3 is the exact reference SDK for V0.3.0.0.
-- **Qt 5.15 LTS:** TODO. It is mandatory pre-GA V0.3-family adaptation and qualification work. Do not describe it as supported before the product can build, deploy, and qualify it.
+- **Qt 5.15 LTS:** Limited legacy lane on the exact Qt 5.15.2 Windows x86_64 cell: C++/Widgets Runtime, Tool, examples and installed consumer are build/install/test qualified. Qt5 Quick is experimental/build-only; QML API, QPA, Linux and ARM64 Qt5 remain TODO and are not implied by the Windows Widgets cell.
 - other Qt LTS or non-LTS families: no support claim without an explicit compatibility row.
 
 Public Qt frontends and QPA follow different rules:
