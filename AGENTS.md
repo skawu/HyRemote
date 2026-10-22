@@ -40,6 +40,8 @@ verify latest develop + Issue ownership + exact-SHA evidence
  -> V1.0 GA on one accepted, qualified RC lineage
 ```
 
+**Version-scope Owner ruling #558 (2026-10-22):** V0.3.3.0 #144/#175 closure applies to desktop Qt 6.8.3 Windows/Linux x86_64 delivery/viewer evidence. ARM64/EGLFS is mandatory later in the V0.3 family under #236/#154/#203/#343 **before V0.4 activation**, not a hidden desktop Feature freeze condition. Do not preassign V0.3.4.0/V0.3.5.0 to technical packages; activate coherent user outcomes via #24/#95 and the reviewed machine release train. The #343/#33 GA scope is unchanged.
+
 Qt 6.12 LTS was released in 2026-09; it is a compatibility **preflight**, not a silently added GA support promise. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
 Cross-cutting test-system work under #393/#394 may progress independently when it does not overlap the active product-path owner; it must not block unrelated V0.3 implementation work merely because its PR is open.
