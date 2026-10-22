@@ -213,7 +213,7 @@
         "maintained-viewer-interoperability-evidence",
         "performance-slo-evidence"
       ],
-      "cross_version_references": [ 57, 95, 144, 175, 261, 343, 370 ],
+      "cross_version_references": [ 57, 95, 144, 175, 261, 343, 370, 563 ],
       "conditional_items": [],
       "non_blockers": [ 57, 260, 265, 378 ],
       "notes": {
