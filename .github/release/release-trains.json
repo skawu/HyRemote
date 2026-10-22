@@ -217,17 +217,17 @@
       "conditional_items": [],
       "non_blockers": [ 57, 260, 265, 378 ],
       "notes": {
-        "144": "Practical damage/ZRLE/compression and incremental delivery are the bounded product capability of this Feature.",
-        "175": "Maintained viewer interoperability is the second bounded capability; the private Viewer is not a requirement.",
+        "144": "#144 is the closeable V0.3.3 desktop Qt 6.8.3 Windows/Linux x86_64 Raw + selected TRLE + incremental/damage delivery gate. Independent ARM64/EGLFS equivalent remains mandatory before V0.4 entry under #236/#154/#203 and #343, not this desktop Feature closure.",
+        "175": "#175 is the closeable V0.3.3 maintained-GUI-viewer gate: at least two maintained viewers on Windows and Linux hosts, covering the shipped desktop profiles and relevant input, cursor, resize, reconnect, view-only and applicable authentication. V0.4 repeats/finalizes additional GA cell qualification under #235.",
         "261": "RFB delivery profiling is risk/evidence preflight, not product implementation.",
-        "343": "The mandatory pre-GA Qt/platform baseline remains the parent product authority; this Feature consumes it without closing the umbrella.",
+        "343": "#343 remains mandatory before V0.4 entry across Qt LTS, Windows/Linux, x86_64/ARM64, Wayland/EGLFS and practical remote performance. Desktop V0.3.3 closure never waives ARM64/Embedded GA breadth.",
         "370": "The performance programme supplies the SLO and measurement method; it is not a closeable child of this Feature.",
         "378": "HyRemoteTool consumes the access-plane improvements; management-plane work stays out of this Feature.",
-        "57": "Qt 5.15 qualification remains V0.4 baseline work and is not a blocker for this Feature.",
-        "260": "Qt5 entry preflight remains a V0.3-family prerequisite, not a child of this Feature.",
-        "265": "Qt5 adaptation implementation remains V0.4 baseline work; it is not a child of this Feature."
+        "57": "Qt 5.15/6.5/6.8 implementation is mandatory later in the V0.3 family before V0.4 entry; not a V0.3.3 exact Feature blocker.",
+        "260": "Qt LTS preflight belongs to mandatory V0.3-family compatibility work, not an extra V0.3.3 candidate prerequisite. #261 remains the exact Feature preflight.",
+        "265": "Qt5 adaptation implementation must complete in the V0.3 family before V0.4 entry; not a V0.3.3 mandatory child."
       },
-      "rule": "V0.3.3.0 is the next coherent Product breadth Feature: practical delivery efficiency and maintained-viewer interoperability, built on the accepted V0.3.0.0 lineage. It is not the retired 0.3.1.0/0.3.2.0 technical slots and does not reserve management-plane, Qt5, ARM64 or TLS work."
+      "rule": "V0.3.3.0 is the activated desktop Product-breadth Feature on Qt 6.8.3 Windows/Linux x86_64: Raw + selected TRLE compressed/incremental/damage delivery (#144) and maintained GUI-viewer interoperability (#175), with #261 the candidate prerequisite. Release needs exact-SHA viewer/performance/same-SHA L2 evidence. ARM64/EGLFS/Wayland and Qt5/6.5 breadth stay mandatory before V0.4 entry under #343/#236/#154/#57, but are not hidden V0.3.3 children. No preallocated follow-up Feature numbers, management-plane or TLS work. Retired 0.3.1.0/0.3.2.0 remain retired."
     },
     "1.0.0.0": {
       "authority_parent": 33,
