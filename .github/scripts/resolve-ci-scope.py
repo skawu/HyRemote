@@ -297,7 +297,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     product_lane = lane in ("PR_FAST", "FULL_GATE", "POST_MERGE")
     test_only = product_lane and not full_gate and is_test_only(changed)
     # PR acceptance on Windows only; explicit release FULL_GATE is separate.
-    product_matrix = [PRODUCT_MATRIX[1]] if (test_only or lane in ("PR_FAST", "POST_MERGE")) else PRODUCT_MATRIX
+    product_matrix = [PRODUCT_MATRIX[1]] if (test_only or lane in ("PR_DRAFT", "PR_FAST", "POST_MERGE")) else PRODUCT_MATRIX
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
