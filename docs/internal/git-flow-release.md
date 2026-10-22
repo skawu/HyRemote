@@ -130,8 +130,7 @@ The root CMake graph enforces exactly this much and no more: a formal version in
 and every current train - `V0.1`, `V0.2`, `V0.3`, `V0.4` (including `V0.4.0.x` maintenance) and `V1.0` - is accepted
 whatever frontends the build enables.
 
-CI follows the capability model instead of the version model: the classifier selects the affected frontends for a
-change, and release readiness consumes the current train's own scope (#95) rather than one static V1 list.
+CI follows the capability model **after merge** instead of rebuilding Qt on every PR commit (Owner #571). A `develop` merge push classifies its exact changed paths and tests affected Windows frontends; docs-only merges skip Qt. `workflow_dispatch` is the separate exact-SHA FULL_GATE for candidate/release. The lightweight PR Git Flow and p1-p2-disposition checks remain, and a postmerge OBSERVE check must not be reported as premerge validation. See [CI policy](ci-purpose-and-trigger-policy-2026-10-22.md). Release readiness still consumes the train's own scope (#95).
 
 This prevents a correct early release profile from being falsely failed by a future-mode workflow, while also preventing an early tag from becoming an accidental support claim for later modes.
 

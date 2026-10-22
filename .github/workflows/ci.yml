@@ -1,19 +1,14 @@
 name: CI
 
 on:
-  pull_request:
-    # ready_for_review is not part of the default activity set, and without it a draft converted to ready would never
-    # start the product gate it was waiting for. converted_to_draft keeps the suppression honest in the other
-    # direction: turning a ready PR back into a draft stops being a product run.
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  # No CI for PR commits; Git Flow and p1-p2-disposition remain light pre-merge checks (#571).
   push:
     branches:
       - develop
   workflow_dispatch:
     inputs:
-      # One manual mode, deliberately: a dispatch is the explicit full gate (an exact V0.1 candidate, a release
-      # branch readiness run, main/GA validation, or a deliberate diagnostic). Ordinary work reaches the product
-      # matrix through its own ready pull request instead.
+      # An explicit FULL_GATE qualifies an exact candidate. Ordinary PRs do not launch
+      # product CI; a merge push to protected develop checks affected product paths.
       #
       # #380: a dispatch is admitted, not generic. `purpose` says which decision this gate may produce and
       # `expected_sha` freezes the exact commit it claims to qualify. Both are checked fail-closed before any Qt
@@ -36,8 +31,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Per-commit identity: a later docs-only merge must never cancel Windows Qt tests
+  # for an earlier merge whose source changes still need validation (#571).
+  group: ci-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   classify:
@@ -150,8 +147,8 @@ jobs:
         name: Resolve affected capabilities
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
@@ -160,14 +157,9 @@ jobs:
   product:
     name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
     needs: classify
-    # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
-    # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
-    # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
-    # A test-only ready PR keeps the Windows product lane (full build + test set) and skips the duplicate Linux
-    # matrix: the product is unchanged, while the full gate and every product change still run both platforms.
-    if: >-
-      needs.classify.outputs.product == 'true' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    # Post-merge code changes select an actual Windows Qt product job; docs-only merges do not.
+    # An explicitly dispatched FULL_GATE retains its separate candidate acceptance contract.
+    if: needs.classify.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -528,8 +520,8 @@ jobs:
           echo "decision=${{ needs.classify.outputs.decision }}"
           echo "capabilities=${{ needs.classify.outputs.integrations || 'none' }}"
           echo "governance=${{ needs.classify.outputs.governance }}"
-          if [ "${{ needs.classify.outputs.lane }}" = "DEVELOP_SENTINEL" ]; then
-            echo "develop sentinel: repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform Qt matrix is not repeated here."
+          if [ "${{ needs.classify.outputs.lane }}" = "POST_MERGE" ]; then
+            echo "post-merge develop validation: no changed Qt product contract; automated Qt product tests did NOT run."
           else
-            echo "This change cannot affect a product contract; the Qt runners are intentionally skipped."
+            echo "No affected Qt product contract selected; the Qt runners are intentionally skipped."
           fi

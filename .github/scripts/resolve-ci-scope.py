@@ -14,23 +14,19 @@ Contract:
 Lanes (``lane``):
   * ``PR_DRAFT`` - a draft pull request runs cheap governance only. Product jobs require a ready pull request, so a
     draft never starts the Windows/Linux Qt matrix.
-  * ``PR_FAST`` - a ready pull request is classified from its real ``base...head`` diff and validates only what that
-    diff can affect: the affected product capabilities, the deploy evidence for contracts it touches, and readiness
-    when it touches a readiness-consumed surface.
-  * ``DEVELOP_SENTINEL`` - a ``develop`` push runs seconds-scale repository policy. The merged pull request already
-    passed its own hosted acceptance, so re-running the whole dual-platform matrix on every merge only duplicates
-    cost without producing a new decision.
-  * ``FULL_GATE`` - the complete dual-platform, four-frontend, all-evidence run. It is reachable only through an
-    explicit ``workflow_dispatch`` (an exact candidate, a release branch or main validation is dispatched the same
-    way), never as a side effect of an ordinary change.
+  * ``PR_FAST`` - legacy, self-tested classifier result only: the CI workflow no longer
+    subscribes to PR events; cheap Git Flow and code review remain pre-merge checks.
+  * ``POST_MERGE`` - protected develop push validates affected product changes on Windows.
+    Docs-only merges skip expensive Qt. Evidence is OBSERVE, not a pre-merge approval.
+  * ``FULL_GATE`` - explicit exact-SHA candidate/release qualification dispatched manually,
+    never a side effect of a PR commit or ordinary develop merge.
 
 Decisions (``decision``) - what the run can be waited on for (#380):
   * ``OBSERVE`` - fire-and-observe. No merge or release decision is waiting on this lane: a draft pull request, the
-    develop sentinel or any other no-product reporting run. An OBSERVE result never blocks sequencing independent
-    work; a later red result opens a defect owner instead of a hold.
-  * ``MERGE`` - hosted evidence for a ready pull request's merge decision. This is decided by the lane, not by
-    whether a Qt matrix starts: a ready docs-only pull request is still a MERGE decision, answered by governance
-    rather than by product runners.
+    post-merge Windows checks or any other no-premerge reporting run. OBSERVE does not
+    approve merging or shipping: a post-merge failure requires a bounded repair Issue.
+  * ``MERGE`` - legacy PR_FAST classification retained for self-test compatibility;
+    current merge control comes from independent Git Flow/review checks, not Qt CI.
   * ``CANDIDATE`` - an admitted exact-SHA full qualification. A candidate or release decision may wait on it.
 """
 
@@ -261,7 +257,7 @@ def lane_for(event: str, draft: bool) -> str:
     if event == "workflow_dispatch":
         return "FULL_GATE"
     if event == "push":
-        return "DEVELOP_SENTINEL"
+        return "POST_MERGE"
     if event == "pull_request":
         return "PR_DRAFT" if draft else "PR_FAST"
     return "UNKNOWN"
@@ -278,7 +274,7 @@ def decision_for(lane: str) -> str:
     return {
         "PR_DRAFT": "OBSERVE",
         "PR_FAST": "MERGE",
-        "DEVELOP_SENTINEL": "OBSERVE",
+        "POST_MERGE": "OBSERVE",
         "FULL_GATE": "CANDIDATE",
     }.get(lane, "OBSERVE")
 
@@ -288,18 +284,23 @@ def changed_paths(event: str, base: str, head: str) -> list[str]:
         return subprocess.check_output(
             ["git", "diff", "--name-only", f"{base}...{head}"], text=True
         ).splitlines()
-    # A develop push and a manual dispatch are decided by their event, not by a diff. The sentinel lane runs policy
-    # only, and the full gate is full by definition, so no path needs to be inspected - and inventing one (the former
-    # "CMakeLists.txt" placeholder) claimed every capability for every merge.
+    if event == "push":
+        if not base or not head:
+            raise ValueError("post-merge changed-path classification requires before and head SHAs")
+        if set(base) == {"0"}:
+            base = f"{head}~1"
+        return subprocess.check_output(["git", "diff", "--name-only", f"{base}..{head}"], text=True).splitlines()
+    # Explicit manual FULL_GATE selects every product capability regardless of diff.
     return []
 
 
 def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, str]:
     lane = lane_for(event, draft)
     full_gate = lane == "FULL_GATE"
-    product_lane = lane in ("PR_FAST", "FULL_GATE")
+    product_lane = lane in ("PR_FAST", "FULL_GATE", "POST_MERGE")
     test_only = product_lane and not full_gate and is_test_only(changed)
-    product_matrix = [PRODUCT_MATRIX[1]] if test_only else PRODUCT_MATRIX
+    # Protected develop merges run only affected Windows Qt jobs (#571).
+    product_matrix = [PRODUCT_MATRIX[1]] if (test_only or lane == "POST_MERGE") else PRODUCT_MATRIX
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
@@ -370,8 +371,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
 
     ordered = [peer for peer in PEERS if peer in selected]
     integrations = ",".join(ordered)
-    # A capability is only built when the lane is allowed to build anything: the sentinel is policy, and a draft has
-    # not asked for review yet.
+    # Only merge-push validation or explicit full-gate events actually subscribe to CI;
+    # PR_FAST remains represented only for regression testing the selector.
     product = bool(ordered) and product_lane
 
     # Fast pull requests keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
@@ -427,15 +428,17 @@ def self_test() -> int:
     failures = 0
 
     cases = [
-        # Draft pull requests and the develop sentinel must not start the product matrix at all.
+        # Docs-only develop merges and historical draft PRs do not run Qt product checks.
         ("draft product PR runs no product job", "pull_request", ["src/runtime/runtime.cpp"], True,
          {"lane": "PR_DRAFT", "product": "false", "integrations": ""}),
         ("draft governance PR runs no product job", "pull_request", ["README.md"], True,
          {"lane": "PR_DRAFT", "product": "false"}),
-        ("develop push is the sentinel lane", "push", [], False,
-         {"lane": "DEVELOP_SENTINEL", "product": "false", "integrations": "", "test_exclude": ""}),
-        ("develop sentinel runs no deploy evidence", "push", [], False,
+        ("develop docs merge skips Qt", "push", ["docs/proposals/notes.md"], False,
+         {"lane": "POST_MERGE", "product": "false", "integrations": "", "test_exclude": ""}),
+        ("develop docs merge does not need deploy evidence", "push", ["docs/proposals/notes.md"], False,
          {"generic_evidence": "false", "cpp_evidence": "false", "qml_evidence": "false", "qpa_evidence": "false"}),
+        ("develop source merge starts Qt", "push", ["src/runtime/session.cpp"], False,
+         {"lane": "POST_MERGE", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("manual dispatch is the full gate", "workflow_dispatch", [], False,
          {"lane": "FULL_GATE", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("full gate runs all evidence", "workflow_dispatch", [], False,
@@ -537,7 +540,7 @@ def self_test() -> int:
         ("draft security PR requests no security evidence", "pull_request",
          ["src/runtime/tests/test_vnc_auth.cpp"], True,
          {"security_evidence": "false", "product": "false"}),
-        ("develop sentinel requests no security evidence", "push", [], False, {"security_evidence": "false"}),
+        ("docs-only merge requests no security evidence", "push", ["docs/proposals/notes.md"], False, {"security_evidence": "false"}),
         # The full gate must not silently become security-on: exact release/candidate security profile selection is
         # separate release authority, and this slice only binds affected-PR hosted evidence.
         ("full gate does not silently become security-on", "workflow_dispatch", [], False,
@@ -552,7 +555,7 @@ def self_test() -> int:
          [".github/release/release-trains.json"], False, {"decision": "MERGE", "product": "false"}),
         ("ready affected-product PR decides MERGE", "pull_request", ["src/runtime/runtime.cpp"], False,
          {"decision": "MERGE", "product": "true"}),
-        ("develop push decides OBSERVE", "push", [], False, {"decision": "OBSERVE"}),
+        ("develop push decides OBSERVE", "push", ["src/runtime/session.cpp"], False, {"decision": "OBSERVE"}),
         ("admitted full gate decides CANDIDATE", "workflow_dispatch", [], False, {"decision": "CANDIDATE"}),
     ]
 
@@ -668,7 +671,7 @@ def self_test() -> int:
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
     for description, event, changed, draft in (
-            ("develop sentinel", "push", [], False),
+            ("docs-only develop merge", "push", ["docs/proposals/notes.md"], False),
             ("full gate", "workflow_dispatch", [], False),
             ("fast PR", "pull_request", ["src/core/session/session.cpp"], False),
             ("documentation PR", "pull_request", ["docs/proposals/notes.md"], False),
@@ -705,10 +708,19 @@ def self_test() -> int:
             print(f"CASE FAILED: {description}: test-only lane must keep Windows, got {matrix[0].get('os')!r}")
             failures += 1
 
+    merged = resolve("push", ["src/runtime/session.cpp"])
+    merged_matrix = json.loads(merged["product_matrix"])
+    if len(merged_matrix) != 1 or merged_matrix[0]["os"] != "windows-2022":
+        print("CASE FAILED: protected develop merged product code must run Windows only")
+        failures += 1
+    if merged["product"] != "true" or merged["decision"] != "OBSERVE":
+        print("CASE FAILED: post-merge validation does not approve a PR or a release")
+        failures += 1
+
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
     # start waiting on a lane whose purpose is not defined.
     expected_decisions = {
-        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "DEVELOP_SENTINEL": "OBSERVE", "FULL_GATE": "CANDIDATE",
+        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "POST_MERGE": "OBSERVE", "FULL_GATE": "CANDIDATE",
         "UNKNOWN": "OBSERVE",
     }
     for lane, expected in expected_decisions.items():
@@ -720,7 +732,7 @@ def self_test() -> int:
     if failures:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
-    print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, test-only ready PRs keep "
+    print("resolve-ci-scope self test: PASS (draft and docs-only merge skip Qt, merged code uses Windows, "
           "one product platform, examples documentation selects no capability, release authority is governance, "
           "empty exclusions stay empty, no exclusion can match every test, fast lane preserved, readiness runs "
           "where it is consumed, the candidate-only product fit runs where it is required rather than by default, "
