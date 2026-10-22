@@ -14,23 +14,19 @@ Contract:
 Lanes (``lane``):
   * ``PR_DRAFT`` - a draft pull request runs cheap governance only. Product jobs require a ready pull request, so a
     draft never starts the Windows/Linux Qt matrix.
-  * ``PR_FAST`` - a ready pull request is classified from its real ``base...head`` diff and validates only what that
-    diff can affect: the affected product capabilities, the deploy evidence for contracts it touches, and readiness
-    when it touches a readiness-consumed surface.
-  * ``DEVELOP_SENTINEL`` - a ``develop`` push runs seconds-scale repository policy. The merged pull request already
-    passed its own hosted acceptance, so re-running the whole dual-platform matrix on every merge only duplicates
-    cost without producing a new decision.
-  * ``FULL_GATE`` - the complete dual-platform, four-frontend, all-evidence run. It is reachable only through an
-    explicit ``workflow_dispatch`` (an exact candidate, a release branch or main validation is dispatched the same
-    way), never as a side effect of an ordinary change.
+  * ``PR_FAST`` - legacy, self-tested classifier result only: the CI workflow no longer
+    subscribes to PR events; cheap Git Flow and code review remain pre-merge checks.
+  * ``POST_MERGE`` - protected develop push validates affected product changes on Windows.
+    Docs-only merges skip expensive Qt. Evidence is OBSERVE, not a pre-merge approval.
+  * ``FULL_GATE`` - explicit exact-SHA candidate/release qualification dispatched manually,
+    never a side effect of a PR commit or ordinary develop merge.
 
 Decisions (``decision``) - what the run can be waited on for (#380):
   * ``OBSERVE`` - fire-and-observe. No merge or release decision is waiting on this lane: a draft pull request, the
-    develop sentinel or any other no-product reporting run. An OBSERVE result never blocks sequencing independent
-    work; a later red result opens a defect owner instead of a hold.
-  * ``MERGE`` - hosted evidence for a ready pull request's merge decision. This is decided by the lane, not by
-    whether a Qt matrix starts: a ready docs-only pull request is still a MERGE decision, answered by governance
-    rather than by product runners.
+    post-merge Windows checks or any other no-premerge reporting run. OBSERVE does not
+    approve merging or shipping: a post-merge failure requires a bounded repair Issue.
+  * ``MERGE`` - legacy PR_FAST classification retained for self-test compatibility;
+    current merge control comes from independent Git Flow/review checks, not Qt CI.
   * ``CANDIDATE`` - an admitted exact-SHA full qualification. A candidate or release decision may wait on it.
 """
 
@@ -375,8 +371,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
 
     ordered = [peer for peer in PEERS if peer in selected]
     integrations = ",".join(ordered)
-    # A capability is only built when the lane is allowed to build anything: the sentinel is policy, and a draft has
-    # not asked for review yet.
+    # Only merge-push validation or explicit full-gate events actually subscribe to CI;
+    # PR_FAST remains represented only for regression testing the selector.
     product = bool(ordered) and product_lane
 
     # Fast pull requests keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
@@ -432,7 +428,7 @@ def self_test() -> int:
     failures = 0
 
     cases = [
-        # Draft pull requests and the develop sentinel must not start the product matrix at all.
+        # Docs-only develop merges and historical draft PRs do not run Qt product checks.
         ("draft product PR runs no product job", "pull_request", ["src/runtime/runtime.cpp"], True,
          {"lane": "PR_DRAFT", "product": "false", "integrations": ""}),
         ("draft governance PR runs no product job", "pull_request", ["README.md"], True,
@@ -544,7 +540,7 @@ def self_test() -> int:
         ("draft security PR requests no security evidence", "pull_request",
          ["src/runtime/tests/test_vnc_auth.cpp"], True,
          {"security_evidence": "false", "product": "false"}),
-        ("develop sentinel requests no security evidence", "push", [], False, {"security_evidence": "false"}),
+        ("docs-only merge requests no security evidence", "push", ["docs/proposals/notes.md"], False, {"security_evidence": "false"}),
         # The full gate must not silently become security-on: exact release/candidate security profile selection is
         # separate release authority, and this slice only binds affected-PR hosted evidence.
         ("full gate does not silently become security-on", "workflow_dispatch", [], False,
