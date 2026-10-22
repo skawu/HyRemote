@@ -28,17 +28,18 @@ installed CMake C++ consumer
 Commands:
 
 ```powershell
-cmake -S . -B build-qt5 -G Ninja `
+# Keep every generated tree outside the repository; never create build/ in the source tree.
+cmake -S . -B F:/hyr-qt5/build -G Ninja `
   -DCMAKE_PREFIX_PATH=C:/Qt/5.15.2/msvc2019_64 `
   -DHYREMOTE_BUILD_TESTS=ON -DHYREMOTE_BUILD_EXAMPLES=ON `
   -DHYREMOTE_BUILD_CPP_API=ON -DHYREMOTE_BUILD_QML_API=OFF `
   -DHYREMOTE_BUILD_WIDGETS_ADAPTER=ON -DHYREMOTE_BUILD_QUICK_ADAPTER=OFF
 
-cmake --build build-qt5 -j 4
-ctest --test-dir build-qt5 --output-on-failure
+cmake --build F:/hyr-qt5/build -j 4
+ctest --test-dir F:/hyr-qt5/build --output-on-failure
 ```
 
-Evidence:
+Evidence at `a0fc32b` (2026-10-22):
 
 ```text
 Qt5 CTest                         62/62 PASS
@@ -46,9 +47,12 @@ Qt6 reference CTest               85/85 PASS
 installed CMake consumer          PASS
 v01 examples smoke                PASS (Widgets examples)
 Qt5 deployment                    PASS (windeployqt + qt.conf)
+Qt5 Quick Runtime build           PASS (HYREMOTE_QT5_ENABLE_QUICK=ON)
 ```
 
 The Qt5 deployment path uses `windeployqt`, copies `HyRemoteRemoteAccess.dll` and `Qt5Network.dll`, and writes `bin/qt.conf` so the deployed tree finds `plugins/` below its prefix.
+
+The repository layout and CI-baseline tests were aligned with the already-merged #571 per-commit concurrency policy (`cancel-in-progress: false`), and the build-authority fixture now matches CMake's wrapped error text. These were test-harness corrections, not Qt5 runtime changes; they are required for the Qt5 suite to reach 62/62.
 
 ## Experimental Quick lane
 
