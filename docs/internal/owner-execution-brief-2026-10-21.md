@@ -91,4 +91,4 @@ OWNER_DECISION=required?|link; next owner + smallest next action
 
 ## 6. Boundary of this brief
 
-This guidance **landed on `develop` via PR #550** and was re-scoped through accepted #558/PR #559. It is not a replacement authority for #343, #33, #235 or the machine release map. The Qt 6.12 date comes from the official 2026-09-30 announcement. This brief does not claim that Qt 6.12 or ARM64 was compiled or run here, and does not claim that the P0 defects are already fixed.
+This guidance **landed on `develop` via PR #550** and was re-scoped through accepted #558/PR #559. It is not a replacement authority for #343, #33, #235 or the machine release map. The Qt 6.12 date comes from the official 2026-09-30 announcement. This brief does not claim that Qt 6.12 or ARM64 was compiled or run here. The merged #553 fixes are a regression baseline; the current P0 is the V0.3.3.0 admission gap, not a repeat of that historical triage.
