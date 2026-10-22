@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Start the Qt 5.15 and ARM64/EGLFS foundation work in parallel with V0.3.3.0 without adding either to the V0.3.3.0 product commitment. This document records preparation and blockers only; it is not a support claim.
+Under Owner #563, keep Qt 5.15 Windows compatibility preparation where the Windows GA claim requires it; ARM64/EGLFS is **user-triggered/nonblocking portability investigation**, not a V0.3.3, V0.4 or V1 obligation. This document records historical environment gaps, not a release blocker or support claim.
 
 Baseline: `develop@1e56bdc`.
 
@@ -11,7 +11,7 @@ Baseline: `develop@1e56bdc`.
 | Workstream | Owner | V0.3.3.0 relationship |
 | --- | --- | --- |
 | Qt 5.15 preflight/adaptation | #57/#260/#265 | Not a V0.3.3.0 child; separate V0.3-family/V0.4 work |
-| ARM64/EGLFS runtime | #236/#343 | Not a V0.3.3.0 child; mandatory before V0.4 |
+| ARM64/EGLFS runtime | #236/#343 | USER_VALIDATION_PENDING; optional when user/board evidence exists; never V0.3.3/V0.4/V1 blocker (#563) |
 | Quick-only loader correctness | #203 | x64 dependency fix already merged; ARM64 runtime remains separate |
 | Qt 6.12 LTS | #57/#343 | Preflight only; default DEFER |
 
@@ -70,7 +70,7 @@ Next bounded tasks:
 1. Add the ARM64 MSVC component or a documented cross toolchain, then compile the Quick-only Runtime.
 2. Produce `dumpbin`/`readelf` evidence that the ARM64 Quick-only payload has no QtWidgets load dependency.
 3. On the RK3588/EGLFS reference, prove clean-rootfs startup, local Quick display/input, remote view/control/reconnect, and loader provenance.
-4. Keep #343's ARM64 baseline as a pre-V0.4 requirement, not a V0.3.3.0 freeze condition.
+4. Owner #563 supersedes the former #343 ARM64 pre-V0.4 hard gate: user-provided ARM64 evidence is welcome but nonblocking for Feature/RC/GA.
 
 ## Non-core control
 
@@ -89,5 +89,5 @@ They cannot be used to delay or expand the current Feature.
 Qt5 preparation=STARTED, build NOT_RUN
 ARM64 Quick-only x64=PAST
 ARM64 compile/runtime=BLOCKED (toolchain/device)
-V0.3.3.0 scope=unchanged x86_64 Windows/Linux
+V0.3.3.0 required platform=Windows x86_64; Linux/device=user-validation pending/nonblocking
 ```
