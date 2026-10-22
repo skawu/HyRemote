@@ -23,6 +23,7 @@
 #include <QPixmap>
 #include <QWidget>
 #include <QWindow>
+#include <QtMath>
 
 #include <cmath>
 #include <functional>

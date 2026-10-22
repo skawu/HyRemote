@@ -32,7 +32,19 @@ set_property(GLOBAL PROPERTY HYREMOTE_INSTALLED_PACKAGE_PREFIX "${_hyremote_pack
 # uses Qt Core/Network types, so those are the only unconditional package-level Qt dependencies.
 # Widgets, Quick and QML remain application-selected UI layers.
 if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
-    find_dependency(Qt6 6.8 COMPONENTS Core Network)
+    if("@HYREMOTE_PACKAGE_QT_MAJOR@" STREQUAL "5")
+        find_dependency(Qt5 5.15 COMPONENTS Core Network Gui Widgets)
+        # The exported target names are Qt-major neutral inside HyRemote. Aliasing the Qt5 imported
+        # targets keeps one installed target surface without a second Runtime product.
+        if(NOT TARGET Qt6::Core)
+            add_library(Qt6::Core ALIAS Qt5::Core)
+            add_library(Qt6::Network ALIAS Qt5::Network)
+            add_library(Qt6::Gui ALIAS Qt5::Gui)
+            add_library(Qt6::Widgets ALIAS Qt5::Widgets)
+        endif()
+    else()
+        find_dependency(Qt6 6.8 COMPONENTS Core Network)
+    endif()
 endif()
 
 # QML is optional package payload, not a second C++ target. Publish the import root plus the absolute

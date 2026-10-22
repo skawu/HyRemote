@@ -10,8 +10,10 @@
 #include <QPen>
 #include <QPixmap>
 #include <QPolygon>
-#include <QQuickItem>
-#include <QQuickWindow>
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+#  include <QQuickItem>
+#  include <QQuickWindow>
+#endif
 #include <QThread>
 #include <QTimer>
 #include <QObject>
@@ -40,6 +42,15 @@
 namespace HyRemote::Runtime {
 namespace {
 
+QPolygon polygonFrom(std::initializer_list<QPoint> points)
+{
+    QPolygon polygon;
+    for (const QPoint &point : points)
+        polygon << point;
+    return polygon;
+}
+
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
 QCursor quickCursorUnderPointer(QQuickWindow *window, const QPoint &globalPoint = QPoint())
 {
     if (!window)
@@ -56,6 +67,7 @@ QCursor quickCursorUnderPointer(QQuickWindow *window, const QPoint &globalPoint 
     }
     return item == window->contentItem() ? window->cursor() : item->cursor();
 }
+#endif
 
 QPoint cursorShapeHotspot(Qt::CursorShape shape)
 {
@@ -152,14 +164,14 @@ QImage cursorShapeImage(Qt::CursorShape shape)
         line(13, 8, 10, 11);
         break;
     case Qt::PointingHandCursor:
-        polygon(QPolygon{{7, 1}, {9, 1}, {9, 7}, {12, 7}, {12, 14}, {4, 14}, {4, 7}, {6, 7}});
+        polygon(polygonFrom({{7, 1}, {9, 1}, {9, 7}, {12, 7}, {12, 14}, {4, 14}, {4, 7}, {6, 7}}));
         break;
     case Qt::OpenHandCursor:
-        polygon(QPolygon{{4, 7}, {5, 2}, {6, 1}, {7, 2}, {7, 6}, {8, 1}, {9, 1},
-                         {9, 6}, {10, 2}, {11, 3}, {11, 7}, {12, 9}, {12, 14}, {4, 14}});
+        polygon(polygonFrom({{4, 7}, {5, 2}, {6, 1}, {7, 2}, {7, 6}, {8, 1}, {9, 1},
+                              {9, 6}, {10, 2}, {11, 3}, {11, 7}, {12, 9}, {12, 14}, {4, 14}}));
         break;
     case Qt::ClosedHandCursor:
-        polygon(QPolygon{{5, 5}, {12, 5}, {13, 8}, {13, 13}, {4, 13}, {4, 8}});
+        polygon(polygonFrom({{5, 5}, {12, 5}, {13, 8}, {13, 13}, {4, 13}, {4, 8}}));
         break;
     case Qt::ForbiddenCursor:
         painter.setPen(QPen(Qt::black, 3));
@@ -170,10 +182,10 @@ QImage cursorShapeImage(Qt::CursorShape shape)
         break;
     case Qt::WaitCursor:
     case Qt::BusyCursor:
-        polygon(QPolygon{{4, 2}, {12, 2}, {9, 8}, {12, 14}, {4, 14}, {7, 8}});
+        polygon(polygonFrom({{4, 2}, {12, 2}, {9, 8}, {12, 14}, {4, 14}, {7, 8}}));
         break;
     case Qt::UpArrowCursor:
-        polygon(QPolygon{{8, 1}, {3, 7}, {6, 7}, {6, 14}, {10, 14}, {10, 7}, {13, 7}});
+        polygon(polygonFrom({{8, 1}, {3, 7}, {6, 7}, {6, 14}, {10, 14}, {10, 7}, {13, 7}}));
         break;
     case Qt::WhatsThisCursor:
         painter.setPen(QPen(Qt::black, 3));
@@ -1300,6 +1312,7 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                     cursor = widget->cursor();
             }
 #endif
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
             else if (auto *window = qobject_cast<QQuickWindow *>(object)) {
                 const QPointF logical = remoteX >= 0 && remoteY >= 0
                                             ? detail::mapFramebufferCursorPoint(remoteX,
@@ -1309,9 +1322,15 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                                                                                 window->width(),
                                                                                 window->height())
                                             : QPointF(-1.0, -1.0);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
                 const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
                                            ? window->mapToGlobal(logical).toPoint()
                                            : QPoint();
+#else
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? window->mapToGlobal(logical.toPoint())
+                                           : QPoint();
+#endif
                 cursor = quickCursorUnderPointer(window, pointer);
             } else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window()) {
                 const QPointF logical = remoteX >= 0 && remoteY >= 0
@@ -1322,21 +1341,42 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                                                                                 item->width(),
                                                                                 item->height())
                                             : QPointF(-1.0, -1.0);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
                 const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
                                            ? item->mapToGlobal(logical).toPoint()
                                            : QPoint();
+#else
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? item->mapToGlobal(logical.toPoint()).toPoint()
+                                           : QPoint();
+#endif
                 cursor = quickCursorUnderPointer(item->window(), pointer);
             }
+#endif
 
             QImage image = cursor.pixmap().toImage().convertToFormat(QImage::Format_ARGB32);
-            if (image.isNull() && !cursor.bitmap().isNull() && !cursor.mask().isNull()) {
-                const QImage source = cursor.bitmap().toImage();
-                const QImage mask = cursor.mask().toImage();
-                if (source.size() == mask.size()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            const QBitmap bitmap = cursor.bitmap();
+            const QBitmap bitmapMask = cursor.mask();
+            const bool hasBitmap = !bitmap.isNull() && !bitmapMask.isNull();
+#else
+            const QBitmap *bitmapPtr = cursor.bitmap();
+            const QBitmap *maskPtr = cursor.mask();
+            const bool hasBitmap = bitmapPtr && maskPtr && !bitmapPtr->isNull() && !maskPtr->isNull();
+#endif
+            if (image.isNull() && hasBitmap) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                const QImage source = bitmap.toImage();
+                const QImage maskImage = bitmapMask.toImage();
+#else
+                const QImage source = bitmapPtr->toImage();
+                const QImage maskImage = maskPtr->toImage();
+#endif
+                if (source.size() == maskImage.size()) {
                     image = QImage(source.size(), QImage::Format_ARGB32);
                     for (int y = 0; y < source.height(); ++y) {
                         for (int x = 0; x < source.width(); ++x) {
-                            const bool opaque = qGray(mask.pixelColor(x, y).rgb()) != 0;
+                            const bool opaque = qGray(maskImage.pixelColor(x, y).rgb()) != 0;
                             image.setPixelColor(x,
                                                 y,
                                                 opaque ? source.pixelColor(x, y)

@@ -57,7 +57,11 @@ protected:
         case QEvent::MouseMove: {
             auto *mouse = static_cast<QMouseEvent *>(event);
             ++moves;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastPosition = mouse->position();
+#else
+            lastPosition = mouse->localPos();
+#endif
             break;
         }
         case QEvent::MouseButtonPress:

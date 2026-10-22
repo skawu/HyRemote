@@ -17,6 +17,7 @@
 
 int main(int argc, char **argv)
 {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     QApplication app(argc, argv);
 
     QMainWindow window;

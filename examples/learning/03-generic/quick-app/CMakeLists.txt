@@ -2,7 +2,16 @@ cmake_minimum_required(VERSION 3.21)
 project(HyRemoteLearning03GenericQuick LANGUAGES CXX)
 
 # An ordinary Qt Quick application: no HyRemote target is linked and no HyRemote header is included.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick Qml)
+if(NOT TARGET Qt6::Quick OR NOT TARGET Qt6::Qml)
+    find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Quick Qml)
+endif()
+if(NOT TARGET Qt6::Quick OR NOT TARGET Qt6::Qml)
+    find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Quick Qml)
+    add_library(Qt6::Core ALIAS Qt5::Core)
+    add_library(Qt6::Gui ALIAS Qt5::Gui)
+    add_library(Qt6::Quick ALIAS Qt5::Quick)
+    add_library(Qt6::Qml ALIAS Qt5::Qml)
+endif()
 
 add_executable(hyremote-learning-03-quick main.cpp)
 target_compile_features(hyremote-learning-03-quick PRIVATE cxx_std_17)
