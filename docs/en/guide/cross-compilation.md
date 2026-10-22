@@ -67,6 +67,8 @@ cp build.yml build.aarch64.yml
 #   qt.prefix             -> target Qt 6.8.3 prefix
 #   compiler.toolchain    -> cmake/toolchains/aarch64-linux-gnu.cmake
 #   cmake.CMAKE_SYSROOT   -> target sysroot
+#   build.examples        -> false (cross builds normally skip examples)
+#   integrations          -> keep only qpa: true, the rest false
 sh ./build.cmd clean
 sh ./build.cmd build --config=build.aarch64.yml
 ```
@@ -130,6 +132,20 @@ run on the host.
    `-DCMAKE_SYSROOT=`.
 
 ## 4. Deploying and running
+
+### Quick-only runtime
+
+A Quick-only appliance should not carry Qt Widgets just because HyRemote has a Widgets adapter. In the build profile
+set:
+
+```yaml
+cmake:
+  HYREMOTE_BUILD_WIDGETS_ADAPTER: OFF
+  HYREMOTE_BUILD_QUICK_ADAPTER: ON
+```
+
+The resulting shared Runtime must not have a `Qt6Widgets` load dependency. The dependency contract is recorded in
+`docs/compatibility.md`; ARM64/EGLFS runtime evidence still requires the target board.
 
 The cross build needs the same deployment contract as the desktop build - shared runtime, the `qhyremote` platform
 plugin and its native delegate dependency (see `docs/guide/deployment.md` and `hyremote_deploy()`). On the target the QPA

@@ -317,6 +317,36 @@ bool sendSetEncodings(QTcpSocket &socket, const std::vector<std::int32_t> &encod
     return writeAll(socket, message);
 }
 
+bool sendPixelFormat(QTcpSocket &socket, char bitsPerPixel, char depth, char redMax, char greenMax, char blueMax,
+                     char redShift, char greenShift, char blueShift)
+{
+    QByteArray message;
+    message.append(char(0));  // SetPixelFormat
+    message.append("\0\0\0", 3);
+    message.append(bitsPerPixel);
+    message.append(depth);
+    message.append(char(0));  // little-endian
+    message.append(char(1));  // true colour
+    appendU16(message, static_cast<std::uint8_t>(redMax));
+    appendU16(message, static_cast<std::uint8_t>(greenMax));
+    appendU16(message, static_cast<std::uint8_t>(blueMax));
+    message.append(redShift);
+    message.append(greenShift);
+    message.append(blueShift);
+    message.append("\0\0\0", 3);
+    return writeAll(socket, message);
+}
+
+bool sendNativePixelFormat(QTcpSocket &socket)
+{
+    return sendPixelFormat(socket, 32, 24, char(255), char(255), char(255), 0, 8, 16);
+}
+
+bool sendRgb222PixelFormat(QTcpSocket &socket)
+{
+    return sendPixelFormat(socket, 8, 6, 3, 3, 3, 4, 2, 0);
+}
+
 QByteArray makeFence(std::uint32_t flags, const QByteArray &payload = {})
 {
     QByteArray message;
@@ -768,6 +798,46 @@ void testCursorPseudoEncoding()
     transport->stop();
 }
 
+void testCursorSentAfterPixelFormatWithoutRequest()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(64, 48, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-239, 0}));
+
+    // RealVNC first requests an 8-bpp rgb222 format and later promotes it to
+    // 32 bpp. The reduced format must not consume the cursor throttle.
+    CHECK(sendRgb222PixelFormat(socket));
+    CHECK(sendNativePixelFormat(socket));
+
+    // No FramebufferUpdateRequest and no frame change: the approved pixel
+    // format alone must cause the cursor to be sent.
+    CHECK(readCursorUpdate(socket));
+
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
 void testVariableCursorSnapshot()
 {
     const quint16 port = freePort();
@@ -780,7 +850,7 @@ void testVariableCursorSnapshot()
         port,
         recorder,
         makeFrame(64, 48, 0x203040U),
-        [](int, int) {
+        [](int, int, std::uint32_t, std::uint32_t) {
             HyRemote::detail::RfbCursorSnapshot snapshot;
             snapshot.width = 4;
             snapshot.height = 4;
@@ -1924,6 +1994,7 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testCursorPseudoEncoding();
+    testCursorSentAfterPixelFormatWithoutRequest();
     testVariableCursorSnapshot();
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();

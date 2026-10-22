@@ -1,7 +1,6 @@
 #include "access_instance.hpp"
 
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
-#include <QApplication>
 #include <QBitmap>
 #include <QColor>
 #include <QCursor>
@@ -17,7 +16,10 @@
 #include <QTimer>
 #include <QObject>
 #include <QPointer>
-#include <QWidget>
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+#  include <QApplication>
+#  include <QWidget>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -30,6 +32,7 @@
 #include <utility>
 
 #include "detail/component_factories.hpp"
+#include "detail/cursor_mapping.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "hyremote/core/session.hpp"
@@ -1265,32 +1268,62 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     detail::RfbSecurityConfig effectiveSecurity = security;
     effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
     effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject)](
-                                            int remoteX, int remoteY) -> detail::RfbCursorSnapshot {
+                                            int remoteX,
+                                            int remoteY,
+                                            std::uint32_t sourceWidth,
+                                            std::uint32_t sourceHeight) -> detail::RfbCursorSnapshot {
         QObject *object = guard.data();
         if (!object)
             return {};
 
-        const auto readSnapshot = [object, remoteX, remoteY]() -> detail::RfbCursorSnapshot {
+        const auto readSnapshot = [object, remoteX, remoteY, sourceWidth, sourceHeight]() -> detail::RfbCursorSnapshot {
             QCursor cursor(Qt::ArrowCursor);
             if (const QCursor *overrideCursor = QGuiApplication::overrideCursor()) {
                 cursor = *overrideCursor;
-            } else if (auto *widget = qobject_cast<QWidget *>(object)) {
-                const QPoint pointer = remoteX >= 0 && remoteY >= 0
-                                           ? widget->mapToGlobal(QPoint(remoteX, remoteY))
+            }
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+            else if (auto *widget = qobject_cast<QWidget *>(object)) {
+                const QPointF logical = remoteX >= 0 && remoteY >= 0
+                                            ? detail::mapFramebufferCursorPoint(remoteX,
+                                                                                remoteY,
+                                                                                sourceWidth,
+                                                                                sourceHeight,
+                                                                                widget->width(),
+                                                                                widget->height())
+                                            : QPointF(-1.0, -1.0);
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? widget->mapToGlobal(logical.toPoint())
                                            : QCursor::pos();
                 if (auto *underPointer = QApplication::widgetAt(pointer))
                     cursor = underPointer->cursor();
                 else
                     cursor = widget->cursor();
             }
+#endif
             else if (auto *window = qobject_cast<QQuickWindow *>(object)) {
-                const QPoint pointer = remoteX >= 0 && remoteY >= 0
-                                           ? window->mapToGlobal(QPointF(remoteX, remoteY)).toPoint()
+                const QPointF logical = remoteX >= 0 && remoteY >= 0
+                                            ? detail::mapFramebufferCursorPoint(remoteX,
+                                                                                remoteY,
+                                                                                sourceWidth,
+                                                                                sourceHeight,
+                                                                                window->width(),
+                                                                                window->height())
+                                            : QPointF(-1.0, -1.0);
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? window->mapToGlobal(logical).toPoint()
                                            : QPoint();
                 cursor = quickCursorUnderPointer(window, pointer);
             } else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window()) {
-                const QPoint pointer = remoteX >= 0 && remoteY >= 0
-                                           ? item->mapToGlobal(QPointF(remoteX, remoteY)).toPoint()
+                const QPointF logical = remoteX >= 0 && remoteY >= 0
+                                            ? detail::mapFramebufferCursorPoint(remoteX,
+                                                                                remoteY,
+                                                                                sourceWidth,
+                                                                                sourceHeight,
+                                                                                item->width(),
+                                                                                item->height())
+                                            : QPointF(-1.0, -1.0);
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? item->mapToGlobal(logical).toPoint()
                                            : QPoint();
                 cursor = quickCursorUnderPointer(item->window(), pointer);
             }

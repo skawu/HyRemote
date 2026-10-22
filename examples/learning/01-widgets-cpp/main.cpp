@@ -24,6 +24,7 @@
 #include <QMouseEvent>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 
 #include <iostream>
 
@@ -57,6 +58,13 @@ protected:
                   << " x=" << event->position().x()
                   << " y=" << event->position().y() << std::endl;
         QLineEdit::mousePressEvent(event);
+    }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        const QPoint angle = event->angleDelta();
+        std::cout << "INPUT_WHEEL x=" << angle.x() << " y=" << angle.y() << std::endl;
+        QLineEdit::wheelEvent(event);
     }
 };
 
