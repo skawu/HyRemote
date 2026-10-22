@@ -32,15 +32,21 @@ secret is part of this repository.
 Viewer: TightVNC 2.8.85
 Correct password:  connected, title "HyRemote - TightVNC Viewer", TCP established
 Wrong password:    rejected, no established TCP connection
+
+Viewer: RealVNC 7.15.1
+Correct password:  connected, title "127.0.0.1:5927 (HyRemote) - RealVNC Viewer", TCP established
+Wrong password:    rejected, no established TCP connection
+
 Server negotiation: RFB 3.8 security type VncAuth(2)
 ```
 
-RealVNC Viewer 7.15.1 reached the VncAuth prompt, but the password dialog was not automated
-reliably in this run; no RealVNC auth PASS is claimed.
+RealVNC presents an unencrypted-connection notice first; after Continue it presents the password
+prompt. Both viewers were driven without HyRemote-specific patches.
 
 ## Boundaries
 
-- One maintained viewer only; #175's two-maintained-viewer matrix is not complete.
+- This is the optional-auth cell only; #175 still needs the independent cursor-shape cell and the
+  rest of the two-viewer matrix.
 - VNC authentication only; the transport is not encrypted.
 - No Linux/embedded viewer cell is claimed.
 - The test credential is not a product default and is not committed.
@@ -50,12 +56,14 @@ reliably in this run; no RealVNC auth PASS is claimed.
 ```text
 F:/workspace/hyremote/HyRemote-evidence/2026-10-22-auth-cell/
 ├── summary.txt
-└── tightvnc-authenticated.png
+├── tightvnc-authenticated.png
+└── realvnc-authenticated.png
 ```
 
 ## Verdict
 
 ```text
 TightVNC optional VNC auth: PASS
-#175 optional authentication: PARTIAL (1/2 maintained viewers; RealVNC prompt open)
+RealVNC optional VNC auth: PASS
+#175 optional authentication: PASS (two maintained viewers; correct accepts, wrong rejects)
 ```
