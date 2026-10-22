@@ -848,26 +848,64 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                 message(STATUS "  Qt kits found but not usable: ${_qt_rejected}")
             endif()
         else()
-            # Ambiguity is not a resolution and not a guess: a reporting run says so and carries on, a run that
-            # would have to build stops here with the candidates and the command to paste.
-            if(_qt_discovery_fatal)
-                message(FATAL_ERROR
-                    "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
-                    "about the compiler. Choose one explicitly:\n"
-                    "Resolved tier: ${_qt_tier_name}\n"
-                    "\n"
-                    "  ${_qt_choose_command}\n"
-                    "\n"
-                    "Candidates:\n    ${_qt_usable}")
+            # Multiple usable Qt versions/Kits are a product choice, not a heuristic.
+            # A typed number is required on a real console; CI and reports never prompt.
+            set(_qt_menu "")
+            set(_qt_num 0)
+            foreach(_prefix IN LISTS _qt_usable)
+                math(EXPR _qt_num "${_qt_num}+1")
+                get_filename_component(_version_parent "${_prefix}" DIRECTORY)
+                get_filename_component(_version "${_version_parent}" NAME)
+                get_filename_component(_kit "${_prefix}" NAME)
+                string(APPEND _qt_menu "\n  [${_qt_num}] Qt ${_version} / ${_kit}: ${_prefix}")
+                if(NOT _version STREQUAL "6.8.3")
+                    string(APPEND _qt_menu " (not a qualified reference Kit)")
+                endif()
+            endforeach()
+            set(_qt_choice_help
+                "Several Qt 6.8+ kits on this machine could build HyRemote; none is a default.\n"
+                "Candidates:${_qt_menu}\n"
+                "Specify build.yml qt.prefix or ${_qt_choose_command} to skip selection.")
+            set(_qt_no_console FALSE)
+            if(HYB_NO_PROMPT OR HYB_SHOW_CONFIG OR NOT _qt_discovery_fatal
+               OR "$ENV{CI}" STREQUAL "true" OR "$ENV{CI}" STREQUAL "1"
+               OR "$ENV{GITHUB_ACTIONS}" STREQUAL "true"
+               OR "$ENV{HYREMOTE_NO_PROMPT}" STREQUAL "1")
+                set(_qt_no_console TRUE)
+            endif()
+            if(_qt_no_console)
+                if(_qt_discovery_fatal)
+                    message(FATAL_ERROR "${_qt_choice_help}\nNo interactive selection in CI/--no-prompt. No Kit chosen.")
+                else()
+                    message(WARNING "${_qt_choice_help}\nRead-only report: no Kit chosen.")
+                endif()
             else()
-                message(WARNING
-                    "Several Qt 6.8 kits on this machine could build HyRemote, and picking one would guess wrong "
-                    "about the compiler. Choose one explicitly:\n"
-                    "Resolved tier: ${_qt_tier_name}\n"
-                    "\n"
-                    "  ${_qt_choose_command}\n"
-                    "\n"
-                    "Candidates:\n    ${_qt_usable}")
+                message(STATUS "${_qt_choice_help}")
+                if(WIN32)
+                    execute_process(
+                        COMMAND cmd.exe /C "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.cmd" "${_qt_usable_count}"
+                        RESULT_VARIABLE _qt_prompt_code OUTPUT_VARIABLE _qt_prompt_answer)
+                else()
+                    execute_process(
+                        COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.sh" "${_qt_usable_count}"
+                        RESULT_VARIABLE _qt_prompt_code OUTPUT_VARIABLE _qt_prompt_answer)
+                endif()
+                string(STRIP "${_qt_prompt_answer}" _qt_prompt_answer)
+                if(_qt_prompt_code EQUAL 0
+                   AND _qt_prompt_answer MATCHES "^HYREMOTE_QT_KIT_CHOICE=([1-9][0-9]*)$")
+                    set(_qt_choice "${CMAKE_MATCH_1}")
+                    if(_qt_choice GREATER _qt_usable_count)
+                        message(FATAL_ERROR "Qt Kit choice ${_qt_choice} is outside 1-${_qt_usable_count}; no Kit selected.")
+                    endif()
+                    math(EXPR _qt_index "${_qt_choice}-1")
+                    list(GET _qt_usable ${_qt_index} HYB_QT_PREFIX)
+                    cmake_path(NORMAL_PATH HYB_QT_PREFIX)
+                    message(STATUS "Qt Kit selected by user: ${HYB_QT_PREFIX}")
+                elseif(_qt_prompt_code EQUAL 0)
+                    message(FATAL_ERROR "Qt Kit choice cancelled or invalid. Rerun and choose a number, or set qt.prefix.")
+                else()
+                    message(FATAL_ERROR "Qt Kit selection requires a real interactive console. No Kit selected.\n${_qt_choice_help}")
+                endif()
             endif()
         endif()
     elseif(_qt_candidates)
