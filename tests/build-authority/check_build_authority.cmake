@@ -325,7 +325,7 @@ if(UNIX AND NOT APPLE)
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
         --no-config --show-config)
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.3/gcc_64")
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}" "${qt_two_root}/6.8.4/gcc_64")
     require_text_flat(qt-discovery-two-kits-ambiguous "${HYB_TEST_OUTPUT}"
@@ -340,9 +340,9 @@ if(UNIX AND NOT APPLE)
     # a Core-only configuration legitimately needs no Qt at all, so asserting on that would prove nothing.
     run_env_failure(qt-discovery-two-kits-build-fails-closed
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
-        build --examples "--build-dir=${scratch}/qt-discovery-two-build")
+        build --examples --no-prompt "--build-dir=${scratch}/qt-discovery-two-build")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
         "sh ./build.cmd build --qt-prefix=<one-of-these>")
     # Fail closed means it stops before configuring anything, not after a configure that then fails for its own
@@ -373,7 +373,7 @@ if(UNIX AND NOT APPLE)
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_rejected_root};QTDIR=${qt_two_root}/6.8.3/gcc_64;CMAKE_PREFIX_PATH=${qt_two_root}/6.8.4/gcc_64"
         --no-config --show-config)
     require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
         "Resolved tier: environment (QTDIR / CMAKE_PREFIX_PATH)")
     require_text_flat(qt-discovery-environment-tier-ambiguous "${HYB_TEST_OUTPUT}"
@@ -429,7 +429,7 @@ if(UNIX AND NOT APPLE)
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_same_class_root_a}\;${qt_same_class_root_b};QTDIR=;CMAKE_PREFIX_PATH="
         --no-config --show-config)
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
-        "Several Qt 6.8 kits on this machine could build HyRemote")
+        "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
         "${qt_same_class_root_a}/6.8.3/gcc_64")
     require_text_flat(qt-discovery-same-class-distinct-prefixes "${HYB_TEST_OUTPUT}"
