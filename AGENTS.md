@@ -27,13 +27,13 @@ Do not infer project status from chat memory alone.
 
 **V0.3.0.0 Product Preview was released on 2026-10-19** (annotated `v0.3.0.0`). The current development priority is **V0.3-family product-breadth convergence**, with **V0.3.3.0** activated for practical RFB delivery (#144) and maintained GUI-viewer interoperability (#175), as recorded in `.github/release/release-trains.json`. V0.3.1.0 and V0.3.2.0 remain retired planning labels; V0.4.0.0 remains conditionally inactive and qualification-only until its entry gate passes.
 
-**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It sequences observed correctness/review debt, the current Feature's exact evidence gates, Qt 6.12 LTS *preflight only*, embedded Quick-only loader correctness and the V0.4/GA decision boundary. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
+**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It records merged correctness fixes for regression watching, prioritizes current #144/#175/#370 acceptance evidence, Qt 6.12 LTS *preflight only*, embedded Quick-only loader correctness and the V0.4/GA decision boundary. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
 
 Current execution order:
 
 ```text
 verify latest develop + Issue ownership + exact-SHA evidence
- -> review/disposition known input/cursor/docs findings (#533/#544/#543/#546)
+ -> reuse merged #553 cursor/input/build-doc regressions; triage only new failures or open review debt
  -> close V0.3.3.0 product outcome (#144 + #175, supported by #370)
  -> finish remaining #343 mandatory Qt/platform/ARM64/performance breadth
  -> enter V0.4 qualification-only RC after explicit activation
