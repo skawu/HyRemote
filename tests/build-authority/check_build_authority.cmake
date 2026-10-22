@@ -385,7 +385,7 @@ if(UNIX AND NOT APPLE)
     # a Core-only configuration legitimately needs no Qt at all, so asserting on that would prove nothing.
     run_env_failure(qt-discovery-two-kits-build-fails-closed
         "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_two_root};QTDIR=;CMAKE_PREFIX_PATH="
-        build --examples --no-prompt "--build-dir=${scratch}/qt-discovery-two-build")
+        --no-config build --examples --no-prompt "--build-dir=${scratch}/qt-discovery-two-build")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
         "Several Qt 6.8+ kits on this machine could build HyRemote")
     require_text_flat(qt-discovery-two-kits-build-fails-closed "${HYB_TEST_OUTPUT}"
