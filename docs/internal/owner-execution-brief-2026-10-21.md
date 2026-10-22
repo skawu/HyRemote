@@ -1,6 +1,6 @@
 # HyRemote - Local Owner execution brief (2026-10-21)
 
-> Status: a work-guidance and rebaseline proposal submitted through #549. It tells the Local Owner and execution agents how to sequence work, verify claims and request decisions. It does not change the product commitments in #1/#24/#33/#95/#343 and does not replace the machine release authority in `.github/release/release-trains.json`. Any change to the GA matrix or a release gate needs an explicit Owner decision and a reviewed atomic authority update.
+> Status: **accepted execution guidance** from #549 / merged PR #550, with desktop/ARM64 release-scope decision #558 / merged PR #559. This is a living Owner handoff, not a proposal awaiting first merge. It does not override #1/#24/#33/#95/#343 or `.github/release/release-trains.json`; later GA scope changes still need an explicit Owner decision and reviewed authority update.
 
 ## 0. Baseline and invariants
 
@@ -19,20 +19,11 @@ Before each work package, check for an existing merged fix or active parallel PR
 
 ## 2. Current priorities and work packages
 
-### P0 - Clear the known input-correctness and review-quality risks
+### Completed #553 correction baseline — regression watch, not active feature work
 
-The Owner assigns one bounded defect triage. The four findings below do not have to land in one PR.
+**Historical/merged on 2026-10-21:** [PR #553](https://github.com/skawu/HyRemote/pull/553) implements regression fixes for #533 Widgets first-key activation, #544 high-DPI cursor hit-testing, #543 cursor refresh/pixel-format timing and #546 ARM64 profile instructions, and adds review-gate checks. These must **not** be reimplemented by default. Retain deterministic regression coverage and check any outstanding review-thread dispositions at the actual latest SHA; open a bounded defect only if a fresh code/evidence check identifies a still-reproducible issue. Current product-work priority is the **V0.3.3.0 admission table**, not repeated P1/P2 historical triage.
 
-| Evidence/root cause | Minimum verification or fix | Automated acceptance |
-| --- | --- | --- |
-| [PR #533](https://github.com/skawu/HyRemote/pull/533) P1: first key after Widgets activation | Verify the path where `keyboardReceiver(root)` is cached before `activateWindow()` and falls back to the root; preserve application scope and OS foreground-lock limits | Inactive-window switch, first and continuous keys in a text field, KeyUp and rejected-focus cases |
-| [PR #544](https://github.com/skawu/HyRemote/pull/544) P1: RFB pointer to HiDPI Qt logical coordinates | Use the same framebuffer-to-logical transform for cursor hit-testing and input; do not assume DPR=1 | Executable DPR 1/1.5/2 Widgets and Quick hit-test plus resize/reconnect |
-| [PR #543](https://github.com/skawu/HyRemote/pull/543) P2: cursor poll timing | Do not count a 250 ms poll when no cursor was sent; verify a viewer that sends `SetEncodings` before `SetPixelFormat` | 8/16 to 32 bpp, first FramebufferUpdateRequest, static first cursor and sustained connection |
-| [PR #546](https://github.com/skawu/HyRemote/pull/546) P2: AArch64 profile guidance | When copying `build.yml`, set `build.examples=false` and only the intended `integrations`; avoid duplicate `CMAKE_BUILD_TYPE`/`build.type` | Profile parsing assertion plus docs path/self-service checks |
-
-These items are risks to re-verify, not proof that every platform reproduced them. A merged PR is not proof of a fix. Close each item with exact-SHA test evidence, the relevant code path, a threaded `Review-Disposition:` reply and an explicit resolution or Owner-accepted risk record. Do not remove a P1 merely because CI is green.
-
-### P1 - Close the V0.3.3.0 implementation-to-acceptance gap
+### P0 - Close the V0.3.3.0 implementation-to-acceptance gap
 
 Authorities: the [machine release train](../../.github/release/release-trains.json), [#144](https://github.com/skawu/HyRemote/issues/144), [#175](https://github.com/skawu/HyRemote/issues/175) and [#370](https://github.com/skawu/HyRemote/issues/370).
 
@@ -42,7 +33,7 @@ Authorities: the [machine release train](../../.github/release/release-trains.js
 - Performance: use the #370 W1 static, W2 localized, W3 interactive and W4 high-motion workloads. Record P50/P95, frame age, CPU/RSS, wire bytes, slow-client behavior and local UI impact. `1080p / wired RTT <= 20 ms / >= 100 Mbps / one qualified viewer`, interaction `P50 <= 200 ms` and `P95 <= 500 ms` are a **bounded envelope**, not an arbitrary-network guarantee. Track the known #410 multi-second stall history; one good run must not hide a tail defect.
 - **V0.3.3.0 candidate freeze stays blocked until the desktop #144/#175 evidence and review gate are complete.** The earlier #144 ARM64 conflict was resolved by explicit Owner decision #558: ARM64/EGLFS remains **non-optional for the #343 GA baseline before V0.4 entry**, but does not block this *desktop* Feature. Use the synchronized #144/#175 acceptance and machine-train wording; never call the embedded cell qualified from desktop evidence. Qt5/TLS/cloud are not V0.3.3 children. Formal admission rows are in `docs/internal/v0.3.3.0-release-admission.md`.
 
-### P2 - Parallel technical preflight, without displacing the current Feature
+### P1 - Parallel mandatory breadth preparation, without displacing the current Feature
 
 **Qt LTS:** [Qt 6.12 LTS was released on 2026-09-30](https://www.qt.io/blog/qt-6.12-released); see the [official Qt release table](https://doc.qt.io/qt-6/qt-releases.html). Produce a no-code, probe-first preflight:
 
@@ -55,7 +46,7 @@ Authorities: the [machine release train](../../.github/release/release-trains.js
 
 **HyRemoteTool and product description:** align [#378](https://github.com/skawu/HyRemote/issues/378) with the actual shipped roles in the current release. Distinguish the SDK/Runtime (the core product), the Tool Host and Viewer work surfaces, and diagnostics/release tooling. Do not mix a host diagnostic tool, an RFB viewer and an authenticated management plane. Recheck any old V0.2 badge against the real release identity. State the LAN-only, default-insecure boundary separately from authenticated login.
 
-### P3 - V0.4 / V1.0 decision boundary
+### P2 - V0.4 / V1.0 decision boundary
 
 - **V0.3-family completion:** the applicable reference cells in #343/#57 for Qt 5.15, 6.5 and 6.8; Windows/Linux; x86_64/ARM64; qwindows/qxcb/Wayland/EGLFS; #144/#175/#370; and the #203 embedded dependency. Do not invent a full Cartesian support claim.
 - **V0.4 conditional activation:** only after the Product Owner explicitly confirms the GA baseline, compatibility matrix and evidence plumbing (#393) are ready, and after #235 and the machine authority activate it. V0.4 is qualification, defect repair and freeze only; it does not absorb unimplemented Qt/transport/device work.
@@ -96,8 +87,8 @@ OWNER_DECISION=required?|link; next owner + smallest next action
 
 ## 5. Copyable directive for a Local Owner or execution agent
 
-> Take over the current `skawu/HyRemote` `develop`. First read `AGENTS.md`, #549 and this brief, #1/#24/#33/#95/#343, `.github/release/release-trains.json` and the latest comments on the relevant Issues. Use **AGENT_PRIMARY_HUMAN_ASSISTED**. First recheck whether the merged #533/#544/#543/#546 review findings still exist on the current HEAD; use small PRs under the owning Issue and add deterministic regressions. Then produce the exact-SHA implemented/automated/physical/accepted gap table for V0.3.3.0 #144/#175 and complete the minimum implementation plus viewer/performance admission. Run the Qt 6.12 LTS preflight in read-only mode and the #203 Quick-only ARM64 deployment review in parallel, but do not change the mandatory GA matrix without authorization. Follow G0 -> G1 -> G2 -> G3 and the independent Review Gate; mark unavailable physical cells BLOCKED. Every round reports HEAD, PASS/FAIL/BLOCKED, executed evidence links, remaining blockers and the smallest next task. Do not skip Owner scope decisions and do not directly modify `main`, release branches or tags.
+> Take over the current `skawu/HyRemote` `develop`. First read `AGENTS.md`, #549 and this brief, #1/#24/#33/#95/#343, `.github/release/release-trains.json` and the latest comments on the relevant Issues. Use **AGENT_PRIMARY_HUMAN_ASSISTED**. Treat merged #553 fixes for #533/#544/#543/#546 as historical regression baseline, not new implementation assignments; triage only evidence-backed current regressions or unresolved review debt. Start from the **NOT_READY** V0.3.3.0 admission matrix and produce exact-SHA implemented/automated/physical/accepted evidence for #144/#175/#370; close Linux maintained GUI viewer, desktop real-viewer SLO, cursor/auth and final same-SHA L2 gates. Run the Qt 6.12 LTS preflight in read-only mode and the #203 Quick-only ARM64 deployment review in parallel, but do not change the mandatory GA matrix without authorization. Follow G0 -> G1 -> G2 -> G3 and the independent Review Gate; mark unavailable physical cells BLOCKED. Every round reports HEAD, PASS/FAIL/BLOCKED, executed evidence links, remaining blockers and the smallest next task. Do not skip Owner scope decisions and do not directly modify `main`, release branches or tags.
 
 ## 6. Boundary of this brief
 
-This guidance may land on `develop` after the Review Gate passes. It is not a replacement authority for #343, #33, #235 or the machine release map. The Qt 6.12 date comes from the official 2026-09-30 announcement. This brief does not claim that Qt 6.12 or ARM64 was compiled or run here, and does not claim that the P0 defects are already fixed.
+This guidance **landed on `develop` via PR #550** and was re-scoped through accepted #558/PR #559. It is not a replacement authority for #343, #33, #235 or the machine release map. The Qt 6.12 date comes from the official 2026-09-30 announcement. This brief does not claim that Qt 6.12 or ARM64 was compiled or run here. The merged #553 fixes are a regression baseline; the current P0 is the V0.3.3.0 admission gap, not a repeat of that historical triage.
