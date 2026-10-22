@@ -261,7 +261,7 @@ def lane_for(event: str, draft: bool) -> str:
     if event == "workflow_dispatch":
         return "FULL_GATE"
     if event == "push":
-        return "DEVELOP_SENTINEL"
+        return "POST_MERGE"
     if event == "pull_request":
         return "PR_DRAFT" if draft else "PR_FAST"
     return "UNKNOWN"
@@ -278,7 +278,7 @@ def decision_for(lane: str) -> str:
     return {
         "PR_DRAFT": "OBSERVE",
         "PR_FAST": "MERGE",
-        "DEVELOP_SENTINEL": "OBSERVE",
+        "POST_MERGE": "OBSERVE",
         "FULL_GATE": "CANDIDATE",
     }.get(lane, "OBSERVE")
 
@@ -288,18 +288,23 @@ def changed_paths(event: str, base: str, head: str) -> list[str]:
         return subprocess.check_output(
             ["git", "diff", "--name-only", f"{base}...{head}"], text=True
         ).splitlines()
-    # A develop push and a manual dispatch are decided by their event, not by a diff. The sentinel lane runs policy
-    # only, and the full gate is full by definition, so no path needs to be inspected - and inventing one (the former
-    # "CMakeLists.txt" placeholder) claimed every capability for every merge.
+    if event == "push":
+        if not base or not head:
+            raise ValueError("post-merge changed-path classification requires before and head SHAs")
+        if set(base) == {"0"}:
+            base = f"{head}~1"
+        return subprocess.check_output(["git", "diff", "--name-only", f"{base}..{head}"], text=True).splitlines()
+    # Explicit manual FULL_GATE selects every product capability regardless of diff.
     return []
 
 
 def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, str]:
     lane = lane_for(event, draft)
     full_gate = lane == "FULL_GATE"
-    product_lane = lane in ("PR_FAST", "FULL_GATE")
+    product_lane = lane in ("PR_FAST", "FULL_GATE", "POST_MERGE")
     test_only = product_lane and not full_gate and is_test_only(changed)
-    product_matrix = [PRODUCT_MATRIX[1]] if test_only else PRODUCT_MATRIX
+    # Protected develop merges run only affected Windows Qt jobs (#571).
+    product_matrix = [PRODUCT_MATRIX[1]] if (test_only or lane == "POST_MERGE") else PRODUCT_MATRIX
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
