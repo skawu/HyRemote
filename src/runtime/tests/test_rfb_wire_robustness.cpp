@@ -1765,7 +1765,24 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
 
 double processCpuMs()
 {
-    return 1000.0 * static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC);
+#ifdef Q_OS_WIN
+    // MSVC std::clock() reports wall time, NOT process CPU time.
+    // Kernel and user times reported by GetProcessTimes are in 100ns units.
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return -1.0;
+    ULARGE_INTEGER kernelTicks{}, userTicks{};
+    kernelTicks.LowPart = kernel.dwLowDateTime;
+    kernelTicks.HighPart = kernel.dwHighDateTime;
+    userTicks.LowPart = user.dwLowDateTime;
+    userTicks.HighPart = user.dwHighDateTime;
+    return static_cast<double>(kernelTicks.QuadPart + userTicks.QuadPart) / 10000.0;
+#else
+    const std::clock_t ticks = std::clock();
+    return ticks == static_cast<std::clock_t>(-1)
+               ? -1.0
+               : 1000.0 * static_cast<double>(ticks) / static_cast<double>(CLOCKS_PER_SEC);
+#endif
 }
 
 qint64 processWorkingSetKb()
@@ -1796,6 +1813,8 @@ struct ProfileSample
     double p50Ms = 0.0;
     double p95Ms = 0.0;
     double cpuMs = 0.0;
+    double wallMs = 0.0;
+    double cpuOneCorePercent = 0.0;
     qint64 workingSetKb = 0;
 };
 
@@ -1821,6 +1840,7 @@ void recordProfileSample(const QString &encoding,
                          qint64 bytes,
                          std::vector<double> latenciesMs,
                          double cpuMs,
+                         double wallMs,
                          qint64 workingSetKb)
 {
     ProfileSample sample;
@@ -1831,11 +1851,18 @@ void recordProfileSample(const QString &encoding,
     sample.p50Ms = profilePercentile(latenciesMs, 0.50);
     sample.p95Ms = profilePercentile(latenciesMs, 0.95);
     sample.cpuMs = cpuMs;
+    sample.wallMs = wallMs;
+    // 100% is one fully used logical CPU; multi-threaded work can exceed 100%.
+    sample.cpuOneCorePercent = (cpuMs >= 0.0 && wallMs > 0.0)
+                                   ? (100.0 * cpuMs / wallMs)
+                                   : -1.0;
     sample.workingSetKb = workingSetKb;
     profileSamples.push_back(sample);
     std::cerr << "PROFILE " << encoding.toStdString() << ' ' << workload.toStdString()
               << " frames=" << frames << " bytes=" << bytes << " p50_ms=" << sample.p50Ms
               << " p95_ms=" << sample.p95Ms << " cpu_ms=" << sample.cpuMs
+              << " wall_ms=" << sample.wallMs
+              << " cpu_one_core_percent=" << sample.cpuOneCorePercent
               << " working_set_kb=" << sample.workingSetKb << '\n';
 }
 
@@ -1851,6 +1878,8 @@ void runProfileWorkload(const std::vector<std::int32_t> &encodings,
     const quint16 port = freePort();
     if (port == 0)
         return;
+    QElapsedTimer wallTimer;
+    wallTimer.start();
     const double cpuStartMs = processCpuMs();
     Recorder recorder;
     auto transport = startTransport(port, recorder, makeFrame(kWidth, kHeight, 0x203040U));
@@ -1925,12 +1954,16 @@ void runProfileWorkload(const std::vector<std::int32_t> &encodings,
         }
     }
 
+    const double cpuEndMs = processCpuMs();
     recordProfileSample(encodingLabel,
                         workload,
                         measuredFrames,
                         measuredBytes,
                         latenciesMs,
-                        processCpuMs() - cpuStartMs,
+                        (cpuStartMs >= 0.0 && cpuEndMs >= cpuStartMs)
+                            ? (cpuEndMs - cpuStartMs)
+                            : -1.0,
+                        static_cast<double>(wallTimer.nsecsElapsed()) / 1000000.0,
                         processWorkingSetKb());
     socket.disconnectFromHost();
     waitForDisconnected(socket);
@@ -1958,12 +1991,19 @@ void runDeliveryProfile(const QString &outputPath)
         entry.insert(QStringLiteral("p50_ms"), sample.p50Ms);
         entry.insert(QStringLiteral("p95_ms"), sample.p95Ms);
         entry.insert(QStringLiteral("cpu_ms"), sample.cpuMs);
+        entry.insert(QStringLiteral("wall_ms"), sample.wallMs);
+        entry.insert(QStringLiteral("cpu_one_core_percent"), sample.cpuOneCorePercent);
         entry.insert(QStringLiteral("working_set_kb"), static_cast<double>(sample.workingSetKb));
         samples.append(entry);
     }
 
     QJsonObject root;
     root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-delivery-profile/1"));
+    root.insert(QStringLiteral("cpu_measurement_scope"),
+                QStringLiteral("whole test process (fixture + loopback peer); not Host, Viewer or encoder-only"));
+    root.insert(QStringLiteral("cpu_one_core_percent_unit"),
+                QStringLiteral("100 = one logical CPU busy; can exceed 100 with multiple threads"));
+    root.insert(QStringLiteral("cpu_unavailable_value"), -1);
     root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
     root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
     root.insert(QStringLiteral("width"), kProfileWidth);
