@@ -22,12 +22,12 @@ This area provides product integration, deployment, security, compatibility, and
 
 ## Product overview
 
-Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
+Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) for positioning and integration. **The single current product-outcome roadmap** is [`../internal/product-version-delivery-roadmap-2026-10-23.md`](../internal/product-version-delivery-roadmap-2026-10-23.md) (Owner #594/#605); [`versioning.md`](versioning.md) defines digit semantics and `.github/release/release-trains.json` alone authorizes exact activated Feature scopes. First GA targets qualified Windows Qt 5.15/6.8 cells only; Qt 6.5/6.12 are post-GA.
 
-The current release focuses on **getting users to a working remote-access path quickly**:
+The released **V0.3.0.0 Product Preview** focuses on self-service remote access; **V0.3.3.0 remains active and NOT_READY**, not released:
 
 - C++ / QML / Generic / QPA are peer product integration routes with different mechanics, not different product rank;
-- Windows x86_64 and Linux x86_64 with Qt 6.8.3 are the current reference environments;
+- Windows x86_64 / Qt 6.8.3 is the mandatory tested reference; Linux/ARM64 are user-validation pending, never Supported by inference;
 - Widgets and Qt Quick use the same Shared Runtime;
 - the default listener is `0.0.0.0:5921` and remote input is disabled by default;
 - route-specific compatibility limits are documented explicitly rather than expressed as Primary/Preview status;
@@ -44,7 +44,8 @@ The current release focuses on **getting users to a working remote-access path q
 | [`security.md`](security.md) ｜ [中文](../security.md) | Current security behavior, defaults, and unsupported security capabilities |
 | [`security-model.md`](security-model.md) ｜ [中文](../security-model.md) | Trust boundaries, threat model, and later security requirements |
 | [`known-limitations.md`](known-limitations.md) ｜ [中文](../known-limitations.md) | Known product limitations |
-| [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
+| [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Version-digit semantics and exact release admission (not a competing feature roadmap) |
+| [`../internal/product-version-delivery-roadmap-2026-10-23.md`](../internal/product-version-delivery-roadmap-2026-10-23.md) | **Sole current feature roadmap**: sequencing, Qt LTS, Tool, watermark, Docker, post-GA |
 | [`v1-api-stability.md`](v1-api-stability.md) ｜ [中文](../v1-api-stability.md) | Public API stability boundary |
 | [`widgets-capture.md`](widgets-capture.md) ｜ [中文](../widgets-capture.md) | Widgets capture model |
 | [`quick-capture.md`](quick-capture.md) ｜ [中文](../quick-capture.md) | Qt Quick capture model |
