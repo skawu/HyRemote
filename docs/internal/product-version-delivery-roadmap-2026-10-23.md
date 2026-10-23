@@ -35,8 +35,10 @@
 - 计划作为 V0.3.6 的可独立发布成果，实际 Docker 业务应用必须连通 Viewer，配置和状态挂载、非 root/安全边界、重建可重现，才能把 Docker 写成 Supported。
 - Windows-first #563 不要求 Linux/ARM64 物理主机成为其它版本或 Windows GA 的必需门槛。若容器环境拿不到且 #592 没有证据，**不发布/不声称 Docker Supported，不阻塞已经通过的 Windows 成果**；必须在 #33/#235 Scope 冻结时以明确的支持矩阵决策将该 target 延期或列为 Unqualified，而不是默默跳过。
 
-**POST_GA_OR_SEPARATE_AUTHORITY（不属于首轮 GA 硬阻塞）：**
-- #593 Logo 图片水印（在 #589 文字水印合格后另行决定文件格式、存储、组合与资源测试）；不预留固定 V1.1.x 号。
+**POST_GA_ONLY（Logo 明确只在 V1.0 GA 之后激活，不进入任何 V0.3.x/V0.4/V1.0 scope）：**
+- **#593 Logo 图片水印：只有 V1.0.0.0 已完成 GA 且 #589 文字水印合格之后，才可另行提出、审批并激活 Logo Feature**。格式、存储、图文组合与性能需要独立验收；不预留固定 V1.1.x 号，也不能以另立一个早期 authority 绕过 post-GA 顺序。
+
+**SEPARATE_AUTHORITY_NOT_GA_REQUIRED（其他增强需单独产品/安全授权，不构成当前 GA 强制范围）：**
 - 每 Viewer 动态身份水印、企业账号/RBAC、远程主机启停/配置修改与独立 Management Plane、TLS/VeNCrypt/不可信公网访问、云 relay、浏览器/多设备并发、厂商硬件加速；均需新的安全/产品独立审议。不能因为旧 #378 有历史 Host 控制台文案就算已经批准。
 - Linux Desktop/Wayland、ARM64/EGLFS 目前按实际 Unsupported/Experimental/User-validation pending 分类，不能用 Qt 可移植性推出经过实际资格认证的 Supported 状态。
 
