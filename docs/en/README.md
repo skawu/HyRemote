@@ -27,7 +27,7 @@ Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-
 The released **V0.3.0.0 Product Preview** focuses on self-service remote access; **V0.3.3.0 remains active and NOT_READY**, not released:
 
 - C++ / QML / Generic / QPA are peer product integration routes with different mechanics, not different product rank;
-- Windows x86_64 / Qt 6.8.3 is the mandatory tested reference; Linux/ARM64 are user-validation pending, never Supported by inference;
+- **Historical published V0.3.0.0 matrix:** Qt 6.8.3 on Windows **and Linux** x86_64 were release-time reference/support claims (see `compatibility.md`); do not rewrite those historical facts. **For all new Feature/RC/GA qualification:** Windows x86_64 is the only required physical evidence platform, Linux/ARM64 are user-validation pending and must not be claimed newly Supported without fresh evidence (#563);
 - Widgets and Qt Quick use the same Shared Runtime;
 - the default listener is `0.0.0.0:5921` and remote input is disabled by default;
 - route-specific compatibility limits are documented explicitly rather than expressed as Primary/Preview status;
