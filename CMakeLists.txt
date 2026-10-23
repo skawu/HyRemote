@@ -483,7 +483,20 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     # On Windows, C:\Windows\System32\bash.exe is the WSL launcher and exists even when no distribution is
     # installed. Treat that stub as "no bash": registering the self-tests there makes a normal Windows L2 fail
     # with "no installed distributions" instead of skipping an unavailable shell.
-    find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    # Prefer a real Git Bash on Windows; System32's bash.exe is the WSL launcher and may have no
+    # distribution. The probe below still rejects an unusable shell, but preferring Git Bash keeps
+    # the two governance self-tests in the normal Windows L2 when Git for Windows is installed.
+    if(WIN32)
+        find_program(HYREMOTE_GIT_BASH_EXECUTABLE
+            NAMES bash
+            PATHS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin"
+            NO_DEFAULT_PATH)
+    endif()
+    if(HYREMOTE_GIT_BASH_EXECUTABLE)
+        set(HYREMOTE_BASH_EXECUTABLE "${HYREMOTE_GIT_BASH_EXECUTABLE}")
+    else()
+        find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    endif()
     if(HYREMOTE_BASH_EXECUTABLE)
         execute_process(
             COMMAND "${HYREMOTE_BASH_EXECUTABLE}" -c true
