@@ -1,4 +1,6 @@
 # Third-Party Dependency Policy
+> **Current authority (2026-10-23):** V0.3.0.0 Product Preview has shipped; first GA support covers only actually qualified Windows Qt5.15/Qt6.8 cells. Encrypted transport, gateway/cloud and additional platforms require separate admission; historical TODOs do not create GA requirements. Long-lived dependency and vulnerability response: [#611](https://github.com/skawu/HyRemote/issues/611).
+
 
 > Language / 语言: **English** | [中文](../dependency-policy.md)
 
@@ -83,9 +85,9 @@ When secure transport is requested:
 - HyRemote does not silently downgrade a requested secure build to an insecure one;
 - cryptographic implementation types remain private Runtime details, not downstream SDK targets.
 
-Current V0.1 `AuthenticatedEncrypted` is unavailable and fails closed.
+In the released V0.3.0.0 Product Preview, `AuthenticatedEncrypted` remains unavailable and fails closed before creating a listener.
 
-> **TODO V0.2:** complete the encrypted transport and certificate product capability and publish its exact third-party runtime and package obligations.
+> **Future candidate, not an automatic first-GA requirement:** encrypted transport, certificate policy and exact third-party runtime dependencies require their own user-value, security and #24/#95 release admission. A TODO does not imply shipped encryption or Internet-safe exposure (#143/#190/#611).
 
 ## RFB/VNC transport baseline
 
@@ -151,7 +153,7 @@ They must not:
 - force Generic or QPA applications to link SoC-specific libraries directly;
 - become prerequisites for ordinary desktop users merely to optimize one target platform.
 
-> **TODO:** publish exact embedded and platform dependency manifests per supported BSP or product package. Embedded Linux, ARM64, and EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under #343. Additional BSP or SoC expansion beyond the declared GA cells is admitted separately, with no version number preassigned (#333).
+> **Current Owner #563/#605 boundary:** first GA qualification is limited to actually tested Windows x86_64 Qt5.15/Qt6.8 cells. Linux/ARM64/EGLFS/Wayland are community/user-validation pending, not RC/GA gates; publish exact BSP/package manifests only when those environments have real deploy evidence. Qt6.5/6.12 belong to independent post-GA qualification, with no version number preallocated.
 
 ## Historical and future candidates
 
