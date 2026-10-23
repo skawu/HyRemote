@@ -33,7 +33,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位与接入。**唯一当前跨版本功能路线图**：[`internal/product-version-delivery-roadmap-2026-10-23.md`](internal/product-version-delivery-roadmap-2026-10-23.md)（Owner #594/#605）；四段版本语义见 [`versioning.md`](versioning.md)，实际激活的准确版本和必需 Issue 仅由 `.github/release/release-trains.json` 决定。首轮 GA 只覆盖合格的 Windows Qt 5.15/6.8 单元，Qt 6.5/6.12 在 GA 后。
 
-当前已发布的 **V0.3.0.0 Product Preview** 的基础产品事实（当前 **V0.3.3.0 尚未通过发布验收**）：
+以下描述已发布 **V0.3.0.0 Product Preview** 的历史基础；**V0.3.3.0 已于 2026-10-23 正式发布**，新增 Raw/TRLE 和 Windows GUI Viewer 资格，精确历史发行声明见 [`releases/v0.3.3.0.md`](releases/v0.3.3.0.md)：
 
 - 四种接入方式是**并列**的，没有主次；都走同一条
   [获得 → 接入 → 部署 → 运行 → 连接](guide/integrate-your-project.md) 流程；
