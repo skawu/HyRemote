@@ -886,7 +886,12 @@ private:
                         client.supportsContinuousUpdates = true;
                     if (encoding == kEncodingCursor)
                         client.supportsCursor = true;
-                    if (!selectedEncoding && encoding == kRfbEncodingTrle) {
+                    // Raw is the universal fallback and some viewers list it
+                    // before the compressed encoding they also support. Choose
+                    // TRLE whenever it is advertised; otherwise fall back to
+                    // Raw. The client's ordering must not force a multi-MB/s
+                    // Raw stream when it can decode TRLE.
+                    if (encoding == kRfbEncodingTrle) {
                         client.preferredEncoding = ClientEncoding::Trle;
                         selectedEncoding = true;
                     } else if (!selectedEncoding && encoding == kEncodingRaw) {

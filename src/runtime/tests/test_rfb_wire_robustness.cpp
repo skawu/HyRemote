@@ -738,7 +738,7 @@ void testTrleRawAndIncrementalDelivery()
 
     QTcpSocket rawSocket;
     CHECK(connectRawRfb(rawSocket, port, false, &width, &height));
-    CHECK(sendSetEncodings(rawSocket, {0, 15}));
+    CHECK(sendSetEncodings(rawSocket, {0}));
     CHECK(sendUpdateRequest(rawSocket, false, 0, 0, width, height));
     TestFramebuffer rawFrame;
     rawFrame.resize(width, height);
@@ -751,6 +751,40 @@ void testTrleRawAndIncrementalDelivery()
     rawSocket.disconnectFromHost();
     waitForDisconnected(trleSocket);
     waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+void testTrlePreferredOverRawOrder()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(64, 48, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    // Some clients list Raw first even when they can decode TRLE. The
+    // transport must not turn that into a multi-MB/s Raw stream.
+    CHECK(sendSetEncodings(socket, {0, 15}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U);
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 15);
+    CHECK(frame.get(0, 0) == 0x203040U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
     transport->stop();
 }
 
@@ -2035,6 +2069,7 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
     testVariableCursorSnapshot();
