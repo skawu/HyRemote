@@ -480,7 +480,20 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     endif()
 
     # The mainline push audit's retry logic is a shell script for the same reason; it is tested where bash exists.
+    # On Windows, C:\Windows\System32\bash.exe is the WSL launcher and exists even when no distribution is
+    # installed. Treat that stub as "no bash": registering the self-tests there makes a normal Windows L2 fail
+    # with "no installed distributions" instead of skipping an unavailable shell.
     find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    if(HYREMOTE_BASH_EXECUTABLE)
+        execute_process(
+            COMMAND "${HYREMOTE_BASH_EXECUTABLE}" -c true
+            RESULT_VARIABLE _hyremote_bash_probe
+            OUTPUT_QUIET
+            ERROR_QUIET)
+        if(NOT _hyremote_bash_probe EQUAL 0)
+            set(HYREMOTE_BASH_EXECUTABLE "")
+        endif()
+    endif()
     if(HYREMOTE_BASH_EXECUTABLE)
         add_test(
             NAME hyremote-mainline-audit-self-test

@@ -152,7 +152,7 @@
         "260": "Qt5 entry preflight is #343 pre-GA baseline work, not a closeable child of any exact Feature.",
         "261": "RFB delivery preflight is #343 pre-GA baseline work, not a closeable child of any exact Feature."
       },
-      "rule": "V0.3.0.0 Product Preview is the self-service adoption foundation: four-peer SDK/deploy productization (#264), task-oriented self-service docs/examples (#240) and minimum self-service diagnostics (#335). It builds directly on the accepted V0.2.0.0 First User Trial lineage. The mandatory pre-GA V0.3-family baseline under #343/#370 - Qt 5.15/6.5/6.8, Windows/Linux, x86_64/ARM64, the qwindows/qxcb/Wayland/EGLFS reference cells, practical compressed + incremental/damage delivery, maintained viewer interoperability and the #370 performance programme - carries no pre-reserved exact Feature version and is not a mandatory child of this exact Feature; branding (#241) and HyRemoteTool (#378) are optional/differentiating outcomes."
+      "rule": "V0.3.0.0 Product Preview is the self-service adoption foundation: four-peer SDK/deploy productization (#264), task-oriented self-service docs/examples (#240) and minimum self-service diagnostics (#335). It builds directly on the accepted V0.2.0.0 First User Trial lineage. The historical #343/#370 pre-GA family baseline originally mentioned Qt 5.15/6.5/6.8 plus non-Windows matrices; latest Owner #563 and #605 narrow FIRST GA physical qualification to Windows x86_64 Qt 5.15 and 6.8 only (Qt6.5/6.12 post-GA). This history creates no pre-reserved exact Feature or mandatory child of this release; branding (#241) and HyRemoteTool (#378) are optional/differentiating outcomes."
     },
     "0.3.1.0": {
       "scope_status": "retired",
@@ -223,11 +223,11 @@
         "343": "#343 must be rebaselined under #563: Windows-qualified GA cells are release gates. Linux/ARM64/EGLFS/Wayland physical/runtime evidence is community-validation pending and never a condition of V0.3.3/V0.4/V1; no blanket cross-platform Supported claim.",
         "370": "The performance programme supplies the SLO and measurement method; it is not a closeable child of this Feature.",
         "378": "HyRemoteTool consumes the access-plane improvements; management-plane work stays out of this Feature.",
-        "57": "Qt 5.15/6.5/6.8 implementation is mandatory later in the V0.3 family before V0.4 entry; not a V0.3.3 exact Feature blocker.",
+        "57": "Qt 5.15 and Qt 6.8 are the ONLY mandatory first-GA Qt LTS families; Qt6.5/Qt6.12 explicitly defer until AFTER V1 GA under Owner #605. #57 retains mandatory compatibility work but ONLY for exact Windows Qt5.15/Qt6.8 applicable cells; not a V0.3.3 exact Feature blocker.",
         "260": "Qt LTS preflight belongs to mandatory V0.3-family compatibility work, not an extra V0.3.3 candidate prerequisite. #261 remains the exact Feature preflight.",
         "265": "Qt5 adaptation implementation must complete in the V0.3 family before V0.4 entry; not a V0.3.3 mandatory child."
       },
-      "rule": "V0.3.3.0 is the activated Windows x86_64 Qt 6.8.3 Feature for #144 Raw+TRLE incremental/damage and #175 two maintained Windows real GUI viewers, #261 preflight, #370 real viewer SLO, exact-SHA Windows product and same-SHA release gates. Linux/ARM64/EGLFS/Wayland are unverified user-validation targets and their unavailable evidence is nonblocking per Owner #563. Qt5/6.5 Windows compatibility remains a separate explicit claim requirement; future Feature numbers and management/TLS are not preallocated."
+      "rule": "V0.3.3.0 is the activated Windows x86_64 Qt 6.8.3 Feature for #144 Raw+TRLE incremental/damage and #175 two maintained Windows real GUI viewers, #261 preflight, #370 real viewer SLO, exact-SHA Windows product and same-SHA release gates. Linux/ARM64/EGLFS/Wayland are unverified user-validation targets and their unavailable evidence is nonblocking per Owner #563. Qt5.15 and Qt6.8 Windows compatibility remains a separate explicit later Feature requirement; Qt6.5/Qt6.12 are post-V1 GA under Owner #605. Future Feature numbers and management/TLS are not preallocated."
     },
     "1.0.0.0": {
       "authority_parent": 33,
@@ -274,7 +274,7 @@
       "classified_referenced_issue_numbers": [ 14, 74, 90, 91, 95, 106, 134, 147, 156, 166 ],
       "notes": {
         "9": "V1 requires the x86-applicable damage/asynchronous-capture work or an evidence-backed disposition; embedded follow-up remains separate.",
-        "57": "Qt family GA support claims must be qualified in the available Windows environment; Linux Qt LTS combinations are user-validation pending rather than mandatory tests under Owner #563. Do not claim Qt5/Qt6.5 Supported without actual Windows qualification.",
+        "57": "First GA Qt family qualification covers ONLY Windows Qt5.15 LTS and Qt6.8 LTS actually applicable cells, under latest Owner #605/#563. #57 remains a mandatory child with this narrower acceptance. Qt6.5 and Qt6.12 are POST-V1 GA future qualification and never a pre-RC, RC or V1 blocker; do not claim them Supported. Non-Windows Qt cells remain user-validation pending.",
         "144": "Only B1/B2 are V1 x86 requirements; embedded B3/B4 continue in dedicated embedded issues.",
         "109": "The GA physical/native coexistence evidence gate is Windows x86_64 only per Owner #563. Linux, ARM64 and embedded physical absence never blocks V1; no inferred support. The exact Windows RC-frozen candidate #165 is still mandatory.",
         "170": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
@@ -283,7 +283,7 @@
         "176": "V1.0.0.0 blocker confirmed by the product-owner scope review of 2026-09-19.",
         "209": "V1.0.0.0 must freeze repository, documentation, build/package and release infrastructure so post-V1 work does not repeatedly repair foundational structure."
       },
-      "rule": "The V1 candidate promotes one qualified Windows-first V0.4 RC lineage; exact Windows supported cells need physical native-use, input/viewer, performance, packaging, public API and security evidence. Linux/ARM64/EGLFS/Wayland are community/user-validation paths, not candidate blockers or blanket supported targets (Owner #563). This inherited legacy 26-child list still requires separate clean-up of superseded #157, optional #170 and ongoing #176/#209; no item may be used to force non-Windows testing."
+      "rule": "The V1 candidate promotes one qualified Windows-first V0.4 RC lineage; exact Windows supported cells need physical native-use, input/viewer, performance, packaging, public API and security evidence. Linux/ARM64/EGLFS/Wayland are community/user-validation paths, not candidate blockers or blanket supported targets (Owner #563). This inherited legacy 26-child list still requires separate clean-up of superseded #157, optional #170 and ongoing #176/#209 under #602. #57 is retained but now closes only on tested Windows Qt5.15/Qt6.8 cells; Qt6.5 and Qt6.12 explicitly wait until AFTER V1 GA under Owner #605, and no item may force their pre-GA testing or non-Windows physical testing."
     }
   }
 }
