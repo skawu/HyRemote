@@ -2,7 +2,7 @@
 
 HyRemote is remote-access infrastructure and should be treated as security-sensitive software.
 
-The current released product line is **V0.3.0.0 Product Preview**. It is intended for development, evaluation, and explicitly trusted-network use; it is **not** an Internet-facing production remote-access service. V0.3.3.0 is an active but **NOT_READY** future Feature, not a released security-qualified product.
+The current released product line is **V0.3.0.0 Product Preview**. It is intended for development, evaluation, and explicitly trusted-network use; it is **not** an Internet-facing production remote-access service. The subsequent **V0.3.3.0 release** has also been published (2026-10-23) for its specifically qualified Windows x86_64 / Qt 6.8.3 RFB and maintained-viewer profile; this does **not** create an Internet-facing secure transport or V1 GA security-support contract.
 
 ## Supported product versions
 
