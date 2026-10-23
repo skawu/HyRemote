@@ -1,12 +1,22 @@
 # HyRemote 产品版本路线图：Qt 5.15 + Qt 6.8 首轮 GA，Qt 6.5 + Qt 6.12 后置
 
+> **唯一当前跨版本产品功能排序 authority / SINGLE CURRENT PRODUCT OUTCOME ROADMAP** — #594 与 Owner #605。本文决定 **哪些用户成果在何时规划**；`docs/versioning.md` / `docs/en/versioning.md` 解释四段版本号语义；机器文件 `.github/release/release-trains.json` **独立决定已激活/退休的精确版本、mandatory_children 和候选接纳**；`docs/compatibility.md` / `docs/en/compatibility.md` 只记录已有资格的实际支持单元。已发布发行说明属于历史事实，不因新规划追改。旧 `docs/internal/development-roadmap.md` 与 `owner-execution-brief-2026-10-21.md` 为历史记录，不是并行的路线图权威。
+
+> **检查优先级：** Owner 最新明确决定与 #594/#605 → 本文当前产品范围 → #24/#95 版本治理 → 实际机器激活/CI/精确 SHA → 实际兼容矩阵/证据。**任何 docs/Issue 的旧描述如仍称 Qt6.5 首轮 GA 必需、Linux 物理测试必需、V0.3.4 固定为整个 Tool，均为过时记录，不能执行。**
+
 - 产品范围决定：2026-10-23。**最新 Owner 决定覆盖较早“Qt 5.15/6.5/6.8 在首轮 GA 前全部完成”的规划**：V1.0.0.0 前只要求 Qt **5.15 LTS** 与 **6.8 LTS** 的准确 Windows 合格单元；Qt **6.5 LTS** 和 **6.12 LTS** 在 **V1.0.0.0 正式 GA 后**各自推进（#605）。
 - **Qt 5.15/6.8 适配优先于 HyRemoteTool 工作台完整化**。HyRemoteTool 是 D 综合工作台，A 优先的远程连接/基础诊断按小范围 PR 随多个版本逐步完善。
 - 此文档是负责人**产品成果排序/版本范围决定**，不等于 V0.3.x 精确 Feature 编号已经激活。#24/#95 在实际功能 implementation-ready、独立用户价值及范围验收明确之后才分配准确编号和 release-trains.json mandatory children。**不得预占 V0.3.4～V0.3.7 的固定功能主题**。
 - 历史发布 v0.1.0.0、v0.2.0.0、v0.2.0.1、v0.3.0.0 不追改；0.3.1/0.3.2 retired 不复活；**当前唯一 activated/NOT_READY Feature 是 V0.3.3.0**，#144/#175 范围及 #370 Windows Viewer 真实证据不扩张。V0.4 RC / V1 GA 还未激活。
 - 仅 Windows x86_64 是首轮强制真实构建/设备测试环境（#563）。Linux/Wayland/ARM64/EGLFS 为用户验证/资格未定，不能无证据宣称 Supported，也不阻断独立 Windows 成果。
 
-## 一、版本与功能完整分配
+## 一、交付对象与版本定义
+
+**四种对等接入方式：** Embedded C++ API、Declarative QML API、Generic Plugin、Transparent QPA Proxy。它们共享一套 Core/Shared Runtime；Widgets 与 Qt Quick 是 UI 目标，不是新增 Runtime。Qt5.15/Qt6.8 的实际合格单元逐个按 Windows Qt Kit/CPU/编译器/Qt patch、C++/QML/Generic/QPA 路线、Widgets/Quick、安装消费者、RFB Viewer 和 QPA exact Private ABI 判断，不承诺未经实测的所有组合。
+
+**GA 前第一轮产品交付主线：** (1) V0.3.3.0 Raw/TRLE/Damage/Viewer 及性能收口；(2) Qt5.15 与 Qt6.8 Windows 资格 (#603/#604)；(3) 主机配置路径与文字水印 (#591/#589)；(4) 用户应用 Docker 联合部署 (#592，实际运行才可支持)；(5) HyRemoteTool D 工作台沿多个成果逐步发布 (#581–#590)，其 SDK/进阶诊断后续增量 (#587/#588)；(6) V0.4 RC 资格冻结 → V1 GA；(7) GA 后 Qt6.5/Qt6.12 (#605) 与 Logo (#593) 等独立准入。**这里只规划功能成果，不宣布具体新版本已激活或其功能已经完成。**
+
+## 二、版本与功能完整分配
 
 | 阶段 | 用户可感知产品成果 | 必交范围与验收 | 关系/明确排除 |
 | --- | --- | --- | --- |
@@ -20,7 +30,7 @@
 | **V1.0.0.0 之后，未来独立 Feature（均未编号）** | **Qt 6.5 LTS 及 Qt 6.12 LTS 扩展支持** | **#605**：各自选择确切 patch+compiler Kit，Windows SDK/Widgets/Quick/四路线中可支持组合与 QPA exact ABI，实际安装、连接/输入与性能回归，按真实证据声明 Supported/Limited/Unsupported | **不预留 V1.1/1.2 等编号**，6.5 与 6.12 可分成不同 Feature；在 V1 GA 前不要求真实运行/消费者/外部 Viewer 支持认证 |
 | **V1.0 GA 后其它候选** | 图片 Logo 水印与更高阶安全/管理能力 | **#593** Logo 在文字水印合格且 GA 完成后独立审议；管理/RBAC/TLS/云/浏览器/多设备并发等需要单独价值、安全、Threat Model 评审 | 以上均非首轮 V1.0.0.0 GA mandatory |
 
-## 二、Qt 家族资格矩阵：首轮强制 vs 后续
+## 三、Qt 家族资格矩阵：首轮强制 vs 后续
 
 | Qt 家族 | V1 GA 目标范围 | 目前真实证据与约束 | 版本管理 |
 | --- | --- | --- | --- |
@@ -31,7 +41,7 @@
 
 **特别强调 build / Kit UX（#566/#604）：** 已合并的 PR #568 在 Qt Kit 自动发现中有过宽的 `Qt6>=6.8` 条件，错误地屏蔽已经部分资格化的 Qt5.15；下一个 Feature 必须使 **实际 Qt5 可构建的 Kit/组件**被准确提供、选择和验证。**不要求首轮让 Qt6.5 成为可选合格 Kit**；Qt6.5/6.12 检出时可注明「未来计划/尚未资格化」，不可误标 Supported。必须同时保持 Qt6.8.3 和 QPA exact ABI 的严格路径约束。Kit 发现仅表示 *candidate*，不是发布支持证据。
 
-## 三、GA 前其它产品功能与依赖
+## 四、GA 前其它产品功能与依赖
 
 - **RFB 核心不可回退**：#144/#175/#370 的 Raw/TRLE/Damage、输入键鼠、重连/光标、维护版 Windows GUI Viewer、慢客户端与性能、安全状态、Qt 本地/远程共存 #109。
 - **四种 SDK 接入方式共用 Shared Runtime**；Windows GA 以 Qt5.15 和 Qt6.8 真正可支持的路由单元验收，QPA exact patch + private ABI，不把 Qt5 实现难度虚构为全通过。
@@ -41,7 +51,7 @@
 - **机器规则的第一步已经通过 [PR #606](https://github.com/skawu/HyRemote/pull/606) 合并到 develop**：`.github/release/release-trains.json` 的 #57/V1 规则现仅要求 Windows Qt5.15/Qt6.8，明确 Qt6.5/Qt6.12 为 GA 后，且 active V0.3.3 mandatory [144,175] 不变。此项是已完成的**即时 Qt 家族范围修正**，不是后续才由 #602 接手的工作。
 - **RC/GA 其余机器范围整理仍由 #602 负责**：盘点历史 V1 machine 26 条 mandatory/退休 umbrella、拆成可关闭的 Windows GA 验收，再单独评审；不能拿本路线图代替机器范围权威，#57/#343/#33/#235 的 Owner 最新 Qt 家族限定已经生效。
 
-## 四、执行次序、审查与风险约束
+## 五、执行次序、审查与风险约束
 
 1. **当前 P0**：只完成 V0.3.3.0 #144/#175/#370 Windows 真实 Viewer/性能、release admission 和同 SHA L2，保持既定 mandatory。
 2. **下一 P0**：#603/#57/#265 + Kit 修复 #566/#604，只验证/承诺 **Qt5.15 与 Qt6.8**，解决 build/install/Kit/四路线适用性；不要求 Qt6.5/6.12 的真实支持。

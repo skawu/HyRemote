@@ -147,7 +147,7 @@ Focus areas:
 - Qt LTS compatibility qualification, including Qt 5.15 LTS;
 - real-world application qualification;
 - performance measurement and blocker-driven optimization;
-- physical Windows/Linux local and remote coexistence;
+- physical **Windows x86_64** local and remote coexistence; Linux/ARM64 device evidence remains optional/user-validation pending (#563);
 - release package and support-statement hardening.
 
 Maintenance iterations may use:
