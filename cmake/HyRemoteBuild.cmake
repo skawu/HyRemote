@@ -814,11 +814,15 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         list(GET _fields 2 _needs)
         if(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
             list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
+        elseif((HYB_GENERIC OR HYB_QML)
+               AND NOT (_qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                        AND NOT _qt_version VERSION_LESS "6.8"))
+            list(APPEND _qt_rejected "${_prefix} (Generic/QML need Qt6 >= 6.8)")
         elseif(NOT HYB_QPA
-               AND NOT (_qt_version VERSION_EQUAL "5.15.2"
+               AND NOT ((WIN32 AND _qt_version VERSION_EQUAL "5.15.2")
                         OR (_qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
                             AND NOT _qt_version VERSION_LESS "6.8")))
-            list(APPEND _qt_rejected "${_prefix} (not buildable: needs Qt 5.15.2 or Qt6 >= 6.8)")
+            list(APPEND _qt_rejected "${_prefix} (not buildable: needs Qt6 >= 6.8, or Windows Qt 5.15.2 for bounded C++/Widgets)")
         elseif(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
             list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
         elseif(NOT _arch STREQUAL _qt_host_arch)
