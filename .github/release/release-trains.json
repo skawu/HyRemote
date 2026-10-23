@@ -1,6 +1,7 @@
 {
   "schema": 3,
   "kind": "release-train-scope-authority",
+  "roadmap_only_references": [ 12, 171, 180, 190, 204, 205, 225, 236, 346, 371, 372, 374, 393, 566, 569, 576, 579, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591, 592, 593, 603, 604, 609, 611 ],
   "notes": {
     "purpose": "Single machine-readable release-train authority. A requested release version selects one exact Feature; that Feature names its own authority parent, its closeable mandatory children, the prerequisites that must be resolved before its candidate can be accepted, the evidence it requires, the cross-version references it consumes, its lineage and its declared non-blockers.",
     "replaces": "This file replaces the former .github/release/v1-mandatory-issues.json, whose entire content is carried by the 1.0.0.0 train below. There is deliberately no second active authority.",
