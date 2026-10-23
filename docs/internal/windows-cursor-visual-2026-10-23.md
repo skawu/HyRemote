@@ -45,15 +45,16 @@ Maintained-viewer visual cursor shape: NOT OBSERVED with these viewers
 This is a viewer-side limitation/observation, not proof that the host sends no cursor update. It may
 also reflect the viewer using a local arrow rather than the remote cursor.
 
-## Decision required
+## Owner disposition
 
-Before V0.3.3.0 can close, the Owner must either:
+For V0.3.3.0, the Owner accepts this as a documented viewer-local cursor limitation:
 
-1. accept a documented limitation that cursor-shape is not viewer-visible for these maintained
-   viewers, while pointer position remains qualified; or
-2. qualify a viewer/configuration that actually renders the remote cursor shape.
+- pointer position, buttons, wheel and remote input are qualified separately;
+- the host still emits the cursor pseudo-encoding and its wire tests PASS;
+- visual cursor shape is not guaranteed for the maintained viewers in this matrix.
 
-No visual cursor-shape PASS is claimed in this cell.
+No visual cursor-shape PASS is claimed. A future viewer qualification can replace this accepted
+limitation with a visual PASS.
 
 ## Evidence
 
