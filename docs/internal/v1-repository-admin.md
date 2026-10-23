@@ -2,7 +2,7 @@
 
 Status: **repository preparation / administration gate; not product acceptance evidence**
 
-This document records the repository-level actions that must be complete before `v1.0.0.0` release authorization. These actions keep the GitHub repository governable and auditable; they do **not** replace #104 Windows/Linux product execution or #109 physical/native coexistence evidence.
+This document records a **historical 2026-09-17 repository administration campaign** and its retained governance checklist; it is **not a separate authority for current GA platform scope or a command to repeat old branch-specific cleanup steps**. Before release, evaluate the still-applicable repository controls against current #95/#33/#602 exact-candidate authority. **Current Owner #563/#605:** mandatory product acceptance covers **only actually qualified Windows x86_64 Qt5.15/Qt6.8 cells**. Old #104 Windows/Linux evidence wording is superseded; Linux/Wayland/ARM64/EGLFS are nonblocking user validation, and Qt6.5/Qt6.12 are post-GA only. #109 Windows local+remote native coexistence remains mandatory on the qualified candidate.
 
 ## 1. Drain superseded V1 Actions runs
 
@@ -99,7 +99,7 @@ Do not describe the current workflow/audit layer as equivalent to branch protect
 
 ## 6. Completion record
 
-Before #33 authorizes `v1.0.0.0`, record the following repository facts in the release evidence envelope:
+Before #33 authorizes `v1.0.0.0`, review the following **applicable** repository facts on the current release candidate rather than replaying obsolete 2026-09-17 branch/run operations. Historic branch cleanup facts may be marked superseded with rationale:
 
 - [ ] superseded pre-concurrency V1 Actions runs drained without cancelling current-HEAD runs;
 - [ ] four V1 authority workflows verified `active`;
@@ -108,7 +108,7 @@ Before #33 authorizes `v1.0.0.0`, record the following repository facts in the r
 - [ ] SHA-locked historical branch cleanup completed;
 - [ ] only intended active/release refs remain;
 - [ ] no unresolved direct-push audit failure on `main`/`develop`;
-- [ ] #104 actual Windows/Linux acceptance complete;
+- [ ] #33/#343/#57/#95 Windows Qt5.15/Qt6.8 **qualified applicable exact-candidate cells** and release acceptance complete; #104 historical Windows/Linux phrasing does not add a Linux GA gate;
 - [ ] #109 physical/native coexistence evidence complete.
 
 The first seven items are repository governance readiness. The last two are product acceptance. Neither category may be used to substitute for the other.
