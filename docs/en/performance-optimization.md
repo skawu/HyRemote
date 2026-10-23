@@ -591,7 +591,7 @@ Current authority and work split:
 
 ### Baseline product guarantees and architectural constraints
 
-- Under constrained bandwidth or elevated RTT, prefer the **freshest useful framebuffer** over a backlog of historical states; keep capture, pending encoding/delivery and per-viewer work bounded, and isolate slow viewers.
+- Under constrained bandwidth or elevated RTT, prefer the **freshest useful framebuffer** over a backlog of historical states; keep **one bounded shared-Runtime capture/in-flight pipeline**, while each viewer independently bounds pending encoding/delivery, accumulated damage and backpressure. Isolate slow viewers and do **not** create a per-viewer capture pipeline.
 - Preserve deterministic Raw fallback; negotiate practical compression, accumulated damage, correct incremental/non-incremental requests, full refresh after resize, and correct standard-RFB fallback when Continuous Updates/Fence is unavailable. Do not send redundant static framebuffer data as a keepalive.
 - Prioritize fresh capture after remote input while reducing obsolete work and keeping the local Qt app responsive. This is **application-level backlog control**, not a guarantee that control messages can jump ahead of framebuffer bytes already queued in TCP; do not build a competing TCP congestion controller.
 - **Never drop frames by corrupting the wire stream:** only replace coalescible updates not yet committed to encoding/wire delivery; preserve accumulated damage and requested regions. Never truncate already emitted RFB/TCP bytes or silently lose state necessary for a correct next update.
