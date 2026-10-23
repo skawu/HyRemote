@@ -1,19 +1,16 @@
 name: CI
 
 on:
+  # Owner #573: run CI on a merge request, not on ordinary branch commits or after merge.
+  # Drafts defer Qt until ready; updates to a ready PR invalidate the old CI result.
   pull_request:
-    # ready_for_review is not part of the default activity set, and without it a draft converted to ready would never
-    # start the product gate it was waiting for. converted_to_draft keeps the suppression honest in the other
-    # direction: turning a ready PR back into a draft stops being a product run.
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-  push:
     branches:
       - develop
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
     inputs:
-      # One manual mode, deliberately: a dispatch is the explicit full gate (an exact V0.1 candidate, a release
-      # branch readiness run, main/GA validation, or a deliberate diagnostic). Ordinary work reaches the product
-      # matrix through its own ready pull request instead.
+      # Explicit FULL_GATE qualifies a frozen release SHA independently of the PR merge gate.
+      # Normal development CI runs only on a PR; bare branch pushes never trigger it.
       #
       # #380: a dispatch is admitted, not generic. `purpose` says which decision this gate may produce and
       # `expected_sha` freezes the exact commit it claims to qualify. Both are checked fail-closed before any Qt
@@ -31,12 +28,19 @@ on:
         description: "Exact 40-hex commit SHA this gate must run on (must equal the dispatched commit)"
         required: true
         type: string
+      legacy_dual_platform:
+        description: "Historical v0.2.0.1 maintenance only: require Windows+Linux as originally shipped"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # One PR's current SHA is authoritative. Superseded runs are cancelled when the
+  # ready PR head changes; the replacement MUST pass before protected develop merges.
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -48,6 +52,8 @@ jobs:
       lane: ${{ steps.scope.outputs.lane }}
       decision: ${{ steps.scope.outputs.decision }}
       purpose: ${{ steps.admission.outputs.purpose }}
+      test_only: ${{ steps.scope.outputs.test_only }}
+      product_matrix: ${{ steps.scope.outputs.product_matrix }}
       product: ${{ steps.scope.outputs.product }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
@@ -119,6 +125,8 @@ jobs:
           PURPOSE: ${{ inputs.purpose }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           DISPATCH_SHA: ${{ github.sha }}
+          LEGACY_DUAL_PLATFORM: ${{ inputs.legacy_dual_platform }}
+          DISPATCH_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           case "${PURPOSE}" in
@@ -133,6 +141,13 @@ jobs:
             echo "::error::expected_sha ${EXPECTED_SHA} does not match the dispatched commit ${DISPATCH_SHA}." >&2
             echo "A full gate is only evidence for the exact SHA it admits; a moving ref produces superseded evidence." >&2
             exit 1
+          fi
+          if [[ "${LEGACY_DUAL_PLATFORM:-false}" == "true" ]]; then
+            [[ "${PURPOSE}" == "release-readiness" ]] || { echo "::error::legacy dual platform is for release-readiness only"; exit 1; }
+            case "${DISPATCH_REF}" in
+              refs/heads/release/v0.2.0.1|refs/tags/v0.2.0.1) ;;
+              *) echo "::error::legacy dual-platform full gate must target historical v0.2.0.1"; exit 1 ;;
+            esac
           fi
           echo "purpose=${PURPOSE}" >> "$GITHUB_OUTPUT"
           echo "admitted full gate: purpose=${PURPOSE} sha=${DISPATCH_SHA} decision=CANDIDATE"
@@ -152,6 +167,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_NAME: ${{ github.event_name }}
           PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
+          LEGACY_DUAL_PLATFORM: ${{ inputs.legacy_dual_platform }}
         run: |
           python .github/scripts/resolve-ci-scope.py
 
@@ -161,6 +177,8 @@ jobs:
     # A draft pull request has not asked for review, so it runs cheap governance only: Git Flow/topology, the
     # classifier self test and the release-authority policy scripts. Product jobs therefore require both an affected
     # capability and a ready pull request. Non-pull-request events keep their own lane semantics from the classifier.
+    # Owner #563: Windows x86_64 is the only blocking product and FULL_GATE matrix platform.
+    # Optional Linux diagnostics/user reports remain useful but cannot block PR, candidate, RC or GA.
     if: >-
       needs.classify.outputs.product == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
@@ -169,17 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Linux x86_64 / Qt 6.8.3
-            os: ubuntu-24.04
-            aqt_host: linux
-            aqt_arch: linux_gcc_64
-            qt_dir: gcc_64
-          - name: Windows x86_64 / Qt 6.8.3
-            os: windows-2022
-            aqt_host: windows
-            aqt_arch: win64_msvc2022_64
-            qt_dir: msvc2022_64
+        include: ${{ fromJSON(needs.classify.outputs.product_matrix) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -372,7 +380,7 @@ jobs:
       # The lane proves the deployment path, not only the build path: the same canonical entry point runs one bounded
       # install that reuses the build tree the step above produced, so nothing is recompiled and the run states the
       # install phase's own progress and the root it deployed into. This is the command a developer runs, not a
-      # second install mechanism, and the Linux lane keeps its own logic unchanged.
+      # second install mechanism. Linux platform qualification is optional per Owner #563.
       - name: Canonical install through HyRemote build system — Windows
         if: runner.os == 'Windows'
         shell: cmd
@@ -534,8 +542,45 @@ jobs:
           echo "decision=${{ needs.classify.outputs.decision }}"
           echo "capabilities=${{ needs.classify.outputs.integrations || 'none' }}"
           echo "governance=${{ needs.classify.outputs.governance }}"
-          if [ "${{ needs.classify.outputs.lane }}" = "DEVELOP_SENTINEL" ]; then
-            echo "develop sentinel: repository policy only. The merged pull request already passed its own hosted acceptance, so the dual-platform Qt matrix is not repeated here."
+          if [ "${{ needs.classify.outputs.lane }}" = "PR_FAST" ]; then
+            echo "PR governance/docs-only: no affected product claim; Qt runners intentionally skipped; no product PASS claimed."
           else
-            echo "This change cannot affect a product contract; the Qt runners are intentionally skipped."
+            echo "No affected Qt product contract selected; the Qt runners are intentionally skipped."
           fi
+
+  # Stable required status context to add to the protected develop branch ruleset.
+  # Never allow skipped, cancelled or failing required Windows Qt jobs to look green.
+  ci-merge-verdict:
+    name: ci-merge-verdict
+    if: ${{ always() && github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    needs: [classify, product, authority-governance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      CLASSIFY: ${{ needs.classify.result }}
+      PRODUCT_REQUIRED: ${{ needs.classify.outputs.product }}
+      PRODUCT_RESULT: ${{ needs.product.result }}
+      GOVERNANCE_REQUIRED: ${{ needs.classify.outputs.governance }}
+      GOVERNANCE_RESULT: ${{ needs.authority-governance.result }}
+      CLASSIFIED_LANE: ${{ needs.classify.outputs.lane }}
+      EXPECTED_DECISION: ${{ needs.classify.outputs.decision }}
+    steps:
+      - name: Require all selected PR gates to pass (never green on skipped product)
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CLASSIFY" == success ]] || { echo "::error::CI classification not successful: $CLASSIFY"; exit 1; }
+          [[ "$CLASSIFIED_LANE" == PR_FAST && "$EXPECTED_DECISION" == MERGE ]] || {
+            echo "::error::CI PR merge lane/decision invalid: $CLASSIFIED_LANE/$EXPECTED_DECISION"; exit 1; }
+          if [[ "$PRODUCT_REQUIRED" == true ]]; then
+            [[ "$PRODUCT_RESULT" == success ]] || { echo "::error::Required Windows Qt product tests did not pass: $PRODUCT_RESULT"; exit 1; }
+          else
+            [[ "$PRODUCT_RESULT" == skipped ]] || { echo "::error::Unexpected product result on no-product PR: $PRODUCT_RESULT"; exit 1; }
+            echo "No product-affecting diff; no Qt tests required or implied."
+          fi
+          if [[ "$GOVERNANCE_REQUIRED" == true ]]; then
+            [[ "$GOVERNANCE_RESULT" == success ]] || { echo "::error::Required governance tests failed/skipped: $GOVERNANCE_RESULT"; exit 1; }
+          else
+            [[ "$GOVERNANCE_RESULT" == skipped ]] || { echo "::error::Unexpected governance result: $GOVERNANCE_RESULT"; exit 1; }
+          fi
+          echo "PR CI acceptance PASS for the exact tested PR merge ref; all required selected jobs passed."

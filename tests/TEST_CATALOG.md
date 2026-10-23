@@ -55,6 +55,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-widgets-capture-test` | Widgets | Ordinary Widgets capture/lifetime/resize/cancellation/target-loss contract. |
 | `hyremote-widgets-native-popup-capture-test` | Widgets (native Windows) | #404: a real QLineEdit::createStandardContextMenu() popup captured while it lies completely inside the root, so the framebuffer geometry cannot stand in for popup pixels; asserts a significant pixel change in the menu region and a return to baseline after close. |
 | `hyremote-widgets-capture-forced-dpr-test` | Widgets | Executes the same capture contract at deterministic DPR=1.5. Closes TG-001; failure exposes HiDPI geometry/pixel mapping regression. |
+| `hyremote-widgets-capture-dpr2-test` | Widgets | Executes the same Widgets capture and cursor-coordinate contract at deterministic DPR=2. |
 | `hyremote-widgets-input-routing-test` | Widgets | Widgets input delivery/local coexistence. |
 | `hyremote-widgets-input-backpressure-test` | Widgets | Bounded pointer admission without semantic-loss coalescing, protected releases and shutdown balancing under GUI pressure. |
 | `hyremote-widgets-input-preflight-test` | Widgets | Behavioral acceptance for the shared Qt window-system pointer ingress: child routing, Qt-owned double-click classification, accepted-time queue-delay independence and wheel propagation. |
@@ -62,6 +63,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-rfb-input-preflight-test` | Widgets + VNC | Production RFB pointer facts reach the shared Qt window-system ingress; Qt owns interval/distance double-click classification. |
 | `hyremote-quick-capture-test` | Quick | Ordinary Qt Quick capture/lifetime/resize/target-loss contract. |
 | `hyremote-quick-capture-forced-dpr-test` | Quick | Executes the same Quick capture contract at deterministic DPR=1.5/software backend. Closes TG-002. |
+| `hyremote-quick-capture-dpr2-test` | Quick | Executes the same Quick capture and cursor-coordinate contract at deterministic DPR=2/software backend. |
 | `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |
 | `hyremote-quick-input-backpressure-test` | Quick | Bounded Quick GUI dispatch/backpressure without semantic-loss pointer coalescing. |
 | `hyremote-quick-input-preflight-test` | Quick | Behavioral acceptance that Qt Quick owns item hit testing, grabs and double-click classification below the shared Qt window-system ingress. |
@@ -96,15 +98,10 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
-| `hyremote-qpa-proxy-smoke` | Platform-plugin load/delegate path. |
-| `hyremote-qpa-native-semantics` | Exact-private-ABI native delegate semantics. |
-| `hyremote-qpa-remote-config-test` | QPA launch/config vocabulary. |
-| `hyremote-qpa-auto-remoteaccess-smoke` | QPA starts the same Shared Runtime. |
-| `hyremote-qpa-remote-failure-native-survival-smoke` | Remote failure preserves the native/local application. |
-| `hyremote-qpa-multi-surface-connection-smoke` | Multiple QWidget surfaces share the intended remote session/composite semantics. |
-| `hyremote-qpa-widget-popup-connection-smoke` | Popup/transient surface behavior with bounded event-driven synchronization; TG-019 closed. |
-| `hyremote-qpa-widget-opengl-capture-smoke` | Conditional QOpenGLWidget classification/capture. |
-| `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. |
+| `hyremote-qpa-runtime-basic` | Grouped QPA runtime cases: platform-plugin load/delegate, exact-private-ABI native semantics, launch/config vocabulary, and conditional QOpenGLWidget capture. Each case is named in the PASS/FAIL output. |
+| `hyremote-qpa-runtime-surfaces` | Grouped QWidget surface cases: multi-surface and popup/transient behavior (TG-019). |
+| `hyremote-qpa-runtime-recovery` | Grouped recovery cases: QPA auto-remoteaccess and remote-failure native survival. |
+| `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. Kept as its own CTest because its 500 ms startup contract is sensitive to being run inside a group. |
 
 ## T3 — repository/product contracts
 
@@ -146,21 +143,8 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 
 All entries are distinct positive/negative deployment contracts; a failure means the exact deployment mode or rejection reason is no longer trustworthy:
 
-- `hyremote-qpa-deploy-helper-ordinary`
-- `hyremote-qpa-deploy-helper-qml-only`
-- `hyremote-qpa-deploy-helper-qml-composed`
-- `hyremote-qpa-deploy-helper-installed-payload`
-- `hyremote-qpa-deploy-helper-installed-payload-qml-only`
-- `hyremote-qpa-deploy-helper-installed-payload-qml`
-- `hyremote-qpa-deploy-helper-reject-missing-qml`
-- `hyremote-qpa-deploy-helper-reject-stale-qml-metadata`
-- `hyremote-qpa-deploy-helper-reject-missing-qml-root`
-- `hyremote-qpa-deploy-helper-reject-missing-qml-module-dir`
-- `hyremote-qpa-deploy-helper-reject-stale-qpa-metadata`
-- `hyremote-qpa-deploy-helper-reject-qt-mismatch`
-- `hyremote-qpa-deploy-helper-reject-missing-package`
-- `hyremote-qpa-deploy-helper-single-config-generator`
-- `hyremote-qpa-deploy-helper-multi-config-generator`
+- `hyremote-qpa-deploy-helper-positive` — One table-driven run for the positive deploy-helper matrix: ordinary, QML-only, QML-composed, installed-payload variants and the explicit single/multi-config Ninja generators when available.
+- `hyremote-qpa-deploy-helper-negative` — One table-driven run for the fail-closed rejections: missing/stale QML payload, missing QML import root or module dir, stale QPA metadata, Qt-version mismatch and missing QPA package. Each case must match its expected failure fragment.
 - `hyremote-qpa-source-payload-relocation` — Linux-only source-payload relocation contract.
 
 `tests/consumer-installed-sdk` remains a distinct minimal release-evidence cell rather than a normal CTest: it proves the smallest public package/export/deploy closure and is not redundant with the stronger adapter consumers.
@@ -172,7 +156,6 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
 | `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
 | `hyremote-tool-client-ui` | Constructs the real HyRemoteTool client window offscreen and verifies the connection bar, framebuffer view and telemetry surface exist; it must not connect or open a listener. |
-| `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
 
@@ -187,17 +170,7 @@ Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_
 | `hyremote-release-readiness-release-documentation-layout` | Candidate/release documentation layout required by delivery authority. |
 | `hyremote-release-scope-self-test` | Exact release-train scope selection/rejection logic. |
 | `hyremote-release-authority-v02-user-first` | V0.2 user-first release authority, including conditional secure-evidence semantics. |
-| `hyremote-release-profile-develop-all` | Development all-capability profile acceptance. |
-| `hyremote-release-profile-develop-runtime-only` | Development runtime-only profile acceptance. |
-| `hyremote-release-profile-retire-v001` | Retired pre-GA label rejection. |
-| `hyremote-release-profile-retire-v002` | Retired pre-GA label rejection. |
-| `hyremote-release-profile-retire-v003` | Retired pre-GA label rejection. |
-| `hyremote-release-profile-v010-cpp-only` | V0.1 representable C++ subset. |
-| `hyremote-release-profile-v020-runtime` | V0.2 representable Runtime profile. |
-| `hyremote-release-profile-v030-all` | V0.3 all-capability profile. |
-| `hyremote-release-profile-v100-all` | V1 all-capability profile. |
-| `hyremote-release-profile-v100-cpp-only` | V1 C++ subset profile. |
-| `hyremote-release-profile-v100-generic-only` | V1 Generic subset profile. |
+| `hyremote-release-profiles` | One table-driven CTest for every release-profile case: development sentinel, retired pre-GA labels, progressive V0.1/V0.2/V0.3 profiles, and V1 all/C++/Generic subsets. Each case is named in the PASS/FAIL output; rejected cases must fail closed. |
 
 The release-profile matrix intentionally uses separate CTest identities because each representable or retired profile is an independent fail-closed release-authority contract.
 

@@ -49,7 +49,11 @@ QPointF nativeLocal(const QPointF &logical, QWindow *window)
 
 QPointF nativeGlobal(const QPointF &logical, QWindow *window)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     return QHighDpi::toNativeGlobalPosition(logical, window);
+#else
+    return QHighDpi::toNativePixels(logical, window);
+#endif
 }
 
 }  // namespace
@@ -105,6 +109,16 @@ void deliverQtWindowSystemPointer(QWindow *window,
         return;
     }
 
+    // A remote click is the explicit activation step for an application-scoped
+    // session. Without it an inactive target receives the injected press but
+    // cannot take OS focus, so subsequent remote typing goes nowhere (#362).
+    // This still does not inject desktop-wide input or take focus without a
+    // remote click.
+    if (type == QEvent::MouseButtonPress && !window->isActive()) {
+        window->requestActivate();
+        window->raise();
+    }
+
     QWindowSystemInterface::handleMouseEvent<QWindowSystemInterface::SynchronousDelivery>(
         window,
         timestamp,
@@ -126,7 +140,11 @@ void releaseQtWindowSystemPointer(QWindow *window,
         return;
     }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     const QPointF global = window->mapToGlobal(state.lastLocalPoint);
+#else
+    const QPointF global = QPointF(window->mapToGlobal(state.lastLocalPoint.toPoint()));
+#endif
     const QPointF nativeLocalPoint = nativeLocal(state.lastLocalPoint, window);
     const QPointF nativeGlobalPoint = nativeGlobal(global, window);
     static constexpr std::array<Qt::MouseButton, 3> buttons{

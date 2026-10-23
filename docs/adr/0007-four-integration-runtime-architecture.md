@@ -1,24 +1,26 @@
-# ADR-0007: Four Integration Frontends over Core + Common Runtime
+# ADR-0007：Core + 共享 Runtime 上的四个接入前端
 
-Status: **Accepted — V0.1 foundation / V1 architecture invariant (#219, reconciled by #209)**
+> 语言 / Language：**中文** ｜ [English](../en/adr/0007-four-integration-runtime-architecture.md)
 
-## Context
+状态：**已接受，V0.1 基础 / V1 架构不变量（#219，由 #209 校准）**
 
-HyRemote originally exposed its application-facing technologies as sibling directories such as `src/cpp`, `src/qml` and `src/qpa`. During the design of the fourth zero-code integration based on `QGenericPlugin`, two structural problems became explicit:
+## 背景
 
-1. `src/cpp` looked like a generic home for C++ implementation even though it was only the Embedded C++ application-facing facade. Embedded C++ itself is not Widgets-specific: its `RemoteAccess` target may be a Widgets or Qt Quick object and Runtime selects the appropriate adapter.
-2. `src/qpa` owned application-level automatic surface/composition logic that is not inherently QPA-specific and must also be shared by Generic Plugin mode.
+HyRemote 最初把面向应用的技术放在 `src/cpp`、`src/qml`、`src/qpa` 等并列目录。设计基于 `QGenericPlugin` 的第四个零代码接入时，暴露出两个结构问题：
 
-`src/core` remains the common UI/protocol/platform-neutral core implementation. Its boundary intentionally excludes QWidget, Qt Quick/QML, concrete transport implementations and Qt private/QPA types. Those restrictions remain valuable and must not be weakened merely to share Qt-facing runtime code.
+1. `src/cpp` 看起来像通用 C++ 实现目录，实际只是 Embedded C++ 的接入 facade。Embedded C++ 本身不专属 Widgets：`RemoteAccess` 的 target 可以是 Widgets 或 Qt Quick，由 Runtime 选择适配器。
+2. `src/qpa` 持有应用级自动 surface/composition 逻辑。这些逻辑并非 QPA 专属，Generic Plugin 也需要共享。
 
-Qt Compatibility analysis also establishes two additional facts:
+`src/core` 仍是 UI、协议、平台无关的公共 core 实现。它的边界有意排除 QWidget、Qt Quick/QML、具体传输实现和 Qt private/QPA 类型。这些限制不能为了共享 Qt 侧 runtime 代码而放宽。
 
-- QPA/private APIs do not provide the public compatibility guarantees required for a product-wide common layer. QPA-specific code must remain isolated in one compatibility frontend.
-- `QGenericPlugin` can provide a zero-code integration path without replacing the native QPA and should therefore be a peer frontend rather than an implementation detail of C++ or QPA integration.
+Qt 兼容性分析还确认两点：
 
-## Decision
+- QPA/private API 不提供产品级公共层所需的兼容保证，QPA 相关代码必须隔离在一个兼容前端内；
+- `QGenericPlugin` 可以在不替换原生 QPA 的前提下提供零代码接入，因此应是并列前端，而不是 C++ 或 QPA 的实现细节。
 
-HyRemote will use **Core + Common Runtime + four peer integration frontends**, with the four frontends grouped explicitly under `src/integrations/`:
+## 决策
+
+HyRemote 使用 **Core + 共享 Runtime + 四个并列接入前端**，四个前端统一放在 `src/integrations/` 下：
 
 ```text
 integrations/cpp --------\
@@ -27,137 +29,137 @@ integrations/generic ----/
 integrations/qpa --------/
 ```
 
-The canonical source roles are:
+规范源码角色：
 
 ```text
-src/core                  shared UI/protocol/platform-neutral core implementation
-src/runtime               shared Qt/product runtime implementation
-src/integrations/cpp      Embedded C++ integration frontend
-src/integrations/qml      QML integration frontend
-src/integrations/generic  QGenericPlugin zero-code integration frontend
-src/integrations/qpa      QPA zero-code integration frontend / compatibility shim
+src/core                  共享的 UI/协议/平台无关 core 实现
+src/runtime               共享 Qt/产品 runtime 实现
+src/integrations/cpp      Embedded C++ 接入前端
+src/integrations/qml      QML 接入前端
+src/integrations/generic  QGenericPlugin 零代码接入前端
+src/integrations/qpa      QPA 零代码接入前端与兼容 shim
 ```
 
-The four frontends are peers. No frontend is the architectural parent of another frontend.
+四个前端是并列关系，任何前端都不是其他前端的架构父级。
 
-## `src/core` responsibilities
+## `src/core` 职责
 
-`src/core` owns stable product semantics that are independent of Qt UI technology and concrete transport/platform implementation:
+`src/core` 拥有与 Qt UI 技术、具体传输和平台实现无关的稳定产品语义：
 
-- Session lifecycle/state/error semantics;
-- `RemoteFrame` metadata and storage lifetime;
-- bounded scheduling, mailbox and backpressure policy;
-- normalized remote input model and dispatch boundary;
-- transport-neutral and target-neutral interfaces;
-- capability negotiation at the Core abstraction level.
+- Session 生命周期、状态和错误语义；
+- `RemoteFrame` 元数据和存储生命周期；
+- 有界调度、mailbox 和 backpressure 策略；
+- 规范化的远程输入模型和分发边界；
+- 传输无关、target 无关的接口；
+- Core 抽象层的能力协商。
 
-Core must not require QWidget, QQuickWindow/QML, QPA/private API, concrete RFB implementation types, graphics-platform APIs, or SoC/vendor APIs.
+Core 不得要求 QWidget、QQuickWindow/QML、QPA/private API、具体 RFB 实现类型、图形平台 API 或 SoC/vendor API。
 
-## `src/runtime` responsibilities
+## `src/runtime` 职责
 
-`src/runtime` owns product implementation common to multiple/all integration frontends that cannot live in the UI-neutral Core. This includes, as applicable:
+`src/runtime` 拥有多个或全部接入前端共用的产品实现，这些实现不能放进 UI 无关的 Core。包括：
 
-- Qt Widgets target adapters;
-- Qt Quick target adapters;
-- concrete RFB transport and transport-security implementation;
-- component factories that assemble Core interfaces with Qt/product implementations;
-- shared Qt application-surface discovery;
-- application surface model;
-- composite capture target and input routing;
-- automatic application-level access controller used by Generic Plugin and QPA zero-code modes;
-- internal runtime configuration/ownership services shared across frontends.
+- Qt Widgets target 适配器；
+- Qt Quick target 适配器；
+- 具体 RFB 传输与传输安全实现；
+- 组装 Core 接口与 Qt/产品实现的 component factory；
+- 共享 Qt 应用 surface 发现；
+- 应用 surface 模型；
+- composite capture target 和输入路由；
+- Generic Plugin 与 QPA 零代码模式共用的应用级自动接入控制器；
+- 前端共享的内部 runtime 配置/所有权服务。
 
-`src/runtime` may depend on Qt public APIs and `HyRemote::Core`. It must not depend on any directory under `src/integrations/`.
+`src/runtime` 可以依赖 Qt public API 和 `HyRemote::Core`，不得依赖 `src/integrations/` 下的任何目录。
 
-## Integration frontend responsibilities
+## 接入前端职责
 
-### `src/integrations/cpp` — Embedded C++ integration
+### `src/integrations/cpp`：Embedded C++ 接入
 
-Owns the public `HyRemote::RemoteAccess` C++ facade and only the integration-specific facade/ABI surface required for Embedded C++ consumers. It delegates product work to the common runtime.
+拥有公共 `HyRemote::RemoteAccess` C++ facade，以及 Embedded C++ 使用者需要的接入专用 facade/ABI。产品工作委托给共享 Runtime。
 
-This frontend is **not a Widgets frontend**. A C++ consumer may target Widgets or Qt Quick; target-family adaptation belongs to Runtime.
+这个前端**不是 Widgets 前端**。C++ 使用者可以面向 Widgets 或 Qt Quick；target family 适配属于 Runtime。
 
-### `src/integrations/qml` — QML integration
+### `src/integrations/qml`：QML 接入
 
-Owns `import HyRemote` and the QML-facing wrapper/property/lifecycle semantics. It delegates product work to the common runtime and does not implement a second Session/capture/transport architecture.
+拥有 `import HyRemote` 和 QML 侧 wrapper/属性/生命周期语义。产品工作委托给共享 Runtime，不实现第二套 Session/capture/transport 架构。
 
-### `src/integrations/generic` — QGenericPlugin integration
+### `src/integrations/generic`：QGenericPlugin 接入
 
-Owns a Qt Generic Plugin payload loaded with `-plugin hyremote` or `QT_QPA_GENERIC_PLUGINS`. It preserves the application's native QPA and platform identity and bootstraps the shared automatic runtime. It must use Qt public Generic Plugin APIs and must not depend on Qt QPA/private APIs.
+拥有通过 `-plugin hyremote` 或 `QT_QPA_GENERIC_PLUGINS` 加载的 Qt Generic Plugin payload。保留应用原生 QPA 和平台身份，启动共享自动 runtime。必须使用 Qt public Generic Plugin API，不得依赖 Qt QPA/private API。
 
-### `src/integrations/qpa` — QPA integration
+### `src/integrations/qpa`：QPA 接入
 
-Owns the Qt private/QPA compatibility boundary. The long-term design is a **Factory Trampoline**: parse HyRemote platform parameters, resolve/create the qualified native Qt platform integration, bootstrap/arm the same automatic runtime, and return the native `QPlatformIntegration*` to Qt. QPA does not own product capture/input/transport/session semantics.
+拥有 Qt private/QPA 兼容边界。长期设计是 **Factory Trampoline**：解析 HyRemote 平台参数，解析或创建已验证的原生 Qt 平台集成，启动并 arm 同一自动 runtime，然后把原生 `QPlatformIntegration*` 返回 Qt。QPA 不拥有产品 capture/input/transport/session 语义。
 
-Only `src/integrations/qpa` may depend on Qt private/QPA ABI for the four integration frontends.
+四个接入前端中，只有 `src/integrations/qpa` 可以依赖 Qt private/QPA ABI。
 
-## Why `src/integrations/` is explicit
+## 为什么显式使用 `src/integrations/`
 
-Keeping `cpp`, `qml`, `generic` and `qpa` directly under `src/` makes those technology names look like shared implementation layers. That is especially misleading for `cpp`, because almost all of HyRemote is C++.
+把 `cpp`、`qml`、`generic`、`qpa` 直接放在 `src/` 下，会让这些技术名看起来像共享实现层。对 `cpp` 尤其误导，因为 HyRemote 绝大部分本来就是 C++。
 
-Grouping them under `src/integrations/` makes the ownership model executable by inspection:
+统一放到 `src/integrations/` 后，所有权模型可以直接从目录读出：
 
 ```text
-src/core       = shared product semantics
-src/runtime    = shared product implementation
-src/integrations/* = ways an application enters the runtime
+src/core           共享产品语义
+src/runtime        共享产品实现
+src/integrations/* 应用进入 runtime 的方式
 ```
 
-Widgets and Quick are Runtime adapter dimensions, not integration-directory dimensions.
+Widgets 和 Quick 是 Runtime 适配维度，不是接入目录维度。
 
-## Automatic integration ownership
+## 自动接入归属
 
-The following code is application-level automatic integration, not QPA implementation, and therefore moves out of the QPA frontend into Common Runtime:
+以下代码属于应用级自动接入，不属于 QPA 实现，因此从 QPA 前端移入共享 Runtime：
 
-- application surface model;
-- composite target and routing;
-- interactive composite target;
-- application-level automatic-access controller.
+- 应用 surface 模型；
+- composite target 和路由；
+- interactive composite target；
+- 应用级 automatic access controller。
 
-Generic Plugin and QPA must use the same automatic controller and surface/composition semantics.
+Generic Plugin 和 QPA 必须使用同一个自动控制器和 surface/composition 语义。
 
-## QPA composition seam
+## QPA 组合边界
 
-The source-private `qpa_composition_seam.*` existed because QPA-owned composite code needed Core-owned frame/input operations while QPA is forbidden from linking Core directly. Once composite/automatic code was fully owned by Common Runtime this indirection stopped being architecturally necessary, and it was removed rather than renamed into another frontend-specific seam; the runtime-owned composition sources now include `detail/composition_support.hpp` directly.
+`qpa_composition_seam.*` 曾经存在，是因为 QPA 拥有的 composite 代码需要 Core 的 frame/input 操作，而 QPA 不能直接链接 Core。composite/automatic 代码完全归共享 Runtime 后，这层间接不再必要，已删除而不是改名为另一个前端专用 seam。runtime 侧组合源码现在直接包含 `detail/composition_support.hpp`。
 
-## QPA platform strategy
+## QPA 平台策略
 
-HyRemote does not create Rockchip/NXP/TI-specific QPA implementations. The platform chain is:
+HyRemote 不创建 Rockchip/NXP/TI 专用 QPA 实现。平台链：
 
 ```text
 HyRemote QPA Factory Trampoline
-        -> native Qt QPA (windows/xcb/wayland/eglfs/...)
+        -> 原生 Qt QPA (windows/xcb/wayland/eglfs/...)
         -> vendor Qt/BSP
-        -> OS/GPU/display/input hardware
+        -> OS/GPU/display/input 硬件
 ```
 
-Vendor BSP + Qt owns native display/input/GPU adaptation. Platform-specific HyRemote code is permitted only in the QPA compatibility shim or in a separately justified acceleration backend after portable-path measurements prove it is necessary.
+Vendor BSP 与 Qt 负责原生显示/输入/GPU 适配。平台专用 HyRemote 代码只允许出现在 QPA 兼容 shim，或在 portable 路径测量证明必要后单独准入的加速后端。
 
-## Compatibility model
+## 兼容模型
 
-- `core`: ordinary C++ compatibility boundary; no Qt private ABI.
-- `runtime`: Qt public API/product implementation boundary.
-- `integrations/cpp`: public C++ integration ABI/API.
-- `integrations/qml`: public Qt/QML integration boundary.
-- `integrations/generic`: public Qt Generic Plugin boundary.
-- `integrations/qpa`: Qt private QPA boundary, rebuilt and qualified per supported Qt/QPA compatibility unit.
+- `core`：普通 C++ 兼容边界，不涉及 Qt private ABI；
+- `runtime`：Qt public API/产品实现边界；
+- `integrations/cpp`：公共 C++ 接入 ABI/API；
+- `integrations/qml`：公共 Qt/QML 接入边界；
+- `integrations/generic`：公共 Qt Generic Plugin 边界；
+- `integrations/qpa`：Qt private QPA 边界，按支持的 Qt/QPA 兼容单元分别重建和认证。
 
-A shared source architecture does not imply one QPA binary across Qt minor lines, CPU architectures or vendor-patched Qt distributions.
+共享源码架构不意味着跨 Qt minor、CPU 架构或 vendor-patched Qt 分发共用同一个 QPA 二进制。
 
-## Target product behavior
+## 目标产品行为
 
-All four modes share the same product semantics:
+四个模式共享同一产品语义：
 
-1. Embedded C++ API;
-2. QML API;
-3. Generic Plugin zero-code integration;
-4. QPA Factory-Trampoline zero-code integration.
+1. Embedded C++ API；
+2. QML API；
+3. Generic Plugin 零代码接入；
+4. QPA Factory-Trampoline 零代码接入。
 
-The differences are limited to bootstrap/configuration/target ownership. Session, frame, capture, input, transport, security, cleanup and error semantics are common Runtime/Core behavior.
+差异只在 bootstrap、配置和 target 所有权。Session、frame、capture、input、transport、security、cleanup 和错误语义都是共享 Runtime/Core 行为。
 
-## Repository target layout
+## 目标仓库布局
 
-The canonical post-migration shipping tree is:
+迁移后的规范发布树：
 
 ```text
 src/
@@ -170,41 +172,41 @@ src/
     └── qpa/
 ```
 
-`src/` remains the shipping tree. `runtime` is an internal/shared implementation module, not a fifth application integration mode.
+`src/` 仍是发布树。`runtime` 是内部共享实现模块，不是第五种应用接入模式。
 
-## Build/artifact compatibility during migration
+## 迁移期间的构建/制品兼容
 
-Source ownership and artifact paths are separate contracts. The migration may preserve existing target names, output names and build/deployment locations while source directories change.
+源码所有权和制品路径是两份契约。迁移可以在改变源码目录的同时保留现有 target 名、输出名和构建/部署位置。
 
-In particular, `HyRemoteRemoteAccess` / `HyRemote::RemoteAccess` may continue using the established build/output identity while target ownership moves to `src/runtime` and the C++ facade lives under `src/integrations/cpp`.
+特别是 `HyRemoteRemoteAccess` / `HyRemote::RemoteAccess` 可以继续使用既有的构建/输出身份，即使 target 所有权移到 `src/runtime`，C++ facade 位于 `src/integrations/cpp`。
 
-Any intentional artifact/API change requires a separate compatibility decision; it is not implied by repository relocation.
+任何有意的制品/API 变化都需要单独的兼容决策，不能由仓库搬迁隐含。
 
-## Migration constraints
+## 迁移约束
 
-- Do not change an already frozen release candidate or its evidence merely to absorb this migration.
-- Perform the migration on the dedicated #219 architecture branch/PR.
-- Preserve one Core/session/capture/input/transport architecture throughout the migration.
-- Do not temporarily solve ownership by making Generic or QPA depend on Embedded C++ implementation details.
-- Keep QPA/private headers out of Core, Runtime, C++, QML and Generic modules.
-- Remove the legacy physical roots `src/cpp`, `src/qml`, `src/generic` and `src/qpa`; do not leave forwarding directories or compatibility copies.
-- Update repository-layout gates, package/deploy contracts, examples and cross-mode tests before the migration is considered complete.
+- 不得为了吸收这次迁移而改变已冻结的发布候选或证据；
+- 在专门的 #219 架构分支/PR 上执行迁移；
+- 全程保持一套 Core/session/capture/input/transport 架构；
+- 不得通过让 Generic 或 QPA 依赖 Embedded C++ 实现细节来临时解决所有权问题；
+- QPA/private 头文件不得进入 Core、Runtime、C++、QML 和 Generic 模块；
+- 删除旧的物理根目录 `src/cpp`、`src/qml`、`src/generic`、`src/qpa`，不保留转发目录或兼容副本；
+- 完成迁移前更新仓库布局门禁、package/deploy 契约、示例和跨模式测试。
 
-## Consequences
+## 结果
 
-Positive:
+正面：
 
-- the source tree itself distinguishes shared implementation from application integration;
-- `src/integrations/cpp` unambiguously means Embedded C++ API rather than all C++ implementation;
-- Widgets and Quick remain equal Runtime target families;
-- Generic and QPA become true peer zero-code frontends;
-- application-level automatic access is implemented once;
-- QPA private compatibility risk is sharply isolated;
-- vendor/SoC platform expansion does not create new product personalities;
-- the current QPA-specific composition bridge can disappear.
+- 源码树本身区分共享实现与应用接入；
+- `src/integrations/cpp` 明确表示 Embedded C++ API，而不是所有 C++ 实现；
+- Widgets 和 Quick 保持平等的 Runtime target family；
+- Generic 和 QPA 成为真正的并列零代码前端；
+- 应用级自动接入只实现一次；
+- QPA private 兼容风险被显著隔离；
+- vendor/SoC 平台扩展不会制造新的产品人格；
+- QPA 专用组合桥可以消失。
 
-Cost:
+成本：
 
-- build/install/release-readiness paths must be migrated deliberately;
-- historical documentation and CI checks that encode old physical paths must be updated;
-- moving automatic/composite implementation requires preserving existing QPA behavior through cross-mode tests.
+- build/install/release-readiness 路径必须有计划地迁移；
+- 编码旧物理路径的历史文档和 CI 检查必须更新；
+- 移动 automatic/composite 实现时，需要通过跨模式测试保持现有 QPA 行为。

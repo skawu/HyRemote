@@ -9,11 +9,13 @@ Add remote viewing and optional remote control to existing Qt Widgets and Qt Qui
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
-  <img src="https://img.shields.io/badge/product-V0.2%20LAN%20trial-orange.svg" alt="Product: V0.2 LAN trial">
-  <img src="https://img.shields.io/badge/reference-Windows%20%7C%20Linux%20x86__64-lightgrey.svg" alt="Reference: Windows | Linux x86_64">
+  <img src="https://img.shields.io/badge/product-V0.3%20Product%20Preview-orange.svg" alt="Product: V0.3 Product Preview">
+  <img src="https://img.shields.io/badge/qualified-Windows%20x86__64-lightgrey.svg" alt="Validated platform: Windows x86_64">
   <img src="https://img.shields.io/badge/Qt-6.8.3%20reference-41CD52.svg" alt="Qt 6.8.3 reference">
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
 </p>
+
+**Platform validation policy (2026-10-22):** Windows x86_64 is the required, actually qualified development and release platform. Linux desktop, ARM64/embedded Linux and Wayland/EGLFS are Qt-based **user-validation pending** paths; lacking those target devices or tests does **not** block new Feature/RC/GA releases, and Qt portability alone does not make them Supported. Reproducible user reports are handled through Issues and reviewed maintenance/hotfixes. The historical v0.3.0.0 release notes are unchanged. See [compatibility](docs/compatibility.md) and the [Owner platform decision](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
 ## Start here
 
@@ -169,13 +171,22 @@ src/
 The repository's normal developer build is driven by `build.cmd` and `build.yml`. `build.cmd` is the single build authority: `build.cmd build` configures if needed and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the tree and `build.cmd rebuild` is clean plus build. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers take. The checked-in profile enables all four integrations for development; integrations are independent selections and none implies another.
 
 ```text
+PowerShell:  .\build.cmd build
+POSIX:       sh ./build.cmd build
 PowerShell:  .\build.cmd build --show-config
 POSIX:       sh ./build.cmd build --show-config
-PowerShell:  .\build.cmd build --integrations=cpp,generic
-POSIX:       sh ./build.cmd build --integrations=cpp,generic
-PowerShell:  .\build.cmd test --integrations=cpp,qml,generic,qpa
-POSIX:       sh ./build.cmd test --integrations=cpp,qml,generic,qpa
+PowerShell:  .\build.cmd test
+POSIX:       sh ./build.cmd test
 ```
+
+`--integrations`, `--qt-prefix` and `--toolchain` are temporary command-line overrides. Persistent platform configuration belongs in `build.yml`; for a second target, copy it to a profile and use one argument:
+
+```text
+PowerShell:  .\build.cmd build --config=build.aarch64.yml
+POSIX:       sh ./build.cmd build --config=build.aarch64.yml
+```
+
+Qt **6.8.3** is the reference version. A cross build must use a Qt **6.8.3 built for the target architecture**, not the host Qt. ARM64/embedded Linux remains a build-only cross target until target-board runtime evidence exists.
 
 For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_deploy()` instead of manually copying internal libraries or plugins.
 

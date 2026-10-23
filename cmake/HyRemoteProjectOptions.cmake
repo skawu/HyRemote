@@ -12,6 +12,7 @@ option(HYREMOTE_BUILD_CORE "Build the internal hyremote-core session/frame/dispa
 option(HYREMOTE_BUILD_REMOTE_ACCESS "Build the shared HyRemote common runtime when Qt is available" ON)
 option(HYREMOTE_BUILD_WIDGETS_ADAPTER "Build the Qt Widgets target adapter when Qt Widgets is available" ON)
 option(HYREMOTE_BUILD_QUICK_ADAPTER "Build the Qt Quick target adapter when Qt Quick is available" ON)
+option(HYREMOTE_QT5_ENABLE_QUICK "Enable the experimental Qt 5.15 Quick adapter and its tests" OFF)
 option(HYREMOTE_WITH_VNC "Enable the VNC/RFB correctness transport backend" ON)
 
 # Runtime publishes this configure-local capability through an INTERNAL cache entry so sibling

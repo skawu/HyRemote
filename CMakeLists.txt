@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
-project(HyRemote VERSION 0.3.0.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
+project(HyRemote VERSION 0.3.3.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
 include(HyRemoteReleaseProfile)
@@ -52,15 +52,45 @@ if(PROJECT_IS_TOP_LEVEL
         find_package(Qt6 QUIET COMPONENTS Core)
     endif()
     if(NOT TARGET Qt6::Core)
+        # Qt 5.15 LTS is the legacy compatibility line. Keep the public and shared-runtime
+        # sources in one tree; the Qt6 target names below are compatibility aliases over the
+        # Qt5 imported targets, not a second product implementation.
+        find_package(Qt5 5.15 QUIET COMPONENTS Core Network Gui Widgets Quick Qml)
+        if(TARGET Qt5::Core AND TARGET Qt5::Network AND TARGET Qt5::Gui AND TARGET Qt5::Widgets)
+            set(HYREMOTE_QT_MAJOR 5)
+            set(HYREMOTE_QT_VERSION "${Qt5_VERSION}")
+            add_library(Qt6::Core ALIAS Qt5::Core)
+            add_library(Qt6::Network ALIAS Qt5::Network)
+            add_library(Qt6::Gui ALIAS Qt5::Gui)
+            add_library(Qt6::Widgets ALIAS Qt5::Widgets)
+            if(TARGET Qt5::Quick)
+                add_library(Qt6::Quick ALIAS Qt5::Quick)
+            endif()
+            if(TARGET Qt5::Qml)
+                add_library(Qt6::Qml ALIAS Qt5::Qml)
+            endif()
+            if(TARGET Qt5::GuiPrivate)
+                add_library(Qt6::GuiPrivate ALIAS Qt5::GuiPrivate)
+            endif()
+            set(Qt6_VERSION "${Qt5_VERSION}")
+            set(Qt6_VERSION_MAJOR 5)
+            set(Qt6_VERSION_MINOR 15)
+            if(NOT HYREMOTE_QT5_ENABLE_QUICK)
+                set(HYREMOTE_BUILD_QUICK_ADAPTER OFF CACHE BOOL
+                    "Qt 5.15 Quick is experimental; enable explicitly with HYREMOTE_QT5_ENABLE_QUICK" FORCE)
+            endif()
+        endif()
+    endif()
+    if(NOT TARGET Qt6::Core)
         message(FATAL_ERROR
             "This top-level configure expects Qt and did not find it.\n"
             "  CMAKE_PREFIX_PATH          : '${CMAKE_PREFIX_PATH}'\n"
             "  HYREMOTE_BUILD_EXAMPLES    : ${HYREMOTE_BUILD_EXAMPLES}\n"
             "  HYREMOTE_BUILD_TESTS       : ${HYREMOTE_BUILD_TESTS}\n"
-            "Qt 6.8+ is the only qualified line today; Qt 5.15 qualification is tracked by issue #57 and is not\n"
-            "implemented, so a Qt 5.15 prefix cannot configure this product yet.\n"
-            "Pass a Qt 6.8.3 prefix, or build Core alone on purpose with -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF\n"
-            "-DHYREMOTE_BUILD_EXAMPLES=OFF -DHYREMOTE_BUILD_TESTS=OFF.")
+            "Qt 6.8.3 is the reference line; Qt 5.15 is supported as a bounded legacy line when its\n"
+            "Core/Network/Gui/Widgets SDK is present. Pass a matching Qt prefix, or build Core alone\n"
+            "on purpose with -DHYREMOTE_BUILD_REMOTE_ACCESS=OFF -DHYREMOTE_BUILD_EXAMPLES=OFF\n"
+            "-DHYREMOTE_BUILD_TESTS=OFF.")
     endif()
 endif()
 
@@ -159,6 +189,7 @@ if(HYREMOTE_BUILD_EXAMPLES)
     find_package(Qt6 6.8 QUIET COMPONENTS Widgets Quick Qml)
     if(TARGET hyremote-remoteaccess)
         add_subdirectory(examples)
+        add_subdirectory(tools)
     elseif(PROJECT_IS_TOP_LEVEL)
         message(STATUS "  Product examples skipped: Common Runtime is unavailable")
     else()
@@ -223,6 +254,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         NAME hyremote-release-readiness-deploy-helper-contract
         COMMAND "${CMAKE_COMMAND}"
             -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DHYREMOTE_GATE_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/gate-scratch
             -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
             -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
             -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
@@ -313,12 +345,16 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     # test for a product surface that configuration never claimed - and a test that skips itself is not a substitute
     # for not registering it.
     if(HYREMOTE_BUILD_CPP_API AND TARGET hyremote-remoteaccess)
+        set(_hyremote_cpp_evidence_cells installed-cpp-widgets)
+        if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+            list(APPEND _hyremote_cpp_evidence_cells installed-cpp-quick)
+        endif()
         add_test(
             NAME hyremote-cpp-installed-consumers
             COMMAND "${CMAKE_COMMAND}"
                 -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                 -DHYREMOTE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-                "-DEVIDENCE_CELLS=installed-cpp-widgets;installed-cpp-quick"
+                "-DEVIDENCE_CELLS=${_hyremote_cpp_evidence_cells}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_release_evidence.cmake"
         )
         set_tests_properties(hyremote-cpp-installed-consumers PROPERTIES TIMEOUT 1200)
@@ -423,6 +459,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
                 --source-dir "${CMAKE_CURRENT_SOURCE_DIR}"
                 --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
                 --qt-prefix "${CMAKE_PREFIX_PATH}"
+                --quick-enabled "${HYREMOTE_REMOTEACCESS_WITH_QUICK}"
                 "--cmake-arg=-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
                 "--cmake-arg=-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
         )
@@ -443,7 +480,33 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     endif()
 
     # The mainline push audit's retry logic is a shell script for the same reason; it is tested where bash exists.
-    find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    # On Windows, C:\Windows\System32\bash.exe is the WSL launcher and exists even when no distribution is
+    # installed. Treat that stub as "no bash": registering the self-tests there makes a normal Windows L2 fail
+    # with "no installed distributions" instead of skipping an unavailable shell.
+    # Prefer a real Git Bash on Windows; System32's bash.exe is the WSL launcher and may have no
+    # distribution. The probe below still rejects an unusable shell, but preferring Git Bash keeps
+    # the two governance self-tests in the normal Windows L2 when Git for Windows is installed.
+    if(WIN32)
+        find_program(HYREMOTE_GIT_BASH_EXECUTABLE
+            NAMES bash
+            PATHS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin"
+            NO_DEFAULT_PATH)
+    endif()
+    if(HYREMOTE_GIT_BASH_EXECUTABLE)
+        set(HYREMOTE_BASH_EXECUTABLE "${HYREMOTE_GIT_BASH_EXECUTABLE}")
+    else()
+        find_program(HYREMOTE_BASH_EXECUTABLE bash)
+    endif()
+    if(HYREMOTE_BASH_EXECUTABLE)
+        execute_process(
+            COMMAND "${HYREMOTE_BASH_EXECUTABLE}" -c true
+            RESULT_VARIABLE _hyremote_bash_probe
+            OUTPUT_QUIET
+            ERROR_QUIET)
+        if(NOT _hyremote_bash_probe EQUAL 0)
+            set(HYREMOTE_BASH_EXECUTABLE "")
+        endif()
+    endif()
     if(HYREMOTE_BASH_EXECUTABLE)
         add_test(
             NAME hyremote-mainline-audit-self-test
@@ -475,57 +538,17 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         )
     endif()
 
-    function(hyremote_add_release_profile_test
-             test_name version cpp_enabled qml_enabled generic_enabled qpa_enabled security_enabled expect_reject)
-        add_test(
-            NAME "${test_name}"
-            COMMAND "${CMAKE_COMMAND}"
-                -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-                -DHYREMOTE_TEST_VERSION=${version}
-                -DHYREMOTE_TEST_CPP=${cpp_enabled}
-                -DHYREMOTE_TEST_QML=${qml_enabled}
-                -DHYREMOTE_TEST_GENERIC=${generic_enabled}
-                -DHYREMOTE_TEST_QPA=${qpa_enabled}
-                -DHYREMOTE_TEST_SECURITY=${security_enabled}
-                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profile.cmake"
-        )
-        if(expect_reject)
-            set_tests_properties("${test_name}" PROPERTIES WILL_FAIL TRUE)
-        endif()
-    endfunction()
-
-    # Development sentinel accepts arbitrary capability combinations while V1 converges.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-develop-all 0.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-develop-runtime-only 0.0.0 OFF OFF OFF OFF OFF FALSE)
-
-    # Historical V0 labels are planning references only and must never become release profiles again.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-retire-v001 0.0.1.0 ON OFF OFF OFF OFF TRUE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-retire-v002 0.0.2.0 ON ON OFF OFF OFF TRUE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-retire-v003 0.0.3.0 ON ON OFF ON OFF TRUE)
-
-    # Progressive trains are real releases, so they must be accepted whatever frontends a build enables. A
-    # frontend subset is a capability choice, never a version meaning: these cases would have failed under the
-    # retired rule that rejected every value below the first GA.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v010-cpp-only 0.1.0.0 ON OFF OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v020-runtime 0.2.0.0 ON OFF OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v030-all 0.3.0.0 ON ON ON ON ON FALSE)
-    # #333: V0.4.0.0 is qualification only - conditional on #235 until the V0.3 family completes - so it is not a
-    # selectable release profile and has no release-profile test here. Its selection refusal is proved by the
-    # release-scope self test (V0.4.0.0 conditional on #235) and its maintenance numbers fail as unknown versions.
-
-    # V1 is the first formal GA. Frontend subsets do not encode version semantics.
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v100-all 1.0.0.0 ON ON ON ON ON FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v100-cpp-only 1.0.0.0 ON OFF OFF OFF OFF FALSE)
-    hyremote_add_release_profile_test(
-        hyremote-release-profile-v100-generic-only 1.0.0.0 OFF OFF ON OFF OFF FALSE)
+    # Every release-profile case lives in one table-driven CTest. The case
+    # names and accept/reject meaning live in the script's data table, so a
+    # failure still states the exact version/capability case while the build
+    # no longer spawns ten nearly identical CMake children.
+    # V0.4.0.0 remains qualification-only and is deliberately not a selectable
+    # release profile.
+    add_test(
+        NAME hyremote-release-profiles
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_profiles.cmake"
+    )
+    set_tests_properties(hyremote-release-profiles PROPERTIES TIMEOUT 120)
 endif()

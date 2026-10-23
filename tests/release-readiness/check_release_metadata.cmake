@@ -39,16 +39,16 @@ set(required_files
     "examples/learning/01-widgets-cpp/README.md"
     "examples/learning/02-quick-cpp/CMakeLists.txt"
     "examples/learning/02-quick-cpp/README.md"
-    "examples/learning/03-zero-code-generic/README.md"
-    "examples/learning/03-zero-code-generic/widgets-app/CMakeLists.txt"
-    "examples/learning/03-zero-code-generic/quick-app/CMakeLists.txt"
-    "examples/qml-basic/CMakeLists.txt"
-    "examples/qml-basic/README.md"
-    "examples/qpa-proxy-existing-app/CMakeLists.txt"
-    "examples/qpa-proxy-existing-app/main.cpp"
-    "examples/qpa-proxy-existing-app/README.md"
-    "examples/remote-support-showcase/CMakeLists.txt"
-    "examples/remote-support-showcase/README.md"
+    "examples/learning/03-generic/README.md"
+    "examples/learning/03-generic/widgets-app/CMakeLists.txt"
+    "examples/learning/03-generic/quick-app/CMakeLists.txt"
+    "examples/learning/04-qml/CMakeLists.txt"
+    "examples/learning/04-qml/README.md"
+    "examples/learning/05-qpa/CMakeLists.txt"
+    "examples/learning/05-qpa/main.cpp"
+    "examples/learning/05-qpa/README.md"
+    "tools/hyremote-tool/CMakeLists.txt"
+    "tools/hyremote-tool/README.md"
     "tests/consumer-installed-sdk/CMakeLists.txt"
     "tests/consumer-source/CMakeLists.txt"
     "tests/consumer-installed-qml/CMakeLists.txt"
@@ -189,7 +189,20 @@ function(hyremote_notes_surfaces notes_text out_zh out_en out_ok)
     set(${out_ok} TRUE PARENT_SCOPE)
 endfunction()
 
-set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/hyremote-release-notes-fixtures")
+# These are negative-test artifacts. Keep them out of the source tree even when
+# a caller invokes `cmake -P` with the repository root as its working directory
+# and passes a different HYREMOTE_SOURCE_DIR. The host temp directory is the
+# stable location; the build-tree fallback is used only when neither TEMP nor
+# TMPDIR is available.
+set(_fixture_temp_dir "$ENV{TEMP}")
+if(NOT _fixture_temp_dir)
+    set(_fixture_temp_dir "$ENV{TMPDIR}")
+endif()
+if(_fixture_temp_dir)
+    set(notes_fixture_dir "${_fixture_temp_dir}/hyremote-release-notes-fixtures")
+else()
+    set(notes_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/.hyremote-release-notes-fixtures")
+endif()
 file(MAKE_DIRECTORY "${notes_fixture_dir}")
 
 # Every V0.2.x release note that exists carries the contract, so a later note in this train cannot be written in one
@@ -432,8 +445,8 @@ endforeach()
 file(READ "${HYREMOTE_SOURCE_DIR}/docs/release-package-manifest.md" package_manifest)
 foreach(required_phrase
         "HyRemote::RemoteAccess"
-        "is not a second application Runtime or ordinary exported SDK target"
-        "does not expose `HyRemote::QpaPlatform` as an application target"
+        "不是第二个应用 Runtime 或普通导出 SDK 目标"
+        "不暴露 HyRemote::QpaPlatform 作为应用目标"
         "qhyremote"
         "hyremote_deploy(TARGET MyApp)")
     string(FIND "${package_manifest}" "${required_phrase}" found)
@@ -511,7 +524,7 @@ file(READ "${HYREMOTE_SOURCE_DIR}/examples/README.md" examples_entry)
 foreach(required_entry_token IN ITEMS
         "learning/01-widgets-cpp"
         "learning/02-quick-cpp"
-        "learning/03-zero-code-generic"
+        "learning/03-generic"
         "docs/getting-started/cpp.md"
         "docs/getting-started/generic.md"
         "docs/guide/deployment.md"
@@ -551,11 +564,10 @@ file(READ "${HYREMOTE_SOURCE_DIR}/examples/CMakeLists.txt" examples_cmake)
 foreach(required_example
         "add_subdirectory(learning/01-widgets-cpp)"
         "add_subdirectory(learning/02-quick-cpp)"
-        "add_subdirectory(learning/03-zero-code-generic/widgets-app)"
-        "add_subdirectory(learning/03-zero-code-generic/quick-app)"
-        "add_subdirectory(qml-basic)"
-        "add_subdirectory(qpa-proxy-existing-app)"
-        "add_subdirectory(remote-support-showcase)")
+        "add_subdirectory(learning/03-generic/widgets-app)"
+        "add_subdirectory(learning/03-generic/quick-app)"
+        "add_subdirectory(learning/04-qml)"
+        "add_subdirectory(learning/05-qpa)")
     string(FIND "${examples_cmake}" "${required_example}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -563,7 +575,14 @@ foreach(required_example
     endif()
 endforeach()
 
-file(READ "${HYREMOTE_SOURCE_DIR}/examples/qpa-proxy-existing-app/CMakeLists.txt" e4_cmake)
+file(READ "${HYREMOTE_SOURCE_DIR}/tools/CMakeLists.txt" tools_cmake)
+string(FIND "${tools_cmake}" "add_subdirectory(hyremote-tool)" tool_registration)
+if(tool_registration EQUAL -1)
+    message(FATAL_ERROR
+        "release-readiness: companion tools graph no longer registers HyRemoteTool")
+endif()
+
+file(READ "${HYREMOTE_SOURCE_DIR}/examples/learning/05-qpa/CMakeLists.txt" e4_cmake)
 foreach(required_token
         "target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)"
         "HYREMOTE_EXAMPLE_DEPLOY_QPA"
@@ -587,7 +606,7 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/tests/consumer-installed-qpa/CMakeLists.txt" clean_qpa_cmake)
 foreach(required_token
-        "examples/qpa-proxy-existing-app/main.cpp"
+        "examples/learning/05-qpa/main.cpp"
         "target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)"
         "hyremote_deploy(TARGET hyremote-installed-qpa-consumer QPA)")
     string(FIND "${clean_qpa_cmake}" "${required_token}" found)
@@ -679,10 +698,10 @@ endforeach()
 
 file(READ "${HYREMOTE_SOURCE_DIR}/docs/input-model.md" input_model)
 foreach(required_phrase
-        "the transport balances recognized held state contributed by that viewer"
-        "repeated teardown is idempotent and does not synthesize duplicate releases"
-        "rejected"
-        "delivered")
+        "传输会在丢弃该 viewer 的协议/客户端状态前，平衡它贡献的已识别按住状态"
+        "重复 teardown 是幂等的，不会合成重复释放"
+        "拒绝"
+        "已交付")
     string(FIND "${input_model}" "${required_phrase}" found)
     if(found EQUAL -1)
         message(FATAL_ERROR
@@ -694,7 +713,7 @@ foreach(doc_check
         "docs/internal/release-candidate-checklist.md|explicit HyRemote runtime stop/policy transition"
         "docs/releases/v1.0.0.0.md|explicit HyRemote runtime stop/policy transition"
         "docs/compatibility.md|explicit Runtime lifecycle"
-        "docs/known-limitations.md|Stopping the runtime is explicit and complete")
+        "docs/known-limitations.md|停止 Runtime 是显式且完整的")
     string(REPLACE "|" ";" doc_parts "${doc_check}")
     list(GET doc_parts 0 doc_path)
     list(GET doc_parts 1 required_phrase)

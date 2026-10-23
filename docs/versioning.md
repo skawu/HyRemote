@@ -1,140 +1,156 @@
-# HyRemote Versioning and Product Milestones
+# HyRemote 版本语义与产品里程碑
 
-HyRemote uses a four-part product version:
+> 语言 / Language：**中文** ｜ [English](en/versioning.md)
+
+HyRemote 使用四段产品版本：
 
 ```text
 Major.Minor.Feature.Maintenance
 ```
 
-Version numbers describe externally meaningful product capability and compatibility. They do **not** encode internal architecture work, integration frontend names, Qt versions, platforms, or CI/WBS sequencing.
+版本号描述外部可理解的产品能力和兼容边界，不编码内部架构工作、接入前端名称、Qt 版本、平台或 CI/WBS 顺序。
 
-## Version fields
+## 版本字段
 
-### Major — product generation / incompatible boundary
+### Major：产品代际或非兼容边界
 
-Increase `Major` when HyRemote crosses a materially incompatible product boundary, for example:
+跨越实质非兼容产品边界时增加 Major，例如：
 
-- an incompatible public API/ABI generation;
-- a product architecture change that cannot preserve the previous contract;
-- a Qt/framework transition that requires an incompatible application model.
+- 不兼容的公共 API/ABI 代际；
+- 无法保持既有契约的产品架构变更；
+- 要求不兼容应用模型的 Qt/框架迁移。
 
-Adding another SoC, operating system, transport backend, or acceleration backend does not automatically require a new Major when the public product contract remains compatible.
+增加 SoC、操作系统、传输后端或加速后端，不会仅因实现变化就自动增加 Major。
 
-### Minor — coherent product capability stage
+### Minor：连贯的产品能力阶段
 
-`Minor` identifies a substantial, coherent product stage that users can understand as a new product capability line.
+Minor 表示用户可以理解的新产品能力线。
 
-Post-GA Minor lines are opened only for activated coherent product outcomes; no Minor or Feature version is pre-assigned to a technical theme (#333).
+GA 后的 Minor 只为已激活的连贯产品结果开放。任何技术主题都不预分配 Minor 或 Feature 版本。
 
-### Feature — bounded independently deliverable capability
+### Feature：有界、可独立交付的能力
 
-`Feature` is used for a bounded capability that can be delivered and verified inside a Major/Minor product line.
+Feature 用于 Major/Minor 产品线内可独立交付和验证的有界能力。
 
-The digits do not encode:
+版本数字不编码：
 
-- C++ / QML / Generic / QPA;
-- Windows / Linux / Embedded Linux;
-- Widgets / Qt Quick;
-- Qt version;
-- source directory or implementation layer.
+- C++、QML、Generic、QPA；
+- Windows、Linux、嵌入式 Linux；
+- Widgets、Qt Quick；
+- Qt 版本；
+- 源码目录或实现层。
 
-Those are compatibility/capability dimensions recorded separately.
+这些属于兼容/能力维度，单独记录。
 
-### Maintenance — fixes and non-capability changes
+### Maintenance：修复和非能力变更
 
-`Maintenance` is used for changes that preserve the released product capability boundary, such as:
+Maintenance 用于保持已发布能力边界不变的改动，例如：
 
-- defect fixes;
-- security fixes that do not redefine the public product contract;
-- compatibility corrections inside an already supported range;
-- performance tuning without a new product capability;
-- packaging/documentation/CI corrections.
+- 缺陷修复；
+- 不改变公共产品契约的安全修复；
+- 已支持范围内的兼容性修正；
+- 不新增产品能力的性能调优；
+- 打包、文档、CI 修正。
 
-Maintenance releases must not be used to hide a newly supported platform or major product capability.
+Maintenance 不能用来隐藏新平台或重大产品能力。
 
-## Pre-GA product lines
+## 预 GA 产品线
 
-HyRemote is delivered progressively before the first GA:
-
-| Version | Name | User promise |
+| 版本 | 名称 | 用户承诺 |
 | --- | --- | --- |
-| **V0.1.0.0** | **Developer Preview** | A developer can integrate HyRemote and establish an early, limited remote-access path; this historical release is not a hierarchy of integration routes |
-| **V0.2.0.0** | **First User Trial** | A real user can use application-scoped remote view/input from a second LAN machine, with explicit default-off access and truthful unencrypted security limits |
-| **V0.3.0.0** | **Productize It / Product Preview** | All four integration frontends are packaged, deployed, documented, and taught as product paths |
-| **V0.4.0.0** | **Qualify It / Release Candidate Line** | Feature freeze, Qt/application compatibility, performance, physical qualification, and release-candidate hardening |
-| **V1.0.0.0** | **Stabilize It / First GA** | First formal stable support contract for the mature V0.4 lineage |
+| **V0.1.0.0** | Developer Preview | 开发者可以接入 HyRemote 并建立早期、有限的远程访问路径 |
+| **V0.2.0.0** | First User Trial | 真实用户可以在第二台 LAN 机器上使用应用级远程查看/输入，默认关闭访问，并明确未加密边界 |
+| **V0.3.0.0** | Productize It / Product Preview | 四种接入前端完成打包、部署、文档和教学，成为产品路径 |
+| **V0.4.0.0** | Qualify It / Release Candidate | 功能冻结、Qt/应用兼容、性能、物理资格和 RC 硬化 |
+| **V1.0.0.0** | Stabilize It / First GA | 对成熟 V0.4 产品线提供正式稳定支持契约 |
 
-The V0.x lines are product-maturity releases, not frontend-specific releases.
+V0.x 是产品成熟度版本，不是按前端拆分的版本。已退休的 `V0.0.1.0 = C++`、`V0.0.2.0 = QML`、`V0.0.3.0 = QPA` 规划不再使用。
 
-The retired planning idea:
+## V0.1：Use It
 
-```text
-V0.0.1.0 = C++
-V0.0.2.0 = QML
-V0.0.3.0 = QPA
-```
+V0.1 范围窄但可用：
 
-is not part of the product version model and must not be revived.
+- C++、QML、Generic、QPA 是并列接入技术；
+- Windows x86_64 和 Linux x86_64 是桌面参考平台；
+- Qt 6.8.3 是当前参考 SDK；
+- Widgets 和 Qt Quick 共享一套 Runtime；
+- 提供基础 SDK、部署和上手路径；
+- 安全为未认证、未加密，不适合生产公网。
 
-## V0.1 — Use It
+## V0.2：First User Trial
 
-V0.1 is intentionally narrow and usable:
+V0.2.0.0 交付了真实第二台机器上的应用级远程查看/输入、listener 生命周期和重连。
 
-- C++ / QML / Generic / QPA are peer integration technologies; the historical narrow trial/qualification evidence for one route does not demote any other route;
-- Windows x86_64 and Linux x86_64 are the desktop reference platforms;
-- Qt 6.8.3 is the current reference SDK;
-- Widgets and Qt Quick share one Runtime;
-- basic SDK/deployment/onboarding is available;
-- security is unauthenticated and unencrypted and is not yet production-Internet ready;
-- The four integration routes are peers; QML API and QPA are not secondary paths.
+已接受的安全/访问事实：
 
-## V0.2 — First User Trial
+- 默认 listener 为 `0.0.0.0:5921`，在主机 IPv4 接口可达；
+- 默认 `Insecure` / RFB `SecurityType None`，未认证、未加密；
+- 远程输入默认关闭，只有操作者显式启用才开启；
+- 可选构建能力启用并配置后，可以使用 RFB VNC 口令认证，但传输仍未加密；
+- 不可用的更强 `AuthenticatedEncrypted` 配置失败关闭，不静默降级；
+- 只面向可信 LAN，不适合 Internet。
 
-V0.2.0.0 delivered a bounded, real second-machine LAN trial of application-scoped remote view/input, listener lifecycle and reconnect. Its accepted security/access facts were:
+原生 TLS/VeNCrypt、证书生命周期、认证 Session Registry、角色、准入和每会话终止不属于 V0.2 能力。V0.2.0.1 是同一 First User Trial 线的维护修复，不是安全或会话 Feature。
 
-- default listener `0.0.0.0:5921` on the host's IPv4 interfaces;
-- default `Insecure` / RFB `SecurityType None`, **no authentication and no transport encryption**;
-- remote input disabled by default, enabled only through an explicit operator choice;
-- conditional RFB VNC password authentication when its optional build capability is enabled and configured, **still without stream encryption**;
-- unavailable stronger `AuthenticatedEncrypted` profile fails closed with no silent downgrade;
-- a trusted-LAN-only exposure boundary, **not Internet-safe**.
+## V0.3：Productize It
 
-Native TLS/VeNCrypt, certificate lifecycle, authenticated Session Registry, roles, admission and per-session termination are **not shipped V0.2 capabilities**. V0.2.0.1 is a maintenance repair to the same accepted First User Trial lineage, not a security or session Feature release.
+V0.3 把四种接入前端变成完整可交付路径：
 
-## V0.3 — Productize It
+- C++ API；
+- QML API；
+- Generic Plugin；
+- QPA。
 
-V0.3 turns all four integration frontends into complete product-deliverable paths:
+这条线还完成部署矩阵、任务导向自助文档/示例（#240）、四前端 SDK/部署产品化（#264）和最小自助诊断（#335）。
 
-- C++ API;
-- QML API;
-- Generic Plugin;
-- QPA.
+V0.3.0.0 还发布了 **HyRemoteTool 访问面配套客户端**：通过显式 IP/端口连接远端 HyRemote 应用，提供画面、只读/控制输入、FPS/吞吐遥测和连接诊断。管理面能力不属于 V0.3.0.0。见 [`internal/hyremote-tool-plan.md`](internal/hyremote-tool-plan.md)。
 
-This line also completes the deployment matrix, the task-oriented self-service documentation/example path (#240), the four-peer SDK/deploy productization (#264) and the minimum self-service diagnostics (#335). V0.3.0.0 additionally ships the **HyRemoteTool access-plane companion client**: an out-of-process RFB client that connects to a remote HyRemote-enabled application by explicit IP/port and provides framebuffer viewing, view-only/control input, FPS/throughput telemetry and connection diagnostics. Its management-plane capabilities are explicitly not part of V0.3.0.0. See `docs/internal/hyremote-tool-plan.md`.
+V0.3 家族分两类工作：
 
-The V0.3 family carries two strictly separate classes of work:
+### 强制 GA 前 V0.3 基线
 
-### Mandatory pre-GA V0.3-family baseline
+**Windows x86_64 为唯一必须有实际运行/物理验证证据的参考平台**：Qt 6.8.3 已验证基线；Qt 5.15、Qt 6.5 的 Windows 适配若纳入支持声明，需独立完成证据。实用压缩/增量、维护中 Viewer 互操作、#370 Windows 性能及正式 SDK/包质量是候选门槛。Linux x86_64、Wayland、ARM64/AArch64、EGLFS 以 Qt 跨平台路径供用户验证，不是开发、V0.4 或 V1.0 发布阻塞条件（Owner #563）。
 
-Qt 5.15, Qt 6.5 and Qt 6.8 compatibility; Windows and Linux; x86_64 and ARM64/AArch64; the qwindows/qxcb/Wayland/EGLFS reference cells; practical compressed + incremental/damage delivery; maintained viewer interoperability; the #370 performance programme. These must converge before V0.4 RC entry, and no exact Feature version is pre-reserved for any of them (#333).
+**只有已承诺 Windows 支持单元的功能和真实证据必须在 V0.4 RC 进入前收敛。** Linux/嵌入式未验证不等于失败也不等于 Supported；用户问题通过 Issue 复现、评估及相应维护/hotfix 处理。任何一项都不预分配固定 Feature 版本（#333）。
 
-### Optional / quality / differentiating outcomes
+### 可选、质量或差异化结果
 
-Session Registry / Session Operations, full branding expansion, **HyRemoteTool management-plane enhancements**, native TLS, and additional BSP/SoC/platform expansion beyond the declared GA reference cells - each activated separately as a coherent product outcome. The V0.3.0.0 access-plane companion baseline is part of that release, not an optional enhancement.
+Session Registry/Session Operations、完整品牌扩展、HyRemoteTool 管理面增强、原生 TLS，以及声明 GA 参考单元之外的 BSP/SoC/平台扩展，分别作为连贯产品结果激活。V0.3.0.0 的访问面客户端基线属于该版本，不是可选增强。
 
-## V0.4 — Qualify It
+### 已激活的 V0.3 家族 Feature
 
-V0.4 is the release-candidate line: **qualification only**. It is not selectable until the V0.3.0.0 self-service foundation is complete, the activated V0.3-family pre-GA baseline (#343/#370) is complete, and the GA support matrix is frozen; its activation authority is #235 and its lineage is the completed, activated V0.3-family outcome - never a pre-reserved technical slot (#333). Large architecture changes and major new capabilities stop here.
+**V0.3.3.0：Delivery Efficiency & Viewer Interoperability** 是 V0.3.0.0 之后第一个激活的 Product breadth Feature：
 
-Focus areas include:
+- 实用 damage、压缩和增量交付；profiling 已选择 Raw + TRLE，ZRLE 不是当前要求；
+- #370 性能基线；
+- 维护中标准 Viewer 互操作；
+- Windows x86_64、Qt 6.8.3 是验收参考；Linux x86_64 可按 Qt 跨平台机制尝试，待用户验证，四前端各自保持真实的适用状态。
 
-- Qt LTS compatibility qualification, including the planned Qt 5.15 LTS line;
-- real-world application qualification;
-- performance measurements and blocker-driven optimization;
-- physical Windows/Linux local+remote coexistence;
-- release package and support-statement hardening.
+`V0.3.1.0`（Qt5 槽位）和 `V0.3.2.0`（Bandwidth/ZRLE 槽位）是已退休历史记录，不能重新选择。V0.3.3.0 是新的连贯结果。详见 [`internal/v0.3.3.0-plan.md`](internal/v0.3.3.0-plan.md)。
 
-Maintenance iterations may use:
+**2026-10-22 Owner 决策 #563（覆盖 #558 的平台验证硬门槛）：** V0.3.3.0 的 #144/#175 改以 Qt 6.8.3 **Windows x86_64** 真实 Viewer/性能为准；Linux、嵌入式 ARM64/EGLFS、Wayland 依赖 Qt 跨平台能力并接受用户验证，不再阻塞 V0.3.3、V0.4 或 V1。#236/#154/#203 保留为用户反馈和后续可验证适配工作，不宣称已经通过或通用支持；实际用户提交 Issue 后按可复现问题走 hotfix/维护版本，不擅自修改历史 tag。V0.4 仍仅资格认证，但只对已声明 Windows 支持单元实施硬资格。
+
+后续平台/Qt LTS 必需成果与可选管理面、TLS 等成果均**不预占 V0.3.4.0/V0.3.5.0 或其他准确版本号**，须按 #24/#95 在独立用户成果与验收要求确定后才激活；Qt 6.12 LTS 仅为预检，未改变 V1.0 的 #343/#33 硬要求。
+
+## V0.4：Qualify It
+
+V0.4 是 Release Candidate 线，只做资格认证。它在以下条件满足后才可选择：
+
+- V0.3.0.0 自助采用基础完成；
+- 已声明 Windows 范围的 V0.3 家族 GA 前基线（#343/#370）完成；Linux/嵌入式未验证不阻塞；
+- GA 支持矩阵冻结。
+
+激活权威是 #235，lineage 是已完成、已激活的 V0.3 家族结果，不能是预分配技术槽位。大型架构变更和重大新能力在 V0.4 停止。
+
+重点：
+
+- Qt LTS 兼容资格，包括 Qt 5.15 LTS；
+- 真实应用资格；
+- 性能测量和阻塞驱动优化；
+- **Windows** 物理本地+远程共存；Linux/嵌入式由用户验证并报告 Issue，不作为 RC 进入或发布硬条件；
+- 发布包和支持声明硬化。
+
+已知 GA 阻塞项清除前可以使用维护迭代：
 
 ```text
 V0.4.0.1
@@ -142,56 +158,22 @@ V0.4.0.2
 ...
 ```
 
-until known GA blockers are removed.
+## V1.0：First GA
 
-## V1.0 — First GA
+V1.0 是第一个正式稳定支持承诺。
 
-V1.0 is the first formal stable support commitment.
+它不应在最后一刻引入新 Runtime 架构、前端、协议族或大型公共 API。成熟的 V0.4 产品被稳定为覆盖 API、SDK、兼容声明、打包、文档和已知限制的 GA 契约。
 
-It should not introduce a new Runtime architecture, frontend, protocol family, or large public API at the last moment. The mature V0.4 product is stabilized into a GA contract covering API, SDK, compatibility statements, packaging, documentation, and known limitations.
+## GA 后产品结果
 
-## Post-GA product outcomes
+GA 后工作作为冻结 GA 基线之外的连贯用户/产品结果，由各自权威 issue 激活。版本号不预留给技术主题（#333）。
 
-Post-GA work is activated as coherent user/product outcomes beyond the frozen GA baseline under their own authority issues. Version numbers are never pre-reserved for a technical theme (#333): the former fixed slots "V1.1 = Embedded", "V1.2 = Acceleration" and "V1.3 = Differentiate" are retired and no replacement slots are invented. Additional BSP/SoC/platform expansion beyond the declared GA reference cells, evidence-driven acceleration where still useful, and advanced programmable capabilities are each admitted separately:
+已退休的固定槽位 `V1.1 = Embedded`、`V1.2 = Acceleration`、`V1.3 = Differentiate` 不再使用，也不发明替代槽位。
 
-- additional platform/BSP expansion beyond the declared GA reference cells (dependency/feature slicing for Quick-only or Widgets-only products, embedded SDK/package manifests, further physical target qualification) - with the architecture rule of **one logical Runtime** and physical dependency slicing where needed, never separate public `RuntimeQuick`/`RuntimeWidgets` products;
-- hardware/vendor acceleration (DMA-BUF/GBM/external buffers, GPU-assisted conversion/scaling, RKMPP/VAAPI/D3D-class paths, bounded buffer/fence ownership) has no pre-assigned version or pre/post-GA placement: it is admitted only through #123 when #370 measured evidence proves a portable-baseline SLO/resource blocker;
-- advanced programmable capabilities (advanced session policy, privacy/exclusion policy, Runtime health/observability, application-state integration) - while Generic and QPA stay focused on reliable zero-code/startup configuration rather than becoming hidden business-logic APIs.
+声明 GA 参考单元之外的平台/BSP 扩展、仍有用的证据驱动加速、高级可编程能力分别准入。它们必须保持一套逻辑 Runtime，不能产生独立的公共 `RuntimeQuick`/`RuntimeWidgets` 产品。
 
+## 发布权威
 
+当前可选择的发布列车、强制子项、候选前提、证据和 lineage 由 `.github/release/release-trains.json` 定义。版本号不表示自动授权；未记录版本、退休槽位和未激活的 V0.4 都会失败关闭。
 
-RFB is the current transport baseline, not HyRemote's permanent product identity.
-
-A future media-oriented transport should be introduced only if real workloads such as high-motion visualization, video, Quick3D, or map-heavy applications demonstrate a product ceiling that RFB cannot meet acceptably.
-
-No future version number is allocated merely because a technology is interesting.
-
-## Support and compatibility claims
-
-A version can claim a platform/integration combination only when the product can state:
-
-- exact or bounded Qt compatibility;
-- operating system/architecture;
-- integration frontend;
-- application/UI scope;
-- deployment model;
-- security boundary;
-- known limitations.
-
-Windows results do not imply Linux results. Desktop results do not imply Embedded Linux. Public Qt API compatibility does not imply QPA private-ABI compatibility.
-
-## Versioning principle
-
-The product roadmap can be summarized as:
-
-```text
-V0.1  let users use it
-V0.2  let users trust it
-V0.3  make it easy to productize and deliver
-V0.4  prove it is qualified
-V1.0  make the stable support commitment
-```
-
-Internal engineering work belongs under the product line it enables; it does not get its own version number.
-
-Post-GA exact Features are activated as coherent outcomes; no version number is pre-assigned to a technical theme (#333).
+内部工程工作归属于它支持的产品线，不单独获得版本号。

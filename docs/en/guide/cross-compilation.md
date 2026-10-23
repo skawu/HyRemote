@@ -58,11 +58,56 @@ Cleaning entry point: `build.cmd clean` (removes `build/`).
 
 ## 2. Selecting a cross-compilation toolchain
 
+The normal command line should not repeat toolchain and Qt flags. Put the target profile in a separate
+`build.yml`-format file and pass only that file:
+
+```text
+cp build.yml build.aarch64.yml
+# Edit build.aarch64.yml:
+#   qt.prefix             -> target Qt 6.8.3 prefix
+#   compiler.toolchain    -> cmake/toolchains/aarch64-linux-gnu.cmake
+#   cmake.CMAKE_SYSROOT   -> target sysroot
+#   build.examples        -> false (cross builds normally skip examples)
+#   integrations          -> keep only qpa: true, the rest false
+sh ./build.cmd clean
+sh ./build.cmd build --config=build.aarch64.yml
+```
+
+`build.yml` documents every field and its cross-specific example in Chinese comments. The checked-in
+`build.yml` remains the native developer profile, so normal builds stay `build.cmd build`.
+
+The equivalent one-off flags still work, but they are overrides, not the normal workflow:
+
 ```text
 sh ./build.cmd build --integrations=qpa \
   --toolchain cmake/toolchains/aarch64-linux-gnu.cmake \
   --qt-prefix /opt/qt-6.8.3-aarch64
 ```
+
+### Which field should I use?
+
+| Need | Field | Rule |
+| --- | --- | --- |
+| Target Qt installation | `qt.prefix` | Points at target Qt 6.8.3; this is not a compiler setting. |
+| Cross compiler, sysroot and find-root policy | `compiler.toolchain` | Preferred. Use the repository toolchain or a project/Qt-generated CMake toolchain file. |
+| One-off compiler override without a toolchain file | `compiler.c` / `compiler.cxx` | Advanced fallback only. Leave empty when `compiler.toolchain` is set. |
+
+Do not set `compiler.c`/`compiler.cxx` together with `compiler.toolchain`. The build script passes the explicit compiler
+values to CMake after the toolchain, so they can override the toolchain compiler while losing its sysroot and find-root
+rules.
+
+To use **Qt's own** cross-toolchain file:
+
+```yaml
+compiler:
+  toolchain: /opt/qt-6.8.3-aarch64/bin/qt.toolchain.cmake
+qt:
+  prefix: ""   # or the same target Qt path; do not point at host Qt
+```
+
+Use the repository `aarch64-linux-gnu.cmake` when you need an explicit GNU target triple/sysroot; use Qt's
+`qt.toolchain.cmake` when Qt already generated the complete target toolchain. Both are ordinary CMake toolchain files;
+choose one, not both.
 
 Two example toolchain files ship with the repository (see `cmake/toolchains/README.md`):
 
@@ -87,6 +132,20 @@ run on the host.
    `-DCMAKE_SYSROOT=`.
 
 ## 4. Deploying and running
+
+### Quick-only runtime
+
+A Quick-only appliance should not carry Qt Widgets just because HyRemote has a Widgets adapter. In the build profile
+set:
+
+```yaml
+cmake:
+  HYREMOTE_BUILD_WIDGETS_ADAPTER: OFF
+  HYREMOTE_BUILD_QUICK_ADAPTER: ON
+```
+
+The resulting shared Runtime must not have a `Qt6Widgets` load dependency. The dependency contract is recorded in
+`docs/compatibility.md`; ARM64/EGLFS runtime evidence still requires the target board.
 
 The cross build needs the same deployment contract as the desktop build - shared runtime, the `qhyremote` platform
 plugin and its native delegate dependency (see `docs/guide/deployment.md` and `hyremote_deploy()`). On the target the QPA

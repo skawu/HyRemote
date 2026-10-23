@@ -132,7 +132,7 @@ hyremote_deploy(TARGET MyApp)
 
 - [`examples/learning/01-widgets-cpp`](../../examples/learning/01-widgets-cpp)
 - [`examples/learning/02-quick-cpp`](../../examples/learning/02-quick-cpp)
-- [`examples/remote-support-showcase`](../../examples/remote-support-showcase)
+- [`tools/hyremote-tool`](../../tools/hyremote-tool)
 
 无头/offscreen 的 E2E 验证的是"协议到应用"的正确性；它**不能替代**物理本机显示/本地输入的并存证据。
 

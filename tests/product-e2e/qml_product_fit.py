@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standard-viewer product-fit check for examples/qml-basic."""
+"""Standard-viewer product-fit check for examples/learning/04-qml."""
 
 from __future__ import annotations
 

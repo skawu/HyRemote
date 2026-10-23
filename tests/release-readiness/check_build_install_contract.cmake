@@ -203,7 +203,7 @@ foreach(list_file IN LISTS example_cmakelists)
         continue()
     endif()
     math(EXPR example_consumers "${example_consumers} + 1")
-    if(list_file MATCHES "/examples/remote-support-showcase/CMakeLists.txt$")
+    if(list_file MATCHES "/tools/hyremote-tool/CMakeLists.txt$")
         # HyRemoteTool is the single out-of-process companion client. It must
         # not link or deploy the HyRemote Runtime, so it uses Qt's own
         # deployment script instead of hyremote_deploy. This is one companion

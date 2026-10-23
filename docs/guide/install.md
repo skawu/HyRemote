@@ -67,6 +67,23 @@ POSIX:       sh ./build.cmd test --integrations=cpp,generic --examples
 
 命令行参数覆盖 `build.yml` 中的对应配置。四个 integration 是独立选择项；选择 Generic、QML 或 QPA 不会把 C++ frontend 当作父实现隐式打开。
 
+### 多个 Qt 版本 / Kit 怎样选择
+
+**指定完整 Kit 路径就是一次性选择**，不需要再次确认。比如编辑 `build.yml`：
+
+```yaml
+qt:
+  prefix: "C:/Qt/6.8.3/msvc2022_64"
+```
+
+或者临时覆盖：`build.cmd build --qt-prefix=C:/Qt/6.8.3/msvc2022_64`。两者同时指定时，**命令行优先**。Qt 版本号（例如 `6.8.3`）不足以确定 Kit，因为同版本可同时安装 MSVC/MinGW、不同架构。
+
+若 `qt.prefix` 留空，构建工具先尊重 `QTDIR/CMAKE_PREFIX_PATH`，再检测常规安装目录；仅有一个符合当前构建要求的 Kit 可直接使用。**多个可用 Kit 时，交互终端显示编号与版本、编译器 Kit、完整路径；必须输入编号，不预选最新或第一个，也不修改仓库中的 `build.yml`。** `--show-config` 只报告，不提示。
+
+CI、脚本或无交互终端请设置固定的 `qt.prefix` / `--qt-prefix`，可添加 `--no-prompt` 禁用询问；若存在歧义会在配置前失败并列出候选项，绝不阻塞等待输入。取消或输入无效也不会替你做选择。
+
+目前 Qt 5.15 **不能配置当前 Qt6 Runtime**；Qt 6.12 可作为未资格验证的 Qt6 构建探索，但启用 QPA 时仍要求精确 Qt **6.8.3 private ABI**。选择 Kit 不等于声明该版本已被产品认证。
+
 ## 直接使用 CMake
 
 如果你把 HyRemote 当作普通 CMake 工程构建，也可以直接配置：

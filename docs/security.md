@@ -1,67 +1,65 @@
-# HyRemote Security
+# HyRemote 安全边界
 
-HyRemote is remote-access infrastructure. A working viewer connection does not by itself make a deployment secure.
+> 语言 / Language：**中文** ｜ [English](en/security.md)
 
-This page describes the **current product security behavior**. Capabilities that are not available yet are marked as TODO.
+HyRemote 是远程访问基础设施。viewer 能连上，不等于部署本身已经安全。
 
-## V0.1 security boundary
+本文描述当前产品的实际安全行为。尚未实现的能力会直接标出，不写成已经可用。
 
-The released product has a truthful security boundary.
+## 1. 当前安全边界
 
-The Shared Runtime applies the same security model to the C++ API, QML API, Generic Plugin, and QPA frontends.
+共享 Runtime 对 C++ API、QML API、Generic Plugin 和 QPA 使用同一套安全模型。
 
-Default behavior:
+默认行为：
 
-- bind address: `0.0.0.0` (AnyIPv4 - the host's IPv4 interfaces, not just loopback);
-- port: `5921`;
-- remote input: disabled;
-- constructing a C++ `HyRemote::RemoteAccess` object does not open a listener;
-- QML starts only after `enabled: true` is requested;
-- Generic/QPA start only when explicitly activated through their Qt startup mechanisms;
-- `Insecure` 未认证、未加密：监听器面向**可信 LAN**，**不适合暴露到 Internet**；
-- malformed/incomplete clients remain subject to bounded transport limits;
-- secrets must not be written to normal diagnostics.
+- 绑定地址：`0.0.0.0`，即主机所有 IPv4 接口，不只是 loopback；
+- 端口：`5921`；
+- 远程输入：关闭；
+- 构造 C++ `HyRemote::RemoteAccess` 不会打开 listener；
+- QML 只有请求 `enabled: true` 后才启动；
+- Generic/QPA 只有通过各自的 Qt 启动机制显式激活后才启动；
+- `Insecure` 未认证、未加密，只面向可信 LAN，不适合暴露到 Internet；
+- 畸形或不完整的客户端仍受传输层有界限制；
+- 密钥不得写入普通诊断。
 
-The default build profile does **not** imply that authenticated or encrypted transport is present merely because the public API contains security-profile values.
+默认构建里有安全配置枚举，不代表认证或加密传输已经可用。
 
-Do not expose the product directly to the public Internet.
+不要把产品直接暴露到公网。
 
-## Security profiles
+## 2. 安全配置
 
 ### Insecure
 
-`Insecure` is the normal V0.1 development profile.
+`Insecure` 是默认开发配置。
 
-- no viewer authentication;
-- no transport encryption;
-- loopback is required;
-- remote input remains a separate opt-in policy.
+- 不做 viewer 认证；
+- 不做传输加密；
+- 只应部署在可信 LAN；
+- 远程输入仍是单独的策略。
 
-The `Insecure` listener is unauthenticated and unencrypted and it is reachable wherever it is bound. HyRemote states that plainly instead of narrowing the bind: it is for a trusted LAN only and is not Internet-safe.
+`Insecure` listener 在绑定范围内可达。HyRemote 直接说明这一点，不通过缩小绑定地址来制造安全假象。
 
 ### Authenticated
 
-`Authenticated` is a **conditional capability**.
+`Authenticated` 是条件能力，只有以下条件同时成立才可用：
 
-It is usable only when all of the following are true:
+1. 构建包含传输安全能力；
+2. 配置了安全描述文件路径；
+3. 描述文件对所选配置有效。
 
-1. the HyRemote build includes the transport-security capability;
-2. a security descriptor path is configured;
-3. the descriptor is valid for the selected profile.
+条件满足时，当前传输使用 RFB VNC 认证完成 viewer 认证。
 
-When those conditions are satisfied, the current transport uses RFB VNC authentication for viewer authentication.
+传输仍然**不加密**。
 
-The stream is still **not encrypted**.
+构建能力缺失时，`start()` 会在创建 target、transport 或 listener 之前以 `SecurityUnavailable` 失败。描述文件缺失或无效时，启动失败，不会降级到更弱的配置。
 
-If the required build capability is absent, `start()` fails with `SecurityUnavailable` before target, transport, or listener creation. If the descriptor is missing or invalid, startup fails rather than falling back to a weaker profile.
-
-The default V0.1 developer build/profile should therefore be treated as **unauthenticated and unencrypted unless the authenticated capability was explicitly built and configured, and reachable on the host's IPv4 interfaces either way**.
+因此，默认开发构建应视为未认证、未加密。
 
 ### AuthenticatedEncrypted
 
-`AuthenticatedEncrypted` is declared in the product model but is **not implemented in the current product line**.
+`AuthenticatedEncrypted` 已在产品模型中声明，但**当前产品线没有实现**。
 
-Selecting it always fails closed before a listener is opened, including in builds that can provide `Authenticated` VNC authentication:
+选择它会失败关闭，即使构建可以提供 `Authenticated` VNC 认证：
 
 ```text
 AuthenticatedEncrypted
@@ -71,15 +69,15 @@ AuthenticatedEncrypted
   -> no fallback to Insecure
 ```
 
-A readable certificate/private-key descriptor does not make encrypted transport available by itself.
+证书或私钥描述文件本身不会让加密传输变得可用。
 
-> **TODO V0.2:** implement the final encrypted transport profile, certificate/private-key policy, protocol/cipher policy, and authenticated encrypted sessions.
+> **待办：** 加密传输配置、证书/私钥策略、协议与密码套件策略，以及认证加密会话，属于后续产品工作。
 
-## Remote viewing versus remote control
+## 3. 查看与控制是两件事
 
-Viewing and control are separate policies.
+查看和控制是两个独立策略。
 
-C++ example:
+C++ 示例：
 
 ```cpp
 HyRemote::RemoteAccess remote(&window);
@@ -87,7 +85,7 @@ remote.setRemoteInputEnabled(true);
 remote.start();
 ```
 
-QML example:
+QML 示例：
 
 ```qml
 RemoteAccess {
@@ -97,87 +95,87 @@ RemoteAccess {
 }
 ```
 
-Generic and QPA expose corresponding startup configuration through their plugin specifications.
+Generic 和 QPA 通过各自的插件启动配置提供对应选项。
 
-Leaving remote input disabled keeps the session view-only. View-only is **not** authentication and is **not** encryption.
+远程输入关闭时，会话是只读的。只读既不等于认证，也不等于加密。
 
-## Listener exposure
+## 4. 监听范围
 
-The safest and default V0.1 listener is:
+默认 listener 是：
 
 ```text
 0.0.0.0:5921
 ```
 
-Changing the bind address changes the network trust boundary. It does not automatically enable authentication or encryption.
+修改绑定地址会改变网络信任边界，不会自动启用认证或加密。
 
-For `Insecure`, the listener is reachable wherever it is bound. For `Authenticated`, a non-loopback listener is possible only when the authenticated build capability and descriptor are valid.
+`Insecure` 在绑定范围内可达。`Authenticated` 只有在认证构建能力和描述文件有效时才允许非 loopback listener。
 
-Exact address-family behavior is documented in [`known-limitations.md`](known-limitations.md).
+地址族行为见 [`known-limitations.md`](known-limitations.md)。
 
-## Connection state is not authorization
+## 5. 连接状态不等于授权
 
-`RemoteAccessState::Running` means the Runtime/listener is active. It does not mean a viewer is authenticated or even connected.
+`RemoteAccessState::Running` 表示 Runtime/listener 已启动，不表示 viewer 已认证或已连接。
 
-`connectedClientCount()` is operational information. It is not a user identity, role, or authorization result.
+`connectedClientCount()` 是运行信息，不是用户身份、角色或授权结果。
 
-> **TODO V0.2:** authenticated Session Registry, bounded admission policy, session events, and explicit session termination APIs.
+> **待办：** 认证 Session Registry、有界准入策略、会话事件和显式会话终止 API 属于后续产品工作。
 
-## Input safety
+## 6. 输入安全
 
-Remote input is normalized and routed only to the attached Qt application target. HyRemote does not use desktop-wide virtual HID / `uinput` injection as the normal product path.
+远程输入会规范化，并且只路由到所附着的 Qt 应用目标。HyRemote 不把操作系统级虚拟 HID/uinput 注入作为正常产品路径。
 
-Supported held key/button state is balanced across viewer disconnect and Runtime teardown so a remote peer should not leave the local application stuck in a pressed state.
+受支持的按住键/按钮状态会在 viewer 断开和 Runtime 停止时清理，避免远端把本地应用留在按下状态。
 
-Unsupported key/composition/IME cases are documented rather than guessed.
+不支持的按键、输入法和组合场景会明确记录，不做猜测。
 
-## Resource boundaries
+## 7. 资源边界
 
-The RFB baseline uses bounded behavior for items such as concurrent clients, protocol buffering, handshake lifetime, frame handoff, and GUI input delivery.
+RFB 基线对并发客户端、协议缓冲、握手时限、帧交接和 GUI 输入交付等使用有界行为。
 
-These limits reduce accidental or malicious resource growth. They do not make the current transport suitable for direct hostile-Internet exposure.
+这些限制降低意外或恶意资源增长的风险，不代表当前传输适合直接面对公网。
 
-## Secrets and diagnostics
+## 8. 密钥与诊断
 
-Passwords, tokens, private keys, and equivalent secrets must not be written to normal logs, error strings, UI diagnostics, or command examples.
+密码、token、私钥和同类密钥不得写入普通日志、错误字符串、UI 诊断或命令示例。
 
-Security configuration should use an external descriptor/configuration mechanism instead of placing secrets directly on a process command line.
+安全配置应使用外部描述文件或配置机制，不要把密钥直接放在进程命令行上。
 
-A descriptor confirms what the operator configured; it does not prove that the selected security mechanism exists in the build.
+描述文件只证明操作者配置了什么，不证明所选安全机制已经编进构建。
 
-## Recommended V0.1 deployment profiles
+## 9. 推荐部署方式
 
-### Local developer / same machine
+### 本机开发
 
-Use the `Insecure` `0.0.0.0:5921` default and keep it on a trusted LAN. Enable remote input only when required.
+使用 `Insecure` 的 `0.0.0.0:5921` 默认值，并保持在可信 LAN。只有需要时才启用远程输入。
 
-### Trusted lab or maintenance network
+### 可信实验室或维护网络
 
-Use `Authenticated` only when the package was explicitly built with the required security capability and a valid descriptor is configured. The stream remains unencrypted, so network reachability still needs an appropriate trust boundary.
+只有在软件包显式构建了所需安全能力、并配置了有效描述文件时才使用 `Authenticated`。传输仍未加密，网络可达范围仍需要合适的信任边界。
 
-### Public Internet
+### 公网
 
-**Not supported as a direct V0.1 deployment profile.**
+**不作为当前版本的直接部署方式。**
 
-Do not expose the current HyRemote listener directly to the public Internet.
+不要把当前 HyRemote listener 直接暴露到公网。
 
-## Current security capability matrix
+## 10. 当前能力矩阵
 
-| Capability | V0.1 status |
+| 能力 | 当前状态 |
 | --- | --- |
-| LAN-capable default (`0.0.0.0:5921`) | Available |
-| Remote input off by default | Available |
-| Truthful unauthenticated/unencrypted state | Available |
-| `Authenticated` API/configuration surface | Available |
-| RFB VNC authentication | **Conditional: requires transport-security-enabled build + valid descriptor** |
-| Default V0.1 build includes authenticated transport | **No** |
-| `AuthenticatedEncrypted` | **Unavailable; fail-closed** |
-| Stream encryption | **TODO V0.2** |
-| Certificate/private-key production policy | **TODO V0.2** |
-| Authenticated session identity/registry | **TODO V0.2** |
-| Per-session admission/termination | **TODO V0.2** |
-| VPN/tunnel/firewall provisioning | Outside HyRemote product scope |
+| 默认 LAN listener（`0.0.0.0:5921`） | 可用 |
+| 远程输入默认关闭 | 可用 |
+| 未认证/未加密状态如实说明 | 可用 |
+| `Authenticated` API 和配置面 | 可用 |
+| RFB VNC 认证 | **条件能力：需要启用传输安全的构建和有效描述文件** |
+| 默认构建包含认证传输 | **否** |
+| `AuthenticatedEncrypted` | **不可用，失败关闭** |
+| 流加密 | **未实现** |
+| 证书/私钥生产策略 | **未实现** |
+| 认证会话身份/Registry | **未实现** |
+| 每会话准入/终止 | **未实现** |
+| VPN、隧道、防火墙配置 | 不属于 HyRemote 产品范围 |
 
-The concise V0.1 statement is:
+当前版本的简明结论：
 
-> HyRemote V0.1 defaults to an unauthenticated, unencrypted listener on `0.0.0.0:5921` with remote input off. `Authenticated` is available only in a transport-security-enabled build with a valid security descriptor and currently provides VNC authentication without encryption. `AuthenticatedEncrypted` is not implemented and always fails closed. Do not expose the product directly to the public Internet.
+> HyRemote 当前版本默认在 `0.0.0.0:5921` 提供未认证、未加密 listener，远程输入关闭。`Authenticated` 只存在于启用传输安全的构建中，并且需要有效安全描述文件；它提供 VNC 认证，不提供加密。`AuthenticatedEncrypted` 未实现，始终失败关闭。不要把产品直接暴露到公网。

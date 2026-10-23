@@ -25,28 +25,32 @@ Do not infer project status from chat memory alone.
 
 ## Current product phase
 
-The active public phase is **V0.3.0.0 Product Preview / self-service adoption**. `V0.1.0.0`, `V0.2.0.0` and bounded maintenance `V0.2.0.1` are accepted released history.
+**V0.3.0.0 Product Preview was released on 2026-10-19** (annotated `v0.3.0.0`). The current development priority is **V0.3-family product-breadth convergence**, with **V0.3.3.0** activated for practical RFB delivery (#144) and maintained GUI-viewer interoperability (#175), as recorded in `.github/release/release-trains.json`. V0.3.1.0 and V0.3.2.0 remain retired planning labels; V0.4.0.0 remains conditionally inactive and qualification-only until its entry gate passes.
+
+**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It records merged correctness fixes for regression watching, prioritizes current #144/#175/#370 acceptance evidence, Qt 6.12 LTS *preflight only*, embedded Quick-only loader correctness and the V0.4/GA decision boundary. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
 
 Current execution order:
 
 ```text
-#266 repository execution entry
- -> #384 + #385 V0.3 preflights
- -> #335 + #264 V0.3 implementation
- -> #240 self-service closeout
- -> exact V0.3.0 Product Preview candidate
- -> V0.3.x mandatory product-breadth convergence
- -> V0.4 qualification-only RC
- -> V1.0 GA
+verify latest develop + Issue ownership + exact-SHA evidence
+ -> reuse merged #553 cursor/input/build-doc regressions; triage only new failures or open review debt
+ -> close V0.3.3.0 product outcome (#144 + #175, supported by #370)
+ -> finish Windows-applicable #343 Qt/performance/product breadth; accept Linux/embedded user Issues without blocking
+ -> enter V0.4 qualification-only RC after explicit activation
+ -> V1.0 GA on one accepted, qualified RC lineage
 ```
+
+**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; Qt5/6.5 require Windows proof before a Windows support claim. Do not preassign V0.3.4.0/V0.3.5.0. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
+
+Qt 6.12 LTS was released in 2026-09; it is a compatibility **preflight**, not a silently added GA support promise. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
 Cross-cutting test-system work under #393/#394 may progress independently when it does not overlap the active product-path owner; it must not block unrelated V0.3 implementation work merely because its PR is open.
 
 ## Requirement classes
 
-### V0.3.0 mandatory baseline
+### V0.3.0 accepted self-service baseline (historical)
 
-Owned by #234/#333:
+Owned by #234/#333; already released, not the active V0.3.3 task list:
 
 - #264: clean self-service SDK/install/deploy for C++ / QML / Generic / QPA;
 - #240: task-oriented docs and runnable learning paths;
@@ -55,12 +59,11 @@ Owned by #234/#333:
 
 ### Mandatory pre-GA baseline
 
-Owned by #343 and completed across the V0.3 family before V0.4 entry:
+Windows-qualified #343 capability baseline before V0.4 entry; **Linux/embedded evidence listed below is aspirational/user-validation only**, not a release gate (Owner #563):
 
 - Qt 5.15 / 6.5 / 6.8 product families;
-- Windows + Linux;
-- x86_64 + ARM64/AArch64;
-- required qwindows / qxcb / Wayland / EGLFS reference cells;
+- **Windows x86_64 / qwindows** as the mandatory actual test/deployment environment;
+- Linux x86_64, ARM64/AArch64, qxcb/Wayland/EGLFS as community/user-validation platform paths, with truthful per-cell states;
 - Widgets + Qt Quick/QML;
 - C++ / QML / Generic / QPA peer integration technologies with truthful per-cell status;
 - practical compressed + incremental delivery with Raw fallback;
@@ -115,19 +118,19 @@ build.cmd + build.yml
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
 
-CI is decision-driven:
+CI uses **PR-triggered, protected pre-merge product validation** (latest Owner #573 supersedes #571):
 
 ```text
-L0 local implementation feedback
-L1 exact Ready-PR merge decision
-L2 exact frozen-candidate qualification
+L0 ordinary feature-branch commit -> no hosted Qt CI
+L1 ready PR -> actual affected Windows Qt compile/CTest/install + Git Flow/review checks; all required statuses PASS before merge
+L2 explicit frozen-candidate workflow_dispatch -> exact-SHA FULL_GATE, CANDIDATE
 ```
 
 Rules:
 
 - Iterate locally with focused tests and the canonical build/install path.
-- Hosted CI is required where it owns the L1/L2 decision, not after every local iteration.
-- `OBSERVE`, post-merge, maintenance and specialized workflows are fire-and-observe for independent sequencing.
+- A bare feature-branch push does **not** invoke hosted Qt CI. Opening/readying a PR does; subsequent updates to a ready PR **must revalidate the newest head**. Do **not** merge on a failed, skipped, cancelled or pending `ci-merge-verdict`; `develop` ruleset must require it and `p1-p2-disposition`. No repeat Qt build after merging. See [CI policy](docs/internal/ci-purpose-and-trigger-policy-2026-10-22.md).
+- The PR `MERGE` decision is binding only after Windows selected tests and review gates PASS; `OBSERVE` and specialized diagnostic runs never authorize a merge.
 - Zero discovered/executed tests are invalid evidence.
 - Exact-head evidence/artifacts must support the claim being made.
 - Installed/deployed consumer evidence must not rely on source/build-tree/Qt-SDK PATH repair.

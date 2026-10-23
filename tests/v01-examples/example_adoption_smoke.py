@@ -196,6 +196,7 @@ def main():
     parser.add_argument("--build-dir", required=True)
     parser.add_argument("--qt-prefix", default="")
     parser.add_argument("--cmake-arg", action="append", default=[])
+    parser.add_argument("--quick-enabled", default="ON")
     parser.add_argument("--keep-work-dir", action="store_true")
     arguments = parser.parse_args()
 
@@ -211,19 +212,26 @@ def main():
         require(bool(configs), "the installed SDK at " + str(sdk_prefix) + " provides no HyRemote package", output)
         log("V01_EXAMPLE_SDK=" + str(sdk_prefix) + " PASS")
 
-        built = {}
-        for name, relative, target in (
-                ("01-widgets-cpp", "examples/learning/01-widgets-cpp", "hyremote-learning-01-widgets"),
+        examples = [
+            ("01-widgets-cpp", "examples/learning/01-widgets-cpp", "hyremote-learning-01-widgets"),
+            ("03-widgets", "examples/learning/03-generic/widgets-app", "hyremote-learning-03-widgets"),
+        ]
+        if arguments.quick_enabled.upper() not in ("OFF", "0", "FALSE", "NO"):
+            examples[1:1] = [
                 ("02-quick-cpp", "examples/learning/02-quick-cpp", "hyremote-learning-02-quick"),
-                ("03-widgets", "examples/learning/03-zero-code-generic/widgets-app", "hyremote-learning-03-widgets"),
-                ("03-quick", "examples/learning/03-zero-code-generic/quick-app", "hyremote-learning-03-quick")):
+                ("03-quick", "examples/learning/03-generic/quick-app", "hyremote-learning-03-quick"),
+            ]
+        built = {}
+        for name, relative, target in examples:
             built[name] = prepare(source_dir, sdk_prefix, arguments.qt_prefix, work, arguments.cmake_arg,
                                   name, relative, target)
 
         case_remoteaccess("01-widgets-cpp", built["01-widgets-cpp"][1])
-        case_remoteaccess("02-quick-cpp", built["02-quick-cpp"][1])
+        if "02-quick-cpp" in built:
+            case_remoteaccess("02-quick-cpp", built["02-quick-cpp"][1])
         case_zero_code("03-widgets", *built["03-widgets"])
-        case_zero_code("03-quick", *built["03-quick"])
+        if "03-quick" in built:
+            case_zero_code("03-quick", *built["03-quick"])
     except SmokeFailure as failure:
         print("V01_EXAMPLE_SMOKE=FAIL: " + str(failure), flush=True)
         return 1

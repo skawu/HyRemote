@@ -17,6 +17,7 @@
 #include <optional>
 
 #include "detail/component_factories.hpp"
+#include "detail/cursor_mapping.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -101,21 +102,33 @@ protected:
         case QEvent::MouseButtonPress: {
             auto *mouse = static_cast<QMouseEvent *>(event);
             ++mousePresses;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastLocal = mouse->position();
+#else
+            lastLocal = mouse->localPos();
+#endif
             lastModifiers = mouse->modifiers();
             break;
         }
         case QEvent::MouseMove: {
             auto *mouse = static_cast<QMouseEvent *>(event);
             ++mouseMoves;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastLocal = mouse->position();
+#else
+            lastLocal = mouse->localPos();
+#endif
             lastModifiers = mouse->modifiers();
             break;
         }
         case QEvent::Wheel: {
             auto *wheel = static_cast<QWheelEvent *>(event);
             ++wheels;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             lastLocal = wheel->position();
+#else
+            lastLocal = wheel->posF();
+#endif
             lastAngleDelta = wheel->angleDelta();
             lastModifiers = wheel->modifiers();
             break;
@@ -201,6 +214,23 @@ void testQuickFactoryAndOwnedFrame()
         }
         CHECK(received->geometry.size.width == qRound(160.0 * dpr));
         CHECK(received->geometry.size.height == qRound(90.0 * dpr));
+
+        // The same physical-to-logical mapping is required for the Quick cursor path.
+        const std::uint32_t sourceWidth = static_cast<std::uint32_t>(qRound(160.0 * dpr));
+        const std::uint32_t sourceHeight = static_cast<std::uint32_t>(qRound(90.0 * dpr));
+        const QPointF mappedCentre = HyRemote::detail::mapFramebufferCursorPoint(
+            static_cast<int>(sourceWidth / 2U),
+            static_cast<int>(sourceHeight / 2U),
+            sourceWidth,
+            sourceHeight,
+            160.0,
+            90.0);
+        CHECK(qAbs(mappedCentre.x() - 79.5) <= 0.6);
+        CHECK(qAbs(mappedCentre.y() - 44.5) <= 0.6);
+        const QPointF mappedEdge = HyRemote::detail::mapFramebufferCursorPoint(
+            static_cast<int>(sourceWidth), static_cast<int>(sourceHeight), sourceWidth, sourceHeight, 160.0, 90.0);
+        CHECK(qAbs(mappedEdge.x() - 159.0) < 0.01);
+        CHECK(qAbs(mappedEdge.y() - 89.0) < 0.01);
 
         // Resize transition on the DPR in force.
         window.resize(320, 180);

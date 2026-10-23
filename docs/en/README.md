@@ -22,7 +22,7 @@ This area provides product integration, deployment, security, compatibility, and
 
 ## Product overview
 
-Start with [`../product-overview.md`](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
+Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
 
 The current release focuses on **getting users to a working remote-access path quickly**:
 
@@ -37,18 +37,22 @@ The current release focuses on **getting users to a working remote-access path q
 
 | Document | Purpose |
 | --- | --- |
-| [`../product-overview.md`](../product-overview.md) | Product positioning, integration frontends, capability boundaries, roadmap |
-| [`../architecture.md`](../architecture.md) | Core, Shared Runtime, and four integration frontends |
-| [`../compatibility.md`](../compatibility.md) | Current platform, Qt, and integration compatibility matrix |
-| [`security.md`](security.md) | Current security behavior, defaults, and unsupported security capabilities |
-| [`../known-limitations.md`](../known-limitations.md) | Known product limitations |
-| [`../versioning.md`](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
-| [`../v1-api-stability.md`](../v1-api-stability.md) | Public API stability boundary |
-| [`../widgets-capture.md`](../widgets-capture.md) | Widgets capture model |
-| [`../quick-capture.md`](../quick-capture.md) | Qt Quick capture model |
-| [`../input-model.md`](../input-model.md) | Remote-input model |
-| [`../dependency-policy.md`](../dependency-policy.md) | Product dependency policy |
-| [`../release-package-manifest.md`](../release-package-manifest.md) | SDK/runtime payload definition |
+| [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) | Product positioning, integration frontends, capability boundaries, roadmap |
+| [`architecture.md`](architecture.md) ｜ [中文](../architecture.md) | Core, Shared Runtime, and four integration frontends |
+| [`performance-optimization.md`](performance-optimization.md) ｜ [中文](../performance-optimization.md) | Interaction-latency SLO, freshness-first delivery, adaptive capture/transport, and regression gates |
+| [`compatibility.md`](compatibility.md) ｜ [中文](../compatibility.md) | Current platform, Qt, and integration compatibility matrix |
+| [`security.md`](security.md) ｜ [中文](../security.md) | Current security behavior, defaults, and unsupported security capabilities |
+| [`security-model.md`](security-model.md) ｜ [中文](../security-model.md) | Trust boundaries, threat model, and later security requirements |
+| [`known-limitations.md`](known-limitations.md) ｜ [中文](../known-limitations.md) | Known product limitations |
+| [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
+| [`v1-api-stability.md`](v1-api-stability.md) ｜ [中文](../v1-api-stability.md) | Public API stability boundary |
+| [`widgets-capture.md`](widgets-capture.md) ｜ [中文](../widgets-capture.md) | Widgets capture model |
+| [`quick-capture.md`](quick-capture.md) ｜ [中文](../quick-capture.md) | Qt Quick capture model |
+| [`input-model.md`](input-model.md) ｜ [中文](../input-model.md) | Remote-input model |
+| [`qml-consumption.md`](qml-consumption.md) ｜ [中文](../qml-consumption.md) | QML API consumption, deployment, and lifecycle |
+| [`dependency-policy.md`](dependency-policy.md) ｜ [中文](../dependency-policy.md) | Product dependency policy |
+| [`release-package-manifest.md`](release-package-manifest.md) ｜ [中文](../release-package-manifest.md) | SDK/runtime payload definition |
+| [`sdk-consumption.md`](sdk-consumption.md) ｜ [中文](../sdk-consumption.md) | SDK acquisition, integration, and deployment contract |
 
 ## How the four frontends relate
 
@@ -77,4 +81,7 @@ Security, compatibility, and platform claims are limited to the explicitly state
 
 ## Maintainer material
 
-Architecture decisions, repository governance, release procedures, research records, and acceptance material live under `docs/adr/`, `docs/internal/`, `docs/releases/`, and `docs/proposals/`. Ordinary application integration does not require those files.
+Architecture decisions, repository governance, release procedures, research records, and acceptance material live under `docs/adr/`, `docs/internal/`, `docs/releases/`, and `docs/proposals/`. Ordinary application integration does not require those files.\n
+## Documentation style
+
+See [STYLE.md](STYLE.md) ｜ [中文](../STYLE.md). The checker usage is in section 5.

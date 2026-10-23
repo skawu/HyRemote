@@ -1,194 +1,208 @@
-# HyRemote Compatibility Matrix
+# HyRemote 兼容性矩阵
 
-HyRemote compatibility is stated only for environments that have an explicit product status. Similar Qt APIs, a nearby patch version, another operating system, or a comparable graphics backend do not automatically create a support claim.
+> 语言 / Language：**中文** ｜ [English](en/compatibility.md)
 
-## Status definitions
+HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似、补丁版本接近、操作系统相近或图形后端类似，都不会自动构成支持声明。
 
-- **Supported** — qualified for the active product line. The four integration technologies (C++ API, QML API,
-  Generic Plugin, QPA) are **peers**; none of them is a primary or preview tier over another.
-- **Limited** — qualified only under the stated narrower condition, such as QPA's exact-Qt private ABI.
-- **TODO** — planned product coverage that is not yet available/qualified.
-- **Unsupported** — outside the stated product contract or known not to work for the stated combination.
+## 状态定义
 
-## Current released reference matrix (V0.2.0.1)
+- **Supported**：已对当前产品线完成资格认证。C++ API、QML API、Generic Plugin、QPA 是并列接入技术，没有主次或预览层级。
+- **Limited**：只在声明的窄条件下完成资格认证，例如 QPA 的精确 Qt private ABI。
+- **TODO**：计划中的产品覆盖，尚未可用或尚未认证。
+- **Unsupported**：超出声明产品契约，或已知在该组合下不可用。
+- **User-validation pending**：Qt 跨平台代码/构建路径存在，但用户目标系统尚未完成独立证明；不阻塞 Windows 版本，不等于 Supported。
 
-The current released reference environment for **V0.2.0.1** is **Qt 6.8.3 on Windows x86_64 and Linux x86_64** (the
-historical V0.2.0.0 First User Trial used the same reference environment).
+## V0.3.0.0 已发布时的历史参考矩阵（保持原状）
 
-| Qt | Platform | Integration | UI target | Status | Notes |
+**新版本资格策略（Owner #563）仅要求 Windows x86_64 / Qt 6.8.3 真实验证。** 下表 Linux 的 Supported/Limited 是 V0.3.0.0 **发布当时的历史声明**，并非新版本的实际资格状态；新版本 Linux 状态为 User-validation pending、非发布阻塞。历史 tag/包/Release Notes 不改写，未来支持声明必须以独立目标机证据为准。
+
+| Qt | 平台 | 接入方式 | UI 目标 | 状态 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| 6.8.3 | Windows x86_64 | C++ API | Widgets | **Supported** | Public Qt APIs, explicit Runtime lifecycle |
-| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` facade |
-| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Supported** | Public Qt APIs, explicit Runtime lifecycle |
-| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` facade |
-| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Zero-code path, preserves native Qt platform |
-| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Zero-code path, preserves native Qt platform |
-| 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
-| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | Thin declarative frontend over Shared Runtime |
-| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qwindows` |
-| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qxcb` |
+| 6.8.3 | Windows x86_64 | C++ API | Widgets | **Supported** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
+| 6.8.3 | Windows x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口 |
+| 6.8.3 | Linux x86_64 | C++ API | Widgets | **Supported** | 公共 Qt API，显式 Runtime 生命周期（explicit Runtime lifecycle） |
+| 6.8.3 | Linux x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口 |
+| 6.8.3 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 零代码路径，保留原生 Qt 平台 |
+| 6.8.3 | Linux x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 零代码路径，保留原生 Qt 平台 |
+| 6.8.3 | Windows x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
+| 6.8.3 | Linux x86_64 | QML API | Qt Quick | **Supported** | 共享 Runtime 上的薄声明式前端 |
+| 6.8.3 exact | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qwindows` |
+| 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qxcb` |
+| 5.15.2 | Windows x86_64 | C++ API | Widgets | **Limited** | Qt5 遗留路径：Runtime、Tool、示例和安装消费者可构建/部署，62/62 CTest；Quick 为实验性 build-only，QML/QPA/Linux 未认证 |
 
-The matrix above describes the current product line. It does not imply that every graphics configuration inside a Widgets/Quick application is already qualified.
+这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。
 
-## Qt LTS policy
+## Qt LTS 政策
 
-HyRemote is intended to support selected Qt LTS families rather than promise every Qt release automatically.
+HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 
-Current state:
+当前状态：
 
-- **Qt 6.8 LTS** — current reference family; Qt **6.8.3** is the exact reference SDK used by the current released V0.2.0.1 (and by the V0.2.0.0 First User Trial before it).
-- **Qt 5.15 LTS** - TODO - mandatory pre-GA V0.3-family adaptation/qualification under the position-derived baseline authority; V0.4 only qualifies the frozen completed matrix. Do not describe it as currently supported until the product can build, deploy and qualify it.
-- other Qt LTS/non-LTS families — no support claim unless they receive an explicit compatibility row.
+- **Qt 6.8 LTS**：当前参考家族；Qt 6.8.3 是 V0.3.0.0 使用的精确参考 SDK。
+- **Qt 5.15 LTS**：Windows x86_64 精确 cell 为 **Limited** 遗留路径。C++/Widgets Runtime、Tool、示例和安装消费者已构建/安装/测试通过；Qt5 Quick 仍为实验性 build-only；QML API、QPA、Linux 和 ARM64 Qt5 仍为 TODO，不得由 Windows Widgets cell 外推。
+- 其他 Qt LTS 或非 LTS 家族：没有明确兼容行时，不做支持声明。
 
-Public-Qt frontends and QPA have different compatibility rules:
+公共 Qt 前端和 QPA 的兼容规则不同：
 
-- **C++ / QML / Generic** primarily depend on public Qt APIs and can be qualified by Qt family/version range;
-- **QPA** depends on Qt private ABI and must be qualified per exact Qt patch/platform combination.
+- C++、QML、Generic 主要依赖 Qt 公共 API，可以按 Qt 家族/版本范围认证；
+- QPA 依赖 Qt private ABI，必须按精确 Qt 补丁和平台组合认证。
 
-A public-API-compatible Qt patch does not automatically make a QPA binary compatible.
+一个 Qt 补丁在公共 API 上兼容，不会自动让 QPA 二进制兼容。
 
-## Operating systems
+## 操作系统
 
-Current desktop reference platforms:
+强制真实验证平台：
 
-- Windows x86_64;
-- Linux x86_64.
+- **Windows x86_64**（实际工作/GA 资格环境）；
+- Linux x86_64（Qt 跨平台路径；**用户验证中，不阻塞开发、V0.4 或 V1**）。
 
-Passing on one operating system does not imply the same result on the other.
+一个操作系统通过，不表示另一个操作系统也会通过。
 
-> **TODO V0.4:** expand formal qualification coverage across the selected Qt LTS matrix while keeping Windows/Linux results explicit.
+> **Owner #563：** V0.4 只对已承诺 Windows 单元执行硬资格；Linux 可收集用户报告或已有 CI 诊断，但不得作为发布门槛。
 
-## Product payload compatibility
+## 产品 payload 兼容性
 
-| Product payload | Compatibility expectation |
+| 产品 payload | 兼容性预期 |
 | --- | --- |
-| `HyRemote::RemoteAccess` | Shared Runtime used by the C++ API and by the other integration technologies internally |
-| QML `HyRemote` module | Declarative payload over the same Shared Runtime |
-| Generic Plugin | Public Qt generic-plugin payload; must preserve the application's native Qt platform identity |
-| `qhyremote` QPA plugin | Exact-Qt private-ABI payload; delegates to the qualified native platform integration |
-| Core | Internal implementation component, not an independent SDK/runtime compatibility surface |
+| `HyRemote::RemoteAccess` | C++ API 和其他接入技术内部共用的 Shared Runtime |
+| QML `HyRemote` 模块 | 同一 Shared Runtime 上的声明式 payload |
+| Generic Plugin | Qt 公共 generic-plugin payload，必须保留应用原生 Qt 平台身份 |
+| `qhyremote` QPA 插件 | 精确 Qt private-ABI payload，委托给经过认证的原生平台实现 |
+| Core | 内部实现组件，不是独立 SDK/Runtime 兼容面 |
 
-Applications should not mix payloads from unrelated HyRemote SDK builds or rely on a build-tree copy to repair an incomplete deployed package.
+应用不要把不相关 HyRemote SDK 构建的 payload 混用，也不要用构建树副本修补不完整的部署包。
 
-## Widgets scope
+## Widgets 范围
 
-The portable correctness baseline supports qualified QWidget top-level targets through the Widgets adapter path.
+可移植正确性基线支持经过认证的 QWidget 顶层目标，通过 Widgets 适配器路径。
 
-Basic Widgets support does not automatically qualify every configuration involving:
+基础 Widgets 支持不会自动认证以下配置：
 
-- `QOpenGLWidget`;
-- embedded/native child windows;
-- unusual platform-native ownership;
-- third-party rendering engines that bypass normal QWidget rendering assumptions.
+- `QOpenGLWidget`；
+- 嵌入/原生子窗口；
+- 特殊平台原生归属；
+- 绕过正常 QWidget 渲染假设的第三方渲染引擎。
 
-These cases receive explicit qualification when they become part of the product matrix.
+这些场景只有在进入产品矩阵时才单独认证。
 
-## Qt Quick scope
+## Qt Quick 范围
 
-The portable correctness baseline supports qualified `QQuickWindow` targets through the public asynchronous Quick capture path.
+可移植正确性基线支持经过认证的 `QQuickWindow` 目标，通过公共异步 Quick 采集路径。
 
-Basic Qt Quick support does not automatically qualify every configuration involving:
+### Quick-only 部署
 
-- Quick3D;
-- custom FBO/render-node pipelines;
-- unusual graphics backends;
-- `QQuickWidget` mixed Widgets/Quick composition;
-- foreign/native windows outside the application's normal Qt surface model.
+Quick-only 应用可以关闭 Widgets 适配器，避免共享 Runtime 因另一个 UI family 而加载 `Qt6Widgets`：
 
-> **TODO V0.4:** qualify representative real-world rendering/application combinations instead of broadening claims by inference.
+```text
+-DHYREMOTE_BUILD_WIDGETS_ADAPTER=OFF
+-DHYREMOTE_BUILD_QUICK_ADAPTER=ON
+```
 
-## Generic Plugin compatibility
+在 `build.yml` 的 `cmake` 段设置这两个值后，先清理再构建。该组合仍保留同一个 Core 和一个 Shared Runtime；Quick 目标的采集与输入走 Quick 适配器。
 
-Generic Plugin is the preferred zero-code path when the application can keep its normal Qt platform.
+Windows x86_64 上已用 `dumpbin /dependents` 验证 `HyRemoteRemoteAccess.dll` 只依赖 `Qt6Quick/Qt6Gui/Qt6Core/Qt6Network`，不依赖 `Qt6Widgets`。ARM64/EGLFS 的干净 rootfs 运行验证仍需要目标板。
 
-A compatible Generic deployment should satisfy all of the following:
+基础 Qt Quick 支持不会自动认证以下配置：
 
-- the application source remains Qt-only;
-- the application does not link `HyRemote::RemoteAccess`;
-- HyRemote is activated through Qt's generic-plugin mechanism;
-- the native Qt platform identity remains `windows`, `xcb`, or the platform the application would normally use;
-- the deployed tree contains both the Generic Plugin and the normal native Qt platform plugin;
-- the application does not depend on the original HyRemote/Qt build tree at runtime.
+- Quick3D；
+- 自定义 FBO/渲染节点管线；
+- 特殊图形后端；
+- `QQuickWidget` 混合 Widgets/Quick 组合；
+- 应用正常 Qt surface 模型之外的外部/原生窗口。
 
-Generic compatibility is a public-Qt claim and is not tied to QPA private ABI.
+> **TODO V0.4：** 认证有代表性的真实渲染/应用组合，不用推断扩大声明。
 
-## QPA compatibility
+## Generic Plugin 兼容性
 
-QPA is a specialized zero-code route and has a narrower compatibility boundary.
+当应用可以保留正常 Qt 平台时，Generic Plugin 是首选的零代码路径。
 
-Current reference pairs:
+兼容的 Generic 部署应满足：
 
-| Qt | OS | Native delegate | Status |
+- 应用源码保持纯 Qt；
+- 应用不链接 `HyRemote::RemoteAccess`；
+- 通过 Qt 通用插件机制激活 HyRemote；
+- 原生 Qt 平台身份保持 `windows`、`xcb` 或应用原本使用的平台；
+- 部署树同时包含 Generic Plugin 和正常原生 Qt 平台插件；
+- 运行时不依赖原 HyRemote/Qt 构建树。
+
+Generic 兼容性是公共 Qt 声明，不与 QPA private ABI 绑定。
+
+## QPA 兼容性
+
+QPA 是专用零代码路径，兼容边界更窄。
+
+当前参考组合：
+
+| Qt | OS | 原生 delegate | 状态 |
 | --- | --- | --- | --- |
-| 6.8.3 exact | Windows x86_64 | `qwindows` | peer route |
-| 6.8.3 exact | Linux x86_64 | `qxcb` | peer route |
+| 6.8.3 exact | Windows x86_64 | `qwindows` | 并列路线 |
+| 6.8.3 exact | Linux x86_64 | `qxcb` | 并列路线 |
 
-Do not infer support for another Qt patch, Wayland, EGLFS, macOS, or another platform plugin from these rows.
+不要从这些行推断其他 Qt 补丁、Wayland、EGLFS、macOS 或其他平台插件受支持。
 
-> **TODO:** add new QPA rows only after the exact Qt/private-ABI/platform combination is qualified.
+> **TODO：** 只有精确 Qt/private-ABI/平台组合完成认证后，才增加新的 QPA 行。
 
-## Transport and viewer boundary
+## 传输与 Viewer 边界
 
-The current transport baseline is bounded RFB 3.8.
+当前传输基线是有界 RFB 3.8。
 
-Current product behavior includes:
+当前产品行为：
 
-- LAN-capable listener behavior by default;
-- standard RFB remote viewing;
-- optional remote input;
-- reconnect without rebuilding the application Runtime;
-- `Insecure` behavior: unauthenticated and unencrypted, for a trusted LAN only;
-- conditional RFB VNC authentication only when HyRemote was built with the transport-security capability and a valid security descriptor is configured;
-- no stream encryption in the current product line;
-- `AuthenticatedEncrypted` unavailable and fail-closed before listener creation.
+- 默认提供 LAN 可达的 listener；
+- 标准 RFB 远程查看；
+- 可选远程输入；
+- 重连不要求重建应用 Runtime；
+- `Insecure` 未认证、未加密，只面向可信 LAN；
+- 只有构建包含传输安全能力并配置有效安全描述文件时，才提供条件 RFB VNC 认证；
+- 当前产品线没有流加密；
+- `AuthenticatedEncrypted` 不可用，在创建 listener 前失败关闭。
 
-The default V0.1 build/profile must not be interpreted as providing authenticated transport merely because the public API exposes the `Authenticated` profile.
+默认构建不能因为公共 API 暴露 `Authenticated` 就视为提供认证传输。
 
-Viewer-specific interoperability claims should be added only for viewers/versions that have been explicitly exercised. A viewer's ability to connect once is not enough to broaden the product compatibility matrix for every viewer implementation.
+Viewer 互操作声明只应针对实际测试过的 Viewer 和版本。某个 Viewer 能连一次，不足以扩大整个产品兼容矩阵。
 
-## Input compatibility
+## 输入兼容性
 
-Remote input compatibility includes lifecycle behavior, not only ordinary pointer/key delivery.
+远程输入兼容性包括生命周期行为，不只是普通指针/按键交付。
 
-The product must keep supported held key/button state balanced across disconnect and Runtime stop. Unsupported IME/composition or key cases are documented rather than guessed.
+产品必须在断开和 Runtime 停止时保持受支持的按住键/按钮状态平衡。不支持的输入法/组合或按键场景会被记录，不做猜测。
 
-## Deployment compatibility
+## 部署兼容性
 
-A supported deployment path should run from the application's deployed tree without depending on:
+受支持的部署路径应能从应用部署树运行，不依赖：
 
-- the original HyRemote SDK path;
-- the HyRemote build tree;
-- a Qt SDK plugin path used as a runtime crutch;
-- manually copied internal HyRemote implementation files.
+- 原 HyRemote SDK 路径；
+- HyRemote 构建树；
+- 作为运行时拐杖的 Qt SDK 插件路径；
+- 手工复制的 HyRemote 内部实现文件。
 
-The product deployment entry point is `hyremote_deploy()`; see [`guide/deployment.md`](guide/deployment.md).
+产品部署入口是 `hyremote_deploy()`；见 [`guide/deployment.md`](guide/deployment.md)。
 
-## Embedded/platform expansion
+## 嵌入式/平台扩展
 
-> Per this convergence: the currently released V0.2.0.1 matrix is desktop x86_64. ARM64/Embedded Linux/EGLFS are not supported by that released version, but they are mandatory pre-GA V0.3-family compatibility baseline work under the position-derived baseline authority and must converge before V0.4 RC entry. Additional BSP/SoC/platform expansion beyond the declared GA reference cells is separately admitted as later coherent outcomes. Hardware/vendor acceleration has no pre-assigned version or pre/post-GA placement: it is admitted only through its recorded activation authority when measured evidence proves a portable-baseline SLO/resource blocker under the performance programme.
+当前强制验证是 Windows x86_64。ARM64、嵌入式 Linux、EGLFS/Wayland 依托 Qt 跨平台能力供用户验证，未获得实机证据前不能称为 Supported；**不要求在 V0.4 RC 或 V1 前完成 Linux/嵌入式物理认证**（#563）。声明 GA 参考单元之外的 BSP/SoC/平台扩展按后续连贯结果单独准入。硬件/厂商加速不预分配版本或 GA 前后位置，只有性能专项的测量证据证明可移植基线存在 SLO/资源阻塞时，才通过记录的激活权威准入。
 
+嵌入式部署是后续产品线，不属于当前桌面声明。
 
-Embedded deployment is a later product line, not part of the current V0.1 desktop claim.
+计划方向：
 
-Planned directions include:
-
-| Direction | Current status |
+| 方向 | 当前状态 |
 | --- | --- |
-| ARM64 Embedded Linux | TODO - mandatory pre-GA V0.3-family compatibility baseline under the position-derived baseline authority; no exact Feature version pre-reserved |
-| RK3588 / EGLFS or Wayland | TODO - mandatory pre-GA V0.3-family compatibility baseline reference cells under the position-derived baseline authority; no exact Feature version pre-reserved |
-| NXP i.MX class | TODO - separately admitted platform expansion beyond the declared GA cells |
-| DMA-BUF / GBM / external-buffer paths | TODO - evidence-driven conditional implementation via its recorded activation authority (#123) when the performance programme's measured evidence proves a blocker; no version placement |
-| RKMPP / VAAPI / platform hardware encoding | TODO - evidence-driven conditional implementation via its recorded activation authority (#123) when the performance programme's measured evidence proves a blocker; no version placement |
-| OpenHarmony | Long-term direction; no current support claim |
+| ARM64 嵌入式 Linux | User-validation pending / 非发布阻塞；不预留精确 Feature 版本 |
+| RK3588 / EGLFS 或 Wayland | User-validation pending / 非发布阻塞；不预留精确 Feature 版本 |
+| NXP i.MX 类 | TODO，声明 GA 单元之外的平台扩展，单独准入 |
+| DMA-BUF / GBM / 外部缓冲路径 | TODO，性能专项测量证明阻塞后，通过记录权威（#123）条件实现；不预留版本 |
+| RKMPP / VAAPI / 平台硬件编码 | TODO，性能专项测量证明阻塞后，通过记录权威（#123）条件实现；不预留版本 |
+| OpenHarmony | 长期方向，当前没有支持声明 |
 
-Desktop evidence does not imply embedded support, and one BSP does not imply an entire SoC/platform family.
+桌面证据不表示嵌入式支持，一个 BSP 也不表示整个 SoC/平台家族。
 
-## Compatibility rules
+## 兼容性规则
 
-1. Primary/Preview/TODO statuses are not interchangeable.
-2. Windows results do not substitute for Linux results, or vice versa.
-3. Public Qt API compatibility does not imply QPA private-ABI compatibility.
-4. Basic Widgets/Quick support does not automatically qualify every graphics/rendering configuration.
-5. Desktop x86 results do not imply Embedded Linux support.
-6. Hardware acceleration support is independent of the stable application-facing integration contract.
-7. New support rows are added only when the product can state the exact Qt, OS, integration path, application scope, and known limitations.
+1. Supported、Limited、User-validation pending、TODO、Unsupported 不能互换。
+2. Windows 结果不能替代 Linux 结果，反之亦然。
+3. 公共 Qt API 兼容不表示 QPA private ABI 兼容。
+4. 基础 Widgets/Quick 支持不会自动认证每一种图形/渲染配置。
+5. 桌面 x86 结果不表示嵌入式 Linux 支持。
+6. 硬件加速支持独立于稳定的应用接入契约。
+7. 只有产品能说明精确 Qt、OS、接入路径、应用范围和已知限制时，才增加新的支持行。

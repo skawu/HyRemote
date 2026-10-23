@@ -17,13 +17,61 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QTimer>
+#include <QVBoxLayout>
+#include <QWheelEvent>
 
 #include <iostream>
 
 namespace {
+
+// The example is also the manual validation target. Echo accepted input so an
+// external viewer run can prove that keyboard/pointer events reached Qt without
+// relying only on a visual inspection of the text field.
+class ValidationLineEdit final : public QLineEdit
+{
+public:
+    using QLineEdit::QLineEdit;
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        std::cout << "INPUT_KEY press key=" << event->key()
+                  << " text=" << event->text().toStdString() << std::endl;
+        QLineEdit::keyPressEvent(event);
+    }
+
+    void keyReleaseEvent(QKeyEvent *event) override
+    {
+        std::cout << "INPUT_KEY release key=" << event->key() << std::endl;
+        QLineEdit::keyReleaseEvent(event);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QPointF position = event->position();
+#else
+        const QPointF position = event->localPos();
+#endif
+        std::cout << "INPUT_MOUSE press button=" << static_cast<int>(event->button())
+                  << " x=" << position.x()
+                  << " y=" << position.y() << std::endl;
+        QLineEdit::mousePressEvent(event);
+    }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        const QPoint angle = event->angleDelta();
+        std::cout << "INPUT_WHEEL x=" << angle.x() << " y=" << angle.y() << std::endl;
+        QLineEdit::wheelEvent(event);
+    }
+};
 
 int positiveInt(const QCommandLineParser &parser, const QCommandLineOption &option, int fallback)
 {
@@ -68,16 +116,24 @@ int main(int argc, char **argv)
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("HyRemote Learning 01 - Widgets + C++"));
-    window.resize(420, 180);
+    window.resize(480, 240);
 
-    auto *status = new QLabel(&window);
+    auto *central = new QWidget(&window);
+    auto *layout = new QVBoxLayout(central);
+    auto *status = new QLabel(central);
     status->setWordWrap(true);
     status->setText(QStringLiteral("remote control: %1\nlistener: 0.0.0.0:%2\nconnect a VNC viewer to this host's "
                                    "LAN IPv4 address on port %2")
                         .arg(remoteInput ? QStringLiteral("enabled explicitly") : QStringLiteral("view-only (default)"))
                         .arg(port));
-    window.setCentralWidget(status);
+    auto *editor = new ValidationLineEdit(central);
+    editor->setPlaceholderText(QStringLiteral("Type here to test remote keyboard input"));
+    editor->setCursor(Qt::IBeamCursor);
+    layout->addWidget(status);
+    layout->addWidget(editor);
+    window.setCentralWidget(central);
     window.show();
+    editor->setFocus();
 
     HyRemote::RemoteAccess remote(&window);
     remote.setPort(static_cast<quint16>(port));

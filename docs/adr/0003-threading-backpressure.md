@@ -1,79 +1,81 @@
-# ADR-0003: Threading, Scheduling and Backpressure
+# ADR-0003：线程、调度与背压
 
-Status: **Proposed for ARCH-01 (#5)**
+> 语言 / Language：**中文** ｜ [English](../en/adr/0003-threading-backpressure.md)
 
-## Context
+状态：**ARCH-01（#5）提议**
 
-HyRemote must never turn a slow remote client into a local UI/render stall. The host evidence also shows that capture APIs have thread affinity and that public Quick async capture can accumulate in-flight work if the caller does not bound it.
+## 背景
 
-## Decision
+HyRemote 不能让慢远程客户端造成本地 UI/渲染卡顿。宿主证据还表明，采集 API 有线程亲和，公共 Quick async capture 如果调用方不设上界，可能累积 in-flight 工作。
 
-HyRemote separates **capture scheduling**, **completed-frame buffering**, **transport dispatch** and **transport runtime**.
+## 决策
+
+HyRemote 分离 **采集调度**、**完成帧缓冲**、**传输分发**和**传输 runtime**。
 
 ```text
-Qt GUI / target thread
+Qt GUI / target 线程
       │ request / completion adapter
       ▼
 CaptureSource
       │ RemoteFrame completion
       ▼
-Core completed-frame mailbox  (bounded)
+Core completed-frame mailbox（有界）
       │
       ▼
 Core dispatch worker
       │ enqueue / post
       ▼
-Transport runtime thread/event loop
+Transport runtime 线程/事件循环
       │
       ├─ client A queues/codecs
       ├─ client B queues/codecs
       └─ input callbacks
                 │
                 ▼
-        Input adapter -> Qt GUI thread
+        Input adapter -> Qt GUI 线程
 ```
 
-## Thread ownership
+## 线程归属
 
-### Application / Qt GUI thread
+### 应用 / Qt GUI 线程
 
-Owns UI object lifetime and any capture operation required by Qt to run on that thread.
+拥有 UI 对象生命周期，以及 Qt 要求在该线程运行的采集操作。
 
-Widgets/Quick adapters are responsible for marshaling one-shot capture requests onto the correct Qt thread.
+Widgets/Quick 适配器负责把一次性采集请求 marshal 到正确 Qt 线程。
 
-The GUI thread must not perform network I/O, client fan-out, compression or hardware encoding as part of the Core hand-off.
+GUI 线程不得在 Core 交接过程中执行网络 I/O、客户端扇出、压缩或硬件编码。
 
-### Qt scene graph / render thread
+### Qt scene graph / render 线程
 
-Owned by Qt. HyRemote public-baseline code does not assume direct control of it.
+由 Qt 拥有。HyRemote 公共 baseline 不假设直接控制它。
 
-A future optimized backend may execute callbacks there only when the relevant Qt contract permits it. Such a backend must hand off a stable storage object quickly and must not wait on network consumers.
+未来优化后端只有在相关 Qt 契约允许时才可在该线程执行回调。此类后端必须快速交出稳定存储对象，不得等待网络消费者。
 
-### Capture callback thread
+### 采集回调线程
 
-A `CaptureSource` may complete on a backend-defined thread. Core's frame-ready entry point is thread-safe and performs only bounded bookkeeping/enqueue work.
+`CaptureSource` 可以在后端定义的线程完成。Core 的 frame-ready 入口线程安全，只做有界簿记/入队。
 
-No capture backend may call a transport synchronously as part of frame production.
+任何采集后端都不得在帧生产过程中同步调用传输。
 
 ### Core dispatch worker
 
-Consumes the completed-frame mailbox and passes frames toward the transport adapter. The transport hand-off itself is a **bounded/nonblocking enqueue contract**: the dispatch worker must never perform network I/O, compression, client fan-out or an unbounded wait inside `Transport::enqueueFrame()`.
+消费 completed-frame mailbox，把帧传给传输适配器。传输交接本身是**有界/非阻塞 enqueue 契约**：dispatch worker 不得在 `Transport::enqueueFrame()` 内执行网络 I/O、压缩、客户端扇出或无界等待。
 
-This is required for deterministic shutdown as well as responsiveness. The Core mailbox protects capture from a slow transport runtime; the transport's own bounded runtime/client queues protect the dispatch worker from network peers.
+这是确定性关闭和响应性的要求。Core mailbox 保护采集侧不受慢传输 runtime 影响；传输自己的有界 runtime/client 队列保护 dispatch worker 不受网络 peer 影响。
 
-### Transport runtime
+### 传输 runtime
 
-Owned by the transport implementation. For NeatVNC this means one isolated AML/NeatVNC runtime; Core and capture modules never call AML directly.
+由传输实现拥有。对 NeatVNC 而言是一个隔离的 AML/NeatVNC runtime；Core 和采集模块从不直接调用 AML。
 
-Transport implementations **must** implement the Core hand-off by posting/enqueueing into their own runtime with bounded execution time. If their internal queue is full, they must apply an explicit local drop/reject policy rather than block the Core dispatch worker indefinitely.
+传输实现**必须**通过向自己的 runtime post/enqueue 来实现 Core 交接，且有界执行时间。内部队列满时，必须应用显式本地丢弃/拒绝策略，不能无限阻塞 Core dispatch worker。
 
-### Input delivery
+### 输入交付
 
-Remote input originates on the transport runtime thread. The transport normalizes protocol-specific events, then the input adapter marshals them to the target's required thread (normally the Qt GUI thread). `InputSink::post()` follows the same rule: it schedules/marshals work and must not make the transport runtime wait on synchronous GUI execution.
+远程输入源自传输 runtime 线程。传输规范化协议事件，然后 input adapter 将其 marshal 到目标要求的线程（通常是 Qt GUI 线程）。`InputSink::post()` 遵循同一规则：调度/marshal 工作，不得让传输 runtime 等待同步 GUI 执行。
 
-## Capture scheduling
+## 采集调度
 
-Core treats capture as asynchronous one-shot work:
+Core 把采集视为异步一次性工作：
 
 ```text
 requestFrame(requestDiagnostic)
@@ -81,113 +83,113 @@ requestFrame(requestDiagnostic)
 frameReady(RemoteFrame)
 ```
 
-The Session scheduler owns:
+Session scheduler 拥有：
 
-- target capture cadence;
-- max capture requests in flight;
-- retry/fallback behavior for rejected requests;
-- whether capture is paced per completed/rendered frame.
+- 目标采集节奏；
+- 最大 in-flight 采集请求；
+- 被拒绝请求的重试/fallback 行为；
+- 是否按完成/渲染帧调节采集节奏。
 
-The scheduler is **independent of transport backlog by default**. A slow transport must not stop local capture/render unless the user explicitly selects producer-throttle behavior.
+scheduler **默认独立于传输积压**。慢传输不得停止本地采集/渲染，除非用户显式选择 producer-throttle 行为。
 
-### Initial defaults
+### 初始默认值
 
-Host evidence suggests a conservative public-Quick starting point of:
+宿主证据建议公共 Quick 的保守起点：
 
-- max capture in flight: **2**;
-- completed mailbox capacity: **2**;
-- completed-frame policy: **DropOldest / LatestFrameWins**.
+- max capture in flight：**2**；
+- completed mailbox capacity：**2**；
+- completed-frame policy：**DropOldest / LatestFrameWins**。
 
-These are v0.1 defaults/candidates, not universal performance claims. #18 may tune target defaults for RK3588/EGLFS without changing the policy API.
+这些是 v0.1 默认值/候选，不是普适性能声明。#18 可以为 RK3588/EGLFS 调整目标默认值，而不改变策略 API。
 
 ## Completed-frame mailbox
 
-The Core mailbox capacity counts frames **waiting for dispatch**. A frame currently held by the dispatch worker is owned in addition to the queue, so maximum Core-side ownership is `capacity + 1` plus any frames retained downstream by the transport/clients.
+Core mailbox 容量计算**等待分发**的帧。dispatch worker 当前持有的帧额外计数，因此 Core 侧最大所有权是 `capacity + 1`，加上传输/客户端下游保留的帧。
 
-### `DropOldest` — default
+### `DropOldest`：默认
 
-When the mailbox is full and a new frame arrives:
+mailbox 满且新帧到达时：
 
-1. remove the oldest queued frame;
-2. release its ownership;
-3. enqueue the new frame.
+1. 移除最旧排队帧；
+2. 释放所有权；
+3. 入队新帧。
 
-Properties:
+性质：
 
-- capture remains decoupled from transport rate;
-- queue depth stays bounded;
-- viewer receives the newest available content under overload;
-- dropping a frame is normal flow control, not an error.
+- 采集与传输速率解耦；
+- 队列深度保持有界；
+- 过载时 viewer 收到最新可用内容；
+- 丢帧是正常流控，不是错误。
 
-### `ProducerThrottle` — optional
+### `ProducerThrottle`：可选
 
-Capture admission is reduced/stopped while the bounded mailbox is full.
+有界 mailbox 满时减少/停止采集准入。
 
-Properties:
+性质：
 
-- no intentional drops at the Core mailbox;
-- capture becomes coupled to transport rate;
-- useful only when every frame matters more than near-live behavior.
+- Core mailbox 不主动丢帧；
+- 采集与传输速率耦合；
+- 只在“每帧都重要”优先于近实时行为时有用。
 
-This policy must be explicit; it is never silently substituted for LatestFrameWins.
+该策略必须显式选择，绝不能静默替代 LatestFrameWins。
 
 ### `BlockProducer`
 
-Not supported as a normal v0.1 policy. Blocking the GUI/render/capture producer on transport consumption violates HyRemote's local-responsiveness goal.
+不作为 v0.1 常规策略支持。阻塞 GUI/渲染/采集生产者等待传输消费，违反 HyRemote 的本地响应性目标。
 
-## Duplicate/coalescing rule
+## 重复/合并规则
 
-Capture backends may produce multiple completed requests carrying equivalent visual content. Core may later add duplicate detection/coalescing, but v0.1 must not infer duplicate identity from request sequence alone.
+采集后端可能产生多个完成请求，携带等价视觉内容。Core 以后可以增加重复检测/合并，但 v0.1 不得仅从请求序列推断重复身份。
 
-A transport is always allowed to drop superseded frames according to PTS/queue policy.
+传输始终可以按 PTS/队列策略丢弃被取代的帧。
 
-## Stop semantics
+## 停止语义
 
-`Session::stop()` is coordinated but not allowed to deadlock on a remote client:
+`Session::stop()` 是协调的，但不允许因远程客户端死锁：
 
-1. stop scheduling new capture requests;
-2. ask capture source to stop/cancel where supported;
-3. close the completed-frame mailbox;
-4. stop/join dispatch worker (safe because `Transport::enqueueFrame()` is bounded/nonblocking by contract);
-5. ask transport to stop its runtime/clients;
-6. release adapters/storage.
+1. 停止调度新采集请求；
+2. 在支持时请求采集源停止/取消；
+3. 关闭 completed-frame mailbox；
+4. 停止/join dispatch worker（安全，因为 `Transport::enqueueFrame()` 契约有界/非阻塞）；
+5. 请求传输停止 runtime/客户端；
+6. 释放适配器/存储。
 
-Timeout/error handling may escalate a component to `Faulted`, but local Qt object destruction must not wait indefinitely for a remote peer.
+超时/错误处理可以把组件升级为 `Faulted`，但本地 Qt 对象销毁不得无限等待远程 peer。
 
-## Error classes
+## 错误类别
 
-### Recoverable capture event
+### 可恢复采集事件
 
-Examples:
+示例：
 
-- target temporarily hidden/not capturable;
-- individual capture request rejected;
-- temporary transport disconnect;
-- client authentication failure.
+- 目标暂时隐藏/不可采集；
+- 单个采集请求被拒绝；
+- 临时传输断开；
+- 客户端认证失败。
 
-The Session can remain `Running` and report the event.
+Session 可以保持 `Running` 并报告事件。
 
-### Component failure
+### 组件失败
 
-Examples:
+示例：
 
-- capture backend initialization failed;
-- transport runtime cannot start;
-- adapter loses its target permanently.
+- 采集后端初始化失败；
+- 传输 runtime 无法启动；
+- 适配器永久丢失 target。
 
-Session transitions to `Faulted` or attempts a configured fallback.
+Session 转入 `Faulted` 或尝试配置的 fallback。
 
-### Programmer/configuration error
+### 程序员/配置错误
 
-Examples:
+示例：
 
-- null/expired target at start;
-- incompatible capture/transport format with no converter;
-- invalid queue capacity/policy.
+- 启动时 target 为空/已过期；
+- 采集/传输格式不兼容且无转换器；
+- 无效队列容量/策略。
 
-`start()` fails before entering `Running`.
+`start()` 在进入 `Running` 前失败。
 
-## State model
+## 状态模型
 
 ```text
 Stopped -> Starting -> Running -> Stopping -> Stopped
@@ -195,24 +197,24 @@ Stopped -> Starting -> Running -> Stopping -> Stopped
               └--------> Faulted
 ```
 
-`Faulted -> Stopping -> Stopped` is always supported so resources can be reclaimed deterministically.
+始终支持 `Faulted -> Stopping -> Stopped`，以便确定性回收资源。
 
-## Transport obligations
+## 传输义务
 
-A transport adapter:
+传输适配器：
 
-- must accept/retain `RemoteFrame` ownership safely;
-- must not assume producer memory remains valid after its owning frame is released;
-- owns client-specific queueing/backpressure beyond the Core mailbox;
-- must not expose protocol-native input/frame types into Core;
-- **must implement `enqueueFrame()` as a bounded/nonblocking post/enqueue operation**; no network I/O, encode wait, client fan-out or unbounded queue wait is permitted on the Core dispatch call;
-- must choose an explicit internal overflow policy when its own runtime/client queue is full.
+- 必须安全接受/保留 `RemoteFrame` 所有权；
+- 不得假设生产者内存在其 owning frame 释放后仍有效；
+- 拥有 Core mailbox 之外的客户端队列/背压；
+- 不得把协议原生输入/帧类型暴露进 Core；
+- **必须把 `enqueueFrame()` 实现为有界/非阻塞 post/enqueue**；Core dispatch 调用中不允许网络 I/O、encode wait、客户端扇出或无界队列等待；
+- 自己的 runtime/client 队列满时，必须选择显式内部溢出策略。
 
-## Consequences
+## 结果
 
-- a blocked/slow viewer cannot directly block Qt rendering;
-- a blocked/slow peer also cannot indefinitely block Core shutdown;
-- transport implementations can use their natural event loop/thread;
-- capture and transport can evolve independently;
-- queue ownership limits are explicit and testable;
-- the same policy applies to Widgets and Quick capture sources.
+- 阻塞/慢 viewer 不能直接阻塞 Qt 渲染；
+- 阻塞/慢 peer 也不能无限阻塞 Core 关闭；
+- 传输实现可以使用自然事件循环/线程；
+- 采集和传输可以独立演进；
+- 队列所有权上限显式且可测试；
+- 同一策略适用于 Widgets 和 Quick 采集源。

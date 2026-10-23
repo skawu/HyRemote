@@ -31,7 +31,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 ## 产品概览
 
-先阅读 [`product-overview.md`](product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
+先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
 
 当前版本（V0.2 LAN trial）的实际事实：
 
@@ -46,19 +46,22 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 | 文档 | 说明 |
 | --- | --- |
-| [`product-overview.md`](product-overview.md) | 产品定位、集成方式、能力边界与路线 |
-| [`architecture.md`](architecture.md) | Core、Shared Runtime、四个 integration frontend 的产品架构 |
-| [`performance-optimization.md`](performance-optimization.md) | 长期性能专项：交互时延 SLO、Freshness-first、自适应采集/传输与回归 Gate |
-| [`compatibility.md`](compatibility.md) | 当前平台、Qt、接入方式兼容矩阵 |
-| [`security.md`](security.md) | 当前安全行为、默认值和不支持的安全能力 |
-| [`known-limitations.md`](known-limitations.md) | 已知限制 |
-| [`versioning.md`](versioning.md) | 产品版本语义与 V0.1 → V1.x 演进 |
-| [`v1-api-stability.md`](v1-api-stability.md) | 公开 API 稳定性边界 |
-| [`widgets-capture.md`](widgets-capture.md) | Widgets 采集模型 |
-| [`quick-capture.md`](quick-capture.md) | Qt Quick 采集模型 |
-| [`input-model.md`](input-model.md) | 远程输入模型 |
-| [`dependency-policy.md`](dependency-policy.md) | 产品依赖策略 |
-| [`release-package-manifest.md`](release-package-manifest.md) | SDK / 运行时载荷定义 |
+| [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) | 产品定位、集成方式、能力边界与路线 |
+| [`architecture.md`](architecture.md) ｜ [English](en/architecture.md) | Core、Shared Runtime、四个 integration frontend 的产品架构 |
+| [`performance-optimization.md`](performance-optimization.md) ｜ [English](en/performance-optimization.md) | 长期性能专项：交互时延 SLO、Freshness-first、自适应采集/传输与回归 Gate |
+| [`compatibility.md`](compatibility.md) ｜ [English](en/compatibility.md) | 当前平台、Qt、接入方式兼容矩阵 |
+| [`security.md`](security.md) ｜ [English](en/security.md) | 当前安全行为、默认值和不支持的安全能力 |
+| [`security-model.md`](security-model.md) ｜ [English](en/security-model.md) | 信任边界、威胁模型与后续安全要求 |
+| [`known-limitations.md`](known-limitations.md) ｜ [English](en/known-limitations.md) | 已知限制 |
+| [`versioning.md`](versioning.md) ｜ [English](en/versioning.md) | 产品版本语义与 V0.1 → V1.x 演进 |
+| [`v1-api-stability.md`](v1-api-stability.md) ｜ [English](en/v1-api-stability.md) | 公开 API 稳定性边界 |
+| [`widgets-capture.md`](widgets-capture.md) ｜ [English](en/widgets-capture.md) | Widgets 采集模型 |
+| [`quick-capture.md`](quick-capture.md) ｜ [English](en/quick-capture.md) | Qt Quick 采集模型 |
+| [`input-model.md`](input-model.md) ｜ [English](en/input-model.md) | 远程输入模型 |
+| [`qml-consumption.md`](qml-consumption.md) ｜ [English](en/qml-consumption.md) | QML API 的使用、部署与生命周期 |
+| [`dependency-policy.md`](dependency-policy.md) ｜ [English](en/dependency-policy.md) | 产品依赖策略 |
+| [`release-package-manifest.md`](release-package-manifest.md) ｜ [English](en/release-package-manifest.md) | SDK / 运行时载荷定义 |
+| [`sdk-consumption.md`](sdk-consumption.md) ｜ [English](en/sdk-consumption.md) | SDK 获取、接入与部署契约 |
 
 ## 四种接入方式的关系
 
@@ -86,4 +89,7 @@ QPA --------------/
 
 ## 维护者资料
 
-架构决策、仓库治理、发布流程、研究记录和验收资料位于 `docs/adr/`、`docs/internal/`、`docs/releases/` 与 `docs/proposals/`。普通应用接入无需阅读这些内容。
+架构决策、仓库治理、发布流程、研究记录和验收资料位于 `docs/adr/`、`docs/internal/`、`docs/releases/` 与 `docs/proposals/`。普通应用接入无需阅读这些内容。\n
+## 文档写作规范
+
+写作规范见 [STYLE.md](STYLE.md) ｜ [English](en/STYLE.md)。扫描器用法见规范第 5 节。

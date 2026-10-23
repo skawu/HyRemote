@@ -1,8 +1,12 @@
+> **2026-10-22 Owner #563 platform-scope override:** This is historical planning material, not current feature-gate authority. Windows x86_64 is the only mandatory physical/product/GA platform. Any old Linux/ARM64/EGLFS/Wayland mandatory language and preallocated V0.0.x/V1.x milestones below is superseded by #1, #24, #343, #563 and `.github/release/release-trains.json`. User reports drive optional portability Issue/hotfixes.
+
 # HyRemote Development Roadmap
 
 Status: execution roadmap toward **V1.0.0.0**.
 
 Companion tool: the active HyRemoteTool plan is [`hyremote-tool-plan.md`](hyremote-tool-plan.md). It ships with V0.3.0.0 as an out-of-process access-plane client; management-plane capabilities are a later, separately activated outcome.
+
+Next Product breadth Feature: [`v0.3.3.0-plan.md`](v0.3.3.0-plan.md) — delivery efficiency and maintained-viewer interoperability on the V0.3.0.0 lineage.
 
 Product milestones are externally usable release gates; internal implementation slices are not milestones by themselves. Current V1 implementation converges through Draft PR #106 -> `develop` as the single active product line.
 

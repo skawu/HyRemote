@@ -40,7 +40,7 @@ Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`
 
 HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/versioning.md`](docs/versioning.md).
 
-The current product phase is **V0.3.0.0 Product Preview / self-service adoption**. V0.1.0.0, V0.2.0.0 and bounded maintenance V0.2.0.1 are released history. The active V0.3.0 mandatory productization children are #264 (four-route SDK/deploy), #240 (task-oriented self-service learning/docs) and #335 (minimum self-service diagnostics). After V0.3.0, the mandatory #343 Qt/platform/RFB/performance breadth converges across coherent V0.3.x outcomes before V0.4 qualification-only RC entry.
+The current product phase is **V0.3-family product-breadth convergence**. `V0.3.0.0 Product Preview` was released on 2026-10-19; #264 (four-route SDK/deploy), #240 (task-oriented self-service learning/docs) and #335 (minimum self-service diagnostics) are released history, not the active task list. **V0.3.3.0** is the activated next Feature for practical RFB delivery (#144) and maintained GUI-viewer interoperability (#175); see `.github/release/release-trains.json` and `docs/internal/owner-execution-brief-2026-10-21.md`. The remaining #343 Qt/platform/RFB/performance baseline converges across coherent V0.3.x outcomes before V0.4 qualification-only RC entry.
 
 Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable. No exact V0.3.x number being preassigned makes a #343 hard requirement optional.
 

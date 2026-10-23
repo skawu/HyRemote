@@ -107,19 +107,7 @@ function(hyremote_apply_root_semantic_test_labels)
         hyremote-release-readiness-release-documentation-layout
         hyremote-release-scope-self-test
         hyremote-release-authority-v02-user-first
-        hyremote-release-profile-develop-all
-        hyremote-release-profile-develop-runtime-only
-        hyremote-release-profile-retire-v001
-        hyremote-release-profile-retire-v002
-        hyremote-release-profile-retire-v003
-        hyremote-release-profile-v010-cpp-only
-        hyremote-release-profile-v020-runtime
-        hyremote-release-profile-v030-all
-        hyremote-release-profile-v040-all
-        hyremote-release-profile-v040-maintenance
-        hyremote-release-profile-v100-all
-        hyremote-release-profile-v100-cpp-only
-        hyremote-release-profile-v100-generic-only
+        hyremote-release-profiles
     )
 
     hyremote_assert_test_catalog_complete()
@@ -128,21 +116,8 @@ endfunction()
 # QPA's T4 deploy-helper matrix is registered by the parent QPA directory after tests/ returns.
 function(hyremote_apply_qpa_deploy_semantic_test_labels)
     hyremote_label_test_family("contract;qpa;installed"
-        hyremote-qpa-deploy-helper-ordinary
-        hyremote-qpa-deploy-helper-qml-only
-        hyremote-qpa-deploy-helper-qml-composed
-        hyremote-qpa-deploy-helper-installed-payload
-        hyremote-qpa-deploy-helper-installed-payload-qml-only
-        hyremote-qpa-deploy-helper-installed-payload-qml
-        hyremote-qpa-deploy-helper-reject-missing-qml
-        hyremote-qpa-deploy-helper-reject-stale-qml-metadata
-        hyremote-qpa-deploy-helper-reject-missing-qml-root
-        hyremote-qpa-deploy-helper-reject-missing-qml-module-dir
-        hyremote-qpa-deploy-helper-reject-stale-qpa-metadata
-        hyremote-qpa-deploy-helper-reject-qt-mismatch
-        hyremote-qpa-deploy-helper-reject-missing-package
-        hyremote-qpa-deploy-helper-single-config-generator
-        hyremote-qpa-deploy-helper-multi-config-generator
+        hyremote-qpa-deploy-helper-positive
+        hyremote-qpa-deploy-helper-negative
         hyremote-qpa-source-payload-relocation
     )
 endfunction()

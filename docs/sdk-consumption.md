@@ -1,85 +1,87 @@
-# HyRemote SDK Consumption Contract
+# HyRemote SDK 使用契约
 
-HyRemote is an independent SDK/framework for Qt applications. It is consumed through normal CMake/Qt mechanisms and does not require modifying the user's Qt installation.
+> 语言 / Language：**中文** ｜ [English](en/sdk-consumption.md)
 
-The product contract is intentionally small: **one Shared Runtime**, four peer integration frontends, two acquisition methods, and one deployment helper.
+HyRemote 是面向 Qt 应用的独立 SDK/框架，通过正常 CMake/Qt 机制使用，不要求修改用户 Qt 安装。
 
-## 1. Product mental model
+产品契约保持精简：**一个共享 Runtime**、四个并列接入前端、两种获取方式、一个部署 helper。
 
-An application developer should choose an integration frontend first:
+## 1. 产品心智模型
 
-| Frontend | Application code change | Product role |
+应用开发者先选择接入前端：
+
+| 前端 | 应用代码改动 | 产品角色 |
 | --- | --- | --- |
-| **C++ API** | Link `HyRemote::RemoteAccess` | Explicit lifecycle/policy control |
-| **Generic Plugin** | No HyRemote application linkage | Preferred zero-code path while preserving native Qt platform |
-| **QML API** | `import HyRemote` | Declarative frontend for Qt Quick |
-| **QPA** | No HyRemote application linkage; start with `-platform hyremote` | Specialized exact-private-ABI zero-code path |
+| **C++ API** | 链接 `HyRemote::RemoteAccess` | 显式生命周期/策略控制 |
+| **Generic Plugin** | 不链接 HyRemote 应用库 | 保留原生 Qt 平台的首选零代码路径 |
+| **QML API** | `import HyRemote` | Qt Quick 的声明式前端 |
+| **QPA** | 不链接 HyRemote 应用库；以 `-platform hyremote` 启动 | 精确 private-ABI 的专用零代码路径 |
 
-Qt Widgets and Qt Quick are target types handled by the Shared Runtime; they are not separate SDK products.
+Qt Widgets 和 Qt Quick 是共享 Runtime 处理的目标类型，不是独立 SDK 产品。
 
-Applications should not need to instantiate or understand:
+应用不需要实例化或理解：
 
-- Core;
-- Session internals;
-- `RemoteFrame`;
-- capture backend classes;
-- transport/RFB implementation objects;
-- input backend objects;
-- graphics/SoC acceleration backends.
+- Core；
+- Session 内部；
+- `RemoteFrame`；
+- 采集后端类；
+- 传输/RFB 实现对象；
+- 输入后端对象；
+- 图形/SoC 加速后端。
 
-Those are owned by HyRemote.
+这些由 HyRemote 负责。
 
-## 2. Acquisition models
+## 2. 获取方式
 
-HyRemote supports two first-class acquisition paths.
+HyRemote 支持两种一等获取路径。
 
-### Installed SDK
+### 安装 SDK
 
-The installed SDK exposes CMake package metadata through:
+安装 SDK 通过 CMake 包元数据暴露：
 
 ```cmake
 find_package(HyRemote CONFIG REQUIRED)
 ```
 
-A conceptual install prefix contains:
+概念安装 prefix：
 
 ```text
 hyremote-sdk/
 ├── include/HyRemote/
 ├── lib/
 │   ├── cmake/HyRemote/
-│   └── HyRemote product runtime
-├── qml/HyRemote/                 # when QML payload is included
-├── lib/HyRemote/plugins/generic/ # when Generic payload is included
-├── plugins/platforms/            # deployed QPA payload in application tree
+│   └── HyRemote 产品 Runtime
+├── qml/HyRemote/                 # 包含 QML payload 时
+├── lib/HyRemote/plugins/generic/ # 包含 Generic payload 时
+├── plugins/platforms/            # 部署 QPA payload 时位于应用树
 └── licenses/
 ```
 
-The SDK is separate from the Qt SDK. Users do not copy HyRemote files into their Qt installation.
+SDK 与 Qt SDK 分离。用户不把 HyRemote 文件复制进 Qt 安装。
 
-### Source consumption
+### 源码使用
 
-HyRemote can also be vendored into an application build:
+HyRemote 也可以放进应用构建：
 
 ```cmake
 add_subdirectory(third_party/HyRemote EXCLUDE_FROM_ALL)
 ```
 
-Source consumption inherits the caller's compiler, toolchain, sysroot, and Qt SDK. It uses the same product API and deployment model as the installed SDK.
+源码使用继承调用方编译器、工具链、sysroot 和 Qt SDK，使用与安装 SDK 相同的产品 API 和部署模型。
 
-Do not mix installed-package and source acquisition for the same HyRemote instance in one CMake configure.
+不要在同一个 CMake configure 中混用安装包和源码获取同一个 HyRemote 实例。
 
-## 3. Shared Runtime contract
+## 3. 共享 Runtime 契约
 
-`HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` is the normal shared Runtime artifact.
+`HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` 是正常共享 Runtime 制品。
 
-Core remains internal and is not a second deployed Runtime. QML, Generic, and QPA are frontend payloads over the same Runtime rather than independent product stacks.
+Core 保持内部，不是第二个部署 Runtime。QML、Generic 和 QPA 是同一 Runtime 上的前端 payload，不是独立产品栈。
 
-This rule remains true even when a physical build later slices optional Qt dependencies for embedded/Quick-only products.
+即使物理构建未来为嵌入式/Quick-only 产品切片可选 Qt 依赖，这条规则仍然成立。
 
-## 4. C++ API consumption
+## 4. C++ API 使用
 
-Qt Widgets:
+Qt Widgets：
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
@@ -91,7 +93,7 @@ target_link_libraries(MyApp PRIVATE
 )
 ```
 
-Qt Quick:
+Qt Quick：
 
 ```cmake
 find_package(Qt6 6.8 REQUIRED COMPONENTS Quick)
@@ -103,7 +105,7 @@ target_link_libraries(MyApp PRIVATE
 )
 ```
 
-Both use the same API:
+两者使用同一 API：
 
 ```cpp
 #include <HyRemote/RemoteAccess.h>
@@ -112,20 +114,20 @@ HyRemote::RemoteAccess remote(&window);
 remote.start();
 ```
 
-Product invariants:
+产品不变量：
 
-- construction alone does not open a listener;
-- `start()` / `stop()` are explicit;
-- bind address and port are product configuration, not backend-specific types;
-- remote viewing and remote input are separate policies;
-- errors/diagnostics use HyRemote product types;
-- switching an internal transport/capture backend must not require normal application-source changes.
+- 仅构造不会打开 listener；
+- `start()`/`stop()` 显式；
+- 绑定地址和端口是产品配置，不是后端专用类型；
+- 远程查看和远程输入是独立策略；
+- 错误/诊断使用 HyRemote 产品类型；
+- 切换内部传输/采集后端不要求普通应用源码改变。
 
-## 5. Generic Plugin consumption
+## 5. Generic Plugin 使用
 
-Generic Plugin is the preferred zero-code route when the application can keep its normal Qt platform.
+应用能保留正常 Qt 平台时，Generic Plugin 是首选零代码路线。
 
-The application stays Qt-only:
+应用保持纯 Qt：
 
 ```cmake
 target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
@@ -135,21 +137,21 @@ install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyExistingApp GENERIC)
 ```
 
-Activate with Qt's generic-plugin mechanism:
+通过 Qt generic-plugin 机制激活：
 
 ```text
 MyExistingApp -plugin hyremote
 ```
 
-or, where appropriate:
+或在合适场景：
 
 ```text
 QT_QPA_GENERIC_PLUGINS=hyremote
 ```
 
-Generic compatibility is based on public Qt plugin APIs. It must preserve the application's native Qt platform identity.
+Generic 兼容性基于公共 Qt 插件 API，必须保留应用原生 Qt 平台身份。
 
-## 6. QML API consumption — Preview
+## 6. QML API 使用
 
 ```qml
 import HyRemote
@@ -160,19 +162,19 @@ RemoteAccess {
 }
 ```
 
-The QML API is a declarative frontend over the same Shared Runtime used by the C++ API.
+QML API 是 C++ API 使用的同一共享 Runtime 上的声明式前端。
 
-Deployment uses:
+部署：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML)
 ```
 
-> **Open work (current product line):** complete full productization, bilingual examples, and deployment qualification on the QML route.
+当前状态：并列路线；安装 SDK 的 QML 示例和部署资格仍在持续完善。
 
-## 7. QPA consumption — Preview
+## 7. QPA 使用
 
-QPA keeps the application Qt-only:
+QPA 让应用保持纯 Qt：
 
 ```cmake
 target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
@@ -182,21 +184,19 @@ install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET MyExistingApp QPA)
 ```
 
-Run with:
+运行：
 
 ```text
 MyExistingApp -platform hyremote
 ```
 
-QPA uses Qt private ABI and therefore has an exact-version compatibility boundary. The current reference is Qt 6.8.3 on Windows/x86_64 and Linux/x86_64.
+QPA 使用 Qt private ABI，因此有精确版本兼容边界。当前参考是 Qt 6.8.3，Windows x86_64 和 Linux x86_64。
 
-Prefer Generic when it satisfies the application. Use QPA when platform-entry behavior is actually required.
+Generic 满足需求时优先 Generic。确实需要平台入口行为时再用 QPA。
 
-> **Open work (current product line):** complete formal QPA productization and add new exact Qt/OS compatibility rows only after qualification.
+## 8. 部署契约
 
-## 8. Deployment contract
-
-HyRemote owns one deployment helper family:
+HyRemote 拥有一组部署 helper：
 
 ```cmake
 hyremote_deploy(TARGET MyCppApp)
@@ -206,84 +206,77 @@ hyremote_deploy(TARGET ExistingQtApp QPA)
 hyremote_deploy(TARGET ExistingQmlApp QML QPA)
 ```
 
-The helper places the Shared Runtime and selected frontend payloads and cooperates with Qt deployment support for runtime dependencies.
+Helper 放置共享 Runtime 和选定前端 payload，并与 Qt 部署支持协作处理 runtime 依赖。
 
-A normal application should not manually discover/copy HyRemote internal DLL/SO/plugin files or keep SDK-specific runtime paths in the deployed environment.
+普通应用不应手工查找/复制 HyRemote 内部 DLL/SO/插件，也不应在部署环境中保留 SDK 专用 runtime 路径。
 
-Generic and QPA are alternative zero-code platform strategies and are not intended to be combined as one integration mode.
+Generic 和 QPA 是并列零代码平台策略，不合并为同一接入模式。
 
-See [`guide/deployment.md`](guide/deployment.md).
+见 [`guide/deployment.md`](guide/deployment.md)。
 
-## 9. Product package expectations
+## 9. 产品包预期
 
-A clean deployed application should be able to run without the original HyRemote build/source tree.
+干净部署应用应能在没有原 HyRemote 构建/源码树的情况下运行。
 
-The application deployment must not rely on:
+应用部署不得依赖：
 
-- HyRemote source/build directories;
-- an unrelated HyRemote SDK prefix;
-- manual Core/transport/capture file copying;
-- permanent `QT_PLUGIN_PATH` / `LD_LIBRARY_PATH` workarounds pointing back to a developer SDK.
+- HyRemote 源码/构建目录；
+- 不相关的 HyRemote SDK prefix；
+- 手工复制 Core/transport/capture 文件；
+- 指回开发者 SDK 的永久 `QT_PLUGIN_PATH` / `LD_LIBRARY_PATH` workaround。
 
-The installed SDK and source-consumption paths should lead to the same application-facing product model.
+安装 SDK 和源码使用路径应导向相同的应用产品模型。
 
-## 10. Backend/toolchain isolation
+## 10. 后端/工具链隔离
 
-Normal application code must remain isolated from transport/capture/acceleration implementation choices.
+普通应用代码必须与传输/采集/加速实现选择隔离。
 
-A backend-specific compiler, runtime, or SDK may be introduced internally only when its product benefit justifies the distribution cost. Backend-specific types must not leak into the ordinary C++/QML application contract.
+后端专用编译器、runtime 或 SDK 只有在产品收益足以抵消分发成本时才可在内部引入。后端专用类型不得泄漏到普通 C++/QML 应用契约。
 
-The same rule applies to future DMA-BUF, RKMPP, VAAPI, D3D, or alternative transport implementations.
+同样规则适用于未来 DMA-BUF、RKMPP、VAAPI、D3D 或其他传输实现。
 
-## 11. Current SDK compatibility
+## 11. 当前 SDK 兼容性
 
-V0.1 reference:
+V0.3.0.0 参考：
 
-- Windows x86_64;
-- Linux x86_64;
-- Qt 6.8.3;
-- C++ API + Generic Plugin as primary paths;
-- QML API + QPA as Preview paths.
+- Windows x86_64；
+- Linux x86_64；
+- Qt 6.8.3；
+- C++ API、QML API、Generic Plugin、QPA 是并列路线；
+- QPA 仍需精确 Qt private ABI。
 
-> **TODO V0.4:** qualify the planned Qt 5.15 LTS compatibility line before adding it to the supported installed-SDK matrix.
+> **TODO V0.4：** 在加入支持矩阵前认证计划中的 Qt 5.15 LTS 兼容线。
 >
-> **TODO:** add embedded/ARM64 SDK and cross-compilation package/deployment contracts. Embedded Linux / ARM64 / EGLFS reference cells are mandatory pre-GA V0.3-family compatibility baseline under #343; additional BSP/SoC expansion is separately admitted and no version number is pre-assigned (#333).
+> **TODO：** 增加嵌入式/ARM64 SDK 和交叉编译包/部署契约。嵌入式 Linux/ARM64/EGLFS 参考单元是 #343 下 V0.3 家族 GA 前强制兼容基线；额外 BSP/SoC 扩展单独准入，不预分配版本号（#333）。
 
-See [`compatibility.md`](compatibility.md).
+见 [`compatibility.md`](compatibility.md)。
 
-## 12. Example/learning contract
+## 12. 示例/学习契约
 
-Examples are the first developer-product entry point, not architecture demos.
+示例是开发者产品入口，不是架构演示。
 
-The product curriculum is designed around the user journey:
+当前可运行路线：
 
 ```text
-01 Widgets + C++
-02 Quick + C++
-03 Zero-code Generic
-04 Quick + QML
-05 Control/Lifecycle
-06 Security/Session
-07 Zero-code QPA
-08 Deployment
-09 Production Showcase
+01-widgets-cpp        C++ Widgets
+02-quick-cpp          C++ Quick
+03-generic            Generic 零代码
+04-qml                QML API
+05-qpa                QPA proxy
 ```
 
-Every HyRemote-authored GUI example uses the canonical project branding and provides English + Simplified Chinese UI/documentation where applicable.
+每个 HyRemote 自编 GUI 示例使用统一项目品牌，并在适用处提供英文和简体中文 UI/文档。
 
-> The C++ and Generic onboarding sets are documented end to end in
-> [\guide/integrate-your-project.md\](guide/integrate-your-project.md).
->
-> **Open work (current product line):** complete the full 01–09 product curriculum.
+C++ 和 Generic 的端到端接入见 [`guide/integrate-your-project.md`](guide/integrate-your-project.md)。
 
-## 13. Definition of success
+## 13. 成功定义
 
-The SDK contract succeeds when a Qt developer can:
+Qt 开发者能够：
 
-1. choose an integration frontend from the application ownership model;
-2. acquire HyRemote through installed SDK or source;
-3. build the application without understanding internal Core/transport/capture architecture;
-4. deploy with `hyremote_deploy()`;
-5. run from the application's own deployment tree;
-6. connect a standard viewer and obtain the documented view/control behavior;
-7. understand the exact security, compatibility, and known-limitations boundary from product documentation.
+1. 按应用所有权模型选择接入前端；
+2. 通过安装 SDK 或源码获取 HyRemote；
+3. 在不理解内部 Core/transport/capture 架构的情况下构建应用；
+4. 用 `hyremote_deploy()` 部署；
+5. 从应用自己的部署树运行；
+6. 连接标准 viewer，获得文档化查看/控制行为；
+7. 从产品文档理解精确安全、兼容和已知限制边界。

@@ -1,7 +1,12 @@
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QHostAddress>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSysInfo>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -9,11 +14,25 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <ctime>
 #include <iostream>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifdef Q_OS_WIN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <psapi.h>
+#  ifdef _MSC_VER
+#    pragma comment(lib, "Psapi.lib")
+#  endif
+#else
+#  include <unistd.h>
+#endif
 
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
@@ -26,6 +45,7 @@
 namespace {
 
 int failures = 0;
+qsizetype profileBytesRead = 0;
 
 #define CHECK(expr)                                                                                \
     do {                                                                                           \
@@ -87,7 +107,9 @@ QByteArray readExact(QTcpSocket &socket, qsizetype size, int timeoutMs = 3000)
             if (!socket.waitForReadyRead(remaining))
                 break;
         }
-        result += socket.read(size - result.size());
+        const QByteArray chunk = socket.read(size - result.size());
+        result += chunk;
+        profileBytesRead += chunk.size();
     }
     return result;
 }
@@ -293,6 +315,36 @@ bool sendSetEncodings(QTcpSocket &socket, const std::vector<std::int32_t> &encod
     for (std::int32_t encoding : encodings)
         appendS32(message, encoding);
     return writeAll(socket, message);
+}
+
+bool sendPixelFormat(QTcpSocket &socket, char bitsPerPixel, char depth, char redMax, char greenMax, char blueMax,
+                     char redShift, char greenShift, char blueShift)
+{
+    QByteArray message;
+    message.append(char(0));  // SetPixelFormat
+    message.append("\0\0\0", 3);
+    message.append(bitsPerPixel);
+    message.append(depth);
+    message.append(char(0));  // little-endian
+    message.append(char(1));  // true colour
+    appendU16(message, static_cast<std::uint8_t>(redMax));
+    appendU16(message, static_cast<std::uint8_t>(greenMax));
+    appendU16(message, static_cast<std::uint8_t>(blueMax));
+    message.append(redShift);
+    message.append(greenShift);
+    message.append(blueShift);
+    message.append("\0\0\0", 3);
+    return writeAll(socket, message);
+}
+
+bool sendNativePixelFormat(QTcpSocket &socket)
+{
+    return sendPixelFormat(socket, 32, 24, char(255), char(255), char(255), 0, 8, 16);
+}
+
+bool sendRgb222PixelFormat(QTcpSocket &socket)
+{
+    return sendPixelFormat(socket, 8, 6, 3, 3, 3, 4, 2, 0);
 }
 
 QByteArray makeFence(std::uint32_t flags, const QByteArray &payload = {})
@@ -591,12 +643,46 @@ bool noFramebufferData(QTcpSocket &socket, int timeoutMs = 150)
     return !socket.waitForReadyRead(timeoutMs) && socket.bytesAvailable() == 0;
 }
 
-std::unique_ptr<hyremote::Transport> startTransport(quint16 port,
-                                                    Recorder &recorder,
-                                                    hyremote::RemoteFrame initial)
+bool readCursorUpdate(QTcpSocket &socket,
+                      int *widthOut = nullptr,
+                      int *heightOut = nullptr,
+                      int *hotspotXOut = nullptr,
+                      int *hotspotYOut = nullptr,
+                      int timeoutMs = 3000)
 {
+    const QByteArray header = readExact(socket, 4, timeoutMs);
+    if (header.size() != 4 || header.at(0) != char(0) || readU16(header, 2) != 1)
+        return false;
+    const QByteArray rectangle = readExact(socket, 12, timeoutMs);
+    if (rectangle.size() != 12 || readS32(rectangle, 8) != -239)
+        return false;
+    const std::uint16_t width = readU16(rectangle, 4);
+    const std::uint16_t height = readU16(rectangle, 6);
+    if (width == 0 || height == 0)
+        return false;
+    if (widthOut)
+        *widthOut = width;
+    if (heightOut)
+        *heightOut = height;
+    if (hotspotXOut)
+        *hotspotXOut = readU16(rectangle, 0);
+    if (hotspotYOut)
+        *hotspotYOut = readU16(rectangle, 2);
+    const qsizetype pixels = static_cast<qsizetype>(width) * height * 4;
+    const qsizetype mask = ((width + 7) / 8) * height;
+    return readExact(socket, pixels + mask, timeoutMs).size() == pixels + mask;
+}
+
+std::unique_ptr<hyremote::Transport> startTransport(
+    quint16 port,
+    Recorder &recorder,
+    hyremote::RemoteFrame initial,
+    HyRemote::detail::RfbCursorProvider cursorProvider = {})
+{
+    HyRemote::detail::RfbSecurityConfig security;
+    security.cursorProvider = std::move(cursorProvider);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
-                                                          HyRemote::detail::RfbSecurityConfig{});
+                                                          std::move(security));
     if (!transport)
         return {};
     if (!transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
@@ -652,7 +738,7 @@ void testTrleRawAndIncrementalDelivery()
 
     QTcpSocket rawSocket;
     CHECK(connectRawRfb(rawSocket, port, false, &width, &height));
-    CHECK(sendSetEncodings(rawSocket, {0, 15}));
+    CHECK(sendSetEncodings(rawSocket, {0}));
     CHECK(sendUpdateRequest(rawSocket, false, 0, 0, width, height));
     TestFramebuffer rawFrame;
     rawFrame.resize(width, height);
@@ -665,6 +751,181 @@ void testTrleRawAndIncrementalDelivery()
     rawSocket.disconnectFromHost();
     waitForDisconnected(trleSocket);
     waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+void testTrlePreferredOverRawOrder()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(64, 48, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    // Some clients list Raw first even when they can decode TRLE. The
+    // transport must not turn that into a multi-MB/s Raw stream.
+    CHECK(sendSetEncodings(socket, {0, 15}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U);
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 15);
+    CHECK(frame.get(0, 0) == 0x203040U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testCursorPseudoEncoding()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(64, 48, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket cursorSocket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(cursorSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(cursorSocket, {-239, 0}));
+
+    // The cursor is sent with the first update after the pixel format has
+    // settled, so request before reading it.
+    CHECK(sendUpdateRequest(cursorSocket, false, 0, 0, width, height));
+    CHECK(readCursorUpdate(cursorSocket));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(cursorSocket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    // A viewer that does not advertise the pseudo-encoding must not receive it.
+    QTcpSocket rawSocket;
+    CHECK(connectRawRfb(rawSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(rawSocket, {0}));
+    CHECK(sendUpdateRequest(rawSocket, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(rawSocket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    cursorSocket.disconnectFromHost();
+    rawSocket.disconnectFromHost();
+    waitForDisconnected(cursorSocket);
+    waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+void testCursorSentAfterPixelFormatWithoutRequest()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(64, 48, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-239, 0}));
+
+    // RealVNC first requests an 8-bpp rgb222 format and later promotes it to
+    // 32 bpp. The reduced format must not consume the cursor throttle.
+    CHECK(sendRgb222PixelFormat(socket));
+    CHECK(sendNativePixelFormat(socket));
+
+    // No FramebufferUpdateRequest and no frame change: the approved pixel
+    // format alone must cause the cursor to be sent.
+    CHECK(readCursorUpdate(socket));
+
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testVariableCursorSnapshot()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(
+        port,
+        recorder,
+        makeFrame(64, 48, 0x203040U),
+        [](int, int, std::uint32_t, std::uint32_t) {
+            HyRemote::detail::RfbCursorSnapshot snapshot;
+            snapshot.width = 4;
+            snapshot.height = 4;
+            snapshot.hotspotX = 2;
+            snapshot.hotspotY = 1;
+            snapshot.rgba8888 = QByteArray(4 * 4 * 4, char(0));
+            for (int index = 0; index < 4 * 4; ++index) {
+                snapshot.rgba8888[index * 4] = static_cast<char>(255);
+                snapshot.rgba8888[index * 4 + 3] = static_cast<char>(255);
+            }
+            return snapshot;
+        });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-239, 0}));
+
+    int cursorWidth = 0;
+    int cursorHeight = 0;
+    int hotspotX = -1;
+    int hotspotY = -1;
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    CHECK(readCursorUpdate(socket, &cursorWidth, &cursorHeight, &hotspotX, &hotspotY));
+    CHECK(cursorWidth == 4);
+    CHECK(cursorHeight == 4);
+    CHECK(hotspotX == 2);
+    CHECK(hotspotY == 1);
+
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
     transport->stop();
 }
 
@@ -1015,9 +1276,11 @@ void testRequestPausedViewerDoesNotStallContinuousPeer()
 
     // The paused viewer must catch up in one incremental reply with the
     // latest state of BOTH independent tiles, not 16 intermediate updates.
+    // The two broad tiles are coalesced into one paint rectangle so a viewer
+    // does not render them as a scanline sequence.
     CHECK(sendUpdateRequest(paused, true, 0, 0, pausedWidth, pausedHeight));
     CHECK(readFramebufferUpdate(paused, pausedFrame, rectangles));
-    CHECK(rectangles.size() == 2U);
+    CHECK(rectangles.size() == 1U);
     CHECK(pausedFrame.get(8, 8) == leftColor);
     CHECK(pausedFrame.get(80, 8) == rightColor);
 
@@ -1534,16 +1797,287 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
     transport->stop();
 }
 
+double processCpuMs()
+{
+    return 1000.0 * static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC);
+}
+
+qint64 processWorkingSetKb()
+{
+#ifdef Q_OS_WIN
+    PROCESS_MEMORY_COUNTERS counters{};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
+        return static_cast<qint64>(counters.WorkingSetSize / 1024U);
+#else
+    QFile statm(QStringLiteral("/proc/self/statm"));
+    if (statm.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> fields = statm.readAll().simplified().split(' ');
+        if (fields.size() >= 2) {
+            const long pageSize = sysconf(_SC_PAGESIZE);
+            return static_cast<qint64>(fields.at(1).toLongLong()) * pageSize / 1024;
+        }
+    }
+#endif
+    return 0;
+}
+
+struct ProfileSample
+{
+    QString encoding;
+    QString workload;
+    int frames = 0;
+    qint64 bytes = 0;
+    double p50Ms = 0.0;
+    double p95Ms = 0.0;
+    double cpuMs = 0.0;
+    qint64 workingSetKb = 0;
+};
+
+std::vector<ProfileSample> profileSamples;
+constexpr int kProfileWidth = 256;
+constexpr int kProfileHeight = 256;
+
+double profilePercentile(std::vector<double> values, double percentile)
+{
+    if (values.empty())
+        return 0.0;
+    std::sort(values.begin(), values.end());
+    const double position = (values.size() - 1) * percentile;
+    const auto lower = static_cast<std::size_t>(position);
+    const auto upper = std::min(lower + 1, values.size() - 1);
+    const double fraction = position - static_cast<double>(lower);
+    return values[lower] * (1.0 - fraction) + values[upper] * fraction;
+}
+
+void recordProfileSample(const QString &encoding,
+                         const QString &workload,
+                         int frames,
+                         qint64 bytes,
+                         std::vector<double> latenciesMs,
+                         double cpuMs,
+                         qint64 workingSetKb)
+{
+    ProfileSample sample;
+    sample.encoding = encoding;
+    sample.workload = workload;
+    sample.frames = frames;
+    sample.bytes = bytes;
+    sample.p50Ms = profilePercentile(latenciesMs, 0.50);
+    sample.p95Ms = profilePercentile(latenciesMs, 0.95);
+    sample.cpuMs = cpuMs;
+    sample.workingSetKb = workingSetKb;
+    profileSamples.push_back(sample);
+    std::cerr << "PROFILE " << encoding.toStdString() << ' ' << workload.toStdString()
+              << " frames=" << frames << " bytes=" << bytes << " p50_ms=" << sample.p50Ms
+              << " p95_ms=" << sample.p95Ms << " cpu_ms=" << sample.cpuMs
+              << " working_set_kb=" << sample.workingSetKb << '\n';
+}
+
+void runProfileWorkload(const std::vector<std::int32_t> &encodings,
+                        const QString &encodingLabel,
+                        const QString &workload)
+{
+    constexpr std::uint16_t kWidth = 256;
+    constexpr std::uint16_t kHeight = 256;
+    constexpr int kSamples = 16;
+    constexpr hyremote::Rect kMarker{32, 24, 8, 8};
+
+    const quint16 port = freePort();
+    if (port == 0)
+        return;
+    const double cpuStartMs = processCpuMs();
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(kWidth, kHeight, 0x203040U));
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    if (!connectRawRfb(socket, port, false, &width, &height)
+        || !sendSetEncodings(socket, encodings)
+        || !sendUpdateRequest(socket, false, 0, 0, width, height)) {
+        transport->stop();
+        return;
+    }
+
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    if (!readFramebufferUpdate(socket, frame, rectangles)) {
+        transport->stop();
+        return;
+    }
+
+    std::vector<double> latenciesMs;
+    qint64 measuredBytes = 0;
+    int measuredFrames = 0;
+
+    if (workload == QStringLiteral("static")) {
+        profileBytesRead = 0;
+        if (!sendUpdateRequest(socket, true, 0, 0, width, height)) {
+            transport->stop();
+            return;
+        }
+        noFramebufferData(socket, 250);
+        measuredBytes = profileBytesRead;
+        measuredFrames = 1;
+        latenciesMs.push_back(0.0);
+    } else if (workload == QStringLiteral("localized") || workload == QStringLiteral("high-motion")) {
+        for (int index = 0; index < kSamples; ++index) {
+            const std::uint32_t color = 0xd0a030U + static_cast<std::uint32_t>(index) * 0x000101U;
+            if (workload == QStringLiteral("localized")) {
+                auto changed = makeFrame(kWidth, kHeight, 0x203040U, {{kMarker, color}});
+                changed.damage = hyremote::Damage::fromRegions({kMarker});
+                transport->enqueueFrame(std::move(changed));
+            } else {
+                transport->enqueueFrame(makeFrame(kWidth, kHeight, color));
+            }
+
+            profileBytesRead = 0;
+            const auto started = std::chrono::steady_clock::now();
+            if (!sendUpdateRequest(socket, true, 0, 0, width, height)
+                || !readFramebufferUpdate(socket, frame, rectangles)) {
+                break;
+            }
+            const auto completed = std::chrono::steady_clock::now();
+            latenciesMs.push_back(
+                std::chrono::duration<double, std::milli>(completed - started).count());
+            measuredBytes += profileBytesRead;
+            ++measuredFrames;
+        }
+    } else if (workload == QStringLiteral("full-refresh")) {
+        profileBytesRead = 0;
+        const auto started = std::chrono::steady_clock::now();
+        if (sendUpdateRequest(socket, false, 0, 0, width, height)
+            && readFramebufferUpdate(socket, frame, rectangles)) {
+            const auto completed = std::chrono::steady_clock::now();
+            latenciesMs.push_back(
+                std::chrono::duration<double, std::milli>(completed - started).count());
+            measuredBytes += profileBytesRead;
+            measuredFrames = 1;
+        }
+    }
+
+    recordProfileSample(encodingLabel,
+                        workload,
+                        measuredFrames,
+                        measuredBytes,
+                        latenciesMs,
+                        processCpuMs() - cpuStartMs,
+                        processWorkingSetKb());
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void runDeliveryProfile(const QString &outputPath)
+{
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("static"));
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("localized"));
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("high-motion"));
+    runProfileWorkload({0}, QStringLiteral("raw"), QStringLiteral("full-refresh"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("static"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("localized"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("high-motion"));
+    runProfileWorkload({15, 0}, QStringLiteral("trle"), QStringLiteral("full-refresh"));
+
+    QJsonArray samples;
+    for (const ProfileSample &sample : profileSamples) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("encoding"), sample.encoding);
+        entry.insert(QStringLiteral("workload"), sample.workload);
+        entry.insert(QStringLiteral("frames"), sample.frames);
+        entry.insert(QStringLiteral("bytes"), static_cast<double>(sample.bytes));
+        entry.insert(QStringLiteral("p50_ms"), sample.p50Ms);
+        entry.insert(QStringLiteral("p95_ms"), sample.p95Ms);
+        entry.insert(QStringLiteral("cpu_ms"), sample.cpuMs);
+        entry.insert(QStringLiteral("working_set_kb"), static_cast<double>(sample.workingSetKb));
+        samples.append(entry);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-delivery-profile/1"));
+    root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    root.insert(QStringLiteral("width"), kProfileWidth);
+    root.insert(QStringLiteral("height"), kProfileHeight);
+    root.insert(QStringLiteral("samples"), samples);
+
+    QFile file(outputPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        std::cerr << "PROFILE failed to open " << outputPath.toStdString() << '\n';
+        ++failures;
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+    std::cerr << "PROFILE wrote " << profileSamples.size() << " samples to "
+              << outputPath.toStdString() << '\n';
+}
+
+void testPendingDamageCoalescesAtDelivery()
+{
+    HyRemote::detail::RfbUpdateState state;
+    const HyRemote::detail::RfbRect viewport{0, 0, 256, 256};
+    HyRemote::detail::RfbDamageRegion damage;
+    damage.add({0, 0, 128, 128});
+    damage.add({128, 0, 128, 128});
+    damage.add({0, 128, 128, 128});
+    damage.add({128, 128, 128, 128});
+    state.accumulate(damage);
+    state.request(true, viewport);
+    const auto selected = state.selectEligible();
+    CHECK(selected.has_value());
+    if (selected) {
+        const HyRemote::detail::RfbRect expectedFull{0, 0, 256, 256};
+        CHECK(selected->size() == 1U);
+        if (selected->size() == 1U)
+            CHECK(selected->rects().front() == expectedFull);
+    }
+}
+
+void testLargeDamageCoalescesForPaint()
+{
+    HyRemote::detail::RfbDamageRegion large;
+    for (int y = 0; y < 256; y += 64) {
+        for (int x = 0; x < 256; x += 64)
+            large.add({x, y, 64, 64});
+    }
+    const auto painted = HyRemote::detail::coalesceRfbDamageForPaint(large, 256U, 256U);
+    const HyRemote::detail::RfbRect expectedFull{0, 0, 256, 256};
+    CHECK(painted.size() == 1U);
+    if (painted.size() == 1U)
+        CHECK(painted.rects().front() == expectedFull);
+
+    HyRemote::detail::RfbDamageRegion smallDamage;
+    smallDamage.add({0, 0, 8, 8});
+    smallDamage.add({100, 100, 8, 8});
+    CHECK(HyRemote::detail::coalesceRfbDamageForPaint(smallDamage, 256U, 256U).size() == 2U);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
 
+    const QByteArray profilePath = qgetenv("HYREMOTE_RFB_PROFILE_FILE");
+    if (!profilePath.isEmpty()) {
+        runDeliveryProfile(QString::fromLocal8Bit(profilePath));
+        return failures == 0 ? 0 : 1;
+    }
+
     testTrleRawAndIncrementalDelivery();
+    testTrlePreferredOverRawOrder();
+    testCursorPseudoEncoding();
+    testCursorSentAfterPixelFormatWithoutRequest();
+    testVariableCursorSnapshot();
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
+    testPendingDamageCoalescesAtDelivery();
+    testLargeDamageCoalescesForPaint();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();

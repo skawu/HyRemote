@@ -2,6 +2,7 @@
 
 #include <QAbstractSocket>
 #include <QByteArray>
+#include <QDateTime>
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
@@ -51,6 +52,7 @@ constexpr std::int32_t kEncodingDesktopSize = -223;
 // RFB Fence is an optional per-viewer capability, not a general application API.
 constexpr std::int32_t kEncodingFence = -312;
 constexpr std::int32_t kEncodingContinuousUpdates = -313;
+constexpr std::int32_t kEncodingCursor = -239;
 constexpr std::uint8_t kEnableContinuousUpdates = 150;
 constexpr std::uint8_t kClientFence = 248;
 constexpr std::uint8_t kMaxFencePayload = 64;
@@ -215,34 +217,47 @@ hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
     using hyremote::KeyCode;
     switch (keysym) {
     case 0xff0d:
+    case 0xff8d:  // XK_KP_Enter
         return KeyCode::Enter;
     case 0xff1b:
         return KeyCode::Escape;
     case 0xff09:
+    case 0xff89:  // XK_KP_Tab
         return KeyCode::Tab;
     case 0xff08:
         return KeyCode::Backspace;
     case 0xffff:
+    case 0xff9f:  // XK_KP_Delete
         return KeyCode::DeleteForward;
     case 0xff63:
+    case 0xff9e:  // XK_KP_Insert
         return KeyCode::Insert;
     case 0xff50:
+    case 0xff95:  // XK_KP_Home
         return KeyCode::Home;
     case 0xff57:
+    case 0xff9c:  // XK_KP_End
         return KeyCode::End;
     case 0xff55:
+    case 0xff9a:  // XK_KP_Prior
         return KeyCode::PageUp;
     case 0xff56:
+    case 0xff9b:  // XK_KP_Next
         return KeyCode::PageDown;
     case 0xff51:
+    case 0xff96:  // XK_KP_Left
         return KeyCode::ArrowLeft;
     case 0xff52:
+    case 0xff97:  // XK_KP_Up
         return KeyCode::ArrowUp;
     case 0xff53:
+    case 0xff98:  // XK_KP_Right
         return KeyCode::ArrowRight;
     case 0xff54:
+    case 0xff99:  // XK_KP_Down
         return KeyCode::ArrowDown;
     case 0x20:
+    case 0xff80:  // XK_KP_Space
         return KeyCode::Space;
     case 0xffe1:
     case 0xffe2:
@@ -266,6 +281,8 @@ hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
 
     if (keysym >= '0' && keysym <= '9')
         return static_cast<KeyCode>(static_cast<int>(KeyCode::Digit0) + keysym - '0');
+    if (keysym >= 0xffb0 && keysym <= 0xffb9)  // XK_KP_0..XK_KP_9
+        return static_cast<KeyCode>(static_cast<int>(KeyCode::Digit0) + keysym - 0xffb0);
     if (keysym >= 'A' && keysym <= 'Z')
         return static_cast<KeyCode>(static_cast<int>(KeyCode::A) + keysym - 'A');
     if (keysym >= 'a' && keysym <= 'z')
@@ -310,7 +327,25 @@ hyremote::InputModifiers modifiersForHeldKeysyms(const std::vector<std::uint32_t
 std::string utf8ForKeysym(std::uint32_t keysym)
 {
     std::uint32_t cp = 0;
-    if (keysym >= 0x20 && keysym <= 0x7e)
+    if (keysym >= 0xffb0 && keysym <= 0xffb9)  // XK_KP_0..XK_KP_9
+        cp = static_cast<std::uint32_t>('0') + (keysym - 0xffb0);
+    else if (keysym == 0xffae)  // XK_KP_Decimal
+        cp = '.';
+    else if (keysym == 0xffab)  // XK_KP_Add
+        cp = '+';
+    else if (keysym == 0xffad)  // XK_KP_Subtract
+        cp = '-';
+    else if (keysym == 0xffaa)  // XK_KP_Multiply
+        cp = '*';
+    else if (keysym == 0xffaf)  // XK_KP_Divide
+        cp = '/';
+    else if (keysym == 0xffbd)  // XK_KP_Equal
+        cp = '=';
+    else if (keysym == 0xffac)  // XK_KP_Separator
+        cp = ',';
+    else if (keysym == 0xff80)  // XK_KP_Space
+        cp = ' ';
+    else if (keysym >= 0x20 && keysym <= 0x7e)
         cp = keysym;
     else if (keysym >= 0xa0 && keysym <= 0xff)
         cp = keysym;
@@ -373,6 +408,9 @@ struct ClientState
     bool supportsDesktopSize = false;
     bool supportsFence = false;
     bool supportsContinuousUpdates = false;
+    bool supportsCursor = false;
+    QByteArray cursorSignature;
+    qint64 lastCursorPollMs = -1;
     bool continuousEnabled = false;
     bool continuousRequestArmed = false;
     RfbRect continuousRegion;
@@ -809,6 +847,12 @@ private:
                     return;
                 }
                 client.pixels = *spec;
+                client.cursorSignature.clear();
+                client.lastCursorPollMs = -1;
+                // Wait for the current event batch to settle before writing the
+                // cursor. This sends without an extra frame/input request, but
+                // still lets a following SetPixelFormat choose the final format.
+                scheduleCursor(client);
                 continue;
             }
 
@@ -828,6 +872,7 @@ private:
                 const bool continuousWasSupported = client.supportsContinuousUpdates;
                 client.supportsFence = false;
                 client.supportsContinuousUpdates = false;
+                client.supportsCursor = false;
                 client.preferredEncoding = ClientEncoding::Raw;
                 bool selectedEncoding = false;
                 for (std::uint16_t i = 0; i < count; ++i) {
@@ -839,7 +884,14 @@ private:
                         client.supportsFence = true;
                     if (encoding == kEncodingContinuousUpdates)
                         client.supportsContinuousUpdates = true;
-                    if (!selectedEncoding && encoding == kRfbEncodingTrle) {
+                    if (encoding == kEncodingCursor)
+                        client.supportsCursor = true;
+                    // Raw is the universal fallback and some viewers list it
+                    // before the compressed encoding they also support. Choose
+                    // TRLE whenever it is advertised; otherwise fall back to
+                    // Raw. The client's ordering must not force a multi-MB/s
+                    // Raw stream when it can decode TRLE.
+                    if (encoding == kRfbEncodingTrle) {
                         client.preferredEncoding = ClientEncoding::Trle;
                         selectedEncoding = true;
                     } else if (!selectedEncoding && encoding == kEncodingRaw) {
@@ -848,6 +900,9 @@ private:
                     }
                 }
                 client.input.remove(0, size);
+                client.cursorSignature.clear();
+                // Wait for SetPixelFormat; the update path sends the cursor
+                // for viewers that keep the native format.
                 if (client.supportsFence && !fenceWasSupported
                     && !sendFence(client, 0U, {})) {
                     return;
@@ -1012,7 +1067,9 @@ private:
         appendU16(init, static_cast<std::uint16_t>(width));
         appendU16(init, static_cast<std::uint16_t>(height));
         appendPixelSpec(init, nativePixelSpec());
-        static const QByteArray name("HyRemote");
+        const QByteArray name = m_security.remoteInputEnabled
+                                    ? QByteArray("HyRemote")
+                                    : QByteArray("HyRemote (view-only)");
         appendU32(init, static_cast<std::uint32_t>(name.size()));
         init += name;
         client.socket->write(init);
@@ -1022,6 +1079,156 @@ private:
         client.phase = ClientPhase::Normal;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+    }
+
+    RfbCursorSnapshot fallbackCursor() const
+    {
+        static constexpr const char *kCursorRows[16] = {
+            "B...............",
+            "BB..............",
+            "BWB.............",
+            "BWWB............",
+            "BWWWB...........",
+            "BWWWWB..........",
+            "BWWWWWB.........",
+            "BWWWWWWB........",
+            "BWWWWWWWB.......",
+            "BWWWWWWWWB......",
+            "BWWWWWBBBB......",
+            "BWWBWWB.........",
+            "BWB.BWWB........",
+            "BB..BWWB........",
+            "B....BWWB.......",
+            ".....BWWB.......",
+        };
+
+        RfbCursorSnapshot snapshot;
+        snapshot.width = 16;
+        snapshot.height = 16;
+        snapshot.rgba8888.resize(16 * 16 * 4);
+        snapshot.rgba8888.fill(char(0));
+        for (int row = 0; row < 16; ++row) {
+            for (int col = 0; col < 16; ++col) {
+                const char cell = kCursorRows[row][col];
+                if (cell == '.')
+                    continue;
+                const int offset = (row * 16 + col) * 4;
+                const int channel = cell == 'W' ? 255 : 0;
+                snapshot.rgba8888[offset] = static_cast<char>(channel);
+                snapshot.rgba8888[offset + 1] = static_cast<char>(channel);
+                snapshot.rgba8888[offset + 2] = static_cast<char>(channel);
+                snapshot.rgba8888[offset + 3] = static_cast<char>(255);
+            }
+        }
+        return snapshot;
+    }
+
+    void sendCursor(ClientState &client)
+    {
+        if (!client.socket || !client.supportsCursor)
+            return;
+        // RealVNC promotes its initial 8/16-bpp framebuffer to 32 bpp but
+        // cannot parse the reduced CPIXEL cursor payload in between. Keep the
+        // local cursor until the viewer is on the native 32-bpp format.
+        if (client.pixels.bitsPerPixel != 32)
+            return;
+
+        RfbCursorSnapshot snapshot;
+        if (m_security.cursorProvider) {
+            snapshot = m_security.cursorProvider(
+                client.pointerPositionKnown ? client.lastPointerX : -1,
+                client.pointerPositionKnown ? client.lastPointerY : -1,
+                client.framebufferWidth,
+                client.framebufferHeight);
+        }
+
+        const qsizetype expectedBytes = static_cast<qsizetype>(snapshot.width) * snapshot.height * 4;
+        if (snapshot.width <= 0 || snapshot.height <= 0 || snapshot.width > 256
+            || snapshot.height > 256 || snapshot.rgba8888.size() != expectedBytes) {
+            snapshot = fallbackCursor();
+        }
+        snapshot.hotspotX = std::clamp(snapshot.hotspotX, 0, snapshot.width - 1);
+        snapshot.hotspotY = std::clamp(snapshot.hotspotY, 0, snapshot.height - 1);
+
+        QByteArray signature;
+        signature.append(reinterpret_cast<const char *>(&snapshot.hotspotX), sizeof(int));
+        signature.append(reinterpret_cast<const char *>(&snapshot.hotspotY), sizeof(int));
+        signature.append(snapshot.rgba8888);
+        if (signature == client.cursorSignature)
+            return;
+
+        QByteArray update;
+        update.append(char(0));  // FramebufferUpdate
+        update.append(char(0));
+        appendU16(update, 1);    // one cursor rectangle
+        appendU16(update, static_cast<std::uint16_t>(snapshot.hotspotX));
+        appendU16(update, static_cast<std::uint16_t>(snapshot.hotspotY));
+        appendU16(update, static_cast<std::uint16_t>(snapshot.width));
+        appendU16(update, static_cast<std::uint16_t>(snapshot.height));
+        appendS32(update, kEncodingCursor);
+
+        const auto *rgba = reinterpret_cast<const unsigned char *>(snapshot.rgba8888.constData());
+        for (int row = 0; row < snapshot.height; ++row) {
+            for (int col = 0; col < snapshot.width; ++col) {
+                const int offset = (row * snapshot.width + col) * 4;
+                appendEncodedPixel(update,
+                                   rgba[offset],
+                                   rgba[offset + 1],
+                                   rgba[offset + 2],
+                                   client.pixels);
+            }
+        }
+
+        const int maskStride = (snapshot.width + 7) / 8;
+        for (int row = 0; row < snapshot.height; ++row) {
+            QByteArray rowMask(maskStride, char(0));
+            for (int col = 0; col < snapshot.width; ++col) {
+                const int offset = (row * snapshot.width + col) * 4;
+                if (rgba[offset + 3] != 0) {
+                    rowMask[col / 8] = static_cast<char>(
+                        static_cast<unsigned char>(rowMask.at(col / 8))
+                        | static_cast<unsigned char>(0x80U >> (col % 8)));
+                }
+            }
+            update += rowMask;
+        }
+
+        if (client.socket->write(update) != update.size()) {
+            protocolFailure(client, "RFB cursor update write failed");
+            return;
+        }
+        client.cursorSignature = signature;
+    }
+
+    void scheduleCursor(ClientState &client)
+    {
+        if (!client.socket)
+            return;
+        const QPointer<QTcpSocket> socket(client.socket);
+        QTimer::singleShot(0, this, [this, socket] {
+            if (!socket)
+                return;
+            const auto it = m_clients.find(socket);
+            if (it != m_clients.end())
+                refreshCursor(*it->second);
+        });
+    }
+
+    void refreshCursor(ClientState &client)
+    {
+        if (!client.supportsCursor)
+            return;
+        // Do not consume the polling interval while the viewer is still on a
+        // reduced-bpp format; a later 32-bpp format change must send promptly.
+        if (client.pixels.bitsPerPixel != 32) {
+            client.lastCursorPollMs = -1;
+            return;
+        }
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (client.lastCursorPollMs >= 0 && now - client.lastCursorPollMs < 250)
+            return;
+        client.lastCursorPollMs = now;
+        sendCursor(client);
     }
 
     void releaseHeldInput(ClientState &client)
@@ -1100,6 +1307,7 @@ private:
 
         client.modifiers = modifiersForHeldKeysyms(client.heldKeysyms);
         const hyremote::InputModifiers modifiers = aggregateModifiers();
+        const hyremote::InputModifiers clientModifiers = client.modifiers;
 
         if (publishTransition) {
             hyremote::InputEvent event;
@@ -1110,10 +1318,15 @@ private:
             publishInput(event);
         }
 
-        if (!pressed || !publishTransition
-            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Control)
-            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Alt)
-            || hyremote::hasModifier(modifiers, hyremote::InputModifier::Meta)) {
+        // Text belongs to this client's press. A second viewer pressing the
+        // same key while another holds it must still receive its own text, and
+        // another viewer's Ctrl/Alt/Meta must not suppress it. Keep the global
+        // key transition above for cross-viewer shortcut arming, but evaluate
+        // text against this client's own held modifiers.
+        if (!pressed
+            || hyremote::hasModifier(clientModifiers, hyremote::InputModifier::Control)
+            || hyremote::hasModifier(clientModifiers, hyremote::InputModifier::Alt)
+            || hyremote::hasModifier(clientModifiers, hyremote::InputModifier::Meta)) {
             return true;
         }
 
@@ -1121,7 +1334,7 @@ private:
         if (!text.empty()) {
             hyremote::InputEvent textEvent;
             textEvent.kind = hyremote::InputEventKind::Text;
-            textEvent.modifiers = modifiers;
+            textEvent.modifiers = clientModifiers;
             textEvent.textUtf8 = std::move(text);
             publishInput(textEvent);
         }
@@ -1152,6 +1365,7 @@ private:
         client.lastPointerX = x;
         client.lastPointerY = y;
         client.pointerPositionKnown = true;
+        refreshCursor(client);
         const hyremote::InputModifiers modifiers = aggregateModifiers();
 
         hyremote::InputEvent move;
@@ -1297,6 +1511,7 @@ private:
     {
         if (!client.socket || client.phase != ClientPhase::Normal)
             return;
+        refreshCursor(client);
         armContinuousRequest(client);
         if (!client.delivery.hasOutstandingRequest())
             return;

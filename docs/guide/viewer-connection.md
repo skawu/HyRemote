@@ -152,7 +152,7 @@ Generic 明确保留原生 Qt platform；QPA 通过 Factory Trampoline 委托给
 
 Headless/offscreen 运行不能单独证明所有物理显示/键鼠组合都已经资格化。
 
-> **TODO V0.4：** 完成最终 Windows/Linux 物理本机显示 + 本地输入 + 远程访问并存资格。
+> **Owner #563 / TODO V0.4：** 仅 Windows x86_64 的物理本机显示、本地输入与远程访问并存属于强制验收；Linux/嵌入式由用户验证，缺少环境不阻塞候选或发布。
 
 ## 安全边界
 

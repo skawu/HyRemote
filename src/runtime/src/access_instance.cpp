@@ -1,26 +1,211 @@
 #include "access_instance.hpp"
 
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
+#include <QBitmap>
+#include <QColor>
+#include <QCursor>
+#include <QGuiApplication>
+#include <QImage>
+#include <QMutex>
+#include <QPainter>
+#include <QPen>
+#include <QPixmap>
+#include <QPolygon>
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+#  include <QQuickItem>
+#  include <QQuickWindow>
+#endif
+#include <QThread>
 #include <QTimer>
 #include <QObject>
 #include <QPointer>
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+#  include <QApplication>
+#  include <QWidget>
+#endif
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>
 
 #include "detail/component_factories.hpp"
+#include "detail/cursor_mapping.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
 namespace {
+
+QPolygon polygonFrom(std::initializer_list<QPoint> points)
+{
+    QPolygon polygon;
+    for (const QPoint &point : points)
+        polygon << point;
+    return polygon;
+}
+
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+QCursor quickCursorUnderPointer(QQuickWindow *window, const QPoint &globalPoint = QPoint())
+{
+    if (!window)
+        return QCursor(Qt::ArrowCursor);
+    QQuickItem *item = window->contentItem();
+    if (!item)
+        return window->cursor();
+
+    const QPoint pointer = globalPoint.isNull() ? QCursor::pos() : globalPoint;
+    QPointF point = window->mapFromGlobal(pointer);
+    while (QQuickItem *child = item->childAt(point.x(), point.y())) {
+        point = child->mapFromItem(item, point);
+        item = child;
+    }
+    return item == window->contentItem() ? window->cursor() : item->cursor();
+}
+#endif
+
+QPoint cursorShapeHotspot(Qt::CursorShape shape)
+{
+    switch (shape) {
+    case Qt::IBeamCursor:
+    case Qt::CrossCursor:
+    case Qt::SizeVerCursor:
+    case Qt::SizeHorCursor:
+    case Qt::SizeBDiagCursor:
+    case Qt::SizeFDiagCursor:
+    case Qt::SizeAllCursor:
+    case Qt::ForbiddenCursor:
+    case Qt::WaitCursor:
+    case Qt::BusyCursor:
+        return QPoint(8, 8);
+    case Qt::PointingHandCursor:
+    case Qt::OpenHandCursor:
+    case Qt::ClosedHandCursor:
+        return QPoint(7, 1);
+    case Qt::UpArrowCursor:
+        return QPoint(8, 1);
+    default:
+        return QPoint(0, 0);
+    }
+}
+
+QImage cursorShapeImage(Qt::CursorShape shape)
+{
+    QImage image(16, 16, QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+
+    const auto line = [&painter](int x1, int y1, int x2, int y2) {
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawLine(x1, y1, x2, y2);
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawLine(x1, y1, x2, y2);
+    };
+    const auto polygon = [&painter](const QPolygon &points) {
+        painter.setPen(QPen(Qt::black, 1));
+        painter.setBrush(Qt::white);
+        painter.drawPolygon(points);
+    };
+
+    switch (shape) {
+    case Qt::IBeamCursor:
+        line(8, 2, 8, 13);
+        line(5, 3, 11, 3);
+        line(5, 12, 11, 12);
+        break;
+    case Qt::CrossCursor:
+        line(8, 2, 8, 13);
+        line(2, 8, 13, 8);
+        break;
+    case Qt::SizeHorCursor:
+        line(2, 8, 13, 8);
+        line(2, 8, 5, 5);
+        line(2, 8, 5, 11);
+        line(13, 8, 10, 5);
+        line(13, 8, 10, 11);
+        break;
+    case Qt::SizeVerCursor:
+        line(8, 2, 8, 13);
+        line(8, 2, 5, 5);
+        line(8, 2, 11, 5);
+        line(8, 13, 5, 10);
+        line(8, 13, 11, 10);
+        break;
+    case Qt::SizeFDiagCursor:
+        line(3, 12, 12, 3);
+        line(3, 12, 3, 8);
+        line(3, 12, 7, 12);
+        line(12, 3, 8, 3);
+        line(12, 3, 12, 7);
+        break;
+    case Qt::SizeBDiagCursor:
+        line(3, 3, 12, 12);
+        line(3, 3, 7, 3);
+        line(3, 3, 3, 7);
+        line(12, 12, 8, 12);
+        line(12, 12, 12, 8);
+        break;
+    case Qt::SizeAllCursor:
+        line(8, 2, 8, 13);
+        line(2, 8, 13, 8);
+        line(8, 2, 5, 5);
+        line(8, 2, 11, 5);
+        line(8, 13, 5, 10);
+        line(8, 13, 11, 10);
+        line(2, 8, 5, 5);
+        line(2, 8, 5, 11);
+        line(13, 8, 10, 5);
+        line(13, 8, 10, 11);
+        break;
+    case Qt::PointingHandCursor:
+        polygon(polygonFrom({{7, 1}, {9, 1}, {9, 7}, {12, 7}, {12, 14}, {4, 14}, {4, 7}, {6, 7}}));
+        break;
+    case Qt::OpenHandCursor:
+        polygon(polygonFrom({{4, 7}, {5, 2}, {6, 1}, {7, 2}, {7, 6}, {8, 1}, {9, 1},
+                              {9, 6}, {10, 2}, {11, 3}, {11, 7}, {12, 9}, {12, 14}, {4, 14}}));
+        break;
+    case Qt::ClosedHandCursor:
+        polygon(polygonFrom({{5, 5}, {12, 5}, {13, 8}, {13, 13}, {4, 13}, {4, 8}}));
+        break;
+    case Qt::ForbiddenCursor:
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawEllipse(QRect(2, 2, 12, 12));
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawEllipse(QRect(2, 2, 12, 12));
+        line(4, 12, 12, 4);
+        break;
+    case Qt::WaitCursor:
+    case Qt::BusyCursor:
+        polygon(polygonFrom({{4, 2}, {12, 2}, {9, 8}, {12, 14}, {4, 14}, {7, 8}}));
+        break;
+    case Qt::UpArrowCursor:
+        polygon(polygonFrom({{8, 1}, {3, 7}, {6, 7}, {6, 14}, {10, 14}, {10, 7}, {13, 7}}));
+        break;
+    case Qt::WhatsThisCursor:
+        painter.setPen(QPen(Qt::black, 3));
+        painter.drawArc(QRect(5, 2, 7, 7), 20 * 16, 250 * 16);
+        painter.drawLine(9, 8, 9, 11);
+        painter.drawPoint(9, 14);
+        painter.setPen(QPen(Qt::white, 1));
+        painter.drawArc(QRect(5, 2, 7, 7), 20 * 16, 250 * 16);
+        painter.drawLine(9, 8, 9, 11);
+        painter.drawPoint(9, 14);
+        break;
+    case Qt::BlankCursor:
+        break;
+    default:
+        return {};
+    }
+    return image;
+}
 
 AccessState mapState(hyremote::SessionState state)
 {
@@ -1094,7 +1279,174 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
         return false;
     }
 
-    detail::TransportComponent transport = detail::createDefaultTransport(address, port, security);
+    detail::RfbSecurityConfig effectiveSecurity = security;
+    effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
+    // Cursor reads happen on the RFB worker. A BlockingQueuedConnection here can deadlock when the
+    // GUI calls stop() while the worker is waiting for readSnapshot() and transport shutdown is
+    // waiting for that worker. Keep a shared snapshot and refresh it asynchronously instead.
+    struct CursorCacheState
+    {
+        QMutex mutex;
+        detail::RfbCursorSnapshot snapshot;
+        std::atomic<bool> refreshPending{false};
+    };
+    const auto cursorState = std::make_shared<CursorCacheState>();
+    effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject), cursorState](
+                                            int remoteX,
+                                            int remoteY,
+                                            std::uint32_t sourceWidth,
+                                            std::uint32_t sourceHeight) -> detail::RfbCursorSnapshot {
+        QObject *object = guard.data();
+        if (!object)
+            return {};
+
+        const auto readSnapshot = [object, remoteX, remoteY, sourceWidth, sourceHeight]() -> detail::RfbCursorSnapshot {
+            QCursor cursor(Qt::ArrowCursor);
+            if (const QCursor *overrideCursor = QGuiApplication::overrideCursor()) {
+                cursor = *overrideCursor;
+            }
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+            else if (auto *widget = qobject_cast<QWidget *>(object)) {
+                const QPointF logical = remoteX >= 0 && remoteY >= 0
+                                            ? detail::mapFramebufferCursorPoint(remoteX,
+                                                                                remoteY,
+                                                                                sourceWidth,
+                                                                                sourceHeight,
+                                                                                widget->width(),
+                                                                                widget->height())
+                                            : QPointF(-1.0, -1.0);
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? widget->mapToGlobal(logical.toPoint())
+                                           : QCursor::pos();
+                if (auto *underPointer = QApplication::widgetAt(pointer))
+                    cursor = underPointer->cursor();
+                else
+                    cursor = widget->cursor();
+            }
+#endif
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+            else if (auto *window = qobject_cast<QQuickWindow *>(object)) {
+                const QPointF logical = remoteX >= 0 && remoteY >= 0
+                                            ? detail::mapFramebufferCursorPoint(remoteX,
+                                                                                remoteY,
+                                                                                sourceWidth,
+                                                                                sourceHeight,
+                                                                                window->width(),
+                                                                                window->height())
+                                            : QPointF(-1.0, -1.0);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? window->mapToGlobal(logical).toPoint()
+                                           : QPoint();
+#else
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? window->mapToGlobal(logical.toPoint())
+                                           : QPoint();
+#endif
+                cursor = quickCursorUnderPointer(window, pointer);
+            } else if (auto *item = qobject_cast<QQuickItem *>(object); item && item->window()) {
+                const QPointF logical = remoteX >= 0 && remoteY >= 0
+                                            ? detail::mapFramebufferCursorPoint(remoteX,
+                                                                                remoteY,
+                                                                                sourceWidth,
+                                                                                sourceHeight,
+                                                                                item->width(),
+                                                                                item->height())
+                                            : QPointF(-1.0, -1.0);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? item->mapToGlobal(logical).toPoint()
+                                           : QPoint();
+#else
+                const QPoint pointer = logical.x() >= 0.0 && logical.y() >= 0.0
+                                           ? item->mapToGlobal(logical.toPoint()).toPoint()
+                                           : QPoint();
+#endif
+                cursor = quickCursorUnderPointer(item->window(), pointer);
+            }
+#endif
+
+            QImage image = cursor.pixmap().toImage().convertToFormat(QImage::Format_ARGB32);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            const QBitmap bitmap = cursor.bitmap();
+            const QBitmap bitmapMask = cursor.mask();
+            const bool hasBitmap = !bitmap.isNull() && !bitmapMask.isNull();
+#else
+            const QBitmap *bitmapPtr = cursor.bitmap();
+            const QBitmap *maskPtr = cursor.mask();
+            const bool hasBitmap = bitmapPtr && maskPtr && !bitmapPtr->isNull() && !maskPtr->isNull();
+#endif
+            if (image.isNull() && hasBitmap) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+                const QImage source = bitmap.toImage();
+                const QImage maskImage = bitmapMask.toImage();
+#else
+                const QImage source = bitmapPtr->toImage();
+                const QImage maskImage = maskPtr->toImage();
+#endif
+                if (source.size() == maskImage.size()) {
+                    image = QImage(source.size(), QImage::Format_ARGB32);
+                    for (int y = 0; y < source.height(); ++y) {
+                        for (int x = 0; x < source.width(); ++x) {
+                            const bool opaque = qGray(maskImage.pixelColor(x, y).rgb()) != 0;
+                            image.setPixelColor(x,
+                                                y,
+                                                opaque ? source.pixelColor(x, y)
+                                                       : QColor(0, 0, 0, 0));
+                        }
+                    }
+                }
+            }
+
+            const bool usedShapeGlyph = image.isNull();
+            if (usedShapeGlyph)
+                image = cursorShapeImage(cursor.shape());
+            if (image.isNull() || image.width() <= 0 || image.height() <= 0
+                || image.width() > 256 || image.height() > 256) {
+                return {};
+            }
+
+            const QImage rgba = image.convertToFormat(QImage::Format_RGBA8888);
+            const QPoint hotspot = usedShapeGlyph ? cursorShapeHotspot(cursor.shape()) : cursor.hotSpot();
+            detail::RfbCursorSnapshot snapshot;
+            snapshot.width = rgba.width();
+            snapshot.height = rgba.height();
+            snapshot.hotspotX = std::clamp(hotspot.x(), 0, rgba.width() - 1);
+            snapshot.hotspotY = std::clamp(hotspot.y(), 0, rgba.height() - 1);
+            snapshot.rgba8888 = QByteArray(reinterpret_cast<const char *>(rgba.constBits()),
+                                           rgba.sizeInBytes());
+            return snapshot;
+        };
+
+        if (QThread::currentThread() == object->thread()) {
+            auto snapshot = readSnapshot();
+            QMutexLocker locker(&cursorState->mutex);
+            cursorState->snapshot = snapshot;
+            return snapshot;
+        }
+
+        detail::RfbCursorSnapshot cached;
+        {
+            QMutexLocker locker(&cursorState->mutex);
+            cached = cursorState->snapshot;
+        }
+        if (!cursorState->refreshPending.exchange(true)) {
+            QMetaObject::invokeMethod(
+                object,
+                [guard, readSnapshot, cursorState] {
+                    if (guard) {
+                        auto fresh = readSnapshot();
+                        QMutexLocker locker(&cursorState->mutex);
+                        cursorState->snapshot = fresh;
+                    }
+                    cursorState->refreshPending.store(false);
+                },
+                Qt::QueuedConnection);
+        }
+        return cached;
+    };
+
+    detail::TransportComponent transport = detail::createDefaultTransport(address, port, effectiveSecurity);
     if (!transport.transport) {
         const QString message = transport.error.isEmpty()
                                     ? QStringLiteral("no default HyRemote transport is available")
@@ -1115,7 +1467,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
                                                                     viewerDemand,
                                                                     observeRuntime);
 
-    auto freshSession = std::make_unique<hyremote::Session>();
+    // The Core scheduler is demand-gated at zero viewers, but an unpaced scheduler is free to issue
+    // capture requests as fast as the GUI event loop can render while a viewer is attached. A static
+    // 480x240 Widgets window was measured at ~135% of one core in that state. Pace the shared
+    // runtime at a normal desktop cadence; this still leaves headroom for input-to-visible updates
+    // while preventing an idle connected viewer from spinning the capture path.
+    hyremote::SessionConfig sessionConfig;
+    sessionConfig.capture.targetFramesPerSecond = 60.0;
+    auto freshSession = std::make_unique<hyremote::Session>(sessionConfig);
     auto observedCapture =
         std::make_unique<ObservedCaptureSource>(std::move(targetComponents.capture),
                                                 targetObject,

@@ -380,6 +380,28 @@ function(_hyremote_generate_remoteaccess_deploy_script target output_var)
         message(FATAL_ERROR
             "hyremote_deploy(TARGET ${target}) expected shared runtime target HyRemote::RemoteAccess in this SDK")
     endif()
+    if(TARGET Qt5::Core AND (NOT DEFINED QT_DEPLOY_SUPPORT OR "${QT_DEPLOY_SUPPORT}" STREQUAL ""))
+        # Qt 5.15 has no Qt6 deployment support script. Use the Qt5 windeployqt tool for the
+        # basic native desktop closure and install the shared runtime explicitly. This is a
+        # bounded Qt5 deployment path, not the Qt6 deployment-helper contract.
+        get_target_property(_qt5_core_file Qt5::Core IMPORTED_LOCATION_RELEASE)
+        if(NOT _qt5_core_file)
+            get_target_property(_qt5_core_file Qt5::Core IMPORTED_LOCATION)
+        endif()
+        get_filename_component(_qt5_bin "${_qt5_core_file}" DIRECTORY)
+        if(EXISTS "${_qt5_bin}/windeployqt.exe")
+            install(FILES "$<TARGET_FILE:HyRemote::RemoteAccess>" DESTINATION bin)
+            if(EXISTS "${_qt5_bin}/Qt5Network.dll")
+                install(FILES "${_qt5_bin}/Qt5Network.dll" DESTINATION bin)
+            endif()
+            install(CODE "execute_process(COMMAND \"${_qt5_bin}/windeployqt.exe\" --no-translations --no-system-d3d-compiler --libdir \"\${CMAKE_INSTALL_PREFIX}/bin\" --plugindir \"\${CMAKE_INSTALL_PREFIX}/plugins\" \"\${CMAKE_INSTALL_PREFIX}/bin/$<TARGET_FILE_NAME:${target}>\" RESULT_VARIABLE _hyremote_qt5_deploy_result)\nif(NOT _hyremote_qt5_deploy_result EQUAL 0)\n  message(FATAL_ERROR \"Qt5 windeployqt failed for ${target}\")\nendif()\nfile(WRITE \"\${CMAKE_INSTALL_PREFIX}/bin/qt.conf\" \"[Paths]\\nPrefix=..\\nPlugins=plugins\\n\")")
+            set(${output_var} "" PARENT_SCOPE)
+            return()
+        endif()
+        message(STATUS "  hyremote_deploy(TARGET ${target}): Qt5 windeployqt unavailable; build only")
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
     if(NOT DEFINED QT_DEPLOY_SUPPORT OR "${QT_DEPLOY_SUPPORT}" STREQUAL "")
         message(FATAL_ERROR
             "hyremote_deploy(TARGET ${target}) requires Qt's deployment support script from Qt6 Core")
@@ -910,7 +932,7 @@ function(hyremote_deploy)
                 NO_UNSUPPORTED_PLATFORM_ERROR
             )
             install(SCRIPT "${_hyremote_qt_deploy_script}")
-        elseif(HYREMOTE_DEPLOY_QPA OR DEFINED _hyremote_supplemental_deploy_script)
+        elseif(HYREMOTE_DEPLOY_QPA OR (DEFINED _hyremote_supplemental_deploy_script AND NOT "${_hyremote_supplemental_deploy_script}" STREQUAL ""))
             message(FATAL_ERROR
                 "hyremote_deploy(TARGET ${HYREMOTE_DEPLOY_TARGET}) requires Qt's qt_generate_deploy_app_script()")
         endif()

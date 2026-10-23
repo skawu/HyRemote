@@ -84,6 +84,22 @@ jobs:
           fi
           echo "release-authority changed: ${authority_changed}"
           echo "authority_changed=${authority_changed}" >> "$GITHUB_OUTPUT"
+      # #571: cheap CI classifier regression only if its authority changed; no Qt runner.
+      # The full CI workflow deliberately does not subscribe to ordinary PR commits.
+      - name: Self-test CI selector when its authority changes (no Qt)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
+               .github/scripts/resolve-ci-scope.py .github/workflows/ci.yml | grep -q .; then
+            python3 .github/scripts/resolve-ci-scope.py --self-test
+          else
+            echo "CI selector unchanged; no Qt or CI checks needed before merge"
+          fi
 
   release-tag-audit-self-test:
     # #380: the resolver's self test is release-authority evidence, not a per-event ritual. It runs when the

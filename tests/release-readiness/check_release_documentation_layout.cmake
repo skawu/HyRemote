@@ -37,9 +37,9 @@ require_doc_token("docs/internal/repository-layout.md" "`src/core` is the shared
                   "canonical Core source path")
 require_doc_token("docs/internal/repository-layout.md" "`src/runtime` owns implementation shared by multiple/all integration frontends"
                   "canonical Runtime source path")
-require_doc_token("docs/release-package-manifest.md" "one Shared Runtime"
+require_doc_token("docs/release-package-manifest.md" "一个共享 Runtime"
                   "single shipped Runtime")
-require_doc_token("docs/release-package-manifest.md" "Core is internal composition"
+require_doc_token("docs/release-package-manifest.md" "Core 是内部组合"
                   "Core is internal composition, not an application SDK target")
 forbid_doc_token("docs/release-package-manifest.md" "`core/` low-level implementation headers and tests"
                  "legacy root Core path")
@@ -93,15 +93,15 @@ require_doc_token("src/core/CMakeLists.txt" "src/core/tests/check_dependencies.c
 # Dependency-policy prose is release-facing architecture truth. Pin the current product statements - the frontends
 # are not separate toolchains, development tooling does not become a runtime prerequisite, and dependencies are not
 # fetched behind the consumer back - instead of the historical wording and version pins that used to carry them.
-require_doc_token("docs/dependency-policy.md" "rather than separate backend toolchains"
+require_doc_token("docs/dependency-policy.md" "C++/QML/Generic/QPA 是接入前端，不是独立后端工具链"
                   "frontends are not separate backend toolchains")
 forbid_doc_token("docs/dependency-policy.md" "Source under `spikes/`"
                  "legacy spikes path in dependency policy")
-require_doc_token("docs/dependency-policy.md" "Development tooling does not become an SDK/runtime prerequisite"
+require_doc_token("docs/dependency-policy.md" "开发工具不会因为仓库使用它就成为 SDK/runtime 前提"
                   "development tooling is not an SDK/runtime prerequisite")
-require_doc_token("docs/dependency-policy.md" "No hidden dependency downloads"
+require_doc_token("docs/dependency-policy.md" "没有隐藏依赖下载"
                   "no hidden dependency downloads")
-require_doc_token("docs/dependency-policy.md" "are not silently added through hidden"
+require_doc_token("docs/dependency-policy.md" "产品依赖不会通过隐藏的"
                   "product dependencies are not fetched implicitly")
 
 # User-facing entry points must identify the canonical layout document so repository contributors do

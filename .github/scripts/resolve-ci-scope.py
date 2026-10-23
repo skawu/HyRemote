@@ -14,35 +14,49 @@ Contract:
 Lanes (``lane``):
   * ``PR_DRAFT`` - a draft pull request runs cheap governance only. Product jobs require a ready pull request, so a
     draft never starts the Windows/Linux Qt matrix.
-  * ``PR_FAST`` - a ready pull request is classified from its real ``base...head`` diff and validates only what that
-    diff can affect: the affected product capabilities, the deploy evidence for contracts it touches, and readiness
-    when it touches a readiness-consumed surface.
-  * ``DEVELOP_SENTINEL`` - a ``develop`` push runs seconds-scale repository policy. The merged pull request already
-    passed its own hosted acceptance, so re-running the whole dual-platform matrix on every merge only duplicates
-    cost without producing a new decision.
-  * ``FULL_GATE`` - the complete dual-platform, four-frontend, all-evidence run. It is reachable only through an
-    explicit ``workflow_dispatch`` (an exact candidate, a release branch or main validation is dispatched the same
-    way), never as a side effect of an ordinary change.
+  * ``PR_FAST`` - live ready-PR merge decision: scoped Windows tests must pass.
+  * ``POST_MERGE`` - retired classifier compatibility only; no CI develop push event.
+  * ``FULL_GATE`` - explicit exact-SHA candidate/release qualification dispatched manually,
+    never a side effect of a PR commit or ordinary develop merge.
 
 Decisions (``decision``) - what the run can be waited on for (#380):
   * ``OBSERVE`` - fire-and-observe. No merge or release decision is waiting on this lane: a draft pull request, the
-    develop sentinel or any other no-product reporting run. An OBSERVE result never blocks sequencing independent
-    work; a later red result opens a defect owner instead of a hold.
-  * ``MERGE`` - hosted evidence for a ready pull request's merge decision. This is decided by the lane, not by
-    whether a Qt matrix starts: a ready docs-only pull request is still a MERGE decision, answered by governance
-    rather than by product runners.
+    non-PR/draft runs. OBSERVE cannot authorize a merge or release.
+  * ``MERGE`` - actual PR merge decision: require selected Windows Qt and governance
+    jobs via the stable ci-merge-verdict check plus code review.
   * ``CANDIDATE`` - an admitted exact-SHA full qualification. A candidate or release decision may wait on it.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 
 PEERS = ["cpp", "qml", "generic", "qpa"]
+
+# Historical product matrix lists both Windows and Linux. Owner #563 makes Windows
+# the only *required* product/RC/GA lane; Linux is user-validation/best-effort.
+# Keep the Linux entry as a diagnostic reference, not an automatic blocking gate.
+PRODUCT_MATRIX = [
+    {
+        "name": "Linux x86_64 / Qt 6.8.3",
+        "os": "ubuntu-24.04",
+        "aqt_host": "linux",
+        "aqt_arch": "linux_gcc_64",
+        "qt_dir": "gcc_64",
+    },
+    {
+        "name": "Windows x86_64 / Qt 6.8.3",
+        "os": "windows-2022",
+        "aqt_host": "windows",
+        "aqt_arch": "win64_msvc2022_64",
+        "qt_dir": "msvc2022_64",
+    },
+]
 
 COMMON_FILES = {
     "CMakeLists.txt", "build.cmd", "build.yml", ".github/workflows/ci.yml",
@@ -73,6 +87,10 @@ COMMON_DEPLOY_PATHS = (
     "cmake/HyRemoteDeploy.cmake",
     "cmake/HyRemoteInstall.cmake",
     "tests/release-readiness/run_release_evidence.cmake",
+    # This script defines the host dependency closure used by every clean consumer/deploy cell on Linux. If it changes,
+    # a normal product build can still pass while isolated consumers fail during configure, so every deploy family
+    # must execute rather than being excluded by the fast-lane selector.
+    ".github/scripts/install-linux-qt-desktop-deps.sh",
 )
 
 # Surfaces that carry release/product truth the readiness gates assert. A change here has to execute readiness, or
@@ -123,10 +141,10 @@ RFB_PRODUCT_FIT_PREFIXES = ("src/integrations/cpp/tests/",)
 # Installed Tool is T4 evidence, independent from the expensive viewer product-fit.
 TOOL_INSTALLED_TEST = "hyremote-tool-installed-diagnostic$"
 TOOL_INSTALLED_PREFIXES = (
-    "examples/remote-support-showcase/",
+    "tools/hyremote-tool/",
     # Direct shared Tool sources and parent registration also need to build Tool.
     "examples/hyremote_branding.",
-    "examples/CMakeLists.txt",
+    "tools/CMakeLists.txt",
     "logo/hyremote-branding.qrc",
     "logo/huayan-logo-single.png",
     "cmake/HyRemoteInstall.cmake",
@@ -139,9 +157,9 @@ TOOL_PRODUCT_FIT_TEST = "hyremote-tool-product-fit$"
 TOOL_PRODUCT_FIT_PREFIXES = (
     ".github/scripts/resolve-ci-scope.py",
     ".github/workflows/ci.yml",
-    "examples/remote-support-showcase/CMakeLists.txt",
-    "examples/remote-support-showcase/input_probe.cpp",
-    "tests/product-e2e/showcase_product_fit.py",
+    "tools/hyremote-tool/CMakeLists.txt",
+    "tools/hyremote-tool/rfb_client.cpp",
+    "tools/hyremote-tool/test_rfb_client.cpp",
 )
 
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
@@ -220,11 +238,23 @@ def is_built_example_path(path: str) -> bool:
     return name in EXAMPLE_BUILD_NAMES or name.endswith(EXAMPLE_BUILD_SUFFIXES)
 
 
+def is_test_only(changed: list[str]) -> bool:
+    """True when a ready PR touches only the repository test tree.
+
+    Test-only changes cannot alter the shipped product, so they do not need the
+    full Windows+Linux product matrix. The Windows product lane still builds and
+    runs the complete test set; the release/full gate always keeps both
+    platforms. A CMake or workflow change is not test-only because it can change
+    how the product is built.
+    """
+    return bool(changed) and all(path.startswith("tests/") for path in changed)
+
+
 def lane_for(event: str, draft: bool) -> str:
     if event == "workflow_dispatch":
         return "FULL_GATE"
     if event == "push":
-        return "DEVELOP_SENTINEL"
+        return "POST_MERGE"
     if event == "pull_request":
         return "PR_DRAFT" if draft else "PR_FAST"
     return "UNKNOWN"
@@ -241,7 +271,7 @@ def decision_for(lane: str) -> str:
     return {
         "PR_DRAFT": "OBSERVE",
         "PR_FAST": "MERGE",
-        "DEVELOP_SENTINEL": "OBSERVE",
+        "POST_MERGE": "OBSERVE",
         "FULL_GATE": "CANDIDATE",
     }.get(lane, "OBSERVE")
 
@@ -251,20 +281,31 @@ def changed_paths(event: str, base: str, head: str) -> list[str]:
         return subprocess.check_output(
             ["git", "diff", "--name-only", f"{base}...{head}"], text=True
         ).splitlines()
-    # A develop push and a manual dispatch are decided by their event, not by a diff. The sentinel lane runs policy
-    # only, and the full gate is full by definition, so no path needs to be inspected - and inventing one (the former
-    # "CMakeLists.txt" placeholder) claimed every capability for every merge.
+    if event == "push":
+        if not base or not head:
+            raise ValueError("post-merge changed-path classification requires before and head SHAs")
+        if set(base) == {"0"}:
+            base = f"{head}~1"
+        return subprocess.check_output(["git", "diff", "--name-only", f"{base}..{head}"], text=True).splitlines()
+    # Explicit manual FULL_GATE selects every product capability regardless of diff.
     return []
 
 
-def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, str]:
+def resolve(event: str, changed: list[str], draft: bool = False,
+            legacy_dual_platform: bool = False) -> dict[str, str]:
     lane = lane_for(event, draft)
     full_gate = lane == "FULL_GATE"
-    product_lane = lane in ("PR_FAST", "FULL_GATE")
+    product_lane = lane in ("PR_FAST", "FULL_GATE", "POST_MERGE")
+    test_only = product_lane and not full_gate and is_test_only(changed)
+    if legacy_dual_platform and not full_gate:
+        raise ValueError('legacy dual-platform qualification is only available on explicit FULL_GATE dispatch')
+    # New Features, Windows-first RC/GA and ordinary PRs: Windows only. Explicit historical
+    # v0.2.0.1 maintenance may still request the release-time Windows+Linux evidence contract.
+    product_matrix = PRODUCT_MATRIX if legacy_dual_platform else [PRODUCT_MATRIX[1]]
     selected: set[str] = set()
 
     # The full gate is full by definition: every frontend and every piece of deploy evidence, regardless of a diff,
-    # because its whole purpose is the complete dual-platform acceptance run.
+    # because its whole purpose is the complete **Windows** acceptance run.
     if full_gate:
         selected.update(PEERS)
 
@@ -282,6 +323,11 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
         if matched:
             continue
         if is_built_example_path(path):
+            selected.update(PEERS)
+        elif path.startswith("tools/hyremote-tool/"):
+            # The companion client is built outside examples but still consumes
+            # the product's wire behavior and Qt deployment. Keep its changes
+            # on the ordinary product lane.
             selected.update(PEERS)
         elif path.startswith("tests/"):
             selected.update(PEERS)
@@ -326,8 +372,7 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
 
     ordered = [peer for peer in PEERS if peer in selected]
     integrations = ",".join(ordered)
-    # A capability is only built when the lane is allowed to build anything: the sentinel is policy, and a draft has
-    # not asked for review yet.
+    # Only ready-PR and explicitly dispatched FULL_GATE runs subscribe to CI.
     product = bool(ordered) and product_lane
 
     # Fast pull requests keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
@@ -358,6 +403,8 @@ def resolve(event: str, changed: list[str], draft: bool = False) -> dict[str, st
     return {
         "lane": lane,
         "decision": decision_for(lane),
+        "test_only": "true" if test_only else "false",
+        "product_matrix": json.dumps(product_matrix, separators=(",", ":")),
         "product": "true" if product else "false",
         "integrations": integrations if product else "",
         "qpa": "true" if ("qpa" in selected and product) else "false",
@@ -381,15 +428,17 @@ def self_test() -> int:
     failures = 0
 
     cases = [
-        # Draft pull requests and the develop sentinel must not start the product matrix at all.
+        # Docs-only develop merges and historical draft PRs do not run Qt product checks.
         ("draft product PR runs no product job", "pull_request", ["src/runtime/runtime.cpp"], True,
          {"lane": "PR_DRAFT", "product": "false", "integrations": ""}),
         ("draft governance PR runs no product job", "pull_request", ["README.md"], True,
          {"lane": "PR_DRAFT", "product": "false"}),
-        ("develop push is the sentinel lane", "push", [], False,
-         {"lane": "DEVELOP_SENTINEL", "product": "false", "integrations": "", "test_exclude": ""}),
-        ("develop sentinel runs no deploy evidence", "push", [], False,
+        ("develop docs merge skips Qt", "push", ["docs/proposals/notes.md"], False,
+         {"lane": "POST_MERGE", "product": "false", "integrations": "", "test_exclude": ""}),
+        ("develop docs merge does not need deploy evidence", "push", ["docs/proposals/notes.md"], False,
          {"generic_evidence": "false", "cpp_evidence": "false", "qml_evidence": "false", "qpa_evidence": "false"}),
+        ("develop source merge starts Qt", "push", ["src/runtime/session.cpp"], False,
+         {"lane": "POST_MERGE", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("manual dispatch is the full gate", "workflow_dispatch", [], False,
          {"lane": "FULL_GATE", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("full gate runs all evidence", "workflow_dispatch", [], False,
@@ -438,6 +487,9 @@ def self_test() -> int:
          {"readiness_evidence": "true"}),
         ("install authority change runs readiness", "pull_request", ["cmake/HyRemoteInstall.cmake"], False,
          {"readiness_evidence": "true"}),
+        ("Linux host dependency authority runs every deploy family", "pull_request",
+         [".github/scripts/install-linux-qt-desktop-deps.sh"], False,
+         {"generic_evidence": "true", "cpp_evidence": "true", "qml_evidence": "true", "qpa_evidence": "true"}),
         # A PR that reaches every integration evidence contract is full integration for that run, so it excludes no
         # integration sub-build - an empty exclusion survives as an empty exclusion. The candidate-only product fit is
         # the single named exception and is asserted separately below.
@@ -488,7 +540,7 @@ def self_test() -> int:
         ("draft security PR requests no security evidence", "pull_request",
          ["src/runtime/tests/test_vnc_auth.cpp"], True,
          {"security_evidence": "false", "product": "false"}),
-        ("develop sentinel requests no security evidence", "push", [], False, {"security_evidence": "false"}),
+        ("docs-only merge requests no security evidence", "push", ["docs/proposals/notes.md"], False, {"security_evidence": "false"}),
         # The full gate must not silently become security-on: exact release/candidate security profile selection is
         # separate release authority, and this slice only binds affected-PR hosted evidence.
         ("full gate does not silently become security-on", "workflow_dispatch", [], False,
@@ -503,7 +555,7 @@ def self_test() -> int:
          [".github/release/release-trains.json"], False, {"decision": "MERGE", "product": "false"}),
         ("ready affected-product PR decides MERGE", "pull_request", ["src/runtime/runtime.cpp"], False,
          {"decision": "MERGE", "product": "true"}),
-        ("develop push decides OBSERVE", "push", [], False, {"decision": "OBSERVE"}),
+        ("develop push decides OBSERVE", "push", ["src/runtime/session.cpp"], False, {"decision": "OBSERVE"}),
         ("admitted full gate decides CANDIDATE", "workflow_dispatch", [], False, {"decision": "CANDIDATE"}),
     ]
 
@@ -569,15 +621,15 @@ def self_test() -> int:
 
     for description, event, changed, expected_excluded in (
             ("the Tool product-fit wiring change runs it", "pull_request",
-             ["tests/product-e2e/showcase_product_fit.py"], False),
+             ["tools/hyremote-tool/test_rfb_client.cpp"], False),
             ("CI workflow wiring runs Tool product fit", "pull_request",
              [".github/workflows/ci.yml"], False),
             ("CI scope classifier wiring runs Tool product fit", "pull_request",
              [".github/scripts/resolve-ci-scope.py"], False),
-            ("showcase input probe contract runs Tool product fit", "pull_request",
-             ["examples/remote-support-showcase/input_probe.cpp"], False),
+            ("Tool client contract runs Tool product fit", "pull_request",
+             ["tools/hyremote-tool/rfb_client.cpp"], False),
             ("an ordinary Tool implementation PR still excludes it", "pull_request",
-             ["examples/remote-support-showcase/main.cpp"], True),
+             ["tools/hyremote-tool/main.cpp"], True),
             ("an unrelated pull request excludes Tool product fit", "pull_request",
              ["src/core/session/session.cpp"], True),
             ("the full gate requires Tool product fit", "workflow_dispatch", [], False)):
@@ -590,9 +642,9 @@ def self_test() -> int:
     # The build-tree viewer fit and installed Tool are separately selected.
     for description, event, changed, should_run in (
             ("Tool main selects installed execution", "pull_request",
-             ["examples/remote-support-showcase/main.cpp"], True),
+             ["tools/hyremote-tool/main.cpp"], True),
             ("Tool registration selects installed execution", "pull_request",
-             ["examples/remote-support-showcase/CMakeLists.txt"], True),
+             ["tools/hyremote-tool/CMakeLists.txt"], True),
             ("Tool shared branding source selects installed execution", "pull_request",
              ["examples/hyremote_branding.cpp"], True),
             ("Tool shared branding header selects installed execution", "pull_request",
@@ -601,8 +653,8 @@ def self_test() -> int:
              ["logo/hyremote-branding.qrc"], True),
             ("Tool canonical logo image selects installed execution", "pull_request",
              ["logo/huayan-logo-single.png"], True),
-            ("parent example registration selects installed execution", "pull_request",
-             ["examples/CMakeLists.txt"], True),
+            ("parent tools registration selects installed execution", "pull_request",
+             ["tools/CMakeLists.txt"], True),
             ("deploy change selects installed Tool", "pull_request",
              ["cmake/HyRemoteDeploy.cmake"], True),
             ("runner change selects installed Tool", "pull_request",
@@ -619,7 +671,7 @@ def self_test() -> int:
     # full-integration lane into a no-op, and any other total expression would be just as dishonest. This is a real
     # match test against a name no exclusion may ever match, not a string comparison of the expression.
     for description, event, changed, draft in (
-            ("develop sentinel", "push", [], False),
+            ("docs-only develop merge", "push", ["docs/proposals/notes.md"], False),
             ("full gate", "workflow_dispatch", [], False),
             ("fast PR", "pull_request", ["src/core/session/session.cpp"], False),
             ("documentation PR", "pull_request", ["docs/proposals/notes.md"], False),
@@ -630,10 +682,62 @@ def self_test() -> int:
                   f"{resolved['test_exclude']!r}")
             failures += 1
 
+    # All ready PR and full-gate matrices contain only the mandatory Windows lane;
+    # Linux is optional/manual and must never delay a Windows release (#563).
+    for description, event, changed, draft, expected in (
+            ("test-only ready PR", "pull_request", ["tests/TEST_CATALOG.md"], False, True),
+            ("test code ready PR", "pull_request",
+             ["tests/release-readiness/check_release_metadata.cmake"], False, True),
+            ("test plus product change", "pull_request",
+             ["tests/TEST_CATALOG.md", "src/core/session/session.cpp"], False, False),
+            ("docs change", "pull_request", ["docs/proposals/notes.md"], False, False),
+            ("test-only draft", "pull_request", ["tests/TEST_CATALOG.md"], True, False),
+            ("full gate", "workflow_dispatch", [], False, False)):
+        resolved = resolve(event, changed, draft)
+        actual = resolved["test_only"] == "true"
+        if actual != expected:
+            print(f"CASE FAILED: {description}: test_only={resolved['test_only']!r}")
+            failures += 1
+        matrix = json.loads(resolved["product_matrix"])
+        expected_platforms = 1
+        if len(matrix) != expected_platforms:
+            print(f"CASE FAILED: {description}: product_matrix has {len(matrix)} entries, "
+                  f"expected {expected_platforms}")
+            failures += 1
+        if matrix and matrix[0].get("os") != "windows-2022":
+            print(f"CASE FAILED: {description}: mandatory product lane must keep Windows, got {matrix[0].get('os')!r}")
+            failures += 1
+
+    # Historical maintenance may explicitly request both hosted platforms, never by default.
+    legacy = resolve('workflow_dispatch', [], False, legacy_dual_platform=True)
+    legacy_matrix = json.loads(legacy['product_matrix'])
+    if len(legacy_matrix) != 2 or {cell['os'] for cell in legacy_matrix} != {'windows-2022', 'ubuntu-24.04'}:
+        print('CASE FAILED: explicit legacy full gate must retain Windows+Linux evidence')
+        failures += 1
+    try:
+        resolve('pull_request', ['src/core/session/session.cpp'], False, legacy_dual_platform=True)
+        print('CASE FAILED: ordinary PR cannot opt into legacy release matrix')
+        failures += 1
+    except ValueError:
+        pass
+
+    # Ready PRs require Windows Qt for product changes; docs-only PRs do not imply product PASS.
+    for affected in ("src/runtime/session.cpp", "cmake/HyRemoteBuild.cmake",
+                     "src/integrations/qpa/qpa_platform.cpp"):
+        result = resolve("pull_request", [affected])
+        matrix = json.loads(result["product_matrix"])
+        if result["product"] != "true" or len(matrix) != 1 or matrix[0]["os"] != "windows-2022":
+            print(f"CASE FAILED: ready PR did not select Windows for {affected}")
+            failures += 1
+    docs_only = resolve("pull_request", ["docs/proposals/notes.md"])
+    if docs_only["product"] != "false" or docs_only["decision"] != "MERGE":
+        print("CASE FAILED: docs-only merge has incorrect decision/Qt scope")
+        failures += 1
+
     # The whole lane -> decision map, asserted exhaustively: an unknown lane must stay OBSERVE so that nothing can
     # start waiting on a lane whose purpose is not defined.
     expected_decisions = {
-        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "DEVELOP_SENTINEL": "OBSERVE", "FULL_GATE": "CANDIDATE",
+        "PR_DRAFT": "OBSERVE", "PR_FAST": "MERGE", "POST_MERGE": "OBSERVE", "FULL_GATE": "CANDIDATE",
         "UNKNOWN": "OBSERVE",
     }
     for lane, expected in expected_decisions.items():
@@ -645,12 +749,12 @@ def self_test() -> int:
     if failures:
         print(f"resolve-ci-scope self test: {failures} contradiction(s)")
         return 1
-    print("resolve-ci-scope self test: PASS (draft and sentinel lanes run no product job, examples documentation "
-          "selects no capability, release authority is governance, empty exclusions stay empty, no exclusion can "
-          "match every test, fast lane preserved, readiness runs where it is consumed, the candidate-only product "
-          "fit runs where it is required rather than by default, security-on evidence is selected only by the "
-          "VNC-auth/private-security surfaces and never silently by the full gate, and the decision map is "
-          "OBSERVE/MERGE/CANDIDATE with PR_FAST always a merge decision)")
+    print("resolve-ci-scope self test: PASS (draft and docs-only merge skip Qt, merged code uses Windows, "
+          "one product platform, examples documentation selects no capability, release authority is governance, "
+          "empty exclusions stay empty, no exclusion can match every test, fast lane preserved, readiness runs "
+          "where it is consumed, the candidate-only product fit runs where it is required rather than by default, "
+          "security-on evidence is selected only by the VNC-auth/private-security surfaces and never silently by "
+          "the full gate, and the decision map is OBSERVE/MERGE/CANDIDATE with PR_FAST always a merge decision)")
     return 0
 
 
@@ -660,6 +764,7 @@ def main() -> int:
     parser.add_argument("--base", default=os.environ.get("BASE_SHA", ""))
     parser.add_argument("--head", default=os.environ.get("HEAD_SHA", ""))
     parser.add_argument("--draft", default=os.environ.get("PR_IS_DRAFT", ""))
+    parser.add_argument("--legacy-dual-platform", default=os.environ.get("LEGACY_DUAL_PLATFORM", "false"))
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -671,7 +776,9 @@ def main() -> int:
         return 2
 
     draft = str(args.draft).strip().lower() in ("1", "true", "yes")
-    outputs = resolve(args.event, changed_paths(args.event, args.base, args.head), draft)
+    legacy_dual = str(args.legacy_dual_platform).strip().lower() in ('true', '1', 'yes')
+    outputs = resolve(args.event, changed_paths(args.event, args.base, args.head), draft,
+                      legacy_dual_platform=legacy_dual)
 
     output_path = os.environ.get("GITHUB_OUTPUT")
     lines = [f"{key}={value}" for key, value in outputs.items()]

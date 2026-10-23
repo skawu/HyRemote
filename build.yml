@@ -1,51 +1,63 @@
-# HyRemote project build configuration.
-# Precedence: built-in defaults < this file < build.cmd command-line overrides.
-version: 1
+# HyRemote 构建配置。
+# 优先级：默认值 < build.yml < 命令行。
+# 日常命令：build.cmd build / test / install / rebuild；--show-config 查看最终配置。
+# 切换平台配置：复制本文件为 build.<profile>.yml，执行 build.cmd build --config=build.<profile>.yml。
+version: 1  # 示例：1
 
 build:
-  type: Release
-  directory: build
-  generator: Ninja
-  jobs: auto
-  examples: true
+  type: Release        # 示例：Debug、RelWithDebInfo
+  directory: build     # 示例：build-debug
+  generator: Ninja     # 示例：Visual Studio 17 2022、Unix Makefiles
+  jobs: auto           # 示例：4、8
+  examples: true       # 示例：false
 
-# Leave blank to use the Qt kit already provided by the environment.
 qt:
+  # 显式指定完整 Qt Kit（版本 + 编译器 + 架构），无需二次确认。
+  # 示例：C:/Qt/6.8.3/msvc2022_64、C:/Qt/6.8.3/mingw_64
+  # 留空：先检查 QTDIR/CMAKE_PREFIX_PATH，再扫描本机 Qt；
+  # 多个可用 Kit 时在交互终端列出编号并由用户选择，不会默认选最新。
+  # CI / 无交互终端请明确指定 prefix 或使用 --qt-prefix=PATH；--no-prompt 禁止提问。
+  # 注意：Qt 5.15 尚不能配置当前 Qt6 代码；Qt 6.12 不是已认证版本，
+  #       QPA 当前必须使用精确的 Qt 6.8.3 private ABI。
   prefix: ""
 
-# Native builds normally leave these blank. Cross/embedded builds can pin the
-# compiler executables directly and/or select a repository/toolchain file.
 compiler:
-  c: ""
-  cxx: ""
-  toolchain: ""
+  # 交叉编译优先使用 toolchain；c/cxx 仅在没有 toolchain 时使用，二者不要同时配置。
+  c: ""                # 示例：/opt/toolchain/bin/aarch64-linux-gnu-gcc
+  cxx: ""              # 示例：/opt/toolchain/bin/aarch64-linux-gnu-g++
+  toolchain: ""        # 示例：cmake/toolchains/aarch64-linux-gnu.cmake
+                       # 示例：/opt/qt-6.8.3-aarch64/bin/qt.toolchain.cmake
 
-# Four peer application integration frontends over the same Common Runtime.
-# No frontend implies or enables another frontend.
 integrations:
-  cpp: true
-  qml: true
-  generic: true
-  qpa: true
+  cpp: true            # 示例：false
+  qml: true            # 示例：false
+  generic: true        # 示例：false
+  qpa: true            # 示例：false
+  # 常用组合：全开；仅 cpp；仅 qml；仅 qpa；全 false（仅 runtime）。
 
-# Transport security is a Common Runtime capability, not an integration mode.
 transport:
-  security: false
+  security: false      # 示例：true（VNC Authentication）
 
 tests:
-  build: false
-  run: false
-  parallel: auto
-  exclude: ""
-  xvfb: false
+  build: false         # 示例：true
+  run: false           # 示例：true
+  parallel: auto       # 示例：4、8
+  exclude: ""          # 示例："rfb-listener-reachability|qpa-.*"
+  xvfb: false          # 示例：true
 
-# Any non-structural CMake cache value can be persisted here instead of being
-# repeated as -D... on every invocation. Dedicated build.yml fields above must
-# not be duplicated in this map.
 cmake:
-  HYREMOTE_DEFAULT_PORT: 5921
+  # 非结构化 CMake cache；专用字段不要放这里。
+  HYREMOTE_DEFAULT_PORT: 5921   # 示例：6000
+  # CMAKE_SYSROOT: /opt/aarch64-sysroot
+  # HYREMOTE_TOOLCHAIN_PREFIX: /opt/gcc-arm/bin/aarch64-none-linux-gnu-
+  # Quick-only runtime（不部署 Qt Widgets）：
+  # HYREMOTE_BUILD_WIDGETS_ADAPTER: OFF
+  # HYREMOTE_BUILD_QUICK_ADAPTER: ON
 
-# Optional environment values are applied consistently to configure/build/test.
-# Example:
 # env:
-#   PKG_CONFIG_PATH: /opt/sysroot/usr/lib/pkgconfig
+#   PKG_CONFIG_PATH: /opt/aarch64-sysroot/usr/lib/pkgconfig
+#   QTDIR: /opt/qt-6.8.3-aarch64
+
+# 交叉编译：复制本文件为 build.<profile>.yml，修改 qt/compiler/cmake 后执行：
+#   build.cmd build --config=build.<profile>.yml
+# 详见 docs/guide/cross-compilation.md。
