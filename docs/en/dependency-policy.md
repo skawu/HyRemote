@@ -1,5 +1,5 @@
 # Third-Party Dependency Policy
-> **Current authority (2026-10-23):** V0.3.0.0 Product Preview has shipped; first GA support covers only actually qualified Windows Qt5.15/Qt6.8 cells. Encrypted transport, gateway/cloud and additional platforms require separate admission; historical TODOs do not create GA requirements. Long-lived dependency and vulnerability response: [#611](https://github.com/skawu/HyRemote/issues/611).
+> **Current authority (2026-10-23):** V0.3.0.0 Product Preview has shipped; first GA support covers only actually qualified Windows Qt5.15/Qt6.8 cells. Encrypted transport, gateway, relay, cloud services and additional platforms require separate admission; historical TODOs do not create GA requirements. Long-lived dependency and vulnerability response: [#611](https://github.com/skawu/HyRemote/issues/611).
 
 
 > Language / 语言: **English** | [中文](../dependency-policy.md)
