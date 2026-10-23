@@ -37,7 +37,7 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 - 四种接入方式是**并列**的，没有主次；都走同一条
   [获得 → 接入 → 部署 → 运行 → 连接](guide/integrate-your-project.md) 流程；
-- Windows x86_64 / Qt 6.8.3 是当前必需验证参考环境；Linux/ARM64 为用户验证待完成范围，不据此宣称 Supported；
+- **已发布 V0.3.0.0 历史矩阵**：Qt 6.8.3 Windows **及 Linux** x86_64 是当时已发布的参考/资格声明（详见 `compatibility.md`），不能追改历史；**新 Feature/RC/GA** 仅 Windows x86_64 为强制真实资格环境，Linux/ARM64 属新版本用户验证待完成范围，未经新的实际测试不得推断当前 Supported（#563）；
 - Widgets 与 Qt Quick 共用一个 Runtime；
 - 默认监听 `0.0.0.0:5921`（本机 IPv4 接口，不只是 loopback），远程输入默认关闭；
 - 默认**未认证、未加密**，仅适用于**可信局域网**，不适合暴露到 Internet。
