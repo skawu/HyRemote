@@ -585,6 +585,26 @@ Current authority and work split:
 - **V1** publishes and fixes qualified support and performance envelopes.
 - **Post-GA** feature work continues to run the regression programme so feature accumulation cannot silently erode accepted performance.
 
+## 23A. Long-lived weak-network resilience policy (Owner, 2026-10-23)
+
+**Decision: protect architectural correctness and bounded degradation first; open targeted optimization only on reproducible user evidence.** This does not activate a separate weak-network Feature or widen already approved #144/#175/#370 Windows acceptance and V0.3.3/V0.4/first-GA release gates. The authoritative decision is [#370](https://github.com/skawu/HyRemote/issues/370).
+
+### Baseline product guarantees and architectural constraints
+
+- Under constrained bandwidth or elevated RTT, prefer the **freshest useful framebuffer** over a backlog of historical states; keep capture, pending encoding/delivery and per-viewer work bounded, and isolate slow viewers.
+- Preserve deterministic Raw fallback; negotiate practical compression, accumulated damage, correct incremental/non-incremental requests, full refresh after resize, and correct standard-RFB fallback when Continuous Updates/Fence is unavailable. Do not send redundant static framebuffer data as a keepalive.
+- Prioritize fresh capture after remote input while reducing obsolete work and keeping the local Qt app responsive. This is **application-level backlog control**, not a guarantee that control messages can jump ahead of framebuffer bytes already queued in TCP; do not build a competing TCP congestion controller.
+- **Never drop frames by corrupting the wire stream:** only replace coalescible updates not yet committed to encoding/wire delivery; preserve accumulated damage and requested regions. Never truncate already emitted RFB/TCP bytes or silently lose state necessary for a correct next update.
+- Separate session liveness from framebuffer activity. On disconnect/reconnect, avoid stale input events, authentication downgrades and silently re-enabling remote control. Automatic reconnection by third-party standard VNC viewers depends on each viewer, not a uniform HyRemote Server guarantee.
+
+### Feedback-driven qualification and follow-up
+
+Do **not** promise fixed weak-network FPS, RTT, interaction latency, outage-time visibility, or automatic reconnection within a deadline. The section 3 SLO for **>=100 Mbps and RTT<=20 ms wired LAN is not a weak-network SLA**. Network-tier matrices, advanced adaptation, lossy or additional encodings, media transport and Viewer reconnect UX are not automatic V0.3.3, RC or first-GA requirements.
+
+When an actual user report or reproducible correctness/boundedness regression emerges, collect exact SHA, target Qt/OS/QPA, viewer/version, workload/resolution, network type and available measured bandwidth/RTT/loss, symptoms/frame age and redacted diagnostics. Decompose capture, encode, application/transport queue, wire and Viewer display before opening a narrowly scoped optimization Issue under #370. Any new Feature number needs separate #24/#95 activation; do not preallocate it.
+
+Reliable bounded network shaping may be added opportunistically under #374 as a **diagnostic/regression check**. Label unavailable runs NOT_RUN rather than claiming weak-network support; Linux/embedded community validation remains nonblocking for the first Windows GA per #563.
+
 ## 24. Current status
 
 Do not invent measurements. Update this table only with exact accepted evidence.
