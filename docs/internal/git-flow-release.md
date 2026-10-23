@@ -175,7 +175,7 @@ Creating a release branch is not acceptance and never authorizes its tag.
 
 ## 8. Release acceptance and finalization
 
-For the current first-GA contract, **Windows x86_64** actual Qt5.15/Qt6.8 evidence is mandatory. Linux/ARM64/Wayland/EGLFS must not be added as hidden physical gates; only independently validated cells may be labeled Supported. Follow the [current roadmap](product-version-delivery-roadmap-2026-10-23.md) and merged #606.
+For the current first-GA contract, **Windows x86_64** actual Qt5.15/Qt6.8 evidence is mandatory. Linux/ARM64/Wayland/EGLFS must not be added as hidden physical gates; only independently validated cells may be labeled Supported. Follow the [current roadmap](product-version-delivery-roadmap-2026-10-23.md) and merged PR 606.
 
 For V1.0.0.0, at minimum verify:
 
