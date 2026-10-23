@@ -209,6 +209,8 @@ See [`docs/security.md`](docs/security.md).
 
 ## Product roadmap
 
+**Current release scope and feature sequence:** [authoritative product/version roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md) (#594/#605). Active V0.3.3.0 delivers Raw/TRLE, Damage, maintained real Windows GUI Viewer interoperability; the next qualified product outcome prioritizes **Windows Qt 5.15 LTS and Qt 6.8 LTS**, before full HyRemoteTool enhancement. Host config/text watermark and actually tested Qt application + Docker deployment follow; HyRemoteTool D workbench evolves incrementally. **Qt 6.5/Qt 6.12 and Logo watermark only after V1.0 GA**. No future Feature numbers are preallocated and RC/GA do not introduce new capabilities.
+
 HyRemote is delivered progressively:
 
 | Product line | Product promise |
