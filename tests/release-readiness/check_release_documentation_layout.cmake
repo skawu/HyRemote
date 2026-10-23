@@ -125,7 +125,7 @@ foreach(required_token
         "delete_branch_on_merge=true"
         "private vulnerability reporting"
         "Do not describe the current workflow/audit layer as equivalent to branch protection."
-        "#104 actual Windows/Linux acceptance complete"
+        "#33/#343/#57/#95 Windows Qt5.15/Qt6.8"
         "#109 physical/native coexistence evidence complete"
         "The first seven items are repository governance readiness. The last two are product acceptance.")
     require_doc_token("${admin_doc}" "${required_token}" "V1 repository administration preparation contract")
