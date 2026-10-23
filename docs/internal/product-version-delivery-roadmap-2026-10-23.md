@@ -7,14 +7,14 @@
 - 产品范围决定：2026-10-23。**最新 Owner 决定覆盖较早“Qt 5.15/6.5/6.8 在首轮 GA 前全部完成”的规划**：V1.0.0.0 前只要求 Qt **5.15 LTS** 与 **6.8 LTS** 的准确 Windows 合格单元；Qt **6.5 LTS** 和 **6.12 LTS** 在 **V1.0.0.0 正式 GA 后**各自推进（#605）。
 - **Qt 5.15/6.8 适配优先于 HyRemoteTool 工作台完整化**。HyRemoteTool 是 D 综合工作台，A 优先的远程连接/基础诊断按小范围 PR 随多个版本逐步完善。
 - 此文档是负责人**产品成果排序/版本范围决定**，不等于 V0.3.x 精确 Feature 编号已经激活。#24/#95 在实际功能 implementation-ready、独立用户价值及范围验收明确之后才分配准确编号和 release-trains.json mandatory children。**不得预占 V0.3.4～V0.3.7 的固定功能主题**。
-- 历史发布 v0.1.0.0、v0.2.0.0、v0.2.0.1、v0.3.0.0 不追改；0.3.1/0.3.2 retired 不复活；**当前唯一 activated/NOT_READY Feature 是 V0.3.3.0**，#144/#175 范围及 #370 Windows Viewer 真实证据不扩张。V0.4 RC / V1 GA 还未激活。
+- 历史发布 v0.1.0.0、v0.2.0.0、v0.2.0.1、v0.3.0.0 不追改；0.3.1/0.3.2 retired 不复活；**当前进行中、已激活但 NOT_READY 的 V0.3.x Feature 是 V0.3.3.0**，#144/#175 范围及 #370 Windows Viewer 真实证据不扩张。**V0.4.0.0 RC 是 machine `conditional_trains` 明确 `active:false` 的未激活候选；V1.0.0.0 GA 则已作为 machine `trains` 中可选的规则配置存在，但 GA 尚未通过 #33/#95/RC 门槛，未被接受、更未发布**。`machine profile selectable` 绝不等于已获准发布或已取得 Supported 资格。
 - 仅 Windows x86_64 是首轮强制真实构建/设备测试环境（#563）。Linux/Wayland/ARM64/EGLFS 为用户验证/资格未定，不能无证据宣称 Supported，也不阻断独立 Windows 成果。
 
 ## 一、交付对象与版本定义
 
 **四种对等接入方式：** Embedded C++ API、Declarative QML API、Generic Plugin、Transparent QPA Proxy。它们共享一套 Core/Shared Runtime；Widgets 与 Qt Quick 是 UI 目标，不是新增 Runtime。Qt5.15/Qt6.8 的实际合格单元逐个按 Windows Qt Kit/CPU/编译器/Qt patch、C++/QML/Generic/QPA 路线、Widgets/Quick、安装消费者、RFB Viewer 和 QPA exact Private ABI 判断，不承诺未经实测的所有组合。
 
-**GA 前第一轮产品交付主线：** (1) V0.3.3.0 Raw/TRLE/Damage/Viewer 及性能收口；(2) Qt5.15 与 Qt6.8 Windows 资格 (#603/#604)；(3) 主机配置路径与文字水印 (#591/#589)；(4) 用户应用 Docker 联合部署 (#592，实际运行才可支持)；(5) HyRemoteTool D 工作台沿多个成果逐步发布 (#581–#590)，其 SDK/进阶诊断后续增量 (#587/#588)；(6) V0.4 RC 资格冻结 → V1 GA；(7) GA 后 Qt6.5/Qt6.12 (#605) 与 Logo (#593) 等独立准入。**这里只规划功能成果，不宣布具体新版本已激活或其功能已经完成。**
+**GA 前第一轮产品交付主线：** (1) V0.3.3.0 Raw/TRLE/Damage/Viewer 及性能收口；(2) Qt5.15 与 Qt6.8 Windows 资格 (#603/#604)；(3) 主机配置路径与文字水印 (#591/#589)；(4) 用户应用 Docker 联合部署 (#592，实际运行才可支持)；(5) HyRemoteTool D 工作台沿多个成果逐步发布 (#581–#590)，其 SDK/进阶诊断后续增量 (#587/#588)；(6) V0.4 RC 资格冻结 → V1 GA；(7) GA 后 Qt6.5/Qt6.12 (#605) 与 Logo (#593) 等独立准入。**这里只规划功能成果，不宣布任何未来 V0.3.x Feature 已激活或其功能已完成；V1 的既存 machine train 不等于 GA 已验收或发布。**
 
 ## 二、版本与功能完整分配
 
@@ -26,7 +26,7 @@
 | **后续独立 V0.3.x Feature 候选** | **用户自己的 Qt App 与 HyRemote Docker 联合部署** | **#592**：依赖可运行 #591 配置/数据 API，真实 Dockerfile/Compose + Qt 插件/显示后端、RFB 连通、非 root、只读配置/密钥、可写 volume、restart/recreate 后持久化 | 没跑真实 Qt 应用容器不能宣称 Docker Supported；不因无法取得 Linux 设备阻断已合格的 Windows Features |
 | **横跨多个独立 Feature 的 Tool 增量** | D 综合工作台逐步从已发布的基础 Viewer 升级到现场操作/诊断/开发自助工具 | **#581** 实用 UI、**#582** Session/默认只读/控制安全、**#590** 本机系统 Auto 语言+设置手动持久化；**#583** 保存设备、**#584** Fit/100%/全屏、**#585** 基础诊断；全部成熟后由 **#586** 对 S1 形成同 SHA Windows 总体验收；**#587** 导入宿主诊断与 **#588** SDK/Qt Kit 四路线指导都接在 S1 之后，可并行 | 不把整套 Tool S1 或高级 SDK/诊断加入首个 Qt 适配 Feature 的 mandatory；每次 Feature 发行说明按已合格 Tool 子功能陈述 |
 | **V0.4.0.0 RC（未激活）** | 冻结**Qt 5.15 与 6.8** 的真实 Windows 支持矩阵，全面验证已交付产品 | #235/#343/#602：Qt5.15 与 Qt6.8 的适用 Windows exact Kit/Widgets/Quick/四路线/Private ABI、外部 GUI Viewer、性能/安全/SDK 安装/升级回滚、Tool 已发货能力与文字水印/路径等声明，同 SHA 发布闭环 | **不要求 Qt 6.5/6.12 的任何适配、兼容性或真实 Qt Kit PASS**；RC 不开发新 Feature。Docker 如未实测只能标 Unqualified |
-| **V1.0.0.0 GA（未激活）** | 仅提升合格 V0.4 RC 的 Windows 产品资格为首个稳定支持承诺 | #33/#95：**正式 Qt 家族只覆盖已实际资格化的 Qt 5.15/Qt 6.8 单元**，C++/QML/Generic/QPA 支持单元清单、API/包、二语说明、tag/checksums/维护声明；Tool 功能按实际验收声明 | 不暗含 Qt 6.5/6.12 支持；不发布未经实际验证的 Docker/Linux cell |
+| **V1.0.0.0 GA（机器规则已列出；NOT_READY／未发布）** | 仅提升合格 V0.4 RC 的 Windows 产品资格为首个稳定支持承诺 | #33/#95：**正式 Qt 家族只覆盖已实际资格化的 Qt 5.15/Qt 6.8 单元**，C++/QML/Generic/QPA 支持单元清单、API/包、二语说明、tag/checksums/维护声明；Tool 功能按实际验收声明 | 不暗含 Qt 6.5/6.12 支持；不发布未经实际验证的 Docker/Linux cell |
 | **V1.0.0.0 之后，未来独立 Feature（均未编号）** | **Qt 6.5 LTS 及 Qt 6.12 LTS 扩展支持** | **#605**：各自选择确切 patch+compiler Kit，Windows SDK/Widgets/Quick/四路线中可支持组合与 QPA exact ABI，实际安装、连接/输入与性能回归，按真实证据声明 Supported/Limited/Unsupported | **不预留 V1.1/1.2 等编号**，6.5 与 6.12 可分成不同 Feature；在 V1 GA 前不要求真实运行/消费者/外部 Viewer 支持认证 |
 | **V1.0 GA 后其它候选** | 图片 Logo 水印与更高阶安全/管理能力 | **#593** Logo 在文字水印合格且 GA 完成后独立审议；管理/RBAC/TLS/云/浏览器/多设备并发等需要单独价值、安全、Threat Model 评审 | 以上均非首轮 V1.0.0.0 GA mandatory |
 
