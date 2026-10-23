@@ -1,5 +1,5 @@
 # 第三方依赖政策
-> **当前事实源（2026-10-23）：** V0.3.0.0 Product Preview 已发布；首次 GA 仅对真实资格化的 Windows Qt5.15/Qt6.8 单元承诺支持。传输加密、云/Relay 和额外平台均须独立准入；不把历史 TODO 视为版本必交项。依赖/漏洞响应长期责任：[#611](https://github.com/skawu/HyRemote/issues/611)。
+> **当前事实源（2026-10-23）：** V0.3.0.0 Product Preview 已发布；首次 GA 仅对真实资格化的 Windows Qt5.15/Qt6.8 单元承诺支持。传输加密、网关（Gateway）/中继（Relay）/云服务及额外平台均须独立准入；不把历史 TODO 视为版本必交项。依赖/漏洞响应长期责任：[#611](https://github.com/skawu/HyRemote/issues/611)。
 
 
 > 语言 / Language：**中文** ｜ [English](en/dependency-policy.md)
