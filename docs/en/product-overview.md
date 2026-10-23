@@ -181,7 +181,7 @@ See [`../security.md`](../security.md) for the exact security contract.
 
 ## 8. Product roadmap
 
-HyRemote evolves by user value, not by internal subsystem completion. Current release authority lives in the GitHub roadmap and release issues, [`../versioning.md`](../versioning.md), and `.github/release/release-trains.json`. Technology names do not reserve Feature versions.
+HyRemote evolves by user value, not by internal subsystem completion. The **single current product-outcome roadmap** is [`../internal/product-version-delivery-roadmap-2026-10-23.md`](../internal/product-version-delivery-roadmap-2026-10-23.md) (#594/#605); [`../versioning.md`](../versioning.md) only defines version semantics, and `.github/release/release-trains.json` activates exact versions and mandatory children. Technology names do not reserve Feature versions.
 
 Performance follows the same rule: the practical interactive baseline is required before RC or GA. Lower-level hardware or vendor acceleration is activated only by measured evidence.
 
