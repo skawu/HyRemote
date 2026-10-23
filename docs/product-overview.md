@@ -181,7 +181,7 @@ HyRemote 当前的未认证/未加密模式不构成面向互联网的安全承�
 
 ## 8. 产品路线
 
-HyRemote 按用户价值演进，不按内部子系统完成度排版本。当前发布范围和顺序以 GitHub 路线/发布 issue、[`versioning.md`](versioning.md) 和 `.github/release/release-trains.json` 为准。技术名称不预留 Feature 版本号。
+HyRemote 按用户价值演进，不按内部子系统完成度排版本。**当前唯一产品成果路线图**是 [`internal/product-version-delivery-roadmap-2026-10-23.md`](internal/product-version-delivery-roadmap-2026-10-23.md)（#594/#605）；[`versioning.md`](versioning.md) 只定义四段版本语义，`.github/release/release-trains.json` 才能激活精确版本及 mandatory children。技术名称不预留 Feature 版本号。
 
 性能遵循同一原则：RC/GA 前必须具备可用的交互性能基线；更低层的硬件或厂商加速只有在测量证明必要时才启用。
 
