@@ -25,16 +25,16 @@ Do not infer project status from chat memory alone.
 
 ## Current product phase
 
-**V0.3.0.0 Product Preview was released on 2026-10-19** (`v0.3.0.0`), and **V0.3.3.0 was released on 2026-10-23** (`v0.3.3.0`, annotated tag at `2ebe57f`, Windows Qt6.8.3 candidate code `3a65842`, same-candidate Windows L2 `83/83 PASS`). #144/#175 are closed; #370 remains long-lived. **Current next product priority:** Windows Qt5.15/Qt6.8 exact qualified cells (#603/#604), with incremental Tool and independently admitted configuration/watermark work. V0.3.1.0/V0.3.2.0 remain retired; V0.4 RC remains conditionally inactive and is qualification-only when activated; GA is not released.
+**V0.3.0.0 Product Preview was validly released on 2026-10-19** (`v0.3.0.0`). **A public `v0.3.3.0` tag/Release was created on 2026-10-23, then RETRACTED by the current governance audit. It is NOT an accepted release.** The tag at `2ebe57f` is an immutable historical audit record, not authorization to ship; earlier tests/Viewer/performance data were not all obtained at one accepted candidate SHA. See [V0.3.3 release remediation](docs/internal/v0.3.3.0-release-remediation-2026-10-23.md). #144/#175 are currently closed implementation Issues, **not proof of valid release acceptance**; #370 remains long-lived. **Current release P0:** requalify exact-candidate Windows Viewer/auth/performance, correct Git Flow release branch/main/tag and independent gates without reusing the retracted tag. **Next product Feature P0 after release correction:** Windows Qt5.15/Qt6.8 exact qualified cells (#603/#604). V0.3.1.0/V0.3.2.0 remain retired; V0.4 RC conditionally inactive and GA not released.
 
-**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It is a historical 2026-10-21 handoff and is not the current execution queue; historical #144/#175/#370 acceptance and Qt preflight instructions are superseded by the completed V0.3.3 release and latest Owner #594/#605 Qt-family roadmap. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
+**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It is a historical 2026-10-21 handoff and is not the current execution queue; historical #144/#175/#370 implementation work remains useful evidence but **V0.3.3 release acceptance is not complete** after retraction; follow current remediation record and latest Owner #594/#605 Qt-family roadmap. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
 
 Current execution order:
 
 ```text
 verify latest develop + Issue ownership + exact-SHA evidence
  -> reuse merged #553 cursor/input/build-doc regressions; triage only new failures or open review debt
- -> preserve the published V0.3.3.0 (#144 + #175 CLOSED) as a regression baseline; no retroactive release reopening
+ -> remediate retracted v0.3.3.0 public tag (audit-only); freeze one current code SHA and re-run required Windows viewer/auth/performance/L2 evidence via release PR/main/tag, do not reuse the tag
  -> prioritize exact Windows **Qt5.15 + Qt6.8** LTS adaptation #603/#604 before completing HyRemoteTool GUI; other independent outcomes #589/#591/#592 and Tool increments follow
  -> finish only the committed Windows #343 baseline; Qt6.5/Qt6.12 post-GA #605, Linux/embedded user Issues nonblocking
  -> enter V0.4 qualification-only RC after explicit activation
