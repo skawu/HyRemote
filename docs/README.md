@@ -31,13 +31,13 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 ## 产品概览
 
-先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
+先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位与接入。**唯一当前跨版本功能路线图**：[`internal/product-version-delivery-roadmap-2026-10-23.md`](internal/product-version-delivery-roadmap-2026-10-23.md)（Owner #594/#605）；四段版本语义见 [`versioning.md`](versioning.md)，实际激活的准确版本和必需 Issue 仅由 `.github/release/release-trains.json` 决定。首轮 GA 只覆盖合格的 Windows Qt 5.15/6.8 单元，Qt 6.5/6.12 在 GA 后。
 
-当前版本（V0.2 LAN trial）的实际事实：
+当前已发布的 **V0.3.0.0 Product Preview** 的基础产品事实（当前 **V0.3.3.0 尚未通过发布验收**）：
 
 - 四种接入方式是**并列**的，没有主次；都走同一条
   [获得 → 接入 → 部署 → 运行 → 连接](guide/integrate-your-project.md) 流程；
-- Windows x86_64 与 Linux x86_64、Qt 6.8.3 是参考环境；
+- Windows x86_64 / Qt 6.8.3 是当前必需验证参考环境；Linux/ARM64 为用户验证待完成范围，不据此宣称 Supported；
 - Widgets 与 Qt Quick 共用一个 Runtime；
 - 默认监听 `0.0.0.0:5921`（本机 IPv4 接口，不只是 loopback），远程输入默认关闭；
 - 默认**未认证、未加密**，仅适用于**可信局域网**，不适合暴露到 Internet。
@@ -53,7 +53,8 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | [`security.md`](security.md) ｜ [English](en/security.md) | 当前安全行为、默认值和不支持的安全能力 |
 | [`security-model.md`](security-model.md) ｜ [English](en/security-model.md) | 信任边界、威胁模型与后续安全要求 |
 | [`known-limitations.md`](known-limitations.md) ｜ [English](en/known-limitations.md) | 已知限制 |
-| [`versioning.md`](versioning.md) ｜ [English](en/versioning.md) | 产品版本语义与 V0.1 → V1.x 演进 |
+| [`versioning.md`](versioning.md) ｜ [English](en/versioning.md) | 产品版本号语义和精确发布准入规则（不是并行的功能路线图） |
+| [`internal/product-version-delivery-roadmap-2026-10-23.md`](internal/product-version-delivery-roadmap-2026-10-23.md) | **唯一当前产品功能路线图**：交付顺序、Qt LTS、Tool、文字水印、Docker 与 GA 后能力 |
 | [`v1-api-stability.md`](v1-api-stability.md) ｜ [English](en/v1-api-stability.md) | 公开 API 稳定性边界 |
 | [`widgets-capture.md`](widgets-capture.md) ｜ [English](en/widgets-capture.md) | Widgets 采集模型 |
 | [`quick-capture.md`](quick-capture.md) ｜ [English](en/quick-capture.md) | Qt Quick 采集模型 |
