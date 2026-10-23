@@ -812,8 +812,13 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         list(GET _fields 0 _arch)
         list(GET _fields 1 _family)
         list(GET _fields 2 _needs)
-        if(NOT _qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$" OR _qt_version VERSION_LESS "6.8")
-            list(APPEND _qt_rejected "${_prefix} (not buildable: this product currently needs Qt6 >= 6.8)")
+        if(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
+            list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
+        elseif(NOT HYB_QPA
+               AND NOT (_qt_version VERSION_EQUAL "5.15.2"
+                        OR (_qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                            AND NOT _qt_version VERSION_LESS "6.8")))
+            list(APPEND _qt_rejected "${_prefix} (not buildable: needs Qt 5.15.2 or Qt6 >= 6.8)")
         elseif(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
             list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
         elseif(NOT _arch STREQUAL _qt_host_arch)
