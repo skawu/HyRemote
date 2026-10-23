@@ -268,7 +268,7 @@
         "physical-acceptance-under-109",
         "ga-acceptance-under-33"
       ],
-      "cross_version_references": [ 95 ],
+      "cross_version_references": [ 95, 594, 602, 605 ],
       "conditional_items": [],
       "embedded_deferred_issue_numbers": [ 7, 10, 17, 18 ],
       "classified_referenced_issue_numbers": [ 14, 74, 90, 91, 95, 106, 134, 147, 156, 166 ],
