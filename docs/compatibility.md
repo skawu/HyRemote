@@ -34,6 +34,8 @@ HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似�
 
 ## Qt LTS 政策
 
+**首轮 GA 目标（Owner #605；[完整路线图](internal/product-version-delivery-roadmap-2026-10-23.md)）：仅 Qt 5.15 LTS 和 Qt 6.8 LTS 的实际合格 Windows 单元。Qt 6.5 LTS 与 Qt 6.12 LTS 均在 V1.0 GA 发布后另行适配、验证和声明；不属于当前 Support，也不阻挡 V0.4 RC/V1 GA。**
+
 HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 
 当前状态：

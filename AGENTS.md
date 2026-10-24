@@ -7,7 +7,7 @@ This file is the repository-visible starting point for ChatGPT, CodeBuddy and lo
 When sources disagree, use this order:
 
 1. current `develop`, target Issue/latest authoritative comments, exact code and accepted exact-SHA evidence;
-2. product authority: #1 roadmap, #24 version semantics, #343 mandatory pre-GA baseline, the active release-scope Issue and #95 release mechanics;
+2. product authority: **[single current product outcome roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md)** / #594 (including latest Owner Qt scope #605), #1, #24 version semantics, #343 pre-GA applicable baseline, active release-scope Issue and #95 release mechanics; exact activated machine scope is `.github/release/release-trains.json`;
 3. architecture authority: one Core + one Shared Runtime + `src/integrations/{cpp,qml,generic,qpa}`;
 4. execution authority: this file, `CONTRIBUTING.md`, canonical build/test/release/Git-flow documents;
 5. historical chats, branches, superseded PR prose and proposal-era documents are context only and never override current repository truth.
@@ -25,24 +25,25 @@ Do not infer project status from chat memory alone.
 
 ## Current product phase
 
-**V0.3.0.0 Product Preview was released on 2026-10-19** (annotated `v0.3.0.0`). The current development priority is **V0.3-family product-breadth convergence**, with **V0.3.3.0** activated for practical RFB delivery (#144) and maintained GUI-viewer interoperability (#175), as recorded in `.github/release/release-trains.json`. V0.3.1.0 and V0.3.2.0 remain retired planning labels; V0.4.0.0 remains conditionally inactive and qualification-only until its entry gate passes.
+**V0.3.0.0 Product Preview was validly released on 2026-10-19** (`v0.3.0.0`). **A public `v0.3.3.0` tag/Release was created on 2026-10-23, then RETRACTED by the current governance audit. It is NOT an accepted release.** The tag at `2ebe57f` is an immutable historical audit record, not authorization to ship; earlier tests/Viewer/performance data were not all obtained at one accepted candidate SHA. See [V0.3.3 release remediation](docs/internal/v0.3.3.0-release-remediation-2026-10-23.md). #144/#175 are currently closed implementation Issues, **not proof of valid release acceptance**; #370 remains long-lived. **Current release P0:** requalify exact-candidate Windows Viewer/auth/performance, correct Git Flow release branch/main/tag and independent gates without reusing the retracted tag. **Next product Feature P0 after release correction:** Windows Qt5.15/Qt6.8 exact qualified cells (#603/#604). V0.3.1.0/V0.3.2.0 remain retired; V0.4 RC conditionally inactive and GA not released.
 
-**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It records merged correctness fixes for regression watching, prioritizes current #144/#175/#370 acceptance evidence, Qt 6.12 LTS *preflight only*, embedded Quick-only loader correctness and the V0.4/GA decision boundary. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
+**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It is a historical 2026-10-21 handoff and is not the current execution queue; historical #144/#175/#370 implementation work remains useful evidence but **V0.3.3 release acceptance is not complete** after retraction; follow current remediation record and latest Owner #594/#605 Qt-family roadmap. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
 
 Current execution order:
 
 ```text
 verify latest develop + Issue ownership + exact-SHA evidence
  -> reuse merged #553 cursor/input/build-doc regressions; triage only new failures or open review debt
- -> close V0.3.3.0 product outcome (#144 + #175, supported by #370)
- -> finish Windows-applicable #343 Qt/performance/product breadth; accept Linux/embedded user Issues without blocking
+ -> remediate retracted v0.3.3.0 public tag (audit-only); freeze one current code SHA and re-run required Windows viewer/auth/performance/L2 evidence via release PR/main/tag, do not reuse the tag
+ -> prioritize exact Windows **Qt5.15 + Qt6.8** LTS adaptation #603/#604 before completing HyRemoteTool GUI; other independent outcomes #589/#591/#592 and Tool increments follow
+ -> finish only the committed Windows #343 baseline; Qt6.5/Qt6.12 post-GA #605, Linux/embedded user Issues nonblocking
  -> enter V0.4 qualification-only RC after explicit activation
  -> V1.0 GA on one accepted, qualified RC lineage
 ```
 
-**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; Qt5/6.5 require Windows proof before a Windows support claim. Do not preassign V0.3.4.0/V0.3.5.0. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
+**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; **Qt5.15 and Qt6.8** exact applicable cells are the only first-GA LTS families. Qt6.5/Qt6.12 must wait until **after V1 GA #605**.  Do not preassign V0.3.4.0/V0.3.5.0. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
-Qt 6.12 LTS was released in 2026-09; it is a compatibility **preflight**, not a silently added GA support promise. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
+Qt 6.5 LTS and Qt 6.12 LTS are both **post-V1.0.0.0 GA** support projects #605 (not pre-GA qualification gates); optional historical preflight is not a support claim. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
 Cross-cutting test-system work under #393/#394 may progress independently when it does not overlap the active product-path owner; it must not block unrelated V0.3 implementation work merely because its PR is open.
 
@@ -61,7 +62,7 @@ Owned by #234/#333; already released, not the active V0.3.3 task list:
 
 Windows-qualified #343 capability baseline before V0.4 entry; **Linux/embedded evidence listed below is aspirational/user-validation only**, not a release gate (Owner #563):
 
-- Qt 5.15 / 6.5 / 6.8 product families;
+- **Qt 5.15 + Qt 6.8** product families only for the FIRST GA. Qt 6.5 + Qt 6.12 strictly after V1 GA (#605);
 - **Windows x86_64 / qwindows** as the mandatory actual test/deployment environment;
 - Linux x86_64, ARM64/AArch64, qxcb/Wayland/EGLFS as community/user-validation platform paths, with truthful per-cell states;
 - Widgets + Qt Quick/QML;

@@ -153,14 +153,16 @@ Hosted/headless evidence never substitutes for physical/native evidence when the
 
 ## Current roadmap boundary
 
-The current product phase is V0.3.0 Product Preview / self-service adoption. Repository work must distinguish:
+**Current authority:** [cross-version product roadmap](product-version-delivery-roadmap-2026-10-23.md) (#594/#605), #343, #563 and `.github/release/release-trains.json`. The released V0.3.0.0 Product Preview is historical fact, not the current implementation phase. Work must distinguish:
 
-- V0.3.0 self-service productization: four-route SDK/deploy, task-oriented learning/docs and minimum diagnostics;
-- mandatory V0.3-family pre-GA breadth: Qt 5.15/6.5/6.8, Windows/Linux, x86_64/ARM64, required qwindows/qxcb/Wayland/EGLFS cells, practical compressed/incremental delivery, maintained-viewer interop and performance baseline;
-- V0.4 qualification only after that baseline exists;
-- V1.0 support-contract freeze from a qualified V0.4 lineage.
+- **V0.3.3.0 ACTIVE / NOT_READY:** Windows x86_64 Qt 6.8.3 Raw/TRLE incremental/damage, two maintained GUI Viewer paths and #370 performance, with existing mandatory children #144/#175;
+- **Next unnumbered V0.3.x outcome:** Windows **Qt5.15 + Qt6.8** qualified applicable Kit/route/Widgets/Quick and QPA exact private ABI (#603/#57/#604), preserving one Core + Shared Runtime;
+- **Other unnumbered GA-preparation outcomes:** approved host config/text watermark, separately validated Docker and incremental Tool work on their own scoped authority, without forcing all optional work into V1 mandatory gates;
+- **V0.4.0.0 RC:** qualification only for frozen, genuinely supported Windows Qt5.15/6.8 cells and approved shipped functionality; **V1.0.0.0 GA:** promotion of the qualified Windows contract after machine/release evidence;
+- **Post-GA:** Qt6.5 and Qt6.12 independently qualified only after V1 GA (#605), and other security/gateway/Viewer/management/hardware candidates only on evidence-driven activation;
+- **Linux/ARM64/EGLFS/Wayland:** user/community-validation pending, **not** a Windows Feature, RC or first-GA release blocker (#563). Unverified environments never become Supported through portability assumptions.
 
-Repository layout must not pre-reserve technical Feature numbers or classify a #343 hard requirement as optional merely because it lands after V0.3.0.
+The structural architecture constraints in this document remain binding. A repository-layout document **does not independently assign version numbers, add mandatory release children or reinstate withdrawn Qt/platform gates**.
 
 ## Documentation zones
 

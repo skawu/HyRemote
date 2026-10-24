@@ -1,8 +1,8 @@
-> **2026-10-22 Owner #563 platform-scope override:** This is historical planning material, not current feature-gate authority. Windows x86_64 is the only mandatory physical/product/GA platform. Any old Linux/ARM64/EGLFS/Wayland mandatory language and preallocated V0.0.x/V1.x milestones below is superseded by #1, #24, #343, #563 and `.github/release/release-trains.json`. User reports drive optional portability Issue/hotfixes.
+> **ARCHIVED / SUPERSEDED (2026-10-23):** This file preserves older architecture/roadmap history and **is NOT the current execution, Feature assignment, Qt LTS or GA support authority**. Follow [CURRENT PRODUCT ROADMAP](product-version-delivery-roadmap-2026-10-23.md) (#594/#605) and [version semantics](../versioning.md). **First GA Windows Qt 5.15 + 6.8 only; Qt 6.5/6.12 only AFTER V1 GA**; Windows x86_64 is the sole physical platform gate (#563). Old Windows/Linux GA, V0.0.x slot assignments, TLS-before-V1 or any contradictory dates below are not actionable. Activated trains/mandatory list: `.github/release/release-trains.json`. User reports drive optional portability Issue/hotfixes.
 
 # HyRemote Development Roadmap
 
-Status: execution roadmap toward **V1.0.0.0**.
+Status: **HISTORICAL / not an active execution roadmap**. See [current outcome roadmap](product-version-delivery-roadmap-2026-10-23.md).
 
 Companion tool: the active HyRemoteTool plan is [`hyremote-tool-plan.md`](hyremote-tool-plan.md). It ships with V0.3.0.0 as an out-of-process access-plane client; management-plane capabilities are a later, separately activated outcome.
 
