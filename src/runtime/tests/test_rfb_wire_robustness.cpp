@@ -36,6 +36,7 @@
 
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
+#include "../src/transport/rfb_trle.hpp"
 #include "hyremote/core/storage.hpp"
 #include "hyremote/core/transport.hpp"
 #include "rfb_interaction_latency_stats.hpp"
@@ -752,6 +753,16 @@ void testTrleRawAndIncrementalDelivery()
     waitForDisconnected(trleSocket);
     waitForDisconnected(rawSocket);
     transport->stop();
+}
+
+void testOpaqueAlphaPolicy()
+{
+    using hyremote::AlphaMode;
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 255, AlphaMode::Opaque) == 255);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 128, AlphaMode::Premultiplied) == 255);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 128, AlphaMode::Straight) == 128);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(64, 128, AlphaMode::Straight) == 32);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 0, AlphaMode::Straight) == 0);
 }
 
 void testTrlePreferredOverRawOrder()
@@ -2109,6 +2120,7 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testOpaqueAlphaPolicy();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
