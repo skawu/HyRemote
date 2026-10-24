@@ -31,13 +31,13 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 
 ## 产品概览
 
-先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位、四种接入方式、当前版本能力和长期方向。
+先阅读 [`product-overview.md`](product-overview.md) ｜ [English](en/product-overview.md) 了解产品定位与接入。**唯一当前跨版本功能路线图**：[`internal/product-version-delivery-roadmap-2026-10-23.md`](internal/product-version-delivery-roadmap-2026-10-23.md)（Owner #594/#605）；四段版本语义见 [`versioning.md`](versioning.md)，实际激活的准确版本和必需 Issue 仅由 `.github/release/release-trains.json` 决定。首轮 GA 只覆盖合格的 Windows Qt 5.15/6.8 单元，Qt 6.5/6.12 在 GA 后。
 
-当前版本（V0.2 LAN trial）的实际事实：
+以下描述已发布 **V0.3.0.0 Product Preview** 的历史基础；**2026-10-23 公开创建的 `v0.3.3.0` 已因 Git Flow 与同 SHA 验收不合规被撤回（RETRACTED），不是已接受正式发布**；Raw/TRLE 与 Windows GUI Viewer 的候选实现/历史测试记录见 [`releases/v0.3.3.0.md`](releases/v0.3.3.0.md)：
 
 - 四种接入方式是**并列**的，没有主次；都走同一条
   [获得 → 接入 → 部署 → 运行 → 连接](guide/integrate-your-project.md) 流程；
-- Windows x86_64 与 Linux x86_64、Qt 6.8.3 是参考环境；
+- **已发布 V0.3.0.0 历史矩阵**：Qt 6.8.3 Windows **及 Linux** x86_64 是当时已发布的参考/资格声明（详见 `compatibility.md`），不能追改历史；**新 Feature/RC/GA** 仅 Windows x86_64 为强制真实资格环境，Linux/ARM64 属新版本用户验证待完成范围，未经新的实际测试不得推断当前 Supported（#563）；
 - Widgets 与 Qt Quick 共用一个 Runtime；
 - 默认监听 `0.0.0.0:5921`（本机 IPv4 接口，不只是 loopback），远程输入默认关闭；
 - 默认**未认证、未加密**，仅适用于**可信局域网**，不适合暴露到 Internet。
@@ -53,7 +53,8 @@ HyRemote 是面向现有 Qt 应用的远程访问框架。产品提供**一个�
 | [`security.md`](security.md) ｜ [English](en/security.md) | 当前安全行为、默认值和不支持的安全能力 |
 | [`security-model.md`](security-model.md) ｜ [English](en/security-model.md) | 信任边界、威胁模型与后续安全要求 |
 | [`known-limitations.md`](known-limitations.md) ｜ [English](en/known-limitations.md) | 已知限制 |
-| [`versioning.md`](versioning.md) ｜ [English](en/versioning.md) | 产品版本语义与 V0.1 → V1.x 演进 |
+| [`versioning.md`](versioning.md) ｜ [English](en/versioning.md) | 产品版本号语义和精确发布准入规则（不是并行的功能路线图） |
+| [`internal/product-version-delivery-roadmap-2026-10-23.md`](internal/product-version-delivery-roadmap-2026-10-23.md) | **唯一当前产品功能路线图**：交付顺序、Qt LTS、Tool、文字水印、Docker 与 GA 后能力 |
 | [`v1-api-stability.md`](v1-api-stability.md) ｜ [English](en/v1-api-stability.md) | 公开 API 稳定性边界 |
 | [`widgets-capture.md`](widgets-capture.md) ｜ [English](en/widgets-capture.md) | Widgets 采集模型 |
 | [`quick-capture.md`](quick-capture.md) ｜ [English](en/quick-capture.md) | Qt Quick 采集模型 |

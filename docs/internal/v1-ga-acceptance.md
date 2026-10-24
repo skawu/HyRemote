@@ -2,6 +2,8 @@
 
 Status: **release-candidate gate definition; no GA acceptance claim while required evidence is blocked or unexecuted.**
 
+**Current first-GA Qt authority (#594/#605; [product roadmap](product-version-delivery-roadmap-2026-10-23.md)):** only **Windows Qt 5.15 LTS + Qt 6.8 LTS** actually applicable cells may be required or claimed. Qt6.5 and Qt6.12 compatibility are POST-V1 GA features and **must never block this GA checklist**. The 6.8.3 exact row below is one current *reference/test fixture*, **not a complete two-family GA support matrix**; an actually qualified Qt5.15 target row with precise route/Kit support evidence is separately required for any claimed Qt5.15 feature. Legacy 26-child machine cleanup is governed by #602; current V1 #57 acceptance was already scoped to Qt5.15/Qt6.8 via merged PR 606.
+
 Authority: #33. Composes, but does not replace, milestone authorities #30, #31, #32, #39 and #41.
 
 **Owner #563 Windows-only GA qualification policy:** Only Windows x86_64 is required for the V1 acceptance/RC decision. Linux/ARM64/EGLFS/Wayland and their GUI/board/runner cells are optional user-validation, cannot block candidate/tag, and must not be declared Supported without separate evidence. All Linux columns and steps below, where retained for future community use, are **NON_BLOCKING / NOT_RUN_NON_BLOCKING**; Windows real installed Viewer/input/physical/SLO/candidate gates remain mandatory.

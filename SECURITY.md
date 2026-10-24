@@ -2,11 +2,11 @@
 
 HyRemote is remote-access infrastructure and should be treated as security-sensitive software.
 
-The current product line is the **V0.2 LAN trial release**. It is intended for development, evaluation, and trusted-network use; it is **not** an Internet-facing production remote-access service.
+The current released product line is **V0.3.0.0 Product Preview**. It is intended for development, evaluation, and explicitly trusted-network use; it is **not** an Internet-facing production remote-access service. A public **`v0.3.3.0` tag/Release was created then formally RETRACTED** on 2026-10-23 due to incorrect release-branch/main/tag procedure and incomplete same-SHA Viewer/auth/performance admission. It is **not an accepted security-qualified release**; its published tag must not be reused. See [release remediation](docs/internal/v0.3.3.0-release-remediation-2026-10-23.md). Neither this candidate nor current V0.3.0.0 provides Internet-safe encrypted access or a V1 GA security-support contract.
 
 ## Supported product versions
 
-No HyRemote version has reached the V1 GA security-support contract yet.
+No HyRemote version has reached the V1 GA security-support contract yet. First-GA qualification targets only the actually verified **Windows x86_64 Qt 5.15 and Qt 6.8** cells; Qt 6.5 and Qt 6.12 are post-GA qualification candidates, not GA Supported claims. Linux/ARM64/EGLFS/Wayland remain community/user-validation pending and cannot be inferred Supported from Qt portability. Version-specific maintenance and private vulnerability-response procedure are being established in [#611](https://github.com/skawu/HyRemote/issues/611); no unsupported support-duration or patch SLA is implied.
 
 Current product documentation describes the current product line behaviour and limitations in plain terms. Security capability that is not implemented is stated as such in the product documentation.
 
@@ -22,14 +22,14 @@ Shipped behavior:
 - remote input is disabled by default;
 - `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
 - `Authenticated` requires a transport-security-enabled build plus a valid security descriptor; when available it uses RFB VNC authentication but does not encrypt the stream;
-- the default V0.1 build/profile does not imply authenticated transport is compiled in;
+- the default build/profile does not imply authenticated transport is compiled in;
 - `AuthenticatedEncrypted` is not implemented and always fails closed before listener creation, without fallback to a weaker profile.
 
 Authentication is not encryption. A viewer password prompt does not make the transport confidential.
 
 Do not expose the current HyRemote listener directly to the public Internet or another untrusted network.
 
-> **TODO V0.2:** encrypted transport, certificate policy, authenticated sessions, and production network policy.
+> **Future capability candidates, not an automatic V1 GA requirement:** native encrypted transport, certificate policy, authenticated sessions and production Internet access require separate user-value, security-model and release admission decisions (#170/#190/#611). The currently shipped RFB transport is not encrypted.
 
 ## Security defaults apply to every frontend
 
@@ -47,7 +47,7 @@ Changing frontend does not silently create a stronger transport-security profile
 HyRemote's product design preserves these boundaries:
 
 - constructing or installing HyRemote does not by itself open a listener;
-- loopback is the default bind scope;
+- the actual default listener is **`0.0.0.0:5921`** on the host IPv4 interfaces, **not loopback-only**; deploying applications must explicitly narrow its bind scope or enforce an external trusted-network boundary as appropriate;
 - remote viewing and remote control are separate policies;
 - remote input is opt-in;
 - `Running` and `connectedClientCount()` are operational state, not authentication or authorization;

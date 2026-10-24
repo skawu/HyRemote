@@ -526,6 +526,18 @@ Initial automated policy:
 
 The 10% figure is not a universal release-failure threshold. It is an early warning against silent drift.
 
+### 19.1 Proactive CPU efficiency and hotspot-led optimization (#609)
+
+An operator has observed visibly higher CPU use during remote access. **CPU efficiency is proactive engineering under #370**, unlike the separately feedback-triggered weak-network specialization. Establish credible portable measurements and improve measured bottlenecks before considering GPU/private backends or a newly numbered Feature.
+
+Historical signal only: a **480x240 static Windows 11 / Qt6.8.3 Widgets** host connected to a real GUI viewer consumed around **6.75 CPU seconds over 5 wall seconds (~135% of one core)** before capture pacing; at 60-FPS pacing, short static observations were about **1.3–3.4% of one core**. These older, specific-SHA five-second samples do not establish current sustained Host CPU cost or a universal budget. See [Windows real-viewer performance](../internal/windows-real-viewer-performance-2026-10-22.md).
+
+**Fix measurement validity first:** the original `test_rfb_wire_robustness.cpp` `cpu_ms` used `std::clock()`, which on MSVC measures wall time, not process CPU. #609 replaces the Windows source with user+kernel process CPU from `GetProcessTimes`, retaining `cpu_ms` and adding `wall_ms` and `cpu_one_core_percent` (100% is one full logical core; multithreaded use can exceed 100%). The synthetic RFB profile covers the **whole test process including fixture/client/transport**, not the installed Qt Host, actual Viewer or encoder alone. Historical Windows `cpu_ms` samples using the old clock are not comparable to corrected CPU timing.
+
+Follow-on #609/#374 measurements should cover an installed Windows x86_64 Qt Host **local-only baseline → zero viewers → connected unchanged/static → W2 localized → W3 interactive → W4 high motion → sustained soak**. Separate Host and Viewer CPU/wall time, normalized one-core-equivalent usage, RSS, resolution, bytes, FPS/frame age, P50/P95 user latency and local Qt responsiveness. Label physical environment, viewer and exact SHA; a single five-second run is not sustained assurance.
+
+Profile before changing code: prioritize avoiding no-viewer/static duplicate captures and unnecessary wakeups, keep bounded capture/backpressure, then measure full-frame comparisons, pixel conversion/copying, TRLE encode, allocations and per-viewer duplicated work. Every fix needs **same-workload before/after CPU plus freshness and local-UI evidence**; reduced CPU with unusable interaction is not success. #123 still requires a proven portable-baseline SLO/resource blocker before any private/GPU acceleration. No speculative weak-network/extra-platform RC/GA release gate is created.
+
 ## 20. Machine evidence and GitHub Workflow
 
 GitHub Workflow is the default evidence path when it can reproduce the behavior honestly.

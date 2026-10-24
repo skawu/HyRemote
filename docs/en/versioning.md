@@ -111,9 +111,9 @@ The V0.3 family carries two separate classes of work:
 
 ### Mandatory pre-GA V0.3 baseline
 
-Qt 5.15, Qt 6.5, and Qt 6.8 compatibility; Windows and Linux; x86_64 and ARM64/AArch64; qwindows, qxcb, Wayland, and EGLFS reference cells; practical compression and incremental/damage delivery; maintained-viewer interoperability; the #370 performance programme.
+**Current Owner product roadmap (#594/#605, 2026-10-23):** [complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The **only mandatory first-GA Qt LTS families are Qt 5.15 and Qt 6.8** on actually qualified Windows cells. **Qt 6.5 and Qt 6.12 are postponed until AFTER V1.0 GA**. Active V0.3.3.0 #144/#175 stays frozen; the next Feature prioritizes Qt5.15/Qt6.8 (#603/#604), and HyRemoteTool evolves incrementally across releases. V0.4 is qualification-only; V1 promotes accepted RC. No future exact Feature version is reserved; activation/mandatory children come only from `.github/release/release-trains.json` after reviewed admission. Historical releases are unchanged.
 
-These must converge before V0.4 RC entry. No item receives a preassigned Feature version (#333).
+Only **Windows x86_64 Qt 5.15 and Qt 6.8 applicable supported cells** require physical/real-runtime pre-GA qualification, alongside RFB Raw/TRLE incremental damage, maintained Viewer interoperability, #370 performance, SDK installation and packaging. Linux/ARM64/qxcb/Wayland/EGLFS remain user-validation pending and non-blocking (#563). Qt6.5/6.12 are not pre-RC or first-GA conditions.
 
 ### Optional, quality, or differentiating outcomes
 
@@ -126,11 +126,11 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 - practical damage, compression, and incremental delivery; profiling selected Raw + TRLE, and ZRLE is not currently required;
 - the #370 performance baseline;
 - maintained standard-viewer interoperability;
-- Windows and Linux x86_64, Qt 6.8.3, with four consistent frontends.
+- **Windows x86_64 Qt 6.8.3** exact reference and two maintained external GUI viewers; Linux validation is optional/user-led, and every integration frontend reports its actual applicable cell.
 
 `V0.3.1.0` (Qt5 slot) and `V0.3.2.0` (Bandwidth/ZRLE slot) are retired historical records and cannot be selected. V0.3.3.0 is a new coherent outcome. See [`../internal/v0.3.3.0-plan.md`](../internal/v0.3.3.0-plan.md).
 
-Platform breadth and management-plane work are not part of V0.3.3.0. They remain later V0.3.x outcomes.
+First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent candidates. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. Exact future Feature numbers are not reserved. Current [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) is authoritative.
 
 ## V0.4: Qualify It
 
@@ -147,7 +147,7 @@ Focus areas:
 - Qt LTS compatibility qualification, including Qt 5.15 LTS;
 - real-world application qualification;
 - performance measurement and blocker-driven optimization;
-- physical Windows/Linux local and remote coexistence;
+- physical **Windows x86_64** local and remote coexistence; Linux/ARM64 device evidence remains optional/user-validation pending (#563);
 - release package and support-statement hardening.
 
 Maintenance iterations may use:
