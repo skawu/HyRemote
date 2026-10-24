@@ -6,6 +6,7 @@
 #include <QCursor>
 #include <QGuiApplication>
 #include <QImage>
+#include <QMutex>
 #include <QPainter>
 #include <QPen>
 #include <QPixmap>
@@ -29,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -1279,7 +1281,17 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 
     detail::RfbSecurityConfig effectiveSecurity = security;
     effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
-    effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject)](
+    // Cursor reads happen on the RFB worker. A BlockingQueuedConnection here can deadlock when the
+    // GUI calls stop() while the worker is waiting for readSnapshot() and transport shutdown is
+    // waiting for that worker. Keep a shared snapshot and refresh it asynchronously instead.
+    struct CursorCacheState
+    {
+        QMutex mutex;
+        detail::RfbCursorSnapshot snapshot;
+        std::atomic<bool> refreshPending{false};
+    };
+    const auto cursorState = std::make_shared<CursorCacheState>();
+    effectiveSecurity.cursorProvider = [guard = QPointer<QObject>(targetObject), cursorState](
                                             int remoteX,
                                             int remoteY,
                                             std::uint32_t sourceWidth,
@@ -1406,14 +1418,32 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
             return snapshot;
         };
 
-        if (QThread::currentThread() == object->thread())
-            return readSnapshot();
+        if (QThread::currentThread() == object->thread()) {
+            auto snapshot = readSnapshot();
+            QMutexLocker locker(&cursorState->mutex);
+            cursorState->snapshot = snapshot;
+            return snapshot;
+        }
 
-        detail::RfbCursorSnapshot snapshot;
-        const bool invoked = QMetaObject::invokeMethod(
-            object, [&snapshot, &readSnapshot] { snapshot = readSnapshot(); },
-            Qt::BlockingQueuedConnection);
-        return invoked ? snapshot : detail::RfbCursorSnapshot{};
+        detail::RfbCursorSnapshot cached;
+        {
+            QMutexLocker locker(&cursorState->mutex);
+            cached = cursorState->snapshot;
+        }
+        if (!cursorState->refreshPending.exchange(true)) {
+            QMetaObject::invokeMethod(
+                object,
+                [guard, readSnapshot, cursorState] {
+                    if (guard) {
+                        auto fresh = readSnapshot();
+                        QMutexLocker locker(&cursorState->mutex);
+                        cursorState->snapshot = fresh;
+                    }
+                    cursorState->refreshPending.store(false);
+                },
+                Qt::QueuedConnection);
+        }
+        return cached;
     };
 
     detail::TransportComponent transport = detail::createDefaultTransport(address, port, effectiveSecurity);

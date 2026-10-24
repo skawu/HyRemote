@@ -390,7 +390,8 @@ set(declared_authority_documents
     docs/known-limitations.md
     docs/compatibility.md
     docs/internal/v1-physical-acceptance.md
-    docs/security-model.md)
+    docs/security-model.md
+    docs/internal/product-version-delivery-roadmap-2026-10-23.md)
 set(known_issue_numbers
     ${expected_v1_issues} ${expected_embedded_deferred} ${expected_classified_referenced})
 string(JSON trains_type GET "${authority_json}" trains)
@@ -415,6 +416,32 @@ foreach(_train_key IN LISTS _train_keys)
 endforeach()
 list(APPEND known_issue_numbers 123 235)
 list(REMOVE_DUPLICATES known_issue_numbers)
+
+# Planning references in the sole CURRENT product-outcome roadmap are not
+# machine-activated Feature children or release blockers. Classify them
+# explicitly without mislabeling future/optional work as V1 mandatory.
+# The exception applies ONLY to this roadmap, not to any release-readiness
+# document: a planning-only Issue in a release gate must still be rejected.
+set(current_roadmap "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
+string(JSON roadmap_only_count ERROR_VARIABLE roadmap_only_error
+       LENGTH "${authority_json}" roadmap_only_references)
+if(roadmap_only_error)
+    message(FATAL_ERROR "release-authority-policy: missing roadmap-only reference classification")
+endif()
+set(roadmap_only_issue_numbers)
+if(roadmap_only_count GREATER 0)
+    math(EXPR roadmap_only_last "${roadmap_only_count} - 1")
+    foreach(index RANGE 0 ${roadmap_only_last})
+        string(JSON issue GET "${authority_json}" roadmap_only_references ${index})
+        if(issue IN_LIST known_issue_numbers OR issue IN_LIST roadmap_only_issue_numbers)
+            message(FATAL_ERROR
+                "release-authority-policy: roadmap-only reference #${issue} is duplicated or already "
+                "classified by an exact train; reconcile the planning classification")
+        endif()
+        list(APPEND roadmap_only_issue_numbers "${issue}")
+    endforeach()
+endif()
+
 foreach(document IN LISTS declared_authority_documents)
     set(document_path "${HYREMOTE_SOURCE_DIR}/${document}")
     if(NOT EXISTS "${document_path}")
@@ -425,12 +452,25 @@ foreach(document IN LISTS declared_authority_documents)
     foreach(token IN LISTS mentioned)
         string(REGEX REPLACE "#" "" number "${token}")
         if(NOT number IN_LIST known_issue_numbers)
+            if(document STREQUAL current_roadmap AND number IN_LIST roadmap_only_issue_numbers)
+                continue()
+            endif()
             message(FATAL_ERROR
                 "release-authority-policy: unclassified issue reference #${number} in ${document}; "
                 "either classify it in the release train that owns it or remove the reference from a declared "
                 "authority document (.github/release/release-trains.json)")
         endif()
     endforeach()
+    if(document STREQUAL current_roadmap)
+        foreach(issue IN LISTS roadmap_only_issue_numbers)
+            string(FIND "${document_text}" "#${issue}" ref_position)
+            if(ref_position EQUAL -1)
+                message(FATAL_ERROR
+                    "release-authority-policy: unused roadmap-only Issue #${issue}; "
+                    "remove stale planned reference or restore the Issue citation")
+            endif()
+        endforeach()
+    endif()
 endforeach()
 
 string(JSON deferred_count LENGTH "${authority_json}" trains "1.0.0.0" embedded_deferred_issue_numbers)

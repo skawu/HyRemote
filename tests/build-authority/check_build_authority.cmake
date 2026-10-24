@@ -259,6 +259,14 @@ function(make_qt_discovery_kit kit_dir marker)
     endif()
 endfunction()
 
+function(make_qt5_discovery_kit kit_dir)
+    file(MAKE_DIRECTORY "${kit_dir}/lib/cmake/Qt5" "${kit_dir}/lib/cmake/Qt5Core")
+    file(WRITE "${kit_dir}/lib/cmake/Qt5/Qt5Config.cmake" "# Qt5 mock\n")
+    file(WRITE "${kit_dir}/lib/cmake/Qt5/Qt5ConfigVersion.cmake"
+         "set(PACKAGE_VERSION \"5.15.2\")\n")
+    file(WRITE "${kit_dir}/lib/cmake/Qt5Core/Qt5CoreConfig.cmake" "# Qt5 Core mock\n")
+endfunction()
+
 set(qt_one_root "${scratch}/qt-discovery-one")
 set(qt_two_root "${scratch}/qt-discovery-two")
 set(qt_rejected_root "${scratch}/qt-discovery-rejected")
@@ -310,6 +318,26 @@ forbid_text_flat(qt-discovery-custom-prefix "${HYB_TEST_OUTPUT}" "not buildable"
 # classified, and what a POSIX reader is told when nothing usable is installed. Windows keeps its own layout
 # rule in the same function - the Online Installer tree and its msvc/mingw kit names - and that rule is
 # exercised by the Windows lane's real build, so it is not asserted here through POSIX kit names and POSIX
+# Windows: the bounded Qt 5.15.2 C++/Widgets route must be selectable, and the
+# HYREMOTE_QT_DISCOVERY_ROOTS override must work on Windows as well as POSIX.
+if(WIN32)
+    set(qt_win5_root "${scratch}/qt-discovery-win5")
+    make_qt5_discovery_kit("${qt_win5_root}/5.15.2/msvc2019_64")
+
+    run_env_success(qt-discovery-windows-qt5-selectable
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-windows-qt5-selectable "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_win5_root}/5.15.2/msvc2019_64 (discovered)")
+
+    run_env_failure(qt-discovery-windows-qt5-generic-rejected
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --mode=generic --no-prompt
+        "--build-dir=${scratch}/qt5-generic-rejected-build")
+    require_text_flat(qt-discovery-windows-qt5-generic-rejected "${HYB_TEST_OUTPUT}"
+        "Generic/QML need Qt6 >= 6.8")
+endif()
+
 # shell commands.
 if(UNIX AND NOT APPLE)
     # Inventory includes Qt 5.15 (ineligible), Qt 6.8.3 and 6.12.0. Report only:

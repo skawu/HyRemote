@@ -1,8 +1,8 @@
 # HyRemote milestone release-candidate checklist
 
-This is historical V1 release procedure context; exact selectable versions and current platform policy are governed by the release-train map and Owner #563. **Only Windows x86_64 actual qualification is release-blocking**; Linux/embedded/Wayland data is optional community validation. Subsequent historical Windows/Linux mentions below must not be treated as additional current gates.
+**ARCHIVED procedure notes; NOT current version/Feature/GA Qt support authority.** The [current product roadmap](product-version-delivery-roadmap-2026-10-23.md) and merged PR 606 govern the first GA: **Windows Qt5.15 + Qt6.8 only**, Qt6.5/Qt6.12 strictly post-GA (#605). The old V0.0.x single-frontend milestone list and claims that Linux/both Windows+Linux mandatory are superseded, not new release instructions. Exact selectable trains are determined by release-trains.json; current platform policy is #563. **Only Windows x86_64 actual qualification is release-blocking**; Linux/embedded/Wayland data is optional community validation. Subsequent historical Windows/Linux mentions below must not be treated as additional current gates.
 
-This is the canonical release procedure for the authorized milestones:
+The following milestones are **historical**, not currently selectable authoritative release trains:
 
 - `v0.0.1.0` — Embedded C++ API
 - `v0.0.2.0` — Declarative QML API

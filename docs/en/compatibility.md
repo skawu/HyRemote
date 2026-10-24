@@ -39,6 +39,8 @@ The table describes the current product line only. It does not imply that every 
 
 ## Qt LTS policy
 
+**First GA LTS support target (#594/#605; [canonical roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md)): ONLY Qt 5.15 and Qt 6.8, on genuinely qualified Windows x86_64 cells. Qt 6.5 and Qt 6.12 are explicitly AFTER V1.0 GA; they are NOT pre-RC/GA release blockers and are NOT currently declared Supported.**
+
 HyRemote supports selected Qt LTS families and does not automatically promise every Qt release.
 
 Current state:
