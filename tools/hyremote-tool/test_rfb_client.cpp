@@ -101,9 +101,10 @@ QByteArray cursorMessage()
 class FakeRfbServer final : public QObject
 {
 public:
-    explicit FakeRfbServer(int width = 4, int height = 2)
+    explicit FakeRfbServer(int width = 4, int height = 2, quint8 bitsPerPixel = 32)
         : m_width(width)
         , m_height(height)
+        , m_bitsPerPixel(bitsPerPixel)
     {
     }
 
@@ -215,8 +216,8 @@ private:
         QByteArray init;
         appendU16(init, static_cast<quint16>(m_width));
         appendU16(init, static_cast<quint16>(m_height));
-        init.append(char(32));  // bits per pixel
-        init.append(char(24));  // depth
+        init.append(char(m_bitsPerPixel));  // bits per pixel
+        init.append(char(m_bitsPerPixel == 32 ? 24 : 16));  // depth
         init.append(char(0));   // little endian
         init.append(char(1));   // true colour
         appendU16(init, 255);
@@ -244,6 +245,7 @@ private:
     bool m_inputReported = false;
     int m_width = 4;
     int m_height = 2;
+    quint8 m_bitsPerPixel = 32;
 };
 
 }  // namespace
@@ -273,6 +275,28 @@ int main(int argc, char **argv)
                          });
         QTimer::singleShot(2000, &loop, &QEventLoop::quit);
         guarded.connectToHost(QStringLiteral("127.0.0.1"), oversized.port());
+        loop.exec();
+        CHECK(failed);
+    }
+
+    {
+        FakeRfbServer unsupportedPixelFormat(4, 2, 16);
+        if (!unsupportedPixelFormat.listen()) {
+            std::cerr << "unsupported-format fake server could not listen\n";
+            return 1;
+        }
+        RfbClient guarded;
+        bool failed = false;
+        QEventLoop loop;
+        QObject::connect(&guarded, &RfbClient::stateChanged, &loop,
+                         [&](RfbClient::State state) {
+                             if (state == RfbClient::State::Failed) {
+                                 failed = true;
+                                 loop.quit();
+                             }
+                         });
+        QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+        guarded.connectToHost(QStringLiteral("127.0.0.1"), unsupportedPixelFormat.port());
         loop.exec();
         CHECK(failed);
     }
