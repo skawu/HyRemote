@@ -1462,10 +1462,17 @@ private:
             const std::uint8_t *source = base + (static_cast<std::size_t>(y) + row) * plane->stride
                                          + static_cast<std::size_t>(x) * 4U;
             for (std::uint32_t col = 0; col < width; ++col) {
+                const std::uint8_t alpha = source[col * 4U + 3U];
                 appendEncodedPixel(message,
-                                   source[col * 4U],
-                                   source[col * 4U + 1U],
-                                   source[col * 4U + 2U],
+                                   rfbOpaqueChannel(source[col * 4U],
+                                                    alpha,
+                                                    frame.geometry.alphaMode),
+                                   rfbOpaqueChannel(source[col * 4U + 1U],
+                                                    alpha,
+                                                    frame.geometry.alphaMode),
+                                   rfbOpaqueChannel(source[col * 4U + 2U],
+                                                    alpha,
+                                                    frame.geometry.alphaMode),
                                    pixels);
             }
         }

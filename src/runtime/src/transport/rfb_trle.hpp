@@ -21,6 +21,20 @@ inline std::uint32_t rfbRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b) noex
            | static_cast<std::uint32_t>(b);
 }
 
+// RFB true-colour pixels carry no alpha. V0.3.3's presentation policy is a deterministic black
+// matte: straight-alpha pixels are composited over black, while premultiplied RGB is already
+// black-composited and is passed through unchanged. Opaque pixels are unchanged.
+inline std::uint8_t rfbOpaqueChannel(std::uint8_t channel,
+                                     std::uint8_t alpha,
+                                     hyremote::AlphaMode mode) noexcept
+{
+    if (mode == hyremote::AlphaMode::Straight) {
+        return static_cast<std::uint8_t>((static_cast<std::uint32_t>(channel) * alpha + 127U)
+                                         / 255U);
+    }
+    return channel;
+}
+
 inline void appendNativeCpixel(QByteArray &out, std::uint32_t rgb)
 {
     // Native HyRemote RFB pixels are 32bpp/depth-24, little-endian, shifts 0/8/16. RFC 6143
@@ -64,7 +78,9 @@ inline bool appendNativeTrlePayload(QByteArray &out,
     const auto pixelAt = [&](std::uint32_t px, std::uint32_t py) {
         const auto *source = base + static_cast<std::size_t>(py) * plane->stride
                              + static_cast<std::size_t>(px) * 4U;
-        return rfbRgb(source[0], source[1], source[2]);
+        return rfbRgb(rfbOpaqueChannel(source[0], source[3], frame.geometry.alphaMode),
+                      rfbOpaqueChannel(source[1], source[3], frame.geometry.alphaMode),
+                      rfbOpaqueChannel(source[2], source[3], frame.geometry.alphaMode));
     };
 
     const std::uint64_t rawCpixelBytes = static_cast<std::uint64_t>(width) * height * 3U;
