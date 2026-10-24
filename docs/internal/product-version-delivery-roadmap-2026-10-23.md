@@ -51,7 +51,7 @@
 | **[#644](https://github.com/skawu/HyRemote/issues/644) P2 Alpha/RFB 语义** | 先确认透明/复合 UI 是否属于已承诺支持面；若属于则 GA 前修复与验证，否则明示限制并按后续功能准入 | Raw/TRLE opaque 呈现政策、alpha=0/128/255 fixtures、适用真实 Viewer；不能凭静态推断视作已复现 |
 | **[#158](https://github.com/skawu/HyRemote/issues/158) Host RFB 内存与协议** | 现有 V1 正确性范围，RC 前按 Host 真实负例验收 | 256 KiB 输入上限的先读后检查、RFB3.8、Normal 阶段占槽/超时与合法静态增量请求 |
 | **[#609](https://github.com/skawu/HyRemote/issues/609)/[#370](https://github.com/skawu/HyRemote/issues/370)/[#374](https://github.com/skawu/HyRemote/issues/374) CPU/公平性** | 持续资源/SLO 合同；量测后再局部优化，禁止无数据的独立 codec/GPU 扩张 | 0/1/2/8 Viewer Host/Tool CPU、RSS、帧龄/输入和本地活性；exact SHA/同基线对照 |
-| **[#611](https://github.com/skawu/HyRemote/issues/611)/[PR #612](https://github.com/skawu/HyRemote/pull/612)、[#269](https://github.com/skawu/HyRemote/issues/269)/[#602](https://github.com/skawu/HyRemote/issues/602)** | 当前安全事实/依赖与 release-review 真实性，分别使用现有独立 PR/门禁路径 | 保留已发布 V0.3.3.0+勘误的事实；真实 branch/check protection，GA train 不按本规划私改 |
+| **[#611](https://github.com/skawu/HyRemote/issues/611)/[PR 612](https://github.com/skawu/HyRemote/pull/612)、[#269](https://github.com/skawu/HyRemote/issues/269)/[#602](https://github.com/skawu/HyRemote/issues/602)** | 当前安全事实/依赖与 release-review 真实性，分别使用现有独立 PR/门禁路径 | 保留已发布 V0.3.3.0+勘误的事实；真实 branch/check protection，GA train 不按本规划私改 |
 
 **执行纪律**：缺陷 `TRIAGED → FIXED_IN_PR → ACCEPTED`，WBS `PLANNED → IN_PR → CODE_DONE → QUALIFIED`；以上只是待实施台账，独立 Reviewer 要求最新 PR HEAD 的真实 Windows CI、受影响 Qt Kit 正反例、证据清单和适用物理验收。Qt6.5/6.12 仅 GA 后准入，Linux/ARM64 实机验证不作为 Windows GA 阻塞；机器 mandatory #602 单独修订，不在路线文档中暗加。
 
