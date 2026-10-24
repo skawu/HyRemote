@@ -1,5 +1,6 @@
 #include "hyremote/core/storage.hpp"
 
+#include <limits>
 #include <utility>
 
 namespace hyremote {
@@ -29,9 +30,12 @@ std::shared_ptr<CpuFrameStorage> CpuFrameStorage::create(const std::vector<Plane
     if (planes.empty())
         return nullptr;
 
+    std::size_t totalBytes = 0;
     for (const PlaneLayout &plane : planes) {
-        if (plane.bytes == 0)
+        if (plane.bytes == 0
+            || totalBytes > std::numeric_limits<std::size_t>::max() - plane.bytes)
             return nullptr;
+        totalBytes += plane.bytes;
     }
 
     // The hook is deliberately invoked from the destructor: it is the single, final release
@@ -43,7 +47,8 @@ std::shared_ptr<CpuFrameStorage> CpuFrameStorage::createSinglePlane(std::size_t 
                                                                    std::size_t height,
                                                                    ReleaseHook onRelease)
 {
-    if (bytesPerLine == 0 || height == 0)
+    if (bytesPerLine == 0 || height == 0
+        || bytesPerLine > std::numeric_limits<std::size_t>::max() / height)
         return nullptr;
 
     return create({PlaneLayout{bytesPerLine, bytesPerLine * height}}, std::move(onRelease));

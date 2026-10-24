@@ -3,6 +3,7 @@
 // Proves that ownership, not a naked pointer, carries the frame lifetime, and that the final
 // release happens exactly once even when the last reference is dropped on another thread.
 
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -137,6 +138,14 @@ HYR_TEST(invalid_geometry_is_rejected_by_the_storage_boundary)
     frame = makeFrame();
     frame.storage = nullptr;
     HYR_CHECK(!validateFrame(frame));
+
+    frame = makeFrame();
+    frame.geometry.planeCount = 2;
+    HYR_CHECK(!validateFrame(frame));
+
+    frame = makeFrame();
+    frame.storage = CpuFrameStorage::create({{1, 2}});
+    HYR_CHECK(!validateFrame(frame));
 }
 
 HYR_TEST(cpu_storage_rejects_an_invalid_layout)
@@ -145,6 +154,12 @@ HYR_TEST(cpu_storage_rejects_an_invalid_layout)
     HYR_CHECK(CpuFrameStorage::create({{4, 0}}) == nullptr);
     HYR_CHECK(CpuFrameStorage::createSinglePlane(0, 4) == nullptr);
     HYR_CHECK(CpuFrameStorage::createSinglePlane(16, 0) == nullptr);
+    HYR_CHECK(CpuFrameStorage::createSinglePlane(
+                  std::numeric_limits<std::size_t>::max() / 2 + 2, 2)
+              == nullptr);
+    HYR_CHECK(CpuFrameStorage::create({{1, std::numeric_limits<std::size_t>::max()},
+                                       {1, 1}})
+              == nullptr);
 
     std::shared_ptr<CpuFrameStorage> storage = CpuFrameStorage::createSinglePlane(16, 4);
     HYR_CHECK(storage != nullptr);
