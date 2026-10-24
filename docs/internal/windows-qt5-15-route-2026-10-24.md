@@ -52,9 +52,10 @@ Windows Qt 5.15.2 bounded C++/Widgets build: PASS
 Windows Qt 5.15.2 CTest: 62/62 PASS
 ```
 
-This is evidence for the route implementation. It is not yet the full #604 discovery regression:
-`tests/build-authority/check_build_authority.cmake` still needs a hermetic Windows Qt5 selectable
-case alongside the existing "Qt5 inventoried but not selectable" POSIX case.
+The #604 discovery regression now has a hermetic Windows Qt5 selectable case:
+`HYREMOTE_QT_DISCOVERY_ROOTS` is honored on Windows as well as POSIX, and
+`qt-discovery-windows-qt5-selectable` covers a mock `5.15.2/msvc2019_64` kit.
+`hyremote-build-authority-selftest` passes with that case.
 
 ## Boundaries
 

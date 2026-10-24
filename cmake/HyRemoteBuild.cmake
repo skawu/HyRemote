@@ -683,9 +683,13 @@ function(hyb_qt_platform_roots out_roots)
         set(_install_roots "C:/Qt")
     else()
         set(_install_roots "/opt/Qt" "$ENV{HOME}/Qt")
-        if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
-            set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
-        endif()
+    endif()
+    # The override is platform-independent: a caller/test that places kits outside the
+    # platform's default install root must be able to exercise the same discovery rule on
+    # Windows as on POSIX. Without this, Windows always scanned C:/Qt and the Qt5 regression
+    # could not be tested hermetically.
+    if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
+        set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
     endif()
     foreach(_install_root IN LISTS _install_roots)
         if(_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_install_root}")
