@@ -329,6 +329,13 @@ if(WIN32)
         --no-config --show-config)
     require_text_flat(qt-discovery-windows-qt5-selectable "${HYB_TEST_OUTPUT}"
         "Qt prefix : ${qt_win5_root}/5.15.2/msvc2019_64 (discovered)")
+
+    run_env_failure(qt-discovery-windows-qt5-generic-rejected
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --mode=generic --no-prompt
+        "--build-dir=${scratch}/qt5-generic-rejected-build")
+    require_text_flat(qt-discovery-windows-qt5-generic-rejected "${HYB_TEST_OUTPUT}"
+        "Generic/QML need Qt6 >= 6.8")
 endif()
 
 # shell commands.
