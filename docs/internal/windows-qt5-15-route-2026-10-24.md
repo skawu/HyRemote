@@ -23,9 +23,12 @@ build.cmd build --mode=cpp --qt-prefix=C:/Qt/5.15.2/msvc2019_64
                  --tests --no-examples --build-dir=.../qt5-route -j4
 ```
 
-Result:
+Result (fresh cache):
 
 ```text
+CMAKE_PREFIX_PATH = C:/Qt/5.15.2/msvc2019_64
+Qt5Core_DIR        = C:/Qt/5.15.2/msvc2019_64/lib/cmake/Qt5Core
+Qt6_DIR            = Qt6_DIR-NOTFOUND
 HyRemote build succeeded
 CTest: 62/62 PASS
 ```
@@ -45,6 +48,15 @@ examples/learning/01-widgets-cpp/hyremote-learning-01-widgets.exe linked
 HyRemoteTool linked
 ```
 
+Installed SDK and clean consumer:
+
+```text
+cmake --install .../qt5-clean --prefix .../qt5-install2
+installed HyRemoteConfig.cmake: find_dependency(Qt5 5.15 ...)
+consumer: find_package(HyRemote) + Qt5 Widgets + hyremote_deploy(TARGET ...)
+qt5-consumer.exe linked
+```
+
 ## Interpretation
 
 ```text
@@ -59,7 +71,7 @@ The #604 discovery regression now has a hermetic Windows Qt5 selectable case:
 
 ## Boundaries
 
-- One local Qt 5.15.2 kit; not a clean installed-SDK consumer matrix.
+- One local Qt 5.15.2 kit and one clean installed-SDK C++/Widgets consumer.
 - No QML/Generic/QPA claim.
 - No Qt 6.5 or Qt 6.12 claim; those are post-GA under #605.
 - No Linux, ARM64/EGLFS or Wayland claim.
