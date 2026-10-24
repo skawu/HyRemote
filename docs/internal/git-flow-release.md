@@ -165,7 +165,7 @@ current train is authorized by its own readiness scope under #1, #24 and #95; `r
 one mature V0.4 lineage has been accepted **and** all of the following exact-candidate closure gates are accepted:
 
 - #101 — V1 public C++/QML/CMake/API/package freeze;
-- #104 — integrated all-three-mode GA automation has actually executed and passed on both Windows and Linux reference environments;
+- #104 — integrated GA automation must actually execute and PASS on the mandatory **Windows x86_64** declared Qt5.15/Qt6.8 reference cells. Linux/ARM64/EGLFS/Wayland checks are optional user-validation and **not** release blockers (#563/#605); unavailable runs must be recorded NOT_RUN_NON_BLOCKING, never PASS;
 - #107 — release notes, notices, package manifest and deterministic release-readiness metadata are complete and aligned with the frozen V1 artifact model;
 - #109 — required physical native local-display/local-input + remote coexistence evidence has passed for the applicable E1/E2/E3/E4 envelope.
 
@@ -175,7 +175,7 @@ Creating a release branch is not acceptance and never authorizes its tag.
 
 ## 8. Release acceptance and finalization
 
-For every claimed Windows/Linux x86 milestone, evidence must exist independently for both operating systems where the milestone requires both.
+For the current first-GA contract, **Windows x86_64** actual Qt5.15/Qt6.8 evidence is mandatory. Linux/ARM64/Wayland/EGLFS must not be added as hidden physical gates; only independently validated cells may be labeled Supported. Follow the [current roadmap](product-version-delivery-roadmap-2026-10-23.md) and merged PR 606.
 
 For V1.0.0.0, at minimum verify:
 

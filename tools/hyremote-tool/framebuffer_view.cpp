@@ -1,4 +1,5 @@
 #include "framebuffer_view.h"
+#include "rfb_client.h"
 
 #include <QColor>
 #include <QCursor>
@@ -202,12 +203,16 @@ void FramebufferView::wheelEvent(QWheelEvent *event)
     const int delta = event->angleDelta().y();
     if (delta == 0)
         return;
-    const quint8 wheelButton = delta > 0 ? 4 : 5;
+    // RFB pointer masks are bit values: wheel-up=0x08, wheel-down=0x10.
+    // Merge the pulse with any held real button, then restore that held mask
+    // instead of sending an unconditional zero (which would release a drag).
+    const quint8 wheelMask = rfbWheelMaskForDelta(delta);
     const int steps = std::max(1, std::abs(delta) / 120);
     for (int index = 0; index < steps; ++index) {
-        onPointer(wheelButton, static_cast<quint16>(imagePoint.x()),
+        onPointer(static_cast<quint8>(m_buttons | wheelMask),
+                  static_cast<quint16>(imagePoint.x()),
                   static_cast<quint16>(imagePoint.y()));
-        onPointer(0, static_cast<quint16>(imagePoint.x()),
+        onPointer(m_buttons, static_cast<quint16>(imagePoint.x()),
                   static_cast<quint16>(imagePoint.y()));
     }
     event->accept();
@@ -252,7 +257,8 @@ quint32 FramebufferView::keysymFor(QKeyEvent *event)
     case Qt::Key_Alt:
         return 0xFFE9;
     case Qt::Key_Meta:
-        return 0xFFEB;
+        // Match the Host key map: X11 Meta_L/Meta_R, not the XF86Meta keysym.
+        return 0xFFE7;
     case Qt::Key_Space:
         return 0x20;
     default:

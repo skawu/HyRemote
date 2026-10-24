@@ -683,9 +683,13 @@ function(hyb_qt_platform_roots out_roots)
         set(_install_roots "C:/Qt")
     else()
         set(_install_roots "/opt/Qt" "$ENV{HOME}/Qt")
-        if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
-            set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
-        endif()
+    endif()
+    # The override is platform-independent: a caller/test that places kits outside the
+    # platform's default install root must be able to exercise the same discovery rule on
+    # Windows as on POSIX. Without this, Windows always scanned C:/Qt and the Qt5 regression
+    # could not be tested hermetically.
+    if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
+        set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
     endif()
     foreach(_install_root IN LISTS _install_roots)
         if(_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_install_root}")
@@ -812,8 +816,17 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
         list(GET _fields 0 _arch)
         list(GET _fields 1 _family)
         list(GET _fields 2 _needs)
-        if(NOT _qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$" OR _qt_version VERSION_LESS "6.8")
-            list(APPEND _qt_rejected "${_prefix} (not buildable: this product currently needs Qt6 >= 6.8)")
+        if(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
+            list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
+        elseif((HYB_GENERIC OR HYB_QML)
+               AND NOT (_qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                        AND NOT _qt_version VERSION_LESS "6.8"))
+            list(APPEND _qt_rejected "${_prefix} (Generic/QML need Qt6 >= 6.8)")
+        elseif(NOT HYB_QPA
+               AND NOT ((WIN32 AND _qt_version VERSION_EQUAL "5.15.2")
+                        OR (_qt_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                            AND NOT _qt_version VERSION_LESS "6.8")))
+            list(APPEND _qt_rejected "${_prefix} (not buildable: needs Qt6 >= 6.8, or Windows Qt 5.15.2 for bounded C++/Widgets)")
         elseif(HYB_QPA AND NOT _qt_version STREQUAL "6.8.3")
             list(APPEND _qt_rejected "${_prefix} (QPA needs exact Qt 6.8.3 private ABI)")
         elseif(NOT _arch STREQUAL _qt_host_arch)

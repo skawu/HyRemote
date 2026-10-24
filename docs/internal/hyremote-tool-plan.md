@@ -2,7 +2,7 @@
 
 # HyRemoteTool companion plan
 
-Status: active companion-tool plan for the V0.3 line. Product authority: #378. V0.3.0.0 release authority: #234.
+Status: historical V0.3.0.0 Tool architecture and optional management-plane sketch (#378/#234), **not a parallel Feature/version sequencing authority**. Follow the [single current product roadmap](product-version-delivery-roadmap-2026-10-23.md) / #594/#605: Windows Qt 5.15/6.8 (#603) is first after V0.3.3; the HyRemoteTool D workbench advances incrementally via #581–#590 (OS Auto/manual language #590). Remote management/TLS requires separate product/security admission; full Tool S1 is not a prerequisite to Qt LTS Feature. Qt 6.5/6.12 are strictly post-GA.
 
 ## Position
 
@@ -51,7 +51,7 @@ The UI must not show disabled placeholder buttons for these. The README and rele
 
 ## Later phases
 
-### V0.3.x: management plane
+### Future optional management plane (independent authority required; not an automatic V0.3.x commitment)
 
 Prerequisites:
 

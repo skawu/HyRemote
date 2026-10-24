@@ -142,8 +142,15 @@ public:
             retranslateUi();
         });
         connect(m_control, &QCheckBox::toggled, this, [this](bool enabled) {
-            m_client->setRemoteControlEnabled(enabled);
-            m_view->setInputEnabled(enabled);
+            if (enabled) {
+                m_client->setRemoteControlEnabled(true);
+                m_view->setInputEnabled(true);
+            } else {
+                // Release held keys/buttons while the wire is still permitted;
+                // disabling the client first would suppress the KeyUp/MouseUp.
+                m_view->setInputEnabled(false);
+                m_client->setRemoteControlEnabled(false);
+            }
         });
         connect(m_client, &RfbClient::stateChanged, this, [this](RfbClient::State state) {
             applyState(state);

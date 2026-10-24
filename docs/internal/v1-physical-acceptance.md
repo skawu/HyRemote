@@ -180,14 +180,14 @@ Record per OS:
 
 ## Cross-cell held-input checklist
 
-The physical evidence envelope is incomplete unless it includes, at minimum:
+The **mandatory Windows x86_64** physical evidence envelope is incomplete unless it includes, at minimum:
 
 - E1 Windows: abrupt viewer disconnect while held + explicit runtime stop while held + no late queued remote input;
-- E1 Linux: same;
 - E2 Windows: same, independently observed on Quick;
-- E2 Linux: same;
-- E3 Windows/Linux: explicit declarative stop/disable while held + no late queued remote input;
-- E4 Windows/Linux: child-surface cleanup where applicable and normal process teardown after remote input.
+- E3 Windows: explicit declarative stop/disable while held + no late queued remote input;
+- E4 Windows: child-surface cleanup where applicable and normal process teardown after remote input.
+
+Linux E1–E4 may be recorded **only when actually executed** as independent community/user-validation evidence. Missing Linux tests are `NOT_RUN_NON_BLOCKING`, not FAIL and never an unspoken Windows GA prerequisite (#563).
 
 Deterministic CTest evidence for disconnect/backpressure/terminal cleanup complements these observations but does not replace them.
 
@@ -200,12 +200,12 @@ Complete only after every required cell above has evidence on the exact candidat
 - Windows E2: `<PASS/FAIL>`
 - Windows E3: `<PASS/FAIL>`
 - Windows E4: `<PASS/FAIL>`
-- Linux E1: `<PASS/FAIL>`
-- Linux E2: `<PASS/FAIL>`
-- Linux E3: `<PASS/FAIL>`
-- Linux E4: `<PASS/FAIL>`
+- Linux E1: `<optional PASS/FAIL or NOT_RUN_NON_BLOCKING>`
+- Linux E2: `<optional PASS/FAIL or NOT_RUN_NON_BLOCKING>`
+- Linux E3: `<optional PASS/FAIL or NOT_RUN_NON_BLOCKING>`
+- Linux E4: `<optional PASS/FAIL or NOT_RUN_NON_BLOCKING>`
 - Windows bounded responsiveness: `<PASS/FAIL>`
-- Linux bounded responsiveness: `<PASS/FAIL>`
+- Linux bounded responsiveness: `<optional PASS/FAIL or NOT_RUN_NON_BLOCKING>`
 - Evidence bundle links: `<required>`
 - Known limitations/anomalies: `<required, use none if none>`
 - #109 decision: `<OPEN until evidence reviewed; PASS only after review>`

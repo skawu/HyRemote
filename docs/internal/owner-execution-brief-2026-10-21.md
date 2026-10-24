@@ -1,6 +1,6 @@
 # HyRemote - Local Owner execution brief (2026-10-21)
 
-> Status: **accepted execution guidance** from #549 / merged PR #550, with desktop/ARM64 release-scope decision #558 / merged PR #559. This is a living Owner handoff, not a proposal awaiting first merge. It does not override #1/#24/#33/#95/#343 or `.github/release/release-trains.json`; later GA scope changes still need an explicit Owner decision and reviewed authority update.
+> **ARCHIVED OWNER HANDOFF (2026-10-21; NOT the current roadmap/GA scope/execution order).** Use [canonical current product roadmap](product-version-delivery-roadmap-2026-10-23.md) (#594/#605), current machine `.github/release/release-trains.json`, and #24/#95. Older Qt5/6.5/6.8 pre-GA requirements, Qt6.12 preflight priority, Tool scheduling, and #558 platform gates below are superseded. The handoff was once accepted via #549/#550, but is preserved here only for historical context.
 
 ## 0. Baseline and invariants
 
