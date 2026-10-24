@@ -10,6 +10,9 @@
 namespace {
 
 constexpr qsizetype kMaxRawRectangleBytes = 64 * 1024 * 1024;
+constexpr qsizetype kMaxFramebufferPixels = 16 * 1024 * 1024;  // 4096 x 4096
+constexpr qsizetype kMaxReceiveBytes = 128 * 1024 * 1024;
+constexpr qsizetype kMaxUpdatePayloadBytes = 96 * 1024 * 1024;
 constexpr qint32 kEncodingRaw = 0;
 constexpr qint32 kEncodingDesktopSize = -223;
 constexpr qint32 kEncodingCursor = -239;
@@ -103,6 +106,10 @@ void RfbClient::onReadyRead()
     const qint64 available = m_socket.bytesAvailable();
     if (available <= 0)
         return;
+    if (m_in.size() + available > kMaxReceiveBytes) {
+        fail(QStringLiteral("remote endpoint exceeded the client receive budget"));
+        return;
+    }
     m_bytes += static_cast<quint64>(available);
     m_in += m_socket.readAll();
     process();
@@ -196,7 +203,11 @@ void RfbClient::process()
                 if (m_in.size() < 5)
                     return;
                 const quint32 reasonLength = readU32(m_in, 1);
-                if (reasonLength > 4096 || m_in.size() < 5 + static_cast<qsizetype>(reasonLength))
+                if (reasonLength > 4096) {
+                    fail(QStringLiteral("remote endpoint sent an oversized refusal reason"));
+                    return;
+                }
+                if (m_in.size() < 5 + static_cast<qsizetype>(reasonLength))
                     return;
                 const QString reason = QString::fromUtf8(
                     m_in.mid(5, static_cast<qsizetype>(reasonLength)));
@@ -261,7 +272,25 @@ void RfbClient::process()
                 fail(QStringLiteral("the remote endpoint announced an empty framebuffer"));
                 return;
             }
-            if (nameLength > 4096 || m_in.size() < 24 + static_cast<qsizetype>(nameLength))
+            if (static_cast<qint64>(width) * height > kMaxFramebufferPixels) {
+                fail(QStringLiteral("remote framebuffer exceeds the client allocation budget"));
+                return;
+            }
+            // The client parses RGBX32 Raw/TRLE only. Reject an incompatible
+            // server pixel format instead of silently reading wrong lengths.
+            const auto *pixelFormat = reinterpret_cast<const unsigned char *>(m_in.constData() + 4);
+            if (pixelFormat[0] != 32 || pixelFormat[1] != 24 || pixelFormat[2] != 0
+                || pixelFormat[3] != 1 || readU16(m_in, 8) != 255 || readU16(m_in, 10) != 255
+                || readU16(m_in, 12) != 255 || pixelFormat[10] != 0 || pixelFormat[11] != 8
+                || pixelFormat[12] != 16) {
+                fail(QStringLiteral("remote pixel format is not supported by this client"));
+                return;
+            }
+            if (nameLength > 4096) {
+                fail(QStringLiteral("remote endpoint sent an oversized server name"));
+                return;
+            }
+            if (m_in.size() < 24 + static_cast<qsizetype>(nameLength))
                 return;
             m_serverName = QString::fromUtf8(m_in.mid(24, static_cast<qsizetype>(nameLength)));
             emit serverNameChanged(m_serverName);
@@ -297,8 +326,11 @@ void RfbClient::process()
                 if (m_in.size() < 8)
                     return;
                 const quint32 length = readU32(m_in, 4);
-                if (length > kMaxRawRectangleBytes
-                    || m_in.size() < 8 + static_cast<qsizetype>(length))
+                if (length > kMaxRawRectangleBytes) {
+                    fail(QStringLiteral("remote cut text exceeds the client budget"));
+                    return;
+                }
+                if (m_in.size() < 8 + static_cast<qsizetype>(length))
                     return;
                 m_in.remove(0, 8 + static_cast<qsizetype>(length));
                 continue;
@@ -396,6 +428,10 @@ bool RfbClient::parseFramebufferUpdate()
         if (m_in.size() < rectangle.payloadOffset + rectangle.payloadBytes)
             return false;
         offset = rectangle.payloadOffset + rectangle.payloadBytes;
+        if (offset > kMaxUpdatePayloadBytes) {
+            fail(QStringLiteral("remote framebuffer update exceeds the client payload budget"));
+            return false;
+        }
         rectangles.push_back(rectangle);
     }
 
@@ -405,6 +441,10 @@ bool RfbClient::parseFramebufferUpdate()
         if (rectangle.encoding == kEncodingDesktopSize) {
             if (rectangle.width <= 0 || rectangle.height <= 0) {
                 fail(QStringLiteral("remote endpoint announced an empty framebuffer"));
+                return false;
+            }
+            if (static_cast<qint64>(rectangle.width) * rectangle.height > kMaxFramebufferPixels) {
+                fail(QStringLiteral("remote resize exceeds the client allocation budget"));
                 return false;
             }
             m_size = QSize(rectangle.width, rectangle.height);
