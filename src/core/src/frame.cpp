@@ -21,16 +21,20 @@ FrameValidationResult validateFrame(const RemoteFrame &frame)
     if (frame.geometry.planeCount != frame.storage->planeCount())
         return {false, "frame geometry plane count does not match storage"};
 
-    const std::size_t height = static_cast<std::size_t>(frame.geometry.size.height);
-    for (std::size_t plane = 0; plane < frame.geometry.planeCount; ++plane) {
-        const std::optional<PlaneView> view = frame.storage->mapRead(plane);
-        if (!view || view->data == nullptr || view->stride == 0)
-            return {false, "frame plane has no usable CPU view or stride"};
-        if (view->stride > std::numeric_limits<std::size_t>::max() / height)
-            return {false, "frame plane stride overflows the mapped geometry"};
-        const std::size_t required = view->stride * height;
-        if (view->bytes < required)
-            return {false, "frame plane does not cover the declared geometry"};
+    // External storage may intentionally expose no CPU mapping; only CPU storage can be
+    // checked for a contiguous stride/height coverage here.
+    if (frame.storage->kind() == StorageKind::Cpu) {
+        const std::size_t height = static_cast<std::size_t>(frame.geometry.size.height);
+        for (std::size_t plane = 0; plane < frame.geometry.planeCount; ++plane) {
+            const std::optional<PlaneView> view = frame.storage->mapRead(plane);
+            if (!view || view->data == nullptr || view->stride == 0)
+                return {false, "frame plane has no usable CPU view or stride"};
+            if (view->stride > std::numeric_limits<std::size_t>::max() / height)
+                return {false, "frame plane stride overflows the mapped geometry"};
+            const std::size_t required = view->stride * height;
+            if (view->bytes < required)
+                return {false, "frame plane does not cover the declared geometry"};
+        }
     }
 
     return {true, {}};
