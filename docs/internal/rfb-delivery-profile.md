@@ -77,9 +77,17 @@ HYREMOTE_RFB_PROFILE_FILE="$PWD/build/rfb-delivery-profile.json" \
 ```
 
 It runs Raw and TRLE against W1 静态、W2 局部变化、W3 高动态、W4 full refresh and writes one JSON sample per
-encoding/workload. Each sample also records process CPU time (`cpu_ms`) and working set (`working_set_kb`), so the
-same run covers the #370 resource-cost side of the comparison. The numbers are local-loopback indicative
-measurements, not a release SLO and not a substitute for maintained-viewer evidence.
+encoding/workload. The #609 CPU-measurement correction retains `cpu_ms` but on Windows
+uses `GetProcessTimes` (user + kernel process CPU), instead of MSVC's `std::clock()`,
+which actually measures elapsed wall time. New `wall_ms` and
+`cpu_one_core_percent = 100 * cpu_ms / wall_ms` clarify utilization relative to **one
+logical CPU** (it may exceed 100 on multicore workloads; -1 means unavailable).
+`working_set_kb` remains the whole test process working set. The measured interval
+includes the synthetic RFB loopback fixture/client/transport setup and work: it is
+**not** separate Host, Viewer or encoder-only CPU. Prior Windows `cpu_ms` results
+must not be compared directly to these corrected CPU readings. All 256x256 loopback
+samples remain indicative, not a maintained-viewer product CPU SLA. #609/#370/#374
+own installed-Windows Host-vs-Viewer, sustained W1–W4 CPU baselines and portable optimizations.
 
 Windows x86_64/Qt 6.8.3 run from `rfb-profile.yml` (16 samples per measurement, 256x256 frame):
 
