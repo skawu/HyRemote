@@ -170,6 +170,45 @@ foreach(required_token
     require_doc_token("${physical_doc}" "${required_token}" "#109 physical/native preparation contract")
 endforeach()
 
+
+# #594/#209: Today's Qt LTS WBS is a planning/execution ledger, not release activation.
+# Keep the 22 accountable work packages and the four concrete audit fixes reachable from
+# the current outcome roadmap. These checks prove document coverage only: NOT code/Viewer acceptance.
+set(qt_lts_wbs_doc "docs/internal/qt-lts-architecture-wbs-2026-10-24.md")
+set(qt_lts_roadmap_doc "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
+require_doc_token("${qt_lts_roadmap_doc}" "qt-lts-architecture-wbs-2026-10-24.md"
+                  "product roadmap to 22-item Qt LTS execution ledger")
+require_doc_token("${qt_lts_roadmap_doc}" "V0.3.3.0 已合法发布"
+                  "current legally reissued v0.3.3.0 release status")
+forbid_doc_token("${qt_lts_roadmap_doc}" "PUBLIC TAG RETRACTED"
+                 "outdated assertion that v0.3.3.0 remains retracted")
+
+set(qt_lts_expected_wbs
+    A01 A02 A03 A04 A05
+    B01 B02 B03
+    C01 C02 C03 C04
+    D01 D02 D03 D04 D05
+    E01 E02
+    F01 F02 F03)
+foreach(qt_lts_wbs IN LISTS qt_lts_expected_wbs)
+    require_doc_token("${qt_lts_wbs_doc}" "| **${qt_lts_wbs}** |"
+                      "Qt LTS work package ${qt_lts_wbs} acceptance row")
+endforeach()
+file(STRINGS "${HYREMOTE_SOURCE_DIR}/${qt_lts_wbs_doc}"
+     qt_lts_actual_wbs_rows REGEX "^\\| \\*\\*[A-F][0-9][0-9]\\*\\* \\|")
+list(LENGTH qt_lts_actual_wbs_rows qt_lts_actual_wbs_count)
+if(NOT qt_lts_actual_wbs_count EQUAL 22)
+    message(FATAL_ERROR
+        "release-documentation-layout: Qt LTS WBS must have exactly 22 accountable rows; "
+        "found ${qt_lts_actual_wbs_count}")
+endif()
+foreach(audit_defect IN ITEMS 641 642 643 644)
+    require_doc_token("${qt_lts_wbs_doc}" "[#${audit_defect}]"
+                      "Qt LTS ledger ownership for the 2026-10-24 defect #${audit_defect}")
+    require_doc_token("${qt_lts_roadmap_doc}" "[#${audit_defect}]"
+                      "product roadmap defect routing for #${audit_defect}")
+endforeach()
+
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
     "(canonical source layout + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
