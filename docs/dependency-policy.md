@@ -1,4 +1,6 @@
 # 第三方依赖政策
+> **当前事实源（2026-10-23）：** V0.3.0.0 Product Preview 已发布；首次 GA 仅对真实资格化的 Windows Qt5.15/Qt6.8 单元承诺支持。传输加密、网关（Gateway）/中继（Relay）/云服务及额外平台均须独立准入；不把历史 TODO 视为版本必交项。依赖/漏洞响应长期责任：[#611](https://github.com/skawu/HyRemote/issues/611)。
+
 
 > 语言 / Language：**中文** ｜ [English](en/dependency-policy.md)
 
@@ -83,9 +85,9 @@ HYREMOTE_WITH_TRANSPORT_SECURITY
 - HyRemote 不会把请求的安全构建静默降级为不安全构建；
 - 加密实现类型保持私有 Runtime 细节，不作为下游 SDK 目标。
 
-当前 V0.1 `AuthenticatedEncrypted` 不可用，会失败关闭。
+当前已发布的 V0.3.0.0 Product Preview 中，`AuthenticatedEncrypted` 不可用，会在 listener 创建前失败关闭。
 
-> **TODO V0.2：** 完成加密传输/证书产品能力，并发布精确第三方 runtime/包义务。
+> **未来候选，非首轮 GA 自动必需：** 加密传输、证书及其第三方运行时依赖须按实际用户场景、安全评估和 #24/#95 另行准入；不能从 TODO 推断已交付，也不能宣称当前公网安全（#143/#190/#611）。
 
 ## RFB/VNC 传输基线
 
@@ -151,7 +153,7 @@ GBM、DRM、DMA-BUF 相关库、RKMPP、V4L2、VA-API、D3D 类 API 和类似平
 - 强迫 Generic/QPA 应用直接链接 SoC 专用库；
 - 仅为了优化一个目标平台就成为普通桌面用户的前提。
 
-> **TODO：** 按支持的 BSP/产品包发布精确嵌入式/平台依赖清单。嵌入式 Linux/ARM64/EGLFS 参考单元是 #343 下 V0.3 家族 GA 前强制兼容基线；声明 GA 单元之外的 BSP/SoC 扩展单独准入，不预分配版本号（#333）。
+> **当前 Owner #563/#605 资格边界：** 首轮 GA 仅强制真实资格化的 Windows x86_64 Qt5.15/Qt6.8 单元。Linux/ARM64/EGLFS/Wayland 属用户验证/资格待定，不作为 RC/GA 门槛；这些平台有真实部署后再发布对应 BSP/包依赖清单。Qt6.5/6.12 在首轮 GA 后分别准入，不预分配版本号。
 
 ## 历史与未来候选
 
