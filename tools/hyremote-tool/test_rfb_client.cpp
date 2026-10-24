@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QHostAddress>
 #include <QImage>
 #include <QTcpServer>
@@ -100,6 +101,12 @@ QByteArray cursorMessage()
 class FakeRfbServer final : public QObject
 {
 public:
+    explicit FakeRfbServer(int width = 4, int height = 2)
+        : m_width(width)
+        , m_height(height)
+    {
+    }
+
     std::function<void()> onInputComplete;
 
     bool listen()
@@ -206,8 +213,8 @@ private:
     void sendServerInit()
     {
         QByteArray init;
-        appendU16(init, 4);
-        appendU16(init, 2);
+        appendU16(init, static_cast<quint16>(m_width));
+        appendU16(init, static_cast<quint16>(m_height));
         init.append(char(32));  // bits per pixel
         init.append(char(24));  // depth
         init.append(char(0));   // little endian
@@ -235,6 +242,8 @@ private:
     bool m_pointer = false;
     bool m_key = false;
     bool m_inputReported = false;
+    int m_width = 4;
+    int m_height = 2;
 };
 
 }  // namespace
@@ -245,6 +254,28 @@ int main(int argc, char **argv)
 
     CHECK(rfbWheelMaskForDelta(120) == 0x08);
     CHECK(rfbWheelMaskForDelta(-120) == 0x10);
+
+    {
+        FakeRfbServer oversized(65535, 65535);
+        if (!oversized.listen()) {
+            std::cerr << "oversized fake server could not listen\n";
+            return 1;
+        }
+        RfbClient guarded;
+        bool failed = false;
+        QEventLoop loop;
+        QObject::connect(&guarded, &RfbClient::stateChanged, &loop,
+                         [&](RfbClient::State state) {
+                             if (state == RfbClient::State::Failed) {
+                                 failed = true;
+                                 loop.quit();
+                             }
+                         });
+        QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+        guarded.connectToHost(QStringLiteral("127.0.0.1"), oversized.port());
+        loop.exec();
+        CHECK(failed);
+    }
 
     FakeRfbServer server;
     if (!server.listen()) {
