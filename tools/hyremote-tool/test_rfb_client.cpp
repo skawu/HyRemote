@@ -243,6 +243,9 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
 
+    CHECK(rfbWheelMaskForDelta(120) == 0x08);
+    CHECK(rfbWheelMaskForDelta(-120) == 0x10);
+
     FakeRfbServer server;
     if (!server.listen()) {
         std::cerr << "fake server could not listen\n";
