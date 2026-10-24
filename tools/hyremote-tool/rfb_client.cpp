@@ -463,13 +463,16 @@ bool RfbClient::parseFramebufferUpdate()
     }
 
     m_in.remove(0, offset);
+    // A Cursor pseudo-rectangle can be the only content of a complete FramebufferUpdate. It still
+    // satisfies the outstanding request, so clear the wait and send the next request even when no
+    // framebuffer pixel changed. Frame statistics are only advanced for real pixel updates.
+    m_waitingForFrame = false;
     if (framebufferChanged) {
         ++m_frames;
-        m_waitingForFrame = false;
         if (!m_frame.isNull())
             emit frameUpdated(m_frame);
-        requestFrame(!fullRequestNeeded);
     }
+    requestFrame(!fullRequestNeeded);
     return true;
 }
 

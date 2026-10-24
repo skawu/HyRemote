@@ -526,6 +526,18 @@ H.264/H.265/AV1 不是普通 RFB 优化的自动延续。
 
 10% 不是通用发布失败阈值，而是防止静默漂移的早期警告。
 
+### 19.1 CPU 效率：提前建立基线、按热点优化（#609）
+
+用户已观察到远程访问时 CPU 明显增长，因此 **CPU 效率是 #370 的主动工程工作，而不是等弱网或客户工单触发**。使用现有可移植 Runtime/传输能力先测量并优化，不预设 GPU/私有后端或新的 Feature 版本。
+
+已知历史信号：Windows 11/Qt6.8.3 的 **480×240 静态 Widgets** 真实 Viewer 测试中，未做采集节奏控制曾在 5 秒内消耗约 **6.75 CPU 秒（约单核 135%）**；限制采集节奏到 60 FPS 后观测约 **单核 1.3%–3.4%**。该结果仅是特定历史 SHA、短窗口、静态画面，并非当前安装包持续负载或普适 CPU 目标。来源：[`windows-real-viewer-performance-2026-10-22.md`](internal/windows-real-viewer-performance-2026-10-22.md)。
+
+**证据必须先可信：** `test_rfb_wire_robustness.cpp` 原始 `cpu_ms` 采用 `std::clock()`；在 MSVC 上它表示墙钟时间，不等于进程 CPU。#609 修复为 Windows `GetProcessTimes` 的用户态+内核态时间，额外记录 `wall_ms`、`cpu_one_core_percent`（100 表示一个逻辑核心满载，多线程可超过 100）；原 `cpu_ms` 键保持不变。该 synthetic RFB profile 的计量范围是**测试进程整体，包含测试 fixture、loopback peer 和 transport**，绝不可标成 Qt Host 专属 CPU、Viewer CPU 或纯编码时间。修复前的 Windows `cpu_ms` 历史数据不可与修复后的真实 CPU 数据直接比较。
+
+后续 #609/#374 优先建立可比较的 Windows x86_64 真实安装路径：**本地应用不远程访问 → 0 viewer → 连接但静态 → W2 局部变化 → W3 输入 → W4 高动态 → 长时间稳定运行**；独立记录 Host/Viewer CPU 时间与墙钟窗口、每核等效利用率、RSS、分辨率、更新字节、FPS/Frame Age、P50/P95 交互响应和本地 Qt UI 健康。单个 5 秒读数不等于持续 CPU 保证；噪声和多核定义必须如实说明。
+
+优化次序由热点决定：减少无 viewer / 静态场景重复采集和无用定时唤醒，保持浅采集管线和背压；再排查全帧扫描、像素拷贝/格式转换、TRLE 编码、内存分配、跨 viewer 重复工作。每次变更记录**同环境、同负载、精确 SHA 的 CPU 前后对比及画面新鲜度/本地 UI 副作用**。不能为了 CPU 数字让远程交互卡顿，也不能以强制限帧掩盖错误积压。#123 的 GPU/私有加速依然需要已证实的 SLO 或资源瓶颈；不为假设的弱网工况扩大 RC/GA 门槛。
+
 ## 20. 机器证据与 GitHub Workflow
 
 GitHub Workflow 能如实复现行为时，是默认证据路径。
