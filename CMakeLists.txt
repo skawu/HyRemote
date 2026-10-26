@@ -75,7 +75,10 @@ if(PROJECT_IS_TOP_LEVEL
             set(Qt6_VERSION "${Qt5_VERSION}")
             set(Qt6_VERSION_MAJOR 5)
             set(Qt6_VERSION_MINOR 15)
-            if(NOT HYREMOTE_QT5_ENABLE_QUICK)
+            if(HYREMOTE_QT5_ENABLE_QUICK)
+                set(HYREMOTE_BUILD_QUICK_ADAPTER ON CACHE BOOL
+                    "Qt 5.15 Quick is experimental; enabled by HYREMOTE_QT5_ENABLE_QUICK" FORCE)
+            else()
                 set(HYREMOTE_BUILD_QUICK_ADAPTER OFF CACHE BOOL
                     "Qt 5.15 Quick is experimental; enable explicitly with HYREMOTE_QT5_ENABLE_QUICK" FORCE)
             endif()
