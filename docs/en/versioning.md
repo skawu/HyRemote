@@ -165,6 +165,8 @@ This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5
 | V1.2.3.0 | Application-owned admission, control rights, and privacy policy #225 | Strategic conditional, after #170 |
 | V1.2.4.0 | Secure file exchange or a documented external secure alternative #173 | Discovery gate / GO–NO-GO |
 | V1.2.5.0 | Official viewer enhanced server capability/diagnostic/secure-channel contract #246 | Discovery gate / GO–NO-GO |
+| V1.2.6.0 | Appliance capture-on-demand and bounded idle resource use #151 | Conditional after device measurement |
+| V1.2.7.0 | Operational performance diagnostics beyond baseline #180 | Conditional on real support needs |
 
 **Change control:** any rearrangement needs a #594 Owner decision, a reviewed roadmap PR, old→new version mapping, reason, impact on dependencies/CI/support claims, and an auditable merge SHA. Do not create unapproved `release/*` or tags. The local owner must implement **V0.3.4.0 now**, not V0.4.0.0.
 
