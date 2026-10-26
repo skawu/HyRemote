@@ -71,7 +71,7 @@ Windows-qualified #343 capability baseline before V0.4 entry; **Linux/embedded e
 - maintained-viewer interoperability;
 - practical rendering/performance baseline.
 
-No exact V0.3.x number being preassigned makes any of these optional.
+A planned or registered V0.3.x version does not weaken any accepted product qualification obligation.
 
 ### Evidence-driven optional capabilities
 
@@ -109,20 +109,21 @@ src/
 
 ## Build and test authority
 
-**Everyday development and final local acceptance MUST use the canonical `build.cmd` + `build.yml` entry.** Avoid building a second implicit build contract with shell snippets that manually prepend Qt/DLL paths, run stale build trees, or filter CTest success text. The canonical runner already selects an exact Qt Kit, configures/builds when needed, adds current Qt/runtime DLL locations for Windows tests, writes `<build-dir>/test.log`, checks nonzero discovered/executed tests, and fails on CTest errors. A green-looking `Select-String` output is not an exit-code oracle.
+**Hard boundaries for all local Agents and Owner workflows:**
 
-Recommended Windows PowerShell invocation for the **full, applicable Qt6.8.3 local suite** (run in an appropriate MSVC developer environment; the explicit Qt path is an example, not a claim about the current machine):
+- **One canonical command:** start in the repository workspace root selected by the project runner, then run `build.cmd test` on Windows (or `sh ./build.cmd test` on POSIX) for the complete suite. Do **not** invent a PowerShell command chain with `--qt-prefix`, `--build-dir`, manual `PATH`, `cd`, `cmake --build`, an external `ctest` acceptance gate, or post-processing pipelines. Build-system options are legitimate API surface, **not** an invitation for an Agent to reconstruct the environment per invocation.
+- **Single configuration authority:** `build.yml` (or a repository-authorized named profile) and the canonical Kit resolver determine the Qt/toolchain/build directory, without an Agent guessing absolute installation paths or creating ad-hoc workspace/build directories. Treat the configured workspace root and the configured build tree as hard safety boundaries; an Agent must not substitute its preferred `build-qt683` directory, change a current build root, or use `clean/rebuild` to delete unverified paths. When the needed profile is missing/ambiguous, report the missing build configuration; do not write a speculative local override.
+- **60-second no-output hard stop:** if a build/test phase or the surrounding command produces **no new output for 60 consecutive seconds**, classify that execution as **SUSPECTED_STALL**; stop/escalate according to the owning runner's cancellation rules, inspect its process/log state and report the last observed phase. Do not silently wait, sleep/poll forever, or interpret "process still running" as useful progress. Do not mask the condition with synthetic success or repeated empty heartbeat text. **Existing `cmake/HyRemoteBuild.cmake` does not yet enforce this idle-output watchdog**: it forwards live child output but can hang silently when the child emits none. Until a build-owned watchdog is implemented/tested, the Agent must obey the external execution timeout policy and must never claim the canonical tool guarantees this redline.
+- **Evidence:** trust the canonical build's own process result, `test.log`, discovered/executed CTest counts and CI. Text filters (`Select-String`, `Out-String`, `Select-Object`) are for reading retained logs, not deciding PASS. A direct CTest invocation is permitted only as an explicitly bounded, non-authoritative test-debugging exception after verifying the build identity, never for an all-suite signoff.
+- **No redundant shell wrapper:** the canonical build is responsible for process exit codes, environment handling, log retention and workspace protection. Do not append a second PowerShell `if ($LASTEXITCODE ...)` wrapper as the routine development interface. If status propagation or watchdog behavior is deficient, fix and test the canonical build authority, not a local one-liner.
 
-```powershell
-.\build.cmd test --mode=all --qt-prefix=C:/Qt/6.8.3/msvc2022_64 --build-dir=build-qt683 --no-prompt
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+For routine full verification, the human-facing command is simply:
+
+```text
+build.cmd test
 ```
 
-For **Qt5.15.2**, choose a *separate* build dir and only the qualified C++/Widgets frontend cell, e.g. `--mode=cpp --qt-prefix=C:/Qt/5.15.2/msvc2019_64 --build-dir=build-qt515`. Build trees must not be mixed across Qt major/Kit/compiler identities. Use `--show-config` to diagnose selection, `--test-exclude=REGEX` for documented scope exclusions, and `--env=KEY=VALUE` only for explicit test-environment overrides.
-
-A direct `ctest --test-dir <existing-build-dir> -R <test-name> --output-on-failure` is allowed **only for a fast focused diagnostic on an already configured/built tree**. It is not authoritative all-suite evidence or a substitute for the canonical test gate, and must explicitly preserve the native process exit code. PowerShell text pipelines through `Select-String`, `Select-Object` or `Out-String` are for viewing an already retained log, not for deciding PASS. No made-up physical/Viewer claim follows from a CTest PASS.
-
-**Workflow usability gap:** the current wrapper has no dedicated `--test-only` / CTest `-R` positive selector; the full `build.cmd test` intentionally configures/builds/tests. Improving targeted re-runs belongs to test/tooling work under #393, without spawning a second build authority. Do not work around missing convenience flags by permanently replacing the canonical workflow with shell compositions.
+The canonical runner must provide a concise resolved-configuration identity (Qt Kit, compiler, workspace/build root) before execution, preserve the native exit status, and reject ambiguous/unsafe environment. No physical-device or Viewer claim follows from CTest PASS. **Open build-system work under #393:** enforce the 60-second idle-output watchdog and audited build-tree boundary in the one canonical runner, with deterministic negative tests; do not create a parallel toolchain.
 
 Canonical repository path:
 
