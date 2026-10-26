@@ -23,6 +23,42 @@ Do not infer project status from chat memory alone.
 - If Issue prose conflicts with current machine/code/product facts, resolve the governance truth before implementation.
 - Keep one focused Issue/PR/root-cause owner; do not duplicate another Agent's active fix.
 
+## Stop / continuation contract (hard)
+
+Ending a work turn is an explicit state transition, not a normal way to report progress. An Agent may
+end a turn only when one of these is true:
+
+```text
+1. the requested outcome is complete;
+2. a Human must make a product/version/security decision;
+3. a Human must perform a GitHub administrator action;
+4. a required credential or environment is unavailable and no local substitute exists;
+5. an external dependency is genuinely unavailable after the Agent has exhausted safe alternatives.
+```
+
+Before ending any turn, the Agent must record and satisfy this self-check:
+
+```text
+BLOCKER_TYPE=None | HumanDecision | HumanAdmin | Credential | Environment | External
+WHAT_EXACTLY_IS_NEEDED=
+WHY_AGENT_CANNOT_DO_IT=
+ALTERNATIVES_ATTEMPTED=
+NEXT_NONBLOCKED_TASK=
+```
+
+Rules:
+
+- If `BLOCKER_TYPE=None`, the Agent must not end while any nonblocked task remains. It must continue with
+  implementation, evidence collection, a different WBS item, or the next queued action in the same turn.
+- `NOT_RUN`, `NOT_CONFIRMED`, a failed experiment, a red test, a failing review gate, or a pending CI job
+  is an evidence/action gap, not a legal stop condition. Record it and continue with an alternative, a fix,
+  or another nonblocked task.
+- A physical Human action is a legal blocker only after the Agent has exhausted automatable alternatives;
+  state the exact checklist instead of treating a failed automation attempt as Human-required.
+- A status summary or "next steps" paragraph is not a terminal action while a nonblocked task exists.
+- CI polling is not work: inspect checks only at meaningful milestones and use the interval for code,
+  failure remediation, evidence, or another WBS item.
+
 ## Current product phase
 
 **V0.3.0.0 Product Preview** was released on 2026-10-19. **V0.3.3.0 was validly reissued on 2026-10-24** following the documented retraction/remediation incident; the earlier retracted candidate remains historical audit evidence, not the current release. #144/#175 are historical delivered work; #370 remains long-lived performance governance. **Current development Feature = V0.3.4.0**, Windows Qt5.15.2/Qt6.8.3 exact qualified SDK/Runtime product cells (#603/#265/#566), with machine train registered by merged PR #655; a registered train is not release approval. See the [single current roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), [local Owner task charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md), and `.github/release/release-trains.json` for separate planning and activation authority. V0.3.1.0/V0.3.2.0 stay retired; V0.4 RC is inactive and qualification-only; V1 GA is not released.
