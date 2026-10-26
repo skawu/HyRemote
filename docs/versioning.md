@@ -109,11 +109,11 @@ V0.3 家族分两类工作：
 
 ### 强制 GA 前 V0.3 基线
 
-**当前产品路线图权威（2026-10-23 Owner #594/#605）：** [完整版本与功能路线图](internal/product-version-delivery-roadmap-2026-10-23.md)。V1.0 GA 前 Qt LTS **仅 Qt 5.15 和 Qt 6.8**；Qt 6.5 与 Qt 6.12 **只在 V1.0 正式 GA 后**独立适配。当前激活 V0.3.3.0 的 #144/#175 不扩范围；下一独立成果优先 Qt 5.15/6.8（#603/#604），HyRemoteTool D 综合工作台跨版本增量完善。V0.4 只做 RC 资格验证，V1 只提升合格 RC。**下一开发 Feature 已明确分配为 V0.3.4.0**（机器准入 PR 合并后生效）；更后续且未单独准入的 Feature 不提前占用正式版本号。机器激活与强制任务以 `.github/release/release-trains.json` 为准；已发布历史不追改。
+**当前产品路线图权威（2026-10-26 Owner #594/#605）：** [唯一完整版本路线图](internal/product-version-delivery-roadmap-2026-10-23.md)。V1.0 GA 前 Qt LTS **仅 Qt 5.15 和 Qt 6.8**；Qt 6.5 与 Qt 6.12 **只在 V1.0 正式 GA 后**独立适配。已发布 V0.3.3.0 的 #144/#175 范围不追改；当前开发成果为 Qt 5.15/6.8（#603/#604），HyRemoteTool D 综合工作台跨版本增量完善。V0.4 只做 RC 资格验证，V1 只提升合格 RC。**当前开发目标 V0.3.4.0 已由合并 PR #655 登记 machine train**，但仍须完成验收与 #95 放行才能发布；更后续已知用户成果的 PLANNED 编号以完整路线图为准，不等于 machine activation。机器激活/mandatory 以 `.github/release/release-trains.json` 为准；已发布历史不追改。
 
 **Windows x86_64 是唯一强制的实际运行/物理验证平台**。首轮 GA 的 Qt LTS 范围是 **5.15 + 6.8**；Qt 6.8.3 是参考基线，Qt 5.15 的每个适用接入/Kit 需独立资格证明。实用 Raw/TRLE/Damage 增量传输、维护版 Viewer 互操作、#370 Windows 性能及 SDK/包质量为资格门槛。Qt 6.5/6.12 的适配与支持证明在 **V1.0 GA 之后**由 #605 单独开展；Linux/Wayland/ARM64/EGLFS 是不阻塞发布的用户验证路径（#563）。
 
-**只有已承诺 Windows 支持单元的功能和真实证据必须在 V0.4 RC 进入前收敛。** Linux/嵌入式未验证不等于失败也不等于 Supported；用户问题通过 Issue 复现、评估及相应维护/hotfix 处理。任何一项都不预分配固定 Feature 版本（#333）。
+**只有已承诺 Windows 支持单元的功能和真实证据必须在 V0.4 RC 进入前收敛。** Linux/嵌入式未验证不等于失败也不等于 Supported；用户问题通过 Issue 复现、评估及相应维护/hotfix 处理。没有明确用户成果与可验收条件的纯技术主题不分配 Feature 版本（#333）；已识别的产品成果按完整路线图登记 PLANNED 版本，但不因此激活 train 或取得发布资格。
 
 ### 可选、质量或差异化结果
 
@@ -136,7 +136,7 @@ Session Registry/Session Operations、完整品牌扩展、HyRemoteTool 管理�
 
 ## 已分配下一开发 Feature：V0.3.4.0（2026-10-26）
 
-**当前本地 Owner 的版本目标是 `V0.3.4.0`，不是 V0.4.0.0。** 这是一次已明确产品范围的 Feature 开发版本分配，不是按 WBS 编号预留技术槽位。准确用户承诺：Windows x86_64 **Qt 5.15.2 和 Qt 6.8.3** 经过认证的 SDK/Runtime 接入、安装、实际应用和 Viewer 互操作。Owner #603，实施 #265/#566，支持矩阵 #57，架构 #209；[完整开发任务书](internal/v0.3.4.0-windows-qt-lts-development-charter.md)。具体机读 train 由正在审查的 #594 版本范围 PR 合并后成为 `develop` 权威。
+**当前本地 Owner 的版本目标是 `V0.3.4.0`，不是 V0.4.0.0。** 这是一次已明确产品范围的 Feature 开发版本分配，不是按 WBS 编号预留技术槽位。准确用户承诺：Windows x86_64 **Qt 5.15.2 和 Qt 6.8.3** 经过认证的 SDK/Runtime 接入、安装、实际应用和 Viewer 互操作。Owner #603，实施 #265/#566，支持矩阵 #57，架构 #209；[完整开发任务书](internal/v0.3.4.0-windows-qt-lts-development-charter.md)。具体 machine train 已由 PR #655 合并登记；当前计划版本仍以 `develop` 上的完整路线图为准。
 
 - `V0.3.4.0`：**明确的下一个开发目标**；候选发布前要满足该 train 的 mandatory issues、exact SHA Windows QA、安装消费者与独立 P1/P2 Review。
 - `V0.3.5.0`：**未激活的下一个候选目标**，宿主配置/状态路径 + 文字水印 #591/#589，独立 admission 后才能作为 Feature 正式执行。
@@ -144,13 +144,16 @@ Session Registry/Session Operations、完整品牌扩展、HyRemoteTool 管理�
 
 上述版本分配不重新启用历史退休的 0.3.1/0.3.2，也不承诺 Qt6.5/6.12 在 V1 GA 前合格。
 
-## 已知功能的全量版本排期（规划编号，允许变更）
+## 已知功能的全量版本排期（摘要；规划编号允许变更）
+
+> **事实源说明：本表是版本路标摘要，不是第二事实源。** 当前计划版本、顺序、依赖和状态以 `develop` 上已合并的 [完整产品路线图](internal/product-version-delivery-roadmap-2026-10-23.md) 为准；本表须与路线图在同一 PR 同步。Issue #594/#605 是决策记录，`.github/release/release-trains.json` 决定 machine train/mandatory/候选门禁，实际支持以 Release/tag、兼容矩阵和 exact-SHA 证据为准。
+
 
 **2026-10-26 Owner 更新：** 不再执行“后续已知功能永远不分配确切 Feature 号”的旧规则。**已知且可验收的产品成果必须有明确规划版本**，确保本地 Owner 有目标；即便尚未正式激活机器 release train，也要在 [唯一产品路线图](internal/product-version-delivery-roadmap-2026-10-23.md) 中标出顺序、责任、范围、验收和调整路径。规划编号 `PLANNED` ≠ release train 已激活 `ACTIVATED_DEV` ≠ 发布资格。没有明确用户成果的研究项不伪造 Feature。
 
 | 版本 | 已明确的产品目标 | 状态 |
 | --- | --- | --- |
-| V0.3.4.0 | Windows Qt5.15/Qt6.8 多 LTS SDK/Runtime 真正可集成 | 当前开发目标；机器准入 PR #655 |
+| V0.3.4.0 | Windows Qt5.15/Qt6.8 多 LTS SDK/Runtime 真正可集成 | 当前开发目标；machine train 已由合并 PR #655 登记，尚非发布放行 |
 | V0.3.5.0 | 宿主配置/状态路径 + 服务端静态文字水印 #591/#589 | 已规划，未激活 |
 | V0.3.6.0 | HyRemoteTool S1，设备/会话/安全控制/诊断/语言 #581–#586/#590 | 已规划，未激活 |
 | V0.3.7.0 | 用户 Qt App + HyRemote Docker 联合部署 #592 | 条件规划，未激活；真实容器不可替代 |
