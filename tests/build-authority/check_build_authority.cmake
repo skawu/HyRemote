@@ -336,6 +336,13 @@ if(WIN32)
         "--build-dir=${scratch}/qt5-generic-rejected-build")
     require_text_flat(qt-discovery-windows-qt5-generic-rejected "${HYB_TEST_OUTPUT}"
         "Generic/QML need Qt6 >= 6.8")
+
+    run_env_failure(qt-discovery-windows-qt5-qpa-rejected
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --mode=qpa --no-prompt
+        "--build-dir=${scratch}/qt5-qpa-rejected-build")
+    require_text_flat(qt-discovery-windows-qt5-qpa-rejected "${HYB_TEST_OUTPUT}"
+        "QPA needs exact Qt 6.8.3 private ABI")
 endif()
 
 # shell commands.
