@@ -98,8 +98,8 @@ target_include_directories(hyremote-remoteaccess
 
 target_link_libraries(hyremote-remoteaccess
     PUBLIC
-        Qt6::Core
-        Qt6::Network
+        ${HYREMOTE_QT_PUBLIC_PREFIX}::Core
+        ${HYREMOTE_QT_PUBLIC_PREFIX}::Network
     PRIVATE
         HyRemote::Core
 )
