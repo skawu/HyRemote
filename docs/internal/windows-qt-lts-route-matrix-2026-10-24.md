@@ -20,7 +20,7 @@ product from one passing cell.
 | --- | --- | --- |
 | C++ / Widgets | QUALIFIED (bounded) | Fresh Qt5 cache, 62/62 CTest, examples/Tool link, installed SDK consumer |
 | C++ / Widgets via qmake | QUALIFIED (bounded) | Installed `hyremote.pri`; `tests/consumer-qmake` built and ran against the Qt5 SDK |
-| C++ / Quick | NOT_RUN | No Qt5 Quick claim |
+| C++ / Quick | EXPERIMENTAL / NOT_QUALIFIED | Explicit `HYREMOTE_QT5_ENABLE_QUICK=ON` builds, but Quick capture/input tests fail; default OFF remains the only qualified Qt5 surface |
 | QML | UNSUPPORTED in current selector | Qt5 QML is not a qualified route |
 | Generic | UNSUPPORTED in current selector | Generic requires Qt6 >= 6.8 |
 | QPA | NOT_APPLICABLE | QPA is exact Qt 6.8.3 private ABI |
