@@ -27,18 +27,18 @@ Do not infer project status from chat memory alone.
 
 **V0.3.0.0 Product Preview** was released on 2026-10-19. **V0.3.3.0 was validly reissued on 2026-10-24** following the documented retraction/remediation incident; the earlier retracted candidate remains historical audit evidence, not the current release. #144/#175 are historical delivered work; #370 remains long-lived performance governance. **Current development Feature = V0.3.4.0**, Windows Qt5.15.2/Qt6.8.3 exact qualified SDK/Runtime product cells (#603/#265/#566), with machine train registered by merged PR #655; a registered train is not release approval. See the [single current roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), [local Owner task charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md), and `.github/release/release-trains.json` for separate planning and activation authority. V0.3.1.0/V0.3.2.0 stay retired; V0.4 RC is inactive and qualification-only; V1 GA is not released.
 
-**Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It is a historical 2026-10-21 handoff and is not the current execution queue; historical #144/#175/#370 implementation work remains useful evidence but **V0.3.3 release acceptance is not complete** after retraction; follow current remediation record and latest Owner #594/#605 Qt-family roadmap. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
+**Local Owner / Agent execution handoff:** use the [current V0.3.4.0 product charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md) and [merged canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md) with #603; `docs/internal/owner-execution-brief-2026-10-21.md` and the earlier V0.3.3 retraction/remediation notes are retained as history, not current work queues. Do not let historical text override the actual reissued V0.3.3 Release, product roadmap, machine manifest, Issue, or exact-SHA verification.
 
 Current execution order:
 
 ```text
-verify latest develop + Issue ownership + exact-SHA evidence
- -> reuse merged #553 cursor/input/build-doc regressions; triage only new failures or open review debt
- -> remediate retracted v0.3.3.0 public tag (audit-only); freeze one current code SHA and re-run required Windows viewer/auth/performance/L2 evidence via release PR/main/tag, do not reuse the tag
- -> prioritize exact Windows **Qt5.15 + Qt6.8** LTS adaptation #603/#604 before completing HyRemoteTool GUI; other independent outcomes #589/#591/#592 and Tool increments follow
- -> finish only the committed Windows #343 baseline; Qt6.5/Qt6.12 post-GA #605, Linux/embedded user Issues nonblocking
- -> enter V0.4 qualification-only RC after explicit activation
- -> V1.0 GA on one accepted, qualified RC lineage
+verify latest develop + merged roadmap + machine train + Issue ownership + exact-SHA evidence
+ -> implement the current **V0.3.4.0** Windows Qt5.15.2/Qt6.8.3 SDK/Runtime product breadth (#603/#265/#566), with one Core and one Shared Runtime
+ -> use focused diagnostics for iteration, then canonical build.cmd build/test/install and current-head PR CI/review; do not assemble a parallel acceptance route in shell snippets
+ -> preserve truthful per-cell Qt/Widgets/Quick/C++/QML/Generic/QPA/deploy/Viewer claims; Linux/embedded evidence remains nonblocking for first Windows GA
+ -> plan V0.3.5.0 Host config/text watermark, V0.3.6.0 Tool S1 and conditional V0.3.7.0 Docker per merged roadmap, not as active V0.4 work
+ -> enter V0.4 qualification-only RC only after explicit Owner/machine activation and accepted pre-GA Windows product scope
+ -> promote a qualified V0.4 RC to V1.0 GA through the release authority; post-GA Qt6.5/Qt6.12 are planned under #605
 ```
 
 **Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; **Qt5.15 and Qt6.8** exact applicable cells are the only first-GA LTS families. Qt6.5/Qt6.12 must wait until **after V1 GA #605**.  Current exact Feature = V0.3.4.0; subsequent known user outcomes have **PLANNED** numbers in the [single canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), but are not automatically activated or releasable. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
