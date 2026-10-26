@@ -221,7 +221,6 @@ require_doc_token("docs/internal/product-version-delivery-roadmap-2026-10-23.md"
 require_doc_token("docs/versioning.md" "V0.3.4.0" "Chinese version assignment")
 require_doc_token("docs/en/versioning.md" "V0.3.4.0" "English version assignment")
 
-
 # #594 Owner 2026-10-26: a local developer must have the COMPLETE known
 # outcome-to-exact-planning-version ladder, not just the next unnamed Feature.
 # This validates planning traceability, NEVER machine activation or product PASS.
