@@ -1281,6 +1281,27 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 
     detail::RfbSecurityConfig effectiveSecurity = security;
     effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
+    // RFB ServerInit needs geometry even when the capture scheduler has not
+    // produced its first frame yet. The target's physical size is known here;
+    // without it a real Viewer authenticates, waits for ServerInit and closes.
+    const auto recordInitialFramebuffer = [&effectiveSecurity](const QSize &logical, qreal dpr) {
+        if (logical.width() <= 0 || logical.height() <= 0 || dpr <= 0.0)
+            return;
+        const int width = qRound(logical.width() * dpr);
+        const int height = qRound(logical.height() * dpr);
+        if (width > 0 && height > 0 && width <= 65535 && height <= 65535) {
+            effectiveSecurity.initialFramebufferWidth = static_cast<std::uint16_t>(width);
+            effectiveSecurity.initialFramebufferHeight = static_cast<std::uint16_t>(height);
+        }
+    };
+#ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
+    if (auto *widget = qobject_cast<QWidget *>(targetObject))
+        recordInitialFramebuffer(widget->size(), widget->devicePixelRatioF());
+#endif
+#ifdef HYREMOTE_HAS_QUICK_ADAPTER
+    if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
+        recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
+#endif
     // Cursor reads happen on the RFB worker. A BlockingQueuedConnection here can deadlock when the
     // GUI calls stop() while the worker is waiting for readSnapshot() and transport shutdown is
     // waiting for that worker. Keep a shared snapshot and refresh it asynchronously instead.

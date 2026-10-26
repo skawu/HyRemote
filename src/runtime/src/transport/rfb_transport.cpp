@@ -823,7 +823,8 @@ private:
                 if (client.input.size() < 1)
                     return;
                 client.input.remove(0, 1);
-                if (latestFrame())
+                if (latestFrame() || (m_security.initialFramebufferWidth != 0
+                                      && m_security.initialFramebufferHeight != 0))
                     sendServerInit(client);
                 else
                     client.phase = ClientPhase::AwaitInitialFrame;
@@ -1052,11 +1053,11 @@ private:
 
     void sendServerInit(ClientState &client)
     {
-        const auto frame = latestFrame();
-        if (!frame || !client.socket)
+        if (!client.socket)
             return;
-        const auto width = frame->geometry.size.width;
-        const auto height = frame->geometry.size.height;
+        const auto frame = latestFrame();
+        const auto width = frame ? frame->geometry.size.width : m_security.initialFramebufferWidth;
+        const auto height = frame ? frame->geometry.size.height : m_security.initialFramebufferHeight;
         if (width == 0 || height == 0 || width > std::numeric_limits<std::uint16_t>::max()
             || height > std::numeric_limits<std::uint16_t>::max()) {
             protocolFailure(client, "RFB framebuffer geometry exceeds the protocol baseline");
