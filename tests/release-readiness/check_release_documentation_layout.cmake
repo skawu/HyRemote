@@ -221,6 +221,44 @@ require_doc_token("docs/internal/product-version-delivery-roadmap-2026-10-23.md"
 require_doc_token("docs/versioning.md" "V0.3.4.0" "Chinese version assignment")
 require_doc_token("docs/en/versioning.md" "V0.3.4.0" "English version assignment")
 
+
+# #594 Owner 2026-10-26: a local developer must have the COMPLETE known
+# outcome-to-exact-planning-version ladder, not just the next unnamed Feature.
+# This validates planning traceability, NEVER machine activation or product PASS.
+set(full_roadmap_doc "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
+require_doc_token("${full_roadmap_doc}" "## 零、全量编号版本路线"
+                  "single current numbered product-outcome roadmap")
+require_doc_token("${full_roadmap_doc}" "版本目标变更"
+                  "reviewable old->new version change procedure")
+require_doc_token("${full_roadmap_doc}" "V0.4.0.0 继续保持"
+                  "RC remains inactive until pre-GA Feature implementation")
+foreach(planned_version IN ITEMS
+        V0.3.4.0 V0.3.5.0 V0.3.6.0 V0.3.7.0
+        V0.4.0.0 V1.0.0.0
+        V1.0.1.0 V1.0.2.0 V1.0.3.0 V1.0.4.0
+        V1.0.5.0 V1.0.6.0 V1.0.7.0
+        V1.1.0.0 V1.1.1.0)
+    require_doc_token("${full_roadmap_doc}" "**${planned_version}**"
+                      "full known product version planning: ${planned_version}")
+    require_doc_token("docs/versioning.md" "${planned_version}"
+                      "Chinese version ladder: ${planned_version}")
+    require_doc_token("docs/en/versioning.md" "${planned_version}"
+                      "English version ladder: ${planned_version}")
+endforeach()
+file(STRINGS "${HYREMOTE_SOURCE_DIR}/${full_roadmap_doc}"
+     planned_v03_feature_rows REGEX "^\\| \\*\\*V0\\.3\\.[4-7]\\.0\\*\\* \\|")
+list(LENGTH planned_v03_feature_rows planned_v03_feature_count)
+if(NOT planned_v03_feature_count EQUAL 4)
+    message(FATAL_ERROR
+        "release-documentation-layout: expected exactly four distinct "
+        "V0.3.4.0–V0.3.7.0 product Feature rows, found ${planned_v03_feature_count}")
+endif()
+foreach(planned_owner IN ITEMS 265 566 603 591 589 581 582 583 584 585 586 590
+                               592 605 587 588 593 204 171 190 170)
+    require_doc_token("${full_roadmap_doc}" "#${planned_owner}"
+                      "known product deliverable Issue #${planned_owner} is absent from roadmap")
+endforeach()
+
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
     "(canonical source layout + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
