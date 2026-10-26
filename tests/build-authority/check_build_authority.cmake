@@ -699,7 +699,7 @@ foreach(shared_line IN ITEMS
     require_text_flat(verbose-additive "${HYB_TEST_OUTPUT}" "${shared_line}")
 endforeach()
 
-message(STATUS "HyRemote build authority self-tests: PASS")
+# The PASS marker is emitted after the destructive-boundary tests too.
 
 
 # #678: A canonical clean/rebuild must never treat the workspace or an
@@ -740,3 +740,5 @@ else()
     message(STATUS "build-authority: symlink negative case unsupported on this host: ${boundary_link_status}")
 endif()
 file(REMOVE_RECURSE "${boundary_root}")
+
+message(STATUS "HyRemote build authority self-tests: PASS")
