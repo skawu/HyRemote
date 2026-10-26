@@ -102,7 +102,7 @@ endif()
 # train must stay conditional: a version number existing never authorizes a release scope by itself. #333: the
 # pre-reserved technical slots (0.2.1.0/0.3.1.0/0.3.2.0), the qualification-only 0.4.0.0 and the post-GA fixed slot
 # 1.1.0.0 are no longer selectable trains and are asserted as refused/fail-closed further down.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 1.0.0.0)
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 1.0.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
@@ -311,6 +311,51 @@ foreach(preflight_expectation IN ITEMS "0.2.0.0;258")
                 "mandatory child")
         endif()
     endforeach()
+endforeach()
+
+
+# 2026-10-26 Owner: V0.3.4.0 is the next actual development Feature.
+# Release readiness still requires closeable product children and exact candidate
+# evidence; V0.4.0.0 remains inactive and qualification-only under #235.
+string(JSON v034_owner GET "${authority_json}" trains "0.3.4.0" authority_parent)
+string(JSON v034_freeze GET "${authority_json}" trains "0.3.4.0" candidate_freeze_authority)
+string(JSON v034_lineage GET "${authority_json}" trains "0.3.4.0" lineage_parent)
+if(NOT v034_owner STREQUAL "594" OR NOT v034_freeze STREQUAL "603" OR
+   NOT v034_lineage STREQUAL "0.3.3.0")
+    message(FATAL_ERROR
+        "release-authority-policy: 0.3.4.0 must be #594-owned, #603 candidate frozen "
+        "and based on accepted v0.3.3.0; owner=${v034_owner} "
+        "freeze=${v034_freeze} lineage=${v034_lineage}")
+endif()
+string(JSON v034_child_count LENGTH "${authority_json}" trains "0.3.4.0" mandatory_children)
+if(NOT v034_child_count EQUAL 3)
+    message(FATAL_ERROR
+        "release-authority-policy: V0.3.4.0 must have exactly three closeable product children")
+endif()
+set(v034_children)
+math(EXPR v034_last "${v034_child_count} - 1")
+foreach(index RANGE 0 ${v034_last})
+    string(JSON issue GET "${authority_json}" trains "0.3.4.0" mandatory_children ${index})
+    list(APPEND v034_children "${issue}")
+endforeach()
+if(NOT "${v034_children}" STREQUAL "265;566;603")
+    message(FATAL_ERROR
+        "release-authority-policy: V0.3.4.0 must close #265 implementation, "
+        "#566 Kit UX and #603 product qualification; found '${v034_children}'")
+endif()
+string(JSON v034_nonblocker_count LENGTH "${authority_json}" trains "0.3.4.0" non_blockers)
+set(v034_nonblockers)
+math(EXPR v034_nonblocker_last "${v034_nonblocker_count} - 1")
+foreach(index RANGE 0 ${v034_nonblocker_last})
+    string(JSON issue GET "${authority_json}" trains "0.3.4.0" non_blockers ${index})
+    list(APPEND v034_nonblockers "${issue}")
+endforeach()
+foreach(nonblocker IN ITEMS 589 591 592 605)
+    if(NOT nonblocker IN_LIST v034_nonblockers)
+        message(FATAL_ERROR
+            "release-authority-policy: V0.3.4.0 must not be blocked by post-Feature "
+            "host/watermark/Docker or post-GA Qt6.5/6.12 issue #${nonblocker}")
+    endif()
 endforeach()
 
 # The first customer trial is a V0.2.0 decision, not a V0.1 one.

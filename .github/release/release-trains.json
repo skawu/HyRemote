@@ -1,7 +1,7 @@
 {
   "schema": 3,
   "kind": "release-train-scope-authority",
-  "roadmap_only_references": [ 12, 171, 180, 190, 204, 205, 225, 236, 269, 346, 371, 372, 374, 393, 566, 569, 576, 579, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591, 592, 593, 603, 604, 609, 611, 641, 642, 643, 644 ],
+  "roadmap_only_references": [ 12, 171, 180, 190, 204, 205, 225, 236, 269, 346, 371, 372, 374, 569, 576, 579, 590, 593, 609, 611, 641, 642, 643, 644 ],
   "notes": {
     "purpose": "Single machine-readable release-train authority. A requested release version selects one exact Feature; that Feature names its own authority parent, its closeable mandatory children, the prerequisites that must be resolved before its candidate can be accepted, the evidence it requires, the cross-version references it consumes, its lineage and its declared non-blockers.",
     "replaces": "This file replaces the former .github/release/v1-mandatory-issues.json, whose entire content is carried by the 1.0.0.0 train below. There is deliberately no second active authority.",
@@ -229,6 +229,64 @@
         "265": "Qt5 adaptation implementation must complete in the V0.3 family before V0.4 entry; not a V0.3.3 mandatory child."
       },
       "rule": "V0.3.3.0 is the activated Windows x86_64 Qt 6.8.3 Feature for #144 Raw+TRLE incremental/damage and #175 two maintained Windows real GUI viewers, #261 preflight, #370 real viewer SLO, exact-SHA Windows product and same-SHA release gates. Linux/ARM64/EGLFS/Wayland are unverified user-validation targets and their unavailable evidence is nonblocking per Owner #563. Qt5.15 and Qt6.8 Windows compatibility remains a separate explicit later Feature requirement; Qt6.5/Qt6.12 are post-V1 GA under Owner #605. Future Feature numbers and management/TLS are not preallocated."
+    },
+    "0.3.4.0": {
+      "authority_parent": 594,
+      "candidate_freeze_authority": 603,
+      "lineage_parent": "0.3.3.0",
+      "mandatory_children": [
+        265,
+        566,
+        603
+      ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.3.3.0-lineage",
+        "windows-qt5.15.2-and-qt6.8.3-exact-kit-capability-matrix",
+        "cross-major-source-and-installed-sdk-consumer-fail-closed-evidence",
+        "windows-qt5-qt6-applicable-four-frontend-build-install-deploy-evidence",
+        "widgets-quick-input-private-abi-exact-kit-regression-evidence",
+        "real-windows-viewer-and-native-application-acceptance-at-candidate-sha",
+        "current-head-ci-l2-and-independent-review"
+      ],
+      "cross_version_references": [
+        57,
+        95,
+        209,
+        343,
+        393,
+        604
+      ],
+      "conditional_items": [],
+      "non_blockers": [
+        170,
+        581,
+        582,
+        583,
+        584,
+        585,
+        586,
+        587,
+        588,
+        589,
+        591,
+        592,
+        605
+      ],
+      "notes": {
+        "57": "Pre-GA Windows Qt5/Qt6.8 qualification umbrella remains independently open through V0.4/V1; this V0.3.4 customer outcome does not force umbrella closure.",
+        "209": "Architecture umbrella remains open across versions: one Qt-free Core, one Shared Runtime and four peer integration routes; no duplication.",
+        "265": "Closeable Windows Qt5.15.2/Qt6.8.3 implementation: actual target/ABI, shared adapter and truthful per-route production SDK; exact candidate proof required.",
+        "566": "Closeable explicit Kit selection and UX: no silent Qt5 exclusion, no mixed-major/cache ambiguity, qualified Qt5/Qt6.8 supported routes only. Historical closed #604 evidence is a prerequisite input, not the complete target.",
+        "581": "Full Tool workbench is incremental and not a Qt-LTS Feature gate.",
+        "589": "Host static text watermark is a separately admitted follow-on user outcome, not a V0.3.4 requirement.",
+        "591": "Host config/state path contract is a separately admitted follow-on user outcome, not a V0.3.4 requirement.",
+        "592": "Docker with real user app is a separately admitted outcome; no untested Docker Supported claim.",
+        "603": "Closeable V0.3.4.0 customer outcome: Windows Qt5.15+Qt6.8 exact-cell support and clean installed SDK/native Viewer qualification; consumer evidence is required, not preflight alone.",
+        "604": "Already closed Qt5 Kit discovery defect is a baseline input and must not be reimplemented without regression evidence.",
+        "605": "Qt6.5/Qt6.12 are after V1 GA and cannot block or be marked Supported in V0.3.4.0."
+      },
+      "rule": "V0.3.4.0 is the immediately next ACTIVE DEVELOPMENT FEATURE on the accepted V0.3.3.0 lineage: truthful Windows x86_64 Qt 5.15.2 and Qt 6.8.3 SDK/Runtime compatibility and deployable real-application product cells. Exact Qt Kit identity, compiler/ABI, supported Widgets/Quick/ C++/QML/Generic/QPA applicable cells, QtPrivate ingress/QPA exact ABI, positive and negative installed/source consumers, maintained Viewer and local Qt behavior, exact-head CI and independent review. Qt6.5/Qt6.12 are post V1 GA, Linux/ARM64 physical evidence nonblocking. Activation assigns local development ownership, NOT a release/RC PASS: mandatory children and required evidence must close before release/v0.3.4.0 candidate/tag. V0.4.0.0 remains inactive qualification-only under #235."
     },
     "1.0.0.0": {
       "authority_parent": 33,

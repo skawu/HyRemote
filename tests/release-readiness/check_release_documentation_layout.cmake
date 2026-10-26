@@ -209,6 +209,18 @@ foreach(audit_defect IN ITEMS 641 642 643 644)
                       "product roadmap defect routing for #${audit_defect}")
 endforeach()
 
+# 2026-10-26: local Owner has an actual next developer version, not an indefinite
+# unnumbered Feature that could be silently deferred to the V0.4 qualification-only RC.
+set(next_feature_charter "docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md")
+require_doc_token("${next_feature_charter}" "TARGET_VERSION=V0.3.4.0"
+                  "exact local Owner V0.3.4.0 development handoff")
+require_doc_token("${next_feature_charter}" "V0.4_RC_ACTIVE=false"
+                  "RC remains inactive until Qt5/6.8 product breadth is ready")
+require_doc_token("docs/internal/product-version-delivery-roadmap-2026-10-23.md"
+                  "即时开发版本 = V0.3.4.0" "current product version delivery target")
+require_doc_token("docs/versioning.md" "V0.3.4.0" "Chinese version assignment")
+require_doc_token("docs/en/versioning.md" "V0.3.4.0" "English version assignment")
+
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
     "(canonical source layout + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")

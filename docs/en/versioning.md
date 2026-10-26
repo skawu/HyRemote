@@ -130,7 +130,17 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 
 `V0.3.1.0` (Qt5 slot) and `V0.3.2.0` (Bandwidth/ZRLE slot) are retired historical records and cannot be selected. V0.3.3.0 is a new coherent outcome. See [`../internal/v0.3.3.0-plan.md`](../internal/v0.3.3.0-plan.md).
 
-First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent candidates. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. Exact future Feature numbers are not reserved. Current [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) is authoritative.
+First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent candidates. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. Other future Feature numbers are not reserved; V0.3.4.0 is now explicitly assigned as the next development Feature. Current [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) is authoritative.
+
+## Assigned next development Feature: V0.3.4.0 (2026-10-26)
+
+**Local Owner development target: V0.3.4.0, not V0.4.0.0.** The next coherent user outcome is genuinely tested **Windows x86_64 Qt 5.15.2 + Qt 6.8.3** SDK/Runtime compatibility: selected exact Qt Kit/compiler, real source and installed consumers, application UI/input, applicable C++/QML/Generic/QPA and Widgets/Quick cells, exact-private-ABI QPA and maintained external Viewer. Product owner issue #603; implementation #265/#566; per-cell pre-GA evidence #57; architecture guard #209. See the [local development handoff](../internal/v0.3.4.0-windows-qt-lts-development-charter.md).
+
+- **V0.3.4.0: current exact development target**, with candidate release only after machine-mandatory issues, exact-SHA Windows QA and independent current-head review.
+- **V0.3.5.0: next *non-activated* candidate**, host config/state paths and server-side static text watermark #591/#589; requires separate admission.
+- **V0.4.0.0: NOT ACTIVE RC**, strictly qualification of already implemented functionality. It cannot absorb missing V0.3 Qt LTS/SDK/Tool feature implementation.
+
+This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before the reviewed release-train change is merged.
 
 ## V0.4: Qualify It
 

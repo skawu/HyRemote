@@ -384,7 +384,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
 
     # 9.-11. Selectable later exact Features are representable, each with its own authority parent. The retired
     # technical slots (0.2.1.0/0.3.1.0/0.3.2.0) and the not-yet-activated 0.4.0.0/1.1.0.0 are refused below.
-    foreach(pair IN ITEMS "0.2.0.0;233" "0.2.0.1;386" "0.3.0.0;234" "1.0.0.0;33")
+    foreach(pair IN ITEMS "0.2.0.0;233" "0.2.0.1;386" "0.3.0.0;234" "0.3.4.0;594" "1.0.0.0;33")
         list(GET pair 0 later_version)
         list(GET pair 1 later_authority)
         run_selection("${later_version}" TRUE later_output)
@@ -404,7 +404,8 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     foreach(expectation IN ITEMS
             "0.2.0.0|143,174,259,326,271|258,332|0.1.0.0"
             "0.2.0.1|382,387,389,390,391,392||0.2.0.0"
-            "0.3.0.0|264,240,335||0.2.0.0")
+            "0.3.0.0|264,240,335||0.2.0.0"
+            "0.3.4.0|265,566,603||0.3.3.0")
         string(REPLACE "|" ";" parts "${expectation}")
         list(GET parts 0 expectation_version)
         list(GET parts 1 expectation_children)
@@ -477,7 +478,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     expect_refusal("0.3.2.0 (Bandwidth/ZRLE slot) stays refused" "0.3.2.0")
     expect_refusal("0.4.0.0 refuses until #235 records activation" "0.4.0.0")
     expect_refusal("1.1.0.0 refuses: no post-GA fixed technical slot" "1.1.0.0")
-    expect_refusal("unknown future 0.3.4.0 is refused" "0.3.4.0")
+    expect_refusal("unknown future 0.3.5.0 is refused until independently admitted" "0.3.5.0")
 
     # 15. A malformed authority is refused.
     # Script mode has no build directory, so the temporary manifests this matrix writes must never land in the
@@ -753,8 +754,8 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     message(STATUS
         "release-scope self test: PASS (schema ${authority_schema}, ${cases_run} cases, "
         "sentinel 0.0.0, refused 0.0.x, V0.1 -> #229, released history 0.2.0.0/0.2.0.1 selectable, "
-        "V0.3.0.0 -> #234 [264,240,335] on the 0.2.0.0 lineage, V0.3.3.0 -> #234 [144,175] on the 0.3.0.0 lineage, "
-        "retired technical slots 0.2.1.0/0.3.1.0/0.3.2.0 and an unrecorded future 0.3.x fail closed, "
+        "V0.3.0.0 -> #234 [264,240,335] on the 0.2.0.0 lineage, V0.3.3.0 -> #234 [144,175] on the 0.3.0.0 lineage, V0.3.4.0 -> #594 [265,566,603] on the 0.3.3.0 lineage, "
+        "retired slots 0.2.1.0/0.3.1.0/0.3.2.0 and future 0.3.5.0 fail closed, "
         "V0.4.0.0 conditional on #235)")
     return()
 endif()
