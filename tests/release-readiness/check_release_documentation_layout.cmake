@@ -237,7 +237,9 @@ foreach(planned_version IN ITEMS
         V0.4.0.0 V1.0.0.0
         V1.0.1.0 V1.0.2.0 V1.0.3.0 V1.0.4.0
         V1.0.5.0 V1.0.6.0 V1.0.7.0
-        V1.1.0.0 V1.1.1.0)
+        V1.1.0.0 V1.1.1.0
+        V1.2.0.0 V1.2.1.0 V1.2.2.0 V1.2.3.0
+        V1.2.4.0 V1.2.5.0 V1.2.6.0 V1.2.7.0)
     require_doc_token("${full_roadmap_doc}" "**${planned_version}**"
                       "full known product version planning: ${planned_version}")
     require_doc_token("docs/versioning.md" "${planned_version}"
@@ -254,10 +256,24 @@ if(NOT planned_v03_feature_count EQUAL 4)
         "V0.3.4.0–V0.3.7.0 product Feature rows, found ${planned_v03_feature_count}")
 endif()
 foreach(planned_owner IN ITEMS 265 566 603 591 589 581 582 583 584 585 586 590
-                               592 605 587 588 593 204 171 190 170)
+                               592 605 587 588 593 204 171 190 170
+                               149 203 7 236 18 154 148 346 172 225 173 246 151 180)
     require_doc_token("${full_roadmap_doc}" "#${planned_owner}"
                       "known product deliverable Issue #${planned_owner} is absent from roadmap")
 endforeach()
+
+# Product-first future work must be rooted in real users and distinguish current
+# field defects from conditional post-GA product capabilities.
+require_doc_token("${full_roadmap_doc}" "## 产品北极星"
+                  "product-centered user outcomes before release numbers")
+foreach(field_issue IN ITEMS 565 567 362)
+    require_doc_token("${full_roadmap_doc}" "#${field_issue}"
+                      "known current field-user problem #${field_issue}")
+endforeach()
+require_doc_token("${full_roadmap_doc}" "GO/NO-GO"
+                  "uncertain features must have explicit discovery decisions")
+require_doc_token("${full_roadmap_doc}" "V1.2.7.0"
+                  "planning continues beyond V1.0, V1.1 and early post-GA horizons")
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
