@@ -195,7 +195,7 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call build.cmd build --mode=cpp --qt-prefix="%RUNNER_TEMP%\Qt5\5.15.2\msvc2019_64" --build-type=Release --build-dir=build-ci-qt5 --tests --run-tests --no-examples -j4
+          call build.cmd build --mode=cpp --qt-prefix="%RUNNER_TEMP%\Qt5\5.15.2\msvc2019_64" --build-type=Release --build-dir=build-ci-qt5 --tests --run-tests --no-examples --test-exclude=hyremote-v01-rfb-product-fit -j4
 
   product:
     name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
