@@ -274,6 +274,60 @@ require_doc_token("${full_roadmap_doc}" "GO/NO-GO"
 require_doc_token("${full_roadmap_doc}" "V1.2.7.0"
                   "planning continues beyond V1.0, V1.1 and early post-GA horizons")
 
+# Source-of-truth contract: issue decision records, product roadmap, machine
+# activation, task acceptance, and shipped-support evidence are separate facts.
+require_doc_token("${full_roadmap_doc}" "## 事实源与冲突处理（本地 Owner 必须遵守）"
+                  "mandatory source-of-truth and conflict protocol")
+require_doc_token("${full_roadmap_doc}" "Issue #594 是 Owner 决策/变更台账"
+                  "#594 is a decision ledger, not a parallel version table")
+require_doc_token("${full_roadmap_doc}" "只有相应审查 PR 合并后"
+                  "new roadmap decisions take effect only after reviewed sync")
+require_doc_token("${full_roadmap_doc}" "PLANNING_RECONCILIATION_REQUIRED"
+                  "conflicting facts fail closed instead of local guessing")
+require_doc_token("docs/versioning.md" "本表是版本路标摘要，不是第二事实源"
+                  "Chinese version table is only a summary")
+require_doc_token("docs/en/versioning.md" "This table is a summary, not a second source of truth"
+                  "English version table is only a summary")
+require_doc_token("docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md"
+                  "事实源读取顺序（本地 Owner 必须遵守）"
+                  "local Owner handoff enforces source read order")
+require_doc_token("${full_roadmap_doc}" "PR #655 已合并到 develop"
+                  "current train registration state is not stale")
+
+file(READ "${HYREMOTE_SOURCE_DIR}/${full_roadmap_doc}" full_roadmap_text)
+foreach(stale_roadmap_token IN ITEMS
+        "本 PR 独立 CI/Review/合并完成后才成为 develop 当前 machine authority"
+        "待 machine PR 独立审查合并"
+        "不预留 V1.1/1.2 等编号")
+    string(FIND "${full_roadmap_text}" "${stale_roadmap_token}" stale_roadmap_position)
+    if(NOT stale_roadmap_position EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: stale roadmap source/status wording remains: ${stale_roadmap_token}")
+    endif()
+endforeach()
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/versioning.md" zh_versioning_text)
+foreach(stale_summary_token IN ITEMS
+        "机器准入 PR 合并后生效"
+        "更后续且未单独准入的 Feature 不提前占用正式版本号")
+    string(FIND "${zh_versioning_text}" "${stale_summary_token}" stale_summary_position)
+    if(NOT stale_summary_position EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: stale Chinese source/status wording remains: ${stale_summary_token}")
+    endif()
+endforeach()
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/en/versioning.md" en_versioning_text)
+foreach(stale_summary_token IN ITEMS
+        "No future exact Feature version is reserved"
+        "Other future Feature numbers are not reserved"
+        "exact machine activation PR #655")
+    string(FIND "${en_versioning_text}" "${stale_summary_token}" stale_summary_position)
+    if(NOT stale_summary_position EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: stale English source/status wording remains: ${stale_summary_token}")
+    endif()
+endforeach()
+
+
 message(STATUS
     "HyRemote release documentation layout gate: PASS "
     "(canonical source layout + architecture authority + package/dependency governance + safe repository-admin recovery + versioned #109 physical preparation; neither admin readiness nor runbooks imply product PASS)")
