@@ -73,7 +73,6 @@
 | **V1.0.7.0** | **经授权的文本剪贴板同步**：操作员显式授权、只传文本、隐私/安全边界可测 | #171；需 Threat Model、权限与 Viewer 双向兼容测试，未准入不得默认开放 | **CONDITIONAL / POST_GA** |
 | **V1.1.0.0** | **非可信网络远程访问产品阶段**：外向 Edge Connector + 可自托管 Gateway，在 LAN 产品之外独立提供安全可运维通路 | #190；独立安全架构、认证/证书/Threat Model、连接稳定性、运维与真实现场接受 | **STRATEGIC_CONDITIONAL**；不能用现有明文 RFB 冒称公网安全 |
 | **V1.1.1.0** | **受认证 Session Operations**：会话标识/准入/操作/终止等真正可用公共能力 | #170；先建立身份和权限模型/并发场景、公开 API/兼容策略、用户场景，避免虚构已存在的会话管理 | **STRATEGIC_CONDITIONAL** |
-
 | **V1.2.0.0** | **真实工业 Qt Quick/ARM64 低侵入交付**：将现有 HMI 应用低成本启用远控，Quick-only 不额外加载 Qt Widgets，保留本地触控/显示 | **#149/#203/#7/#236/#18/#154**；准确 RK3588/Buildroot/EGLFS 参考 Kit 与性能/依赖正反例；QtPrivate/QPA-EGLFS #148 单元只能依 GO/NO-GO 判定真实支持范围 | **CONDITIONAL / POST_GA**；有硬件和可复现实机证据后才准入，不重启 Windows GA 物理门禁 |
 | **V1.2.1.0** | **Linux Wayland 原生平台可用性**：原生 Qt 程序在明确的 Wayland Kit 上看/控/部署，保持桌面输入与正确平台身份 | **#346/#148/#563**；先 Linux x86_64 Qt6.8 真实 Wayland 用户场景，按 C++/QML/Generic/QPA 逐单元验收，XWayland 不能冒充 native | **CONDITIONAL / POST_GA**；真实环境和平台兼容证据门槛 |
 | **V1.2.2.0** | **工业 HMI 真实单点/多点触控**：区别于鼠标模拟，触点 ID、按下/移动/释放/取消语义对 Qt Quick 正确 | **#172**；基于 V1.2.0 适用 HMI 参考板，协议/Viewer 触控能力先选型；远端切断释放全部触点，本机触控持续可用 | **CONDITIONAL / POST_GA**；未有真实触控通道只能提供 Mouse Emulation，不能宣称多点触控 |
