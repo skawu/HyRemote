@@ -1694,6 +1694,36 @@ void testBoundedInputBurstFailsClosed()
     transport->stop();
 }
 
+void testInitialTargetGeometrySendsServerInitBeforeFrame()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 640;
+    security.initialFramebufferHeight = 480;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                          std::move(security));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(width == 640);
+    CHECK(height == 480);
+    CHECK(socket.state() == QAbstractSocket::ConnectedState);
+    socket.abort();
+    transport->stop();
+}
+
 void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
                                 std::int32_t expectedEncoding,
                                 const char *encodingLabel,
@@ -2139,6 +2169,7 @@ int main(int argc, char **argv)
     testOversizedCutTextFailsClosed();
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
     testBoundedInputBurstFailsClosed();
+    testInitialTargetGeometrySendsServerInitBeforeFrame();
     runInteractionLatencyProbe({15, 0}, 15, "trle");
     runInteractionLatencyProbe({0}, 0, "raw");
     runInteractionLatencyProbe({15, 0}, 15, "trle-continuous", true);
