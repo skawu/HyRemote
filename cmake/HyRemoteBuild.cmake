@@ -990,6 +990,16 @@ if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
     set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
 endif()
 cmake_path(NORMAL_PATH HYB_BUILD_DIR)
+# NORMAL_PATH keeps a user-supplied trailing separator.  IS_SYMLINK and
+# REMOVE_RECURSE treat "link/" as a directory, which would let a symlinked
+# build root bypass the guard and delete the target's contents.  Strip the
+# separator once, before every identity/symlink/delete decision.
+string(REGEX REPLACE "[/\\\\]+$" "" HYB_BUILD_DIR "${HYB_BUILD_DIR}")
+if(HYB_BUILD_DIR STREQUAL "")
+    set(HYB_BUILD_DIR "/")
+elseif(HYB_BUILD_DIR MATCHES "^[A-Za-z]:$")
+    string(APPEND HYB_BUILD_DIR "/")
+endif()
 
 set(HYB_INTEGRATIONS "")
 if(HYB_CPP)
