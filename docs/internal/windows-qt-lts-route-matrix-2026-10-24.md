@@ -18,7 +18,7 @@ product from one passing cell.
 
 | Route | Status | Evidence / boundary |
 | --- | --- | --- |
-| C++ / Widgets | QUALIFIED (bounded) | Fresh Qt5 cache, 62/62 CTest, examples/Tool link, installed SDK consumer |
+| C++ / Widgets | QUALIFIED (bounded) | Windows Qt5 CI 62/62, installed CMake consumer, examples/Tool link |
 | C++ / Widgets via qmake | QUALIFIED (bounded) | Installed `hyremote.pri`; `tests/consumer-qmake` built and ran against the Qt5 SDK |
 | C++ / Quick | EXPERIMENTAL / NOT_QUALIFIED | Explicit `HYREMOTE_QT5_ENABLE_QUICK=ON` builds, but Quick capture/input tests fail; default OFF remains the only qualified Qt5 surface |
 | QML | UNSUPPORTED in current selector | Qt5 QML is not a qualified route |
@@ -50,4 +50,5 @@ Windows release gates.
 - Qt6.8 and Qt5 installed consumers now have source fixtures (`tests/consumer-installed-cpp`,
   `tests/consumer-qmake`) and local evidence; the #603 evidence index still needs the exact candidate
   SHA and physical Viewer record.
-- This matrix is a status record, not a new release authority.
+- This matrix is a status record, not a new release authority. Candidate-specific evidence is indexed
+in [V0.3.4.0 Windows Qt cell evidence](v0.3.4.0-qt-cell-evidence-2026-10-26.md).
