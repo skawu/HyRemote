@@ -6,7 +6,7 @@ version: 1  # 示例：1
 
 build:
   type: Release        # 示例：Debug、RelWithDebInfo
-  directory: build     # 示例：build-debug
+  directory: build     # 工作空间内受控的构建目录；仅通过经审查的配置/命名 profile 管理，Agent 不自行更改
   generator: Ninja     # 示例：Visual Studio 17 2022、Unix Makefiles
   jobs: auto           # 示例：4、8
   examples: true       # 示例：false
