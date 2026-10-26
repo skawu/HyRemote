@@ -700,3 +700,43 @@ foreach(shared_line IN ITEMS
 endforeach()
 
 message(STATUS "HyRemote build authority self-tests: PASS")
+
+
+# #678: A canonical clean/rebuild must never treat the workspace or an
+# unowned path as a disposable directory.  Restrict destructive fixtures to
+# fresh dedicated subdirectories under the checkout's managed build root.
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef boundary_fixture_id)
+set(boundary_root "${HYREMOTE_SOURCE_DIR}/build/.hyremote-boundary-${boundary_fixture_id}")
+if(EXISTS "${boundary_root}")
+    message(FATAL_ERROR "build-authority: unexpected existing boundary fixture")
+endif()
+file(MAKE_DIRECTORY "${boundary_root}/unowned" "${boundary_root}/owned")
+file(WRITE "${boundary_root}/unowned/keep-me.txt" "Unowned work must survive a mistaken clean")
+run_failure(clean-unowned --no-config clean "--build-dir=${boundary_root}/unowned")
+require_text(clean-unowned "${HYB_TEST_OUTPUT}" "UNSAFE_BUILD_DIRECTORY")
+if(NOT EXISTS "${boundary_root}/unowned/keep-me.txt")
+    message(FATAL_ERROR "build-authority: clean deleted unowned user data")
+endif()
+file(WRITE "${boundary_root}/owned/.hyremote-build-identity" "fixture identity")
+file(WRITE "${boundary_root}/owned/temporary-build-file.txt" "managed test build")
+run_success(clean-owned --no-config clean "--build-dir=${boundary_root}/owned")
+if(EXISTS "${boundary_root}/owned")
+    message(FATAL_ERROR "build-authority: clean did not remove the managed fixture")
+endif()
+# A symlinked tree must not become a shortcut to cleanup outside the
+# canonical workspace, even if its target contains an ownership marker.
+file(MAKE_DIRECTORY "${boundary_root}/outside-target")
+file(WRITE "${boundary_root}/outside-target/.hyremote-build-identity" "fixture identity")
+file(WRITE "${boundary_root}/outside-target/sentinel.txt" "retain")
+file(CREATE_LINK "${boundary_root}/outside-target" "${boundary_root}/redirect"
+     SYMBOLIC RESULT boundary_link_status)
+if(boundary_link_status STREQUAL "0")
+    run_failure(clean-symlink --no-config clean "--build-dir=${boundary_root}/redirect")
+    require_text(clean-symlink "${HYB_TEST_OUTPUT}" "UNSAFE_BUILD_DIRECTORY")
+    if(NOT EXISTS "${boundary_root}/outside-target/sentinel.txt")
+        message(FATAL_ERROR "build-authority: cleanup followed symlink and removed target")
+    endif()
+else()
+    message(STATUS "build-authority: symlink negative case unsupported on this host: ${boundary_link_status}")
+endif()
+file(REMOVE_RECURSE "${boundary_root}")
