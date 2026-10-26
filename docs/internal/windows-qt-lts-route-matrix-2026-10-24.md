@@ -19,6 +19,7 @@ product from one passing cell.
 | Route | Status | Evidence / boundary |
 | --- | --- | --- |
 | C++ / Widgets | QUALIFIED (bounded) | Fresh Qt5 cache, 62/62 CTest, examples/Tool link, installed SDK consumer |
+| C++ / Widgets via qmake | QUALIFIED (bounded) | Installed `hyremote.pri`; `tests/consumer-qmake` built and ran against the Qt5 SDK |
 | C++ / Quick | NOT_RUN | No Qt5 Quick claim |
 | QML | UNSUPPORTED in current selector | Qt5 QML is not a qualified route |
 | Generic | UNSUPPORTED in current selector | Generic requires Qt6 >= 6.8 |
@@ -46,6 +47,7 @@ Windows release gates.
 
 - Qt5 Quick/QML/Generic/QPA have no qualification claim; either implement a bounded route or keep
   them explicitly unsupported.
-- Qt6.8 and Qt5 installed consumers need to be part of the #603 matrix evidence index, not only a
-  local document.
+- Qt6.8 and Qt5 installed consumers now have source fixtures (`tests/consumer-installed-cpp`,
+  `tests/consumer-qmake`) and local evidence; the #603 evidence index still needs the exact candidate
+  SHA and physical Viewer record.
 - This matrix is a status record, not a new release authority.
