@@ -990,6 +990,16 @@ if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
     set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
 endif()
 cmake_path(NORMAL_PATH HYB_BUILD_DIR)
+# NORMAL_PATH keeps a user-supplied trailing separator.  IS_SYMLINK and
+# REMOVE_RECURSE treat "link/" as a directory, which would let a symlinked
+# build root bypass the guard and delete the target's contents.  Strip the
+# separator once, before every identity/symlink/delete decision.
+string(REGEX REPLACE "[/\\\\]+$" "" HYB_BUILD_DIR "${HYB_BUILD_DIR}")
+if(HYB_BUILD_DIR STREQUAL "")
+    set(HYB_BUILD_DIR "/")
+elseif(HYB_BUILD_DIR MATCHES "^[A-Za-z]:$")
+    string(APPEND HYB_BUILD_DIR "/")
+endif()
 
 set(HYB_INTEGRATIONS "")
 if(HYB_CPP)
@@ -1049,7 +1059,34 @@ if(HYB_SHOW_CONFIG)
     return()
 endif()
 
+# A build directory is not an arbitrary delete target.  Before any clean or
+# implicit rebuild, verify the effective on-disk path is a managed descendant of
+# the checkout.  This is intentionally stricter than mere text prefix matching:
+# path traversal and symlink/junction escapes must not redirect a cleanup outside
+# the workspace or onto the workspace root itself.
+function(hyb_guard_cleanup target)
+    file(REAL_PATH "${HYREMOTE_SOURCE_DIR}" workspace_root)
+    file(REAL_PATH "${target}" resolved_target)
+    cmake_path(IS_PREFIX workspace_root "${resolved_target}" NORMALIZE _under_workspace)
+    if(NOT _under_workspace OR "${workspace_root}" STREQUAL "${resolved_target}")
+        message(FATAL_ERROR
+            "UNSAFE_BUILD_DIRECTORY: refusing cleanup of '${target}' (resolves to '${resolved_target}'); "
+            "must be a managed build tree strictly inside the repository workspace '${workspace_root}'.")
+    endif()
+    if(IS_SYMLINK "${target}")
+        message(FATAL_ERROR
+            "UNSAFE_BUILD_DIRECTORY: refusing cleanup of symlinked build directory '${target}'.")
+    endif()
+    set(marker "${target}/.hyremote-build-identity")
+    if(NOT EXISTS "${marker}" OR IS_DIRECTORY "${marker}" OR IS_SYMLINK "${marker}")
+        message(FATAL_ERROR
+            "UNSAFE_BUILD_DIRECTORY: refusing cleanup of unowned directory '${target}'; "
+            "missing or invalid .hyremote-build-identity marker. No files were deleted.")
+    endif()
+endfunction()
+
 if(HYB_CLEAN AND EXISTS "${HYB_BUILD_DIR}")
+    hyb_guard_cleanup("${HYB_BUILD_DIR}")
     file(REMOVE_RECURSE "${HYB_BUILD_DIR}")
 endif()
 if(HYB_SUBCOMMAND STREQUAL "clean")
@@ -1066,7 +1103,7 @@ file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")
 #
 # The marker is also the safety boundary. A directory that does not carry it was not created by this entry point, so it
 # is never removed automatically - it fails closed and names the two ways forward. `rebuild` stays the explicit
-# force-clean path, and it removes the tree before this block, so it never depends on the marker.
+# force-clean path must still pass hyb_guard_cleanup before deleting an existing owned tree.
 set(identity
     "generator=${HYB_GENERATOR}\nqt=${HYB_QT_PREFIX}\ntoolchain=${HYB_TOOLCHAIN}\nc=${HYB_C_COMPILER}\ncxx=${HYB_CXX_COMPILER}\ncpp=${HYB_CPP}\nqml=${HYB_QML}\ngeneric=${HYB_GENERIC}\nqpa=${HYB_QPA}\nsecurity=${HYB_SECURITY}\n")
 set(identity_file "${HYB_BUILD_DIR}/.hyremote-build-identity")
@@ -1093,6 +1130,7 @@ else()
 endif()
 
 if(hyb_recreate_build_tree)
+    hyb_guard_cleanup("${HYB_BUILD_DIR}")
     message(STATUS "HyRemote: build configuration changed; recreating ${HYB_BUILD_DIR}")
     file(REMOVE_RECURSE "${HYB_BUILD_DIR}")
     file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")
