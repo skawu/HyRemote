@@ -22,7 +22,7 @@
 
 ## 零、全量编号版本路线（Owner 2026-10-26，当前产品排程）
 
-> **本节是本文件最优先的「已知用户成果 → 确切版本 → 本地 Owner 任务」分配。** 老 Issue 中的「no exact version」仅保留历史审计作用，遇到冲突以本节为准。以后版本允许调整，但必须由 #594 的新决议与受审 PR 明确写出“原目标→新目标、原因、依赖/里程碑影响和生效 SHA”，不能靠本地负责人猜，也不能默默把功能搬到 V0.4。**规划编号不等于激活 release train / 可发布 tag**；机器 selector 只负责已激活的确切版本。当前激活中的准入 PR #655 为 V0.3.4.0；以下更远的编号均为「计划目标，未激活」，不得直接执行发布选择器。
+> **本节是本文件最优先的「已知用户成果 → 确切版本 → 本地 Owner 任务」分配。** 老 Issue 中的「no exact version」仅保留历史审计作用，遇到冲突以本节为准。以后版本允许调整，但必须由 #594 的新决议与受审 PR 明确写出“原目标→新目标、原因、依赖/里程碑影响和生效 SHA”，不能靠本地负责人猜，也不能默默把功能搬到 V0.4。**规划编号不等于激活 release train / 可发布 tag**；机器 selector 只负责已激活的确切版本。当前激活中的准入 PR PR 655 为 V0.3.4.0；以下更远的编号均为「计划目标，未激活」，不得直接执行发布选择器。
 >
 > **排程优先级：** 已发缺陷/安全修复可独立维护 → V0.3.4 Qt 主线 → V0.3.5 宿主配置/文字水印 → V0.3.6 Tool S1 → V0.3.7 Docker 条件性交付 → V0.4 RC → V1 GA → GA 后独立 Feature。若条件性产品功能没有真实环境可验收，必须在 RC 冻结前通过审查将其保留为未发行计划或重新安排具体 GA 后版本，不能伪造通过，也不能以它阻塞已承诺的 Windows GA 支持范围。
 
@@ -32,7 +32,7 @@
 | --- | --- | --- | --- |
 | **V0.1.0.0 / V0.2.0.0 / V0.2.0.1 / V0.3.0.0** | Developer Preview → 用户 LAN 首试 → 维护修复 → 四前端 SDK 自助 Product Preview | #229/#233/#386/#234；保留既有已发布 tag、证据、接受限制，不进行版本号/功能回填 | **RELEASED / 历史**；0.3.1.0 与 0.3.2.0 已退休且不复活 |
 | **V0.3.3.0** | Raw/TRLE + Damage 增量、维护版真实 GUI Viewer 互操作 | #144/#175；Windows Qt6.8.3 L2 85/85；真实 Viewer 等部分证明不在同一 release HEAD，受勘误限制；#370 持续性能责任 | **RELEASED 2026-10-24**；不再开发该 Feature |
-| **V0.3.4.0** | **跨 Qt 主版本 SDK 用户交付**：Windows Qt5.15.2 / Qt6.8.3，正确 Kit/ABI、可安装/部署的四条适用前端、真实应用 + Viewer | **#603 产品 Owner；#265 适配；#566 Kit UX；#57 逐单元资格；#209 架构**。A01–D05/E01：真实 Qt5/6 targets、Qt API/Private ingress、source/installed/qmake consumers、negative tests、Viewer、精确 SHA CI；不把 Qt5 Quick/QML/Generic/QPA 未验收称 PASS | **ACTIVE DEVELOPMENT TARGET**；机读准入 PR #655 审查/合并后生效；**不能进入 V0.4 补实现** |
+| **V0.3.4.0** | **跨 Qt 主版本 SDK 用户交付**：Windows Qt5.15.2 / Qt6.8.3，正确 Kit/ABI、可安装/部署的四条适用前端、真实应用 + Viewer | **#603 产品 Owner；#265 适配；#566 Kit UX；#57 逐单元资格；#209 架构**。A01–D05/E01：真实 Qt5/6 targets、Qt API/Private ingress、source/installed/qmake consumers、negative tests、Viewer、精确 SHA CI；不把 Qt5 Quick/QML/Generic/QPA 未验收称 PASS | **ACTIVE DEVELOPMENT TARGET**；机读准入 PR PR 655 审查/合并后生效；**不能进入 V0.4 补实现** |
 | **V0.3.5.0** | **可运维宿主配置 + 服务端静态文字水印**：客户可决定 config/state/secret 路径；标准 RFB Viewer 看得到文字，不污染本地 Qt 窗口 | **#591 → #589**；四接入前端共用 Runtime 路径与远端出帧处理；中文/英文文本、合法配置、Raw/TRLE/Damage/Resize/多 Viewer、路径权限/重启、真实 Viewer，独立性能与安全验收；Logo 不在本版 | **PLANNED / NEXT**；依赖 V0.3.4 SDK 基础；编号规划已明确，正式 release train 仍待独立准入 |
 | **V0.3.6.0** | **HyRemoteTool D 综合工作台 S1（A 优先）**：可用 Connect/Session、设备档案、缩放全屏、安全控制、基础诊断、本机语言设置 | **#579 产品 PRD，#581 UI，#582 安全状态机，#583 设备档案，#584 Fit/100%/全屏，#585 基础诊断，#590 Auto/手动语言，#586 S1 验收**；真正 Windows GUI 800×600、真实连接/按键释放/重连/持久化与脱敏报告，同 SHA 验收 | **PLANNED**；仅 Tool S1；#587/#588 SDK/进阶诊断不冒充已完成，不得阻塞 V0.3.4 |
 | **V0.3.7.0** | **用户 Qt 应用与 HyRemote 的真实 Docker 联合部署**：Qt 应用、插件、RFB、挂载 config/state/secret、非 root、重建保持配置 | **#592，依赖 #591/#589**；必须真实 Dockerfile/Compose、Qt App container、RFB Viewer、restart/recreate 与权限测试；没有 Linux/Docker 实验事实只能 NOT_RUN | **PLANNED / CONDITIONAL**；非 Windows 首 GA mandatory；若缺真实环境，RC 冻结前需显式作出保留/移版决定，**不得因其未实现直接进入 V0.4 开发 Docker 功能** |
