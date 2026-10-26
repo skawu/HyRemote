@@ -109,7 +109,7 @@ V0.3 家族分两类工作：
 
 ### 强制 GA 前 V0.3 基线
 
-**当前产品路线图权威（2026-10-23 Owner #594/#605）：** [完整版本与功能路线图](internal/product-version-delivery-roadmap-2026-10-23.md)。V1.0 GA 前 Qt LTS **仅 Qt 5.15 和 Qt 6.8**；Qt 6.5 与 Qt 6.12 **只在 V1.0 正式 GA 后**独立适配。当前激活 V0.3.3.0 的 #144/#175 不扩范围；下一独立成果优先 Qt 5.15/6.8（#603/#604），HyRemoteTool D 综合工作台跨版本增量完善。V0.4 只做 RC 资格验证，V1 只提升合格 RC。未激活的 Feature **不提前分配准确版本号**。机器激活与强制任务以 `.github/release/release-trains.json` 为准；已发布历史不追改。
+**当前产品路线图权威（2026-10-23 Owner #594/#605）：** [完整版本与功能路线图](internal/product-version-delivery-roadmap-2026-10-23.md)。V1.0 GA 前 Qt LTS **仅 Qt 5.15 和 Qt 6.8**；Qt 6.5 与 Qt 6.12 **只在 V1.0 正式 GA 后**独立适配。当前激活 V0.3.3.0 的 #144/#175 不扩范围；下一独立成果优先 Qt 5.15/6.8（#603/#604），HyRemoteTool D 综合工作台跨版本增量完善。V0.4 只做 RC 资格验证，V1 只提升合格 RC。**下一开发 Feature 已明确分配为 V0.3.4.0**（机器准入 PR 合并后生效）；更后续且未单独准入的 Feature 不提前占用正式版本号。机器激活与强制任务以 `.github/release/release-trains.json` 为准；已发布历史不追改。
 
 **Windows x86_64 是唯一强制的实际运行/物理验证平台**。首轮 GA 的 Qt LTS 范围是 **5.15 + 6.8**；Qt 6.8.3 是参考基线，Qt 5.15 的每个适用接入/Kit 需独立资格证明。实用 Raw/TRLE/Damage 增量传输、维护版 Viewer 互操作、#370 Windows 性能及 SDK/包质量为资格门槛。Qt 6.5/6.12 的适配与支持证明在 **V1.0 GA 之后**由 #605 单独开展；Linux/Wayland/ARM64/EGLFS 是不阻塞发布的用户验证路径（#563）。
 
