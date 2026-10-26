@@ -25,7 +25,7 @@ Do not infer project status from chat memory alone.
 
 ## Current product phase
 
-**V0.3.0.0 Product Preview was validly released on 2026-10-19** (`v0.3.0.0`). **A public `v0.3.3.0` tag/Release was created on 2026-10-23, then RETRACTED by the current governance audit. It is NOT an accepted release.** The tag at `2ebe57f` is an immutable historical audit record, not authorization to ship; earlier tests/Viewer/performance data were not all obtained at one accepted candidate SHA. See [V0.3.3 release remediation](docs/internal/v0.3.3.0-release-remediation-2026-10-23.md). #144/#175 are currently closed implementation Issues, **not proof of valid release acceptance**; #370 remains long-lived. **Current release P0:** requalify exact-candidate Windows Viewer/auth/performance, correct Git Flow release branch/main/tag and independent gates without reusing the retracted tag. **Next product Feature P0 after release correction:** Windows Qt5.15/Qt6.8 exact qualified cells (#603/#604). V0.3.1.0/V0.3.2.0 remain retired; V0.4 RC conditionally inactive and GA not released.
+**V0.3.0.0 Product Preview** was released on 2026-10-19. **V0.3.3.0 was validly reissued on 2026-10-24** following the documented retraction/remediation incident; the earlier retracted candidate remains historical audit evidence, not the current release. #144/#175 are historical delivered work; #370 remains long-lived performance governance. **Current development Feature = V0.3.4.0**, Windows Qt5.15.2/Qt6.8.3 exact qualified SDK/Runtime product cells (#603/#265/#566), with machine train registered by merged PR #655; a registered train is not release approval. See the [single current roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), [local Owner task charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md), and `.github/release/release-trains.json` for separate planning and activation authority. V0.3.1.0/V0.3.2.0 stay retired; V0.4 RC is inactive and qualification-only; V1 GA is not released.
 
 **Local Owner / Agent execution handoff:** [docs/internal/owner-execution-brief-2026-10-21.md](docs/internal/owner-execution-brief-2026-10-21.md) (governance work #549). It is a historical 2026-10-21 handoff and is not the current execution queue; historical #144/#175/#370 implementation work remains useful evidence but **V0.3.3 release acceptance is not complete** after retraction; follow current remediation record and latest Owner #594/#605 Qt-family roadmap. This brief does not override #1/#24/#33/#95/#343 or machine release authority.
 
@@ -41,7 +41,7 @@ verify latest develop + Issue ownership + exact-SHA evidence
  -> V1.0 GA on one accepted, qualified RC lineage
 ```
 
-**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; **Qt5.15 and Qt6.8** exact applicable cells are the only first-GA LTS families. Qt6.5/Qt6.12 must wait until **after V1 GA #605**.  Do not preassign V0.3.4.0/V0.3.5.0. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
+**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; **Qt5.15 and Qt6.8** exact applicable cells are the only first-GA LTS families. Qt6.5/Qt6.12 must wait until **after V1 GA #605**.  Current exact Feature = V0.3.4.0; subsequent known user outcomes have **PLANNED** numbers in the [single canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), but are not automatically activated or releasable. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
 Qt 6.5 LTS and Qt 6.12 LTS are both **post-V1.0.0.0 GA** support projects #605 (not pre-GA qualification gates); optional historical preflight is not a support claim. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
@@ -108,6 +108,21 @@ src/
 - RFB/VNC is the first transport/backend, not HyRemote's product identity.
 
 ## Build and test authority
+
+**Everyday development and final local acceptance MUST use the canonical `build.cmd` + `build.yml` entry.** Avoid building a second implicit build contract with shell snippets that manually prepend Qt/DLL paths, run stale build trees, or filter CTest success text. The canonical runner already selects an exact Qt Kit, configures/builds when needed, adds current Qt/runtime DLL locations for Windows tests, writes `<build-dir>/test.log`, checks nonzero discovered/executed tests, and fails on CTest errors. A green-looking `Select-String` output is not an exit-code oracle.
+
+Recommended Windows PowerShell invocation for the **full, applicable Qt6.8.3 local suite** (run in an appropriate MSVC developer environment; the explicit Qt path is an example, not a claim about the current machine):
+
+```powershell
+.\build.cmd test --mode=all --qt-prefix=C:/Qt/6.8.3/msvc2022_64 --build-dir=build-qt683 --no-prompt
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+```
+
+For **Qt5.15.2**, choose a *separate* build dir and only the qualified C++/Widgets frontend cell, e.g. `--mode=cpp --qt-prefix=C:/Qt/5.15.2/msvc2019_64 --build-dir=build-qt515`. Build trees must not be mixed across Qt major/Kit/compiler identities. Use `--show-config` to diagnose selection, `--test-exclude=REGEX` for documented scope exclusions, and `--env=KEY=VALUE` only for explicit test-environment overrides.
+
+A direct `ctest --test-dir <existing-build-dir> -R <test-name> --output-on-failure` is allowed **only for a fast focused diagnostic on an already configured/built tree**. It is not authoritative all-suite evidence or a substitute for the canonical test gate, and must explicitly preserve the native process exit code. PowerShell text pipelines through `Select-String`, `Select-Object` or `Out-String` are for viewing an already retained log, not for deciding PASS. No made-up physical/Viewer claim follows from a CTest PASS.
+
+**Workflow usability gap:** the current wrapper has no dedicated `--test-only` / CTest `-R` positive selector; the full `build.cmd test` intentionally configures/builds/tests. Improving targeted re-runs belongs to test/tooling work under #393, without spawning a second build authority. Do not work around missing convenience flags by permanently replacing the canonical workflow with shell compositions.
 
 Canonical repository path:
 
