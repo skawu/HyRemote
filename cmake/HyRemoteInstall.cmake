@@ -178,6 +178,20 @@ install(
     DESTINATION "${HYREMOTE_INSTALL_CMAKEDIR}"
 )
 
+# Legacy qmake applications cannot consume a CMake export set. Install a
+# deliberately small shim beside the CMake package; it is not a second SDK or
+# runtime and does not attempt UI/deployment automation. Generate it so
+# lib64/include install dirs are not silently rewritten as lib/include.
+configure_file(
+    "${CMAKE_CURRENT_LIST_DIR}/hyremote.pri.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/hyremote.pri"
+    @ONLY
+)
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/hyremote.pri"
+    DESTINATION "${HYREMOTE_INSTALL_CMAKEDIR}"
+)
+
 install(
     FILES
         "${CMAKE_CURRENT_BINARY_DIR}/HyRemoteConfig.cmake"
