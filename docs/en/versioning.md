@@ -142,6 +142,34 @@ First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; To
 
 This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before the reviewed release-train change is merged.
 
+## Complete numbered planning for known product outcomes (editable, 2026-10-26)
+
+**Owner update:** Assign a concrete *planning version* to every known, testable product outcome so the local owner has an unambiguous development target. A planned number is **not** an activated machine release train, qualified feature, release branch or permission to tag. The [sole current product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) owns dependencies, test criteria, owner Issues, exceptions and changes. Research without an admitted user deliverable stays a research obligation, not an invented feature.
+
+| Version | Planned user-deliverable outcome | Status |
+| --- | --- | --- |
+| V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | Current development target; exact machine activation PR #655 |
+| V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | Planned, not activated |
+| V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Planned, not activated |
+| V0.3.7.0 | Real user Qt app + HyRemote Docker deployment #592 | Conditional plan; actual container required |
+| V0.4.0.0 | Qualification-only RC, **not development of missing features** | Inactive conditional RC |
+| V1.0.0.0 | Windows first GA qualified Qt5.15/Qt6.8 support contract | Not released |
+| V1.0.1.0 / V1.0.2.0 | Independently qualify Qt6.5 / Qt6.12 post-GA #605 | Planned, not activated |
+| V1.0.3.0 / V1.0.4.0 | Tool S2 imported diagnostics #587 / S3 local SDK guidance #588 | Planned, not activated |
+| V1.0.5.0 / V1.0.6.0 / V1.0.7.0 | Logo #593 / no-install viewer #204 / permissioned text clipboard #171 | Post-GA; latter two conditional |
+| V1.1.0.0 / V1.1.1.0 | Secure Internet Gateway #190 / authenticated Session Operations #170 | Strategic conditional plan |
+
+| V1.2.0.0 | Real Qt Quick/ARM64 HMI adoption without an accidental Qt Widgets dependency #149/#203/#7/#236 | Conditional; actual hardware evidence |
+| V1.2.1.0 | Native Linux Wayland support and local GUI preservation #346/#148 | Conditional, platform evidence |
+| V1.2.2.0 | True single- and multi-touch in Qt Quick / industrial HMI #172 | Conditional, viewer and hardware evidence |
+| V1.2.3.0 | Application-owned admission, control rights, and privacy policy #225 | Strategic conditional, after #170 |
+| V1.2.4.0 | Secure file exchange or a documented external secure alternative #173 | Discovery gate / GO–NO-GO |
+| V1.2.5.0 | Official viewer enhanced server capability/diagnostic/secure-channel contract #246 | Discovery gate / GO–NO-GO |
+| V1.2.6.0 | Appliance capture-on-demand and bounded idle resource use #151 | Conditional after device measurement |
+| V1.2.7.0 | Operational performance diagnostics beyond baseline #180 | Conditional on real support needs |
+
+**Change control:** any rearrangement needs a #594 Owner decision, a reviewed roadmap PR, old→new version mapping, reason, impact on dependencies/CI/support claims, and an auditable merge SHA. Do not create unapproved `release/*` or tags. The local owner must implement **V0.3.4.0 now**, not V0.4.0.0.
+
 ## V0.4: Qualify It
 
 V0.4 is the Release Candidate line and performs qualification only. It is not selectable until:
