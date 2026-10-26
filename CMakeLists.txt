@@ -78,6 +78,10 @@ if(PROJECT_IS_TOP_LEVEL
             if(HYREMOTE_QT5_ENABLE_QUICK)
                 set(HYREMOTE_BUILD_QUICK_ADAPTER ON CACHE BOOL
                     "Qt 5.15 Quick is experimental; enabled by HYREMOTE_QT5_ENABLE_QUICK" FORCE)
+                message(WARNING
+                    "HyRemote: Qt 5.15 Quick is EXPERIMENTAL and NOT a qualified route. "
+                    "The explicit opt-in currently has failing Quick capture/input tests; "
+                    "do not claim Qt5 Quick support or include it in a support matrix.")
             else()
                 set(HYREMOTE_BUILD_QUICK_ADAPTER OFF CACHE BOOL
                     "Qt 5.15 Quick is experimental; enable explicitly with HYREMOTE_QT5_ENABLE_QUICK" FORCE)
