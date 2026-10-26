@@ -111,7 +111,7 @@ The V0.3 family carries two separate classes of work:
 
 ### Mandatory pre-GA V0.3 baseline
 
-**Current Owner product roadmap (#594/#605, 2026-10-23):** [complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The **only mandatory first-GA Qt LTS families are Qt 5.15 and Qt 6.8** on actually qualified Windows cells. **Qt 6.5 and Qt 6.12 are postponed until AFTER V1.0 GA**. Active V0.3.3.0 #144/#175 stays frozen; the next Feature prioritizes Qt5.15/Qt6.8 (#603/#604), and HyRemoteTool evolves incrementally across releases. V0.4 is qualification-only; V1 promotes accepted RC. No future exact Feature version is reserved; activation/mandatory children come only from `.github/release/release-trains.json` after reviewed admission. Historical releases are unchanged.
+**Current Owner product roadmap (#594/#605, 2026-10-26):** [the sole complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The **only mandatory first-GA Qt LTS families are Qt 5.15 and Qt 6.8** on actually qualified Windows cells. **Qt 6.5 and Qt 6.12 are postponed until AFTER V1.0 GA**. Released V0.3.3.0 #144/#175 remains historical and frozen; the current development outcome is Qt5.15/Qt6.8 (#603/#604), and HyRemoteTool evolves incrementally across releases. V0.4 is qualification-only; V1 promotes an accepted RC. Known, testable user outcomes receive PLANNED versions in the canonical roadmap; unproven technical themes remain unnumbered. A PLANNED number does not activate a train or authorize a release. Machine activation/mandatory children come only from `.github/release/release-trains.json` and release gates. Historical releases are unchanged.
 
 Only **Windows x86_64 Qt 5.15 and Qt 6.8 applicable supported cells** require physical/real-runtime pre-GA qualification, alongside RFB Raw/TRLE incremental damage, maintained Viewer interoperability, #370 performance, SDK installation and packaging. Linux/ARM64/qxcb/Wayland/EGLFS remain user-validation pending and non-blocking (#563). Qt6.5/6.12 are not pre-RC or first-GA conditions.
 
@@ -130,7 +130,7 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 
 `V0.3.1.0` (Qt5 slot) and `V0.3.2.0` (Bandwidth/ZRLE slot) are retired historical records and cannot be selected. V0.3.3.0 is a new coherent outcome. See [`../internal/v0.3.3.0-plan.md`](../internal/v0.3.3.0-plan.md).
 
-First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent candidates. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. Other future Feature numbers are not reserved; V0.3.4.0 is now explicitly assigned as the next development Feature. Current [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) is authoritative.
+First-GA Qt5.15/Qt6.8 compatibility is the current V0.3.4.0 outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent planned outcomes. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. The canonical [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) assigns planned versions to known user outcomes; this summary does not independently assign versions.
 
 ## Assigned next development Feature: V0.3.4.0 (2026-10-26)
 
@@ -140,15 +140,18 @@ First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; To
 - **V0.3.5.0: next *non-activated* candidate**, host config/state paths and server-side static text watermark #591/#589; requires separate admission.
 - **V0.4.0.0: NOT ACTIVE RC**, strictly qualification of already implemented functionality. It cannot absorb missing V0.3 Qt LTS/SDK/Tool feature implementation.
 
-This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before the reviewed release-train change is merged.
+This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before all mandatory acceptance and #95 release gates pass.
 
-## Complete numbered planning for known product outcomes (editable, 2026-10-26)
+## Complete numbered planning for known product outcomes (summary; editable, 2026-10-26)
+
+> **Source of truth:** This table is a summary, not a second source of truth. The latest merged version of the [canonical product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) on `develop` controls planned outcomes, versions, ordering, dependencies, and status. Issues #594/#605 record Owner decisions; `.github/release/release-trains.json` controls machine train registration/mandatory scope; actual support requires release/tag, compatibility data, and exact-SHA evidence.
+
 
 **Owner update:** Assign a concrete *planning version* to every known, testable product outcome so the local owner has an unambiguous development target. A planned number is **not** an activated machine release train, qualified feature, release branch or permission to tag. The [sole current product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) owns dependencies, test criteria, owner Issues, exceptions and changes. Research without an admitted user deliverable stays a research obligation, not an invented feature.
 
 | Version | Planned user-deliverable outcome | Status |
 | --- | --- | --- |
-| V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | Current development target; exact machine activation PR #655 |
+| V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | Current development target; train registered by merged PR #655, not release authorization |
 | V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | Planned, not activated |
 | V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Planned, not activated |
 | V0.3.7.0 | Real user Qt app + HyRemote Docker deployment #592 | Conditional plan; actual container required |
