@@ -130,7 +130,7 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 
 `V0.3.1.0` (Qt5 slot) and `V0.3.2.0` (Bandwidth/ZRLE slot) are retired historical records and cannot be selected. V0.3.3.0 is a new coherent outcome. See [`../internal/v0.3.3.0-plan.md`](../internal/v0.3.3.0-plan.md).
 
-First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent candidates. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. Exact future Feature numbers are not reserved. Current [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) is authoritative.
+First-GA Qt5.15/Qt6.8 compatibility is the next high-priority V0.3.x outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent candidates. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. Other future Feature numbers are not reserved; V0.3.4.0 is now explicitly assigned as the next development Feature. Current [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) is authoritative.
 
 ## Assigned next development Feature: V0.3.4.0 (2026-10-26)
 
