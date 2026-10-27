@@ -662,15 +662,17 @@ if(v1_qt_compat_index EQUAL -1)
         "release-authority-policy: #57 Qt5.15/Qt6.8 compatibility must remain a V1 mandatory child")
 endif()
 
-set(bad_authority_json
-    "{\"trains\":{\"1.0.0.0\":{\"mandatory_children\":[605]}}}")
-hyremote_v1_forbidden_mandatory("${bad_authority_json}" bad_v1_forbidden)
-if(NOT bad_v1_forbidden STREQUAL "605")
-    message(FATAL_ERROR
-        "release-authority-policy self-test: production validator did not reject synthetic V1 mandatory #605")
-endif()
-message(STATUS
-    "release-authority-policy negative fixture: synthetic V1 mandatory #605 rejected by the production validator")
+foreach(forbidden_issue IN ITEMS 592 587 588 605)
+    set(bad_authority_json
+        "{\"trains\":{\"1.0.0.0\":{\"mandatory_children\":[${forbidden_issue}]}}}")
+    hyremote_v1_forbidden_mandatory("${bad_authority_json}" bad_v1_forbidden)
+    if(NOT bad_v1_forbidden STREQUAL "${forbidden_issue}")
+        message(FATAL_ERROR
+            "release-authority-policy self-test: production validator did not reject synthetic V1 mandatory #${forbidden_issue}")
+    endif()
+    message(STATUS
+        "release-authority-policy negative fixture: synthetic V1 mandatory #${forbidden_issue} rejected by the production validator")
+endforeach()
 
 # The GA document must point at the current executed mechanism, not the retired workflow.
 set(v1_doc_path "${HYREMOTE_SOURCE_DIR}/docs/internal/v1-ga-acceptance.md")
@@ -690,6 +692,9 @@ function(hyremote_ga_doc_has_stale_workflow_claim text out)
     foreach(claim IN LISTS stale_claims)
         string(TOLOWER "${claim}" claim_l)
         if(NOT claim_l MATCHES "retired|no current|not current|does not count|forbidden|historical")
+            set(stale TRUE)
+        elseif(claim_l MATCHES "is[ \t]+the[ \t]+current|current[ \t]+(ga|release|active)[ \t]+workflow|remains[^.]*workflow|continues[^.]*workflow")
+            # A negative keyword does not make an active/current claim safe.
             set(stale TRUE)
         endif()
     endforeach()
@@ -721,6 +726,16 @@ if(NOT bad_ga_stale_claim_alt)
 endif()
 message(STATUS
     "release-authority-policy negative fixture: alternate stale GA workflow wording rejected")
+
+set(bad_ga_doc_contradictory
+    "The retired workflow is the current GA workflow: `.github/workflows/v1-ga-acceptance.yml`.")
+hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc_contradictory}" bad_ga_stale_claim_contradictory)
+if(NOT bad_ga_stale_claim_contradictory)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: contradictory retired/current GA workflow wording was not detected")
+endif()
+message(STATUS
+    "release-authority-policy negative fixture: contradictory retired/current GA workflow wording rejected")
 
 foreach(required_ga_token IN ITEMS
         "ci.yml"

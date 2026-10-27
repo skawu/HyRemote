@@ -18,8 +18,10 @@ The current GA/release-candidate mechanisms are separate, not a workflow `workfl
   admission check rejects a dispatch whose SHA does not match that commit. A PR run is a merge gate,
   not candidate/GA evidence.
 - `.github/workflows/mainline-validation.yml` runs on pushes to `main` and by its own manual
-  dispatch. It validates the mainline tree; it is not the candidate full gate and cannot substitute
-  for the exact-SHA `ci.yml` dispatch.
+  dispatch. The manual dispatch accepts the selected ref; it does not enforce `refs/heads/main`.
+  Only a dispatch targeting `main` is mainline validation evidence; a dispatch on another ref is
+  evidence for that selected ref only. It is not the candidate full gate and cannot substitute for
+  the exact-SHA `ci.yml` dispatch.
 - The `tests/release-readiness/` checks are run by the canonical build and by the CI authority
   governance job.
 
