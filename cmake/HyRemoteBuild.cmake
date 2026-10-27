@@ -771,16 +771,41 @@ endif()
 # Reuse that choice before discovery so an ambiguous machine does not prompt on
 # every build. An explicit CLI/profile prefix still wins, and the identity check
 # below will recreate a tree if the user deliberately switches Kit.
-if(HYB_QT_PREFIX STREQUAL "" AND NOT HYB_BUILD_DIR STREQUAL "")
+hyb_qt_environment_roots(_qt_identity_environment_roots)
+if(HYB_QT_PREFIX STREQUAL "" AND NOT HYB_BUILD_DIR STREQUAL ""
+   AND NOT _qt_identity_environment_roots
+   AND "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
+    # Resolve the build directory against the repository before reading its
+    # identity; the wrapper may be invoked from outside the checkout.
+    if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
+        set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
+    endif()
+    cmake_path(NORMAL_PATH HYB_BUILD_DIR)
     set(_qt_identity_file "${HYB_BUILD_DIR}/.hyremote-build-identity")
     if(EXISTS "${_qt_identity_file}" AND NOT IS_SYMLINK "${_qt_identity_file}")
         file(STRINGS "${_qt_identity_file}" _qt_identity_qt REGEX "^qt=")
         if(_qt_identity_qt)
             string(SUBSTRING "${_qt_identity_qt}" 3 -1 _qt_identity_prefix)
             if(NOT _qt_identity_prefix STREQUAL "" AND IS_DIRECTORY "${_qt_identity_prefix}")
-                set(HYB_QT_PREFIX "${_qt_identity_prefix}")
-                set(HYB_QT_DISCOVERY_NOTE
-                    "Qt prefix : ${HYB_QT_PREFIX} (from existing build identity)")
+                hyb_qt_version_from_prefix("${_qt_identity_prefix}" _qt_identity_version)
+                set(_qt_identity_eligible TRUE)
+                if(HYB_QPA AND NOT _qt_identity_version STREQUAL "6.8.3")
+                    set(_qt_identity_eligible FALSE)
+                elseif((HYB_GENERIC OR HYB_QML)
+                       AND NOT (_qt_identity_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                                AND NOT _qt_identity_version VERSION_LESS "6.8"))
+                    set(_qt_identity_eligible FALSE)
+                elseif(NOT HYB_QPA
+                       AND NOT ((WIN32 AND _qt_identity_version VERSION_EQUAL "5.15.2")
+                                OR (_qt_identity_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                                    AND NOT _qt_identity_version VERSION_LESS "6.8")))
+                    set(_qt_identity_eligible FALSE)
+                endif()
+                if(_qt_identity_eligible)
+                    set(HYB_QT_PREFIX "${_qt_identity_prefix}")
+                    set(HYB_QT_DISCOVERY_NOTE
+                        "Qt prefix : ${HYB_QT_PREFIX} (from existing build identity)")
+                endif()
             endif()
         endif()
     endif()
