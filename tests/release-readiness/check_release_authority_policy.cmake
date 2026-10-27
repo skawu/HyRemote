@@ -669,6 +669,8 @@ if(NOT bad_v1_forbidden STREQUAL "605")
     message(FATAL_ERROR
         "release-authority-policy self-test: production validator did not reject synthetic V1 mandatory #605")
 endif()
+message(STATUS
+    "release-authority-policy negative fixture: synthetic V1 mandatory #605 rejected by the production validator")
 
 # The GA document must point at the current executed mechanism, not the retired workflow.
 set(v1_doc_path "${HYREMOTE_SOURCE_DIR}/docs/internal/v1-ga-acceptance.md")
@@ -707,6 +709,8 @@ if(NOT bad_ga_stale_claim)
     message(FATAL_ERROR
         "release-authority-policy self-test: exact stale GA workflow fixture was not detected")
 endif()
+message(STATUS
+    "release-authority-policy negative fixture: exact stale GA workflow claim rejected")
 
 set(bad_ga_doc_alt
     "The integrated GA workflow remains `.github/workflows/v1-ga-acceptance.yml`.")
@@ -715,6 +719,8 @@ if(NOT bad_ga_stale_claim_alt)
     message(FATAL_ERROR
         "release-authority-policy self-test: alternate stale GA workflow wording was not detected")
 endif()
+message(STATUS
+    "release-authority-policy negative fixture: alternate stale GA workflow wording rejected")
 
 foreach(required_ga_token IN ITEMS
         "ci.yml"
