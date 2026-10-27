@@ -68,15 +68,12 @@ closed.
 - The wrapper now reuses the `qt=` entry in `.hyremote-build-identity` before discovery, so a
   successfully selected Kit is not prompted again on every build. Explicit CLI/profile selection
   still wins; a deliberate switch causes the existing identity guard to recreate the tree.
-- The internal wrapper handoff uses the public `--qt-prefix` option. The user still types only a
-  number, but logs can look as if the path were user-supplied. This should become an internal
-  selection token/env handoff, not a second user-facing requirement.
-- The Windows candidate/sentinel files are currently written under
+- The internal wrapper handoff now uses `HYREMOTE_QT_SELECTION`, not the public `--qt-prefix`
+  option. The user still types only a number, and logs no longer suggest a user-supplied path.
+- The wrapper now checks for a real console with `mode con` before `set /p`; redirected stdin fails
+  closed instead of hanging or consuming a scripted value.
+- `--no-config` now prints a diagnostic-mode warning that build.yml, integrations, examples and
+  tests may be missing; it cannot be mistaken for canonical all-integration acceptance.
+- The Windows candidate/sentinel files are still written under
   `${HYREMOTE_SOURCE_DIR}/build`, while `build.directory` is configurable. A custom build directory
-  therefore does not own those transient files. This must move behind the resolved build directory
-  or an explicit wrapper-provided path.
-- A redirected stdin with no `CI`/`--no-prompt` marker can reach the wrapper's `set /p`; the wrapper
-  needs an explicit interactive-console check so noninteractive automation cannot hang or answer by
-  accident.
-- `--no-config` is intentionally diagnostic. Without a warning it can silently drop integrations,
-  examples and tests, so it must not be presented as a normal user command.
+  does not own those transient files. This remains a P1 handoff-path gap.

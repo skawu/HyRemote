@@ -331,6 +331,7 @@ while(i LESS argc)
         set(HYB_CONFIG_REQUIRED ON)
     elseif(arg STREQUAL "--no-config")
         set(HYB_CONFIG_PATH "")
+        set(HYB_NO_CONFIG TRUE)
     endif()
     math(EXPR i "${i}+1")
 endwhile()
@@ -341,6 +342,13 @@ if(NOT HYB_CONFIG_PATH STREQUAL "")
     endif()
     cmake_path(NORMAL_PATH HYB_CONFIG_PATH)
     hyb_load_config("${HYB_CONFIG_PATH}")
+endif()
+
+if(HYB_NO_CONFIG)
+    message(WARNING
+        "DIAGNOSTIC MODE: --no-config ignores build.yml. Integrations, examples and tests "
+        "may be a smaller product surface than canonical build.cmd test; do not use this "
+        "run as all-integration acceptance evidence.")
 endif()
 
 # The first bare word is the subcommand. It is read before the option loop so that loop keeps sole ownership of
@@ -557,6 +565,12 @@ function(hyb_resolve_path variable must_exist description)
     endif()
     set(${variable} "${value}" PARENT_SCOPE)
 endfunction()
+
+# Internal handoff from build.cmd's numbered selection. The user never types
+# this; it keeps the public --qt-prefix option out of the prompt implementation.
+if(HYB_QT_PREFIX STREQUAL "" AND NOT "$ENV{HYREMOTE_QT_SELECTION}" STREQUAL "")
+    set(HYB_QT_PREFIX "$ENV{HYREMOTE_QT_SELECTION}")
+endif()
 
 hyb_resolve_path(HYB_QT_PREFIX TRUE "Qt prefix")
 hyb_resolve_path(HYB_TOOLCHAIN TRUE "Toolchain file")
