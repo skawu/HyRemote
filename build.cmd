@@ -37,7 +37,34 @@ if errorlevel 1 (
     exit /b 2
 )
 
+set "QT_CHOICE_FILE=%~dp0build\.hyremote-qt-candidates"
+set "QT_CHOICE_SENTINEL=%~dp0build\.hyremote-qt-choice-required"
+if exist "%QT_CHOICE_FILE%" del /q "%QT_CHOICE_FILE%" >nul 2>&1
+if exist "%QT_CHOICE_SENTINEL%" del /q "%QT_CHOICE_SENTINEL%" >nul 2>&1
+
 cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %*
+set "HYB_EXIT=%ERRORLEVEL%"
+if not exist "%QT_CHOICE_SENTINEL%" exit /b %HYB_EXIT%
+
+rem CMake owns discovery/validation; this wrapper owns the terminal prompt.
+type "%QT_CHOICE_FILE%"
+set "HYREMOTE_QT_CHOICE="
+set /p "HYREMOTE_QT_CHOICE=Choose Qt Kit by number (or q to cancel): "
+if /i "%HYREMOTE_QT_CHOICE%"=="q" (
+    del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+    exit /b 1
+)
+set "HYREMOTE_QT_PREFIX="
+for /f "usebackq tokens=1,* delims=|" %%A in ("%QT_CHOICE_FILE%") do (
+    if "%%A"=="%HYREMOTE_QT_CHOICE%" set "HYREMOTE_QT_PREFIX=%%B"
+)
+if not defined HYREMOTE_QT_PREFIX (
+    del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+    echo Invalid Qt Kit choice; no Kit selected.
+    exit /b 1
+)
+del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %* --qt-prefix="%HYREMOTE_QT_PREFIX%"
 exit /b %ERRORLEVEL%
 HYREMOTE_BATCH
 
