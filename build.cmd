@@ -47,6 +47,15 @@ set "HYB_EXIT=%ERRORLEVEL%"
 if not exist "%QT_CHOICE_SENTINEL%" exit /b %HYB_EXIT%
 
 rem CMake owns discovery/validation; this wrapper owns the terminal prompt.
+rem A redirected/non-console stdin must fail closed rather than consuming a
+rem scripted value or hanging on set /p.
+mode con >nul 2>&1
+if errorlevel 1 (
+    echo Several Qt Kits require an interactive console, but stdin has no console.
+    echo Pass --qt-prefix, build.yml qt.prefix, or --no-prompt. No Kit selected.
+    del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+    exit /b 1
+)
 type "%QT_CHOICE_FILE%"
 set "HYREMOTE_QT_CHOICE="
 set /p "HYREMOTE_QT_CHOICE=Choose Qt Kit by number (or q to cancel): "
