@@ -28,8 +28,11 @@ description: Use for non-trivial engineering implementation, debugging, refactor
 - State one concrete hypothesis and run the smallest experiment that can disprove it. Do not stack unrelated fixes or treat a green test as proof of a root cause it did not exercise.
 - After a failed experiment, record what changed in the evidence and update the hypothesis. Do not keep the same explanation after its prediction failed.
 - These debugging-discipline concepts are adapted from `obra/superpowers`
-  `systematic-debugging` v7.0.1, commit `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`,
-  licensed under MIT. No upstream Skill dependency, installer, or worktree workflow is imported.
+  `skills/systematic-debugging` v7.0.1, commit `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`,
+  Copyright (c) 2025 Jesse Vincent, licensed under the MIT License. The upstream copyright notice
+  and full permission notice are reproduced in the repository `NOTICE.md` under
+  "Adapted documentation". No upstream Skill dependency, installer, worktree workflow, or upstream
+  file is imported.
 
 ## 4. Prevent recurring defects
 
