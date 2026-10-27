@@ -171,6 +171,10 @@ build.cmd + build.yml
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
 
+For non-trivial engineering work, read `.codebuddy/skills/engineering-task-execution/SKILL.md`
+after this file when the client exposes it. The Skill is an execution procedure, not a second
+source of project authority; this file and the repository's canonical build/evidence rules win.
+
 CI uses **PR-triggered, protected pre-merge product validation** (latest Owner #573 supersedes #571):
 
 ```text
@@ -216,6 +220,7 @@ When a real viewer/device/environment is required, use **Agent-primary / Human-a
 ## Git and parallel-agent discipline
 
 - Work from a fresh accepted base.
+- Do not create worktrees, extra clones, or source development copies; work in the single checked-out workspace. Do not write outside this repository or use symlinks, junctions, or path tricks to bypass that boundary.
 - Use focused temporary branches and PRs; delete stale/superseded heads after closure.
 - Do not force-push/rewrite accepted shared history unless repository authority explicitly requires it.
 - Do not merge a stale-head PR whose accepted evidence no longer matches the base/head that will merge.

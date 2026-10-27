@@ -20,13 +20,22 @@ description: Use for non-trivial HyRemote implementation, debugging, refactoring
 - Classify failures using evidence: task regression, pre-existing product defect, build-system defect, or environment/infrastructure. Fix issues within scope; otherwise create or update the appropriate defect follow-up and continue what is not blocked.
 - Request Human action only after automatable alternatives are exhausted, and state the exact action/checklist, decision options, consequences, and recommended option.
 
-## 3. Prevent recurring defects
+## 3. Debug before fixing
+
+- When a bug, test failure, or environment discrepancy appears, establish the failure first: read the exact error, reproduce it, identify the affected layer, and separate product, build-system, and environment causes before changing code.
+- State one concrete hypothesis and run the smallest experiment that can disprove it. Do not stack unrelated fixes or treat a green test as proof of a root cause it did not exercise.
+- After a failed experiment, record what changed in the evidence and update the hypothesis. Do not keep the same explanation after its prediction failed.
+- These debugging-discipline concepts are adapted from `obra/superpowers`
+  `systematic-debugging` v7.0.1, commit `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`,
+  licensed under MIT. No upstream Skill dependency, installer, or worktree workflow is imported.
+
+## 4. Prevent recurring defects
 
 - Reproduce the reported defect before editing when feasible; preserve a failing case or diagnostic evidence.
 - Add a focused regression test that fails before the fix and passes after it whenever feasible. Then run the targeted test and the required canonical verification.
 - If the same class of failure has recurred, inspect prior Issues, review comments, and tests to find why it escaped. Change the narrowest effective test, checker, rule, or Skill. Do not add broad generic wording without an identified failure mode.
 
-## 4. Validate against the actual product claim
+## 5. Validate against the actual product claim
 
 - On Windows, use the canonical `build.cmd test` path from the configured repository root. On POSIX, use `sh ./build.cmd test`. Follow the task's applicable focused build/test and install/deploy requirements; do not create a parallel full-suite acceptance command.
 - Preserve the four peer integration routes (C++, QML, Generic, QPA), the single Shared Runtime, public/private Qt API boundaries, and exact per-cell compatibility claims.

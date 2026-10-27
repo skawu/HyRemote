@@ -61,9 +61,8 @@ aqtinstall.log
 # evidence, not product source.
 hyremote-release-notes-fixtures/
 
-# CodeBuddy: explicitly allowlist shared project entry/Skill; ignore all other local state.
+# CodeBuddy: explicitly allowlist the shared project Skill; ignore all other local state.
 .codebuddy/*
-!.codebuddy/CODEBUDDY.md
 !.codebuddy/skills/
 .codebuddy/skills/*
 !.codebuddy/skills/engineering-task-execution/
