@@ -61,6 +61,11 @@ aqtinstall.log
 # evidence, not product source.
 hyremote-release-notes-fixtures/
 
-# CodeBuddy project-local overrides are not shared; the project adapter/Skill are tracked.
-.codebuddy/settings.local.json
-.codebuddy/CODEBUDDY.local.md
+# CodeBuddy: explicitly allowlist shared project entry/Skill; ignore all other local state.
+.codebuddy/*
+!.codebuddy/CODEBUDDY.md
+!.codebuddy/skills/
+.codebuddy/skills/*
+!.codebuddy/skills/engineering-task-execution/
+.codebuddy/skills/engineering-task-execution/*
+!.codebuddy/skills/engineering-task-execution/SKILL.md
