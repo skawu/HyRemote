@@ -23,6 +23,15 @@ Do not infer project status from chat memory alone.
 - If Issue prose conflicts with current machine/code/product facts, resolve the governance truth before implementation.
 - Keep one focused Issue/PR/root-cause owner; do not duplicate another Agent's active fix.
 
+For non-trivial engineering work, use the exposed `engineering-task-execution` Skill
+(`.codebuddy/skills/engineering-task-execution/SKILL.md`) through the mechanism the client actually
+supports. If the client does not provide that Skill, record that fact truthfully and continue under
+the project policies in this file; never report the Skill as invoked when it was not. The Skill is an
+execution procedure, not a second authority: the task's authoritative record, current
+code/configuration, accepted exact-SHA evidence, and the authority order above remain in force.
+Project build, architecture, release, and safety policies stay in their existing sources; the Skill
+supplies only the generic execution flow.
+
 ## Stop / continuation contract (hard)
 
 Ending a work turn is an explicit state transition, not a normal way to report progress. An Agent may
@@ -170,15 +179,6 @@ build.cmd + build.yml
 ```
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
-
-For non-trivial engineering work, use the exposed `engineering-task-execution` Skill
-(`.codebuddy/skills/engineering-task-execution/SKILL.md`) through the mechanism the client actually
-supports. If the client does not provide that Skill, record that fact truthfully and continue under
-the project policies in this file; never report the Skill as invoked when it was not. The Skill is an
-execution procedure, not a second authority: the task's authoritative record, current
-code/configuration, accepted exact-SHA evidence, and the authority order above remain in force.
-Project build, architecture, release, and safety policies stay in their existing sources; the Skill
-supplies only the generic execution flow.
 
 CI uses **PR-triggered, protected pre-merge product validation** (latest Owner #573 supersedes #571):
 
