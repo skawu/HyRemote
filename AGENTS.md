@@ -171,9 +171,11 @@ build.cmd + build.yml
 
 Do not create a parallel acceptance build path. `compile.cmd`, if present, is compatibility-only.
 
-For non-trivial engineering work, read `.codebuddy/skills/engineering-task-execution/SKILL.md`
-after this file when the client exposes it. The Skill is an execution procedure, not a second
-source of project authority; this file and the repository's canonical build/evidence rules win.
+For non-trivial engineering work, `.codebuddy/skills/engineering-task-execution/SKILL.md` provides
+a reusable execution procedure when the client exposes it. It does not create a second authority:
+the task's authoritative record, current code/configuration, accepted exact-SHA evidence, and the
+authority order above remain in force. Project build, architecture, release, and safety policies
+stay in their existing sources; the Skill supplies only the generic execution flow.
 
 CI uses **PR-triggered, protected pre-merge product validation** (latest Owner #573 supersedes #571):
 
