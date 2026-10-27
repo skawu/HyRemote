@@ -921,9 +921,26 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             else()
                 message(STATUS "${_qt_choice_help}")
                 if(WIN32)
-                    execute_process(
-                        COMMAND cmd.exe /C "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.cmd" "${_qt_usable_count}"
-                        RESULT_VARIABLE _qt_prompt_code OUTPUT_VARIABLE _qt_prompt_answer)
+                    # CMake execute_process stdin is a pipe even when the parent
+                    # is an interactive terminal, so CON/CONIN$ cannot be read
+                    # reliably (notably under Windows Terminal/ConPTY). Leave the
+                    # actual prompt to build.cmd, which owns the terminal, and
+                    # hand it a stable candidate list plus a sentinel.
+                    file(MAKE_DIRECTORY "${HYREMOTE_SOURCE_DIR}/build")
+                    set(_qt_candidate_file
+                        "${HYREMOTE_SOURCE_DIR}/build/.hyremote-qt-candidates")
+                    file(WRITE "${_qt_candidate_file}" "")
+                    math(EXPR _qt_candidate_index "0")
+                    foreach(_prefix IN LISTS _qt_usable)
+                        math(EXPR _qt_candidate_index "${_qt_candidate_index}+1")
+                        file(APPEND "${_qt_candidate_file}"
+                             "${_qt_candidate_index}|${_prefix}\n")
+                    endforeach()
+                    file(WRITE
+                        "${HYREMOTE_SOURCE_DIR}/build/.hyremote-qt-choice-required"
+                        "required\n")
+                    message(FATAL_ERROR
+                        "${_qt_choice_help}\nHYREMOTE_QT_KIT_CHOICE_REQUIRED")
                 else()
                     execute_process(
                         COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.sh" "${_qt_usable_count}"
