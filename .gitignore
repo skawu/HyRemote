@@ -60,3 +60,7 @@ aqtinstall.log
 # the repository root, that resolves to the root; the directory is generated
 # evidence, not product source.
 hyremote-release-notes-fixtures/
+
+# CodeBuddy project-local overrides are not shared; the project adapter/Skill are tracked.
+.codebuddy/settings.local.json
+.codebuddy/CODEBUDDY.local.md
