@@ -5,6 +5,9 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
 endif()
 
 set(build_script "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteBuild.cmake")
+# Discovery tests deliberately exercise a fresh-tree decision even when the
+# developer's own build identity exists in the workspace.
+set(ENV{HYREMOTE_QT_IGNORE_IDENTITY} "1")
 if(NOT EXISTS "${build_script}")
     message(FATAL_ERROR "build-authority: missing ${build_script}")
 endif()
@@ -266,6 +269,13 @@ function(make_qt5_discovery_kit kit_dir)
          "set(PACKAGE_VERSION \"5.15.2\")\n")
     file(WRITE "${kit_dir}/lib/cmake/Qt5Core/Qt5CoreConfig.cmake" "# Qt5 Core mock\n")
 endfunction()
+
+# The wrapper uses this dry-run to place its prompt handoff under the actual
+# configured build tree, including a custom build.directory.
+run_success(build-dir-dry-run
+    --no-config --build-dir=${scratch}/custom-build --print-build-dir)
+require_text_flat(build-dir-dry-run "${HYB_TEST_OUTPUT}"
+    "HYREMOTE_BUILD_DIR=${scratch}/custom-build")
 
 set(qt_one_root "${scratch}/qt-discovery-one")
 set(qt_two_root "${scratch}/qt-discovery-two")

@@ -20,10 +20,10 @@ product from one passing cell.
 | --- | --- | --- |
 | C++ / Widgets | QUALIFIED (bounded) | Windows Qt5 CI 62/62, installed CMake consumer, examples/Tool link |
 | C++ / Widgets via qmake | QUALIFIED (bounded) | Installed `hyremote.pri`; `tests/consumer-qmake` built and ran against the Qt5 SDK |
-| C++ / Quick | EXPERIMENTAL / NOT_QUALIFIED | Explicit `HYREMOTE_QT5_ENABLE_QUICK=ON` builds, but Quick capture/input tests fail; default OFF remains the only qualified Qt5 surface |
-| QML | UNSUPPORTED in current selector | Qt5 QML is not a qualified route |
-| Generic | UNSUPPORTED in current selector | Generic requires Qt6 >= 6.8 |
-| QPA | NOT_APPLICABLE | QPA is exact Qt 6.8.3 private ABI |
+| C++ / Quick | EXPERIMENTAL / NOT_QUALIFIED | Explicit `HYREMOTE_QT5_ENABLE_QUICK=ON` builds, but Quick capture/input tests fail; normal-user experimental entry is hidden, internal test capability only |
+| QML | UNSUPPORTED | Owner D2 (2026-10-27): Qt5 QML is not a qualified route |
+| Generic | UNSUPPORTED | Owner D2 (2026-10-27): Generic requires Qt6 >= 6.8 |
+| QPA | REJECTED | Owner D2 (2026-10-27): QPA is exact Qt 6.8.3 private ABI |
 | HyRemoteTool | LIMITED | Built on Qt5; no full Tool UX qualification |
 
 ## Qt 6.5 / 6.12
@@ -52,3 +52,8 @@ Windows release gates.
   SHA and physical Viewer record.
 - This matrix is a status record, not a new release authority. Candidate-specific evidence is indexed
 in [V0.3.4.0 Windows Qt cell evidence](v0.3.4.0-qt-cell-evidence-2026-10-26.md).
+
+Owner D1/D7 (2026-10-27): RealVNC 7.15.1 is the required maintained Viewer for V0.3.4.0. The native
+context-menu remote visual remains `NOT_CONFIRMED` and moves to V0.4.0.0 qualification; automated
+native-popup capture PASS and right-click input reaching the host remain V0.3.4 evidence. It is not
+rewritten as PASS and does not grant a blanket D05 exemption.
