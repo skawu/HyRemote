@@ -79,7 +79,7 @@ if /i "%HYREMOTE_QT_CHOICE%"=="q" (
     exit /b 1
 )
 set "HYREMOTE_QT_PREFIX="
-for /f "tokens=1,* delims=|" %%A in ("%QT_CHOICE_FILE%") do (
+for /f "usebackq tokens=1,* delims=|" %%A in ("%QT_CHOICE_FILE%") do (
     if "%%A"=="%HYREMOTE_QT_CHOICE%" set "HYREMOTE_QT_PREFIX=%%B"
 )
 if not defined HYREMOTE_QT_PREFIX (
