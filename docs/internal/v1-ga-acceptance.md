@@ -10,12 +10,22 @@ Authority: #33. Composes, but does not replace, milestone authorities #30, #31, 
 
 ## 1. Release candidate environment
 
-The current GA/release-candidate gate is the existing `.github/workflows/ci.yml` +
-`.github/workflows/mainline-validation.yml` chain plus the `tests/release-readiness/` checks run by
-the canonical build. There is **no current `.github/workflows/v1-ga-acceptance.yml`**: that retired
-per-lane workflow is explicitly forbidden by `check_ci_environment_baseline.cmake`. A future
-integrated workflow may be added only by a reviewed change that updates this document and the
-baseline test together.
+The current GA/release-candidate mechanisms are separate, not a workflow `workflow_run` chain:
+
+- `.github/workflows/ci.yml` runs on pull requests targeting `develop` and by explicit
+  `workflow_dispatch`. A candidate/release-readiness full gate is a dispatch with `purpose` set to
+  `candidate` or `release-readiness` and `expected_sha` set to the exact 40-hex commit; the CI
+  admission check rejects a dispatch whose SHA does not match that commit. A PR run is a merge gate,
+  not candidate/GA evidence.
+- `.github/workflows/mainline-validation.yml` runs on pushes to `main` and by its own manual
+  dispatch. It validates the mainline tree; it is not the candidate full gate and cannot substitute
+  for the exact-SHA `ci.yml` dispatch.
+- The `tests/release-readiness/` checks are run by the canonical build and by the CI authority
+  governance job.
+
+There is **no current `.github/workflows/v1-ga-acceptance.yml`**: that retired per-lane workflow is
+explicitly forbidden by `check_ci_environment_baseline.cmake`. A future integrated workflow may be
+added only by a reviewed change that updates this document and the baseline test together.
 
 | Dimension | Windows | Linux |
 | --- | --- | --- |
@@ -66,6 +76,7 @@ One release-like source tree is configured with all V1 product paths enabled at 
 - Widgets adapter;
 - Quick adapter;
 - declarative QML module;
+- Generic Plugin (Widgets/Quick);
 - bounded RFB transport;
 - Transparent QPA Proxy;
 - tests;
@@ -246,8 +257,10 @@ If the mandatory **Windows** job does not execute and PASS, GA is unexecuted and
 - #101 API/artifact freeze accepted;
 - #107 release-readiness metadata accepted;
 - #109 required cross-mode physical/native evidence accepted, including explicit-stop/policy-transition input cleanup, with the exact-candidate record completed through `docs/internal/v1-physical-acceptance.md`;
-- #104 current GA/release-readiness gate has actually passed on the required Windows x86_64 reference OS; the retired `v1-ga-acceptance.yml` does not count as that gate, and a future integrated workflow must be added by a reviewed change and then pass; Linux remains NON_BLOCKING user-validation evidence;
-- clean deployed C++/source/QML/Generic/QPA consumers have passed the no-SDK-runtime-path gate;
+- #104 the exact-SHA `ci.yml` `candidate`/`release-readiness` dispatch has actually passed on the required Windows x86_64 reference OS; the PR merge gate, `mainline-validation.yml`, and the retired `v1-ga-acceptance.yml` do not separately count as candidate/GA evidence; a future integrated workflow must be added by a reviewed change and then pass; Linux remains NON_BLOCKING user-validation evidence;
+- for every promised/applicable cell, clean deployed consumers have passed the no-SDK-runtime-path gate:
+  - Qt6.8.3 Windows: C++/source, QML, Generic and QPA consumers as applicable;
+  - Qt5.15 Windows: only the bounded C++/Widgets consumer is promised; Qt5 Quick is NOT_QUALIFIED, Qt5 QML/Generic are UNSUPPORTED, and Qt5 QPA is REJECTED, so no blanket Qt5 consumer list is implied;
 - compatibility/known-limitations/security documentation matches the candidate;
 - no mandatory acceptance item remains blocked, failed or merely inferred.
 

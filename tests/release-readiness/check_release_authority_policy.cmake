@@ -625,41 +625,49 @@ foreach(required_phrase
 endforeach()
 
 # V1 first-GA scope must not absorb post-GA Qt or optional/deferred product work.
-# These are negative guards: a future edit that adds one of these to the V1 mandatory list fails here.
-foreach(non_ga_issue IN ITEMS 592 587 588 605)
-    list(FIND actual_v1_issues ${non_ga_issue} non_ga_index)
-    if(NOT non_ga_index EQUAL -1)
-        message(FATAL_ERROR
-            "release-authority-policy: post-GA/nonblocking issue #${non_ga_issue} must not be a V1 mandatory child")
+# The production guard and the negative fixture share this one validator; the
+# reason-specific message is emitted only after the same rejection path fires.
+function(hyremote_v1_forbidden_mandatory authority out_issue)
+    string(JSON count LENGTH "${authority}" trains "1.0.0.0" mandatory_children)
+    math(EXPR last "${count} - 1")
+    set(forbidden "")
+    if(count GREATER 0)
+        foreach(index RANGE 0 ${last})
+            string(JSON child GET "${authority}" trains "1.0.0.0" mandatory_children ${index})
+            if(child STREQUAL "592" OR child STREQUAL "587" OR child STREQUAL "588"
+               OR child STREQUAL "605")
+                set(forbidden "${child}")
+                break()
+            endif()
+        endforeach()
     endif()
-endforeach()
+    set(${out_issue} "${forbidden}" PARENT_SCOPE)
+endfunction()
+
+hyremote_v1_forbidden_mandatory("${authority_json}" actual_forbidden_mandatory)
+if(actual_forbidden_mandatory STREQUAL "592")
+    message(FATAL_ERROR
+        "release-authority-policy: conditional planned V0.3.7 Docker outcome #592 must not be a V1 mandatory child")
+elseif(actual_forbidden_mandatory STREQUAL "587" OR actual_forbidden_mandatory STREQUAL "588")
+    message(FATAL_ERROR
+        "release-authority-policy: Tool S2/S3 follow-up #${actual_forbidden_mandatory} must not be a V1 mandatory child")
+elseif(actual_forbidden_mandatory STREQUAL "605")
+    message(FATAL_ERROR
+        "release-authority-policy: post-V1 Qt6.5/Qt6.12 work #605 must not be a V1 mandatory child")
+endif()
+
 list(FIND actual_v1_issues 57 v1_qt_compat_index)
 if(v1_qt_compat_index EQUAL -1)
     message(FATAL_ERROR
         "release-authority-policy: #57 Qt5.15/Qt6.8 compatibility must remain a V1 mandatory child")
 endif()
 
-function(hyremote_v1_has_forbidden_issue authority issue out)
-    string(JSON count LENGTH "${authority}" trains "1.0.0.0" mandatory_children)
-    math(EXPR last "${count} - 1")
-    set(found FALSE)
-    if(count GREATER 0)
-        foreach(index RANGE 0 ${last})
-            string(JSON child GET "${authority}" trains "1.0.0.0" mandatory_children ${index})
-            if(child STREQUAL "${issue}")
-                set(found TRUE)
-            endif()
-        endforeach()
-    endif()
-    set(${out} ${found} PARENT_SCOPE)
-endfunction()
-
 set(bad_authority_json
     "{\"trains\":{\"1.0.0.0\":{\"mandatory_children\":[605]}}}")
-hyremote_v1_has_forbidden_issue("${bad_authority_json}" 605 bad_v1_has_605)
-if(NOT bad_v1_has_605)
+hyremote_v1_forbidden_mandatory("${bad_authority_json}" bad_v1_forbidden)
+if(NOT bad_v1_forbidden STREQUAL "605")
     message(FATAL_ERROR
-        "release-authority-policy self-test: synthetic post-GA mandatory child was not detected")
+        "release-authority-policy self-test: production validator did not reject synthetic V1 mandatory #605")
 endif()
 
 # The GA document must point at the current executed mechanism, not the retired workflow.
@@ -670,21 +678,26 @@ endif()
 file(READ "${v1_doc_path}" v1_doc)
 
 function(hyremote_ga_doc_has_stale_workflow_claim text out)
-    string(FIND "${text}"
-        "The integrated GA workflow is `.github/workflows/v1-ga-acceptance.yml`."
-        stale_index)
-    if(stale_index EQUAL -1)
-        set(stale FALSE)
-    else()
-        set(stale TRUE)
-    endif()
+    set(stale FALSE)
+    # Match the whole sentence containing the retired workflow path, not one
+    # exact sentence. A mention is allowed only when that sentence explicitly
+    # marks it retired/current-negative/historical; active claims in any wording
+    # are rejected.
+    string(REGEX MATCHALL "[^.\\n]*\\.github/workflows/v1-ga-acceptance\\.yml[^.\\n]*"
+           stale_claims "${text}")
+    foreach(claim IN LISTS stale_claims)
+        string(TOLOWER "${claim}" claim_l)
+        if(NOT claim_l MATCHES "retired|no current|not current|does not count|forbidden|historical")
+            set(stale TRUE)
+        endif()
+    endforeach()
     set(${out} ${stale} PARENT_SCOPE)
 endfunction()
 
 hyremote_ga_doc_has_stale_workflow_claim("${v1_doc}" actual_ga_stale_claim)
 if(actual_ga_stale_claim)
     message(FATAL_ERROR
-        "release-authority-policy: GA document still claims the retired v1-ga-acceptance.yml is the current workflow")
+        "release-authority-policy: GA document still contains an active claim that the retired v1-ga-acceptance.yml is current")
 endif()
 
 set(bad_ga_doc
@@ -692,7 +705,15 @@ set(bad_ga_doc
 hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc}" bad_ga_stale_claim)
 if(NOT bad_ga_stale_claim)
     message(FATAL_ERROR
-        "release-authority-policy self-test: stale GA workflow fixture was not detected")
+        "release-authority-policy self-test: exact stale GA workflow fixture was not detected")
+endif()
+
+set(bad_ga_doc_alt
+    "The integrated GA workflow remains `.github/workflows/v1-ga-acceptance.yml`.")
+hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc_alt}" bad_ga_stale_claim_alt)
+if(NOT bad_ga_stale_claim_alt)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: alternate stale GA workflow wording was not detected")
 endif()
 
 foreach(required_ga_token IN ITEMS
