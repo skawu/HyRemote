@@ -767,6 +767,25 @@ if(_qt_runtime_requested OR HYB_EXAMPLES OR HYB_TESTS_BUILD
     set(_qt_execution_needs_qt TRUE)
 endif()
 
+# A managed build tree already records the exact Qt identity used to create it.
+# Reuse that choice before discovery so an ambiguous machine does not prompt on
+# every build. An explicit CLI/profile prefix still wins, and the identity check
+# below will recreate a tree if the user deliberately switches Kit.
+if(HYB_QT_PREFIX STREQUAL "" AND NOT HYB_BUILD_DIR STREQUAL "")
+    set(_qt_identity_file "${HYB_BUILD_DIR}/.hyremote-build-identity")
+    if(EXISTS "${_qt_identity_file}" AND NOT IS_SYMLINK "${_qt_identity_file}")
+        file(STRINGS "${_qt_identity_file}" _qt_identity_qt REGEX "^qt=")
+        if(_qt_identity_qt)
+            string(SUBSTRING "${_qt_identity_qt}" 3 -1 _qt_identity_prefix)
+            if(NOT _qt_identity_prefix STREQUAL "" AND IS_DIRECTORY "${_qt_identity_prefix}")
+                set(HYB_QT_PREFIX "${_qt_identity_prefix}")
+                set(HYB_QT_DISCOVERY_NOTE
+                    "Qt prefix : ${HYB_QT_PREFIX} (from existing build identity)")
+            endif()
+        endif()
+    endif()
+endif()
+
 if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
     # Tiers are resolved in the frozen order, one at a time, and never merged into a single pool. The environment tier
     # is selected by the caller naming roots, not by those roots already containing a usable Qt. Otherwise a typo or a
