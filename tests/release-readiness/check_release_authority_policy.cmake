@@ -624,6 +624,117 @@ foreach(required_phrase
     endif()
 endforeach()
 
+# V1 first-GA scope must not absorb post-GA Qt or optional/deferred product work.
+# These are negative guards: a future edit that adds one of these to the V1 mandatory list fails here.
+foreach(non_ga_issue IN ITEMS 592 587 588 605)
+    list(FIND actual_v1_issues ${non_ga_issue} non_ga_index)
+    if(NOT non_ga_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: post-GA/nonblocking issue #${non_ga_issue} must not be a V1 mandatory child")
+    endif()
+endforeach()
+list(FIND actual_v1_issues 57 v1_qt_compat_index)
+if(v1_qt_compat_index EQUAL -1)
+    message(FATAL_ERROR
+        "release-authority-policy: #57 Qt5.15/Qt6.8 compatibility must remain a V1 mandatory child")
+endif()
+
+function(hyremote_v1_has_forbidden_issue authority issue out)
+    string(JSON count LENGTH "${authority}" trains "1.0.0.0" mandatory_children)
+    math(EXPR last "${count} - 1")
+    set(found FALSE)
+    if(count GREATER 0)
+        foreach(index RANGE 0 ${last})
+            string(JSON child GET "${authority}" trains "1.0.0.0" mandatory_children ${index})
+            if(child STREQUAL "${issue}")
+                set(found TRUE)
+            endif()
+        endforeach()
+    endif()
+    set(${out} ${found} PARENT_SCOPE)
+endfunction()
+
+set(bad_authority_json
+    "{\"trains\":{\"1.0.0.0\":{\"mandatory_children\":[605]}}}")
+hyremote_v1_has_forbidden_issue("${bad_authority_json}" 605 bad_v1_has_605)
+if(NOT bad_v1_has_605)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: synthetic post-GA mandatory child was not detected")
+endif()
+
+# The GA document must point at the current executed mechanism, not the retired workflow.
+set(v1_doc_path "${HYREMOTE_SOURCE_DIR}/docs/internal/v1-ga-acceptance.md")
+if(NOT EXISTS "${v1_doc_path}")
+    message(FATAL_ERROR "release-authority-policy: GA acceptance document is missing")
+endif()
+file(READ "${v1_doc_path}" v1_doc)
+
+function(hyremote_ga_doc_has_stale_workflow_claim text out)
+    string(FIND "${text}"
+        "The integrated GA workflow is `.github/workflows/v1-ga-acceptance.yml`."
+        stale_index)
+    if(stale_index EQUAL -1)
+        set(stale FALSE)
+    else()
+        set(stale TRUE)
+    endif()
+    set(${out} ${stale} PARENT_SCOPE)
+endfunction()
+
+hyremote_ga_doc_has_stale_workflow_claim("${v1_doc}" actual_ga_stale_claim)
+if(actual_ga_stale_claim)
+    message(FATAL_ERROR
+        "release-authority-policy: GA document still claims the retired v1-ga-acceptance.yml is the current workflow")
+endif()
+
+set(bad_ga_doc
+    "The integrated GA workflow is `.github/workflows/v1-ga-acceptance.yml`.")
+hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc}" bad_ga_stale_claim)
+if(NOT bad_ga_stale_claim)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: stale GA workflow fixture was not detected")
+endif()
+
+foreach(required_ga_token IN ITEMS
+        "ci.yml"
+        "mainline-validation.yml"
+        "Qt 5.15"
+        "Qt 6.8.3"
+        "Generic"
+        "NOT_RUN")
+    string(FIND "${v1_doc}" "${required_ga_token}" ga_token_index)
+    if(ga_token_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: GA document lost required scope token: ${required_ga_token}")
+    endif()
+endforeach()
+
+# Acceptance evidence indexes must point at the maintained internal runbooks, not
+# the retired root-level copies.
+set(acceptance_index "${HYREMOTE_SOURCE_DIR}/docs/acceptance/README.md")
+if(NOT EXISTS "${acceptance_index}")
+    message(FATAL_ERROR "release-authority-policy: acceptance evidence index is missing")
+endif()
+file(READ "${acceptance_index}" acceptance_index_text)
+foreach(stale_path IN ITEMS
+        "docs/v1-physical-acceptance.md"
+        "docs/v1-ga-acceptance.md")
+    string(FIND "${acceptance_index_text}" "${stale_path}" stale_path_index)
+    if(NOT stale_path_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: acceptance index references retired runbook path ${stale_path}")
+    endif()
+endforeach()
+foreach(required_path IN ITEMS
+        "docs/internal/v1-physical-acceptance.md"
+        "docs/internal/v1-ga-acceptance.md")
+    string(FIND "${acceptance_index_text}" "${required_path}" required_path_index)
+    if(required_path_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: acceptance index lost maintained runbook path ${required_path}")
+    endif()
+endforeach()
+
 message(STATUS
     "HyRemote release-authority policy gate: PASS "
     "(V1 manifest=${actual_v1_issues}; scope=#157; freeze=#165; "

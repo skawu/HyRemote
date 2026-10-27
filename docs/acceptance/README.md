@@ -8,8 +8,9 @@ Convention:
 
 - one directory per candidate or version, named for it (for example `docs/acceptance/v1.0.0.0/`);
 - the directory holds what the run produced: logs, screenshots, measurement tables, the exact environment;
-- the runbook that produced it stays where it is (`docs/v1-physical-acceptance.md`, `docs/v1-ga-acceptance.md`) and is
-  linked from the evidence directory rather than duplicated there;
+- the runbook that produced it stays where it is
+  (`docs/internal/v1-physical-acceptance.md`, `docs/internal/v1-ga-acceptance.md`) and is linked from the evidence
+  directory rather than duplicated there;
 - nothing in here is installed, packaged or compiled - it is not part of any build graph.
 
 This directory exists because the layout document named it while it did not exist: a documented location that a reader

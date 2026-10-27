@@ -10,15 +10,24 @@ Authority: #33. Composes, but does not replace, milestone authorities #30, #31, 
 
 ## 1. Release candidate environment
 
-The integrated GA workflow is `.github/workflows/v1-ga-acceptance.yml`.
+The current GA/release-candidate gate is the existing `.github/workflows/ci.yml` +
+`.github/workflows/mainline-validation.yml` chain plus the `tests/release-readiness/` checks run by
+the canonical build. There is **no current `.github/workflows/v1-ga-acceptance.yml`**: that retired
+per-lane workflow is explicitly forbidden by `check_ci_environment_baseline.cmake`. A future
+integrated workflow may be added only by a reviewed change that updates this document and the
+baseline test together.
 
 | Dimension | Windows | Linux |
 | --- | --- | --- |
 | Architecture | x86_64 | x86_64 |
 | OS runner | Windows Server 2022 | Ubuntu 24.04 |
-| Qt | 6.8.3 exact for GA matrix | 6.8.3 exact for GA matrix |
+| Qt | 6.8.3 exact reference; Qt5.15 only for its actually qualified cells | 6.8.3 exact reference; nonblocking |
 | Native QPA delegate | qwindows | qxcb |
 | Hosted display | native hosted Windows | Xvfb correctness scope |
+
+Qt5.15 is a separate first-GA family, not a second column inferred from the Qt6.8 row. A Qt6.8
+result does not authorize a Qt5.15 claim, and the Qt5.15 C++/Widgets cell does not authorize Qt5.15
+Quick, QML, Generic or QPA. Linux evidence remains nonblocking user validation.
 
 Xvfb is correctness infrastructure only. It is not evidence that a physical local monitor and local input remain usable while a remote viewer is connected.
 
@@ -63,9 +72,9 @@ One release-like source tree is configured with all V1 product paths enabled at 
 - E1–E5 examples;
 - V1 release-readiness metadata.
 
-The workflow must build that single tree and pass all deterministic CTest suites. A mode that only passes in a separately reduced build does not satisfy this gate.
+The canonical build/candidate gate must build that single tree and pass all deterministic CTest suites. A mode that only passes in a separately reduced build does not satisfy this gate.
 
-The workflow must also assert the installed artifact classes themselves: static Core archive, shared RemoteAccess runtime and QPA platform module.
+The same gate must assert the installed artifact classes themselves: static Core archive, shared RemoteAccess runtime and QPA platform module.
 
 ## 4. Transport and input-lifecycle correctness
 
@@ -109,6 +118,15 @@ E1 `widgets-basic` and E2 `quick-basic` must prove through the public `HyRemote:
 
 E3 `qml-basic` must prove the same shared runtime through `import HyRemote`, including live `connectedClientCount` lifecycle. QML must not expose or construct backend/session/client objects. Disabling/stopping the QML wrapper uses the same terminal input-cleanup semantics as the C++ facade; QML does not own a second input stack.
 
+### Generic Plugin
+
+Generic is a peer route, not a C++/QML/QPA sub-case. Its current evidence surface is the
+`src/integrations/generic` plugin tests and the `tests/consumer-installed-generic` Widgets/Quick
+consumers. A V1 candidate must explicitly report the Generic qualification state and the installed
+consumer result. No standalone Generic E2E cell is currently registered; absence of that cell is
+`NOT_RUN`, not permission to infer Generic coverage from another route, and not permission to omit
+Generic from a claimed four-route matrix.
+
 ### Transparent QPA
 
 The QPA CTest/product chain must prove the exact Qt 6.8.3 qualified proxy behavior:
@@ -151,6 +169,7 @@ The exact SDK produced from the integrated tree is consumed by:
 - E6 `tests/consumer-installed-sdk` — installed package / shared `HyRemote::RemoteAccess` consumer;
 - `tests/consumer-source` — source/add_subdirectory consumer with the same public target/deployment call;
 - `tests/consumer-installed-qml` — installed QML module and shared-runtime deployment path;
+- `tests/consumer-installed-generic` — installed Generic Widgets/Quick consumer path;
 - `tests/consumer-installed-qpa` — Qt-only application deployed with `hyremote_deploy(... QPA)`.
 
 Required deployment evidence:
@@ -189,7 +208,7 @@ Release notes stay candidate/pending until the final release branch is accepted.
 
 ## 8. Manual / physical acceptance not replaced by CI
 
-The integrated workflow is necessary but not sufficient for `v1.0.0.0`.
+The current GA/release-readiness gate is necessary but not sufficient for `v1.0.0.0`.
 
 Physical/native evidence is tracked by #109. The repository execution runbook and evidence template is `docs/internal/v1-physical-acceptance.md`; it versions the exact candidate/environment/cell record but **does not itself authorize or prove physical acceptance**. #109 remains the acceptance authority.
 
@@ -227,8 +246,8 @@ If the mandatory **Windows** job does not execute and PASS, GA is unexecuted and
 - #101 API/artifact freeze accepted;
 - #107 release-readiness metadata accepted;
 - #109 required cross-mode physical/native evidence accepted, including explicit-stop/policy-transition input cleanup, with the exact-candidate record completed through `docs/internal/v1-physical-acceptance.md`;
-- #104 integrated GA workflow has actually passed on the required Windows x86_64 reference OS; Linux remains NON_BLOCKING user-validation evidence;
-- clean deployed C++/source/QML/QPA consumers have passed the no-SDK-runtime-path gate;
+- #104 current GA/release-readiness gate has actually passed on the required Windows x86_64 reference OS; the retired `v1-ga-acceptance.yml` does not count as that gate, and a future integrated workflow must be added by a reviewed change and then pass; Linux remains NON_BLOCKING user-validation evidence;
+- clean deployed C++/source/QML/Generic/QPA consumers have passed the no-SDK-runtime-path gate;
 - compatibility/known-limitations/security documentation matches the candidate;
 - no mandatory acceptance item remains blocked, failed or merely inferred.
 
