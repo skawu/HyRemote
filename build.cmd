@@ -56,7 +56,6 @@ if errorlevel 1 (
     del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
     exit /b 1
 )
-type "%QT_CHOICE_FILE%"
 set "HYREMOTE_QT_CHOICE="
 set /p "HYREMOTE_QT_CHOICE=Choose Qt Kit by number (or q to cancel): "
 if /i "%HYREMOTE_QT_CHOICE%"=="q" (
@@ -73,7 +72,8 @@ if not defined HYREMOTE_QT_PREFIX (
     exit /b 1
 )
 del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
-cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %* --qt-prefix="%HYREMOTE_QT_PREFIX%"
+set "HYREMOTE_QT_SELECTION=%HYREMOTE_QT_PREFIX%"
+cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %*
 exit /b %ERRORLEVEL%
 HYREMOTE_BATCH
 
