@@ -72,8 +72,9 @@ closed.
   option. The user still types only a number, and logs no longer suggest a user-supplied path.
 - The wrapper now checks for a real console with `mode con` before `set /p`; redirected stdin fails
   closed instead of hanging or consuming a scripted value.
-- `--no-config` now prints a diagnostic-mode warning that build.yml, integrations, examples and
-  tests may be missing; it cannot be mistaken for canonical all-integration acceptance.
-- The Windows candidate/sentinel files are still written under
-  `${HYREMOTE_SOURCE_DIR}/build`, while `build.directory` is configurable. A custom build directory
-  does not own those transient files. This remains a P1 handoff-path gap.
+- `--no-config` is now an internal diagnostic: it is removed from normal help, warns when used, and
+  cannot be mistaken for canonical all-integration acceptance.
+- `build.cmd` resolves the configured build directory with an internal `--print-build-dir` dry-run;
+  candidate/sentinel files and the CMake handoff now follow that actual tree instead of a fixed
+  repository `build/`.
+- `--qt-prefix` is documented as an advanced/diagnostic option, not the normal Kit selector.

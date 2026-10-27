@@ -1,5 +1,7 @@
 # HyRemote 产品版本路线图：Qt 5.15 + Qt 6.8 首轮 GA，Qt 6.5 + Qt 6.12 后置
 
+> **Owner Decision 2026-10-27:** D1 popup visual is NOT_CONFIRMED and deferred to V0.4 qualification, not a V0.3.4 hard gate; D2 accepts bounded Qt5 C++/Widgets while Qt5 Quick/QML/Generic/QPA stay EXPERIMENTAL/UNSUPPORTED/REJECTED; D3 requires legal custom build.directory end-to-end; D4 makes --no-config internal diagnostic; D5 keeps --qt-prefix advanced; D6 makes existing build identity win over environment discovery and requires explicit switching; D7 makes RealVNC 7.15.1 the required maintained Viewer. Details and evidence links are recorded in #594/#603.
+
 > **唯一当前产品成果/版本规划事实源 / SINGLE CURRENT PRODUCT OUTCOME ROADMAP：** 本文件在 `develop` 上的已合并版本，决定已知用户成果的计划版本、顺序、依赖和条件状态。Issue #594 是 Owner 决策/变更台账，#605 是 Qt LTS 范围决策；它们不是第二份并行版本表。新 Owner 决策必须经审查 PR 同步本文件后才更新当前排程。`docs/versioning.md` / `docs/en/versioning.md` 只解释版本语义并提供摘要；`.github/release/release-trains.json` 独立决定机器登记的 train、mandatory children 和候选选择；`docs/compatibility.md` / `docs/en/compatibility.md` 只记录已有资格的实际支持单元。已发布发行说明/标签属于历史事实，不因新规划追改。旧路线图与本地分支副本不是权威。
 
 > **按问题读取事实源：** 计划路线读本文件（`develop` 最新已合并版本）；当前 train/mandatory/RC 激活状态读 machine manifest 与 release gate；详细验收读责任 Issue 当前正文及其 PR/CI；已发布与 Supported 声明读 Release/tag、精确 SHA、兼容矩阵和实证。旧 Issue 段落、旧评论、旧 PR 分支不能单独推翻当前事实。

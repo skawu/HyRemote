@@ -332,6 +332,18 @@ while(i LESS argc)
     elseif(arg STREQUAL "--no-config")
         set(HYB_CONFIG_PATH "")
         set(HYB_NO_CONFIG TRUE)
+    elseif(arg STREQUAL "--print-build-dir")
+        set(HYB_PRINT_BUILD_DIR TRUE)
+    elseif(arg STREQUAL "--build-dir")
+        math(EXPR i "${i}+1")
+        if(i GREATER_EQUAL argc)
+            message(FATAL_ERROR "--build-dir requires a path")
+        endif()
+        list(GET HYB_ARGS ${i} HYB_CLI_BUILD_DIR)
+        set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
+    elseif(arg MATCHES "^--build-dir=(.+)$")
+        set(HYB_CLI_BUILD_DIR "${CMAKE_MATCH_1}")
+        set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
     endif()
     math(EXPR i "${i}+1")
 endwhile()
@@ -344,11 +356,27 @@ if(NOT HYB_CONFIG_PATH STREQUAL "")
     hyb_load_config("${HYB_CONFIG_PATH}")
 endif()
 
+# A command-line --build-dir is an explicit override of build.yml's directory.
+if(NOT HYB_CLI_BUILD_DIR STREQUAL "")
+    set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
+endif()
+
 if(HYB_NO_CONFIG)
     message(WARNING
         "DIAGNOSTIC MODE: --no-config ignores build.yml. Integrations, examples and tests "
         "may be a smaller product surface than canonical build.cmd test; do not use this "
         "run as all-integration acceptance evidence.")
+endif()
+
+# Internal dry-run used by build.cmd to locate the handoff files. It must not
+# discover Qt or prompt; it only resolves the configured build directory.
+if(HYB_PRINT_BUILD_DIR)
+    if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
+        set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
+    endif()
+    cmake_path(NORMAL_PATH HYB_BUILD_DIR)
+    message("HYREMOTE_BUILD_DIR=${HYB_BUILD_DIR}")
+    return()
 endif()
 
 # The first bare word is the subcommand. It is read before the option loop so that loop keeps sole ownership of
@@ -374,7 +402,7 @@ set(i 0)
 while(i LESS argc)
     list(GET HYB_ARGS ${i} arg)
     if(arg STREQUAL "--help")
-        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
+        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH (advanced; normal users select a Kit or profile)\n  --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
         return()
     elseif(arg MATCHES "^--config=" OR arg STREQUAL "--no-config")
         # Already consumed in pass 1.
@@ -785,10 +813,8 @@ endif()
 # Reuse that choice before discovery so an ambiguous machine does not prompt on
 # every build. An explicit CLI/profile prefix still wins, and the identity check
 # below will recreate a tree if the user deliberately switches Kit.
-hyb_qt_environment_roots(_qt_identity_environment_roots)
 if(HYB_QT_PREFIX STREQUAL "" AND NOT HYB_BUILD_DIR STREQUAL ""
-   AND NOT _qt_identity_environment_roots
-   AND "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
+   AND NOT "$ENV{HYREMOTE_QT_IGNORE_IDENTITY}" STREQUAL "1")
     # Resolve the build directory against the repository before reading its
     # identity; the wrapper may be invoked from outside the checkout.
     if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
@@ -984,9 +1010,14 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                     # reliably (notably under Windows Terminal/ConPTY). Leave the
                     # actual prompt to build.cmd, which owns the terminal, and
                     # hand it a stable candidate list plus a sentinel.
-                    file(MAKE_DIRECTORY "${HYREMOTE_SOURCE_DIR}/build")
+                    set(_qt_handoff_dir "$ENV{HYREMOTE_QT_HANDOFF_DIR}")
+                    if(_qt_handoff_dir STREQUAL "")
+                        set(_qt_handoff_dir "${HYREMOTE_SOURCE_DIR}/build")
+                    endif()
+                    cmake_path(NORMAL_PATH _qt_handoff_dir)
+                    file(MAKE_DIRECTORY "${_qt_handoff_dir}")
                     set(_qt_candidate_file
-                        "${HYREMOTE_SOURCE_DIR}/build/.hyremote-qt-candidates")
+                        "${_qt_handoff_dir}/.hyremote-qt-candidates")
                     file(WRITE "${_qt_candidate_file}" "")
                     math(EXPR _qt_candidate_index "0")
                     foreach(_prefix IN LISTS _qt_usable)
@@ -995,7 +1026,7 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
                              "${_qt_candidate_index}|${_prefix}\n")
                     endforeach()
                     file(WRITE
-                        "${HYREMOTE_SOURCE_DIR}/build/.hyremote-qt-choice-required"
+                        "${_qt_handoff_dir}/.hyremote-qt-choice-required"
                         "required\n")
                     message(FATAL_ERROR
                         "${_qt_choice_help}\nHYREMOTE_QT_KIT_CHOICE_REQUIRED")

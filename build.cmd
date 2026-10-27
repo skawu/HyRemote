@@ -37,8 +37,24 @@ if errorlevel 1 (
     exit /b 2
 )
 
-set "QT_CHOICE_FILE=%~dp0build\.hyremote-qt-candidates"
-set "QT_CHOICE_SENTINEL=%~dp0build\.hyremote-qt-choice-required"
+set "BUILD_DIR_PROBE=%~dp0.hyremote-build-dir-%RANDOM%%RANDOM%"
+cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %* --print-build-dir > "%BUILD_DIR_PROBE%" 2>&1
+findstr /b "HYREMOTE_BUILD_DIR=" "%BUILD_DIR_PROBE%" > "%BUILD_DIR_PROBE%.line"
+set "HYREMOTE_BUILD_DIR="
+set /p "HYREMOTE_BUILD_DIR=" < "%BUILD_DIR_PROBE%.line"
+del /q "%BUILD_DIR_PROBE%" "%BUILD_DIR_PROBE%.line" >nul 2>&1
+if not defined HYREMOTE_BUILD_DIR (
+    echo Could not resolve the configured build directory. No build was started.
+    exit /b 1
+)
+if /i not "%HYREMOTE_BUILD_DIR:~0,19%"=="HYREMOTE_BUILD_DIR=" (
+    echo Invalid build directory response. No build was started.
+    exit /b 1
+)
+set "HYREMOTE_BUILD_DIR=%HYREMOTE_BUILD_DIR:~19%"
+set "HYREMOTE_QT_HANDOFF_DIR=%HYREMOTE_BUILD_DIR%"
+set "QT_CHOICE_FILE=%HYREMOTE_QT_HANDOFF_DIR%\.hyremote-qt-candidates"
+set "QT_CHOICE_SENTINEL=%HYREMOTE_QT_HANDOFF_DIR%\.hyremote-qt-choice-required"
 if exist "%QT_CHOICE_FILE%" del /q "%QT_CHOICE_FILE%" >nul 2>&1
 if exist "%QT_CHOICE_SENTINEL%" del /q "%QT_CHOICE_SENTINEL%" >nul 2>&1
 
