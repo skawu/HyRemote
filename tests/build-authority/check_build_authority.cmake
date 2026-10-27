@@ -277,6 +277,13 @@ run_success(build-dir-dry-run
 require_text_flat(build-dir-dry-run "${HYB_TEST_OUTPUT}"
     "HYREMOTE_BUILD_DIR=${scratch}/custom-build")
 
+# A missing --build-dir must resolve to the configured default, not to the
+# repository root.  The unquoted empty-variable comparison collapsed this to
+# the source root after the build-directory dry-run was introduced.
+run_success(build-dir-default --no-config --print-build-dir)
+require_text_flat(build-dir-default "${HYB_TEST_OUTPUT}"
+    "HYREMOTE_BUILD_DIR=${HYREMOTE_SOURCE_DIR}/build")
+
 set(qt_one_root "${scratch}/qt-discovery-one")
 set(qt_two_root "${scratch}/qt-discovery-two")
 set(qt_rejected_root "${scratch}/qt-discovery-rejected")
