@@ -555,6 +555,15 @@ jobs:
           cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
             -P tests/release-readiness/check_release_authority_policy.cmake
 
+      # A01/E01: the exact-cell matrix is a product statement made in tracked text, so the same cheap lane
+      # executes its guard whenever any document it reads changes. No Qt SDK, no product build.
+      - name: Compatibility cell matrix guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
+            -P tests/release-readiness/check_compatibility_cells.cmake
+
   no-product-change:
     # #380: this is a decision report, not an acceptance run. Its name has to say that no hosted product validation
     # was required, so nobody reads a green checkmark here as "the product gate ran".

@@ -67,18 +67,19 @@ if(_en_section STREQUAL "")
     message(FATAL_ERROR "docs/en/compatibility.md has no current development-line section")
 endif()
 
-# One row must carry the exact Qt patch, compiler/ABI, integration, UI target and status together.
+# One row must carry the complete cell identity: exact Qt patch + compiler/ABI + OS/arch + integration + UI target
+# + status. Any dimension left out is a dimension a later edit can silently change.
 set(_required_rows
-    "6.8.3|msvc2022_64|C++ API|Widgets|**Supported**"
-    "6.8.3|msvc2022_64|C++ API|Qt Quick|**Supported**"
-    "6.8.3|msvc2022_64|QML API|Qt Quick|**Supported**"
-    "6.8.3|msvc2022_64|Generic Plugin|**Supported**"
-    "6.8.3 exact|QPA|**Limited**"
-    "5.15.2|msvc2019_64|C++ API|Widgets|**Limited**"
-    "5.15.2|msvc2019_64|C++ API|Qt Quick|**Experimental**"
-    "5.15.2|msvc2019_64|QML API|**Unsupported**"
-    "5.15.2|msvc2019_64|Generic Plugin|**Unsupported**"
-    "5.15.2|msvc2019_64|QPA|**Not applicable**"
+    "6.8.3|msvc2022_64|Windows x86_64|C++ API|Widgets|**Supported**"
+    "6.8.3|msvc2022_64|Windows x86_64|C++ API|Qt Quick|**Supported**"
+    "6.8.3|msvc2022_64|Windows x86_64|QML API|Qt Quick|**Supported**"
+    "6.8.3|msvc2022_64|Windows x86_64|Generic Plugin|Widgets / Quick|**Supported**"
+    "6.8.3 exact|msvc2022_64|Windows x86_64|QPA|Widgets / Quick|**Limited**"
+    "5.15.2|msvc2019_64|Windows x86_64|C++ API|Widgets|**Limited**"
+    "5.15.2|msvc2019_64|Windows x86_64|C++ API|Qt Quick|**Experimental**"
+    "5.15.2|msvc2019_64|Windows x86_64|QML API|**Unsupported**"
+    "5.15.2|msvc2019_64|Windows x86_64|Generic Plugin|**Unsupported**"
+    "5.15.2|msvc2019_64|Windows x86_64|QPA|**Not applicable**"
     "6.5 / 6.12|**Detected, not qualified**"
     "User-validation pending")
 
@@ -153,6 +154,22 @@ foreach(_matrix_token
             "docs/internal/windows-qt-lts-route-matrix-2026-10-24.md is missing '${_matrix_token}'; "
             "the internal matrix and the public documents must describe the same cells.")
     endif()
+endforeach()
+
+# Route-level agreement, not just shared metadata: each internal row has to keep the status the public cell
+# states. A Qt 5 route silently promoted here would otherwise pass the checks above.
+foreach(_matrix_row
+        "C++ / Widgets|QUALIFIED (bounded)"
+        "C++ / Widgets via qmake|QUALIFIED (bounded)"
+        "C++ / Quick|EXPERIMENTAL / NOT_QUALIFIED"
+        "QML|UNSUPPORTED"
+        "Generic|UNSUPPORTED"
+        "QPA|REJECTED"
+        "HyRemoteTool|LIMITED"
+        "QPA|QUALIFIED (exact 6.8.3)")
+    _require_row("${_matrix_text}"
+                 "docs/internal/windows-qt-lts-route-matrix-2026-10-24.md"
+                 "${_matrix_row}")
 endforeach()
 
 message(STATUS "compatibility cell matrix: exact cells and Owner D2 route truth are consistent")
