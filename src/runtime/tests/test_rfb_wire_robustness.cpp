@@ -1833,7 +1833,15 @@ void testPostInitUsefulnessDeadlineKeepsStaticViewer()
     CHECK(connectRawRfb(idle, port, false));
     QTcpSocket staticViewer;
     CHECK(connectRawRfb(staticViewer, port, false));
+    // The first incremental request is answered by the forced refresh that ServerInit scheduled, so consume
+    // it first; only the second request on an unchanged frame stays outstanding across the deadline.
+    TestFramebuffer staticFrame;
+    staticFrame.resize(64, 48);
+    std::vector<UpdateRect> staticRects;
     CHECK(sendUpdateRequest(staticViewer, true, 0, 0, 64, 48));
+    CHECK(readFramebufferUpdate(staticViewer, staticFrame, staticRects));
+    CHECK(sendUpdateRequest(staticViewer, true, 0, 0, 64, 48));
+    CHECK(noFramebufferData(staticViewer));
 
     CHECK(recorder.waitFor([](const auto &, const auto &events) {
         return std::any_of(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
