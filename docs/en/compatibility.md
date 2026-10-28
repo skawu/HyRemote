@@ -10,8 +10,11 @@ HyRemote states compatibility only for environments with an explicit product sta
 
 - **Supported:** qualified for the current product line. The C++ API, QML API, Generic Plugin, and QPA are peers. None is a primary or preview tier over another.
 - **Limited:** qualified only under the stated narrower condition, such as QPA's exact Qt private ABI.
+- **Experimental:** buildable only through an explicit internal opt-in, with known failing capture/input coverage and no normal-user entry. It is not a support claim, and it must never be presented as qualified.
 - **TODO:** planned product coverage that is not yet available or qualified.
 - **Unsupported:** outside the stated product contract or known not to work for the stated combination.
+- **Not applicable:** the route cannot exist for that combination, for example a Qt 5 QPA plugin where only the exact Qt 6.8.3 private ABI is supported.
+- **Detected, not qualified:** the Qt family is discovered by the Kit resolver but has no qualified cell; detection never implies support.
 
 ## Historical released V0.3.0.0 reference matrix (unchanged at publication)
 
@@ -35,7 +38,28 @@ The V0.3.0.0 publication historically named **Qt 6.8.3 on Windows and Linux x86_
 | 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI; native delegate `qxcb` |
 | 5.15.2 | Windows x86_64 | C++ API | Widgets | **Limited** | Legacy Qt5 lane: Runtime, Tool, examples and installed consumer build/deploy; 62/62 CTest. Quick is build-only/experimental; QML/QPA/Linux are not qualified |
 
-The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified.
+The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified. Its 5.15.2 row is the original V0.3.0.0-era legacy record; the current state of every Qt 5 route was decided by Owner D2 (2026-10-27) and is stated in the current development-line table below.
+
+## Current development line: V0.3.4.0 exact cells (not released)
+
+V0.3.4.0 is the **current development target, not a released version**. A cell is the full combination of exact Qt patch, compiler/ABI, OS/architecture, integration route and UI target. One passing cell never implies another cell of the same Qt family.
+
+| Exact Qt | Compiler / ABI | Platform | Integration | UI target | Status | Evidence and boundary |
+| --- | --- | --- | --- | --- | --- | --- |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | C++ API | Widgets | **Supported** | Windows product matrix and installed consumer; explicit Runtime lifecycle |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | C++ API | Qt Quick | **Supported** | Same `HyRemote::RemoteAccess` entry; Quick capture/input regression passes |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | QML API | Qt Quick | **Supported** | Installed QML consumer and QML tests |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Preserves the native Qt platform identity; package and tests pass |
+| 6.8.3 exact | msvc2022_64 | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Exact 6.8.3 private ABI only (`qwindows`); no other Qt patch |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Widgets | **Limited** | Runtime, Tool, examples and installed consumers (CMake + qmake) build and run; Windows Qt 5 lane 62/62 CTest |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Qt Quick | **Experimental** | Internal `HYREMOTE_QT5_ENABLE_QUICK=ON` only; capture/input tests fail, normal entry is hidden; never to be called supported |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | QML API | — | **Unsupported** | Owner D2: Qt 5 QML is outside the declared scope |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | Generic Plugin | — | **Unsupported** | Owner D2: Generic requires Qt 6.8 or newer |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | QPA | — | **Not applicable** | Owner D2: QPA exists only for the exact Qt 6.8.3 private ABI; the Qt 5 QPA build is rejected |
+| 6.5 / 6.12 | — | — | — | — | **Detected, not qualified** | Separate post-V1.0-GA admission under #605; detection is not support |
+| any Qt | — | non-Windows (Linux/Wayland/ARM64/EGLFS) | — | — | **User-validation pending** | No target-system evidence; never blocks a Windows version and is never Supported |
+
+Viewer boundary: **RealVNC Viewer 7.15.1** is the required maintained viewer for V0.3.4.0. On the current development-line candidate (Windows Qt 5.15.2 and Qt 6.8.3 Widgets hosts) connection, keyboard press/release and disconnect/reconnect are recorded. Right-click input reaches the host, but the native context menu in the remote screenshot is `NOT_CONFIRMED`; per Owner D1 it moves to V0.4.0.0 qualification and is not recorded as PASS. No other viewer inherits these results.
 
 ## Qt LTS policy
 
@@ -45,9 +69,9 @@ HyRemote supports selected Qt LTS families and does not automatically promise ev
 
 Current state:
 
-- **Qt 6.8 LTS:** current reference family; Qt 6.8.3 is the exact reference SDK for V0.3.0.0.
-- **Qt 5.15 LTS:** Limited legacy lane on the exact Qt 5.15.2 Windows x86_64 cell: C++/Widgets Runtime, Tool, examples and installed consumer are build/install/test qualified. Qt5 Quick is experimental/build-only; QML API, QPA, Linux and ARM64 Qt5 remain TODO and are not implied by the Windows Widgets cell.
-- other Qt LTS or non-LTS families: no support claim without an explicit compatibility row.
+- **Qt 6.8 LTS:** current reference family; the exact Windows x86_64 reference SDK is Qt 6.8.3 (msvc2022_64), and QPA exists only for that exact private ABI.
+- **Qt 5.15 LTS:** Limited legacy lane on the exact Qt 5.15.2 Windows x86_64 cell (msvc2019_64): C++/Widgets Runtime, Tool, examples and installed consumer are build/install/test qualified. Qt 5 Quick is **Experimental** (internal opt-in only, normal entry hidden); Qt 5 QML and Generic are **Unsupported** and Qt 5 QPA is **Not applicable** (Owner D2, 2026-10-27); Linux and ARM64 Qt 5 are user-validation pending and are not implied by the Windows Widgets cell.
+- other Qt LTS or non-LTS families: no support claim without an explicit compatibility row; Qt 6.5 and 6.12 stay detected-but-not-qualified before V1.0 GA.
 
 Public Qt frontends and QPA follow different rules:
 

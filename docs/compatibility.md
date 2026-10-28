@@ -30,7 +30,28 @@ HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似�
 | 6.8.3 exact | Linux x86_64 | QPA | Widgets / Quick | **Limited** | Private ABI；原生 delegate `qxcb` |
 | 5.15.2 | Windows x86_64 | C++ API | Widgets | **Limited** | Qt5 遗留路径：Runtime、Tool、示例和安装消费者可构建/部署，62/62 CTest；Quick 为实验性 build-only，QML/QPA/Linux 未认证 |
 
-这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。
+这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。其中的 5.15.2 行是 V0.3.0.0 时期遗留路径的原始记录；Qt5 各接入单元的现状已由 Owner D2（2026-10-27）裁决，以下面的当前开发线表格为准。
+
+## 当前开发线 V0.3.4.0 的逐单元状态（未发布）
+
+V0.3.4.0 是**当前开发目标，不是已发布版本**。下表把“单元”写全：精确 Qt 补丁 + 编译器/ABI + 操作系统/架构 + 接入方式 + UI 目标。一个通过单元不能外推同家族的其它单元。
+
+| Qt 精确版本 | 编译器 / ABI | 平台 | 接入方式 | UI 目标 | 状态 | 证据与边界 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | C++ API | Widgets | **Supported** | Windows 产品矩阵与安装消费者；显式 Runtime 生命周期 |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | C++ API | Qt Quick | **Supported** | 同一个 `HyRemote::RemoteAccess` 入口，Quick 采集/输入回归通过 |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | QML API | Qt Quick | **Supported** | 已安装 QML 消费者与 QML 测试 |
+| 6.8.3 | msvc2022_64 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 保留原生 Qt 平台身份，安装包与测试通过 |
+| 6.8.3 exact | msvc2022_64 | Windows x86_64 | QPA | Widgets / Quick | **Limited** | 仅精确 6.8.3 私有 ABI（`qwindows`）；其它 Qt 补丁一律不支持 |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Widgets | **Limited** | Runtime、Tool、示例与安装消费者（CMake + qmake）构建并运行；Windows Qt5 lane 62/62 CTest |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Qt Quick | **Experimental** | 仅内部 `HYREMOTE_QT5_ENABLE_QUICK=ON` 可构建；采集/输入测试未通过，普通入口隐藏，不得称为已支持 |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | QML API | — | **Unsupported** | Owner D2：Qt5 QML 不在声明范围内 |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | Generic Plugin | — | **Unsupported** | Owner D2：Generic 需要 Qt 6.8 或更高 |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | QPA | — | **Not applicable** | Owner D2：QPA 只对精确 Qt 6.8.3 私有 ABI 成立，Qt5 QPA 构建被拒绝 |
+| 6.5 / 6.12 | — | — | — | — | **Detected, not qualified** | 属于 V1.0 GA 之后 #605 的独立准入；检出不等于支持 |
+| 任意 Qt | — | 非 Windows（Linux/Wayland/ARM64/EGLFS） | — | — | **User-validation pending** | 无目标系统实测，不阻塞 Windows 版本，也不是 Supported |
+
+远程查看器边界：**RealVNC Viewer 7.15.1** 是 V0.3.4.0 要求的 maintained Viewer。当前开发线候选（Windows Qt5.15.2 与 Qt6.8.3 Widgets 主机）已记录连接、键盘按下/释放、断开重连；右键输入到达主机，但原生上下文菜单的远端截图 `NOT_CONFIRMED`，按 Owner D1 转入 V0.4.0.0 资格工作，不记为 PASS。其它查看器不复用这些结论。
 
 ## Qt LTS 政策
 
@@ -40,9 +61,9 @@ HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 
 当前状态：
 
-- **Qt 6.8 LTS**：当前参考家族；Qt 6.8.3 是 V0.3.0.0 使用的精确参考 SDK。
-- **Qt 5.15 LTS**：Windows x86_64 精确 cell 为 **Limited** 遗留路径。C++/Widgets Runtime、Tool、示例和安装消费者已构建/安装/测试通过；Qt5 Quick 仍为实验性 build-only；QML API、QPA、Linux 和 ARM64 Qt5 仍为 TODO，不得由 Windows Widgets cell 外推。
-- 其他 Qt LTS 或非 LTS 家族：没有明确兼容行时，不做支持声明。
+- **Qt 6.8 LTS**：当前参考家族；Windows x86_64 的精确参考 SDK 是 Qt 6.8.3（msvc2022_64），QPA 只对该精确补丁的私有 ABI 成立。
+- **Qt 5.15 LTS**：Windows x86_64 精确 cell 为 **Limited** 遗留路径（msvc2019_64）。C++/Widgets Runtime、Tool、示例和安装消费者已构建/安装/测试通过；Qt5 Quick 为 **Experimental**（仅内部 opt-in，普通入口隐藏）；Qt5 QML 与 Generic 为 **Unsupported**、Qt5 QPA 为 **Not applicable**（Owner D2，2026-10-27）；Linux 与 ARM64 Qt5 为 user-validation pending，不得由 Windows Widgets cell 外推。
+- 其他 Qt LTS 或非 LTS 家族：没有明确兼容行时，不做支持声明；Qt 6.5 与 6.12 在 V1.0 GA 前属于 detected-but-not-qualified。
 
 公共 Qt 前端和 QPA 的兼容规则不同：
 
