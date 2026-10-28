@@ -11,6 +11,7 @@
 #include <QTcpSocket>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -18,6 +19,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -227,6 +229,23 @@ bool connectRawRfb(QTcpSocket &socket,
            == static_cast<qsizetype>(nameLength);
 }
 
+// #158: a slot is only free after the deferred abort has been delivered, so a reconnect immediately after
+// an expiry can still be refused by the bounded client limit. Retry inside a bounded window instead of
+// treating that ordering as a product failure.
+bool connectRawRfbWithRetry(QTcpSocket &socket, quint16 port, int timeoutMs = 5000)
+{
+    QElapsedTimer window;
+    window.start();
+    while (window.elapsed() < timeoutMs) {
+        if (connectRawRfb(socket, port, false))
+            return true;
+        socket.abort();
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
+
 bool enterAwaitInitialFrame(QTcpSocket &socket, quint16 port)
 {
     if (!negotiateThroughSecurity(socket, port, false))
@@ -250,6 +269,16 @@ bool hasRecoverableFailure(const std::vector<hyremote::TransportEvent> &events,
         return event.code == hyremote::TransportEventCode::RecoverableFailure
                && event.message.find(needle) != std::string::npos;
     });
+}
+
+std::size_t countRecoverableFailures(Recorder &recorder, const std::string &needle)
+{
+    std::lock_guard<std::mutex> lock(recorder.mutex);
+    return static_cast<std::size_t>(
+        std::count_if(recorder.events.begin(), recorder.events.end(), [&](const auto &event) {
+            return event.code == hyremote::TransportEventCode::RecoverableFailure
+                   && event.message.find(needle) != std::string::npos;
+        }));
 }
 
 hyremote::RemoteFrame makeFrame(std::uint32_t width,
@@ -1740,6 +1769,192 @@ void testExactRfb38VersionIsRequired()
     transport->stop();
 }
 
+// #158: bounded Normal-phase occupancy. Eight viewers that stall inside a message must expire and free
+// their bounded slots; a ninth legitimate viewer then gets a usable session on a clean per-client state.
+void testStalledPartialMessagesReleaseTheirSlots()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    std::array<QTcpSocket, 8> stalled;
+    for (auto &socket : stalled) {
+        CHECK(connectRawRfb(socket, port, false));
+        // The first four bytes of a ten-byte FramebufferUpdateRequest: an incomplete buffered message.
+        CHECK(writeAll(socket, QByteArray("\x03\x00\x00\x00", 4)));
+    }
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::count_if(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+                   return event.code == hyremote::TransportEventCode::RecoverableFailure
+                          && event.message.find("bounded progress deadline") != std::string::npos;
+               }) >= 8;
+    }, 9000));
+
+    QTcpSocket recovery;
+    CHECK(connectRawRfbWithRetry(recovery, port));
+    CHECK(sendUpdateRequest(recovery, true, 0, 0, 64, 48));
+    CHECK(recovery.state() == QAbstractSocket::ConnectedState);
+    recovery.disconnectFromHost();
+    waitForDisconnected(recovery);
+    transport->stop();
+}
+
+// #158: the post-init deadline only expires a viewer that never produced a useful message. A viewer with
+// an outstanding incremental request on a static frame must survive it and stay connected.
+void testPostInitUsefulnessDeadlineKeepsStaticViewer()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket idle;
+    CHECK(connectRawRfb(idle, port, false));
+    QTcpSocket staticViewer;
+    CHECK(connectRawRfb(staticViewer, port, false));
+    CHECK(sendUpdateRequest(staticViewer, true, 0, 0, 64, 48));
+
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+            return event.code == hyremote::TransportEventCode::RecoverableFailure
+                   && event.message.find("bounded post-init deadline") != std::string::npos;
+        });
+    }, 13000));
+    CHECK(waitForDisconnected(idle));
+    CHECK(staticViewer.state() == QAbstractSocket::ConnectedState);
+    // A further settlement window proves the useful viewer is not expired late either.
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.elapsed() < 2000) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(countRecoverableFailures(recorder, "bounded post-init deadline") == 1);
+    CHECK(staticViewer.state() == QAbstractSocket::ConnectedState);
+    staticViewer.disconnectFromHost();
+    waitForDisconnected(staticViewer);
+    transport->stop();
+}
+
+// #158: a client expired while holding a recognized key must release it exactly once, through the same
+// disconnected path as any other abort, and a reconnect must start with clean state.
+void testStalledClientReleasesHeldKeyOnce()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket socket;
+    CHECK(connectRawRfb(socket, port, false));
+    QByteArray keyDown;
+    keyDown.append(char(4));
+    keyDown.append(char(1));
+    appendU16(keyDown, 0);
+    appendU32(keyDown, static_cast<std::uint32_t>('a'));
+    CHECK(writeAll(socket, keyDown));
+    CHECK(writeAll(socket, QByteArray("\x03\x00\x00\x00", 4)));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+            return event.code == hyremote::TransportEventCode::RecoverableFailure
+                   && event.message.find("bounded progress deadline") != std::string::npos;
+        });
+    }, 9000));
+    CHECK(waitForDisconnected(socket));
+
+    int presses = 0;
+    int releases = 0;
+    {
+        std::lock_guard<std::mutex> lock(recorder.mutex);
+        for (const auto &event : recorder.inputs) {
+            if (event.kind != hyremote::InputEventKind::Key || event.key != hyremote::KeyCode::A)
+                continue;
+            if (event.pressed)
+                ++presses;
+            else
+                ++releases;
+        }
+    }
+    CHECK(presses == 1);
+    CHECK(releases == 1);
+
+    QTcpSocket reconnect;
+    CHECK(connectRawRfbWithRetry(reconnect, port));
+    CHECK(reconnect.state() == QAbstractSocket::ConnectedState);
+    reconnect.disconnectFromHost();
+    waitForDisconnected(reconnect);
+    transport->stop();
+}
+
+// #158: stopping with armed occupancy timers must be quiescent - no late expiry event and no resurrection
+// of a client that was already torn down.
+void testStopWithArmedOccupancySweepIsQuiescent()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket first;
+    QTcpSocket second;
+    CHECK(connectRawRfb(first, port, false));
+    CHECK(connectRawRfb(second, port, false));
+    CHECK(writeAll(first, QByteArray("\x03\x00\x00\x00", 4)));
+    CHECK(writeAll(second, QByteArray("\x04\x00\x00\x00", 4)));
+
+    const std::size_t deadlineFailuresBefore = countRecoverableFailures(recorder, "bounded");
+    transport->stop();
+
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.elapsed() < 800) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(countRecoverableFailures(recorder, "bounded") == deadlineFailuresBefore);
+}
+
 void testInitialTargetGeometrySendsServerInitBeforeFrame()
 {
     const quint16 port = freePort();
@@ -2216,6 +2431,10 @@ int main(int argc, char **argv)
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
     testBoundedInputBurstFailsClosed();
     testExactRfb38VersionIsRequired();
+    testStalledPartialMessagesReleaseTheirSlots();
+    testPostInitUsefulnessDeadlineKeepsStaticViewer();
+    testStalledClientReleasesHeldKeyOnce();
+    testStopWithArmedOccupancySweepIsQuiescent();
     testInitialTargetGeometrySendsServerInitBeforeFrame();
     runInteractionLatencyProbe({15, 0}, 15, "trle");
     runInteractionLatencyProbe({0}, 0, "raw");
