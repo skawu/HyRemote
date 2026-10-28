@@ -7,9 +7,9 @@ Status: **审核中的执行台账 + 机器变更提案**。本文不是第二�
 
 - Owner 责任：#602（范围对账），#33（GA 合同）、#95（发布放行）、#57（Windows Qt 资格）。
 - 基线：`develop@eb20194`（2026-10-28）。
-- 机器变更**单独一个 PR**，必须同步更新
-  `tests/release-readiness/check_release_authority_policy.cmake` 的固定期望，并跑 exact-head
-  release-readiness 与 Windows 产品 CI。本文合并**不等于**机器已改。
+- **机器变更只在这一个独立 PR 中生效**：`release-trains.json` 已按 §3 收敛，
+  `check_release_authority_policy.cmake` 的固定期望同步更新。本文仍是台账与审计记录，
+  不是第二份机器权威；机器登记只有 `release-trains.json`。
 
 ## 1. 分类词表（#602 规定，不得混用）
 
@@ -56,18 +56,19 @@ Status: **审核中的执行台账 + 机器变更提案**。本文不是第二�
 | #176 | SDK-RELEASE: clean SDK/deployment umbrella | open | SPLIT | 拆入 #107（发行元数据/清单）与 #57/#101（安装消费者/公共面）；umbrella 本身不可关闭 |
 | #209 | GA-FOUNDATION: one Runtime + converged foundations | open | SPLIT | 拆入 #101（公共面冻结）与 #107（发行基础）；架构护栏由 ADR/CI 持续执行，不占 GA mandatory |
 
-## 3. 机器变更提案（独立 PR 才生效）
+## 3. 机器变更（本 PR 已生效）
 
 `trains["1.0.0.0"]`：
 
-| 字段 | 现在 | 提案 | 理由 |
+| 字段 | 变更前 | 已生效 | 理由 |
 | --- | --- | --- | --- |
 | `mandatory_children` | 26 条 | **11 条**：9, 30, 31, 32, 33, 57, 101, 107, 109, 158, 165 | 只保留可关闭、且属于首轮 Windows GA 的门禁 |
 | `scope_authority` | 157（已 closed/superseded） | **594** | 157 自己声明被 progressive release scopes 取代 |
+| `classified_referenced_issue_numbers` | 10 条 | **25 条**（原 10 + 退出的 15） | 退出 mandatory 的条目仍需被文档引用并可审计 |
 | `candidate_freeze_authority` | 165 | 165（不变） | 仍是冻结权威 |
 | `authority_parent` | 33 | 33（不变） | GA 合同本身 |
-| `notes` | 保留并补 | 对每个新 mandatory 写一句可关闭条件；被移除的 15 条写去留 | 让机器文本能自解释 |
-| `rule` | 26-child legacy 描述 | 改为"仅保留可关闭 Windows GA 门禁；#170 属 V1.1.1，#605 的 Qt6.5/6.12 永不在 V1 前" | 与路线图一致 |
+| `notes` | 部分条目 | 26 条逐条写 KEEP/历史/替换/拆分/延后 | 让机器文本能自解释 |
+| `rule` | 26-child legacy 描述 | 已改为"仅保留可关闭 Windows GA 门禁；#170 属 V1.1.1，#605 永不在 V1 前" | 与路线图一致 |
 
 **退出 mandatory 的 15 条**：39, 41, 104, 143, 144, 157, 159, 162, 163, 164, 170, 174, 175, 176, 209
 （其中 10 条 `HISTORICAL_COMPLETE`、1 条 `REPLACE`、2 条 `SPLIT`、2 条 `DEFER_NONBLOCKING`）。
@@ -75,10 +76,10 @@ Status: **审核中的执行台账 + 机器变更提案**。本文不是第二�
 **不改变**：V0.3.3.0 已发布事实、V0.3.4.0 当前开发目标与 machine train、V0.4 `active:false`、
 Qt 6.5/6.12 的 post-GA 归属（#605）、Linux/ARM64/Wayland 非阻塞（#563）。
 
-## 4. 生效前必须满足
+## 4. 生效条件与已满足项
 
-1. 独立机器 PR 更新 JSON 与 `check_release_authority_policy.cmake` 的固定期望，并新增负例：
+1. ✅ 本 PR 已更新 JSON 与 `check_release_authority_policy.cmake` 的固定期望，并固化负例：
    移除项不得回归、#57 必须保留、#605 的 Qt 家族不得进入 V1 mandatory。
-2. 同一 PR 的最新 HEAD 跑 release-readiness policy 与 Windows 产品 CI。
-3. 文档合并本身**不**让 GA 变成 READY：`V0.4.0.0` 仍 `active:false`，V1 仍 `NOT_READY`。
-4. #33/#95 的正文引用在机器 PR 合并后同步（不在本 PR 改 Issue 正文）。
+2. ✅ 本 PR 最新 HEAD 跑 release-readiness policy、governance（含两个守卫）与 Windows 产品 CI。
+3. 本变更**不**让 GA 变成 READY：`V0.4.0.0` 仍 `active:false`，V1 仍 `NOT_READY`。
+4. #33/#95 的正文引用在合并后以评论同步（不改 Issue 正文，也不把评论当机器权威）。

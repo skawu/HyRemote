@@ -735,18 +735,31 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     endif()
     expect_refusal("V0.4.0.0 is not a release scope before activation" "0.4.0.0")
 
-    # V1 authority preserved by the migration: the full mandatory set and both authorities.
+    # #602: V1 keeps only the closeable Windows GA gates; the former 26 are accounted for in the
+    # reconciliation ledger, and #57 (the Qt family gate) must survive the cleanup.
     run_selection("1.0.0.0" TRUE v1_output)
     string(REGEX MATCH "MANDATORY_CHILDREN=([^\n]*)" _ignored "${v1_output}")
     set(v1_children "${CMAKE_MATCH_1}")
     string(REPLACE "," ";" v1_children_list "${v1_children}")
-    list(LENGTH v1_children_list v1_children_count)
+    set(expected_v1_children 9;30;31;32;33;57;101;107;109;158;165)
     math(EXPR cases_run "${cases_run} + 1")
-    if(NOT v1_children_count EQUAL 26)
-        message(STATUS "release-scope self test: V1.0.0.0 must keep all 26 former mandatory issues")
+    if(NOT "${v1_children_list}" STREQUAL "${expected_v1_children}")
+        message(STATUS
+            "release-scope self test: V1.0.0.0 must carry exactly the closeable Windows GA gates "
+            "(expected '${expected_v1_children}', found '${v1_children_list}')")
         math(EXPR _failures "${case_failures} + 1")
         set(case_failures "${_failures}")
     endif()
+    foreach(reconciled_out IN ITEMS 41 143 144 157 170 175 176 209)
+        list(FIND v1_children_list ${reconciled_out} reconciled_index)
+        math(EXPR cases_run "${cases_run} + 1")
+        if(NOT reconciled_index EQUAL -1)
+            message(STATUS
+                "release-scope self test: #${reconciled_out} exited the V1 mandatory list under #602 and must not return")
+            math(EXPR _failures "${case_failures} + 1")
+            set(case_failures "${_failures}")
+        endif()
+    endforeach()
 
     if(case_failures GREATER 0)
         message(FATAL_ERROR "release-scope self test: ${case_failures} of ${cases_run} case(s) failed")
