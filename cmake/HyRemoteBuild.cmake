@@ -357,7 +357,7 @@ if(NOT HYB_CONFIG_PATH STREQUAL "")
 endif()
 
 # A command-line --build-dir is an explicit override of build.yml's directory.
-if(NOT HYB_CLI_BUILD_DIR STREQUAL "")
+if(NOT "${HYB_CLI_BUILD_DIR}" STREQUAL "")
     set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
 endif()
 

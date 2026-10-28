@@ -78,3 +78,18 @@ closed.
   candidate/sentinel files and the CMake handoff now follow that actual tree instead of a fixed
   repository `build/`.
 - `--qt-prefix` is documented as an advanced/diagnostic option, not the normal Kit selector.
+
+## Local checkout path length (2026-10-27)
+
+The installed-consumer sub-builds use the evidence tree under the configured build directory. A
+deep local checkout can push those generated compiler paths past the Windows toolchain limit:
+
+```text
+F:\workspace\hyremote\HyRemote\build\issue334-worktree\build\evidence\...\installed-q* 
+  -> cl.exe C1083: cannot open compiler generated file "" 
+```
+
+The same source and build commands at the shorter `F:\workspace\hyremote\HyRemote\wt334` path
+completed the full canonical suite at 87/87. This is a local path-length prerequisite, not a
+Generic Plugin/QPA product defect. Keep the workspace path short when running the full installed
+consumer evidence locally.
