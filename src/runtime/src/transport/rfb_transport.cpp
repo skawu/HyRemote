@@ -596,6 +596,9 @@ private:
             }
 
             socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+            // #158: the socket layer must not buffer more than the bounded protocol allowance either, so a
+            // hostile peer cannot make Qt materialize a burst before the application-level check runs.
+            socket->setReadBufferSize(kMaxClientInputBytes);
             auto client = std::make_unique<ClientState>();
             client->socket = socket;
             ClientState *clientPtr = client.get();
@@ -683,11 +686,17 @@ private:
         if (it == m_clients.end())
             return;
         ClientState &client = *it->second;
-        client.input += socket->readAll();
-        if (client.input.size() > kMaxClientInputBytes) {
+        // #158: decide from the pending byte count before reading. Appending everything the socket holds and
+        // checking the cap afterwards let a single burst be materialized above the documented allowance
+        // first; the reject path must never be larger than the buffer it is protecting.
+        const qsizetype pending = socket->bytesAvailable();
+        if (pending <= 0)
+            return;
+        if (pending > kMaxClientInputBytes - client.input.size()) {
             protocolFailure(client, "RFB client input exceeded the bounded protocol buffer");
             return;
         }
+        client.input += socket->readAll();
         processClient(client);
     }
 
@@ -740,9 +749,11 @@ private:
                     return;
                 const QByteArray version = client.input.left(12);
                 client.input.remove(0, 12);
-                if (!version.startsWith("RFB 003.00") || version.at(11) != '\n'
-                    || (version.mid(8, 3) != "008" && version.mid(8, 3) != "007")) {
-                    protocolFailure(client, "RFB client protocol version is unsupported; 3.7/3.8 required");
+                // #158: V1 speaks RFB 3.8 exactly. Accepting 3.7 as well would advertise a compatibility the
+                // product does not qualify, and the rejection has to happen before a security-type list is
+                // written so a 3.7 peer never sees a 3.8 negotiation.
+                if (version != QByteArrayLiteral("RFB 003.008\n")) {
+                    protocolFailure(client, "RFB client protocol version is unsupported; exact RFB 3.8 required");
                     return;
                 }
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
