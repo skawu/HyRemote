@@ -1694,6 +1694,52 @@ void testBoundedInputBurstFailsClosed()
     transport->stop();
 }
 
+// #158: V1 speaks RFB 3.8 exactly. A 3.7 (or any other) reply must be rejected before the server writes a
+// security-type list, and the rejection must leave the transport able to serve the next client.
+void testExactRfb38VersionIsRequired()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+
+    const auto expectRejected = [&](const QByteArray &version) {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, port);
+        CHECK(socket.waitForConnected(3000));
+        CHECK(readExact(socket, 12) == QByteArray("RFB 003.008\n", 12));
+        CHECK(writeAll(socket, version));
+        // A version the product does not speak must not be followed by a security-type list.
+        CHECK(readExact(socket, 2, 1000).isEmpty());
+        CHECK(waitForDisconnected(socket));
+    };
+    expectRejected(QByteArray("RFB 003.007\n", 12));
+    expectRejected(QByteArray("RFB 003.005\n", 12));
+    expectRejected(QByteArray("RFB 004.001\n", 12));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::count_if(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+                   return event.code == hyremote::TransportEventCode::RecoverableFailure
+                          && event.message.find("exact RFB 3.8") != std::string::npos;
+               }) == 3;
+    }));
+
+    CHECK(primeInitialFrame(*transport));
+    QTcpSocket accepted;
+    CHECK(connectRawRfb(accepted, port, false));
+    accepted.disconnectFromHost();
+    waitForDisconnected(accepted);
+    transport->stop();
+}
+
 void testInitialTargetGeometrySendsServerInitBeforeFrame()
 {
     const quint16 port = freePort();
@@ -2169,6 +2215,7 @@ int main(int argc, char **argv)
     testOversizedCutTextFailsClosed();
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
     testBoundedInputBurstFailsClosed();
+    testExactRfb38VersionIsRequired();
     testInitialTargetGeometrySendsServerInitBeforeFrame();
     runInteractionLatencyProbe({15, 0}, 15, "trle");
     runInteractionLatencyProbe({0}, 0, "raw");
