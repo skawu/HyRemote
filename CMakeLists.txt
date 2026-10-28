@@ -246,6 +246,15 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_compatibility_cells.cmake"
     )
 
+    # E02/#602: the inherited 26-child list stays accounted for while its reconciliation is reviewed. The machine
+    # change itself remains a separate PR; this only keeps the audit complete.
+    add_test(
+        NAME hyremote-release-readiness-ga-scope-reconciliation
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ga_scope_reconciliation.cmake"
+    )
+
     add_test(
         NAME hyremote-release-readiness-runtime-contract
         COMMAND "${CMAKE_COMMAND}"

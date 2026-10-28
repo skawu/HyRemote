@@ -176,6 +176,10 @@ GOVERNANCE_PREFIXES = (
     "docs/compatibility.md",
     "docs/en/compatibility.md",
     "docs/internal/windows-qt-lts-route-matrix-2026-10-24.md",
+    # E02/#602: the reconciliation ledger must be executed whenever it, or the machine list it accounts for,
+    # changes. The manifest itself is already a governance input.
+    "tests/release-readiness/check_ga_scope_reconciliation.cmake",
+    "docs/internal/v1-ga-scope-reconciliation-2026-10-28.md",
 )
 
 # These scripts, listed exactly, are excluded from product selection even though they live under a directory whose
@@ -185,6 +189,7 @@ GOVERNANCE_ONLY_PATHS = (
     "tests/release-readiness/release_scope.cmake",
     "tests/release-readiness/check_release_authority_policy.cmake",
     "tests/release-readiness/check_compatibility_cells.cmake",
+    "tests/release-readiness/check_ga_scope_reconciliation.cmake",
 )
 
 # A name no exclusion is ever allowed to match. Any expression that matches it excludes every test, which would make
@@ -487,6 +492,12 @@ def self_test() -> int:
          {"governance": "true", "product": "false"}),
         ("compatibility cell guard is governance, not product", "pull_request",
          ["tests/release-readiness/check_compatibility_cells.cmake"], False,
+         {"governance": "true", "product": "false"}),
+        ("GA scope ledger is governance, not product", "pull_request",
+         ["docs/internal/v1-ga-scope-reconciliation-2026-10-28.md"], False,
+         {"governance": "true", "product": "false"}),
+        ("GA scope guard is governance, not product", "pull_request",
+         ["tests/release-readiness/check_ga_scope_reconciliation.cmake"], False,
          {"governance": "true", "product": "false"}),
         # Ready product pull requests are classified by the real diff (#244 stays intact).
         ("ready runtime PR builds every capability", "pull_request", ["src/runtime/runtime.cpp"], False,

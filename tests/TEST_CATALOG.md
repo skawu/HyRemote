@@ -167,6 +167,7 @@ Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_
 | --- | --- |
 | `hyremote-release-readiness-metadata` | Candidate/version/security metadata truth. |
 | `hyremote-release-readiness-compatibility-cells` | V0.3.4.0 exact-cell matrix truth: exact Qt/ABI/route/UI rows in both languages, Owner D2 route decisions, no Qt 5 Supported upgrade, internal matrix agreement. |
+| `hyremote-release-readiness-ga-scope-reconciliation` | V1 26-child mandatory accounting: six-label classification, fixed GA decisions (#57 kept, #170 deferred), proposed closeable set equals the ledger. |
 | `hyremote-release-readiness-release-authority-policy` | Release authority policy remains fail-closed and consistent. |
 | `hyremote-release-readiness-release-documentation-layout` | Candidate/release documentation layout required by delivery authority. |
 | `hyremote-release-scope-self-test` | Exact release-train scope selection/rejection logic. |
