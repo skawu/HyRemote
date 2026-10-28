@@ -52,10 +52,10 @@ string(JSON freeze_authority ERROR_VARIABLE freeze_authority_error GET
 if(scope_authority_error OR freeze_authority_error)
     message(FATAL_ERROR "release-authority-policy: the 1.0.0.0 train lost its scope/freeze authorities")
 endif()
-if(NOT scope_authority STREQUAL "157" OR NOT freeze_authority STREQUAL "165")
+if(NOT scope_authority STREQUAL "594" OR NOT freeze_authority STREQUAL "165")
     message(FATAL_ERROR
-        "release-authority-policy: scope/freeze authorities must remain #157/#165; "
-        "found #${scope_authority}/#${freeze_authority}")
+        "release-authority-policy: scope/freeze authorities must be #594/#165 after the #602 reconciliation "
+        "(#157 is superseded and closed); found #${scope_authority}/#${freeze_authority}")
 endif()
 
 set(v1_authority_parent_expected 33)
@@ -66,8 +66,12 @@ if(NOT v1_authority_parent STREQUAL "${v1_authority_parent_expected}")
         "found #${v1_authority_parent}")
 endif()
 
+# #602/E02: only closeable Windows GA gates remain mandatory. Historical, superseded, umbrella and post-GA items
+# moved to classified_referenced_issue_numbers with their disposition recorded in notes.
 set(expected_v1_issues
-    9 30 31 32 33 39 41 57 101 104 107 109 143 144 157 158 159 162 163 164 165 170 174 175 176 209)
+    9 30 31 32 33 57 101 107 109 158 165)
+set(former_v1_issues
+    39 41 104 143 144 157 159 162 163 164 170 174 175 176 209)
 string(JSON authority_count LENGTH "${authority_json}" trains "1.0.0.0" mandatory_children)
 math(EXPR authority_last "${authority_count} - 1")
 set(actual_v1_issues)
@@ -78,13 +82,33 @@ endforeach()
 
 if(NOT "${actual_v1_issues}" STREQUAL "${expected_v1_issues}")
     message(FATAL_ERROR
-        "release-authority-policy: the 1.0.0.0 train must carry the complete former V1 mandatory set. "
+        "release-authority-policy: the 1.0.0.0 train must carry exactly the closeable Windows GA gates. "
         "expected='${expected_v1_issues}' actual='${actual_v1_issues}'")
+endif()
+
+# #602: a reconciled child must not silently return, and the post-GA Qt families must never become V1 gates.
+foreach(former_issue IN LISTS former_v1_issues)
+    list(FIND actual_v1_issues ${former_issue} former_index)
+    if(NOT former_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: #${former_issue} exited the 1.0.0.0 mandatory list under #602. "
+            "Re-adding it needs a new Owner decision and the reconciliation ledger, not a manifest edit.")
+    endif()
+endforeach()
+list(FIND actual_v1_issues 57 qt_family_index)
+if(qt_family_index EQUAL -1)
+    message(FATAL_ERROR "release-authority-policy: #57 must remain the 1.0.0.0 Qt family gate")
+endif()
+list(FIND actual_v1_issues 605 post_ga_index)
+if(NOT post_ga_index EQUAL -1)
+    message(FATAL_ERROR
+        "release-authority-policy: #605 (Qt 6.5/6.12) stays strictly post-GA and must never be a V1 mandatory child")
 endif()
 
 set(expected_embedded_deferred 7 10 17 18)
 
-set(expected_classified_referenced 14 74 90 91 95 106 134 147 156 166)
+set(expected_classified_referenced
+    14 39 41 74 90 91 95 104 106 134 143 144 147 156 157 159 162 163 164 166 170 174 175 176 209)
 string(JSON classified_count LENGTH "${authority_json}" trains "1.0.0.0" classified_referenced_issue_numbers)
 math(EXPR classified_last "${classified_count} - 1")
 set(actual_classified_referenced)
@@ -626,6 +650,6 @@ endforeach()
 
 message(STATUS
     "HyRemote release-authority policy gate: PASS "
-    "(V1 manifest=${actual_v1_issues}; scope=#157; freeze=#165; "
+    "(V1 manifest=${actual_v1_issues}; scope=#${scope_authority}; freeze=#${freeze_authority}; "
     "issue-backed acceptance precedes release; physical evidence is RC-FROZEN-SHA bound; "
     "mainline push audit remains detection-only; tag/backmerge facts preserved)")

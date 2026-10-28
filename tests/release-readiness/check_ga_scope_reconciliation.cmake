@@ -143,7 +143,7 @@ if(NOT "${_keep_closeable}" STREQUAL "${_expected_keep}")
 endif()
 
 # A reconciliation that silently turns GA ready would be a false claim.
-foreach(_required_phrase "NOT_READY" "单独一个 PR" "不是第二份机器权威")
+foreach(_required_phrase "NOT_READY" "独立 PR" "不是第二份机器权威")
     string(FIND "${_ledger_text}" "${_required_phrase}" _phrase_pos)
     if(_phrase_pos EQUAL -1)
         message(FATAL_ERROR
@@ -153,5 +153,5 @@ foreach(_required_phrase "NOT_READY" "单独一个 PR" "不是第二份机器权
 endforeach()
 
 message(STATUS
-    "GA scope reconciliation: 26 inherited children accounted for; proposed closeable set "
-    "${_keep_closeable}; machine change remains a separate PR")
+    "GA scope reconciliation: 26 inherited children accounted for; closeable set "
+    "${_keep_closeable}; manifest reconciled by its own PR")
