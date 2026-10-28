@@ -81,7 +81,7 @@
 | **V0.3.6.0** | **HyRemoteTool D 综合工作台 S1（A 优先）**：可用 Connect/Session、设备档案、缩放全屏、安全控制、基础诊断、本机语言设置 | **#579 产品 PRD，#581 UI，#582 安全状态机，#583 设备档案，#584 Fit/100%/全屏，#585 基础诊断，#590 Auto/手动语言，#586 S1 验收**；真正 Windows GUI 800×600、真实连接/按键释放/重连/持久化与脱敏报告，同 SHA 验收 | **PLANNED**；仅 Tool S1；#587/#588 SDK/进阶诊断不冒充已完成，不得阻塞 V0.3.4 |
 | **V0.3.7.0** | **用户 Qt 应用与 HyRemote 的真实 Docker 联合部署**：Qt 应用、插件、RFB、挂载 config/state/secret、非 root、重建保持配置 | **#592，依赖 #591/#589**；必须真实 Dockerfile/Compose、Qt App container、RFB Viewer、restart/recreate 与权限测试；没有 Linux/Docker 实验事实只能 NOT_RUN | **PLANNED / CONDITIONAL**；非 Windows 首 GA mandatory；若缺真实环境，RC 冻结前需显式作出保留/移版决定，**不得因其未实现直接进入 V0.4 开发 Docker 功能** |
 | **V0.4.0.0** | **Release Candidate 资格验证，不是功能开发** | **#235/#343/#57/#370/#602/#269**；只冻结并证明已在 V0.3 家族实现的 Windows Qt5.15/6.8 真实适用单元和已交付 Tool/Host 功能，真实 Viewer、安装/安全/性能/回滚、CI、P1/P2；不承诺未实测 Docker/Linux | **CONDITIONAL_RC / NOT_ACTIVE**，`active:false` 保持；缺实现即退回相应 V0.3.x，不准由本地 Owner 以 V0.4 做功能开发 |
-| **V1.0.0.0** | **Windows 第一版 GA / 长期 SDK 和支持合同** | **#33/#95/#57**；只提升已认证的 RC 支持矩阵；公开 API、二语安装/安全限制、Qt Kit/ABI/维护窗口与制品 SHA；#602 需先调和 V1 继承的 26 项机器 mandatory | **GA_PLANNED / NOT_RELEASED**；Qt6.5/6.12、Linux/ARM64 非首版 GA 门禁 |
+| **V1.0.0.0** | **Windows 第一版 GA / 长期 SDK 和支持合同** | **#33/#95/#57**；只提升已认证的 RC 支持矩阵；公开 API、二语安装/安全限制、Qt Kit/ABI/维护窗口与制品 SHA；#602 已完成 V1 继承 26 项 machine mandatory 对账，V1 只保留 11 条可关闭 Windows GA 门禁（台账见 [GA 范围对账](v1-ga-scope-reconciliation-2026-10-28.md)） | **GA_PLANNED / NOT_RELEASED**；Qt6.5/6.12、Linux/ARM64 非首版 GA 门禁 |
 
 ### B. GA 后具体版本目标（规划号可调整，默认均未激活）
 
@@ -123,7 +123,7 @@
 
 1. **当前只执行 V0.3.4.0 功能开发**：#603 管理用户结果，#265/#566 真实 Qt SDK 和 Kit，最先做 A04+A05+D04 正反例；#57 记录资格，#209 校验单 Runtime；缺 Windows 设备则准确报告 NOT_RUN，不让本地 Owner改做 V0.4。
 2. **V0.3.5.0 顺序先 #591 后 #589；V0.3.6.0 Tool S1** 可在文件/CI 隔离时并行。Docker V0.3.7.0 依赖 #591 配置与实测环境；无实测不得宣称交付/Supported。
-3. **RC 准入检查**：V0.3.4 兼容和所有已承诺 Windows GA 范围内的宿主/Tool 功能必须已在对应 V0.3 Feature 实现；#602 机器 GA 26 项可关闭、#235 冻结支持矩阵与精确 SHA。**V0.3.7 的未验证 Docker 非 GA 阻塞，应经明示延后/限制决定后进入 RC**；不要因此凭空宣布容器交付。
+3. **RC 准入检查**：V0.3.4 兼容和所有已承诺 Windows GA 范围内的宿主/Tool 功能必须已在对应 V0.3 Feature 实现；#602 机器 GA 可关闭门禁（对账后 11 条）已收敛、#235 冻结支持矩阵与精确 SHA。**V0.3.7 的未验证 Docker 非 GA 阻塞，应经明示延后/限制决定后进入 RC**；不要因此凭空宣布容器交付。
 4. **版本目标变更**：新的 Owner 决定先在 #594 提交“旧版号→新版号、为什么、谁受影响、依赖、机器是否激活、CI/用户影响”，再走独立路线图 PR 同步本表、中英文 `versioning`、对应 Issue/WBS；只有 **激活/发布** 才修改 `release-trains.json`；退休或重排的 *仅规划* 编号保留历史记录，不复用已发布 tag。
 5. **用户体验和产品闭环优先**：按上述五类角色/任务收集真实问题；开发从用户旅程的失败点设计可交付结果，分配版本号是为了排程，不是按版本号凑功能。公开版本完成后持续观察接入困难、远程交互成功率、实际画面刷新、控制安全、诊断可理解性和跨 Kit 回归；基线/量化指标由真实测量冻结，不造承诺。自 V1.0 往后继续覆盖嵌入式/Wayland/Touch/业务控制/文件/增强客户端，不在 V1.1 后停止规划。
 6. **每个已规划版本至少具备**：一个确切版本号、一个用户可验收结果、Owner Issues、前置依赖、明确不包含项、目标 Windows/Linux/Kit 范围、验收证据、状态。Issue 关闭 != Feature 已发布；FEATURE_PLANNED → ACTIVATED_DEV → IMPLEMENTED → QUALIFIED → RELEASED，候选和 RC 分开。
