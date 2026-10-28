@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -40,6 +41,15 @@ namespace {
 
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
+// #158: Normal-phase occupancy bounds. Neither value is a generic idle timeout:
+//  - the partial-message deadline only runs while an incomplete message is buffered, and every further
+//    byte of progress restarts it;
+//  - the usefulness deadline only runs until the client has produced its first complete Normal message,
+//    so an already useful viewer is never expired for being idle or static.
+constexpr int kOccupancySweepIntervalMs = 250;
+constexpr qint64 kPartialMessageDeadlineMs = 5000;
+constexpr qint64 kPostInitUsefulnessDeadlineMs = 10000;
+using OccupancyClock = std::chrono::steady_clock;
 // How long a failing handshake waits for its final SecurityResult to reach the client before the socket is aborted.
 constexpr int kHandshakeFlushMs = 1000;
 constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
@@ -426,6 +436,13 @@ struct ClientState
     std::uint16_t lastPointerY = 0;
     bool pointerPositionKnown = false;
     bool connectedEventSent = false;
+    // #158 occupancy bookkeeping. Timestamps are only read by the synchronous sweep, never retained by a
+    // queued callback, so a client that disconnects in between cannot be observed through a raw pointer.
+    bool partialMessagePending = false;
+    OccupancyClock::time_point partialMessageSince{};
+    OccupancyClock::time_point normalEnteredAt{};
+    bool producedUsefulMessage = false;
+    bool expiryScheduled = false;
 };
 
 struct ButtonBit
@@ -470,12 +487,15 @@ public:
             m_server = nullptr;
             return false;
         }
+        startOccupancySweep();
         return true;
     }
 
     void shutdown()
     {
         m_stopping = true;
+        if (m_occupancySweep)
+            m_occupancySweep->stop();
         if (m_server)
             m_server->close();
 
@@ -680,6 +700,55 @@ private:
         deferClientAbort(client);
     }
 
+    void startOccupancySweep()
+    {
+        if (!m_occupancySweep) {
+            m_occupancySweep = new QTimer(this);
+            m_occupancySweep->setInterval(kOccupancySweepIntervalMs);
+            connect(m_occupancySweep, &QTimer::timeout, this, [this] { sweepOccupancy(); });
+        }
+        m_occupancySweep->start();
+    }
+
+    // #158: one shared sweeper rather than one timer per client. It reads the live map synchronously and
+    // never retains a client pointer across a queued callback; expiry goes through the same deferred abort
+    // as every other protocol rejection, so slot and held-input release still happen exactly once in the
+    // disconnected handler.
+    void sweepOccupancy()
+    {
+        if (m_stopping || m_clients.empty())
+            return;
+        const auto now = OccupancyClock::now();
+        const auto elapsedMs = [&now](const OccupancyClock::time_point &since) {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count();
+        };
+
+        std::vector<std::pair<ClientState *, bool>> expired;
+        for (auto &entry : m_clients) {
+            ClientState &client = *entry.second;
+            if (client.phase != ClientPhase::Normal || client.expiryScheduled)
+                continue;
+            if (client.partialMessagePending
+                && elapsedMs(client.partialMessageSince) >= kPartialMessageDeadlineMs) {
+                client.expiryScheduled = true;
+                expired.emplace_back(&client, true);
+                continue;
+            }
+            if (!client.producedUsefulMessage
+                && elapsedMs(client.normalEnteredAt) >= kPostInitUsefulnessDeadlineMs) {
+                client.expiryScheduled = true;
+                expired.emplace_back(&client, false);
+            }
+        }
+
+        for (const auto &[client, partial] : expired) {
+            protocolFailure(*client,
+                            partial
+                                ? "RFB client stopped mid-message past the bounded progress deadline"
+                                : "RFB client produced no useful message within the bounded post-init deadline");
+        }
+    }
+
     void readClient(QTcpSocket *socket)
     {
         const auto it = m_clients.find(socket);
@@ -698,6 +767,13 @@ private:
         }
         client.input += socket->readAll();
         processClient(client);
+
+        // #158: only an incomplete Normal-phase message arms the progress deadline, and every byte of
+        // progress restarts it. Completion (empty buffer) clears the condition.
+        const bool partial = client.phase == ClientPhase::Normal && !client.input.isEmpty();
+        client.partialMessagePending = partial;
+        if (partial)
+            client.partialMessageSince = OccupancyClock::now();
     }
 
     bool endContinuousUpdates(ClientState &client)
@@ -736,6 +812,14 @@ private:
             return false;
         }
         return true;
+    }
+
+    // #158: a Normal-phase message counts as useful only once it is fully consumed; partial progress never
+    // satisfies the post-init usefulness deadline.
+    static void consumeClientMessage(ClientState &client, qsizetype bytes)
+    {
+        client.input.remove(0, bytes);
+        client.producedUsefulMessage = true;
     }
 
     void processClient(ClientState &client)
@@ -852,7 +936,7 @@ private:
                 if (client.input.size() < 20)
                     return;
                 const QByteArray message = client.input.left(20);
-                client.input.remove(0, 20);
+                consumeClientMessage(client, 20);
                 const auto spec = parsePixelSpec(message);
                 if (!spec) {
                     protocolFailure(client, "RFB client requested an unsupported pixel format");
@@ -911,7 +995,7 @@ private:
                         selectedEncoding = true;
                     }
                 }
-                client.input.remove(0, size);
+                consumeClientMessage(client, size);
                 client.cursorSignature.clear();
                 // Wait for SetPixelFormat; the update path sends the cursor
                 // for viewers that keep the native format.
@@ -945,7 +1029,7 @@ private:
                     static_cast<std::int32_t>(readU16(client.input, 4)),
                     static_cast<std::int32_t>(readU16(client.input, 6)),
                     static_cast<std::int32_t>(readU16(client.input, 8))};
-                client.input.remove(0, 10);
+                consumeClientMessage(client, 10);
                 if (enable && region.empty()) {
                     protocolFailure(client, "RFB ContinuousUpdates requires a nonempty region");
                     return;
@@ -988,7 +1072,7 @@ private:
                     return;
                 const std::uint32_t flags = readU32(client.input, 4);
                 const QByteArray payload = client.input.mid(9, length);
-                client.input.remove(0, size);
+                consumeClientMessage(client, size);
                 // Only the bounded request/response is supported. Do not echo
                 // BlockBefore/BlockAfter/SyncNext: queued socket bytes do not prove
                 // physical send order or downstream Qt input completion.
@@ -1005,7 +1089,7 @@ private:
                 if (client.continuousEnabled && incremental) {
                     // The extension suppresses request-driven incremental updates,
                     // but explicit full refreshes must still work.
-                    client.input.remove(0, 10);
+                    consumeClientMessage(client, 10);
                     continue;
                 }
                 client.continuousRequestArmed = false;
@@ -1015,7 +1099,7 @@ private:
                      static_cast<std::int32_t>(readU16(client.input, 4)),
                      static_cast<std::int32_t>(readU16(client.input, 6)),
                      static_cast<std::int32_t>(readU16(client.input, 8))});
-                client.input.remove(0, 10);
+                consumeClientMessage(client, 10);
                 trySendUpdate(client);
                 continue;
             }
@@ -1025,7 +1109,7 @@ private:
                     return;
                 const bool pressed = byteAt(client.input, 1) != 0;
                 const std::uint32_t keysym = readU32(client.input, 4);
-                client.input.remove(0, 8);
+                consumeClientMessage(client, 8);
                 if (!deliverKey(client, keysym, pressed))
                     return;
                 continue;
@@ -1037,7 +1121,7 @@ private:
                 const std::uint8_t mask = byteAt(client.input, 1);
                 const std::uint16_t x = readU16(client.input, 2);
                 const std::uint16_t y = readU16(client.input, 4);
-                client.input.remove(0, 6);
+                consumeClientMessage(client, 6);
                 deliverPointer(client, mask, x, y);
                 continue;
             }
@@ -1053,7 +1137,7 @@ private:
                 const qsizetype size = 8 + static_cast<qsizetype>(length);
                 if (client.input.size() < size)
                     return;
-                client.input.remove(0, size);
+                consumeClientMessage(client, size);
                 continue;
             }
 
@@ -1089,6 +1173,8 @@ private:
         client.framebufferHeight = static_cast<std::uint16_t>(height);
         client.delivery.invalidateFull(width, height);
         client.phase = ClientPhase::Normal;
+        client.normalEnteredAt = OccupancyClock::now();
+        client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
     }
@@ -1620,6 +1706,7 @@ private:
     hyremote::InputHandler m_onInput;
     hyremote::TransportEventHandler m_onEvent;
     QTcpServer *m_server = nullptr;
+    QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
