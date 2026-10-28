@@ -3,6 +3,22 @@
 This is the honest per-cell status for the first GA Qt families. It does not claim a Cartesian
 product from one passing cell.
 
+## Exact Kit identity (V0.3.4.0 development line)
+
+A route row is only meaningful together with the exact Kit it was measured on. The two V0.3.4.0
+cells are:
+
+| Cell | Qt exact | Compiler / ABI | OS / arch |
+| --- | --- | --- | --- |
+| Qt 6 reference | 6.8.3 | msvc2022_64 (MSVC 2022 x64) | Windows x86_64 |
+| Qt 5 legacy | 5.15.2 | msvc2019_64 (MSVC 2019 x64) | Windows x86_64 |
+
+Evidence anchor: candidate `4a00ada` in
+[V0.3.4.0 Windows Qt cell evidence](v0.3.4.0-qt-cell-evidence-2026-10-26.md). The user-facing
+restatement of these cells is [docs/compatibility.md](../compatibility.md) and
+[docs/en/compatibility.md](../en/compatibility.md); that document must not state a status this
+matrix does not carry.
+
 ## Qt 6.8.3 reference
 
 | Route | Status | Evidence / boundary |
