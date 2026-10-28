@@ -237,6 +237,15 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
     )
+    # A01/E01: the exact-cell matrix is a product statement, so the repository checks it instead of trusting
+    # the table to stay honest across edits.
+    add_test(
+        NAME hyremote-release-readiness-compatibility-cells
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_compatibility_cells.cmake"
+    )
+
     add_test(
         NAME hyremote-release-readiness-runtime-contract
         COMMAND "${CMAKE_COMMAND}"

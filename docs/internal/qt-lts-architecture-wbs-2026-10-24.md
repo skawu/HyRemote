@@ -18,7 +18,7 @@
 
 | WBS | 交付工作包与可验证验收（必须能在 PR / CI / 独立 Review 中检查） | 当前归属 | 计划阶段 | 状态 |
 | --- | --- | --- | --- | --- |
-| **A01** | 冻结 exact Qt patch/Kit、编译器/ABI、OS/arch、UI Widgets/Quick、C++/QML/Generic/QPA、native QPA 逐单元表；`QUALIFIED/LIMITED/EXPERIMENTAL/UNSUPPORTED/NOT_APPLICABLE/NOT_RUN` 不混淆；源码或 preflight 不能提升认证 | [#57](https://github.com/skawu/HyRemote/issues/57), [#603](https://github.com/skawu/HyRemote/issues/603) | 首个未编号 V0.3.x | PLANNED |
+| **A01** | 冻结 exact Qt patch/Kit、编译器/ABI、OS/arch、UI Widgets/Quick、C++/QML/Generic/QPA、native QPA 逐单元表；`QUALIFIED/LIMITED/EXPERIMENTAL/UNSUPPORTED/NOT_APPLICABLE/NOT_RUN` 不混淆；源码或 preflight 不能提升认证。执行载体：中英文 `docs/compatibility.md` 的当前开发线表 + [Windows Qt LTS 路由矩阵](windows-qt-lts-route-matrix-2026-10-24.md) 的 exact Kit 身份，并由 `hyremote-release-readiness-compatibility-cells` 检查（拒绝 Qt5 Supported 升级、要求同语言同单元、内部矩阵与公开文档一致） | [#57](https://github.com/skawu/HyRemote/issues/57), [#603](https://github.com/skawu/HyRemote/issues/603) | 首个未编号 V0.3.x | CODE_DONE |
 | **A02** | 有界 Qt 兼容 ADR：Core 不接 Qt、Shared Runtime 一套、四前端保持对等，Qt 版本差异只在接触边界；禁止第二个 Qt-major Runtime/API | [#209](https://github.com/skawu/HyRemote/issues/209) | 首个 V0.3.x 架构基础 | PLANNED |
 | **A03** | 统一内部 Kit resolver：真实 Qt 版本、prefix、arch、编译器、模块及 route eligibility，保留 CLI/build.yml/env 选择优先级和无头歧义拒绝；6.5/6.12 检出不等于已认证；已有 selftest 不回退 | [#604](https://github.com/skawu/HyRemote/issues/604), [#566](https://github.com/skawu/HyRemote/issues/566) | 首个 V0.3.x | PLANNED |
 | **A04** | 消除 `Qt6::* ALIAS Qt5::*` 和伪 Qt6 版本语义：Qt5/Qt6 真实 targets，Qt5/Qt6 已安装包不能错误混用，外部消费接口保持兼容；有两方向错-major 负例 | [#209](https://github.com/skawu/HyRemote/issues/209), [#265](https://github.com/skawu/HyRemote/issues/265) | 首个 V0.3.x | PLANNED |
