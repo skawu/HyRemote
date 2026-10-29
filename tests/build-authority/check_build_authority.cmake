@@ -5,6 +5,9 @@ if(NOT DEFINED HYREMOTE_SOURCE_DIR)
 endif()
 
 set(build_script "${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteBuild.cmake")
+# Discovery tests deliberately exercise a fresh-tree decision even when the
+# developer's own build identity exists in the workspace.
+set(ENV{HYREMOTE_QT_IGNORE_IDENTITY} "1")
 if(NOT EXISTS "${build_script}")
     message(FATAL_ERROR "build-authority: missing ${build_script}")
 endif()
@@ -259,6 +262,28 @@ function(make_qt_discovery_kit kit_dir marker)
     endif()
 endfunction()
 
+function(make_qt5_discovery_kit kit_dir)
+    file(MAKE_DIRECTORY "${kit_dir}/lib/cmake/Qt5" "${kit_dir}/lib/cmake/Qt5Core")
+    file(WRITE "${kit_dir}/lib/cmake/Qt5/Qt5Config.cmake" "# Qt5 mock\n")
+    file(WRITE "${kit_dir}/lib/cmake/Qt5/Qt5ConfigVersion.cmake"
+         "set(PACKAGE_VERSION \"5.15.2\")\n")
+    file(WRITE "${kit_dir}/lib/cmake/Qt5Core/Qt5CoreConfig.cmake" "# Qt5 Core mock\n")
+endfunction()
+
+# The wrapper uses this dry-run to place its prompt handoff under the actual
+# configured build tree, including a custom build.directory.
+run_success(build-dir-dry-run
+    --no-config --build-dir=${scratch}/custom-build --print-build-dir)
+require_text_flat(build-dir-dry-run "${HYB_TEST_OUTPUT}"
+    "HYREMOTE_BUILD_DIR=${scratch}/custom-build")
+
+# A missing --build-dir must resolve to the configured default, not to the
+# repository root.  The unquoted empty-variable comparison collapsed this to
+# the source root after the build-directory dry-run was introduced.
+run_success(build-dir-default --no-config --print-build-dir)
+require_text_flat(build-dir-default "${HYB_TEST_OUTPUT}"
+    "HYREMOTE_BUILD_DIR=${HYREMOTE_SOURCE_DIR}/build")
+
 set(qt_one_root "${scratch}/qt-discovery-one")
 set(qt_two_root "${scratch}/qt-discovery-two")
 set(qt_rejected_root "${scratch}/qt-discovery-rejected")
@@ -310,6 +335,33 @@ forbid_text_flat(qt-discovery-custom-prefix "${HYB_TEST_OUTPUT}" "not buildable"
 # classified, and what a POSIX reader is told when nothing usable is installed. Windows keeps its own layout
 # rule in the same function - the Online Installer tree and its msvc/mingw kit names - and that rule is
 # exercised by the Windows lane's real build, so it is not asserted here through POSIX kit names and POSIX
+# Windows: the bounded Qt 5.15.2 C++/Widgets route must be selectable, and the
+# HYREMOTE_QT_DISCOVERY_ROOTS override must work on Windows as well as POSIX.
+if(WIN32)
+    set(qt_win5_root "${scratch}/qt-discovery-win5")
+    make_qt5_discovery_kit("${qt_win5_root}/5.15.2/msvc2019_64")
+
+    run_env_success(qt-discovery-windows-qt5-selectable
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --show-config)
+    require_text_flat(qt-discovery-windows-qt5-selectable "${HYB_TEST_OUTPUT}"
+        "Qt prefix : ${qt_win5_root}/5.15.2/msvc2019_64 (discovered)")
+
+    run_env_failure(qt-discovery-windows-qt5-generic-rejected
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --mode=generic --no-prompt
+        "--build-dir=${scratch}/qt5-generic-rejected-build")
+    require_text_flat(qt-discovery-windows-qt5-generic-rejected "${HYB_TEST_OUTPUT}"
+        "Generic/QML need Qt6 >= 6.8")
+
+    run_env_failure(qt-discovery-windows-qt5-qpa-rejected
+        "HYREMOTE_QT_DISCOVERY_ROOTS=${qt_win5_root};QTDIR=;CMAKE_PREFIX_PATH="
+        --no-config --mode=qpa --no-prompt
+        "--build-dir=${scratch}/qt5-qpa-rejected-build")
+    require_text_flat(qt-discovery-windows-qt5-qpa-rejected "${HYB_TEST_OUTPUT}"
+        "QPA needs exact Qt 6.8.3 private ABI")
+endif()
+
 # shell commands.
 if(UNIX AND NOT APPLE)
     # Inventory includes Qt 5.15 (ineligible), Qt 6.8.3 and 6.12.0. Report only:
@@ -663,5 +715,66 @@ foreach(shared_line IN ITEMS
     require_text_flat(verbose-normal "${HYB_TEST_OUTPUT}" "${shared_line}")
     require_text_flat(verbose-additive "${HYB_TEST_OUTPUT}" "${shared_line}")
 endforeach()
+
+# The PASS marker is emitted after the destructive-boundary tests too.
+
+
+# #678: A canonical clean/rebuild must never treat the workspace or an
+# unowned path as a disposable directory.  Restrict destructive fixtures to
+# fresh dedicated subdirectories under the checkout's managed build root.
+string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef boundary_fixture_id)
+set(boundary_parent "${HYREMOTE_SOURCE_DIR}/build")
+if(NOT EXISTS "${boundary_parent}")
+    file(MAKE_DIRECTORY "${boundary_parent}")
+endif()
+file(REAL_PATH "${HYREMOTE_SOURCE_DIR}" boundary_workspace_real)
+file(REAL_PATH "${boundary_parent}" boundary_parent_real)
+cmake_path(IS_PREFIX boundary_workspace_real "${boundary_parent_real}" NORMALIZE boundary_parent_inside)
+if(NOT boundary_parent_inside OR boundary_workspace_real STREQUAL boundary_parent_real)
+    message(FATAL_ERROR
+        "build-authority: the build fixture parent resolves outside the workspace "
+        "('${boundary_parent}' -> '${boundary_parent_real}'); refusing to write fixtures")
+endif()
+set(boundary_root "${boundary_parent}/.hyremote-boundary-${boundary_fixture_id}")
+if(EXISTS "${boundary_root}")
+    message(FATAL_ERROR "build-authority: unexpected existing boundary fixture")
+endif()
+file(MAKE_DIRECTORY "${boundary_root}/unowned" "${boundary_root}/owned")
+file(WRITE "${boundary_root}/unowned/keep-me.txt" "Unowned work must survive a mistaken clean")
+run_failure(clean-unowned --no-config clean "--build-dir=${boundary_root}/unowned")
+require_text(clean-unowned "${HYB_TEST_OUTPUT}" "UNSAFE_BUILD_DIRECTORY")
+if(NOT EXISTS "${boundary_root}/unowned/keep-me.txt")
+    message(FATAL_ERROR "build-authority: clean deleted unowned user data")
+endif()
+file(WRITE "${boundary_root}/owned/.hyremote-build-identity" "fixture identity")
+file(WRITE "${boundary_root}/owned/temporary-build-file.txt" "managed test build")
+run_success(clean-owned --no-config clean "--build-dir=${boundary_root}/owned")
+if(EXISTS "${boundary_root}/owned")
+    message(FATAL_ERROR "build-authority: clean did not remove the managed fixture")
+endif()
+# A symlinked tree must not become a shortcut to cleanup outside the
+# canonical workspace, even if its target contains an ownership marker.
+file(MAKE_DIRECTORY "${boundary_root}/outside-target")
+file(WRITE "${boundary_root}/outside-target/.hyremote-build-identity" "fixture identity")
+file(WRITE "${boundary_root}/outside-target/sentinel.txt" "retain")
+file(CREATE_LINK "${boundary_root}/outside-target" "${boundary_root}/redirect"
+     SYMBOLIC RESULT boundary_link_status)
+if(boundary_link_status STREQUAL "0")
+    run_failure(clean-symlink --no-config clean "--build-dir=${boundary_root}/redirect")
+    require_text(clean-symlink "${HYB_TEST_OUTPUT}" "UNSAFE_BUILD_DIRECTORY")
+    if(NOT EXISTS "${boundary_root}/outside-target/sentinel.txt")
+        message(FATAL_ERROR "build-authority: cleanup followed symlink and removed target")
+    endif()
+    # NORMAL_PATH preserves a trailing separator; the guard must strip it before
+    # IS_SYMLINK, or "redirect/" bypasses the same symlink protection.
+    run_failure(clean-symlink-trailing --no-config clean "--build-dir=${boundary_root}/redirect/")
+    require_text(clean-symlink-trailing "${HYB_TEST_OUTPUT}" "UNSAFE_BUILD_DIRECTORY")
+    if(NOT EXISTS "${boundary_root}/outside-target/sentinel.txt")
+        message(FATAL_ERROR "build-authority: trailing-slash symlink cleanup removed target")
+    endif()
+else()
+    message(STATUS "build-authority: symlink negative case unsupported on this host: ${boundary_link_status}")
+endif()
+file(REMOVE_RECURSE "${boundary_root}")
 
 message(STATUS "HyRemote build authority self-tests: PASS")

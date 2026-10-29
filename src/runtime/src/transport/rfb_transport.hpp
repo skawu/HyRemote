@@ -40,6 +40,12 @@ struct RfbSecurityConfig
 {
     bool vncAuthenticationRequired = false;
     bool remoteInputEnabled = false;
+    // The target's physical framebuffer size, when known before the first
+    // capture. RFB ServerInit must not deadlock waiting for a frame: a real
+    // Viewer otherwise authenticates and then times out while the host waits
+    // for capture demand that only a connected Viewer would create.
+    std::uint16_t initialFramebufferWidth = 0;
+    std::uint16_t initialFramebufferHeight = 0;
     QByteArray password;
     // Optional product hook for the current target cursor. Tests and custom
     // compositions may leave it empty and receive the portable arrow fallback.

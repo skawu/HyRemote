@@ -6,7 +6,7 @@ version: 1  # 示例：1
 
 build:
   type: Release        # 示例：Debug、RelWithDebInfo
-  directory: build     # 示例：build-debug
+  directory: build     # 工作空间内受控的构建目录；仅通过经审查的配置/命名 profile 管理，Agent 不自行更改
   generator: Ninja     # 示例：Visual Studio 17 2022、Unix Makefiles
   jobs: auto           # 示例：4、8
   examples: true       # 示例：false
@@ -17,8 +17,10 @@ qt:
   # 留空：先检查 QTDIR/CMAKE_PREFIX_PATH，再扫描本机 Qt；
   # 多个可用 Kit 时在交互终端列出编号并由用户选择，不会默认选最新。
   # CI / 无交互终端请明确指定 prefix 或使用 --qt-prefix=PATH；--no-prompt 禁止提问。
-  # 注意：Qt 5.15 尚不能配置当前 Qt6 代码；Qt 6.12 不是已认证版本，
-  #       QPA 当前必须使用精确的 Qt 6.8.3 private ABI。
+  # Qt 5.15.2 在 Windows 上已有有界 C++/Widgets 路径；须通过真实 Kit、应用和 Viewer 证据独立认证。
+  # Qt 5 的 Quick/QML/Generic/QPA 不因 Widgets 编译成功就自动受支持。
+  # Qt 6.12 与 Qt 6.5 是 V1 GA 后的独立准入目标；QPA 仍需要精确匹配私有 ABI。
+  # 同一 build.directory 不得混用 Qt major/compiler；独立 Kit 请使用不同 build-dir/profile。
   prefix: ""
 
 compiler:

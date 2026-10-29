@@ -31,8 +31,14 @@ set_property(GLOBAL PROPERTY HYREMOTE_INSTALLED_PACKAGE_PREFIX "${_hyremote_pack
 # The installed V1 package exposes one shared RemoteAccess C++ target. Its installed public header
 # uses Qt Core/Network types, so those are the only unconditional package-level Qt dependencies.
 # Widgets, Quick and QML remain application-selected UI layers.
+set(HyRemote_QT_MAJOR "@HYREMOTE_PACKAGE_QT_MAJOR@")
 if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
     if("@HYREMOTE_PACKAGE_QT_MAJOR@" STREQUAL "5")
+        if(TARGET Qt6::Core)
+            message(FATAL_ERROR
+                "HyRemote package major mismatch: this SDK was built for Qt5 but the consumer "
+                "already selected Qt6; mixing Qt majors would link an incompatible ABI")
+        endif()
         find_dependency(Qt5 5.15 COMPONENTS Core Network Gui Widgets)
         # The exported target names are Qt-major neutral inside HyRemote. Aliasing the Qt5 imported
         # targets keeps one installed target surface without a second Runtime product.
@@ -43,6 +49,11 @@ if(@HYREMOTE_PACKAGE_WITH_REMOTE_ACCESS@)
             add_library(Qt6::Widgets ALIAS Qt5::Widgets)
         endif()
     else()
+        if(TARGET Qt5::Core)
+            message(FATAL_ERROR
+                "HyRemote package major mismatch: this SDK was built for Qt6 but the consumer "
+                "already selected Qt5; mixing Qt majors would link an incompatible ABI")
+        endif()
         find_dependency(Qt6 6.8 COMPONENTS Core Network)
     endif()
 endif()

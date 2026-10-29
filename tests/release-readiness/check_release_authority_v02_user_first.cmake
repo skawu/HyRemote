@@ -155,7 +155,7 @@ foreach(unchanged_expectation IN ITEMS
         "0.3.0.0|264,240,335|-|0.2.0.0|accepted-v0.2.0.0-lineage,four-frontend-clean-sdk-deploy-productization-evidence,example-and-localization-productization-evidence,minimum-self-service-diagnostics-evidence"
         "0.3.1.0|265|260|0.3.0.0|accepted-v0.3.0.0-lineage,qt5-adaptation-candidate-evidence"
         "0.3.2.0|144,175|261|0.3.1.0|accepted-v0.3.1.0-lineage,damage-compression-delivery-evidence,maintained-viewer-interoperability-evidence"
-        "1.0.0.0|9,30,31,32,33,39,41,57,101,104,107,109,143,144,157,158,159,162,163,164,165,170,174,175,176,209|-|-|accepted-milestone-authorities,exact-candidate-freeze-under-165,physical-acceptance-under-109,ga-acceptance-under-33"
+        "1.0.0.0|9,30,31,32,33,57,101,107,109,158,165|-|-|accepted-milestone-authorities,exact-candidate-freeze-under-165,physical-acceptance-under-109,ga-acceptance-under-33"
 )
     string(REPLACE "|" ";" unchanged_parts "${unchanged_expectation}")
     list(GET unchanged_parts 0 unchanged_version)

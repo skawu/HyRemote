@@ -52,10 +52,10 @@ string(JSON freeze_authority ERROR_VARIABLE freeze_authority_error GET
 if(scope_authority_error OR freeze_authority_error)
     message(FATAL_ERROR "release-authority-policy: the 1.0.0.0 train lost its scope/freeze authorities")
 endif()
-if(NOT scope_authority STREQUAL "157" OR NOT freeze_authority STREQUAL "165")
+if(NOT scope_authority STREQUAL "594" OR NOT freeze_authority STREQUAL "165")
     message(FATAL_ERROR
-        "release-authority-policy: scope/freeze authorities must remain #157/#165; "
-        "found #${scope_authority}/#${freeze_authority}")
+        "release-authority-policy: scope/freeze authorities must be #594/#165 after the #602 reconciliation "
+        "(#157 is superseded and closed); found #${scope_authority}/#${freeze_authority}")
 endif()
 
 set(v1_authority_parent_expected 33)
@@ -66,8 +66,12 @@ if(NOT v1_authority_parent STREQUAL "${v1_authority_parent_expected}")
         "found #${v1_authority_parent}")
 endif()
 
+# #602/E02: only closeable Windows GA gates remain mandatory. Historical, superseded, umbrella and post-GA items
+# moved to classified_referenced_issue_numbers with their disposition recorded in notes.
 set(expected_v1_issues
-    9 30 31 32 33 39 41 57 101 104 107 109 143 144 157 158 159 162 163 164 165 170 174 175 176 209)
+    9 30 31 32 33 57 101 107 109 158 165)
+set(former_v1_issues
+    39 41 104 143 144 157 159 162 163 164 170 174 175 176 209)
 string(JSON authority_count LENGTH "${authority_json}" trains "1.0.0.0" mandatory_children)
 math(EXPR authority_last "${authority_count} - 1")
 set(actual_v1_issues)
@@ -78,13 +82,33 @@ endforeach()
 
 if(NOT "${actual_v1_issues}" STREQUAL "${expected_v1_issues}")
     message(FATAL_ERROR
-        "release-authority-policy: the 1.0.0.0 train must carry the complete former V1 mandatory set. "
+        "release-authority-policy: the 1.0.0.0 train must carry exactly the closeable Windows GA gates. "
         "expected='${expected_v1_issues}' actual='${actual_v1_issues}'")
+endif()
+
+# #602: a reconciled child must not silently return, and the post-GA Qt families must never become V1 gates.
+foreach(former_issue IN LISTS former_v1_issues)
+    list(FIND actual_v1_issues ${former_issue} former_index)
+    if(NOT former_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: #${former_issue} exited the 1.0.0.0 mandatory list under #602. "
+            "Re-adding it needs a new Owner decision and the reconciliation ledger, not a manifest edit.")
+    endif()
+endforeach()
+list(FIND actual_v1_issues 57 qt_family_index)
+if(qt_family_index EQUAL -1)
+    message(FATAL_ERROR "release-authority-policy: #57 must remain the 1.0.0.0 Qt family gate")
+endif()
+list(FIND actual_v1_issues 605 post_ga_index)
+if(NOT post_ga_index EQUAL -1)
+    message(FATAL_ERROR
+        "release-authority-policy: #605 (Qt 6.5/6.12) stays strictly post-GA and must never be a V1 mandatory child")
 endif()
 
 set(expected_embedded_deferred 7 10 17 18)
 
-set(expected_classified_referenced 14 74 90 91 95 106 134 147 156 166)
+set(expected_classified_referenced
+    14 39 41 74 90 91 95 104 106 134 143 144 147 156 157 159 162 163 164 166 170 174 175 176 209)
 string(JSON classified_count LENGTH "${authority_json}" trains "1.0.0.0" classified_referenced_issue_numbers)
 math(EXPR classified_last "${classified_count} - 1")
 set(actual_classified_referenced)
@@ -102,7 +126,7 @@ endif()
 # train must stay conditional: a version number existing never authorizes a release scope by itself. #333: the
 # pre-reserved technical slots (0.2.1.0/0.3.1.0/0.3.2.0), the qualification-only 0.4.0.0 and the post-GA fixed slot
 # 1.1.0.0 are no longer selectable trains and are asserted as refused/fail-closed further down.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 1.0.0.0)
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 1.0.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
@@ -313,6 +337,51 @@ foreach(preflight_expectation IN ITEMS "0.2.0.0;258")
     endforeach()
 endforeach()
 
+
+# 2026-10-26 Owner: V0.3.4.0 is the next actual development Feature.
+# Release readiness still requires closeable product children and exact candidate
+# evidence; V0.4.0.0 remains inactive and qualification-only under #235.
+string(JSON v034_owner GET "${authority_json}" trains "0.3.4.0" authority_parent)
+string(JSON v034_freeze GET "${authority_json}" trains "0.3.4.0" candidate_freeze_authority)
+string(JSON v034_lineage GET "${authority_json}" trains "0.3.4.0" lineage_parent)
+if(NOT v034_owner STREQUAL "594" OR NOT v034_freeze STREQUAL "603" OR
+   NOT v034_lineage STREQUAL "0.3.3.0")
+    message(FATAL_ERROR
+        "release-authority-policy: 0.3.4.0 must be #594-owned, #603 candidate frozen "
+        "and based on accepted v0.3.3.0; owner=${v034_owner} "
+        "freeze=${v034_freeze} lineage=${v034_lineage}")
+endif()
+string(JSON v034_child_count LENGTH "${authority_json}" trains "0.3.4.0" mandatory_children)
+if(NOT v034_child_count EQUAL 3)
+    message(FATAL_ERROR
+        "release-authority-policy: V0.3.4.0 must have exactly three closeable product children")
+endif()
+set(v034_children)
+math(EXPR v034_last "${v034_child_count} - 1")
+foreach(index RANGE 0 ${v034_last})
+    string(JSON issue GET "${authority_json}" trains "0.3.4.0" mandatory_children ${index})
+    list(APPEND v034_children "${issue}")
+endforeach()
+if(NOT "${v034_children}" STREQUAL "265;566;603")
+    message(FATAL_ERROR
+        "release-authority-policy: V0.3.4.0 must close #265 implementation, "
+        "#566 Kit UX and #603 product qualification; found '${v034_children}'")
+endif()
+string(JSON v034_nonblocker_count LENGTH "${authority_json}" trains "0.3.4.0" non_blockers)
+set(v034_nonblockers)
+math(EXPR v034_nonblocker_last "${v034_nonblocker_count} - 1")
+foreach(index RANGE 0 ${v034_nonblocker_last})
+    string(JSON issue GET "${authority_json}" trains "0.3.4.0" non_blockers ${index})
+    list(APPEND v034_nonblockers "${issue}")
+endforeach()
+foreach(nonblocker IN ITEMS 589 591 592 605)
+    if(NOT nonblocker IN_LIST v034_nonblockers)
+        message(FATAL_ERROR
+            "release-authority-policy: V0.3.4.0 must not be blocked by post-Feature "
+            "host/watermark/Docker or post-GA Qt6.5/6.12 issue #${nonblocker}")
+    endif()
+endforeach()
+
 # The first customer trial is a V0.2.0 decision, not a V0.1 one.
 string(JSON v020_child_count LENGTH "${authority_json}" trains "0.2.0.0" mandatory_children)
 math(EXPR v020_child_last "${v020_child_count} - 1")
@@ -390,7 +459,8 @@ set(declared_authority_documents
     docs/known-limitations.md
     docs/compatibility.md
     docs/internal/v1-physical-acceptance.md
-    docs/security-model.md)
+    docs/security-model.md
+    docs/internal/product-version-delivery-roadmap-2026-10-23.md)
 set(known_issue_numbers
     ${expected_v1_issues} ${expected_embedded_deferred} ${expected_classified_referenced})
 string(JSON trains_type GET "${authority_json}" trains)
@@ -415,6 +485,32 @@ foreach(_train_key IN LISTS _train_keys)
 endforeach()
 list(APPEND known_issue_numbers 123 235)
 list(REMOVE_DUPLICATES known_issue_numbers)
+
+# Planning references in the sole CURRENT product-outcome roadmap are not
+# machine-activated Feature children or release blockers. Classify them
+# explicitly without mislabeling future/optional work as V1 mandatory.
+# The exception applies ONLY to this roadmap, not to any release-readiness
+# document: a planning-only Issue in a release gate must still be rejected.
+set(current_roadmap "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
+string(JSON roadmap_only_count ERROR_VARIABLE roadmap_only_error
+       LENGTH "${authority_json}" roadmap_only_references)
+if(roadmap_only_error)
+    message(FATAL_ERROR "release-authority-policy: missing roadmap-only reference classification")
+endif()
+set(roadmap_only_issue_numbers)
+if(roadmap_only_count GREATER 0)
+    math(EXPR roadmap_only_last "${roadmap_only_count} - 1")
+    foreach(index RANGE 0 ${roadmap_only_last})
+        string(JSON issue GET "${authority_json}" roadmap_only_references ${index})
+        if(issue IN_LIST known_issue_numbers OR issue IN_LIST roadmap_only_issue_numbers)
+            message(FATAL_ERROR
+                "release-authority-policy: roadmap-only reference #${issue} is duplicated or already "
+                "classified by an exact train; reconcile the planning classification")
+        endif()
+        list(APPEND roadmap_only_issue_numbers "${issue}")
+    endforeach()
+endif()
+
 foreach(document IN LISTS declared_authority_documents)
     set(document_path "${HYREMOTE_SOURCE_DIR}/${document}")
     if(NOT EXISTS "${document_path}")
@@ -425,12 +521,25 @@ foreach(document IN LISTS declared_authority_documents)
     foreach(token IN LISTS mentioned)
         string(REGEX REPLACE "#" "" number "${token}")
         if(NOT number IN_LIST known_issue_numbers)
+            if(document STREQUAL current_roadmap AND number IN_LIST roadmap_only_issue_numbers)
+                continue()
+            endif()
             message(FATAL_ERROR
                 "release-authority-policy: unclassified issue reference #${number} in ${document}; "
                 "either classify it in the release train that owns it or remove the reference from a declared "
                 "authority document (.github/release/release-trains.json)")
         endif()
     endforeach()
+    if(document STREQUAL current_roadmap)
+        foreach(issue IN LISTS roadmap_only_issue_numbers)
+            string(FIND "${document_text}" "#${issue}" ref_position)
+            if(ref_position EQUAL -1)
+                message(FATAL_ERROR
+                    "release-authority-policy: unused roadmap-only Issue #${issue}; "
+                    "remove stale planned reference or restore the Issue citation")
+            endif()
+        endforeach()
+    endif()
 endforeach()
 
 string(JSON deferred_count LENGTH "${authority_json}" trains "1.0.0.0" embedded_deferred_issue_numbers)
@@ -541,6 +650,6 @@ endforeach()
 
 message(STATUS
     "HyRemote release-authority policy gate: PASS "
-    "(V1 manifest=${actual_v1_issues}; scope=#157; freeze=#165; "
+    "(V1 manifest=${actual_v1_issues}; scope=#${scope_authority}; freeze=#${freeze_authority}; "
     "issue-backed acceptance precedes release; physical evidence is RC-FROZEN-SHA bound; "
     "mainline push audit remains detection-only; tag/backmerge facts preserved)")

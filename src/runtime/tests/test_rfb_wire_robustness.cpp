@@ -11,6 +11,7 @@
 #include <QTcpSocket>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -18,6 +19,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -36,6 +38,7 @@
 
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
+#include "../src/transport/rfb_trle.hpp"
 #include "hyremote/core/storage.hpp"
 #include "hyremote/core/transport.hpp"
 #include "rfb_interaction_latency_stats.hpp"
@@ -226,6 +229,23 @@ bool connectRawRfb(QTcpSocket &socket,
            == static_cast<qsizetype>(nameLength);
 }
 
+// #158: a slot is only free after the deferred abort has been delivered, so a reconnect immediately after
+// an expiry can still be refused by the bounded client limit. Retry inside a bounded window instead of
+// treating that ordering as a product failure.
+bool connectRawRfbWithRetry(QTcpSocket &socket, quint16 port, int timeoutMs = 5000)
+{
+    QElapsedTimer window;
+    window.start();
+    while (window.elapsed() < timeoutMs) {
+        if (connectRawRfb(socket, port, false))
+            return true;
+        socket.abort();
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
+
 bool enterAwaitInitialFrame(QTcpSocket &socket, quint16 port)
 {
     if (!negotiateThroughSecurity(socket, port, false))
@@ -249,6 +269,16 @@ bool hasRecoverableFailure(const std::vector<hyremote::TransportEvent> &events,
         return event.code == hyremote::TransportEventCode::RecoverableFailure
                && event.message.find(needle) != std::string::npos;
     });
+}
+
+std::size_t countRecoverableFailures(Recorder &recorder, const std::string &needle)
+{
+    std::lock_guard<std::mutex> lock(recorder.mutex);
+    return static_cast<std::size_t>(
+        std::count_if(recorder.events.begin(), recorder.events.end(), [&](const auto &event) {
+            return event.code == hyremote::TransportEventCode::RecoverableFailure
+                   && event.message.find(needle) != std::string::npos;
+        }));
 }
 
 hyremote::RemoteFrame makeFrame(std::uint32_t width,
@@ -752,6 +782,16 @@ void testTrleRawAndIncrementalDelivery()
     waitForDisconnected(trleSocket);
     waitForDisconnected(rawSocket);
     transport->stop();
+}
+
+void testOpaqueAlphaPolicy()
+{
+    using hyremote::AlphaMode;
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 255, AlphaMode::Opaque) == 255);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 128, AlphaMode::Premultiplied) == 255);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 128, AlphaMode::Straight) == 128);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(64, 128, AlphaMode::Straight) == 32);
+    CHECK(HyRemote::detail::rfbOpaqueChannel(255, 0, AlphaMode::Straight) == 0);
 }
 
 void testTrlePreferredOverRawOrder()
@@ -1683,6 +1723,345 @@ void testBoundedInputBurstFailsClosed()
     transport->stop();
 }
 
+// #158: V1 speaks RFB 3.8 exactly. A 3.7 (or any other) reply must be rejected before the server writes a
+// security-type list, and the rejection must leave the transport able to serve the next client.
+void testExactRfb38VersionIsRequired()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+
+    const auto expectRejected = [&](const QByteArray &version) {
+        QTcpSocket socket;
+        socket.connectToHost(QHostAddress::LocalHost, port);
+        CHECK(socket.waitForConnected(3000));
+        CHECK(readExact(socket, 12) == QByteArray("RFB 003.008\n", 12));
+        CHECK(writeAll(socket, version));
+        // A version the product does not speak must not be followed by a security-type list.
+        CHECK(readExact(socket, 2, 1000).isEmpty());
+        CHECK(waitForDisconnected(socket));
+    };
+    expectRejected(QByteArray("RFB 003.007\n", 12));
+    expectRejected(QByteArray("RFB 003.005\n", 12));
+    expectRejected(QByteArray("RFB 004.001\n", 12));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::count_if(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+                   return event.code == hyremote::TransportEventCode::RecoverableFailure
+                          && event.message.find("exact RFB 3.8") != std::string::npos;
+               }) == 3;
+    }));
+
+    CHECK(primeInitialFrame(*transport));
+    QTcpSocket accepted;
+    CHECK(connectRawRfb(accepted, port, false));
+    accepted.disconnectFromHost();
+    waitForDisconnected(accepted);
+    transport->stop();
+}
+
+// #158/#603: physical acceptance measured RealVNC Viewer 7.15.1 delaying ClientInit by ~29 s while it waits
+// for the user to dismiss its unencrypted-connection notice. The bounded handshake must still serve such a
+// client instead of closing the socket under it.
+void testSlowViewerClientInitStillServed()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket socket;
+    CHECK(negotiateThroughSecurity(socket, port, false));
+
+    // The viewer is still showing its notice: keep the socket idle past the old 3 s bound.
+    QElapsedTimer pause;
+    pause.start();
+    while (pause.elapsed() < 4000) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(socket.state() == QAbstractSocket::ConnectedState);
+
+    CHECK(writeAll(socket, QByteArray(1, char(1))));
+    const QByteArray serverInit = readExact(socket, 24);
+    CHECK(serverInit.size() == 24);
+    CHECK(readU16(serverInit, 0) == 64 && readU16(serverInit, 2) == 48);
+    const std::uint32_t nameLength = readU32(serverInit, 20);
+    CHECK(readExact(socket, static_cast<qsizetype>(nameLength)).size()
+          == static_cast<qsizetype>(nameLength));
+
+    // The session must be fully usable from here on: a Normal-phase message is processed, which is what the
+    // long ClientInit wait could otherwise have cost (the slot would have been aborted before this point).
+    QByteArray keyEvent;
+    keyEvent.append(char(4));
+    keyEvent.append(char(1));
+    appendU16(keyEvent, 0);
+    appendU32(keyEvent, static_cast<std::uint32_t>('a'));
+    CHECK(writeAll(socket, keyEvent));
+
+    QElapsedTimer delivery;
+    delivery.start();
+    bool delivered = false;
+    while (delivery.elapsed() < 4000) {
+        {
+            std::lock_guard<std::mutex> lock(recorder.mutex);
+            delivered = !recorder.inputs.empty();
+        }
+        if (delivered)
+            break;
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(delivered);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+// #158: bounded Normal-phase occupancy. Eight viewers that stall inside a message must expire and free
+// their bounded slots; a ninth legitimate viewer then gets a usable session on a clean per-client state.
+void testStalledPartialMessagesReleaseTheirSlots()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    std::array<QTcpSocket, 8> stalled;
+    for (auto &socket : stalled) {
+        CHECK(connectRawRfb(socket, port, false));
+        // The first four bytes of a ten-byte FramebufferUpdateRequest: an incomplete buffered message.
+        CHECK(writeAll(socket, QByteArray("\x03\x00\x00\x00", 4)));
+    }
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::count_if(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+                   return event.code == hyremote::TransportEventCode::RecoverableFailure
+                          && event.message.find("bounded progress deadline") != std::string::npos;
+               }) >= 8;
+    }, 9000));
+
+    QTcpSocket recovery;
+    CHECK(connectRawRfbWithRetry(recovery, port));
+    CHECK(sendUpdateRequest(recovery, true, 0, 0, 64, 48));
+    CHECK(recovery.state() == QAbstractSocket::ConnectedState);
+    recovery.disconnectFromHost();
+    waitForDisconnected(recovery);
+    transport->stop();
+}
+
+// #158: the post-init deadline only expires a viewer that never produced a useful message. A viewer with
+// an outstanding incremental request on a static frame must survive it and stay connected.
+void testPostInitUsefulnessDeadlineKeepsStaticViewer()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket idle;
+    CHECK(connectRawRfb(idle, port, false));
+    QTcpSocket staticViewer;
+    CHECK(connectRawRfb(staticViewer, port, false));
+    // The first incremental request is answered by the forced refresh that ServerInit scheduled, so consume
+    // it first; only the second request on an unchanged frame stays outstanding across the deadline.
+    TestFramebuffer staticFrame;
+    staticFrame.resize(64, 48);
+    std::vector<UpdateRect> staticRects;
+    CHECK(sendUpdateRequest(staticViewer, true, 0, 0, 64, 48));
+    CHECK(readFramebufferUpdate(staticViewer, staticFrame, staticRects));
+    CHECK(sendUpdateRequest(staticViewer, true, 0, 0, 64, 48));
+    CHECK(noFramebufferData(staticViewer));
+
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+            return event.code == hyremote::TransportEventCode::RecoverableFailure
+                   && event.message.find("bounded post-init deadline") != std::string::npos;
+        });
+    }, 13000));
+    CHECK(waitForDisconnected(idle));
+    CHECK(staticViewer.state() == QAbstractSocket::ConnectedState);
+    // A further settlement window proves the useful viewer is not expired late either.
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.elapsed() < 2000) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(countRecoverableFailures(recorder, "bounded post-init deadline") == 1);
+    CHECK(staticViewer.state() == QAbstractSocket::ConnectedState);
+    staticViewer.disconnectFromHost();
+    waitForDisconnected(staticViewer);
+    transport->stop();
+}
+
+// #158: a client expired while holding a recognized key must release it exactly once, through the same
+// disconnected path as any other abort, and a reconnect must start with clean state.
+void testStalledClientReleasesHeldKeyOnce()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket socket;
+    CHECK(connectRawRfb(socket, port, false));
+    QByteArray keyDown;
+    keyDown.append(char(4));
+    keyDown.append(char(1));
+    appendU16(keyDown, 0);
+    appendU32(keyDown, static_cast<std::uint32_t>('a'));
+    CHECK(writeAll(socket, keyDown));
+    CHECK(writeAll(socket, QByteArray("\x03\x00\x00\x00", 4)));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const hyremote::TransportEvent &event) {
+            return event.code == hyremote::TransportEventCode::RecoverableFailure
+                   && event.message.find("bounded progress deadline") != std::string::npos;
+        });
+    }, 9000));
+    CHECK(waitForDisconnected(socket));
+
+    int presses = 0;
+    int releases = 0;
+    {
+        std::lock_guard<std::mutex> lock(recorder.mutex);
+        for (const auto &event : recorder.inputs) {
+            if (event.kind != hyremote::InputEventKind::Key || event.key != hyremote::KeyCode::A)
+                continue;
+            if (event.pressed)
+                ++presses;
+            else
+                ++releases;
+        }
+    }
+    CHECK(presses == 1);
+    CHECK(releases == 1);
+
+    QTcpSocket reconnect;
+    CHECK(connectRawRfbWithRetry(reconnect, port));
+    CHECK(reconnect.state() == QAbstractSocket::ConnectedState);
+    reconnect.disconnectFromHost();
+    waitForDisconnected(reconnect);
+    transport->stop();
+}
+
+// #158: stopping with armed occupancy timers must be quiescent - no late expiry event and no resurrection
+// of a client that was already torn down.
+void testStopWithArmedOccupancySweepIsQuiescent()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket first;
+    QTcpSocket second;
+    CHECK(connectRawRfb(first, port, false));
+    CHECK(connectRawRfb(second, port, false));
+    CHECK(writeAll(first, QByteArray("\x03\x00\x00\x00", 4)));
+    CHECK(writeAll(second, QByteArray("\x04\x00\x00\x00", 4)));
+
+    const std::size_t deadlineFailuresBefore = countRecoverableFailures(recorder, "bounded");
+    transport->stop();
+
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.elapsed() < 800) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(countRecoverableFailures(recorder, "bounded") == deadlineFailuresBefore);
+}
+
+void testInitialTargetGeometrySendsServerInitBeforeFrame()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 640;
+    security.initialFramebufferHeight = 480;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                          std::move(security));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(width == 640);
+    CHECK(height == 480);
+    CHECK(socket.state() == QAbstractSocket::ConnectedState);
+    socket.abort();
+    transport->stop();
+}
+
 void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
                                 std::int32_t expectedEncoding,
                                 const char *encodingLabel,
@@ -1799,7 +2178,24 @@ void runInteractionLatencyProbe(const std::vector<std::int32_t> &encodings,
 
 double processCpuMs()
 {
-    return 1000.0 * static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC);
+#ifdef Q_OS_WIN
+    // MSVC std::clock() reports wall time, NOT process CPU time.
+    // Kernel and user times reported by GetProcessTimes are in 100ns units.
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return -1.0;
+    ULARGE_INTEGER kernelTicks{}, userTicks{};
+    kernelTicks.LowPart = kernel.dwLowDateTime;
+    kernelTicks.HighPart = kernel.dwHighDateTime;
+    userTicks.LowPart = user.dwLowDateTime;
+    userTicks.HighPart = user.dwHighDateTime;
+    return static_cast<double>(kernelTicks.QuadPart + userTicks.QuadPart) / 10000.0;
+#else
+    const std::clock_t ticks = std::clock();
+    return ticks == static_cast<std::clock_t>(-1)
+               ? -1.0
+               : 1000.0 * static_cast<double>(ticks) / static_cast<double>(CLOCKS_PER_SEC);
+#endif
 }
 
 qint64 processWorkingSetKb()
@@ -1830,6 +2226,8 @@ struct ProfileSample
     double p50Ms = 0.0;
     double p95Ms = 0.0;
     double cpuMs = 0.0;
+    double wallMs = 0.0;
+    double cpuOneCorePercent = 0.0;
     qint64 workingSetKb = 0;
 };
 
@@ -1855,6 +2253,7 @@ void recordProfileSample(const QString &encoding,
                          qint64 bytes,
                          std::vector<double> latenciesMs,
                          double cpuMs,
+                         double wallMs,
                          qint64 workingSetKb)
 {
     ProfileSample sample;
@@ -1865,11 +2264,18 @@ void recordProfileSample(const QString &encoding,
     sample.p50Ms = profilePercentile(latenciesMs, 0.50);
     sample.p95Ms = profilePercentile(latenciesMs, 0.95);
     sample.cpuMs = cpuMs;
+    sample.wallMs = wallMs;
+    // 100% is one fully used logical CPU; multi-threaded work can exceed 100%.
+    sample.cpuOneCorePercent = (cpuMs >= 0.0 && wallMs > 0.0)
+                                   ? (100.0 * cpuMs / wallMs)
+                                   : -1.0;
     sample.workingSetKb = workingSetKb;
     profileSamples.push_back(sample);
     std::cerr << "PROFILE " << encoding.toStdString() << ' ' << workload.toStdString()
               << " frames=" << frames << " bytes=" << bytes << " p50_ms=" << sample.p50Ms
               << " p95_ms=" << sample.p95Ms << " cpu_ms=" << sample.cpuMs
+              << " wall_ms=" << sample.wallMs
+              << " cpu_one_core_percent=" << sample.cpuOneCorePercent
               << " working_set_kb=" << sample.workingSetKb << '\n';
 }
 
@@ -1885,6 +2291,8 @@ void runProfileWorkload(const std::vector<std::int32_t> &encodings,
     const quint16 port = freePort();
     if (port == 0)
         return;
+    QElapsedTimer wallTimer;
+    wallTimer.start();
     const double cpuStartMs = processCpuMs();
     Recorder recorder;
     auto transport = startTransport(port, recorder, makeFrame(kWidth, kHeight, 0x203040U));
@@ -1959,12 +2367,16 @@ void runProfileWorkload(const std::vector<std::int32_t> &encodings,
         }
     }
 
+    const double cpuEndMs = processCpuMs();
     recordProfileSample(encodingLabel,
                         workload,
                         measuredFrames,
                         measuredBytes,
                         latenciesMs,
-                        processCpuMs() - cpuStartMs,
+                        (cpuStartMs >= 0.0 && cpuEndMs >= cpuStartMs)
+                            ? (cpuEndMs - cpuStartMs)
+                            : -1.0,
+                        static_cast<double>(wallTimer.nsecsElapsed()) / 1000000.0,
                         processWorkingSetKb());
     socket.disconnectFromHost();
     waitForDisconnected(socket);
@@ -1992,12 +2404,19 @@ void runDeliveryProfile(const QString &outputPath)
         entry.insert(QStringLiteral("p50_ms"), sample.p50Ms);
         entry.insert(QStringLiteral("p95_ms"), sample.p95Ms);
         entry.insert(QStringLiteral("cpu_ms"), sample.cpuMs);
+        entry.insert(QStringLiteral("wall_ms"), sample.wallMs);
+        entry.insert(QStringLiteral("cpu_one_core_percent"), sample.cpuOneCorePercent);
         entry.insert(QStringLiteral("working_set_kb"), static_cast<double>(sample.workingSetKb));
         samples.append(entry);
     }
 
     QJsonObject root;
     root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-delivery-profile/1"));
+    root.insert(QStringLiteral("cpu_measurement_scope"),
+                QStringLiteral("whole test process (fixture + loopback peer); not Host, Viewer or encoder-only"));
+    root.insert(QStringLiteral("cpu_one_core_percent_unit"),
+                QStringLiteral("100 = one logical CPU busy; can exceed 100 with multiple threads"));
+    root.insert(QStringLiteral("cpu_unavailable_value"), -1);
     root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
     root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
     root.insert(QStringLiteral("width"), kProfileWidth);
@@ -2069,6 +2488,7 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testOpaqueAlphaPolicy();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
@@ -2087,6 +2507,13 @@ int main(int argc, char **argv)
     testOversizedCutTextFailsClosed();
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
     testBoundedInputBurstFailsClosed();
+    testExactRfb38VersionIsRequired();
+    testSlowViewerClientInitStillServed();
+    testStalledPartialMessagesReleaseTheirSlots();
+    testPostInitUsefulnessDeadlineKeepsStaticViewer();
+    testStalledClientReleasesHeldKeyOnce();
+    testStopWithArmedOccupancySweepIsQuiescent();
+    testInitialTargetGeometrySendsServerInitBeforeFrame();
     runInteractionLatencyProbe({15, 0}, 15, "trle");
     runInteractionLatencyProbe({0}, 0, "raw");
     runInteractionLatencyProbe({15, 0}, 15, "trle-continuous", true);

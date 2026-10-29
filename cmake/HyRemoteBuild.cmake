@@ -331,6 +331,19 @@ while(i LESS argc)
         set(HYB_CONFIG_REQUIRED ON)
     elseif(arg STREQUAL "--no-config")
         set(HYB_CONFIG_PATH "")
+        set(HYB_NO_CONFIG TRUE)
+    elseif(arg STREQUAL "--print-build-dir")
+        set(HYB_PRINT_BUILD_DIR TRUE)
+    elseif(arg STREQUAL "--build-dir")
+        math(EXPR i "${i}+1")
+        if(i GREATER_EQUAL argc)
+            message(FATAL_ERROR "--build-dir requires a path")
+        endif()
+        list(GET HYB_ARGS ${i} HYB_CLI_BUILD_DIR)
+        set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
+    elseif(arg MATCHES "^--build-dir=(.+)$")
+        set(HYB_CLI_BUILD_DIR "${CMAKE_MATCH_1}")
+        set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
     endif()
     math(EXPR i "${i}+1")
 endwhile()
@@ -341,6 +354,29 @@ if(NOT HYB_CONFIG_PATH STREQUAL "")
     endif()
     cmake_path(NORMAL_PATH HYB_CONFIG_PATH)
     hyb_load_config("${HYB_CONFIG_PATH}")
+endif()
+
+# A command-line --build-dir is an explicit override of build.yml's directory.
+if(NOT "${HYB_CLI_BUILD_DIR}" STREQUAL "")
+    set(HYB_BUILD_DIR "${HYB_CLI_BUILD_DIR}")
+endif()
+
+if(HYB_NO_CONFIG)
+    message(WARNING
+        "DIAGNOSTIC MODE: --no-config ignores build.yml. Integrations, examples and tests "
+        "may be a smaller product surface than canonical build.cmd test; do not use this "
+        "run as all-integration acceptance evidence.")
+endif()
+
+# Internal dry-run used by build.cmd to locate the handoff files. It must not
+# discover Qt or prompt; it only resolves the configured build directory.
+if(HYB_PRINT_BUILD_DIR)
+    if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
+        set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
+    endif()
+    cmake_path(NORMAL_PATH HYB_BUILD_DIR)
+    message("HYREMOTE_BUILD_DIR=${HYB_BUILD_DIR}")
+    return()
 endif()
 
 # The first bare word is the subcommand. It is read before the option loop so that loop keeps sole ownership of
@@ -366,7 +402,7 @@ set(i 0)
 while(i LESS argc)
     list(GET HYB_ARGS ${i} arg)
     if(arg STREQUAL "--help")
-        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE | --no-config\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
+        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH (advanced; normal users select a Kit or profile)\n  --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
         return()
     elseif(arg MATCHES "^--config=" OR arg STREQUAL "--no-config")
         # Already consumed in pass 1.
@@ -558,6 +594,12 @@ function(hyb_resolve_path variable must_exist description)
     set(${variable} "${value}" PARENT_SCOPE)
 endfunction()
 
+# Internal handoff from build.cmd's numbered selection. The user never types
+# this; it keeps the public --qt-prefix option out of the prompt implementation.
+if(HYB_QT_PREFIX STREQUAL "" AND NOT "$ENV{HYREMOTE_QT_SELECTION}" STREQUAL "")
+    set(HYB_QT_PREFIX "$ENV{HYREMOTE_QT_SELECTION}")
+endif()
+
 hyb_resolve_path(HYB_QT_PREFIX TRUE "Qt prefix")
 hyb_resolve_path(HYB_TOOLCHAIN TRUE "Toolchain file")
 hyb_resolve_path(HYB_C_COMPILER TRUE "C compiler")
@@ -683,9 +725,13 @@ function(hyb_qt_platform_roots out_roots)
         set(_install_roots "C:/Qt")
     else()
         set(_install_roots "/opt/Qt" "$ENV{HOME}/Qt")
-        if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
-            set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
-        endif()
+    endif()
+    # The override is platform-independent: a caller/test that places kits outside the
+    # platform's default install root must be able to exercise the same discovery rule on
+    # Windows as on POSIX. Without this, Windows always scanned C:/Qt and the Qt5 regression
+    # could not be tested hermetically.
+    if(NOT "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}" STREQUAL "")
+        set(_install_roots "$ENV{HYREMOTE_QT_DISCOVERY_ROOTS}")
     endif()
     foreach(_install_root IN LISTS _install_roots)
         if(_install_root STREQUAL "" OR NOT IS_DIRECTORY "${_install_root}")
@@ -761,6 +807,48 @@ set(_qt_execution_needs_qt FALSE)
 if(_qt_runtime_requested OR HYB_EXAMPLES OR HYB_TESTS_BUILD
    OR HYB_CPP OR HYB_QML OR HYB_GENERIC OR HYB_QPA)
     set(_qt_execution_needs_qt TRUE)
+endif()
+
+# A managed build tree already records the exact Qt identity used to create it.
+# Reuse that choice before discovery so an ambiguous machine does not prompt on
+# every build. An explicit CLI/profile prefix still wins, and the identity check
+# below will recreate a tree if the user deliberately switches Kit.
+if(HYB_QT_PREFIX STREQUAL "" AND NOT HYB_BUILD_DIR STREQUAL ""
+   AND NOT "$ENV{HYREMOTE_QT_IGNORE_IDENTITY}" STREQUAL "1")
+    # Resolve the build directory against the repository before reading its
+    # identity; the wrapper may be invoked from outside the checkout.
+    if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
+        set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
+    endif()
+    cmake_path(NORMAL_PATH HYB_BUILD_DIR)
+    set(_qt_identity_file "${HYB_BUILD_DIR}/.hyremote-build-identity")
+    if(EXISTS "${_qt_identity_file}" AND NOT IS_SYMLINK "${_qt_identity_file}")
+        file(STRINGS "${_qt_identity_file}" _qt_identity_qt REGEX "^qt=")
+        if(_qt_identity_qt)
+            string(SUBSTRING "${_qt_identity_qt}" 3 -1 _qt_identity_prefix)
+            if(NOT _qt_identity_prefix STREQUAL "" AND IS_DIRECTORY "${_qt_identity_prefix}")
+                hyb_qt_version_from_prefix("${_qt_identity_prefix}" _qt_identity_version)
+                set(_qt_identity_eligible TRUE)
+                if(HYB_QPA AND NOT _qt_identity_version STREQUAL "6.8.3")
+                    set(_qt_identity_eligible FALSE)
+                elseif((HYB_GENERIC OR HYB_QML)
+                       AND NOT (_qt_identity_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                                AND NOT _qt_identity_version VERSION_LESS "6.8"))
+                    set(_qt_identity_eligible FALSE)
+                elseif(NOT HYB_QPA
+                       AND NOT ((WIN32 AND _qt_identity_version VERSION_EQUAL "5.15.2")
+                                OR (_qt_identity_version MATCHES "^6\\.[0-9]+\\.[0-9]+$"
+                                    AND NOT _qt_identity_version VERSION_LESS "6.8")))
+                    set(_qt_identity_eligible FALSE)
+                endif()
+                if(_qt_identity_eligible)
+                    set(HYB_QT_PREFIX "${_qt_identity_prefix}")
+                    set(HYB_QT_DISCOVERY_NOTE
+                        "Qt prefix : ${HYB_QT_PREFIX} (from existing build identity)")
+                endif()
+            endif()
+        endif()
+    endif()
 endif()
 
 if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
@@ -917,9 +1005,31 @@ if(HYB_QT_PREFIX STREQUAL "" AND HYB_QT_DISCOVERY_REQUIRED)
             else()
                 message(STATUS "${_qt_choice_help}")
                 if(WIN32)
-                    execute_process(
-                        COMMAND cmd.exe /C "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.cmd" "${_qt_usable_count}"
-                        RESULT_VARIABLE _qt_prompt_code OUTPUT_VARIABLE _qt_prompt_answer)
+                    # CMake execute_process stdin is a pipe even when the parent
+                    # is an interactive terminal, so CON/CONIN$ cannot be read
+                    # reliably (notably under Windows Terminal/ConPTY). Leave the
+                    # actual prompt to build.cmd, which owns the terminal, and
+                    # hand it a stable candidate list plus a sentinel.
+                    set(_qt_handoff_dir "$ENV{HYREMOTE_QT_HANDOFF_DIR}")
+                    if(_qt_handoff_dir STREQUAL "")
+                        set(_qt_handoff_dir "${HYREMOTE_SOURCE_DIR}/build")
+                    endif()
+                    cmake_path(NORMAL_PATH _qt_handoff_dir)
+                    file(MAKE_DIRECTORY "${_qt_handoff_dir}")
+                    set(_qt_candidate_file
+                        "${_qt_handoff_dir}/.hyremote-qt-candidates")
+                    file(WRITE "${_qt_candidate_file}" "")
+                    math(EXPR _qt_candidate_index "0")
+                    foreach(_prefix IN LISTS _qt_usable)
+                        math(EXPR _qt_candidate_index "${_qt_candidate_index}+1")
+                        file(APPEND "${_qt_candidate_file}"
+                             "${_qt_candidate_index}|${_prefix}\n")
+                    endforeach()
+                    file(WRITE
+                        "${_qt_handoff_dir}/.hyremote-qt-choice-required"
+                        "required\n")
+                    message(FATAL_ERROR
+                        "${_qt_choice_help}\nHYREMOTE_QT_KIT_CHOICE_REQUIRED")
                 else()
                     execute_process(
                         COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/HyRemoteQtKitPrompt.sh" "${_qt_usable_count}"
@@ -986,6 +1096,16 @@ if(NOT IS_ABSOLUTE "${HYB_BUILD_DIR}")
     set(HYB_BUILD_DIR "${HYREMOTE_SOURCE_DIR}/${HYB_BUILD_DIR}")
 endif()
 cmake_path(NORMAL_PATH HYB_BUILD_DIR)
+# NORMAL_PATH keeps a user-supplied trailing separator.  IS_SYMLINK and
+# REMOVE_RECURSE treat "link/" as a directory, which would let a symlinked
+# build root bypass the guard and delete the target's contents.  Strip the
+# separator once, before every identity/symlink/delete decision.
+string(REGEX REPLACE "[/\\\\]+$" "" HYB_BUILD_DIR "${HYB_BUILD_DIR}")
+if(HYB_BUILD_DIR STREQUAL "")
+    set(HYB_BUILD_DIR "/")
+elseif(HYB_BUILD_DIR MATCHES "^[A-Za-z]:$")
+    string(APPEND HYB_BUILD_DIR "/")
+endif()
 
 set(HYB_INTEGRATIONS "")
 if(HYB_CPP)
@@ -1045,7 +1165,34 @@ if(HYB_SHOW_CONFIG)
     return()
 endif()
 
+# A build directory is not an arbitrary delete target.  Before any clean or
+# implicit rebuild, verify the effective on-disk path is a managed descendant of
+# the checkout.  This is intentionally stricter than mere text prefix matching:
+# path traversal and symlink/junction escapes must not redirect a cleanup outside
+# the workspace or onto the workspace root itself.
+function(hyb_guard_cleanup target)
+    file(REAL_PATH "${HYREMOTE_SOURCE_DIR}" workspace_root)
+    file(REAL_PATH "${target}" resolved_target)
+    cmake_path(IS_PREFIX workspace_root "${resolved_target}" NORMALIZE _under_workspace)
+    if(NOT _under_workspace OR "${workspace_root}" STREQUAL "${resolved_target}")
+        message(FATAL_ERROR
+            "UNSAFE_BUILD_DIRECTORY: refusing cleanup of '${target}' (resolves to '${resolved_target}'); "
+            "must be a managed build tree strictly inside the repository workspace '${workspace_root}'.")
+    endif()
+    if(IS_SYMLINK "${target}")
+        message(FATAL_ERROR
+            "UNSAFE_BUILD_DIRECTORY: refusing cleanup of symlinked build directory '${target}'.")
+    endif()
+    set(marker "${target}/.hyremote-build-identity")
+    if(NOT EXISTS "${marker}" OR IS_DIRECTORY "${marker}" OR IS_SYMLINK "${marker}")
+        message(FATAL_ERROR
+            "UNSAFE_BUILD_DIRECTORY: refusing cleanup of unowned directory '${target}'; "
+            "missing or invalid .hyremote-build-identity marker. No files were deleted.")
+    endif()
+endfunction()
+
 if(HYB_CLEAN AND EXISTS "${HYB_BUILD_DIR}")
+    hyb_guard_cleanup("${HYB_BUILD_DIR}")
     file(REMOVE_RECURSE "${HYB_BUILD_DIR}")
 endif()
 if(HYB_SUBCOMMAND STREQUAL "clean")
@@ -1062,7 +1209,7 @@ file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")
 #
 # The marker is also the safety boundary. A directory that does not carry it was not created by this entry point, so it
 # is never removed automatically - it fails closed and names the two ways forward. `rebuild` stays the explicit
-# force-clean path, and it removes the tree before this block, so it never depends on the marker.
+# force-clean path must still pass hyb_guard_cleanup before deleting an existing owned tree.
 set(identity
     "generator=${HYB_GENERATOR}\nqt=${HYB_QT_PREFIX}\ntoolchain=${HYB_TOOLCHAIN}\nc=${HYB_C_COMPILER}\ncxx=${HYB_CXX_COMPILER}\ncpp=${HYB_CPP}\nqml=${HYB_QML}\ngeneric=${HYB_GENERIC}\nqpa=${HYB_QPA}\nsecurity=${HYB_SECURITY}\n")
 set(identity_file "${HYB_BUILD_DIR}/.hyremote-build-identity")
@@ -1089,6 +1236,7 @@ else()
 endif()
 
 if(hyb_recreate_build_tree)
+    hyb_guard_cleanup("${HYB_BUILD_DIR}")
     message(STATUS "HyRemote: build configuration changed; recreating ${HYB_BUILD_DIR}")
     file(REMOVE_RECURSE "${HYB_BUILD_DIR}")
     file(MAKE_DIRECTORY "${HYB_BUILD_DIR}")

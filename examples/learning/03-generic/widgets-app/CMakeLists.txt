@@ -3,6 +3,10 @@ project(HyRemoteLearning03GenericWidgets LANGUAGES CXX)
 
 # An ordinary Qt Widgets application. Note what is NOT here: the application target links no HyRemote target and
 # includes no HyRemote header, and that stays true whether or not HyRemote is present at all.
+# Acquire the installed package first so a Qt5 SDK cannot be paired with a system Qt6 by accident.
+if(NOT COMMAND hyremote_deploy)
+    find_package(HyRemote CONFIG QUIET)
+endif()
 if(NOT TARGET Qt6::Widgets)
     find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Widgets)
 endif()
@@ -24,9 +28,6 @@ install(TARGETS hyremote-learning-03-widgets RUNTIME DESTINATION bin)
 # runtime closure. Requiring it here the way an application would requires the HyRemote package; requiring the
 # Generic *payload* additionally needs an SDK that ships it, so the guard keeps this example buildable as a plain
 # Qt application in an SDK built without Generic support.
-if(NOT COMMAND hyremote_deploy)
-    find_package(HyRemote CONFIG QUIET)
-endif()
 set(_generic_deploy_available FALSE)
 if(COMMAND hyremote_deploy)
     if(TARGET hyremote-generic-plugin)

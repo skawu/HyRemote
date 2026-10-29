@@ -1,12 +1,12 @@
 # Transparent QPA capture classification — Qt 6.8.3 x86
 
-Status: **V1 production-path classification complete; dual-OS execution evidence pending #74**
+Status: **Production-path technical classification retained; V1 Windows-specific QPA qualification must still be proven on the exact release candidate**. Historical dual-OS runner details below are research/evidence history, not current GA gates (#563/#605).
 
 Issue: #86, child of #32.
 
-This document classifies the capture paths that the **production HyRemote Transparent QPA Proxy actually uses** for the frozen V1 reference line: Qt 6.8.3 on Windows x86_64 and Linux x86_64. It is deliberately narrower than the historical capture spikes. A spike result is reused only when the production adapter uses the same relevant Qt capture mechanism.
+This document classifies the capture paths that the **production HyRemote Transparent QPA Proxy actually uses** for Qt 6.8.3. Older Windows and Linux x86_64 observations are useful implementation/history data, not dual-platform first-GA admission requirements. **Owner #563/#605:** only the real Windows x86_64 Qt5.15/Qt6.8 qualified QPA cells (with exact private ABI and local/remote behavior) can become newly Supported at first GA. Linux/Wayland/ARM64/EGLFS remain nonblocking user-validation and must not be inferred Supported.
 
-No row in this document becomes a V1 `Supported` compatibility claim until the required Windows and Linux jobs execute successfully. GitHub-hosted jobs are currently failing before runner assignment under #74; therefore implementation presence and historical host evidence are kept separate from acceptance status.
+No row in this document becomes a new V1 `Supported` compatibility claim without the **applicable exact Windows Qt Kit/QPA ABI plus installed product/Viewer/local coexistence evidence**. Earlier #74 runner problems and the former Windows+Linux gate are historical; absence of Linux execution cannot block #32/#33. Historical V0.3.0.0 Linux release claims remain recorded in `docs/compatibility.md` and are not retroactively revoked.
 
 ## 1. Production architecture boundary
 
@@ -44,19 +44,19 @@ This is the same public Qt capture mechanism evaluated in #16 / `docs/internal/a
 
 Status vocabulary in this table is intentionally evidence-aware:
 
-- **Candidate** — production implementation exists and matches the stated path, but required V1 dual-OS execution is still blocked by #74.
+- **Candidate** — production implementation exists and matches the stated path, but the applicable exact-Windows first-GA QPA/Viewer/runtime acceptance has not been established by this document.
 - **Historical host evidence** — an earlier Windows/Qt 6.8.3 probe exercised the same relevant Qt mechanism; useful supporting evidence, not QPA product acceptance.
 - **Unsupported** — HyRemote intentionally has no V1 production adapter for this family/backend.
 - **Unverified** — no sufficient production-path evidence exists; do not infer support.
 
-| Surface family | Production QPA child path | Existing evidence | V1 classification while #74 is open | Important boundary |
+| Surface family | Production QPA child path | Existing evidence | V1 classification without current exact-candidate Windows evidence | Important boundary |
 |---|---|---|---|---|
-| QWidget / raster / custom QPainter hierarchy | `QWidget::render()` into owned RGBA frame | SPIKE-01 measured `QWidget::render()` on Windows Qt 6.8.3; normal Widgets product tests exist | **Candidate** | Final Windows + Linux QPA execution still required |
+| QWidget / raster / custom QPainter hierarchy | `QWidget::render()` into owned RGBA frame | SPIKE-01 measured `QWidget::render()` on Windows Qt 6.8.3; normal Widgets product tests exist | **Candidate** | Final exact Windows QPA/Viewer product execution required |
 | QWidget hierarchy containing `QOpenGLWidget` | same parent `QWidget::render()` path | Qt 6.8.3 upstream tests explicitly exercise `QWidget::render()` with QOpenGLWidget; HyRemote adds `hyremote-qpa-widget-opengl-capture-smoke` over the full production QPA -> RemoteAccess -> RFB path | **Candidate; dedicated production E2E pending runner** | Historical HyRemote SPIKE used parent `QWidget::grab()`, so that older result is not substituted for the new production-path test |
 | QWidget hierarchy containing `QQuickWidget` | same parent `QWidget::render()` path | SPIKE-01 proved whole-window composition with parent `QWidget::grab()`, not the exact production `render()` path | **Unverified for the mixed QQuickWidget composition claim** | V1 must not upgrade this row without production-path evidence; ordinary QWidget and native QQuickWindow remain independently covered |
 | QQuickWindow 2D | `contentItem()->grabToImage(pixelSize)` | #16: pixel-identical to synchronous whole-window reference for measured 2D scenes on Windows Qt 6.8.3, D3D11/OpenGL | **Candidate + historical host evidence** | Visible-window public API baseline; not a zero-copy/performance promise |
 | QQuickWindow + same-scene overlay tree | same `contentItem()->grabToImage()` | #16 measured sibling content under `contentItem()`; root-item grabs were shown incomplete | **Candidate for the scene-tree mechanism** | Actual application-specific Controls Popup modes are not generalized beyond their resolved scene/window form |
-| Quick3D inside QQuickWindow | same `contentItem()->grabToImage()` | #16 measured 0 differing pixels vs synchronous reference on Windows Qt 6.8.3 | **Candidate + historical host evidence** | Linux/reference-backend QPA execution still required before support claim |
+| Quick3D inside QQuickWindow | same `contentItem()->grabToImage()` | #16 measured 0 differing pixels vs synchronous reference on Windows Qt 6.8.3 | **Candidate + historical host evidence** | Windows exact-candidate QPA verification still required for first-GA support claim; Linux validation is optional |
 | custom `QQuickFramebufferObject` inside QQuickWindow on OpenGL RHI | same `contentItem()->grabToImage()` | #16 measured fresh custom-FBO content with max channel diff 2 on Windows/OpenGL | **Candidate + historical host evidence for OpenGL RHI** | `QQuickFramebufferObject` itself is OpenGL-specific; no D3D11 support is implied |
 | custom `QQuickFramebufferObject` on non-OpenGL RHI | no meaningful rendered content from Qt FBO type | SPIKE evidence: FBO did not render on D3D11 | **Unsupported for this FBO type/backend combination** | This is a Qt rendering/backend constraint, not a HyRemote transport issue |
 | independent secondary QQuickWindow | normal Quick child adapter, composed by QPA application target | #85 adds same-viewer multi-QQuickWindow continuity E2E | **Candidate; E2E pending runner** | One RemoteAccess / Session / listener; no per-window public runtime |
@@ -78,7 +78,7 @@ The test creates:
 
 The test decodes the returned Raw framebuffer and samples one pixel inside each child. Passing therefore proves the **production parent `QWidget::render()` path** contains both GL and raster content. It does not merely prove that `QOpenGLWidget::grabFramebuffer()` works.
 
-Until the exact Windows/Linux Qt 6.8.3 jobs execute, this test is executable evidence waiting to run, not a claimed pass.
+Until the exact Windows Qt 6.8.3 applicable QPA product/Viewer job executes on the accepted candidate, this remains a test path waiting for qualification, not a claimed pass. Linux execution is optional user validation.
 
 ## 4. Qt Quick evidence reuse rule
 
@@ -127,8 +127,8 @@ Those are separate evidence-driven roadmap items. A future optimization must not
 
 Before #86 / #32 can use the word `Supported` for the claimed combinations:
 
-1. restore GitHub-hosted execution under #74;
-2. run the exact Qt 6.8.3 Windows x86_64 and Linux x86_64 QPA matrix;
+1. use the current approved Windows x86_64 PR/release verification path; old #74 runner-recovery details are historical;
+2. run the exact Qt 6.8.3 Windows x86_64 QPA matrix on the candidate (Qt 5.15 QPA only when separately declared applicable and ABI-verified); Linux QPA execution is community-validation pending/nonblocking;
 3. require the production OpenGL-widget capture smoke to pass where OpenGLWidgets is available;
 4. run the QPA multi-surface/popup/Quick continuity tests from #84/#85;
 5. record exact graphics/backend combinations that actually passed;

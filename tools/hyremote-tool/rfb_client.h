@@ -8,6 +8,13 @@
 #include <QTcpSocket>
 #include <QTimer>
 
+// RFB pointer masks are bit values, not button ordinals. Keep the wheel
+// mapping shared with the widget so it cannot silently drift back to 4/5.
+inline quint8 rfbWheelMaskForDelta(int delta)
+{
+    return delta > 0 ? 0x08 : 0x10;
+}
+
 class RfbClient final : public QObject
 {
     Q_OBJECT

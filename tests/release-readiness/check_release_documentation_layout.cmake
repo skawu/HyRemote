@@ -125,7 +125,7 @@ foreach(required_token
         "delete_branch_on_merge=true"
         "private vulnerability reporting"
         "Do not describe the current workflow/audit layer as equivalent to branch protection."
-        "#104 actual Windows/Linux acceptance complete"
+        "#33/#343/#57/#95 Windows Qt5.15/Qt6.8"
         "#109 physical/native coexistence evidence complete"
         "The first seven items are repository governance readiness. The last two are product acceptance.")
     require_doc_token("${admin_doc}" "${required_token}" "V1 repository administration preparation contract")
@@ -169,6 +169,164 @@ foreach(required_token
         "Do not mark #109 or V1.0.0.0 accepted merely because this runbook exists")
     require_doc_token("${physical_doc}" "${required_token}" "#109 physical/native preparation contract")
 endforeach()
+
+
+# #594/#209: Today's Qt LTS WBS is a planning/execution ledger, not release activation.
+# Keep the 22 accountable work packages and the four concrete audit fixes reachable from
+# the current outcome roadmap. These checks prove document coverage only: NOT code/Viewer acceptance.
+set(qt_lts_wbs_doc "docs/internal/qt-lts-architecture-wbs-2026-10-24.md")
+set(qt_lts_roadmap_doc "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
+require_doc_token("${qt_lts_roadmap_doc}" "qt-lts-architecture-wbs-2026-10-24.md"
+                  "product roadmap to 22-item Qt LTS execution ledger")
+require_doc_token("${qt_lts_roadmap_doc}" "V0.3.3.0 已合法发布"
+                  "current legally reissued v0.3.3.0 release status")
+forbid_doc_token("${qt_lts_roadmap_doc}" "PUBLIC TAG RETRACTED"
+                 "outdated assertion that v0.3.3.0 remains retracted")
+
+set(qt_lts_expected_wbs
+    A01 A02 A03 A04 A05
+    B01 B02 B03
+    C01 C02 C03 C04
+    D01 D02 D03 D04 D05
+    E01 E02
+    F01 F02 F03)
+foreach(qt_lts_wbs IN LISTS qt_lts_expected_wbs)
+    require_doc_token("${qt_lts_wbs_doc}" "| **${qt_lts_wbs}** |"
+                      "Qt LTS work package ${qt_lts_wbs} acceptance row")
+endforeach()
+file(STRINGS "${HYREMOTE_SOURCE_DIR}/${qt_lts_wbs_doc}"
+     qt_lts_actual_wbs_rows REGEX "^\\| \\*\\*[A-F][0-9][0-9]\\*\\* \\|")
+list(LENGTH qt_lts_actual_wbs_rows qt_lts_actual_wbs_count)
+if(NOT qt_lts_actual_wbs_count EQUAL 22)
+    message(FATAL_ERROR
+        "release-documentation-layout: Qt LTS WBS must have exactly 22 accountable rows; "
+        "found ${qt_lts_actual_wbs_count}")
+endif()
+foreach(audit_defect IN ITEMS 641 642 643 644)
+    require_doc_token("${qt_lts_wbs_doc}" "[#${audit_defect}]"
+                      "Qt LTS ledger ownership for the 2026-10-24 defect #${audit_defect}")
+    require_doc_token("${qt_lts_roadmap_doc}" "[#${audit_defect}]"
+                      "product roadmap defect routing for #${audit_defect}")
+endforeach()
+
+# 2026-10-26: local Owner has an actual next developer version, not an indefinite
+# unnumbered Feature that could be silently deferred to the V0.4 qualification-only RC.
+set(next_feature_charter "docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md")
+require_doc_token("${next_feature_charter}" "TARGET_VERSION=V0.3.4.0"
+                  "exact local Owner V0.3.4.0 development handoff")
+require_doc_token("${next_feature_charter}" "V0.4_RC_ACTIVE=false"
+                  "RC remains inactive until Qt5/6.8 product breadth is ready")
+require_doc_token("docs/internal/product-version-delivery-roadmap-2026-10-23.md"
+                  "即时开发版本 = V0.3.4.0" "current product version delivery target")
+require_doc_token("docs/versioning.md" "V0.3.4.0" "Chinese version assignment")
+require_doc_token("docs/en/versioning.md" "V0.3.4.0" "English version assignment")
+
+# #594 Owner 2026-10-26: a local developer must have the COMPLETE known
+# outcome-to-exact-planning-version ladder, not just the next unnamed Feature.
+# This validates planning traceability, NEVER machine activation or product PASS.
+set(full_roadmap_doc "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
+require_doc_token("${full_roadmap_doc}" "## 零、全量编号版本路线"
+                  "single current numbered product-outcome roadmap")
+require_doc_token("${full_roadmap_doc}" "版本目标变更"
+                  "reviewable old->new version change procedure")
+require_doc_token("${full_roadmap_doc}" "V0.4.0.0 继续保持"
+                  "RC remains inactive until pre-GA Feature implementation")
+foreach(planned_version IN ITEMS
+        V0.3.4.0 V0.3.5.0 V0.3.6.0 V0.3.7.0
+        V0.4.0.0 V1.0.0.0
+        V1.0.1.0 V1.0.2.0 V1.0.3.0 V1.0.4.0
+        V1.0.5.0 V1.0.6.0 V1.0.7.0
+        V1.1.0.0 V1.1.1.0
+        V1.2.0.0 V1.2.1.0 V1.2.2.0 V1.2.3.0
+        V1.2.4.0 V1.2.5.0 V1.2.6.0 V1.2.7.0)
+    require_doc_token("${full_roadmap_doc}" "**${planned_version}**"
+                      "full known product version planning: ${planned_version}")
+    require_doc_token("docs/versioning.md" "${planned_version}"
+                      "Chinese version ladder: ${planned_version}")
+    require_doc_token("docs/en/versioning.md" "${planned_version}"
+                      "English version ladder: ${planned_version}")
+endforeach()
+file(STRINGS "${HYREMOTE_SOURCE_DIR}/${full_roadmap_doc}"
+     planned_v03_feature_rows REGEX "^\\| \\*\\*V0\\.3\\.[4-7]\\.0\\*\\* \\|")
+list(LENGTH planned_v03_feature_rows planned_v03_feature_count)
+if(NOT planned_v03_feature_count EQUAL 4)
+    message(FATAL_ERROR
+        "release-documentation-layout: expected exactly four distinct "
+        "V0.3.4.0–V0.3.7.0 product Feature rows, found ${planned_v03_feature_count}")
+endif()
+foreach(planned_owner IN ITEMS 265 566 603 591 589 581 582 583 584 585 586 590
+                               592 605 587 588 593 204 171 190 170
+                               149 203 7 236 18 154 148 346 172 225 173 246 151 180)
+    require_doc_token("${full_roadmap_doc}" "#${planned_owner}"
+                      "known product deliverable Issue #${planned_owner} is absent from roadmap")
+endforeach()
+
+# Product-first future work must be rooted in real users and distinguish current
+# field defects from conditional post-GA product capabilities.
+require_doc_token("${full_roadmap_doc}" "## 产品北极星"
+                  "product-centered user outcomes before release numbers")
+foreach(field_issue IN ITEMS 565 567 362)
+    require_doc_token("${full_roadmap_doc}" "#${field_issue}"
+                      "known current field-user problem #${field_issue}")
+endforeach()
+require_doc_token("${full_roadmap_doc}" "GO/NO-GO"
+                  "uncertain features must have explicit discovery decisions")
+require_doc_token("${full_roadmap_doc}" "V1.2.7.0"
+                  "planning continues beyond V1.0, V1.1 and early post-GA horizons")
+
+# Source-of-truth contract: issue decision records, product roadmap, machine
+# activation, task acceptance, and shipped-support evidence are separate facts.
+require_doc_token("${full_roadmap_doc}" "## 事实源与冲突处理（本地 Owner 必须遵守）"
+                  "mandatory source-of-truth and conflict protocol")
+require_doc_token("${full_roadmap_doc}" "Issue #594 是 Owner 决策/变更台账"
+                  "#594 is a decision ledger, not a parallel version table")
+require_doc_token("${full_roadmap_doc}" "只有相应审查 PR 合并后"
+                  "new roadmap decisions take effect only after reviewed sync")
+require_doc_token("${full_roadmap_doc}" "PLANNING_RECONCILIATION_REQUIRED"
+                  "conflicting facts fail closed instead of local guessing")
+require_doc_token("docs/versioning.md" "本表是版本路标摘要，不是第二事实源"
+                  "Chinese version table is only a summary")
+require_doc_token("docs/en/versioning.md" "This table is a summary, not a second source of truth"
+                  "English version table is only a summary")
+require_doc_token("docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md"
+                  "事实源读取顺序（本地 Owner 必须遵守）"
+                  "local Owner handoff enforces source read order")
+require_doc_token("${full_roadmap_doc}" "PR #655 已合并到 develop"
+                  "current train registration state is not stale")
+
+file(READ "${HYREMOTE_SOURCE_DIR}/${full_roadmap_doc}" full_roadmap_text)
+foreach(stale_roadmap_token IN ITEMS
+        "本 PR 独立 CI/Review/合并完成后才成为 develop 当前 machine authority"
+        "待 machine PR 独立审查合并"
+        "不预留 V1.1/1.2 等编号")
+    string(FIND "${full_roadmap_text}" "${stale_roadmap_token}" stale_roadmap_position)
+    if(NOT stale_roadmap_position EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: stale roadmap source/status wording remains: ${stale_roadmap_token}")
+    endif()
+endforeach()
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/versioning.md" zh_versioning_text)
+foreach(stale_summary_token IN ITEMS
+        "机器准入 PR 合并后生效"
+        "更后续且未单独准入的 Feature 不提前占用正式版本号")
+    string(FIND "${zh_versioning_text}" "${stale_summary_token}" stale_summary_position)
+    if(NOT stale_summary_position EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: stale Chinese source/status wording remains: ${stale_summary_token}")
+    endif()
+endforeach()
+file(READ "${HYREMOTE_SOURCE_DIR}/docs/en/versioning.md" en_versioning_text)
+foreach(stale_summary_token IN ITEMS
+        "No future exact Feature version is reserved"
+        "Other future Feature numbers are not reserved"
+        "exact machine activation PR #655")
+    string(FIND "${en_versioning_text}" "${stale_summary_token}" stale_summary_position)
+    if(NOT stale_summary_position EQUAL -1)
+        message(FATAL_ERROR
+            "release-documentation-layout: stale English source/status wording remains: ${stale_summary_token}")
+    endif()
+endforeach()
+
 
 message(STATUS
     "HyRemote release documentation layout gate: PASS "

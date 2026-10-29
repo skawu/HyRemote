@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -40,6 +41,21 @@ namespace {
 
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
+// #158/#603 physical acceptance: RealVNC Viewer 7.15.1 asks the user to dismiss an "Unencrypted Connection"
+// notice before it sends ClientInit, and measured 29.2 s on the release candidate. The version/security
+// exchange is still bounded by kHandshakeTimeoutMs (a silent peer keeps dropping out at 3 s, which is what
+// the bounded-occupancy tests expect); only the wait for ClientInit after a completed security exchange gets
+// this wider, still finite window.
+constexpr int kClientInitTimeoutMs = 30000;
+// #158: Normal-phase occupancy bounds. Neither value is a generic idle timeout:
+//  - the partial-message deadline only runs while an incomplete message is buffered, and every further
+//    byte of progress restarts it;
+//  - the usefulness deadline only runs until the client has produced its first complete Normal message,
+//    so an already useful viewer is never expired for being idle or static.
+constexpr int kOccupancySweepIntervalMs = 250;
+constexpr qint64 kPartialMessageDeadlineMs = 5000;
+constexpr qint64 kPostInitUsefulnessDeadlineMs = 10000;
+using OccupancyClock = std::chrono::steady_clock;
 // How long a failing handshake waits for its final SecurityResult to reach the client before the socket is aborted.
 constexpr int kHandshakeFlushMs = 1000;
 constexpr qsizetype kMaxClientInputBytes = 256 * 1024;
@@ -426,6 +442,13 @@ struct ClientState
     std::uint16_t lastPointerY = 0;
     bool pointerPositionKnown = false;
     bool connectedEventSent = false;
+    // #158 occupancy bookkeeping. Timestamps are only read by the synchronous sweep, never retained by a
+    // queued callback, so a client that disconnects in between cannot be observed through a raw pointer.
+    bool partialMessagePending = false;
+    OccupancyClock::time_point partialMessageSince{};
+    OccupancyClock::time_point normalEnteredAt{};
+    bool producedUsefulMessage = false;
+    bool expiryScheduled = false;
 };
 
 struct ButtonBit
@@ -470,12 +493,15 @@ public:
             m_server = nullptr;
             return false;
         }
+        startOccupancySweep();
         return true;
     }
 
     void shutdown()
     {
         m_stopping = true;
+        if (m_occupancySweep)
+            m_occupancySweep->stop();
         if (m_server)
             m_server->close();
 
@@ -596,6 +622,9 @@ private:
             }
 
             socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+            // #158: the socket layer must not buffer more than the bounded protocol allowance either, so a
+            // hostile peer cannot make Qt materialize a burst before the application-level check runs.
+            socket->setReadBufferSize(kMaxClientInputBytes);
             auto client = std::make_unique<ClientState>();
             client->socket = socket;
             ClientState *clientPtr = client.get();
@@ -627,7 +656,9 @@ private:
                 if (!socket)
                     return;
                 const auto it = m_clients.find(socket);
-                if (it == m_clients.end() || it->second->phase == ClientPhase::Normal)
+                if (it == m_clients.end() || it->second->phase == ClientPhase::Normal
+                    || it->second->phase == ClientPhase::AwaitClientInit
+                    || it->second->phase == ClientPhase::AwaitInitialFrame)
                     return;
                 publishEvent(hyremote::TransportEventCode::RecoverableFailure,
                              "RFB client handshake timed out");
@@ -677,18 +708,97 @@ private:
         deferClientAbort(client);
     }
 
+    void startOccupancySweep()
+    {
+        if (!m_occupancySweep) {
+            m_occupancySweep = new QTimer(this);
+            m_occupancySweep->setInterval(kOccupancySweepIntervalMs);
+            connect(m_occupancySweep, &QTimer::timeout, this, [this] { sweepOccupancy(); });
+        }
+        m_occupancySweep->start();
+    }
+
+    // #158: one shared sweeper rather than one timer per client. It reads the live map synchronously and
+    // never retains a client pointer across a queued callback; expiry goes through the same deferred abort
+    // as every other protocol rejection, so slot and held-input release still happen exactly once in the
+    // disconnected handler.
+    void sweepOccupancy()
+    {
+        if (m_stopping || m_clients.empty())
+            return;
+        const auto now = OccupancyClock::now();
+        const auto elapsedMs = [&now](const OccupancyClock::time_point &since) {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(now - since).count();
+        };
+
+        std::vector<std::pair<ClientState *, bool>> expired;
+        for (auto &entry : m_clients) {
+            ClientState &client = *entry.second;
+            if (client.phase != ClientPhase::Normal || client.expiryScheduled)
+                continue;
+            if (client.partialMessagePending
+                && elapsedMs(client.partialMessageSince) >= kPartialMessageDeadlineMs) {
+                client.expiryScheduled = true;
+                expired.emplace_back(&client, true);
+                continue;
+            }
+            if (!client.producedUsefulMessage
+                && elapsedMs(client.normalEnteredAt) >= kPostInitUsefulnessDeadlineMs) {
+                client.expiryScheduled = true;
+                expired.emplace_back(&client, false);
+            }
+        }
+
+        for (const auto &[client, partial] : expired) {
+            protocolFailure(*client,
+                            partial
+                                ? "RFB client stopped mid-message past the bounded progress deadline"
+                                : "RFB client produced no useful message within the bounded post-init deadline");
+        }
+    }
+
+    // A stage that waits on the viewer or on capture still gets a finite window, so a connection that stalls
+    // there cannot hold its slot forever.
+    void armWaitingStageDeadline(ClientState &client, ClientPhase stage, const char *message)
+    {
+        QPointer<QTcpSocket> guarded(client.socket);
+        QTimer::singleShot(kClientInitTimeoutMs, this, [this, guarded, stage, message] {
+            QTcpSocket *socket = guarded.data();
+            if (!socket)
+                return;
+            const auto it = m_clients.find(socket);
+            if (it == m_clients.end() || it->second->phase != stage)
+                return;
+            publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
+            socket->abort();
+        });
+    }
+
     void readClient(QTcpSocket *socket)
     {
         const auto it = m_clients.find(socket);
         if (it == m_clients.end())
             return;
         ClientState &client = *it->second;
-        client.input += socket->readAll();
-        if (client.input.size() > kMaxClientInputBytes) {
+        // #158: decide from the pending byte count before reading. Appending everything the socket holds and
+        // checking the cap afterwards let a single burst be materialized above the documented allowance
+        // first; the reject path must never be larger than the buffer it is protecting.
+        const qsizetype pending = socket->bytesAvailable();
+        if (pending <= 0)
+            return;
+        if (pending > kMaxClientInputBytes - client.input.size()) {
             protocolFailure(client, "RFB client input exceeded the bounded protocol buffer");
             return;
         }
+        client.input += socket->readAll();
         processClient(client);
+
+        // #158: only an incomplete Normal-phase message arms the progress deadline, and every byte of
+        // progress restarts it. Completion (empty buffer) clears the condition.
+        const bool partial = client.phase == ClientPhase::Normal && !client.input.isEmpty();
+        client.partialMessagePending = partial;
+        if (partial)
+            client.partialMessageSince = OccupancyClock::now();
     }
 
     bool endContinuousUpdates(ClientState &client)
@@ -729,6 +839,14 @@ private:
         return true;
     }
 
+    // #158: a Normal-phase message counts as useful only once it is fully consumed; partial progress never
+    // satisfies the post-init usefulness deadline.
+    static void consumeClientMessage(ClientState &client, qsizetype bytes)
+    {
+        client.input.remove(0, bytes);
+        client.producedUsefulMessage = true;
+    }
+
     void processClient(ClientState &client)
     {
         for (;;) {
@@ -740,9 +858,11 @@ private:
                     return;
                 const QByteArray version = client.input.left(12);
                 client.input.remove(0, 12);
-                if (!version.startsWith("RFB 003.00") || version.at(11) != '\n'
-                    || (version.mid(8, 3) != "008" && version.mid(8, 3) != "007")) {
-                    protocolFailure(client, "RFB client protocol version is unsupported; 3.7/3.8 required");
+                // #158: V1 speaks RFB 3.8 exactly. Accepting 3.7 as well would advertise a compatibility the
+                // product does not qualify, and the rejection has to happen before a security-type list is
+                // written so a 3.7 peer never sees a 3.8 negotiation.
+                if (version != QByteArrayLiteral("RFB 003.008\n")) {
+                    protocolFailure(client, "RFB client protocol version is unsupported; exact RFB 3.8 required");
                     return;
                 }
 #ifdef HYREMOTE_HAS_TRANSPORT_SECURITY
@@ -785,6 +905,8 @@ private:
                 appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
+                armWaitingStageDeadline(client, ClientPhase::AwaitClientInit,
+                                        "RFB client did not complete the handshake within the bounded ClientInit window");
                 continue;
             }
 
@@ -815,6 +937,8 @@ private:
                 appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
+                armWaitingStageDeadline(client, ClientPhase::AwaitClientInit,
+                                        "RFB client did not complete the handshake within the bounded ClientInit window");
                 continue;
             }
 #endif
@@ -823,10 +947,14 @@ private:
                 if (client.input.size() < 1)
                     return;
                 client.input.remove(0, 1);
-                if (latestFrame())
+                if (latestFrame() || (m_security.initialFramebufferWidth != 0
+                                      && m_security.initialFramebufferHeight != 0))
                     sendServerInit(client);
-                else
+                else {
                     client.phase = ClientPhase::AwaitInitialFrame;
+                    armWaitingStageDeadline(client, ClientPhase::AwaitInitialFrame,
+                                            "RFB client waited past the bounded initial-frame window");
+                }
                 continue;
             }
 
@@ -840,7 +968,7 @@ private:
                 if (client.input.size() < 20)
                     return;
                 const QByteArray message = client.input.left(20);
-                client.input.remove(0, 20);
+                consumeClientMessage(client, 20);
                 const auto spec = parsePixelSpec(message);
                 if (!spec) {
                     protocolFailure(client, "RFB client requested an unsupported pixel format");
@@ -899,7 +1027,7 @@ private:
                         selectedEncoding = true;
                     }
                 }
-                client.input.remove(0, size);
+                consumeClientMessage(client, size);
                 client.cursorSignature.clear();
                 // Wait for SetPixelFormat; the update path sends the cursor
                 // for viewers that keep the native format.
@@ -933,7 +1061,7 @@ private:
                     static_cast<std::int32_t>(readU16(client.input, 4)),
                     static_cast<std::int32_t>(readU16(client.input, 6)),
                     static_cast<std::int32_t>(readU16(client.input, 8))};
-                client.input.remove(0, 10);
+                consumeClientMessage(client, 10);
                 if (enable && region.empty()) {
                     protocolFailure(client, "RFB ContinuousUpdates requires a nonempty region");
                     return;
@@ -976,7 +1104,7 @@ private:
                     return;
                 const std::uint32_t flags = readU32(client.input, 4);
                 const QByteArray payload = client.input.mid(9, length);
-                client.input.remove(0, size);
+                consumeClientMessage(client, size);
                 // Only the bounded request/response is supported. Do not echo
                 // BlockBefore/BlockAfter/SyncNext: queued socket bytes do not prove
                 // physical send order or downstream Qt input completion.
@@ -993,7 +1121,7 @@ private:
                 if (client.continuousEnabled && incremental) {
                     // The extension suppresses request-driven incremental updates,
                     // but explicit full refreshes must still work.
-                    client.input.remove(0, 10);
+                    consumeClientMessage(client, 10);
                     continue;
                 }
                 client.continuousRequestArmed = false;
@@ -1003,7 +1131,7 @@ private:
                      static_cast<std::int32_t>(readU16(client.input, 4)),
                      static_cast<std::int32_t>(readU16(client.input, 6)),
                      static_cast<std::int32_t>(readU16(client.input, 8))});
-                client.input.remove(0, 10);
+                consumeClientMessage(client, 10);
                 trySendUpdate(client);
                 continue;
             }
@@ -1013,7 +1141,7 @@ private:
                     return;
                 const bool pressed = byteAt(client.input, 1) != 0;
                 const std::uint32_t keysym = readU32(client.input, 4);
-                client.input.remove(0, 8);
+                consumeClientMessage(client, 8);
                 if (!deliverKey(client, keysym, pressed))
                     return;
                 continue;
@@ -1025,7 +1153,7 @@ private:
                 const std::uint8_t mask = byteAt(client.input, 1);
                 const std::uint16_t x = readU16(client.input, 2);
                 const std::uint16_t y = readU16(client.input, 4);
-                client.input.remove(0, 6);
+                consumeClientMessage(client, 6);
                 deliverPointer(client, mask, x, y);
                 continue;
             }
@@ -1041,7 +1169,7 @@ private:
                 const qsizetype size = 8 + static_cast<qsizetype>(length);
                 if (client.input.size() < size)
                     return;
-                client.input.remove(0, size);
+                consumeClientMessage(client, size);
                 continue;
             }
 
@@ -1052,11 +1180,11 @@ private:
 
     void sendServerInit(ClientState &client)
     {
-        const auto frame = latestFrame();
-        if (!frame || !client.socket)
+        if (!client.socket)
             return;
-        const auto width = frame->geometry.size.width;
-        const auto height = frame->geometry.size.height;
+        const auto frame = latestFrame();
+        const auto width = frame ? frame->geometry.size.width : m_security.initialFramebufferWidth;
+        const auto height = frame ? frame->geometry.size.height : m_security.initialFramebufferHeight;
         if (width == 0 || height == 0 || width > std::numeric_limits<std::uint16_t>::max()
             || height > std::numeric_limits<std::uint16_t>::max()) {
             protocolFailure(client, "RFB framebuffer geometry exceeds the protocol baseline");
@@ -1077,6 +1205,8 @@ private:
         client.framebufferHeight = static_cast<std::uint16_t>(height);
         client.delivery.invalidateFull(width, height);
         client.phase = ClientPhase::Normal;
+        client.normalEnteredAt = OccupancyClock::now();
+        client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
     }
@@ -1462,10 +1592,17 @@ private:
             const std::uint8_t *source = base + (static_cast<std::size_t>(y) + row) * plane->stride
                                          + static_cast<std::size_t>(x) * 4U;
             for (std::uint32_t col = 0; col < width; ++col) {
+                const std::uint8_t alpha = source[col * 4U + 3U];
                 appendEncodedPixel(message,
-                                   source[col * 4U],
-                                   source[col * 4U + 1U],
-                                   source[col * 4U + 2U],
+                                   rfbOpaqueChannel(source[col * 4U],
+                                                    alpha,
+                                                    frame.geometry.alphaMode),
+                                   rfbOpaqueChannel(source[col * 4U + 1U],
+                                                    alpha,
+                                                    frame.geometry.alphaMode),
+                                   rfbOpaqueChannel(source[col * 4U + 2U],
+                                                    alpha,
+                                                    frame.geometry.alphaMode),
                                    pixels);
             }
         }
@@ -1601,6 +1738,7 @@ private:
     hyremote::InputHandler m_onInput;
     hyremote::TransportEventHandler m_onEvent;
     QTcpServer *m_server = nullptr;
+    QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};

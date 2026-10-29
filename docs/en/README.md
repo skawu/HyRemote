@@ -22,12 +22,12 @@ This area provides product integration, deployment, security, compatibility, and
 
 ## Product overview
 
-Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) for product positioning, the four integration frontends, current product capabilities, and long-term direction.
+Start with [`product-overview.md`](product-overview.md) ｜ [中文](../product-overview.md) for positioning and integration. **The single current product-outcome roadmap** is [`../internal/product-version-delivery-roadmap-2026-10-23.md`](../internal/product-version-delivery-roadmap-2026-10-23.md) (Owner #594/#605); [`versioning.md`](versioning.md) defines digit semantics and `.github/release/release-trains.json` alone authorizes exact activated Feature scopes. First GA targets qualified Windows Qt 5.15/6.8 cells only; Qt 6.5/6.12 are post-GA.
 
-The current release focuses on **getting users to a working remote-access path quickly**:
+The following describes the historical **V0.3.0.0 Product Preview** baseline; **the public `v0.3.3.0` tag/Release created on 2026-10-23 was RETRACTED** due to release-process and same-SHA evidence failures and is **not an accepted product release**. The candidate included Raw/TRLE and Windows maintained-viewer evidence, but must be requalified on one exact candidate. Its exact publication record is [`../releases/v0.3.3.0.md`](../releases/v0.3.3.0.md):
 
 - C++ / QML / Generic / QPA are peer product integration routes with different mechanics, not different product rank;
-- Windows x86_64 and Linux x86_64 with Qt 6.8.3 are the current reference environments;
+- **Historical published V0.3.0.0 matrix:** Qt 6.8.3 on Windows **and Linux** x86_64 were release-time reference/support claims (see `compatibility.md`); do not rewrite those historical facts. **For all new Feature/RC/GA qualification:** Windows x86_64 is the only required physical evidence platform, Linux/ARM64 are user-validation pending and must not be claimed newly Supported without fresh evidence (#563);
 - Widgets and Qt Quick use the same Shared Runtime;
 - the default listener is `0.0.0.0:5921` and remote input is disabled by default;
 - route-specific compatibility limits are documented explicitly rather than expressed as Primary/Preview status;
@@ -44,7 +44,8 @@ The current release focuses on **getting users to a working remote-access path q
 | [`security.md`](security.md) ｜ [中文](../security.md) | Current security behavior, defaults, and unsupported security capabilities |
 | [`security-model.md`](security-model.md) ｜ [中文](../security-model.md) | Trust boundaries, threat model, and later security requirements |
 | [`known-limitations.md`](known-limitations.md) ｜ [中文](../known-limitations.md) | Known product limitations |
-| [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Product version semantics and V0.1 → V1.x evolution |
+| [`versioning.md`](versioning.md) ｜ [中文](../versioning.md) | Version-digit semantics and exact release admission (not a competing feature roadmap) |
+| [`../internal/product-version-delivery-roadmap-2026-10-23.md`](../internal/product-version-delivery-roadmap-2026-10-23.md) | **Sole current feature roadmap**: sequencing, Qt LTS, Tool, watermark, Docker, post-GA |
 | [`v1-api-stability.md`](v1-api-stability.md) ｜ [中文](../v1-api-stability.md) | Public API stability boundary |
 | [`widgets-capture.md`](widgets-capture.md) ｜ [中文](../widgets-capture.md) | Widgets capture model |
 | [`quick-capture.md`](quick-capture.md) ｜ [中文](../quick-capture.md) | Qt Quick capture model |

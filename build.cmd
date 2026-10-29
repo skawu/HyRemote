@@ -37,6 +37,58 @@ if errorlevel 1 (
     exit /b 2
 )
 
+set "BUILD_DIR_PROBE=%~dp0.hyremote-build-dir-%RANDOM%%RANDOM%"
+cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %* --print-build-dir > "%BUILD_DIR_PROBE%" 2>&1
+findstr /b "HYREMOTE_BUILD_DIR=" "%BUILD_DIR_PROBE%" > "%BUILD_DIR_PROBE%.line"
+set "HYREMOTE_BUILD_DIR="
+set /p "HYREMOTE_BUILD_DIR=" < "%BUILD_DIR_PROBE%.line"
+del /q "%BUILD_DIR_PROBE%" "%BUILD_DIR_PROBE%.line" >nul 2>&1
+if not defined HYREMOTE_BUILD_DIR (
+    echo Could not resolve the configured build directory. No build was started.
+    exit /b 1
+)
+if /i not "%HYREMOTE_BUILD_DIR:~0,19%"=="HYREMOTE_BUILD_DIR=" (
+    echo Invalid build directory response. No build was started.
+    exit /b 1
+)
+set "HYREMOTE_BUILD_DIR=%HYREMOTE_BUILD_DIR:~19%"
+set "HYREMOTE_QT_HANDOFF_DIR=%HYREMOTE_BUILD_DIR%"
+set "QT_CHOICE_FILE=%HYREMOTE_QT_HANDOFF_DIR%\.hyremote-qt-candidates"
+set "QT_CHOICE_SENTINEL=%HYREMOTE_QT_HANDOFF_DIR%\.hyremote-qt-choice-required"
+if exist "%QT_CHOICE_FILE%" del /q "%QT_CHOICE_FILE%" >nul 2>&1
+if exist "%QT_CHOICE_SENTINEL%" del /q "%QT_CHOICE_SENTINEL%" >nul 2>&1
+
+cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %*
+set "HYB_EXIT=%ERRORLEVEL%"
+if not exist "%QT_CHOICE_SENTINEL%" exit /b %HYB_EXIT%
+
+rem CMake owns discovery/validation; this wrapper owns the terminal prompt.
+rem A redirected/non-console stdin must fail closed rather than consuming a
+rem scripted value or hanging on set /p.
+mode con >nul 2>&1
+if errorlevel 1 (
+    echo Several Qt Kits require an interactive console, but stdin has no console.
+    echo Pass --qt-prefix, build.yml qt.prefix, or --no-prompt. No Kit selected.
+    del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+    exit /b 1
+)
+set "HYREMOTE_QT_CHOICE="
+set /p "HYREMOTE_QT_CHOICE=Choose Qt Kit by number (or q to cancel): "
+if /i "%HYREMOTE_QT_CHOICE%"=="q" (
+    del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+    exit /b 1
+)
+set "HYREMOTE_QT_PREFIX="
+for /f "usebackq tokens=1,* delims=|" %%A in ("%QT_CHOICE_FILE%") do (
+    if "%%A"=="%HYREMOTE_QT_CHOICE%" set "HYREMOTE_QT_PREFIX=%%B"
+)
+if not defined HYREMOTE_QT_PREFIX (
+    del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+    echo Invalid Qt Kit choice; no Kit selected.
+    exit /b 1
+)
+del /q "%QT_CHOICE_FILE%" "%QT_CHOICE_SENTINEL%" >nul 2>&1
+set "HYREMOTE_QT_SELECTION=%HYREMOTE_QT_PREFIX%"
 cmake -P "%~dp0cmake\HyRemoteBuild.cmake" -- %*
 exit /b %ERRORLEVEL%
 HYREMOTE_BATCH

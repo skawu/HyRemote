@@ -1,6 +1,8 @@
+> **Current product direction, 2026-10-22 — D 综合工作台 (Product Owner selected):** The full forward-looking feature list, page flows, UI state machine, SDK-assistant boundaries, diagnostics model, portable-delivery investigation, secure-management deferral and phased acceptance now live in [HyRemoteTool 综合工作台 RFC](hyremote-tool-workbench-prd-2026-10-22.md) (tracking #579). This document remains the **historical V0.3.0.0 out-of-process RFB access-client contract** and records that release's limits; it is not sufficient as the integrated workbench roadmap. **D1=A is now approved**: S1 remote session/workspace, saved connections and basic client diagnostics first (delivery tasks #581–#586); S2 advanced diagnosis #587 and S3 SDK assistance #588 follow. Only D2–D5 remain open; no new version assignment or host-management authorization. Nothing here retroactively changes the V0.3.0.0 release or authorizes host management over RFB.
+
 # HyRemoteTool companion plan
 
-Status: active companion-tool plan for the V0.3 line. Product authority: #378. V0.3.0.0 release authority: #234.
+Status: historical V0.3.0.0 Tool architecture and optional management-plane sketch (#378/#234), **not a parallel Feature/version sequencing authority**. Follow the [single current product roadmap](product-version-delivery-roadmap-2026-10-23.md) / #594/#605: Windows Qt 5.15/6.8 (#603) is first after V0.3.3; the HyRemoteTool D workbench advances incrementally via #581–#590 (OS Auto/manual language #590). Remote management/TLS requires separate product/security admission; full Tool S1 is not a prerequisite to Qt LTS Feature. Qt 6.5/6.12 are strictly post-GA.
 
 ## Position
 
@@ -49,7 +51,7 @@ The UI must not show disabled placeholder buttons for these. The README and rele
 
 ## Later phases
 
-### V0.3.x: management plane
+### Future optional management plane (independent authority required; not an automatic V0.3.x commitment)
 
 Prerequisites:
 

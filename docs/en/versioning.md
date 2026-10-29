@@ -111,9 +111,9 @@ The V0.3 family carries two separate classes of work:
 
 ### Mandatory pre-GA V0.3 baseline
 
-Qt 5.15, Qt 6.5, and Qt 6.8 compatibility; Windows and Linux; x86_64 and ARM64/AArch64; qwindows, qxcb, Wayland, and EGLFS reference cells; practical compression and incremental/damage delivery; maintained-viewer interoperability; the #370 performance programme.
+**Current Owner product roadmap (#594/#605, 2026-10-26):** [the sole complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The **only mandatory first-GA Qt LTS families are Qt 5.15 and Qt 6.8** on actually qualified Windows cells. **Qt 6.5 and Qt 6.12 are postponed until AFTER V1.0 GA**. Released V0.3.3.0 #144/#175 remains historical and frozen; the current development outcome is Qt5.15/Qt6.8 (#603/#604), and HyRemoteTool evolves incrementally across releases. V0.4 is qualification-only; V1 promotes an accepted RC. Known, testable user outcomes receive PLANNED versions in the canonical roadmap; unproven technical themes remain unnumbered. A PLANNED number does not activate a train or authorize a release. Machine activation/mandatory children come only from `.github/release/release-trains.json` and release gates. Historical releases are unchanged.
 
-These must converge before V0.4 RC entry. No item receives a preassigned Feature version (#333).
+Only **Windows x86_64 Qt 5.15 and Qt 6.8 applicable supported cells** require physical/real-runtime pre-GA qualification, alongside RFB Raw/TRLE incremental damage, maintained Viewer interoperability, #370 performance, SDK installation and packaging. Linux/ARM64/qxcb/Wayland/EGLFS remain user-validation pending and non-blocking (#563). Qt6.5/6.12 are not pre-RC or first-GA conditions.
 
 ### Optional, quality, or differentiating outcomes
 
@@ -126,11 +126,52 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 - practical damage, compression, and incremental delivery; profiling selected Raw + TRLE, and ZRLE is not currently required;
 - the #370 performance baseline;
 - maintained standard-viewer interoperability;
-- Windows and Linux x86_64, Qt 6.8.3, with four consistent frontends.
+- **Windows x86_64 Qt 6.8.3** exact reference and two maintained external GUI viewers; Linux validation is optional/user-led, and every integration frontend reports its actual applicable cell.
 
 `V0.3.1.0` (Qt5 slot) and `V0.3.2.0` (Bandwidth/ZRLE slot) are retired historical records and cannot be selected. V0.3.3.0 is a new coherent outcome. See [`../internal/v0.3.3.0-plan.md`](../internal/v0.3.3.0-plan.md).
 
-Platform breadth and management-plane work are not part of V0.3.3.0. They remain later V0.3.x outcomes.
+First-GA Qt5.15/Qt6.8 compatibility is the current V0.3.4.0 outcome; Tool improves incrementally, and Host config/text-watermark and Docker are later independent planned outcomes. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. The canonical [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) assigns planned versions to known user outcomes; this summary does not independently assign versions.
+
+## Assigned next development Feature: V0.3.4.0 (2026-10-26)
+
+**Local Owner development target: V0.3.4.0, not V0.4.0.0.** The next coherent user outcome is genuinely tested **Windows x86_64 Qt 5.15.2 + Qt 6.8.3** SDK/Runtime compatibility: selected exact Qt Kit/compiler, real source and installed consumers, application UI/input, applicable C++/QML/Generic/QPA and Widgets/Quick cells, exact-private-ABI QPA and maintained external Viewer. Product owner issue #603; implementation #265/#566; per-cell pre-GA evidence #57; architecture guard #209. See the [local development handoff](../internal/v0.3.4.0-windows-qt-lts-development-charter.md).
+
+- **V0.3.4.0: current exact development target**, with candidate release only after machine-mandatory issues, exact-SHA Windows QA and independent current-head review.
+- **V0.3.5.0: next *non-activated* candidate**, host config/state paths and server-side static text watermark #591/#589; requires separate admission.
+- **V0.4.0.0: NOT ACTIVE RC**, strictly qualification of already implemented functionality. It cannot absorb missing V0.3 Qt LTS/SDK/Tool feature implementation.
+
+This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before all mandatory acceptance and #95 release gates pass.
+
+## Complete numbered planning for known product outcomes (summary; editable, 2026-10-26)
+
+> **Source of truth:** This table is a summary, not a second source of truth. The latest merged version of the [canonical product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) on `develop` controls planned outcomes, versions, ordering, dependencies, and status. Issues #594/#605 record Owner decisions; `.github/release/release-trains.json` controls machine train registration/mandatory scope; actual support requires release/tag, compatibility data, and exact-SHA evidence.
+
+
+**Owner update:** Assign a concrete *planning version* to every known, testable product outcome so the local owner has an unambiguous development target. A planned number is **not** an activated machine release train, qualified feature, release branch or permission to tag. The [sole current product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) owns dependencies, test criteria, owner Issues, exceptions and changes. Research without an admitted user deliverable stays a research obligation, not an invented feature.
+
+| Version | Planned user-deliverable outcome | Status |
+| --- | --- | --- |
+| V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | Current development target; train registered by merged PR #655, not release authorization |
+| V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | Planned, not activated |
+| V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Planned, not activated |
+| V0.3.7.0 | Real user Qt app + HyRemote Docker deployment #592 | Conditional plan; actual container required |
+| V0.4.0.0 | Qualification-only RC, **not development of missing features** | Inactive conditional RC |
+| V1.0.0.0 | Windows first GA qualified Qt5.15/Qt6.8 support contract | Not released |
+| V1.0.1.0 / V1.0.2.0 | Independently qualify Qt6.5 / Qt6.12 post-GA #605 | Planned, not activated |
+| V1.0.3.0 / V1.0.4.0 | Tool S2 imported diagnostics #587 / S3 local SDK guidance #588 | Planned, not activated |
+| V1.0.5.0 / V1.0.6.0 / V1.0.7.0 | Logo #593 / no-install viewer #204 / permissioned text clipboard #171 | Post-GA; latter two conditional |
+| V1.1.0.0 / V1.1.1.0 | Secure Internet Gateway #190 / authenticated Session Operations #170 | Strategic conditional plan |
+
+| V1.2.0.0 | Real Qt Quick/ARM64 HMI adoption without an accidental Qt Widgets dependency #149/#203/#7/#236 | Conditional; actual hardware evidence |
+| V1.2.1.0 | Native Linux Wayland support and local GUI preservation #346/#148 | Conditional, platform evidence |
+| V1.2.2.0 | True single- and multi-touch in Qt Quick / industrial HMI #172 | Conditional, viewer and hardware evidence |
+| V1.2.3.0 | Application-owned admission, control rights, and privacy policy #225 | Strategic conditional, after #170 |
+| V1.2.4.0 | Secure file exchange or a documented external secure alternative #173 | Discovery gate / GO–NO-GO |
+| V1.2.5.0 | Official viewer enhanced server capability/diagnostic/secure-channel contract #246 | Discovery gate / GO–NO-GO |
+| V1.2.6.0 | Appliance capture-on-demand and bounded idle resource use #151 | Conditional after device measurement |
+| V1.2.7.0 | Operational performance diagnostics beyond baseline #180 | Conditional on real support needs |
+
+**Change control:** any rearrangement needs a #594 Owner decision, a reviewed roadmap PR, old→new version mapping, reason, impact on dependencies/CI/support claims, and an auditable merge SHA. Do not create unapproved `release/*` or tags. The local owner must implement **V0.3.4.0 now**, not V0.4.0.0.
 
 ## V0.4: Qualify It
 
@@ -147,7 +188,7 @@ Focus areas:
 - Qt LTS compatibility qualification, including Qt 5.15 LTS;
 - real-world application qualification;
 - performance measurement and blocker-driven optimization;
-- physical Windows/Linux local and remote coexistence;
+- physical **Windows x86_64** local and remote coexistence; Linux/ARM64 device evidence remains optional/user-validation pending (#563);
 - release package and support-statement hardening.
 
 Maintenance iterations may use:

@@ -171,6 +171,44 @@ jobs:
         run: |
           python .github/scripts/resolve-ci-scope.py
 
+  windows-qt5:
+    name: Windows x86_64 / Qt 5.15.2 / C++ Widgets
+    needs: classify
+    if: >-
+      needs.classify.outputs.product == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # The candidate product-fit test runs in this lane too, and it imports Pillow. Installing the viewer
+      # tooling into whichever interpreter happens to be on PATH made the Full Gate fail with
+      # "No module named 'PIL'" while the Qt 6 lane passed, because only that lane pinned the interpreter.
+      - name: Pin the Python used by the candidate tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt 5.15.2 and the candidate viewer tooling
+        shell: cmd
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir "%RUNNER_TEMP%\Qt5"
+          if errorlevel 1 exit /b 1
+          echo %RUNNER_TEMP%\Qt5\5.15.2\msvc2019_64\bin>>%GITHUB_PATH%
+          python -m pip install --disable-pip-version-check -r src/integrations/cpp/tests/candidate-test-requirements.txt
+          python -c "import PIL, vncdotool; print('viewer tooling importable: Python', __import__('sys').version.split()[0])"
+
+      - name: Build and test Qt5 C++/Widgets
+        shell: cmd
+        env:
+          TEST_EXCLUDE: ${{ needs.classify.outputs.test_exclude }}
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          call build.cmd build --mode=cpp --qt-prefix="%RUNNER_TEMP%\Qt5\5.15.2\msvc2019_64" --build-type=Release --build-dir=build-ci-qt5 --tests --run-tests --no-examples "--test-exclude=%TEST_EXCLUDE%" -j4
+
   product:
     name: ${{ matrix.name }} / ${{ needs.classify.outputs.integrations }} / Release
     needs: classify
@@ -527,6 +565,23 @@ jobs:
           cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
             -P tests/release-readiness/check_release_authority_policy.cmake
 
+      # A01/E01: the exact-cell matrix is a product statement made in tracked text, so the same cheap lane
+      # executes its guard whenever any document it reads changes. No Qt SDK, no product build.
+      - name: Compatibility cell matrix guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
+            -P tests/release-readiness/check_compatibility_cells.cmake
+
+      # E02/#602: every inherited V1 mandatory child stays accounted for while the machine list is reconciled.
+      - name: GA scope reconciliation guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
+            -P tests/release-readiness/check_ga_scope_reconciliation.cmake
+
   no-product-change:
     # #380: this is a decision report, not an acceptance run. Its name has to say that no hosted product validation
     # was required, so nobody reads a green checkmark here as "the product gate ran".
@@ -553,13 +608,14 @@ jobs:
   ci-merge-verdict:
     name: ci-merge-verdict
     if: ${{ always() && github.event_name == 'pull_request' && !github.event.pull_request.draft }}
-    needs: [classify, product, authority-governance]
+    needs: [classify, product, windows-qt5, authority-governance]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
       CLASSIFY: ${{ needs.classify.result }}
       PRODUCT_REQUIRED: ${{ needs.classify.outputs.product }}
       PRODUCT_RESULT: ${{ needs.product.result }}
+      QT5_RESULT: ${{ needs.windows-qt5.result }}
       GOVERNANCE_REQUIRED: ${{ needs.classify.outputs.governance }}
       GOVERNANCE_RESULT: ${{ needs.authority-governance.result }}
       CLASSIFIED_LANE: ${{ needs.classify.outputs.lane }}
@@ -574,8 +630,10 @@ jobs:
             echo "::error::CI PR merge lane/decision invalid: $CLASSIFIED_LANE/$EXPECTED_DECISION"; exit 1; }
           if [[ "$PRODUCT_REQUIRED" == true ]]; then
             [[ "$PRODUCT_RESULT" == success ]] || { echo "::error::Required Windows Qt product tests did not pass: $PRODUCT_RESULT"; exit 1; }
+            [[ "$QT5_RESULT" == success ]] || { echo "::error::Required Windows Qt5 C++/Widgets lane did not pass: $QT5_RESULT"; exit 1; }
           else
             [[ "$PRODUCT_RESULT" == skipped ]] || { echo "::error::Unexpected product result on no-product PR: $PRODUCT_RESULT"; exit 1; }
+            [[ "$QT5_RESULT" == skipped ]] || { echo "::error::Unexpected Qt5 result on no-product PR: $QT5_RESULT"; exit 1; }
             echo "No product-affecting diff; no Qt tests required or implied."
           fi
           if [[ "$GOVERNANCE_REQUIRED" == true ]]; then

@@ -8,6 +8,9 @@ on:
   pull_request:
     paths:
       - .github/workflows/rfb-profile.yml
+      # #609: validate corrected CPU accounting on the existing Windows profile lane.
+      # Broader CPU/sustained regression selection stays with #374.
+      - src/runtime/tests/test_rfb_wire_robustness.cpp
 
 permissions:
   contents: read

@@ -170,13 +170,26 @@ GOVERNANCE_PREFIXES = (
     ".github/workflows/git-flow-policy.yml",
     "tests/release-readiness/release_scope.cmake",
     "tests/release-readiness/check_release_authority_policy.cmake",
+    # A01/E01: the exact-cell matrix guard reads three documents, so a change to any of them has to execute it.
+    # It is CMake policy over tracked text with no Qt SDK and no product build, which is what this lane is for.
+    "tests/release-readiness/check_compatibility_cells.cmake",
+    "docs/compatibility.md",
+    "docs/en/compatibility.md",
+    "docs/internal/windows-qt-lts-route-matrix-2026-10-24.md",
+    # E02/#602: the reconciliation ledger must be executed whenever it, or the machine list it accounts for,
+    # changes. The manifest itself is already a governance input.
+    "tests/release-readiness/check_ga_scope_reconciliation.cmake",
+    "docs/internal/v1-ga-scope-reconciliation-2026-10-28.md",
 )
 
-# The same two scripts, listed exactly, are excluded from product selection even though they live under a directory
-# whose other contents are product-relevant: a change to the selector or the authority policy is governance.
+# These scripts, listed exactly, are excluded from product selection even though they live under a directory whose
+# other contents are product-relevant: a change to the selector, the authority policy or the cell-matrix guard is
+# governance.
 GOVERNANCE_ONLY_PATHS = (
     "tests/release-readiness/release_scope.cmake",
     "tests/release-readiness/check_release_authority_policy.cmake",
+    "tests/release-readiness/check_compatibility_cells.cmake",
+    "tests/release-readiness/check_ga_scope_reconciliation.cmake",
 )
 
 # A name no exclusion is ever allowed to match. Any expression that matches it excludes every test, which would make
@@ -469,6 +482,23 @@ def self_test() -> int:
          {"governance": "true", "product": "false"}),
         ("release policy workflow is governance", "pull_request",
          [".github/workflows/git-flow-policy.yml"], False, {"governance": "true"}),
+        # A01/E01: every document the exact-cell matrix guard reads must execute it, in a lane with no Qt.
+        ("compatibility matrix is governance, not product", "pull_request",
+         ["docs/compatibility.md"], False, {"governance": "true", "product": "false"}),
+        ("english compatibility matrix is governance, not product", "pull_request",
+         ["docs/en/compatibility.md"], False, {"governance": "true", "product": "false"}),
+        ("internal route matrix is governance, not product", "pull_request",
+         ["docs/internal/windows-qt-lts-route-matrix-2026-10-24.md"], False,
+         {"governance": "true", "product": "false"}),
+        ("compatibility cell guard is governance, not product", "pull_request",
+         ["tests/release-readiness/check_compatibility_cells.cmake"], False,
+         {"governance": "true", "product": "false"}),
+        ("GA scope ledger is governance, not product", "pull_request",
+         ["docs/internal/v1-ga-scope-reconciliation-2026-10-28.md"], False,
+         {"governance": "true", "product": "false"}),
+        ("GA scope guard is governance, not product", "pull_request",
+         ["tests/release-readiness/check_ga_scope_reconciliation.cmake"], False,
+         {"governance": "true", "product": "false"}),
         # Ready product pull requests are classified by the real diff (#244 stays intact).
         ("ready runtime PR builds every capability", "pull_request", ["src/runtime/runtime.cpp"], False,
          {"lane": "PR_FAST", "product": "true", "integrations": "cpp,qml,generic,qpa"}),

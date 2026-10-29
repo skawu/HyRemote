@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 # The declaration is kept on one line on purpose: the release-readiness metadata gate matches it.
-project(HyRemote VERSION 0.3.3.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
+project(HyRemote VERSION 0.3.4.0 DESCRIPTION "Qt Remote Access Framework" LANGUAGES C CXX)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(HyRemoteProjectOptions)
 include(HyRemoteReleaseProfile)
@@ -75,7 +75,14 @@ if(PROJECT_IS_TOP_LEVEL
             set(Qt6_VERSION "${Qt5_VERSION}")
             set(Qt6_VERSION_MAJOR 5)
             set(Qt6_VERSION_MINOR 15)
-            if(NOT HYREMOTE_QT5_ENABLE_QUICK)
+            if(HYREMOTE_QT5_ENABLE_QUICK)
+                set(HYREMOTE_BUILD_QUICK_ADAPTER ON CACHE BOOL
+                    "Qt 5.15 Quick is experimental; enabled by HYREMOTE_QT5_ENABLE_QUICK" FORCE)
+                message(WARNING
+                    "HyRemote: Qt 5.15 Quick is EXPERIMENTAL and NOT a qualified route. "
+                    "The explicit opt-in currently has failing Quick capture/input tests; "
+                    "do not claim Qt5 Quick support or include it in a support matrix.")
+            else()
                 set(HYREMOTE_BUILD_QUICK_ADAPTER OFF CACHE BOOL
                     "Qt 5.15 Quick is experimental; enable explicitly with HYREMOTE_QT5_ENABLE_QUICK" FORCE)
             endif()
@@ -95,6 +102,11 @@ if(PROJECT_IS_TOP_LEVEL
 endif()
 
 if(TARGET Qt6::Core)
+    if(HYREMOTE_QT_MAJOR STREQUAL "5")
+        set(HYREMOTE_QT_PUBLIC_PREFIX Qt5)
+    else()
+        set(HYREMOTE_QT_PUBLIC_PREFIX Qt6)
+    endif()
     set(HYREMOTE_QT_LTS_LINES 5.15 6.2 6.5 6.8)
     set(HYREMOTE_QT_LINE "${Qt6_VERSION_MAJOR}.${Qt6_VERSION_MINOR}")
     if(HYREMOTE_QT_LINE IN_LIST HYREMOTE_QT_LTS_LINES)
@@ -119,6 +131,9 @@ if(HYREMOTE_BUILD_REMOTE_ACCESS)
     endif()
 
     if(TARGET Qt6::Core AND TARGET Qt6::Network)
+        if(NOT DEFINED HYREMOTE_QT_PUBLIC_PREFIX OR HYREMOTE_QT_PUBLIC_PREFIX STREQUAL "")
+            set(HYREMOTE_QT_PUBLIC_PREFIX Qt6)
+        endif()
         add_subdirectory(src/runtime runtime)
         if(HYREMOTE_BUILD_CPP_API)
             add_subdirectory(src/integrations/cpp integrations/cpp)
@@ -222,6 +237,40 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
             -DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
     )
+    # A01/E01: the exact-cell matrix is a product statement, so the repository checks it instead of trusting
+    # the table to stay honest across edits.
+    add_test(
+        NAME hyremote-release-readiness-compatibility-cells
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_compatibility_cells.cmake"
+    )
+
+    # E02/#602: the inherited 26-child list stays accounted for while its reconciliation is reviewed. The machine
+    # change itself remains a separate PR; this only keeps the audit complete.
+    add_test(
+        NAME hyremote-release-readiness-ga-scope-reconciliation
+        COMMAND "${CMAKE_COMMAND}"
+            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ga_scope_reconciliation.cmake"
+    )
+
+    # The protected release-preparation correction rule decides whether a versioned release branch may
+    # be re-based; it is policy, so its positive and negative cases are executed rather than reviewed.
+    # Use the discovered interpreter (never a bare `python`) and skip registration when none exists, so the
+    # suite does not gain an unnecessary executable-name dependency.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-release-preparation-correction
+            COMMAND "${CMAKE_COMMAND}" -E env
+                "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts"
+                "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/release_correction.py"
+                --self-test
+        )
+        set_tests_properties(hyremote-release-preparation-correction PROPERTIES TIMEOUT 120)
+    endif()
+
     add_test(
         NAME hyremote-release-readiness-runtime-contract
         COMMAND "${CMAKE_COMMAND}"
