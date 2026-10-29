@@ -1073,7 +1073,7 @@ bool AccessInstance::start()
         // Nothing was selected anywhere: the profile still needs a descriptor. A selection that exists but is
         // unusable is reported below, after the build-capability check, so a build without the mechanism keeps
         // its capability answer instead of blaming the path.
-        if (hostPaths.ok() && !hostPaths.configFile.isSet()) {
+        if (hostPaths.configFile.ok() && !hostPaths.configFile.isSet()) {
             m_impl->setError(ErrorCode::SecurityUnavailable,
                              QStringLiteral("the selected security profile requires a security descriptor"));
             return false;
@@ -1085,10 +1085,13 @@ bool AccessInstance::start()
                                         "which is not compiled into this build"));
         return false;
 #else
-        if (!hostPaths.ok()) {
+        // Only the configuration selection can block this feature. A broken state directory or secret
+        // reference belongs to the feature that depends on it; refusing to serve a valid descriptor because
+        // an unrelated writable directory is missing would be exactly the over-reach #591 forbids.
+        if (!hostPaths.configFile.ok()) {
             m_impl->setError(ErrorCode::InvalidConfiguration,
                              QStringLiteral("%1; the security descriptor could not be resolved")
-                                 .arg(hostPaths.error));
+                                 .arg(hostPaths.configFile.error));
             return false;
         }
         if (!hostPaths.configFile.isSet()) {

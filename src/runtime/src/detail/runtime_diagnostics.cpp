@@ -231,7 +231,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
           << QStringLiteral("HOST_SECRET_FILE_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.secretFile))
           << QStringLiteral("HOST_PATHS_ERROR=%1")
                  .arg(snapshot.hostPaths.ok() ? QStringLiteral("none")
-                                              : boundedOneLine(snapshot.hostPaths.error));
+                                              : boundedOneLine(snapshot.hostPaths.error()));
 
     if (snapshot.lastError) {
         lines << QStringLiteral("LAST_ERROR_CODE=%1").arg(errorCodeName(snapshot.lastError->code))
