@@ -64,12 +64,12 @@ bool resolveOne(const QString &explicitValue, const char *environmentName,
 
     if (!configRelativeDefault.isEmpty()) {
         const QString cleaned = QDir::cleanPath(configRelativeDefault);
-        if (validate && !validate(cleaned)) {
-            error = QStringLiteral("the configuration-relative %1 '%2' is not usable").arg(label, cleaned);
-            return false;
+        // A derived default is not a user selection: if it is not usable, fall through to the platform
+        // default instead of failing a deployment that may not need this path at all.
+        if (!validate || validate(cleaned)) {
+            selection = {cleaned, HostPathOrigin::ConfigRelative};
+            return true;
         }
-        selection = {cleaned, HostPathOrigin::ConfigRelative};
-        return true;
     }
 
     if (!platformDefault.isEmpty()) {
