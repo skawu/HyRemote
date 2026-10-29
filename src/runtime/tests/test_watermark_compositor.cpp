@@ -269,6 +269,7 @@ void checkCjkTextAndDeterminism()
 void checkDegenerateInputs()
 {
     {
+        // A watermark that cannot fit is refused instead of being clipped, elided or silently shrunk.
         const int width = 24;
         const int height = 12;
         qsizetype stride = 0;
@@ -276,9 +277,35 @@ void checkDegenerateInputs()
         QByteArray destination;
         QString error;
         const WatermarkPolicy policy = enabledPolicy(QStringLiteral("tiny"));
+        check(!composeWatermark(policy, viewOf(frame, width, height, stride), destination, error),
+              QStringLiteral("a frame too small for the text is refused"));
+        check(error.contains(QStringLiteral("does not fit")),
+              QStringLiteral("the refusal explains that the text does not fit"));
+        check(destination.isEmpty(), QStringLiteral("a refused composition produces no buffer"));
+    }
+    {
+        const int width = 320;
+        const int height = 200;
+        qsizetype stride = 0;
+        const QByteArray frame = makeFrame(width, height, &stride);
+        QByteArray destination;
+        QString error;
+        const WatermarkPolicy policy = enabledPolicy(QString(128, QLatin1Char('W')));
+        check(!composeWatermark(policy, viewOf(frame, width, height, stride), destination, error),
+              QStringLiteral("accepted-but-too-wide text is refused at composition time"));
+    }
+    {
+        // Tiling needs one whole instance to fit; a partial repeating pattern is still a visible watermark.
+        const int width = 320;
+        const int height = 200;
+        qsizetype stride = 0;
+        const QByteArray frame = makeFrame(width, height, &stride);
+        WatermarkPolicy policy = enabledPolicy(QStringLiteral("WP"));
+        policy.position = WatermarkPosition::Tiled;
+        QByteArray destination;
+        QString error;
         check(composeWatermark(policy, viewOf(frame, width, height, stride), destination, error),
-              QStringLiteral("a tiny frame composes without failing"));
-        check(destination.size() == stride * height, QStringLiteral("a tiny frame keeps its geometry"));
+              QStringLiteral("a tiled watermark that fits composes without error"));
     }
     {
         const int width = 320;

@@ -144,7 +144,21 @@ bool composeWatermark(const WatermarkPolicy &policy, const WatermarkFrameView &f
     painter.setPen(watermarkColor(policy));
     painter.setOpacity(policy.opacity);
 
+    // A clipped watermark is a silently degraded watermark: part of the operator's text would be missing without
+    // anyone being told. Refuse instead of eliding, scaling or truncating, and let the caller surface the reason.
     const QSizeF size(image.width(), image.height());
+    const QFontMetricsF metrics = painter.fontMetrics();
+    if (metrics.horizontalAdvance(policy.text) > size.width()
+        || metrics.height() > size.height()) {
+        painter.end();
+        destination.clear();
+        error = QStringLiteral("the watermark text does not fit a %1x%2 frame at %3 points")
+                    .arg(image.width())
+                    .arg(image.height())
+                    .arg(policy.fontPointSize);
+        return false;
+    }
+
     if (policy.position == WatermarkPosition::Tiled)
         drawTiledWatermark(painter, size, policy.text);
     else
