@@ -64,6 +64,7 @@ function(hyremote_apply_root_semantic_test_labels)
         hyremote-build-authority-selftest
         hyremote-release-readiness-compatibility-cells
         hyremote-release-readiness-ga-scope-reconciliation
+        hyremote-release-preparation-correction
         hyremote-release-readiness-runtime-contract
         hyremote-release-readiness-repository-layout
         hyremote-release-readiness-documentation-paths
