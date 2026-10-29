@@ -76,6 +76,19 @@ endif()
 # Runtime-owned regressions. These exercise Shared Runtime internals through the C++ test-exports the
 # runtime target already exposes to the build tree, so they register whenever tests are enabled -
 # not only when the C++ frontend or the application-level automatic controller is built.
+add_executable(hyremote-host-paths-test
+    test_host_paths.cpp
+    ../src/detail/host_paths.cpp
+)
+target_link_libraries(hyremote-host-paths-test
+    PRIVATE
+        hyremote-remoteaccess
+        Qt6::Core
+        Qt6::Network
+)
+add_test(NAME hyremote-host-paths-test COMMAND hyremote-host-paths-test)
+set_tests_properties(hyremote-host-paths-test PROPERTIES TIMEOUT 60)
+
 add_executable(hyremote-security-descriptor-test
     test_security_descriptor.cpp
     ../src/detail/security_descriptor.cpp
@@ -492,6 +505,7 @@ hyremote_label_test_family("component;runtime;fast"
     hyremote-runtime-automatic-composite-input-test
     hyremote-runtime-notifications-test
     hyremote-security-descriptor-test
+    hyremote-host-paths-test
     hyremote-target-component-provider-test
     hyremote-input-mailbox-admission-test
 )

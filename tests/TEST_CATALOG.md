@@ -46,6 +46,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-runtime-notifications-test` | automatic Runtime available | Typed Runtime state/client/error notification ordering on real event boundaries. Failure invalidates frontend observability source semantics. |
 | `hyremote-runtime-diagnostics-test` | Runtime | Shared bounded diagnostic report formatting, explicit unknown/none semantics and secret-safe single-line error rendering. Failure invalidates the common support report consumed by peer frontends. |
 | `hyremote-security-descriptor-test` | Runtime | Descriptor/credential parsing and fail-closed configuration. |
+| `hyremote-host-paths-test` | Runtime | #591 host path contract: explicit > environment > config-relative > platform default, fail-closed on an unusable explicit or environment selection, no working-directory fallback. |
 | `hyremote-target-component-provider-test` | Runtime | Target→capture/input adapter selection. Failure invalidates adapter composition. |
 | `hyremote-input-mailbox-admission-test` | Runtime | Bounded input admission/backpressure before GUI delivery. |
 | `hyremote-rfb-multi-client-input-test` | VNC | Per-viewer held key/button ownership and disconnect cleanup. Failure allows one viewer to corrupt another viewer's input state. |
