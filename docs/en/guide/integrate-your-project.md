@@ -526,6 +526,45 @@ application's (reference: Qt 6.8.3 MinGW/x86_64).
 
 ---
 
+## Optional: choose the host paths explicitly (#591)
+
+The security descriptor, the writable state directory and the secret reference are resolved by **one shared Runtime path
+contract**. The four routes only supply the selection; none of them carries its own precedence rules, so one deployment
+answers identically on C++/QML/Generic/QPA.
+
+Precedence, resolved per path:
+
+| Path | Precedence |
+| --- | --- |
+| security descriptor | explicit application/launch selection > `HYREMOTE_CONFIG_FILE` > (none) |
+| state directory | explicit selection > `HYREMOTE_STATE_DIR` > `<descriptor directory>/state` > Qt platform user-data location |
+| secret reference | explicit selection > `HYREMOTE_SECRET_FILE` > (none) |
+
+There is no CWD or home-directory fallback. Relative paths are normalized to absolute paths, and the descriptor-relative
+state directory is anchored to the descriptor's own directory rather than the launch directory.
+
+Explicit entry points per route:
+
+- **C++**: `remote.setSecurityConfigFile(path)` (mutable only while `Stopped`);
+- **QML**: `RemoteAccess { securityConfigFile: "..." }`;
+- **Generic**: `-plugin hyremote:security-config=<path>`;
+- **QPA**: `-platform hyremote:hyremote-security-config=<path>`.
+
+When an explicit or environment selection is unusable (missing/unreadable file, or a state directory whose parent does
+not exist), **only the feature that depends on that path** fails closed with an actionable error; it never falls back to
+another writable location. An unusable state directory therefore does not stop a readable descriptor from starting.
+
+Only the descriptor has a public explicit selector today. The state directory and the secret reference are selectable
+through `HYREMOTE_STATE_DIR` / `HYREMOTE_SECRET_FILE` only, and the Runtime has no persistence or credential consumer
+yet: they are resolved, validated and reported truthfully in the diagnostic report, but that is **not** a claim that
+persistence or credential management has shipped.
+
+Report fields: `HOST_CONFIG_FILE` / `HOST_STATE_DIR` / `HOST_SECRET_FILE` with their own `_ORIGIN`
+(`explicit`, `environment`, `config-relative`, `platform-default`, `none`), and `HOST_PATHS_ERROR` on failure. See
+[troubleshooting](troubleshooting.md).
+
+---
+
 ## STEP 8 - The most common failures
 
 | Symptom | Cause | Fix |
