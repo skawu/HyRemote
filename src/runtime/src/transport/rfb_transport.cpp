@@ -657,7 +657,8 @@ private:
                     return;
                 const auto it = m_clients.find(socket);
                 if (it == m_clients.end() || it->second->phase == ClientPhase::Normal
-                    || it->second->phase == ClientPhase::AwaitClientInit)
+                    || it->second->phase == ClientPhase::AwaitClientInit
+                    || it->second->phase == ClientPhase::AwaitInitialFrame)
                     return;
                 publishEvent(hyremote::TransportEventCode::RecoverableFailure,
                              "RFB client handshake timed out");
@@ -756,20 +757,19 @@ private:
         }
     }
 
-    // The version/security exchange is already done here, so a slow viewer that is still showing its own
-    // notice keeps a wider but finite window before the slot is reclaimed.
-    void armClientInitDeadline(ClientState &client)
+    // A stage that waits on the viewer or on capture still gets a finite window, so a connection that stalls
+    // there cannot hold its slot forever.
+    void armWaitingStageDeadline(ClientState &client, ClientPhase stage, const char *message)
     {
         QPointer<QTcpSocket> guarded(client.socket);
-        QTimer::singleShot(kClientInitTimeoutMs, this, [this, guarded] {
+        QTimer::singleShot(kClientInitTimeoutMs, this, [this, guarded, stage, message] {
             QTcpSocket *socket = guarded.data();
             if (!socket)
                 return;
             const auto it = m_clients.find(socket);
-            if (it == m_clients.end() || it->second->phase != ClientPhase::AwaitClientInit)
+            if (it == m_clients.end() || it->second->phase != stage)
                 return;
-            publishEvent(hyremote::TransportEventCode::RecoverableFailure,
-                         "RFB client did not complete the handshake within the bounded ClientInit window");
+            publishEvent(hyremote::TransportEventCode::RecoverableFailure, message);
             socket->abort();
         });
     }
@@ -905,7 +905,8 @@ private:
                 appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
-                armClientInitDeadline(client);
+                armWaitingStageDeadline(client, ClientPhase::AwaitClientInit,
+                                        "RFB client did not complete the handshake within the bounded ClientInit window");
                 continue;
             }
 
@@ -936,7 +937,8 @@ private:
                 appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
-                armClientInitDeadline(client);
+                armWaitingStageDeadline(client, ClientPhase::AwaitClientInit,
+                                        "RFB client did not complete the handshake within the bounded ClientInit window");
                 continue;
             }
 #endif
@@ -948,8 +950,11 @@ private:
                 if (latestFrame() || (m_security.initialFramebufferWidth != 0
                                       && m_security.initialFramebufferHeight != 0))
                     sendServerInit(client);
-                else
+                else {
                     client.phase = ClientPhase::AwaitInitialFrame;
+                    armWaitingStageDeadline(client, ClientPhase::AwaitInitialFrame,
+                                            "RFB client waited past the bounded initial-frame window");
+                }
                 continue;
             }
 
