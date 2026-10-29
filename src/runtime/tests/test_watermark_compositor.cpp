@@ -332,7 +332,8 @@ int main(int argc, char **argv)
 
     // A platform plugin without a font database cannot draw text at all. Say so explicitly instead of reporting
     // "no changed pixels", which would look like a compositor defect.
-    if (QFontDatabase::families().isEmpty()) {
+    const QFontDatabase fontDatabase;  // an instance keeps this valid on Qt 5, where families() is not static
+    if (fontDatabase.families().isEmpty()) {
         QTextStream(stdout) << "FAIL: the platform plugin exposes no font family; text cannot be rendered\n";
         return 3;
     }
