@@ -2,6 +2,7 @@
 
 #include "access_types.hpp"
 #include "detail/integration_route.hpp"
+#include "host_paths.hpp"
 
 #include <HyRemote/RemoteAccessExport.h>
 
@@ -44,6 +45,11 @@ struct DiagnosticSnapshot
     SecurityProfile configuredSecurityProfile = SecurityProfile::Insecure;
     std::optional<SecurityProfile> effectiveSecurityProfile;
     bool remoteInputEnabled = false;
+
+    // #591: the shared host-path resolution every route consumes, reported with its provenance so one
+    // deployment yields one answer for C++/QML/Generic/QPA instead of each frontend describing its own raw
+    // selection. These are locations, never credential material; the secret file is a reference only.
+    HyRemote::detail::HostPaths hostPaths;
     std::size_t connectedClientCount = 0;
     std::optional<Error> lastError;
 };
