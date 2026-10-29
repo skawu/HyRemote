@@ -65,12 +65,12 @@ int main(int argc, char **argv)
 
     // 1. Nothing selected: a platform default state directory, no implied configuration or secret file.
     {
-        const auto paths = hyremote::detail::resolveHostPaths();
+        const auto paths = HyRemote::detail::resolveHostPaths();
         check(paths.ok(), QStringLiteral("empty selection resolves"));
         check(!paths.configFile.isSet(), QStringLiteral("no configuration file is implied"));
         check(!paths.secretFile.isSet(), QStringLiteral("no secret file is implied"));
         check(paths.stateDir.isSet()
-                  && paths.stateDir.origin == hyremote::detail::HostPathOrigin::PlatformDefault,
+                  && paths.stateDir.origin == HyRemote::detail::HostPathOrigin::PlatformDefault,
               QStringLiteral("state directory falls back to the platform default"));
     }
 
@@ -78,11 +78,11 @@ int main(int argc, char **argv)
     {
         qputenv("HYREMOTE_CONFIG_FILE", QDir(root).absoluteFilePath(QStringLiteral("other.conf")).toUtf8());
         writeFile(root, QStringLiteral("other.conf"));
-        const auto paths = hyremote::detail::resolveHostPaths(configPath);
+        const auto paths = HyRemote::detail::resolveHostPaths(configPath);
         check(paths.ok(), QStringLiteral("explicit configuration resolves"));
         check(paths.configFile.value == QFileInfo(configPath).absoluteFilePath(),
               QStringLiteral("explicit configuration wins over the environment"));
-        check(paths.configFile.origin == hyremote::detail::HostPathOrigin::Explicit,
+        check(paths.configFile.origin == HyRemote::detail::HostPathOrigin::Explicit,
               QStringLiteral("explicit origin recorded"));
         clearEnvironment();
     }
@@ -90,8 +90,8 @@ int main(int argc, char **argv)
     // 3. Environment selection is used when no explicit value exists.
     {
         qputenv("HYREMOTE_CONFIG_FILE", configPath.toUtf8());
-        const auto paths = hyremote::detail::resolveHostPaths();
-        check(paths.ok() && paths.configFile.origin == hyremote::detail::HostPathOrigin::Environment,
+        const auto paths = HyRemote::detail::resolveHostPaths();
+        check(paths.ok() && paths.configFile.origin == HyRemote::detail::HostPathOrigin::Environment,
               QStringLiteral("environment configuration is honoured"));
         clearEnvironment();
     }
@@ -99,7 +99,7 @@ int main(int argc, char **argv)
     // 4. An explicit path that cannot be used fails closed instead of falling back to the environment.
     {
         qputenv("HYREMOTE_CONFIG_FILE", configPath.toUtf8());
-        const auto paths = hyremote::detail::resolveHostPaths(
+        const auto paths = HyRemote::detail::resolveHostPaths(
             root.absoluteFilePath(QStringLiteral("missing.conf")));
         check(!paths.ok(), QStringLiteral("missing explicit configuration fails closed"));
         check(paths.error.contains(QStringLiteral("explicit")),
@@ -111,9 +111,9 @@ int main(int argc, char **argv)
 
     // 5. A configuration-relative state directory is anchored to the configuration file, not the CWD.
     {
-        const auto paths = hyremote::detail::resolveHostPaths(configPath);
+        const auto paths = HyRemote::detail::resolveHostPaths(configPath);
         check(paths.ok(), QStringLiteral("configuration with relative state resolves"));
-        check(paths.stateDir.origin == hyremote::detail::HostPathOrigin::ConfigRelative,
+        check(paths.stateDir.origin == HyRemote::detail::HostPathOrigin::ConfigRelative,
               QStringLiteral("state directory is anchored to the configuration file"));
         check(paths.stateDir.value == QDir(root.absoluteFilePath(QStringLiteral("state"))).absolutePath(),
               QStringLiteral("state directory sits next to the configuration file"));
@@ -121,23 +121,23 @@ int main(int argc, char **argv)
 
     // 6. A state directory whose parent does not exist fails closed.
     {
-        const auto paths = hyremote::detail::resolveHostPaths(
+        const auto paths = HyRemote::detail::resolveHostPaths(
             configPath, root.absoluteFilePath(QStringLiteral("absent/state")));
         check(!paths.ok(), QStringLiteral("unusable explicit state directory fails closed"));
     }
 
     // 7. Explicit secret references are validated like configuration files.
     {
-        const auto paths = hyremote::detail::resolveHostPaths(configPath, QString(), secretPath);
-        check(paths.ok() && paths.secretFile.origin == hyremote::detail::HostPathOrigin::Explicit,
+        const auto paths = HyRemote::detail::resolveHostPaths(configPath, QString(), secretPath);
+        check(paths.ok() && paths.secretFile.origin == HyRemote::detail::HostPathOrigin::Explicit,
               QStringLiteral("explicit secret file resolves"));
 
-        const auto broken = hyremote::detail::resolveHostPaths(
+        const auto broken = HyRemote::detail::resolveHostPaths(
             configPath, QString(), root.absoluteFilePath(QStringLiteral("no-secret.txt")));
         check(!broken.ok(), QStringLiteral("missing explicit secret file fails closed"));
     }
 
-    check(hyremote::detail::hostPathOriginName(hyremote::detail::HostPathOrigin::ConfigRelative)
+    check(HyRemote::detail::hostPathOriginName(HyRemote::detail::HostPathOrigin::ConfigRelative)
               == QByteArray("config-relative"),
           QStringLiteral("origin names are stable"));
 
