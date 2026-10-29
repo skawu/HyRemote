@@ -257,13 +257,19 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
 
     # The protected release-preparation correction rule decides whether a versioned release branch may
     # be re-based; it is policy, so its positive and negative cases are executed rather than reviewed.
-    add_test(
-        NAME hyremote-release-preparation-correction
-        COMMAND "${CMAKE_COMMAND}" -E env
-            "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts"
-            python "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/release_correction.py" --self-test
-    )
-    set_tests_properties(hyremote-release-preparation-correction PROPERTIES TIMEOUT 120)
+    # Use the discovered interpreter (never a bare `python`) and skip registration when none exists, so the
+    # suite does not gain an unnecessary executable-name dependency.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME hyremote-release-preparation-correction
+            COMMAND "${CMAKE_COMMAND}" -E env
+                "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts"
+                "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/.github/scripts/release_correction.py"
+                --self-test
+        )
+        set_tests_properties(hyremote-release-preparation-correction PROPERTIES TIMEOUT 120)
+    endif()
 
     add_test(
         NAME hyremote-release-readiness-runtime-contract
