@@ -103,6 +103,19 @@ QString effectiveListener(const DiagnosticSnapshot &snapshot)
         .arg(*snapshot.effectivePort);
 }
 
+// #591: a resolved host-path fact is either a bounded, single-line location or the explicit `none`
+// placeholder. Provenance is reported separately so a support report can tell an explicit selection from
+// an environment selector, a configuration-relative default and a platform default.
+QString hostPathLocation(const HyRemote::detail::HostPathSelection &selection)
+{
+    return selection.isSet() ? boundedOneLine(selection.value) : QStringLiteral("none");
+}
+
+QString hostPathOrigin(const HyRemote::detail::HostPathSelection &selection)
+{
+    return QString::fromLatin1(HyRemote::detail::hostPathOriginName(selection.origin));
+}
+
 QString hyremoteVersion()
 {
     const QString version = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_VERSION);
@@ -190,7 +203,7 @@ QString deploymentIdentity()
 QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
 {
     QStringList lines;
-    lines.reserve(18);
+    lines.reserve(26);
 
     lines << QStringLiteral("HYREMOTE_VERSION=%1").arg(hyremoteVersion())
           << QStringLiteral("BUILD_IDENTITY=%1").arg(buildIdentity())
@@ -209,7 +222,16 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
                           : QStringLiteral("true"))
           << QStringLiteral("REMOTE_INPUT=%1")
                  .arg(snapshot.remoteInputEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-          << QStringLiteral("CONNECTED_CLIENTS=%1").arg(snapshot.connectedClientCount);
+          << QStringLiteral("CONNECTED_CLIENTS=%1").arg(snapshot.connectedClientCount)
+          << QStringLiteral("HOST_CONFIG_FILE=%1").arg(hostPathLocation(snapshot.hostPaths.configFile))
+          << QStringLiteral("HOST_CONFIG_FILE_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.configFile))
+          << QStringLiteral("HOST_STATE_DIR=%1").arg(hostPathLocation(snapshot.hostPaths.stateDir))
+          << QStringLiteral("HOST_STATE_DIR_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.stateDir))
+          << QStringLiteral("HOST_SECRET_FILE=%1").arg(hostPathLocation(snapshot.hostPaths.secretFile))
+          << QStringLiteral("HOST_SECRET_FILE_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.secretFile))
+          << QStringLiteral("HOST_PATHS_ERROR=%1")
+                 .arg(snapshot.hostPaths.ok() ? QStringLiteral("none")
+                                              : boundedOneLine(snapshot.hostPaths.error));
 
     if (snapshot.lastError) {
         lines << QStringLiteral("LAST_ERROR_CODE=%1").arg(errorCodeName(snapshot.lastError->code))

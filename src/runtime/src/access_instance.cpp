@@ -1232,6 +1232,11 @@ DiagnosticSnapshot AccessInstance::diagnosticSnapshot() const
                                       : 0;
     result.lastError = m_impl->effectiveError();
 
+    // #591: the same resolution start() consumes, so a support report answers "which configuration, state
+    // and secret locations were selected, and by what" for every integration route from one implementation.
+    // Resolution is a read-only probe of the current selection; it neither creates nor migrates anything.
+    result.hostPaths = detail::resolveHostPaths(m_impl->securityConfigFile);
+
     // #335: effective values are observations of a live successful run, never configuration guesses.
     // Runtime start is fail-closed for security, so Running proves the configured profile is the one
     // actually satisfied; Starting/Unavailable/failure/stop intentionally expose no effective facts.
