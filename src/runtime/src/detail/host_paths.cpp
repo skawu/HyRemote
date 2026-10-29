@@ -4,7 +4,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 
-namespace hyremote::detail {
+namespace HyRemote::detail {
 
 namespace {
 
@@ -73,12 +73,9 @@ bool resolveOne(const QString &explicitValue, const char *environmentName,
     }
 
     if (!platformDefault.isEmpty()) {
-        const QString cleaned = QDir::cleanPath(platformDefault);
-        if (validate && !validate(cleaned)) {
-            error = QStringLiteral("the platform default %1 '%2' is not usable").arg(label, cleaned);
-            return false;
-        }
-        selection = {cleaned, HostPathOrigin::PlatformDefault};
+        // A platform default is a best-effort location, not a user selection: it is reported as-is so a caller
+        // can surface it, while only explicit and environment selections fail closed.
+        selection = {QDir::cleanPath(platformDefault), HostPathOrigin::PlatformDefault};
         return true;
     }
 
@@ -136,4 +133,4 @@ const char *hostPathOriginName(HostPathOrigin origin)
     return "none";
 }
 
-} // namespace hyremote::detail
+} // namespace HyRemote::detail

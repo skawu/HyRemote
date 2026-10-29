@@ -15,6 +15,7 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/runtime_notifications.cpp
     src/detail/runtime_diagnostics.cpp
     src/detail/security_descriptor.cpp
+    src/detail/host_paths.cpp
     src/detail/composition_support.cpp
     src/detail/listener_binding.cpp
 )

@@ -37,6 +37,7 @@
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
+#include "detail/host_paths.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "hyremote/core/session.hpp"
@@ -1077,9 +1078,23 @@ bool AccessInstance::start()
                                         "which is not compiled into this build"));
         return false;
 #else
+        // #591: one shared path contract decides where the descriptor comes from once the profile actually
+        // depends on it. An explicit value wins and HYREMOTE_CONFIG_FILE is honoured next; an unusable
+        // selection fails closed here instead of letting the loader fall back to another readable file.
+        const detail::HostPaths hostPaths = detail::resolveHostPaths(m_impl->securityConfigFile);
+        if (!hostPaths.ok()) {
+            m_impl->setError(ErrorCode::InvalidConfiguration, hostPaths.error);
+            return false;
+        }
+        if (!hostPaths.configFile.isSet()) {
+            m_impl->setError(ErrorCode::SecurityUnavailable,
+                             QStringLiteral("the selected security profile requires a security descriptor"));
+            return false;
+        }
+
         QString descriptorError;
         std::optional<detail::SecurityDescriptor> descriptor =
-            detail::loadSecurityDescriptor(m_impl->securityConfigFile, m_impl->securityProfile, descriptorError);
+            detail::loadSecurityDescriptor(hostPaths.configFile.value, m_impl->securityProfile, descriptorError);
         if (!descriptor) {
             m_impl->setError(ErrorCode::InvalidConfiguration,
                              descriptorError.isEmpty()
