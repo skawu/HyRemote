@@ -37,6 +37,7 @@
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
+#include "detail/host_paths.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "hyremote/core/session.hpp"
@@ -1065,7 +1066,14 @@ bool AccessInstance::start()
             return false;
         }
 
-        if (m_impl->securityConfigFile.trimmed().isEmpty()) {
+        // #591: resolve the contract first, so an empty explicit value can still be satisfied by
+        // HYREMOTE_CONFIG_FILE instead of being rejected before the environment selector is consulted.
+        const detail::HostPaths hostPaths = detail::resolveHostPaths(m_impl->securityConfigFile);
+
+        // Nothing was selected anywhere: the profile still needs a descriptor. A selection that exists but is
+        // unusable is reported below, after the build-capability check, so a build without the mechanism keeps
+        // its capability answer instead of blaming the path.
+        if (hostPaths.ok() && !hostPaths.configFile.isSet()) {
             m_impl->setError(ErrorCode::SecurityUnavailable,
                              QStringLiteral("the selected security profile requires a security descriptor"));
             return false;
@@ -1077,9 +1085,21 @@ bool AccessInstance::start()
                                         "which is not compiled into this build"));
         return false;
 #else
+        if (!hostPaths.ok()) {
+            m_impl->setError(ErrorCode::InvalidConfiguration,
+                             QStringLiteral("%1; the security descriptor could not be resolved")
+                                 .arg(hostPaths.error));
+            return false;
+        }
+        if (!hostPaths.configFile.isSet()) {
+            m_impl->setError(ErrorCode::SecurityUnavailable,
+                             QStringLiteral("the selected security profile requires a security descriptor"));
+            return false;
+        }
+
         QString descriptorError;
         std::optional<detail::SecurityDescriptor> descriptor =
-            detail::loadSecurityDescriptor(m_impl->securityConfigFile, m_impl->securityProfile, descriptorError);
+            detail::loadSecurityDescriptor(hostPaths.configFile.value, m_impl->securityProfile, descriptorError);
         if (!descriptor) {
             m_impl->setError(ErrorCode::InvalidConfiguration,
                              descriptorError.isEmpty()

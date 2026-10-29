@@ -2,7 +2,7 @@
 
 #include <QString>
 
-namespace hyremote::detail {
+namespace HyRemote::detail {
 
 // #591: one typed host-path contract shared by every integration route. The route (C++ API, QML API,
 // Generic plugin or QPA) only supplies its explicit selection; it never resolves paths on its own.
@@ -48,4 +48,4 @@ HostPaths resolveHostPaths(const QString &explicitConfigFile = QString(),
 
 const char *hostPathOriginName(HostPathOrigin origin);
 
-} // namespace hyremote::detail
+} // namespace HyRemote::detail
