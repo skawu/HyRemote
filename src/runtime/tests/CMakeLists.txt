@@ -122,11 +122,11 @@ if(TARGET Qt6::Gui)
             Qt6::Core
             Qt6::Gui
     )
+    # Deliberately not registered with QT_QPA_PLATFORM=offscreen: the compositor's whole acceptance is rendered
+    # pixels, and the offscreen platform plugin ships no usable font database on Windows (Qt 5 lane), which would
+    # turn "no glyphs" into a fake compositor failure. The test itself fails loudly when no font is available.
     add_test(NAME hyremote-watermark-compositor-test COMMAND hyremote-watermark-compositor-test)
-    set_tests_properties(hyremote-watermark-compositor-test PROPERTIES
-        TIMEOUT 60
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-    )
+    set_tests_properties(hyremote-watermark-compositor-test PROPERTIES TIMEOUT 60)
 endif()
 
 add_executable(hyremote-security-descriptor-test

@@ -4,6 +4,7 @@
 #include "../src/detail/watermark_compositor.hpp"
 
 #include <QByteArray>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QImage>
 #include <QString>
@@ -301,6 +302,13 @@ void checkDegenerateInputs()
 int main(int argc, char **argv)
 {
     QGuiApplication application(argc, argv);
+
+    // A platform plugin without a font database cannot draw text at all. Say so explicitly instead of reporting
+    // "no changed pixels", which would look like a compositor defect.
+    if (QFontDatabase::families().isEmpty()) {
+        QTextStream(stdout) << "FAIL: the platform plugin exposes no font family; text cannot be rendered\n";
+        return 3;
+    }
 
     checkDisabledDoesNothing();
     checkSingleCornerAndSourceIntegrity();
