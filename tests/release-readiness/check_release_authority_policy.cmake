@@ -126,7 +126,7 @@ endif()
 # train must stay conditional: a version number existing never authorizes a release scope by itself. #333: the
 # pre-reserved technical slots (0.2.1.0/0.3.1.0/0.3.2.0), the qualification-only 0.4.0.0 and the post-GA fixed slot
 # 1.1.0.0 are no longer selectable trains and are asserted as refused/fail-closed further down.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 1.0.0.0)
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 0.3.5.0 1.0.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
@@ -379,6 +379,46 @@ foreach(nonblocker IN ITEMS 589 591 592 605)
         message(FATAL_ERROR
             "release-authority-policy: V0.3.4.0 must not be blocked by post-Feature "
             "host/watermark/Docker or post-GA Qt6.5/6.12 issue #${nonblocker}")
+    endif()
+endforeach()
+
+# 2026-10-29 Owner: V0.3.5.0 is the actual development Feature after the released V0.3.4.0 lineage.
+# Host path contract (#591) first, then the server-side static text watermark (#589). Nothing here
+# authorizes a release: the exact-candidate L2 and maintained-viewer acceptance stay mandatory.
+string(JSON v035_owner GET "${authority_json}" trains "0.3.5.0" authority_parent)
+string(JSON v035_freeze GET "${authority_json}" trains "0.3.5.0" candidate_freeze_authority)
+string(JSON v035_lineage GET "${authority_json}" trains "0.3.5.0" lineage_parent)
+if(NOT v035_owner STREQUAL "594" OR NOT v035_freeze STREQUAL "591" OR
+   NOT v035_lineage STREQUAL "0.3.4.0")
+    message(FATAL_ERROR
+        "release-authority-policy: 0.3.5.0 must be #594-owned, #591 candidate frozen and based on "
+        "the released v0.3.4.0 lineage; owner=${v035_owner} freeze=${v035_freeze} "
+        "lineage=${v035_lineage}")
+endif()
+string(JSON v035_child_count LENGTH "${authority_json}" trains "0.3.5.0" mandatory_children)
+set(v035_children)
+math(EXPR v035_last "${v035_child_count} - 1")
+foreach(index RANGE 0 ${v035_last})
+    string(JSON issue GET "${authority_json}" trains "0.3.5.0" mandatory_children ${index})
+    list(APPEND v035_children "${issue}")
+endforeach()
+if(NOT "${v035_children}" STREQUAL "591;589")
+    message(FATAL_ERROR
+        "release-authority-policy: V0.3.5.0 must close #591 host path contract and #589 static text "
+        "watermark in that order; found '${v035_children}'")
+endif()
+string(JSON v035_nonblocker_count LENGTH "${authority_json}" trains "0.3.5.0" non_blockers)
+set(v035_nonblockers)
+math(EXPR v035_nonblocker_last "${v035_nonblocker_count} - 1")
+foreach(index RANGE 0 ${v035_nonblocker_last})
+    string(JSON issue GET "${authority_json}" trains "0.3.5.0" non_blockers ${index})
+    list(APPEND v035_nonblockers "${issue}")
+endforeach()
+foreach(nonblocker IN ITEMS 170 605)
+    if(NOT nonblocker IN_LIST v035_nonblockers)
+        message(FATAL_ERROR
+            "release-authority-policy: V0.3.5.0 must not be blocked by session operations (#170) "
+            "or post-GA Qt families (#605)")
     endif()
 endforeach()
 

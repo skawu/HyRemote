@@ -288,6 +288,56 @@
       },
       "rule": "V0.3.4.0 is the immediately next ACTIVE DEVELOPMENT FEATURE on the accepted V0.3.3.0 lineage: truthful Windows x86_64 Qt 5.15.2 and Qt 6.8.3 SDK/Runtime compatibility and deployable real-application product cells. Exact Qt Kit identity, compiler/ABI, supported Widgets/Quick/ C++/QML/Generic/QPA applicable cells, QtPrivate ingress/QPA exact ABI, positive and negative installed/source consumers, maintained Viewer and local Qt behavior, exact-head CI and independent review. Qt6.5/Qt6.12 are post V1 GA, Linux/ARM64 physical evidence nonblocking. Activation assigns local development ownership, NOT a release/RC PASS: mandatory children and required evidence must close before release/v0.3.4.0 candidate/tag. V0.4.0.0 remains inactive qualification-only under #235."
     },
+    "0.3.5.0": {
+      "authority_parent": 594,
+      "candidate_freeze_authority": 591,
+      "lineage_parent": "0.3.4.0",
+      "mandatory_children": [
+        591,
+        589
+      ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.3.4.0-lineage",
+        "host-config-state-secret-path-precedence-and-fail-closed-evidence",
+        "one-shared-runtime-path-contract-across-cpp-qml-generic-qpa",
+        "path-permissions-restart-persistence-and-container-safe-defaults",
+        "server-side-static-text-watermark-visible-in-viewer-with-unmodified-local-ui",
+        "raw-trle-damage-dpr-resize-multi-viewer-performance-and-configuration-negative-evidence",
+        "real-windows-viewer-and-native-application-acceptance-at-candidate-sha",
+        "current-head-ci-l2-and-independent-review"
+      ],
+      "cross_version_references": [
+        57,
+        95,
+        209,
+        592,
+        605
+      ],
+      "conditional_items": [],
+      "non_blockers": [
+        170,
+        581,
+        582,
+        583,
+        584,
+        585,
+        586,
+        587,
+        588,
+        605
+      ],
+      "notes": {
+        "591": "Closeable host path contract: explicit configuration file, writable state/data directory and protected secret references, with one precedence order shared by the C++ API, QML API, Generic and QPA routes. An invalid explicit selection must fail closed with an actionable error instead of silently falling back to another writable directory. No database engine is introduced before a user-visible feature needs one.",
+        "589": "Closeable server-side static text watermark: configurable UTF-8 text rendered into the frames sent to a standard RFB viewer while the local Qt application pixels stay unchanged.",
+        "57": "Pre-GA Windows Qt5/Qt6.8 qualification umbrella stays independently open through V0.4/V1; this train does not force umbrella closure.",
+        "209": "Architecture umbrella remains open across versions: one Qt-free Core, one Shared Runtime and four peer integration routes; no duplication.",
+        "592": "Docker joint deployment depends on this path contract and requires a real container environment; it cannot be claimed from this train alone.",
+        "593": "Logo/image watermark is post-GA and explicitly outside this train.",
+        "605": "Qt6.5/Qt6.12 stay strictly after V1 GA and cannot be marked Supported here."
+      },
+      "rule": "V0.3.5.0 is the ACTIVE DEVELOPMENT FEATURE on the released V0.3.4.0 lineage: operable host configuration (config file, writable state/data directory, protected secret references, one precedence order across all four integration routes, fail-closed on an invalid explicit selection) followed by a server-side static text watermark that a standard RFB viewer can see without changing the local Qt application's pixels. Activation assigns local development ownership, NOT a release/RC PASS: mandatory children and required evidence must close before a release/v0.3.5.0 candidate or tag, and the exact-candidate L2 plus maintained-viewer acceptance stay mandatory. V0.4.0.0 remains inactive qualification-only under #235."
+    },
     "1.0.0.0": {
       "authority_parent": 33,
       "scope_authority": 594,

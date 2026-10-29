@@ -109,7 +109,7 @@ V0.3 家族分两类工作：
 
 ### 强制 GA 前 V0.3 基线
 
-**当前产品路线图权威（2026-10-29 Owner #594/#605）：** [唯一完整版本路线图](internal/product-version-delivery-roadmap-2026-10-23.md)。V1.0 GA 前 Qt LTS **仅 Qt 5.15 和 Qt 6.8**；Qt 6.5 与 Qt 6.12 **只在 V1.0 正式 GA 后**独立适配。**V0.3.4.0 已于 2026-10-29 发布**（tag `v0.3.4.0` → `main` `27bf97d`），其 #603/#144/#175 成果不追改；HyRemoteTool D 综合工作台跨版本增量完善。V0.4 只做 RC 资格验证，V1 只提升合格 RC。**2026-10-29 当前开发目标为 V0.3.5.0（#591 → #589 宿主配置/状态路径 + 服务端静态文字水印）**，machine train 仍需独立 machine PR 登记，登记前不得开始实现或宣称可发布；更后续已知用户成果的 PLANNED 编号以完整路线图为准，不等于 machine activation。机器激活/mandatory 以 `.github/release/release-trains.json` 为准；已发布历史不追改。
+**当前产品路线图权威（2026-10-29 Owner #594/#605）：** [唯一完整版本路线图](internal/product-version-delivery-roadmap-2026-10-23.md)。V1.0 GA 前 Qt LTS **仅 Qt 5.15 和 Qt 6.8**；Qt 6.5 与 Qt 6.12 **只在 V1.0 正式 GA 后**独立适配。**V0.3.4.0 已于 2026-10-29 发布**（tag `v0.3.4.0` → `main` `27bf97d`），其 #603/#144/#175 成果不追改；HyRemoteTool D 综合工作台跨版本增量完善。V0.4 只做 RC 资格验证，V1 只提升合格 RC。**2026-10-29 当前开发目标为 V0.3.5.0（#591 → #589 宿主配置/状态路径 + 服务端静态文字水印）**，machine train 已由独立 machine PR 登记（2026-10-29），因此实现可以开始，但仍不构成可发布证明；更后续已知用户成果的 PLANNED 编号以完整路线图为准，不等于 machine activation。机器激活/mandatory 以 `.github/release/release-trains.json` 为准；已发布历史不追改。
 
 **Windows x86_64 是唯一强制的实际运行/物理验证平台**。首轮 GA 的 Qt LTS 范围是 **5.15 + 6.8**；Qt 6.8.3 是参考基线，Qt 5.15 的每个适用接入/Kit 需独立资格证明。实用 Raw/TRLE/Damage 增量传输、维护版 Viewer 互操作、#370 Windows 性能及 SDK/包质量为资格门槛。Qt 6.5/6.12 的适配与支持证明在 **V1.0 GA 之后**由 #605 单独开展；Linux/Wayland/ARM64/EGLFS 是不阻塞发布的用户验证路径（#563）。
 
@@ -139,7 +139,7 @@ Session Registry/Session Operations、完整品牌扩展、HyRemoteTool 管理�
 **当前本地 Owner 的版本目标是 `V0.3.5.0`，不是 V0.4.0.0。** 前一版本 **V0.3.4.0（#603）已于 2026-10-29 发布**（tag `v0.3.4.0` → `main` `27bf97d`；候选与验收 SHA `c57dae0`；同 SHA L2 与 RealVNC 7.15.1 D05 实机均 PASS，证据见 [V0.3.4.0 发布说明](releases/v0.3.4.0.md)）。V0.3.5.0 的准确用户承诺：可运维的宿主配置（config/state/secret 路径，四接入前端共用一套路径策略，显式路径错误时 fail-closed）先于服务端静态文字水印（标准 RFB Viewer 可见、不污染本地 Qt 窗口）。Owner #591 → #589；machine train 仍需**独立 machine PR** 登记，登记前不得开始实现，也不构成可发布证明。
 
 - `V0.3.4.0`：**已发布**（2026-10-29）；发布后修正：被说明引用的 D05 记录已补入发布树，tag 在公告前重指到修正后的 main HEAD。
-- `V0.3.5.0`：**当前开发目标**（2026-10-29），宿主配置/状态路径 + 文字水印 #591/#589；machine train 待独立登记。
+- `V0.3.5.0`：**当前开发目标**（2026-10-29），宿主配置/状态路径 + 文字水印 #591/#589；machine train 已登记（独立 machine PR）。
 - `V0.4.0.0`：仍为 **未激活 RC**，只能资格认证冻结的已实现 GA 范围；不允许本地 Owner 将下一波 Qt LTS/Tool/SDK 功能开发挂到该版本。
 
 上述版本分配不重新启用历史退休的 0.3.1/0.3.2，也不承诺 Qt6.5/6.12 在 V1 GA 前合格。
@@ -154,7 +154,7 @@ Session Registry/Session Operations、完整品牌扩展、HyRemoteTool 管理�
 | 版本 | 已明确的产品目标 | 状态 |
 | --- | --- | --- |
 | V0.3.4.0 | Windows Qt5.15/Qt6.8 多 LTS SDK/Runtime 真正可集成 | **已发布**（2026-10-29，tag `v0.3.4.0` → main `27bf97d`） |
-| V0.3.5.0 | 宿主配置/状态路径 + 服务端静态文字水印 #591/#589 | **当前开发目标**（2026-10-29）；machine train 待独立登记 |
+| V0.3.5.0 | 宿主配置/状态路径 + 服务端静态文字水印 #591/#589 | **当前开发目标**（2026-10-29）；machine train 已登记 |
 | V0.3.6.0 | HyRemoteTool S1，设备/会话/安全控制/诊断/语言 #581–#586/#590 | 已规划，未激活 |
 | V0.3.7.0 | 用户 Qt App + HyRemote Docker 联合部署 #592 | 条件规划，未激活；真实容器不可替代 |
 | V0.4.0.0 | 资格冻结与 RC，**不得在此进行新功能开发** | 条件 RC 未激活 |

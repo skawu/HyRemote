@@ -134,7 +134,7 @@ First-GA Qt5.15/Qt6.8 compatibility was the **V0.3.4.0** outcome, released on 20
 
 ## Assigned next development Feature: V0.3.5.0 (2026-10-29)
 
-**Local Owner development target: V0.3.5.0, not V0.4.0.0.** The next coherent user outcome is operable host configuration: config/state/secret paths with one shared path policy for the C++ API, QML API, Generic and QPA routes, failing closed on an invalid explicit selection, followed by a server-side static text watermark that a standard RFB viewer can see without polluting the local Qt window. Owner #591 → #589. The machine train still requires a **separate machine PR**; until it lands the Feature is not opened for implementation and nothing here authorizes a release.
+**Local Owner development target: V0.3.5.0, not V0.4.0.0.** The next coherent user outcome is operable host configuration: config/state/secret paths with one shared path policy for the C++ API, QML API, Generic and QPA routes, failing closed on an invalid explicit selection, followed by a server-side static text watermark that a standard RFB viewer can see without polluting the local Qt window. Owner #591 → #589. The machine train is registered by a **separate machine PR** (2026-10-29), so implementation may start; nothing here authorizes a release.
 
 - **V0.3.4.0: released** (2026-10-29). Post-release correction: the D05 record cited by its notes was added to the released tree and the tag was re-pointed to the corrected `main` HEAD before any announcement.
 - **V0.3.5.0: current development target** (2026-10-29), host config/state paths and server-side static text watermark #591/#589; machine train pending separate registration.
@@ -152,7 +152,7 @@ This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5
 | Version | Planned user-deliverable outcome | Status |
 | --- | --- | --- |
 | V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | **Released** (2026-10-29, tag `v0.3.4.0` → main `27bf97d`) |
-| V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | **Current development target** (2026-10-29); machine train pending separate registration |
+| V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | **Current development target** (2026-10-29); machine train registered |
 | V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Planned, not activated |
 | V0.3.7.0 | Real user Qt app + HyRemote Docker deployment #592 | Conditional plan; actual container required |
 | V0.4.0.0 | Qualification-only RC, **not development of missing features** | Inactive conditional RC |
