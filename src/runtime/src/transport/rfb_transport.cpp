@@ -41,6 +41,12 @@ namespace {
 
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
+// #158/#603 physical acceptance: RealVNC Viewer 7.15.1 asks the user to dismiss an "Unencrypted Connection"
+// notice before it sends ClientInit, and measured 29.2 s on the release candidate. The version/security
+// exchange is still bounded by kHandshakeTimeoutMs (a silent peer keeps dropping out at 3 s, which is what
+// the bounded-occupancy tests expect); only the wait for ClientInit after a completed security exchange gets
+// this wider, still finite window.
+constexpr int kClientInitTimeoutMs = 30000;
 // #158: Normal-phase occupancy bounds. Neither value is a generic idle timeout:
 //  - the partial-message deadline only runs while an incomplete message is buffered, and every further
 //    byte of progress restarts it;
@@ -650,7 +656,8 @@ private:
                 if (!socket)
                     return;
                 const auto it = m_clients.find(socket);
-                if (it == m_clients.end() || it->second->phase == ClientPhase::Normal)
+                if (it == m_clients.end() || it->second->phase == ClientPhase::Normal
+                    || it->second->phase == ClientPhase::AwaitClientInit)
                     return;
                 publishEvent(hyremote::TransportEventCode::RecoverableFailure,
                              "RFB client handshake timed out");
@@ -747,6 +754,24 @@ private:
                                 ? "RFB client stopped mid-message past the bounded progress deadline"
                                 : "RFB client produced no useful message within the bounded post-init deadline");
         }
+    }
+
+    // The version/security exchange is already done here, so a slow viewer that is still showing its own
+    // notice keeps a wider but finite window before the slot is reclaimed.
+    void armClientInitDeadline(ClientState &client)
+    {
+        QPointer<QTcpSocket> guarded(client.socket);
+        QTimer::singleShot(kClientInitTimeoutMs, this, [this, guarded] {
+            QTcpSocket *socket = guarded.data();
+            if (!socket)
+                return;
+            const auto it = m_clients.find(socket);
+            if (it == m_clients.end() || it->second->phase != ClientPhase::AwaitClientInit)
+                return;
+            publishEvent(hyremote::TransportEventCode::RecoverableFailure,
+                         "RFB client did not complete the handshake within the bounded ClientInit window");
+            socket->abort();
+        });
     }
 
     void readClient(QTcpSocket *socket)
@@ -880,6 +905,7 @@ private:
                 appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
+                armClientInitDeadline(client);
                 continue;
             }
 
@@ -910,6 +936,7 @@ private:
                 appendU32(result, 0);
                 client.socket->write(result);
                 client.phase = ClientPhase::AwaitClientInit;
+                armClientInitDeadline(client);
                 continue;
             }
 #endif

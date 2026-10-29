@@ -1769,6 +1769,75 @@ void testExactRfb38VersionIsRequired()
     transport->stop();
 }
 
+// #158/#603: physical acceptance measured RealVNC Viewer 7.15.1 delaying ClientInit by ~29 s while it waits
+// for the user to dismiss its unencrypted-connection notice. The bounded handshake must still serve such a
+// client instead of closing the socket under it.
+void testSlowViewerClientInitStillServed()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
+                                                         HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    CHECK(primeInitialFrame(*transport));
+
+    QTcpSocket socket;
+    CHECK(negotiateThroughSecurity(socket, port, false));
+
+    // The viewer is still showing its notice: keep the socket idle past the old 3 s bound.
+    QElapsedTimer pause;
+    pause.start();
+    while (pause.elapsed() < 4000) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(socket.state() == QAbstractSocket::ConnectedState);
+
+    CHECK(writeAll(socket, QByteArray(1, char(1))));
+    const QByteArray serverInit = readExact(socket, 24);
+    CHECK(serverInit.size() == 24);
+    CHECK(readU16(serverInit, 0) == 64 && readU16(serverInit, 2) == 48);
+    const std::uint32_t nameLength = readU32(serverInit, 20);
+    CHECK(readExact(socket, static_cast<qsizetype>(nameLength)).size()
+          == static_cast<qsizetype>(nameLength));
+
+    // The session must be fully usable from here on: a Normal-phase message is processed, which is what the
+    // long ClientInit wait could otherwise have cost (the slot would have been aborted before this point).
+    QByteArray keyEvent;
+    keyEvent.append(char(4));
+    keyEvent.append(char(1));
+    appendU16(keyEvent, 0);
+    appendU32(keyEvent, static_cast<std::uint32_t>('a'));
+    CHECK(writeAll(socket, keyEvent));
+
+    QElapsedTimer delivery;
+    delivery.start();
+    bool delivered = false;
+    while (delivery.elapsed() < 4000) {
+        {
+            std::lock_guard<std::mutex> lock(recorder.mutex);
+            delivered = !recorder.inputs.empty();
+        }
+        if (delivered)
+            break;
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(delivered);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
 // #158: bounded Normal-phase occupancy. Eight viewers that stall inside a message must expire and free
 // their bounded slots; a ninth legitimate viewer then gets a usable session on a clean per-client state.
 void testStalledPartialMessagesReleaseTheirSlots()
@@ -2439,6 +2508,7 @@ int main(int argc, char **argv)
     testUnsupportedMessageFailsClosedAndNextClientRecovers();
     testBoundedInputBurstFailsClosed();
     testExactRfb38VersionIsRequired();
+    testSlowViewerClientInitStillServed();
     testStalledPartialMessagesReleaseTheirSlots();
     testPostInitUsefulnessDeadlineKeepsStaticViewer();
     testStalledClientReleasesHeldKeyOnce();
