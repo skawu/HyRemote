@@ -1970,18 +1970,31 @@ void testStalledClientReleasesHeldKeyOnce()
     }, 9000));
     CHECK(waitForDisconnected(socket));
 
+    // The release is published from the transport's worker thread, so a fully loaded suite can observe the
+    // client-side disconnect a moment before the recorder sees it. Wait for the balanced pair instead of
+    // racing the publication; the assertion below still requires exactly one press and one release.
     int presses = 0;
     int releases = 0;
-    {
-        std::lock_guard<std::mutex> lock(recorder.mutex);
-        for (const auto &event : recorder.inputs) {
-            if (event.kind != hyremote::InputEventKind::Key || event.key != hyremote::KeyCode::A)
-                continue;
-            if (event.pressed)
-                ++presses;
-            else
-                ++releases;
+    QElapsedTimer balance;
+    balance.start();
+    while (balance.elapsed() < 5000) {
+        presses = 0;
+        releases = 0;
+        {
+            std::lock_guard<std::mutex> lock(recorder.mutex);
+            for (const auto &event : recorder.inputs) {
+                if (event.kind != hyremote::InputEventKind::Key || event.key != hyremote::KeyCode::A)
+                    continue;
+                if (event.pressed)
+                    ++presses;
+                else
+                    ++releases;
+            }
         }
+        if (presses == 1 && releases == 1)
+            break;
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     CHECK(presses == 1);
     CHECK(releases == 1);
