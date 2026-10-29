@@ -83,15 +83,6 @@ unset(_hyremote_diagnostic_git_out)
 unset(_hyremote_diagnostic_git_rc)
 unset(_hyremote_diagnostic_source_sha)
 
-# #589: the server-side static text watermark compositor does not exist yet; W2 adds it. The capability is
-# declared explicitly instead of relying on an undefined macro, so a build can never silently claim a compositor
-# it does not contain, and W2 flips exactly one variable together with its sources.
-set(HYREMOTE_WATERMARK_RENDERING_AVAILABLE 0 CACHE INTERNAL
-    "Server-side static text watermark compositor (#589 W2)" FORCE)
-target_compile_definitions(hyremote-remoteaccess PRIVATE
-    HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
-)
-
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h
@@ -222,6 +213,25 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
             "HyRemote zero-code integration requires Qt 6.8+ Gui for application-surface discovery")
     endif()
 endif()
+
+# #589 W2: the server-side watermark compositor paints text, so it is a real capability only where Qt Gui exists.
+# The macro is declared explicitly (never left undefined) so a build cannot silently claim a compositor it does
+# not contain; a build without Gui keeps refusing an enabled policy at start().
+if(TARGET Qt6::Gui)
+    set(HYREMOTE_WATERMARK_RENDERING_AVAILABLE 1 CACHE INTERNAL
+        "Server-side static text watermark compositor (#589 W2)" FORCE)
+    target_sources(hyremote-remoteaccess PRIVATE
+        src/detail/watermark_compositor.cpp
+        src/detail/watermark_frame_decorator.cpp
+    )
+    target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Gui)
+else()
+    set(HYREMOTE_WATERMARK_RENDERING_AVAILABLE 0 CACHE INTERNAL
+        "Server-side static text watermark compositor (#589 W2)" FORCE)
+endif()
+target_compile_definitions(hyremote-remoteaccess PRIVATE
+    HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
+)
 
 if(HYREMOTE_BUILD_TESTS)
     add_executable(hyremote-runtime-diagnostics-test

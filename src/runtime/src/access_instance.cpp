@@ -40,6 +40,7 @@
 #include "detail/host_paths.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
+#include "detail/watermark_frame_decorator.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -1362,10 +1363,16 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 
     detail::RfbSecurityConfig effectiveSecurity = security;
     effectiveSecurity.remoteInputEnabled = remoteInputEnabled;
+    // #589: the watermark policy is in points, the framebuffer is in device pixels, so the target's ratio is
+    // captured here together with the initial geometry.
+    qreal targetDevicePixelRatio = 1.0;
     // RFB ServerInit needs geometry even when the capture scheduler has not
     // produced its first frame yet. The target's physical size is known here;
     // without it a real Viewer authenticates, waits for ServerInit and closes.
-    const auto recordInitialFramebuffer = [&effectiveSecurity](const QSize &logical, qreal dpr) {
+    const auto recordInitialFramebuffer = [&effectiveSecurity, &targetDevicePixelRatio](const QSize &logical,
+                                                                                        qreal dpr) {
+        if (dpr > 0.0)
+            targetDevicePixelRatio = dpr;
         if (logical.width() <= 0 || logical.height() <= 0 || dpr <= 0.0)
             return;
         const int width = qRound(logical.width() * dpr);
@@ -1382,6 +1389,20 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
     if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
+#endif
+#if HYREMOTE_HAS_WATERMARK_RENDERING
+    // #589: install the one shared compositor on the frame hook. If it cannot be installed, refuse the start
+    // instead of serving an unwatermarked picture the operator explicitly asked to be marked.
+    if (watermark.policy.enabled) {
+        effectiveSecurity.frameDecorator =
+            detail::makeWatermarkFrameDecorator(watermark.policy,
+                                                static_cast<double>(targetDevicePixelRatio));
+        if (!effectiveSecurity.frameDecorator) {
+            setError(ErrorCode::StartFailed,
+                     QStringLiteral("the watermark is enabled but no server-side compositor could be installed"));
+            return false;
+        }
+    }
 #endif
     // Cursor reads happen on the RFB worker. A BlockingQueuedConnection here can deadlock when the
     // GUI calls stop() while the worker is waiting for readSnapshot() and transport shutdown is

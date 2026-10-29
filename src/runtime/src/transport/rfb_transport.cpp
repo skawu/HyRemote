@@ -513,6 +513,8 @@ public:
         }
         m_clients.clear();
         m_observedFrame.reset();
+        m_servedFrame.reset();
+        m_decorationFailed = false;
         m_keyHolderCounts.fill(0);
         m_buttonHolderCounts.fill(0);
         m_onInput = {};
@@ -530,18 +532,38 @@ public:
         if (!frame)
             return;
 
+        // #589: compose once per captured frame, on the transport thread, and let every viewer share the same
+        // decorated picture. Without a decorator this stays the capture frame itself, so the disabled path keeps
+        // its current cost (no copy, no paint).
+        std::optional<hyremote::RemoteFrame> served;
+        if (m_security.frameDecorator) {
+            hyremote::RemoteFrame decorated;
+            QString decorationError;
+            if (!m_security.frameDecorator(*frame, decorated, decorationError)) {
+                failDecoration(decorationError);
+                return;
+            }
+            served = std::move(decorated);
+            m_servedFrame = served;
+        } else {
+            served = frame;
+            m_servedFrame.reset();
+        }
+
         const bool geometryChanged = !m_observedFrame
                                      || m_observedFrame->geometry.size.width
-                                            != frame->geometry.size.width
+                                            != served->geometry.size.width
                                      || m_observedFrame->geometry.size.height
-                                            != frame->geometry.size.height;
+                                            != served->geometry.size.height;
         const bool hasNormalClient = std::any_of(
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
         std::optional<RfbDamageRegion> damage;
         if (hasNormalClient && !geometryChanged) {
-            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *frame);
+            // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
+            // frame never reports "nothing changed" while the stream is missing an update.
+            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
         }
 
         for (auto &entry : m_clients) {
@@ -552,12 +574,37 @@ public:
                 continue;
 
             if (geometryChanged)
-                client.delivery.invalidateFull(frame->geometry.size.width, frame->geometry.size.height);
+                client.delivery.invalidateFull(served->geometry.size.width, served->geometry.size.height);
             else if (damage)
                 client.delivery.accumulate(*damage);
             trySendUpdate(client);
         }
-        m_observedFrame = *frame;
+        m_observedFrame = *served;
+    }
+
+    // #589: a frame that cannot be decorated must never be replaced by the undecorated capture. Publish a fatal
+    // transport failure and drop the viewers instead of quietly serving a watermark-free stream.
+    void failDecoration(const QString &error)
+    {
+        if (m_decorationFailed)
+            return;
+        m_decorationFailed = true;
+        m_servedFrame.reset();
+        m_observedFrame.reset();
+        const std::string message = error.isEmpty()
+                                        ? std::string("the server-side watermark could not be composed")
+                                        : error.toUtf8().toStdString();
+        publishEvent(hyremote::TransportEventCode::FatalFailure, message);
+
+        for (auto &entry : m_clients) {
+            QTcpSocket *socket = entry.first;
+            QObject::disconnect(socket, nullptr, this, nullptr);
+            socket->abort();
+            socket->deleteLater();
+        }
+        m_clients.clear();
+        if (m_server)
+            m_server->close();
     }
 
 private:
@@ -589,6 +636,15 @@ private:
     {
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         return m_frames->latest;
+    }
+
+    // #589: the only frame a viewer may ever be given. With a decorator installed this is the composed frame that
+    // frameAvailable() produced for the current capture; without one it is the capture frame, untouched.
+    std::optional<hyremote::RemoteFrame> servedFrame() const
+    {
+        if (!m_security.frameDecorator)
+            return latestFrame();
+        return m_servedFrame;
     }
 
     hyremote::InputModifiers aggregateModifiers() const
@@ -1655,7 +1711,8 @@ private:
         if (client.socket->bytesToWrite() != 0)
             return;
 
-        const auto frame = latestFrame();
+        // #589: encode only what viewers may see; with a watermark installed the raw capture is never sent.
+        const auto frame = servedFrame();
         if (!frame)
             return;
         if (frame->geometry.size.width == 0 || frame->geometry.size.height == 0
@@ -1741,6 +1798,10 @@ private:
     QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
+    // #589: the composed frame currently shared by every viewer, and the one-shot latch that stops the transport
+    // from ever falling back to undecorated pixels after a composition failure.
+    std::optional<hyremote::RemoteFrame> m_servedFrame;
+    bool m_decorationFailed = false;
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
