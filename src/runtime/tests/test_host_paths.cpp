@@ -166,6 +166,55 @@ int main(int argc, char **argv)
               QStringLiteral("state directory is unaffected by a broken secret reference"));
     }
 
+    // 10. #591 Windows acceptance: UTF-8 and space-bearing directories/files stay one usable selection and
+    // are reported as the same absolute location (no encoding round trip through the local 8-bit codec).
+    {
+        const QString directoryName = QStringLiteral("水印 tests");
+        const QString fileName = QStringLiteral("描述 file.conf");
+        check(root.mkdir(directoryName), QStringLiteral("UTF-8/space directory is created"));
+        const QString utf8Directory = root.absoluteFilePath(directoryName);
+        const QString utf8Path = writeFile(QDir(utf8Directory), fileName);
+        check(!utf8Path.isEmpty(), QStringLiteral("UTF-8/space descriptor fixture exists"));
+
+        const auto paths = HyRemote::detail::resolveHostPaths(utf8Path);
+        check(paths.configFile.ok() && paths.configFile.isSet(),
+              QStringLiteral("UTF-8/space descriptor resolves"));
+        check(paths.configFile.value == QFileInfo(utf8Path).absoluteFilePath(),
+              QStringLiteral("UTF-8/space location is reported unchanged"));
+        check(paths.configFile.value.contains(directoryName) && paths.configFile.value.contains(fileName),
+              QStringLiteral("UTF-8/space path components survive normalization"));
+        check(paths.stateDir.origin == HyRemote::detail::HostPathOrigin::ConfigRelative
+                  && paths.stateDir.value.startsWith(utf8Directory),
+              QStringLiteral("UTF-8/space config-relative state directory stays anchored"));
+    }
+
+    // 11. A relative explicit selection is normalized against the process directory once and reported as an
+    // absolute location, so a later working-directory change cannot move the same configuration.
+    {
+        const QString previous = QDir::currentPath();
+        check(QDir::setCurrent(root.path()), QStringLiteral("test switches into the fixture directory"));
+        const auto paths = HyRemote::detail::resolveHostPaths(QStringLiteral("security.conf"));
+        check(QDir::setCurrent(previous), QStringLiteral("test restores the previous directory"));
+
+        check(paths.configFile.ok() && paths.configFile.origin == HyRemote::detail::HostPathOrigin::Explicit,
+              QStringLiteral("relative explicit selection resolves as an explicit selection"));
+        check(paths.configFile.value == QFileInfo(root.absoluteFilePath(QStringLiteral("security.conf")))
+                                            .absoluteFilePath(),
+              QStringLiteral("relative selection is reported as an absolute location"));
+    }
+
+    // 12. A location that exists but is not a readable file is still unusable: existence alone is not
+    // evidence that a descriptor can be loaded.
+    {
+        const auto paths = HyRemote::detail::resolveHostPaths(root.path());
+        check(!paths.ok(), QStringLiteral("a directory offered as a descriptor is refused"));
+        check(!paths.configFile.ok() && paths.configFile.error.contains(QStringLiteral("not usable")),
+              QStringLiteral("the directory is reported as unusable"));
+        check(!paths.configFile.isSet(), QStringLiteral("no descriptor location is claimed"));
+        check(!paths.stateDir.isSet() && !paths.secretFile.isSet(),
+              QStringLiteral("a refused descriptor resolves no dependent path"));
+    }
+
     check(HyRemote::detail::hostPathOriginName(HyRemote::detail::HostPathOrigin::ConfigRelative)
               == QByteArray("config-relative"),
           QStringLiteral("origin names are stable"));

@@ -514,6 +514,35 @@ hyremote_deploy(TARGET MyApp QPA)
 
 ---
 
+## 可选：显式选择宿主路径（#591）
+
+安全描述文件、可写状态目录和秘密引用由 Shared Runtime 的**同一套路径合同**解析。四条路线只把这个选择传进来，不各写一套规则，所以同一次部署在 C++/QML/Generic/QPA 上的答案一致。
+
+解析优先级（每个路径独立）：
+
+| 路径 | 优先级 |
+| --- | --- |
+| 安全描述文件 | 应用/启动显式选择 > `HYREMOTE_CONFIG_FILE` >（无） |
+| 状态目录 | 显式选择 > `HYREMOTE_STATE_DIR` > `<描述文件所在目录>/state` > Qt 平台用户数据目录 |
+| 秘密引用 | 显式选择 > `HYREMOTE_SECRET_FILE` >（无） |
+
+没有任何 `CWD` 或 home 兜底；相对路径规范化为绝对路径；由配置文件派生的状态目录以**配置文件所在目录**为锚点，不依赖启动目录。
+
+四条路线上的显式选择入口：
+
+- **C++**：`remote.setSecurityConfigFile(path)`（仅在 `Stopped` 时可改）；
+- **QML**：`RemoteAccess { securityConfigFile: "..." }`；
+- **Generic**：`-plugin hyremote:security-config=<path>`；
+- **QPA**：`-platform hyremote:hyremote-security-config=<path>`。
+
+显式或环境给出但不可用（文件不存在/不可读，或状态目录的父目录不存在）时，**只有依赖该路径的功能**失败关闭并给出可操作错误，不会改用其他可写位置：一个不可用的状态目录不会阻止一个可用描述文件启动。
+
+当前公开的显式选择器只有描述文件；状态目录与秘密引用目前只能通过 `HYREMOTE_STATE_DIR` / `HYREMOTE_SECRET_FILE` 选择，而且运行时尚无持久化或凭据消费者——它们会被解析、校验并在诊断报告中如实报告，但**不代表**持久化或凭据管理已经交付。
+
+报告字段：`HOST_CONFIG_FILE` / `HOST_STATE_DIR` / `HOST_SECRET_FILE` 与各自 `_ORIGIN`（`explicit`、`environment`、`config-relative`、`platform-default`、`none`），失败时看 `HOST_PATHS_ERROR`。含义见 [排错](troubleshooting.md)。
+
+---
+
 ## STEP 8 — 最常见的错误
 
 | 症状 | 原因 | 处理 |
