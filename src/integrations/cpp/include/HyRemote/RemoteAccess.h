@@ -128,8 +128,10 @@ public:
     std::optional<RemoteAccessError> lastError() const;
 
     // #335: bounded support report from the one Shared Runtime diagnostic snapshot/formatter.
-    // The report contains product-support facts only and never exposes backend objects or security
-    // descriptor/material paths.
+    // The report contains product-support facts only and never exposes backend objects, credential
+    // material or the contents of a security descriptor. #591: it does name the *selected non-secret
+    // locations* (configuration file, state directory, secret reference) together with their provenance,
+    // so a support report answers the same question on all four routes.
     QString diagnosticReport() const;
 
     // Acknowledge/clear product-level and live recoverable diagnostics. A new occurrence becomes

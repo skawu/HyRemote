@@ -163,8 +163,25 @@ void checkHostPathFacts()
         CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=none\n")));
     }
 
-    // 3. An explicit selection that cannot be used is reported instead of being replaced by a silently
-    // chosen writable location.
+    // 3. An unusable state directory is attributed to itself: the readable configuration is still reported
+    // as selected, because the report must not blame a path that resolved (#591 dependency scoping).
+    if (root.isValid()) {
+        qputenv("HYREMOTE_STATE_DIR", root.filePath(QStringLiteral("absent/state")).toUtf8());
+        HyRemote::Runtime::AccessInstance scoped;
+        CHECK(scoped.setSecurityConfigFile(root.filePath(QStringLiteral("hyremote.conf"))));
+        const QString report = formatDiagnosticReport(scoped.diagnosticSnapshot());
+        qunsetenv("HYREMOTE_STATE_DIR");
+
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE=%1\n")
+                                  .arg(QFileInfo(root.filePath(QStringLiteral("hyremote.conf"))).absoluteFilePath())));
+        CHECK(report.contains(QStringLiteral("HOST_STATE_DIR=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=the state directory selected by HYREMOTE_STATE_DIR")));
+        CHECK(report.contains(QStringLiteral("is not usable")));
+        CHECK(!report.contains(QStringLiteral("HOST_PATHS_ERROR=none")));
+    }
+
+    // 4. An explicit configuration selection that cannot be used is reported instead of being replaced by a
+    // silently chosen writable location.
     CHECK(instance.setSecurityConfigFile(
         QDir(QDir::tempPath()).absoluteFilePath(QStringLiteral("hyremote-absent-descriptor.conf"))));
     {

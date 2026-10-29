@@ -18,7 +18,16 @@ struct HostPathSelection {
     QString value;
     HostPathOrigin origin = HostPathOrigin::None;
 
+    // Non-empty when an explicit or environment selection was given but is unusable. The dependent
+    // feature must fail with this message and must never fall back to another writable location.
+    //
+    // The failure is deliberately scoped to this one path: an unusable state directory must not stop a
+    // readable security descriptor from being used, and an unusable descriptor must not silence a
+    // secret reference. Each feature fails only on the path it actually depends on.
+    QString error;
+
     bool isSet() const { return !value.isEmpty(); }
+    bool ok() const { return error.isEmpty(); }
 };
 
 struct HostPaths {
@@ -26,12 +35,10 @@ struct HostPaths {
     HostPathSelection stateDir;
     HostPathSelection secretFile;
 
-    // Non-empty when an explicit or environment selection was given but is unusable. In that case the
-    // caller must fail the dependent feature with this message and must not fall back to another
-    // writable directory.
-    QString error;
+    bool ok() const { return configFile.ok() && stateDir.ok() && secretFile.ok(); }
 
-    bool ok() const { return error.isEmpty(); }
+    // Every per-path failure, joined for a bounded single-line support report; empty when ok().
+    QString error() const;
 };
 
 // Precedence per path: explicit argument > dedicated environment variable > config-file-relative

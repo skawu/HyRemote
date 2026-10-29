@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QStringList>
 
 namespace HyRemote::detail {
 
@@ -34,19 +35,20 @@ bool isUsableStateDirectory(const QString &path)
 }
 
 // Resolves one path through the documented precedence. `validate` returns true when the value is usable;
-// a supplied-but-unusable value fails the whole resolution instead of silently falling through.
+// a supplied-but-unusable value fails this one selection (never the caller's unrelated paths) instead of
+// silently falling through to another writable location.
 bool resolveOne(const QString &explicitValue, const char *environmentName,
                 const QString &configRelativeDefault, const QString &platformDefault,
-                HostPathSelection &selection, QString &error, const QString &label,
+                HostPathSelection &selection, const QString &label,
                 bool (*validate)(const QString &))
 {
     if (!explicitValue.trimmed().isEmpty()) {
         const QString cleaned = QDir::cleanPath(QFileInfo(explicitValue).absoluteFilePath());
         if (validate && !validate(cleaned)) {
-            error = QStringLiteral("the explicit %1 '%2' is not usable").arg(label, cleaned);
+            selection.error = QStringLiteral("the explicit %1 '%2' is not usable").arg(label, cleaned);
             return false;
         }
-        selection = {cleaned, HostPathOrigin::Explicit};
+        selection = {cleaned, HostPathOrigin::Explicit, {}};
         return true;
     }
 
@@ -54,11 +56,11 @@ bool resolveOne(const QString &explicitValue, const char *environmentName,
     if (!fromEnvironment.isEmpty()) {
         const QString cleaned = QDir::cleanPath(QFileInfo(fromEnvironment).absoluteFilePath());
         if (validate && !validate(cleaned)) {
-            error = QStringLiteral("the %1 selected by %2 ('%3') is not usable")
-                        .arg(label, QString::fromLatin1(environmentName), cleaned);
+            selection.error = QStringLiteral("the %1 selected by %2 ('%3') is not usable")
+                                  .arg(label, QString::fromLatin1(environmentName), cleaned);
             return false;
         }
-        selection = {cleaned, HostPathOrigin::Environment};
+        selection = {cleaned, HostPathOrigin::Environment, {}};
         return true;
     }
 
@@ -67,7 +69,7 @@ bool resolveOne(const QString &explicitValue, const char *environmentName,
         // A derived default is not a user selection: if it is not usable, fall through to the platform
         // default instead of failing a deployment that may not need this path at all.
         if (!validate || validate(cleaned)) {
-            selection = {cleaned, HostPathOrigin::ConfigRelative};
+            selection = {cleaned, HostPathOrigin::ConfigRelative, {}};
             return true;
         }
     }
@@ -75,7 +77,7 @@ bool resolveOne(const QString &explicitValue, const char *environmentName,
     if (!platformDefault.isEmpty()) {
         // A platform default is a best-effort location, not a user selection: it is reported as-is so a caller
         // can surface it, while only explicit and environment selections fail closed.
-        selection = {QDir::cleanPath(platformDefault), HostPathOrigin::PlatformDefault};
+        selection = {QDir::cleanPath(platformDefault), HostPathOrigin::PlatformDefault, {}};
         return true;
     }
 
@@ -90,7 +92,9 @@ HostPaths resolveHostPaths(const QString &explicitConfigFile, const QString &exp
 {
     HostPaths paths;
 
-    if (!resolveOne(explicitConfigFile, kConfigEnv, QString(), QString(), paths.configFile, paths.error,
+    // A configuration file that cannot be used leaves nothing to anchor: the state directory and the secret
+    // reference are intentionally not guessed from a half-known deployment, so the callers cannot half-start.
+    if (!resolveOne(explicitConfigFile, kConfigEnv, QString(), QString(), paths.configFile,
                     QStringLiteral("configuration file"), &isReadableFile)) {
         return paths;
     }
@@ -101,19 +105,25 @@ HostPaths resolveHostPaths(const QString &explicitConfigFile, const QString &exp
     if (paths.configFile.isSet())
         configRelativeState = QFileInfo(paths.configFile.value).absolutePath() + QStringLiteral("/state");
 
-    if (!resolveOne(explicitStateDir, kStateEnv, configRelativeState,
-                    QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation),
-                    paths.stateDir, paths.error, QStringLiteral("state directory"),
-                    &isUsableStateDirectory)) {
-        return paths;
-    }
-
-    if (!resolveOne(explicitSecretFile, kSecretEnv, QString(), QString(), paths.secretFile, paths.error,
-                    QStringLiteral("secret file"), &isReadableFile)) {
-        return paths;
-    }
+    // The state directory and the secret reference are independent features: a broken state directory must
+    // not hide a usable secret mount, so its failure is recorded on its own selection and resolution goes on.
+    resolveOne(explicitStateDir, kStateEnv, configRelativeState,
+               QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation),
+               paths.stateDir, QStringLiteral("state directory"), &isUsableStateDirectory);
+    resolveOne(explicitSecretFile, kSecretEnv, QString(), QString(), paths.secretFile,
+               QStringLiteral("secret file"), &isReadableFile);
 
     return paths;
+}
+
+QString HostPaths::error() const
+{
+    QStringList failures;
+    for (const HostPathSelection *selection : {&configFile, &stateDir, &secretFile}) {
+        if (!selection->ok())
+            failures << selection->error;
+    }
+    return failures.join(QStringLiteral("; "));
 }
 
 const char *hostPathOriginName(HostPathOrigin origin)

@@ -102,7 +102,7 @@ int main(int argc, char **argv)
         const auto paths = HyRemote::detail::resolveHostPaths(
             root.absoluteFilePath(QStringLiteral("missing.conf")));
         check(!paths.ok(), QStringLiteral("missing explicit configuration fails closed"));
-        check(paths.error.contains(QStringLiteral("explicit")),
+        check(paths.error().contains(QStringLiteral("explicit")),
               QStringLiteral("failure names the explicit selection"));
         check(!paths.stateDir.isSet(),
               QStringLiteral("no state directory is resolved after a failed explicit selection"));
@@ -135,6 +135,35 @@ int main(int argc, char **argv)
         const auto broken = HyRemote::detail::resolveHostPaths(
             configPath, QString(), root.absoluteFilePath(QStringLiteral("no-secret.txt")));
         check(!broken.ok(), QStringLiteral("missing explicit secret file fails closed"));
+    }
+
+    // 8. #591 dependency scoping: a failure belongs to the path it names. An unusable state directory must
+    // not take the readable configuration and the readable secret reference down with it, and the aggregate
+    // message must not blame a path that resolved.
+    {
+        const auto paths = HyRemote::detail::resolveHostPaths(
+            configPath, root.absoluteFilePath(QStringLiteral("absent/state")), secretPath);
+        check(!paths.ok(), QStringLiteral("unusable state directory is reported"));
+        check(!paths.stateDir.ok() && paths.stateDir.error.contains(QStringLiteral("state directory")),
+              QStringLiteral("the failure is attributed to the state directory"));
+        check(paths.configFile.ok() && paths.configFile.isSet(),
+              QStringLiteral("a readable configuration stays usable"));
+        check(paths.secretFile.ok() && paths.secretFile.isSet(),
+              QStringLiteral("a readable secret reference stays usable"));
+        check(paths.error().contains(QStringLiteral("state directory"))
+                  && !paths.error().contains(QStringLiteral("secret file")),
+              QStringLiteral("the aggregate message names only the failing path"));
+    }
+
+    // 9. An unusable secret reference is equally scoped: configuration and state stay resolved.
+    {
+        const auto paths = HyRemote::detail::resolveHostPaths(
+            configPath, QString(), root.absoluteFilePath(QStringLiteral("no-secret.txt")));
+        check(!paths.ok() && !paths.secretFile.ok(), QStringLiteral("unusable secret reference is reported"));
+        check(paths.configFile.ok() && paths.configFile.isSet(),
+              QStringLiteral("configuration is unaffected by a broken secret reference"));
+        check(paths.stateDir.ok() && paths.stateDir.isSet(),
+              QStringLiteral("state directory is unaffected by a broken secret reference"));
     }
 
     check(HyRemote::detail::hostPathOriginName(HyRemote::detail::HostPathOrigin::ConfigRelative)
