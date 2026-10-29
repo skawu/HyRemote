@@ -107,6 +107,28 @@ target_include_directories(hyremote-watermark-policy-test PRIVATE ../src)
 add_test(NAME hyremote-watermark-policy-test COMMAND hyremote-watermark-policy-test)
 set_tests_properties(hyremote-watermark-policy-test PROPERTIES TIMEOUT 15)
 
+# #589 W2: pixel-level compositor acceptance. It needs Qt Gui for text rendering, so it registers only where the
+# Gui module exists; the runtime-only configuration without any capture adapter simply has no compositor to test.
+if(TARGET Qt6::Gui)
+    add_executable(hyremote-watermark-compositor-test
+        test_watermark_compositor.cpp
+        ../src/detail/watermark_compositor.cpp
+        ../src/detail/watermark_policy.cpp
+    )
+    target_compile_features(hyremote-watermark-compositor-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-watermark-compositor-test PRIVATE ../src)
+    target_link_libraries(hyremote-watermark-compositor-test
+        PRIVATE
+            Qt6::Core
+            Qt6::Gui
+    )
+    # Deliberately not registered with QT_QPA_PLATFORM=offscreen: the compositor's whole acceptance is rendered
+    # pixels, and the offscreen platform plugin ships no usable font database on Windows (Qt 5 lane), which would
+    # turn "no glyphs" into a fake compositor failure. The test itself fails loudly when no font is available.
+    add_test(NAME hyremote-watermark-compositor-test COMMAND hyremote-watermark-compositor-test)
+    set_tests_properties(hyremote-watermark-compositor-test PROPERTIES TIMEOUT 60)
+endif()
+
 add_executable(hyremote-security-descriptor-test
     test_security_descriptor.cpp
     ../src/detail/security_descriptor.cpp
@@ -525,6 +547,7 @@ hyremote_label_test_family("component;runtime;fast"
     hyremote-security-descriptor-test
     hyremote-host-paths-test
     hyremote-watermark-policy-test
+    hyremote-watermark-compositor-test
     hyremote-target-component-provider-test
     hyremote-input-mailbox-admission-test
 )
