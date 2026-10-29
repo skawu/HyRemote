@@ -29,7 +29,7 @@ using HyRemote::detail::WatermarkPolicyRequest;
 using HyRemote::detail::WatermarkPosition;
 using HyRemote::detail::parseWatermarkPosition;
 using HyRemote::detail::resolveWatermarkPolicy;
-using HyRemote::detail::watermarkFontFamilies;
+using HyRemote::detail::watermarkFontFamilyCandidates;
 using HyRemote::detail::watermarkPositionName;
 
 void checkSharedDefaults()
@@ -90,7 +90,7 @@ void checkRejectedText()
         request.enabled = true;
         request.text = QStringLiteral("first line\nsecond line");
         const auto result = resolveWatermarkPolicy(request);
-        check(!result.ok() && result.error.contains(QStringLiteral("single line")),
+        check(!result.ok() && result.error.contains(QStringLiteral("single visible line")),
               QStringLiteral("multi-line text is refused"));
     }
     {
@@ -98,6 +98,32 @@ void checkRejectedText()
         request.enabled = true;
         request.text = QString(128, QChar(0x4E2D));  // 128 CJK code units
         check(resolveWatermarkPolicy(request).ok(), QStringLiteral("text at the 128 limit is accepted"));
+    }
+    {
+        // A zero-width character would satisfy "non-empty text" while rendering as nothing, which is exactly the
+        // silent degradation the Owner decision forbids.
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QString(QChar(0x200B)) + QStringLiteral("invisible");
+        const auto result = resolveWatermarkPolicy(request);
+        check(!result.ok() && result.error.contains(QStringLiteral("zero-width")),
+              QStringLiteral("zero-width characters are refused instead of rendering nothing"));
+    }
+    {
+        // A bidi override would let the visible order differ from the configured text.
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QChar(0x202E) + QStringLiteral("reordered");
+        const auto result = resolveWatermarkPolicy(request);
+        check(!result.ok() && result.error.contains(QStringLiteral("bidi")),
+              QStringLiteral("bidi override characters are refused"));
+    }
+    {
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QStringLiteral("C1 control") + QChar(0x0085);
+        check(!resolveWatermarkPolicy(request).ok(),
+              QStringLiteral("C1 control characters are refused"));
     }
 }
 
@@ -154,11 +180,20 @@ void checkRejectedValues()
         const auto result = resolveWatermarkPolicy(request);
         check(!result.ok() && result.error.contains(QStringLiteral("RRGGBB")),
               QStringLiteral("a colour that is not #RRGGBB is refused with the expected form"));
+        check(!result.error.contains(QStringLiteral("green")),
+              QStringLiteral("the rejected value is not echoed into the diagnostic"));
     }
     {
         WatermarkPolicyRequest request;
         request.color = QStringLiteral("#12345");
         check(!resolveWatermarkPolicy(request).ok(), QStringLiteral("a truncated hex colour is refused"));
+    }
+    {
+        WatermarkPolicyRequest request;
+        request.color = QStringLiteral("  #00ff00  ");
+        const auto result = resolveWatermarkPolicy(request);
+        check(result.ok() && result.policy.colorRgb == 0x00FF00U,
+              QStringLiteral("surrounding whitespace around a colour is tolerated like other text input"));
     }
 }
 
@@ -194,7 +229,7 @@ void checkPositionTokens()
 
 void checkFontFallback()
 {
-    const QStringList families = watermarkFontFamilies();
+    const QStringList families = watermarkFontFamilyCandidates();
     check(!families.isEmpty(), QStringLiteral("a font family chain is published"));
     check(families.first() == QStringLiteral("Microsoft YaHei UI"),
           QStringLiteral("the Windows CJK-capable family is preferred first"));
@@ -224,6 +259,8 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
               QStringLiteral("the report names the shared default colour"));
         check(report.contains(QStringLiteral("WATERMARK_POLICY_ERROR=none\n")),
               QStringLiteral("a default policy has no error"));
+        check(report.contains(QStringLiteral("WATERMARK_TEXT_CODE_UNITS=0\n")),
+              QStringLiteral("a default policy reports no text"));
     }
 
     {
@@ -236,11 +273,12 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
 
         HyRemote::Runtime::AccessInstance instance;
         check(instance.setWatermarkPolicy(request), QStringLiteral("the policy is accepted while stopped"));
+        check(!HyRemote::Runtime::AccessInstance::watermarkRenderingAvailable(),
+              QStringLiteral("W1 has no compositor, and the build says so"));
         check(!instance.start(), QStringLiteral("an enabled watermark without a compositor refuses to start"));
         const auto error = instance.lastError();
-        check(error.has_value()
-                  && error->code == HyRemote::Runtime::ErrorCode::InvalidConfiguration,
-              QStringLiteral("the refusal is an InvalidConfiguration product error"));
+        check(error.has_value() && error->code == HyRemote::Runtime::ErrorCode::StartFailed,
+              QStringLiteral("the missing capability is a StartFailed, not an invalid configuration"));
         check(error.has_value() && error->message.contains(QStringLiteral("watermark")),
               QStringLiteral("the refusal names the watermark"));
         check(instance.state() == HyRemote::Runtime::AccessState::Stopped,
@@ -252,8 +290,20 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
         check(report.contains(QStringLiteral("WATERMARK_POLICY_ERROR=none\n")),
               QStringLiteral("a valid policy reports no policy error"));
         check(!report.contains(text), QStringLiteral("the operator text never appears in the report"));
-        check(report.contains(QStringLiteral("WATERMARK_TEXT_LENGTH=%1\n").arg(text.size())),
+        check(report.contains(QStringLiteral("WATERMARK_TEXT_CODE_UNITS=%1\n").arg(text.size())),
               QStringLiteral("only the text length is reported"));
+
+        // A refused start must not leave a half-composed runtime behind: the configuration stays editable, no
+        // effective listener facts appear, and stop() stays the idempotent quiescence boundary.
+        check(instance.setWatermarkPolicy(WatermarkPolicyRequest{}),
+              QStringLiteral("the refused start leaves the configuration editable"));
+        check(!instance.diagnosticSnapshot().effectivePort.has_value(),
+              QStringLiteral("a refused start publishes no effective port"));
+        instance.stop();
+        check(instance.state() == HyRemote::Runtime::AccessState::Stopped,
+              QStringLiteral("stop() after a refused start still ends in Stopped"));
+        check(instance.lastError().has_value(),
+              QStringLiteral("the retained diagnostic survives the quiescence stop"));
     }
 
     {

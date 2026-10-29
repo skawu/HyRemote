@@ -9,13 +9,24 @@ namespace HyRemote::detail {
 
 namespace {
 
-bool isSingleLinePrintable(const QString &text)
+// A watermark whose glyphs cannot be seen or read is not a watermark, so the text has to be one visible line.
+// Beyond control characters this also rejects format characters: zero-width characters would let an "enabled"
+// watermark render as nothing, and bidi overrides (U+202A..U+202E, U+2066..U+2069) would let the visible order
+// differ from the configured text. Private-use code points stay allowed because icon fonts legitimately use them.
+bool isSingleLineVisible(const QString &text)
 {
     for (const QChar character : text) {
-        if (character == QLatin1Char(' '))
-            continue;
-        if (!character.isPrint())
+        switch (character.category()) {
+        case QChar::Other_Control:
+        case QChar::Other_Format:
+        case QChar::Other_Surrogate:
+        case QChar::Other_NotAssigned:
+        case QChar::LineSeparator:
+        case QChar::ParagraphSeparator:
             return false;
+        default:
+            break;
+        }
     }
     return true;
 }
@@ -23,11 +34,14 @@ bool isSingleLinePrintable(const QString &text)
 std::optional<quint32> parseColor(const QString &value, QString &error)
 {
     static const QRegularExpression pattern(QStringLiteral("^#[0-9A-Fa-f]{6}$"));
-    if (!pattern.match(value).hasMatch()) {
-        error = QStringLiteral("the watermark colour '%1' is not a #RRGGBB value").arg(value);
+    // Surrounding whitespace is tolerated like every other textual input; the value is never echoed back in a
+    // diagnostic, because a paste error can put unrelated operator text into this field.
+    const QString normalized = value.trimmed();
+    if (!pattern.match(normalized).hasMatch()) {
+        error = QStringLiteral("the watermark colour must be a #RRGGBB value");
         return std::nullopt;
     }
-    return static_cast<quint32>(value.mid(1).toUInt(nullptr, 16));
+    return static_cast<quint32>(normalized.mid(1).toUInt(nullptr, 16));
 }
 
 }  // namespace
@@ -46,15 +60,16 @@ WatermarkPolicyResult resolveWatermarkPolicy(const WatermarkPolicyRequest &reque
     policy.fontPointSize = request.fontPointSize.value_or(kWatermarkDefaultFontPointSize);
     policy.colorRgb = kWatermarkDefaultColorRgb;
 
-    if (policy.text.size() > kWatermarkMaxTextLength) {
-        result.error = QStringLiteral("the watermark text is %1 characters long, but the limit is %2")
+    if (policy.text.size() > kWatermarkMaxTextCodeUnits) {
+        result.error = QStringLiteral("the watermark text is %1 UTF-16 code units long, but the limit is %2")
                            .arg(policy.text.size())
-                           .arg(kWatermarkMaxTextLength);
+                           .arg(kWatermarkMaxTextCodeUnits);
         return result;
     }
 
-    if (!isSingleLinePrintable(policy.text)) {
-        result.error = QStringLiteral("the watermark text must be a single line without control characters");
+    if (!isSingleLineVisible(policy.text)) {
+        result.error = QStringLiteral("the watermark text must be a single visible line without control, "
+                                      "zero-width or bidi formatting characters");
         return result;
     }
 
@@ -135,7 +150,7 @@ bool parseWatermarkPosition(const QString &token, WatermarkPosition &position)
     return false;
 }
 
-QStringList watermarkFontFamilies()
+QStringList watermarkFontFamilyCandidates()
 {
     // Preference order only: the renderer asks Qt for the first available family and lets Qt fall back through
     // the rest, so Latin and CJK text keep a real glyph source instead of a placeholder box.

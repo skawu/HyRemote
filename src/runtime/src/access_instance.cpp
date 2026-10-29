@@ -1008,6 +1008,15 @@ bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &re
     return true;
 }
 
+bool AccessInstance::watermarkRenderingAvailable() noexcept
+{
+#if HYREMOTE_HAS_WATERMARK_RENDERING
+    return true;
+#else
+    return false;
+#endif
+}
+
 bool AccessInstance::start()
 {
     if (!m_impl)
@@ -1050,11 +1059,12 @@ bool AccessInstance::start()
                              .arg(m_impl->watermark.error));
         return false;
     }
-#ifndef HYREMOTE_HAS_WATERMARK_RENDERING
+#if !HYREMOTE_HAS_WATERMARK_RENDERING
     if (m_impl->watermark.policy.enabled) {
         // #589 W2 adds the server-side compositor together with this capability. Until then an enabled policy is
-        // refused here rather than silently producing a watermark-free stream.
-        m_impl->setError(ErrorCode::InvalidConfiguration,
+        // refused here rather than silently producing a watermark-free stream. This is a missing build capability,
+        // not an invalid configuration, so editing the configuration cannot fix it.
+        m_impl->setError(ErrorCode::StartFailed,
                          QStringLiteral("the watermark is enabled, but this build has no server-side watermark "
                                         "compositor; remote output is refused instead of streaming frames "
                                         "without the watermark"));

@@ -210,7 +210,7 @@ QString deploymentIdentity()
 QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
 {
     QStringList lines;
-    lines.reserve(33);
+    lines.reserve(32);
 
     lines << QStringLiteral("HYREMOTE_VERSION=%1").arg(hyremoteVersion())
           << QStringLiteral("BUILD_IDENTITY=%1").arg(buildIdentity())
@@ -247,7 +247,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
                  .arg(QString::number(snapshot.watermark.policy.opacity, 'g', 4))
           << QStringLiteral("WATERMARK_FONT_SIZE=%1").arg(snapshot.watermark.policy.fontPointSize)
           << QStringLiteral("WATERMARK_COLOR=%1").arg(watermarkColor(snapshot.watermark.policy.colorRgb))
-          << QStringLiteral("WATERMARK_TEXT_LENGTH=%1").arg(snapshot.watermark.policy.text.size())
+          << QStringLiteral("WATERMARK_TEXT_CODE_UNITS=%1").arg(snapshot.watermark.policy.text.size())
           << QStringLiteral("WATERMARK_POLICY_ERROR=%1")
                  .arg(snapshot.watermark.ok() ? QStringLiteral("none")
                                               : boundedOneLine(snapshot.watermark.error));

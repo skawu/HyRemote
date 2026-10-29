@@ -32,7 +32,11 @@ enum class WatermarkPosition {
 
 // Bounds. A supplied value outside its bound is rejected with a diagnostic; it is never clamped, because a
 // silently adjusted watermark is a different watermark than the operator asked for.
-constexpr int kWatermarkMaxTextLength = 128;      // UTF-16 code units
+//
+// The length bound counts UTF-16 code units, which is what QString::size() reports and what the diagnostic
+// reports. It bounds the *input*, not the rendered width: fitting the composed text into the frame is the
+// renderer's job and must never be resolved by clipping the operator's text behind their back (#589 W2).
+constexpr int kWatermarkMaxTextCodeUnits = 128;
 constexpr double kWatermarkMinOpacity = 0.05;
 constexpr double kWatermarkMaxOpacity = 1.0;
 constexpr double kWatermarkDefaultOpacity = 0.35;
@@ -78,8 +82,9 @@ WatermarkPolicyResult resolveWatermarkPolicy(const WatermarkPolicyRequest &reque
 QString watermarkPositionName(WatermarkPosition position);
 bool parseWatermarkPosition(const QString &token, WatermarkPosition &position);
 
-// Orders the font families the renderer tries, so CJK text keeps a real glyph source on a machine without the
-// first choice installed. This is a preference order, not a guarantee that any of them exists.
-QStringList watermarkFontFamilies();
+// Candidate font families in preference order, so CJK text keeps a real glyph source where the first choice is
+// not installed. This is a candidate list, not a Qt fallback chain: the renderer must probe each family
+// (QFontInfo) and pick the first one that actually resolves, then let Qt fall back within that family.
+QStringList watermarkFontFamilyCandidates();
 
 }  // namespace HyRemote::detail

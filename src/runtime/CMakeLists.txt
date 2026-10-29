@@ -83,6 +83,15 @@ unset(_hyremote_diagnostic_git_out)
 unset(_hyremote_diagnostic_git_rc)
 unset(_hyremote_diagnostic_source_sha)
 
+# #589: the server-side static text watermark compositor does not exist yet; W2 adds it. The capability is
+# declared explicitly instead of relying on an undefined macro, so a build can never silently claim a compositor
+# it does not contain, and W2 flips exactly one variable together with its sources.
+set(HYREMOTE_WATERMARK_RENDERING_AVAILABLE 0 CACHE INTERNAL
+    "Server-side static text watermark compositor (#589 W2)" FORCE)
+target_compile_definitions(hyremote-remoteaccess PRIVATE
+    HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
+)
+
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
     EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/generated/HyRemote/RemoteAccessExport.h
