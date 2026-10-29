@@ -229,7 +229,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          import os, pathlib, re, subprocess
+          import os, pathlib, re, subprocess, sys
 
           head = os.environ["HEAD_REF"]
           base = os.environ["BASE_REF"]
@@ -310,33 +310,43 @@ jobs:
                   raise SystemExit("initial release preparation did not actually bump the project version")
           elif base_version == version:
               if marker in notes:
-                  # One-time candidate correction: the protected branch was
-                  # versioned before the companion client was accepted. Replace
-                  # only its tree with the exact accepted develop candidate;
-                  # the version token and three bootstrap files are the only
-                  # permitted differences. Notes stay pending.
+                  # A versioned release branch can still be re-based, but only onto the exact reviewed
+                  # develop candidate: the head tree must equal it except for the root VERSION token,
+                  # and the pending bilingual notes must not change. That keeps one reviewed source of
+                  # truth without hard-coding a single historical commit pair.
                   stage = "candidate-correction"
-                  accepted_sha = "9e7c266e3b8b5b8470f32be641465777f72a8c89"
-                  original_release_sha = "9d07234731c0817fab0ca62efa76c5ed79cb1069"
                   actual_base = git("rev-parse", base_tree).decode("ascii").strip()
-                  if actual_base != original_release_sha:
-                      raise SystemExit("candidate correction requires the exact versioned release base")
-                  bootstrap_files = {
-                      ".github/scripts/check-pr-branch-name.sh",
-                      ".github/workflows/git-flow-policy.yml",
-                      "docs/internal/git-flow-release.md",
-                  }
-                  surface = set(git("diff", "--name-only", accepted_sha, "HEAD").decode("utf-8").splitlines())
-                  expected_surface = bootstrap_files | {"CMakeLists.txt"}
-                  if surface != expected_surface:
-                      raise SystemExit(
-                          "candidate correction surface must be exactly "
-                          f"{sorted(expected_surface)}; found {sorted(surface)}")
-                  updated_cmake = (old_cmake[:base_version_match.start("version")]
-                                   + version.encode("ascii")
-                                   + old_cmake[base_version_match.end("version"):])
-                  if new_cmake != updated_cmake:
-                      raise SystemExit("candidate correction may change only the root VERSION token")
+                  if actual_base == "9d07234731c0817fab0ca62efa76c5ed79cb1069":
+                      # Historical V0.3.0.0 bootstrap correction, kept exactly as reviewed then.
+                      accepted_sha = "9e7c266e3b8b5b8470f32be641465777f72a8c89"
+                      bootstrap_files = {
+                          ".github/scripts/check-pr-branch-name.sh",
+                          ".github/workflows/git-flow-policy.yml",
+                          "docs/internal/git-flow-release.md",
+                      }
+                      surface = set(git("diff", "--name-only", accepted_sha, "HEAD").decode("utf-8").splitlines())
+                      expected_surface = bootstrap_files | {"CMakeLists.txt"}
+                      if surface != expected_surface:
+                          raise SystemExit(
+                              "candidate correction surface must be exactly "
+                              f"{sorted(expected_surface)}; found {sorted(surface)}")
+                      updated_cmake = (old_cmake[:base_version_match.start("version")]
+                                       + version.encode("ascii")
+                                       + old_cmake[base_version_match.end("version"):])
+                      if new_cmake != updated_cmake:
+                          raise SystemExit("candidate correction may change only the root VERSION token")
+                  else:
+                      # The correction must equal the reviewed develop candidate, so that ref has to be
+                      # present even though the default checkout only fetches the PR refs.
+                      subprocess.check_output(
+                          ("git", "fetch", "origin",
+                           "develop:refs/remotes/origin/develop", "--force"),
+                          stderr=subprocess.STDOUT)
+                      sys.path.insert(0, ".github/scripts")
+                      from release_correction import validate as validate_correction
+                      validate_correction(git=git, version=version, notes_name=notes_name,
+                                          base_notes=old_notes, head_notes=notes,
+                                          head_cmake=new_cmake)
                   allowed = changed
               else:
                   # Stage 2, ONLY after separate owner acceptance: finalize the
