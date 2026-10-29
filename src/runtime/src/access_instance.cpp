@@ -659,6 +659,10 @@ struct AccessInstance::Impl
     bool remoteInputEnabled = false;
     SecurityProfile securityProfile = SecurityProfile::Insecure;
     QString securityConfigFile;
+
+    // #589: resolved once per accepted configuration, so start() and the diagnostic report cannot disagree about
+    // what the operator asked for.
+    detail::WatermarkPolicyResult watermark;
     // #174 interface identity. Empty means the address decides the mode.
     QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
@@ -991,6 +995,19 @@ bool AccessInstance::setSecurityConfigFile(const QString &path)
     return true;
 }
 
+detail::WatermarkPolicyResult AccessInstance::watermarkPolicy() const
+{
+    return m_impl ? m_impl->watermark : detail::WatermarkPolicyResult{};
+}
+
+bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &request)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+    m_impl->watermark = detail::resolveWatermarkPolicy(request);
+    return true;
+}
+
 bool AccessInstance::start()
 {
     if (!m_impl)
@@ -1022,6 +1039,28 @@ bool AccessInstance::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
     m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
+
+    // #589: an operator who explicitly enabled a watermark must never receive an unwatermarked remote picture.
+    // A policy that cannot be honoured refuses only the remote output capability; the host application keeps
+    // running with its own local picture untouched.
+    if (m_impl->watermark.policy.enabled && !m_impl->watermark.ok()) {
+        m_impl->setError(ErrorCode::InvalidConfiguration,
+                         QStringLiteral("%1; the watermark is enabled, so remote output is refused instead of "
+                                        "streaming frames without it")
+                             .arg(m_impl->watermark.error));
+        return false;
+    }
+#ifndef HYREMOTE_HAS_WATERMARK_RENDERING
+    if (m_impl->watermark.policy.enabled) {
+        // #589 W2 adds the server-side compositor together with this capability. Until then an enabled policy is
+        // refused here rather than silently producing a watermark-free stream.
+        m_impl->setError(ErrorCode::InvalidConfiguration,
+                         QStringLiteral("the watermark is enabled, but this build has no server-side watermark "
+                                        "compositor; remote output is refused instead of streaming frames "
+                                        "without the watermark"));
+        return false;
+    }
+#endif
 
     // #174 listener contract. The mode is decided from configuration, and the effective IPv4 is settled here -
     // before any transport exists - so an address that does not belong to this host, an unknown interface, an
@@ -1239,6 +1278,10 @@ DiagnosticSnapshot AccessInstance::diagnosticSnapshot() const
     // and secret locations were selected, and by what" for every integration route from one implementation.
     // Resolution is a read-only probe of the current selection; it neither creates nor migrates anything.
     result.hostPaths = detail::resolveHostPaths(m_impl->securityConfigFile);
+
+    // #589: report the already-resolved policy instead of recomputing it, so the report cannot claim a different
+    // default than the one start() enforced.
+    result.watermark = m_impl->watermark;
 
     // #335: effective values are observations of a live successful run, never configuration guesses.
     // Runtime start is fail-closed for security, so Running proves the configured profile is the one

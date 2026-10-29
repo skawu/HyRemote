@@ -89,6 +89,24 @@ target_link_libraries(hyremote-host-paths-test
 add_test(NAME hyremote-host-paths-test COMMAND hyremote-host-paths-test)
 set_tests_properties(hyremote-host-paths-test PROPERTIES TIMEOUT 60)
 
+# #589 W1: the shared static text watermark policy. Product defaults, bounded validation and the rule that an
+# explicitly enabled watermark is refused rather than silently dropped are all Runtime contracts, so they are
+# tested without a capture adapter or a viewer.
+add_executable(hyremote-watermark-policy-test
+    test_watermark_policy.cpp
+    ../src/detail/watermark_policy.cpp
+)
+target_compile_features(hyremote-watermark-policy-test PRIVATE cxx_std_17)
+target_link_libraries(hyremote-watermark-policy-test
+    PRIVATE
+        hyremote-remoteaccess
+        Qt6::Core
+        Qt6::Network
+)
+target_include_directories(hyremote-watermark-policy-test PRIVATE ../src)
+add_test(NAME hyremote-watermark-policy-test COMMAND hyremote-watermark-policy-test)
+set_tests_properties(hyremote-watermark-policy-test PROPERTIES TIMEOUT 15)
+
 add_executable(hyremote-security-descriptor-test
     test_security_descriptor.cpp
     ../src/detail/security_descriptor.cpp
@@ -506,6 +524,7 @@ hyremote_label_test_family("component;runtime;fast"
     hyremote-runtime-notifications-test
     hyremote-security-descriptor-test
     hyremote-host-paths-test
+    hyremote-watermark-policy-test
     hyremote-target-component-provider-test
     hyremote-input-mailbox-admission-test
 )
