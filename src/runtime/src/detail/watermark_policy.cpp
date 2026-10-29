@@ -15,8 +15,10 @@ namespace {
 // differ from the configured text. Private-use code points stay allowed because icon fonts legitimately use them.
 bool isSingleLineVisible(const QString &text)
 {
-    for (const QChar character : text) {
-        switch (character.category()) {
+    // Iterate code points, not UTF-16 units: a CJK Extension B ideograph or an emoji is one printable character
+    // made of two surrogate units, and rejecting it would refuse legitimate operator text.
+    for (const uint codePoint : text.toUcs4()) {
+        switch (QChar::category(codePoint)) {
         case QChar::Other_Control:
         case QChar::Other_Format:
         case QChar::Other_Surrogate:

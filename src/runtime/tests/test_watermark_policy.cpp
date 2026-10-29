@@ -125,6 +125,15 @@ void checkRejectedText()
         check(!resolveWatermarkPolicy(request).ok(),
               QStringLiteral("C1 control characters are refused"));
     }
+    {
+        // Characters outside the BMP are surrogate pairs in UTF-16. They are one visible code point, so a
+        // code-point-aware check must accept them instead of rejecting legitimate text.
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QString::fromUtf8("\xF0\x9F\x94\x92 \xE4\xBF\x9D\xE5\xAF\x86 \xF0\xA0\x80\x80");
+        const auto result = resolveWatermarkPolicy(request);
+        check(result.ok(), QStringLiteral("emoji and non-BMP ideographs are accepted"));
+    }
 }
 
 void checkExplicitValues()
