@@ -21,6 +21,11 @@ endif()
 add_executable(hyremote-learning-02-quick main.cpp)
 # Canonical project-owned mark and application icon; no HyRemote Runtime API is linked for Generic examples.
 target_sources(hyremote-learning-02-quick PRIVATE ../../hyremote_branding.cpp ../../../logo/hyremote-branding.qrc)
+# #241: the native Windows file icon is separate acceptance from the Qt window icon.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../logo/hyremote-app-icon.rc")
+    target_sources(hyremote-learning-02-quick PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../../../logo/hyremote-app-icon.rc")
+endif()
 set_target_properties(hyremote-learning-02-quick PROPERTIES AUTORCC ON)
 target_compile_features(hyremote-learning-02-quick PRIVATE cxx_std_17)
 # Qt6::Qml is the ordinary Qt QML runtime used by the UI. It is NOT the HyRemote QML frontend: nothing here links

@@ -20,6 +20,11 @@ set_target_properties(hyremote-remote-support-showcase PROPERTIES
 
 # Ensure the canonical Qt logo .qrc is compiled into the application, including standalone GUI builds.
 set_target_properties(hyremote-remote-support-showcase PROPERTIES AUTORCC ON)
+# #241: the native Windows file icon is separate acceptance from the Qt window icon.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../logo/hyremote-app-icon.rc")
+    target_sources(hyremote-remote-support-showcase PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../../logo/hyremote-app-icon.rc")
+endif()
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
 if(MSVC)
     target_compile_options(hyremote-remote-support-showcase PRIVATE /utf-8)

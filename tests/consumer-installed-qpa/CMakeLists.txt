@@ -70,6 +70,11 @@ add_executable(hyremote-installed-qpa-consumer
     "${CMAKE_CURRENT_LIST_DIR}/../../logo/hyremote-branding.qrc"
 )
 set_target_properties(hyremote-installed-qpa-consumer PROPERTIES AUTORCC ON)
+# #241: the native Windows file icon is separate acceptance from the Qt window icon.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../logo/hyremote-app-icon.rc")
+    target_sources(hyremote-installed-qpa-consumer PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../../logo/hyremote-app-icon.rc")
+endif()
 target_compile_features(hyremote-installed-qpa-consumer PRIVATE cxx_std_17)
 target_link_libraries(hyremote-installed-qpa-consumer PRIVATE Qt6::Widgets)
 
