@@ -273,8 +273,7 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
     }
 
     {
-        // A valid enabled policy cannot be rendered by W1; the runtime must refuse the remote output rather than
-        // stream an unwatermarked picture, and the operator text must not appear in the report.
+        // The operator text must never appear in a report, and the intent must stay visible either way.
         const QString text = QStringLiteral("机密 内部 CONFIDENTIAL");
         WatermarkPolicyRequest request;
         request.enabled = true;
@@ -282,16 +281,6 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
 
         HyRemote::Runtime::AccessInstance instance;
         check(instance.setWatermarkPolicy(request), QStringLiteral("the policy is accepted while stopped"));
-        check(!HyRemote::Runtime::AccessInstance::watermarkRenderingAvailable(),
-              QStringLiteral("W1 has no compositor, and the build says so"));
-        check(!instance.start(), QStringLiteral("an enabled watermark without a compositor refuses to start"));
-        const auto error = instance.lastError();
-        check(error.has_value() && error->code == HyRemote::Runtime::ErrorCode::StartFailed,
-              QStringLiteral("the missing capability is a StartFailed, not an invalid configuration"));
-        check(error.has_value() && error->message.contains(QStringLiteral("watermark")),
-              QStringLiteral("the refusal names the watermark"));
-        check(instance.state() == HyRemote::Runtime::AccessState::Stopped,
-              QStringLiteral("the host runtime returns to Stopped, it is not terminated"));
 
         const QString report = HyRemote::Runtime::formatDiagnosticReport(instance.diagnosticSnapshot());
         check(report.contains(QStringLiteral("WATERMARK_ENABLED=true\n")),
@@ -301,6 +290,30 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
         check(!report.contains(text), QStringLiteral("the operator text never appears in the report"));
         check(report.contains(QStringLiteral("WATERMARK_TEXT_CODE_UNITS=%1\n").arg(text.size())),
               QStringLiteral("only the text length is reported"));
+
+#if HYREMOTE_HAS_WATERMARK_RENDERING
+        // W2: this build contains the compositor, so the capability gate accepts an enabled policy and the only
+        // remaining refusal here is the missing Qt target - never a watermark-free stream.
+        check(HyRemote::Runtime::AccessInstance::watermarkRenderingAvailable(),
+              QStringLiteral("this build contains the server-side compositor"));
+        check(!instance.start(), QStringLiteral("a target-less start still fails"));
+        check(instance.lastError().has_value()
+                  && instance.lastError()->code == HyRemote::Runtime::ErrorCode::InvalidConfiguration,
+              QStringLiteral("the failure is the missing target, not the watermark"));
+        check(instance.state() == HyRemote::Runtime::AccessState::Stopped,
+              QStringLiteral("the host runtime returns to Stopped, it is not terminated"));
+#else
+        // A build without the compositor must refuse the remote output rather than stream an unwatermarked picture.
+        check(!HyRemote::Runtime::AccessInstance::watermarkRenderingAvailable(),
+              QStringLiteral("this build has no compositor, and says so"));
+        check(!instance.start(), QStringLiteral("an enabled watermark without a compositor refuses to start"));
+        const auto error = instance.lastError();
+        check(error.has_value() && error->code == HyRemote::Runtime::ErrorCode::StartFailed,
+              QStringLiteral("the missing capability is a StartFailed, not an invalid configuration"));
+        check(error.has_value() && error->message.contains(QStringLiteral("watermark")),
+              QStringLiteral("the refusal names the watermark"));
+        check(instance.state() == HyRemote::Runtime::AccessState::Stopped,
+              QStringLiteral("the host runtime returns to Stopped, it is not terminated"));
 
         // A refused start must not leave a half-composed runtime behind: the configuration stays editable, no
         // effective listener facts appear, and stop() stays the idempotent quiescence boundary.
@@ -313,6 +326,7 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
               QStringLiteral("stop() after a refused start still ends in Stopped"));
         check(instance.lastError().has_value(),
               QStringLiteral("the retained diagnostic survives the quiescence stop"));
+#endif
     }
 
     {

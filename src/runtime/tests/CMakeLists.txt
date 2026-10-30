@@ -104,6 +104,10 @@ target_link_libraries(hyremote-watermark-policy-test
         Qt6::Network
 )
 target_include_directories(hyremote-watermark-policy-test PRIVATE ../src)
+# The test states the capability contract of the build it runs in, so it must see the same macro as the runtime.
+target_compile_definitions(hyremote-watermark-policy-test PRIVATE
+    HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
+)
 add_test(NAME hyremote-watermark-policy-test COMMAND hyremote-watermark-policy-test)
 set_tests_properties(hyremote-watermark-policy-test PROPERTIES TIMEOUT 15)
 
@@ -127,6 +131,26 @@ if(TARGET Qt6::Gui)
     # turn "no glyphs" into a fake compositor failure. The test itself fails loudly when no font is available.
     add_test(NAME hyremote-watermark-compositor-test COMMAND hyremote-watermark-compositor-test)
     set_tests_properties(hyremote-watermark-compositor-test PROPERTIES TIMEOUT 60)
+
+    # #589 W2b: the transport-facing decorator. It pins the frame identity the damage bookkeeping depends on and the
+    # rule that the captured buffer is never modified.
+    add_executable(hyremote-watermark-frame-decorator-test
+        test_watermark_frame_decorator.cpp
+        ../src/detail/watermark_frame_decorator.cpp
+        ../src/detail/watermark_compositor.cpp
+        ../src/detail/watermark_policy.cpp
+    )
+    target_compile_features(hyremote-watermark-frame-decorator-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-watermark-frame-decorator-test PRIVATE ../src)
+    target_link_libraries(hyremote-watermark-frame-decorator-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+    )
+    add_test(NAME hyremote-watermark-frame-decorator-test COMMAND hyremote-watermark-frame-decorator-test)
+    set_tests_properties(hyremote-watermark-frame-decorator-test PROPERTIES TIMEOUT 60)
 endif()
 
 add_executable(hyremote-security-descriptor-test
@@ -548,6 +572,7 @@ hyremote_label_test_family("component;runtime;fast"
     hyremote-host-paths-test
     hyremote-watermark-policy-test
     hyremote-watermark-compositor-test
+    hyremote-watermark-frame-decorator-test
     hyremote-target-component-provider-test
     hyremote-input-mailbox-admission-test
 )

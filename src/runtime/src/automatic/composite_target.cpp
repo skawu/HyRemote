@@ -345,6 +345,10 @@ private:
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
 
+        // #589: the composite inherits the scale of the surfaces it is made of, so a watermark painted later keeps a
+        // physical size that matches the captured pixels.
+        float compositeDevicePixelRatio = 1.0F;
+
         for (const SurfacePlacement &surface : pending.backToFront) {
             auto frameIt = pending.frames.find(surface.id);
             if (frameIt == pending.frames.end())
@@ -355,6 +359,8 @@ private:
                 || !frame.storage || frame.geometry.size.width == 0 || frame.geometry.size.height == 0) {
                 continue;
             }
+            if (frame.geometry.devicePixelRatio > compositeDevicePixelRatio)
+                compositeDevicePixelRatio = frame.geometry.devicePixelRatio;
 
             const auto plane = frame.storage->mapRead(0);
             if (!plane || !plane->data || plane->stride == 0)
@@ -377,6 +383,7 @@ private:
         }
         painter.end();
 
+        result.geometry.devicePixelRatio = compositeDevicePixelRatio;
         result.timing.completionTime = hyremote::Clock::now();
         publishFrame(state, std::move(result));
     }

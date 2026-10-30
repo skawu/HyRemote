@@ -40,6 +40,7 @@
 #include "detail/host_paths.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
+#include "detail/watermark_frame_decorator.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -1382,6 +1383,18 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
     if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
+#endif
+#if HYREMOTE_HAS_WATERMARK_RENDERING
+    // #589: install the one shared compositor on the frame hook. If it cannot be installed, refuse the start
+    // instead of serving an unwatermarked picture the operator explicitly asked to be marked.
+    if (watermark.policy.enabled) {
+        effectiveSecurity.frameDecorator = detail::makeWatermarkFrameDecorator(watermark.policy);
+        if (!effectiveSecurity.frameDecorator) {
+            setError(ErrorCode::StartFailed,
+                     QStringLiteral("the watermark is enabled but no server-side compositor could be installed"));
+            return false;
+        }
+    }
 #endif
     // Cursor reads happen on the RFB worker. A BlockingQueuedConnection here can deadlock when the
     // GUI calls stop() while the worker is waiting for readSnapshot() and transport shutdown is
