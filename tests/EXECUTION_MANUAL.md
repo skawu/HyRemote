@@ -50,5 +50,12 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 
 ## Scheduled breadth
 
-G4/G5 have no owner today (TS-1 §3). Until the scheduled workflow exists, breadth runs are manual and must be recorded
-with the exact SHA and purpose, so they are not mistaken for PR gates.
+[`.github/workflows/scheduled-breadth.yml`](../.github/workflows/scheduled-breadth.yml) owns both gates now:
+
+| Gate | Schedule | Lane |
+| --- | --- | --- |
+| G4 | nightly 18:00 UTC | Windows Qt 6.8.3, `cpp,qml,generic,qpa`, full suite on `develop` |
+| G5 | weekly Saturday 03:00 UTC | Windows Qt 5.15.2 C++/Widgets full suite on `develop` — the lane PR gating now skips for frontend-only diffs |
+
+Both are `workflow_dispatch`-able (`gate=G4|G5|BOTH`). A scheduled run **never** gates a pull request and never counts as
+PR evidence; it is recorded against the `develop` SHA it actually built.
