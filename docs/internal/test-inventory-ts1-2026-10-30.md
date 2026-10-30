@@ -89,11 +89,11 @@ Cost is measured wall clock in the Qt 6.8.3 configuration.
 
 | Identity | Protected behaviour | PAC | Decision |
 | --- | --- | --- | --- |
-| widgets-capture + forced-dpr + dpr2 | Widgets capture across DPR | PAC-2, PAC-8 | **MERGE_CASES** → one process, three cases (−2 processes) |
+| widgets-capture + forced-dpr + dpr2 | Widgets capture across DPR | PAC-2, PAC-8 | **KEEP per-process** (0.14/0.05/0.04 s): `QT_SCALE_FACTOR` is fixed when the Qt application starts, so the three scale variants cannot share one process; merging them would delete the DPR coverage rather than save it. They are cheap already. |
 | widgets-input-routing + backpressure | Widgets input correctness | PAC-3 | **MERGE_CASES** (−1 process) |
 | widgets-input-preflight-test | shared input ingress | PAC-3 | KEEP_BLOCKING (2.3 s) |
 | widgets-native-popup-capture-test | real native popup capture | PAC-2 | KEEP_CONDITIONAL (0.42 s) |
-| quick-capture + forced-dpr + dpr2 | Quick capture across DPR | PAC-2, PAC-8 | **MERGE_CASES** (−2 processes) |
+| quick-capture + forced-dpr + dpr2 | Quick capture across DPR | PAC-2, PAC-8 | **KEEP per-process** for the same `QT_SCALE_FACTOR` reason (0.68/0.65/0.65 s) |
 | quick-input-routing + backpressure | Quick input correctness | PAC-3 | **MERGE_CASES** (−1 process) |
 | quick-input-preflight-test | shared input ingress | PAC-3 | KEEP_BLOCKING (0.94 s) |
 | quick-controls-preflight-test | QtQuick.Controls matrix | PAC-3 | KEEP_CONDITIONAL (0.21 s) |
@@ -124,13 +124,14 @@ Cost is measured wall clock in the Qt 6.8.3 configuration.
 | v01-example-smoke | learning examples still run | PAC-5, PAC-9 | **RELEASE_ONLY** (81.3 s) |
 | v01-rfb-product-fit | exact-candidate RFB product fit (Pillow/vncdotool) | PAC-3, PAC-9 | **RELEASE_ONLY** (28.8 s; already scope-gated) |
 
-### 2.7 Release readiness and governance (23 identities, ~45 s)
+### 2.7 Release readiness and governance (24 identities, ~45 s)
 
 | Identity | Protected behaviour | PAC | Decision |
 | --- | --- | --- | --- |
 | release-readiness-metadata, -compatibility-cells, -ga-scope-reconciliation, -release-authority-policy, -repository-layout, -release-documentation-layout, -documentation-paths, -licensing-boundary, -ci-environment-baseline, -source-qpa-authority | release truth and docs/layout policy | PAC-9, PAC-10 | **MERGE_CASES**: split into two runners (facts/layout vs product claims); 18 tiny processes become 2 |
 | release-readiness-runtime-contract, -security-runtime-deploy, -build-install-contract, -deployment-relocation, -deploy-helper-contract, -consumer-simplicity, -package-acquisition-isolation | product/packaging truth | PAC-5, PAC-9 | keep `-deploy-helper-contract` (10.2 s fixture) separate; **MERGE_CASES** the rest into the product-claims runner |
 | release-preparation-correction | release-branch correction policy | PAC-9 | **RELEASE_ONLY** (5.2 s) |
+| release-authority-v02-user-first | user-first release-authority contract (unconditional, top-level test block) | PAC-9 | KEEP_BLOCKING in the governance lane (0.07 s) |
 | build-authority-selftest, ci-scope-self-test, mainline-audit-self-test, branch-name-gate-self-test, release-scope-self-test, acquisition-audit-self-test | the CI/build gates themselves | PAC-10 | KEEP_BLOCKING in the governance (no-Qt) lane, not in the product suite |
 | release-profiles | profile resolution | PAC-5 | KEEP_CONDITIONAL (0.3 s) |
 | tool-rfb-client, tool-client-ui | Tool client behaviour and brand presence | PAC-1, PAC-10 | KEEP_CONDITIONAL (0.6 s / 0.06 s) |
@@ -139,10 +140,14 @@ Cost is measured wall clock in the Qt 6.8.3 configuration.
 
 | Metric | Today | Proposal |
 | --- | --- | --- |
-| Discovered identities, Qt 6.8.3 default configuration | 94 | ~78 (−16 by merging; no coverage removed) |
-| Default developer/mainline suite wall clock | 390.9 s | ~95 s (heavy installed/product-fit/fuzz identities leave the default set) |
+| Discovered identities, Qt 6.8.3 default configuration | 94 | ~68 (−26 by merging; no coverage removed, no DPR variant merged) |
+| Default developer/mainline suite wall clock | 390.9 s | ~90–120 s (installed consumers, example smoke, product fit and wire fuzz leave the default set) |
 | Full gate wall clock | 390.9 s | ~330 s (merged fixtures share setup) |
 | Catalog rows | 95 | 94 identities + an explicit condition column |
+
+Merge arithmetic (excluding the DPR variants, which stay per-process): zero-code surface 3→1 (−2), Widgets input 2→1
+(−1), Quick input 2→1 (−1), product façade 3→1 (−2), QML deploy helper 2→1 (−1), QPA deploy helper 2→1 (−1), QPA
+runtime 3→1 (−2), release-readiness 18→2 (−16): **−26**.
 
 ## 3. CI over-execution (measured)
 
