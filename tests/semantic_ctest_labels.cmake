@@ -71,7 +71,6 @@ function(hyremote_apply_root_semantic_test_labels)
 
     hyremote_label_test_family("contract;consumer;fast"
         hyremote-acquisition-audit-self-test
-        hyremote-release-readiness-product-claims
     )
     hyremote_label_test_family("contract;consumer;installed"
         hyremote-release-readiness-deploy-helper-contract
