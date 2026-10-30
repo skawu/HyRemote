@@ -31,7 +31,7 @@ Conditional registration explains 94 (Qt 6.8.3) vs 50 (Qt 5.15.2) vs 95 (catalog
 
 | Defect | Detail |
 | --- | --- |
-| Missing identities | `hyremote-qpa-deploy-helper-positive`, `hyremote-qpa-deploy-helper-negative` execute but have no catalog row. |
+| Table rows missing (documented as bullets) | `hyremote-qpa-deploy-helper-positive`, `hyremote-qpa-deploy-helper-negative` execute and are described in the catalog's bullet list, but they have no table row, so the row-based completeness guard cannot see them. They are documented, not orphaned; the fix is form, not coverage. |
 | Rows without a condition | `hyremote-vnc-auth-test`, `hyremote-rfb-vnc-auth-handshake-test`, `hyremote-linux-qt-runtime-conflict` are listed as if universally present. |
 | Unregistered assets (already declared debt) | `tests/product-e2e/example_product_fit.py`, `tests/product-e2e/qml_product_fit.py` have no execution owner (TG-010/TG-011, deferred P2); they are pinned only as *text* by `tests/release-readiness/check_v1_runtime_contract.cmake`, which is not execution. |
 | Not an orphan | `hyremote-runtime-diagnostics-test` is registered and executes (0.08 s); `test_runtime_diagnostics.cpp` is not orphaned. |
