@@ -170,10 +170,11 @@ require_link_target("${runtime_cmake}" "HyRemote::Core"
 forbid_token("${runtime_cmake}" "remote_access.cpp"
              "common runtime must not own the Embedded C++ facade")
 
-require_token("${root_cmake}" "NAME hyremote-release-readiness-package-acquisition-isolation"
-              "package-acquisition isolation gate is not registered in CTest")
-require_token("${root_cmake}" "check_package_acquisition_isolation.cmake"
-              "package-acquisition isolation gate lost its executable script")
+require_token("${root_cmake}" "NAME hyremote-release-readiness-product-claims"
+              "grouped product-claims gate is not registered in CTest")
+read_repo_file("tests/release-readiness/run_grouped_checks.cmake" grouped_readiness)
+require_token("${grouped_readiness}" "check_package_acquisition_isolation.cmake"
+              "grouped product-claims gate lost the package-acquisition isolation case")
 forbid_token("${root_cmake}" "HYREMOTE_BUILD_SPIKES"
              "retired spike harness switch returned to the root build")
 forbid_token("${root_cmake}" "add_subdirectory(research/"
