@@ -10,7 +10,7 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 | Gate | Moment | What to run | What is forbidden |
 | --- | --- | --- | --- |
 | **G0** | while editing | compile the affected target, then run the single affected test binary by hand | any full suite; repeated `build.cmd test` per edit |
-| **G1** | one logical slice complete | the affected CTest labels only, e.g. `ctest -L "component;runtime;fast"`, `ctest -L "contract;qml;fast"` | treating a labelled run as a whole-suite signoff |
+| **G1** | one logical slice complete | one affected label at a time, e.g. `ctest --test-dir build -L runtime` or `ctest --test-dir build -L qml`; narrow further with `-R <name-regex>`. CTest's `-L` matches **any** label against one regex, so `"component;runtime;fast"` is not an intersection and selects nothing | treating a labelled run as a whole-suite signoff |
 | **G2** | pull request ready | exactly one canonical `build.cmd test` on the affected configuration, then the hosted L1 lanes on that head | a second full run "to be sure"; merging on a pending/skipped gate |
 | **G3** | after merge | the fast/affected subset only | re-running the full gate on `develop` |
 | **G4** | nightly | breadth: wire robustness, example smoke, every adapter family | blocking a pull request |
@@ -31,8 +31,8 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 
 | Change touches | Minimum before PR ready |
 | --- | --- |
-| `src/core` | `component;core;fast` + the affected runtime tests |
-| `src/runtime` | `component;runtime;fast` + `contract` labels for the touched surface |
+| `src/core` | `ctest -L core` plus the runtime identities that consume the changed contract |
+| `src/runtime` | `ctest -L runtime` plus `ctest -L contract` for the touched surface |
 | `src/integrations/{cpp,qml}` | `cpp` / `qml` labels + the QML/installed consumer when its surface changed |
 | `src/integrations/{generic,qpa}` | `generic` / `qpa` labels + the deploy-helper group when packaging changed |
 | `cmake/`, `build.cmd`, `build.yml` | `repository` + `release` labels, then one canonical run |
