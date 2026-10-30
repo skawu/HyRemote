@@ -33,15 +33,26 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     steps:
+      # A scheduled event has no PR ref: without this the default branch (main, the release branch) would be tested
+      # while the job promises development breadth.
       - uses: actions/checkout@v4
+        with:
+          ref: develop
 
-      - name: Install exact Qt 6.8.3 SDK
+      - name: Pin the Python used by the candidate tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install exact Qt 6.8.3 SDK and the candidate viewer tooling
         shell: cmd
         run: |
           python -m pip install --disable-pip-version-check aqtinstall
           python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "%RUNNER_TEMP%\Qt"
           if errorlevel 1 exit /b 1
           dir "%RUNNER_TEMP%\Qt\6.8.3\msvc2022_64\bin\Qt6Core.dll"
+          rem The full suite registers the exact-candidate RFB product fit, whose script imports PIL and vncdotool.
+          python -m pip install --disable-pip-version-check -r src/integrations/cpp/tests/candidate-test-requirements.txt
 
       - name: Full Qt 6.8.3 suite (G4 breadth)
         shell: cmd
@@ -58,7 +69,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
+      # Scheduled events default to main; the weekly Qt 5 breadth is explicitly about develop.
       - uses: actions/checkout@v4
+        with:
+          ref: develop
 
       - name: Pin the Python used by the candidate tests
         uses: actions/setup-python@v5
