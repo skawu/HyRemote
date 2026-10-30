@@ -12,10 +12,23 @@ Rectangle {
         anchors.margins: 20
         spacing: 10
 
-        Text {
-            text: "An ordinary Qt Quick application"
-            color: "#f2f4f8"
-            font.pixelSize: 18
+        Row {
+            spacing: 10
+            height: 30
+
+            Image {
+                width: 28
+                height: 28
+                source: "qrc:/hyremote/branding/huayan-logo-single.png"
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "An ordinary Qt Quick application"
+                color: "#f2f4f8"
+                font.pixelSize: 18
+            }
         }
 
         Text {
