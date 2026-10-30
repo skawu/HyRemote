@@ -245,7 +245,7 @@ capability explicitly re-adopts it. Nothing in this cadence re-activates a TLS p
 
 Working rules that keep that cadence meaningful:
 
-- **Push once per change.** Iterate locally: focused tests, then the canonical `build.cmd` gate, then a clean local
+- **Push once per stable change.** During unfinished work, avoid full-suite runs: compile/inspect as needed, run focused tests only when a coherent behavior is ready to validate. Before a stable Ready PR, run the applicable canonical build/test/install gate for the affected contract, then a clean local
   exact head - and only then push and open the pull request. A second push is for a genuine hosted failure, not for
   using CI as a trial-and-error loop.
 - **Drafts are cheap on purpose.** A draft runs governance only, so it is safe to open early for collaboration; the
