@@ -94,7 +94,6 @@ set_tests_properties(hyremote-host-paths-test PROPERTIES TIMEOUT 60)
 # tested without a capture adapter or a viewer.
 add_executable(hyremote-watermark-policy-test
     test_watermark_policy.cpp
-    ../src/detail/watermark_policy.cpp
 )
 target_compile_features(hyremote-watermark-policy-test PRIVATE cxx_std_17)
 target_link_libraries(hyremote-watermark-policy-test
@@ -138,7 +137,6 @@ if(TARGET Qt6::Gui)
         test_watermark_frame_decorator.cpp
         ../src/detail/watermark_frame_decorator.cpp
         ../src/detail/watermark_compositor.cpp
-        ../src/detail/watermark_policy.cpp
     )
     target_compile_features(hyremote-watermark-frame-decorator-test PRIVATE cxx_std_17)
     target_include_directories(hyremote-watermark-frame-decorator-test PRIVATE ../src)

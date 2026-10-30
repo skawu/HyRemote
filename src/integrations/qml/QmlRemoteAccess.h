@@ -5,6 +5,7 @@
 #include <QtQmlIntegration/qqmlintegration.h>
 
 #include "detail/runtime_notifications.hpp"
+#include "detail/watermark_policy.hpp"
 
 #include <memory>
 #include <optional>
@@ -45,6 +46,14 @@ class QmlRemoteAccess : public QObject, public QQmlParserStatus
     Q_PROPERTY(bool remoteInputEnabled READ remoteInputEnabled WRITE setRemoteInputEnabled NOTIFY remoteInputEnabledChanged)
     Q_PROPERTY(SecurityProfile securityProfile READ securityProfile WRITE setSecurityProfile NOTIFY securityProfileChanged)
     Q_PROPERTY(QString securityConfigFile READ securityConfigFile WRITE setSecurityConfigFile NOTIFY securityConfigFileChanged)
+    // #589: server-side static text watermark. Empty watermarkText means disabled; the rest default to the shared
+    // Runtime policy (bottom-right, 0.35 opacity, 16 points, white). A value the policy refuses is reported through
+    // errorCode/errorString and refuses the start instead of streaming an unmarked picture.
+    Q_PROPERTY(QString watermarkText READ watermarkText WRITE setWatermarkText NOTIFY watermarkChanged)
+    Q_PROPERTY(QString watermarkPosition READ watermarkPosition WRITE setWatermarkPosition NOTIFY watermarkChanged)
+    Q_PROPERTY(double watermarkOpacity READ watermarkOpacity WRITE setWatermarkOpacity NOTIFY watermarkChanged)
+    Q_PROPERTY(int watermarkFontPointSize READ watermarkFontPointSize WRITE setWatermarkFontPointSize NOTIFY watermarkChanged)
+    Q_PROPERTY(QString watermarkColor READ watermarkColor WRITE setWatermarkColor NOTIFY watermarkChanged)
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(quint64 connectedClientCount READ connectedClientCount NOTIFY connectedClientCountChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorChanged)
@@ -114,6 +123,18 @@ public:
     QString securityConfigFile() const;
     void setSecurityConfigFile(const QString &path);
 
+    QString watermarkText() const;
+    void setWatermarkText(const QString &text);
+    // Stable token: bottom-right (default), bottom-left, top-right, top-left or tiled.
+    QString watermarkPosition() const;
+    void setWatermarkPosition(const QString &position);
+    double watermarkOpacity() const;
+    void setWatermarkOpacity(double opacity);
+    int watermarkFontPointSize() const;
+    void setWatermarkFontPointSize(int points);
+    QString watermarkColor() const;
+    void setWatermarkColor(const QString &colorRgb);
+
     State state() const noexcept;
     quint64 connectedClientCount() const noexcept;
     QString errorString() const;
@@ -133,11 +154,16 @@ signals:
     void remoteInputEnabledChanged();
     void securityProfileChanged();
     void securityConfigFileChanged();
+    // One notification for the five watermark properties: the policy is resolved as a whole, so a change to any
+    // field can change the effective policy, its error state and the report.
+    void watermarkChanged();
     void stateChanged();
     void connectedClientCountChanged();
     void errorChanged();
 
 private:
+    void applyWatermark(const HyRemote::detail::WatermarkPolicyRequest &request);
+
     // A frontend-local validation error (a rejected listenAddress, a property changed while running).
     // It is kept apart from the runtime's effective error so a runtime "no error" notification cannot
     // silently erase what this frontend itself refused.

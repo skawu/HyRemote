@@ -71,6 +71,34 @@ int main()
         CHECK(error.contains(QStringLiteral("mutually exclusive")));
     }
 
+    // #589: the watermark is stated in the launch syntax and validated by the shared policy, not by the parser.
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(parseSpecification(QStringLiteral("watermark=内部资料;watermark-position=tiled;"
+                                                "watermark-opacity=0.5;watermark-font-size=24;"
+                                                "watermark-color=#00FF00"),
+                                 config, error));
+        CHECK(error.isEmpty());
+        CHECK(config.watermarkText == QStringLiteral("内部资料"));
+        CHECK(config.watermarkPosition == QStringLiteral("tiled"));
+        CHECK(config.watermarkOpacity.has_value() && *config.watermarkOpacity == 0.5);
+        CHECK(config.watermarkFontPointSize.has_value() && *config.watermarkFontPointSize == 24);
+        CHECK(config.watermarkColor.has_value() && *config.watermarkColor == QStringLiteral("#00FF00"));
+    }
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(!parseSpecification(QStringLiteral("watermark-position=centre"), config, error));
+        CHECK(error.contains(QStringLiteral("watermark-position")));
+    }
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(!parseSpecification(QStringLiteral("watermark-opacity=high"), config, error));
+        CHECK(error.contains(QStringLiteral("watermark-opacity")));
+    }
+
     if (failures != 0)
         std::cerr << failures << " generic config checks failed\n";
     return failures == 0 ? 0 : 1;

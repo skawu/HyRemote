@@ -565,6 +565,41 @@ Report fields: `HOST_CONFIG_FILE` / `HOST_STATE_DIR` / `HOST_SECRET_FILE` with t
 
 ---
 
+## Optional: server-side static text watermark (#589)
+
+The watermark is painted onto the **remote output** (Raw/TRLE and incremental damage both carry it). It never modifies
+the host application's own local pixels and needs no viewer cooperation.
+
+Shared defaults (Owner decision, one implementation for all four routes):
+
+| Item | Default |
+| --- | --- |
+| enabled | **off**; only a non-empty text enables it |
+| position | **bottom-right, single line** when unset; full-screen `tiled` must be chosen explicitly |
+| opacity | **0.35** |
+| font size | 16 points, converted with the target's device pixel ratio so it keeps its size across screens |
+| colour | `#FFFFFF` |
+
+Per route:
+
+- **C++**: `HyRemote::RemoteWatermark w; w.text = "CONFIDENTIAL"; remote.setWatermark(w);` (`clearWatermark()` disables);
+- **QML**: `RemoteAccess { watermarkText: "CONFIDENTIAL"; watermarkPosition: "tiled"; watermarkOpacity: 0.5 }`;
+- **Generic**: `-plugin hyremote:watermark=CONFIDENTIAL;watermark-position=tiled;watermark-opacity=0.5;watermark-font-size=24;watermark-color=#00FF00`;
+- **QPA**: `-platform hyremote:hyremote-watermark=CONFIDENTIAL:hyremote-watermark-position=bottom-left`.
+
+Bounded and **rejected rather than clamped**: text ≤128 code units and a single visible line (control, zero-width and
+bidi-override characters are refused), opacity 0.05–1.0, font size 8–96 points, colour `#RRGGBB`. When any value is
+invalid, the C++/QML setter fails or reports `errorCode=InvalidConfiguration`, the diagnostic report shows a non-`none`
+`WATERMARK_POLICY_ERROR`, and `start()` fails - it **never streams a picture without the watermark** while the host Qt
+application keeps running. Text that cannot fit the frame is refused too: no clipping, no eliding, no silent shrinking.
+No user name, IP, time or device template is supported or accepted; image logos belong to #593 after V1 GA.
+
+Diagnostic fields: `WATERMARK_ENABLED`, `WATERMARK_POSITION`, `WATERMARK_OPACITY`, `WATERMARK_FONT_SIZE`,
+`WATERMARK_COLOR`, `WATERMARK_TEXT_CODE_UNITS`, `WATERMARK_POLICY_ERROR`. The report carries the text **length** only,
+never the text.
+
+---
+
 ## STEP 8 - The most common failures
 
 | Symptom | Cause | Fix |

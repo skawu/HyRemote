@@ -15,6 +15,19 @@
 // The policy is deliberately Qt-Gui free (QRgb/hex text instead of QColor) so a runtime-only configuration
 // without any capture adapter still compiles; the renderer converts it at the point where Qt Gui exists.
 
+// The two token helpers are exported so the peer frontend modules (separate shared objects) validate a launch token
+// with this one implementation instead of growing their own copy of the vocabulary. Translation units that compile
+// this header outside the runtime library - the standalone contract tests - have no generated export header, and get
+// an empty decoration, which is exactly what a local build needs.
+#if defined(__has_include)
+#  if __has_include(<HyRemote/RemoteAccessExport.h>)
+#    include <HyRemote/RemoteAccessExport.h>
+#  endif
+#endif
+#ifndef HYREMOTE_REMOTEACCESS_EXPORT
+#  define HYREMOTE_REMOTEACCESS_EXPORT
+#endif
+
 #include <QString>
 #include <QStringList>
 
@@ -76,15 +89,17 @@ struct WatermarkPolicyResult {
 
 // Resolves a request into the effective policy. Defaults fill every field the route left unset; invalid
 // input yields an error instead of a downgraded policy.
-WatermarkPolicyResult resolveWatermarkPolicy(const WatermarkPolicyRequest &request);
+HYREMOTE_REMOTEACCESS_EXPORT WatermarkPolicyResult resolveWatermarkPolicy(const WatermarkPolicyRequest &request);
 
-// Stable tokens used by launch options, QML string properties and the diagnostic report.
-QString watermarkPositionName(WatermarkPosition position);
-bool parseWatermarkPosition(const QString &token, WatermarkPosition &position);
+// Stable tokens used by launch options, QML string properties and the diagnostic report. Exported only so the peer
+// frontend modules (which are separate shared objects) can validate a launch token with this one implementation;
+// the header stays uninstalled and is not an application SDK promise.
+HYREMOTE_REMOTEACCESS_EXPORT QString watermarkPositionName(WatermarkPosition position);
+HYREMOTE_REMOTEACCESS_EXPORT bool parseWatermarkPosition(const QString &token, WatermarkPosition &position);
 
 // Candidate font families in preference order, so CJK text keeps a real glyph source where the first choice is
 // not installed. This is a candidate list, not a Qt fallback chain: the renderer must probe each family
 // (QFontInfo) and pick the first one that actually resolves, then let Qt fall back within that family.
-QStringList watermarkFontFamilyCandidates();
+HYREMOTE_REMOTEACCESS_EXPORT QStringList watermarkFontFamilyCandidates();
 
 }  // namespace HyRemote::detail

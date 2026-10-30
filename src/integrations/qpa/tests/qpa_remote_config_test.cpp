@@ -42,6 +42,43 @@ int main()
         }
     }
 
+    // #589: the zero-code platform route can select the watermark; the parser only carries the request and the
+    // shared Runtime policy owns defaults and bounds.
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark=CONFIDENTIAL"),
+                               QStringLiteral("hyremote-watermark-position=top-left"),
+                               QStringLiteral("hyremote-watermark-opacity=0.5"),
+                               QStringLiteral("hyremote-watermark-font-size=24"),
+                               QStringLiteral("hyremote-watermark-color=#00FF00"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "watermark parameters parse")
+            || !check(config.watermarkText == QStringLiteral("CONFIDENTIAL"), "watermark text is carried")
+            || !check(config.watermarkPosition == QStringLiteral("top-left"), "watermark position is carried")
+            || !check(config.watermarkOpacity.has_value() && *config.watermarkOpacity == 0.5,
+                      "watermark opacity is carried")
+            || !check(config.watermarkFontPointSize.has_value() && *config.watermarkFontPointSize == 24,
+                      "watermark font size is carried")
+            || !check(config.watermarkColor.has_value() && *config.watermarkColor == QStringLiteral("#00FF00"),
+                      "watermark colour is carried")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "watermark parameters are removed before native delegate creation")) {
+            return 9;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-position=centre")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error),
+                   "an unknown watermark position token is refused")
+            || !check(error.contains(QStringLiteral("hyremote-watermark-position")),
+                      "the refusal names the watermark position parameter")) {
+            return 10;
+        }
+    }
+
     {
         QStringList parameters{QStringLiteral("hyremote-address=0.0.0.0"),
                                QStringLiteral("hyremote-port=5999"),
