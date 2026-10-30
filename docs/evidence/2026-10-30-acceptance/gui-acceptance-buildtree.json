@@ -1,0 +1,86 @@
+﻿[
+    {
+        "Id":  "learning-01-widgets",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\examples\\learning\\01-widgets-cpp\\hyremote-learning-01-widgets.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "HyRemote Learning 01 - Widgets + C++",
+        "WindowIconBig":  91816791,
+        "WindowIconSmall":  1154030013,
+        "Screenshot":  "F:\\workspace\\hyremote\\HyRemote\\tmp\\shots\\learning-01-widgets.png",
+        "ExitCode":  null,
+        "Note":  ""
+    },
+    {
+        "Id":  "learning-02-quick",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\examples\\learning\\02-quick-cpp\\hyremote-learning-02-quick.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "HyRemote Learning 02 - Quick + C++",
+        "WindowIconBig":  407898725,
+        "WindowIconSmall":  1207184503,
+        "Screenshot":  "F:\\workspace\\hyremote\\HyRemote\\tmp\\shots\\learning-02-quick.png",
+        "ExitCode":  null,
+        "Note":  ""
+    },
+    {
+        "Id":  "learning-03-widgets",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\examples\\learning\\03-generic\\widgets-app\\hyremote-learning-03-widgets.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "Learning 03 - ordinary Qt Widgets application",
+        "WindowIconBig":  1469393805,
+        "WindowIconSmall":  826878953,
+        "Screenshot":  "F:\\workspace\\hyremote\\HyRemote\\tmp\\shots\\learning-03-widgets.png",
+        "ExitCode":  null,
+        "Note":  ""
+    },
+    {
+        "Id":  "learning-03-quick",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\examples\\learning\\03-generic\\quick-app\\hyremote-learning-03-quick.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "Learning 03 - ordinary Qt Quick application",
+        "WindowIconBig":  1003949067,
+        "WindowIconSmall":  1264462151,
+        "Screenshot":  "F:\\workspace\\hyremote\\HyRemote\\tmp\\shots\\learning-03-quick.png",
+        "ExitCode":  null,
+        "Note":  ""
+    },
+    {
+        "Id":  "learning-04-qml",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\examples\\learning\\04-qml\\hyremote-qml-basic.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "",
+        "WindowIconBig":  0,
+        "WindowIconSmall":  0,
+        "Screenshot":  "",
+        "ExitCode":  65,
+        "Note":  "process exited before a window appeared"
+    },
+    {
+        "Id":  "learning-05-qpa",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\examples\\learning\\05-qpa\\hyremote-qpa-proxy-existing-app.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "Existing Qt Operations Console",
+        "WindowIconBig":  800006935,
+        "WindowIconSmall":  112534889,
+        "Screenshot":  "F:\\workspace\\hyremote\\HyRemote\\tmp\\shots\\learning-05-qpa.png",
+        "ExitCode":  null,
+        "Note":  ""
+    },
+    {
+        "Id":  "hyremote-tool",
+        "Exe":  "F:\\workspace\\hyremote\\HyRemote\\build\\tools\\hyremote-tool\\hyremote-tool.exe",
+        "Exists":  true,
+        "NativeIconCount":  1,
+        "WindowTitle":  "HyRemoteTool - 远程访问客户端",
+        "WindowIconBig":  1155410579,
+        "WindowIconSmall":  179315373,
+        "Screenshot":  "F:\\workspace\\hyremote\\HyRemote\\tmp\\shots\\hyremote-tool.png",
+        "ExitCode":  null,
+        "Note":  ""
+    }
+]
