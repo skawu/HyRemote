@@ -40,7 +40,7 @@
 
 1. **Work in progress (L0):** no mandatory full suite and no CI polling. Compile as needed, then run only the affected unit/component test when a coherent behavior change can actually be observed. A partial feature does not need a ceremonial `91/91` after every edit. Do not claim PASS for tests not run.
 2. **Completed coherent slice:** run the smallest set covering the changed behavior, including relevant *negative* paths. W1 #589: watermark policy/validation; W2: compositor/frame decorator, damage/RFB incremental and multiple-viewer tests. One proper result is worth more than repeated unrelated green counts. Until the canonical build exposes a safe positive test selector, bounded direct CTest on an identity-verified **already-built** tree is diagnostic-only; full signoff stays through the canonical build. Do not create PowerShell acceptance pipelines.
-3. **Stable Ready PR (L1):** run one diff-scoped hosted merge gate and only its affected products/Kit cells after local preflight. Drafts/unfinished work are not full-CI requests. Each later pushed HEAD invalidates the prior ready-PR decision only where relevant.
+3. **Stable Ready PR (L1):** run one diff-scoped hosted merge gate and only its affected products/Kit cells after local preflight. Drafts/unfinished work are not full-CI requests. **Every new pushed Ready PR HEAD requires a fresh MERGE verdict against that exact HEAD.** The classifier may scope the *work/jobs* to what changed, but may never reuse a previous-head verdict to authorize the new merge.
 4. **Merged `develop`:** lightweight sentinel only; do not repeat the just-passed Windows Qt matrix.
 5. **Frozen candidate/release (L2):** perform **one** admitted exact-SHA full qualification (all applicable Windows cells, supported frontends, installed consumers, product-fit, safety and release governance), then real Viewer/physical evidence required by the specific support claim. A candidate change may legitimately require requalification, not speculative pre-freeze FULL_GATE.
 6. **High-risk overrides:** security fail-closed, RFB wire/ownership, Core memory/lifetime, QPA private ABI, destructive build/install operations and release gate changes require the **additional relevant targeted negatives before PR merge**, not indiscriminate all-configuration execution after every edit.
@@ -75,6 +75,7 @@ The original #274 review retained existing registered tests pending proof of red
 | `hyremote-runtime-automatic-composite-capture-test` | automatic Runtime available | Composite geometry/capture contract. |
 | `hyremote-runtime-automatic-composite-input-test` | automatic Runtime available | Composite input routing contract. |
 | `hyremote-runtime-notifications-test` | automatic Runtime available | Typed Runtime state/client/error notification ordering on real event boundaries. Failure invalidates frontend observability source semantics. |
+| `hyremote-runtime-diagnostics-test` | Runtime | Shared bounded diagnostic report formatting, explicit unknown/none semantics, host-path resolution facts with provenance (#591) and secret-safe single-line error rendering. Failure invalidates the common support report consumed by peer frontends. |
 | `hyremote-security-descriptor-test` | Runtime | Descriptor/credential parsing and fail-closed configuration. |
 | `hyremote-host-paths-test` | Runtime | #591 host path contract: explicit > environment > config-relative > platform default, fail-closed on an unusable explicit or environment selection, no working-directory fallback. |
 | `hyremote-watermark-policy-test` | Runtime | #589 W1 static text watermark policy: Owner defaults (disabled, bottom-right single line, 0.35 opacity), bounded text/opacity/font-size/colour validation, UTF-8 text, and refusal of an explicitly enabled watermark that cannot be rendered. |
@@ -213,7 +214,7 @@ The release-profile matrix intentionally uses separate CTest identities because 
 
 ## Historical registration reconciliation (do not use for current test counts)
 
-> This block cites earlier exact-HEAD CI snapshots; current registered tests/counts change with Qt, security and feature guards. The old `hyremote-runtime-diagnostics-test` row has no matching current Runtime `add_test` registration and has been removed from the active catalog. Re-establish exact counts from the configured tree before claiming coverage.
+> This block cites earlier exact-HEAD CI snapshots; current registered tests/counts change with Qt, security and feature guards. The `hyremote-runtime-diagnostics-test` is registered from the **parent** `src/runtime/CMakeLists.txt` (not `src/runtime/tests/CMakeLists.txt`); audit registration across the entire CMake source tree and the exact configured CTest inventory rather than guessing from one subdirectory. Re-establish exact counts from the configured tree before claiming coverage.
 
 
 
