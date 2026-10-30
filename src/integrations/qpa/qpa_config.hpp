@@ -4,6 +4,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <optional>
+
 namespace HyRemote::Qpa {
 
 enum class SecurityProfile {
@@ -22,6 +24,14 @@ struct RemoteConfig
     bool remoteInputEnabled = false;
     SecurityProfile securityProfile = SecurityProfile::Insecure;
     QString securityConfigFile;
+
+    // #589: the same route-neutral description the Generic plugin uses; the shared Runtime policy owns the
+    // defaults and the bounds, so the two zero-code routes cannot drift apart.
+    QString watermarkText;
+    QString watermarkPosition;
+    std::optional<double> watermarkOpacity;
+    std::optional<int> watermarkFontPointSize;
+    std::optional<QString> watermarkColor;
 };
 
 // QPA owns only its launch/configuration vocabulary. Accepted HyRemote parameters are removed before

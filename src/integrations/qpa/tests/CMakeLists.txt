@@ -23,9 +23,16 @@ add_dependencies(hyremote-qpa-native-semantics hyremote-qpa-platform)
 add_executable(hyremote-qpa-remote-config-test
     qpa_remote_config_test.cpp
     ../qpa_config.cpp
+    # #589: position tokens are validated by the one shared watermark policy helper.
+    ${PROJECT_SOURCE_DIR}/src/runtime/src/detail/watermark_policy.cpp
 )
 target_compile_features(hyremote-qpa-remote-config-test PRIVATE cxx_std_17)
-target_include_directories(hyremote-qpa-remote-config-test PRIVATE ..)
+# #589: the launch vocabulary parser validates watermark position tokens with the one shared policy helper, so the
+# test compiles the same header the plugin does.
+target_include_directories(hyremote-qpa-remote-config-test PRIVATE
+    ..
+    ${_hyremote_root_dir}/src/runtime/src
+)
 target_link_libraries(hyremote-qpa-remote-config-test PRIVATE Qt6::Core Qt6::Network)
 
 if(TARGET Qt6::Widgets)

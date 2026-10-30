@@ -3,6 +3,7 @@
 #include "access_instance.hpp"
 #include "automatic/interactive_composite_target.hpp"
 #include "detail/runtime_diagnostics.hpp"
+#include "detail/watermark_policy.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -315,6 +316,27 @@ private:
             || !instance->setRemoteInputEnabled(config.remoteInputEnabled)
             || !instance->setSecurityProfile(config.securityProfile)
             || !instance->setSecurityConfigFile(config.securityConfigFile)) {
+            writeDiagnosticReport(*instance);
+            return false;
+        }
+
+        // #589: the zero-code route states the operator's request; the shared policy decides defaults and bounds,
+        // and a request it refuses fails the start instead of quietly streaming an unmarked picture.
+        detail::WatermarkPolicyRequest watermark;
+        watermark.enabled = !config.watermarkText.isEmpty();
+        watermark.text = config.watermarkText;
+        if (!config.watermarkPosition.isEmpty()) {
+            detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
+            if (!detail::parseWatermarkPosition(config.watermarkPosition, position)) {
+                writeDiagnosticReport(*instance);
+                return false;
+            }
+            watermark.position = position;
+        }
+        watermark.opacity = config.watermarkOpacity;
+        watermark.fontPointSize = config.watermarkFontPointSize;
+        watermark.color = config.watermarkColor;
+        if (!instance->setWatermarkPolicy(watermark) || !instance->watermarkPolicy().ok()) {
             writeDiagnosticReport(*instance);
             return false;
         }

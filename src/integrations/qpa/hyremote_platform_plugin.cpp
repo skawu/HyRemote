@@ -91,6 +91,12 @@ AutomaticConfig automaticConfig(::HyRemote::Qpa::RemoteConfig config)
     result.remoteInputEnabled = config.remoteInputEnabled;
     result.securityProfile = runtimeSecurityProfile(config.securityProfile);
     result.securityConfigFile = std::move(config.securityConfigFile);
+    // #589: pass the operator's watermark request through unchanged; the shared Runtime policy owns the rest.
+    result.watermarkText = std::move(config.watermarkText);
+    result.watermarkPosition = std::move(config.watermarkPosition);
+    result.watermarkOpacity = config.watermarkOpacity;
+    result.watermarkFontPointSize = config.watermarkFontPointSize;
+    result.watermarkColor = std::move(config.watermarkColor);
     return result;
 }
 

@@ -543,6 +543,33 @@ hyremote_deploy(TARGET MyApp QPA)
 
 ---
 
+## 可选：服务端静态文字水印（#589）
+
+水印画在**远端输出**上（Raw/TRLE 与增量刷新都带水印），**不改宿主应用自己的本地画面**，也不需要 Viewer 配合。
+
+默认策略（Owner 裁决，四条路线共用一份实现）：
+
+| 项 | 默认 |
+| --- | --- |
+| 启用 | **关闭**；只有设置了非空文字才启用 |
+| 位置 | 未指定时=**右下角单条**；`tiled` 全屏平铺必须显式选择 |
+| 不透明度 | **0.35** |
+| 字号 | 16 点（按目标 DPR 换算设备像素，跨屏缩放不变形） |
+| 颜色 | `#FFFFFF` |
+
+四条路线上的写法：
+
+- **C++**：`HyRemote::RemoteWatermark w; w.text = "内部资料"; remote.setWatermark(w);`（`clearWatermark()` 关闭）；
+- **QML**：`RemoteAccess { watermarkText: "内部资料"; watermarkPosition: "tiled"; watermarkOpacity: 0.5 }`；
+- **Generic**：`-plugin hyremote:watermark=内部资料;watermark-position=tiled;watermark-opacity=0.5;watermark-font-size=24;watermark-color=#00FF00`；
+- **QPA**：`-platform hyremote:hyremote-watermark=内部资料:hyremote-watermark-position=bottom-left`。
+
+有界且**拒绝而不夹取**：文字 ≤128 码元且必须单行可见（控制字符、零宽字符、bidi 覆盖一律拒绝），不透明度 0.05–1.0，字号 8–96 点，颜色 `#RRGGBB`。任一值非法时：C++/QML 的 setter 返回失败或置 `errorCode=InvalidConfiguration`，诊断报告出现非 `none` 的 `WATERMARK_POLICY_ERROR`，`start()` 直接失败——**绝不会静默输出没有水印的画面**；宿主 Qt 应用本身继续运行。文字放不进画面时同样拒绝，不裁剪、不省略、不缩字。水印不支持、也不接受用户名/IP/时间/设备标识模板；图片 Logo 属于 V1 GA 之后的 #593。
+
+诊断字段：`WATERMARK_ENABLED`、`WATERMARK_POSITION`、`WATERMARK_OPACITY`、`WATERMARK_FONT_SIZE`、`WATERMARK_COLOR`、`WATERMARK_TEXT_CODE_UNITS`、`WATERMARK_POLICY_ERROR`。报告**只报文字长度，不报文字内容**。
+
+---
+
 ## STEP 8 — 最常见的错误
 
 | 症状 | 原因 | 处理 |

@@ -206,6 +206,26 @@ void checkRejectedValues()
     }
 }
 
+void checkPositionTokenValidation()
+{
+    WatermarkPolicyRequest request;
+    request.enabled = true;
+    request.text = QStringLiteral("TOKEN");
+    request.positionToken = QStringLiteral("centre");
+    const auto rejected = resolveWatermarkPolicy(request);
+    check(!rejected.ok(), QStringLiteral("an unknown position token fails the policy"));
+    check(rejected.error.contains(QStringLiteral("bottom-right")),
+          QStringLiteral("the refusal names the accepted vocabulary"));
+    check(!rejected.error.contains(QStringLiteral("centre")),
+          QStringLiteral("the rejected token is not echoed"));
+    check(rejected.policy.enabled, QStringLiteral("the operator intent stays visible"));
+
+    request.positionToken = QStringLiteral("top-left");
+    const auto accepted = resolveWatermarkPolicy(request);
+    check(accepted.ok() && accepted.policy.position == WatermarkPosition::TopLeft,
+          QStringLiteral("a valid token is applied by the policy"));
+}
+
 void checkPositionTokens()
 {
     struct Case
@@ -362,6 +382,7 @@ int main(int argc, char **argv)
     checkExplicitValues();
     checkRejectedValues();
     checkPositionTokens();
+    checkPositionTokenValidation();
     checkFontFallback();
     checkDiagnosticsAndStartGate(application);
 
