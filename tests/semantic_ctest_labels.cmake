@@ -62,14 +62,8 @@ endfunction()
 function(hyremote_apply_root_semantic_test_labels)
     hyremote_label_test_family("contract;repository;fast"
         hyremote-build-authority-selftest
-        hyremote-release-readiness-compatibility-cells
-        hyremote-release-readiness-ga-scope-reconciliation
+        hyremote-release-readiness-facts-layout
         hyremote-release-preparation-correction
-        hyremote-release-readiness-runtime-contract
-        hyremote-release-readiness-repository-layout
-        hyremote-release-readiness-documentation-paths
-        hyremote-release-readiness-ci-environment-baseline
-        hyremote-release-readiness-licensing-boundary
         hyremote-ci-scope-self-test
         hyremote-mainline-audit-self-test
         hyremote-branch-name-gate-self-test
@@ -77,14 +71,11 @@ function(hyremote_apply_root_semantic_test_labels)
 
     hyremote_label_test_family("contract;consumer;fast"
         hyremote-acquisition-audit-self-test
+        hyremote-release-readiness-product-claims
     )
     hyremote_label_test_family("contract;consumer;installed"
-        hyremote-release-readiness-security-runtime-deploy
-        hyremote-release-readiness-build-install-contract
-        hyremote-release-readiness-deployment-relocation
         hyremote-release-readiness-deploy-helper-contract
-        hyremote-release-readiness-consumer-simplicity
-        hyremote-release-readiness-package-acquisition-isolation
+        hyremote-release-readiness-product-claims
         hyremote-release-readiness-source-qpa-authority
     )
     hyremote_label_test_family("consumer;cpp;installed"
@@ -105,9 +96,7 @@ function(hyremote_apply_root_semantic_test_labels)
     )
 
     hyremote_label_test_family("release;repository;qualification"
-        hyremote-release-readiness-metadata
-        hyremote-release-readiness-release-authority-policy
-        hyremote-release-readiness-release-documentation-layout
+        hyremote-release-readiness-facts-layout
         hyremote-release-scope-self-test
         hyremote-release-authority-v02-user-first
         hyremote-release-profiles
