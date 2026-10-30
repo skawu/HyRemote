@@ -75,7 +75,6 @@ The original #274 review retained existing registered tests pending proof of red
 | `hyremote-runtime-automatic-composite-capture-test` | automatic Runtime available | Composite geometry/capture contract. |
 | `hyremote-runtime-automatic-composite-input-test` | automatic Runtime available | Composite input routing contract. |
 | `hyremote-runtime-notifications-test` | automatic Runtime available | Typed Runtime state/client/error notification ordering on real event boundaries. Failure invalidates frontend observability source semantics. |
-| `hyremote-runtime-diagnostics-test` | Runtime | Shared bounded diagnostic report formatting, explicit unknown/none semantics, host-path resolution facts with provenance (#591) and secret-safe single-line error rendering. Failure invalidates the common support report consumed by peer frontends. |
 | `hyremote-security-descriptor-test` | Runtime | Descriptor/credential parsing and fail-closed configuration. |
 | `hyremote-host-paths-test` | Runtime | #591 host path contract: explicit > environment > config-relative > platform default, fail-closed on an unusable explicit or environment selection, no working-directory fallback. |
 | `hyremote-watermark-policy-test` | Runtime | #589 W1 static text watermark policy: Owner defaults (disabled, bottom-right single line, 0.35 opacity), bounded text/opacity/font-size/colour validation, UTF-8 text, and refusal of an explicitly enabled watermark that cannot be rendered. |
@@ -212,7 +211,11 @@ Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_
 
 The release-profile matrix intentionally uses separate CTest identities because each representable or retired profile is an independent fail-closed release-authority contract.
 
-## Current registration reconciliation
+## Historical registration reconciliation (do not use for current test counts)
+
+> This block cites earlier exact-HEAD CI snapshots; current registered tests/counts change with Qt, security and feature guards. The old `hyremote-runtime-diagnostics-test` row has no matching current Runtime `add_test` registration and has been removed from the active catalog. Re-establish exact counts from the configured tree before claiming coverage.
+
+
 
 Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests.
 
