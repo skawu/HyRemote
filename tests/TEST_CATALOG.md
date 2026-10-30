@@ -3,6 +3,11 @@
 > Final #274 authority. Reconciled against `develop@bee774e76a48c7a23020b5386b42ac7a2bbb56f8` after Phase D. CMake/CTest remain execution authority; this catalog is the semantic/necessity authority for every CTest registered by the top-level product build.
 >
 > `tests/semantic_ctest_labels.cmake` contains a configure-time drift guard: every configured CTest identity must appear here as an exact Markdown code span, otherwise configuration fails. Standalone PRE projects under `tests/preflight/` are intentionally outside this product CTest inventory.
+>
+> **Current facts, not historical prose:** 94 identities in the canonical Qt 6.8.3 four-frontend configuration, 50 in the
+> hosted Qt 5.15.2 C++/Widgets lane, 43 test executables. Evidence and per-identity classification:
+> [test-inventory-ts1-2026-10-30.md](../docs/internal/test-inventory-ts1-2026-10-30.md).
+> **When** to run what: [EXECUTION_MANUAL.md](EXECUTION_MANUAL.md). Numbers quoted in older sections below are history.
 
 ## Taxonomy
 
@@ -54,8 +59,8 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-input-mailbox-admission-test` | Runtime | Bounded input admission/backpressure before GUI delivery. |
 | `hyremote-rfb-multi-client-input-test` | VNC | Per-viewer held key/button ownership and disconnect cleanup. Failure allows one viewer to corrupt another viewer's input state. |
 | `hyremote-rfb-wire-robustness-test` | VNC | Production-socket fragmentation plus malformed/oversized/unsupported input fail-closed behavior. Closes TG-013/TG-014. |
-| `hyremote-vnc-auth-test` | VNC + transport security | VNC Authentication crypto primitive. Failure invalidates credential challenge/response correctness. |
-| `hyremote-rfb-vnc-auth-handshake-test` | VNC + transport security | Wire auth negotiation, wrong credential, no downgrade and bounded stalled auth. Failure invalidates authenticated RFB behavior. |
+| `hyremote-vnc-auth-test` | VNC + transport security | VNC Authentication crypto primitive. Failure invalidates credential challenge/response correctness. **Condition:** registered only in a security-on build (`HYREMOTE_WITH_VNC` and the transport-security capability), so it is absent from the default product matrix. |
+| `hyremote-rfb-vnc-auth-handshake-test` | VNC + transport security | Wire auth negotiation, wrong credential, no downgrade and bounded stalled auth. Failure invalidates authenticated RFB behavior. **Condition:** security-on build only, like the test above. |
 | `hyremote-widgets-capture-test` | Widgets | Ordinary Widgets capture/lifetime/resize/cancellation/target-loss contract. |
 | `hyremote-widgets-native-popup-capture-test` | Widgets (native Windows) | #404: a real QLineEdit::createStandardContextMenu() popup captured while it lies completely inside the root, so the framebuffer geometry cannot stand in for popup pixels; asserts a significant pixel change in the menu region and a return to baseline after close. |
 | `hyremote-widgets-capture-forced-dpr-test` | Widgets | Executes the same capture contract at deterministic DPR=1.5. Closes TG-001; failure exposes HiDPI geometry/pixel mapping regression. |
@@ -138,7 +143,7 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-release-readiness-build-install-contract` | Consumer — promised build/install entry-point contract. |
 | `hyremote-release-readiness-deployment-relocation` | Consumer — installed/deployed payload remains relocatable. |
 | `hyremote-release-readiness-deploy-helper-contract` | Consumer — static deploy/package helper contract. |
-| `hyremote-linux-qt-runtime-conflict` | Consumer/Linux deploy — deterministic same-SONAME Qt runtime conflict resolution stays within the selected Qt/deployed lineage and fails closed for ambiguous or foreign candidates. |
+| `hyremote-linux-qt-runtime-conflict` | Consumer/Linux deploy — deterministic same-SONAME Qt runtime conflict resolution stays within the selected Qt/deployed lineage and fails closed for ambiguous or foreign candidates. **Condition:** Linux-only; it does not exist on the Windows lanes. |
 | `hyremote-release-readiness-consumer-simplicity` | Consumer — public consumption remains bounded/simple. |
 | `hyremote-release-readiness-package-acquisition-isolation` | Consumer — package acquisition stays isolated from product source/build tree. |
 | `hyremote-release-readiness-source-qpa-authority` | Consumer/QPA — source-QPA deployment authority and negative metadata behavior. |
