@@ -233,6 +233,31 @@ if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/.github/scripts/install-linux-qt-desktop-d
     message(FATAL_ERROR "repository-layout: shared Linux Qt desktop dependency script is missing")
 endif()
 
+# #241: every runnable HyRemote-owned GUI program that compiles the canonical logo .qrc must also compile the Windows
+# executable icon resource. `setWindowIcon()` only changes a running window, so it can never satisfy the file-icon
+# requirement. One check covers every target, instead of a CTest per program.
+if(NOT EXISTS "${HYREMOTE_SOURCE_DIR}/logo/hyremote-app-icon.rc"
+   OR NOT EXISTS "${HYREMOTE_SOURCE_DIR}/logo/hyremote-app.ico")
+    message(FATAL_ERROR "repository-layout: the Windows executable icon resource or its generated .ico is missing")
+endif()
+set(_hyremote_branded_gui_cmake_files
+    "examples/learning/01-widgets-cpp/CMakeLists.txt"
+    "examples/learning/02-quick-cpp/CMakeLists.txt"
+    "examples/learning/03-generic/widgets-app/CMakeLists.txt"
+    "examples/learning/03-generic/quick-app/CMakeLists.txt"
+    "examples/learning/04-qml/CMakeLists.txt"
+    "examples/learning/05-qpa/CMakeLists.txt"
+    "tests/consumer-installed-qpa/CMakeLists.txt"
+    "tools/hyremote-tool/CMakeLists.txt"
+)
+foreach(_hyremote_gui_file IN LISTS _hyremote_branded_gui_cmake_files)
+    read_repo_file("${_hyremote_gui_file}" _hyremote_gui_text)
+    require_token("${_hyremote_gui_text}" "hyremote-branding.qrc"
+                  "${_hyremote_gui_file} must compile the canonical logo resource")
+    require_token("${_hyremote_gui_text}" "hyremote-app-icon.rc"
+                  "${_hyremote_gui_file} must compile the Windows executable icon resource")
+endforeach()
+
 message(STATUS
     "HyRemote repository layout gate: PASS "
     "(UI-neutral Core + root-owned Common Runtime + grouped peer integration frontends + retired legacy trees)")
