@@ -1,5 +1,7 @@
 #include "generic_config.hpp"
 
+#include "detail/watermark_policy.hpp"
+
 #include <QHostAddress>
 #include <QStringList>
 
@@ -134,6 +136,50 @@ bool parseSpecification(const QString &specification, AccessConfig &config, QStr
 
         if (key == QStringLiteral("security-config")) {
             parsed.securityConfigFile = value;
+            continue;
+        }
+
+        // #589: the zero-code route states the operator's request; bounds and defaults stay in the shared policy.
+        if (key == QStringLiteral("watermark")) {
+            parsed.watermarkText = value;
+            continue;
+        }
+
+        if (key == QStringLiteral("watermark-position")) {
+            detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
+            if (!detail::parseWatermarkPosition(value, position)) {
+                error = QStringLiteral("watermark-position must be bottom-right, bottom-left, "
+                                       "top-right, top-left or tiled");
+                return false;
+            }
+            parsed.watermarkPosition = value;
+            continue;
+        }
+
+        if (key == QStringLiteral("watermark-opacity")) {
+            bool numeric = false;
+            const double opacity = value.toDouble(&numeric);
+            if (!numeric) {
+                error = QStringLiteral("watermark-opacity must be a number between 0.05 and 1");
+                return false;
+            }
+            parsed.watermarkOpacity = opacity;
+            continue;
+        }
+
+        if (key == QStringLiteral("watermark-font-size")) {
+            bool numeric = false;
+            const int points = value.toInt(&numeric);
+            if (!numeric) {
+                error = QStringLiteral("watermark-font-size must be a whole number of points between 8 and 96");
+                return false;
+            }
+            parsed.watermarkFontPointSize = points;
+            continue;
+        }
+
+        if (key == QStringLiteral("watermark-color")) {
+            parsed.watermarkColor = value;
             continue;
         }
 

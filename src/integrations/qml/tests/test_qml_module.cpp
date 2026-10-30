@@ -146,6 +146,54 @@ void testInvalidConfigurationDoesNotMutateAcceptedValue()
           == QStringLiteral("support-security.conf"));
     CHECK(!object->property("password").isValid());
     CHECK(!object->property("authenticationEnabled").isValid());
+
+    // #589: the declarative route exposes the same shared watermark policy.
+    CHECK(object->property("watermarkText").toString().isEmpty());
+    CHECK(object->property("watermarkPosition").toString() == QStringLiteral("bottom-right"));
+    CHECK(qFuzzyCompare(object->property("watermarkOpacity").toDouble(), 0.35));
+    CHECK(object->property("watermarkFontPointSize").toInt() == 16);
+    CHECK(object->property("watermarkColor").toString() == QStringLiteral("#FFFFFF"));
+
+    CHECK(object->setProperty("watermarkText", QStringLiteral("WATERMARK 内部")));
+    CHECK(object->property("watermarkText").toString() == QStringLiteral("WATERMARK 内部"));
+    CHECK(object->setProperty("watermarkPosition", QStringLiteral("tiled")));
+    CHECK(object->property("watermarkPosition").toString() == QStringLiteral("tiled"));
+    CHECK(object->setProperty("watermarkOpacity", 0.5));
+    CHECK(qFuzzyCompare(object->property("watermarkOpacity").toDouble(), 0.5));
+    CHECK(object->setProperty("watermarkFontPointSize", 24));
+    CHECK(object->property("watermarkFontPointSize").toInt() == 24);
+    CHECK(object->setProperty("watermarkColor", QStringLiteral("#00FF00")));
+    CHECK(object->property("watermarkColor").toString() == QStringLiteral("#00FF00"));
+
+    // A value the shared policy refuses is reported, not silently applied.
+    CHECK(object->setProperty("watermarkOpacity", 1.5));
+    CHECK(object->property("errorCode").toInt() == 1); // InvalidConfiguration
+    CHECK(!object->property("errorString").toString().isEmpty());
+    CHECK(QMetaObject::invokeMethod(object.get(), "clearError"));
+    CHECK(object->setProperty("watermarkOpacity", 0.35));
+    CHECK(object->property("errorCode").toInt() == 0); // NoError again
+
+    // An unknown position token is refused by the shared policy and stays visible: it must not be dropped at this
+    // boundary and leave a later start() running with the previous position.
+    CHECK(object->setProperty("watermarkPosition", QStringLiteral("centre")));
+    CHECK(object->property("watermarkPosition").toString() == QStringLiteral("centre"));
+    CHECK(object->property("errorCode").toInt() == 1);
+    CHECK(QMetaObject::invokeMethod(object.get(), "clearError"));
+    CHECK(object->setProperty("watermarkText", QStringLiteral("text beside an invalid position")));
+    CHECK(object->property("errorCode").toInt() == 1); // the position is still invalid
+    CHECK(object->setProperty("watermarkPosition", QStringLiteral("tiled")));
+    CHECK(object->property("errorCode").toInt() == 0);
+
+    // A rejected colour survives a later text change instead of being replaced by the resolved (white) policy.
+    CHECK(object->setProperty("watermarkColor", QStringLiteral("green")));
+    CHECK(object->property("watermarkColor").toString() == QStringLiteral("green"));
+    CHECK(object->property("errorCode").toInt() == 1);
+    CHECK(QMetaObject::invokeMethod(object.get(), "clearError"));
+    CHECK(object->setProperty("watermarkText", QStringLiteral("text after colour")));
+    CHECK(object->property("errorCode").toInt() == 1); // the colour is still invalid
+    CHECK(object->property("watermarkColor").toString() == QStringLiteral("green"));
+    CHECK(object->setProperty("watermarkColor", QStringLiteral("#FFFFFF")));
+    CHECK(object->property("errorCode").toInt() == 0);
     CHECK(object->setProperty("securityProfile", 0));
     CHECK(object->property("securityProfile").toInt() == 0);
 }

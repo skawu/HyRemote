@@ -58,6 +58,16 @@ WatermarkPolicyResult resolveWatermarkPolicy(const WatermarkPolicyRequest &reque
     policy.enabled = request.enabled;
     policy.text = request.text;
     policy.position = request.position.value_or(WatermarkPosition::BottomRight);
+    if (request.positionToken) {
+        WatermarkPosition parsed = WatermarkPosition::BottomRight;
+        if (!parseWatermarkPosition(*request.positionToken, parsed)) {
+            // The token is not echoed: the accepted vocabulary is what the operator needs to see.
+            result.error = QStringLiteral("the watermark position must be one of bottom-right, bottom-left, "
+                                          "top-right, top-left or tiled");
+            return result;
+        }
+        policy.position = parsed;
+    }
     policy.opacity = request.opacity.value_or(kWatermarkDefaultOpacity);
     policy.fontPointSize = request.fontPointSize.value_or(kWatermarkDefaultFontPointSize);
     policy.colorRgb = kWatermarkDefaultColorRgb;
