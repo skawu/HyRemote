@@ -18,6 +18,8 @@ set_target_properties(hyremote-remote-support-showcase PROPERTIES
     AUTOMOC ON
 )
 
+# Ensure the canonical Qt logo .qrc is compiled into the application, including standalone GUI builds.
+set_target_properties(hyremote-remote-support-showcase PROPERTIES AUTORCC ON)
 target_compile_features(hyremote-remote-support-showcase PRIVATE cxx_std_17)
 if(MSVC)
     target_compile_options(hyremote-remote-support-showcase PRIVATE /utf-8)
