@@ -820,6 +820,14 @@ void testWatermarkPolicySurface()
     CHECK(!remote.diagnosticReport().contains(QStringLiteral("WATERMARK_POLICY_ERROR=none")));
     CHECK(!remote.diagnosticReport().contains(requested.text));
 
+    // Whitespace-only text is a request that cannot be rendered, not an implicit "disabled": it must fail and stay
+    // visible as an enabled-but-invalid policy.
+    HyRemote::RemoteWatermark whitespace;
+    whitespace.text = QStringLiteral("\n");
+    CHECK(!remote.setWatermark(whitespace));
+    CHECK(remote.diagnosticReport().contains(QStringLiteral("WATERMARK_ENABLED=true")));
+    CHECK(!remote.diagnosticReport().contains(QStringLiteral("WATERMARK_POLICY_ERROR=none")));
+
     remote.clearWatermark();
     CHECK(remote.watermark().text.isEmpty());
     CHECK(remote.diagnosticReport().contains(QStringLiteral("WATERMARK_ENABLED=false")));

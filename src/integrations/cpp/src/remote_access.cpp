@@ -235,7 +235,10 @@ bool RemoteAccess::setWatermark(const RemoteWatermark &watermark)
         return false;
 
     detail::WatermarkPolicyRequest request;
-    request.enabled = !watermark.text.trimmed().isEmpty();
+    // Only a genuinely empty text means "disabled". Whitespace-only text is an operator request that fails
+    // validation: treating it as disabled here would silently drop a watermark the caller asked for, and start()
+    // would then stream an unmarked picture.
+    request.enabled = !watermark.text.isEmpty();
     request.text = watermark.text;
     request.position = mapWatermarkPosition(watermark.position);
     request.opacity = watermark.opacity;

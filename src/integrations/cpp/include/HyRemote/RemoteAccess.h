@@ -66,9 +66,11 @@ enum class RemoteWatermarkPosition {
     Tiled,
 };
 
-// #589: the operator's watermark request. An empty `text` means "watermark disabled", which is also the default
-// state of every instance. Values outside the product bounds (opacity, font size, colour form) are rejected, never
-// quietly adjusted; omitted values take the shared Runtime defaults (bottom-right, 0.35 opacity, 16 points, white).
+// #589: the operator's watermark request. A zero-length `text` means "watermark disabled", which is also the
+// default state of every instance; whitespace-only or otherwise unrenderable text is rejected, because treating it
+// as "disabled" would silently drop a watermark the caller asked for. Values outside the product bounds (opacity,
+// font size, colour form) are rejected, never quietly adjusted; omitted values take the shared Runtime defaults
+// (bottom-right, 0.35 opacity, 16 points, white).
 //
 // The watermark is applied to the outgoing remote framebuffer only. The host application's own painted pixels are
 // never modified, and no user name, IP address, time or device identifier is ever inserted automatically.
