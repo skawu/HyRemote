@@ -55,6 +55,9 @@ jobs:
       test_only: ${{ steps.scope.outputs.test_only }}
       product_matrix: ${{ steps.scope.outputs.product_matrix }}
       product: ${{ steps.scope.outputs.product }}
+      # #393 TS-1: the Qt 5 lane builds C++/Widgets only, so it is selected by impact. The job mapping is required -
+      # a missing entry here made the lane silently skip even though the classifier reported true.
+      qt5_scope: ${{ steps.scope.outputs.qt5_scope }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
       qml: ${{ steps.scope.outputs.qml }}
