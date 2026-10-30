@@ -16,7 +16,38 @@
 | T6 | release/candidate truth | release scope/profile/readiness |
 | PRE | bounded technical-decision preflight | standalone preflight project/workflow |
 
-All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions were completed during Phase B; their current semantic owner is shown below. Capability guards remain registration authority and labels never replace them.
+**2026-10-30 Owner scheduling correction (#393):** The historical #274 `KEEP` classification below meant *preserve a test's unique contract*, **not** “run every test on every code edit or PR slice.” The current code-level CMake registration and a configured `ctest --show-only=json-v1` are the sole exact inventory/execution facts; the catalog describes contracts and can lag behind code changes. Never infer the current test count, pass, or installation/Viewer support from a table or old SHA.
+
+## Product-based necessity, evidence strength and execution timing (Owner 2026-10-30)
+
+**Only this distinction controls cost:** a test can be essential to keep but unnecessary to execute during a specific edit. `T1–T6` below retain their exact CTest identities and unique behavior descriptions.
+
+| Test family / explicit identities | Keep or reduce? | Run when it can change a decision | What it cannot prove |
+| --- | --- | --- | --- |
+| **T1 Core**: frame lifetime, damage, bounded mailbox, Session/transport handoff, input routing, callback exception/lifetime, dependency boundary | **MANDATORY UNIQUE REGRESSION** | When touching Core/Session, buffers, scheduling, callback boundaries; Ready PR for affected capability; frozen candidate | A Core pass does not mean GUI/Viewer/install passes |
+| **T1 Shared Runtime / RFB/security**: listener, HostPaths, diagnostics, watermark policy/compositor/decorator, RFB wire robustness/input ownership, VNC auth, state/lifecycle | **MANDATORY UNIQUE REGRESSION** | On affected Runtime/transport/config/security change; targeted component first, affected PR gate later, security-enabled matrix only when touched | Security-off green does not prove VNC auth; image unit tests do not prove RealVNC visible output |
+| **T1 Widgets/Quick adapters**: capture, DPR variants, popup, input routing/backpressure, controls | **MANDATORY where supported** | On capture/input/DPR/target-adapter changes; all actual supported cells at candidate | Offscreen popup or synthetic DPR cannot prove physical native popup visibility or all GPU backends |
+| **T2 four integration frontends**: C++, QML, Generic, QPA public contracts, route smoke, exact ABI negatives | **MANDATORY where applicable** | Only when the route/Shared Runtime/public contract/ABI can change; L1 affected cell; L2 accepted support cells | A single C++ success never proves other three routes; Qt5 C++ never proves Qt5 Quick/QML/Generic/QPA |
+| **T3 build/CI/repository/branch/style static checks** | **SCOPED GOVERNANCE**, not universal product tests | On relevant build/CI/branch/doc/layout/licensing/authority changes; lightweight Git Flow gate as required | A text/layout/assertion PASS is not Runtime, GUI, screenshot or deploy evidence |
+| **T4 clean installed SDK/consumer/deploy/acquisition** | **KEEP, run on SDK/deployment risk** | SDK install/export, Qt ABI/Kit, deployment, package, loader or four-route consumer changes; all applicable cells at frozen candidate | Do not re-run a complete install tree for each watermark pixel arithmetic edit |
+| **T5 runnable examples, Tool UI, scripted RFB product-fit** | **KEEP but make claim explicit** | When user-path/Example/Tool/RFB protocol is touched; maintained external Viewer on exact candidate | `hyremote-tool-client-ui` only verifies offscreen construction, not user-visible logo or UX; scripted `vncdotool` does not equal actual RealVNC evidence |
+| **T6 release profile/scope/metadata/notes/readiness** | **QUALIFICATION/GOVERNANCE ONLY** | When release authority/manifest/notes/profile changes and at exact-SHA release qualification | Do not repeatedly execute V0.2 release policy tests during W1/W2 watermark implementation |
+| **PRE standalone technical spikes** | **OPTIONAL MANUAL RISK INVESTIGATION** | A specific architecture GO/NO-GO depends on the result | Not part of product CTest, not a release or Supported claim |
+| **Unregistered Python E2E assets**: `tests/product-e2e/example_product_fit.py`, `qml_product_fit.py` | **NO EXECUTION AUTHORITY / ZERO TEST EVIDENCE** until registered and verified | Do not invoke by assumption; either register under a concrete product outcome or archive as historical | These are not two more executed/passing tests |
+| **Stale catalog/count statements** | **INVALID AS CURRENT TEST RESULTS**, not invalid product code | Correct via a separate catalog/evidence reconciliation; inspect exact HEAD and configured CTest | Historical 112/110 or 108/107 counts and a listed name not actually registered cannot be used to claim today's coverage |
+
+### Hard execution budget / stage gate
+
+1. **Work in progress (L0):** no mandatory full suite and no CI polling. Compile as needed, then run only the affected unit/component test when a coherent behavior change can actually be observed. A partial feature does not need a ceremonial `91/91` after every edit. Do not claim PASS for tests not run.
+2. **Completed coherent slice:** run the smallest set covering the changed behavior, including relevant *negative* paths. W1 #589: watermark policy/validation; W2: compositor/frame decorator, damage/RFB incremental and multiple-viewer tests. One proper result is worth more than repeated unrelated green counts. Until the canonical build exposes a safe positive test selector, bounded direct CTest on an identity-verified **already-built** tree is diagnostic-only; full signoff stays through the canonical build. Do not create PowerShell acceptance pipelines.
+3. **Stable Ready PR (L1):** run one diff-scoped hosted merge gate and only its affected products/Kit cells after local preflight. Drafts/unfinished work are not full-CI requests. Each later pushed HEAD invalidates the prior ready-PR decision only where relevant.
+4. **Merged `develop`:** lightweight sentinel only; do not repeat the just-passed Windows Qt matrix.
+5. **Frozen candidate/release (L2):** perform **one** admitted exact-SHA full qualification (all applicable Windows cells, supported frontends, installed consumers, product-fit, safety and release governance), then real Viewer/physical evidence required by the specific support claim. A candidate change may legitimately require requalification, not speculative pre-freeze FULL_GATE.
+6. **High-risk overrides:** security fail-closed, RFB wire/ownership, Core memory/lifetime, QPA private ABI, destructive build/install operations and release gate changes require the **additional relevant targeted negatives before PR merge**, not indiscriminate all-configuration execution after every edit.
+
+**Pruning rule:** delete or merge a registered test only with side-by-side assertion evidence demonstrating that another registered test exercises the *same behavior and failure mode* in the *same supported cell*, or that the behavior/feature is retired. Cost alone is not proof of uselessness. Keep detailed `KEEP / MERGE_CANDIDATE / RETIRE_CONFIRMED / UNREGISTERED` dispositions in #393 with measured runtime and actual configured CTest names. The #274 catalog's one-way “registered → mentioned” assertion does **not** prove that every old catalog line is still executable; do not elevate an absent test name to PASS.
+
+The original #274 review retained existing registered tests pending proof of redundancy. Historical `MOVE`/`SPLIT` decisions were completed during Phase B; their current semantic owner is shown below. Capability guards remain registration authority and labels never replace them.
 
 ## T1 — Core
 
