@@ -78,6 +78,10 @@ struct RemoteWatermark
 {
     QString text;
     RemoteWatermarkPosition position = RemoteWatermarkPosition::BottomRight;
+    // These literals must stay identical to the shared Runtime policy defaults. This installed header cannot include
+    // the internal policy header, so the equality is guarded by `hyremote-watermark-policy-test` instead of by a
+    // shared constant: a stale value here would silently give this one route a different watermark than QML, Generic
+    // and QPA.
     double opacity = 0.35;
     int fontPointSize = 16;
     QString colorRgb = QStringLiteral("#FFFFFF");
