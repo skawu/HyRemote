@@ -230,12 +230,6 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
     endif()
 
-    # A01/E01: the exact-cell matrix is a product statement, so the repository checks it instead of trusting
-    # the table to stay honest across edits.
-
-    # E02/#602: the inherited 26-child list stays accounted for while its reconciliation is reviewed. The machine
-    # change itself remains a separate PR; this only keeps the audit complete.
-
     # TS-1 / MERGE_CASES: 15 scripts preserve their independent failure oracles, but
     # share two script-mode CMake processes. Deploy-helper and QPA fixtures stay separate.
     set(_hyremote_readiness_group_args
@@ -280,8 +274,7 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
     endif()
 
 
-    # #339: the build/install contract the user is promised, registered beside the deployment gates because it
-    # is the same subject seen from the entry point instead of from one deploy path.
+    # The independently heavy deployment fixture retains its own CTest and scratch setup.
     add_test(
         NAME hyremote-release-readiness-deploy-helper-contract
         COMMAND "${CMAKE_COMMAND}"
