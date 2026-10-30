@@ -203,4 +203,14 @@ Facts behind the matrix: the only canonical assets are `logo/huayan-logo-single.
    binary brand asset) and extend the existing `hyremote-tool-client-ui` brand check to the remaining GUI targets
    without creating one CTest per program.
 
+## 7. Reproduction (read-only)
+
+```text
+ctest --test-dir build --show-only=json-v1                       # 94 identities, no execution
+Select-String build/test.log 'Test\s+#\d+: ...'                  # per-identity wall clock
+Get-ChildItem build/{core,runtime,integrations,tests,tool} -Recurse -Filter *.exe   # 43 executables
+gh run view <qt5-lane-run> --log | Select-String DISCOVERED_TEST_COUNT              # 50 in the Qt 5 lane
+git ls-files | Select-String '\.(rc|ico)$'                       # empty: no native Windows file icon
+```
+
 No test is deleted by this audit, and no full suite was executed to produce it.
