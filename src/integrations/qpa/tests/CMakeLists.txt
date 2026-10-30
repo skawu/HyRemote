@@ -115,45 +115,44 @@ if(TARGET Qt6::Quick)
 
 endif()
 
-# The individual smoke binaries remain separate fixtures; three grouped CTests
-# run them with their original QPA/plugin environment and report every case by
-# name. This removes process bookkeeping without merging the assertions.
-set(_hyremote_qpa_runtime_common
-    -DQT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins
-)
-
-set(_hyremote_qpa_runtime_basic ${_hyremote_qpa_runtime_common}
-    -DGROUP=basic
-    -DPROXY_EXE=$<TARGET_FILE:hyremote-qpa-proxy-smoke>
-    -DNATIVE_EXE=$<TARGET_FILE:hyremote-qpa-native-semantics>
-    -DREMOTE_CONFIG_EXE=$<TARGET_FILE:hyremote-qpa-remote-config-test>
+# Preserve each smoke executable, private plugin and environment contract, while
+# eliminating two redundant CTest/CMake grouping processes. The separate Quick
+# multi-window test is startup-sensitive and must NOT be merged.
+set(_hyremote_qpa_runtime_args
+    "-DQT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/plugins"
+    -DGROUP=all
+    "-DPROXY_EXE=$<TARGET_FILE:hyremote-qpa-proxy-smoke>"
+    "-DNATIVE_EXE=$<TARGET_FILE:hyremote-qpa-native-semantics>"
+    "-DREMOTE_CONFIG_EXE=$<TARGET_FILE:hyremote-qpa-remote-config-test>"
 )
 if(TARGET hyremote-qpa-widget-opengl-capture-smoke)
-    list(APPEND _hyremote_qpa_runtime_basic
-        -DOPENGL_EXE=$<TARGET_FILE:hyremote-qpa-widget-opengl-capture-smoke>)
+    list(APPEND _hyremote_qpa_runtime_args
+        "-DOPENGL_EXE=$<TARGET_FILE:hyremote-qpa-widget-opengl-capture-smoke>")
 endif()
-add_test(NAME hyremote-qpa-runtime-basic
-    COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_runtime_basic}
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake)
-set_tests_properties(hyremote-qpa-runtime-basic PROPERTIES
-    TIMEOUT 90
-    RESOURCE_LOCK hyremote-qpa-runtime)
-
-set(_hyremote_qpa_runtime_surfaces ${_hyremote_qpa_runtime_common} -DGROUP=surfaces)
-set(_hyremote_qpa_runtime_surfaces_has_case FALSE)
 if(TARGET hyremote-qpa-multi-surface-connection-smoke)
-    list(APPEND _hyremote_qpa_runtime_surfaces
-        -DMULTI_EXE=$<TARGET_FILE:hyremote-qpa-multi-surface-connection-smoke>)
-    set(_hyremote_qpa_runtime_surfaces_has_case TRUE)
+    list(APPEND _hyremote_qpa_runtime_args
+        "-DMULTI_EXE=$<TARGET_FILE:hyremote-qpa-multi-surface-connection-smoke>")
 endif()
 if(TARGET hyremote-qpa-widget-popup-connection-smoke)
-    list(APPEND _hyremote_qpa_runtime_surfaces
-        -DPOPUP_EXE=$<TARGET_FILE:hyremote-qpa-widget-popup-connection-smoke>)
-    set(_hyremote_qpa_runtime_surfaces_has_case TRUE)
+    list(APPEND _hyremote_qpa_runtime_args
+        "-DPOPUP_EXE=$<TARGET_FILE:hyremote-qpa-widget-popup-connection-smoke>")
 endif()
+if(TARGET hyremote-qpa-auto-remoteaccess-smoke)
+    list(APPEND _hyremote_qpa_runtime_args
+        "-DAUTO_EXE=$<TARGET_FILE:hyremote-qpa-auto-remoteaccess-smoke>")
+endif()
+if(TARGET hyremote-qpa-remote-failure-native-survival-smoke)
+    list(APPEND _hyremote_qpa_runtime_args
+        "-DFAILURE_EXE=$<TARGET_FILE:hyremote-qpa-remote-failure-native-survival-smoke>")
+endif()
+add_test(NAME hyremote-qpa-runtime
+    COMMAND "${CMAKE_COMMAND}" ${_hyremote_qpa_runtime_args}
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake")
+set_tests_properties(hyremote-qpa-runtime PROPERTIES
+    TIMEOUT 300
+    RESOURCE_LOCK hyremote-qpa-runtime)
+
 if(TARGET hyremote-qpa-quick-multi-window-connection-smoke)
-    # Keep the Quick multi-window case as its own CTest: it starts its viewer
-    # 500 ms after process launch and is sensitive to being run inside a group.
     add_test(NAME hyremote-qpa-quick-multi-window-connection-smoke
         COMMAND hyremote-qpa-quick-multi-window-connection-smoke)
     set_tests_properties(hyremote-qpa-quick-multi-window-connection-smoke PROPERTIES
@@ -161,46 +160,14 @@ if(TARGET hyremote-qpa-quick-multi-window-connection-smoke)
         TIMEOUT 30
         RESOURCE_LOCK hyremote-qpa-runtime)
 endif()
-if(_hyremote_qpa_runtime_surfaces_has_case)
-    add_test(NAME hyremote-qpa-runtime-surfaces
-        COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_runtime_surfaces}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake)
-    set_tests_properties(hyremote-qpa-runtime-surfaces PROPERTIES
-        TIMEOUT 120
-        RESOURCE_LOCK hyremote-qpa-runtime)
-endif()
-
-set(_hyremote_qpa_runtime_recovery ${_hyremote_qpa_runtime_common} -DGROUP=recovery)
-set(_hyremote_qpa_runtime_recovery_has_case FALSE)
-if(TARGET hyremote-qpa-auto-remoteaccess-smoke)
-    list(APPEND _hyremote_qpa_runtime_recovery
-        -DAUTO_EXE=$<TARGET_FILE:hyremote-qpa-auto-remoteaccess-smoke>)
-    set(_hyremote_qpa_runtime_recovery_has_case TRUE)
-endif()
-if(TARGET hyremote-qpa-remote-failure-native-survival-smoke)
-    list(APPEND _hyremote_qpa_runtime_recovery
-        -DFAILURE_EXE=$<TARGET_FILE:hyremote-qpa-remote-failure-native-survival-smoke>)
-    set(_hyremote_qpa_runtime_recovery_has_case TRUE)
-endif()
-if(_hyremote_qpa_runtime_recovery_has_case)
-    add_test(NAME hyremote-qpa-runtime-recovery
-        COMMAND ${CMAKE_COMMAND} ${_hyremote_qpa_runtime_recovery}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_qpa_runtime.cmake)
-    set_tests_properties(hyremote-qpa-runtime-recovery PROPERTIES
-        TIMEOUT 90
-        RESOURCE_LOCK hyremote-qpa-runtime)
-endif()
 
 include("${PROJECT_SOURCE_DIR}/tests/semantic_ctest_labels.cmake")
 hyremote_label_test_family("integration;qpa;fast"
-    hyremote-qpa-runtime-basic
-    hyremote-qpa-runtime-surfaces
-    hyremote-qpa-runtime-recovery
+    hyremote-qpa-runtime
     hyremote-qpa-quick-multi-window-connection-smoke
 )
-# The basic group includes the remote-config contract case; labels are additive.
 hyremote_label_test_family("contract;qpa;fast"
-    hyremote-qpa-runtime-basic
+    hyremote-qpa-runtime
 )
 
 # The parent QPA directory registers the T4 deployment matrix after this subdirectory returns.
