@@ -26,7 +26,7 @@ function(run_case name executable)
     message(STATUS "QPA runtime case PASS: ${name}")
 endfunction()
 
-if(GROUP STREQUAL "basic")
+if(GROUP STREQUAL "basic" OR GROUP STREQUAL "all")
     run_case(proxy-smoke "${PROXY_EXE}"
         "QT_QPA_PLATFORM=hyremote"
         "QT_PLUGIN_PATH=${QT_PLUGIN_PATH}"
@@ -40,7 +40,8 @@ if(GROUP STREQUAL "basic")
         "QT_QPA_PLATFORM=hyremote:hyremote-port=5994"
         "QT_PLUGIN_PATH=${QT_PLUGIN_PATH}"
     )
-elseif(GROUP STREQUAL "surfaces")
+endif()
+if(GROUP STREQUAL "surfaces" OR GROUP STREQUAL "all")
     run_case(multi-surface-connection "${MULTI_EXE}"
         "QT_QPA_PLATFORM=hyremote:hyremote-port=5997"
         "QT_PLUGIN_PATH=${QT_PLUGIN_PATH}"
@@ -54,7 +55,8 @@ elseif(GROUP STREQUAL "surfaces")
         "QT_PLUGIN_PATH=${QT_PLUGIN_PATH}"
         "QT_QUICK_BACKEND=software"
     )
-elseif(GROUP STREQUAL "recovery")
+endif()
+if(GROUP STREQUAL "recovery" OR GROUP STREQUAL "all")
     run_case(auto-remoteaccess "${AUTO_EXE}"
         "QT_QPA_PLATFORM=hyremote:hyremote-port=5998"
         "QT_PLUGIN_PATH=${QT_PLUGIN_PATH}"
@@ -62,6 +64,7 @@ elseif(GROUP STREQUAL "recovery")
     run_case(remote-failure-native-survival "${FAILURE_EXE}"
         "QT_PLUGIN_PATH=${QT_PLUGIN_PATH}"
     )
-else()
+endif()
+if(NOT GROUP MATCHES "^(basic|surfaces|recovery|all)$")
     message(FATAL_ERROR "unknown QPA runtime group: ${GROUP}")
 endif()
