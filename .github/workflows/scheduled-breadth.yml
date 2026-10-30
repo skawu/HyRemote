@@ -59,7 +59,9 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
-          call build.cmd build --integrations="cpp,qml,generic,qpa" --qt-prefix="%RUNNER_TEMP%\Qt\6.8.3\msvc2022_64" --build-type=Release --build-dir=build-nightly --tests --run-tests --no-examples -j4
+          rem G4 is breadth: build the learning examples too, so the example smoke identity is actually registered and
+          rem executed. Excluding them would leave the nightly claiming breadth it does not have.
+          call build.cmd build --integrations="cpp,qml,generic,qpa" --qt-prefix="%RUNNER_TEMP%\Qt\6.8.3\msvc2022_64" --build-type=Release --build-dir=build-nightly --tests --run-tests --examples -j4
 
   g5-qt5-breadth:
     name: G5 weekly / Windows Qt 5.15.2 / C++ Widgets
