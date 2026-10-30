@@ -11,7 +11,7 @@ namespace HyRemote::detail {
 
 namespace {
 
-bool decorate(const WatermarkPolicy &policy, double devicePixelRatio, const hyremote::RemoteFrame &source,
+bool decorate(const WatermarkPolicy &policy, const hyremote::RemoteFrame &source,
               hyremote::RemoteFrame &decorated, QString &error)
 {
     if (source.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888 || !source.storage) {
@@ -32,7 +32,9 @@ bool decorate(const WatermarkPolicy &policy, double devicePixelRatio, const hyre
     view.width = static_cast<int>(source.geometry.size.width);
     view.height = static_cast<int>(source.geometry.size.height);
     view.premultiplied = source.geometry.alphaMode == hyremote::AlphaMode::Premultiplied;
-    view.devicePixelRatio = devicePixelRatio;
+    view.devicePixelRatio = source.geometry.devicePixelRatio > 0.0F
+                                ? static_cast<double>(source.geometry.devicePixelRatio)
+                                : 1.0;
 
     QByteArray composed;
     if (!composeWatermark(policy, view, composed, error)) {
@@ -62,15 +64,13 @@ bool decorate(const WatermarkPolicy &policy, double devicePixelRatio, const hyre
 
 }  // namespace
 
-RfbFrameDecorator makeWatermarkFrameDecorator(const WatermarkPolicy &policy, double devicePixelRatio)
+RfbFrameDecorator makeWatermarkFrameDecorator(const WatermarkPolicy &policy)
 {
     if (!policy.enabled)
         return {};
 
-    return [policy, devicePixelRatio](const hyremote::RemoteFrame &source,
-                                      hyremote::RemoteFrame &decorated, QString &error) {
-        return decorate(policy, devicePixelRatio, source, decorated, error);
-    };
+    return [policy](const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated,
+                    QString &error) { return decorate(policy, source, decorated, error); };
 }
 
 }  // namespace HyRemote::detail

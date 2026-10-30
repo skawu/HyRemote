@@ -591,20 +591,36 @@ public:
         m_decorationFailed = true;
         m_servedFrame.reset();
         m_observedFrame.reset();
-        const std::string message = error.isEmpty()
-                                        ? std::string("the server-side watermark could not be composed")
-                                        : error.toUtf8().toStdString();
-        publishEvent(hyremote::TransportEventCode::FatalFailure, message);
 
-        for (auto &entry : m_clients) {
+        // Drop the viewers with the same bookkeeping as an ordinary disconnect. Closing the sockets here without it
+        // would skip releaseHeldInput() and the ClientDisconnected accounting, so a composition failure while a
+        // viewer held a key or button could leave the host target holding that input until an explicit stop.
+        std::vector<std::pair<QTcpSocket *, std::unique_ptr<ClientState>>> dropping;
+        dropping.reserve(m_clients.size());
+        for (auto &entry : m_clients)
+            dropping.emplace_back(entry.first, std::move(entry.second));
+        m_clients.clear();
+
+        for (auto &entry : dropping) {
             QTcpSocket *socket = entry.first;
+            ClientState &client = *entry.second;
+            const bool announced = client.connectedEventSent;
+            if (announced)
+                releaseHeldInput(client);
             QObject::disconnect(socket, nullptr, this, nullptr);
             socket->abort();
             socket->deleteLater();
+            if (announced)
+                publishEvent(hyremote::TransportEventCode::ClientDisconnected,
+                             "RFB client disconnected");
         }
-        m_clients.clear();
         if (m_server)
             m_server->close();
+
+        // Published last: a fatal transport event may synchronously stop this transport.
+        publishEvent(hyremote::TransportEventCode::FatalFailure,
+                     error.isEmpty() ? std::string("the server-side watermark could not be composed")
+                                     : error.toUtf8().toStdString());
     }
 
 private:

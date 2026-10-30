@@ -75,13 +75,13 @@ WatermarkPolicy enabledPolicy()
 
 void checkDisabledProducesNoDecorator()
 {
-    const auto decorator = makeWatermarkFrameDecorator(WatermarkPolicy{}, 1.0);
+    const auto decorator = makeWatermarkFrameDecorator(WatermarkPolicy{});
     check(!decorator, QStringLiteral("a disabled policy installs no decorator, so the capture frame is encoded as is"));
 }
 
 void checkCompositionPreservesIdentityAndSource()
 {
-    const auto decorator = makeWatermarkFrameDecorator(enabledPolicy(), 1.0);
+    const auto decorator = makeWatermarkFrameDecorator(enabledPolicy());
     check(static_cast<bool>(decorator), QStringLiteral("an enabled policy installs a decorator"));
 
     const hyremote::RemoteFrame source = makeFrame(11);
@@ -106,24 +106,29 @@ void checkCompositionPreservesIdentityAndSource()
     check(decoratedPixels != sourcePixels, QStringLiteral("the decorated frame carries the watermark"));
 }
 
-void checkDevicePixelRatioIsUsed()
+void checkDevicePixelRatioComesFromTheFrame()
 {
-    const auto at1x = makeWatermarkFrameDecorator(enabledPolicy(), 1.0);
-    const auto at2x = makeWatermarkFrameDecorator(enabledPolicy(), 2.0);
+    const auto decorator = makeWatermarkFrameDecorator(enabledPolicy());
 
-    const hyremote::RemoteFrame source = makeFrame();
+    hyremote::RemoteFrame atOneX = makeFrame();
+    atOneX.geometry.devicePixelRatio = 1.0F;
+    hyremote::RemoteFrame atTwoX = makeFrame();
+    atTwoX.geometry.devicePixelRatio = 2.0F;
+
     hyremote::RemoteFrame one;
     hyremote::RemoteFrame two;
     QString error;
-    check(at1x(source, one, error), QStringLiteral("the 1x decorator produces a frame"));
-    check(at2x(source, two, error), QStringLiteral("the 2x decorator produces a frame"));
+    check(decorator(atOneX, one, error), QStringLiteral("the 1x frame decorates"));
+    check(decorator(atTwoX, two, error), QStringLiteral("the 2x frame decorates"));
     check(readPixels(one) != readPixels(two),
-          QStringLiteral("the target device pixel ratio changes the composed pixels"));
+          QStringLiteral("the frame's own device pixel ratio changes the composed pixels, not a startup value"));
+    check(two.geometry.devicePixelRatio == 2.0F,
+          QStringLiteral("the decorated frame keeps the capture's device pixel ratio"));
 }
 
 void checkUnusableFrameIsRefused()
 {
-    const auto decorator = makeWatermarkFrameDecorator(enabledPolicy(), 1.0);
+    const auto decorator = makeWatermarkFrameDecorator(enabledPolicy());
 
     hyremote::RemoteFrame unsupported = makeFrame();
     unsupported.geometry.pixelFormat = hyremote::PixelFormat::Bgra8888;
@@ -144,7 +149,7 @@ void checkTextThatCannotFitIsRefused()
 {
     auto policy = enabledPolicy();
     policy.text = QString(128, QLatin1Char('W'));
-    const auto decorator = makeWatermarkFrameDecorator(policy, 1.0);
+    const auto decorator = makeWatermarkFrameDecorator(policy);
 
     const hyremote::RemoteFrame source = makeFrame();
     hyremote::RemoteFrame decorated;
@@ -162,7 +167,7 @@ int main(int argc, char **argv)
 
     checkDisabledProducesNoDecorator();
     checkCompositionPreservesIdentityAndSource();
-    checkDevicePixelRatioIsUsed();
+    checkDevicePixelRatioComesFromTheFrame();
     checkUnusableFrameIsRefused();
     checkTextThatCannotFitIsRefused();
 
