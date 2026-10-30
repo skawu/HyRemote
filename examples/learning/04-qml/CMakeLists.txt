@@ -20,6 +20,8 @@ qt_add_qml_module(hyremote-qml-basic
     QML_FILES Main.qml
 )
 
+# Ensure the canonical Qt logo .qrc is compiled into the application, including standalone GUI builds.
+set_target_properties(hyremote-qml-basic PROPERTIES AUTORCC ON)
 target_compile_features(hyremote-qml-basic PRIVATE cxx_std_17)
 target_link_libraries(hyremote-qml-basic PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 add_dependencies(hyremote-qml-basic hyremote-qml hyremote-qmlplugin)
