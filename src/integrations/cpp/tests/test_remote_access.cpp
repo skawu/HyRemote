@@ -779,6 +779,61 @@ void testListenInterfaceMapping()
     HyRemote::detail::resetFactories();
 }
 
+// #589: the product watermark surface is typed, defaults to the shared Runtime policy and refuses a request it
+// cannot render instead of quietly dropping the watermark.
+void testWatermarkPolicySurface()
+{
+    HyRemote::detail::resetFactories();
+    auto counters = std::make_shared<RuntimeCounters>();
+    installFakeRuntime(counters);
+
+    QObject target;
+    HyRemote::RemoteAccess remote(&target);
+
+    const HyRemote::RemoteWatermark defaults = remote.watermark();
+    CHECK(defaults.text.isEmpty());
+    CHECK(defaults.position == HyRemote::RemoteWatermarkPosition::BottomRight);
+    CHECK(defaults.opacity == 0.35);
+    CHECK(defaults.fontPointSize == 16);
+    CHECK(defaults.colorRgb == QStringLiteral("#FFFFFF"));
+
+    HyRemote::RemoteWatermark requested;
+    requested.text = QStringLiteral("内部资料 CONFIDENTIAL");
+    requested.position = HyRemote::RemoteWatermarkPosition::Tiled;
+    requested.opacity = 0.5;
+    requested.fontPointSize = 24;
+    requested.colorRgb = QStringLiteral("#00FF00");
+    CHECK(remote.setWatermark(requested));
+
+    const HyRemote::RemoteWatermark applied = remote.watermark();
+    CHECK(applied.text == requested.text);
+    CHECK(applied.position == HyRemote::RemoteWatermarkPosition::Tiled);
+    CHECK(applied.opacity == 0.5);
+    CHECK(applied.fontPointSize == 24);
+    CHECK(applied.colorRgb == QStringLiteral("#00FF00"));
+
+    // An out-of-range value is refused rather than clamped, and the operator intent stays visible in the report.
+    HyRemote::RemoteWatermark invalid = requested;
+    invalid.opacity = 1.5;
+    CHECK(!remote.setWatermark(invalid));
+    CHECK(remote.diagnosticReport().contains(QStringLiteral("WATERMARK_ENABLED=true")));
+    CHECK(!remote.diagnosticReport().contains(QStringLiteral("WATERMARK_POLICY_ERROR=none")));
+    CHECK(!remote.diagnosticReport().contains(requested.text));
+
+    // Whitespace-only text is a request that cannot be rendered, not an implicit "disabled": it must fail and stay
+    // visible as an enabled-but-invalid policy.
+    HyRemote::RemoteWatermark whitespace;
+    whitespace.text = QStringLiteral("\n");
+    CHECK(!remote.setWatermark(whitespace));
+    CHECK(remote.diagnosticReport().contains(QStringLiteral("WATERMARK_ENABLED=true")));
+    CHECK(!remote.diagnosticReport().contains(QStringLiteral("WATERMARK_POLICY_ERROR=none")));
+
+    remote.clearWatermark();
+    CHECK(remote.watermark().text.isEmpty());
+    CHECK(remote.diagnosticReport().contains(QStringLiteral("WATERMARK_ENABLED=false")));
+    CHECK(counters->transportStarts.load() == 0);
+}
+
 int main()
 {
     testSafeDefaultsAndNoConstructionSideEffect();
@@ -794,6 +849,7 @@ int main()
     testInvalidPublicConfigurationIsProductLevel();
     testBindPolicyFollowsAuthentication();
     testListenInterfaceMapping();
+    testWatermarkPolicySurface();
 
     HyRemote::detail::resetFactories();
     if (failures != 0) {
