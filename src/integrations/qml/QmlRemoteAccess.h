@@ -162,7 +162,7 @@ signals:
     void errorChanged();
 
 private:
-    void applyWatermark(const HyRemote::detail::WatermarkPolicyRequest &request);
+    void applyWatermark();
 
     // A frontend-local validation error (a rejected listenAddress, a property changed while running).
     // It is kept apart from the runtime's effective error so a runtime "no error" notification cannot
@@ -186,6 +186,9 @@ private:
     void clearLocalError();
 
     std::unique_ptr<::HyRemote::Runtime::AccessInstance> m_access;
+    // #589: the operator's requested watermark, kept verbatim so a rejected value is not silently replaced by the
+    // last resolved policy and a later start() cannot quietly succeed with a different watermark.
+    HyRemote::detail::WatermarkPolicyRequest m_watermarkRequest;
     ::HyRemote::Runtime::RuntimeNotificationToken m_notificationToken;
     QMetaObject::Connection m_targetDestroyedConnection;
     bool m_componentComplete = false;

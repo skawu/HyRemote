@@ -346,118 +346,82 @@ void QmlRemoteAccess::setSecurityConfigFile(const QString &path)
     emit securityConfigFileChanged();
 }
 
-namespace {
-
-HyRemote::detail::WatermarkPolicyRequest watermarkRequestOf(const HyRemote::detail::WatermarkPolicy &policy)
-{
-    HyRemote::detail::WatermarkPolicyRequest request;
-    request.enabled = policy.enabled;
-    request.text = policy.text;
-    request.position = policy.position;
-    request.opacity = policy.opacity;
-    request.fontPointSize = policy.fontPointSize;
-    request.color = QStringLiteral("#%1").arg(policy.colorRgb & 0xFFFFFFU, 6, 16, QLatin1Char('0')).toUpper();
-    return request;
-}
-
-}  // namespace
-
+// The declarative route keeps the operator's *request* (including a value the policy refuses and a position token it
+// does not recognise) and hands that whole request to the shared policy on every change. Rebuilding the request from
+// the resolved policy would lose a rejected colour or an unknown position, and a later start() would then quietly
+// succeed with a policy the operator never asked for.
 QString QmlRemoteAccess::watermarkText() const
 {
-    return m_access ? m_access->watermarkPolicy().policy.text : QString{};
+    return m_watermarkRequest.text;
 }
 
 void QmlRemoteAccess::setWatermarkText(const QString &text)
 {
-    if (!m_access || text == watermarkText())
+    if (text == m_watermarkRequest.text)
         return;
-    HyRemote::detail::WatermarkPolicyRequest request =
-        watermarkRequestOf(m_access->watermarkPolicy().policy);
     // A zero-length text is the explicit "disabled" state; anything else is a request the shared policy validates.
-    request.enabled = !text.isEmpty();
-    request.text = text;
-    applyWatermark(request);
+    m_watermarkRequest.enabled = !text.isEmpty();
+    m_watermarkRequest.text = text;
+    applyWatermark();
 }
 
 QString QmlRemoteAccess::watermarkPosition() const
 {
-    return m_access ? HyRemote::detail::watermarkPositionName(m_access->watermarkPolicy().policy.position)
-                    : QStringLiteral("bottom-right");
+    return m_watermarkRequest.positionToken.value_or(QStringLiteral("bottom-right"));
 }
 
 void QmlRemoteAccess::setWatermarkPosition(const QString &position)
 {
-    if (!m_access || position == watermarkPosition())
+    if (position == watermarkPosition())
         return;
-    HyRemote::detail::WatermarkPosition parsed = HyRemote::detail::WatermarkPosition::BottomRight;
-    if (!HyRemote::detail::parseWatermarkPosition(position, parsed)) {
-        setLocalError(InvalidConfiguration,
-                      QStringLiteral("watermarkPosition must be bottom-right, bottom-left, top-right, "
-                                     "top-left or tiled"));
-        return;
-    }
-    HyRemote::detail::WatermarkPolicyRequest request =
-        watermarkRequestOf(m_access->watermarkPolicy().policy);
-    request.position = parsed;
-    applyWatermark(request);
+    m_watermarkRequest.positionToken = position;
+    applyWatermark();
 }
 
 double QmlRemoteAccess::watermarkOpacity() const
 {
-    return m_access ? m_access->watermarkPolicy().policy.opacity
-                    : HyRemote::detail::kWatermarkDefaultOpacity;
+    return m_watermarkRequest.opacity.value_or(HyRemote::detail::kWatermarkDefaultOpacity);
 }
 
 void QmlRemoteAccess::setWatermarkOpacity(double opacity)
 {
-    if (!m_access || qFuzzyCompare(opacity, watermarkOpacity()))
+    if (qFuzzyCompare(opacity, watermarkOpacity()))
         return;
-    HyRemote::detail::WatermarkPolicyRequest request =
-        watermarkRequestOf(m_access->watermarkPolicy().policy);
-    request.opacity = opacity;
-    applyWatermark(request);
+    m_watermarkRequest.opacity = opacity;
+    applyWatermark();
 }
 
 int QmlRemoteAccess::watermarkFontPointSize() const
 {
-    return m_access ? m_access->watermarkPolicy().policy.fontPointSize
-                    : HyRemote::detail::kWatermarkDefaultFontPointSize;
+    return m_watermarkRequest.fontPointSize.value_or(HyRemote::detail::kWatermarkDefaultFontPointSize);
 }
 
 void QmlRemoteAccess::setWatermarkFontPointSize(int points)
 {
-    if (!m_access || points == watermarkFontPointSize())
+    if (points == watermarkFontPointSize())
         return;
-    HyRemote::detail::WatermarkPolicyRequest request =
-        watermarkRequestOf(m_access->watermarkPolicy().policy);
-    request.fontPointSize = points;
-    applyWatermark(request);
+    m_watermarkRequest.fontPointSize = points;
+    applyWatermark();
 }
 
 QString QmlRemoteAccess::watermarkColor() const
 {
-    if (!m_access)
-        return QStringLiteral("#FFFFFF");
-    return QStringLiteral("#%1")
-        .arg(m_access->watermarkPolicy().policy.colorRgb & 0xFFFFFFU, 6, 16, QLatin1Char('0'))
-        .toUpper();
+    return m_watermarkRequest.color.value_or(QStringLiteral("#FFFFFF"));
 }
 
 void QmlRemoteAccess::setWatermarkColor(const QString &colorRgb)
 {
-    if (!m_access || colorRgb == watermarkColor())
+    if (colorRgb == watermarkColor())
         return;
-    HyRemote::detail::WatermarkPolicyRequest request =
-        watermarkRequestOf(m_access->watermarkPolicy().policy);
-    request.color = colorRgb;
-    applyWatermark(request);
+    m_watermarkRequest.color = colorRgb;
+    applyWatermark();
 }
 
-void QmlRemoteAccess::applyWatermark(const HyRemote::detail::WatermarkPolicyRequest &request)
+void QmlRemoteAccess::applyWatermark()
 {
     if (!m_access)
         return;
-    if (!m_access->setWatermarkPolicy(request)) {
+    if (!m_access->setWatermarkPolicy(m_watermarkRequest)) {
         setLocalError(InvalidConfiguration,
                       QStringLiteral("watermark properties can only be changed while remote access is stopped"));
         return;

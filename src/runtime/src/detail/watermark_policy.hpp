@@ -73,6 +73,9 @@ struct WatermarkPolicyRequest {
     bool enabled = false;
     QString text;
     std::optional<WatermarkPosition> position;
+    // A token a textual route (QML property, launch parameter) received verbatim. It is validated here so an unknown
+    // token fails the policy - and therefore the start - instead of being dropped at a frontend boundary.
+    std::optional<QString> positionToken;
     std::optional<double> opacity;
     std::optional<QString> color;  // "#RRGGBB"
     std::optional<int> fontPointSize;
