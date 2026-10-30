@@ -196,6 +196,23 @@ GOVERNANCE_ONLY_PATHS = (
 # the lane claim integration while executing nothing.
 DANGEROUS_REGEX_PROBE = "hyremote-probe-name-that-no-exclusion-may-match"
 
+# What the Qt 5.15.2 lane physically cannot see: it builds the C++/Widgets surface only (`--mode=cpp --no-examples`)
+# on top of Core and the Shared Runtime. A change confined to these directories cannot alter that build, so paying for a
+# Qt 5 download plus 50 tests buys no evidence. The set is deliberately stated as "unreachable", not "not QML": a new
+# shared directory, a new cmake module or an unknown path defaults to selecting the lane, so a reduction can never
+# silently drop a real impact.
+QT5_UNREACHABLE_PREFIXES = (
+    "src/integrations/qml/",
+    "src/integrations/generic/",
+    "src/integrations/qpa/",
+    "tests/consumer-installed-qml/",
+    "tests/consumer-installed-generic/",
+    "tests/consumer-installed-qpa/",
+    "examples/",
+    "logo/",
+    "docs/",
+)
+
 # VNC Authentication and the private-security surfaces behind it. The ordinary product matrix is security-off, so a
 # green ordinary run is not evidence that these still build or pass: a diff that can invalidate this path has to make
 # the product job request security explicitly. This is deliberately the narrow set of files that actually control
@@ -388,6 +405,12 @@ def resolve(event: str, changed: list[str], draft: bool = False,
     # Only ready-PR and explicitly dispatched FULL_GATE runs subscribe to CI.
     product = bool(ordered) and product_lane
 
+    # The Qt 5 lane is required only when the diff can reach the layer it builds. The full gate stays full by
+    # definition, for the same reason as the frontend selection above.
+    qt5_scope = bool(ordered) and (
+        full_gate or any(not path.startswith(QT5_UNREACHABLE_PREFIXES) for path in changed)
+    )
+
     # Fast pull requests keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
     # that can affect those contracts.
     excluded = [] if readiness_evidence else [READINESS_TEST_PREFIX]
@@ -419,6 +442,7 @@ def resolve(event: str, changed: list[str], draft: bool = False,
         "test_only": "true" if test_only else "false",
         "product_matrix": json.dumps(product_matrix, separators=(",", ":")),
         "product": "true" if product else "false",
+        "qt5_scope": "true" if (qt5_scope and product) else "false",
         "integrations": integrations if product else "",
         "qpa": "true" if ("qpa" in selected and product) else "false",
         "qml": "true" if ("qml" in selected and product) else "false",
@@ -504,6 +528,22 @@ def self_test() -> int:
          {"lane": "PR_FAST", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("ready cpp PR builds the cpp capability", "pull_request",
          ["src/integrations/cpp/cpp_remote_access.cpp"], False, {"product": "true"}),
+        # #393 TS-1: the Qt 5 lane builds C++/Widgets only, so a QML/QPA/Generic-only or example/logo-only product diff
+        # must not select it - while any shared Runtime/Core/cmake path must.
+        ("qml-only PR skips the Qt5 lane", "pull_request", ["src/integrations/qml/QmlRemoteAccess.cpp"], False,
+         {"product": "true", "qt5_scope": "false"}),
+        ("qpa-only PR skips the Qt5 lane", "pull_request", ["src/integrations/qpa/qpa_config.cpp"], False,
+         {"product": "true", "qt5_scope": "false"}),
+        ("example-only PR skips the Qt5 lane", "pull_request", ["examples/learning/01-widgets-cpp/main.cpp"], False,
+         {"product": "true", "qt5_scope": "false"}),
+        ("brand asset PR selects no Qt lane", "pull_request", ["logo/hyremote-app.ico"], False,
+         {"product": "false", "qt5_scope": "false"}),
+        ("shared runtime PR keeps the Qt5 lane", "pull_request", ["src/runtime/src/detail/host_paths.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("cmake PR keeps the Qt5 lane", "pull_request", ["cmake/HyRemoteBuild.cmake"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("core PR keeps the Qt5 lane", "pull_request", ["src/core/src/storage.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
         ("unrelated docs keep the fast lane", "pull_request", ["docs/proposals/notes.md"], False,
          {"lane": "PR_FAST", "product": "false"}),
         # Readiness-consumed surfaces must execute readiness.

@@ -55,6 +55,9 @@ jobs:
       test_only: ${{ steps.scope.outputs.test_only }}
       product_matrix: ${{ steps.scope.outputs.product_matrix }}
       product: ${{ steps.scope.outputs.product }}
+      # #393 TS-1: the Qt 5 lane builds C++/Widgets only, so it is selected by impact. The job mapping is required -
+      # a missing entry here made the lane silently skip even though the classifier reported true.
+      qt5_scope: ${{ steps.scope.outputs.qt5_scope }}
       integrations: ${{ steps.scope.outputs.integrations }}
       qpa: ${{ steps.scope.outputs.qpa }}
       qml: ${{ steps.scope.outputs.qml }}
@@ -176,6 +179,7 @@ jobs:
     needs: classify
     if: >-
       needs.classify.outputs.product == 'true' &&
+      needs.classify.outputs.qt5_scope == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: windows-2022
     timeout-minutes: 25
@@ -615,6 +619,7 @@ jobs:
       CLASSIFY: ${{ needs.classify.result }}
       PRODUCT_REQUIRED: ${{ needs.classify.outputs.product }}
       PRODUCT_RESULT: ${{ needs.product.result }}
+      QT5_SELECTED: ${{ needs.classify.outputs.qt5_scope }}
       QT5_RESULT: ${{ needs.windows-qt5.result }}
       GOVERNANCE_REQUIRED: ${{ needs.classify.outputs.governance }}
       GOVERNANCE_RESULT: ${{ needs.authority-governance.result }}
@@ -630,7 +635,12 @@ jobs:
             echo "::error::CI PR merge lane/decision invalid: $CLASSIFIED_LANE/$EXPECTED_DECISION"; exit 1; }
           if [[ "$PRODUCT_REQUIRED" == true ]]; then
             [[ "$PRODUCT_RESULT" == success ]] || { echo "::error::Required Windows Qt product tests did not pass: $PRODUCT_RESULT"; exit 1; }
-            [[ "$QT5_RESULT" == success ]] || { echo "::error::Required Windows Qt5 C++/Widgets lane did not pass: $QT5_RESULT"; exit 1; }
+            if [[ "$QT5_SELECTED" == true ]]; then
+              [[ "$QT5_RESULT" == success ]] || { echo "::error::Required Windows Qt5 C++/Widgets lane did not pass: $QT5_RESULT"; exit 1; }
+            else
+              [[ "$QT5_RESULT" == skipped ]] || { echo "::error::Qt5 lane was not selected but did not skip: $QT5_RESULT"; exit 1; }
+              echo "Qt5 lane not selected: the diff cannot reach the Core/Shared Runtime/C++/Widgets layer it builds."
+            fi
           else
             [[ "$PRODUCT_RESULT" == skipped ]] || { echo "::error::Unexpected product result on no-product PR: $PRODUCT_RESULT"; exit 1; }
             [[ "$QT5_RESULT" == skipped ]] || { echo "::error::Unexpected Qt5 result on no-product PR: $QT5_RESULT"; exit 1; }
