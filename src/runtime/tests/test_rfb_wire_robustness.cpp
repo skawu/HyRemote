@@ -817,12 +817,22 @@ HyRemote::detail::RfbFrameDecorator markDecorator()
         }
         std::memcpy(storage->mutablePlane(0), plane->data, plane->stride * height);
         auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+
+        // The mark colour depends on the capture's first pixel, so a later frame can change the *composed* pixels
+        // while the capture under the mark stays identical. Without that, an incremental assertion cannot tell
+        // "the composed frame was re-sent" from "the mark was already in my copy".
+        const auto *firstPixel = bytes;
+        const std::uint32_t firstRgb = (static_cast<std::uint32_t>(firstPixel[0]) << 16U)
+                                       | (static_cast<std::uint32_t>(firstPixel[1]) << 8U)
+                                       | static_cast<std::uint32_t>(firstPixel[2]);
+        const std::uint32_t markColor = firstRgb == 0x102030U ? 0x00FF00U : kMarkColor;
+
         for (std::uint32_t y = height - 16U; y < height; ++y) {
             for (std::uint32_t x = width - 32U; x < width; ++x) {
                 auto *pixel = bytes + (static_cast<std::size_t>(y) * width + x) * 4U;
-                pixel[0] = static_cast<std::uint8_t>((kMarkColor >> 16U) & 0xffU);
-                pixel[1] = static_cast<std::uint8_t>((kMarkColor >> 8U) & 0xffU);
-                pixel[2] = static_cast<std::uint8_t>(kMarkColor & 0xffU);
+                pixel[0] = static_cast<std::uint8_t>((markColor >> 16U) & 0xffU);
+                pixel[1] = static_cast<std::uint8_t>((markColor >> 8U) & 0xffU);
+                pixel[2] = static_cast<std::uint8_t>(markColor & 0xffU);
                 pixel[3] = 0xffU;
             }
         }
@@ -871,12 +881,20 @@ void testWatermarkReachesEveryEncoding()
     CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
     CHECK(rawFrame.get(120, 120) == kMarkColor);
 
-    // Incremental damage: a change elsewhere must still deliver a frame whose mark is intact.
+    // Incremental damage, in the discriminating direction: forget what the viewer already knew, then change the
+    // *capture* underneath the mark. A server that encodes the composed frame resends the mark there; one that encodes
+    // the capture (or tracks damage only on capture pixels) would put the new background on the wire, and the cleared
+    // viewer buffer would show it. Asserting the mark on a buffer that was never told about it is what distinguishes
+    // "the mark survived in my own copy" from "the mark was actually delivered again".
+    trleFrame.resize(width, height);
+    CHECK(trleFrame.get(120, 120) == 0U);
     CHECK(sendUpdateRequest(trleSocket, true, 0, 0, width, height));
     transport->enqueueFrame(makeFrame(128, 128, 0x203040U, {{{0, 0, 4, 4}, 0x102030U}}));
     CHECK(readFramebufferUpdate(trleSocket, trleFrame, rectangles));
+    // The trimmed mark colour can only be on the wire if the composed frame was encoded and its damage was tracked
+    // between composed frames.
+    CHECK(trleFrame.get(120, 120) == 0x00FF00U);
     CHECK(trleFrame.get(0, 0) == 0x102030U);
-    CHECK(trleFrame.get(120, 120) == kMarkColor);
 
     trleSocket.disconnectFromHost();
     rawSocket.disconnectFromHost();
