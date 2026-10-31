@@ -1037,6 +1037,19 @@ bool AccessInstance::start()
     if (!m_impl)
         return false;
 
+    // #591: an explicitly configured policy from a previous run is restored here, before any validation, so a restart
+    // behaves identically on every route and every Qt line - the Qt 5 lane reaches its target check earlier than Qt 6,
+    // and a restore that sat behind that check simply never happened there. Only when this process has not selected a
+    // policy of its own: an application's own choice always wins over the stored one. The request is re-validated by the
+    // shared resolver, so a hand-edited or out-of-bounds file cannot bypass the bounds.
+    if (!m_impl->watermarkExplicit) {
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(
+            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
+        if (stored)
+            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+    }
+
     // #259: every exit from this call publishes the resulting truth exactly once. The guard clears the
     // projected Starting state and publishes whatever the call produced, so no early return has to
     // remember to notify, and the frozen failure order (ErrorChanged, then StateChanged(Stopped))
@@ -1063,18 +1076,6 @@ bool AccessInstance::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
     m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
-
-    // #591: an explicitly configured policy from a previous run is restored here, but only when this process has not
-    // selected a policy of its own - an application's own choice always wins over the stored one. The request is
-    // re-validated by the shared resolver, and a corrupt or out-of-bounds file is reported through the policy error
-    // rather than silently disabling a watermark the operator believes is on.
-    if (!m_impl->watermarkExplicit) {
-        QString storeError;
-        const auto stored = detail::loadWatermarkRequest(
-            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
-        if (stored)
-            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
-    }
 
     // #589: an operator who explicitly enabled a watermark must never receive an unwatermarked remote picture.
     // A policy that cannot be honoured refuses only the remote output capability; the host application keeps
