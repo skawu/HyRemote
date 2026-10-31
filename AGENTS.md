@@ -153,7 +153,7 @@ src/
 - **Evidence:** trust the canonical build's own process result, `test.log`, discovered/executed CTest counts and CI. Text filters (`Select-String`, `Out-String`, `Select-Object`) are for reading retained logs, not deciding PASS. A direct CTest invocation is permitted only as an explicitly bounded, non-authoritative test-debugging exception after verifying the build identity, never for an all-suite signoff.
 - **No redundant shell wrapper:** the canonical build is responsible for process exit codes, environment handling, log retention and workspace protection. Do not append a second PowerShell `if ($LASTEXITCODE ...)` wrapper as the routine development interface. If build status propagation or directory safety is deficient, fix and test the canonical build authority, not a local one-liner. The Agent itself remains responsible for the separate 60-second work-visibility rule.
 
-For routine full verification, the human-facing command is simply:
+For an explicitly required **milestone/candidate full verification** (not routine edits or every Ready PR), the canonical command is:
 
 ```text
 build.cmd test
@@ -181,7 +181,7 @@ L2 explicit frozen-candidate workflow_dispatch -> exact-SHA FULL_GATE, CANDIDATE
 
 Rules:
 
-- Iterate locally with focused tests and the canonical build/install path.
+- During unfinished development, compile and use focused positive/negative tests at meaningful checkpoints; never run the full suite per edit, slice, draft or docs-only change. Use the canonical full build/test/install path only for the risk-authorized G2 or frozen-candidate G6 decision. See [test execution manual](tests/EXECUTION_MANUAL.md).
 - A bare feature-branch push does **not** invoke hosted Qt CI. Opening/readying a PR does; subsequent updates to a ready PR **must revalidate the newest head**. Do **not** merge on a failed, skipped, cancelled or pending `ci-merge-verdict`; `develop` ruleset must require it and `p1-p2-disposition`. No repeat Qt build after merging. See [CI policy](docs/internal/ci-purpose-and-trigger-policy-2026-10-22.md).
 - The PR `MERGE` decision is binding only after Windows selected tests and review gates PASS; `OBSERVE` and specialized diagnostic runs never authorize a merge.
 - Zero discovered/executed tests are invalid evidence.
