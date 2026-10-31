@@ -41,6 +41,7 @@
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "detail/watermark_frame_decorator.hpp"
+#include "detail/watermark_store.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -664,6 +665,9 @@ struct AccessInstance::Impl
     // #589: resolved once per accepted configuration, so start() and the diagnostic report cannot disagree about
     // what the operator asked for.
     detail::WatermarkPolicyResult watermark;
+    // #591: whether this process selected the policy itself. A persisted policy from an earlier run is applied only
+    // when the answer here is still "no".
+    bool watermarkExplicit = false;
     // #174 interface identity. Empty means the address decides the mode.
     QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
@@ -1006,6 +1010,16 @@ bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &re
     if (!m_impl || !m_impl->isConfigurable())
         return false;
     m_impl->watermark = detail::resolveWatermarkPolicy(request);
+    m_impl->watermarkExplicit = true;
+
+    // #591: persistence is a property of the state directory the host-path contract resolved, not a hidden side file.
+    // Only the policy is written; credentials and descriptor contents never are. A failure to persist is not a
+    // configuration error - the policy still applies to this run - so it does not fail the call.
+    const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
+    if (m_impl->watermark.policy.enabled)
+        (void)detail::saveWatermarkPolicy(paths, m_impl->watermark.policy);
+    else
+        (void)detail::clearWatermarkPolicy(paths);
     return true;
 }
 
@@ -1049,6 +1063,18 @@ bool AccessInstance::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
     m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
+
+    // #591: an explicitly configured policy from a previous run is restored here, but only when this process has not
+    // selected a policy of its own - an application's own choice always wins over the stored one. The request is
+    // re-validated by the shared resolver, and a corrupt or out-of-bounds file is reported through the policy error
+    // rather than silently disabling a watermark the operator believes is on.
+    if (!m_impl->watermarkExplicit) {
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(
+            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
+        if (stored)
+            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+    }
 
     // #589: an operator who explicitly enabled a watermark must never receive an unwatermarked remote picture.
     // A policy that cannot be honoured refuses only the remote output capability; the host application keeps

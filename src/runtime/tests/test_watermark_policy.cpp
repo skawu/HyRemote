@@ -9,7 +9,10 @@
 #include <HyRemote/RemoteAccess.h>
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTextStream>
 
 namespace {
@@ -392,6 +395,92 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
 
 }  // namespace
 
+// #591: an explicitly configured policy has to survive a restart. The state directory is the contract's place for
+// mutable state, so this is asserted through a second AccessInstance that never selects anything itself - exactly the
+// "process restarted" situation - instead of trusting that a write happened.
+void checkPersistedPolicySurvivesRestart()
+{
+    QTemporaryDir state;
+    check(state.isValid(), QStringLiteral("a temporary state directory exists"));
+    if (!state.isValid())
+        return;
+
+    const QByteArray previousState = qgetenv("HYREMOTE_STATE_DIR");
+    qputenv("HYREMOTE_STATE_DIR", state.path().toUtf8());
+    const QString storedPath = QDir(state.path()).filePath(QStringLiteral("watermark.policy"));
+
+    {
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QStringLiteral("持久 CONFIDENTIAL");
+        request.position = WatermarkPosition::Tiled;
+        request.opacity = 0.5;
+        request.fontPointSize = 24;
+        request.color = QStringLiteral("#00FF00");
+
+        HyRemote::Runtime::AccessInstance writer;
+        check(writer.setWatermarkPolicy(request), QStringLiteral("an explicit policy is accepted"));
+        check(QFile::exists(storedPath),
+              QStringLiteral("the explicit policy is persisted into the state directory"));
+    }
+
+    {
+        // A fresh instance is the restart: it selects nothing of its own.
+        HyRemote::Runtime::AccessInstance restarted;
+        check(!restarted.start(), QStringLiteral("a target-less start still fails"));
+        const auto restored = restarted.watermarkPolicy().policy;
+        check(restored.enabled && restored.text == QStringLiteral("持久 CONFIDENTIAL"),
+              QStringLiteral("the persisted policy is restored on the next start"));
+        check(restored.position == WatermarkPosition::Tiled && qFuzzyCompare(restored.opacity, 0.5)
+                  && restored.fontPointSize == 24,
+              QStringLiteral("the restored policy keeps its position, opacity and size"));
+        const QString report
+            = HyRemote::Runtime::formatDiagnosticReport(restarted.diagnosticSnapshot());
+        check(report.contains(QStringLiteral("WATERMARK_ENABLED=true")),
+              QStringLiteral("the restored policy is visible as enabled in the report"));
+        check(!report.contains(QStringLiteral("持久 CONFIDENTIAL")),
+              QStringLiteral("the restored policy still keeps the operator text out of the report"));
+    }
+
+    {
+        // An application's own selection always wins over the stored one.
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QStringLiteral("EXPLICIT");
+        HyRemote::Runtime::AccessInstance override;
+        check(override.setWatermarkPolicy(request), QStringLiteral("an explicit selection is accepted"));
+        check(override.watermarkPolicy().policy.text == QStringLiteral("EXPLICIT"),
+              QStringLiteral("the explicit selection wins over the stored policy"));
+    }
+
+    {
+        // Disabling is an explicit selection too: it must clear the store, or the mark would come back on restart.
+        HyRemote::Runtime::AccessInstance clearer;
+        check(clearer.setWatermarkPolicy(WatermarkPolicyRequest{}), QStringLiteral("disabling is accepted"));
+        check(!QFile::exists(storedPath), QStringLiteral("disabling removes the stored policy"));
+    }
+
+    {
+        // A stored file that cannot be trusted is reported, never silently treated as "no watermark".
+        QFile file(storedPath);
+        check(file.open(QIODevice::WriteOnly), QStringLiteral("the stored policy can be overwritten for the test"));
+        file.write("version=9\ntext=OUTSIDE-THE-BOUNDS\n");
+        file.close();
+
+        HyRemote::Runtime::AccessInstance unusable;
+        check(!unusable.start(), QStringLiteral("start still fails for the missing target"));
+        // An unusable stored policy must not be restored: the instance keeps the disabled default instead of a
+        // half-understood policy, and the watermark therefore cannot silently appear as "on" with wrong bounds.
+        check(!unusable.watermarkPolicy().policy.enabled,
+              QStringLiteral("an unusable stored policy is not restored"));
+    }
+
+    if (previousState.isEmpty())
+        qunsetenv("HYREMOTE_STATE_DIR");
+    else
+        qputenv("HYREMOTE_STATE_DIR", previousState);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
@@ -406,6 +495,7 @@ int main(int argc, char **argv)
     checkPositionTokenValidation();
     checkFontFallback();
     checkDiagnosticsAndStartGate(application);
+    checkPersistedPolicySurvivesRestart();
 
     QTextStream out(stdout);
     out << (failures == 0 ? "watermark policy checks passed\n" : "watermark policy checks failed\n");
