@@ -688,6 +688,159 @@ foreach(required_phrase
     endif()
 endforeach()
 
+# V1 first-GA scope must not absorb post-GA Qt or optional/deferred product work.
+# The production guard and the negative fixture share this one validator; the
+# reason-specific message is emitted only after the same rejection path fires.
+function(hyremote_v1_forbidden_mandatory authority out_issue)
+    string(JSON count LENGTH "${authority}" trains "1.0.0.0" mandatory_children)
+    math(EXPR last "${count} - 1")
+    set(forbidden "")
+    if(count GREATER 0)
+        foreach(index RANGE 0 ${last})
+            string(JSON child GET "${authority}" trains "1.0.0.0" mandatory_children ${index})
+            if(child STREQUAL "592" OR child STREQUAL "587" OR child STREQUAL "588"
+               OR child STREQUAL "605")
+                set(forbidden "${child}")
+                break()
+            endif()
+        endforeach()
+    endif()
+    set(${out_issue} "${forbidden}" PARENT_SCOPE)
+endfunction()
+
+hyremote_v1_forbidden_mandatory("${authority_json}" actual_forbidden_mandatory)
+if(actual_forbidden_mandatory STREQUAL "592")
+    message(FATAL_ERROR
+        "release-authority-policy: conditional planned V0.3.7 Docker outcome #592 must not be a V1 mandatory child")
+elseif(actual_forbidden_mandatory STREQUAL "587" OR actual_forbidden_mandatory STREQUAL "588")
+    message(FATAL_ERROR
+        "release-authority-policy: Tool S2/S3 follow-up #${actual_forbidden_mandatory} must not be a V1 mandatory child")
+elseif(actual_forbidden_mandatory STREQUAL "605")
+    message(FATAL_ERROR
+        "release-authority-policy: post-V1 Qt6.5/Qt6.12 work #605 must not be a V1 mandatory child")
+endif()
+
+list(FIND actual_v1_issues 57 v1_qt_compat_index)
+if(v1_qt_compat_index EQUAL -1)
+    message(FATAL_ERROR
+        "release-authority-policy: #57 Qt5.15/Qt6.8 compatibility must remain a V1 mandatory child")
+endif()
+
+foreach(forbidden_issue IN ITEMS 592 587 588 605)
+    set(bad_authority_json
+        "{\"trains\":{\"1.0.0.0\":{\"mandatory_children\":[${forbidden_issue}]}}}")
+    hyremote_v1_forbidden_mandatory("${bad_authority_json}" bad_v1_forbidden)
+    if(NOT bad_v1_forbidden STREQUAL "${forbidden_issue}")
+        message(FATAL_ERROR
+            "release-authority-policy self-test: production validator did not reject synthetic V1 mandatory #${forbidden_issue}")
+    endif()
+    message(STATUS
+        "release-authority-policy negative fixture: synthetic V1 mandatory #${forbidden_issue} rejected by the production validator")
+endforeach()
+
+# The GA document must point at the current executed mechanism, not the retired workflow.
+set(v1_doc_path "${HYREMOTE_SOURCE_DIR}/docs/internal/v1-ga-acceptance.md")
+if(NOT EXISTS "${v1_doc_path}")
+    message(FATAL_ERROR "release-authority-policy: GA acceptance document is missing")
+endif()
+file(READ "${v1_doc_path}" v1_doc)
+
+function(hyremote_ga_doc_has_stale_workflow_claim text out)
+    set(stale FALSE)
+    # Match the whole sentence containing the retired workflow path, not one
+    # exact sentence. A mention is allowed only when that sentence explicitly
+    # marks it retired/current-negative/historical; active claims in any wording
+    # are rejected.
+    string(REGEX MATCHALL "[^.\\n]*\\.github/workflows/v1-ga-acceptance\\.yml[^.\\n]*"
+           stale_claims "${text}")
+    foreach(claim IN LISTS stale_claims)
+        string(TOLOWER "${claim}" claim_l)
+        if(NOT claim_l MATCHES "retired|no current|not current|does not count|forbidden|historical")
+            set(stale TRUE)
+        elseif(claim_l MATCHES "is[ \t]+the[ \t]+current|current[ \t]+(ga|release|active)[ \t]+workflow|remains[^.]*workflow|continues[^.]*workflow")
+            # A negative keyword does not make an active/current claim safe.
+            set(stale TRUE)
+        endif()
+    endforeach()
+    set(${out} ${stale} PARENT_SCOPE)
+endfunction()
+
+hyremote_ga_doc_has_stale_workflow_claim("${v1_doc}" actual_ga_stale_claim)
+if(actual_ga_stale_claim)
+    message(FATAL_ERROR
+        "release-authority-policy: GA document still contains an active claim that the retired v1-ga-acceptance.yml is current")
+endif()
+
+set(bad_ga_doc
+    "The integrated GA workflow is `.github/workflows/v1-ga-acceptance.yml`.")
+hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc}" bad_ga_stale_claim)
+if(NOT bad_ga_stale_claim)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: exact stale GA workflow fixture was not detected")
+endif()
+message(STATUS
+    "release-authority-policy negative fixture: exact stale GA workflow claim rejected")
+
+set(bad_ga_doc_alt
+    "The integrated GA workflow remains `.github/workflows/v1-ga-acceptance.yml`.")
+hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc_alt}" bad_ga_stale_claim_alt)
+if(NOT bad_ga_stale_claim_alt)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: alternate stale GA workflow wording was not detected")
+endif()
+message(STATUS
+    "release-authority-policy negative fixture: alternate stale GA workflow wording rejected")
+
+set(bad_ga_doc_contradictory
+    "The retired workflow is the current GA workflow: `.github/workflows/v1-ga-acceptance.yml`.")
+hyremote_ga_doc_has_stale_workflow_claim("${bad_ga_doc_contradictory}" bad_ga_stale_claim_contradictory)
+if(NOT bad_ga_stale_claim_contradictory)
+    message(FATAL_ERROR
+        "release-authority-policy self-test: contradictory retired/current GA workflow wording was not detected")
+endif()
+message(STATUS
+    "release-authority-policy negative fixture: contradictory retired/current GA workflow wording rejected")
+
+foreach(required_ga_token IN ITEMS
+        "ci.yml"
+        "mainline-validation.yml"
+        "Qt 5.15"
+        "Qt 6.8.3"
+        "Generic"
+        "NOT_RUN")
+    string(FIND "${v1_doc}" "${required_ga_token}" ga_token_index)
+    if(ga_token_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: GA document lost required scope token: ${required_ga_token}")
+    endif()
+endforeach()
+
+# Acceptance evidence indexes must point at the maintained internal runbooks, not
+# the retired root-level copies.
+set(acceptance_index "${HYREMOTE_SOURCE_DIR}/docs/acceptance/README.md")
+if(NOT EXISTS "${acceptance_index}")
+    message(FATAL_ERROR "release-authority-policy: acceptance evidence index is missing")
+endif()
+file(READ "${acceptance_index}" acceptance_index_text)
+foreach(stale_path IN ITEMS
+        "docs/v1-physical-acceptance.md"
+        "docs/v1-ga-acceptance.md")
+    string(FIND "${acceptance_index_text}" "${stale_path}" stale_path_index)
+    if(NOT stale_path_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: acceptance index references retired runbook path ${stale_path}")
+    endif()
+endforeach()
+foreach(required_path IN ITEMS
+        "docs/internal/v1-physical-acceptance.md"
+        "docs/internal/v1-ga-acceptance.md")
+    string(FIND "${acceptance_index_text}" "${required_path}" required_path_index)
+    if(required_path_index EQUAL -1)
+        message(FATAL_ERROR
+            "release-authority-policy: acceptance index lost maintained runbook path ${required_path}")
+    endif()
+endforeach()
+
 message(STATUS
     "HyRemote release-authority policy gate: PASS "
     "(V1 manifest=${actual_v1_issues}; scope=#${scope_authority}; freeze=#${freeze_authority}; "
