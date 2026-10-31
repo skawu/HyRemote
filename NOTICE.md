@@ -46,6 +46,38 @@ A future dependency that is copied, vendored, bundled, or redistributed as part 
 
 Do not infer bundled status merely because a library, tool, protocol implementation, or SDK was evaluated in a spike or CI workflow.
 
+## Adapted documentation
+
+`.codebuddy/skills/engineering-task-execution/SKILL.md` restates debugging-discipline concepts from
+`obra/superpowers` `skills/systematic-debugging` v7.0.1, commit
+`2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`. No upstream file, installer, worktree workflow or Skill
+dependency is imported or vendored; the prose is HyRemote's own wording. The upstream copyright
+notice and permission notice are reproduced in full below.
+
+```text
+MIT License
+
+Copyright (c) 2025 Jesse Vincent
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Distribution rule
 
 The V1 installed SDK includes this notice together with the project `LICENSE`. Release packaging must preserve both files. If a downstream distributor adds other bundled third-party material, that distributor is responsible for adding the corresponding notices without removing the HyRemote notices required by the Apache-2.0 distribution terms.
