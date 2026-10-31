@@ -108,7 +108,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
 | `hyremote-qpa-runtime-basic` | Grouped QPA runtime cases: platform-plugin load/delegate, exact-private-ABI native semantics, launch/config vocabulary, and conditional QOpenGLWidget capture. Each case is named in the PASS/FAIL output. |
-| `hyremote-qpa-runtime-surfaces` | Grouped QWidget surface cases: multi-surface and popup/transient behavior (TG-019). |
+| `hyremote-qpa-runtime-surfaces` | Grouped QWidget surface cases: multi-surface and popup/transient behavior (TG-019). The Quick multi-window fixture is not duplicated here; it has its own registration. |
 | `hyremote-qpa-runtime-recovery` | Grouped recovery cases: QPA auto-remoteaccess and remote-failure native survival. |
 | `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. Kept as its own CTest because its 500 ms startup contract is sensitive to being run inside a group. |
 
