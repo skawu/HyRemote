@@ -903,6 +903,145 @@ void testWatermarkReachesEveryEncoding()
     transport->stop();
 }
 
+// A decorator that sizes its mark from the frame's own device pixel ratio, so a wire test can prove the ratio a frame
+// carries is the one the composed pixels were produced with.
+HyRemote::detail::RfbFrameDecorator dprAwareMarkDecorator()
+{
+    return [](const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated, QString &error) {
+        if (!source.storage) {
+            error = QStringLiteral("no source storage");
+            return false;
+        }
+        const auto plane = source.storage->mapRead(0);
+        if (!plane || !plane->data) {
+            error = QStringLiteral("no readable plane");
+            return false;
+        }
+        const auto width = source.geometry.size.width;
+        const auto height = source.geometry.size.height;
+        const double ratio = source.geometry.devicePixelRatio > 0.0F
+                                 ? static_cast<double>(source.geometry.devicePixelRatio)
+                                 : 1.0;
+        const auto markWidth = static_cast<std::uint32_t>(32.0 * ratio);
+        const auto markHeight = static_cast<std::uint32_t>(16.0 * ratio);
+        if (width < markWidth || height < markHeight) {
+            error = QStringLiteral("frame too small for the mark");
+            return false;
+        }
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(plane->stride, height);
+        if (!storage || !storage->mutablePlane(0)) {
+            error = QStringLiteral("no target storage");
+            return false;
+        }
+        std::memcpy(storage->mutablePlane(0), plane->data, plane->stride * height);
+        auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::uint32_t y = height - markHeight; y < height; ++y) {
+            for (std::uint32_t x = width - markWidth; x < width; ++x) {
+                auto *pixel = bytes + (static_cast<std::size_t>(y) * width + x) * 4U;
+                pixel[0] = 0xffU;
+                pixel[1] = 0x00U;
+                pixel[2] = 0xffU;
+                pixel[3] = 0xffU;
+            }
+        }
+        decorated = source;
+        decorated.storage = std::move(storage);
+        return true;
+    };
+}
+
+void testWatermarkSurvivesFramebufferResize()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, markDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-223, 15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 120) == kMarkColor);
+
+    // The framebuffer shrinks: the mark must be recomposed for the new geometry, not left at the old coordinates.
+    transport->enqueueFrame(makeFrame(96, 80, 0x445566U));
+    CHECK(sendUpdateRequest(socket, true, 0, 0, 96, 80));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.width == 96 && frame.height == 80);
+    bool desktopSizeSeen = false;
+    for (const UpdateRect &rect : rectangles) {
+        if (rect.encoding == -223)
+            desktopSizeSeen = true;
+    }
+    CHECK(desktopSizeSeen);
+    CHECK(frame.get(95, 79) == kMarkColor);
+    CHECK(frame.get(64, 64) == kMarkColor);
+    CHECK(frame.get(63, 64) == 0x445566U);
+    CHECK(frame.get(64, 63) == 0x445566U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testWatermarkFollowsDevicePixelRatio()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    hyremote::RemoteFrame first = makeFrame(128, 128, 0x203040U);
+    first.geometry.devicePixelRatio = 1.0F;
+    auto transport = startTransport(port, recorder, std::move(first), {}, dprAwareMarkDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 120) == kMarkColor);
+    // At ratio 1.0 the mark is 32x16, so this row is still capture.
+    CHECK(frame.get(120, 100) == 0x203040U);
+
+    // The same geometry at ratio 2.0: the mark must double in both directions, which is only possible if the ratio the
+    // frame carries is the one the composed pixels were produced with.
+    hyremote::RemoteFrame second = makeFrame(128, 128, 0x203040U);
+    second.geometry.devicePixelRatio = 2.0F;
+    transport->enqueueFrame(std::move(second));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 100) == kMarkColor);
+    CHECK(frame.get(70, 110) == kMarkColor);
+    CHECK(frame.get(60, 110) == 0x203040U);
+    CHECK(frame.get(120, 95) == 0x203040U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
 void testNoMarkWithoutDecorator()
 {
     const quint16 port = freePort();
@@ -2659,6 +2798,8 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testWatermarkReachesEveryEncoding();
+    testWatermarkSurvivesFramebufferResize();
+    testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
     testTrlePreferredOverRawOrder();
