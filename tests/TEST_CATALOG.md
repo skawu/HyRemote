@@ -4,10 +4,16 @@
 >
 > `tests/semantic_ctest_labels.cmake` contains a configure-time drift guard: every configured CTest identity must appear here as an exact Markdown code span, otherwise configuration fails. Standalone PRE projects under `tests/preflight/` are intentionally outside this product CTest inventory.
 >
-> **TS-1 measured pre-MERGE_CASES baseline:** 94 Qt 6.8.3 / 50 Qt 5.15.2 CTest identities,
-> 43 test executables. The new registrations predict 79 / 37 identities if the same capabilities
-> resolve; **these are projections, not measured evidence** until the canonical G2 run. TS-1 evidence:
-> [test-inventory-ts1-2026-10-30.md](../docs/internal/test-inventory-ts1-2026-10-30.md).
+> **Measured history (#393/#736):** TS-1, before grouping: Windows Qt 6.8.3 **94** CTest
+> identities, hosted Qt 5.15.2 **50** at its then-current profile, 43 test executables.
+> After grouping, Windows Qt 6.8.3 canonical local G2 at PR #736 final head
+> `7267cda89302a228686d2beae6ed6d6c7ad0b68d` discovered/executed **79/79 PASS**
+> (−15 CTest identities). The **current full-profile Qt 5 discovery count is unmeasured**;
+> hosted selected Qt 5 L1 counts are not comparable to full-profile discovery. The
+> historical arithmetic projection of 37 is withdrawn, not an accepted measurement.
+> Test wall-clock improvement is **unproven**: observed full runs varied by tens of seconds.
+> Evidence: [TS-1 baseline](../docs/internal/test-inventory-ts1-2026-10-30.md),
+> [local G2 and case evidence](https://github.com/skawu/HyRemote/pull/736#issuecomment-6539634249).
 > **When** to run what: [EXECUTION_MANUAL.md](EXECUTION_MANUAL.md). Numbers quoted in older sections below are history.
 
 ## Taxonomy
