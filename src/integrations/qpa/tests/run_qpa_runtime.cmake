@@ -57,8 +57,8 @@ function(_run_qpa_runtime_executable name executable)
         message(FATAL_ERROR
             "QPA runtime case '${name}' failed (${result}):\n${output}\n${error}")
     endif()
-    math(EXPR ran "${_qpa_runtime_cases_run} + 1")
-    set(_qpa_runtime_cases_run "${ran}" PARENT_SCOPE)
+    # The counter is owned by run_case/run_optional_case: incrementing here would land in the wrapper's scope and be
+    # counted a second time when the wrapper exports it to the file scope.
     message(STATUS "QPA runtime case PASS: ${name}")
 endfunction()
 
