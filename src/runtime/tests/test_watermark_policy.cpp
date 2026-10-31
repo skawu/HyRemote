@@ -431,6 +431,16 @@ void checkPersistedPolicySurvivesRestart()
         const auto restored = restarted.watermarkPolicy().policy;
         check(restored.enabled && restored.text == QStringLiteral("持久 CONFIDENTIAL"),
               QStringLiteral("the persisted policy is restored on the next start"));
+        if (!restored.enabled) {
+            // A failing restore must say why, otherwise the failure is indistinguishable from "the store is empty".
+            QString probeError;
+            const auto probePaths = HyRemote::detail::resolveHostPaths(QString());
+            const auto probe = HyRemote::detail::loadWatermarkRequest(probePaths, &probeError);
+            QTextStream(stdout) << "  [diag] state=" << probePaths.stateDir.value
+                                << " origin=" << HyRemote::detail::hostPathOriginName(probePaths.stateDir.origin)
+                                << " loaded=" << (probe.has_value() ? 1 : 0)
+                                << " error=" << probeError << '\n';
+        }
         check(restored.position == WatermarkPosition::Tiled && qFuzzyCompare(restored.opacity, 0.5)
                   && restored.fontPointSize == 24,
               QStringLiteral("the restored policy keeps its position, opacity and size"));
