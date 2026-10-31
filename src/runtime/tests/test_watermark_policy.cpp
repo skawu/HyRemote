@@ -6,6 +6,8 @@
 #include "../src/access_instance.hpp"
 #include "../src/detail/watermark_policy.hpp"
 
+#include <HyRemote/RemoteAccess.h>
+
 #include <QCoreApplication>
 #include <QString>
 #include <QTextStream>
@@ -43,6 +45,24 @@ void checkSharedDefaults()
     check(result.policy.fontPointSize == 16, QStringLiteral("the default font size is 16 points"));
     check(result.policy.colorRgb == 0xFFFFFFU, QStringLiteral("the default colour is white"));
     check(result.policy.text.isEmpty(), QStringLiteral("no text is invented"));
+}
+
+// The product C++ surface cannot include this internal header, so `RemoteWatermark` carries its own literal field
+// initialisers. That is a drift point: a route that keeps a stale default would satisfy "the operator asked for a
+// watermark" while quietly disagreeing with the shared policy, which is exactly what #589 W1 forbids. This case is the
+// guard that ties the installed surface back to the one shared policy.
+void checkProductSurfaceDefaults()
+{
+    const HyRemote::RemoteWatermark defaults;
+    check(defaults.text.isEmpty(), QStringLiteral("the C++ surface default is 'no watermark'"));
+    check(qFuzzyCompare(defaults.opacity, HyRemote::detail::kWatermarkDefaultOpacity),
+          QStringLiteral("the C++ surface opacity default equals the shared default"));
+    check(defaults.fontPointSize == HyRemote::detail::kWatermarkDefaultFontPointSize,
+          QStringLiteral("the C++ surface font size default equals the shared default"));
+    check(defaults.colorRgb.compare(QStringLiteral("#FFFFFF"), Qt::CaseInsensitive) == 0,
+          QStringLiteral("the C++ surface colour default is the shared default"));
+    check(defaults.position == HyRemote::RemoteWatermarkPosition::BottomRight,
+          QStringLiteral("the C++ surface position default is bottom-right, not tiled"));
 }
 
 void checkEnabledTextAndDefaults()
@@ -377,6 +397,7 @@ int main(int argc, char **argv)
     QCoreApplication application(argc, argv);
 
     checkSharedDefaults();
+    checkProductSurfaceDefaults();
     checkEnabledTextAndDefaults();
     checkRejectedText();
     checkExplicitValues();

@@ -59,7 +59,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-target-component-provider-test` | Runtime | Target→capture/input adapter selection. Failure invalidates adapter composition. |
 | `hyremote-input-mailbox-admission-test` | Runtime | Bounded input admission/backpressure before GUI delivery. |
 | `hyremote-rfb-multi-client-input-test` | VNC | Per-viewer held key/button ownership and disconnect cleanup. Failure allows one viewer to corrupt another viewer's input state. |
-| `hyremote-rfb-wire-robustness-test` | VNC | Production-socket fragmentation plus malformed/oversized/unsupported input fail-closed behavior. Closes TG-013/TG-014. |
+| `hyremote-rfb-wire-robustness-test` | VNC | Production-socket fragmentation plus malformed/oversized/unsupported input fail-closed behavior; also decodes TRLE and Raw updates to prove a composed (watermarked) frame reaches the wire intact - including after a damage-only update, across a framebuffer resize, and at a changed device pixel ratio - plus the control case where no decorator means no mark (#589 W2). Closes TG-013/TG-014. |
 | `hyremote-vnc-auth-test` | VNC + transport security | VNC Authentication crypto primitive. Failure invalidates credential challenge/response correctness. **Condition:** registered only in a security-on build (`HYREMOTE_WITH_VNC` and the transport-security capability), so it is absent from the default product matrix. |
 | `hyremote-rfb-vnc-auth-handshake-test` | VNC + transport security | Wire auth negotiation, wrong credential, no downgrade and bounded stalled auth. Failure invalidates authenticated RFB behavior. **Condition:** security-on build only, like the test above. |
 | `hyremote-widgets-capture-test` | Widgets | Ordinary Widgets capture/lifetime/resize/cancellation/target-loss contract. |
@@ -108,7 +108,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
-| `hyremote-qpa-runtime` | One CTest runs basic (plugin/ABI/config/OpenGL), surfaces (multi-window/popup), and recovery (auto-remoteaccess/native-survival) in their individual smoke executables and plugin environments. Named case failures remain fatal. |
+| `hyremote-qpa-runtime` | One CTest runs basic (plugin/ABI/config/OpenGL), surfaces (multi-window/popup), and recovery (auto-remoteaccess/native-survival) in their individual smoke executables and plugin environments. Each case is named in the PASS/FAIL output; a registered case with no executable, a failing case, or a group that executes nothing is fatal. The conditional OpenGL fixture is the only case that may skip, and the skip is counted and reported. |
 | `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. Kept as its own CTest because its 500 ms startup contract is sensitive to being run inside a group. |
 
 ## T3 — repository/product contracts

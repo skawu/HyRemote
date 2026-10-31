@@ -15,6 +15,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <ctime>
 #include <iostream>
 #include <mutex>
@@ -707,10 +708,12 @@ std::unique_ptr<hyremote::Transport> startTransport(
     quint16 port,
     Recorder &recorder,
     hyremote::RemoteFrame initial,
-    HyRemote::detail::RfbCursorProvider cursorProvider = {})
+    HyRemote::detail::RfbCursorProvider cursorProvider = {},
+    HyRemote::detail::RfbFrameDecorator frameDecorator = {})
 {
     HyRemote::detail::RfbSecurityConfig security;
     security.cursorProvider = std::move(cursorProvider);
+    security.frameDecorator = std::move(frameDecorator);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
                                                           std::move(security));
     if (!transport)
@@ -781,6 +784,299 @@ void testTrleRawAndIncrementalDelivery()
     rawSocket.disconnectFromHost();
     waitForDisconnected(trleSocket);
     waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+// #589 W2 wire-level acceptance: the decorator runs on the transport's own copy before encoding, so every encoding a
+// viewer can negotiate has to carry the composed pixels. These cases decode what actually arrived instead of trusting
+// the composed buffer, and they check the control direction too: without a decorator nothing may look watermarked.
+constexpr std::uint32_t kMarkColor = 0xFF00FFU;
+
+HyRemote::detail::RfbFrameDecorator markDecorator()
+{
+    return [](const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated, QString &error) {
+        if (!source.storage) {
+            error = QStringLiteral("no source storage");
+            return false;
+        }
+        const auto plane = source.storage->mapRead(0);
+        if (!plane || !plane->data) {
+            error = QStringLiteral("no readable plane");
+            return false;
+        }
+        const std::uint32_t width = source.geometry.size.width;
+        const std::uint32_t height = source.geometry.size.height;
+        if (width < 32U || height < 16U) {
+            error = QStringLiteral("frame too small for the mark");
+            return false;
+        }
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(plane->stride, height);
+        if (!storage || !storage->mutablePlane(0)) {
+            error = QStringLiteral("no target storage");
+            return false;
+        }
+        std::memcpy(storage->mutablePlane(0), plane->data, plane->stride * height);
+        auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+
+        // The mark colour depends on the capture's first pixel, so a later frame can change the *composed* pixels
+        // while the capture under the mark stays identical. Without that, an incremental assertion cannot tell
+        // "the composed frame was re-sent" from "the mark was already in my copy".
+        const auto *firstPixel = bytes;
+        const std::uint32_t firstRgb = (static_cast<std::uint32_t>(firstPixel[0]) << 16U)
+                                       | (static_cast<std::uint32_t>(firstPixel[1]) << 8U)
+                                       | static_cast<std::uint32_t>(firstPixel[2]);
+        const std::uint32_t markColor = firstRgb == 0x102030U ? 0x00FF00U : kMarkColor;
+
+        for (std::uint32_t y = height - 16U; y < height; ++y) {
+            for (std::uint32_t x = width - 32U; x < width; ++x) {
+                auto *pixel = bytes + (static_cast<std::size_t>(y) * width + x) * 4U;
+                pixel[0] = static_cast<std::uint8_t>((markColor >> 16U) & 0xffU);
+                pixel[1] = static_cast<std::uint8_t>((markColor >> 8U) & 0xffU);
+                pixel[2] = static_cast<std::uint8_t>(markColor & 0xffU);
+                pixel[3] = 0xffU;
+            }
+        }
+        decorated = source;
+        decorated.storage = std::move(storage);
+        return true;
+    };
+}
+
+void testWatermarkReachesEveryEncoding()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, markDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    // TRLE: the tiles must carry the composed pixels, not the capture.
+    QTcpSocket trleSocket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(trleSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(trleSocket, {15, 0}));
+    CHECK(sendUpdateRequest(trleSocket, false, 0, 0, width, height));
+    TestFramebuffer trleFrame;
+    trleFrame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(trleSocket, trleFrame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 15);
+    CHECK(trleFrame.get(120, 120) == kMarkColor);
+    CHECK(trleFrame.get(0, 0) == 0x203040U);
+
+    // Raw: the same pixels through the other encoding.
+    QTcpSocket rawSocket;
+    CHECK(connectRawRfb(rawSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(rawSocket, {0}));
+    CHECK(sendUpdateRequest(rawSocket, false, 0, 0, width, height));
+    TestFramebuffer rawFrame;
+    rawFrame.resize(width, height);
+    CHECK(readFramebufferUpdate(rawSocket, rawFrame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+    CHECK(rawFrame.get(120, 120) == kMarkColor);
+
+    // Incremental damage, in the discriminating direction: forget what the viewer already knew, then change the
+    // *capture* underneath the mark. A server that encodes the composed frame resends the mark there; one that encodes
+    // the capture (or tracks damage only on capture pixels) would put the new background on the wire, and the cleared
+    // viewer buffer would show it. Asserting the mark on a buffer that was never told about it is what distinguishes
+    // "the mark survived in my own copy" from "the mark was actually delivered again".
+    trleFrame.resize(width, height);
+    CHECK(trleFrame.get(120, 120) == 0U);
+    CHECK(sendUpdateRequest(trleSocket, true, 0, 0, width, height));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U, {{{0, 0, 4, 4}, 0x102030U}}));
+    CHECK(readFramebufferUpdate(trleSocket, trleFrame, rectangles));
+    // The trimmed mark colour can only be on the wire if the composed frame was encoded and its damage was tracked
+    // between composed frames.
+    CHECK(trleFrame.get(120, 120) == 0x00FF00U);
+    CHECK(trleFrame.get(0, 0) == 0x102030U);
+
+    trleSocket.disconnectFromHost();
+    rawSocket.disconnectFromHost();
+    waitForDisconnected(trleSocket);
+    waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+// A decorator that sizes its mark from the frame's own device pixel ratio, so a wire test can prove the ratio a frame
+// carries is the one the composed pixels were produced with.
+HyRemote::detail::RfbFrameDecorator dprAwareMarkDecorator()
+{
+    return [](const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated, QString &error) {
+        if (!source.storage) {
+            error = QStringLiteral("no source storage");
+            return false;
+        }
+        const auto plane = source.storage->mapRead(0);
+        if (!plane || !plane->data) {
+            error = QStringLiteral("no readable plane");
+            return false;
+        }
+        const auto width = source.geometry.size.width;
+        const auto height = source.geometry.size.height;
+        const double ratio = source.geometry.devicePixelRatio > 0.0F
+                                 ? static_cast<double>(source.geometry.devicePixelRatio)
+                                 : 1.0;
+        const auto markWidth = static_cast<std::uint32_t>(32.0 * ratio);
+        const auto markHeight = static_cast<std::uint32_t>(16.0 * ratio);
+        if (width < markWidth || height < markHeight) {
+            error = QStringLiteral("frame too small for the mark");
+            return false;
+        }
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(plane->stride, height);
+        if (!storage || !storage->mutablePlane(0)) {
+            error = QStringLiteral("no target storage");
+            return false;
+        }
+        std::memcpy(storage->mutablePlane(0), plane->data, plane->stride * height);
+        auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::uint32_t y = height - markHeight; y < height; ++y) {
+            for (std::uint32_t x = width - markWidth; x < width; ++x) {
+                auto *pixel = bytes + (static_cast<std::size_t>(y) * width + x) * 4U;
+                pixel[0] = 0xffU;
+                pixel[1] = 0x00U;
+                pixel[2] = 0xffU;
+                pixel[3] = 0xffU;
+            }
+        }
+        decorated = source;
+        decorated.storage = std::move(storage);
+        return true;
+    };
+}
+
+void testWatermarkSurvivesFramebufferResize()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, markDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-223, 15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 120) == kMarkColor);
+
+    // The framebuffer shrinks: the mark must be recomposed for the new geometry, not left at the old coordinates.
+    transport->enqueueFrame(makeFrame(96, 80, 0x445566U));
+    CHECK(sendUpdateRequest(socket, true, 0, 0, 96, 80));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.width == 96 && frame.height == 80);
+    bool desktopSizeSeen = false;
+    for (const UpdateRect &rect : rectangles) {
+        if (rect.encoding == -223)
+            desktopSizeSeen = true;
+    }
+    CHECK(desktopSizeSeen);
+    CHECK(frame.get(95, 79) == kMarkColor);
+    CHECK(frame.get(64, 64) == kMarkColor);
+    CHECK(frame.get(63, 64) == 0x445566U);
+    CHECK(frame.get(64, 63) == 0x445566U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testWatermarkFollowsDevicePixelRatio()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    hyremote::RemoteFrame first = makeFrame(128, 128, 0x203040U);
+    first.geometry.devicePixelRatio = 1.0F;
+    auto transport = startTransport(port, recorder, std::move(first), {}, dprAwareMarkDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 120) == kMarkColor);
+    // At ratio 1.0 the mark is 32x16, so this row is still capture.
+    CHECK(frame.get(120, 100) == 0x203040U);
+
+    // The same geometry at ratio 2.0: the mark must double in both directions, which is only possible if the ratio the
+    // frame carries is the one the composed pixels were produced with.
+    hyremote::RemoteFrame second = makeFrame(128, 128, 0x203040U);
+    second.geometry.devicePixelRatio = 2.0F;
+    transport->enqueueFrame(std::move(second));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 100) == kMarkColor);
+    CHECK(frame.get(70, 110) == kMarkColor);
+    CHECK(frame.get(60, 110) == 0x203040U);
+    CHECK(frame.get(120, 95) == 0x203040U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testNoMarkWithoutDecorator()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+
+    bool markFound = false;
+    for (std::uint16_t y = 0; y < height; ++y) {
+        for (std::uint16_t x = 0; x < width; ++x) {
+            if (frame.get(x, y) == kMarkColor)
+                markFound = true;
+        }
+    }
+    CHECK(!markFound);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
     transport->stop();
 }
 
@@ -2501,6 +2797,10 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testWatermarkReachesEveryEncoding();
+    testWatermarkSurvivesFramebufferResize();
+    testWatermarkFollowsDevicePixelRatio();
+    testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
