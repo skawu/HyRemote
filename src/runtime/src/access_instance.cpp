@@ -668,6 +668,8 @@ struct AccessInstance::Impl
     // #591: whether this process selected the policy itself. A persisted policy from an earlier run is applied only
     // when the answer here is still "no".
     bool watermarkExplicit = false;
+    // #591: the store is consulted at most once, so a report read before start() and start() itself agree.
+    bool watermarkRestored = false;
     // #174 interface identity. Empty means the address decides the mode.
     QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
@@ -1002,7 +1004,20 @@ bool AccessInstance::setSecurityConfigFile(const QString &path)
 
 detail::WatermarkPolicyResult AccessInstance::watermarkPolicy() const
 {
-    return m_impl ? m_impl->watermark : detail::WatermarkPolicyResult{};
+    if (!m_impl)
+        return detail::WatermarkPolicyResult{};
+
+    // #591: report what a start would use, even when the caller asks before starting. The store is consulted once, so
+    // this cannot disagree with the enforcement path.
+    if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
+        m_impl->watermarkRestored = true;
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(
+            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
+        if (stored)
+            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+    }
+    return m_impl->watermark;
 }
 
 bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &request)
@@ -1042,7 +1057,8 @@ bool AccessInstance::start()
     // and a restore that sat behind that check simply never happened there. Only when this process has not selected a
     // policy of its own: an application's own choice always wins over the stored one. The request is re-validated by the
     // shared resolver, so a hand-edited or out-of-bounds file cannot bypass the bounds.
-    if (!m_impl->watermarkExplicit) {
+    if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
+        m_impl->watermarkRestored = true;
         QString storeError;
         const auto stored = detail::loadWatermarkRequest(
             detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
