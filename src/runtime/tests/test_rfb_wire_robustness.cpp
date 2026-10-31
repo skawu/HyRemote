@@ -1024,21 +1024,33 @@ void testWatermarkFollowsDevicePixelRatio()
     CHECK(frame.get(120, 120) == kMarkColor);
     // At ratio 1.0 the mark is 32x16, so this row is still capture.
     CHECK(frame.get(120, 100) == 0x203040U);
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
 
     // The same geometry at ratio 2.0: the mark must double in both directions, which is only possible if the ratio the
     // frame carries is the one the composed pixels were produced with.
+    //
+    // A *new* viewer reads the ratio-2 frame as its initial picture. Re-requesting on the first viewer instead would
+    // race against that viewer's already-queued update for the ratio-1 frame, which is a test bug, not a product
+    // defect: the assertion would then be made against pixels that were correctly composed for the older frame.
     hyremote::RemoteFrame second = makeFrame(128, 128, 0x203040U);
     second.geometry.devicePixelRatio = 2.0F;
     transport->enqueueFrame(std::move(second));
-    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
-    CHECK(readFramebufferUpdate(socket, frame, rectangles));
-    CHECK(frame.get(120, 100) == kMarkColor);
-    CHECK(frame.get(70, 110) == kMarkColor);
-    CHECK(frame.get(60, 110) == 0x203040U);
-    CHECK(frame.get(120, 95) == 0x203040U);
 
-    socket.disconnectFromHost();
-    waitForDisconnected(socket);
+    QTcpSocket afterRescale;
+    CHECK(connectRawRfb(afterRescale, port, false, &width, &height));
+    CHECK(sendSetEncodings(afterRescale, {15, 0}));
+    CHECK(sendUpdateRequest(afterRescale, false, 0, 0, width, height));
+    TestFramebuffer rescaled;
+    rescaled.resize(width, height);
+    CHECK(readFramebufferUpdate(afterRescale, rescaled, rectangles));
+    CHECK(rescaled.get(120, 100) == kMarkColor);
+    CHECK(rescaled.get(70, 110) == kMarkColor);
+    CHECK(rescaled.get(60, 110) == 0x203040U);
+    CHECK(rescaled.get(120, 95) == 0x203040U);
+
+    afterRescale.disconnectFromHost();
+    waitForDisconnected(afterRescale);
     transport->stop();
 }
 

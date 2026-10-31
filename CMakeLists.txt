@@ -230,30 +230,32 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         set_tests_properties(hyremote-build-authority-selftest PROPERTIES TIMEOUT 30)
     endif()
 
-    add_test(
-        NAME hyremote-release-readiness-metadata
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_metadata.cmake"
+    # TS-1 / MERGE_CASES: 15 scripts preserve their independent failure oracles, but
+    # share two script-mode CMake processes. Deploy-helper and QPA fixtures stay separate.
+    set(_hyremote_readiness_group_args
+        "-DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DHYREMOTE_PROJECT_VERSION=${PROJECT_VERSION}"
+        "-DHYREMOTE_INSTALL_ROOT=${CMAKE_CURRENT_BINARY_DIR}/install"
+        "-DHYREMOTE_GATE_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/gate-scratch"
+        "-DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}"
+        "-DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+        "-DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}"
+        "-DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
     )
-    # A01/E01: the exact-cell matrix is a product statement, so the repository checks it instead of trusting
-    # the table to stay honest across edits.
     add_test(
-        NAME hyremote-release-readiness-compatibility-cells
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_compatibility_cells.cmake"
+        NAME hyremote-release-readiness-facts-layout
+        COMMAND "${CMAKE_COMMAND}" ${_hyremote_readiness_group_args}
+            -DHYREMOTE_READINESS_GROUP=facts-layout
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_grouped_checks.cmake"
     )
-
-    # E02/#602: the inherited 26-child list stays accounted for while its reconciliation is reviewed. The machine
-    # change itself remains a separate PR; this only keeps the audit complete.
+    set_tests_properties(hyremote-release-readiness-facts-layout PROPERTIES TIMEOUT 300)
     add_test(
-        NAME hyremote-release-readiness-ga-scope-reconciliation
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ga_scope_reconciliation.cmake"
+        NAME hyremote-release-readiness-product-claims
+        COMMAND "${CMAKE_COMMAND}" ${_hyremote_readiness_group_args}
+            -DHYREMOTE_READINESS_GROUP=product-claims
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/run_grouped_checks.cmake"
     )
+    set_tests_properties(hyremote-release-readiness-product-claims PROPERTIES TIMEOUT 300)
 
     # The protected release-preparation correction rule decides whether a versioned release branch may
     # be re-based; it is policy, so its positive and negative cases are executed rather than reviewed.
@@ -271,34 +273,8 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         set_tests_properties(hyremote-release-preparation-correction PROPERTIES TIMEOUT 120)
     endif()
 
-    add_test(
-        NAME hyremote-release-readiness-runtime-contract
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_v1_runtime_contract.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-security-runtime-deploy
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_security_runtime_deploy.cmake"
-    )
 
-    # #339: the build/install contract the user is promised, registered beside the deployment gates because it
-    # is the same subject seen from the entry point instead of from one deploy path.
-    add_test(
-        NAME hyremote-release-readiness-build-install-contract
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -DHYREMOTE_INSTALL_ROOT=${CMAKE_BINARY_DIR}/install
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_build_install_contract.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-deployment-relocation
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_deployment_relocation.cmake"
-    )
+    # The independently heavy deployment fixture retains its own CTest and scratch setup.
     add_test(
         NAME hyremote-release-readiness-deploy-helper-contract
         COMMAND "${CMAKE_COMMAND}"
@@ -330,59 +306,6 @@ if(HYREMOTE_BUILD_TESTS AND PROJECT_IS_TOP_LEVEL)
         )
         set_tests_properties(hyremote-linux-qt-runtime-conflict PROPERTIES TIMEOUT 600)
     endif()
-    add_test(
-        NAME hyremote-release-readiness-release-authority-policy
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_authority_policy.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-consumer-simplicity
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_consumer_simplicity.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-repository-layout
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_repository_layout.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-release-documentation-layout
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_release_documentation_layout.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-documentation-paths
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_documentation_paths.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-licensing-boundary
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_licensing_boundary.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-package-acquisition-isolation
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -DHYREMOTE_GATE_SCRATCH_DIR=${CMAKE_CURRENT_BINARY_DIR}/gate-scratch
-            -DHYREMOTE_GATE_GENERATOR=${CMAKE_GENERATOR}
-            -DHYREMOTE_GATE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
-            -DHYREMOTE_GATE_C_COMPILER=${CMAKE_C_COMPILER}
-            -DHYREMOTE_GATE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_package_acquisition_isolation.cmake"
-    )
-    add_test(
-        NAME hyremote-release-readiness-ci-environment-baseline
-        COMMAND "${CMAKE_COMMAND}"
-            -DHYREMOTE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/release-readiness/check_ci_environment_baseline.cmake"
-    )
 
     # The clean installed C++ consumers are the V0.1 product promise for the Embedded C++ frontend: a real Widgets
     # window and a real Quick window, each driving the public RemoteAccess lifecycle from the installed SDK. They run

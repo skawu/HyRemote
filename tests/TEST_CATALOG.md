@@ -4,8 +4,9 @@
 >
 > `tests/semantic_ctest_labels.cmake` contains a configure-time drift guard: every configured CTest identity must appear here as an exact Markdown code span, otherwise configuration fails. Standalone PRE projects under `tests/preflight/` are intentionally outside this product CTest inventory.
 >
-> **Current facts, not historical prose:** 94 identities in the canonical Qt 6.8.3 four-frontend configuration, 50 in the
-> hosted Qt 5.15.2 C++/Widgets lane, 43 test executables. Evidence and per-identity classification:
+> **TS-1 measured pre-MERGE_CASES baseline:** 94 Qt 6.8.3 / 50 Qt 5.15.2 CTest identities,
+> 43 test executables. The new registrations predict 79 / 37 identities if the same capabilities
+> resolve; **these are projections, not measured evidence** until the canonical G2 run. TS-1 evidence:
 > [test-inventory-ts1-2026-10-30.md](../docs/internal/test-inventory-ts1-2026-10-30.md).
 > **When** to run what: [EXECUTION_MANUAL.md](EXECUTION_MANUAL.md). Numbers quoted in older sections below are history.
 
@@ -107,9 +108,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
-| `hyremote-qpa-runtime-basic` | Grouped QPA runtime cases: platform-plugin load/delegate, exact-private-ABI native semantics, launch/config vocabulary, and conditional QOpenGLWidget capture. Each case is named in the PASS/FAIL output. |
-| `hyremote-qpa-runtime-surfaces` | Grouped QWidget surface cases: multi-surface and popup/transient behavior (TG-019). The Quick multi-window fixture is not duplicated here; it has its own registration. |
-| `hyremote-qpa-runtime-recovery` | Grouped recovery cases: QPA auto-remoteaccess and remote-failure native survival. |
+| `hyremote-qpa-runtime` | One CTest runs basic (plugin/ABI/config/OpenGL), surfaces (multi-window/popup), and recovery (auto-remoteaccess/native-survival) in their individual smoke executables and plugin environments. Each case is named in the PASS/FAIL output; a registered case with no executable, a failing case, or a group that executes nothing is fatal. The conditional OpenGL fixture is the only case that may skip, and the skip is counted and reported. |
 | `hyremote-qpa-quick-multi-window-connection-smoke` | Multiple Quick windows through the QPA integration. Kept as its own CTest because its 500 ms startup contract is sensitive to being run inside a group. |
 
 ## T3 — repository/product contracts
@@ -120,11 +119,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-ci-scope-self-test` | CI classifier self-test. Failure can create false-green or over-broad lane selection. |
 | `hyremote-mainline-audit-self-test` | Mainline audit retry/verification behavior. |
 | `hyremote-branch-name-gate-self-test` | Branch-family governance remains executable rather than prose-only. |
-| `hyremote-release-readiness-runtime-contract` | Durable Runtime architecture/dependency contract; semantically T3 despite legacy physical path. |
-| `hyremote-release-readiness-repository-layout` | Canonical source/dependency layout. |
-| `hyremote-release-readiness-documentation-paths` | Maintained Markdown paths resolve. |
-| `hyremote-release-readiness-ci-environment-baseline` | Hosted/reference environment assumptions remain explicit. |
-| `hyremote-release-readiness-licensing-boundary` | Durable dependency/license boundary. |
+| `hyremote-release-readiness-facts-layout` | Grouped, fail-closed set of 10 cases: release metadata, exact-cell matrix, GA reconciliation, Shared Runtime contract, release authority policy, repository layout, release docs layout, documentation paths, licensing, CI environment baseline. Each former assertion still executes and logs its case name. |
 
 The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake` is also a T3 authority mechanism, but intentionally is not a CTest and therefore does not change inventory/counts.
 
@@ -136,16 +131,12 @@ The configure-time catalog-drift assertion in `tests/semantic_ctest_labels.cmake
 | `hyremote-cpp-installed-consumers` | Consumer/C++ — real installed Widgets+C++ and Quick+C++ lifecycle through a clean SDK. |
 | `hyremote-generic-installed-consumers` | Consumer/Generic — real installed Generic Widgets/Quick with native platform identity. |
 | `hyremote-qml-installed-consumer` | Consumer/QML — clean installed QML-only module is deployed, loaded and executes its shared diagnostic contract. |
+| `hyremote-release-readiness-product-claims` | Grouped, fail-closed set of five cases: security/runtime deploy, build/install contract, deployment relocation, consumer simplicity, package-acquisition isolation. Each original script executes in its own function scope. |
 | `hyremote-qpa-installed-product-fit` | Consumer/QPA — clean installed QPA payload/delegate chain reaches a live RFB listener and emits correlated shared diagnostics. |
 | `hyremote-qml-deploy-helper-non-qml` | Consumer/QML — ordinary deploy dispatch remains non-QML. |
 | `hyremote-qml-deploy-helper-qml` | Consumer/QML — QML-aware deploy dispatch/import-root preservation. |
-| `hyremote-release-readiness-security-runtime-deploy` | Consumer — deployed Runtime/security closure and runtime dependency availability. |
-| `hyremote-release-readiness-build-install-contract` | Consumer — promised build/install entry-point contract. |
-| `hyremote-release-readiness-deployment-relocation` | Consumer — installed/deployed payload remains relocatable. |
 | `hyremote-release-readiness-deploy-helper-contract` | Consumer — static deploy/package helper contract. |
 | `hyremote-linux-qt-runtime-conflict` | Consumer/Linux deploy — deterministic same-SONAME Qt runtime conflict resolution stays within the selected Qt/deployed lineage and fails closed for ambiguous or foreign candidates. **Condition:** Linux-only; it does not exist on the Windows lanes. |
-| `hyremote-release-readiness-consumer-simplicity` | Consumer — public consumption remains bounded/simple. |
-| `hyremote-release-readiness-package-acquisition-isolation` | Consumer — package acquisition stays isolated from product source/build tree. |
 | `hyremote-release-readiness-source-qpa-authority` | Consumer/QPA — source-QPA deployment authority and negative metadata behavior. |
 
 ### QPA deploy-helper matrix — T4/QPA
@@ -174,12 +165,7 @@ Unregistered assets `tests/product-e2e/example_product_fit.py` and `qml_product_
 
 | CTest identity | Necessity and failure meaning |
 | --- | --- |
-| `hyremote-release-readiness-metadata` | Candidate/version/security metadata truth. |
-| `hyremote-release-readiness-compatibility-cells` | V0.3.4.0 exact-cell matrix truth: exact Qt/ABI/route/UI rows in both languages, Owner D2 route decisions, no Qt 5 Supported upgrade, internal matrix agreement. |
-| `hyremote-release-readiness-ga-scope-reconciliation` | V1 26-child mandatory accounting: six-label classification, fixed GA decisions (#57 kept, #170 deferred), proposed closeable set equals the ledger. |
 | `hyremote-release-preparation-correction` | Protected release-branch correction rule: re-basing onto the exact develop candidate is admitted; extra product drift, CMake changes beyond VERSION, or edited pending notes are rejected. |
-| `hyremote-release-readiness-release-authority-policy` | Release authority policy remains fail-closed and consistent. |
-| `hyremote-release-readiness-release-documentation-layout` | Candidate/release documentation layout required by delivery authority. |
 | `hyremote-release-scope-self-test` | Exact release-train scope selection/rejection logic. |
 | `hyremote-release-authority-v02-user-first` | V0.2 user-first release authority, including conditional secure-evidence semantics. |
 | `hyremote-release-profiles` | One table-driven CTest for every release-profile case: development sentinel, retired pre-GA labels, progressive V0.1/V0.2/V0.3 profiles, and V1 all/C++/Generic subsets. Each case is named in the PASS/FAIL output; rejected cases must fail closed. |
@@ -188,7 +174,7 @@ The release-profile matrix intentionally uses separate CTest identities because 
 
 ## Current registration reconciliation
 
-Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests.
+Reference configuration: top-level tests, `cpp,qml,generic,qpa`, VNC enabled, Qt 6.8.3; transport security availability determines two conditional auth tests. The following numeric history predates MERGE_CASES and is not its acceptance result.
 
 - current #335 exact-head security-enabled inventory: Linux **113**, Windows **112**;
 - security-off equivalent: Linux **111**, Windows **110**; CI #581 executed those exact full-config counts;

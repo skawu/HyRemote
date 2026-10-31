@@ -126,6 +126,14 @@ READINESS_PREFIXES = (
 )
 
 READINESS_TEST_PREFIX = "hyremote-release-readiness-"
+# Exact registered names after MERGE_CASES; the family exclusion is intentional.
+# The QPA source-fixture test is registered only if that capability is present.
+READINESS_TEST_IDENTITIES = (
+    "hyremote-release-readiness-facts-layout",
+    "hyremote-release-readiness-product-claims",
+    "hyremote-release-readiness-deploy-helper-contract",
+    "hyremote-release-readiness-source-qpa-authority",
+)
 
 # The exact-candidate product fit drives the production transport through a standard RFB viewer (Pillow + vncdotool).
 # That viewer is candidate test tooling rather than a product or development dependency, so the test is candidate
@@ -462,6 +470,12 @@ def resolve(event: str, changed: list[str], draft: bool = False,
 
 
 def self_test() -> int:
+    # A renamed grouped identity must never escape the PR-fast readiness exclusion.
+    for readiness_name in READINESS_TEST_IDENTITIES:
+        if not readiness_name.startswith(READINESS_TEST_PREFIX):
+            print(f"CASE FAILED: readiness gate escapes the prefix: {readiness_name}")
+            return 1
+
     failures = 0
 
     cases = [

@@ -59,3 +59,10 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 
 Both are `workflow_dispatch`-able (`gate=G4|G5|BOTH`). A scheduled run **never** gates a pull request and never counts as
 PR evidence; it is recorded against the `develop` SHA it actually built.
+
+## MERGE_CASES registration and evidence
+
+- The two grouped readiness CTests cover **15 former scripts**. The deploy-helper contract and capability-conditional source-QPA fixture still execute independently. Each included case logs BEGIN/PASS and any fatal error fails the whole group; no script has been deleted.
+- One QPA runtime CTest now executes the existing basic/surfaces/recovery smoke cases with their individual executables and plugin environment. The startup-sensitive Quick multi-window CTest remains separate with its resource lock.
+- Reference-registration **projections**: Qt 6.8.3 **94 → 79**, Qt 5.15.2 **50 → 37**. These numbers are not valid discovery or PASS evidence until the G2 canonical configuration and test run produces actual counts. Do not infer wall-clock savings from the number of CTest identities.
+- CI derives its readiness exclusion from `.github/scripts/resolve-ci-scope.py` using the `hyremote-release-readiness-` family prefix. Both grouped identities still match; the product job's zero-execution rejection remains mandatory.
