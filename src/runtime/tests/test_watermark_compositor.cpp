@@ -2,12 +2,16 @@
 // and must reproduce the Owner decision (bottom-right single line by default, tiled only on request, 0.35 opacity).
 
 #include "../src/detail/watermark_compositor.hpp"
+#include "../src/detail/watermark_policy.hpp"
 
 #include <QByteArray>
+#include <QFont>
 #include <QFontDatabase>
+#include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
 #include <QString>
+#include <QStringList>
 #include <QTextStream>
 
 #include <algorithm>
@@ -33,6 +37,7 @@ using HyRemote::detail::WatermarkFrameView;
 using HyRemote::detail::WatermarkPolicy;
 using HyRemote::detail::WatermarkPosition;
 using HyRemote::detail::composeWatermark;
+using HyRemote::detail::watermarkFontFamilyCandidates;
 
 QByteArray makeFrame(int width, int height, qsizetype *stride = nullptr)
 {
@@ -108,6 +113,58 @@ WatermarkPolicy enabledPolicy(const QString &text)
     policy.enabled = true;
     policy.text = text;
     return policy;
+}
+
+// "Safe font fallback" is only a real property if the text is actually drawn instead of replaced by a placeholder
+// box. Two different characters rendering to identical pixels is the signature of missing-glyph boxes, so comparing
+// the composed output of two characters is an observable check that the candidate family chain produced real glyphs.
+bool anyCandidateFamilyCovers(uint ucs4)
+{
+    const QStringList families = watermarkFontFamilyCandidates();
+    for (const QString &family : families) {
+        QFont font;
+        font.setFamilies({family});
+        font.setPixelSize(24);
+        const QFontMetricsF metrics(font);
+        if (metrics.inFontUcs4(ucs4))
+            return true;
+    }
+    return false;
+}
+
+void checkGlyphsAreReal()
+{
+    const int width = 320;
+    const int height = 200;
+    qsizetype stride = 0;
+    const QByteArray frame = makeFrame(width, height, &stride);
+
+    const auto compose = [&](const QString &text, QByteArray &destination) {
+        QString error;
+        return composeWatermark(enabledPolicy(text), viewOf(frame, width, height, stride), destination,
+                                error);
+    };
+
+    QByteArray latinA;
+    QByteArray latinB;
+    check(compose(QStringLiteral("A"), latinA) && compose(QStringLiteral("B"), latinB),
+          QStringLiteral("two Latin marks compose"));
+    check(latinA != latinB,
+          QStringLiteral("distinct Latin glyphs produce distinct pixels, so text is drawn and not boxed"));
+
+    // A host without any CJK-capable family would render two boxes; asserting pixel difference there would blame the
+    // product for a missing host font. The coverage probe keeps the check meaningful where CJK is available and says
+    // so plainly where it is not, instead of passing silently.
+    if (anyCandidateFamilyCovers(0x4E2Du) && anyCandidateFamilyCovers(0x6587u)) {
+        QByteArray cjkA;
+        QByteArray cjkB;
+        check(compose(QStringLiteral("中"), cjkA) && compose(QStringLiteral("文"), cjkB),
+              QStringLiteral("two CJK marks compose"));
+        check(cjkA != cjkB,
+              QStringLiteral("distinct CJK glyphs produce distinct pixels, so the fallback chain rendered them"));
+    } else {
+        check(true, QStringLiteral("SKIP: no candidate family reports CJK coverage on this host"));
+    }
 }
 
 void checkDisabledDoesNothing()
@@ -339,6 +396,7 @@ int main(int argc, char **argv)
     }
 
     checkDisabledDoesNothing();
+    checkGlyphsAreReal();
     checkSingleCornerAndSourceIntegrity();
     checkExplicitTopLeft();
     checkTiled();
