@@ -5,6 +5,7 @@
 #include "../src/detail/watermark_policy.hpp"
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QFont>
 #include <QFontDatabase>
 #include <QFontMetricsF>
@@ -165,6 +166,50 @@ void checkGlyphsAreReal()
     } else {
         check(true, QStringLiteral("SKIP: no candidate family reports CJK coverage on this host"));
     }
+}
+
+// #589: the only cost question the acceptance left open was "what does composing cost per frame at desktop size".
+// This measures it instead of asserting a number: a real benchmark needs a stable machine and a moving target, neither
+// of which a test binary has. The bound is deliberately pathological (a 100 ms frame would be unusable at any frame
+// rate) so the case can only fail on a catastrophic regression, never on a slow CI runner.
+void checkDesktopFrameComposeCost()
+{
+    const int width = 1920;
+    const int height = 1080;
+    qsizetype stride = 0;
+    const QByteArray frame = makeFrame(width, height, &stride);
+
+    const auto medianOf = [&](const WatermarkPolicy &policy) {
+        QVector<double> samples;
+        QByteArray destination;
+        QString error;
+        for (int i = 0; i < 25; ++i) {
+            QElapsedTimer timer;
+            timer.start();
+            const bool composed
+                = composeWatermark(policy, viewOf(frame, width, height, stride), destination, error);
+            const double elapsed = double(timer.nsecsElapsed()) / 1.0e6;
+            if (!composed) {
+                check(false, QStringLiteral("a 1920x1080 composition failed: %1").arg(error));
+                return -1.0;
+            }
+            samples.append(elapsed);
+        }
+        std::sort(samples.begin(), samples.end());
+        return samples.at(samples.size() / 2);
+    };
+
+    const double corner = medianOf(enabledPolicy(QStringLiteral("CONFIDENTIAL")));
+    WatermarkPolicy tiled = enabledPolicy(QStringLiteral("CONFIDENTIAL"));
+    tiled.position = WatermarkPosition::Tiled;
+    const double tiledMedian = medianOf(tiled);
+
+    QTextStream(stdout) << "  [bench] 1920x1080 compose median: corner=" << corner
+                        << " ms, tiled=" << tiledMedian << " ms\n";
+    check(corner >= 0.0 && corner < 100.0,
+          QStringLiteral("a desktop-sized corner composition stays under the pathological bound"));
+    check(tiledMedian >= 0.0 && tiledMedian < 100.0,
+          QStringLiteral("a desktop-sized tiled composition stays under the pathological bound"));
 }
 
 void checkDisabledDoesNothing()
@@ -396,6 +441,7 @@ int main(int argc, char **argv)
     }
 
     checkDisabledDoesNothing();
+    checkDesktopFrameComposeCost();
     checkGlyphsAreReal();
     checkSingleCornerAndSourceIntegrity();
     checkExplicitTopLeft();
