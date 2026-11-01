@@ -1034,14 +1034,10 @@ bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &re
     m_impl->watermark = detail::resolveWatermarkPolicy(request);
     m_impl->watermarkExplicit = true;
 
-    // #591: persistence is a property of the state directory the host-path contract resolved, not a hidden side file.
-    // Only the policy is written; credentials and descriptor contents never are. A failure to persist is not a
-    // configuration error - the policy still applies to this run - so it does not fail the call.
-    const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
-    if (m_impl->watermark.policy.enabled)
-        (void)detail::saveWatermarkPolicy(paths, m_impl->watermark.policy);
-    else
-        (void)detail::clearWatermarkPolicy(paths);
+    // #591: persistence happens at start(), not here. The state directory is derived from the configuration selection,
+    // and a caller may set the descriptor path after selecting a policy; writing now would store into the platform
+    // default and never restore. Nothing is written for a request the resolver refused either - a partially resolved
+    // policy would come back on the next launch as a watermark the operator never asked for.
     return true;
 }
 
@@ -1064,6 +1060,19 @@ bool AccessInstance::start()
     // and a restore that sat behind that check simply never happened there. Only when this process has not selected a
     // policy of its own: an application's own choice always wins over the stored one. The request is re-validated by the
     // shared resolver, so a hand-edited or out-of-bounds file cannot bypass the bounds.
+    //
+    // #591: an explicit policy of this run is persisted here, once the configuration selection is final - and only when
+    // the shared resolver accepted it, so an invalid request can never overwrite the store with a half-resolved policy.
+    if (m_impl->watermarkExplicit) {
+        if (m_impl->watermark.ok()) {
+            const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
+            if (m_impl->watermark.policy.enabled)
+                (void)detail::saveWatermarkPolicy(paths, m_impl->watermark.policy);
+            else
+                (void)detail::clearWatermarkPolicy(paths);
+        }
+    }
+
     if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
         m_impl->watermarkRestored = true;
         QString storeError;

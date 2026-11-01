@@ -322,23 +322,34 @@ private:
 
         // #589: the zero-code route states the operator's request; the shared policy decides defaults and bounds,
         // and a request it refuses fails the start instead of quietly streaming an unmarked picture.
-        detail::WatermarkPolicyRequest watermark;
-        watermark.enabled = !config.watermarkText.isEmpty();
-        watermark.text = config.watermarkText;
-        if (!config.watermarkPosition.isEmpty()) {
-            detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
-            if (!detail::parseWatermarkPosition(config.watermarkPosition, position)) {
+        //
+        // #591: only a launch that actually mentions a watermark selects one. Submitting an empty request
+        // unconditionally would mark the policy as "explicitly chosen by this process" and delete the policy a previous
+        // launch stored, so a configured watermark could never survive a restart through the zero-code routes.
+        const bool watermarkRequested = !config.watermarkText.isEmpty()
+                                        || !config.watermarkPosition.isEmpty()
+                                        || config.watermarkOpacity.has_value()
+                                        || config.watermarkFontPointSize.has_value()
+                                        || config.watermarkColor.has_value();
+        if (watermarkRequested) {
+            detail::WatermarkPolicyRequest watermark;
+            watermark.enabled = !config.watermarkText.isEmpty();
+            watermark.text = config.watermarkText;
+            if (!config.watermarkPosition.isEmpty()) {
+                detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
+                if (!detail::parseWatermarkPosition(config.watermarkPosition, position)) {
+                    writeDiagnosticReport(*instance);
+                    return false;
+                }
+                watermark.position = position;
+            }
+            watermark.opacity = config.watermarkOpacity;
+            watermark.fontPointSize = config.watermarkFontPointSize;
+            watermark.color = config.watermarkColor;
+            if (!instance->setWatermarkPolicy(watermark) || !instance->watermarkPolicy().ok()) {
                 writeDiagnosticReport(*instance);
                 return false;
             }
-            watermark.position = position;
-        }
-        watermark.opacity = config.watermarkOpacity;
-        watermark.fontPointSize = config.watermarkFontPointSize;
-        watermark.color = config.watermarkColor;
-        if (!instance->setWatermarkPolicy(watermark) || !instance->watermarkPolicy().ok()) {
-            writeDiagnosticReport(*instance);
-            return false;
         }
 
         if (!instance->start()) {

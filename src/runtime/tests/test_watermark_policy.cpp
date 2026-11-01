@@ -430,6 +430,9 @@ void checkPersistedPolicySurvivesRestart()
 
         HyRemote::Runtime::AccessInstance writer;
         check(writer.setWatermarkPolicy(request), QStringLiteral("an explicit policy is accepted"));
+        // Persistence happens at start(): only then is the configuration selection final, so a descriptor path chosen
+        // after the policy cannot send the file to the wrong directory.
+        check(!writer.start(), QStringLiteral("a target-less start still fails"));
         check(QFile::exists(storedPath),
               QStringLiteral("the explicit policy is persisted into the state directory"));
     }
@@ -483,9 +486,37 @@ void checkPersistedPolicySurvivesRestart()
     }
 
     {
+        // A request the resolver refuses must never reach the store: a half-resolved policy (text accepted, colour
+        // quietly reset to white) would come back on the next launch as a watermark the operator never asked for.
+        WatermarkPolicyRequest good;
+        good.enabled = true;
+        good.text = QStringLiteral("KEEP-ME");
+        HyRemote::Runtime::AccessInstance seeded;
+        check(seeded.setWatermarkPolicy(good), QStringLiteral("a valid policy is accepted for the seed"));
+        check(!seeded.start(), QStringLiteral("the seed start still fails for the missing target"));
+
+        WatermarkPolicyRequest invalid = good;
+        invalid.text = QStringLiteral("OVERWRITE-ATTEMPT");
+        invalid.opacity = 4.0;
+        HyRemote::Runtime::AccessInstance rejected;
+        check(rejected.setWatermarkPolicy(invalid), QStringLiteral("the invalid request is recorded for reporting"));
+        check(!rejected.start(), QStringLiteral("start refuses an enabled policy that cannot be honoured"));
+
+        QFile stored(storedPath);
+        const bool readable = stored.open(QIODevice::ReadOnly);
+        check(readable, QStringLiteral("the stored policy is still readable"));
+        const QString storedText = readable ? QString::fromUtf8(stored.readAll()) : QString{};
+        check(storedText.contains(QStringLiteral("KEEP-ME")),
+              QStringLiteral("an invalid request leaves the stored policy untouched"));
+        check(!storedText.contains(QStringLiteral("OVERWRITE-ATTEMPT")),
+              QStringLiteral("an invalid request is not written to the state directory"));
+    }
+
+    {
         // Disabling is an explicit selection too: it must clear the store, or the mark would come back on restart.
         HyRemote::Runtime::AccessInstance clearer;
         check(clearer.setWatermarkPolicy(WatermarkPolicyRequest{}), QStringLiteral("disabling is accepted"));
+        check(!clearer.start(), QStringLiteral("a target-less start still fails"));
         check(!QFile::exists(storedPath), QStringLiteral("disabling removes the stored policy"));
     }
 
