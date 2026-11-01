@@ -5,6 +5,7 @@
 
 #include "../src/access_instance.hpp"
 #include "../src/detail/watermark_policy.hpp"
+#include "../src/detail/watermark_store.hpp"
 
 #include <HyRemote/RemoteAccess.h>
 
@@ -431,21 +432,16 @@ void checkPersistedPolicySurvivesRestart()
         const auto restored = restarted.watermarkPolicy().policy;
         check(restored.enabled && restored.text == QStringLiteral("持久 CONFIDENTIAL"),
               QStringLiteral("the persisted policy is restored on the next start"));
-        if (!restored.enabled) {
-            // A failing restore must say why, otherwise the failure is indistinguishable from "the store is empty".
-            QString probeError;
-            const auto probePaths = HyRemote::detail::resolveHostPaths(QString());
-            const auto probe = HyRemote::detail::loadWatermarkRequest(probePaths, &probeError);
-            QTextStream(stdout) << "  [diag] state=" << probePaths.stateDir.value
-                                << " origin=" << HyRemote::detail::hostPathOriginName(probePaths.stateDir.origin)
-                                << " loaded=" << (probe.has_value() ? 1 : 0)
-                                << " error=" << probeError << '\n';
-        }
         check(restored.position == WatermarkPosition::Tiled && qFuzzyCompare(restored.opacity, 0.5)
                   && restored.fontPointSize == 24,
               QStringLiteral("the restored policy keeps its position, opacity and size"));
         const QString report
             = HyRemote::Runtime::formatDiagnosticReport(restarted.diagnosticSnapshot());
+        if (!restored.enabled) {
+            // A failing restore must say why, otherwise it is indistinguishable from "the store is empty". The public
+            // report already carries the resolved host paths and the policy state, so no internal symbol is needed.
+            QTextStream(stdout) << "  [diag] " << report << '\n';
+        }
         check(report.contains(QStringLiteral("WATERMARK_ENABLED=true")),
               QStringLiteral("the restored policy is visible as enabled in the report"));
         check(!report.contains(QStringLiteral("持久 CONFIDENTIAL")),
