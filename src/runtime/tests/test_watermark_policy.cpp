@@ -410,10 +410,19 @@ void checkPersistedPolicySurvivesRestart()
     qputenv("HYREMOTE_STATE_DIR", state.path().toUtf8());
     const QString storedPath = QDir(state.path()).filePath(QStringLiteral("watermark.policy"));
 
+    // Built from code points on purpose: this case must not depend on how a compiler decodes the source file. The Qt 5
+    // lane compiles without /utf-8, so a literal CJK string in the source became cp1252 mojibake there, which the policy
+    // then rejected as control characters - a test-encoding artefact that looked like a persistence defect.
+    QString cjkText;
+    cjkText += QChar(static_cast<ushort>(0x6301));
+    cjkText += QChar(static_cast<ushort>(0x4E45));
+    cjkText += QLatin1Char(' ');
+    cjkText += QStringLiteral("CONFIDENTIAL");
+
     {
         WatermarkPolicyRequest request;
         request.enabled = true;
-        request.text = QStringLiteral("持久 CONFIDENTIAL");
+        request.text = cjkText;
         request.position = WatermarkPosition::Tiled;
         request.opacity = 0.5;
         request.fontPointSize = 24;
@@ -430,7 +439,7 @@ void checkPersistedPolicySurvivesRestart()
         HyRemote::Runtime::AccessInstance restarted;
         check(!restarted.start(), QStringLiteral("a target-less start still fails"));
         const auto restored = restarted.watermarkPolicy().policy;
-        check(restored.enabled && restored.text == QStringLiteral("持久 CONFIDENTIAL"),
+        check(restored.enabled && restored.text == cjkText,
               QStringLiteral("the persisted policy is restored on the next start"));
         check(restored.position == WatermarkPosition::Tiled && qFuzzyCompare(restored.opacity, 0.5)
                   && restored.fontPointSize == 24,
@@ -458,7 +467,7 @@ void checkPersistedPolicySurvivesRestart()
         }
         check(report.contains(QStringLiteral("WATERMARK_ENABLED=true")),
               QStringLiteral("the restored policy is visible as enabled in the report"));
-        check(!report.contains(QStringLiteral("持久 CONFIDENTIAL")),
+        check(!report.contains(cjkText),
               QStringLiteral("the restored policy still keeps the operator text out of the report"));
     }
 
