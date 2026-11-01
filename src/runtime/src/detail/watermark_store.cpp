@@ -89,7 +89,14 @@ std::optional<WatermarkPolicyRequest> loadWatermarkRequest(const HostPaths &path
     WatermarkPolicyRequest request;
     request.enabled = true;
     QString positionToken;
-    for (const QString &line : lines) {
+    for (const QString &rawLine : lines) {
+        // A file that was copied through a Windows text editor (or written by a build whose newline translation differs)
+        // carries CRLF. A stray CR is a control character to the policy, so without this the text would be rejected as
+        // "not a single visible line" even though it is exactly what the operator stored.
+        QString line = rawLine;
+        if (line.endsWith(QLatin1Char('\r')))
+            line.chop(1);
+
         const int separator = line.indexOf(QLatin1Char('='));
         if (separator <= 0)
             continue;
