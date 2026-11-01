@@ -39,3 +39,18 @@ add_dependencies(hyremote-qml-basic hyremote-qml hyremote-qmlplugin)
 # selected so the module payload it imports is deployed with it.
 install(TARGETS hyremote-qml-basic RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET hyremote-qml-basic QML)
+
+# #737: a direct build-tree launch has to work, as main.cpp and this file promise. The QML plugin is loaded from
+# <build>/qml/HyRemote, but Windows resolves a plugin's own dependencies from the *application* directory, not from the
+# plugin's directory - so `hyremote-qml.dll` and the runtime next to the plugin were invisible and the launch died with
+# "the specified module could not be found", exit 65, no window. Copying both next to the example reproduces the
+# deployed layout the loader expects, without baking any build-host absolute path into the binary.
+foreach(_hyremote_qml_dependency hyremote-qml hyremote-remoteaccess)
+    if(TARGET ${_hyremote_qml_dependency})
+        add_custom_command(TARGET hyremote-qml-basic POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:${_hyremote_qml_dependency}>"
+                "$<TARGET_FILE_DIR:hyremote-qml-basic>"
+            VERBATIM)
+    endif()
+endforeach()
