@@ -440,7 +440,12 @@ void checkPersistedPolicySurvivesRestart()
         if (!restored.enabled) {
             // A failing restore must say why, otherwise it is indistinguishable from "the store is empty". The public
             // report already carries the resolved host paths and the policy state, so no internal symbol is needed.
-            QTextStream(stdout) << "  [diag] " << report << '\n';
+            QFile stored(storedPath);
+            QByteArray storedBytes;
+            if (stored.open(QIODevice::ReadOnly))
+                storedBytes = stored.readAll();
+            QTextStream(stdout) << "  [diag] size=" << storedBytes.size() << " content=<<" << storedBytes << ">>\n"
+                                << "  [diag] " << report << '\n';
         }
         check(report.contains(QStringLiteral("WATERMARK_ENABLED=true")),
               QStringLiteral("the restored policy is visible as enabled in the report"));
