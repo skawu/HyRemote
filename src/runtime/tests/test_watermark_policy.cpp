@@ -444,7 +444,16 @@ void checkPersistedPolicySurvivesRestart()
             QByteArray storedBytes;
             if (stored.open(QIODevice::ReadOnly))
                 storedBytes = stored.readAll();
-            QTextStream(stdout) << "  [diag] size=" << storedBytes.size() << " content=<<" << storedBytes << ">>\n"
+            QString codePoints;
+            const QString storedText = QString::fromUtf8(storedBytes);
+            for (const QString &line : storedText.split(QLatin1Char('\n'))) {
+                if (!line.startsWith(QStringLiteral("text=")))
+                    continue;
+                const QString value = line.mid(5);
+                for (const uint codePoint : value.toUcs4())
+                    codePoints += QStringLiteral("U+%1 ").arg(codePoint, 4, 16, QLatin1Char('0'));
+            }
+            QTextStream(stdout) << "  [diag] size=" << storedBytes.size() << " textCps=" << codePoints << '\n'
                                 << "  [diag] " << report << '\n';
         }
         check(report.contains(QStringLiteral("WATERMARK_ENABLED=true")),
