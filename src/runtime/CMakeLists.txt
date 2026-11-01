@@ -17,6 +17,7 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/security_descriptor.cpp
     src/detail/host_paths.cpp
     src/detail/watermark_policy.cpp
+    src/detail/watermark_store.cpp
     src/detail/composition_support.cpp
     src/detail/listener_binding.cpp
 )

@@ -566,6 +566,8 @@ hyremote_deploy(TARGET MyApp QPA)
 
 有界且**拒绝而不夹取**：文字 ≤128 码元且必须单行可见（控制字符、零宽字符、bidi 覆盖一律拒绝），不透明度 0.05–1.0，字号 8–96 点，颜色 `#RRGGBB`。任一值非法时：C++/QML 的 setter 返回失败或置 `errorCode=InvalidConfiguration`，诊断报告出现非 `none` 的 `WATERMARK_POLICY_ERROR`，`start()` 直接失败——**绝不会静默输出没有水印的画面**；宿主 Qt 应用本身继续运行。文字放不进画面时同样拒绝，不裁剪、不省略、不缩字。水印不支持、也不接受用户名/IP/时间/设备标识模板；图片 Logo 属于 V1 GA 之后的 #593。
 
+**重启后仍然生效（#591）**：显式配置的水印策略会写入已解析的状态目录（`<状态目录>/watermark.policy`，只含文字/位置/不透明度/字号/颜色，绝不含凭据或描述文件内容）；下次进程启动时若本次没有显式选择，就按该文件恢复。优先级为**本次显式选择 > 已持久化策略 > 共享默认**；显式关闭会删除该文件，因此重启后不会"水印又回来了"。文件被手工改坏或越界时**不会被恢复**（共享策略重新校验失败即丢弃），也不会因此阻断宿主应用启动——但操作者不应把状态目录当成手写配置入口。
+
 诊断字段：`WATERMARK_ENABLED`、`WATERMARK_POSITION`、`WATERMARK_OPACITY`、`WATERMARK_FONT_SIZE`、`WATERMARK_COLOR`、`WATERMARK_TEXT_CODE_UNITS`、`WATERMARK_POLICY_ERROR`。报告**只报文字长度，不报文字内容**。
 
 ---
