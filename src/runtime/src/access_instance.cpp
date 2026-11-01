@@ -1014,8 +1014,15 @@ detail::WatermarkPolicyResult AccessInstance::watermarkPolicy() const
         QString storeError;
         const auto stored = detail::loadWatermarkRequest(
             detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
-        if (stored)
+        if (stored) {
             m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+        } else if (!storeError.isEmpty()) {
+            // Say why the stored policy was not applied instead of leaving silence: the policy stays disabled, so a
+            // corrupt or unreachable store can never block a start, but the reason is visible in the report.
+            m_impl->watermark = detail::WatermarkPolicyResult{};
+            m_impl->watermark.error
+                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
+        }
     }
     return m_impl->watermark;
 }
@@ -1062,8 +1069,15 @@ bool AccessInstance::start()
         QString storeError;
         const auto stored = detail::loadWatermarkRequest(
             detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
-        if (stored)
+        if (stored) {
             m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+        } else if (!storeError.isEmpty()) {
+            // Say why the stored policy was not applied instead of leaving silence: the policy stays disabled, so a
+            // corrupt or unreachable store can never block a start, but the reason is visible in the report.
+            m_impl->watermark = detail::WatermarkPolicyResult{};
+            m_impl->watermark.error
+                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
+        }
     }
 
     // #259: every exit from this call publishes the resulting truth exactly once. The guard clears the
