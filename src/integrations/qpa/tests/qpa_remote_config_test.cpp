@@ -67,6 +67,23 @@ int main()
             return 9;
         }
     }
+    // #761: Qt's platform factory passes QStringList parameters to this parser. Confirm that
+    // CJK (with and without spaces) is passed to the Runtime config untouched and stripped
+    // from the native delegate arguments; this is not proof of Windows argv decoding.
+    for (const QString &expected : {QStringLiteral("水印候选"), QStringLiteral("持久 候选")}) {
+        QStringList parameters{QStringLiteral("hyremote-watermark=") + expected,
+                               QStringLiteral("hyremote-port=5921"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "CJK watermark parameters parse")
+            || !check(error.isEmpty(), "CJK watermark does not produce a parser error")
+            || !check(config.watermarkText == expected, "CJK characters/spaces survive QPA parameter mapping")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "CJK watermark parameter is not passed to the native delegate")) {
+            return 11;
+        }
+    }
     {
         QStringList parameters{QStringLiteral("hyremote-watermark-position=centre")};
         RemoteConfig config;

@@ -86,6 +86,25 @@ int main()
         CHECK(config.watermarkFontPointSize.has_value() && *config.watermarkFontPointSize == 24);
         CHECK(config.watermarkColor.has_value() && *config.watermarkColor == QStringLiteral("#00FF00"));
     }
+    // #761: Once Qt has delivered a valid QString, the Generic adapter must preserve CJK
+    // characters AND internal spaces through the semicolon-separated specification. This
+    // intentionally does not assert that every Windows shell/argv path produces that QString.
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(parseSpecification(QStringLiteral("port=5921;watermark=水印候选"), config, error));
+        CHECK(error.isEmpty());
+        CHECK(config.watermarkText == QStringLiteral("水印候选"));
+    }
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(parseSpecification(QStringLiteral("watermark=持久 候选;watermark-position=top-left"),
+                                 config, error));
+        CHECK(error.isEmpty());
+        CHECK(config.watermarkText == QStringLiteral("持久 候选"));
+        CHECK(config.watermarkPosition == QStringLiteral("top-left"));
+    }
     {
         AccessConfig config;
         QString error;
