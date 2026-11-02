@@ -43,6 +43,12 @@ target_link_libraries(hyremote-generic-plugin
         HyRemote::RemoteAccess
 )
 
+if(WIN32)
+    # CommandLineToArgvW provides a trustworthy UTF-16 launch token for #761,
+    # rather than blindly reconverting text received from Qt as Latin-1.
+    target_link_libraries(hyremote-generic-plugin PRIVATE shell32)
+endif()
+
 # The plugin is a deployment payload, not an application link target and not an exported SDK target.
 install(TARGETS hyremote-generic-plugin
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/HyRemote/plugins/generic"
