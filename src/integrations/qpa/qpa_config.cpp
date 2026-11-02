@@ -51,6 +51,28 @@ QString leadingDigits(const QString &text)
 
 }  // namespace
 
+QString requestedNativeDelegate(QStringList &parameters, const QString &native)
+{
+    QString selected = native;
+    for (auto it = parameters.begin(); it != parameters.end();) {
+        // #774: char ARRAY, not const char*; sizeof(prefix)-1 is the literal
+        // length of "delegate=". An x64 pointer previously truncated it to 7.
+        constexpr char prefix[] = "delegate=";
+        if (it->startsWith(QLatin1String(prefix), Qt::CaseInsensitive)) {
+            selected = it->mid(static_cast<int>(sizeof(prefix) - 1)).trimmed().toLower();
+            it = parameters.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Preserve the strict native-only QPA package scope. No fallback or
+    // native platform inference beyond the already-selected reference ABI.
+    if (native.isEmpty() || selected != native)
+        return {};
+    return selected;
+}
+
 QString runtimeIdentityError(const QString &runningVersion,
                              int expectedMajor,
                              int expectedMinor,

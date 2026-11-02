@@ -44,6 +44,40 @@ int main()
         }
     }
 
+    // #774: Test exactly the delegate selection used by the real QPA plugin,
+    // not just pass-through from the earlier HyRemote config parser.
+    {
+        QStringList native{QStringLiteral("delegate=windows"),
+                           QStringLiteral("darkmode=2")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(native, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "explicit Windows native delegate is selected")
+            || !check(native == QStringList{QStringLiteral("darkmode=2")},
+                      "delegate token is consumed and native tokens survive")) {
+            return 13;
+        }
+        QStringList uppercase{QStringLiteral("DELEGATE= WINDOWS ")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(uppercase, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "case-insensitive explicit delegate and surrounding whitespace survive")
+            || !check(uppercase.isEmpty(), "case-folded delegate token is consumed")) {
+            return 13;
+        }
+        QStringList unknown{QStringLiteral("delegate=xcb")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(unknown, QStringLiteral("windows")).isEmpty(),
+                   "unqualified foreign delegate is rejected")) {
+            return 13;
+        }
+        QStringList implicit{QStringLiteral("darkmode=2")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(implicit, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "omitted option keeps qualified native delegate")
+            || !check(implicit == QStringList{QStringLiteral("darkmode=2")},
+                      "no unrelated native option is consumed")) {
+            return 13;
+        }
+    }
+
     // #589: the zero-code platform route can select the watermark; the parser only carries the request and the
     // shared Runtime policy owns defaults and bounds.
     {
