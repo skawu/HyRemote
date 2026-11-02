@@ -1,5 +1,13 @@
 # HyRemote 产品版本路线图：Qt 5.15 + Qt 6.8 首轮 GA，Qt 6.5 + Qt 6.12 后置
 
+
+> **2026-11-02 线下用户资源负担反馈 — 即时优先级调整（#609/#370/#374）：** 用户已反馈启用/使用 HyRemote 给原 Qt 应用带来明显资源负担，尚无足够可比的 CPU 增量、内存增量、GPU 或性能退化量化证据。**将 #609 提升为 P1 产品质量执行优先级，立即开展实测与有界优化**；它不是仅供 GA 后讨论的技术储备。该变更是跨版本维护任务优先级调整，**不新增 Feature 编号、不调整 V0.3.6.0 Tool S1 已规划目标、不修改 machine release train / mandatory / V0.4 RC 激活状态**。先完成 V0.3.5.0 RC3 已知发布阻断修复及必要资格验证；性能专项可在隔离工作树中并行推进，须在大范围 V0.3.6 Tool S1 新功能开发前形成第一轮可审核的用户资源基线、瓶颈归因与最小改进或 NO-GO 结论。
+>
+> **首轮用户可见验收：** 同一 Qt 应用/同一 SHA/相同分辨率和工作负载，比较未启用 HyRemote、启用但 0 Viewer、1 Viewer 静态/局部交互/高变化、2 Viewer 时的 Host 进程 **CPU 增量、内存（RSS/Private Bytes）增量、峰值、帧龄与本地 UI 交互/流畅性**；Viewer CPU/RSS 单独记录，不混入 Host 开销。优先 Windows Qt 6.8.3 1080p Widgets 与 Qt Quick，真实 RK3588/EGLFS 仅在设备可用时另记证据，不冒充 Windows 首 GA 门禁；#374 保存可复现 exact-SHA 记录。定位抓帧、GPU 读回、全帧扫描、拷贝、Raw/TRLE 编码的实际热点后，以最小 PR 优化并验证 before/after。本地 UI 不应为了降低 Host CPU 而明显退化；**没有测量基线不得编造“CPU 增加 x%”“内存增加 y MB”或已支持 GPU 加速**。
+>
+> **发布与加速边界：** RC2 已拒绝发布，RC3 仍按 #95 的独立候选修正/资格流程执行。性能证据若发现影响已承诺支持范围的严重资源无界、死锁或确切已成立 SLO 失败，交 #95 明确裁定是否阻断候选；其余优化遵循 #24/#95 的单独维护/后续切片准入，不擅自扩展 RC3。GPU/零拷贝/硬件视频编码只有在可移植 CPU 路径无法满足实测预算时，才按 #123 独立 GO/NO-GO，并保持兼容回退。
+
+
 > **Owner Decision 2026-10-27:** D1 popup visual is NOT_CONFIRMED and deferred to V0.4 qualification, not a V0.3.4 hard gate; D2 accepts bounded Qt5 C++/Widgets while Qt5 Quick/QML/Generic/QPA stay EXPERIMENTAL/UNSUPPORTED/REJECTED; D3 requires legal custom build.directory end-to-end; D4 makes --no-config internal diagnostic; D5 keeps --qt-prefix advanced; D6 makes existing build identity win over environment discovery and requires explicit switching; D7 makes RealVNC 7.15.1 the required maintained Viewer. Details and evidence links are recorded in #594/#603.
 
 > **唯一当前产品成果/版本规划事实源 / SINGLE CURRENT PRODUCT OUTCOME ROADMAP：** 本文件在 `develop` 上的已合并版本，决定已知用户成果的计划版本、顺序、依赖和条件状态。Issue #594 是 Owner 决策/变更台账，#605 是 Qt LTS 范围决策；它们不是第二份并行版本表。新 Owner 决策必须经审查 PR 同步本文件后才更新当前排程。`docs/versioning.md` / `docs/en/versioning.md` 只解释版本语义并提供摘要；`.github/release/release-trains.json` 独立决定机器登记的 train、mandatory children 和候选选择；`docs/compatibility.md` / `docs/en/compatibility.md` 只记录已有资格的实际支持单元。已发布发行说明/标签属于历史事实，不因新规划追改。旧路线图与本地分支副本不是权威。
