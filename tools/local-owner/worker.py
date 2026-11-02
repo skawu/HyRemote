@@ -296,6 +296,14 @@ def process(order: dict, args: argparse.Namespace, ledger: dict, ledger_path: Pa
             print("QUEUED_UNDELIVERED", task_id, order["sha"], order["task"])
         return
     if branch_head(order["ref"]) != order["sha"]:
+        envelope = {"id": task_id, "sha": order["sha"], "task": order["task"],
+                    "state": "BLOCKED",
+                    "result": {"status": "BLOCKED", "reason": "release SHA mismatch"}}
+        ledger[task_id] = {"status": "FINISHED_UNREPORTED", "result": envelope}
+        ledger_write(ledger_path, ledger)
+        comment(order["issue"], envelope)
+        ledger[task_id]["status"] = "RECORDED"
+        ledger_write(ledger_path, ledger)
         print("BLOCKED_SHA", task_id)
         return
     if not previous:
@@ -427,6 +435,19 @@ def self_test() -> None:
             assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
             process(sample, command, local, path)
             assert len(reports) == 3, "duplicate delivery replayed a task"
+        # Wrong release ref is observable BLOCKED, not an ACK or a run.
+        blocked = {}
+        reports.clear()
+        with patch.dict(globals(), {
+            "branch_head": lambda ref: "b" * 40,
+            "comment": lambda issue, msg: reports.append((issue, msg)),
+            "execute": lambda *a, **k: (_ for _ in ()).throw(
+                AssertionError("moved ref must not execute")),
+        }):
+            process(sample, command, blocked, path)
+            assert len(reports) == 1 and reports[0][1]["state"] == "BLOCKED"
+            assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
+        reports.clear()
         # A failed initial ACK may leave a durable RECEIVED record; it is
         # safe to resume because the action has not yet started.
         previous_acks = len(reports)
