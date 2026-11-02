@@ -26,6 +26,10 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 5. **CI polling is not development.** Inspect checks at milestones (push of a ready PR, review fix, candidate freeze);
    spend the interval on code, evidence or another work item.
 6. **Zero discovered/executed tests is a failure**, not a pass.
+7. **Evidence belongs to the SHA that actually produced it.** A benchmark introduced after a frozen
+   user-path acceptance must name its later test head (and merged source SHA) separately; do not
+   retroactively attribute that benchmark to the earlier frozen SHA. See the
+   [#589 acceptance provenance](../docs/internal/watermark-acceptance-2026-11-02.md).
 
 ## Which change needs which run
 

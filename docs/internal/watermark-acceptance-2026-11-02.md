@@ -20,20 +20,20 @@ Owner decisions on #589 / #594 (option B).
 | Persistence of an explicitly configured policy across restarts | #747 | `76371e42` |
 | Desktop-size compose cost measurement | #749 | `ba20bf8a` |
 
-## Acceptance at the frozen SHA
+## Acceptance provenance: frozen user-path SHA and later instrumented measurement
 
-Frozen SHA `fdf87dbfcd9047e9113dbd03f7a7100ad00d0f12` (the first SHA containing both #747 and #748).
+**Frozen physical/product acceptance:** `fdf87dbfcd9047e9113dbd03f7a7100ad00d0f12` is the first SHA containing both #747 and #748. It is the source SHA for the **first five** user-path rows below. The **1080p compositor cost** was measured only after #749 added the instrumented benchmark; it is **not a measurement at frozen SHA `fdf87dbf`**. The measured #749 PR test head was `705ff23fd73004a6fabcf01b2204d158cadbfc03`, subsequently squash-merged as `ba20bf8a`. These must never be collapsed into one evidence SHA.
 
-Environment: Windows x86_64, Qt 6.8.3 `msvc2022_64`, MSVC 14.44.35207, Release/Ninja.
+Environment for the physical acceptance and the subsequent measurement: Windows x86_64, Qt 6.8.3 `msvc2022_64`, MSVC 14.44.35207, Release/Ninja. The measurements cover composition only.
 
-| Claim | Verdict | Evidence |
-| --- | --- | --- |
-| Watermark visible on a real viewer | PASS | `freeze-wm-on.png` (evidence branch `84fc3edd`) |
-| Disabling restores the original picture | PASS | `freeze-wm-off.png`; pixel diff vs the on-capture has bbox **(289,160)-(452,178)** — only the mark |
-| Configured policy survives a restart, at its stored position | PASS | `restart-first.png` (bottom-left) vs `restart-second.png` (second launch passes only `port=5921`, mark still bottom-left) |
-| QML route launches from the build tree and serves a remote picture | PASS | `qml-buildtree-remote.png` (branch `cb30294c`), viewer exit 0 |
-| Second physical device can watch the session | PASS | peer record `192.168.1.5:46190 → 192.168.1.6:5921` (branch `24939cc1`), operator confirmed the picture |
-| Desktop-size compose cost measured | PASS (measured, not asserted) | `[bench] 1920x1080 compose median: corner=0.657 ms, tiled=14.1138 ms` |
+| Claim | Verdict | Source/test SHA | Evidence |
+| --- | --- | --- | --- |
+| Watermark visible on a real viewer | PASS | `fdf87dbf` | `freeze-wm-on.png` (evidence branch `84fc3edd`) |
+| Disabling restores the original picture | PASS | `fdf87dbf` | `freeze-wm-off.png`; pixel diff vs the on-capture has bbox **(289,160)-(452,178)** — only the mark |
+| Configured policy survives a restart, at its stored position | PASS | `fdf87dbf` | `restart-first.png` (bottom-left) vs `restart-second.png` (second launch passes only `port=5921`, mark still bottom-left) |
+| QML route launches from the build tree and serves a remote picture | PASS | `fdf87dbf` | `qml-buildtree-remote.png` (branch `cb30294c`), viewer exit 0 |
+| Second physical device can watch the session | PASS | `fdf87dbf` | peer record `192.168.1.5:46190 → 192.168.1.6:5921` (branch `24939cc1`), operator confirmed the picture |
+| Desktop-size compose cost measured | PASS (measured, not asserted) | `705ff23f` (PR #749 test); `ba20bf8a` (merged) | `[bench] 1920x1080 compose median: corner=0.657 ms, tiled=14.1138 ms` |
 
 Unit and wire-level suites behind those claims: `hyremote-watermark-policy-test`,
 `hyremote-watermark-compositor-test`, `hyremote-watermark-frame-decorator-test`, plus the watermark cases inside
