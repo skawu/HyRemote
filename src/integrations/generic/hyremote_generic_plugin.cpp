@@ -1,6 +1,7 @@
 #include "automatic/automatic_access_controller.hpp"
 #include "automatic/automatic_access_config.hpp"
 #include "generic_config.hpp"
+#include "detail/windows_unicode_launch.hpp"
 
 #include <QDebug>
 #include <QGenericPlugin>
@@ -46,7 +47,7 @@ public:
 
         AccessConfig config;
         QString error;
-        if (!parseSpecification(specification, config, error)) {
+        if (!parseSpecification(detail::recoverActualWindowsGenericSpecification(specification), config, error)) {
             qWarning() << "HyRemote Generic Plugin rejected its specification:" << error;
             return nullptr;
         }

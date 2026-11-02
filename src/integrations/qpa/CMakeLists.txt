@@ -34,6 +34,10 @@ target_link_libraries(hyremote-qpa-platform
     PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate HyRemote::RemoteAccess
 )
 
+if(WIN32)
+    target_link_libraries(hyremote-qpa-platform PRIVATE shell32)
+endif()
+
 target_compile_definitions(hyremote-qpa-platform PRIVATE
     HYREMOTE_QPA_QT_VERSION_MAJOR=6
     HYREMOTE_QPA_QT_VERSION_MINOR=8
