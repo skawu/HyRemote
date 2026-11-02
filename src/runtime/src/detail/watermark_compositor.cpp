@@ -45,11 +45,36 @@ QColor watermarkColor(const WatermarkPolicy &policy)
                   static_cast<int>(policy.colorRgb & 0xFFU));
 }
 
+qreal cornerWatermarkMargin(const QSizeF &size)
+{
+    return std::max<qreal>(8.0, std::min(size.width(), size.height()) * 0.02);
+}
+
+bool cornerWatermarkFits(const QFontMetricsF &metrics, const QSizeF &size, const QString &text,
+                         WatermarkPosition position)
+{
+    const qreal advance = metrics.horizontalAdvance(text);
+    const qreal margin = cornerWatermarkMargin(size);
+    // The placement reserves the margin on BOTH sides, not only enough space for a naked glyph run.
+    if (advance + 2.0 * margin > size.width() || metrics.height() + 2.0 * margin > size.height())
+        return false;
+
+    const bool right = position == WatermarkPosition::BottomRight || position == WatermarkPosition::TopRight;
+    const bool bottom = position == WatermarkPosition::BottomLeft || position == WatermarkPosition::BottomRight;
+    const qreal x = right ? size.width() - margin - advance : margin;
+    const qreal baseline = bottom ? size.height() - margin - metrics.descent() : margin + metrics.ascent();
+    // Font bearings can extend beyond horizontalAdvance(). Check actual painted ink bounds too, or a
+    // glyph can still be clipped while nominal advance/height fit.
+    const QRectF ink = metrics.boundingRect(text).translated(x, baseline);
+    return ink.left() >= 0.0 && ink.top() >= 0.0
+           && ink.right() <= size.width() && ink.bottom() <= size.height();
+}
+
 void drawCornerWatermark(QPainter &painter, const QSizeF &size, const QString &text, WatermarkPosition position)
 {
     const QFontMetricsF metrics = painter.fontMetrics();
     const qreal advance = metrics.horizontalAdvance(text);
-    const qreal margin = std::max<qreal>(8.0, std::min(size.width(), size.height()) * 0.02);
+    const qreal margin = cornerWatermarkMargin(size);
 
     qreal x = 0.0;
     qreal baseline = 0.0;
@@ -149,7 +174,9 @@ bool composeWatermark(const WatermarkPolicy &policy, const WatermarkFrameView &f
     const QSizeF size(image.width(), image.height());
     const QFontMetricsF metrics = painter.fontMetrics();
     if (metrics.horizontalAdvance(policy.text) > size.width()
-        || metrics.height() > size.height()) {
+        || metrics.height() > size.height()
+        || (policy.position != WatermarkPosition::Tiled
+            && !cornerWatermarkFits(metrics, size, policy.text, policy.position))) {
         painter.end();
         destination.clear();
         error = QStringLiteral("the watermark text does not fit a %1x%2 frame at %3 points")

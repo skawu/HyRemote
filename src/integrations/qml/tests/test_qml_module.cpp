@@ -340,6 +340,38 @@ void testListenInterfaceMapping()
     CHECK(object->property("interfaceNotifies").toInt() == 2);
 }
 
+
+void testExplicitEmptyWatermarkIsNotAnOmittedSelection()
+{
+    QQmlEngine engine;
+    engine.addImportPath(QStringLiteral(HYREMOTE_QML_IMPORT_PATH));
+
+    auto object = createInline(
+        engine,
+        R"QML(
+            import HyRemote 1.0
+            RemoteAccess {
+                property int watermarkNotifies: 0
+                onWatermarkChanged: watermarkNotifies++
+            }
+        )QML",
+        "inline:hyremote-explicit-empty-watermark.qml");
+    CHECK(object != nullptr);
+    if (!object)
+        return;
+
+    // A fresh object reports empty by default. Explicitly writing the same empty string must still
+    // reach Runtime as an OFF request, overriding a policy that could have been stored by a prior run.
+    CHECK(object->property("watermarkNotifies").toInt() == 0);
+    CHECK(object->setProperty("watermarkText", QString()));
+    CHECK(object->property("watermarkNotifies").toInt() == 1);
+    CHECK(object->property("watermarkText").toString().isEmpty());
+
+    // Repeated assignment of the same explicitly selected state is idempotent.
+    CHECK(object->setProperty("watermarkText", QString()));
+    CHECK(object->property("watermarkNotifies").toInt() == 1);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -351,6 +383,7 @@ int main(int argc, char **argv)
     testInitialEnabledDoesNotRaceLaterTargetBinding();
     testTargetDestructionNotifiesDeclarativeProperty();
     testListenInterfaceMapping();
+    testExplicitEmptyWatermarkIsNotAnOmittedSelection();
 
     if (failures != 0)
         std::cerr << failures << " QML module checks failed\n";
