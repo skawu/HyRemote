@@ -81,7 +81,8 @@ def run(argv: list[str], *, cwd: Path | None = None, output: Path | None = None,
 
 
 def gh_json(endpoint: str) -> object:
-    result = run(["gh", "api", endpoint, "--header", "Accept: application/vnd.github+json"])
+    result = run(["gh", "api", "--hostname", "github.com", endpoint,
+                  "--header", "Accept: application/vnd.github+json"])
     if result.returncode:
         raise Blocked("GitHub API read unavailable; check gh auth/status")
     try:
@@ -135,7 +136,8 @@ def branch_head(ref: str) -> str:
 def comment(issue: int, payload: dict) -> None:
     # Only controlled metadata crosses GitHub. Never post test stdout or watermark text.
     body = "LOCAL_OWNER_WORKER " + json.dumps(payload, ensure_ascii=True, sort_keys=True)
-    p = run(["gh", "issue", "comment", str(issue), "--repo", REPO, "--body", body])
+    p = run(["gh", "issue", "comment", str(issue), "--repo",
+             "github.com/" + REPO, "--body", body])
     if p.returncode:
         raise Blocked("GitHub status ACK/comment could not be delivered")
 
@@ -187,7 +189,7 @@ def hosted_l2(order: dict) -> dict:
         if (item.get("name") == "CI" and item.get("head_sha") == order["sha"]
                 and item.get("head_branch") == order["ref"]):
             return {"status": "DISPATCHED", "run_id": item["id"], "reused": True}
-    p = run(["gh", "workflow", "run", "ci.yml", "--repo", REPO,
+    p = run(["gh", "workflow", "run", "ci.yml", "--repo", "github.com/" + REPO,
              "--ref", order["ref"], "-f", "purpose=release-readiness",
              "-f", "expected_sha=" + order["sha"], "-f", "legacy_dual_platform=false"])
     if p.returncode:
