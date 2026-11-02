@@ -1,3 +1,10 @@
+# Test execution manual (G0–G6)
+
+Authority: #393 records the gates, #394 the inventory work, #274 the catalog. This file states **when** a test is run,
+not what it asserts (that stays in `TEST_CATALOG.md`).
+
+Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/test-inventory-ts1-2026-10-30.md).
+
 ## Focused positive test selection (development only)
 
 The canonical `build.cmd` authority supports positive `--test-filter=REGEX` selection
@@ -15,13 +22,6 @@ The command still verifies the build tree and Kit, reports the full
 This is **G0/G1 focused feedback**, not a waiver of an explicitly required
 full G2/G6 at a qualified release candidate. Do not use arbitrary `ctest`
 invocations to claim a canonical full acceptance.
-
-# Test execution manual (G0–G6)
-
-Authority: #393 records the gates, #394 the inventory work, #274 the catalog. This file states **when** a test is run,
-not what it asserts (that stays in `TEST_CATALOG.md`).
-
-Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/test-inventory-ts1-2026-10-30.md).
 
 ## Gates
 
