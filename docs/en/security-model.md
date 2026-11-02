@@ -2,7 +2,7 @@
 
 > Language / 语言: **English** | [中文](../security-model.md)
 
-Status: security model for the current V0.3.0.0 product. This document describes implemented behavior and the security boundary later product work must preserve.
+Status: security model for the latest **published V0.3.4.0** line ([release notes](../releases/v0.3.4.0.md)). This document describes implemented security boundaries and requirements for subsequent work; V0.3.5.0 development features are not yet a published release.
 
 HyRemote is remote-access infrastructure. A working viewer connection does not make a deployment secure. See [`security.md`](security.md) for the concise user-facing deployment rules.
 
@@ -178,7 +178,7 @@ Until that backend exists, the two profiles are not interchangeable:
 - `AuthenticatedEncrypted` fails closed in the current product line. It returns `SecurityUnavailable` before creating a listener, composes no target, transport, or socket, and never falls back to `Authenticated` or `SecurityType None`;
 - a syntactically valid certificate or private-key descriptor does not make encrypted transport available. Descriptor validity and backend capability are separate facts.
 
-Authenticated encrypted transport is a later V1.0.0.0 product requirement, not current capability. The work must preserve backend-neutral public boundaries and must not force backend-specific types or toolchains on normal application consumers.
+Authenticated encrypted transport is **not available** in the current published line. Its possible future admission into V1 or other releases requires an independent user-value, security-design and release decision (#170/#190/#611); a planned capability is not a shipped implementation. Any future work must keep backend-specific types and tools out of ordinary application integration.
 
 Historical NeatVNC or rustvncserver investigation is research evidence only, not the selected transport or a security promise.
 
