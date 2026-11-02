@@ -98,6 +98,9 @@ AutomaticConfig automaticConfig(::HyRemote::Qpa::RemoteConfig config)
     result.watermarkOpacity = config.watermarkOpacity;
     result.watermarkFontPointSize = config.watermarkFontPointSize;
     result.watermarkColor = std::move(config.watermarkColor);
+    // #761: the off switch is an intent like any other, so it has to reach the runtime; dropping it here would let the
+    // parser accept "off" and then leave the stored watermark active.
+    result.watermarkOff = config.watermarkOff;
     return result;
 }
 
