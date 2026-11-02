@@ -211,12 +211,53 @@ def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: P
     text = log.read_text(encoding="utf-8", errors="replace")
     discovered = metric(text, "DISCOVERED_TEST_COUNT")
     executed = metric(text, "EXECUTED_TEST_COUNT")
+    # On failing CTest, HyRemoteBuild.cmake emits TEST_EXIT_STATUS and aborts
+    # before EXECUTED_TEST_COUNT. Never misclassify a real test failure as a
+    # missing prerequisite just because the success metric was never reached.
+    test_exit = metric(text, "TEST_EXIT_STATUS")
+    if test_exit:
+        raise TestFailed("canonical CTest reported failure; inspect local log")
     if discovered == 0 or executed == 0:
         raise Blocked("canonical G6 did not report positive discovered/executed counts")
     if proc.returncode or executed != discovered:
         raise TestFailed("canonical G6 returned failure or incomplete execution; inspect local log")
     return {"status": "MACHINE_PASS", "discovered": discovered,
             "executed": executed, "log": log.name}
+
+
+def verify_install_manifest(prefix_bin: Path, candidate_sha: str) -> None:
+    """Bind deployed programs/plugins to the candidate source and qualified Qt Kit."""
+    prefix_root = prefix_bin.parent
+    manifests = [path for path in (
+        prefix_root / "HYREMOTE-MANIFEST.txt",
+        prefix_bin / "HYREMOTE-MANIFEST.txt",
+    ) if path.is_file()]
+    if not manifests:
+        raise Blocked("installed prefix lacks HYREMOTE-MANIFEST.txt; no source attribution")
+    required = {"SOURCE_SHA": candidate_sha, "QT_VERSION": "6.8.3",
+                "GENERIC": "ON", "QPA": "ON"}
+    for path in manifests:
+        try:
+            if path.stat().st_size > 8192:
+                raise Blocked("installed manifest is unexpectedly large")
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError) as exc:
+            raise Blocked("installed manifest cannot be verified") from exc
+        identity = {}
+        for line in lines:
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            if key in identity:
+                raise Blocked("installed manifest contains duplicate identity keys")
+            identity[key] = value
+        if any(identity.get(key, "").upper() != value.upper()
+               for key, value in required.items()):
+            raise Blocked("installed manifest SHA/Qt/adapter identity mismatches order")
+        if identity.get("OS", "").lower() != "windows":
+            raise Blocked("installed manifest is not for Windows")
+        if identity.get("ARCH", "").lower() not in {"amd64", "x86_64", "x64"}:
+            raise Blocked("installed manifest is not x86_64")
 
 
 def watermark_cases() -> list[tuple[str, str]]:
@@ -237,6 +278,7 @@ def unicode_probe(order: dict, workspace: Path, prefix_bin: Path | None,
     plugin_dir = prefix_bin.parent / "plugins"
     if not plugin_dir.is_dir():
         raise Blocked("deployed plugin directory missing")
+    verify_install_manifest(prefix_bin, order["sha"])
     names = (("generic", "hyremote-learning-03-widgets.exe", "-plugin",
               "hyremote:port=5921;watermark="),
              ("qpa", "hyremote-qpa-proxy-existing-app.exe", "-platform",
@@ -373,8 +415,16 @@ def poll(args: argparse.Namespace) -> None:
 def poll_locked(args: argparse.Namespace, ledger_path: Path) -> None:
     while True:
         try:
-            records = github_orders()
             ledger = ledger_read(ledger_path)
+            # Outbox first, independent of current order directory and expiry.
+            # A historical order may have expired after the operation finished;
+            # its completion record must still be delivered without a replay.
+            for entry in ledger.values():
+                if entry.get("status") == "FINISHED_UNREPORTED":
+                    comment(95, entry["result"])
+                    entry["status"] = "RECORDED"
+                    ledger_write(ledger_path, ledger)
+            records = github_orders()
             for order in records:
                 process(order, args, ledger, ledger_path)
         except (Blocked, OSError, subprocess.SubprocessError) as exc:
@@ -486,7 +536,34 @@ def self_test() -> None:
             process(sample, command, saved, path)
             assert len(reports) == 1 and reports[0][1]["state"] == "MACHINE_PASS"
             assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
-    print("local-owner worker self-test: PASS (schema, Unicode, ACK, replay, outbox)")
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "bin").mkdir()
+        bin_dir = root / "bin"
+        correct = ("SOURCE_SHA=" + sample["sha"] + "\nQT_VERSION=6.8.3\n"
+                   "GENERIC=ON\nQPA=ON\nOS=Windows\nARCH=AMD64\n")
+        manifest = root / "HYREMOTE-MANIFEST.txt"
+        manifest.write_text(correct, encoding="utf-8")
+        verify_install_manifest(bin_dir, sample["sha"])
+        for wrong in ("b" * 40, "a" * 39, ""):
+            try:
+                verify_install_manifest(bin_dir, wrong)
+            except Blocked:
+                pass
+            else:
+                raise AssertionError("wrong artifact SHA was accepted")
+        manifest.unlink()
+        try:
+            verify_install_manifest(bin_dir, sample["sha"])
+        except Blocked:
+            pass
+        else:
+            raise AssertionError("manifest-free installed binaries were accepted")
+        # The failed CTest shape has no EXECUTED count by design.
+        fail_log = "DISCOVERED_TEST_COUNT=79\\nTEST_EXIT_STATUS=8\\n"
+        assert metric(fail_log.replace("\\n", "\n"), "TEST_EXIT_STATUS") == 8
+
+    print("local-owner worker self-test: PASS (schema, Unicode, artifacts, ACK, replay, outbox)")
 
 
 def self_test_orders() -> None:
