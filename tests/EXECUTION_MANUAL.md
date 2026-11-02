@@ -44,6 +44,10 @@ invocations to claim a canonical full acceptance.
 5. **CI polling is not development.** Inspect checks at milestones (push of a ready PR, review fix, candidate freeze);
    spend the interval on code, evidence or another work item.
 6. **Zero discovered/executed tests is a failure**, not a pass.
+7. **Evidence belongs to the SHA that actually produced it.** A benchmark introduced after a frozen
+   user-path acceptance must name its later test head (and merged source SHA) separately; do not
+   retroactively attribute that benchmark to the earlier frozen SHA. See the
+   [#589 acceptance provenance](../docs/internal/watermark-acceptance-2026-11-02.md).
 
 ## Which change needs which run
 
@@ -63,7 +67,7 @@ invocations to claim a canonical full acceptance.
 - G2 **only where the actual change risk requires a full local acceptance**: cross-route public contracts, shared Core/Runtime behaviour, private-ABI QPA, security/credential boundaries, canonical build/packaging authority, or another explicitly justified full-profile dependency. Record the trigger and the exact PR SHA. A normal Ready PR still requires a fresh exact-HEAD hosted affected L1 `ci-merge-verdict`, but **not** an automatic local full 79-case run.
 - G6 on the frozen candidate SHA, independently of prior PR evidence.
 - after a materially new environment/Qt Kit/compiler/runner image when the claim depends on it; select the affected matrix, not unrelated profiles.
-- Do not represent a bare targeted `ctest` diagnostic as canonical full acceptance: it is focused feedback until a vetted positive selector is added to `build.cmd`.
+- A bare targeted `ctest` diagnostic is **not** canonical acceptance. Use the vetted `build.cmd --test-filter` selector for traceable focused feedback, and an unfiltered `build.cmd test` for any risk-authorized full G2/G6 gate.
 
 ## Scheduled breadth
 
