@@ -35,6 +35,10 @@ class Blocked(Exception):
     """A safe, explicit stop. Never downgrade to success."""
 
 
+class TestFailed(Exception):
+    """The qualified test ran and produced contrary evidence (not missing permissions)."""
+
+
 def validate(order: dict, *, now: dt.datetime | None = None) -> dict:
     if not isinstance(order, dict) or set(order) != FIELDS:
         raise Blocked("invalid work-order schema/field set")
@@ -199,8 +203,10 @@ def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: P
     text = log.read_text(encoding="utf-8", errors="replace")
     discovered = metric(text, "DISCOVERED_TEST_COUNT")
     executed = metric(text, "EXECUTED_TEST_COUNT")
-    if proc.returncode or discovered == 0 or executed != discovered:
-        raise Blocked("canonical G6 nonzero/empty/invalid test result; inspect local log")
+    if discovered == 0 or executed == 0:
+        raise Blocked("canonical G6 did not report positive discovered/executed counts")
+    if proc.returncode or executed != discovered:
+        raise TestFailed("canonical G6 returned failure or incomplete execution; inspect local log")
     return {"status": "MACHINE_PASS", "discovered": discovered,
             "executed": executed, "log": log.name}
 
@@ -256,7 +262,7 @@ def unicode_probe(order: dict, workspace: Path, prefix_bin: Path | None,
             results.append({"route": route, "case": label, "exact_codepoints": correct,
                             "code_units": len(text_fields[0]) if text_fields else 0})
             if not correct:
-                raise Blocked("installed Unicode policy mismatch at " + route + "/" + label)
+                raise TestFailed("installed Unicode policy mismatch at " + route + "/" + label)
     # Machine policy equivalence is not an actual RealVNC Viewer visual judgement.
     return {"status": "PHYSICAL_REQUIRED", "cases": results,
             "viewer": "NOT_RUN", "note": "six installed cases passed policy codepoints only"}
@@ -298,8 +304,17 @@ def process(order: dict, args: argparse.Namespace, ledger: dict, ledger_path: Pa
     comment(order["issue"], {"id": task_id, "sha": order["sha"], "state": "STARTED"})
     try:
         result = execute(order, args, ledger_path.parent)
+    except TestFailed as exc:
+        result = {"status": "FAIL", "reason": str(exc)}
     except (Blocked, OSError, subprocess.SubprocessError) as exc:
         result = {"status": "BLOCKED", "reason": str(exc)}
+    # Even successful local evidence is stale if someone moved the release ref
+    # while this potentially long-running operation was executing.
+    try:
+        if branch_head(order["ref"]) != order["sha"]:
+            result = {"status": "BLOCKED", "reason": "release SHA moved during execution"}
+    except Blocked:
+        result = {"status": "BLOCKED", "reason": "cannot reverify release SHA"}
     envelope = {"id": task_id, "sha": order["sha"], "task": order["task"],
                 "state": result["status"], "result": result}
     ledger[task_id] = {"status": "FINISHED_UNREPORTED", "result": envelope}
