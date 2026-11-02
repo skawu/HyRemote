@@ -15,8 +15,11 @@ constexpr auto kSecretEnv = "HYREMOTE_SECRET_FILE";
 
 QString environmentValue(const char *name)
 {
-    const QByteArray raw = qgetenv(name);
-    return QString::fromUtf8(raw).trimmed();
+    // #775: Windows environment paths are UTF-16. qgetenv() can return
+    // system-ANSI bytes (or substitute non-ANSI characters), so decoding that
+    // result as UTF-8 can silently redirect a selected state directory.
+    // Qt's QString environment API retains native Windows Unicode.
+    return qEnvironmentVariable(name).trimmed();
 }
 
 bool isReadableFile(const QString &path)
