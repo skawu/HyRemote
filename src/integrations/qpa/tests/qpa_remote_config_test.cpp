@@ -1,9 +1,11 @@
 #include "../qpa_config.hpp"
+#include "detail/windows_unicode_launch.hpp"
 
 #include <QHostAddress>
 #include <QStringList>
 
 #include <iostream>
+#include <utility>
 
 namespace {
 
@@ -236,6 +238,43 @@ int main()
                   "decorated mismatched runtime is rejected")) {
         return 8;
     }
+
+#ifdef Q_OS_WIN
+    // The wide -platform token is the authority, not a guessed code-page
+    // conversion. These input bytes and code points are from the #761 device probe.
+    for (const auto &probe : {
+             std::pair<QString, QByteArray>{QStringLiteral("水印候选"),
+                                            QByteArray::fromHex("cbaed3a1baf2d1a1")},
+             std::pair<QString, QByteArray>{QStringLiteral("持久 候选"),
+                                            QByteArray::fromHex("b3d6bec320baf2d1a1")}}) {
+        const QString token = QStringLiteral("hyremote-watermark=") + probe.first;
+        const QString widened = QStringLiteral("hyremote-watermark=")
+                                + QString::fromLatin1(probe.second);
+        if (!check(HyRemote::detail::oneByteWidening(token, 936) == widened,
+                   "GBK to Latin-1 widening is reproduced"))
+            return 12;
+        const QStringList originalArgs{
+            QStringLiteral("-platform"), QStringLiteral("hyremote:") + token,
+        };
+        QStringList params{widened, QStringLiteral("darkmode=2")};
+        params = HyRemote::detail::recoverWindowsQpaWatermark(params, originalArgs, 936);
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(params, config, error), "wide source recovers QPA watermark")
+            || !check(config.watermarkText == probe.first, "exact QPA CJK survives")
+            || !check(params == QStringList{QStringLiteral("darkmode=2")},
+                      "delegate receives only native parameters"))
+            return 12;
+        const QStringList unrelated = HyRemote::detail::recoverWindowsQpaWatermark(
+            {widened}, {QStringLiteral("-platform"), QStringLiteral("other:") + token}, 936);
+        if (!check(unrelated == QStringList{widened}, "unrelated wide arguments do not re-decode"))
+            return 12;
+        const QStringList alreadyCorrect = HyRemote::detail::recoverWindowsQpaWatermark(
+            {token}, originalArgs, 936);
+        if (!check(alreadyCorrect == QStringList{token}, "correct Unicode stays unchanged"))
+            return 12;
+    }
+#endif
 
     std::cout << "PASS: QPA config safe defaults, explicit security overrides and exact runtime identity\n";
     return 0;
