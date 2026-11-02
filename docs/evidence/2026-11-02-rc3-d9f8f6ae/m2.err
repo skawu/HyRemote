@@ -1,0 +1,2 @@
+HyRemote Generic Plugin rejected its specification: "watermark attributes were given without watermark text; a launch that only changes the position, opacity, colour or font size cannot select a watermark - state the text, or turn the stored watermark off explicitly"
+No such plugin for spec "hyremote:watermark-position=top-left"
