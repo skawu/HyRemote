@@ -281,23 +281,29 @@ def execute(order: dict, args: argparse.Namespace, state: Path) -> dict:
 def process(order: dict, args: argparse.Namespace, ledger: dict, ledger_path: Path) -> None:
     task_id = order["id"]
     previous = ledger.get(task_id)
-    if previous:
-        # At-most-once execution. A failed final report can be retried without
-        # rerunning a hardware operation or triggering duplicate hosted CI.
-        if previous.get("status") == "FINISHED_UNREPORTED":
-            comment(order["issue"], previous["result"])
-            previous["status"] = "RECORDED"
-            ledger_write(ledger_path, ledger)
+    if previous and previous.get("status") == "FINISHED_UNREPORTED":
+        # A result posting failure never replays the completed operation.
+        comment(order["issue"], previous["result"])
+        previous["status"] = "RECORDED"
+        ledger_write(ledger_path, ledger)
+        return
+    if previous and previous.get("status") not in {"RECEIVED"}:
+        # STARTED or RECORDED may have performed non-idempotent operations.
+        # Only an explicit reconciliation by the local operator may recover.
         return
     if not args.execute:
-        print("QUEUED_UNDELIVERED", task_id, order["sha"], order["task"])
+        if not previous:
+            print("QUEUED_UNDELIVERED", task_id, order["sha"], order["task"])
         return
     if branch_head(order["ref"]) != order["sha"]:
         print("BLOCKED_SHA", task_id)
         return
-    ledger[task_id] = {"status": "RECEIVED", "sha": order["sha"],
-                       "task": order["task"]}
-    ledger_write(ledger_path, ledger)
+    if not previous:
+        ledger[task_id] = {"status": "RECEIVED", "sha": order["sha"],
+                           "task": order["task"]}
+        ledger_write(ledger_path, ledger)
+    # A crash or GitHub outage at RECEIVED cannot have started the operation:
+    # retry the ACK and proceed safely. At STARTED, execution is not replayed.
     comment(order["issue"], {"id": task_id, "sha": order["sha"], "state": "RECEIVED"})
     ledger[task_id]["status"] = "STARTED"
     ledger_write(ledger_path, ledger)
@@ -421,6 +427,21 @@ def self_test() -> None:
             assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
             process(sample, command, local, path)
             assert len(reports) == 3, "duplicate delivery replayed a task"
+        # A failed initial ACK may leave a durable RECEIVED record; it is
+        # safe to resume because the action has not yet started.
+        previous_acks = len(reports)
+        saved = {sample["id"]: {"status": "RECEIVED", "sha": sample["sha"],
+                                "task": sample["task"]}}
+        ledger_write(path, saved)
+        with patch.dict(globals(), {
+            "branch_head": lambda ref: sample["sha"],
+            "comment": lambda issue, msg: reports.append((issue, msg)),
+            "execute": lambda order, args, state: {"status": "DISPATCHED",
+                                                   "run_id": 43},
+        }):
+            process(sample, command, saved, path)
+            assert len(reports) == previous_acks + 3
+            assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
         # Simulate an already-finished physical operation whose first network
         # report failed; only its recorded RESULT is sent on retry.
         saved = ledger_read(path)
