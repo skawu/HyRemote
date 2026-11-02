@@ -11,8 +11,8 @@ Owner decisions on #589 / #594 (option B).
 | W1 shared policy (defaults, bounds, UTF-8, diagnostics, fail-closed) | #725 | `3e7777d` |
 | W1 guard: the installed C++ surface's literal defaults pinned to the shared policy | #738 | `112506bd` |
 | W2a server-side compositor (paint a copy, corner/tiled, DPR, refuse rather than clip) | #726 | `6bfd69c` |
-| W2b transport wiring (one composition per captured frame, damage on the composed frame, fail closed) | #727 | `21c508c` |
-| W2c-1 C++ product surface (`RemoteWatermark`, `setWatermark`, `clearWatermark`) | #728 | `4f20e47` |
+| W2b transport wiring (one composition per captured frame, damage on the composed frame, fail closed) | #727 | `4aaa5101` |
+| W2c-1 C++ product surface (`RemoteWatermark`, `setWatermark`, `clearWatermark`) | #728 | `21c508c3` |
 | W2c-2 QML / Generic / QPA surfaces + user documentation | #729 | `9f0c1d3` |
 | Wire-level proof that the composed frame reaches TRLE and Raw viewers | #739 | `4a181a13` |
 | Wire-level proof across resize and per-frame device pixel ratio | #740 | `74526683` |
