@@ -563,7 +563,23 @@ def self_test() -> None:
         fail_log = "DISCOVERED_TEST_COUNT=79\\nTEST_EXIT_STATUS=8\\n"
         assert metric(fail_log.replace("\\n", "\n"), "TEST_EXIT_STATUS") == 8
 
-    print("local-owner worker self-test: PASS (schema, Unicode, artifacts, ACK, replay, outbox)")
+    # An expired/removed order cannot prevent a prior finished-but-unreported
+    # result from reaching #95. Test the polling outbox independently of inbox.
+    with tempfile.TemporaryDirectory() as temp:
+        path = Path(temp) / "ledger.json"
+        ledger_write(path, {sample["id"]: {
+            "status": "FINISHED_UNREPORTED",
+            "result": {"state": "FAIL", "id": sample["id"]}}})
+        observed = []
+        with patch.dict(globals(), {
+            "comment": lambda issue, msg: observed.append((issue, msg)),
+            "github_orders": lambda: [],
+        }):
+            poll_locked(SimpleNamespace(once=True), path)
+            assert len(observed) == 1
+            assert observed[0] == (95, {"state": "FAIL", "id": sample["id"]})
+            assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
+    print("local-owner worker self-test: PASS (schema, Unicode, artifacts, ACK, replay, expired outbox)")
 
 
 def self_test_orders() -> None:
