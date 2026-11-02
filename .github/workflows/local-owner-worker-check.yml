@@ -1,0 +1,33 @@
+name: Local Owner worker safety
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - tools/local-owner/**
+      - .github/local-owner/orders/**
+      - .github/workflows/local-owner-worker-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-owner-worker-contract:
+    name: Local Owner worker / ${{ matrix.os }} / offline contract
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Syntax and safety self-test (no GitHub token)
+        run: |
+          python -m py_compile tools/local-owner/worker.py
+          python tools/local-owner/worker.py --self-test
+      - name: Check committed order syntax offline
+        run: python tools/local-owner/worker.py --self-test-orders
