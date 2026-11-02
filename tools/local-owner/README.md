@@ -2,6 +2,10 @@
 
 This is a **real local process** rather than an independent ChatGPT conversation.
 It does **not** install or run merely because Cloud Owner posts a GitHub comment.
+The authoritative [Cloud/Local/Human responsibility and no-manual-relay contract](../../docs/internal/cloud-local-human-operating-contract.md)
+defines task ownership, automatic ACK, exceptional Human intervention and escalation.
+**Do not ask Human to request the next task**; once the worker is actually
+provisioned, it reads reviewed orders from GitHub automatically.
 
 ## Trust and roles
 
@@ -84,7 +88,12 @@ maintained Viewer version and screenshot at #95. These three tasks expire
 - Task results do not authorize release-main promotion, tag creation,
   security claims or Release publication.
 
-**Current deployment reality:** this PR supplies a worker and queued orders but
-does not prove that any Windows machine installed, authenticated, launched or
-ACKed the worker. Until actual ACK, the only truthful status is
-TASK_RECORDED_UNDELIVERED / RELEASE_PROMOTION=HOLD.
+**Deployment truth:** the worker implementation and RC2 orders were merged
+through #769, but a source merge does not install the worker on a Windows host.
+Check #95 for actual machine `LOCAL_OWNER_WORKER RECEIVED` evidence before
+claiming delivery or execution. Without it the only truthful status is
+`RECORDED_UNDELIVERED / RELEASE_PROMOTION=HOLD`.
+Once the worker is running, Local Owner performs the next reviewed order
+without a new Human-prompt or copy/paste handoff. Cloud Owner is responsible for
+proactive tracking **through a real active process/monitor**; this README does
+not create an always-on Cloud agent or notifications.

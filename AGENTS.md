@@ -2,6 +2,15 @@
 
 This file is the repository-visible starting point for ChatGPT, CodeBuddy and local/AI agents working on HyRemote.
 
+**Operational role/handoff authority:** [Cloud Owner ↔ Local Owner ↔ Human contract](docs/internal/cloud-local-human-operating-contract.md) (#768).
+Cloud creates and verifies approved machine work orders; an actually running Local Owner Worker
+pulls/ACKs and performs qualified Windows tasks; Human only grants exceptional permissions,
+answers exceptional product decisions or performs unavoidable physical operations. Human must **not**
+be asked to relay each task or ask for instructions. Issue comments are not deliveries, and
+neither a Cloud nor Local ChatGPT conversation automatically runs in the background.
+The [Local Owner inbox setup](tools/local-owner/README.md) is opt-in once per authorized Windows
+environment; until the first real ACK, report `RECORDED_UNDELIVERED` rather than "已下发".
+
 ## Authority order
 
 When sources disagree, use this order:
@@ -59,13 +68,21 @@ Rules:
 - CI polling is not work: inspect checks only at meaningful milestones and use the interval for code,
   failure remediation, evidence, or another WBS item.
 
-## Current product phase
+## Product-phase historical snapshot (2026-10-26; not the current work queue)
+
+**As of 2026-11-02:** V0.3.4.0 is the latest published release;
+`release/v0.3.5.0@92c1ab1a354a3e8c9ad93311e308d039da59317f` is a frozen,
+**unpublished** RC2 awaiting exact-SHA L2/local Viewer evidence via #95/#768.
+The V0.3.4.0 task charter and version-specific execution order below describe
+their historical 2026-10-26 development phase, and must not be interpreted as
+new Local Owner assignments. For the live priority use the current release train,
+#95 and the reviewed `.github/local-owner/orders/` inbox, not prior task prose.
 
 **V0.3.0.0 Product Preview** was released on 2026-10-19. **V0.3.3.0 was validly reissued on 2026-10-24** following the documented retraction/remediation incident; the earlier retracted candidate remains historical audit evidence, not the current release. #144/#175 are historical delivered work; #370 remains long-lived performance governance. **Current development Feature = V0.3.4.0**, Windows Qt5.15.2/Qt6.8.3 exact qualified SDK/Runtime product cells (#603/#265/#566), with machine train registered by merged PR #655; a registered train is not release approval. See the [single current roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), [local Owner task charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md), and `.github/release/release-trains.json` for separate planning and activation authority. V0.3.1.0/V0.3.2.0 stay retired; V0.4 RC is inactive and qualification-only; V1 GA is not released.
 
-**Local Owner / Agent execution handoff:** use the [current V0.3.4.0 product charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md) and [merged canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md) with #603; `docs/internal/owner-execution-brief-2026-10-21.md` and the earlier V0.3.3 retraction/remediation notes are retained as history, not current work queues. Do not let historical text override the actual reissued V0.3.3 Release, product roadmap, machine manifest, Issue, or exact-SHA verification.
+**Historical V0.3.4.0 Local Owner charter (not today's queue):** use the [2026-10-26 V0.3.4.0 product charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md) and [merged canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md) with #603; `docs/internal/owner-execution-brief-2026-10-21.md` and the earlier V0.3.3 retraction/remediation notes are retained as history, not current work queues. Do not let historical text override the actual reissued V0.3.3 Release, product roadmap, machine manifest, Issue, or exact-SHA verification.
 
-Current execution order:
+2026-10-26 V0.3.4.0 execution order (historical; **do not execute without a new reviewed order**):
 
 ```text
 verify latest develop + merged roadmap + machine train + Issue ownership + exact-SHA evidence
