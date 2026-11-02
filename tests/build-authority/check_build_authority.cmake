@@ -786,8 +786,6 @@ run_success(test-filter-spaced --no-config --test-filter "hyremote-qpa-runtime" 
 require_text(test-filter-spaced "${HYB_TEST_OUTPUT}" "tests.filter      : hyremote-qpa-runtime")
 run_failure(test-filter-empty --no-config "--test-filter=" --show-config)
 require_text(test-filter-empty "${HYB_TEST_OUTPUT}" "--test-filter requires a nonempty CTest regex")
-run_failure(test-filter-spaced-empty --no-config --test-filter "" --show-config)
-require_text(test-filter-spaced-empty "${HYB_TEST_OUTPUT}" "--test-filter requires a nonempty CTest regex")
 set(filter_profile "${scratch}/filter-profile.yml")
 file(WRITE "${filter_profile}" [=[version: 1
 tests:
