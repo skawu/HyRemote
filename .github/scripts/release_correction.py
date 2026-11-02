@@ -245,10 +245,14 @@ def self_test() -> int:
         _commit(root, "exact new candidate")
         git = _git_in(root)
         head_cmake = git("show", "HEAD:CMakeLists.txt")
+        # Compare committed blobs, not Python's in-memory LF strings: on Windows Path.write_text()
+        # may create CRLF, which git preserves with core.autocrlf=false. The production gate also
+        # compares git blobs, so the self-test must reproduce that exact byte-level contract.
+        committed_notes = git("show", f"HEAD:{notes_name}").decode("utf-8")
         candidates = (
-            ("exact post-acceptance reopen", REOPEN_BASE_SHA, pending, None),
-            ("wrong accepted base SHA blocked", "0" * 40, pending, "not authorized"),
-            ("arbitrary notes rewrite blocked", REOPEN_BASE_SHA, pending + "edited\n", "pending develop notes"),
+            ("exact post-acceptance reopen", REOPEN_BASE_SHA, committed_notes, None),
+            ("wrong accepted base SHA blocked", "0" * 40, committed_notes, "not authorized"),
+            ("arbitrary notes rewrite blocked", REOPEN_BASE_SHA, committed_notes + "edited\n", "pending develop notes"),
         )
         for name, tested_base, tested_notes, expected_error in candidates:
             cases += 1
