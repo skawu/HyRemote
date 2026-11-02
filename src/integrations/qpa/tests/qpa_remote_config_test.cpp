@@ -86,6 +86,50 @@ int main()
             return 11;
         }
     }
+    // #761: the platform route needs the same explicit off switch, and the same refusal of an attribute-only launch.
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=off"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "the off switch parses")
+            || !check(config.watermarkOff, "the off switch is carried")
+            || !check(config.watermarkText.isEmpty(), "the off switch carries no text")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "the off switch is not passed to the native delegate")) {
+            return 12;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=maybe")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "an unknown off-switch value is refused")
+            || !check(error.contains(QStringLiteral("hyremote-watermark-state")),
+                      "the refusal names the off switch")) {
+            return 13;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=off"),
+                               QStringLiteral("hyremote-watermark=MARK")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "off together with text is refused")
+            || !check(error.contains(QStringLiteral("both")), "the refusal explains the conflict")) {
+            return 14;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-position=top-left")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "attributes without text are refused")
+            || !check(error.contains(QStringLiteral("without watermark text")),
+                      "the refusal explains the missing text")) {
+            return 15;
+        }
+    }
     {
         QStringList parameters{QStringLiteral("hyremote-watermark-position=centre")};
         RemoteConfig config;

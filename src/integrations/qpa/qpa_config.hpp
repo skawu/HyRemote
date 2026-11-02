@@ -32,6 +32,9 @@ struct RemoteConfig
     std::optional<double> watermarkOpacity;
     std::optional<int> watermarkFontPointSize;
     std::optional<QString> watermarkColor;
+    // #761: the explicit off switch, so clearing a stored watermark is a stated intent instead of a side effect of
+    // leaving the text out.
+    bool watermarkOff = false;
 };
 
 // QPA owns only its launch/configuration vocabulary. Accepted HyRemote parameters are removed before

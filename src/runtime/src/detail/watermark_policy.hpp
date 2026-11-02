@@ -105,4 +105,29 @@ HYREMOTE_REMOTEACCESS_EXPORT bool parseWatermarkPosition(const QString &token, W
 // (QFontInfo) and pick the first one that actually resolves, then let Qt fall back within that family.
 HYREMOTE_REMOTEACCESS_EXPORT QStringList watermarkFontFamilyCandidates();
 
+// #761: rejects the two ambiguous launch shapes instead of guessing what the operator meant. Both zero-code routes call
+// this after parsing their own syntax, so the rule cannot drift between them. A template because the Generic and QPA
+// launch parsers own separate, uninstalled config structs that must not be merged just to share one validation.
+template <typename Config>
+inline bool validateWatermarkSelection(const Config &config, QString &error)
+{
+    const bool hasAttributes = !config.watermarkPosition.isEmpty() || config.watermarkOpacity.has_value()
+                               || config.watermarkFontPointSize.has_value() || config.watermarkColor.has_value();
+    if (config.watermarkOff) {
+        if (!config.watermarkText.isEmpty() || hasAttributes) {
+            error = QStringLiteral("the watermark cannot be both off and configured; state either a watermark or "
+                                   "the off switch, not both");
+            return false;
+        }
+        return true;
+    }
+    if (hasAttributes && config.watermarkText.isEmpty()) {
+        error = QStringLiteral("watermark attributes were given without watermark text; a launch that only changes "
+                               "the position, opacity, colour or font size cannot select a watermark - state the "
+                               "text, or turn the stored watermark off explicitly");
+        return false;
+    }
+    return true;
+}
+
 }  // namespace HyRemote::detail

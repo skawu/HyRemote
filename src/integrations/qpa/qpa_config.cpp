@@ -203,6 +203,18 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
+        // #761: an explicit switch, separate from the text, so clearing a stored watermark is a stated intent rather
+        // than a side effect of leaving the text out.
+        if (key == QStringLiteral("hyremote-watermark-state")) {
+            if (separator < 0 || value.compare(QStringLiteral("off"), Qt::CaseInsensitive) != 0) {
+                error = QStringLiteral("hyremote-watermark-state must be off");
+                return false;
+            }
+            parsed.watermarkOff = true;
+            it = parameters.erase(it);
+            continue;
+        }
+
         if (key == QStringLiteral("hyremote-watermark-position")) {
             detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
             if (separator < 0 || !detail::parseWatermarkPosition(value, position)) {
@@ -257,6 +269,9 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
 
         ++it;
     }
+
+    if (!detail::validateWatermarkSelection(parsed, error))
+        return false;
 
     config = std::move(parsed);
     error.clear();

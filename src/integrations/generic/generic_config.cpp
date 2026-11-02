@@ -145,6 +145,17 @@ bool parseSpecification(const QString &specification, AccessConfig &config, QStr
             continue;
         }
 
+        // #761: an explicit switch, separate from the text, so clearing a stored watermark is a stated intent rather
+        // than a side effect of leaving the text out.
+        if (key == QStringLiteral("watermark-state")) {
+            if (value.compare(QStringLiteral("off"), Qt::CaseInsensitive) != 0) {
+                error = QStringLiteral("watermark-state must be off");
+                return false;
+            }
+            parsed.watermarkOff = true;
+            continue;
+        }
+
         if (key == QStringLiteral("watermark-position")) {
             detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
             if (!detail::parseWatermarkPosition(value, position)) {
@@ -186,6 +197,9 @@ bool parseSpecification(const QString &specification, AccessConfig &config, QStr
         error = QStringLiteral("unknown HyRemote Generic Plugin option: %1").arg(key);
         return false;
     }
+
+    if (!detail::validateWatermarkSelection(parsed, error))
+        return false;
 
     config = std::move(parsed);
     error.clear();
