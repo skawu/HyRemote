@@ -105,7 +105,7 @@ inline QStringList recoverWindowsQpaWatermark(const QStringList &received,
 {
     QStringList result = received;
     for (int index = 0; index < received.size(); ++index) {
-        constexpr auto key = "hyremote-watermark=";
+        constexpr char key[] = "hyremote-watermark=";
         if (!received.at(index).startsWith(QLatin1String(key), Qt::CaseInsensitive))
             continue;
         const QString current = received.at(index).mid(static_cast<int>(sizeof(key) - 1));
