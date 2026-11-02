@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from contextlib import contextmanager
 import datetime as dt
 import json
 import os
@@ -309,9 +310,30 @@ def process(order: dict, args: argparse.Namespace, ledger: dict, ledger_path: Pa
     print(task_id, result["status"])
 
 
+@contextmanager
+def single_worker(state_dir: Path):
+    """Never run concurrent polling cycles against the same local ledger."""
+    lock = state_dir / "worker.lock"
+    try:
+        fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise Blocked("another worker is active (or stale lock requires manual review)") from exc
+    try:
+        with os.fdopen(fd, "w", encoding="ascii") as handle:
+            handle.write(str(os.getpid()))
+        yield
+    finally:
+        lock.unlink()
+
+
 def poll(args: argparse.Namespace) -> None:
     ledger_path = args.state_dir / "ledger.json"
     args.state_dir.mkdir(parents=True, exist_ok=True)
+    with single_worker(args.state_dir):
+        poll_locked(args, ledger_path)
+
+
+def poll_locked(args: argparse.Namespace, ledger_path: Path) -> None:
     while True:
         try:
             records = github_orders()
@@ -402,9 +424,23 @@ def self_test() -> None:
     print("local-owner worker self-test: PASS (schema, Unicode, ACK, replay, outbox)")
 
 
+def self_test_orders() -> None:
+    root = Path(__file__).resolve().parents[2]
+    files = sorted((root / ORDERS).glob("*.json"))
+    if not files:
+        raise Blocked("no reviewed local work orders in checkout")
+    fixed = dt.datetime(2026, 11, 2, tzinfo=UTC)
+    for path in files:
+        order = validate(json.loads(path.read_text(encoding="utf-8")), now=fixed)
+        if order["id"] + ".json" != path.name:
+            raise Blocked("committed task filename does not match id")
+    print("local-owner committed orders: PASS", len(files))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--self-test-orders", action="store_true")
     parser.add_argument("--execute", action="store_true",
                         help="Explicit operator opt-in; otherwise discovery only")
     parser.add_argument("--once", action="store_true")
@@ -417,6 +453,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return
+    if args.self_test_orders:
+        self_test_orders()
         return
     if args.poll_seconds < 30:
         parser.error("poll interval must be >=30 seconds")
