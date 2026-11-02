@@ -104,7 +104,15 @@ def github_orders() -> list[dict]:
             raise Blocked("order is not a GitHub content blob")
         try:
             raw = base64.b64decode(record["content"], validate=False)
-            order = validate(json.loads(raw.decode("utf-8")))
+            parsed = json.loads(raw.decode("utf-8"))
+            order = validate(parsed)
+        except Blocked as exc:
+            if str(exc) == "expired order":
+                # Old immutable orders stay as audit history, but must never
+                # prevent a newer validated order from being received.
+                print("EXPIRED_SKIPPED", name)
+                continue
+            raise
         except (ValueError, KeyError, UnicodeError) as exc:
             raise Blocked("malformed reviewed work order") from exc
         if name != order["id"] + ".json":
