@@ -1,3 +1,21 @@
+## Focused positive test selection (development only)
+
+The canonical `build.cmd` authority supports positive `--test-filter=REGEX` selection
+(`tests.filter` in a profile) alongside existing negative `--test-exclude=REGEX`.
+For an already configured matching Qt Kit, for example:
+
+```powershell
+.\build.cmd test --config=build/local-qt683.yml --test-filter=hyremote-watermark-policy-test
+```
+
+The command still verifies the build tree and Kit, reports the full
+`DISCOVERED_TEST_COUNT`, the `SELECTED_TEST_COUNT`, the actual
+`EXECUTED_TEST_COUNT`, and the normal test log. A selector matching no cases
+(or entirely removed by an exclusion) fails instead of reporting a false PASS.
+This is **G0/G1 focused feedback**, not a waiver of an explicitly required
+full G2/G6 at a qualified release candidate. Do not use arbitrary `ctest`
+invocations to claim a canonical full acceptance.
+
 # Test execution manual (G0–G6)
 
 Authority: #393 records the gates, #394 the inventory work, #274 the catalog. This file states **when** a test is run,
