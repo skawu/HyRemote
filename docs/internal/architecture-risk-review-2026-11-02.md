@@ -123,8 +123,10 @@ examples, tests
 **R-02 无编译器警告门禁 / 无 sanitizer / 无静态分析（OPEN）**
 `/W4`、`/WX`、`-fsanitize`、`clang-tidy`、`cppcheck` 在 `cmake/`、`CMakeLists.txt`、`build.cmd` 中 **0 命中**。而代码含 34 处 `reinterpret_cast` 与手写 RFB 解码（`readU16/readU32/parsePixelSpec`）。当前仅靠功能测试兜底。
 
-**R-03 持久化策略缺少操作者关闭通道（OPEN）**
-策略写入 `<状态目录>/watermark.policy` 后，零代码路线"省略参数"被解释为"本次未选择"→ **恢复**该策略。操作者除手删文件外无法关闭。不是错误行为，但产品面缺口，且支持成本高。
+**R-03 关闭与清除只能靠"给一个无关参数"这种未文档化的副作用（OPEN）**
+策略写入 `<状态目录>/watermark.policy` 后：省略全部水印参数 → 视为"本次未选择"→ **恢复**该策略（正确）；而只给 `watermark-position=…`（Generic）或 `hyremote-watermark-position=…`（QPA）、不给文字 → 控制器视为"提交了一个未启用的请求"→ 在 `start()` 中**清除**存储的策略。
+实测（候选 `79f71b5c` 部署副本，同一状态目录）：先用 `watermark=SEED-MARK` 写入 → `stored=True`；再用仅 `watermark-position=bottom-right` 启动 → `stored=False`。
+风险方向与最初判断相反：**不是"无法关闭"，而是"任何只调整位置/不透明度/字号/颜色的启动，都会静默关掉一个正在生效的水印"**，且没有任何诊断提示或文档记载。既没有显式 disable 令牌，也没有"部分参数=保持现状"的语义。
 
 **R-04 传输层巨型 TU（OPEN）**
 `rfb_transport.cpp` 1780 行同时承担 codec、像素格式、TRLE、输入映射、多客户端状态；`access_instance.cpp` 1592 行混合状态机、策略门禁、诊断装配。review 与定位成本高。
@@ -159,7 +161,7 @@ catalog 头部数字陈旧（83/113/112）、交付账中两个合并 SHA 写错
 | 2 | Linux lane 加 `-fsanitize=address,undefined`；MSVC 侧启 `/W4`（先报告不阻断），逐步对核心目录 `/WX` | R-02 | CI 出现 sanitizer job；核心目录零警告 | 1 天 |
 | 3 | 为 RFB 解析加 fuzz 目标（`parsePixelSpec`、消息头、TRLE 解码） | R-02/R-04 | 语料来自现有 wire 测试；固定时长 fuzz 无 crash 入 CI | 2–3 天 |
 | 4 | 拆分 `rfb_transport.cpp` 为 codec / session / encoder 三层 | R-04 | 纯重构，行为不变，wire 测试全绿 | 2 天 |
-| 5 | 零代码路线补显式 disable 令牌，与持久化清除路径对齐 | R-03 | `watermark=` 空值语义明确；重新启用/关闭可往返 | 0.5 天 |
+| 5 | 显式 `watermark=off`（或 `disable`）令牌；"只给位置"不得再清空策略，并在诊断里报告"策略被本次启动清除" | R-03 | 三种启动（省略 / 仅位置 / 显式 off）各自行为有测试；清除事件有诊断行 | 1 天 |
 | 6 | catalog 计数改由 `ctest --show-only=json-v1` 生成 | R-08 | 文档数字与注册清单不可能不一致（CI 生成 + 校验） | 1 天 |
 | 7 | 显式给所有测试目标加 `/utf-8`（或等价 `-finput-charset`） | R-05 | Qt5 与 Qt6 lane 对同一源文件行为一致 | 0.5 天 |
 | 8 | 文档化"哪些 API 抛异常"的契约 | R-09 | 公共头注释 + 一条契约测试 | 0.5 天 |
