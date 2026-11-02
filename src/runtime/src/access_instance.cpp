@@ -1061,18 +1061,6 @@ bool AccessInstance::start()
     // policy of its own: an application's own choice always wins over the stored one. The request is re-validated by the
     // shared resolver, so a hand-edited or out-of-bounds file cannot bypass the bounds.
     //
-    // #591: an explicit policy of this run is persisted here, once the configuration selection is final - and only when
-    // the shared resolver accepted it, so an invalid request can never overwrite the store with a half-resolved policy.
-    if (m_impl->watermarkExplicit) {
-        if (m_impl->watermark.ok()) {
-            const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
-            if (m_impl->watermark.policy.enabled)
-                (void)detail::saveWatermarkPolicy(paths, m_impl->watermark.policy);
-            else
-                (void)detail::clearWatermarkPolicy(paths);
-        }
-    }
-
     if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
         m_impl->watermarkRestored = true;
         QString storeError;
@@ -1115,6 +1103,23 @@ bool AccessInstance::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
     m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
+
+    // Persist only after the configuration is frozen and the state transition has been established.
+    // A failed explicit save OR clear must not be reported as successful: otherwise the next process
+    // can silently restore a stale watermark (or forget the current one). Refuse this Runtime's remote
+    // output and report a redacted, actionable error; the host application remains local and running.
+    if (m_impl->watermarkExplicit && m_impl->watermark.ok()) {
+        const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
+        const bool persisted = m_impl->watermark.policy.enabled
+                                   ? detail::saveWatermarkPolicy(paths, m_impl->watermark.policy)
+                                   : detail::clearWatermarkPolicy(paths);
+        if (!persisted) {
+            m_impl->setError(ErrorCode::InvalidConfiguration,
+                             QStringLiteral("the selected state directory could not persist the explicit watermark "
+                                            "policy; check its path and write permissions; remote output is refused"));
+            return false;
+        }
+    }
 
     // #589: an operator who explicitly enabled a watermark must never receive an unwatermarked remote picture.
     // A policy that cannot be honoured refuses only the remote output capability; the host application keeps

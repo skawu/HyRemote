@@ -569,6 +569,16 @@ jobs:
           cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
             -P tests/release-readiness/check_release_authority_policy.cmake
 
+      # Prose-only governance paths (AGENTS/CONTRIBUTING/test manual/catalog) must still run
+      # the same fail-closed documentation/layout facts that used to run inside the Qt jobs.
+      # Do not move test source/CMake/build authority into this light path.
+      - name: Qt-free repository and documentation facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_READINESS_GROUP=facts-layout \
+            -P tests/release-readiness/run_grouped_checks.cmake
+
       # A01/E01: the exact-cell matrix is a product statement made in tracked text, so the same cheap lane
       # executes its guard whenever any document it reads changes. No Qt SDK, no product build.
       - name: Compatibility cell matrix guard

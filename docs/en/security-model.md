@@ -178,7 +178,7 @@ Until that backend exists, the two profiles are not interchangeable:
 - `AuthenticatedEncrypted` fails closed in the current product line. It returns `SecurityUnavailable` before creating a listener, composes no target, transport, or socket, and never falls back to `Authenticated` or `SecurityType None`;
 - a syntactically valid certificate or private-key descriptor does not make encrypted transport available. Descriptor validity and backend capability are separate facts.
 
-Authenticated encrypted transport is **not available** in the current published line. Its possible future admission into V1 or other releases requires an independent user-value, security-design and release decision (#170/#190/#611); a planned capability is not a shipped implementation. Any future work must keep backend-specific types and tools out of ordinary application integration.
+Authenticated encrypted transport is **not available** in the current published line. Its possible future admission into V1 or other releases requires an independent user-value, security-design and release decision; a planned capability is not a shipped implementation. Any future work must keep backend-specific types and tools out of ordinary application integration.
 
 Historical NeatVNC or rustvncserver investigation is research evidence only, not the selected transport or a security promise.
 
