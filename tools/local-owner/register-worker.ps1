@@ -38,7 +38,7 @@ foreach ($field in @($worker, $Workspace, $KitConfig, $PrefixBin, $StateDir)) {
 if ($LASTEXITCODE -ne 0) {
     throw "Local worker offline self-test failed"
 }
-& gh.exe auth status *> $null
+& gh.exe auth status --hostname github.com *> $null
 if ($LASTEXITCODE -ne 0) {
     throw "GitHub CLI is not authenticated for the current Windows user"
 }
