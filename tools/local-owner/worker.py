@@ -236,8 +236,7 @@ def verify_install_manifest(prefix_bin: Path, candidate_sha: str) -> None:
     ) if path.is_file()]
     if not manifests:
         raise Blocked("installed prefix lacks HYREMOTE-MANIFEST.txt; no source attribution")
-    required = {"SOURCE_SHA": candidate_sha, "QT_VERSION": "6.8.3",
-                "GENERIC": "ON", "QPA": "ON"}
+    required = {"SOURCE_SHA": candidate_sha, "QT_VERSION": "6.8.3"}
     for path in manifests:
         try:
             if path.stat().st_size > 8192:
@@ -255,11 +254,33 @@ def verify_install_manifest(prefix_bin: Path, candidate_sha: str) -> None:
             identity[key] = value
         if any(identity.get(key, "").upper() != value.upper()
                for key, value in required.items()):
-            raise Blocked("installed manifest SHA/Qt/adapter identity mismatches order")
+            raise Blocked("installed manifest SHA/Qt identity mismatches order")
+        # The canonical CMake install manifest writes TRUE/FALSE, not
+        # necessarily ON/OFF. Accept only explicit CMake truthy spellings.
+        if any(identity.get(key, "").upper() not in {"TRUE", "ON", "YES", "1"}
+               for key in ("GENERIC", "QPA")):
+            raise Blocked("installed manifest lacks both enabled adapters")
         if identity.get("OS", "").lower() != "windows":
             raise Blocked("installed manifest is not for Windows")
         if identity.get("ARCH", "").lower() not in {"amd64", "x86_64", "x64"}:
             raise Blocked("installed manifest is not x86_64")
+
+
+def isolated_installed_env(prefix_bin: Path, plugin_dir: Path,
+                           source: dict | None = None) -> dict:
+    """Exercise only deployed DLLs/plugins, never Qt/build-tree caller paths."""
+    env = dict(os.environ if source is None else source)
+    for variable in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+                     "QT_QPA_PLATFORM", "QML2_IMPORT_PATH", "QML_IMPORT_PATH",
+                     "LD_LIBRARY_PATH"):
+        env.pop(variable, None)
+    system_root = Path(env.get("SystemRoot", r"C:\Windows"))
+    env["PATH"] = os.pathsep.join((str(prefix_bin),
+                                   str(system_root / "System32"),
+                                   str(system_root)))
+    env["QT_PLUGIN_PATH"] = str(plugin_dir)
+    env["QT_FORCE_STDERR_LOGGING"] = "1"
+    return env
 
 
 def watermark_cases() -> list[tuple[str, str]]:
@@ -295,9 +316,8 @@ def unicode_probe(order: dict, workspace: Path, prefix_bin: Path | None,
             if selected.exists():
                 raise Blocked("probe state already exists; no overwrite/reuse")
             selected.mkdir(parents=True)
-            env = os.environ.copy()
+            env = isolated_installed_env(prefix_bin, plugin_dir)
             env["HYREMOTE_STATE_DIR"] = str(selected)
-            env["QT_PLUGIN_PATH"] = str(plugin_dir)
             log = state / (order["id"] + "." + route + "-" + label + ".log")
             # No shell or Start-Process -ArgumentList: Python creates native Win32
             # argv, preserving spaces in the single -platform/-plugin value.
@@ -543,7 +563,7 @@ def self_test() -> None:
         (root / "bin").mkdir()
         bin_dir = root / "bin"
         correct = ("SOURCE_SHA=" + sample["sha"] + "\nQT_VERSION=6.8.3\n"
-                   "GENERIC=ON\nQPA=ON\nOS=Windows\nARCH=AMD64\n")
+                   "GENERIC=TRUE\nQPA=TRUE\nOS=Windows\nARCH=AMD64\n")
         manifest = root / "HYREMOTE-MANIFEST.txt"
         manifest.write_text(correct, encoding="utf-8")
         verify_install_manifest(bin_dir, sample["sha"])
@@ -561,6 +581,18 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("manifest-free installed binaries were accepted")
+        polluted = {"SystemRoot": r"C:\Windows",
+                    "PATH": r"C:\Qt\6.8.3\msvc2022_64\bin",
+                    "QT_QPA_PLATFORM_PLUGIN_PATH": r"C:\Qt\6.8.3\plugins",
+                    "QT_QPA_PLATFORM": "offscreen",
+                    "QML2_IMPORT_PATH": r"C:\Qt\qml",
+                    "QT_PLUGIN_PATH": r"C:\Qt\plugins"}
+        clean = isolated_installed_env(bin_dir, root / "plugins", polluted)
+        assert "QT_QPA_PLATFORM_PLUGIN_PATH" not in clean
+        assert "QT_QPA_PLATFORM" not in clean
+        assert "QML2_IMPORT_PATH" not in clean
+        assert r"C:\Qt" not in clean["PATH"]
+        assert clean["QT_PLUGIN_PATH"] == str(root / "plugins")
         # The failed CTest shape has no EXECUTED count by design.
         fail_log = "DISCOVERED_TEST_COUNT=79\\nTEST_EXIT_STATUS=8\\n"
         assert metric(fail_log.replace("\\n", "\n"), "TEST_EXIT_STATUS") == 8
