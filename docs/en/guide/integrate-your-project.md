@@ -602,6 +602,12 @@ contents) and restored on the next start when that process makes no explicit sel
 and never blocks the host application from starting - but the state directory is not a hand-written configuration
 entry point.
 
+**Refusing to guess (#761).** Turning a stored watermark off is an explicit switch - `watermark-state=off` on the
+Generic route, `hyremote-watermark-state=off` on QPA - and only that switch removes the stored file. A launch that
+supplies only attributes (position, opacity, font size, colour) **without** text is refused with an actionable error
+instead of silently clearing a watermark that is currently in force: partial watermark configuration is not supported,
+so state the text and the attributes together, or switch the stored watermark off explicitly.
+
 Diagnostic fields: `WATERMARK_ENABLED`, `WATERMARK_POSITION`, `WATERMARK_OPACITY`, `WATERMARK_FONT_SIZE`,
 `WATERMARK_COLOR`, `WATERMARK_TEXT_CODE_UNITS`, `WATERMARK_POLICY_ERROR`. The report carries the text **length** only,
 never the text.

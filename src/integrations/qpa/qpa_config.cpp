@@ -51,6 +51,28 @@ QString leadingDigits(const QString &text)
 
 }  // namespace
 
+QString requestedNativeDelegate(QStringList &parameters, const QString &native)
+{
+    QString selected = native;
+    for (auto it = parameters.begin(); it != parameters.end();) {
+        // #774: char ARRAY, not const char*; sizeof(prefix)-1 is the literal
+        // length of "delegate=". An x64 pointer previously truncated it to 7.
+        constexpr char prefix[] = "delegate=";
+        if (it->startsWith(QLatin1String(prefix), Qt::CaseInsensitive)) {
+            selected = it->mid(static_cast<int>(sizeof(prefix) - 1)).trimmed().toLower();
+            it = parameters.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Preserve the strict native-only QPA package scope. No fallback or
+    // native platform inference beyond the already-selected reference ABI.
+    if (native.isEmpty() || selected != native)
+        return {};
+    return selected;
+}
+
 QString runtimeIdentityError(const QString &runningVersion,
                              int expectedMajor,
                              int expectedMinor,
@@ -203,6 +225,18 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
+        // #761: an explicit switch, separate from the text, so clearing a stored watermark is a stated intent rather
+        // than a side effect of leaving the text out.
+        if (key == QStringLiteral("hyremote-watermark-state")) {
+            if (separator < 0 || value.compare(QStringLiteral("off"), Qt::CaseInsensitive) != 0) {
+                error = QStringLiteral("hyremote-watermark-state must be off");
+                return false;
+            }
+            parsed.watermarkOff = true;
+            it = parameters.erase(it);
+            continue;
+        }
+
         if (key == QStringLiteral("hyremote-watermark-position")) {
             detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
             if (separator < 0 || !detail::parseWatermarkPosition(value, position)) {
@@ -257,6 +291,9 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
 
         ++it;
     }
+
+    if (!detail::validateWatermarkSelection(parsed, error))
+        return false;
 
     config = std::move(parsed);
     error.clear();

@@ -44,6 +44,40 @@ int main()
         }
     }
 
+    // #774: Test exactly the delegate selection used by the real QPA plugin,
+    // not just pass-through from the earlier HyRemote config parser.
+    {
+        QStringList native{QStringLiteral("delegate=windows"),
+                           QStringLiteral("darkmode=2")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(native, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "explicit Windows native delegate is selected")
+            || !check(native == QStringList{QStringLiteral("darkmode=2")},
+                      "delegate token is consumed and native tokens survive")) {
+            return 13;
+        }
+        QStringList uppercase{QStringLiteral("DELEGATE= WINDOWS ")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(uppercase, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "case-insensitive explicit delegate and surrounding whitespace survive")
+            || !check(uppercase.isEmpty(), "case-folded delegate token is consumed")) {
+            return 13;
+        }
+        QStringList unknown{QStringLiteral("delegate=xcb")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(unknown, QStringLiteral("windows")).isEmpty(),
+                   "unqualified foreign delegate is rejected")) {
+            return 13;
+        }
+        QStringList implicit{QStringLiteral("darkmode=2")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(implicit, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "omitted option keeps qualified native delegate")
+            || !check(implicit == QStringList{QStringLiteral("darkmode=2")},
+                      "no unrelated native option is consumed")) {
+            return 13;
+        }
+    }
+
     // #589: the zero-code platform route can select the watermark; the parser only carries the request and the
     // shared Runtime policy owns defaults and bounds.
     {
@@ -84,6 +118,50 @@ int main()
             || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
                       "CJK watermark parameter is not passed to the native delegate")) {
             return 11;
+        }
+    }
+    // #761: the platform route needs the same explicit off switch, and the same refusal of an attribute-only launch.
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=off"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "the off switch parses")
+            || !check(config.watermarkOff, "the off switch is carried")
+            || !check(config.watermarkText.isEmpty(), "the off switch carries no text")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "the off switch is not passed to the native delegate")) {
+            return 12;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=maybe")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "an unknown off-switch value is refused")
+            || !check(error.contains(QStringLiteral("hyremote-watermark-state")),
+                      "the refusal names the off switch")) {
+            return 13;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=off"),
+                               QStringLiteral("hyremote-watermark=MARK")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "off together with text is refused")
+            || !check(error.contains(QStringLiteral("both")), "the refusal explains the conflict")) {
+            return 14;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-position=top-left")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "attributes without text are refused")
+            || !check(error.contains(QStringLiteral("without watermark text")),
+                      "the refusal explains the missing text")) {
+            return 15;
         }
     }
     {
