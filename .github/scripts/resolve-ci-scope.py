@@ -173,7 +173,18 @@ TOOL_PRODUCT_FIT_PREFIXES = (
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
 # selection scripts over the repository itself. They run in a lightweight governance job, and they must not drag the
 # product matrix along just to execute a policy script.
+# Exactly these prose governance documents have no compiled product impact. Paths outside
+# this narrow whitelist (including new files under tests/) continue to fail closed.
+# They do need the Qt-free grouped repository/documentation facts gate.
+PROSE_ONLY_GOVERNANCE_PATHS = (
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "tests/TEST_CATALOG.md",
+    "tests/EXECUTION_MANUAL.md",
+)
+
 GOVERNANCE_PREFIXES = (
+    *PROSE_ONLY_GOVERNANCE_PATHS,
     ".github/release/",
     ".github/workflows/git-flow-policy.yml",
     "tests/release-readiness/release_scope.cmake",
@@ -194,6 +205,7 @@ GOVERNANCE_PREFIXES = (
 # other contents are product-relevant: a change to the selector, the authority policy or the cell-matrix guard is
 # governance.
 GOVERNANCE_ONLY_PATHS = (
+    *PROSE_ONLY_GOVERNANCE_PATHS,
     "tests/release-readiness/release_scope.cmake",
     "tests/release-readiness/check_release_authority_policy.cmake",
     "tests/release-readiness/check_compatibility_cells.cmake",
@@ -557,6 +569,28 @@ def self_test() -> int:
         ("cmake PR keeps the Qt5 lane", "pull_request", ["cmake/HyRemoteBuild.cmake"], False,
          {"product": "true", "qt5_scope": "true"}),
         ("core PR keeps the Qt5 lane", "pull_request", ["src/core/src/storage.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        # #393: a four-document governance PR previously spent 223s Qt5 + 267s Qt6 just because two
+        # Markdown files live under tests/. The no-Qt governance job now runs the facts/layout group.
+        ("test catalog documentation is governance only", "pull_request", ["tests/TEST_CATALOG.md"], False,
+         {"product": "false", "qt5_scope": "false", "governance": "true"}),
+        ("execution manual documentation is governance only", "pull_request", ["tests/EXECUTION_MANUAL.md"], False,
+         {"product": "false", "governance": "true"}),
+        ("agent manual is governance only", "pull_request", ["AGENTS.md"], False,
+         {"product": "false", "governance": "true"}),
+        ("contributing instructions run Qt-free fact gates", "pull_request", ["CONTRIBUTING.md"], False,
+         {"product": "false", "governance": "true", "readiness_evidence": "true"}),
+        ("four prose files do not start Qt5/Qt6", "pull_request",
+         ["AGENTS.md", "CONTRIBUTING.md", "tests/TEST_CATALOG.md", "tests/EXECUTION_MANUAL.md"], False,
+         {"product": "false", "qt5_scope": "false", "governance": "true"}),
+        ("mixed prose and runtime code still runs both Qt lanes", "pull_request",
+         ["tests/TEST_CATALOG.md", "src/runtime/src/access_instance.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("new unknown test README fails closed", "pull_request", ["tests/new-area/README.md"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("CMake test harness cannot skip Qt", "pull_request", ["tests/release-readiness/run_grouped_checks.cmake"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("runtime test source cannot skip Qt", "pull_request", ["src/runtime/tests/test_watermark_policy.cpp"], False,
          {"product": "true", "qt5_scope": "true"}),
         ("unrelated docs keep the fast lane", "pull_request", ["docs/proposals/notes.md"], False,
          {"lane": "PR_FAST", "product": "false"}),
