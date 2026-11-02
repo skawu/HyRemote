@@ -568,6 +568,8 @@ hyremote_deploy(TARGET MyApp QPA)
 
 **重启后仍然生效（#591）**：显式配置的水印策略会写入已解析的状态目录（`<状态目录>/watermark.policy`，只含文字/位置/不透明度/字号/颜色，绝不含凭据或描述文件内容）；下次进程启动时若本次没有显式选择，就按该文件恢复。优先级为**本次显式选择 > 已持久化策略 > 共享默认**；显式关闭会删除该文件，因此重启后不会"水印又回来了"。文件被手工改坏或越界时**不会被恢复**（共享策略重新校验失败即丢弃），也不会因此阻断宿主应用启动——但操作者不应把状态目录当成手写配置入口。
 
+**关闭与"只改属性"的明确语义（#761）**：关闭已存水印要用显式开关——Generic 用 `watermark-state=off`，QPA 用 `hyremote-watermark-state=off`；只有它才会清除存储文件。若只给位置/不透明度/字号/颜色而**不给文字**（例如只想临时改一下位置），启动会被**明确拒绝**并给出可操作错误，而不是静默清除一个正在生效的水印——部分水印配置不受支持，请一次把文字和属性写全，或用上面的开关显式关闭。
+
 诊断字段：`WATERMARK_ENABLED`、`WATERMARK_POSITION`、`WATERMARK_OPACITY`、`WATERMARK_FONT_SIZE`、`WATERMARK_COLOR`、`WATERMARK_TEXT_CODE_UNITS`、`WATERMARK_POLICY_ERROR`。报告**只报文字长度，不报文字内容**。
 
 ---

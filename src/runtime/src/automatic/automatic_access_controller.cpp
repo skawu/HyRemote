@@ -326,7 +326,7 @@ private:
         // #591: only a launch that actually mentions a watermark selects one. Submitting an empty request
         // unconditionally would mark the policy as "explicitly chosen by this process" and delete the policy a previous
         // launch stored, so a configured watermark could never survive a restart through the zero-code routes.
-        const bool watermarkRequested = !config.watermarkText.isEmpty()
+        const bool watermarkRequested = config.watermarkOff || !config.watermarkText.isEmpty()
                                         || !config.watermarkPosition.isEmpty()
                                         || config.watermarkOpacity.has_value()
                                         || config.watermarkFontPointSize.has_value()

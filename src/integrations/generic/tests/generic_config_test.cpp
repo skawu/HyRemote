@@ -118,6 +118,39 @@ int main()
         CHECK(!parseSpecification(QStringLiteral("watermark-opacity=high"), config, error));
         CHECK(error.contains(QStringLiteral("watermark-opacity")));
     }
+    // #761: clearing a stored watermark is a stated intent, not a side effect of omitting the text.
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(parseSpecification(QStringLiteral("port=5921;watermark-state=off"), config, error));
+        CHECK(config.watermarkOff);
+        CHECK(config.watermarkText.isEmpty());
+    }
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(!parseSpecification(QStringLiteral("watermark-state=maybe"), config, error));
+        CHECK(error.contains(QStringLiteral("watermark-state")));
+    }
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(!parseSpecification(QStringLiteral("watermark-state=off;watermark=MARK"), config, error));
+        CHECK(error.contains(QStringLiteral("both")));
+    }
+    {
+        // An attribute-only launch used to clear a stored policy silently; it is now refused with an actionable error.
+        AccessConfig config;
+        QString error;
+        CHECK(!parseSpecification(QStringLiteral("watermark-position=top-left"), config, error));
+        CHECK(error.contains(QStringLiteral("without watermark text")));
+    }
+    {
+        AccessConfig config;
+        QString error;
+        CHECK(!parseSpecification(QStringLiteral("watermark-opacity=0.5;watermark-state=off"), config, error));
+        CHECK(error.contains(QStringLiteral("both")));
+    }
 
 #ifdef Q_OS_WIN
     // #761: Simulate the exact ANSI-936 byte->Latin-1 widening observed in
