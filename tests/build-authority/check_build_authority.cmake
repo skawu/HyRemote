@@ -782,7 +782,7 @@ file(REMOVE_RECURSE "${boundary_root}")
 # require no Qt SDK and do not pretend that a report-only call executed any tests.
 run_success(test-filter-equals --no-config "--test-filter=^hyremote-watermark-policy-test$" --show-config)
 require_text(test-filter-equals "${HYB_TEST_OUTPUT}" "tests.filter      : ^hyremote-watermark-policy-test$")
-run_success(test-filter-spaced --no-config --test-filter "hyremote-qpa-runtime" --show-config)
+run_success(test-filter-spaced --no-config build --test-filter "hyremote-qpa-runtime" --show-config)
 require_text(test-filter-spaced "${HYB_TEST_OUTPUT}" "tests.filter      : hyremote-qpa-runtime")
 run_failure(test-filter-empty --no-config "--test-filter=" --show-config)
 require_text(test-filter-empty "${HYB_TEST_OUTPUT}" "--test-filter requires a nonempty CTest regex")
