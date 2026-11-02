@@ -103,6 +103,16 @@ target_link_libraries(hyremote-watermark-policy-test
         Qt6::Network
 )
 target_include_directories(hyremote-watermark-policy-test PRIVATE ../src)
+# The Core/Shared Runtime policy test registers for every supported frontend set, including
+# Generic/QPA-only builds. Its optional public-C++ facade default-parity assertion is meaningful
+# only when that facade is enabled. Never force the C++ frontend into such builds merely to
+# resolve a test-only include: #761 identified this as a real scoped-CI build break.
+if(HYREMOTE_BUILD_CPP_API)
+    target_include_directories(hyremote-watermark-policy-test
+        PRIVATE "${PROJECT_SOURCE_DIR}/src/integrations/cpp/include")
+    target_compile_definitions(hyremote-watermark-policy-test
+        PRIVATE HYREMOTE_TEST_CPP_SURFACE_AVAILABLE=1)
+endif()
 # The test states the capability contract of the build it runs in, so it must see the same macro as the runtime.
 target_compile_definitions(hyremote-watermark-policy-test PRIVATE
     HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
