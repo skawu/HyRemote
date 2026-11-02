@@ -576,7 +576,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_READINESS_GROUP=facts-layout \\
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_READINESS_GROUP=facts-layout \
             -P tests/release-readiness/run_grouped_checks.cmake
 
       # A01/E01: the exact-cell matrix is a product statement made in tracked text, so the same cheap lane
