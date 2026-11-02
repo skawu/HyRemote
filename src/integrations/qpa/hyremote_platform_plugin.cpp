@@ -2,6 +2,7 @@
 
 #include "automatic/automatic_access_config.hpp"
 #include "automatic/automatic_access_controller.hpp"
+#include "detail/windows_unicode_launch.hpp"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
@@ -142,7 +143,8 @@ public:
             return nullptr;
         }
 
-        QStringList delegateParameters = paramList;
+        QStringList delegateParameters =
+            ::HyRemote::detail::recoverActualWindowsQpaWatermark(paramList);
         ::HyRemote::Qpa::RemoteConfig remoteConfig;
         QString remoteConfigError;
         if (!::HyRemote::Qpa::parseRemoteConfig(delegateParameters, remoteConfig, remoteConfigError)) {
