@@ -1,0 +1,6 @@
+HyRemote QPA rejected the requested platform delegate; this payload only decorates 'windows' for the exact Qt 6.8.3 private ABI, and never falls back to another delegate.
+qt.qpa.plugin: Could not load the Qt platform plugin "hyremote" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: hyremote, direct2d, minimal, offscreen, windows.
+
