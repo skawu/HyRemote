@@ -535,6 +535,58 @@ void checkPersistedPolicySurvivesRestart()
               QStringLiteral("an unusable stored policy is not restored"));
     }
 
+    // An oversized state file must never be materialized via an unbounded read, and its text
+    // must not enter an ordinary diagnostic. The test intentionally exceeds the format cap.
+    {
+        QFile oversized(storedPath);
+        check(oversized.open(QIODevice::WriteOnly | QIODevice::Truncate),
+              QStringLiteral("an oversized stored policy can be created for the negative test"));
+        if (oversized.isOpen()) {
+            oversized.write(QByteArray(8192, 'x'));
+            oversized.close();
+            // The store and path resolvers are private to the Runtime DLL and intentionally
+            // not exported as a test/SDK ABI. Exercise the observable Runtime contract instead.
+            HyRemote::Runtime::AccessInstance oversizedReader;
+            const auto policy = oversizedReader.watermarkPolicy();
+            check(!policy.policy.enabled
+                      && policy.error.contains(QStringLiteral("exceeds the permitted size")),
+                  QStringLiteral("oversized persisted policy is rejected before an unbounded read"));
+            check(!policy.error.contains(QStringLiteral("xxxx")),
+                  QStringLiteral("oversized policy content is not echoed into diagnostics"));
+        }
+    }
+
+    // A selected state path that is actually a *file* is unusable. The user must see an
+    // explicit persistence failure instead of a false success followed by a missing watermark
+    // on restart. This deterministic fixture works on Windows without manipulating ACLs.
+    {
+        const QString obstructionPath = QDir(state.path()).filePath(QStringLiteral("state-obstruction"));
+        QFile obstruction(obstructionPath);
+        check(obstruction.open(QIODevice::WriteOnly),
+              QStringLiteral("an obstructing regular file is available for the state path probe"));
+        obstruction.close();
+        qputenv("HYREMOTE_STATE_DIR", obstructionPath.toUtf8());
+
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QStringLiteral("DO-NOT-ECHO-THIS-MARK");
+        HyRemote::Runtime::AccessInstance unsaved;
+        check(unsaved.setWatermarkPolicy(request), QStringLiteral("an explicit valid policy is selected"));
+        check(!unsaved.start(), QStringLiteral("a missing writable state directory refuses remote startup"));
+        const auto error = unsaved.lastError();
+        check(error.has_value() && error->message.contains(QStringLiteral("could not persist")),
+              QStringLiteral("start reports why the explicitly requested watermark could not be saved"));
+        check(!error.has_value() || !error->message.contains(request.text),
+              QStringLiteral("persistence diagnostics never log the operator watermark text"));
+
+        HyRemote::Runtime::AccessInstance uncleared;
+        check(uncleared.setWatermarkPolicy(WatermarkPolicyRequest{}),
+              QStringLiteral("explicit disable is accepted even with an unusable state directory"));
+        check(!uncleared.start(), QStringLiteral("failed persistence of explicit disable is not silently successful"));
+
+        qputenv("HYREMOTE_STATE_DIR", state.path().toUtf8());
+    }
+
     if (previousState.isEmpty())
         qunsetenv("HYREMOTE_STATE_DIR");
     else
