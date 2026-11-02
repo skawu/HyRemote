@@ -386,6 +386,43 @@ void checkDegenerateInputs()
         check(destination.isEmpty(), QStringLiteral("a refused composition produces no buffer"));
     }
     {
+        // #784: the ink may fit the raw width/height but not the margins used by the real
+        // top/bottom/left/right placement. Such a frame must be refused, not silently clipped.
+        WatermarkPolicy policy = enabledPolicy(QStringLiteral("EDGE"));
+        QFont font;
+        font.setFamilies(watermarkFontFamilyCandidates());
+        font.setPixelSize(static_cast<int>(std::lround(
+            static_cast<double>(policy.fontPointSize) * (96.0 / 72.0))));
+        font.setBold(true);
+        const QFontMetricsF metrics(font);
+
+        // Both dimensions exceed the naked text metrics; neither reserves both margins.
+        const int narrowWidth = std::max(1, static_cast<int>(std::ceil(metrics.horizontalAdvance(policy.text))) + 8);
+        const int narrowHeight = 120;
+        const int shortWidth = 320;
+        const int shortHeight = std::max(1, static_cast<int>(std::ceil(metrics.height())) + 8);
+        for (const WatermarkPosition position : {WatermarkPosition::BottomRight,
+                                                 WatermarkPosition::BottomLeft,
+                                                 WatermarkPosition::TopRight,
+                                                 WatermarkPosition::TopLeft}) {
+            policy.position = position;
+            for (const QSize dimensions : {QSize(narrowWidth, narrowHeight),
+                                           QSize(shortWidth, shortHeight)}) {
+                qsizetype stride = 0;
+                const QByteArray frame = makeFrame(dimensions.width(), dimensions.height(), &stride);
+                QByteArray destination;
+                QString error;
+                check(!composeWatermark(policy, viewOf(frame, dimensions.width(), dimensions.height(), stride),
+                                        destination, error),
+                      QStringLiteral("corner with unreserved margins is refused"));
+                check(error.contains(QStringLiteral("does not fit")),
+                      QStringLiteral("corner fit rejection is actionable"));
+                check(destination.isEmpty(),
+                      QStringLiteral("refused corner watermark leaves no partial output"));
+            }
+        }
+    }
+    {
         const int width = 320;
         const int height = 200;
         qsizetype stride = 0;
