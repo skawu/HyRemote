@@ -47,7 +47,7 @@ def validate(order: dict, *, now: dt.datetime | None = None) -> dict:
         raise Blocked("untrusted release ref")
     if not isinstance(order["sha"], str) or not SHA.fullmatch(order["sha"]):
         raise Blocked("invalid exact SHA")
-    if order["task"] not in TASKS or order["kit"] != "win-qt683-msvc2022":
+    if not isinstance(order["task"], str) or order["task"] not in TASKS or order["kit"] != "win-qt683-msvc2022":
         raise Blocked("unapproved task/kit")
     if order["state"] != "QUEUED" or type(order["requires_physical_viewer"]) is not bool:
         raise Blocked("invalid order state/viewer flag")
@@ -198,7 +198,7 @@ def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: P
     text = log.read_text(encoding="utf-8", errors="replace")
     discovered = metric(text, "DISCOVERED_TEST_COUNT")
     executed = metric(text, "EXECUTED_TEST_COUNT")
-    if proc.returncode or discovered == 0 or executed == 0 or executed > discovered:
+    if proc.returncode or discovered == 0 or executed != discovered:
         raise Blocked("canonical G6 nonzero/empty/invalid test result; inspect local log")
     return {"status": "MACHINE_PASS", "discovered": discovered,
             "executed": executed, "log": log.name}
@@ -362,7 +362,44 @@ def self_test() -> None:
             0x6C34, 0x5370, 0x5019, 0x9009)
         assert metric("DISCOVERED_TEST_COUNT=79\nEXECUTED_TEST_COUNT=79",
                       "EXECUTED_TEST_COUNT") == 79
-    print("local-owner worker self-test: PASS (schema, security, Unicode, ledger)")
+    # Simulated end-to-end receipt/ACK/status and replay check; no network,
+    # shell or GitHub credentials are used by the self-test.
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory() as temp:
+        path = Path(temp) / "ledger.json"
+        local = {}
+        reports = []
+        command = SimpleNamespace(execute=True, workspace=Path(temp),
+                                  kit_config=None, prefix_bin=None)
+        with patch.dict(globals(), {
+            "branch_head": lambda ref: sample["sha"],
+            "comment": lambda issue, msg: reports.append((issue, msg)),
+            "execute": lambda order, args, state: {"status": "DISPATCHED",
+                                                   "run_id": 42},
+        }):
+            process(sample, command, local, path)
+            assert [msg["state"] for _, msg in reports] == [
+                "RECEIVED", "STARTED", "DISPATCHED"]
+            assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
+            process(sample, command, local, path)
+            assert len(reports) == 3, "duplicate delivery replayed a task"
+        # Simulate an already-finished physical operation whose first network
+        # report failed; only its recorded RESULT is sent on retry.
+        saved = ledger_read(path)
+        saved[sample["id"]] = {"status": "FINISHED_UNREPORTED",
+                               "result": {"state": "MACHINE_PASS", "id": sample["id"]}}
+        ledger_write(path, saved)
+        reports.clear()
+        with patch.dict(globals(), {
+            "comment": lambda issue, msg: reports.append((issue, msg)),
+            "execute": lambda *a, **k: (_ for _ in ()).throw(
+                AssertionError("a finished task must not rerun")),
+        }):
+            process(sample, command, saved, path)
+            assert len(reports) == 1 and reports[0][1]["state"] == "MACHINE_PASS"
+            assert ledger_read(path)[sample["id"]]["status"] == "RECORDED"
+    print("local-owner worker self-test: PASS (schema, Unicode, ACK, replay, outbox)")
 
 
 def main() -> None:
