@@ -5,6 +5,24 @@ not what it asserts (that stays in `TEST_CATALOG.md`).
 
 Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/test-inventory-ts1-2026-10-30.md).
 
+## Focused positive test selection (development only)
+
+The canonical `build.cmd` authority supports positive `--test-filter=REGEX` selection
+(`tests.filter` in a profile) alongside existing negative `--test-exclude=REGEX`.
+For an already configured matching Qt Kit, for example:
+
+```powershell
+.\build.cmd test --config=build/local-qt683.yml --test-filter=hyremote-watermark-policy-test
+```
+
+The command still verifies the build tree and Kit, reports the full
+`DISCOVERED_TEST_COUNT`, the `SELECTED_TEST_COUNT`, the actual
+`EXECUTED_TEST_COUNT`, and the normal test log. A selector matching no cases
+(or entirely removed by an exclusion) fails instead of reporting a false PASS.
+This is **G0/G1 focused feedback**, not a waiver of an explicitly required
+full G2/G6 at a qualified release candidate. Do not use arbitrary `ctest`
+invocations to claim a canonical full acceptance.
+
 ## Gates
 
 | Gate | Moment | What to run | What is forbidden |
@@ -49,7 +67,7 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 - G2 **only where the actual change risk requires a full local acceptance**: cross-route public contracts, shared Core/Runtime behaviour, private-ABI QPA, security/credential boundaries, canonical build/packaging authority, or another explicitly justified full-profile dependency. Record the trigger and the exact PR SHA. A normal Ready PR still requires a fresh exact-HEAD hosted affected L1 `ci-merge-verdict`, but **not** an automatic local full 79-case run.
 - G6 on the frozen candidate SHA, independently of prior PR evidence.
 - after a materially new environment/Qt Kit/compiler/runner image when the claim depends on it; select the affected matrix, not unrelated profiles.
-- Do not represent a bare targeted `ctest` diagnostic as canonical full acceptance: it is focused feedback until a vetted positive selector is added to `build.cmd`.
+- A bare targeted `ctest` diagnostic is **not** canonical acceptance. Use the vetted `build.cmd --test-filter` selector for traceable focused feedback, and an unfiltered `build.cmd test` for any risk-authorized full G2/G6 gate.
 
 ## Scheduled breadth
 

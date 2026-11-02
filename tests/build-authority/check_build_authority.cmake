@@ -777,4 +777,23 @@ else()
 endif()
 file(REMOVE_RECURSE "${boundary_root}")
 
+# #393: the one canonical build entrypoint accepts positive CTest selection in both
+# argument forms and YAML, with fail-closed empty explicit regex. These parser cases
+# require no Qt SDK and do not pretend that a report-only call executed any tests.
+run_success(test-filter-equals --no-config "--test-filter=^hyremote-watermark-policy-test$" --show-config)
+require_text(test-filter-equals "${HYB_TEST_OUTPUT}" "tests.filter      : ^hyremote-watermark-policy-test$")
+run_success(test-filter-spaced --no-config build --test-filter "hyremote-qpa-runtime" --show-config)
+require_text(test-filter-spaced "${HYB_TEST_OUTPUT}" "tests.filter      : hyremote-qpa-runtime")
+run_failure(test-filter-empty --no-config "--test-filter=" --show-config)
+require_text(test-filter-empty "${HYB_TEST_OUTPUT}" "--test-filter requires a nonempty CTest regex")
+set(filter_profile "${scratch}/filter-profile.yml")
+file(WRITE "${filter_profile}" [=[version: 1
+tests:
+  filter: hyremote-watermark
+  exclude: hyremote-slow
+]=])
+run_success(test-filter-yaml "--config=${filter_profile}" --show-config)
+require_text(test-filter-yaml "${HYB_TEST_OUTPUT}" "tests.filter      : hyremote-watermark")
+require_text(test-filter-yaml "${HYB_TEST_OUTPUT}" "tests.exclude     : hyremote-slow")
+
 message(STATUS "HyRemote build authority self-tests: PASS")
