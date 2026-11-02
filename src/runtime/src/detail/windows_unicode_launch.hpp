@@ -9,6 +9,7 @@
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
+#include <string>
 
 #ifdef Q_OS_WIN
 #  ifndef NOMINMAX
