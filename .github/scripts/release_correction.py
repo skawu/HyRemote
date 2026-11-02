@@ -229,26 +229,26 @@ def self_test() -> int:
         _run(root, "git", "init", "-q")
         _run(root, "git", "config", "core.autocrlf", "false")
         notes_name = "docs/releases/v0.3.5.0.md"
-        pending = CANDIDATE_MARKER + "\\n# 中文\\n\\n## Security boundary\\n# English\\n"
-        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.0.0 LANGUAGES CXX)\\n')
+        pending = CANDIDATE_MARKER + "\n# 中文\n\n## Security boundary\n# English\n"
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.0.0 LANGUAGES CXX)\n')
         _write(root, notes_name, pending)
-        _write(root, "src/a.cpp", "int value = 3;\\n")
+        _write(root, "src/a.cpp", "int value = 3;\n")
         _commit(root, "reviewed develop candidate")
         _run(root, "git", "update-ref", DEVELOP_REF, "HEAD")
         _run(root, "git", "switch", "-q", "-c", "release")
-        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\\n')
-        _write(root, notes_name, REOPEN_ACCEPTED_MARKER + "\\n# 中文\\n# English\\n")
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
+        _write(root, notes_name, REOPEN_ACCEPTED_MARKER + "\n# 中文\n# English\n")
         _commit(root, "accepted RC3")
         base_notes = _run(root, "git", "show", f"HEAD:{notes_name}").decode("utf-8")
         _run(root, "git", "switch", "-q", "-c", "reopen", DEVELOP_REF)
-        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\\n')
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
         _commit(root, "exact new candidate")
         git = _git_in(root)
         head_cmake = git("show", "HEAD:CMakeLists.txt")
         candidates = (
             ("exact post-acceptance reopen", REOPEN_BASE_SHA, pending, None),
             ("wrong accepted base SHA blocked", "0" * 40, pending, "not authorized"),
-            ("arbitrary notes rewrite blocked", REOPEN_BASE_SHA, pending + "edited\\n", "pending develop notes"),
+            ("arbitrary notes rewrite blocked", REOPEN_BASE_SHA, pending + "edited\n", "pending develop notes"),
         )
         for name, tested_base, tested_notes, expected_error in candidates:
             cases += 1
