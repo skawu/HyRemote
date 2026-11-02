@@ -11,6 +11,11 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
+#ifdef Q_OS_WIN
+#include <cstdlib>
+#include <string>
+#endif
+
 namespace {
 
 int failures = 0;
@@ -187,6 +192,61 @@ int main(int argc, char **argv)
                   && paths.stateDir.value.startsWith(utf8Directory),
               QStringLiteral("UTF-8/space config-relative state directory stays anchored"));
     }
+
+#ifdef Q_OS_WIN
+    // #775: Exercise the real Windows wide environment, not UTF-8 bytes
+    // injected through qputenv(). Both valid and invalid environment-selected
+    // paths must preserve the operator's Unicode text and fail closed.
+    {
+        const QString dirName = QStringLiteral("中文 目录");
+        check(root.mkpath(dirName), QStringLiteral("native Unicode environment fixture directory"));
+        const QString selectedDir = root.absoluteFilePath(dirName);
+        const QDir selected(selectedDir);
+        const QString config = writeFile(selected, QStringLiteral("配置 文件.conf"));
+        const QString secret = writeFile(selected, QStringLiteral("密钥 文件.txt"));
+        check(!config.isEmpty() && !secret.isEmpty(),
+              QStringLiteral("native wide environment config and secret fixtures"));
+
+        const auto setWide = [](const wchar_t *name, const QString &value) {
+            return _wputenv_s(name, value.toStdWString().c_str()) == 0;
+        };
+        const auto clearWide = [] {
+            _wputenv_s(L"HYREMOTE_CONFIG_FILE", L"");
+            _wputenv_s(L"HYREMOTE_STATE_DIR", L"");
+            _wputenv_s(L"HYREMOTE_SECRET_FILE", L"");
+        };
+        check(setWide(L"HYREMOTE_CONFIG_FILE", config)
+                  && setWide(L"HYREMOTE_STATE_DIR", selectedDir)
+                  && setWide(L"HYREMOTE_SECRET_FILE", secret),
+              QStringLiteral("native UTF-16 environment values accepted"));
+        const auto paths = HyRemote::detail::resolveHostPaths();
+        check(paths.ok(), QStringLiteral("native CJK environment paths resolve"));
+        check(paths.configFile.origin == HyRemote::detail::HostPathOrigin::Environment
+                  && paths.configFile.value == QFileInfo(config).absoluteFilePath(),
+              QStringLiteral("config wide environment value survives exactly"));
+        check(paths.stateDir.origin == HyRemote::detail::HostPathOrigin::Environment
+                  && paths.stateDir.value == QFileInfo(selectedDir).absoluteFilePath(),
+              QStringLiteral("state directory is not redirected to mojibake path"));
+        check(paths.secretFile.origin == HyRemote::detail::HostPathOrigin::Environment
+                  && paths.secretFile.value == QFileInfo(secret).absoluteFilePath(),
+              QStringLiteral("secret wide environment value survives exactly"));
+
+        // Invalid explicitly selected environment path may not fall back.
+        const QString invalidState = selected.absoluteFilePath(QStringLiteral("missing/state"));
+        check(setWide(L"HYREMOTE_STATE_DIR", invalidState),
+              QStringLiteral("wide invalid state path selected"));
+        const auto broken = HyRemote::detail::resolveHostPaths();
+        check(!broken.ok() && !broken.stateDir.ok(),
+              QStringLiteral("missing wide environment state directory fails closed"));
+        check(!broken.stateDir.isSet(),
+              QStringLiteral("unusable Unicode environment selection cannot silently fall back"));
+        check(broken.stateDir.error.contains(dirName),
+              QStringLiteral("diagnostic preserves selected Unicode directory text"));
+
+        clearWide();
+        clearEnvironment();
+    }
+#endif
 
     // 11. A relative explicit selection is normalized against the process directory once and reported as an
     // absolute location, so a later working-directory change cannot move the same configuration.
