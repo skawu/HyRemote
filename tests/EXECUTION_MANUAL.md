@@ -11,7 +11,7 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 | --- | --- | --- | --- |
 | **G0** | while editing | compile the affected target, then run the single affected test binary by hand | any full suite; repeated `build.cmd test` per edit |
 | **G1** | one logical slice complete | one affected label at a time, e.g. `ctest --test-dir build -L runtime` or `ctest --test-dir build -L qml`; narrow further with `-R <name-regex>`. CTest's `-L` matches **any** label against one regex, so `"component;runtime;fast"` is not an intersection and selects nothing | treating a labelled run as a whole-suite signoff |
-| **G2** | pull request ready | exactly one canonical `build.cmd test` on the affected configuration, then the hosted L1 lanes on that head | a second full run "to be sure"; merging on a pending/skipped gate |
+| **G2** | stable pull request ready | fresh exact-HEAD hosted affected L1 `ci-merge-verdict`; local targeted checks for ordinary scoped changes; **one canonical full run only when the changed contract or risk explicitly requires it** | full-suite ritual on every PR; merging on a pending/skipped gate |
 | **G3** | after merge | the fast/affected subset only | re-running the full gate on `develop` |
 | **G4** | nightly | breadth: wire robustness, example smoke, every adapter family | blocking a pull request |
 | **G5** | weekly | stress/fuzz/soak/performance profiles (`hyremote-rfb-wire-robustness-test`, performance SLO runs) | blocking a pull request |
@@ -42,11 +42,10 @@ Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/te
 
 ## When a full run is mandatory
 
-- G2 on the exact PR head, once;
-- G6 on the frozen candidate SHA;
-- a change to a shared contract that every route consumes (Core/Shared Runtime public behaviour, build system,
-  packaging);
-- after an environment change (new Qt kit, new compiler, new runner image).
+- G2 **only where the actual change risk requires a full local acceptance**: cross-route public contracts, shared Core/Runtime behaviour, private-ABI QPA, security/credential boundaries, canonical build/packaging authority, or another explicitly justified full-profile dependency. Record the trigger and the exact PR SHA. A normal Ready PR still requires a fresh exact-HEAD hosted affected L1 `ci-merge-verdict`, but **not** an automatic local full 79-case run.
+- G6 on the frozen candidate SHA, independently of prior PR evidence.
+- after a materially new environment/Qt Kit/compiler/runner image when the claim depends on it; select the affected matrix, not unrelated profiles.
+- Do not represent a bare targeted `ctest` diagnostic as canonical full acceptance: it is focused feedback until a vetted positive selector is added to `build.cmd`.
 
 ## Scheduled breadth
 
@@ -64,5 +63,5 @@ PR evidence; it is recorded against the `develop` SHA it actually built.
 
 - The two grouped readiness CTests cover **15 former scripts**. The deploy-helper contract and capability-conditional source-QPA fixture still execute independently. Each included case logs BEGIN/PASS and any fatal error fails the whole group; no script has been deleted.
 - One QPA runtime CTest now executes the existing basic/surfaces/recovery smoke cases with their individual executables and plugin environment. The startup-sensitive Quick multi-window CTest remains separate with its resource lock.
-- Reference-registration **projections**: Qt 6.8.3 **94 → 79**, Qt 5.15.2 **50 → 37**. These numbers are not valid discovery or PASS evidence until the G2 canonical configuration and test run produces actual counts. Do not infer wall-clock savings from the number of CTest identities.
+- **Actual measured registration:** Windows Qt 6.8.3 **94 → 79**, with **79/79 PASS** at #736's final head `7267cda8`. Qt 5.15.2 historical discovery was 50 before grouping, but **the current same-profile full discovery count is NOT_MEASURED**; the old “37” arithmetic projection is withdrawn. Hosted selected Qt 5 L1 counts do not answer this question. No wall-clock savings have been established from identity reduction alone ([exact-HEAD acceptance](https://github.com/skawu/HyRemote/pull/736#issuecomment-6539634249)).
 - CI derives its readiness exclusion from `.github/scripts/resolve-ci-scope.py` using the `hyremote-release-readiness-` family prefix. Both grouped identities still match; the product job's zero-execution rejection remains mandatory.
