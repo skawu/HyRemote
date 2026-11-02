@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QStringList>
 
 namespace HyRemote::detail {
@@ -10,6 +11,9 @@ namespace {
 
 constexpr auto kFileName = "watermark.policy";
 constexpr auto kVersion = "1";
+// A 128 UTF-16 code-unit policy plus bounded ASCII metadata fits comfortably within this limit.
+// Keep the limit on the read itself: an externally modified file must never be read unbounded.
+constexpr qint64 kMaxPolicyStoreBytes = 4096;
 
 QString colorText(quint32 rgb)
 {
@@ -38,8 +42,10 @@ bool saveWatermarkPolicy(const HostPaths &paths, const WatermarkPolicy &policy)
     if (!QDir().mkpath(info.absolutePath()))
         return false;
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    // Write a temporary sibling and atomically replace the old policy on commit. In particular,
+    // a failed/short write must not first truncate the last known-good operator policy.
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
         return false;
 
     // The text is written verbatim: the policy already guarantees a single visible line, and escaping it would make the
@@ -51,9 +57,16 @@ bool saveWatermarkPolicy(const HostPaths &paths, const WatermarkPolicy &policy)
                                   QString::number(policy.opacity, 'g', 6),
                                   QString::number(policy.fontPointSize),
                                   colorText(policy.colorRgb));
-    const bool written = file.write(body.toUtf8()) == body.toUtf8().size();
-    file.close();
-    return written;
+    const QByteArray bytes = body.toUtf8();
+    if (bytes.size() > kMaxPolicyStoreBytes) {
+        file.cancelWriting();
+        return false;
+    }
+    if (file.write(bytes) != bytes.size()) {
+        file.cancelWriting();
+        return false;
+    }
+    return file.commit();
 }
 
 bool clearWatermarkPolicy(const HostPaths &paths)
@@ -83,8 +96,20 @@ std::optional<WatermarkPolicyRequest> loadWatermarkRequest(const HostPaths &path
             *error = QStringLiteral("the stored watermark policy is not readable");
         return std::nullopt;
     }
-    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    file.close();
+    // A corrupt or attacker-modified local file is untrusted input. Read at most one byte over the
+    // format cap, including when the file grows after the initial stat.
+    const QByteArray bytes = file.read(kMaxPolicyStoreBytes + 1);
+    if (bytes.size() > kMaxPolicyStoreBytes || !file.atEnd()) {
+        if (error)
+            *error = QStringLiteral("the stored watermark policy exceeds the permitted size");
+        return std::nullopt;
+    }
+    if (file.error() != QFileDevice::NoError) {
+        if (error)
+            *error = QStringLiteral("the stored watermark policy could not be read");
+        return std::nullopt;
+    }
+    const QStringList lines = QString::fromUtf8(bytes).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 
     WatermarkPolicyRequest request;
     request.enabled = true;
