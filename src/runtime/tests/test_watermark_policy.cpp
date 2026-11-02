@@ -7,7 +7,9 @@
 #include "../src/detail/watermark_policy.hpp"
 #include "../src/detail/watermark_store.hpp"
 
+#if defined(HYREMOTE_TEST_CPP_SURFACE_AVAILABLE)
 #include <HyRemote/RemoteAccess.h>
+#endif
 
 #include <QCoreApplication>
 #include <QDir>
@@ -51,6 +53,7 @@ void checkSharedDefaults()
     check(result.policy.text.isEmpty(), QStringLiteral("no text is invented"));
 }
 
+#if defined(HYREMOTE_TEST_CPP_SURFACE_AVAILABLE)
 // The product C++ surface cannot include this internal header, so `RemoteWatermark` carries its own literal field
 // initialisers. That is a drift point: a route that keeps a stale default would satisfy "the operator asked for a
 // watermark" while quietly disagreeing with the shared policy, which is exactly what #589 W1 forbids. This case is the
@@ -68,6 +71,7 @@ void checkProductSurfaceDefaults()
     check(defaults.position == HyRemote::RemoteWatermarkPosition::BottomRight,
           QStringLiteral("the C++ surface position default is bottom-right, not tiled"));
 }
+#endif  // HYREMOTE_TEST_CPP_SURFACE_AVAILABLE
 
 void checkEnabledTextAndDefaults()
 {
@@ -598,7 +602,9 @@ int main(int argc, char **argv)
     QCoreApplication application(argc, argv);
 
     checkSharedDefaults();
+#if defined(HYREMOTE_TEST_CPP_SURFACE_AVAILABLE)
     checkProductSurfaceDefaults();
+#endif
     checkEnabledTextAndDefaults();
     checkRejectedText();
     checkExplicitValues();
