@@ -31,3 +31,16 @@ jobs:
           python tools/local-owner/worker.py --self-test
       - name: Check committed order syntax offline
         run: python tools/local-owner/worker.py --self-test-orders
+      - name: Parse Windows Task Scheduler opt-in script without executing it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/tools/local-owner/register-worker.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
