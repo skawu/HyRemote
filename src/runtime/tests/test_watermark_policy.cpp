@@ -544,12 +544,14 @@ void checkPersistedPolicySurvivesRestart()
         if (oversized.isOpen()) {
             oversized.write(QByteArray(8192, 'x'));
             oversized.close();
-            QString loadError;
-            const auto request = HyRemote::detail::loadWatermarkRequest(
-                HyRemote::detail::resolveHostPaths(QString()), &loadError);
-            check(!request.has_value() && loadError.contains(QStringLiteral("exceeds the permitted size")),
+            // The store and path resolvers are private to the Runtime DLL and intentionally
+            // not exported as a test/SDK ABI. Exercise the observable Runtime contract instead.
+            HyRemote::Runtime::AccessInstance oversizedReader;
+            const auto policy = oversizedReader.watermarkPolicy();
+            check(!policy.policy.enabled
+                      && policy.error.contains(QStringLiteral("exceeds the permitted size")),
                   QStringLiteral("oversized persisted policy is rejected before an unbounded read"));
-            check(!loadError.contains(QStringLiteral("xxxx")),
+            check(!policy.error.contains(QStringLiteral("xxxx")),
                   QStringLiteral("oversized policy content is not echoed into diagnostics"));
         }
     }
