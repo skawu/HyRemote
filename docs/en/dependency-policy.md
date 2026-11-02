@@ -1,5 +1,5 @@
 # Third-Party Dependency Policy
-> **Current authority (2026-10-23):** V0.3.0.0 Product Preview has shipped; first GA support covers only actually qualified Windows Qt5.15/Qt6.8 cells. Encrypted transport, gateway, relay, cloud services and additional platforms require separate admission; historical TODOs do not create GA requirements. Long-lived dependency and vulnerability response: [#611](https://github.com/skawu/HyRemote/issues/611).
+> **Latest published baseline (2026-11-02):** V0.3.4.0 has shipped ([release notes](../releases/v0.3.4.0.md)); V0.3.3.0 retains an [immutable-tag post-release erratum](../releases/v0.3.3.0-errata.md); first GA support covers only actually qualified Windows Qt5.15/Qt6.8 cells. Encrypted transport, gateway, relay, cloud services and additional platforms require separate admission; historical TODOs do not create GA requirements. Long-lived dependency and vulnerability response: [#611](https://github.com/skawu/HyRemote/issues/611).
 
 
 > Language / 语言: **English** | [中文](../dependency-policy.md)
@@ -85,7 +85,7 @@ When secure transport is requested:
 - HyRemote does not silently downgrade a requested secure build to an insecure one;
 - cryptographic implementation types remain private Runtime details, not downstream SDK targets.
 
-In the released V0.3.0.0 Product Preview, `AuthenticatedEncrypted` remains unavailable and fails closed before creating a listener.
+In the currently published V0.3.4.0 line, `AuthenticatedEncrypted` remains unavailable and fails closed before creating a listener. Legacy VNC authentication does not encrypt RFB sessions.
 
 > **Future candidate, not an automatic first-GA requirement:** encrypted transport, certificate policy and exact third-party runtime dependencies require their own user-value, security and #24/#95 release admission. A TODO does not imply shipped encryption or Internet-safe exposure (#143/#190/#611).
 

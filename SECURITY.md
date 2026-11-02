@@ -2,7 +2,7 @@
 
 HyRemote is remote-access infrastructure and should be treated as security-sensitive software.
 
-The current released product line is **V0.3.0.0 Product Preview**. It is intended for development, evaluation, and explicitly trusted-network use; it is **not** an Internet-facing production remote-access service. A public **`v0.3.3.0` tag/Release was created then formally RETRACTED** on 2026-10-23 due to incorrect release-branch/main/tag procedure and incomplete same-SHA Viewer/auth/performance admission. It is **not an accepted security-qualified release**; its published tag must not be reused. See [release remediation](docs/internal/v0.3.3.0-release-remediation-2026-10-23.md). Neither this candidate nor current V0.3.0.0 provides Internet-safe encrypted access or a V1 GA security-support contract.
+The latest published release is **V0.3.4.0** ([release notes](docs/releases/v0.3.4.0.md)); its qualification covers only the explicitly listed Windows x86_64 Qt 5.15.2 and Qt 6.8.3 cells. The previously published **V0.3.3.0** has a [post-release correction](docs/releases/v0.3.3.0-errata.md) of its immutable tag's notes and SHA ledger; historical retraction/remediation concerns remain documented in [release remediation](docs/internal/v0.3.3.0-release-remediation-2026-10-23.md), but V0.3.3.0 must not be described as presently retracted. Current published versions remain trusted-network/development-focused products, **not** Internet-facing encrypted remote access or V1 GA security-qualified services. Implemented V0.3.5.0 features on `develop` are **not** yet a published release.
 
 ## Supported product versions
 
