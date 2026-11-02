@@ -594,6 +594,14 @@ invalid, the C++/QML setter fails or reports `errorCode=InvalidConfiguration`, t
 application keeps running. Text that cannot fit the frame is refused too: no clipping, no eliding, no silent shrinking.
 No user name, IP, time or device template is supported or accepted; image logos belong to #593 after V1 GA.
 
+**It survives a restart (#591).** An explicitly configured policy is written into the resolved state directory
+(`<state dir>/watermark.policy`, containing only text/position/opacity/size/colour - never credentials or descriptor
+contents) and restored on the next start when that process makes no explicit selection of its own. Precedence is
+**explicit this run > persisted policy > shared default**; an explicit disable removes the file, so a watermark cannot
+"come back" after a restart. A hand-edited or out-of-bounds file is **not** restored (the shared resolver rejects it)
+and never blocks the host application from starting - but the state directory is not a hand-written configuration
+entry point.
+
 Diagnostic fields: `WATERMARK_ENABLED`, `WATERMARK_POSITION`, `WATERMARK_OPACITY`, `WATERMARK_FONT_SIZE`,
 `WATERMARK_COLOR`, `WATERMARK_TEXT_CODE_UNITS`, `WATERMARK_POLICY_ERROR`. The report carries the text **length** only,
 never the text.

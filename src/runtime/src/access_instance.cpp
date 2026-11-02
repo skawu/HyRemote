@@ -41,6 +41,7 @@
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
 #include "detail/watermark_frame_decorator.hpp"
+#include "detail/watermark_store.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -664,6 +665,11 @@ struct AccessInstance::Impl
     // #589: resolved once per accepted configuration, so start() and the diagnostic report cannot disagree about
     // what the operator asked for.
     detail::WatermarkPolicyResult watermark;
+    // #591: whether this process selected the policy itself. A persisted policy from an earlier run is applied only
+    // when the answer here is still "no".
+    bool watermarkExplicit = false;
+    // #591: the store is consulted at most once, so a report read before start() and start() itself agree.
+    bool watermarkRestored = false;
     // #174 interface identity. Empty means the address decides the mode.
     QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
@@ -998,7 +1004,27 @@ bool AccessInstance::setSecurityConfigFile(const QString &path)
 
 detail::WatermarkPolicyResult AccessInstance::watermarkPolicy() const
 {
-    return m_impl ? m_impl->watermark : detail::WatermarkPolicyResult{};
+    if (!m_impl)
+        return detail::WatermarkPolicyResult{};
+
+    // #591: report what a start would use, even when the caller asks before starting. The store is consulted once, so
+    // this cannot disagree with the enforcement path.
+    if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
+        m_impl->watermarkRestored = true;
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(
+            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
+        if (stored) {
+            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+        } else if (!storeError.isEmpty()) {
+            // Say why the stored policy was not applied instead of leaving silence: the policy stays disabled, so a
+            // corrupt or unreachable store can never block a start, but the reason is visible in the report.
+            m_impl->watermark = detail::WatermarkPolicyResult{};
+            m_impl->watermark.error
+                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
+        }
+    }
+    return m_impl->watermark;
 }
 
 bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &request)
@@ -1006,6 +1032,12 @@ bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &re
     if (!m_impl || !m_impl->isConfigurable())
         return false;
     m_impl->watermark = detail::resolveWatermarkPolicy(request);
+    m_impl->watermarkExplicit = true;
+
+    // #591: persistence happens at start(), not here. The state directory is derived from the configuration selection,
+    // and a caller may set the descriptor path after selecting a policy; writing now would store into the platform
+    // default and never restore. Nothing is written for a request the resolver refused either - a partially resolved
+    // policy would come back on the next launch as a watermark the operator never asked for.
     return true;
 }
 
@@ -1022,6 +1054,40 @@ bool AccessInstance::start()
 {
     if (!m_impl)
         return false;
+
+    // #591: an explicitly configured policy from a previous run is restored here, before any validation, so a restart
+    // behaves identically on every route and every Qt line - the Qt 5 lane reaches its target check earlier than Qt 6,
+    // and a restore that sat behind that check simply never happened there. Only when this process has not selected a
+    // policy of its own: an application's own choice always wins over the stored one. The request is re-validated by the
+    // shared resolver, so a hand-edited or out-of-bounds file cannot bypass the bounds.
+    //
+    // #591: an explicit policy of this run is persisted here, once the configuration selection is final - and only when
+    // the shared resolver accepted it, so an invalid request can never overwrite the store with a half-resolved policy.
+    if (m_impl->watermarkExplicit) {
+        if (m_impl->watermark.ok()) {
+            const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
+            if (m_impl->watermark.policy.enabled)
+                (void)detail::saveWatermarkPolicy(paths, m_impl->watermark.policy);
+            else
+                (void)detail::clearWatermarkPolicy(paths);
+        }
+    }
+
+    if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
+        m_impl->watermarkRestored = true;
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(
+            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
+        if (stored) {
+            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
+        } else if (!storeError.isEmpty()) {
+            // Say why the stored policy was not applied instead of leaving silence: the policy stays disabled, so a
+            // corrupt or unreachable store can never block a start, but the reason is visible in the report.
+            m_impl->watermark = detail::WatermarkPolicyResult{};
+            m_impl->watermark.error
+                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
+        }
+    }
 
     // #259: every exit from this call publishes the resulting truth exactly once. The guard clears the
     // projected Starting state and publishes whatever the call produced, so no early return has to

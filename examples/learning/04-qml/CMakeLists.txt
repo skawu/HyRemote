@@ -39,3 +39,37 @@ add_dependencies(hyremote-qml-basic hyremote-qml hyremote-qmlplugin)
 # selected so the module payload it imports is deployed with it.
 install(TARGETS hyremote-qml-basic RUNTIME DESTINATION bin)
 hyremote_deploy(TARGET hyremote-qml-basic QML)
+
+# #737: a direct build-tree launch has to work, as main.cpp and this file promise. The QML plugin is loaded from
+# <build>/qml/HyRemote, but Windows resolves a plugin's own dependencies from the *application* directory, not from the
+# plugin's directory - so `hyremote-qml.dll` and the runtime next to the plugin were invisible and the launch died with
+# "the specified module could not be found", exit 65, no window. Copying both next to the example reproduces the
+# deployed layout the loader expects, without baking any build-host absolute path into the binary.
+#
+# A POST_BUILD step on the example would be wrong here: `hyremote-qml-basic` links only Qt, so rebuilding just the QML
+# library or the runtime never relinks it and the copy would not run. The copies are therefore their own outputs that
+# depend on those libraries, refreshed whenever a library is newer than the stamp.
+set(_hyremote_qml_runtime_stamp "${CMAKE_CURRENT_BINARY_DIR}/.hyremote-runtime-deps")
+set(_hyremote_qml_runtime_deps)
+set(_hyremote_qml_runtime_commands)
+foreach(_hyremote_qml_dependency hyremote-qml hyremote-remoteaccess)
+    if(TARGET ${_hyremote_qml_dependency})
+        list(APPEND _hyremote_qml_runtime_deps ${_hyremote_qml_dependency})
+        list(APPEND _hyremote_qml_runtime_commands
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:${_hyremote_qml_dependency}>"
+                "$<TARGET_FILE_DIR:hyremote-qml-basic>")
+    endif()
+endforeach()
+if(_hyremote_qml_runtime_deps)
+    add_custom_command(
+        OUTPUT "${_hyremote_qml_runtime_stamp}"
+        ${_hyremote_qml_runtime_commands}
+        COMMAND ${CMAKE_COMMAND} -E touch "${_hyremote_qml_runtime_stamp}"
+        DEPENDS ${_hyremote_qml_runtime_deps}
+        COMMENT "Copying the HyRemote QML runtime beside the example (#737)"
+        VERBATIM)
+    add_custom_target(hyremote-qml-basic-runtime-deps ALL
+        DEPENDS "${_hyremote_qml_runtime_stamp}")
+    add_dependencies(hyremote-qml-basic hyremote-qml-basic-runtime-deps)
+endif()

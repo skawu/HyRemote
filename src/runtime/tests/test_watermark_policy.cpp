@@ -5,11 +5,15 @@
 
 #include "../src/access_instance.hpp"
 #include "../src/detail/watermark_policy.hpp"
+#include "../src/detail/watermark_store.hpp"
 
 #include <HyRemote/RemoteAccess.h>
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTextStream>
 
 namespace {
@@ -392,6 +396,151 @@ void checkDiagnosticsAndStartGate(QCoreApplication &application)
 
 }  // namespace
 
+// #591: an explicitly configured policy has to survive a restart. The state directory is the contract's place for
+// mutable state, so this is asserted through a second AccessInstance that never selects anything itself - exactly the
+// "process restarted" situation - instead of trusting that a write happened.
+void checkPersistedPolicySurvivesRestart()
+{
+    QTemporaryDir state;
+    check(state.isValid(), QStringLiteral("a temporary state directory exists"));
+    if (!state.isValid())
+        return;
+
+    const QByteArray previousState = qgetenv("HYREMOTE_STATE_DIR");
+    qputenv("HYREMOTE_STATE_DIR", state.path().toUtf8());
+    const QString storedPath = QDir(state.path()).filePath(QStringLiteral("watermark.policy"));
+
+    // Built from code points on purpose: this case must not depend on how a compiler decodes the source file. The Qt 5
+    // lane compiles without /utf-8, so a literal CJK string in the source became cp1252 mojibake there, which the policy
+    // then rejected as control characters - a test-encoding artefact that looked like a persistence defect.
+    QString cjkText;
+    cjkText += QChar(static_cast<ushort>(0x6301));
+    cjkText += QChar(static_cast<ushort>(0x4E45));
+    cjkText += QLatin1Char(' ');
+    cjkText += QStringLiteral("CONFIDENTIAL");
+
+    {
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = cjkText;
+        request.position = WatermarkPosition::Tiled;
+        request.opacity = 0.5;
+        request.fontPointSize = 24;
+        request.color = QStringLiteral("#00FF00");
+
+        HyRemote::Runtime::AccessInstance writer;
+        check(writer.setWatermarkPolicy(request), QStringLiteral("an explicit policy is accepted"));
+        // Persistence happens at start(): only then is the configuration selection final, so a descriptor path chosen
+        // after the policy cannot send the file to the wrong directory.
+        check(!writer.start(), QStringLiteral("a target-less start still fails"));
+        check(QFile::exists(storedPath),
+              QStringLiteral("the explicit policy is persisted into the state directory"));
+    }
+
+    {
+        // A fresh instance is the restart: it selects nothing of its own.
+        HyRemote::Runtime::AccessInstance restarted;
+        check(!restarted.start(), QStringLiteral("a target-less start still fails"));
+        const auto restored = restarted.watermarkPolicy().policy;
+        check(restored.enabled && restored.text == cjkText,
+              QStringLiteral("the persisted policy is restored on the next start"));
+        check(restored.position == WatermarkPosition::Tiled && qFuzzyCompare(restored.opacity, 0.5)
+                  && restored.fontPointSize == 24,
+              QStringLiteral("the restored policy keeps its position, opacity and size"));
+        const QString report
+            = HyRemote::Runtime::formatDiagnosticReport(restarted.diagnosticSnapshot());
+        if (!restored.enabled) {
+            // A failing restore must say why, otherwise it is indistinguishable from "the store is empty". The public
+            // report already carries the resolved host paths and the policy state, so no internal symbol is needed.
+            QFile stored(storedPath);
+            QByteArray storedBytes;
+            if (stored.open(QIODevice::ReadOnly))
+                storedBytes = stored.readAll();
+            QString codePoints;
+            const QString storedText = QString::fromUtf8(storedBytes);
+            for (const QString &line : storedText.split(QLatin1Char('\n'))) {
+                if (!line.startsWith(QStringLiteral("text=")))
+                    continue;
+                const QString value = line.mid(5);
+                for (const uint codePoint : value.toUcs4())
+                    codePoints += QStringLiteral("U+%1 ").arg(codePoint, 4, 16, QLatin1Char('0'));
+            }
+            QTextStream(stdout) << "  [diag] size=" << storedBytes.size() << " textCps=" << codePoints << '\n'
+                                << "  [diag] " << report << '\n';
+        }
+        check(report.contains(QStringLiteral("WATERMARK_ENABLED=true")),
+              QStringLiteral("the restored policy is visible as enabled in the report"));
+        check(!report.contains(cjkText),
+              QStringLiteral("the restored policy still keeps the operator text out of the report"));
+    }
+
+    {
+        // An application's own selection always wins over the stored one.
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = QStringLiteral("EXPLICIT");
+        HyRemote::Runtime::AccessInstance override;
+        check(override.setWatermarkPolicy(request), QStringLiteral("an explicit selection is accepted"));
+        check(override.watermarkPolicy().policy.text == QStringLiteral("EXPLICIT"),
+              QStringLiteral("the explicit selection wins over the stored policy"));
+    }
+
+    {
+        // A request the resolver refuses must never reach the store: a half-resolved policy (text accepted, colour
+        // quietly reset to white) would come back on the next launch as a watermark the operator never asked for.
+        WatermarkPolicyRequest good;
+        good.enabled = true;
+        good.text = QStringLiteral("KEEP-ME");
+        HyRemote::Runtime::AccessInstance seeded;
+        check(seeded.setWatermarkPolicy(good), QStringLiteral("a valid policy is accepted for the seed"));
+        check(!seeded.start(), QStringLiteral("the seed start still fails for the missing target"));
+
+        WatermarkPolicyRequest invalid = good;
+        invalid.text = QStringLiteral("OVERWRITE-ATTEMPT");
+        invalid.opacity = 4.0;
+        HyRemote::Runtime::AccessInstance rejected;
+        check(rejected.setWatermarkPolicy(invalid), QStringLiteral("the invalid request is recorded for reporting"));
+        check(!rejected.start(), QStringLiteral("start refuses an enabled policy that cannot be honoured"));
+
+        QFile stored(storedPath);
+        const bool readable = stored.open(QIODevice::ReadOnly);
+        check(readable, QStringLiteral("the stored policy is still readable"));
+        const QString storedText = readable ? QString::fromUtf8(stored.readAll()) : QString{};
+        check(storedText.contains(QStringLiteral("KEEP-ME")),
+              QStringLiteral("an invalid request leaves the stored policy untouched"));
+        check(!storedText.contains(QStringLiteral("OVERWRITE-ATTEMPT")),
+              QStringLiteral("an invalid request is not written to the state directory"));
+    }
+
+    {
+        // Disabling is an explicit selection too: it must clear the store, or the mark would come back on restart.
+        HyRemote::Runtime::AccessInstance clearer;
+        check(clearer.setWatermarkPolicy(WatermarkPolicyRequest{}), QStringLiteral("disabling is accepted"));
+        check(!clearer.start(), QStringLiteral("a target-less start still fails"));
+        check(!QFile::exists(storedPath), QStringLiteral("disabling removes the stored policy"));
+    }
+
+    {
+        // A stored file that cannot be trusted is reported, never silently treated as "no watermark".
+        QFile file(storedPath);
+        check(file.open(QIODevice::WriteOnly), QStringLiteral("the stored policy can be overwritten for the test"));
+        file.write("version=9\ntext=OUTSIDE-THE-BOUNDS\n");
+        file.close();
+
+        HyRemote::Runtime::AccessInstance unusable;
+        check(!unusable.start(), QStringLiteral("start still fails for the missing target"));
+        // An unusable stored policy must not be restored: the instance keeps the disabled default instead of a
+        // half-understood policy, and the watermark therefore cannot silently appear as "on" with wrong bounds.
+        check(!unusable.watermarkPolicy().policy.enabled,
+              QStringLiteral("an unusable stored policy is not restored"));
+    }
+
+    if (previousState.isEmpty())
+        qunsetenv("HYREMOTE_STATE_DIR");
+    else
+        qputenv("HYREMOTE_STATE_DIR", previousState);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
@@ -406,6 +555,7 @@ int main(int argc, char **argv)
     checkPositionTokenValidation();
     checkFontFallback();
     checkDiagnosticsAndStartGate(application);
+    checkPersistedPolicySurvivesRestart();
 
     QTextStream out(stdout);
     out << (failures == 0 ? "watermark policy checks passed\n" : "watermark policy checks failed\n");
