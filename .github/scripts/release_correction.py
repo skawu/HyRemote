@@ -79,6 +79,39 @@ def validate(*, git, version, notes_name, base_notes, head_notes, head_cmake, de
     return "candidate-correction"
 
 
+# #784: a previously accepted RC3 note must be explicitly reopened after newly verified release-blocking
+# P2 defects. This exception is SHA-locked to a single unpublished release branch and does NOT generalize
+# the right to overwrite accepted release history. Its next correction is a fresh reviewed candidate.
+REOPEN_VERSION = "0.3.5.0"
+REOPEN_BASE_SHA = "6a4b7b373ae1dce1f161771d5caab1cdb51a45d0"
+REOPEN_ACCEPTED_MARKER = "Status: **accepted for V0.3.5.0**"
+
+
+def validate_reopen(*, git, version, notes_name, base_notes, head_notes, head_cmake,
+                    actual_base_sha, develop_ref=DEVELOP_REF):
+    """Fail closed for the single Owner-authorized post-acceptance #784 correction.
+
+    This gate is evaluated by a protected-release PR review, *never* by a direct branch update.
+    The candidate tree must equal reviewed develop byte-for-byte other than its root VERSION;
+    its notes must be exactly the pending develop notes, not arbitrary replacement prose.
+    """
+    if version != REOPEN_VERSION or actual_base_sha != REOPEN_BASE_SHA:
+        raise SystemExit("post-acceptance release reopen is not authorized for this exact version/base SHA")
+    if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
+        raise SystemExit("post-acceptance release reopen requires the exact accepted RC3 notes")
+    develop_notes = git("show", f"{develop_ref}:{notes_name}").decode("utf-8")
+    if not develop_notes.startswith(CANDIDATE_MARKER) or head_notes != develop_notes:
+        raise SystemExit("reopened release notes must equal the exact pending develop notes")
+    develop_cmake = git("show", f"{develop_ref}:CMakeLists.txt")
+    if head_cmake != versioned_cmake(develop_cmake, version):
+        raise SystemExit("reopened release CMakeLists must equal reviewed develop except the VERSION token")
+    surface = set(git("diff", "--name-only", develop_ref, "HEAD").decode("utf-8").splitlines())
+    if surface != {"CMakeLists.txt"}:
+        raise SystemExit("reopened candidate tree must equal develop except the root VERSION")
+    return "candidate-reopen-correction"
+
+
+
 # ---------------------------------------------------------------- self test
 
 def _run(cwd: Path, *args: str) -> bytes:
@@ -188,6 +221,52 @@ def self_test() -> int:
     scenario("notes must stay pending and unchanged",
              develop_extra=False, head_extra_file=False, break_notes=True,
              break_cmake=False, expect_error="pending bilingual notes unchanged")
+
+    # Positive and negative tests for the exact one-off #784 accepted-RC3 reopen. This
+    # independently checks SHA lock, unchanged reviewed-develop notes, and source equality.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        _run(root, "git", "init", "-q")
+        _run(root, "git", "config", "core.autocrlf", "false")
+        notes_name = "docs/releases/v0.3.5.0.md"
+        pending = CANDIDATE_MARKER + "\\n# 中文\\n\\n## Security boundary\\n# English\\n"
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.0.0 LANGUAGES CXX)\\n')
+        _write(root, notes_name, pending)
+        _write(root, "src/a.cpp", "int value = 3;\\n")
+        _commit(root, "reviewed develop candidate")
+        _run(root, "git", "update-ref", DEVELOP_REF, "HEAD")
+        _run(root, "git", "switch", "-q", "-c", "release")
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\\n')
+        _write(root, notes_name, REOPEN_ACCEPTED_MARKER + "\\n# 中文\\n# English\\n")
+        _commit(root, "accepted RC3")
+        base_notes = _run(root, "git", "show", f"HEAD:{notes_name}").decode("utf-8")
+        _run(root, "git", "switch", "-q", "-c", "reopen", DEVELOP_REF)
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\\n')
+        _commit(root, "exact new candidate")
+        git = _git_in(root)
+        head_cmake = git("show", "HEAD:CMakeLists.txt")
+        candidates = (
+            ("exact post-acceptance reopen", REOPEN_BASE_SHA, pending, None),
+            ("wrong accepted base SHA blocked", "0" * 40, pending, "not authorized"),
+            ("arbitrary notes rewrite blocked", REOPEN_BASE_SHA, pending + "edited\\n", "pending develop notes"),
+        )
+        for name, tested_base, tested_notes, expected_error in candidates:
+            cases += 1
+            try:
+                validate_reopen(git=git, version=REOPEN_VERSION, notes_name=notes_name,
+                                base_notes=base_notes, head_notes=tested_notes,
+                                head_cmake=head_cmake, actual_base_sha=tested_base)
+                if expected_error is not None:
+                    print(f"FAIL {name}: expected {expected_error}")
+                    failures += 1
+                else:
+                    print(f"ok: {name}")
+            except SystemExit as error:
+                if expected_error is None or expected_error not in str(error):
+                    print(f"FAIL {name}: {error}")
+                    failures += 1
+                else:
+                    print(f"ok: {name}")
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")
