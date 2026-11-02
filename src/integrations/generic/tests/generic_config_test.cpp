@@ -2,6 +2,7 @@
 // only - the parser never resolves an interface and never invents an address - so a real adapter is not needed here.
 
 #include "../generic_config.hpp"
+#include "detail/windows_unicode_launch.hpp"
 
 #include <QHostAddress>
 #include <QString>
@@ -117,6 +118,49 @@ int main()
         CHECK(!parseSpecification(QStringLiteral("watermark-opacity=high"), config, error));
         CHECK(error.contains(QStringLiteral("watermark-opacity")));
     }
+
+#ifdef Q_OS_WIN
+    // #761: Simulate the exact ANSI-936 byte->Latin-1 widening observed in
+    // the frozen Windows candidate. The original wide -plugin token must attest
+    // the recovery. Both ordinary Latin-1 and ambiguous/unrelated options stay untouched.
+    {
+        const QString original = QStringLiteral("port=5921;watermark=水印候选");
+        const QString widened = QStringLiteral("port=5921;watermark=")
+                                + QString::fromLatin1(QByteArray::fromHex("cbaed3a1baf2d1a1"));
+        CHECK(HyRemote::detail::oneByteWidening(original, 936) == widened);
+        const QString recovered = HyRemote::detail::recoverWindowsGenericSpecification(
+            widened, {QStringLiteral("app.exe"), QStringLiteral("-plugin"),
+                      QStringLiteral("hyremote:") + original}, 936);
+        CHECK(recovered == original);
+        AccessConfig config;
+        QString error;
+        CHECK(parseSpecification(recovered, config, error));
+        CHECK(config.watermarkText == QStringLiteral("水印候选"));
+        CHECK(HyRemote::detail::recoverWindowsGenericSpecification(
+                  widened, {QStringLiteral("-plugin"), QStringLiteral("another:") + original}, 936)
+              == widened);
+        CHECK(HyRemote::detail::recoverWindowsGenericSpecification(
+                  widened, {QStringLiteral("-plugin"), QStringLiteral("hyremote:watermark=Ë®Ó¡")}, 936)
+              == widened);
+    }
+    {
+        const QString original = QStringLiteral("watermark=持久 候选;watermark-position=top-left");
+        const QString widened = QStringLiteral("watermark=")
+                                + QString::fromLatin1(QByteArray::fromHex("b3d6bec320baf2d1a1"))
+                                + QStringLiteral(";watermark-position=top-left");
+        CHECK(HyRemote::detail::oneByteWidening(original, 936) == widened);
+        const QString recovered = HyRemote::detail::recoverWindowsGenericSpecification(
+            widened, {QStringLiteral("-plugin"), QStringLiteral("hyremote:") + original}, 936);
+        CHECK(recovered == original);
+        AccessConfig config;
+        QString error;
+        CHECK(parseSpecification(recovered, config, error));
+        CHECK(config.watermarkText == QStringLiteral("持久 候选"));
+        CHECK(HyRemote::detail::recoverWindowsGenericSpecification(
+                  original, {QStringLiteral("-plugin"), QStringLiteral("hyremote:") + original}, 936)
+              == original);
+    }
+#endif
 
     if (failures != 0)
         std::cerr << failures << " generic config checks failed\n";
