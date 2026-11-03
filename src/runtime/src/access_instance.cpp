@@ -1389,6 +1389,12 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
 #endif
+    // #790: release raw idle pixels only for a known-size Qt target with an active
+    // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
+    // to send a fresh first frame; no SDK API or standalone RFB behavior changes.
+    effectiveSecurity.releaseIdleFrameBuffers
+        = effectiveSecurity.initialFramebufferWidth > 0
+          && effectiveSecurity.initialFramebufferHeight > 0;
 #if HYREMOTE_HAS_WATERMARK_RENDERING
     // #589: install the one shared compositor on the frame hook. If it cannot be installed, refuse the start
     // instead of serving an unwatermarked picture the operator explicitly asked to be marked.
