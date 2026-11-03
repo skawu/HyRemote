@@ -1,0 +1,29 @@
+CASE=descriptor_written RESULT=PASS DETAIL=F:\workspace\hyremote\HyRemote\tmp\rc5\cfg793/A/site.conf
+CASE=descriptor_written RESULT=PASS DETAIL=F:\workspace\hyremote\HyRemote\tmp\rc5\cfg793/B/site.conf
+CASE=descriptor_written RESULT=PASS DETAIL=F:\workspace\hyremote\HyRemote\tmp\rc5\cfg793/C/site.conf
+CASE=setWatermark_seed_A RESULT=PASS DETAIL=request A
+CASE=start_seed_A RESULT=PASS DETAIL=seedA started=true state=2 stoppedState=0
+CASE=stored_A RESULT=PASS DETAIL=MARK-A
+CASE=setWatermark_seed_B RESULT=PASS DETAIL=request B
+CASE=start_seed_B RESULT=PASS DETAIL=seedB started=true state=2 stoppedState=0
+CASE=stored_B RESULT=PASS DETAIL=MARK-B
+CASE=stored_C_absent RESULT=PASS DETAIL=<absent>
+CASE=fresh_default_before_selection RESULT=PASS DETAIL=text=''
+CASE=select_A_then_read RESULT=PASS DETAIL=MARK-A
+CASE=start_with_A RESULT=PASS DETAIL=A started=true state=2 stoppedState=0
+CASE=stop_then_select_B RESULT=PASS DETAIL=MARK-B
+CASE=back_to_A RESULT=PASS DETAIL=MARK-A
+CASE=fresh_select_B RESULT=PASS DETAIL=MARK-B
+CASE=B_then_A RESULT=PASS DETAIL=MARK-A
+CASE=stale_before_empty_store RESULT=PASS DETAIL=MARK-A
+CASE=empty_store_turns_mark_off RESULT=PASS DETAIL=text=''
+CASE=setWatermark_explicit RESULT=PASS DETAIL=explicit
+CASE=explicit_overrides_store_A RESULT=PASS DETAIL=EXPLICIT-MARK
+CASE=start_explicit RESULT=PASS DETAIL=explicit started=true state=2 stoppedState=0
+CASE=report_hides_operator_text RESULT=PASS DETAIL=report_bytes=927
+CASE=explicit_persists_to_selected_store RESULT=PASS DETAIL=EXPLICIT-MARK
+CASE=other_store_untouched RESULT=PASS DETAIL=MARK-B
+CASE=start_seed_env RESULT=PASS DETAIL=envSeed started=true state=2 stoppedState=0
+CASE=stored_ENV RESULT=PASS DETAIL=MARK-ENV
+CASE=env_outranks_descriptor RESULT=PASS DETAIL=MARK-ENV
+SUMMARY failures=0
