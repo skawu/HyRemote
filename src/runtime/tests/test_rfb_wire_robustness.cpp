@@ -45,6 +45,7 @@
 #include "rfb_interaction_latency_stats.hpp"
 #include "transport/rfb_delivery_state.hpp"
 #include "transport/rfb_transport.hpp"
+#include "detail/viewer_capture_demand.hpp"
 
 namespace {
 
@@ -2798,6 +2799,68 @@ void testLargeDamageCoalescesForPaint()
 
 }  // namespace
 
+
+void testStaticViewerCaptureDemandFeedback()
+{
+    HyRemote::detail::ViewerCaptureDemand demand;
+    demand.start();
+    demand.frameQueued(true);
+    std::atomic<bool> finished{false};
+    std::atomic<bool> permitted{false};
+    std::thread bootstrapWaiter([&] {
+        permitted.store(demand.waitForViewer());
+        finished.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    CHECK(!finished.load()); // no viewer -> no repeated full grabs
+    demand.setViewerCount(1);
+    bootstrapWaiter.join();
+    CHECK(finished.load() && permitted.load());
+
+    // Existing transport did the exact tile diff. Three genuinely identical served frames
+    // enter the bounded background probe; one changed frame or input resumes active captures.
+    for (int n = 0; n < 3; ++n)
+        demand.noteFrameChange(false);
+    const auto began = std::chrono::steady_clock::now();
+    CHECK(demand.waitForViewer()); // must wait for a bounded local-only update probe
+    const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - began);
+    CHECK(waited.count() >= 30);
+    CHECK(waited.count() < 1000);
+    demand.noteRemoteInput();
+    const auto fast = std::chrono::steady_clock::now();
+    CHECK(demand.waitForViewer());
+    CHECK(std::chrono::steady_clock::now() - fast < std::chrono::milliseconds(100));
+
+    for (int n = 0; n < 3; ++n)
+        demand.noteFrameChange(false);
+    std::atomic<bool> woke{false};
+    std::thread blocked([&] {
+        (void)demand.waitForViewer();
+        woke.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    demand.noteFrameChange(true);
+    blocked.join();
+    CHECK(woke.load()); // changed rendered pixels immediately cancel the idle gate
+
+    demand.setViewerCount(0);
+    std::atomic<bool> released{false};
+    std::thread zero([&] {
+        (void)demand.waitForViewer();
+        released.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    CHECK(!released.load());
+    demand.stop();
+    zero.join();
+    CHECK(released.load()); // stop does not wait for another Viewer
+    demand.start();
+    demand.frameQueued(false);
+    CHECK(demand.waitForViewer()); // new run can bootstrap without a Viewer
+    demand.stop();
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -2823,6 +2886,7 @@ int main(int argc, char **argv)
     testPerViewerPendingDamageRemainsBounded();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
+    testStaticViewerCaptureDemandFeedback();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();

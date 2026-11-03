@@ -61,6 +61,9 @@ struct RfbSecurityConfig
     RfbCursorProvider cursorProvider;
     // Empty means "pixels exactly as captured". Non-empty installs the #589 server-side watermark.
     RfbFrameDecorator frameDecorator;
+    // Private #789 feedback: whether the pixels actually served to an authenticated/normal
+    // viewer changed since the previous observed frame, after watermark compositing.
+    std::function<void(bool changed)> frameChangeObserver;
 };
 
 // Creates the product's bounded, dependency-light RFB correctness transport. The concrete type is
