@@ -3153,9 +3153,222 @@ void testStaticViewerCaptureDemandFeedback()
     demand.stop();
 }
 
+
+// #567: exact 1080p full-screen profiling is opt-in only. Keep this out of the
+// default CI suite: it measures a synthetic loopback peer, not RealVNC or RK3588.
+hyremote::RemoteFrame makeTexturedPageFrame(std::uint32_t width,
+                                            std::uint32_t height,
+                                            std::uint32_t seed)
+{
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(width * 4U, height);
+    if (!storage || !storage->mutablePlane(0))
+        return {};
+    auto *pixels = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+    for (std::uint32_t y = 0; y < height; ++y) {
+        for (std::uint32_t x = 0; x < width; ++x) {
+            const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4U;
+            pixels[offset] = static_cast<std::uint8_t>((17U * x + 31U * y + 53U * seed) & 0xffU);
+            pixels[offset + 1] = static_cast<std::uint8_t>((7U * x + 97U * y + 29U * seed) & 0xffU);
+            pixels[offset + 2] = static_cast<std::uint8_t>((151U * x + 23U * y + 11U * seed) & 0xffU);
+            pixels[offset + 3] = 0xffU;
+        }
+    }
+    hyremote::RemoteFrame frame;
+    frame.geometry.size = {width, height};
+    frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+    frame.geometry.alphaMode = hyremote::AlphaMode::Opaque;
+    frame.geometry.planeCount = 1;
+    frame.storage = std::move(storage);
+    frame.timing.pts = hyremote::Clock::now();
+    frame.timing.ptsSource = hyremote::PtsSource::Completion;
+    frame.damage = hyremote::Damage::fullFrame();
+    return frame;
+}
+
+void testFullPageTransitionSingleWireRectangle()
+{
+    constexpr std::uint16_t width = 512;
+    constexpr std::uint16_t height = 256;
+    constexpr std::uint32_t newPageColor = 0xa040f0U;
+    for (const bool trle : {false, true}) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (!port)
+            return;
+        Recorder recorder;
+        auto transport = startTransport(port, recorder, makeFrame(width, height, 0x203040U));
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+        QTcpSocket viewer;
+        std::uint16_t actualWidth = 0, actualHeight = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &actualWidth, &actualHeight);
+        CHECK(joined && actualWidth == width && actualHeight == height);
+        if (!joined) {
+            transport->stop();
+            continue;
+        }
+        CHECK(sendSetEncodings(viewer, trle ? std::vector<std::int32_t>{15, 0}
+                                           : std::vector<std::int32_t>{0}));
+        CHECK(sendUpdateRequest(viewer, false, 0, 0, width, height));
+        TestFramebuffer received;
+        received.resize(width, height);
+        std::vector<UpdateRect> rects;
+        CHECK(readFramebufferUpdate(viewer, received, rects));
+        CHECK(received.get(0, 0) == 0x203040U);
+
+        // A complete changed page should reach the wire as ONE coherent RFB
+        // FramebufferUpdate with ONE full-frame rectangle, not 64px row bands.
+        CHECK(sendUpdateRequest(viewer, true, 0, 0, width, height));
+        transport->enqueueFrame(makeFrame(width, height, newPageColor));
+        const bool gotPage = readFramebufferUpdate(viewer, received, rects);
+        CHECK(gotPage);
+        if (gotPage) {
+            CHECK(rects.size() == 1U);
+            if (rects.size() == 1U) {
+                CHECK(rects.front().x == 0 && rects.front().y == 0);
+                CHECK(rects.front().width == width && rects.front().height == height);
+                CHECK(rects.front().encoding == (trle ? 15 : 0));
+            }
+            CHECK(received.get(0, 0) == newPageColor);
+            CHECK(received.get(width / 2, height / 2) == newPageColor);
+            CHECK(received.get(width - 1, height - 1) == newPageColor);
+        }
+        viewer.disconnectFromHost();
+        waitForDisconnected(viewer);
+        transport->stop();
+    }
+}
+
+// A deliberately expensive, manually invoked test fixture for exact 1920x1080
+// wire delivery. Values include synthetic loopback decoding; NOT board capture,
+// network bitrate/RTT, RealVNC painting time, or a product performance SLA.
+void runLargePageTransitionProfile(const QString &outputPath)
+{
+    constexpr std::uint16_t width = 1920;
+    constexpr std::uint16_t height = 1080;
+    QJsonArray samples;
+    for (const bool trle : {false, true}) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (!port)
+            return;
+        Recorder recorder;
+        auto transport = startTransport(port, recorder, makeFrame(width, height, 0x203040U));
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+
+        QTcpSocket viewer;
+        std::uint16_t rw = 0, rh = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &rw, &rh);
+        if (!joined || rw != width || rh != height
+            || !sendSetEncodings(viewer, trle ? std::vector<std::int32_t>{15, 0}
+                                              : std::vector<std::int32_t>{0})
+            || !sendUpdateRequest(viewer, false, 0, 0, width, height)) {
+            CHECK(false);
+            viewer.abort();
+            transport->stop();
+            continue;
+        }
+        TestFramebuffer received;
+        received.resize(width, height);
+        std::vector<UpdateRect> rects;
+        if (!readFramebufferUpdate(viewer, received, rects)) {
+            CHECK(false);
+            viewer.abort();
+            transport->stop();
+            continue;
+        }
+        auto changed = makeTexturedPageFrame(width, height, 13U);
+        if (!changed.storage) {
+            CHECK(false);
+            viewer.abort();
+            transport->stop();
+            continue;
+        }
+        profileBytesRead = 0;
+        QElapsedTimer timer;
+        timer.start();
+        const bool sentRequest = sendUpdateRequest(viewer, true, 0, 0, width, height);
+        if (sentRequest)
+            transport->enqueueFrame(std::move(changed));
+        const bool gotPage = sentRequest && readFramebufferUpdate(viewer, received, rects);
+        const double completeMs = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
+        const qint64 wireBytesRead = profileBytesRead;
+
+        QJsonObject record;
+        record.insert(QStringLiteral("encoding"), trle ? QStringLiteral("trle") : QStringLiteral("raw"));
+        record.insert(QStringLiteral("received"), gotPage);
+        record.insert(QStringLiteral("wire_bytes_read"), static_cast<double>(wireBytesRead));
+        record.insert(QStringLiteral("request_to_full_decode_ms"), completeMs);
+        record.insert(QStringLiteral("fbu_count"), gotPage ? 1 : 0);
+        record.insert(QStringLiteral("rectangle_count"), static_cast<int>(rects.size()));
+        QJsonArray rectangleList;
+        if (gotPage) {
+            for (const UpdateRect &rect : rects) {
+                QJsonObject bounds;
+                bounds.insert(QStringLiteral("x"), static_cast<int>(rect.x));
+                bounds.insert(QStringLiteral("y"), static_cast<int>(rect.y));
+                bounds.insert(QStringLiteral("width"), static_cast<int>(rect.width));
+                bounds.insert(QStringLiteral("height"), static_cast<int>(rect.height));
+                bounds.insert(QStringLiteral("encoding"), rect.encoding);
+                rectangleList.append(bounds);
+            }
+            CHECK(rects.size() == 1U);
+            if (rects.size() == 1U) {
+                CHECK(rects.front().x == 0 && rects.front().y == 0
+                      && rects.front().width == width && rects.front().height == height
+                      && rects.front().encoding == (trle ? 15 : 0));
+            }
+            const auto expectedColor = [](std::uint32_t x, std::uint32_t y) {
+                constexpr std::uint32_t seed = 13U;
+                const std::uint32_t red = (17U * x + 31U * y + 53U * seed) & 0xffU;
+                const std::uint32_t green = (7U * x + 97U * y + 29U * seed) & 0xffU;
+                const std::uint32_t blue = (151U * x + 23U * y + 11U * seed) & 0xffU;
+                return (red << 16U) | (green << 8U) | blue;
+            };
+            CHECK(received.get(0, 0) == expectedColor(0, 0));
+            CHECK(received.get(width / 2, height / 2) == expectedColor(width / 2, height / 2));
+            CHECK(received.get(width - 1, height - 1) == expectedColor(width - 1, height - 1));
+        }
+        record.insert(QStringLiteral("rectangles"), rectangleList);
+        samples.append(record);
+        std::cerr << "LARGE_PAGE_PROFILE " << (trle ? "trle" : "raw")
+                  << " bytes=" << wireBytesRead << " complete_ms=" << completeMs
+                  << " rects=" << rects.size() << " received=" << gotPage << '\n';
+        viewer.disconnectFromHost();
+        waitForDisconnected(viewer);
+        transport->stop();
+    }
+    QJsonObject root;
+    root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-large-page-profile/1"));
+    root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    root.insert(QStringLiteral("width"), width);
+    root.insert(QStringLiteral("height"), height);
+    root.insert(QStringLiteral("measurement_scope"),
+                QStringLiteral("synthetic loopback full FBU decode incl client; not Host capture, link throughput, or RealVNC painting"));
+    root.insert(QStringLiteral("samples"), samples);
+    QFile file(outputPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        std::cerr << "LARGE_PAGE_PROFILE unable to open output " << outputPath.toStdString() << '\n';
+        ++failures;
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+
+    const QByteArray largeProfilePath = qgetenv("HYREMOTE_RFB_LARGE_PROFILE_FILE");
+    if (!largeProfilePath.isEmpty()) {
+        runLargePageTransitionProfile(QString::fromLocal8Bit(largeProfilePath));
+        return failures == 0 ? 0 : 1;
+    }
 
     const QByteArray profilePath = qgetenv("HYREMOTE_RFB_PROFILE_FILE");
     if (!profilePath.isEmpty()) {
@@ -3181,6 +3394,7 @@ int main(int argc, char **argv)
     testPerViewerPendingDamageRemainsBounded();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
+    testFullPageTransitionSingleWireRectangle();
     testStaticViewerCaptureDemandFeedback();
     testRfbFeedbackUsesActualServedPixels();
     testRequestPausedViewerDoesNotStallContinuousPeer();
