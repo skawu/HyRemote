@@ -222,7 +222,7 @@ def self_test() -> int:
              develop_extra=False, head_extra_file=False, break_notes=True,
              break_cmake=False, expect_error="pending bilingual notes unchanged")
 
-    # Positive and negative tests for the exact one-off #784 accepted-RC4 reopen. This
+    # Positive and negative tests for the exact one-off #793 accepted-RC4 reopen. This
     # independently checks SHA lock, unchanged reviewed-develop notes, and source equality.
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
@@ -238,7 +238,7 @@ def self_test() -> int:
         _run(root, "git", "switch", "-q", "-c", "release")
         _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
         _write(root, notes_name, REOPEN_ACCEPTED_MARKER + "\n# 中文\n# English\n")
-        _commit(root, "accepted RC3")
+        _commit(root, "accepted RC4")
         base_notes = _run(root, "git", "show", f"HEAD:{notes_name}").decode("utf-8")
         _run(root, "git", "switch", "-q", "-c", "reopen", DEVELOP_REF)
         _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
