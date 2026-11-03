@@ -63,7 +63,8 @@ public:
         }
 
         hyremote::RemoteFrame frame;
-        frame.geometry.size = {width, height};
+        frame.geometry.size = {static_cast<std::uint32_t>(width),
+                               static_cast<std::uint32_t>(height)};
         frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
