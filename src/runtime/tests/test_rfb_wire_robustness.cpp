@@ -18,6 +18,7 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -840,6 +841,101 @@ HyRemote::detail::RfbFrameDecorator markDecorator()
         decorated.storage = std::move(storage);
         return true;
     };
+}
+
+
+// #790: the listener remains Running after a viewer leaves. A separate decorated storage
+// must be freed by the *last socket* disconnect, while the latest raw bootstrap survives.
+void testLastViewerReleasesDecoratedWorkerCache()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    std::mutex guarded;
+    std::weak_ptr<const hyremote::FrameStorage> currentDecoration;
+    auto mark = markDecorator();
+    auto trackedMark = [&](const hyremote::RemoteFrame &source,
+                           hyremote::RemoteFrame &output, QString &error) {
+        if (!mark(source, output, error))
+            return false;
+        std::lock_guard<std::mutex> lock(guarded);
+        currentDecoration = output.storage;
+        return true;
+    };
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, trackedMark);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    const auto decoratedStorage = [&] {
+        std::lock_guard<std::mutex> lock(guarded);
+        return currentDecoration;
+    };
+    const auto waitForCacheRelease = [&] {
+        QElapsedTimer timer;
+        timer.start();
+        while (!decoratedStorage().expired() && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return decoratedStorage().expired();
+    };
+    const auto checkDecoratedWire = [&](QTcpSocket &socket) {
+        CHECK(sendSetEncodings(socket, {0}));
+        CHECK(sendUpdateRequest(socket, false, 0, 0, 128, 128));
+        TestFramebuffer framebuffer;
+        framebuffer.resize(128, 128);
+        std::vector<UpdateRect> rects;
+        const bool received = readFramebufferUpdate(socket, framebuffer, rects);
+        CHECK(received);
+        if (received) {
+            CHECK(framebuffer.get(0, 0) == 0x203040U);
+            CHECK(framebuffer.get(120, 120) == kMarkColor);
+        }
+    };
+    auto raw = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> bootstrapRaw = raw.storage;
+
+    QTcpSocket first;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(first, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    transport->enqueueFrame(std::move(raw));
+    checkDecoratedWire(first);
+    CHECK(!decoratedStorage().expired());
+
+    QTcpSocket second;
+    CHECK(connectRawRfb(second, port));
+    checkDecoratedWire(second);
+    first.disconnectFromHost();
+    CHECK(waitForDisconnected(first));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(!decoratedStorage().expired()); // 2 -> 1 still retains other viewer's composed frame
+    second.disconnectFromHost();
+    CHECK(waitForDisconnected(second));
+    CHECK(waitForCacheRelease()); // 1 -> 0 releases the worker-specific decorated storage
+    CHECK(!bootstrapRaw.expired()); // raw shared bootstrap still enables the next ServerInit
+
+    for (int i = 0; i < 20; ++i) {
+        QTcpSocket viewer;
+        const bool ready = connectRawRfbWithRetry(viewer, port);
+        CHECK(ready);
+        if (!ready)
+            break;
+        transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+        checkDecoratedWire(viewer);
+        CHECK(!decoratedStorage().expired());
+        viewer.disconnectFromHost();
+        CHECK(waitForDisconnected(viewer));
+        CHECK(waitForCacheRelease());
+    }
+    transport->stop();
+    CHECK(bootstrapRaw.expired()); // stopping releases the remaining transport raw frame
 }
 
 void testWatermarkReachesEveryEncoding()
@@ -2810,6 +2906,7 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testWatermarkReachesEveryEncoding();
+    testLastViewerReleasesDecoratedWorkerCache();
     testWatermarkSurvivesFramebufferResize();
     testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
