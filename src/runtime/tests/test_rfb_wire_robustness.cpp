@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -936,6 +937,75 @@ void testLastViewerReleasesDecoratedWorkerCache()
     }
     transport->stop();
     CHECK(bootstrapRaw.expired()); // stopping releases the remaining transport raw frame
+}
+
+
+void testReconnectCompositorFailureIsDeferredAndFailsClosed()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    std::atomic<bool> failOnReconnect{false};
+    auto mark = markDecorator();
+    auto deliberateFailure = [&](const hyremote::RemoteFrame &source,
+                                 hyremote::RemoteFrame &decorated, QString &error) {
+        if (failOnReconnect.load()) {
+            error = QStringLiteral("intentional reconnect decorator failure");
+            return false;
+        }
+        return mark(source, decorated, error);
+    };
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U),
+                                    {}, deliberateFailure);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket first;
+    const bool initiallyConnected = connectRawRfb(first, port, false);
+    CHECK(initiallyConnected);
+    if (!initiallyConnected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(first, {0}));
+    CHECK(sendUpdateRequest(first, false, 0, 0, 128, 128));
+    TestFramebuffer firstFrame;
+    firstFrame.resize(128, 128);
+    std::vector<UpdateRect> rects;
+    CHECK(readFramebufferUpdate(first, firstFrame, rects));
+    CHECK(firstFrame.get(120, 120) == kMarkColor);
+    first.disconnectFromHost();
+    CHECK(waitForDisconnected(first));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::ClientDisconnected;
+        });
+    }));
+
+    // No enqueueFrame after disconnect. The new viewer's pending first FBU asks
+    // for the retained raw bootstrap; deliberately fail *that* compositor call.
+    // The deferred worker event may destroy ClientState only after readClient()
+    // and processClient() have returned, otherwise this scenario is a UAF.
+    failOnReconnect.store(true);
+    QTcpSocket reconnect;
+    const bool reconnected = connectRawRfb(reconnect, port, false);
+    CHECK(reconnected);
+    if (reconnected) {
+        CHECK(sendSetEncodings(reconnect, {0}));
+        CHECK(sendUpdateRequest(reconnect, false, 0, 0, 128, 128));
+        CHECK(waitForDisconnected(reconnect));
+    }
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::FatalFailure
+                && event.message.find("decorator") != std::string::npos;
+        });
+    }));
+    transport->stop();
 }
 
 void testWatermarkReachesEveryEncoding()
@@ -2907,6 +2977,7 @@ int main(int argc, char **argv)
     testTrleRawAndIncrementalDelivery();
     testWatermarkReachesEveryEncoding();
     testLastViewerReleasesDecoratedWorkerCache();
+    testReconnectCompositorFailureIsDeferredAndFailsClosed();
     testWatermarkSurvivesFramebufferResize();
     testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
