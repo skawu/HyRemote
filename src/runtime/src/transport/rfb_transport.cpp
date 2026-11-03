@@ -523,14 +523,13 @@ public:
 
     void releaseIdleFrameCaches()
     {
+        // Caller MUST hold the product opt-in: standalone transports must retain
+        // their last observed/marked pixels for immediate first-FBU and exact
+        // incremental damage, even when no Viewer is connected.
         m_observedFrame.reset();
         m_servedFrame.reset();
-        if (m_security.releaseIdleFrameBuffers) {
-            // Producer-backed Runtime can reacquire pixels as soon as the next
-            // viewer completes ServerInit; standalone RFB keeps its raw bootstrap.
-            std::lock_guard<std::mutex> lock(m_frames->mutex);
-            m_frames->latest.reset();
-        }
+        std::lock_guard<std::mutex> lock(m_frames->mutex);
+        m_frames->latest.reset();
     }
 
     void frameAvailable()
@@ -580,10 +579,10 @@ public:
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
-        // #790: retain the shared raw bootstrap frame, but do not hold a second
-        // observed/decorated picture in a worker with zero connected sockets.
-        // Decorator failures above still fault rather than leaking an unmarked frame.
-        if (m_clients.empty()) {
+        // #790: ONLY the producer-backed Shared Runtime opts into dropping raw
+        // pixels at zero clients. Standalone RFB retains the exact old behavior,
+        // including its original observed frame baseline for tile-damage diff.
+        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
             releaseIdleFrameCaches();
             return;
         }
@@ -750,9 +749,9 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
-                if (m_clients.empty()) {
-                    // 2→1 must retain working buffers; 1→0 reclaims raw storage
-                    // only if the Shared Runtime can supply a new frame on reconnect.
+                if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
+                    // 2→1 always retains, 1→0 releases true raw bytes only for
+                    // a producer-backed Runtime which wakes on ClientConnected.
                     releaseIdleFrameCaches();
                 }
                 if (announced)
@@ -1320,18 +1319,7 @@ private:
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
 
-        if (m_security.frameDecorator && !m_servedFrame && !m_decorationFailed) {
-            // #790: a new viewer may request its first marked pixels from the raw
-            // bootstrap retained across disconnect. Do NOT invoke frameAvailable()
-            // here: sendServerInit() runs inside the client-message parser; if
-            // compositing fails synchronously, failDecoration() destroys its ClientState
-            // and the parser would dereference freed memory. A queued composition
-            // occurs after the parser unwinds, and services the pending FBU request.
-            QTimer::singleShot(0, this, [this] {
-                if (!m_stopping && !m_decorationFailed && !m_clients.empty() && !m_servedFrame)
-                    frameAvailable();
-            });
-        }
+
     }
 
     RfbCursorSnapshot fallbackCursor() const
