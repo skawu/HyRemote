@@ -14,6 +14,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -634,16 +635,27 @@ void checkRestoredPolicyFollowsDescriptorStatePath()
         }
     }
 
-    auto seed = [](const QString &configFile, const QString &text) {
+    auto storeFile = [](const QString &configFile) {
+        return QDir(QFileInfo(configFile).absolutePath())
+            .filePath(QStringLiteral("state/watermark.policy"));
+    };
+    auto seed = [&storeFile](const QString &configFile, const QString &text) {
+        // Use the exported AccessInstance to write the real policy at start(). Private store/path
+        // helpers have hidden visibility in the shared Runtime and cannot be linked from this test.
+        HyRemote::Runtime::AccessInstance writer;
         WatermarkPolicyRequest request;
         request.enabled = true;
         request.text = text;
-        const auto resolved = HyRemote::detail::resolveWatermarkPolicy(request);
-        const auto paths = HyRemote::detail::resolveHostPaths(configFile);
-        check(paths.stateDir.origin == HyRemote::detail::HostPathOrigin::ConfigRelative,
-              QStringLiteral("the state store is truly selected by the descriptor"));
-        check(resolved.ok() && HyRemote::detail::saveWatermarkPolicy(paths, resolved.policy),
-              QStringLiteral("the descriptor-relative watermark policy was persisted"));
+        check(writer.setSecurityConfigFile(configFile),
+              QStringLiteral("the Runtime accepts the descriptor selector"));
+        check(writer.setWatermarkPolicy(request),
+              QStringLiteral("the Runtime accepts the explicitly enabled seed watermark"));
+        check(!writer.start(), QStringLiteral("the target-less seed cannot establish a session"));
+        QFile file(storeFile(configFile));
+        const bool readable = file.open(QIODevice::ReadOnly);
+        check(readable, QStringLiteral("the descriptor-relative state contains a persisted policy"));
+        check(readable && QString::fromUtf8(file.readAll()).contains(text),
+              QStringLiteral("the persisted policy belongs to the selected descriptor directory"));
     };
     seed(firstConfig, QStringLiteral("FIRST-STORE"));
     seed(secondConfig, QStringLiteral("SECOND-STORE"));
@@ -707,11 +719,14 @@ void checkRestoredPolicyFollowsDescriptorStatePath()
         check(!access.start(), QStringLiteral("a target-less explicit test still cannot start"));
         check(access.watermarkPolicy().policy.text == operatorChoice.text,
               QStringLiteral("start cannot erase the explicit selection"));
-        QString readError;
-        const auto stored = HyRemote::detail::loadWatermarkRequest(
-            HyRemote::detail::resolveHostPaths(secondConfig), &readError);
-        check(readError.isEmpty() && stored && stored->text == operatorChoice.text,
-              QStringLiteral("the explicit operator mark is persisted only in the newly selected state store"));
+        QFile storedFile(storeFile(secondConfig));
+        const bool readable = storedFile.open(QIODevice::ReadOnly);
+        check(readable && QString::fromUtf8(storedFile.readAll()).contains(operatorChoice.text),
+              QStringLiteral("the explicit operator mark is persisted in the newly selected state store"));
+        QFile previousFile(storeFile(firstConfig));
+        const bool priorReadable = previousFile.open(QIODevice::ReadOnly);
+        check(priorReadable && QString::fromUtf8(previousFile.readAll()).contains(QStringLiteral("FIRST-STORE")),
+              QStringLiteral("the newly selected explicit policy does not alter the prior state store"));
     }
 
     if (hadState)
