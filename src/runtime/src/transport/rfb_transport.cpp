@@ -521,6 +521,18 @@ public:
         m_onEvent = {};
     }
 
+    void releaseIdleFrameCaches()
+    {
+        m_observedFrame.reset();
+        m_servedFrame.reset();
+        if (m_security.releaseIdleFrameBuffers) {
+            // Producer-backed Runtime can reacquire pixels as soon as the next
+            // viewer completes ServerInit; standalone RFB keeps its raw bootstrap.
+            std::lock_guard<std::mutex> lock(m_frames->mutex);
+            m_frames->latest.reset();
+        }
+    }
+
     void frameAvailable()
     {
         {
@@ -531,6 +543,15 @@ public:
         const auto frame = latestFrame();
         if (!frame)
             return;
+        // Last valid frame geometry survives even if its raw pixel storage does not.
+        if (frame->geometry.size.width > 0 && frame->geometry.size.height > 0
+            && frame->geometry.size.width <= std::numeric_limits<std::uint16_t>::max()
+            && frame->geometry.size.height <= std::numeric_limits<std::uint16_t>::max()) {
+            m_security.initialFramebufferWidth
+                = static_cast<std::uint16_t>(frame->geometry.size.width);
+            m_security.initialFramebufferHeight
+                = static_cast<std::uint16_t>(frame->geometry.size.height);
+        }
 
         // #589: compose once per captured frame, on the transport thread, and let every viewer share the same
         // decorated picture. Without a decorator this stays the capture frame itself, so the disabled path keeps
@@ -563,8 +584,7 @@ public:
         // observed/decorated picture in a worker with zero connected sockets.
         // Decorator failures above still fault rather than leaking an unmarked frame.
         if (m_clients.empty()) {
-            m_observedFrame.reset();
-            m_servedFrame.reset();
+            releaseIdleFrameCaches();
             return;
         }
         std::optional<RfbDamageRegion> damage;
@@ -731,11 +751,9 @@ private:
                 m_clients.erase(it);
                 socket->deleteLater();
                 if (m_clients.empty()) {
-                    // All clients gone: the previous diff and watermark compositor
-                    // frames are no longer needed. m_frames->latest stays alive to
-                    // provide the next RFB ServerInit/bootstrap without a deadlock.
-                    m_observedFrame.reset();
-                    m_servedFrame.reset();
+                    // 2→1 must retain working buffers; 1→0 reclaims raw storage
+                    // only if the Shared Runtime can supply a new frame on reconnect.
+                    releaseIdleFrameCaches();
                 }
                 if (announced)
                     publishEvent(hyremote::TransportEventCode::ClientDisconnected,
