@@ -566,6 +566,11 @@ public:
             damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
         }
 
+        // Exact served-pixel equality is already computed for damage; feed it back to the
+        // producer's bounded idle gate without introducing a second full-frame comparison.
+        if (hasNormalClient && m_security.frameChangeObserver)
+            m_security.frameChangeObserver(geometryChanged || !damage || !damage->empty());
+
         for (auto &entry : m_clients) {
             ClientState &client = *entry.second;
             if (client.phase == ClientPhase::AwaitInitialFrame)

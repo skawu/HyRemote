@@ -12,11 +12,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
+#include <functional>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -45,6 +47,7 @@
 #include "rfb_interaction_latency_stats.hpp"
 #include "transport/rfb_delivery_state.hpp"
 #include "transport/rfb_transport.hpp"
+#include "detail/viewer_capture_demand.hpp"
 
 namespace {
 
@@ -709,11 +712,13 @@ std::unique_ptr<hyremote::Transport> startTransport(
     Recorder &recorder,
     hyremote::RemoteFrame initial,
     HyRemote::detail::RfbCursorProvider cursorProvider = {},
-    HyRemote::detail::RfbFrameDecorator frameDecorator = {})
+    HyRemote::detail::RfbFrameDecorator frameDecorator = {},
+    std::function<void(bool)> frameChangeObserver = {})
 {
     HyRemote::detail::RfbSecurityConfig security;
     security.cursorProvider = std::move(cursorProvider);
     security.frameDecorator = std::move(frameDecorator);
+    security.frameChangeObserver = std::move(frameChangeObserver);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
                                                           std::move(security));
     if (!transport)
@@ -2798,6 +2803,127 @@ void testLargeDamageCoalescesForPaint()
 
 }  // namespace
 
+
+
+void testRfbFeedbackUsesActualServedPixels()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+    Recorder recorder;
+    std::atomic<int> unchanged{0}, changed{0};
+    auto transport = startTransport(
+        port, recorder, makeFrame(128, 128, 0x203040U), {}, {},
+        [&](bool differs) {
+            if (differs)
+                ++changed;
+            else
+                ++unchanged;
+        });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(socket, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(socket, {0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer actual;
+    actual.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, actual, rectangles));
+
+    const auto reached = [](const std::atomic<int> &counter, int expected) {
+        QElapsedTimer timer;
+        timer.start();
+        while (counter.load() < expected && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return counter.load() >= expected;
+    };
+    const int beforeUnchanged = unchanged.load();
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+    CHECK(reached(unchanged, beforeUnchanged + 1)); // fullFrame hint is NOT proof of changed pixels
+
+    const int beforeChanged = changed.load();
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U, {{{70, 10, 8, 8}, 0xe0a030U}}));
+    CHECK(reached(changed, beforeChanged + 1));
+    CHECK(readFramebufferUpdate(socket, actual, rectangles));
+    CHECK(actual.get(70, 10) == 0xe0a030U); // matching feedback is also what viewer received
+
+    socket.disconnectFromHost();
+    CHECK(waitForDisconnected(socket));
+    transport->stop();
+}
+
+void testStaticViewerCaptureDemandFeedback()
+{
+    HyRemote::detail::ViewerCaptureDemand demand;
+    demand.start();
+    demand.frameQueued(true);
+    std::atomic<bool> finished{false};
+    std::atomic<bool> permitted{false};
+    std::thread bootstrapWaiter([&] {
+        permitted.store(demand.waitForViewer());
+        finished.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    CHECK(!finished.load()); // no viewer -> no repeated full grabs
+    demand.setViewerCount(1);
+    bootstrapWaiter.join();
+    CHECK(finished.load() && permitted.load());
+
+    // Existing transport did the exact tile diff. Three genuinely identical served frames
+    // enter the bounded background probe; one changed frame or input resumes active captures.
+    for (int n = 0; n < 3; ++n)
+        demand.noteFrameChange(false);
+    const auto began = std::chrono::steady_clock::now();
+    CHECK(demand.waitForViewer()); // must wait for a bounded local-only update probe
+    const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - began);
+    CHECK(waited.count() >= 30);
+    CHECK(waited.count() < 1000);
+    demand.noteRemoteInput();
+    const auto fast = std::chrono::steady_clock::now();
+    CHECK(demand.waitForViewer());
+    CHECK(std::chrono::steady_clock::now() - fast < std::chrono::milliseconds(100));
+
+    for (int n = 0; n < 3; ++n)
+        demand.noteFrameChange(false);
+    std::atomic<bool> woke{false};
+    std::thread blocked([&] {
+        (void)demand.waitForViewer();
+        woke.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    demand.noteFrameChange(true);
+    blocked.join();
+    CHECK(woke.load()); // changed rendered pixels immediately cancel the idle gate
+
+    demand.setViewerCount(0);
+    std::atomic<bool> released{false};
+    std::thread zero([&] {
+        (void)demand.waitForViewer();
+        released.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    CHECK(!released.load());
+    demand.stop();
+    zero.join();
+    CHECK(released.load()); // stop does not wait for another Viewer
+    demand.start();
+    demand.frameQueued(false);
+    CHECK(demand.waitForViewer()); // new run can bootstrap without a Viewer
+    demand.stop();
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -2823,6 +2949,8 @@ int main(int argc, char **argv)
     testPerViewerPendingDamageRemainsBounded();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
+    testStaticViewerCaptureDemandFeedback();
+    testRfbFeedbackUsesActualServedPixels();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();
