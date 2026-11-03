@@ -79,17 +79,17 @@ def validate(*, git, version, notes_name, base_notes, head_notes, head_cmake, de
     return "candidate-correction"
 
 
-# #784: a previously accepted RC3 note must be explicitly reopened after newly verified release-blocking
+# #793: a previously accepted RC4 note must be explicitly reopened after newly verified release-blocking
 # P2 defects. This exception is SHA-locked to a single unpublished release branch and does NOT generalize
 # the right to overwrite accepted release history. Its next correction is a fresh reviewed candidate.
 REOPEN_VERSION = "0.3.5.0"
-REOPEN_BASE_SHA = "6a4b7b373ae1dce1f161771d5caab1cdb51a45d0"
+REOPEN_BASE_SHA = "3be49a756b18760b111c0700e7e0023973889a12"
 REOPEN_ACCEPTED_MARKER = "Status: **accepted for V0.3.5.0**"
 
 
 def validate_reopen(*, git, version, notes_name, base_notes, head_notes, head_cmake,
                     actual_base_sha, develop_ref=DEVELOP_REF):
-    """Fail closed for the single Owner-authorized post-acceptance #784 correction.
+    """Fail closed for the single Owner-authorized post-acceptance #793 correction.
 
     This gate is evaluated by a protected-release PR review, *never* by a direct branch update.
     The candidate tree must equal reviewed develop byte-for-byte other than its root VERSION;
@@ -98,7 +98,7 @@ def validate_reopen(*, git, version, notes_name, base_notes, head_notes, head_cm
     if version != REOPEN_VERSION or actual_base_sha != REOPEN_BASE_SHA:
         raise SystemExit("post-acceptance release reopen is not authorized for this exact version/base SHA")
     if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
-        raise SystemExit("post-acceptance release reopen requires the exact accepted RC3 notes")
+        raise SystemExit("post-acceptance release reopen requires the exact accepted RC4 notes")
     develop_notes = git("show", f"{develop_ref}:{notes_name}").decode("utf-8")
     if not develop_notes.startswith(CANDIDATE_MARKER) or head_notes != develop_notes:
         raise SystemExit("reopened release notes must equal the exact pending develop notes")
@@ -222,7 +222,7 @@ def self_test() -> int:
              develop_extra=False, head_extra_file=False, break_notes=True,
              break_cmake=False, expect_error="pending bilingual notes unchanged")
 
-    # Positive and negative tests for the exact one-off #784 accepted-RC3 reopen. This
+    # Positive and negative tests for the exact one-off #784 accepted-RC4 reopen. This
     # independently checks SHA lock, unchanged reviewed-develop notes, and source equality.
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
