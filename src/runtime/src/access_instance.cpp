@@ -42,6 +42,7 @@
 #include "detail/security_descriptor.hpp"
 #include "detail/watermark_frame_decorator.hpp"
 #include "detail/watermark_store.hpp"
+#include "detail/viewer_capture_demand.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -268,73 +269,8 @@ void decrementConnectedClients(const std::shared_ptr<std::atomic<std::size_t>> &
     }
 }
 
-// Runtime-private demand gate. It waits instead of polling or repeatedly asking
-// Qt to capture without a viewer after a valid ServerInit bootstrap frame. The source's stop() opens the gate before Core
-// joins its scheduler thread, so a clientless session can always stop cleanly.
-// This stays in the single Shared Runtime; generic Core Session clients are
-// not given new application-visible capture knobs or changed semantics.
-class ViewerCaptureDemand final
-{
-public:
-    void start()
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_stopped = false;
-        m_viewers = 0;
-        m_bootstrapFrameQueued = false;
-    }
-
-    void frameQueued(bool usableForServerInit)
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            // This tracks the *latest* framebuffer, not whether we once
-            // had usable geometry. An oversized resize after a valid frame
-            // must re-enable capture demand until ServerInit can succeed.
-            m_bootstrapFrameQueued = usableForServerInit;
-        }
-        m_changed.notify_all();
-    }
-
-    void setViewerCount(std::size_t viewers)
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_viewers = viewers;
-        }
-        m_changed.notify_all();
-    }
-
-    bool waitForViewer()
-    {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        // RFB ServerInit needs the first framebuffer geometry before a
-        // viewer can enter the Normal phase and emit ClientConnected.
-        // Permit bootstrap capture until a valid frame reached Transport.
-        // Only then suspend requests until a viewer is connected.
-        m_changed.wait(lock, [this] {
-            return m_stopped || !m_bootstrapFrameQueued || m_viewers != 0;
-        });
-        return !m_stopped;
-    }
-
-    void stop()
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_stopped = true;
-            m_viewers = 0;
-        }
-        m_changed.notify_all();
-    }
-
-private:
-    std::mutex m_mutex;
-    std::condition_variable m_changed;
-    std::size_t m_viewers = 0;
-    bool m_bootstrapFrameQueued = false;
-    bool m_stopped = true;
-};
+// One Shared Runtime demand gate for both no-viewer sleep and exact-RFB idle feedback.
+using ViewerCaptureDemand = HyRemote::detail::ViewerCaptureDemand;
 
 // Drains QObject::destroyed notifications independently of Core's callback
 // gate. The Core gate stops callbacks into Session; this gate also protects
@@ -437,7 +373,8 @@ public:
             // inside this call, so once it returns the Runtime can read the truth the Core produced
             // instead of asserting one first. That is what makes a repeated recoverable failure
             // observable again after it was acknowledged.
-            [runActive, observe, onInput = std::move(onInput)](const hyremote::InputEvent &event) {
+            [runActive, observe, demand, onInput = std::move(onInput)](const hyremote::InputEvent &event) {
+                demand->noteRemoteInput();
                 if (onInput)
                     onInput(event);
 
@@ -1452,6 +1389,12 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
 #endif
+    // #790: release raw idle pixels only for a known-size Qt target with an active
+    // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
+    // to send a fresh first frame; no SDK API or standalone RFB behavior changes.
+    effectiveSecurity.releaseIdleFrameBuffers
+        = effectiveSecurity.initialFramebufferWidth > 0
+          && effectiveSecurity.initialFramebufferHeight > 0;
 #if HYREMOTE_HAS_WATERMARK_RENDERING
     // #589: install the one shared compositor on the frame hook. If it cannot be installed, refuse the start
     // instead of serving an unwatermarked picture the operator explicitly asked to be marked.
@@ -1629,6 +1572,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
         return cached;
     };
 
+    // #789: reuse transport's exact changed-pixel calculation to avoid repeatedly grabbing a
+    // static Qt Quick scene at the active 60fps cap. Only a weak pointer crosses the worker seam.
+    auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
+    effectiveSecurity.frameChangeObserver = [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
+                                                bool changed) {
+        if (auto gate = weak.lock())
+            gate->noteFrameChange(changed);
+    };
     detail::TransportComponent transport = detail::createDefaultTransport(address, port, effectiveSecurity);
     if (!transport.transport) {
         const QString message = transport.error.isEmpty()
@@ -1641,7 +1592,6 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     // The run's activity token is created before the components are composed so both wrappers can hold it. It is
     // activated immediately before the Session starts and cleared by every teardown.
     runActive = std::make_shared<std::atomic<bool>>(false);
-    const auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
     const auto observeRuntime = [impl = this] { impl->publishSnapshotNoexcept(); };
 
     transport.transport = std::make_unique<ClientCountingTransport>(std::move(transport.transport),

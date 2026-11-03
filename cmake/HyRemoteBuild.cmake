@@ -1417,6 +1417,7 @@ if(HYB_INSTALL)
 endif()
 
 if(HYB_TESTS_RUN)
+    include("${CMAKE_CURRENT_LIST_DIR}/HyRemoteRuntimePathFilter.cmake")
     set(test_env ${HYB_ENV_ENTRIES})
     if(WIN32)
         # The runtime library is named after its target's OUTPUT_NAME, and its prefix and suffix belong to the
@@ -1427,10 +1428,9 @@ if(HYB_TESTS_RUN)
         # never reached PATH, so every test loading the runtime exited with 0xc0000135.
         file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE
             "${HYB_BUILD_DIR}/*HyRemoteRemoteAccess.dll")
-        # Release evidence deploys the product under <build>/evidence/<run>/ (checklist section 10). A deployed
-        # layout carries its own plugins beside its own library, so those directories must stay off PATH: with them
-        # present the tests resolved a foreign copy and the whole Widgets/Quick family failed with 0xc0000602.
-        list(FILTER runtime_candidates EXCLUDE REGEX "[/\\\\]evidence[/\\\\]")
+        # #800: discard installed/fixture Runtime copies before adding PATH dirs.
+        # They can carry Qt DLLs but lack offscreen, causing 0xC0000409.
+        hyb_filter_test_runtime_candidates(runtime_candidates "${HYB_BUILD_DIR}")
         set(test_path "$ENV{PATH}")
         if(NOT HYB_QT_PREFIX STREQUAL "")
             string(PREPEND test_path "${HYB_QT_PREFIX}/bin;")
@@ -1450,7 +1450,8 @@ if(HYB_TESTS_RUN)
         # tree produced, so the tests load the runtime under test rather than a deployed copy.
         file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE
             "${HYB_BUILD_DIR}/*HyRemoteRemoteAccess.so*")
-        list(FILTER runtime_candidates EXCLUDE REGEX "[/\\\\]evidence[/\\\\]")
+        # Apply the same staged-copy exclusion on LD_LIBRARY_PATH as on PATH.
+        hyb_filter_test_runtime_candidates(runtime_candidates "${HYB_BUILD_DIR}")
         set(test_ld "$ENV{LD_LIBRARY_PATH}")
         if(NOT HYB_QT_PREFIX STREQUAL "")
             string(PREPEND test_ld "${HYB_QT_PREFIX}/lib:")
