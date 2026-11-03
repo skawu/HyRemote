@@ -910,7 +910,7 @@ void testLastViewerReleasesDecoratedWorkerCache()
     CHECK(!decoratedStorage().expired());
 
     QTcpSocket second;
-    CHECK(connectRawRfb(second, port));
+    CHECK(connectRawRfb(second, port, false));
     checkDecoratedWire(second);
     first.disconnectFromHost();
     CHECK(waitForDisconnected(first));
