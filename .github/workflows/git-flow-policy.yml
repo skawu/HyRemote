@@ -346,15 +346,15 @@ jobs:
                       from release_correction import validate as validate_correction
                       from release_correction import validate_reopen
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
-                          # #793: exactly one Owner-authorized, SHA-locked reopening of the
-                          # accepted BUT UNPUBLISHED RC4 after new independent P2 findings.
+                          # #806: exactly one Owner-authorized, SHA-locked reopening of the
+                          # accepted BUT UNPUBLISHED RC6 after new independent P2 findings.
                           # A new candidate must equal reviewed develop except its root
                           # VERSION; notes must revert to develop's exact pending text.
                           # Protected PR review and all downstream gates still apply.
                           if git("rev-parse", base_tree).decode("ascii").strip() != (
-                              "3be49a756b18760b111c0700e7e0023973889a12"
+                              "377b0a61b5dd99e3c16ea88356463068b255c7a6"
                           ):
-                              raise SystemExit("RC4 accepted-notes reopen denied on unapproved base")
+                              raise SystemExit("RC6 accepted-notes reopen denied on unapproved base")
                           if subprocess.run(
                               ("git", "show-ref", "--verify", "--quiet", f"refs/tags/v{version}")
                           ).returncode == 0:
