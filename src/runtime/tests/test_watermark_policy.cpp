@@ -597,6 +597,133 @@ void checkPersistedPolicySurvivesRestart()
         qputenv("HYREMOTE_STATE_DIR", previousState);
 }
 
+
+void checkRestoredPolicyFollowsDescriptorStatePath()
+{
+    // #793: with no HYREMOTE_STATE_DIR override, the security descriptor anchors a different
+    // state directory. A pre-start getter must not permanently pin the platform-default policy.
+    QTemporaryDir fixture;
+    check(fixture.isValid(), QStringLiteral("the descriptor-cache fixture has an isolated root"));
+    if (!fixture.isValid())
+        return;
+
+    const bool hadState = qEnvironmentVariableIsSet("HYREMOTE_STATE_DIR");
+    const QByteArray oldState = qgetenv("HYREMOTE_STATE_DIR");
+    const bool hadConfig = qEnvironmentVariableIsSet("HYREMOTE_CONFIG_FILE");
+    const QByteArray oldConfig = qgetenv("HYREMOTE_CONFIG_FILE");
+    qunsetenv("HYREMOTE_STATE_DIR");
+    qunsetenv("HYREMOTE_CONFIG_FILE");
+
+    const QDir root(fixture.path());
+    const QString firstDir = root.filePath(QStringLiteral("first"));
+    const QString secondDir = root.filePath(QStringLiteral("second"));
+    const QString emptyDir = root.filePath(QStringLiteral("no-policy"));
+    const QString firstConfig = QDir(firstDir).filePath(QStringLiteral("security.conf"));
+    const QString secondConfig = QDir(secondDir).filePath(QStringLiteral("security.conf"));
+    const QString emptyConfig = QDir(emptyDir).filePath(QStringLiteral("security.conf"));
+
+    for (const QString &directory : {firstDir, secondDir, emptyDir}) {
+        check(QDir().mkpath(QDir(directory).filePath(QStringLiteral("state"))),
+              QStringLiteral("a descriptor-relative state directory exists"));
+        QFile file(QDir(directory).filePath(QStringLiteral("security.conf")));
+        const bool writable = file.open(QIODevice::WriteOnly);
+        check(writable, QStringLiteral("a readable security descriptor fixture exists"));
+        if (writable) {
+            file.write("# isolated path-selection fixture\n");
+            file.close();
+        }
+    }
+
+    auto seed = [](const QString &configFile, const QString &text) {
+        WatermarkPolicyRequest request;
+        request.enabled = true;
+        request.text = text;
+        const auto resolved = HyRemote::detail::resolveWatermarkPolicy(request);
+        const auto paths = HyRemote::detail::resolveHostPaths(configFile);
+        check(paths.stateDir.origin == HyRemote::detail::HostPathOrigin::ConfigRelative,
+              QStringLiteral("the state store is truly selected by the descriptor"));
+        check(resolved.ok() && HyRemote::detail::saveWatermarkPolicy(paths, resolved.policy),
+              QStringLiteral("the descriptor-relative watermark policy was persisted"));
+    };
+    seed(firstConfig, QStringLiteral("FIRST-STORE"));
+    seed(secondConfig, QStringLiteral("SECOND-STORE"));
+
+    {
+        HyRemote::Runtime::AccessInstance access;
+        (void)access.watermarkPolicy(); // default-store peek used to poison the one-shot restored flag
+        check(access.setSecurityConfigFile(firstConfig),
+              QStringLiteral("first descriptor can be selected after a getter"));
+        check(access.watermarkPolicy().policy.text == QStringLiteral("FIRST-STORE"),
+              QStringLiteral("the getter reloads the first descriptor-relative store"));
+        check(access.setSecurityConfigFile(secondConfig),
+              QStringLiteral("second descriptor can replace the first while stopped"));
+        check(access.watermarkPolicy().policy.text == QStringLiteral("SECOND-STORE"),
+              QStringLiteral("the getter no longer reports a stale first-store mark"));
+        check(!access.start(), QStringLiteral("a target-less test Runtime still cannot start"));
+        check(access.watermarkPolicy().policy.text == QStringLiteral("SECOND-STORE"),
+              QStringLiteral("start retains the correctly selected second-store mark"));
+        access.stop();
+
+        check(access.setSecurityConfigFile(firstConfig),
+              QStringLiteral("a stopped Runtime can select the first descriptor again"));
+        check(access.watermarkPolicy().policy.text == QStringLiteral("FIRST-STORE"),
+              QStringLiteral("a stopped Runtime reloads the first store, not the previous run"));
+        check(access.setSecurityConfigFile(emptyConfig),
+              QStringLiteral("a stopped Runtime can select a descriptor without a saved mark"));
+        check(!access.watermarkPolicy().policy.enabled,
+              QStringLiteral("a missing policy resets the previous store's mark to disabled"));
+    }
+
+    {
+        HyRemote::Runtime::AccessInstance access;
+        check(access.setSecurityConfigFile(firstConfig),
+              QStringLiteral("start-only test chooses the first descriptor"));
+        check(!access.start(), QStringLiteral("target-less initial start returns false"));
+        check(access.watermarkPolicy().policy.text == QStringLiteral("FIRST-STORE"),
+              QStringLiteral("start-only path restores first-store policy"));
+        access.stop();
+        check(access.setSecurityConfigFile(secondConfig),
+              QStringLiteral("the next run can choose the other descriptor"));
+        check(!access.start(), QStringLiteral("target-less second start returns false"));
+        check(access.watermarkPolicy().policy.text == QStringLiteral("SECOND-STORE"),
+              QStringLiteral("a restart without an intervening getter restores the new state store"));
+        access.stop();
+    }
+
+    {
+        HyRemote::Runtime::AccessInstance access;
+        check(access.setSecurityConfigFile(firstConfig),
+              QStringLiteral("explicit override test chooses the first descriptor"));
+        (void)access.watermarkPolicy();
+        WatermarkPolicyRequest operatorChoice;
+        operatorChoice.enabled = true;
+        operatorChoice.text = QStringLiteral("EXPLICIT-OPERATOR");
+        check(access.setWatermarkPolicy(operatorChoice),
+              QStringLiteral("the operator can explicitly select a different policy"));
+        check(access.setSecurityConfigFile(secondConfig),
+              QStringLiteral("the descriptor is still changeable after an explicit choice"));
+        check(access.watermarkPolicy().policy.text == operatorChoice.text,
+              QStringLiteral("an explicit selection outranks any other descriptor's stored mark"));
+        check(!access.start(), QStringLiteral("a target-less explicit test still cannot start"));
+        check(access.watermarkPolicy().policy.text == operatorChoice.text,
+              QStringLiteral("start cannot erase the explicit selection"));
+        QString readError;
+        const auto stored = HyRemote::detail::loadWatermarkRequest(
+            HyRemote::detail::resolveHostPaths(secondConfig), &readError);
+        check(readError.isEmpty() && stored && stored->text == operatorChoice.text,
+              QStringLiteral("the explicit operator mark is persisted only in the newly selected state store"));
+    }
+
+    if (hadState)
+        qputenv("HYREMOTE_STATE_DIR", oldState);
+    else
+        qunsetenv("HYREMOTE_STATE_DIR");
+    if (hadConfig)
+        qputenv("HYREMOTE_CONFIG_FILE", oldConfig);
+    else
+        qunsetenv("HYREMOTE_CONFIG_FILE");
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
@@ -614,6 +741,7 @@ int main(int argc, char **argv)
     checkFontFallback();
     checkDiagnosticsAndStartGate(application);
     checkPersistedPolicySurvivesRestart();
+    checkRestoredPolicyFollowsDescriptorStatePath();
 
     QTextStream out(stdout);
     out << (failures == 0 ? "watermark policy checks passed\n" : "watermark policy checks failed\n");
