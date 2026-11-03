@@ -1,0 +1,44 @@
+{
+    "height": 1080,
+    "measurement_scope": "synthetic loopback full FBU decode incl client; not Host capture, link throughput, or RealVNC painting",
+    "platform": "Windows 11 Version 25H2",
+    "qt": "6.8.3",
+    "samples": [
+        {
+            "encoding": "raw",
+            "fbu_count": 1,
+            "received": true,
+            "rectangle_count": 1,
+            "rectangles": [
+                {
+                    "encoding": 0,
+                    "height": 1080,
+                    "width": 1920,
+                    "x": 0,
+                    "y": 0
+                }
+            ],
+            "request_to_full_decode_ms": 124.6965,
+            "wire_bytes_read": 8294416
+        },
+        {
+            "encoding": "trle",
+            "fbu_count": 1,
+            "received": true,
+            "rectangle_count": 1,
+            "rectangles": [
+                {
+                    "encoding": 15,
+                    "height": 1080,
+                    "width": 1920,
+                    "x": 0,
+                    "y": 0
+                }
+            ],
+            "request_to_full_decode_ms": 223.8499,
+            "wire_bytes_read": 6228976
+        }
+    ],
+    "schema": "hyremote-rfb-large-page-profile/1",
+    "width": 1920
+}

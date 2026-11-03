@@ -1,0 +1,43 @@
+RC5 dfbc6cda local G6 — first crash evidence and root cause
+===========================================================
+
+Failing set in the full unfiltered runs (identical in two runs): 19 tests, every one of them registered with
+ENVIRONMENT "QT_QPA_PLATFORM=offscreen". First failing test is #46 hyremote-widgets-capture-test, which waits
+53 s and then exits with 0xC0000409 without writing any stdout/stderr.
+
+Deterministic reproduction of the same failure signature on the installed prefix
+(F:\workspace\hyremote\HyRemote\build\install\bin on PATH, QT_QPA_PLATFORM=offscreen):
+
+  EXIT=C0000409
+  qt.qpa.plugin: Could not find the Qt platform plugin "offscreen" in ""
+  This application failed to start because no Qt platform plugin could be initialized. Reinstalling the
+  application may fix this problem.
+
+  Available platform plugins are: hyremote, windows.
+
+Why the installed prefix is on the test PATH at all:
+  cmake/HyRemoteBuild.cmake, test phase (~line 1432) globs every *HyRemoteRemoteAccess.dll in the build tree
+  and prepends each directory to PATH so the tests load the runtime under test. It excludes only
+  [/\\]evidence[/\\]; build/install/bin and the qpa deploy-helper payload directories are not excluded.
+
+  build/install/bin also carries the deployed Qt DLLs (Qt6Core.dll, Qt6Gui.dll, ...), so Qt resolves its
+  platform plugins relative to that directory: build/install/plugins/platforms contains only
+  qhyremote.dll and qwindows.dll (see install-prefix-platform-plugins.txt) and has no qoffscreen.dll.
+  Therefore every offscreen test dies at QGuiApplication construction.
+
+This is not a login-session or desktop-state problem: the same binary starts correctly as soon as Qt resolves
+from the kit instead of the installed prefix. Runs observed on this host:
+
+  run 1 (canonical, build/install present) : 60/79 passed, 19 failed, CTest 466.44 s
+  run 2 (canonical, build/install present) : 60/79 passed, 19 failed, CTest 466.44 s (identical set)
+  run 3 (canonical + --env=QT_PLUGIN_PATH=C:\Qt\6.8.3\msvc2022_64\plugins)
+                                            : 78/79 passed, only hyremote-generic-plugin-smoke failed (0xC0000409)
+  run 4 (canonical, build/install temporarily moved out of the build tree, command unchanged)
+                                            : 79/79 passed, 0 failed, EXECUTED_TEST_COUNT=79, CTest 479.27 s
+
+The RC4 run that passed 79/79 earlier the same day did so before build.cmd install had ever created
+build/install in that build tree, which is consistent with this mechanism.
+
+Recommended fix direction (not applied here): keep the install root and deploy-helper payload directories off
+the test PATH exactly as the evidence directory already is, or set QT_PLUGIN_PATH/QT_QPA_PLATFORM_PLUGIN_PATH
+for the test phase so the kit plugin wins over a deployed sibling directory.

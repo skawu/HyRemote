@@ -1,0 +1,2 @@
+﻿qhyremote.dll
+qwindows.dll

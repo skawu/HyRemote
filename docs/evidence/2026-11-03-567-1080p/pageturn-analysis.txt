@@ -1,0 +1,29 @@
+#567 1080p page-turn observation on Windows (develop 36265f9)
+============================================================
+
+Host: Windows 11 25H2 x64, Qt 6.8.3 msvc2022_64 Release, 1920x1080 primary screen
+Viewer: RealVNC Viewer 7.15.1 (r18), same host, unencrypted loopback
+Host app: 1920x1080 Qt Quick page pair (installed HyRemote QML module, port 5921). Page A = light background
+with a 24x14 coloured tile grid, Page B = dark background with the mirrored tile grid; the turn replaces every
+pixel and happens 20 s after start.
+
+Capture: PrintWindow of the RealVNC window, repeated as fast as the API allows.
+
+Trial 1: 26 frames, consecutive captures ~213 ms apart, capture window t0+18 s .. t0+23.5 s
+  frames 00-13 : identical to page A (0.9383 of pixels differ from the final page)
+  frames 14-25 : identical to page B (0.0000 differ from the final page)
+  intermediate frames (neither page A nor page B): 0
+  -> the whole screen arrived between two consecutive captures 213 ms apart
+
+Trial 2: 30 frames, consecutive captures ~113 ms apart, capture window t0+17 s .. t0+20.4 s
+  frames 00-28 : page A, frame 29 : page B
+  intermediate frames: 0
+  -> the whole screen arrived between two consecutive captures 113 ms apart
+
+No top-down band sequence, no partially painted frame was observed at either sampling rate. This is a Windows
+loopback observation only; it does not test RK3588/EGLFS, does not exclude a progressive repaint faster than
+113 ms, and makes no claim about the reporter's hardware.
+
+Wire profile of the same source (test-only opt-in fixture, loopback):
+  raw  : 1 FramebufferUpdate, 1 rectangle 1920x1080, 8,294,416 wire bytes, 124.70 ms request->full decode
+  trle : 1 FramebufferUpdate, 1 rectangle 1920x1080, 6,228,976 wire bytes, 223.85 ms request->full decode
