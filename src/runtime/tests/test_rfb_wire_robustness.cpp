@@ -914,7 +914,7 @@ void testProducerBackedIdleRawFrameRelease()
     transport->stop();
 }
 
-void testLastViewerReleasesDecoratedWorkerCache()
+void testStandaloneMarkedBootstrapSurvivesReconnects()
 {
     const quint16 port = freePort();
     CHECK(port != 0);
@@ -943,13 +943,6 @@ void testLastViewerReleasesDecoratedWorkerCache()
     const auto decoratedStorage = [&] {
         std::lock_guard<std::mutex> lock(guarded);
         return currentDecoration;
-    };
-    const auto waitForCacheRelease = [&] {
-        QElapsedTimer timer;
-        timer.start();
-        while (!decoratedStorage().expired() && timer.elapsed() < 2000)
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        return decoratedStorage().expired();
     };
     const auto checkDecoratedWire = [&](QTcpSocket &socket) {
         CHECK(sendSetEncodings(socket, {0}));
@@ -985,7 +978,7 @@ void testLastViewerReleasesDecoratedWorkerCache()
     CHECK(!decoratedStorage().expired()); // 2 -> 1 still retains other viewer's composed frame
     second.disconnectFromHost();
     CHECK(waitForDisconnected(second));
-    CHECK(waitForCacheRelease()); // 1 -> 0 releases the worker-specific decorated storage
+    CHECK(!decoratedStorage().expired()); // standalone retains bootstrap for an immediate reconnect
     CHECK(!bootstrapRaw.expired()); // raw shared bootstrap still enables the next ServerInit
 
     for (int i = 0; i < 20; ++i) {
@@ -1000,14 +993,17 @@ void testLastViewerReleasesDecoratedWorkerCache()
         CHECK(!decoratedStorage().expired());
         viewer.disconnectFromHost();
         CHECK(waitForDisconnected(viewer));
-        CHECK(waitForCacheRelease());
+        CHECK(!decoratedStorage().expired()); // unchanged standalone transport contract
     }
     transport->stop();
-    CHECK(bootstrapRaw.expired()); // stopping releases the remaining transport raw frame
+    CHECK(decoratedStorage().expired());
+    CHECK(bootstrapRaw.expired()); // transport stop releases its pixel storage
 }
 
 
-void testReconnectCompositorFailureIsDeferredAndFailsClosed()
+// #790: producer-backed reconnect must obtain a fresh capture before pixels are
+// served; failure of its watermark decoration must close the socket fail-closed.
+void testProducerBackedReconnectWatermarkFailsClosed()
 {
     const quint16 port = freePort();
     CHECK(port != 0);
@@ -1015,21 +1011,27 @@ void testReconnectCompositorFailureIsDeferredAndFailsClosed()
         return;
 
     Recorder recorder;
-    std::atomic<bool> failOnReconnect{false};
+    std::atomic<bool> failOnNewFrame{false};
     auto mark = markDecorator();
-    auto deliberateFailure = [&](const hyremote::RemoteFrame &source,
-                                 hyremote::RemoteFrame &decorated, QString &error) {
-        if (failOnReconnect.load()) {
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    security.frameDecorator = [&](const hyremote::RemoteFrame &source,
+                                  hyremote::RemoteFrame &decorated, QString &error) {
+        if (failOnNewFrame.load()) {
             error = QStringLiteral("intentional reconnect decorator failure");
             return false;
         }
         return mark(source, decorated, error);
     };
-    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U),
-                                    {}, deliberateFailure);
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
     CHECK(transport != nullptr);
     if (!transport)
         return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
 
     QTcpSocket first;
     const bool initiallyConnected = connectRawRfb(first, port, false);
@@ -1040,6 +1042,7 @@ void testReconnectCompositorFailureIsDeferredAndFailsClosed()
     }
     CHECK(sendSetEncodings(first, {0}));
     CHECK(sendUpdateRequest(first, false, 0, 0, 128, 128));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
     TestFramebuffer firstFrame;
     firstFrame.resize(128, 128);
     std::vector<UpdateRect> rects;
@@ -1053,31 +1056,15 @@ void testReconnectCompositorFailureIsDeferredAndFailsClosed()
         });
     }));
 
-    // No enqueueFrame after disconnect. The new viewer's pending first FBU asks
-    // for the retained raw bootstrap; deliberately fail *that* compositor call.
-    // The deferred worker event may destroy ClientState only after readClient()
-    // and processClient() have returned, otherwise this scenario is a UAF.
-    failOnReconnect.store(true);
     QTcpSocket reconnect;
-    const bool negotiated = negotiateThroughSecurity(reconnect, port, false);
-    CHECK(negotiated);
-    if (negotiated) {
-        // Send ClientInit + SetEncodings + first FBU in ONE write before the
-        // worker has a chance to run the queued fatal decorator callback.
-        // Checking writes after connectRawRfb() would race the expected abort.
-        QByteArray pipelined;
-        pipelined.append(char(1)); // shared ClientInit
-        pipelined.append(char(2)); // SetEncodings
-        pipelined.append(char(0));
-        appendU16(pipelined, 1);
-        appendS32(pipelined, 0); // Raw only
-        pipelined.append(char(3)); // FramebufferUpdateRequest
-        pipelined.append(char(0)); // full refresh
-        appendU16(pipelined, 0);
-        appendU16(pipelined, 0);
-        appendU16(pipelined, 128);
-        appendU16(pipelined, 128);
-        CHECK(writeAll(reconnect, pipelined));
+    const bool joined = connectRawRfb(reconnect, port, false);
+    CHECK(joined);
+    if (joined) {
+        CHECK(sendSetEncodings(reconnect, {0}));
+        CHECK(sendUpdateRequest(reconnect, false, 0, 0, 128, 128));
+        CHECK(noFramebufferData(reconnect, 75)); // no stale unmarked pixels
+        failOnNewFrame.store(true);
+        transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
         CHECK(waitForDisconnected(reconnect));
     }
     CHECK(recorder.waitFor([](const auto &, const auto &events) {
@@ -3178,9 +3165,9 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testWatermarkReachesEveryEncoding();
-    testLastViewerReleasesDecoratedWorkerCache();
+    testStandaloneMarkedBootstrapSurvivesReconnects();
     testProducerBackedIdleRawFrameRelease();
-    testReconnectCompositorFailureIsDeferredAndFailsClosed();
+    testProducerBackedReconnectWatermarkFailsClosed();
     testWatermarkSurvivesFramebufferResize();
     testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
