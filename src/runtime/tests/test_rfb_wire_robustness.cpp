@@ -850,6 +850,70 @@ HyRemote::detail::RfbFrameDecorator markDecorator()
 
 // #790: the listener remains Running after a viewer leaves. A separate decorated storage
 // must be freed by the *last socket* disconnect, while the latest raw bootstrap survives.
+
+// #790: the actual user's configuration has NO watermark. Releasing only
+// m_observedFrame/m_servedFrame would keep the raw 8.3MB SharedFrameState::latest
+// alive, so exercise the Runtime-opt-in path with a raw storage weak reference.
+void testProducerBackedIdleRawFrameRelease()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    const auto released = [](const std::weak_ptr<const hyremote::FrameStorage> &storage) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!storage.expired() && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return storage.expired();
+    };
+
+    auto bootstrap = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> firstStorage = bootstrap.storage;
+    transport->enqueueFrame(std::move(bootstrap));
+    CHECK(released(firstStorage)); // idle before a first Viewer needs no cached RGBA pixels
+
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        QTcpSocket viewer;
+        std::uint16_t width = 0, height = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &width, &height);
+        CHECK(joined && width == 128 && height == 128);
+        if (!joined)
+            break;
+        CHECK(sendSetEncodings(viewer, {0}));
+        CHECK(sendUpdateRequest(viewer, false, 0, 0, width, height));
+        CHECK(noFramebufferData(viewer, 75)); // no old raw pixels/invalid fallback
+        auto fresh = makeFrame(128, 128, 0x203040U);
+        const std::weak_ptr<const hyremote::FrameStorage> currentStorage = fresh.storage;
+        transport->enqueueFrame(std::move(fresh)); // simulate Runtime's ClientConnected-triggered new grab
+        TestFramebuffer frame;
+        frame.resize(width, height);
+        std::vector<UpdateRect> rects;
+        const bool gotPixels = readFramebufferUpdate(viewer, frame, rects);
+        CHECK(gotPixels);
+        if (gotPixels)
+            CHECK(frame.get(0, 0) == 0x203040U);
+        CHECK(!currentStorage.expired());
+        viewer.disconnectFromHost();
+        CHECK(waitForDisconnected(viewer));
+        CHECK(released(currentStorage)); // no retained unmarked raw frame at zero viewers
+    }
+
+    transport->stop();
+}
+
 void testLastViewerReleasesDecoratedWorkerCache()
 {
     const quint16 port = freePort();
@@ -3101,6 +3165,7 @@ int main(int argc, char **argv)
     testTrleRawAndIncrementalDelivery();
     testWatermarkReachesEveryEncoding();
     testLastViewerReleasesDecoratedWorkerCache();
+    testProducerBackedIdleRawFrameRelease();
     testReconnectCompositorFailureIsDeferredAndFailsClosed();
     testWatermarkSurvivesFramebufferResize();
     testWatermarkFollowsDevicePixelRatio();
