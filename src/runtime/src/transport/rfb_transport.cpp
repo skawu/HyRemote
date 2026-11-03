@@ -559,6 +559,14 @@ public:
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
+        // #790: retain the shared raw bootstrap frame, but do not hold a second
+        // observed/decorated picture in a worker with zero connected sockets.
+        // Decorator failures above still fault rather than leaking an unmarked frame.
+        if (m_clients.empty()) {
+            m_observedFrame.reset();
+            m_servedFrame.reset();
+            return;
+        }
         std::optional<RfbDamageRegion> damage;
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
@@ -717,6 +725,13 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                if (m_clients.empty()) {
+                    // All clients gone: the previous diff and watermark compositor
+                    // frames are no longer needed. m_frames->latest stays alive to
+                    // provide the next RFB ServerInit/bootstrap without a deadlock.
+                    m_observedFrame.reset();
+                    m_servedFrame.reset();
+                }
                 if (announced)
                     publishEvent(hyremote::TransportEventCode::ClientDisconnected,
                                  "RFB client disconnected");
