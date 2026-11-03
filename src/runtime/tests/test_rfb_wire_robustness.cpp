@@ -865,7 +865,9 @@ void testLastViewerReleasesDecoratedWorkerCache()
         currentDecoration = output.storage;
         return true;
     };
-    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, trackedMark);
+    auto raw = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> bootstrapRaw = raw.storage;
+    auto transport = startTransport(port, recorder, std::move(raw), {}, trackedMark);
     CHECK(transport != nullptr);
     if (!transport)
         return;
@@ -894,9 +896,6 @@ void testLastViewerReleasesDecoratedWorkerCache()
             CHECK(framebuffer.get(120, 120) == kMarkColor);
         }
     };
-    auto raw = makeFrame(128, 128, 0x203040U);
-    const std::weak_ptr<const hyremote::FrameStorage> bootstrapRaw = raw.storage;
-
     QTcpSocket first;
     std::uint16_t width = 0, height = 0;
     const bool connected = connectRawRfb(first, port, false, &width, &height);
@@ -905,7 +904,7 @@ void testLastViewerReleasesDecoratedWorkerCache()
         transport->stop();
         return;
     }
-    transport->enqueueFrame(std::move(raw));
+    // Must deliver already queued/marked bootstrap with no second capture after join.
     checkDecoratedWire(first);
     CHECK(!decoratedStorage().expired());
 
@@ -927,7 +926,8 @@ void testLastViewerReleasesDecoratedWorkerCache()
         CHECK(ready);
         if (!ready)
             break;
-        transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+        // No new enqueueFrame() between disconnect/reconnect: this is the exact
+        // bootstrap-decorator contract caught by independent #790 review.
         checkDecoratedWire(viewer);
         CHECK(!decoratedStorage().expired());
         viewer.disconnectFromHost();
