@@ -79,11 +79,11 @@ def validate(*, git, version, notes_name, base_notes, head_notes, head_cmake, de
     return "candidate-correction"
 
 
-# #793: a previously accepted RC4 note must be explicitly reopened after newly verified release-blocking
+# #806: a previously accepted RC6 note must be explicitly reopened after newly verified release-blocking
 # P2 defects. This exception is SHA-locked to a single unpublished release branch and does NOT generalize
 # the right to overwrite accepted release history. Its next correction is a fresh reviewed candidate.
 REOPEN_VERSION = "0.3.5.0"
-REOPEN_BASE_SHA = "3be49a756b18760b111c0700e7e0023973889a12"
+REOPEN_BASE_SHA = "377b0a61b5dd99e3c16ea88356463068b255c7a6"
 REOPEN_ACCEPTED_MARKER = "Status: **accepted for V0.3.5.0**"
 
 
@@ -98,7 +98,7 @@ def validate_reopen(*, git, version, notes_name, base_notes, head_notes, head_cm
     if version != REOPEN_VERSION or actual_base_sha != REOPEN_BASE_SHA:
         raise SystemExit("post-acceptance release reopen is not authorized for this exact version/base SHA")
     if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
-        raise SystemExit("post-acceptance release reopen requires the exact accepted RC4 notes")
+        raise SystemExit("post-acceptance release reopen requires the exact accepted RC6 notes")
     develop_notes = git("show", f"{develop_ref}:{notes_name}").decode("utf-8")
     if not develop_notes.startswith(CANDIDATE_MARKER) or head_notes != develop_notes:
         raise SystemExit("reopened release notes must equal the exact pending develop notes")
@@ -222,7 +222,7 @@ def self_test() -> int:
              develop_extra=False, head_extra_file=False, break_notes=True,
              break_cmake=False, expect_error="pending bilingual notes unchanged")
 
-    # Positive and negative tests for the exact one-off #793 accepted-RC4 reopen. This
+    # Positive and negative tests for the exact one-off #806 accepted-RC6 reopen. This
     # independently checks SHA lock, unchanged reviewed-develop notes, and source equality.
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
@@ -238,7 +238,7 @@ def self_test() -> int:
         _run(root, "git", "switch", "-q", "-c", "release")
         _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
         _write(root, notes_name, REOPEN_ACCEPTED_MARKER + "\n# 中文\n# English\n")
-        _commit(root, "accepted RC4")
+        _commit(root, "accepted RC6")
         base_notes = _run(root, "git", "show", f"HEAD:{notes_name}").decode("utf-8")
         _run(root, "git", "switch", "-q", "-c", "reopen", DEVELOP_REF)
         _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
