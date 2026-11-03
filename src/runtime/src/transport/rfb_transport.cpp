@@ -664,29 +664,10 @@ private:
 
     // #589: the only frame a viewer may ever be given. With a decorator installed this is the composed frame that
     // frameAvailable() produced for the current capture; without one it is the capture frame, untouched.
-    std::optional<hyremote::RemoteFrame> servedFrame()
+    std::optional<hyremote::RemoteFrame> servedFrame() const
     {
         if (!m_security.frameDecorator)
             return latestFrame();
-        if (m_decorationFailed)
-            return {};
-        if (!m_servedFrame) {
-            // #790: after a last-viewer disconnect the dedicated marked cache is freed,
-            // but the raw latest frame remains for ServerInit. A reconnect may request its
-            // first framebuffer *before any new capture*; recompose that retained raw
-            // frame on demand rather than hanging until a future enqueueFrame().
-            const auto raw = latestFrame();
-            if (!raw)
-                return {};
-            hyremote::RemoteFrame marked;
-            QString error;
-            if (!m_security.frameDecorator(*raw, marked, error)) {
-                failDecoration(error); // never permit an unwatermarked fallback
-                return {};
-            }
-            m_servedFrame = std::move(marked);
-            m_observedFrame = m_servedFrame;
-        }
         return m_servedFrame;
     }
 
@@ -1315,6 +1296,19 @@ private:
         client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+
+        if (m_security.frameDecorator && !m_servedFrame && !m_decorationFailed) {
+            // #790: a new viewer may request its first marked pixels from the raw
+            // bootstrap retained across disconnect. Do NOT invoke frameAvailable()
+            // here: sendServerInit() runs inside the client-message parser; if
+            // compositing fails synchronously, failDecoration() destroys its ClientState
+            // and the parser would dereference freed memory. A queued composition
+            // occurs after the parser unwinds, and services the pending FBU request.
+            QTimer::singleShot(0, this, [this] {
+                if (!m_stopping && !m_decorationFailed && !m_clients.empty() && !m_servedFrame)
+                    frameAvailable();
+            });
+        }
     }
 
     RfbCursorSnapshot fallbackCursor() const
