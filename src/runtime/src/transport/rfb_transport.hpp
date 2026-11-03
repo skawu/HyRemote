@@ -55,12 +55,19 @@ struct RfbSecurityConfig
     // for capture demand that only a connected Viewer would create.
     std::uint16_t initialFramebufferWidth = 0;
     std::uint16_t initialFramebufferHeight = 0;
+    // #790: only Shared Runtime with known target geometry and a producer that wakes
+    // after ClientConnected may release the raw bootstrap pixels at zero clients.
+    // Standalone RFB transports retain the old instant-reconnect semantics by default.
+    bool releaseIdleFrameBuffers = false;
     QByteArray password;
     // Optional product hook for the current target cursor. Tests and custom
     // compositions may leave it empty and receive the portable arrow fallback.
     RfbCursorProvider cursorProvider;
     // Empty means "pixels exactly as captured". Non-empty installs the #589 server-side watermark.
     RfbFrameDecorator frameDecorator;
+    // Private #789 feedback: whether the pixels actually served to an authenticated/normal
+    // viewer changed since the previous observed frame, after watermark compositing.
+    std::function<void(bool changed)> frameChangeObserver;
 };
 
 // Creates the product's bounded, dependency-light RFB correctness transport. The concrete type is

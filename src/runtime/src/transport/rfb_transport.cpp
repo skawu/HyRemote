@@ -521,6 +521,17 @@ public:
         m_onEvent = {};
     }
 
+    void releaseIdleFrameCaches()
+    {
+        // Caller MUST hold the product opt-in: standalone transports must retain
+        // their last observed/marked pixels for immediate first-FBU and exact
+        // incremental damage, even when no Viewer is connected.
+        m_observedFrame.reset();
+        m_servedFrame.reset();
+        std::lock_guard<std::mutex> lock(m_frames->mutex);
+        m_frames->latest.reset();
+    }
+
     void frameAvailable()
     {
         {
@@ -531,6 +542,15 @@ public:
         const auto frame = latestFrame();
         if (!frame)
             return;
+        // Last valid frame geometry survives even if its raw pixel storage does not.
+        if (frame->geometry.size.width > 0 && frame->geometry.size.height > 0
+            && frame->geometry.size.width <= std::numeric_limits<std::uint16_t>::max()
+            && frame->geometry.size.height <= std::numeric_limits<std::uint16_t>::max()) {
+            m_security.initialFramebufferWidth
+                = static_cast<std::uint16_t>(frame->geometry.size.width);
+            m_security.initialFramebufferHeight
+                = static_cast<std::uint16_t>(frame->geometry.size.height);
+        }
 
         // #589: compose once per captured frame, on the transport thread, and let every viewer share the same
         // decorated picture. Without a decorator this stays the capture frame itself, so the disabled path keeps
@@ -559,12 +579,24 @@ public:
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
+        // #790: ONLY the producer-backed Shared Runtime opts into dropping raw
+        // pixels at zero clients. Standalone RFB retains the exact old behavior,
+        // including its original observed frame baseline for tile-damage diff.
+        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
+            releaseIdleFrameCaches();
+            return;
+        }
         std::optional<RfbDamageRegion> damage;
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
             // frame never reports "nothing changed" while the stream is missing an update.
             damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
         }
+
+        // Exact served-pixel equality is already computed for damage; feed it back to the
+        // producer's bounded idle gate without introducing a second full-frame comparison.
+        if (hasNormalClient && m_security.frameChangeObserver)
+            m_security.frameChangeObserver(geometryChanged || !damage || !damage->empty());
 
         for (auto &entry : m_clients) {
             ClientState &client = *entry.second;
@@ -717,6 +749,11 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
+                    // 2→1 always retains, 1→0 releases true raw bytes only for
+                    // a producer-backed Runtime which wakes on ClientConnected.
+                    releaseIdleFrameCaches();
+                }
                 if (announced)
                     publishEvent(hyremote::TransportEventCode::ClientDisconnected,
                                  "RFB client disconnected");
@@ -1281,6 +1318,8 @@ private:
         client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+
+
     }
 
     RfbCursorSnapshot fallbackCursor() const
