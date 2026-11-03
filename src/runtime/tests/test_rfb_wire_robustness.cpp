@@ -1059,11 +1059,25 @@ void testReconnectCompositorFailureIsDeferredAndFailsClosed()
     // and processClient() have returned, otherwise this scenario is a UAF.
     failOnReconnect.store(true);
     QTcpSocket reconnect;
-    const bool reconnected = connectRawRfb(reconnect, port, false);
-    CHECK(reconnected);
-    if (reconnected) {
-        CHECK(sendSetEncodings(reconnect, {0}));
-        CHECK(sendUpdateRequest(reconnect, false, 0, 0, 128, 128));
+    const bool negotiated = negotiateThroughSecurity(reconnect, port, false);
+    CHECK(negotiated);
+    if (negotiated) {
+        // Send ClientInit + SetEncodings + first FBU in ONE write before the
+        // worker has a chance to run the queued fatal decorator callback.
+        // Checking writes after connectRawRfb() would race the expected abort.
+        QByteArray pipelined;
+        pipelined.append(char(1)); // shared ClientInit
+        pipelined.append(char(2)); // SetEncodings
+        pipelined.append(char(0));
+        appendU16(pipelined, 1);
+        appendS32(pipelined, 0); // Raw only
+        pipelined.append(char(3)); // FramebufferUpdateRequest
+        pipelined.append(char(0)); // full refresh
+        appendU16(pipelined, 0);
+        appendU16(pipelined, 0);
+        appendU16(pipelined, 128);
+        appendU16(pipelined, 128);
+        CHECK(writeAll(reconnect, pipelined));
         CHECK(waitForDisconnected(reconnect));
     }
     CHECK(recorder.waitFor([](const auto &, const auto &events) {
