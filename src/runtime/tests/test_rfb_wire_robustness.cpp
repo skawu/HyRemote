@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <ctime>
+#include <functional>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -711,11 +712,13 @@ std::unique_ptr<hyremote::Transport> startTransport(
     Recorder &recorder,
     hyremote::RemoteFrame initial,
     HyRemote::detail::RfbCursorProvider cursorProvider = {},
-    HyRemote::detail::RfbFrameDecorator frameDecorator = {})
+    HyRemote::detail::RfbFrameDecorator frameDecorator = {},
+    std::function<void(bool)> frameChangeObserver = {})
 {
     HyRemote::detail::RfbSecurityConfig security;
     security.cursorProvider = std::move(cursorProvider);
     security.frameDecorator = std::move(frameDecorator);
+    security.frameChangeObserver = std::move(frameChangeObserver);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
                                                           std::move(security));
     if (!transport)
@@ -2801,6 +2804,65 @@ void testLargeDamageCoalescesForPaint()
 }  // namespace
 
 
+
+void testRfbFeedbackUsesActualServedPixels()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+    Recorder recorder;
+    std::atomic<int> unchanged{0}, changed{0};
+    auto transport = startTransport(
+        port, recorder, makeFrame(128, 128, 0x203040U), {}, {},
+        [&](bool differs) {
+            if (differs)
+                ++changed;
+            else
+                ++unchanged;
+        });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(socket, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(socket, {0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer actual;
+    actual.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, actual, rectangles));
+
+    const auto reached = [](const std::atomic<int> &counter, int expected) {
+        QElapsedTimer timer;
+        timer.start();
+        while (counter.load() < expected && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return counter.load() >= expected;
+    };
+    const int beforeUnchanged = unchanged.load();
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+    CHECK(reached(unchanged, beforeUnchanged + 1)); // fullFrame hint is NOT proof of changed pixels
+
+    const int beforeChanged = changed.load();
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U, {{{70, 10, 8, 8}, 0xe0a030U}}));
+    CHECK(reached(changed, beforeChanged + 1));
+    CHECK(readFramebufferUpdate(socket, actual, rectangles));
+    CHECK(actual.get(70, 10) == 0xe0a030U); // matching feedback is also what viewer received
+
+    socket.disconnectFromHost();
+    CHECK(waitForDisconnected(socket));
+    transport->stop();
+}
+
 void testStaticViewerCaptureDemandFeedback()
 {
     HyRemote::detail::ViewerCaptureDemand demand;
@@ -2888,6 +2950,7 @@ int main(int argc, char **argv)
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
     testStaticViewerCaptureDemandFeedback();
+    testRfbFeedbackUsesActualServedPixels();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();
