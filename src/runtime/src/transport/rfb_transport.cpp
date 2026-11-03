@@ -664,10 +664,29 @@ private:
 
     // #589: the only frame a viewer may ever be given. With a decorator installed this is the composed frame that
     // frameAvailable() produced for the current capture; without one it is the capture frame, untouched.
-    std::optional<hyremote::RemoteFrame> servedFrame() const
+    std::optional<hyremote::RemoteFrame> servedFrame()
     {
         if (!m_security.frameDecorator)
             return latestFrame();
+        if (m_decorationFailed)
+            return {};
+        if (!m_servedFrame) {
+            // #790: after a last-viewer disconnect the dedicated marked cache is freed,
+            // but the raw latest frame remains for ServerInit. A reconnect may request its
+            // first framebuffer *before any new capture*; recompose that retained raw
+            // frame on demand rather than hanging until a future enqueueFrame().
+            const auto raw = latestFrame();
+            if (!raw)
+                return {};
+            hyremote::RemoteFrame marked;
+            QString error;
+            if (!m_security.frameDecorator(*raw, marked, error)) {
+                failDecoration(error); // never permit an unwatermarked fallback
+                return {};
+            }
+            m_servedFrame = std::move(marked);
+            m_observedFrame = m_servedFrame;
+        }
         return m_servedFrame;
     }
 
