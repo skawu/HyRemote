@@ -20,6 +20,7 @@
 #include <ctime>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -845,6 +846,234 @@ HyRemote::detail::RfbFrameDecorator markDecorator()
         decorated.storage = std::move(storage);
         return true;
     };
+}
+
+// #790: the listener remains Running after a viewer leaves. A separate decorated storage
+// must be freed by the *last socket* disconnect, while the latest raw bootstrap survives.
+
+// #790: the actual user's configuration has NO watermark. Releasing only
+// m_observedFrame/m_servedFrame would keep the raw 8.3MB SharedFrameState::latest
+// alive, so exercise the Runtime-opt-in path with a raw storage weak reference.
+void testProducerBackedIdleRawFrameRelease()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    const auto released = [](const std::weak_ptr<const hyremote::FrameStorage> &storage) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!storage.expired() && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return storage.expired();
+    };
+
+    auto bootstrap = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> firstStorage = bootstrap.storage;
+    transport->enqueueFrame(std::move(bootstrap));
+    CHECK(released(firstStorage)); // idle before a first Viewer needs no cached RGBA pixels
+
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        QTcpSocket viewer;
+        std::uint16_t width = 0, height = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &width, &height);
+        CHECK(joined && width == 128 && height == 128);
+        if (!joined)
+            break;
+        CHECK(sendSetEncodings(viewer, {0}));
+        CHECK(sendUpdateRequest(viewer, false, 0, 0, width, height));
+        CHECK(noFramebufferData(viewer, 75)); // no old raw pixels/invalid fallback
+        auto fresh = makeFrame(128, 128, 0x203040U);
+        const std::weak_ptr<const hyremote::FrameStorage> currentStorage = fresh.storage;
+        transport->enqueueFrame(std::move(fresh)); // simulate Runtime's ClientConnected-triggered new grab
+        TestFramebuffer frame;
+        frame.resize(width, height);
+        std::vector<UpdateRect> rects;
+        const bool gotPixels = readFramebufferUpdate(viewer, frame, rects);
+        CHECK(gotPixels);
+        if (gotPixels)
+            CHECK(frame.get(0, 0) == 0x203040U);
+        CHECK(!currentStorage.expired());
+        viewer.disconnectFromHost();
+        CHECK(waitForDisconnected(viewer));
+        CHECK(released(currentStorage)); // no retained unmarked raw frame at zero viewers
+    }
+
+    transport->stop();
+}
+
+void testStandaloneMarkedBootstrapSurvivesReconnects()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    std::mutex guarded;
+    std::weak_ptr<const hyremote::FrameStorage> currentDecoration;
+    auto mark = markDecorator();
+    auto trackedMark = [&](const hyremote::RemoteFrame &source,
+                           hyremote::RemoteFrame &output, QString &error) {
+        if (!mark(source, output, error))
+            return false;
+        std::lock_guard<std::mutex> lock(guarded);
+        currentDecoration = output.storage;
+        return true;
+    };
+    auto raw = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> bootstrapRaw = raw.storage;
+    auto transport = startTransport(port, recorder, std::move(raw), {}, trackedMark);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    const auto decoratedStorage = [&] {
+        std::lock_guard<std::mutex> lock(guarded);
+        return currentDecoration;
+    };
+    const auto checkDecoratedWire = [&](QTcpSocket &socket) {
+        CHECK(sendSetEncodings(socket, {0}));
+        CHECK(sendUpdateRequest(socket, false, 0, 0, 128, 128));
+        TestFramebuffer framebuffer;
+        framebuffer.resize(128, 128);
+        std::vector<UpdateRect> rects;
+        const bool received = readFramebufferUpdate(socket, framebuffer, rects);
+        CHECK(received);
+        if (received) {
+            CHECK(framebuffer.get(0, 0) == 0x203040U);
+            CHECK(framebuffer.get(120, 120) == kMarkColor);
+        }
+    };
+    QTcpSocket first;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(first, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    // Must deliver already queued/marked bootstrap with no second capture after join.
+    checkDecoratedWire(first);
+    CHECK(!decoratedStorage().expired());
+
+    QTcpSocket second;
+    CHECK(connectRawRfb(second, port, false));
+    checkDecoratedWire(second);
+    first.disconnectFromHost();
+    CHECK(waitForDisconnected(first));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(!decoratedStorage().expired()); // 2 -> 1 still retains other viewer's composed frame
+    second.disconnectFromHost();
+    CHECK(waitForDisconnected(second));
+    CHECK(!decoratedStorage().expired()); // standalone retains bootstrap for an immediate reconnect
+    CHECK(!bootstrapRaw.expired()); // raw shared bootstrap still enables the next ServerInit
+
+    for (int i = 0; i < 20; ++i) {
+        QTcpSocket viewer;
+        const bool ready = connectRawRfbWithRetry(viewer, port);
+        CHECK(ready);
+        if (!ready)
+            break;
+        // No new enqueueFrame() between disconnect/reconnect: this is the exact
+        // bootstrap-decorator contract caught by independent #790 review.
+        checkDecoratedWire(viewer);
+        CHECK(!decoratedStorage().expired());
+        viewer.disconnectFromHost();
+        CHECK(waitForDisconnected(viewer));
+        CHECK(!decoratedStorage().expired()); // unchanged standalone transport contract
+    }
+    transport->stop();
+    CHECK(decoratedStorage().expired());
+    CHECK(bootstrapRaw.expired()); // transport stop releases its pixel storage
+}
+
+
+// #790: producer-backed reconnect must obtain a fresh capture before pixels are
+// served; failure of its watermark decoration must close the socket fail-closed.
+void testProducerBackedReconnectWatermarkFailsClosed()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    std::atomic<bool> failOnNewFrame{false};
+    auto mark = markDecorator();
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    security.frameDecorator = [&](const hyremote::RemoteFrame &source,
+                                  hyremote::RemoteFrame &decorated, QString &error) {
+        if (failOnNewFrame.load()) {
+            error = QStringLiteral("intentional reconnect decorator failure");
+            return false;
+        }
+        return mark(source, decorated, error);
+    };
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+
+    QTcpSocket first;
+    const bool initiallyConnected = connectRawRfb(first, port, false);
+    CHECK(initiallyConnected);
+    if (!initiallyConnected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(first, {0}));
+    CHECK(sendUpdateRequest(first, false, 0, 0, 128, 128));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+    TestFramebuffer firstFrame;
+    firstFrame.resize(128, 128);
+    std::vector<UpdateRect> rects;
+    CHECK(readFramebufferUpdate(first, firstFrame, rects));
+    CHECK(firstFrame.get(120, 120) == kMarkColor);
+    first.disconnectFromHost();
+    CHECK(waitForDisconnected(first));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::ClientDisconnected;
+        });
+    }));
+
+    QTcpSocket reconnect;
+    const bool joined = connectRawRfb(reconnect, port, false);
+    CHECK(joined);
+    if (joined) {
+        CHECK(sendSetEncodings(reconnect, {0}));
+        CHECK(sendUpdateRequest(reconnect, false, 0, 0, 128, 128));
+        CHECK(noFramebufferData(reconnect, 75)); // no stale unmarked pixels
+        failOnNewFrame.store(true);
+        transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+        CHECK(waitForDisconnected(reconnect));
+    }
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::FatalFailure
+                && event.message.find("decorator") != std::string::npos;
+        });
+    }));
+    transport->stop();
 }
 
 void testWatermarkReachesEveryEncoding()
@@ -2936,6 +3165,9 @@ int main(int argc, char **argv)
 
     testTrleRawAndIncrementalDelivery();
     testWatermarkReachesEveryEncoding();
+    testStandaloneMarkedBootstrapSurvivesReconnects();
+    testProducerBackedIdleRawFrameRelease();
+    testProducerBackedReconnectWatermarkFailsClosed();
     testWatermarkSurvivesFramebufferResize();
     testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
