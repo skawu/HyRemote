@@ -796,4 +796,34 @@ run_success(test-filter-yaml "--config=${filter_profile}" --show-config)
 require_text(test-filter-yaml "${HYB_TEST_OUTPUT}" "tests.filter      : hyremote-watermark")
 require_text(test-filter-yaml "${HYB_TEST_OUTPUT}" "tests.exclude     : hyremote-slow")
 
+# #800: changing install/test execution order must not redirect Qt's platform
+# plugin discovery to an in-tree installed/deploy-helper Qt runtime copy.
+# This is the same private filter used by both Windows PATH and Unix LD_LIBRARY_PATH.
+include("${HYREMOTE_SOURCE_DIR}/cmake/HyRemoteRuntimePathFilter.cmake")
+set(path_fixture "${scratch}/runtime-path-filter")
+set(runtime_candidates
+    "${path_fixture}/src/runtime/HyRemoteRemoteAccess.dll"
+    "${path_fixture}/install/bin/HyRemoteRemoteAccess.dll"
+    "${path_fixture}/qpa/deploy-helper-cases/case-1/bin/HyRemoteRemoteAccess.dll"
+    "${path_fixture}/evidence/run-1/bin/HyRemoteRemoteAccess.dll"
+    "${path_fixture}/src/runtime/tests/HyRemoteRemoteAccess.dll")
+hyb_filter_test_runtime_candidates(runtime_candidates "${path_fixture}")
+list(LENGTH runtime_candidates accepted_count)
+if(NOT accepted_count EQUAL 2
+   OR NOT runtime_candidates STREQUAL
+      "${path_fixture}/src/runtime/HyRemoteRemoteAccess.dll;${path_fixture}/src/runtime/tests/HyRemoteRemoteAccess.dll")
+    message(FATAL_ERROR
+        "build-authority/#800: staged DLL on test PATH or live Runtime missing: ${runtime_candidates}")
+endif()
+# The exact same staging rejection must protect Unix/ELF runs.
+set(runtime_candidates
+    "${path_fixture}/src/runtime/libHyRemoteRemoteAccess.so"
+    "${path_fixture}/install/lib/libHyRemoteRemoteAccess.so"
+    "${path_fixture}/qpa/deploy-helper-cases/case-2/lib/libHyRemoteRemoteAccess.so")
+hyb_filter_test_runtime_candidates(runtime_candidates "${path_fixture}")
+if(NOT runtime_candidates STREQUAL "${path_fixture}/src/runtime/libHyRemoteRemoteAccess.so")
+    message(FATAL_ERROR
+        "build-authority/#800: staged ELF library on test LD_LIBRARY_PATH: ${runtime_candidates}")
+endif()
+
 message(STATUS "HyRemote build authority self-tests: PASS")
