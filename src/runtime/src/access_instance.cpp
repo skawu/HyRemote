@@ -668,8 +668,10 @@ struct AccessInstance::Impl
     // #591: whether this process selected the policy itself. A persisted policy from an earlier run is applied only
     // when the answer here is still "no".
     bool watermarkExplicit = false;
-    // #591: the store is consulted at most once, so a report read before start() and start() itself agree.
+    // #591/#793: a restored policy belongs to the resolved watermark store, not permanently to this
+    // AccessInstance. Changing a config descriptor may select a different config-relative state directory.
     bool watermarkRestored = false;
+    QString watermarkRestoredStorePath;
     // #174 interface identity. Empty means the address decides the mode.
     QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
@@ -724,6 +726,32 @@ struct AccessInstance::Impl
         if (desiredActive)
             return false;
         return !session || session->state() == hyremote::SessionState::Stopped;
+    }
+
+    // #793: Resolve again only if an *implicitly restored* store selection changed while configurable.
+    // This is intentionally the same resolved path used by persistence. An explicit operator request always
+    // wins; a Running session never swaps its effective watermark because the ambient environment changed.
+    void restoreWatermarkForSelectedStore()
+    {
+        if (watermarkExplicit)
+            return;
+        const detail::HostPaths paths = detail::resolveHostPaths(securityConfigFile);
+        const QString storePath = detail::watermarkStorePath(paths);
+        if (watermarkRestored && (!isConfigurable() || watermarkRestoredStorePath == storePath))
+            return;
+
+        watermarkRestored = true;
+        watermarkRestoredStorePath = storePath;
+        watermark = detail::WatermarkPolicyResult{}; // old directory's mark/error may not leak to the new one
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(paths, &storeError);
+        if (stored) {
+            watermark = detail::resolveWatermarkPolicy(*stored);
+        } else if (!storeError.isEmpty()) {
+            // Keep diagnostics redacted: never report the operator's watermark text.
+            watermark.error
+                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
+        }
     }
 
     void setError(ErrorCode code, QString message, bool recoverable = false)
@@ -1007,23 +1035,9 @@ detail::WatermarkPolicyResult AccessInstance::watermarkPolicy() const
     if (!m_impl)
         return detail::WatermarkPolicyResult{};
 
-    // #591: report what a start would use, even when the caller asks before starting. The store is consulted once, so
-    // this cannot disagree with the enforcement path.
-    if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
-        m_impl->watermarkRestored = true;
-        QString storeError;
-        const auto stored = detail::loadWatermarkRequest(
-            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
-        if (stored) {
-            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
-        } else if (!storeError.isEmpty()) {
-            // Say why the stored policy was not applied instead of leaving silence: the policy stays disabled, so a
-            // corrupt or unreachable store can never block a start, but the reason is visible in the report.
-            m_impl->watermark = detail::WatermarkPolicyResult{};
-            m_impl->watermark.error
-                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
-        }
-    }
+    // A pre-start read must reflect the currently selected state store, even after the caller
+    // changes its security descriptor. Explicit requests and an active run are never overridden.
+    m_impl->restoreWatermarkForSelectedStore();
     return m_impl->watermark;
 }
 
@@ -1055,27 +1069,10 @@ bool AccessInstance::start()
     if (!m_impl)
         return false;
 
-    // #591: an explicitly configured policy from a previous run is restored here, before any validation, so a restart
-    // behaves identically on every route and every Qt line - the Qt 5 lane reaches its target check earlier than Qt 6,
-    // and a restore that sat behind that check simply never happened there. Only when this process has not selected a
-    // policy of its own: an application's own choice always wins over the stored one. The request is re-validated by the
-    // shared resolver, so a hand-edited or out-of-bounds file cannot bypass the bounds.
-    //
-    if (!m_impl->watermarkExplicit && !m_impl->watermarkRestored) {
-        m_impl->watermarkRestored = true;
-        QString storeError;
-        const auto stored = detail::loadWatermarkRequest(
-            detail::resolveHostPaths(m_impl->securityConfigFile), &storeError);
-        if (stored) {
-            m_impl->watermark = detail::resolveWatermarkPolicy(*stored);
-        } else if (!storeError.isEmpty()) {
-            // Say why the stored policy was not applied instead of leaving silence: the policy stays disabled, so a
-            // corrupt or unreachable store can never block a start, but the reason is visible in the report.
-            m_impl->watermark = detail::WatermarkPolicyResult{};
-            m_impl->watermark.error
-                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
-        }
-    }
+    // Restore the selected state's policy before validation and before the Qt5/Qt6 target gates.
+    // This shares the getter's store-path identity check: an earlier read cannot pin a stale
+    // watermark after the configuration file changes while Stopped.
+    m_impl->restoreWatermarkForSelectedStore();
 
     // #259: every exit from this call publishes the resulting truth exactly once. The guard clears the
     // projected Starting state and publishes whatever the call produced, so no early return has to
