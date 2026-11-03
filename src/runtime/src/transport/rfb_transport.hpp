@@ -55,6 +55,10 @@ struct RfbSecurityConfig
     // for capture demand that only a connected Viewer would create.
     std::uint16_t initialFramebufferWidth = 0;
     std::uint16_t initialFramebufferHeight = 0;
+    // #790: only Shared Runtime with known target geometry and a producer that wakes
+    // after ClientConnected may release the raw bootstrap pixels at zero clients.
+    // Standalone RFB transports retain the old instant-reconnect semantics by default.
+    bool releaseIdleFrameBuffers = false;
     QByteArray password;
     // Optional product hook for the current target cursor. Tests and custom
     // compositions may leave it empty and receive the portable arrow fallback.
