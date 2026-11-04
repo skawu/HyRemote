@@ -378,7 +378,7 @@ jobs:
                                   git=git, version=version, notes_name=notes_name,
                                   base_notes=old_notes, head_notes=notes,
                                   base_cmake=old_cmake, head_cmake=new_cmake,
-                                  actual_base_sha=actual_accepted_base)
+                                  actual_base_sha=actual_accepted_base, head_ref=head)
                       else:
                           validate_correction(git=git, version=version, notes_name=notes_name,
                                               base_notes=old_notes, head_notes=notes,
