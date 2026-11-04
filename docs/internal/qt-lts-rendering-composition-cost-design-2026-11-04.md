@@ -122,3 +122,39 @@ WINDOWS_WGC_D3D11_PRODUCT_BRANCH=REJECTED
 QT5_QUICK=EXPERIMENTAL_NOT_SUPPORTED
 G7_ARCHITECTURE=UNCHANGED
 ```
+
+
+## 8. M1 本地回报复核与方法纠正（2026-11-04）
+
+证据：[本地 Owner M1，#609 comment 6633575189](https://github.com/skawu/HyRemote/issues/609#issuecomment-6633575189)。**仅验收已执行的测试，不补造原计划未跑的结果。**
+
+### 与原 M1 验证合同的偏差
+
+- 原批准的是 **`QQuickItem::grabToImage` 异步 `ready()` 路径**，与 `develop/src/runtime/src/quick/quick_target.cpp` 一致；本地实际使用了 **`QQuickWindow::grabWindow()` 同步路径**。它在 Qt5.15.2 和 Qt6.8.3 上各 5 次调用分别带来了 `afterRendering +5` / `frameSwapped +0`；该观察**仅对同步 grabWindow 成立**，**不得**归因到 `grabToImage` 的实测 CPU/延时/信号因果。
+- 本次 Qt5 `grabWindow` 计时约 240.7ms 首次、随后 7–9ms；Qt6 D3D11 前两次约 8ms、后三次约 1011–1023ms。后者是**单次测试中的异常**，既没有重复、也未在 HyRemote 的异步 `grabToImage` 路径复现。不得把 `~1s` 当成标准 1080p GPU readback 代价、Qt6 家族回归或平台路线依据；目前 `CAUSE=UNKNOWN`。
+- 图像实际客户区是 `1920x1061`，而非精确 1920x1080；这不会取消格式观察，但不可当作严谨 1080p 性能基准。
+
+### QImage 结果：成功证明隐式共享，但格式枚举文字需更正
+
+| Kit | 实际枚举值（来自 grabWindow） | **官方 Qt 格式名称** | 字节/Alpha 约束 |
+| --- | --- | --- | --- |
+| Qt5.15.2 | `4` | `QImage::Format_RGB32` | 值为 `0xffRRGGBB`；在已观察的小端 Windows 内存是 BGRA，**不能**伪装 `RGBA8888` |
+| Qt6.8.3 | `18` | **`QImage::Format_RGBA8888_Premultiplied`** | 不是报告所写的非预乘 `Format_RGBA8888`；后者枚举值 **17** |
+| Both | `bytesPerLine=7680`, copy 后 `constBits` 相同；可变 `bits()` 导致 detach | 符合 `QImage` 隐式共享/const 读取合同 | 这次数据支持**持有本轮同步 grabWindow QImage 而不额外复制**，不等于已证明 HyRemote 实际异步结果相同 |
+
+官方值与语义：[QImage Qt 官方格式枚举](https://doc.qt.io/qt-6.8/qimage.html)、[Qt 6.8 constBits](https://doc.qt.io/qt-6.8/qimage.html)。具体零拷贝候选 A1 仅对已满足 **`RGBA8888_Premultiplied` + Core/RFB 只读寿命合同** 的帧执行，不得用 endian-dependent RGB32 或直通未预乘 alpha 冒充；格式不匹配时维持原有 `convertToFormat` 并验证必要的转换，哪怕目标只是取消后续多余 `memcpy`。
+
+### 验收状态与唯一纠正任务
+
+```text
+M1_QIMAGE_IMPLICIT_SHARING=PASS_FOR_GRABWINDOW_IMAGES
+M1_QT5_15_VS_QT6_8_GRABWINDOW_EXTRA_RENDER=OBSERVED
+M1_QT5_15_VS_QT6_8_GRABTOIMAGE=NOT_RUN
+M1_QT6_SYNCHRONOUS_GRABWINDOW_1S_ANOMALY=OBSERVED_UNATTRIBUTED
+M1_QIMAGE_FORMAT18=RGBA8888_PREMULTIPLIED_CORRECTED
+A1_RUNTIME_FRAMESTORAGE_IMPLEMENTATION=NOT_AUTHORIZED
+```
+
+**M1b 限定补证**：仍用现有两套 Qt Kit、自建 Qt-only `QQuickView` 场景、无 HyRemote Viewer 或产品代码变化，**只**更换为实际 `window->contentItem()->grabToImage(QSize)`；预先建立 `QQuickItemGrabResult::ready` callback，**异步顺序**发 5 次（前次完成才发后次，不允许阻塞事件循环），分别记录 `submit->ready` wall、`afterRendering` / `frameSwapped` 增量、从 `result->image()` 得到的真实 `QImage::format()` 的**数值和正确枚举名称**、`bytesPerLine`、`constBits` 共享，及至少一张具有 RGB 非对称色块和透明/预乘差异的测试图的像素语义。如果格式不满足现有 Core 的 RGBA8888 premultiplied，记录**必须转换**而非强求零拷贝。若 Qt5 Kit 该路径未构建/程序错误，记录第一条错误、停止，不扩大范围。有限时长、自行退出、不重新跑 `grabWindow`、不跑性能矩阵。向 #609 报告完成即停。
+
+M1b 通过前不批准 A1 产品实现；M1b 也不改变 Stage02 G7 冻结、Qt LTS 范围和 #789 用户现场资格状态。
