@@ -674,7 +674,12 @@ struct AccessInstance::Impl
             return;
         const detail::HostPaths paths = detail::resolveHostPaths(securityConfigFile);
         const QString storePath = detail::watermarkStorePath(paths);
-        if (watermarkRestored && (!isConfigurable() || watermarkRestoredStorePath == storePath))
+        // #812: empty storePath can mean either an unusable selected state directory
+        // (must fail closed) or no selected state path after an unrelated rejected
+        // security descriptor (no implicit watermark to restore). Do not cache those
+        // distinct states under the same empty path while configuration is editable.
+        if (watermarkRestored && (!isConfigurable()
+                                  || (!storePath.isEmpty() && watermarkRestoredStorePath == storePath)))
             return;
 
         watermarkRestored = true;
