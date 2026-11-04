@@ -84,7 +84,7 @@
 
 ### 3.2 票据/配对绑定不变量
 
-`RoutePermit` 的完整性保护必须覆盖：`tenantId/siteId/edgeId/hmiId/operatorBinding/protocolProfile/roleIntent/routeId/routeEpoch/policyRevision/audience/nonce/issuedAt/expiresAt`。Gateway 只对当前有效 Operator + Site 可授予；Edge 仍要在准入与**实际拨号前**检查真实白名单。每个 `PairCredential` 同时绑定一条确切 route 与一侧身份/方向；一条完整 route 仅能成功配对两条经过认证的数据连接。超时、撤销、连接失败要立即回收配对状态，任一重连使用新的凭证及 Epoch；**不依赖 Client 重传请求即可保持“恰好一次”业务执行**，业务执行仍由 HMI 设备端控制。
+`RoutePermit` 的完整性保护必须覆盖：`tenantId/siteId/edgeId/hmiId/operatorBinding/protocolProfile/roleIntent/routeId/routeEpoch/policyRevision/audience/nonce/issuedAt/expiresAt`。Gateway 只对当前有效 Operator + Site 可授予；Edge 仍要在准入与**实际拨号前**检查真实白名单。每个 `PairCredential` 同时绑定一条确切 route 与一侧身份/方向；一条完整 route 仅能成功配对两条经过认证的数据连接。超时、撤销、连接失败要立即回收配对状态，任一重连使用新的凭证及 Epoch。**单次配对与 Epoch 隔离只约束网络路由，不能保证 HMI 业务命令“恰好执行一次”。** 如果断线发生在命令送达后、设备执行回执返回前，结果必须标为 `OUTCOME_UNKNOWN`，客户端不得自动重放报警确认、参数修改、复位等非幂等动作；应由操作者通过设备端可信状态/审计确认后决定下一步。若未来需要安全自动重试或去重，必须由 HMI 独立定义命令标识、设备端幂等性/持久结果记录、确认和异常恢复的业务合同，并在受控协议版本与实机验证后另行准入，不能由 Gateway PairCredential 替代。
 
 ## 4. 状态机、撤销竞态与终止语义
 
