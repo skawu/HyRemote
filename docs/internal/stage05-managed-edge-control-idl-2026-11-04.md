@@ -32,6 +32,14 @@
 
 最小持久状态：工厂 View 保存明确获准的 `RegisteredHmi`、站点开关与本地 `PolicyRevision`，密钥使用合格的受保护存储；Gateway 保存租户/站点/Edge 身份登记、共享设备的最小元数据、当前有效路由和有限时间的一次性票据消费记录。完整 HMI 帧、输入、设备端密码、Native 会话内容和裸票据不得持久化在 Edge/Gateway。
 
+### 2.1 异地 Viewer 取得 HMI 可信身份的引导（必须先证据证明）
+
+**不能用“Gateway 返回的指纹就是可信指纹”来证明端到端身份。** 远端 View 的可信 HMI 公钥/CA/指纹绑定必须有独立于可被入侵 Gateway 的信任根：候选方式为（a）客户受控 CA 签发并通过可信链校验设备身份；（b）现场管理员核对设备出厂凭据/物理指纹后，由客户受控签名身份签发受限、版本化设备信任声明供获准 View 核验。控制 Gateway 可以代为**传输**已签名声明，但不得创造或替换可信根，不可仅凭同一 Gateway 的目录 API 给出的 pin 完成首次信任。
+
+候选 `DeviceTrustBundle` 语义字段：`siteId`、`hmiDeviceId`、`deviceIdentityKeyOrCaRef`、`issuerIdentity`、`bindingRevision`、`validFrom/validUntil`、`policyScope`、`signatureOrCaProof`。这是**设计数据对象，不是新 Native 1.0 消息或已冻结 Gateway wire**；必须防跨站、过期、回滚和重放，Remote View 使用**事先信任**的客户根验证声明，再通过实际 HMI TLS 与登记身份作独立匹配。
+
+若信任声明缺失、无法证明来源、远端没有可信根、设备公钥更换且无可验证的安全轮换链，必须 `NEEDS_REVERIFY/DEVICE_REVERIFY_REQUIRED`，**不建立 Managed HMI 会话**。密钥轮换可由已受信旧密钥/客户根证明并经管理员批准；丢失旧密钥时需客户独立复核，不能由 Gateway 自行“修复设备证书”。Native 账户认证与 HMI 设备端 Grant 仍各自独立，不把客户站点签名声明当作 ViewGrant。
+
 ## 3. 控制信封（唯一候选语义模型）
 
 本节是**逻辑 IDL**，JSON 仅供易读举例；JSON/CBOR、二进制编码、签名机制和正式版本号仍需 PoC 对比。禁止同时以 Stage03 `version=0` 和 Stage04 `major/minor` 开发两个互不兼容控制协议。
@@ -147,6 +155,7 @@
 | TRUST-01 | 替换 HMI TLS 身份、错误 CA、证书变更 | E2E 认证失败且无设备像素输出 |
 | TRUST-02 | Gateway 已允许但 HMI 未授予 View/Control | 无 ViewGrant 不显示像素；无 ControlGrant 不提交输入 |
 | TRUST-03 | HMI 撤销时输入已在 GUI 队列 | 最终提交点复核并释放 held 状态 |
+| TRUST-04 | Gateway 替换 HMI 公钥/指纹、跨站重放信任声明、未经批准的 HMI 换证 | Remote View 按独立可信客户根/证书链拒绝；没有可信引导绝不开设备会话 |
 | OPS-01 | 工厂 PC 只装 View、退出/注销/重启/升级 | 精确反映当前支持等级，卸载无独立 sidecar |
 | PRODUCT-01 | Gateway/WAN 故障 | HMI 本地 UI 与合法 Direct 仍工作 |
 | PRODUCT-02 | 双 HMI/多 Viewer / 一台不共享 | 共享和租户严格隔离、资源受限 |
