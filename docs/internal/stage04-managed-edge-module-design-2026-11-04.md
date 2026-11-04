@@ -147,4 +147,4 @@ V15/V8 **没有**直接规定“一定在用户注销后 24×7 在线”；首�
 5. 资源上限、负载/故障测试用例及支持环境（NOT_RUN 或真实 PASS）。
 6. 客户打包更新/回退策略：工厂只安装 HyRemoteView 的验证证据。
 
-**Stage 04 状态：** 本文件定义模块与接口责任；部署实现、公共协议、平台运行能力均未通过 PoC。工程详细选型仍受 [HyRemoteView#11](https://github.com/skawu/HyRemoteView/issues/11) 的 ADS 门禁约束。
+**Stage 04 状态：** 本文件定义模块与接口责任；部署实现、公共协议、平台运行能力均未通过 PoC。工程详细选型与实现须满足尚未通过的 HyRemoteView G3 技术可行性、安全与兼容性验证；ADS 采用及机器门禁已由 Human 于 2026-11-04 撤销（[#11](https://github.com/skawu/HyRemoteView/issues/11) SUPERSEDED），**不再约束研发**。
