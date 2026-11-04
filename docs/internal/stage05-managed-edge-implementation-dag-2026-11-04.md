@@ -20,6 +20,7 @@ flowchart TB
   G4["S05-E View G4 正式工程架构"]
   FREEZE["合同冻结 + #190 研发激活（独立授权）"]
   NATIVE["S05-C2 HMI Native/TLS 正式实现与验证"]
+  VIEWCLIENT["S05-E2 View Direct/Native 客户端正式实现"]
   GW["S05-F Gateway 单节点控制+透明 Relay"]
   EDGE["S05-G 同一 View 内 Edge + Site 管理"]
   FULL["S05-H Device E2E + Edge + Gateway 完整链路"]
@@ -36,10 +37,13 @@ flowchart TB
   G4 --> FREEZE
   FREEZE --> NATIVE
   HMI --> NATIVE
+  FREEZE --> VIEWCLIENT
+  G4 --> VIEWCLIENT
   FREEZE --> GW
   FREEZE --> EDGE
   G4 --> EDGE
   NATIVE --> FULL
+  VIEWCLIENT --> FULL
   GW --> FULL
   EDGE --> FULL
   G4 --> FULL
@@ -53,6 +57,7 @@ flowchart TB
 - S05-D 可以先以测试字节和无真实设备的封闭场景证明网络库边界，**不需要先做工厂公网产品服务**；它不会授予 HMI 观看/控制许可。
 - **正式产品代码准入闸门**：S05-A/C/D 技术设计与最低可证伪实验形成完整签收，S05-B G3 通过且 S05-E G4 产品工程架构正式冻结；同时 #190 必须经过独立研发激活/范围批准。上述任一条件缺失，S05-C2/F/G 都不得创建正式产品实现。技术 PoC 与产品实现不能借同一“已设计”状态混用。
 - **S05-C2 明确补齐设备端正式实现**：S05-C 的单元 fixture/技术 PoC 不能代替 Qt5/Qt6 Framework Native 端点、真实身份与授权在源码和设备上的完备验收；S05-H 必须依赖 C2 通过。
+- **S05-E2 明确补齐 Viewer 正式客户端**：RFB PoC 成功不等于 Direct/Native 生产客户端、DeviceTrustBundle 信任引导、受管状态展示和设备 Grant 的完整实现。完整链路必须同时依赖 E2。
 - S05-F 的 Gateway 是云端或客户自托管可选服务，不部署在工厂 PC 上；S05-G 的 Edge 必须封装在相同 HyRemoteView 的产品安装/授权/更新/卸载体系内。
 - S05-H 只有在 Native Device TLS/Grant、View G3/G4、Gateway/Edge 三个实际能力都合格后才有真实 E2E 演示资格。先完成设备端身份与安全，会话无授权时必须零画面。
 - S05-I 属于目标设备/工厂真实网络与产品安装验收；文档、模拟 Gateway、unit tests 都不能代替。
@@ -68,9 +73,10 @@ flowchart TB
 | S05-E | G4 View 正式模块接口/目录/测试模型 | 依赖 S05-B G3 真实 PASS；View Architecture Owner | Direct、Managed 复用 DeviceProtocolSession，Qt Quick UI 不介入 Edge IO；设计正式签收 | NOT_AUTHORIZED |
 | DESIGN-FREEZE | 完整模块 IDL/状态机/安全取舍/资源预算方法/接口/打包边界签收；#190 的正式研发激活单独确认 | S05-A/C/D/E 与真实安全 PoC 证据；Cloud Owner 汇总，重大产品/架构取舍与激活由 Human 决策 | 所有 P1/P2 设计缺口收口，实施范围/非目标/回退已固定；否则仅允许继续设计/封闭技术 PoC | NOT_AUTHORIZED |
 | S05-C2 | HMI Framework 正式 Native TLS/Native 1.0 设备会话、Grant/输入栅栏与双 Qt 版本验证 | S05-C + DESIGN-FREEZE；HyRemote Native Owner/#246 | 真实 HMI 安全连接、设备身份证书、View/ControlGrant、隐私/撤权/断线输入和 Qt5/Qt6 源码证据；无云代理授予权限 | NOT_STARTED |
+| S05-E2 | 同一 View 产品的正式 Direct RFB/Native 客户端、ManagedRemoteSession、设备证书信任引导、查看/控制与正确画面/输入呈现 | S05-E + DESIGN-FREEZE；HyRemoteView Client Owner | 实际 Direct 离线使用；Native 安全握手、独立 TrustBundle 验证、设备 ViewGrant 前零像素、ControlGrant 前零输入；无 GPL client 依赖 | NOT_STARTED |
 | S05-F | 自托管 Gateway 最小单节点 Registry/Broker/Relay 的工程实现 | DESIGN-FREEZE + S05-A/D；Gateway Owner/待定仓库 | 租户隔离、Pair 单次消费、路由双端绑定、限额、证书轮换、升级/回退；不读取设备内容 | NOT_STARTED |
 | S05-G | 同一 View 安装包内共享白名单、EdgeAdmission、ByteRelay、准确 UI 状态 | DESIGN-FREEZE + S05-E，S05-A 字段约束；HyRemoteView Edge Owner | 默认 OFF；仅 HMI1 注册后可以拨号；撤销立刻生效；同安装/卸载/退出不引入 sidecar | NOT_STARTED |
-| S05-H | 外地 View → Gateway → 工厂 View Edge → 真实 HMI Native/TLS E2E | S05-C2/E/F/G 各自合格；联合 Owner | View 独立验 HMI 身份，设备端再核发 Grant；替身 HMI/撤权/重连均失败关闭 | NOT_STARTED |
+| S05-H | 外地 View → Gateway → 工厂 View Edge → 真实 HMI Native/TLS E2E | S05-C2/E2/F/G 各自合格；联合 Owner | View 独立验 HMI 身份，设备端再核发 Grant；替身 HMI/撤权/重连均失败关闭 | NOT_STARTED |
 | S05-I | 12/12 EDGE 产品结果、独立安全、资源/生命周期真实验收 | S05-H；本地/实机 Owner 和 QA/Security | 记录 exact SHA、场景、CPU/帧龄/RSS、慢端、现场优先、安装升级、真实代理/断网 | NOT_RUN |
 | Release | 独立受管功能发布/支持资格 | S05-I + #190/版本授权；Release Owner | 实际支持平台和产品范围可证，不能用规划替代版本签收 | NOT_AUTHORIZED |
 
@@ -83,7 +89,7 @@ flowchart TB
 1. **先核实真实 View #9 当前 PoC**。获取明确 exact SHA 与 Windows/Linux RFB 像素/输入/解析限制证据；仅在目标能力不足时缩小实验，不重建新的 RFB 客户端工程。Direct 必须能在没有 Gateway 时使用。
 2. **并行完成 HMI Native 1.0 Device TLS/Grant contract review**。对 V8 附录 A 的消息、限额、Session/Scope 授权和 Qt GUI 最终输入执行点做 trace；发现设备协议缺口时由 HyRemote 独立 Issue 审查，不偷改 Gateway wire。
 3. **最小无 HMI 字节隧道试验**（只有技术/安全实验准入后）：一异地测试端、一模拟 Edge、一个 Gateway broker，使用随机二进制双向 hash、跨租户恶意 Pair、慢端/进程退出，不打开生产 HMI，也不称真实公网安全。
-4. **Device E2E 资格先于宣称公网 Managed 可用**：受管 ByteStream 内通过实际 Native Device TLS、HMI 自己的 Native Auth / ViewGrant / ControlGrant；中转 TLS 只保护各段，不替代设备端加密。
+4. **Device E2E 资格先于宣称公网 Managed 可用**：先分别实现且验证 S05-C2 设备端 Native 与 S05-E2 Viewer 客户端，再在受管 ByteStream 内验证真实 Device TLS、HMI 自己的 Native Auth / ViewGrant / ControlGrant；中转 TLS 只保护各段，不替代设备端加密。
 5. **最小产品化**：在 View G4 合格后，先完成管理员“登记单台 HMI→明确共享→可撤销”与异地“申请指定 HMI→证书/Grant→看/控/拒绝”用户旅程；再扩大多 HMI/多 Viewer、后台运行/自托管运维支持。
 6. **最后实机验收/版本适配**：两 HMI、工厂 PC、远端 PC、Gateway；Direct 与 Managed A/B 测现场 CPU/帧龄/内存、WAN 背压、故障恢复、安装/卸载，按实际 Kit/硬件给出支持等级。
 
