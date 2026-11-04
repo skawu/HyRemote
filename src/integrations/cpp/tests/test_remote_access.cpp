@@ -836,6 +836,18 @@ void testWatermarkPolicySurface()
 
 int main()
 {
+    // #812: the product deliberately fails closed on a corrupt persisted watermark. Tests that
+    // exercise default/secure Runtime startup must not consume another process's saved policy
+    // from the shared build/run directory. Isolate the persistent store for this entire test.
+    QTemporaryDir isolatedState;
+    if (!isolatedState.isValid()) {
+        std::cerr << "cannot create isolated RemoteAccess test state directory\n";
+        return 2;
+    }
+    const bool hadState = qEnvironmentVariableIsSet("HYREMOTE_STATE_DIR");
+    const QByteArray previousState = qgetenv("HYREMOTE_STATE_DIR");
+    qputenv("HYREMOTE_STATE_DIR", isolatedState.path().toUtf8());
+
     testSafeDefaultsAndNoConstructionSideEffect();
     testMissingTargetAndMissingAdapterFailCleanly();
     testProductLifecycleAndConfigurationForwarding();
@@ -852,6 +864,10 @@ int main()
     testWatermarkPolicySurface();
 
     HyRemote::detail::resetFactories();
+    if (hadState)
+        qputenv("HYREMOTE_STATE_DIR", previousState);
+    else
+        qunsetenv("HYREMOTE_STATE_DIR");
     if (failures != 0) {
         std::cerr << failures << " RemoteAccess test assertion(s) failed\n";
         return 1;
