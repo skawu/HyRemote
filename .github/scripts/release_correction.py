@@ -130,7 +130,7 @@ RC7_GOVERNANCE_FILES = frozenset({
 
 
 def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
-                        base_cmake, head_cmake, actual_base_sha,
+                        base_cmake, head_cmake, actual_base_sha, head_ref,
                         develop_ref=DEVELOP_REF,
                         fixed_source_ref=RC7_REVIEWED_PRODUCT_SOURCE_SHA):
     """Admit only the independently reviewed #812/#768 repairs, governance and
@@ -139,6 +139,8 @@ def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
     Unrelated develop files (including architecture, roadmap, performance work
     orders, other versions, transport/API work) are NEVER imported by this gate.
     """
+    if head_ref != "feature/812-release-preparation":
+        raise SystemExit("RC7 post-acceptance reopen denied on unauthorized preparation branch")
     if version != "0.3.5.0" or actual_base_sha != RC7_REOPEN_BASE_SHA:
         raise SystemExit("RC7 post-acceptance reopen denied on unapproved version/base")
     if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
@@ -337,7 +339,7 @@ def self_test() -> int:
     rc7_files = RC7_PRODUCT_FILES | RC7_GOVERNANCE_FILES | {rc7_notes_name}
     rc7_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n"
 
-    def rc7_scenario(name, *, wrong_base=False, missing_file=False,
+    def rc7_scenario(name, *, wrong_base=False, wrong_branch=False, missing_file=False,
                      wrong_product=False, wrong_governance=False,
                      wrong_notes=False, wrong_cmake=False, expect_error=None):
         nonlocal failures, cases
@@ -372,6 +374,8 @@ def self_test() -> int:
                 base_cmake=rc7_cmake,
                 head_cmake=rc7_cmake + (b"tampered\n" if wrong_cmake else b""),
                 actual_base_sha=("0" * 40 if wrong_base else RC7_REOPEN_BASE_SHA),
+                head_ref=("feature/768-release-preparation" if wrong_branch
+                          else "feature/812-release-preparation"),
                 fixed_source_ref="reviewed-source")
             if expect_error is not None:
                 print(f"FAIL {name}: expected rejection containing '{expect_error}'")
@@ -386,6 +390,8 @@ def self_test() -> int:
                 print(f"ok: {name}")
 
     rc7_scenario("RC7 exact P2+governance correction accepted")
+    rc7_scenario("RC7 unrelated issue preparation branch rejected", wrong_branch=True,
+                 expect_error="unauthorized preparation branch")
     rc7_scenario("RC7 different accepted base rejected", wrong_base=True,
                  expect_error="unapproved version/base")
     rc7_scenario("RC7 incomplete source scope rejected", missing_file=True,
