@@ -108,7 +108,7 @@ HMI 控制权/可见范围撤销             -> HMI 立刻拒绝新控制输入/
 
 `B_edge(N) = B_fixed + N * (2*Qe + W + R)`。同理计算 `B_gateway`。要求独立统计内存 RSS/private、队列高水位、bytes outstanding、超时/限流事件，不用公式推导的值替代实测。
 
-**Qt 风险：** [Qt 6.8 QWebSocket](https://doc.qt.io/qt-6.8/qwebsocket.html) 的 `readBufferSize=0` 默认**无界**；工程必须显示设置接收限制，并结合该 Qt 版本是否具备入站 frame/message 上限 API 进行真实测试。不能用 Qt 最新 6.12 的新增 API 假装 Qt6.8 也存在。WebSocket 代理与 TLS 后端功能须按选用 Kit 验证，所有 SSL peer errors 必须 fail-closed。
+**Qt 6.8 已核实的公开 API：** [Qt 6.8 QWebSocket](https://doc.qt.io/qt-6.8/qwebsocket.html) 提供 `setReadBufferSize()`、`setMaxAllowedIncomingFrameSize()` 和 `setMaxAllowedIncomingMessageSize()`；其中 `readBufferSize=0` 默认**无限制**。工程必须分别限制接收缓存、入站帧和完整消息长度，同时治理应用写队列与 OS/TLS 缓冲并实测峰值 RSS。不能把设置了上述上限等同于进程总体内存有界，也不能用 Qt 6.12 才新增的其他 API 冒充 Qt 6.8 能力。WebSocket 代理与 TLS 后端仍须按实际 Qt 6.8 Kit 验证；证书错误必须 fail-closed。
 
 ## 6. 威胁模型与最低限度反证
 
