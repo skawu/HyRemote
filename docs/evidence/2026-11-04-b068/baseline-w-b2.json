@@ -1,0 +1,18 @@
+﻿{
+    "case":  "w-b2",
+    "exe":  "widgets1080.exe",
+    "args":  "-plugin hyremote:port=5921",
+    "viewer":  true,
+    "client":  "1920x1080",
+    "frame":  "1920x1080",
+    "samples":  40,
+    "wall_seconds":  40.6,
+    "cpu_seconds":  3.047,
+    "cpu_percent_one_core":  7.5,
+    "ws_mb_mean":  93.7,
+    "ws_mb_max":  100.5,
+    "private_mb_mean":  56.1,
+    "private_mb_max":  70.6,
+    "viewer_cpu_percent":  0,
+    "viewer_ws_mb":  47.4
+}

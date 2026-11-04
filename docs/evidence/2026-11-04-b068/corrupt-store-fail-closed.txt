@@ -1,0 +1,24 @@
+﻿=== generic-malformed ===
+STATE=Stopped
+LISTENER_EFFECTIVE=none
+WATERMARK_ENABLED=false
+LAST_ERROR_CODE=InvalidConfiguration
+LAST_ERROR_MESSAGE=the stored watermark policy was not applied: the stored watermark policy carries no text; the watermark policy could not be applied, so remote output is refused instead of streaming unwatermarked frames
+=== generic-bounds ===
+STATE=Stopped
+LISTENER_EFFECTIVE=none
+WATERMARK_ENABLED=false
+LAST_ERROR_CODE=InvalidConfiguration
+LAST_ERROR_MESSAGE=the stored watermark policy was not applied: the watermark text is 130 UTF-16 code units long, but the limit is 128; the watermark policy could not be applied, so remote output is refused instead of streaming unwatermarked frames
+=== qpa-malformed ===
+STATE=Stopped
+LISTENER_EFFECTIVE=none
+WATERMARK_ENABLED=false
+LAST_ERROR_CODE=InvalidConfiguration
+LAST_ERROR_MESSAGE=the stored watermark policy was not applied: the stored watermark policy carries no text; the watermark policy could not be applied, so remote output is refused instead of streaming unwatermarked frames
+=== generic-malformed-off ===
+STATE=Running
+LISTENER_EFFECTIVE=0.0.0.0:5921
+WATERMARK_ENABLED=false
+LAST_ERROR_CODE=none
+LAST_ERROR_MESSAGE=none

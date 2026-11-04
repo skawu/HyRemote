@@ -1,0 +1,18 @@
+﻿{
+    "case":  "q-b2",
+    "exe":  "qml.exe",
+    "args":  "-I F:\\workspace\\hyremote\\HyRemote\\build\\install\\qml -I C:\\Qt\\6.8.3\\msvc2022_64\\qml F:\\workspace\\hyremote\\HyRemote\\tmp\\b068\\qml\\quick1080.qml",
+    "viewer":  true,
+    "client":  "1920x1080",
+    "frame":  "1920x1080",
+    "samples":  40,
+    "wall_seconds":  40.6,
+    "cpu_seconds":  3.984,
+    "cpu_percent_one_core":  9.8,
+    "ws_mb_mean":  214.1,
+    "ws_mb_max":  228.6,
+    "private_mb_mean":  186.4,
+    "private_mb_max":  201,
+    "viewer_cpu_percent":  0,
+    "viewer_ws_mb":  90.5
+}
