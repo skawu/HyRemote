@@ -329,6 +329,76 @@ def self_test() -> int:
                 else:
                     print(f"ok: {name}")
 
+    # #812/#768: exact post-RC7 candidate release guard. These fake Git blobs test
+    # byte-level scope and identities without depending on live GitHub state.
+    rc7_notes_name = "docs/releases/v0.3.5.0.md"
+    rc7_pending = CANDIDATE_MARKER + "\n# 中文\n# English\n## Security boundary\n"
+    rc7_accepted = REOPEN_ACCEPTED_MARKER + "\n# 中文\n# English\n"
+    rc7_files = RC7_PRODUCT_FILES | RC7_GOVERNANCE_FILES | {rc7_notes_name}
+    rc7_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n"
+
+    def rc7_scenario(name, *, wrong_base=False, missing_file=False,
+                     wrong_product=False, wrong_governance=False,
+                     wrong_notes=False, wrong_cmake=False, expect_error=None):
+        nonlocal failures, cases
+        cases += 1
+        changed = rc7_files - ({"tools/local-owner/worker.py"} if missing_file else set())
+
+        def git_fixture(*args):
+            if args[:2] == ("diff", "--name-only"):
+                return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
+            if args[0] == "show" and len(args) == 2:
+                address = args[1]
+                if address == f"{DEVELOP_REF}:{rc7_notes_name}":
+                    return rc7_pending.encode("utf-8")
+                if ":" not in address:
+                    raise AssertionError("unexpected fixture Git show: " + address)
+                ref, path = address.split(":", 1)
+                if path in RC7_PRODUCT_FILES:
+                    if ref == "HEAD" and wrong_product and path == "tools/local-owner/worker.py":
+                        return b"BAD-PRODUCT-BLOB\n"
+                    return ("REVIEWED-SOURCE:" + path).encode("utf-8")
+                if path in RC7_GOVERNANCE_FILES:
+                    if ref == "HEAD" and wrong_governance and path == ".github/workflows/git-flow-policy.yml":
+                        return b"BAD-GOVERNANCE-BLOB\n"
+                    return ("REVIEWED-GOVERNANCE:" + path).encode("utf-8")
+            raise AssertionError("unexpected fixture Git query: " + repr(args))
+
+        try:
+            validate_reopen_rc7(
+                git=git_fixture, version="0.3.5.0", notes_name=rc7_notes_name,
+                base_notes=rc7_accepted,
+                head_notes=rc7_pending + ("arbitrary edit\n" if wrong_notes else ""),
+                base_cmake=rc7_cmake,
+                head_cmake=rc7_cmake + (b"tampered\n" if wrong_cmake else b""),
+                actual_base_sha=("0" * 40 if wrong_base else RC7_REOPEN_BASE_SHA),
+                fixed_source_ref="reviewed-source")
+            if expect_error is not None:
+                print(f"FAIL {name}: expected rejection containing '{expect_error}'")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+        except SystemExit as error:
+            if expect_error is None or expect_error not in str(error):
+                print(f"FAIL {name}: {error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+
+    rc7_scenario("RC7 exact P2+governance correction accepted")
+    rc7_scenario("RC7 different accepted base rejected", wrong_base=True,
+                 expect_error="unapproved version/base")
+    rc7_scenario("RC7 incomplete source scope rejected", missing_file=True,
+                 expect_error="changed-file scope")
+    rc7_scenario("RC7 altered worker source rejected", wrong_product=True,
+                 expect_error="product-source blob differs")
+    rc7_scenario("RC7 unreviewed governance rejected", wrong_governance=True,
+                 expect_error="governance blob differs")
+    rc7_scenario("RC7 arbitrary pending notes rejected", wrong_notes=True,
+                 expect_error="exact pending bilingual notes")
+    rc7_scenario("RC7 CMake/version alteration rejected", wrong_cmake=True,
+                 expect_error="must not alter the release VERSION")
+
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")
         return 1
