@@ -205,7 +205,7 @@ public:
             return;
         m_thread = std::thread([this] {
             std::unique_lock<std::mutex> lock(m_mutex);
-            while (!m_stop) {
+            for (int second = 0; second < 300 && !m_stop; ++second) {
                 if (m_changed.wait_for(lock, std::chrono::seconds(1),
                                        [this] { return m_stop; }))
                     break;
