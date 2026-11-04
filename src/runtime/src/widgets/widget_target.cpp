@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "detail/input_mailbox_admission.hpp"
+#include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
@@ -184,9 +185,13 @@ private:
         const int pixelHeight = qMax(1, qCeil(target->height() * dpr));
         const std::size_t bytesPerLine = static_cast<std::size_t>(pixelWidth) * 4U;
 
-        std::shared_ptr<hyremote::CpuFrameStorage> storage =
-            hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine,
-                                                         static_cast<std::size_t>(pixelHeight));
+        std::shared_ptr<hyremote::CpuFrameStorage> storage;
+        {
+            HYREMOTE_P1_SCOPE(WidgetBuffer);
+            storage = hyremote::CpuFrameStorage::createSinglePlane(
+                bytesPerLine, static_cast<std::size_t>(pixelHeight));
+        }
+        HYREMOTE_P1_BYTES(WidgetBuffer, bytesPerLine * static_cast<std::size_t>(pixelHeight));
         if (!storage || !storage->mutablePlane(0)) {
             publishEvent(state,
                          hyremote::CaptureEventCode::BackendFailure,
@@ -201,8 +206,11 @@ private:
                      static_cast<qsizetype>(bytesPerLine),
                      QImage::Format_RGBA8888_Premultiplied);
         image.setDevicePixelRatio(dpr);
-        image.fill(Qt::transparent);
-        target->render(&image);
+        {
+            HYREMOTE_P1_SCOPE(WidgetPaint);
+            image.fill(Qt::transparent);
+            target->render(&image);
+        }
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
         hyremote::RemoteFrame frame;
