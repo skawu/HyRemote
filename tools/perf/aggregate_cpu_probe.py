@@ -9,6 +9,7 @@ uncategorized Qt/driver threads stay in the explicitly reported remainder.
 import argparse
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 NANOS_PER_SECOND = 1_000_000_000
@@ -36,11 +37,19 @@ def load(path: Path):
             samples.append(row)
     if len(samples) < 2:
         raise ValueError(f"{path}: at least two snapshots required")
-    if any(b["elapsed_ms"] <= a["elapsed_ms"] or
-           b["pid"] != a["pid"] or
-           b["process_cpu_ns"] < a["process_cpu_ns"]
-           for a, b in zip(samples, samples[1:])):
-        raise ValueError(f"{path}: nonmonotone time/CPU or multiple process IDs")
+    fields = ("calls", "cpu_ns", "wall_ns", "bytes", "cpu_samples_missing")
+    for a, b in zip(samples, samples[1:]):
+        if (b["elapsed_ms"] <= a["elapsed_ms"] or
+                b["pid"] != a["pid"] or
+                b["process_cpu_ns"] < a["process_cpu_ns"]):
+            raise ValueError(f"{path}: nonmonotone time/CPU or multiple process IDs")
+        for stage in STAGES:
+            before = a["stages"][stage]
+            after = b["stages"][stage]
+            if (any(k not in before or k not in after for k in fields) or
+                    any(not isinstance(before[k], int) or not isinstance(after[k], int)
+                        or before[k] < 0 or after[k] < before[k] for k in fields)):
+                raise ValueError(f"{path}: invalid/nonmonotone {stage} stage counters")
     return samples
 
 
@@ -90,26 +99,39 @@ def print_result(label, result):
     print("  WARNING: Thread CPU and asynchronous GPU wall latency are NOT interchangeable.")
 
 
-def compare(b1, b2):
-    print("\nB2 − B1 CPU-second differences (matching diagnostic build and workload only):")
-    print(f"  process_cpu_seconds = "
-          f"{b2['process_cpu_seconds'] - b1['process_cpu_seconds']:+.4f}")
+def normalized_cpu_delta(b1, b2, stage, nominal_seconds):
+    """Return CPU seconds scaled to a common nominal sampling window."""
+    def rate(result):
+        if stage is None:
+            cpu = result["process_cpu_seconds"]
+        else:
+            cpu = result["stages"][stage]["cpu_ns"] / NANOS_PER_SECOND
+        return cpu / result["seconds"]
+    return (rate(b2) - rate(b1)) * nominal_seconds
+
+
+def compare(b1, b2, nominal_seconds):
+    print(f"\nB2 − B1 CPU deltas NORMALIZED to {nominal_seconds}s "
+          "(matched build/workload; actual durations may differ):")
+    process_delta = normalized_cpu_delta(b1, b2, None, nominal_seconds)
+    print(f"  process_cpu_seconds = {process_delta:+.4f} "
+          f"({100*process_delta/nominal_seconds:+.3f} percentage points of one core)")
+    stage_sum = 0.0
     for stage in STAGES:
         if stage in WALL_ONLY:
             continue
+        delta = normalized_cpu_delta(b1, b2, stage, nominal_seconds)
+        stage_sum += delta
         a = b1["stages"][stage]
         b = b2["stages"][stage]
-        print(f"  {stage:24} "
-              f"{(b['cpu_ns']-a['cpu_ns'])/NANOS_PER_SECOND:+.4f} "
-              f"calls={b['calls']-a['calls']:+d}")
-    residual = (
-        b2["process_cpu_seconds"]-b1["process_cpu_seconds"] -
-        sum((b2["stages"][stage]["cpu_ns"]-b1["stages"][stage]["cpu_ns"])
-            / NANOS_PER_SECOND for stage in STAGES if stage not in WALL_ONLY)
-    )
-    print(f"  {'UNKNOWN_RESIDUAL':24} {residual:+.4f}")
-    print("  Treat these as instrumented CPU-clock intervals, not statistical "
-          "call-stack attribution or causal proof. Verify three repeated runs.")
+        calls_per_sec = b["calls"]/b2["seconds"] - a["calls"]/b1["seconds"]
+        print(f"  {stage:24} {delta:+.4f} "
+              f"calls_per_second_delta={calls_per_sec:+.3f}")
+    residual = process_delta - stage_sum
+    print(f"  {'UNKNOWN_RESIDUAL':24} {residual:+.4f} "
+          "(normalized process difference minus measured stage difference)")
+    print("  These are instrumented CPU-clock intervals, not sampling call-stack "
+          "attribution or causal proof. Report each actual window and repeat.")
 
 
 def self_test():
@@ -132,7 +154,32 @@ def self_test():
         raise AssertionError("short window accepted")
     except ValueError:
         pass
-    print("PASS: #609 aggregation schema/delta/window and async-wall isolation")
+
+    # A trace may have a large intermediate counter then reset to a small
+    # ending value. Endpoints alone must never conceal that corruption.
+    middle = {"schema": 1, "pid": 1, "elapsed_ms": 30000,
+              "process_cpu_ns": 1000000000, "process_cpu_valid": True,
+              "stages": {key: dict(value) for key, value in b["stages"].items()}}
+    middle["stages"]["rfb_compare"]["cpu_ns"] = 9000000000
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "regressed.jsonl"
+        path.write_text("\n".join(json.dumps(row) for row in (a, middle, b)) + "\n",
+                        encoding="utf-8")
+        try:
+            load(path)
+            raise AssertionError("intermediate stage-counter reset accepted")
+        except ValueError as e:
+            assert "nonmonotone rfb_compare" in str(e)
+
+    # Original comparison was invalid for unequal but accepted windows: both
+    # runs use exactly 10% of a core for 38s/42s, so normalized CPU delta is 0.
+    cpu_b1 = {"seconds": 38.0, "process_cpu_seconds": 3.8,
+              "stages": {key: {"cpu_ns": 0} for key in STAGES}}
+    cpu_b2 = {"seconds": 42.0, "process_cpu_seconds": 4.2,
+              "stages": {key: {"cpu_ns": 0} for key in STAGES}}
+    assert abs(normalized_cpu_delta(cpu_b1, cpu_b2, None, 40)) < 1e-9
+    print("PASS: #609 schema, intermediate monotonicity, normalized windows, "
+          "async-wall isolation")
 
 
 def main():
@@ -154,7 +201,7 @@ def main():
     b2 = measure(load(args.b2), args.warmup_seconds * 1000, args.seconds)
     print_result("B1", b1)
     print_result("B2", b2)
-    compare(b1, b2)
+    compare(b1, b2, args.seconds)
 
 
 if __name__ == "__main__":
