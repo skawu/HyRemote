@@ -16,6 +16,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -124,6 +125,21 @@ public:
         record(stage, wallNs, 0, false);
     }
 
+    void snapshot()
+    {
+        if (!m_enabled)
+            return;
+        std::lock_guard<std::mutex> lock(m_writeMutex);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            Clock::now() - m_start).count();
+        // Several AccessInstance instances may coexist. Allow only one sample
+        // per ~second even when multiple object-owned reporters tick together.
+        if (elapsed - m_lastReportMs < 750)
+            return;
+        m_lastReportMs = elapsed;
+        writeSnapshotLocked(elapsed);
+    }
+
 private:
     Recorder()
     {
@@ -134,24 +150,13 @@ private:
         m_enabled = true;
         m_start = Clock::now();
         (void)processCpuNs(m_startCpuNs);
-        // Reporter is CPU-probe-only and sleeps outside any measured stage.
-        // It also samples B1 when no Viewer/capture work is occurring.
-        std::thread([this] {
-            for (int second = 1; second <= 300; ++second) {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                snapshot();
-            }
-        }).detach();
     }
 
-    void snapshot()
+    void writeSnapshotLocked(std::int64_t elapsed)
     {
-        std::lock_guard<std::mutex> lock(m_writeMutex);
         std::FILE *file = std::fopen(m_path.c_str(), "ab");
         if (!file)
             return;
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            Clock::now() - m_start).count();
         std::uint64_t processCpu = 0;
         const bool valid = processCpuNs(processCpu);
         std::fprintf(file,
@@ -184,8 +189,53 @@ private:
     std::string m_path;
     Clock::time_point m_start{};
     std::uint64_t m_startCpuNs = 0;
+    std::int64_t m_lastReportMs = -1000;
     std::array<Counters, static_cast<std::size_t>(Stage::Count)> m_counters{};
     std::mutex m_writeMutex;
+};
+
+// One object-owned reporter per live AccessInstance. Its worker is JOINED
+// before the runtime DLL can unload: no detached callback into unloaded code.
+class Reporter final
+{
+public:
+    Reporter()
+    {
+        if (!Recorder::instance().enabled())
+            return;
+        m_thread = std::thread([this] {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            while (!m_stop) {
+                if (m_changed.wait_for(lock, std::chrono::seconds(1),
+                                       [this] { return m_stop; }))
+                    break;
+                lock.unlock();
+                Recorder::instance().snapshot();
+                lock.lock();
+            }
+        });
+    }
+
+    ~Reporter()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stop = true;
+        }
+        m_changed.notify_all();
+        if (m_thread.joinable())
+            m_thread.join();
+        Recorder::instance().snapshot();
+    }
+
+    Reporter(const Reporter &) = delete;
+    Reporter &operator=(const Reporter &) = delete;
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_changed;
+    bool m_stop = false;
+    std::thread m_thread;
 };
 
 class Scope final
