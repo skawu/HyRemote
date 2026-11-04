@@ -57,3 +57,27 @@ Restoration (verified)
 SPI_RESULT=True
 [after-restore] LogPixels=<unset> Win8DpiScaling=0 PMV2=True SYSTEM_DPI=96 SCALE_PERCENT=100
 PerMonitorSettings DpiValue=0
+
+Native Windows display settings — what the OS actually offers (decisive)
+-----------------------------------------------------------------------
+Opened Settings > System > Display on this host and read the Scale control through UI Automation
+(no literal CP936 text in the probe; the combo is identified by its percentage items):
+
+  COMBO index 1 PERCENT_ITEMS = "100% (recommended), 125%, 150%, 175%"
+
+  => the panel (HP E24 G4, 1920x1080) offers NO 200% option. The list literally ends at 175%.
+
+Screenshot: settings-scale-options.png (dropdown open, four entries only).
+
+This supersedes the earlier hypothesis that 200% merely needed a sign-out: Windows does not expose 200% for this
+display at all, which also explains why
+- SPI_SETLOGICALDPIOVERRIDE saturated at 175% (indices 5/6/7 produced no change), and
+- the stored per-monitor request (DpiValue=5) was ignored rather than applied at the next logon.
+
+DisplayConfig probe validity check: QueryDisplayConfig returned PATHS=1, PATHINFO_SIZE=72,
+PATH0 ACTIVE=1 TARGET_AVAILABLE=1, and DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME returned RC=0 with the monitor
+name "HP E24 G4", so the structure layout was correct; DISPLAYCONFIG_DEVICE_INFO_GET_DPI_SCALE then returned
+RC=87 (ERROR_INVALID_PARAMETER), i.e. that per-monitor DPI-scale device info is not supported on this stack.
+
+Final state: SYSTEM_DPI=96 (100%), Win8DpiScaling=0, LogPixels unset, PerMonitorSettings DpiValue=0.
+No candidate change, no publish, no G6/L2 re-run.
