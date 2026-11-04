@@ -18,6 +18,8 @@ flowchart TB
   HMI["S05-C HMI Native 1.0 E2E/Grant 设计+PoC"]
   NET["S05-D Qt6.8 WSS/背压/企业代理可证伪 PoC"]
   G4["S05-E View G4 正式工程架构"]
+  FREEZE["合同冻结 + #190 研发激活（独立授权）"]
+  NATIVE["S05-C2 HMI Native/TLS 正式实现与验证"]
   GW["S05-F Gateway 单节点控制+透明 Relay"]
   EDGE["S05-G 同一 View 内 Edge + Site 管理"]
   FULL["S05-H Device E2E + Edge + Gateway 完整链路"]
@@ -28,10 +30,16 @@ flowchart TB
   BASE --> HMI
   IDL --> NET
   VIEW --> G4
+  IDL --> FREEZE
+  HMI --> FREEZE
+  NET --> FREEZE
+  G4 --> FREEZE
+  FREEZE --> NATIVE
+  HMI --> NATIVE
+  FREEZE --> GW
+  FREEZE --> EDGE
   G4 --> EDGE
-  IDL --> GW
-  NET --> GW
-  HMI --> FULL
+  NATIVE --> FULL
   GW --> FULL
   EDGE --> FULL
   G4 --> FULL
@@ -43,6 +51,8 @@ flowchart TB
 - S05-B 继续执行既有 HyRemoteView #9 的最小 Direct RFB PoC、RemoteSurface 与安全性能资格，**不要创建重复的 Gateway PoC 取代它**。#5 G3 未 PASS → G4 正式架构和产品代码不进入批准态。
 - S05-C 的 Native 1.0 严格由 V8 附录 A 决定；Framework 端 Qt5.15/Qt6.8 使用同一 Core/Shared Runtime，不因某个平台能做特殊 GPU 加速而私自换协议。
 - S05-D 可以先以测试字节和无真实设备的封闭场景证明网络库边界，**不需要先做工厂公网产品服务**；它不会授予 HMI 观看/控制许可。
+- **正式产品代码准入闸门**：S05-A/C/D 技术设计与最低可证伪实验形成完整签收，S05-B G3 通过且 S05-E G4 产品工程架构正式冻结；同时 #190 必须经过独立研发激活/范围批准。上述任一条件缺失，S05-C2/F/G 都不得创建正式产品实现。技术 PoC 与产品实现不能借同一“已设计”状态混用。
+- **S05-C2 明确补齐设备端正式实现**：S05-C 的单元 fixture/技术 PoC 不能代替 Qt5/Qt6 Framework Native 端点、真实身份与授权在源码和设备上的完备验收；S05-H 必须依赖 C2 通过。
 - S05-F 的 Gateway 是云端或客户自托管可选服务，不部署在工厂 PC 上；S05-G 的 Edge 必须封装在相同 HyRemoteView 的产品安装/授权/更新/卸载体系内。
 - S05-H 只有在 Native Device TLS/Grant、View G3/G4、Gateway/Edge 三个实际能力都合格后才有真实 E2E 演示资格。先完成设备端身份与安全，会话无授权时必须零画面。
 - S05-I 属于目标设备/工厂真实网络与产品安装验收；文档、模拟 Gateway、unit tests 都不能代替。
@@ -56,9 +66,11 @@ flowchart TB
 | S05-C | Native 1.0 TLS+身份+View/ControlGrant+输入最终栅栏实现前规格、fixture，再有界 PoC | HyRemote Framework / Native Owner；#246；V8 wire | 伪造身份、无 ViewGrant、旧 GrantEpoch、遮罩变更、断线旧输入均拒绝；Qt LTS 不改 Core | DESIGN_ONLY |
 | S05-D | Qt6.8 WSS 单控制+数据连接限制、代理/失败关闭最小实验 | View 侧公开 Qt API；Cloud 网络/安全 Owner，测试工具非产品代码 | 真实 setReadBufferSize/frame/message caps、写队列/OS 可观测上限、非法 TLS、慢端回收、代理行为 | NOT_RUN |
 | S05-E | G4 View 正式模块接口/目录/测试模型 | 依赖 S05-B G3 真实 PASS；View Architecture Owner | Direct、Managed 复用 DeviceProtocolSession，Qt Quick UI 不介入 Edge IO；设计正式签收 | NOT_AUTHORIZED |
-| S05-F | 自托管 Gateway 最小单节点 Registry/Broker/Relay 的工程实现 | S05-A+S05-D，真实安全评审；Gateway Owner/待定仓库 | 租户隔离、Pair 单次消费、路由双端绑定、限额、证书轮换、升级/回退；不读取设备内容 | NOT_STARTED |
-| S05-G | 同一 View 安装包内共享白名单、EdgeAdmission、ByteRelay、准确 UI 状态 | S05-E，S05-A 字段约束；HyRemoteView Edge Owner | 默认 OFF；仅 HMI1 注册后可以拨号；撤销立刻生效；同安装/卸载/退出不引入 sidecar | NOT_STARTED |
-| S05-H | 外地 View → Gateway → 工厂 View Edge → 真实 HMI Native/TLS E2E | S05-C/E/F/G 各自合格；联合 Owner | View 独立验 HMI 身份，设备端再核发 Grant；替身 HMI/撤权/重连均失败关闭 | NOT_STARTED |
+| DESIGN-FREEZE | 完整模块 IDL/状态机/安全取舍/资源预算方法/接口/打包边界签收；#190 的正式研发激活单独确认 | S05-A/C/D/E 与真实安全 PoC 证据；Cloud Owner 汇总，重大产品/架构取舍与激活由 Human 决策 | 所有 P1/P2 设计缺口收口，实施范围/非目标/回退已固定；否则仅允许继续设计/封闭技术 PoC | NOT_AUTHORIZED |
+| S05-C2 | HMI Framework 正式 Native TLS/Native 1.0 设备会话、Grant/输入栅栏与双 Qt 版本验证 | S05-C + DESIGN-FREEZE；HyRemote Native Owner/#246 | 真实 HMI 安全连接、设备身份证书、View/ControlGrant、隐私/撤权/断线输入和 Qt5/Qt6 源码证据；无云代理授予权限 | NOT_STARTED |
+| S05-F | 自托管 Gateway 最小单节点 Registry/Broker/Relay 的工程实现 | DESIGN-FREEZE + S05-A/D；Gateway Owner/待定仓库 | 租户隔离、Pair 单次消费、路由双端绑定、限额、证书轮换、升级/回退；不读取设备内容 | NOT_STARTED |
+| S05-G | 同一 View 安装包内共享白名单、EdgeAdmission、ByteRelay、准确 UI 状态 | DESIGN-FREEZE + S05-E，S05-A 字段约束；HyRemoteView Edge Owner | 默认 OFF；仅 HMI1 注册后可以拨号；撤销立刻生效；同安装/卸载/退出不引入 sidecar | NOT_STARTED |
+| S05-H | 外地 View → Gateway → 工厂 View Edge → 真实 HMI Native/TLS E2E | S05-C2/E/F/G 各自合格；联合 Owner | View 独立验 HMI 身份，设备端再核发 Grant；替身 HMI/撤权/重连均失败关闭 | NOT_STARTED |
 | S05-I | 12/12 EDGE 产品结果、独立安全、资源/生命周期真实验收 | S05-H；本地/实机 Owner 和 QA/Security | 记录 exact SHA、场景、CPU/帧龄/RSS、慢端、现场优先、安装升级、真实代理/断网 | NOT_RUN |
 | Release | 独立受管功能发布/支持资格 | S05-I + #190/版本授权；Release Owner | 实际支持平台和产品范围可证，不能用规划替代版本签收 | NOT_AUTHORIZED |
 
@@ -129,4 +141,4 @@ flowchart TB
 - [ ] View G3 在真实 Windows/Linux 以 raw evidence PASS；
 - [ ] Native Device E2E/路由安全、企业代理/缓冲/安装、EDGE12/12 实测。
 
-**当前精确状态：** `STAGE05=DESIGN_PR_PENDING_REVIEW`；`VIEW_G3=NOT_PASSED`；`NATIVE_DEVICE_E2E=NOT_IMPLEMENTED`；`GATEWAY/EDGE=NOT_IMPLEMENTED`；`MANAGED_PUBLIC=NOT_QUALIFIED`；`POST_GA_RELEASE=NOT_ACTIVATED`。以上未完成项不成为阻止独立设计审查/技术研究的理由，也不能误记已 PASS。
+**当前精确状态：** `STAGE05=DESIGN_PR_PENDING_REVIEW`；`DETAIL_CONTRACT_FREEZE=NOT_APPROVED`；`GATEWAY_IMPLEMENTATION_ACTIVATION=NOT_AUTHORIZED`；`VIEW_G3=NOT_PASSED`；`NATIVE_DEVICE_E2E=NOT_IMPLEMENTED`；`GATEWAY/EDGE=NOT_IMPLEMENTED`；`MANAGED_PUBLIC=NOT_QUALIFIED`；`POST_GA_RELEASE=NOT_ACTIVATED`。以上未完成项不成为阻止独立设计审查/技术研究的理由，也不能误记已 PASS。
