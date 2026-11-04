@@ -7,6 +7,9 @@
 #include <QMetaObject>
 #include <QPointer>
 #include <QSharedPointer>
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+#include <QSGRendererInterface>
+#endif
 #include <QThread>
 #include <QTimer>
 #include <QWindow>
@@ -16,6 +19,7 @@
 #include <QtQuick/QQuickWindow>
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstring>
@@ -30,6 +34,9 @@
 #include "detail/input_mailbox_admission.hpp"
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+#include "quick/passive_gl_frame_sampler.hpp"
+#endif
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -73,6 +80,20 @@ public:
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+        // Always install window hooks on the GUI thread. The hook itself runs
+        // with DirectConnection on Qt's scenegraph rendering thread.
+        const std::weak_ptr<State> weak = m_state;
+        if (!QMetaObject::invokeMethod(app, [weak] {
+                if (auto state = weak.lock())
+                    installPassiveGlHooksOnGuiThread(state);
+            }, Qt::QueuedConnection)) {
+            m_state->active = false;
+            m_state->onFrame = {};
+            m_state->onEvent = {};
+            return false;
+        }
+#endif
         return true;
     }
 
@@ -82,7 +103,18 @@ public:
         m_state->active = false;
         m_state->onFrame = {};
         m_state->onEvent = {};
-
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+        const QMetaObject::Connection renderConnection
+            = std::exchange(m_state->passiveRenderConnection, {});
+        const QMetaObject::Connection invalidationConnection
+            = std::exchange(m_state->passiveInvalidationConnection, {});
+        m_state->passiveEnabled = false;
+        m_state->passiveFrame.reset();
+        lock.unlock();
+        QObject::disconnect(renderConnection);
+        QObject::disconnect(invalidationConnection);
+        lock.lock();
+#endif
         // Ready/timer continuations may still exist after stop, but they all check active before
         // entering a Core callback. A callback that already entered is drained here.
         m_state->callbacksDrained.wait(lock, [this] { return m_state->callbacksInFlight == 0; });
@@ -94,6 +126,9 @@ public:
             std::lock_guard<std::mutex> lock(m_state->mutex);
             if (!m_state->active)
                 return false;
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+            m_state->passiveLastRequest = std::chrono::steady_clock::now();
+#endif
         }
 
         QObject *dispatcher = QCoreApplication::instance();
@@ -103,7 +138,13 @@ public:
         const std::shared_ptr<State> state = m_state;
         return QMetaObject::invokeMethod(
             dispatcher,
-            [state, request] { attemptGrabOnGuiThread(state, request, 1U); },
+            [state, request] {
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+                attemptPassiveOrGrabOnGuiThread(state, request, true);
+#else
+                attemptGrabOnGuiThread(state, request, 1U);
+#endif
+            },
             Qt::QueuedConnection);
     }
 
@@ -119,6 +160,18 @@ private:
         std::size_t callbacksInFlight = 0;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+        // Render-thread callbacks and Core scheduler requests share only
+        // immutable frame storage under mutex; no Core callback on render thread.
+        QMetaObject::Connection passiveRenderConnection;
+        QMetaObject::Connection passiveInvalidationConnection;
+        std::optional<hyremote::RemoteFrame> passiveFrame;
+        QSize passiveExpectedSize;
+        float passiveExpectedDpr = 1.0F;
+        std::chrono::steady_clock::time_point passiveLastRequest{};
+        bool passiveEnabled = false;
+        bool passiveKickIssued = false;
+#endif
     };
 
     struct GrabAttempt
@@ -130,6 +183,140 @@ private:
         std::chrono::steady_clock::time_point p1GrabStart{};
 #endif
     };
+
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+    static void installPassiveGlHooksOnGuiThread(const std::shared_ptr<State> &state)
+    {
+        QQuickWindow *window = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active)
+                return;
+            window = state->target.data();
+        }
+        if (!window || !window->rendererInterface()
+            || window->rendererInterface()->graphicsApi() != QSGRendererInterface::OpenGL)
+            return; // Non-OpenGL, Qt Quick offscreen and default Windows D3D use the old path.
+
+        const std::weak_ptr<State> weak = state;
+        const auto rendered = QObject::connect(
+            window, &QQuickWindow::afterRendering, window, [weak, window] {
+                const auto current = weak.lock();
+                if (!current)
+                    return;
+
+                QSize expected;
+                float dpr = 1.0F;
+                {
+                    std::lock_guard<std::mutex> lock(current->mutex);
+                    // No capture while viewer demand has stopped. A 350ms lease
+                    // covers the 100ms static probe, without a long-lived render
+                    // readback after a viewer disconnects.
+                    if (!current->active || !current->passiveEnabled
+                        || current->passiveExpectedSize.isEmpty()
+                        || std::chrono::steady_clock::now() - current->passiveLastRequest
+                               > std::chrono::milliseconds(350))
+                        return;
+                    expected = current->passiveExpectedSize;
+                    dpr = current->passiveExpectedDpr;
+                }
+
+                auto frame = readPassiveQuickGlFrame(window, expected, dpr);
+                if (!frame)
+                    return; // Invalid framebuffer: never publish unsupported pixels.
+
+                std::lock_guard<std::mutex> lock(current->mutex);
+                if (current->active && current->passiveEnabled
+                    && current->passiveExpectedSize == expected
+                    && current->passiveExpectedDpr == dpr)
+                    current->passiveFrame = std::move(frame);
+            }, Qt::DirectConnection);
+        const auto invalidated = QObject::connect(
+            window, &QQuickWindow::sceneGraphInvalidated, window, [weak] {
+                if (auto current = weak.lock()) {
+                    std::lock_guard<std::mutex> lock(current->mutex);
+                    current->passiveFrame.reset();
+                    current->passiveKickIssued = false;
+                }
+            }, Qt::DirectConnection);
+
+        bool accepted = false;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->active && state->target == window) {
+                state->passiveRenderConnection = rendered;
+                state->passiveInvalidationConnection = invalidated;
+                state->passiveEnabled = true;
+                accepted = true;
+            }
+        }
+        if (!accepted) {
+            QObject::disconnect(rendered);
+            QObject::disconnect(invalidated);
+        }
+    }
+
+    static void attemptPassiveOrGrabOnGuiThread(const std::shared_ptr<State> &state,
+                                               const hyremote::CaptureRequest &request,
+                                               bool mayKickOnce)
+    {
+        if (!isActive(state))
+            return;
+
+        QQuickWindow *window = state->target.data(); // GUI thread only
+        if (window && window->isVisible() && window->width() > 0 && window->height() > 0) {
+            const float dpr = static_cast<float>(window->devicePixelRatio());
+            const QSize expected(qRound(window->width() * dpr),
+                                 qRound(window->height() * dpr));
+            std::optional<hyremote::RemoteFrame> cached;
+            bool requestNativeFrame = false;
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (state->passiveEnabled && !expected.isEmpty() && dpr > 0.0F) {
+                    if (state->passiveExpectedSize != expected
+                        || state->passiveExpectedDpr != dpr) {
+                        state->passiveFrame.reset();
+                        state->passiveExpectedSize = expected;
+                        state->passiveExpectedDpr = dpr;
+                        state->passiveKickIssued = false;
+                    }
+                    if (state->passiveFrame
+                        && state->passiveFrame->geometry.size.width
+                               == static_cast<std::uint32_t>(expected.width())
+                        && state->passiveFrame->geometry.size.height
+                               == static_cast<std::uint32_t>(expected.height())) {
+                        cached = state->passiveFrame;
+                    } else if (mayKickOnce && !state->passiveKickIssued) {
+                        state->passiveKickIssued = true;
+                        requestNativeFrame = true;
+                    }
+                }
+            }
+            if (cached) {
+                cached->timing.ptsSource = hyremote::PtsSource::Completion;
+                cached->timing.requestTime = request.requestTime;
+                cached->timing.completionTime = hyremote::Clock::now();
+                cached->requestId = request.id;
+                cached->damage = hyremote::Damage::fullFrame();
+                publishCallback(state, &State::onFrame, std::move(*cached));
+                return;
+            }
+            if (requestNativeFrame) {
+                // One screen-render bootstrap, not a recurring poll. If no
+                // usable native frame arrives quickly, keep legacy grabToImage.
+                window->update();
+                QCoreApplication *dispatcher = QCoreApplication::instance();
+                if (dispatcher) {
+                    QTimer::singleShot(50, dispatcher, [state, request] {
+                        attemptPassiveOrGrabOnGuiThread(state, request, false);
+                    });
+                    return;
+                }
+            }
+        }
+        attemptGrabOnGuiThread(state, request, 1U); // Always correct fallback
+    }
+#endif
 
     static bool isActive(const std::shared_ptr<State> &state)
     {
