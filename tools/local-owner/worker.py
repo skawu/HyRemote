@@ -699,6 +699,104 @@ def self_test() -> None:
         fail_log = "DISCOVERED_TEST_COUNT=79\\nTEST_EXIT_STATUS=8\\n"
         assert metric(fail_log.replace("\\n", "\n"), "TEST_EXIT_STATUS") == 8
 
+    # #768: identity comes from the actual configured build/Qt package/compiler,
+    # not test counts, caller's config filename, or task JSON. Offline fixtures
+    # work on both Linux and Windows without invoking any build or GitHub action.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        workspace = root / "source"
+        build = workspace / "build"
+        cmake_compiler_dir = build / "CMakeFiles" / "3.28.3"
+        qt_prefix = root / "Qt" / "6.8.3" / "msvc2022_64"
+        qt_dir = qt_prefix / "lib" / "cmake" / "Qt6"
+        qt_dir.mkdir(parents=True)
+        cmake_compiler_dir.mkdir(parents=True)
+        (build / ".hyremote-build-identity").write_text(
+            "qt=" + str(qt_prefix) + "\ncpp=ON\nqml=ON\ngeneric=ON\nqpa=ON\n",
+            encoding="utf-8")
+        cache_path = build / "CMakeCache.txt"
+        cache_data = (
+            "CMAKE_HOME_DIRECTORY:INTERNAL=" + str(workspace.resolve()) + "\n"
+            "CMAKE_BUILD_TYPE:STRING=Release\n"
+            "Qt6_DIR:PATH=" + str(qt_dir) + "\n"
+            "HYREMOTE_BUILD_CPP_API:BOOL=ON\n"
+            "HYREMOTE_BUILD_QML_API:BOOL=ON\n"
+            "HYREMOTE_WITH_GENERIC_PLUGIN:BOOL=ON\n"
+            "HYREMOTE_WITH_QPA_PROXY:BOOL=ON\n"
+            "HYREMOTE_BUILD_TESTS:BOOL=ON\n"
+        )
+        cache_path.write_text(cache_data, encoding="utf-8")
+        version_path = qt_dir / "Qt6ConfigVersion.cmake"
+        version_path.write_text('set(PACKAGE_VERSION "6.8.3")\n', encoding="utf-8")
+        compiler_path = cmake_compiler_dir / "CMakeCXXCompiler.cmake"
+        compiler_data = (
+            'set(CMAKE_CXX_COMPILER_ID "MSVC")\n'
+            'set(CMAKE_CXX_COMPILER_VERSION "19.44.35207")\n'
+            'set(CMAKE_CXX_COMPILER_ARCHITECTURE_ID "x64")\n'
+            'set(CMAKE_CXX_SIZEOF_DATA_PTR "8")\n'
+        )
+        compiler_path.write_text(compiler_data, encoding="utf-8")
+        g6_order = dict(sample, task="canonical-g6")
+        verify_resolved_g6_identity(build, workspace, g6_order)
+        for file_path, old, bad in (
+            (version_path, "6.8.3", "5.15.2"),
+            (compiler_path, '"MSVC"', '"GNU"'),
+            (compiler_path, "19.44.35207", "19.29.30155"),
+            (compiler_path, '"x64"', '"ARM64"'),
+            (cache_path, "HYREMOTE_BUILD_QML_API:BOOL=ON",
+             "HYREMOTE_BUILD_QML_API:BOOL=OFF"),
+            (cache_path, "HYREMOTE_WITH_QPA_PROXY:BOOL=ON",
+             "HYREMOTE_WITH_QPA_PROXY:BOOL=OFF"),
+            (cache_path, "CMAKE_BUILD_TYPE:STRING=Release",
+             "CMAKE_BUILD_TYPE:STRING=Debug"),
+            (cache_path, "Qt6_DIR:PATH=", "Qt5_DIR:PATH="),
+            (build / ".hyremote-build-identity", "generic=ON", "generic=OFF"),
+        ):
+            original = file_path.read_text(encoding="utf-8")
+            assert old in original, (file_path, old)
+            file_path.write_text(original.replace(old, bad), encoding="utf-8")
+            try:
+                verify_resolved_g6_identity(build, workspace, g6_order)
+            except Blocked:
+                pass
+            else:
+                raise AssertionError("resolved G6 identity mismatch admitted " + bad)
+            finally:
+                file_path.write_text(original, encoding="utf-8")
+        # Even a superficially passing Qt5 56/56 log cannot become a typed
+        # win-qt683-msvc2022 MACHINE_PASS without real matching build identity.
+        assert metric("DISCOVERED_TEST_COUNT=56\nEXECUTED_TEST_COUNT=56",
+                      "EXECUTED_TEST_COUNT") == 56
+        cache_path.write_text(
+            cache_data.replace("Qt6_DIR:PATH=", "Qt5_DIR:PATH=")
+                      .replace("HYREMOTE_BUILD_QML_API:BOOL=ON",
+                               "HYREMOTE_BUILD_QML_API:BOOL=OFF"),
+            encoding="utf-8")
+        try:
+            verify_resolved_g6_identity(build, workspace, g6_order)
+        except Blocked:
+            pass
+        else:
+            raise AssertionError("Qt5 C++/Widgets 56/56 passed a Qt6 four-route G6 order")
+        probe = SimpleNamespace(returncode=0, stdout="HYREMOTE_BUILD_DIR=" + str(build) + "\n",
+                                stderr="")
+        with patch.dict(globals(), {"run": lambda *a, **k: probe}):
+            assert resolved_g6_build_dir(workspace, root / "kit.yml") == build
+        for bad in (
+            SimpleNamespace(returncode=0, stdout="", stderr=""),
+            SimpleNamespace(returncode=0, stdout="HYREMOTE_BUILD_DIR=x\nHYREMOTE_BUILD_DIR=y\n",
+                            stderr=""),
+            SimpleNamespace(returncode=1, stdout="HYREMOTE_BUILD_DIR=" + str(build),
+                            stderr=""),
+        ):
+            with patch.dict(globals(), {"run": lambda *a, **k: bad}):
+                try:
+                    resolved_g6_build_dir(workspace, root / "kit.yml")
+                except Blocked:
+                    pass
+                else:
+                    raise AssertionError("invalid canonical build-dir probe admitted")
+
     # An expired/removed order cannot prevent a prior finished-but-unreported
     # result from reaching #95. Test the polling outbox independently of inbox.
     with tempfile.TemporaryDirectory() as temp:
