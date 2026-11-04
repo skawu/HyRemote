@@ -233,7 +233,13 @@ private:
                     dpr = current->passiveExpectedDpr;
                 }
 
-                auto frame = readPassiveQuickGlFrame(window, expected, dpr);
+                std::optional<hyremote::RemoteFrame> frame;
+                try {
+                    frame = readPassiveQuickGlFrame(window, expected, dpr);
+                } catch (...) {
+                    // Never let allocations/driver-side failures propagate
+                    // across a Qt scenegraph render signal.
+                }
                 std::lock_guard<std::mutex> lock(current->mutex);
                 if (!frame) {
                     ++current->passiveGlRejected;
