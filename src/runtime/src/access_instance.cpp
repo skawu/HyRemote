@@ -1055,13 +1055,13 @@ bool AccessInstance::start()
         }
     }
 
-    // #589: an operator who explicitly enabled a watermark must never receive an unwatermarked remote picture.
-    // A policy that cannot be honoured refuses only the remote output capability; the host application keeps
-    // running with its own local picture untouched.
-    if (m_impl->watermark.policy.enabled && !m_impl->watermark.ok()) {
+    // #812: a failed *implicit restore* leaves enabled=false but carries an error. Refuse remote
+    // output on any invalid policy, not only an explicitly enabled one: otherwise a broken saved
+    // watermark could silently start an unmarked stream. The local host UI keeps running.
+    if (!m_impl->watermark.ok()) {
         m_impl->setError(ErrorCode::InvalidConfiguration,
-                         QStringLiteral("%1; the watermark is enabled, so remote output is refused instead of "
-                                        "streaming frames without it")
+                         QStringLiteral("%1; the watermark policy could not be applied, so remote output "
+                                        "is refused instead of streaming unwatermarked frames")
                              .arg(m_impl->watermark.error));
         return false;
     }
