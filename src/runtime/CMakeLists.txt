@@ -15,6 +15,9 @@ add_library(hyremote-remoteaccess SHARED
     src/detail/runtime_notifications.cpp
     src/detail/runtime_diagnostics.cpp
     src/detail/security_descriptor.cpp
+    src/detail/host_paths.cpp
+    src/detail/watermark_policy.cpp
+    src/detail/watermark_store.cpp
     src/detail/composition_support.cpp
     src/detail/listener_binding.cpp
 )
@@ -211,6 +214,25 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
             "HyRemote zero-code integration requires Qt 6.8+ Gui for application-surface discovery")
     endif()
 endif()
+
+# #589 W2: the server-side watermark compositor paints text, so it is a real capability only where Qt Gui exists.
+# The macro is declared explicitly (never left undefined) so a build cannot silently claim a compositor it does
+# not contain; a build without Gui keeps refusing an enabled policy at start().
+if(TARGET Qt6::Gui)
+    set(HYREMOTE_WATERMARK_RENDERING_AVAILABLE 1 CACHE INTERNAL
+        "Server-side static text watermark compositor (#589 W2)" FORCE)
+    target_sources(hyremote-remoteaccess PRIVATE
+        src/detail/watermark_compositor.cpp
+        src/detail/watermark_frame_decorator.cpp
+    )
+    target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Gui)
+else()
+    set(HYREMOTE_WATERMARK_RENDERING_AVAILABLE 0 CACHE INTERNAL
+        "Server-side static text watermark compositor (#589 W2)" FORCE)
+endif()
+target_compile_definitions(hyremote-remoteaccess PRIVATE
+    HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
+)
 
 if(HYREMOTE_BUILD_TESTS)
     add_executable(hyremote-runtime-diagnostics-test

@@ -2,6 +2,7 @@
 
 #include "automatic/automatic_access_config.hpp"
 #include "automatic/automatic_access_controller.hpp"
+#include "detail/windows_unicode_launch.hpp"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
@@ -47,28 +48,6 @@ QString referenceNativeDelegate()
 #endif
 }
 
-QString requestedDelegate(QStringList &parameters)
-{
-    const QString native = referenceNativeDelegate();
-    QString selected = native;
-
-    for (auto it = parameters.begin(); it != parameters.end();) {
-        constexpr auto prefix = "delegate=";
-        if (it->startsWith(QLatin1String(prefix), Qt::CaseInsensitive)) {
-            selected = it->mid(static_cast<int>(sizeof(prefix) - 1)).trimmed().toLower();
-            it = parameters.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    // This exact V1 qualification only decorates the reference native delegate. Later qualified
-    // packages may select wayland/eglfs/etc. explicitly; this payload never guesses or falls back.
-    if (native.isEmpty() || selected != native)
-        return {};
-    return selected;
-}
-
 ::HyRemote::Runtime::SecurityProfile runtimeSecurityProfile(::HyRemote::Qpa::SecurityProfile profile)
 {
     switch (profile) {
@@ -91,6 +70,15 @@ AutomaticConfig automaticConfig(::HyRemote::Qpa::RemoteConfig config)
     result.remoteInputEnabled = config.remoteInputEnabled;
     result.securityProfile = runtimeSecurityProfile(config.securityProfile);
     result.securityConfigFile = std::move(config.securityConfigFile);
+    // #589: pass the operator's watermark request through unchanged; the shared Runtime policy owns the rest.
+    result.watermarkText = std::move(config.watermarkText);
+    result.watermarkPosition = std::move(config.watermarkPosition);
+    result.watermarkOpacity = config.watermarkOpacity;
+    result.watermarkFontPointSize = config.watermarkFontPointSize;
+    result.watermarkColor = std::move(config.watermarkColor);
+    // #761: the off switch is an intent like any other, so it has to reach the runtime; dropping it here would let the
+    // parser accept "off" and then leave the stored watermark active.
+    result.watermarkOff = config.watermarkOff;
     return result;
 }
 
@@ -136,7 +124,8 @@ public:
             return nullptr;
         }
 
-        QStringList delegateParameters = paramList;
+        QStringList delegateParameters =
+            ::HyRemote::detail::recoverActualWindowsQpaWatermark(paramList);
         ::HyRemote::Qpa::RemoteConfig remoteConfig;
         QString remoteConfigError;
         if (!::HyRemote::Qpa::parseRemoteConfig(delegateParameters, remoteConfig, remoteConfigError)) {
@@ -144,7 +133,8 @@ public:
             return nullptr;
         }
 
-        const QString delegateName = requestedDelegate(delegateParameters);
+        const QString delegateName = ::HyRemote::Qpa::requestedNativeDelegate(
+            delegateParameters, referenceNativeDelegate());
         if (delegateName.isEmpty()) {
             qCritical().noquote()
                 << QStringLiteral("HyRemote QPA rejected the requested platform delegate; this payload only "

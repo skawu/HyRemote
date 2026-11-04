@@ -126,6 +126,14 @@ READINESS_PREFIXES = (
 )
 
 READINESS_TEST_PREFIX = "hyremote-release-readiness-"
+# Exact registered names after MERGE_CASES; the family exclusion is intentional.
+# The QPA source-fixture test is registered only if that capability is present.
+READINESS_TEST_IDENTITIES = (
+    "hyremote-release-readiness-facts-layout",
+    "hyremote-release-readiness-product-claims",
+    "hyremote-release-readiness-deploy-helper-contract",
+    "hyremote-release-readiness-source-qpa-authority",
+)
 
 # The exact-candidate product fit drives the production transport through a standard RFB viewer (Pillow + vncdotool).
 # That viewer is candidate test tooling rather than a product or development dependency, so the test is candidate
@@ -165,7 +173,18 @@ TOOL_PRODUCT_FIT_PREFIXES = (
 # Release-authority surfaces that need no Qt SDK, no Windows runner and no product build: they are CMake policy and
 # selection scripts over the repository itself. They run in a lightweight governance job, and they must not drag the
 # product matrix along just to execute a policy script.
+# Exactly these prose governance documents have no compiled product impact. Paths outside
+# this narrow whitelist (including new files under tests/) continue to fail closed.
+# They do need the Qt-free grouped repository/documentation facts gate.
+PROSE_ONLY_GOVERNANCE_PATHS = (
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "tests/TEST_CATALOG.md",
+    "tests/EXECUTION_MANUAL.md",
+)
+
 GOVERNANCE_PREFIXES = (
+    *PROSE_ONLY_GOVERNANCE_PATHS,
     ".github/release/",
     ".github/workflows/git-flow-policy.yml",
     "tests/release-readiness/release_scope.cmake",
@@ -186,6 +205,7 @@ GOVERNANCE_PREFIXES = (
 # other contents are product-relevant: a change to the selector, the authority policy or the cell-matrix guard is
 # governance.
 GOVERNANCE_ONLY_PATHS = (
+    *PROSE_ONLY_GOVERNANCE_PATHS,
     "tests/release-readiness/release_scope.cmake",
     "tests/release-readiness/check_release_authority_policy.cmake",
     "tests/release-readiness/check_compatibility_cells.cmake",
@@ -195,6 +215,23 @@ GOVERNANCE_ONLY_PATHS = (
 # A name no exclusion is ever allowed to match. Any expression that matches it excludes every test, which would make
 # the lane claim integration while executing nothing.
 DANGEROUS_REGEX_PROBE = "hyremote-probe-name-that-no-exclusion-may-match"
+
+# What the Qt 5.15.2 lane physically cannot see: it builds the C++/Widgets surface only (`--mode=cpp --no-examples`)
+# on top of Core and the Shared Runtime. A change confined to these directories cannot alter that build, so paying for a
+# Qt 5 download plus 50 tests buys no evidence. The set is deliberately stated as "unreachable", not "not QML": a new
+# shared directory, a new cmake module or an unknown path defaults to selecting the lane, so a reduction can never
+# silently drop a real impact.
+QT5_UNREACHABLE_PREFIXES = (
+    "src/integrations/qml/",
+    "src/integrations/generic/",
+    "src/integrations/qpa/",
+    "tests/consumer-installed-qml/",
+    "tests/consumer-installed-generic/",
+    "tests/consumer-installed-qpa/",
+    "examples/",
+    "logo/",
+    "docs/",
+)
 
 # VNC Authentication and the private-security surfaces behind it. The ordinary product matrix is security-off, so a
 # green ordinary run is not evidence that these still build or pass: a diff that can invalidate this path has to make
@@ -388,6 +425,12 @@ def resolve(event: str, changed: list[str], draft: bool = False,
     # Only ready-PR and explicitly dispatched FULL_GATE runs subscribe to CI.
     product = bool(ordered) and product_lane
 
+    # The Qt 5 lane is required only when the diff can reach the layer it builds. The full gate stays full by
+    # definition, for the same reason as the frontend selection above.
+    qt5_scope = bool(ordered) and (
+        full_gate or any(not path.startswith(QT5_UNREACHABLE_PREFIXES) for path in changed)
+    )
+
     # Fast pull requests keep runtime/product correctness tests but move clean SDK/deploy sub-builds to the PRs
     # that can affect those contracts.
     excluded = [] if readiness_evidence else [READINESS_TEST_PREFIX]
@@ -419,6 +462,7 @@ def resolve(event: str, changed: list[str], draft: bool = False,
         "test_only": "true" if test_only else "false",
         "product_matrix": json.dumps(product_matrix, separators=(",", ":")),
         "product": "true" if product else "false",
+        "qt5_scope": "true" if (qt5_scope and product) else "false",
         "integrations": integrations if product else "",
         "qpa": "true" if ("qpa" in selected and product) else "false",
         "qml": "true" if ("qml" in selected and product) else "false",
@@ -438,6 +482,12 @@ def resolve(event: str, changed: list[str], draft: bool = False,
 
 
 def self_test() -> int:
+    # A renamed grouped identity must never escape the PR-fast readiness exclusion.
+    for readiness_name in READINESS_TEST_IDENTITIES:
+        if not readiness_name.startswith(READINESS_TEST_PREFIX):
+            print(f"CASE FAILED: readiness gate escapes the prefix: {readiness_name}")
+            return 1
+
     failures = 0
 
     cases = [
@@ -504,6 +554,44 @@ def self_test() -> int:
          {"lane": "PR_FAST", "product": "true", "integrations": "cpp,qml,generic,qpa"}),
         ("ready cpp PR builds the cpp capability", "pull_request",
          ["src/integrations/cpp/cpp_remote_access.cpp"], False, {"product": "true"}),
+        # #393 TS-1: the Qt 5 lane builds C++/Widgets only, so a QML/QPA/Generic-only or example/logo-only product diff
+        # must not select it - while any shared Runtime/Core/cmake path must.
+        ("qml-only PR skips the Qt5 lane", "pull_request", ["src/integrations/qml/QmlRemoteAccess.cpp"], False,
+         {"product": "true", "qt5_scope": "false"}),
+        ("qpa-only PR skips the Qt5 lane", "pull_request", ["src/integrations/qpa/qpa_config.cpp"], False,
+         {"product": "true", "qt5_scope": "false"}),
+        ("example-only PR skips the Qt5 lane", "pull_request", ["examples/learning/01-widgets-cpp/main.cpp"], False,
+         {"product": "true", "qt5_scope": "false"}),
+        ("brand asset PR selects no Qt lane", "pull_request", ["logo/hyremote-app.ico"], False,
+         {"product": "false", "qt5_scope": "false"}),
+        ("shared runtime PR keeps the Qt5 lane", "pull_request", ["src/runtime/src/detail/host_paths.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("cmake PR keeps the Qt5 lane", "pull_request", ["cmake/HyRemoteBuild.cmake"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("core PR keeps the Qt5 lane", "pull_request", ["src/core/src/storage.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        # #393: a four-document governance PR previously spent 223s Qt5 + 267s Qt6 just because two
+        # Markdown files live under tests/. The no-Qt governance job now runs the facts/layout group.
+        ("test catalog documentation is governance only", "pull_request", ["tests/TEST_CATALOG.md"], False,
+         {"product": "false", "qt5_scope": "false", "governance": "true"}),
+        ("execution manual documentation is governance only", "pull_request", ["tests/EXECUTION_MANUAL.md"], False,
+         {"product": "false", "governance": "true"}),
+        ("agent manual is governance only", "pull_request", ["AGENTS.md"], False,
+         {"product": "false", "governance": "true"}),
+        ("contributing instructions run Qt-free fact gates", "pull_request", ["CONTRIBUTING.md"], False,
+         {"product": "false", "governance": "true", "readiness_evidence": "true"}),
+        ("four prose files do not start Qt5/Qt6", "pull_request",
+         ["AGENTS.md", "CONTRIBUTING.md", "tests/TEST_CATALOG.md", "tests/EXECUTION_MANUAL.md"], False,
+         {"product": "false", "qt5_scope": "false", "governance": "true"}),
+        ("mixed prose and runtime code still runs both Qt lanes", "pull_request",
+         ["tests/TEST_CATALOG.md", "src/runtime/src/access_instance.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("new unknown test README fails closed", "pull_request", ["tests/new-area/README.md"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("CMake test harness cannot skip Qt", "pull_request", ["tests/release-readiness/run_grouped_checks.cmake"], False,
+         {"product": "true", "qt5_scope": "true"}),
+        ("runtime test source cannot skip Qt", "pull_request", ["src/runtime/tests/test_watermark_policy.cpp"], False,
+         {"product": "true", "qt5_scope": "true"}),
         ("unrelated docs keep the fast lane", "pull_request", ["docs/proposals/notes.md"], False,
          {"lane": "PR_FAST", "product": "false"}),
         # Readiness-consumed surfaces must execute readiness.

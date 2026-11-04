@@ -27,6 +27,11 @@ struct FrameGeometry
     AlphaMode alphaMode = AlphaMode::Opaque;
     FrameTransform transform;
     std::uint32_t planeCount = 0;
+    // #589: the capture backend's ratio between this pixel grid and logical coordinates. It is metadata about how
+    // the pixels were produced, not part of the frame content: a consumer that paints into the framebuffer (the
+    // server-side watermark) needs it to keep a physical size when the target moves to a differently scaled screen.
+    // 1.0 means "unscaled or not reported" and must stay a safe default for every existing producer.
+    float devicePixelRatio = 1.0F;
 };
 
 enum class DamageKind {

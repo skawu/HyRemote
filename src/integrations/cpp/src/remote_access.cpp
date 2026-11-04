@@ -53,6 +53,45 @@ RemoteSecurityProfile mapSecurityProfile(Runtime::SecurityProfile profile)
     return RemoteSecurityProfile::Insecure;
 }
 
+detail::WatermarkPosition mapWatermarkPosition(RemoteWatermarkPosition position)
+{
+    switch (position) {
+    case RemoteWatermarkPosition::BottomRight:
+        return detail::WatermarkPosition::BottomRight;
+    case RemoteWatermarkPosition::BottomLeft:
+        return detail::WatermarkPosition::BottomLeft;
+    case RemoteWatermarkPosition::TopRight:
+        return detail::WatermarkPosition::TopRight;
+    case RemoteWatermarkPosition::TopLeft:
+        return detail::WatermarkPosition::TopLeft;
+    case RemoteWatermarkPosition::Tiled:
+        return detail::WatermarkPosition::Tiled;
+    }
+    return detail::WatermarkPosition::BottomRight;
+}
+
+RemoteWatermarkPosition mapWatermarkPosition(detail::WatermarkPosition position)
+{
+    switch (position) {
+    case detail::WatermarkPosition::BottomRight:
+        return RemoteWatermarkPosition::BottomRight;
+    case detail::WatermarkPosition::BottomLeft:
+        return RemoteWatermarkPosition::BottomLeft;
+    case detail::WatermarkPosition::TopRight:
+        return RemoteWatermarkPosition::TopRight;
+    case detail::WatermarkPosition::TopLeft:
+        return RemoteWatermarkPosition::TopLeft;
+    case detail::WatermarkPosition::Tiled:
+        return RemoteWatermarkPosition::Tiled;
+    }
+    return RemoteWatermarkPosition::BottomRight;
+}
+
+QString watermarkColorText(quint32 rgb)
+{
+    return QStringLiteral("#%1").arg(rgb & 0xFFFFFFU, 6, 16, QLatin1Char('0')).toUpper();
+}
+
 RemoteAccessErrorCode mapErrorCode(Runtime::ErrorCode code)
 {
     switch (code) {
@@ -174,6 +213,48 @@ QString RemoteAccess::securityConfigFile() const
 bool RemoteAccess::setSecurityConfigFile(const QString &path)
 {
     return m_impl && m_impl->access.setSecurityConfigFile(path);
+}
+
+RemoteWatermark RemoteAccess::watermark() const
+{
+    RemoteWatermark result;
+    if (!m_impl)
+        return result;
+    const detail::WatermarkPolicy policy = m_impl->access.watermarkPolicy().policy;
+    result.text = policy.text;
+    result.position = mapWatermarkPosition(policy.position);
+    result.opacity = policy.opacity;
+    result.fontPointSize = policy.fontPointSize;
+    result.colorRgb = watermarkColorText(policy.colorRgb);
+    return result;
+}
+
+bool RemoteAccess::setWatermark(const RemoteWatermark &watermark)
+{
+    if (!m_impl)
+        return false;
+
+    detail::WatermarkPolicyRequest request;
+    // Only a genuinely empty text means "disabled". Whitespace-only text is an operator request that fails
+    // validation: treating it as disabled here would silently drop a watermark the caller asked for, and start()
+    // would then stream an unmarked picture.
+    request.enabled = !watermark.text.isEmpty();
+    request.text = watermark.text;
+    request.position = mapWatermarkPosition(watermark.position);
+    request.opacity = watermark.opacity;
+    request.fontPointSize = watermark.fontPointSize;
+    request.color = watermark.colorRgb;
+    if (!m_impl->access.setWatermarkPolicy(request))
+        return false;
+    // The Runtime keeps the rejected policy visible in the diagnostic report; the product API still answers
+    // truthfully that the requested watermark is not renderable.
+    return m_impl->access.watermarkPolicy().ok();
+}
+
+void RemoteAccess::clearWatermark()
+{
+    if (m_impl)
+        m_impl->access.setWatermarkPolicy(detail::WatermarkPolicyRequest{});
 }
 
 bool RemoteAccess::start()

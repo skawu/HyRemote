@@ -32,9 +32,9 @@ HyRemote 只对具有明确产品状态的环境声明兼容性。Qt API 相似�
 
 这张表只描述当前产品线，不表示 Widgets/Quick 应用里的每一种图形配置都已经认证。其中的 5.15.2 行是 V0.3.0.0 时期遗留路径的原始记录；Qt5 各接入单元的现状已由 Owner D2（2026-10-27）裁决，以下面的当前开发线表格为准。
 
-## 当前开发线 V0.3.4.0 的逐单元状态（未发布）
+## 当前开发线 V0.3.4.0 的逐单元状态（v0.3.4.0 已发布，2026-10-29）
 
-V0.3.4.0 是**当前开发目标，不是已发布版本**。下表把“单元”写全：精确 Qt 补丁 + 编译器/ABI + 操作系统/架构 + 接入方式 + UI 目标。一个通过单元不能外推同家族的其它单元。
+V0.3.4.0 **已于 2026-10-29 发布**：annotated tag `v0.3.4.0` 指向 `main` `27bf97d`，候选与验收 SHA 为 `c57dae0`，同 SHA L2（run `40812083626`）与 RealVNC Viewer 7.15.1 D05 实机均 PASS。下表把“单元”写全：精确 Qt 补丁 + 编译器/ABI + 操作系统/架构 + 接入方式 + UI 目标。一个通过单元不能外推同家族的其它单元；下一版本 V0.3.5.0 尚未发布。
 
 | Qt 精确版本 | 编译器 / ABI | 平台 | 接入方式 | UI 目标 | 状态 | 证据与边界 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -43,7 +43,7 @@ V0.3.4.0 是**当前开发目标，不是已发布版本**。下表把“单元�
 | 6.8.3 | msvc2022_64 | Windows x86_64 | QML API | Qt Quick | **Supported** | 已安装 QML 消费者与 QML 测试 |
 | 6.8.3 | msvc2022_64 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | 保留原生 Qt 平台身份，安装包与测试通过 |
 | 6.8.3 exact | msvc2022_64 | Windows x86_64 | QPA | Widgets / Quick | **Limited** | 仅精确 6.8.3 私有 ABI（`qwindows`）；其它 Qt 补丁一律不支持 |
-| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Widgets | **Limited** | Runtime、Tool、示例与安装消费者（CMake + qmake）构建并运行；Windows Qt5 lane 62/62 CTest |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Widgets | **Limited** | Runtime、Tool、示例与安装消费者（CMake + qmake）构建并运行；发布候选 `c57dae0` 的 Windows Qt5 lane **65/65 CTest** 与 RealVNC 7.15.1 D05 实机通过 |
 | 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Qt Quick | **Experimental** | 仅内部 `HYREMOTE_QT5_ENABLE_QUICK=ON` 可构建；采集/输入测试未通过，普通入口隐藏，不得称为已支持 |
 | 5.15.2 | msvc2019_64 | Windows x86_64 | QML API | — | **Unsupported** | Owner D2：Qt5 QML 不在声明范围内 |
 | 5.15.2 | msvc2019_64 | Windows x86_64 | Generic Plugin | — | **Unsupported** | Owner D2：Generic 需要 Qt 6.8 或更高 |
@@ -51,7 +51,7 @@ V0.3.4.0 是**当前开发目标，不是已发布版本**。下表把“单元�
 | 6.5 / 6.12 | — | — | — | — | **Detected, not qualified** | 属于 V1.0 GA 之后 #605 的独立准入；检出不等于支持 |
 | 任意 Qt | — | 非 Windows（Linux/Wayland/ARM64/EGLFS） | — | — | **User-validation pending** | 无目标系统实测，不阻塞 Windows 版本，也不是 Supported |
 
-远程查看器边界：**RealVNC Viewer 7.15.1** 是 V0.3.4.0 要求的 maintained Viewer。当前开发线候选（Windows Qt5.15.2 与 Qt6.8.3 Widgets 主机）已记录连接、键盘按下/释放、断开重连；右键输入到达主机，但原生上下文菜单的远端截图 `NOT_CONFIRMED`，按 Owner D1 转入 V0.4.0.0 资格工作，不记为 PASS。其它查看器不复用这些结论。
+远程查看器边界：**RealVNC Viewer 7.15.1** 是 V0.3.4.0 要求的 maintained Viewer。发布候选 `c57dae0` 的 D05 实机（Windows Qt5.15.2 与 Qt6.8.3 Widgets 主机）已记录连接、键盘按下/释放、关闭后重连、DPR 1.5 与协议级 TRLE；右键输入到达主机，但原生上下文菜单的远端截图 `NOT_CONFIRMED`，按 Owner D1 转入 V0.4.0.0 资格工作，不记为 PASS。其它查看器不复用这些结论。
 
 ## Qt LTS 政策
 

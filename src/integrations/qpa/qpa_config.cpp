@@ -1,5 +1,7 @@
 #include "qpa_config.hpp"
 
+#include "detail/watermark_policy.hpp"
+
 #include <utility>
 
 namespace HyRemote::Qpa {
@@ -48,6 +50,28 @@ QString leadingDigits(const QString &text)
 }
 
 }  // namespace
+
+QString requestedNativeDelegate(QStringList &parameters, const QString &native)
+{
+    QString selected = native;
+    for (auto it = parameters.begin(); it != parameters.end();) {
+        // #774: char ARRAY, not const char*; sizeof(prefix)-1 is the literal
+        // length of "delegate=". An x64 pointer previously truncated it to 7.
+        constexpr char prefix[] = "delegate=";
+        if (it->startsWith(QLatin1String(prefix), Qt::CaseInsensitive)) {
+            selected = it->mid(static_cast<int>(sizeof(prefix) - 1)).trimmed().toLower();
+            it = parameters.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Preserve the strict native-only QPA package scope. No fallback or
+    // native platform inference beyond the already-selected reference ABI.
+    if (native.isEmpty() || selected != native)
+        return {};
+    return selected;
+}
 
 QString runtimeIdentityError(const QString &runningVersion,
                              int expectedMajor,
@@ -189,6 +213,77 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
             continue;
         }
 
+        // #589: zero-code watermark selection. Only the request is parsed here; defaults and bounds belong to the
+        // one shared Runtime policy.
+        if (key == QStringLiteral("hyremote-watermark")) {
+            if (separator < 0) {
+                error = QStringLiteral("hyremote-watermark requires a text value");
+                return false;
+            }
+            parsed.watermarkText = value;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        // #761: an explicit switch, separate from the text, so clearing a stored watermark is a stated intent rather
+        // than a side effect of leaving the text out.
+        if (key == QStringLiteral("hyremote-watermark-state")) {
+            if (separator < 0 || value.compare(QStringLiteral("off"), Qt::CaseInsensitive) != 0) {
+                error = QStringLiteral("hyremote-watermark-state must be off");
+                return false;
+            }
+            parsed.watermarkOff = true;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        if (key == QStringLiteral("hyremote-watermark-position")) {
+            detail::WatermarkPosition position = detail::WatermarkPosition::BottomRight;
+            if (separator < 0 || !detail::parseWatermarkPosition(value, position)) {
+                error = QStringLiteral("hyremote-watermark-position must be bottom-right, bottom-left, "
+                                       "top-right, top-left or tiled");
+                return false;
+            }
+            parsed.watermarkPosition = value;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        if (key == QStringLiteral("hyremote-watermark-opacity")) {
+            bool numeric = false;
+            const double opacity = value.toDouble(&numeric);
+            if (separator < 0 || !numeric) {
+                error = QStringLiteral("hyremote-watermark-opacity must be a number between 0.05 and 1");
+                return false;
+            }
+            parsed.watermarkOpacity = opacity;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        if (key == QStringLiteral("hyremote-watermark-font-size")) {
+            bool numeric = false;
+            const int points = value.toInt(&numeric);
+            if (separator < 0 || !numeric) {
+                error = QStringLiteral(
+                    "hyremote-watermark-font-size must be a whole number of points between 8 and 96");
+                return false;
+            }
+            parsed.watermarkFontPointSize = points;
+            it = parameters.erase(it);
+            continue;
+        }
+
+        if (key == QStringLiteral("hyremote-watermark-color")) {
+            if (separator < 0) {
+                error = QStringLiteral("hyremote-watermark-color requires a #RRGGBB value");
+                return false;
+            }
+            parsed.watermarkColor = value;
+            it = parameters.erase(it);
+            continue;
+        }
+
         if (key.startsWith(QStringLiteral("hyremote-"))) {
             error = QStringLiteral("unknown HyRemote platform parameter: %1").arg(key);
             return false;
@@ -196,6 +291,9 @@ bool parseRemoteConfig(QStringList &parameters, RemoteConfig &config, QString &e
 
         ++it;
     }
+
+    if (!detail::validateWatermarkSelection(parsed, error))
+        return false;
 
     config = std::move(parsed);
     error.clear();

@@ -1,7 +1,13 @@
 #include "detail/runtime_diagnostics.hpp"
 
+#include "access_instance.hpp"
+
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QRegularExpression>
+#include <QTemporaryDir>
 
 #include <iostream>
 
@@ -57,6 +63,13 @@ void checkDefaultReport()
     CHECK(report.contains(QStringLiteral("SECURITY_ENABLED=false\n")));
     CHECK(report.contains(QStringLiteral("REMOTE_INPUT=false\n")));
     CHECK(report.contains(QStringLiteral("CONNECTED_CLIENTS=0\n")));
+    CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE=none\n")));
+    CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE_ORIGIN=none\n")));
+    CHECK(report.contains(QStringLiteral("HOST_STATE_DIR=none\n")));
+    CHECK(report.contains(QStringLiteral("HOST_STATE_DIR_ORIGIN=none\n")));
+    CHECK(report.contains(QStringLiteral("HOST_SECRET_FILE=none\n")));
+    CHECK(report.contains(QStringLiteral("HOST_SECRET_FILE_ORIGIN=none\n")));
+    CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=none\n")));
     CHECK(report.contains(QStringLiteral("LAST_ERROR_CODE=none\n")));
     CHECK(report.endsWith(QStringLiteral("DEPLOYMENT_IDENTITY=unknown")));
 }
@@ -111,6 +124,74 @@ void checkUiFamilyClassification()
     CHECK(formatDiagnosticReport(snapshot).contains(QStringLiteral("UI_FAMILY=unknown\n")));
 }
 
+// #591: the report carries the one shared host-path resolution with its provenance. A route never describes
+// its own raw selection, so the same deployment answers identically from C++/QML/Generic/QPA.
+void checkHostPathFacts()
+{
+    HyRemote::Runtime::AccessInstance instance;
+
+    // 1. Nothing selected: no configuration or secret reference is implied, and the state directory falls
+    // back to the platform default that is reported rather than hidden.
+    {
+        const QString report = formatDiagnosticReport(instance.diagnosticSnapshot());
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE_ORIGIN=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_STATE_DIR_ORIGIN=platform-default\n")));
+        CHECK(report.contains(QStringLiteral("HOST_SECRET_FILE=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=none\n")));
+    }
+
+    // 2. The environment selector is reported as an environment selection, and the state directory it
+    // derives is anchored to the configuration file instead of the process working directory.
+    QTemporaryDir root;
+    CHECK(root.isValid());
+    if (root.isValid()) {
+        const QString configPath = root.filePath(QStringLiteral("hyremote.conf"));
+        QFile config(configPath);
+        CHECK(config.open(QIODevice::WriteOnly));
+        config.write("version=1\n");
+        config.close();
+
+        qputenv("HYREMOTE_CONFIG_FILE", configPath.toUtf8());
+        const QString report = formatDiagnosticReport(instance.diagnosticSnapshot());
+        qunsetenv("HYREMOTE_CONFIG_FILE");
+
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE=%1\n")
+                                  .arg(QFileInfo(configPath).absoluteFilePath())));
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE_ORIGIN=environment\n")));
+        CHECK(report.contains(QStringLiteral("HOST_STATE_DIR_ORIGIN=config-relative\n")));
+        CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=none\n")));
+    }
+
+    // 3. An unusable state directory is attributed to itself: the readable configuration is still reported
+    // as selected, because the report must not blame a path that resolved (#591 dependency scoping).
+    if (root.isValid()) {
+        qputenv("HYREMOTE_STATE_DIR", root.filePath(QStringLiteral("absent/state")).toUtf8());
+        HyRemote::Runtime::AccessInstance scoped;
+        CHECK(scoped.setSecurityConfigFile(root.filePath(QStringLiteral("hyremote.conf"))));
+        const QString report = formatDiagnosticReport(scoped.diagnosticSnapshot());
+        qunsetenv("HYREMOTE_STATE_DIR");
+
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE=%1\n")
+                                  .arg(QFileInfo(root.filePath(QStringLiteral("hyremote.conf"))).absoluteFilePath())));
+        CHECK(report.contains(QStringLiteral("HOST_STATE_DIR=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=the state directory selected by HYREMOTE_STATE_DIR")));
+        CHECK(report.contains(QStringLiteral("is not usable")));
+        CHECK(!report.contains(QStringLiteral("HOST_PATHS_ERROR=none")));
+    }
+
+    // 4. An explicit configuration selection that cannot be used is reported instead of being replaced by a
+    // silently chosen writable location.
+    CHECK(instance.setSecurityConfigFile(
+        QDir(QDir::tempPath()).absoluteFilePath(QStringLiteral("hyremote-absent-descriptor.conf"))));
+    {
+        const QString report = formatDiagnosticReport(instance.diagnosticSnapshot());
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_CONFIG_FILE_ORIGIN=none\n")));
+        CHECK(report.contains(QStringLiteral("HOST_PATHS_ERROR=the explicit configuration file")));
+    }
+}
+
 void checkErrorIsBoundedAndSingleLine()
 {
     DiagnosticSnapshot snapshot;
@@ -145,6 +226,7 @@ int main(int argc, char **argv)
     checkDefaultReport();
     checkRunningReport();
     checkUiFamilyClassification();
+    checkHostPathFacts();
     checkErrorIsBoundedAndSingleLine();
 
     if (failures == 0) {

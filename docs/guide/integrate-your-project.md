@@ -514,6 +514,66 @@ hyremote_deploy(TARGET MyApp QPA)
 
 ---
 
+## 可选：显式选择宿主路径（#591）
+
+安全描述文件、可写状态目录和秘密引用由 Shared Runtime 的**同一套路径合同**解析。四条路线只把这个选择传进来，不各写一套规则，所以同一次部署在 C++/QML/Generic/QPA 上的答案一致。
+
+解析优先级（每个路径独立）：
+
+| 路径 | 优先级 |
+| --- | --- |
+| 安全描述文件 | 应用/启动显式选择 > `HYREMOTE_CONFIG_FILE` >（无） |
+| 状态目录 | 显式选择 > `HYREMOTE_STATE_DIR` > `<描述文件所在目录>/state` > Qt 平台用户数据目录 |
+| 秘密引用 | 显式选择 > `HYREMOTE_SECRET_FILE` >（无） |
+
+没有任何 `CWD` 或 home 兜底；相对路径规范化为绝对路径；由配置文件派生的状态目录以**配置文件所在目录**为锚点，不依赖启动目录。
+
+四条路线上的显式选择入口：
+
+- **C++**：`remote.setSecurityConfigFile(path)`（仅在 `Stopped` 时可改）；
+- **QML**：`RemoteAccess { securityConfigFile: "..." }`；
+- **Generic**：`-plugin hyremote:security-config=<path>`；
+- **QPA**：`-platform hyremote:hyremote-security-config=<path>`。
+
+显式或环境给出但不可用（文件不存在/不可读，或状态目录的父目录不存在）时，**只有依赖该路径的功能**失败关闭并给出可操作错误，不会改用其他可写位置：一个不可用的状态目录不会阻止一个可用描述文件启动。
+
+当前公开的显式选择器只有描述文件；状态目录与秘密引用目前只能通过 `HYREMOTE_STATE_DIR` / `HYREMOTE_SECRET_FILE` 选择，而且运行时尚无持久化或凭据消费者——它们会被解析、校验并在诊断报告中如实报告，但**不代表**持久化或凭据管理已经交付。
+
+报告字段：`HOST_CONFIG_FILE` / `HOST_STATE_DIR` / `HOST_SECRET_FILE` 与各自 `_ORIGIN`（`explicit`、`environment`、`config-relative`、`platform-default`、`none`），失败时看 `HOST_PATHS_ERROR`。含义见 [排错](troubleshooting.md)。
+
+---
+
+## 可选：服务端静态文字水印（#589）
+
+水印画在**远端输出**上（Raw/TRLE 与增量刷新都带水印），**不改宿主应用自己的本地画面**，也不需要 Viewer 配合。
+
+默认策略（Owner 裁决，四条路线共用一份实现）：
+
+| 项 | 默认 |
+| --- | --- |
+| 启用 | **关闭**；只有设置了非空文字才启用 |
+| 位置 | 未指定时=**右下角单条**；`tiled` 全屏平铺必须显式选择 |
+| 不透明度 | **0.35** |
+| 字号 | 16 点（按目标 DPR 换算设备像素，跨屏缩放不变形） |
+| 颜色 | `#FFFFFF` |
+
+四条路线上的写法：
+
+- **C++**：`HyRemote::RemoteWatermark w; w.text = "内部资料"; remote.setWatermark(w);`（`clearWatermark()` 关闭）；
+- **QML**：`RemoteAccess { watermarkText: "内部资料"; watermarkPosition: "tiled"; watermarkOpacity: 0.5 }`；
+- **Generic**：`-plugin hyremote:watermark=内部资料;watermark-position=tiled;watermark-opacity=0.5;watermark-font-size=24;watermark-color=#00FF00`；
+- **QPA**：`-platform hyremote:hyremote-watermark=内部资料:hyremote-watermark-position=bottom-left`。
+
+有界且**拒绝而不夹取**：文字 ≤128 码元且必须单行可见（控制字符、零宽字符、bidi 覆盖一律拒绝），不透明度 0.05–1.0，字号 8–96 点，颜色 `#RRGGBB`。任一值非法时：C++/QML 的 setter 返回失败或置 `errorCode=InvalidConfiguration`，诊断报告出现非 `none` 的 `WATERMARK_POLICY_ERROR`，`start()` 直接失败——**绝不会静默输出没有水印的画面**；宿主 Qt 应用本身继续运行。文字放不进画面时同样拒绝，不裁剪、不省略、不缩字。水印不支持、也不接受用户名/IP/时间/设备标识模板；图片 Logo 属于 V1 GA 之后的 #593。
+
+**重启后仍然生效（#591）**：显式配置的水印策略会写入已解析的状态目录（`<状态目录>/watermark.policy`，只含文字/位置/不透明度/字号/颜色，绝不含凭据或描述文件内容）；下次进程启动时若本次没有显式选择，就按该文件恢复。优先级为**本次显式选择 > 已持久化策略 > 共享默认**；显式关闭会删除该文件，因此重启后不会"水印又回来了"。文件被手工改坏或越界时**不会被恢复**（共享策略重新校验失败即丢弃），也不会因此阻断宿主应用启动——但操作者不应把状态目录当成手写配置入口。
+
+**关闭与"只改属性"的明确语义（#761）**：关闭已存水印要用显式开关——Generic 用 `watermark-state=off`，QPA 用 `hyremote-watermark-state=off`；只有它才会清除存储文件。若只给位置/不透明度/字号/颜色而**不给文字**（例如只想临时改一下位置），启动会被**明确拒绝**并给出可操作错误，而不是静默清除一个正在生效的水印——部分水印配置不受支持，请一次把文字和属性写全，或用上面的开关显式关闭。
+
+诊断字段：`WATERMARK_ENABLED`、`WATERMARK_POSITION`、`WATERMARK_OPACITY`、`WATERMARK_FONT_SIZE`、`WATERMARK_COLOR`、`WATERMARK_TEXT_CODE_UNITS`、`WATERMARK_POLICY_ERROR`。报告**只报文字长度，不报文字内容**。
+
+---
+
 ## STEP 8 — 最常见的错误
 
 | 症状 | 原因 | 处理 |

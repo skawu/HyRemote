@@ -36,6 +36,15 @@ struct RfbCursorSnapshot
 using RfbCursorProvider =
     std::function<RfbCursorSnapshot(int x, int y, std::uint32_t sourceWidth, std::uint32_t sourceHeight)>;
 
+// #589: optional server-side frame decorator. The Runtime installs it when an enabled watermark policy must be
+// composited onto the outgoing picture; the transport calls it once per captured frame and reuses the result for
+// every viewer, so the capture buffer stays untouched and a second viewer never sees a different picture.
+//
+// Returning false means the decorated frame could not be produced. That is a fail-closed condition: the transport
+// must refuse to publish pixels rather than stream a frame missing the watermark.
+using RfbFrameDecorator =
+    std::function<bool(const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated, QString &error)>;
+
 struct RfbSecurityConfig
 {
     bool vncAuthenticationRequired = false;
@@ -46,10 +55,19 @@ struct RfbSecurityConfig
     // for capture demand that only a connected Viewer would create.
     std::uint16_t initialFramebufferWidth = 0;
     std::uint16_t initialFramebufferHeight = 0;
+    // #790: only Shared Runtime with known target geometry and a producer that wakes
+    // after ClientConnected may release the raw bootstrap pixels at zero clients.
+    // Standalone RFB transports retain the old instant-reconnect semantics by default.
+    bool releaseIdleFrameBuffers = false;
     QByteArray password;
     // Optional product hook for the current target cursor. Tests and custom
     // compositions may leave it empty and receive the portable arrow fallback.
     RfbCursorProvider cursorProvider;
+    // Empty means "pixels exactly as captured". Non-empty installs the #589 server-side watermark.
+    RfbFrameDecorator frameDecorator;
+    // Private #789 feedback: whether the pixels actually served to an authenticated/normal
+    // viewer changed since the previous observed frame, after watermark compositing.
+    std::function<void(bool changed)> frameChangeObserver;
 };
 
 // Creates the product's bounded, dependency-light RFB correctness transport. The concrete type is

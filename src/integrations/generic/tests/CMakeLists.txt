@@ -27,6 +27,8 @@ endif()
 add_executable(hyremote-generic-config-test
     generic_config_test.cpp
     ../generic_config.cpp
+    # #589: position tokens are validated by the one shared watermark policy helper.
+    ${PROJECT_SOURCE_DIR}/src/runtime/src/detail/watermark_policy.cpp
 )
 target_compile_features(hyremote-generic-config-test PRIVATE cxx_std_17)
 target_include_directories(hyremote-generic-config-test PRIVATE ${CMAKE_SOURCE_DIR}/src/runtime/src)

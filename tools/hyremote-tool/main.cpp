@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPixmap>
 #include <QSize>
 #include <QSpinBox>
 #include <QTimer>
@@ -75,6 +76,18 @@ public:
         auto *root = new QVBoxLayout(this);
         root->setContentsMargins(10, 10, 10, 10);
         root->setSpacing(8);
+
+        auto *brandRow = new QHBoxLayout;
+        m_brand = new QLabel(this);
+        const QPixmap brandImage(QStringLiteral(":/hyremote/branding/huayan-logo-single.png"));
+        if (brandImage.isNull())
+            qFatal("BRANDING_ASSET_MISSING");
+        m_brand->setPixmap(brandImage.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        brandRow->addWidget(m_brand);
+        auto *brandName = new QLabel(QStringLiteral("HyRemoteTool"), this);
+        brandRow->addWidget(brandName);
+        brandRow->addStretch(1);
+        root->addLayout(brandRow);
 
         auto *connectionRow = new QHBoxLayout;
         m_remoteLabel = new QLabel(this);
@@ -210,7 +223,8 @@ public:
 
     bool verifyUi() const
     {
-        const bool ok = m_host && m_port && m_connect && m_view && m_status
+        const bool ok = m_brand && !QGuiApplication::windowIcon().isNull()
+                        && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
                         && m_resolution && m_error && m_languageBox;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
@@ -383,6 +397,7 @@ private:
     QString m_lastErrorRaw;
     bool m_serverInputAvailable = true;
 
+    QLabel *m_brand = nullptr;
     QLabel *m_remoteLabel = nullptr;
     QLineEdit *m_host = nullptr;
     QLabel *m_portLabel = nullptr;

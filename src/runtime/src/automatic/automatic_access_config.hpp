@@ -6,6 +6,8 @@
 #include <QHostAddress>
 #include <QString>
 
+#include <optional>
+
 namespace HyRemote::Runtime::Automatic {
 
 // Frontend-neutral configuration for application-level zero-code access. Generic Plugin and QPA
@@ -23,6 +25,21 @@ struct AccessConfig
     bool remoteInputEnabled = false;
     Runtime::SecurityProfile securityProfile = Runtime::SecurityProfile::Insecure;
     QString securityConfigFile;
+
+    // #589: the zero-code routes can only offer what their launch syntax can express, so the watermark is described
+    // here in route-neutral terms. An empty position means "shared default"; the optional numbers stay optional so the
+    // one shared policy owns every default and every bound.
+    //
+    // #761: "an empty text means disabled" conflated three different launches, and a launch that only changed a
+    // position therefore cleared a stored policy. The two intents are now separate: text plus attributes selects a
+    // watermark for this run, `watermarkOff` is the explicit request to clear a stored one, and saying nothing keeps
+    // whatever a previous launch stored.
+    QString watermarkText;
+    QString watermarkPosition;
+    std::optional<double> watermarkOpacity;
+    std::optional<int> watermarkFontPointSize;
+    std::optional<QString> watermarkColor;
+    bool watermarkOff = false;
 };
 
 }  // namespace HyRemote::Runtime::Automatic

@@ -1,0 +1,98 @@
+name: Scheduled breadth (G4/G5)
+
+# #393 TS-1: nightly and weekly breadth had no owner at all. Pull-request gating is intentionally narrow (a QML-only
+# diff no longer pays for the Qt 5 lane), so breadth has to come from a scheduled run instead of from every PR.
+#
+# G4 (nightly): the full Qt 6.8.3 four-frontend suite on develop.
+# G5 (weekly): the Qt 5.15.2 C++/Widgets suite on develop - the lane that PR gating now skips for frontend-only diffs.
+#
+# These runs never gate a pull request and never produce PR evidence: they are recorded against the develop SHA they
+# actually built.
+
+on:
+  schedule:
+    - cron: '0 18 * * *'   # G4 nightly, 18:00 UTC
+    - cron: '0 3 * * 6'    # G5 weekly, Saturday 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: 'Which breadth gate to run'
+        type: choice
+        options: [G4, G5, BOTH]
+        default: G4
+
+permissions:
+  contents: read
+
+jobs:
+  g4-qt6-breadth:
+    name: G4 nightly / Windows Qt 6.8.3 / cpp,qml,generic,qpa
+    if: >-
+      github.event_name == 'workflow_dispatch' && (inputs.gate == 'G4' || inputs.gate == 'BOTH') ||
+      github.event.schedule == '0 18 * * *'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      # A scheduled event has no PR ref: without this the default branch (main, the release branch) would be tested
+      # while the job promises development breadth.
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Pin the Python used by the candidate tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install exact Qt 6.8.3 SDK and the candidate viewer tooling
+        shell: cmd
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall
+          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "%RUNNER_TEMP%\Qt"
+          if errorlevel 1 exit /b 1
+          dir "%RUNNER_TEMP%\Qt\6.8.3\msvc2022_64\bin\Qt6Core.dll"
+          rem The full suite registers the exact-candidate RFB product fit, whose script imports PIL and vncdotool.
+          python -m pip install --disable-pip-version-check -r src/integrations/cpp/tests/candidate-test-requirements.txt
+
+      - name: Full Qt 6.8.3 suite (G4 breadth)
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          rem G4 is breadth: build the learning examples too, so the example smoke identity is actually registered and
+          rem executed. Excluding them would leave the nightly claiming breadth it does not have.
+          call build.cmd build --integrations="cpp,qml,generic,qpa" --qt-prefix="%RUNNER_TEMP%\Qt\6.8.3\msvc2022_64" --build-type=Release --build-dir=build-nightly --tests --run-tests --examples -j4
+
+  g5-qt5-breadth:
+    name: G5 weekly / Windows Qt 5.15.2 / C++ Widgets
+    if: >-
+      github.event_name == 'workflow_dispatch' && (inputs.gate == 'G5' || inputs.gate == 'BOTH') ||
+      github.event.schedule == '0 3 * * 6'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      # Scheduled events default to main; the weekly Qt 5 breadth is explicitly about develop.
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Pin the Python used by the candidate tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt 5.15.2 and the candidate viewer tooling
+        shell: cmd
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall
+          python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir "%RUNNER_TEMP%\Qt5"
+          if errorlevel 1 exit /b 1
+          echo %RUNNER_TEMP%\Qt5\5.15.2\msvc2019_64\bin>>%GITHUB_PATH%
+          python -m pip install --disable-pip-version-check -r src/integrations/cpp/tests/candidate-test-requirements.txt
+
+      - name: Qt 5.15.2 C++/Widgets suite (G5 breadth)
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
+          call build.cmd build --mode=cpp --qt-prefix="%RUNNER_TEMP%\Qt5\5.15.2\msvc2019_64" --build-type=Release --build-dir=build-weekly-qt5 --tests --run-tests --no-examples -j4

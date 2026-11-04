@@ -18,6 +18,7 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QKeyEvent>
+#include <QPixmap>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -120,6 +121,15 @@ int main(int argc, char **argv)
 
     auto *central = new QWidget(&window);
     auto *layout = new QVBoxLayout(central);
+    auto *brand = new QLabel(central);
+    const QPixmap brandImage(QStringLiteral(":/hyremote/branding/huayan-logo-single.png"));
+    if (brandImage.isNull()) {
+        std::cerr << "BRANDING_ASSET_MISSING" << std::endl;
+        return 65;
+    }
+    brand->setPixmap(brandImage.scaled(30, 30, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    brand->setToolTip(QStringLiteral("HyRemote"));
+    layout->addWidget(brand);
     auto *status = new QLabel(central);
     status->setWordWrap(true);
     status->setText(QStringLiteral("remote control: %1\nlistener: 0.0.0.0:%2\nconnect a VNC viewer to this host's "

@@ -1,9 +1,11 @@
 #include "../qpa_config.hpp"
+#include "detail/windows_unicode_launch.hpp"
 
 #include <QHostAddress>
 #include <QStringList>
 
 #include <iostream>
+#include <utility>
 
 namespace {
 
@@ -39,6 +41,138 @@ int main()
             || !check(parameters == QStringList{QStringLiteral("delegate=xcb"), QStringLiteral("display=:99")},
                       "native delegate parameters are preserved")) {
             return 1;
+        }
+    }
+
+    // #774: Test exactly the delegate selection used by the real QPA plugin,
+    // not just pass-through from the earlier HyRemote config parser.
+    {
+        QStringList native{QStringLiteral("delegate=windows"),
+                           QStringLiteral("darkmode=2")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(native, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "explicit Windows native delegate is selected")
+            || !check(native == QStringList{QStringLiteral("darkmode=2")},
+                      "delegate token is consumed and native tokens survive")) {
+            return 13;
+        }
+        QStringList uppercase{QStringLiteral("DELEGATE= WINDOWS ")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(uppercase, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "case-insensitive explicit delegate and surrounding whitespace survive")
+            || !check(uppercase.isEmpty(), "case-folded delegate token is consumed")) {
+            return 13;
+        }
+        QStringList unknown{QStringLiteral("delegate=xcb")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(unknown, QStringLiteral("windows")).isEmpty(),
+                   "unqualified foreign delegate is rejected")) {
+            return 13;
+        }
+        QStringList implicit{QStringLiteral("darkmode=2")};
+        if (!check(HyRemote::Qpa::requestedNativeDelegate(implicit, QStringLiteral("windows"))
+                       == QStringLiteral("windows"),
+                   "omitted option keeps qualified native delegate")
+            || !check(implicit == QStringList{QStringLiteral("darkmode=2")},
+                      "no unrelated native option is consumed")) {
+            return 13;
+        }
+    }
+
+    // #589: the zero-code platform route can select the watermark; the parser only carries the request and the
+    // shared Runtime policy owns defaults and bounds.
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark=CONFIDENTIAL"),
+                               QStringLiteral("hyremote-watermark-position=top-left"),
+                               QStringLiteral("hyremote-watermark-opacity=0.5"),
+                               QStringLiteral("hyremote-watermark-font-size=24"),
+                               QStringLiteral("hyremote-watermark-color=#00FF00"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "watermark parameters parse")
+            || !check(config.watermarkText == QStringLiteral("CONFIDENTIAL"), "watermark text is carried")
+            || !check(config.watermarkPosition == QStringLiteral("top-left"), "watermark position is carried")
+            || !check(config.watermarkOpacity.has_value() && *config.watermarkOpacity == 0.5,
+                      "watermark opacity is carried")
+            || !check(config.watermarkFontPointSize.has_value() && *config.watermarkFontPointSize == 24,
+                      "watermark font size is carried")
+            || !check(config.watermarkColor.has_value() && *config.watermarkColor == QStringLiteral("#00FF00"),
+                      "watermark colour is carried")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "watermark parameters are removed before native delegate creation")) {
+            return 9;
+        }
+    }
+    // #761: Qt's platform factory passes QStringList parameters to this parser. Confirm that
+    // CJK (with and without spaces) is passed to the Runtime config untouched and stripped
+    // from the native delegate arguments; this is not proof of Windows argv decoding.
+    for (const QString &expected : {QStringLiteral("水印候选"), QStringLiteral("持久 候选")}) {
+        QStringList parameters{QStringLiteral("hyremote-watermark=") + expected,
+                               QStringLiteral("hyremote-port=5921"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "CJK watermark parameters parse")
+            || !check(error.isEmpty(), "CJK watermark does not produce a parser error")
+            || !check(config.watermarkText == expected, "CJK characters/spaces survive QPA parameter mapping")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "CJK watermark parameter is not passed to the native delegate")) {
+            return 11;
+        }
+    }
+    // #761: the platform route needs the same explicit off switch, and the same refusal of an attribute-only launch.
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=off"),
+                               QStringLiteral("darkmode=2")};
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(parameters, config, error), "the off switch parses")
+            || !check(config.watermarkOff, "the off switch is carried")
+            || !check(config.watermarkText.isEmpty(), "the off switch carries no text")
+            || !check(parameters == QStringList{QStringLiteral("darkmode=2")},
+                      "the off switch is not passed to the native delegate")) {
+            return 12;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=maybe")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "an unknown off-switch value is refused")
+            || !check(error.contains(QStringLiteral("hyremote-watermark-state")),
+                      "the refusal names the off switch")) {
+            return 13;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-state=off"),
+                               QStringLiteral("hyremote-watermark=MARK")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "off together with text is refused")
+            || !check(error.contains(QStringLiteral("both")), "the refusal explains the conflict")) {
+            return 14;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-position=top-left")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error), "attributes without text are refused")
+            || !check(error.contains(QStringLiteral("without watermark text")),
+                      "the refusal explains the missing text")) {
+            return 15;
+        }
+    }
+    {
+        QStringList parameters{QStringLiteral("hyremote-watermark-position=centre")};
+        RemoteConfig config;
+        QString error;
+        if (!check(!parseRemoteConfig(parameters, config, error),
+                   "an unknown watermark position token is refused")
+            || !check(error.contains(QStringLiteral("hyremote-watermark-position")),
+                      "the refusal names the watermark position parameter")) {
+            return 10;
         }
     }
 
@@ -182,6 +316,43 @@ int main()
                   "decorated mismatched runtime is rejected")) {
         return 8;
     }
+
+#ifdef Q_OS_WIN
+    // The wide -platform token is the authority, not a guessed code-page
+    // conversion. These input bytes and code points are from the #761 device probe.
+    for (const auto &probe : {
+             std::pair<QString, QByteArray>{QStringLiteral("水印候选"),
+                                            QByteArray::fromHex("cbaed3a1baf2d1a1")},
+             std::pair<QString, QByteArray>{QStringLiteral("持久 候选"),
+                                            QByteArray::fromHex("b3d6bec320baf2d1a1")}}) {
+        const QString token = QStringLiteral("hyremote-watermark=") + probe.first;
+        const QString widened = QStringLiteral("hyremote-watermark=")
+                                + QString::fromLatin1(probe.second);
+        if (!check(HyRemote::detail::oneByteWidening(token, 936) == widened,
+                   "GBK to Latin-1 widening is reproduced"))
+            return 12;
+        const QStringList originalArgs{
+            QStringLiteral("-platform"), QStringLiteral("hyremote:") + token,
+        };
+        QStringList params{widened, QStringLiteral("darkmode=2")};
+        params = HyRemote::detail::recoverWindowsQpaWatermark(params, originalArgs, 936);
+        RemoteConfig config;
+        QString error;
+        if (!check(parseRemoteConfig(params, config, error), "wide source recovers QPA watermark")
+            || !check(config.watermarkText == probe.first, "exact QPA CJK survives")
+            || !check(params == QStringList{QStringLiteral("darkmode=2")},
+                      "delegate receives only native parameters"))
+            return 12;
+        const QStringList unrelated = HyRemote::detail::recoverWindowsQpaWatermark(
+            {widened}, {QStringLiteral("-platform"), QStringLiteral("other:") + token}, 936);
+        if (!check(unrelated == QStringList{widened}, "unrelated wide arguments do not re-decode"))
+            return 12;
+        const QStringList alreadyCorrect = HyRemote::detail::recoverWindowsQpaWatermark(
+            {token}, originalArgs, 936);
+        if (!check(alreadyCorrect == QStringList{token}, "correct Unicode stays unchanged"))
+            return 12;
+    }
+#endif
 
     std::cout << "PASS: QPA config safe defaults, explicit security overrides and exact runtime identity\n";
     return 0;

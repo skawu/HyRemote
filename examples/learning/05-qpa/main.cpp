@@ -13,6 +13,7 @@
 #include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QPixmap>
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
@@ -33,6 +34,13 @@ public:
 
         auto *central = new QWidget(this);
         auto *layout = new QVBoxLayout(central);
+        auto *brand = new QLabel(central);
+        const QPixmap brandImage(QStringLiteral(":/hyremote/branding/huayan-logo-single.png"));
+        if (brandImage.isNull())
+            qFatal("BRANDING_ASSET_MISSING");
+        brand->setPixmap(brandImage.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        brand->setToolTip(QStringLiteral("HyRemote"));
+        layout->addWidget(brand);
 
         auto *intro = new QLabel(
             QStringLiteral("Operations console for local equipment monitoring and command entry."),

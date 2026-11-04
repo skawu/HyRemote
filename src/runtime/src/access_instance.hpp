@@ -60,6 +60,16 @@ public:
     QString securityConfigFile() const;
     bool setSecurityConfigFile(const QString &path);
 
+    // #589: the one static text watermark policy of the shared Runtime. A route supplies only what the operator
+    // asked for; defaults, bounds and wording live in detail::resolveWatermarkPolicy, so the four routes cannot
+    // drift into four different default appearances. Mutable only while Stopped.
+    detail::WatermarkPolicyResult watermarkPolicy() const;
+    bool setWatermarkPolicy(const detail::WatermarkPolicyRequest &request);
+
+    // #589: whether this build actually contains the server-side compositor. Routes pre-check this instead of each
+    // discovering the same missing capability through a failed start().
+    static bool watermarkRenderingAvailable() noexcept;
+
     bool start();
     void stop() noexcept;
 

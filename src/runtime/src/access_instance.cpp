@@ -37,8 +37,12 @@
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
+#include "detail/host_paths.hpp"
 #include "detail/listener_binding.hpp"
 #include "detail/security_descriptor.hpp"
+#include "detail/watermark_frame_decorator.hpp"
+#include "detail/watermark_store.hpp"
+#include "detail/viewer_capture_demand.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -265,73 +269,8 @@ void decrementConnectedClients(const std::shared_ptr<std::atomic<std::size_t>> &
     }
 }
 
-// Runtime-private demand gate. It waits instead of polling or repeatedly asking
-// Qt to capture without a viewer after a valid ServerInit bootstrap frame. The source's stop() opens the gate before Core
-// joins its scheduler thread, so a clientless session can always stop cleanly.
-// This stays in the single Shared Runtime; generic Core Session clients are
-// not given new application-visible capture knobs or changed semantics.
-class ViewerCaptureDemand final
-{
-public:
-    void start()
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_stopped = false;
-        m_viewers = 0;
-        m_bootstrapFrameQueued = false;
-    }
-
-    void frameQueued(bool usableForServerInit)
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            // This tracks the *latest* framebuffer, not whether we once
-            // had usable geometry. An oversized resize after a valid frame
-            // must re-enable capture demand until ServerInit can succeed.
-            m_bootstrapFrameQueued = usableForServerInit;
-        }
-        m_changed.notify_all();
-    }
-
-    void setViewerCount(std::size_t viewers)
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_viewers = viewers;
-        }
-        m_changed.notify_all();
-    }
-
-    bool waitForViewer()
-    {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        // RFB ServerInit needs the first framebuffer geometry before a
-        // viewer can enter the Normal phase and emit ClientConnected.
-        // Permit bootstrap capture until a valid frame reached Transport.
-        // Only then suspend requests until a viewer is connected.
-        m_changed.wait(lock, [this] {
-            return m_stopped || !m_bootstrapFrameQueued || m_viewers != 0;
-        });
-        return !m_stopped;
-    }
-
-    void stop()
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_stopped = true;
-            m_viewers = 0;
-        }
-        m_changed.notify_all();
-    }
-
-private:
-    std::mutex m_mutex;
-    std::condition_variable m_changed;
-    std::size_t m_viewers = 0;
-    bool m_bootstrapFrameQueued = false;
-    bool m_stopped = true;
-};
+// One Shared Runtime demand gate for both no-viewer sleep and exact-RFB idle feedback.
+using ViewerCaptureDemand = HyRemote::detail::ViewerCaptureDemand;
 
 // Drains QObject::destroyed notifications independently of Core's callback
 // gate. The Core gate stops callbacks into Session; this gate also protects
@@ -434,7 +373,8 @@ public:
             // inside this call, so once it returns the Runtime can read the truth the Core produced
             // instead of asserting one first. That is what makes a repeated recoverable failure
             // observable again after it was acknowledged.
-            [runActive, observe, onInput = std::move(onInput)](const hyremote::InputEvent &event) {
+            [runActive, observe, demand, onInput = std::move(onInput)](const hyremote::InputEvent &event) {
+                demand->noteRemoteInput();
                 if (onInput)
                     onInput(event);
 
@@ -658,6 +598,17 @@ struct AccessInstance::Impl
     bool remoteInputEnabled = false;
     SecurityProfile securityProfile = SecurityProfile::Insecure;
     QString securityConfigFile;
+
+    // #589: resolved once per accepted configuration, so start() and the diagnostic report cannot disagree about
+    // what the operator asked for.
+    detail::WatermarkPolicyResult watermark;
+    // #591: whether this process selected the policy itself. A persisted policy from an earlier run is applied only
+    // when the answer here is still "no".
+    bool watermarkExplicit = false;
+    // #591/#793: a restored policy belongs to the resolved watermark store, not permanently to this
+    // AccessInstance. Changing a config descriptor may select a different config-relative state directory.
+    bool watermarkRestored = false;
+    QString watermarkRestoredStorePath;
     // #174 interface identity. Empty means the address decides the mode.
     QString listenInterface;
     std::unique_ptr<hyremote::Session> session;
@@ -712,6 +663,48 @@ struct AccessInstance::Impl
         if (desiredActive)
             return false;
         return !session || session->state() == hyremote::SessionState::Stopped;
+    }
+
+    // #793: Resolve again only if an *implicitly restored* store selection changed while configurable.
+    // This is intentionally the same resolved path used by persistence. An explicit operator request always
+    // wins; a Running session never swaps its effective watermark because the ambient environment changed.
+    void restoreWatermarkForSelectedStore()
+    {
+        if (watermarkExplicit)
+            return;
+        const detail::HostPaths paths = detail::resolveHostPaths(securityConfigFile);
+        const QString storePath = detail::watermarkStorePath(paths);
+        // #812: empty storePath can mean either an unusable selected state directory
+        // (must fail closed) or no selected state path after an unrelated rejected
+        // security descriptor (no implicit watermark to restore). Do not cache those
+        // distinct states under the same empty path while configuration is editable.
+        if (watermarkRestored && (!isConfigurable()
+                                  || (!storePath.isEmpty() && watermarkRestoredStorePath == storePath)))
+            return;
+
+        watermarkRestored = true;
+        watermarkRestoredStorePath = storePath;
+        watermark = detail::WatermarkPolicyResult{}; // old directory's mark/error may not leak to the new one
+        // #812: an unusable *selected state directory* may conceal a previously saved
+        // watermark and must fail closed. An unrelated invalid security descriptor leaves
+        // no selected state directory at all, so do not turn default-OFF into an invented
+        // corrupt watermark; that security capability validates its own descriptor.
+        if (storePath.isEmpty()) {
+            if (!paths.stateDir.ok()) {
+                watermark.error = QStringLiteral("the selected state directory cannot restore a stored watermark "
+                                                 "policy; check its path and permissions");
+            }
+            return;
+        }
+        QString storeError;
+        const auto stored = detail::loadWatermarkRequest(paths, &storeError);
+        if (stored) {
+            watermark = detail::resolveWatermarkPolicy(*stored);
+        } else if (!storeError.isEmpty()) {
+            // Keep diagnostics redacted: never report the operator's watermark text.
+            watermark.error
+                = QStringLiteral("the stored watermark policy was not applied: %1").arg(storeError);
+        }
     }
 
     void setError(ErrorCode code, QString message, bool recoverable = false)
@@ -990,10 +983,49 @@ bool AccessInstance::setSecurityConfigFile(const QString &path)
     return true;
 }
 
+detail::WatermarkPolicyResult AccessInstance::watermarkPolicy() const
+{
+    if (!m_impl)
+        return detail::WatermarkPolicyResult{};
+
+    // A pre-start read must reflect the currently selected state store, even after the caller
+    // changes its security descriptor. Explicit requests and an active run are never overridden.
+    m_impl->restoreWatermarkForSelectedStore();
+    return m_impl->watermark;
+}
+
+bool AccessInstance::setWatermarkPolicy(const detail::WatermarkPolicyRequest &request)
+{
+    if (!m_impl || !m_impl->isConfigurable())
+        return false;
+    m_impl->watermark = detail::resolveWatermarkPolicy(request);
+    m_impl->watermarkExplicit = true;
+
+    // #591: persistence happens at start(), not here. The state directory is derived from the configuration selection,
+    // and a caller may set the descriptor path after selecting a policy; writing now would store into the platform
+    // default and never restore. Nothing is written for a request the resolver refused either - a partially resolved
+    // policy would come back on the next launch as a watermark the operator never asked for.
+    return true;
+}
+
+bool AccessInstance::watermarkRenderingAvailable() noexcept
+{
+#if HYREMOTE_HAS_WATERMARK_RENDERING
+    return true;
+#else
+    return false;
+#endif
+}
+
 bool AccessInstance::start()
 {
     if (!m_impl)
         return false;
+
+    // Restore the selected state's policy before validation and before the Qt5/Qt6 target gates.
+    // This shares the getter's store-path identity check: an earlier read cannot pin a stale
+    // watermark after the configuration file changes while Stopped.
+    m_impl->restoreWatermarkForSelectedStore();
 
     // #259: every exit from this call publishes the resulting truth exactly once. The guard clears the
     // projected Starting state and publishes whatever the call produced, so no early return has to
@@ -1021,6 +1053,46 @@ bool AccessInstance::start()
     m_impl->error.reset();
     m_impl->resetErrorAcknowledgement();
     m_impl->publishSnapshotNoexcept();  // StateChanged(Starting)
+
+    // Persist only after the configuration is frozen and the state transition has been established.
+    // A failed explicit save OR clear must not be reported as successful: otherwise the next process
+    // can silently restore a stale watermark (or forget the current one). Refuse this Runtime's remote
+    // output and report a redacted, actionable error; the host application remains local and running.
+    if (m_impl->watermarkExplicit && m_impl->watermark.ok()) {
+        const detail::HostPaths paths = detail::resolveHostPaths(m_impl->securityConfigFile);
+        const bool persisted = m_impl->watermark.policy.enabled
+                                   ? detail::saveWatermarkPolicy(paths, m_impl->watermark.policy)
+                                   : detail::clearWatermarkPolicy(paths);
+        if (!persisted) {
+            m_impl->setError(ErrorCode::InvalidConfiguration,
+                             QStringLiteral("the selected state directory could not persist the explicit watermark "
+                                            "policy; check its path and write permissions; remote output is refused"));
+            return false;
+        }
+    }
+
+    // #812: a failed *implicit restore* leaves enabled=false but carries an error. Refuse remote
+    // output on any invalid policy, not only an explicitly enabled one: otherwise a broken saved
+    // watermark could silently start an unmarked stream. The local host UI keeps running.
+    if (!m_impl->watermark.ok()) {
+        m_impl->setError(ErrorCode::InvalidConfiguration,
+                         QStringLiteral("%1; the watermark policy could not be applied, so remote output "
+                                        "is refused instead of streaming unwatermarked frames")
+                             .arg(m_impl->watermark.error));
+        return false;
+    }
+#if !HYREMOTE_HAS_WATERMARK_RENDERING
+    if (m_impl->watermark.policy.enabled) {
+        // #589 W2 adds the server-side compositor together with this capability. Until then an enabled policy is
+        // refused here rather than silently producing a watermark-free stream. This is a missing build capability,
+        // not an invalid configuration, so editing the configuration cannot fix it.
+        m_impl->setError(ErrorCode::StartFailed,
+                         QStringLiteral("the watermark is enabled, but this build has no server-side watermark "
+                                        "compositor; remote output is refused instead of streaming frames "
+                                        "without the watermark"));
+        return false;
+    }
+#endif
 
     // #174 listener contract. The mode is decided from configuration, and the effective IPv4 is settled here -
     // before any transport exists - so an address that does not belong to this host, an unknown interface, an
@@ -1065,7 +1137,14 @@ bool AccessInstance::start()
             return false;
         }
 
-        if (m_impl->securityConfigFile.trimmed().isEmpty()) {
+        // #591: resolve the contract first, so an empty explicit value can still be satisfied by
+        // HYREMOTE_CONFIG_FILE instead of being rejected before the environment selector is consulted.
+        const detail::HostPaths hostPaths = detail::resolveHostPaths(m_impl->securityConfigFile);
+
+        // Nothing was selected anywhere: the profile still needs a descriptor. A selection that exists but is
+        // unusable is reported below, after the build-capability check, so a build without the mechanism keeps
+        // its capability answer instead of blaming the path.
+        if (hostPaths.configFile.ok() && !hostPaths.configFile.isSet()) {
             m_impl->setError(ErrorCode::SecurityUnavailable,
                              QStringLiteral("the selected security profile requires a security descriptor"));
             return false;
@@ -1077,9 +1156,24 @@ bool AccessInstance::start()
                                         "which is not compiled into this build"));
         return false;
 #else
+        // Only the configuration selection can block this feature. A broken state directory or secret
+        // reference belongs to the feature that depends on it; refusing to serve a valid descriptor because
+        // an unrelated writable directory is missing would be exactly the over-reach #591 forbids.
+        if (!hostPaths.configFile.ok()) {
+            m_impl->setError(ErrorCode::InvalidConfiguration,
+                             QStringLiteral("%1; the security descriptor could not be resolved")
+                                 .arg(hostPaths.configFile.error));
+            return false;
+        }
+        if (!hostPaths.configFile.isSet()) {
+            m_impl->setError(ErrorCode::SecurityUnavailable,
+                             QStringLiteral("the selected security profile requires a security descriptor"));
+            return false;
+        }
+
         QString descriptorError;
         std::optional<detail::SecurityDescriptor> descriptor =
-            detail::loadSecurityDescriptor(m_impl->securityConfigFile, m_impl->securityProfile, descriptorError);
+            detail::loadSecurityDescriptor(hostPaths.configFile.value, m_impl->securityProfile, descriptorError);
         if (!descriptor) {
             m_impl->setError(ErrorCode::InvalidConfiguration,
                              descriptorError.isEmpty()
@@ -1212,6 +1306,15 @@ DiagnosticSnapshot AccessInstance::diagnosticSnapshot() const
                                       : 0;
     result.lastError = m_impl->effectiveError();
 
+    // #591: the same resolution start() consumes, so a support report answers "which configuration, state
+    // and secret locations were selected, and by what" for every integration route from one implementation.
+    // Resolution is a read-only probe of the current selection; it neither creates nor migrates anything.
+    result.hostPaths = detail::resolveHostPaths(m_impl->securityConfigFile);
+
+    // #589: report the already-resolved policy instead of recomputing it, so the report cannot claim a different
+    // default than the one start() enforced.
+    result.watermark = m_impl->watermark;
+
     // #335: effective values are observations of a live successful run, never configuration guesses.
     // Runtime start is fail-closed for security, so Running proves the configured profile is the one
     // actually satisfied; Starting/Unavailable/failure/stop intentionally expose no effective facts.
@@ -1301,6 +1404,24 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
     if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
+#endif
+    // #790: release raw idle pixels only for a known-size Qt target with an active
+    // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
+    // to send a fresh first frame; no SDK API or standalone RFB behavior changes.
+    effectiveSecurity.releaseIdleFrameBuffers
+        = effectiveSecurity.initialFramebufferWidth > 0
+          && effectiveSecurity.initialFramebufferHeight > 0;
+#if HYREMOTE_HAS_WATERMARK_RENDERING
+    // #589: install the one shared compositor on the frame hook. If it cannot be installed, refuse the start
+    // instead of serving an unwatermarked picture the operator explicitly asked to be marked.
+    if (watermark.policy.enabled) {
+        effectiveSecurity.frameDecorator = detail::makeWatermarkFrameDecorator(watermark.policy);
+        if (!effectiveSecurity.frameDecorator) {
+            setError(ErrorCode::StartFailed,
+                     QStringLiteral("the watermark is enabled but no server-side compositor could be installed"));
+            return false;
+        }
+    }
 #endif
     // Cursor reads happen on the RFB worker. A BlockingQueuedConnection here can deadlock when the
     // GUI calls stop() while the worker is waiting for readSnapshot() and transport shutdown is
@@ -1467,6 +1588,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
         return cached;
     };
 
+    // #789: reuse transport's exact changed-pixel calculation to avoid repeatedly grabbing a
+    // static Qt Quick scene at the active 60fps cap. Only a weak pointer crosses the worker seam.
+    auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
+    effectiveSecurity.frameChangeObserver = [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
+                                                bool changed) {
+        if (auto gate = weak.lock())
+            gate->noteFrameChange(changed);
+    };
     detail::TransportComponent transport = detail::createDefaultTransport(address, port, effectiveSecurity);
     if (!transport.transport) {
         const QString message = transport.error.isEmpty()
@@ -1479,7 +1608,6 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     // The run's activity token is created before the components are composed so both wrappers can hold it. It is
     // activated immediately before the Session starts and cleared by every teardown.
     runActive = std::make_shared<std::atomic<bool>>(false);
-    const auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
     const auto observeRuntime = [impl = this] { impl->publishSnapshotNoexcept(); };
 
     transport.transport = std::make_unique<ClientCountingTransport>(std::move(transport.transport),

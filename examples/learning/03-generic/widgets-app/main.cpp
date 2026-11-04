@@ -23,6 +23,9 @@
 #include <QApplication>
 #include <QLabel>
 #include <QMainWindow>
+#include <QPixmap>
+#include <QVBoxLayout>
+#include <QWidget>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -54,13 +57,25 @@ int main(int argc, char **argv)
     window.setWindowTitle(QStringLiteral("Learning 03 - ordinary Qt Widgets application"));
     window.resize(460, 190);
 
-    auto *label = new QLabel(&window);
+    auto *central = new QWidget(&window);
+    auto *layout = new QVBoxLayout(central);
+    auto *brand = new QLabel(central);
+    const QPixmap brandImage(QStringLiteral(":/hyremote/branding/huayan-logo-single.png"));
+    if (brandImage.isNull()) {
+        std::cerr << "BRANDING_ASSET_MISSING" << std::endl;
+        return 65;
+    }
+    brand->setPixmap(brandImage.scaled(30, 30, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    brand->setToolTip(QStringLiteral("HyRemote"));
+    layout->addWidget(brand);
+    auto *label = new QLabel(central);
     label->setWordWrap(true);
     label->setText(QStringLiteral("This is an ordinary Qt Widgets application.\n\n"
                                   "It contains no HyRemote code and links no HyRemote library.\n"
                                   "Launch it with  -plugin hyremote  to make it remotely viewable "
                                   "with no source change."));
-    window.setCentralWidget(label);
+    layout->addWidget(label);
+    window.setCentralWidget(central);
     window.show();
 
     std::cout << "APP_READY" << std::endl;

@@ -346,6 +346,104 @@ void QmlRemoteAccess::setSecurityConfigFile(const QString &path)
     emit securityConfigFileChanged();
 }
 
+// The declarative route keeps the operator's *request* (including a value the policy refuses and a position token it
+// does not recognise) and hands that whole request to the shared policy on every change. Rebuilding the request from
+// the resolved policy would lose a rejected colour or an unknown position, and a later start() would then quietly
+// succeed with a policy the operator never asked for.
+QString QmlRemoteAccess::watermarkText() const
+{
+    return m_watermarkRequest.text;
+}
+
+void QmlRemoteAccess::setWatermarkText(const QString &text)
+{
+    // A fresh QML instance starts with empty text, but an explicit empty assignment must still override a
+    // persisted mark; omission of the property must retain the restore-from-store behavior.
+    if (text == m_watermarkRequest.text && m_watermarkRequestSelected)
+        return;
+    auto request = m_watermarkRequest;
+    request.enabled = !text.isEmpty();
+    request.text = text;
+    applyWatermark(std::move(request));
+}
+
+QString QmlRemoteAccess::watermarkPosition() const
+{
+    return m_watermarkRequest.positionToken.value_or(QStringLiteral("bottom-right"));
+}
+
+void QmlRemoteAccess::setWatermarkPosition(const QString &position)
+{
+    if (position == watermarkPosition())
+        return;
+    auto request = m_watermarkRequest;
+    request.positionToken = position;
+    applyWatermark(std::move(request));
+}
+
+double QmlRemoteAccess::watermarkOpacity() const
+{
+    return m_watermarkRequest.opacity.value_or(HyRemote::detail::kWatermarkDefaultOpacity);
+}
+
+void QmlRemoteAccess::setWatermarkOpacity(double opacity)
+{
+    if (qFuzzyCompare(opacity, watermarkOpacity()))
+        return;
+    auto request = m_watermarkRequest;
+    request.opacity = opacity;
+    applyWatermark(std::move(request));
+}
+
+int QmlRemoteAccess::watermarkFontPointSize() const
+{
+    return m_watermarkRequest.fontPointSize.value_or(HyRemote::detail::kWatermarkDefaultFontPointSize);
+}
+
+void QmlRemoteAccess::setWatermarkFontPointSize(int points)
+{
+    if (points == watermarkFontPointSize())
+        return;
+    auto request = m_watermarkRequest;
+    request.fontPointSize = points;
+    applyWatermark(std::move(request));
+}
+
+QString QmlRemoteAccess::watermarkColor() const
+{
+    return m_watermarkRequest.color.value_or(QStringLiteral("#FFFFFF"));
+}
+
+void QmlRemoteAccess::setWatermarkColor(const QString &colorRgb)
+{
+    if (colorRgb == watermarkColor())
+        return;
+    auto request = m_watermarkRequest;
+    request.color = colorRgb;
+    applyWatermark(std::move(request));
+}
+
+void QmlRemoteAccess::applyWatermark(HyRemote::detail::WatermarkPolicyRequest request)
+{
+    if (!m_access)
+        return;
+    // Do not publish rejected (Running-phase) edits through the QML getters or equality guards. Invalid
+    // but accepted policy requests remain verbatim, so the shared resolver can still refuse start.
+    if (!m_access->setWatermarkPolicy(request)) {
+        setLocalError(InvalidConfiguration,
+                      QStringLiteral("watermark properties can only be changed while remote access is stopped"));
+        return;
+    }
+    m_watermarkRequest = std::move(request);
+    m_watermarkRequestSelected = true;
+    const HyRemote::detail::WatermarkPolicyResult resolved = m_access->watermarkPolicy();
+    if (!resolved.ok())
+        setLocalError(InvalidConfiguration, resolved.error);
+    else
+        clearLocalError();
+    emit watermarkChanged();
+}
+
 QmlRemoteAccess::State QmlRemoteAccess::state() const noexcept
 {
     return m_state;
