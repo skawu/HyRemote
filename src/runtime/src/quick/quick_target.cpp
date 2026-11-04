@@ -18,8 +18,8 @@
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
-#include <cstring>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -37,6 +37,43 @@
 
 namespace HyRemote::detail {
 namespace {
+
+// Keep the immutable QImage pixel buffer alive for Core/transport consumers instead of
+// allocating and copying another full RGBA frame after every Quick readback. QImage is
+// implicitly shared: the stored const instance never detaches or exposes a writable map.
+// Core may drop its final shared_ptr on any thread, so no QObject/GPU resource is retained.
+class QuickImageFrameStorage final : public hyremote::FrameStorage
+{
+public:
+    explicit QuickImageFrameStorage(QImage snapshot)
+        : m_snapshot(std::move(snapshot))
+    {
+    }
+
+    hyremote::StorageKind kind() const noexcept override { return hyremote::StorageKind::Cpu; }
+    std::size_t planeCount() const noexcept override { return 1; }
+
+    std::optional<hyremote::PlaneView> mapRead(std::size_t plane) const override
+    {
+        if (plane != 0 || m_snapshot.isNull() || m_snapshot.bytesPerLine() <= 0)
+            return std::nullopt;
+        const uchar *pixels = m_snapshot.constBits();
+        if (!pixels)
+            return std::nullopt;
+        return hyremote::PlaneView{reinterpret_cast<const std::byte *>(pixels),
+                                   static_cast<std::size_t>(m_snapshot.sizeInBytes()),
+                                   static_cast<std::size_t>(m_snapshot.bytesPerLine())};
+    }
+
+    std::string_view externalDomain() const noexcept override { return {}; }
+    std::shared_ptr<const hyremote::StorageExtension> extension(std::string_view) const override
+    {
+        return {};
+    }
+
+private:
+    const QImage m_snapshot;
+};
 
 class QuickCaptureSource final : public hyremote::CaptureSource
 {
@@ -245,32 +282,30 @@ private:
             return;
         }
 
-        const std::size_t bytesPerLine = static_cast<std::size_t>(image.width()) * 4U;
-        std::shared_ptr<hyremote::CpuFrameStorage> storage;
-        {
-            HYREMOTE_P1_SCOPE(QuickBuffer);
-            storage = hyremote::CpuFrameStorage::createSinglePlane(
-                bytesPerLine, static_cast<std::size_t>(image.height()));
-        }
-        HYREMOTE_P1_BYTES(QuickBuffer, bytesPerLine * static_cast<std::size_t>(image.height()));
-        if (!storage || !storage->mutablePlane(0)) {
+        // Validate the real QImage stride/coverage before exposing its storage to Core.
+        // A non-tight stride is legal: consumers use mapRead(0).stride, not width * 4.
+        const std::size_t packedRowBytes = static_cast<std::size_t>(image.width()) * 4U;
+        const std::size_t stride = static_cast<std::size_t>(image.bytesPerLine());
+        const std::size_t height = static_cast<std::size_t>(image.height());
+        if (image.bytesPerLine() <= 0 || stride < packedRowBytes
+            || stride > std::numeric_limits<std::size_t>::max() / height
+            || image.sizeInBytes() < 0
+            || static_cast<std::size_t>(image.sizeInBytes()) < stride * height
+            || !image.constBits()) {
             publishEvent(state,
                          hyremote::CaptureEventCode::BackendFailure,
-                         "failed to allocate owned Qt Quick frame storage",
+                         "Qt Quick snapshot exposes invalid CPU pixel storage",
                          false);
             return;
         }
 
-        std::byte *destination = storage->mutablePlane(0);
+        std::shared_ptr<const hyremote::FrameStorage> storage;
         {
-            HYREMOTE_P1_SCOPE(QuickCopy);
-            for (int y = 0; y < image.height(); ++y) {
-                std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
-                            image.constScanLine(y),
-                            bytesPerLine);
-            }
+            HYREMOTE_P1_SCOPE(QuickBuffer);
+            // QImage copy is refcounted, not a second pixel allocation. Keep the
+            // QuickBuffer probe scope for continuity; QuickCopy is now absent.
+            storage = std::make_shared<QuickImageFrameStorage>(image);
         }
-        HYREMOTE_P1_BYTES(QuickCopy, bytesPerLine * static_cast<std::size_t>(image.height()));
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
         hyremote::RemoteFrame frame;
