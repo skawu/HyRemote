@@ -680,12 +680,17 @@ struct AccessInstance::Impl
         watermarkRestored = true;
         watermarkRestoredStorePath = storePath;
         watermark = detail::WatermarkPolicyResult{}; // old directory's mark/error may not leak to the new one
-        // #812: an unresolved state path has no selected watermark *file* to restore.
-        // Do not mistake that absence for a corrupt stored mark when watermark is default-OFF;
-        // a separately selected security/config capability validates its own path. An explicit
-        // enabled mark still fails in start() if it cannot persist to a usable store.
-        if (storePath.isEmpty())
+        // #812: an unusable *selected state directory* may conceal a previously saved
+        // watermark and must fail closed. An unrelated invalid security descriptor leaves
+        // no selected state directory at all, so do not turn default-OFF into an invented
+        // corrupt watermark; that security capability validates its own descriptor.
+        if (storePath.isEmpty()) {
+            if (!paths.stateDir.ok()) {
+                watermark.error = QStringLiteral("the selected state directory cannot restore a stored watermark "
+                                                 "policy; check its path and permissions");
+            }
             return;
+        }
         QString storeError;
         const auto stored = detail::loadWatermarkRequest(paths, &storeError);
         if (stored) {
