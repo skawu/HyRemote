@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QSharedPointer>
 #if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+#include <QDebug>
 #include <QSGRendererInterface>
 #endif
 #include <QThread>
@@ -118,6 +119,13 @@ public:
         // Ready/timer continuations may still exist after stop, but they all check active before
         // entering a Core callback. A callback that already entered is drained here.
         m_state->callbacksDrained.wait(lock, [this] { return m_state->callbacksInFlight == 0; });
+#if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+        qInfo().nospace() << "HYREMOTE_PASSIVE_GL native_captured="
+                          << m_state->passiveGlCaptured
+                          << " native_rejected=" << m_state->passiveGlRejected
+                          << " cache_served=" << m_state->passiveCacheServed
+                          << " fallback_requested=" << m_state->passiveFallbackRequested;
+#endif
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
@@ -171,6 +179,10 @@ private:
         std::chrono::steady_clock::time_point passiveLastRequest{};
         bool passiveEnabled = false;
         bool passiveKickIssued = false;
+        std::uint64_t passiveGlCaptured = 0;
+        std::uint64_t passiveGlRejected = 0;
+        std::uint64_t passiveCacheServed = 0;
+        std::uint64_t passiveFallbackRequested = 0;
 #endif
     };
 
@@ -222,14 +234,17 @@ private:
                 }
 
                 auto frame = readPassiveQuickGlFrame(window, expected, dpr);
-                if (!frame)
-                    return; // Invalid framebuffer: never publish unsupported pixels.
-
                 std::lock_guard<std::mutex> lock(current->mutex);
+                if (!frame) {
+                    ++current->passiveGlRejected;
+                    return; // Invalid framebuffer: never publish unsupported pixels.
+                }
                 if (current->active && current->passiveEnabled
                     && current->passiveExpectedSize == expected
-                    && current->passiveExpectedDpr == dpr)
+                    && current->passiveExpectedDpr == dpr) {
                     current->passiveFrame = std::move(frame);
+                    ++current->passiveGlCaptured;
+                }
             }, Qt::DirectConnection);
         const auto invalidated = QObject::connect(
             window, &QQuickWindow::sceneGraphInvalidated, window, [weak] {
@@ -253,6 +268,8 @@ private:
         if (!accepted) {
             QObject::disconnect(rendered);
             QObject::disconnect(invalidated);
+        } else {
+            qInfo("HYREMOTE_PASSIVE_GL native OpenGL frame-source hook installed");
         }
     }
 
@@ -286,6 +303,7 @@ private:
                         && state->passiveFrame->geometry.size.height
                                == static_cast<std::uint32_t>(expected.height())) {
                         cached = state->passiveFrame;
+                        ++state->passiveCacheServed;
                     } else if (mayKickOnce && !state->passiveKickIssued) {
                         state->passiveKickIssued = true;
                         requestNativeFrame = true;
@@ -313,6 +331,10 @@ private:
                     return;
                 }
             }
+        }
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            ++state->passiveFallbackRequested;
         }
         attemptGrabOnGuiThread(state, request, 1U); // Always correct fallback
     }
