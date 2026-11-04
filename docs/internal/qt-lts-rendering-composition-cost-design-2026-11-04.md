@@ -158,3 +158,30 @@ A1_RUNTIME_FRAMESTORAGE_IMPLEMENTATION=NOT_AUTHORIZED
 **M1b 限定补证**：仍用现有两套 Qt Kit、自建 Qt-only `QQuickView` 场景、无 HyRemote Viewer 或产品代码变化，**只**更换为实际 `window->contentItem()->grabToImage(QSize)`；预先建立 `QQuickItemGrabResult::ready` callback，**异步顺序**发 5 次（前次完成才发后次，不允许阻塞事件循环），分别记录 `submit->ready` wall、`afterRendering` / `frameSwapped` 增量、从 `result->image()` 得到的真实 `QImage::format()` 的**数值和正确枚举名称**、`bytesPerLine`、`constBits` 共享，及至少一张具有 RGB 非对称色块和透明/预乘差异的测试图的像素语义。如果格式不满足现有 Core 的 RGBA8888 premultiplied，记录**必须转换**而非强求零拷贝。若 Qt5 Kit 该路径未构建/程序错误，记录第一条错误、停止，不扩大范围。有限时长、自行退出、不重新跑 `grabWindow`、不跑性能矩阵。向 #609 报告完成即停。
 
 M1b 通过前不批准 A1 产品实现；M1b 也不改变 Stage02 G7 冻结、Qt LTS 范围和 #789 用户现场资格状态。
+
+
+## 9. M1b 已实测：Qt5/Qt6 真正异步抓图与 A1 内部设计裁定
+
+来源：[本地 Owner #609 comment 6633738535](https://github.com/skawu/HyRemote/issues/609#issuecomment-6633738535)。实际 API 是 `QQuickView::contentItem()->grabToImage(QSize)`，每次异步 `QQuickItemGrabResult::ready()` 后才发下一次，每 Qt Kit 五次；无 Viewer、无产品源码修改、无 forced RHI。客户区实际是 **1920×1061**，不是完整 1920×1080。
+
+| 事实 | Qt5.15.2 默认 GL | Qt6.8.3 默认 D3D11 | 判定 |
+| --- | --- | --- | --- |
+| 5 次异步 grab 完成 | 290.2/49.9/43.7/58.5/38.3 ms | 23.1/18.4/20.2/22.5/17.2 ms | **两代 API 真实可用**；单次、不同默认图形栈，数值不可推为 Qt 家族普适倍数 |
+| `afterRendering` 增量 | +5 | +5 | 结果符合 grab 引起额外 render work；不能用此信号独立判断内容变脏 |
+| `frameSwapped` 增量 | +4 | +5 | 记录为渲染/交换关联通知；单次计数**不能证明每个 grab 必然完成一次实际扫描呈现** |
+| `QImage::format()` | `6=Format_ARGB32_Premultiplied`，本机小端 BGRA | `18=Format_RGBA8888_Premultiplied`，RGBA | 必须按实际格式变换。预乘语义已有，不代表字节顺序相同 |
+| stride / read-only | 7680，`constBits` copy 后同指针，可变 `bits()` detach | 同左 | 支持 Qt image-backed readonly buffer，不要从本次紧排推所有图像紧排 |
+| 旧 QImage 在 resize / target destroy 后存活 | NOT_RUN | NOT_RUN | A1 代码必须依照 QImage ownership/implicit sharing 契约，后续加单元与集成负例 |
+| Viewer FPS/latency | NOT_RUN | NOT_RUN | 不得宣称产品性能改善 |
+
+### A1 设计裁定（不改变 G7 架构）
+
+**已确定的私有改动范围**：`src/runtime/src/quick/` 中新增仅 Runtime 可见的 `QImage` 包裹 `FrameStorage`（仍报告 `StorageKind::Cpu`、一个 plane、只读 `mapRead()`、以自身 `QImage` 的隐式共享引用维持底层数据寿命）；`publishImage()` 保留 `FrameGeometry=RGBA8888/Premultiplied` 与 Qt-independent Core/Transport 合同。Qt5 `ARGB32_Premultiplied` 必须转换到 `RGBA8888_Premultiplied`，Qt6 已是目标格式时**不再转换**。不暴露另一个用户配置开关，不修改 Core storage API，也不增加 OS/GPU 分支。
+
+**输入校验与安全回退**：只接受目标 `RGBA8888_Premultiplied` 的非空已拥有 QImage；验证 width/height、`bytesPerLine >= width * 4`、`sizeInBytes >= stride * height`、安全乘法与 `constBits()!=nullptr`；若不能映射，维持当前 `CpuFrameStorage + memcpy` 路径（明确仅旧版后备，不能把不合法像素当成成功）。禁止在发布后调用 image 的可变 API，禁止传 `QPixmap` 跨线程。RFB、composite、watermark 均通过 `FrameStorage::mapRead` 读取，保留原始颜色和 format contract。
+
+**退出/保留生命周期**：grab result 对象及 Qt 窗口销毁不得取消已发布 `QImage` 的像素持有；`shared_ptr<const FrameStorage>` 被最后消费者释放时由持有者析构 QImage；作为 CPU image 不依赖 render context，不保持 Qt GUI 对象/窗口指针；跨线程只读测试、目标停止/销毁后仍读旧已发布帧是代码 review / test 的必要门槛。
+
+**效益边界**：一次帧少一次完整 CPU buffer allocation/memcpy，可能避免已经是目标格式时的深格式转换；**`grabToImage()` 额外离屏渲染 + readback 不变**，静态 100ms 采样策略不变，不能声称已解决 #789 ARM 多吃一核或 #567 的条带刷新。
+
+**代码准入**：这是 G7 允许的 Shared Runtime 私有实现优化，不触及冻结产品/API/wire/security 合同。先以 **Draft 小型代码 PR** 编写、静态审查和独立确定性单元回归；Qt5.15 与 Qt6.8 两 Kit 编译/受影响测试通过、真实 Viewer 像素/内存/CPU 对照通过以后才能评价 Ready/合并。任何 ABI、时序、跨线程删除或实际功能不同立即 stop，不自动合并或推广。
