@@ -42,6 +42,18 @@ endif()
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
+# #609: optional Windows-only, unprivileged instrumentation for isolated CPU
+# attribution on a developer worktree. OFF in all shipped/qualified builds;
+# not installed as an API and never enabled by the release profile.
+option(HYREMOTE_ENABLE_CPU_PROBE "Developer-only #609 Windows Host stage CPU probes" OFF)
+if(HYREMOTE_ENABLE_CPU_PROBE)
+    if(NOT WIN32)
+        message(FATAL_ERROR "HYREMOTE_ENABLE_CPU_PROBE currently requires Windows")
+    endif()
+    target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_ENABLE_CPU_PROBE=1)
+    message(WARNING "HyRemote #609 CPU probe is ON: this build is diagnostic-only, not release qualified")
+endif()
+
 # #335 build/process identity. SOURCE_SHA deliberately uses the same git fact that build.cmd install writes into
 # HYREMOTE-MANIFEST.txt; source archives or non-git consumers fall back to "unknown" rather than inventing an id.
 set(_hyremote_diagnostic_source_sha "unknown")

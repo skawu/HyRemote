@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "hyremote/core/storage.hpp"
+#include "detail/perf_probe.hpp"
 #include "rfb_delivery_state.hpp"
 #include "rfb_trle.hpp"
 
@@ -590,7 +591,10 @@ public:
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
             // frame never reports "nothing changed" while the stream is missing an update.
-            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
+            {
+                HYREMOTE_P1_SCOPE(RfbCompare);
+                damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
+            }
         }
 
         // Exact served-pixel equality is already computed for damage; feed it back to the
@@ -1822,14 +1826,23 @@ private:
             appendU16(update, height);
             appendS32(update, kEncodingDesktopSize);
         }
-        for (const RfbRect &rect : selected.rects()) {
-            if (!appendFramebufferRectangle(update, *frame, client, rect)) {
-                protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
-                return;
+        {
+            HYREMOTE_P1_SCOPE(RfbEncode);
+            for (const RfbRect &rect : selected.rects()) {
+                if (!appendFramebufferRectangle(update, *frame, client, rect)) {
+                    protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
+                    return;
+                }
             }
         }
+        HYREMOTE_P1_BYTES(RfbEncode, update.size());
 
-        const qint64 queued = client.socket->write(update);
+        qint64 queued = 0;
+        {
+            HYREMOTE_P1_SCOPE(RfbWrite);
+            queued = client.socket->write(update);
+        }
+        HYREMOTE_P1_BYTES(RfbWrite, update.size());
         if (queued != update.size()) {
             protocolFailure(client, "RFB socket write failed");
             return;

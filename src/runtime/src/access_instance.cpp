@@ -43,6 +43,7 @@
 #include "detail/watermark_frame_decorator.hpp"
 #include "detail/watermark_store.hpp"
 #include "detail/viewer_capture_demand.hpp"
+#include "detail/perf_probe.hpp"
 #include "hyremote/core/session.hpp"
 
 namespace HyRemote::Runtime {
@@ -641,6 +642,11 @@ struct AccessInstance::Impl
     // the current run composed: while desiredActive is true the configuration cannot change, so it cannot go stale.
     std::optional<detail::RfbSecurityConfig> activeTransportSecurity;
     std::unique_ptr<InterfaceWatcher> watcher;
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+    // Diagnostic-only reporter joins before this AccessInstance's DLL code
+    // can unload, including when a host runs without any connected Viewer.
+    detail::p1perf::Reporter p1CpuReporter;
+#endif
 
     // The single composition path (#174). The initial start, a rebind after the interface moved and a recovery all
     // come through here, so there is exactly one place that builds a Session and one that tears the previous one
