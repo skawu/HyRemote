@@ -533,11 +533,34 @@ void checkPersistedPolicySurvivesRestart()
         file.close();
 
         HyRemote::Runtime::AccessInstance unusable;
-        check(!unusable.start(), QStringLiteral("start still fails for the missing target"));
-        // An unusable stored policy must not be restored: the instance keeps the disabled default instead of a
-        // half-understood policy, and the watermark therefore cannot silently appear as "on" with wrong bounds.
-        check(!unusable.watermarkPolicy().policy.enabled,
-              QStringLiteral("an unusable stored policy is not restored"));
+        check(!unusable.start(), QStringLiteral("corrupted persisted watermark must refuse remote start"));
+        // #812: this regression MUST identify the real restore failure. The previous test used a missing
+        // Qt target and accepted an unrelated start() failure even when corrupt state would stream unmarked.
+        const auto restoreFailure = unusable.lastError();
+        check(restoreFailure.has_value()
+                  && restoreFailure->code == HyRemote::Runtime::ErrorCode::InvalidConfiguration
+                  && restoreFailure->message.contains(QStringLiteral("stored watermark policy was not applied"))
+                  && restoreFailure->message.contains(QStringLiteral("remote output is refused")),
+              QStringLiteral("corrupt restored watermark refuses before target validation"));
+        check(!unusable.diagnosticSnapshot().effectivePort.has_value(),
+              QStringLiteral("a corrupt restored mark cannot open a remote listener"));
+        // An unusable stored policy must not be restored: keep disabled, but reject with a durable
+        // error instead of interpreting disabled as permission to stream an unwatermarked frame.
+        check(!unusable.watermarkPolicy().policy.enabled && !unusable.watermarkPolicy().ok(),
+              QStringLiteral("a corrupt stored mark is disabled but retains its fatal restore error"));
+
+        // An explicit operator OFF is different from an implicit failed restore: it must clear
+        // the corrupt store and never be rejected as an uncleared previous watermark error.
+        HyRemote::Runtime::AccessInstance explicitClear;
+        check(explicitClear.setWatermarkPolicy(WatermarkPolicyRequest{}),
+              QStringLiteral("explicit OFF may override the corrupt persisted mark"));
+        check(!explicitClear.start(), QStringLiteral("explicit OFF without a target still cannot start"));
+        check(!QFile::exists(storedPath),
+              QStringLiteral("explicit OFF clears the corrupted stored policy"));
+        const auto clearedFailure = explicitClear.lastError();
+        check(!clearedFailure.has_value()
+                  || !clearedFailure->message.contains(QStringLiteral("stored watermark policy was not applied")),
+              QStringLiteral("explicit OFF does not inherit a prior restore failure"));
     }
 
     // An oversized state file must never be materialized via an unbounded read, and its text
@@ -558,6 +581,16 @@ void checkPersistedPolicySurvivesRestart()
                   QStringLiteral("oversized persisted policy is rejected before an unbounded read"));
             check(!policy.error.contains(QStringLiteral("xxxx")),
                   QStringLiteral("oversized policy content is not echoed into diagnostics"));
+            check(!oversizedReader.start(),
+                  QStringLiteral("an oversized stored watermark prevents remote startup"));
+            const auto oversizedError = oversizedReader.lastError();
+            check(oversizedError.has_value()
+                      && oversizedError->code == HyRemote::Runtime::ErrorCode::InvalidConfiguration
+                      && oversizedError->message.contains(QStringLiteral("exceeds the permitted size"))
+                      && oversizedError->message.contains(QStringLiteral("remote output is refused")),
+                  QStringLiteral("oversized stored watermark fails closed before target validation"));
+            check(!oversizedReader.diagnosticSnapshot().effectivePort.has_value(),
+                  QStringLiteral("an oversized restored mark leaves no remote listener"));
         }
     }
 
