@@ -605,6 +605,20 @@ void checkPersistedPolicySurvivesRestart()
         obstruction.close();
         qputenv("HYREMOTE_STATE_DIR", obstructionPath.toUtf8());
 
+        // #812: a selected-but-unusable state directory may hide a previously enabled mark.
+        // A default-OFF fresh instance must therefore not stream undecorated remote pixels.
+        HyRemote::Runtime::AccessInstance restoreUnavailable;
+        check(!restoreUnavailable.start(),
+              QStringLiteral("an unusable selected state directory refuses implicit watermark restoration"));
+        const auto restoreUnavailableError = restoreUnavailable.lastError();
+        check(restoreUnavailableError.has_value()
+                  && restoreUnavailableError->code == HyRemote::Runtime::ErrorCode::InvalidConfiguration
+                  && restoreUnavailableError->message.contains(
+                      QStringLiteral("selected state directory cannot restore a stored watermark")),
+              QStringLiteral("selected-but-unusable state store fails closed before target validation"));
+        check(!restoreUnavailable.diagnosticSnapshot().effectivePort.has_value(),
+              QStringLiteral("failed implicit state restore leaves no remote listener"));
+
         WatermarkPolicyRequest request;
         request.enabled = true;
         request.text = QStringLiteral("DO-NOT-ECHO-THIS-MARK");
