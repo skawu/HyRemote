@@ -1,0 +1,24 @@
+{
+  "anim-before": {
+    "command": [
+      "F:/replace-with-existing-before-worktree/build/path/widgets1080.exe",
+      "-plugin",
+      "hyremote:port=5921",
+      "--scene=anim",
+      "--test-seconds=45"
+    ],
+    "cwd": "F:/replace-with-existing-before-worktree",
+    "timeout_seconds": 90
+  },
+  "anim-after": {
+    "command": [
+      "F:/replace-with-existing-after-worktree/build/path/widgets1080.exe",
+      "-plugin",
+      "hyremote:port=5921",
+      "--scene=anim",
+      "--test-seconds=45"
+    ],
+    "cwd": "F:/replace-with-existing-after-worktree",
+    "timeout_seconds": 90
+  }
+}
