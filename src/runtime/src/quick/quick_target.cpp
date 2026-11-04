@@ -136,6 +136,8 @@ public:
                 return false;
 #if defined(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
             m_state->passiveLastRequest = std::chrono::steady_clock::now();
+            if (m_state->passiveRequests < 2U)
+                ++m_state->passiveRequests; // First is ServerInit bootstrap, second implies a Viewer.
 #endif
         }
 
@@ -179,6 +181,7 @@ private:
         std::chrono::steady_clock::time_point passiveLastRequest{};
         bool passiveEnabled = false;
         bool passiveKickIssued = false;
+        std::size_t passiveRequests = 0;
         std::uint64_t passiveGlCaptured = 0;
         std::uint64_t passiveGlRejected = 0;
         std::uint64_t passiveCacheServed = 0;
@@ -310,7 +313,8 @@ private:
                                == static_cast<std::uint32_t>(expected.height())) {
                         cached = state->passiveFrame;
                         ++state->passiveCacheServed;
-                    } else if (mayKickOnce && !state->passiveKickIssued) {
+                    } else if (mayKickOnce && state->passiveRequests >= 2U
+                               && !state->passiveKickIssued) {
                         state->passiveKickIssued = true;
                         requestNativeFrame = true;
                     }
