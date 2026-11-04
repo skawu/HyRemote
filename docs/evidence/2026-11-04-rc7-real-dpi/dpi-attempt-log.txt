@@ -1,0 +1,59 @@
+RC7 ae4677f3 — real Windows display-scale attempt log (2026-11-04)
+==================================================================
+
+Measurement method
+------------------
+DPI left unqualified is virtualised to 96 for DPI-unaware processes, so every reading below comes from a
+process that first calls SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2) and then reads
+GetDpiForSystem() / GetDeviceCaps(LOGPIXELSX).
+
+Baseline (before any change)
+----------------------------
+LogPixels=<unset>  Win8DpiScaling=0  AppliedDPI=<unset>
+PMV2=True SYSTEM_DPI=96 DESKTOP_WINDOW_DPI=96 SCALE_PERCENT=100 GDI_LOGPIXELSX=96
+
+Attempts to reach 200%
+----------------------
+set index 4  -> SPI_RESULT=True, LogPixels=192, Win8DpiScaling=1
+                PMV2=True SYSTEM_DPI=168 SCALE_PERCENT=175 GDI_LOGPIXELSX=168
+set index 5  -> SPI_RESULT=True, PMV2=True SYSTEM_DPI=168 SCALE_PERCENT=175   (no change)
+sweep 6      -> PMV2=True SYSTEM_DPI=168 SCALE_PERCENT=175                    (no change)
+sweep 7      -> PMV2=True SYSTEM_DPI=168 SCALE_PERCENT=175                    (no change)
+sweep -5     -> PMV2=True SYSTEM_DPI=96  SCALE_PERCENT=100                    (reset)
+sweep -4     -> PMV2=True SYSTEM_DPI=96  SCALE_PERCENT=100                    (reset)
+
+Registry after the 200% request
+-------------------------------
+HKCU\Control Panel\Desktop            LogPixels=192  Win8DpiScaling=1
+HKCU\...\Desktop\PerMonitorSettings\HPN3688CN41501BYB_32_07E5_6B^7DAFF1EDE3496B12E40FE56EB23C96FB
+                                      DpiValue=5
+Yet every newly started per-monitor-v2 process still reports SYSTEM_DPI=168 (175%).
+
+Conclusion
+----------
+SPI_SETLOGICALDPIOVERRIDE saturates at 175% on this host; the stored 200% request (monitor DpiValue=5) is not
+applied to a running logon session. Reaching 200% needs a sign-out/sign-in cycle (or a new logon session), which
+requires interactive credentials this process does not hold; logging off would also terminate the only session.
+=> REAL_200_PERCENT_SYSTEM_SCALE = NOT_RUN (blocked), not substituted.
+
+Real 175% system scale (no QT_SCALE_FACTOR) — supplementary observations
+------------------------------------------------------------------------
+Generic  : RFB frame 460x190, ink bbox 362,159-451,179 = 90x21 px, gaps right 8 / bottom 10
+QPA      : RFB frame 860x560, ink bbox 759,525-847,545 = 89x21 px, gaps right 12 / bottom 14
+Both identical to the 100% session values: no half-size mark, no clipping.
+
+Oversized watermark (120 code units, bottom-right) at the real 175% scale
+Generic 100-env : STATE=Faulted, RuntimeFailure, "does not fit a 460x190 frame at 16 points", no listener
+Generic 200-env : STATE=Faulted, RuntimeFailure, "does not fit a 460x190 frame at 16 points", no listener
+QPA 100-env     : STATE=Faulted, RuntimeFailure, "does not fit a 860x560 frame at 16 points", no listener
+QPA 200-env     : STATE=Faulted, RuntimeFailure, "does not fit a 860x560 frame at 16 points", no listener
+
+Viewer screenshots at the real 175% scale are only partially usable on this 1920x1080 panel: the maintained
+Viewer's own chrome plus its scale-to-fit behaviour cannot show the whole remote frame at that system scale, so
+the attached captures are recorded as partial and are NOT used as proof of watermark display.
+
+Restoration (verified)
+----------------------
+SPI_RESULT=True
+[after-restore] LogPixels=<unset> Win8DpiScaling=0 PMV2=True SYSTEM_DPI=96 SCALE_PERCENT=100
+PerMonitorSettings DpiValue=0
