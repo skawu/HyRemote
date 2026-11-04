@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "detail/composition_support.hpp"
+#include "detail/perf_probe.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
@@ -283,6 +284,7 @@ private:
 
     static void composeAndPublish(const std::shared_ptr<State> &state, PendingRequest pending)
     {
+        HYREMOTE_P1_SCOPE(GenericCompose);
         if (pending.canvasBounds.isEmpty()) {
             std::optional<hyremote::RemoteFrame> last;
             {
