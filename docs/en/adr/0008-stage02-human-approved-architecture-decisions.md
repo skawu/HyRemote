@@ -2,7 +2,7 @@
 
 > Language / 语言: **English** | [中文](../../adr/0008-stage02-human-approved-architecture-decisions.md)
 
-Status: **Local product choices approved by Human (2026-11-04); overall product architecture NOT frozen; design record, not implementation or release evidence.**  
+Status: **Human APPROVED the overall Stage 02 product architecture DESIGN freeze (G7) on 2026-11-04; all five prior local choices remain in force. Not an implementation, test or release claim.**  
 Record owner: [HyRemote #814](https://github.com/skawu/HyRemote/issues/814)  
 Product authority: Human-approved *HyRemote Product Design* `HYR-PD-001 / V14` (2026-11-03; §§2.2, 3.2–3.4, 4–6, 10, 14).
 
@@ -32,6 +32,10 @@ Product authority: Human-approved *HyRemote Product Design* `HYR-PD-001 / V14` (
 - H-02a is effective only in versions actually implementing the **future admission contract**. Existing released RFB binaries and support claims are not retroactively changed. Migration and explicit error messages will be required at implementation.
 - The Stage 02 canonical Native design candidate is R15 (21 message types, 50 positive/48 negative vectors, 15 state scenarios), with R16–R18 security/grant/budget signoff. Vector self-checks are **design-only**: no claim of Native, TLS or Viewer interoperability being implemented.
 
-## Gate status
+## G6/G7 archive and freeze status (2026-11-04)
 
-This ADR records **Human-approved local choices**, not a global architecture freeze, an implementation authorization, a release, or platform qualification. G6 requires an accepted PR to `develop` plus historical supersession notes in both repositories. G7 requires **separate explicit Human approval**.
+- **G6=PASS:** decision records were merged by [PR #815](https://github.com/skawu/HyRemote/pull/815) into `develop@c1684cf4cd2394c9b06f40edafc63b474658ecd8`; bilateral supersession comments and ADR readback were verified.
+- **G7=HUMAN_APPROVED (2026-11-04):** following the Stage 02 G7 whole-architecture freeze approval card, Human explicitly answered **“批准”** (approved). Track archive in [#817](https://github.com/skawu/HyRemote/issues/817). See the exact [Stage 02 frozen design manifest](../../internal/architecture-stage02-g7-freeze-record-2026-11-04.md).
+- The frozen **design** encompasses product responsibilities and all 52 traced subsections of `HYR-PD-001/V14`, the single R15 architecture/Native contract, R16 host grant/security/budget addenda, R18 design signoff, and the five locally approved Human decisions interpreted together.
+- **Material change control:** a change to default exclusive control scopes, secure DeploymentAdmission, independent protocol/wire semantics, authorization/privacy, four entrances, or Core/Runtime ownership requires documented old/new requirements, impact and rollback/migration analysis, followed by explicit Human design-change approval before implementation.
+- **Not authorized:** no inference that Native/TLS/deployment admission is implemented or tested, no development start, release, unqualified Qt support claim, or skipping the structure/content/figures/layout planning process before Word compilation. Next stage is the architecture document's structure and content planning.
