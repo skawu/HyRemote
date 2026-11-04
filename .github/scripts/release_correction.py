@@ -112,6 +112,63 @@ def validate_reopen(*, git, version, notes_name, base_notes, head_notes, head_cm
 
 
 
+# #812 / #768: a second, separately reviewed, strictly bounded reopen of the
+# ACCEPTED but UNPUBLISHED RC7 after independent whole-release P2 findings.
+# Never use this gate for another release, accepted base, candidate tree or feature.
+RC7_REOPEN_BASE_SHA = "a5fd439ed4039614021f2254dd2df6b76ffd4374"
+RC7_REVIEWED_PRODUCT_SOURCE_SHA = "1b6b2f4f991f773e6f48b8484d0f3b8905d0f72e"
+RC7_PRODUCT_FILES = frozenset({
+    "src/runtime/src/access_instance.cpp",
+    "src/runtime/tests/test_watermark_policy.cpp",
+    "src/integrations/cpp/tests/test_remote_access.cpp",
+    "tools/local-owner/worker.py",
+})
+RC7_GOVERNANCE_FILES = frozenset({
+    ".github/scripts/release_correction.py",
+    ".github/workflows/git-flow-policy.yml",
+})
+
+
+def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
+                        base_cmake, head_cmake, actual_base_sha,
+                        develop_ref=DEVELOP_REF,
+                        fixed_source_ref=RC7_REVIEWED_PRODUCT_SOURCE_SHA):
+    """Admit only the independently reviewed #812/#768 repairs, governance and
+    exact pending bilingual notes on the frozen accepted-but-untagged RC7.
+
+    Unrelated develop files (including architecture, roadmap, performance work
+    orders, other versions, transport/API work) are NEVER imported by this gate.
+    """
+    if version != "0.3.5.0" or actual_base_sha != RC7_REOPEN_BASE_SHA:
+        raise SystemExit("RC7 post-acceptance reopen denied on unapproved version/base")
+    if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
+        raise SystemExit("RC7 reopen requires previously accepted notes on the exact base")
+    if head_cmake != base_cmake:
+        raise SystemExit("RC7 source correction must not alter the release VERSION/CMakeLists")
+    pending = git("show", f"{develop_ref}:{notes_name}").decode("utf-8")
+    if not pending.startswith(CANDIDATE_MARKER) or head_notes != pending:
+        raise SystemExit("RC7 correction notes must equal reviewed develop's exact pending bilingual notes")
+    if "# 中文" not in head_notes or "# English" not in head_notes or "## Security boundary" not in head_notes:
+        raise SystemExit("RC7 corrected candidate notes must retain bilingual/security structure")
+    expected = RC7_PRODUCT_FILES | RC7_GOVERNANCE_FILES | {notes_name}
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD").decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit(
+            "RC7 correction changed-file scope must be the exact P2+governance+notes set: "
+            f"expected {sorted(expected)}, found {sorted(changed)}")
+    # The four real source fixes must be byte-for-byte identical to the SHA
+    # that merged reviewed #813 and #816 into develop, independent of later
+    # unrelated develop movements. The governance & pending-notes bytes come
+    # only from the separately reviewed current develop branch.
+    for file_name in sorted(RC7_PRODUCT_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{fixed_source_ref}:{file_name}"):
+            raise SystemExit(f"RC7 corrected product-source blob differs from reviewed fix: {file_name}")
+    for file_name in sorted(RC7_GOVERNANCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{develop_ref}:{file_name}"):
+            raise SystemExit(f"RC7 correction governance blob differs from reviewed develop: {file_name}")
+    return "rc7-scoped-post-acceptance-reopen"
+
+
 # ---------------------------------------------------------------- self test
 
 def _run(cwd: Path, *args: str) -> bytes:
