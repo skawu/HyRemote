@@ -161,6 +161,15 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
+# #609 feasibility-only backend: records on-screen Qt Quick OpenGL frames without
+# causing a second offscreen render. Explicitly OFF for product/release builds.
+# The reference Windows D3D11 and other RHI backends keep grabToImage.
+option(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL
+    "Developer-only experimental passive Qt Quick native OpenGL readback" OFF)
+if(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL AND NOT HYREMOTE_BUILD_QUICK_ADAPTER)
+    message(FATAL_ERROR "Passive Quick GL experiment requires HYREMOTE_BUILD_QUICK_ADAPTER=ON")
+endif()
+
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
 if(HYREMOTE_BUILD_QUICK_ADAPTER)
@@ -173,6 +182,17 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
             src/quick/quick_target.cpp
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
+        if(HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL)
+            target_sources(hyremote-remoteaccess PRIVATE
+                src/quick/passive_gl_frame_sampler.cpp
+            )
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_PASSIVE_QUICK_GL=1
+            )
+            message(WARNING
+                "HyRemote #609 experimental passive Quick GL is ON: diagnostic-only, "
+                "not a release-qualified capture backend")
+        endif()
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
