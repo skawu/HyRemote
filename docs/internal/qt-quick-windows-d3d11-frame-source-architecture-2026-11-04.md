@@ -68,12 +68,39 @@
 - [Microsoft GraphicsCaptureSession::IncludeSecondaryWindows（Win11 24H2+）](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.includesecondarywindows)
 - [Microsoft GraphicsCaptureSession::IsBorderRequired](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)
 
-## 7. 当前结论
+## 7. P0 真实环境结果与设计复核（2026-11-04）
+
+来源：[本地 Owner #609 P0](https://github.com/skawu/HyRemote/issues/609#issuecomment-6632184423)。这是一份**接口存在性/窗口模型证据**，未创建实际 WGC 捕获会话、未读取测试像素、未连接 Viewer，因此不能记为 `D3D11_NATIVE_CAPTURE_PASS`。
+
+| 项目 | 观察 | 工程解释 |
+| --- | --- | --- |
+| Windows / Qt | Windows 11 10.0.26200 (UBR 9711)，Qt 6.8.3/MSVC Release；主窗口与独立 Popup 运行时确认为 D3D11 | 已证明 Qt 默认 D3D11，符合后续 WGC 目标环境 |
+| WinRT 类 | `RoGetActivationFactory` 激活 `GraphicsCaptureSession / Item / Picker / Access` 均 `S_OK` | **只证明类存在/激活工厂可取得**；`GraphicsCaptureSession::IsSupported()` 尚未实际调用，`CreateForWindow` 和 `CreateFreeThreaded` 没有创建成功证据 |
+| 默认视频设备 | WMI 显示 OrayIddDriver 间接显示设备，另有 Intel UHD770 | WMI 设备名称**不是** Qt D3D11 Device 所在 adapter LUID；若要跨设备共享或拷贝，须用设备实际 `IDXGIDevice::GetAdapter()->GetDesc()->AdapterLuid` 核对 |
+| Qt swapchain | `UsedAsTransferSource=UNKNOWN` | `QRhiSwapChain::flags()`（Qt GuiPrivate 类型）是 Qt 读回许可标志；不能仅从 DXGI `GetDesc1` 或 D3D11 texture `BindFlags` 推导 Qt 自身已创建的 QRhi 标志，更不能为实验修改 Qt-owned swapchain |
+| Qt Popup | item 型 Popup 无独立 HWND；`Popup.Window` 拥有可见独立 HWND | Qt Window Popup 实测 `exStyle=0x00080088`，准确解码为 `WS_EX_LAYERED(0x80000) + WS_EX_TOOLWINDOW(0x80) + WS_EX_TOPMOST(0x8)`，**不包含** `WS_EX_NOACTIVATE(0x08000000)` 或 `WS_EX_WINDOWEDGE(0x100)`。可激活性必须另测，不可从该掩码错误推断 |
+| WGC secondary | OS build 26200 超过 `IncludeSecondaryWindows` 的 build 26100 门槛 | 仍需逐项验证 `ApiInformation` / 会话实际支持，设置 true 才可能包含 `WS_POPUP` / `WS_EX_TOOLWINDOW` 的相交子窗口；**超出主窗口矩形的部分按微软合同仍会裁切**，不满足无条件完整 Popup |
+| 边框与授权 | `GraphicsCaptureAccess` 可激活，但未请求授权 | `IsBorderRequired=false` 并非零成本操作；微软要求声明 `graphicsCaptureWithoutBorder` 并经 `RequestAccessAsync(Borderless)` 用户同意，拒绝后边框仍显示。项目不能以 API 存在宣称无需授权或捕获边框不可见 |
+
+资料：[Microsoft Win32 扩展样式](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)、[WGC IsSupported 检查](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)、[WGC secondary 窗口边界](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.includesecondarywindows)、[WGC 边框权限](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)。
+
+### P0 审查裁定与下一验证
+
+**P0=PASS_FOR_ENV_DISCOVERY_ONLY / WGC_SESSION=NOT_RUN / PRODUCT_GATE=OPEN。** 继续 WGC 但不将其定为正式后端；若独立系统窗口方案无法覆盖全部 Qt Popup/权限要求，保留 Legacy fallback，转回 Qt 原生帧/同进程多窗口 FrameSource 设计选择。不得在未验证前为 WGC 业务行为编码、绕过捕获授权，或修改产品既有多窗口/截图语义。
+
+**仅授权一项新的 P0.5：隔离系统级单窗口采集可行性试验，不是 HyRemote 功能实现。**
+
+- 在现有 Windows 11/Qt6.8.3 环境单次启动测试用、无隐私内容的 1080p Quick 窗口，显示静态独特标记、一个 item Popup 和一个跨主窗口边缘的 `Popup.Window`，沿用默认 D3D11。不要连接 Viewer、不要修改 Runtime/Generic/发布代码。
+- 独立诊断进程先调用并记录 `GraphicsCaptureSession::IsSupported()`；如果 false，立即 `NO_GO` 并停止。对**已知测试目标 HWND** 调用 `IGraphicsCaptureItemInterop::CreateForWindow`（记录 HRESULT）；使用独立测试 D3D11 设备建立 `Direct3D11CaptureFramePool::CreateFreeThreaded`、`CreateCaptureSession`，在可用且获授权的情况下短时捕获并**只读取这一测试窗口的几帧**，记录尺寸、像素方向、item Popup 与窗口 Popup 的包含/缺失/裁切、边框/权限结果、HRESULT 和系统对话框。检查 `IncludeSecondaryWindows` 的真实支持与 true/false 效果即可，不进行性能矩阵、额外安装或补丁实现。输出图像仅为测试场景，不截取用户桌面。
+- 目标上设备使用 `IDXGIDevice::GetAdapter` 记录 LUID，若 Qt 对应设备 LUID 未拿到则 `QT_LUID=UNKNOWN`；不要为取得它引入 Qt private hook，优先判断 WGC 自身是否可行。实验遇到权限提示必须依赖合法用户同意；无法同意/策略拒绝即如实记录并停止，不自动绕过。
+- 自行限时结束并释放 WinRT/D3D/窗口资源。结果仅写入 #609：`IsSupported`、`CreateForWindow HRESULT`、`FRAME_ARRIVED`、`MAIN_PIXELS`、`POPUP_ITEM`、`POPUP_WINDOW_INSIDE/OUTSIDE`、`SECONDARY_API/SETTING`、`BORDER/CONSENT`、`WGC_ADAPTER_LUID`。完成即停，由云端 Owner 判断是否进入产品路线设计终审。
+
+## 8. 当前结论
 
 ```text
 DESIGN_DIRECTION=APPROVED_B_PASSIVE_EXISTING_FRAME
 D3D11_NATIVE_QT_DIRECT_READBACK=NO_GO_IMPLEMENTATION_UNTIL_PROOF
-D3D11_WGC=CONDITIONAL_CANDIDATE_REQUIRE_P0_CAPABILITY_AND_PRODUCT_CONTRACT
+D3D11_WGC=CONDITIONAL_CANDIDATE_P0_ENV_PASS_P0_5_SESSION_NOT_RUN
 WINDOWS_OPENGL_ON_OFF=PASS_SINGLE_PAIR_NOT_D3D11
 RK3588_EGLFS=USER_SITE_VALIDATION_PENDING
 ISSUE609=P1_OPEN
