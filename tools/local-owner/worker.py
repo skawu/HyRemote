@@ -198,6 +198,111 @@ def hosted_l2(order: dict) -> dict:
     return {"status": "DISPATCHED", "run_id": None, "reused": False}
 
 
+
+def parse_cmake_assignments(content: str) -> dict[str, str]:
+    """Read only simple CMakeCache/runner key=value metadata, never execute it."""
+    result = {}
+    for line in content.splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.split(":", 1)[0]
+        if key in result:
+            raise Blocked("duplicate resolved build identity field")
+        result[key] = value.strip()
+    return result
+
+
+def read_identity_file(path: Path, *, limit: int = 128 * 1024) -> str:
+    try:
+        if not path.is_file() or path.stat().st_size > limit:
+            raise Blocked("required resolved build identity metadata missing or oversized")
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise Blocked("cannot read resolved build identity") from exc
+
+
+def verify_resolved_g6_identity(build_dir: Path, workspace: Path, order: dict) -> None:
+    """Prove the actual build tree's Qt/compiler/architecture/adapters before MACHINE_PASS."""
+    if order["kit"] != "win-qt683-msvc2022":
+        raise Blocked("unapproved qualified G6 Kit")
+    try:
+        root = build_dir.resolve(strict=True)
+        source = workspace.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise Blocked("cannot resolve qualified build tree") from exc
+    if not root.is_relative_to(source) or root == source:
+        raise Blocked("resolved G6 build tree must be under the verified worktree")
+
+    cache = parse_cmake_assignments(read_identity_file(root / "CMakeCache.txt"))
+    marker = parse_cmake_assignments(read_identity_file(root / ".hyremote-build-identity"))
+    if Path(cache.get("CMAKE_HOME_DIRECTORY", "")).resolve() != source:
+        raise Blocked("resolved G6 CMake source differs from qualified worktree")
+    if cache.get("CMAKE_BUILD_TYPE", "").casefold() != "release":
+        raise Blocked("canonical G6 must use Release")
+    expected = ("HYREMOTE_BUILD_CPP_API", "HYREMOTE_BUILD_QML_API",
+                "HYREMOTE_WITH_GENERIC_PLUGIN", "HYREMOTE_WITH_QPA_PROXY",
+                "HYREMOTE_BUILD_TESTS")
+    if any(cache.get(k, "").upper() not in ("ON", "TRUE", "YES", "1") for k in expected):
+        raise Blocked("resolved G6 lacks required Qt6 four-route test capabilities")
+    for key in ("cpp", "qml", "generic", "qpa"):
+        if marker.get(key, "").upper() not in ("ON", "TRUE", "YES", "1"):
+            raise Blocked("runner identity lacks required Qt6 frontends")
+
+    # Qt_DIR from actual CMakeCache binds the validated package to the build, not
+    # merely a textual Kit path supplied by the operator or the order.
+    qt_dir = Path(cache.get("Qt6_DIR", ""))
+    if not qt_dir.is_dir():
+        raise Blocked("resolved G6 lacks a configured Qt6 package")
+    qt_root = qt_dir.resolve().parent.parent.parent
+    if not str(qt_root).replace("\\", "/").lower().endswith("/msvc2022_64"):
+        raise Blocked("resolved G6 Qt Kit is not msvc2022_64")
+    if Path(marker.get("qt", "")).resolve() != qt_root:
+        raise Blocked("runner Qt Kit identity differs from CMake-resolved Qt6")
+    # Qt 6.8's ConfigVersion file is a wrapper which includes the actual
+    # ConfigVersionImpl metadata. Never require PACKAGE_VERSION in the wrapper:
+    # that false-negative would block every genuine 6.8.3 Kit.
+    wrapper = read_identity_file(qt_dir / "Qt6ConfigVersion.cmake")
+    if not re.search(r'include\s*\(\s*"?\${CMAKE_CURRENT_LIST_DIR}/'
+                     r'Qt6ConfigVersionImpl\.cmake"?\s*\)', wrapper):
+        raise Blocked("resolved Qt6 package version wrapper lacks expected implementation")
+    qt_version = read_identity_file(qt_dir / "Qt6ConfigVersionImpl.cmake")
+    if not re.search(r'set\s*\(\s*PACKAGE_VERSION\s+"?6\.8\.3"?\s*\)', qt_version):
+        raise Blocked("resolved Qt6 package version is not exactly 6.8.3")
+
+    compiler_dir = root / "CMakeFiles"
+    compiler_files = list(compiler_dir.glob("*/CMakeCXXCompiler.cmake"))
+    if len(compiler_files) != 1:
+        raise Blocked("qualified G6 needs one resolved CMake C++ compiler")
+    compiler = read_identity_file(compiler_files[0])
+    def cmake_compiler_value(name: str) -> str:
+        found = re.search(r'set\s*\(\s*' + re.escape(name)
+                          + r'\s+"?([^"\s)]*)"?\s*\)', compiler)
+        return found.group(1) if found else ""
+    if cmake_compiler_value("CMAKE_CXX_COMPILER_ID") != "MSVC":
+        raise Blocked("resolved G6 must use MSVC")
+    version = cmake_compiler_value("CMAKE_CXX_COMPILER_VERSION")
+    if not re.fullmatch(r"19\.(3[0-9]|[4-9][0-9])(?:\.[0-9]+)*", version):
+        raise Blocked("resolved compiler is not a qualified VS2022 MSVC toolset")
+    if cmake_compiler_value("CMAKE_CXX_SIZEOF_DATA_PTR") != "8":
+        raise Blocked("resolved G6 compiler is not 64-bit")
+    arch = cmake_compiler_value("CMAKE_CXX_COMPILER_ARCHITECTURE_ID")
+    if arch and arch.lower() not in ("x64", "amd64", "x86_64"):
+        raise Blocked("resolved G6 compiler is not x64")
+
+
+def resolved_g6_build_dir(workspace: Path, kit_config: Path) -> Path:
+    # build.cmd's --print-build-dir is a read-only canonical entry point; never
+    # reconstruct paths from the caller's filename or run arbitrary commands.
+    p = run(["cmd.exe", "/d", "/c", str(workspace / "build.cmd"), "test",
+             "--config=" + str(kit_config), "--print-build-dir"], cwd=workspace)
+    lines = re.findall(r"(?m)^HYREMOTE_BUILD_DIR=(.+)\s*$",
+                       (p.stdout or "") + "\n" + (p.stderr or ""))
+    if p.returncode or len(lines) != 1 or not lines[0].strip():
+        raise Blocked("cannot resolve the canonical G6 build directory")
+    return Path(lines[0].strip())
+
+
 def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: Path) -> dict:
     verify_workspace(workspace, order["sha"])
     if os.name != "nt":
@@ -223,6 +328,10 @@ def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: P
         raise Blocked("canonical G6 did not report positive discovered/executed counts")
     if proc.returncode or executed != discovered:
         raise TestFailed("canonical G6 returned failure or incomplete execution; inspect local log")
+    # A positive CTest count is NOT proof of a Windows Qt6.8.3/MSVC2022 four-route
+    # Kit: the Qt5 C++/Widgets 56/56 suite also passes. Fail closed before ACK.
+    build_dir = resolved_g6_build_dir(workspace, kit_config)
+    verify_resolved_g6_identity(build_dir, workspace, order)
     return {"status": "MACHINE_PASS", "discovered": discovered,
             "executed": executed, "log": log.name}
 
@@ -596,6 +705,109 @@ def self_test() -> None:
         # The failed CTest shape has no EXECUTED count by design.
         fail_log = "DISCOVERED_TEST_COUNT=79\\nTEST_EXIT_STATUS=8\\n"
         assert metric(fail_log.replace("\\n", "\n"), "TEST_EXIT_STATUS") == 8
+
+    # #768: identity comes from the actual configured build/Qt package/compiler,
+    # not test counts, caller's config filename, or task JSON. Offline fixtures
+    # work on both Linux and Windows without invoking any build or GitHub action.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        workspace = root / "source"
+        build = workspace / "build"
+        cmake_compiler_dir = build / "CMakeFiles" / "3.28.3"
+        qt_prefix = root / "Qt" / "6.8.3" / "msvc2022_64"
+        qt_dir = qt_prefix / "lib" / "cmake" / "Qt6"
+        qt_dir.mkdir(parents=True)
+        cmake_compiler_dir.mkdir(parents=True)
+        (build / ".hyremote-build-identity").write_text(
+            "qt=" + str(qt_prefix) + "\ncpp=ON\nqml=ON\ngeneric=ON\nqpa=ON\n",
+            encoding="utf-8")
+        cache_path = build / "CMakeCache.txt"
+        cache_data = (
+            "CMAKE_HOME_DIRECTORY:INTERNAL=" + str(workspace.resolve()) + "\n"
+            "CMAKE_BUILD_TYPE:STRING=Release\n"
+            "Qt6_DIR:PATH=" + str(qt_dir) + "\n"
+            "HYREMOTE_BUILD_CPP_API:BOOL=ON\n"
+            "HYREMOTE_BUILD_QML_API:BOOL=ON\n"
+            "HYREMOTE_WITH_GENERIC_PLUGIN:BOOL=ON\n"
+            "HYREMOTE_WITH_QPA_PROXY:BOOL=ON\n"
+            "HYREMOTE_BUILD_TESTS:BOOL=ON\n"
+        )
+        cache_path.write_text(cache_data, encoding="utf-8")
+        wrapper_path = qt_dir / "Qt6ConfigVersion.cmake"
+        wrapper_path.write_text(
+            'include("${CMAKE_CURRENT_LIST_DIR}/Qt6ConfigVersionImpl.cmake")\n',
+            encoding="utf-8")
+        version_path = qt_dir / "Qt6ConfigVersionImpl.cmake"
+        version_path.write_text('set(PACKAGE_VERSION "6.8.3")\n', encoding="utf-8")
+        compiler_path = cmake_compiler_dir / "CMakeCXXCompiler.cmake"
+        compiler_data = (
+            'set(CMAKE_CXX_COMPILER_ID "MSVC")\n'
+            'set(CMAKE_CXX_COMPILER_VERSION "19.44.35207")\n'
+            'set(CMAKE_CXX_COMPILER_ARCHITECTURE_ID "x64")\n'
+            'set(CMAKE_CXX_SIZEOF_DATA_PTR "8")\n'
+        )
+        compiler_path.write_text(compiler_data, encoding="utf-8")
+        g6_order = dict(sample, task="canonical-g6")
+        verify_resolved_g6_identity(build, workspace, g6_order)
+        for file_path, old, bad in (
+            (version_path, "6.8.3", "5.15.2"),
+            (wrapper_path, "Qt6ConfigVersionImpl.cmake", "Qt5ConfigVersionImpl.cmake"),
+            (compiler_path, '"MSVC"', '"GNU"'),
+            (compiler_path, "19.44.35207", "19.29.30155"),
+            (compiler_path, '"x64"', '"ARM64"'),
+            (cache_path, "HYREMOTE_BUILD_QML_API:BOOL=ON",
+             "HYREMOTE_BUILD_QML_API:BOOL=OFF"),
+            (cache_path, "HYREMOTE_WITH_QPA_PROXY:BOOL=ON",
+             "HYREMOTE_WITH_QPA_PROXY:BOOL=OFF"),
+            (cache_path, "CMAKE_BUILD_TYPE:STRING=Release",
+             "CMAKE_BUILD_TYPE:STRING=Debug"),
+            (cache_path, "Qt6_DIR:PATH=", "Qt5_DIR:PATH="),
+            (build / ".hyremote-build-identity", "generic=ON", "generic=OFF"),
+        ):
+            original = file_path.read_text(encoding="utf-8")
+            assert old in original, (file_path, old)
+            file_path.write_text(original.replace(old, bad), encoding="utf-8")
+            try:
+                verify_resolved_g6_identity(build, workspace, g6_order)
+            except Blocked:
+                pass
+            else:
+                raise AssertionError("resolved G6 identity mismatch admitted " + bad)
+            finally:
+                file_path.write_text(original, encoding="utf-8")
+        # Even a superficially passing Qt5 56/56 log cannot become a typed
+        # win-qt683-msvc2022 MACHINE_PASS without real matching build identity.
+        assert metric("DISCOVERED_TEST_COUNT=56\nEXECUTED_TEST_COUNT=56",
+                      "EXECUTED_TEST_COUNT") == 56
+        cache_path.write_text(
+            cache_data.replace("Qt6_DIR:PATH=", "Qt5_DIR:PATH=")
+                      .replace("HYREMOTE_BUILD_QML_API:BOOL=ON",
+                               "HYREMOTE_BUILD_QML_API:BOOL=OFF"),
+            encoding="utf-8")
+        try:
+            verify_resolved_g6_identity(build, workspace, g6_order)
+        except Blocked:
+            pass
+        else:
+            raise AssertionError("Qt5 C++/Widgets 56/56 passed a Qt6 four-route G6 order")
+        probe = SimpleNamespace(returncode=0, stdout="HYREMOTE_BUILD_DIR=" + str(build) + "\n",
+                                stderr="")
+        with patch.dict(globals(), {"run": lambda *a, **k: probe}):
+            assert resolved_g6_build_dir(workspace, root / "kit.yml") == build
+        for bad in (
+            SimpleNamespace(returncode=0, stdout="", stderr=""),
+            SimpleNamespace(returncode=0, stdout="HYREMOTE_BUILD_DIR=x\nHYREMOTE_BUILD_DIR=y\n",
+                            stderr=""),
+            SimpleNamespace(returncode=1, stdout="HYREMOTE_BUILD_DIR=" + str(build),
+                            stderr=""),
+        ):
+            with patch.dict(globals(), {"run": lambda *a, **k: bad}):
+                try:
+                    resolved_g6_build_dir(workspace, root / "kit.yml")
+                except Blocked:
+                    pass
+                else:
+                    raise AssertionError("invalid canonical build-dir probe admitted")
 
     # An expired/removed order cannot prevent a prior finished-but-unreported
     # result from reaching #95. Test the polling outbox independently of inbox.
