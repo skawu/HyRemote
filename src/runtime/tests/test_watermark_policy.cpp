@@ -619,6 +619,48 @@ void checkPersistedPolicySurvivesRestart()
         check(!restoreUnavailable.diagnosticSnapshot().effectivePort.has_value(),
               QStringLiteral("failed implicit state restore leaves no remote listener"));
 
+        // #812: both states have an *empty* watermarkStorePath, but are not
+        // equivalent: a rejected state directory must fail closed, whereas an
+        // unrelated invalid security descriptor selects no state store at all.
+        // Caching by empty path alone would either suppress a fatal restore or
+        // retain a stale error after a stopped instance changes descriptors.
+        const QString unrelatedBadDescriptor
+            = QDir(state.path()).filePath(QStringLiteral("missing-security-descriptor.conf"));
+        {
+            HyRemote::Runtime::AccessInstance switchToNoStore;
+            check(!switchToNoStore.watermarkPolicy().ok(),
+                  QStringLiteral("first cached empty path carries the invalid state-store error"));
+            check(switchToNoStore.setSecurityConfigFile(unrelatedBadDescriptor),
+                  QStringLiteral("an unrelated descriptor selector can change while Stopped"));
+            check(switchToNoStore.watermarkPolicy().ok()
+                      && !switchToNoStore.watermarkPolicy().policy.enabled,
+                  QStringLiteral("a changed no-state-store resolution clears a cached watermark error"));
+            check(switchToNoStore.setSecurityConfigFile(QString()),
+                  QStringLiteral("clearing unrelated descriptor selector is allowed"));
+            check(!switchToNoStore.watermarkPolicy().ok()
+                      && switchToNoStore.watermarkPolicy().error.contains(
+                          QStringLiteral("selected state directory cannot restore")),
+                  QStringLiteral("the same empty path rechecks an invalid selected state directory"));
+        }
+        {
+            HyRemote::Runtime::AccessInstance switchToBadStore;
+            check(switchToBadStore.setSecurityConfigFile(unrelatedBadDescriptor),
+                  QStringLiteral("second direction starts with an unrelated descriptor"));
+            check(switchToBadStore.watermarkPolicy().ok(),
+                  QStringLiteral("a descriptor failure selects no watermark store"));
+            check(switchToBadStore.setSecurityConfigFile(QString()),
+                  QStringLiteral("second direction returns to the selected invalid state directory"));
+            check(!switchToBadStore.start(),
+                  QStringLiteral("a cached empty no-store result must not bypass the later bad state path"));
+            const auto switchedError = switchToBadStore.lastError();
+            check(switchedError.has_value()
+                      && switchedError->message.contains(
+                          QStringLiteral("selected state directory cannot restore")),
+                  QStringLiteral("reverse empty-path transition fails closed for the correct reason"));
+            check(!switchToBadStore.diagnosticSnapshot().effectivePort.has_value(),
+                  QStringLiteral("reverse transition never exposes a listener"));
+        }
+
         WatermarkPolicyRequest request;
         request.enabled = true;
         request.text = QStringLiteral("DO-NOT-ECHO-THIS-MARK");
