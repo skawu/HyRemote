@@ -17,8 +17,10 @@ namespace {
 class SolidCapture final : public hyremote::CaptureSource
 {
 public:
-    explicit SolidCapture(QRgb color, int pixelWidth = 2, int pixelHeight = 2, float dpr = 1.0F)
-        : m_color(color), m_pixelWidth(pixelWidth), m_pixelHeight(pixelHeight), m_dpr(dpr)
+    explicit SolidCapture(QRgb color, int pixelWidth = 2, int pixelHeight = 2, float dpr = 1.0F,
+                          std::shared_ptr<const hyremote::FrameStorage> *observedStorage = nullptr)
+        : m_color(color), m_pixelWidth(pixelWidth), m_pixelHeight(pixelHeight), m_dpr(dpr),
+          m_observedStorage(observedStorage)
     {
     }
 
@@ -55,10 +57,11 @@ public:
             for (int x = 0; x < width; ++x) {
                 const std::size_t offset = static_cast<std::size_t>(y) * stride
                                            + static_cast<std::size_t>(x) * 4U;
-                bytes[offset + 0] = static_cast<unsigned char>(qRed(m_color));
-                bytes[offset + 1] = static_cast<unsigned char>(qGreen(m_color));
-                bytes[offset + 2] = static_cast<unsigned char>(qBlue(m_color));
-                bytes[offset + 3] = 255;
+                const int alpha = qAlpha(m_color);
+                bytes[offset + 0] = static_cast<unsigned char>((qRed(m_color) * alpha + 127) / 255);
+                bytes[offset + 1] = static_cast<unsigned char>((qGreen(m_color) * alpha + 127) / 255);
+                bytes[offset + 2] = static_cast<unsigned char>((qBlue(m_color) * alpha + 127) / 255);
+                bytes[offset + 3] = static_cast<unsigned char>(alpha);
             }
         }
 
@@ -75,6 +78,8 @@ public:
         frame.timing.completionTime = hyremote::Clock::now();
         frame.damage = hyremote::Damage::fullFrame();
         frame.requestId = request.id;
+        if (m_observedStorage)
+            *m_observedStorage = frame.storage;
         m_onFrame(std::move(frame));
         return true;
     }
@@ -84,6 +89,7 @@ private:
     int m_pixelWidth;
     int m_pixelHeight;
     float m_dpr;
+    std::shared_ptr<const hyremote::FrameStorage> *m_observedStorage = nullptr;
     hyremote::FrameReadyHandler m_onFrame;
 };
 
@@ -177,6 +183,93 @@ int main(int argc, char **argv)
     }
 
     components.capture->stop();
-    std::cout << "PASS: automatic runtime composes multiple application surfaces into one capture target\n";
+
+    // #609: one full-canvas, DPR1 premultiplied child is already the exact
+    // composite output: reuse its immutable FrameStorage without allocating,
+    // clearing or drawing a second full-size picture. Verify semi-transparent
+    // premultiplied samples, negative-origin canvas and per-request metadata.
+    QObject singleTarget;
+    CompositeTarget single;
+    single.upsertSurface(3, &singleTarget, QRect(-7, 3, 3, 2), true);
+    std::shared_ptr<const hyremote::FrameStorage> childStorage;
+    const HyRemote::detail::BuiltinTargetResolver singleResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (!input && target == &singleTarget) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(
+                    qRgba(64, 32, 16, 128), 3, 2, 1.0F, &childStorage);
+            }
+            return result;
+        };
+    auto singleComponents = single.createTargetComponents(false, singleResolver);
+    std::vector<hyremote::RemoteFrame> singleFrames;
+    if (!check(singleComponents.capture->start(
+                   [&](hyremote::RemoteFrame frame) { singleFrames.push_back(std::move(frame)); },
+                   [](const hyremote::CaptureEvent &) {}),
+               "single full-canvas capture starts")
+        || !check(singleComponents.capture->requestFrame({42, hyremote::Clock::now()}),
+                  "single full-canvas frame requested")
+        || !check(waitForFrame(singleFrames, 1), "single full-canvas frame delivered")) {
+        return 5;
+    }
+    const auto &singleResult = singleFrames.front();
+    const QImage singleImage = imageView(singleResult);
+    const uchar *singleBytes = singleImage.constBits();
+    if (!check(childStorage && singleResult.storage == childStorage,
+               "full-canvas fast path shares immutable child storage")
+        || !check(singleResult.geometry.devicePixelRatio == 1.0F
+                      && singleImage.size() == QSize(3, 2),
+                  "full-canvas output has correct logical geometry")
+        || !check(singleBytes && singleBytes[0] == 32 && singleBytes[1] == 16
+                      && singleBytes[2] == 8 && singleBytes[3] == 128,
+                  "full-canvas fast path preserves premultiplied transparent pixels")
+        || !check(singleResult.requestId == hyremote::CaptureRequestId{42}
+                      && singleResult.damage.kind == hyremote::DamageKind::FullFrame,
+                  "full-canvas fast path retains composite request/damage metadata")) {
+        return 6;
+    }
+    singleComponents.capture->stop();
+
+    // A single 2x-DPR child needs scaling into the logical canvas. It must
+    // retain the old compositor (no direct storage alias) and #806 DPR=1.
+    QObject scaledTarget;
+    CompositeTarget scaled;
+    scaled.upsertSurface(4, &scaledTarget, QRect(5, 5, 2, 2), true);
+    std::shared_ptr<const hyremote::FrameStorage> highDprStorage;
+    const HyRemote::detail::BuiltinTargetResolver scaledResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (!input && target == &scaledTarget) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(
+                    qRgba(0, 255, 0, 255), 4, 4, 2.0F, &highDprStorage);
+            }
+            return result;
+        };
+    auto scaledComponents = scaled.createTargetComponents(false, scaledResolver);
+    std::vector<hyremote::RemoteFrame> scaledFrames;
+    if (!check(scaledComponents.capture->start(
+                   [&](hyremote::RemoteFrame frame) { scaledFrames.push_back(std::move(frame)); },
+                   [](const hyremote::CaptureEvent &) {}),
+               "scaled child capture starts")
+        || !check(scaledComponents.capture->requestFrame({43, hyremote::Clock::now()}),
+                  "scaled child frame requested")
+        || !check(waitForFrame(scaledFrames, 1), "scaled child frame delivered")) {
+        return 7;
+    }
+    const auto &scaledResult = scaledFrames.front();
+    const QImage scaledImage = imageView(scaledResult);
+    if (!check(highDprStorage && scaledResult.storage != highDprStorage,
+               "DPR2 child must retain pixel-scaling compositor")
+        || !check(scaledResult.geometry.devicePixelRatio == 1.0F
+                      && scaledImage.size() == QSize(2, 2),
+                  "DPR2 child output stays logical DPR1")
+        || !check(scaledImage.pixelColor(0, 0) == QColor(0, 255, 0, 255),
+                  "DPR2 child's pixels are still composited correctly")) {
+        return 8;
+    }
+    scaledComponents.capture->stop();
+    std::cout << "PASS: composite multi-surface, single-canvas immutable fast path, and DPR fallback\n";
     return 0;
 }

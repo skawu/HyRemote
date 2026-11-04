@@ -328,6 +328,45 @@ private:
             }
         }
 
+        // #609: exactly one already-premultiplied, full-canvas CPU frame needs
+        // neither a second 1080p allocation nor a transparent fill + drawImage.
+        // QPainter SourceOver onto transparent pixels preserves premultiplied
+        // samples exactly. Share the immutable frame's lifetime anchor instead.
+        // All scaling, mixed-DPR, clipping, multi-surface and format cases
+        // continue through the existing compositor unchanged.
+        if (pending.backToFront.size() == 1 && pending.frames.size() == 1) {
+            const SurfacePlacement &surface = pending.backToFront.front();
+            const auto it = pending.frames.find(surface.id);
+            if (it != pending.frames.end() && surface.globalGeometry == pending.canvasBounds) {
+                hyremote::RemoteFrame &child = it->second;
+                const auto &geometry = child.geometry;
+                const std::size_t width = static_cast<std::size_t>(pending.canvasBounds.width());
+                const std::size_t height = static_cast<std::size_t>(pending.canvasBounds.height());
+                if (geometry.pixelFormat == hyremote::PixelFormat::Rgba8888
+                    && geometry.alphaMode == hyremote::AlphaMode::Premultiplied
+                    && geometry.planeCount == 1 && geometry.devicePixelRatio == 1.0F
+                    && geometry.transform.rotation == hyremote::Rotation::Rotate0
+                    && !geometry.transform.mirrorX && !geometry.transform.mirrorY
+                    && geometry.size.width == width && geometry.size.height == height
+                    && child.storage && child.storage->kind() == hyremote::StorageKind::Cpu
+                    && child.storage->planeCount() == 1) {
+                    const auto plane = child.storage->mapRead(0);
+                    if (plane && plane->data && plane->stride >= width * 4U
+                        && height <= plane->bytes / plane->stride) {
+                        // Preserve the ordinary composite's per-request metadata,
+                        // including DPR=1 and full damage, without mutating pixels.
+                        child.timing.ptsSource = hyremote::PtsSource::Completion;
+                        child.timing.requestTime = pending.request.requestTime;
+                        child.timing.completionTime = hyremote::Clock::now();
+                        child.damage = hyremote::Damage::fullFrame();
+                        child.requestId = pending.request.id;
+                        publishFrame(state, std::move(child));
+                        return;
+                    }
+                }
+            }
+        }
+
         hyremote::RemoteFrame result = transparentFrame(pending.request, pending.canvasBounds.size());
         if (!result.storage)
             return;
