@@ -259,7 +259,14 @@ def verify_resolved_g6_identity(build_dir: Path, workspace: Path, order: dict) -
         raise Blocked("resolved G6 Qt Kit is not msvc2022_64")
     if Path(marker.get("qt", "")).resolve() != qt_root:
         raise Blocked("runner Qt Kit identity differs from CMake-resolved Qt6")
-    qt_version = read_identity_file(qt_dir / "Qt6ConfigVersion.cmake")
+    # Qt 6.8's ConfigVersion file is a wrapper which includes the actual
+    # ConfigVersionImpl metadata. Never require PACKAGE_VERSION in the wrapper:
+    # that false-negative would block every genuine 6.8.3 Kit.
+    wrapper = read_identity_file(qt_dir / "Qt6ConfigVersion.cmake")
+    if not re.search(r'include\s*\(\s*"?\${CMAKE_CURRENT_LIST_DIR}/'
+                     r'Qt6ConfigVersionImpl\.cmake"?\s*\)', wrapper):
+        raise Blocked("resolved Qt6 package version wrapper lacks expected implementation")
+    qt_version = read_identity_file(qt_dir / "Qt6ConfigVersionImpl.cmake")
     if not re.search(r'set\s*\(\s*PACKAGE_VERSION\s+"?6\.8\.3"?\s*\)', qt_version):
         raise Blocked("resolved Qt6 package version is not exactly 6.8.3")
 
@@ -726,7 +733,11 @@ def self_test() -> None:
             "HYREMOTE_BUILD_TESTS:BOOL=ON\n"
         )
         cache_path.write_text(cache_data, encoding="utf-8")
-        version_path = qt_dir / "Qt6ConfigVersion.cmake"
+        wrapper_path = qt_dir / "Qt6ConfigVersion.cmake"
+        wrapper_path.write_text(
+            'include("${CMAKE_CURRENT_LIST_DIR}/Qt6ConfigVersionImpl.cmake")\n',
+            encoding="utf-8")
+        version_path = qt_dir / "Qt6ConfigVersionImpl.cmake"
         version_path.write_text('set(PACKAGE_VERSION "6.8.3")\n', encoding="utf-8")
         compiler_path = cmake_compiler_dir / "CMakeCXXCompiler.cmake"
         compiler_data = (
@@ -740,6 +751,7 @@ def self_test() -> None:
         verify_resolved_g6_identity(build, workspace, g6_order)
         for file_path, old, bad in (
             (version_path, "6.8.3", "5.15.2"),
+            (wrapper_path, "Qt6ConfigVersionImpl.cmake", "Qt5ConfigVersionImpl.cmake"),
             (compiler_path, '"MSVC"', '"GNU"'),
             (compiler_path, "19.44.35207", "19.29.30155"),
             (compiler_path, '"x64"', '"ARM64"'),
