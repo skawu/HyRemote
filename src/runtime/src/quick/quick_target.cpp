@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstring>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -30,6 +31,7 @@
 #include "detail/input_mailbox_admission.hpp"
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
+#include "quick/quick_image_frame_storage.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -238,39 +240,75 @@ private:
         QImage image;
         {
             HYREMOTE_P1_SCOPE(QuickConvert);
-            image = grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+            // Qt 6 may already return the Core's exact premultiplied RGBA
+            // layout. Qt 5's ARGB32_Premultiplied has a different byte order
+            // and must still be converted before publication.
+            image = grabbed.format() == QImage::Format_RGBA8888_Premultiplied
+                        ? grabbed
+                        : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
         }
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
             retryLater(state, request, attempt, 100);
             return;
         }
 
-        const std::size_t bytesPerLine = static_cast<std::size_t>(image.width()) * 4U;
-        std::shared_ptr<hyremote::CpuFrameStorage> storage;
+        // The Qt grab already produced CPU-readable, implicitly shared pixels.
+        // Retain that QImage through FrameStorage instead of allocating and
+        // memcpy-ing a second full framebuffer for each Viewer request.
+        std::shared_ptr<const hyremote::FrameStorage> storage;
         {
             HYREMOTE_P1_SCOPE(QuickBuffer);
-            storage = hyremote::CpuFrameStorage::createSinglePlane(
-                bytesPerLine, static_cast<std::size_t>(image.height()));
+            storage = QuickImageFrameStorage::create(image);
         }
-        HYREMOTE_P1_BYTES(QuickBuffer, bytesPerLine * static_cast<std::size_t>(image.height()));
-        if (!storage || !storage->mutablePlane(0)) {
-            publishEvent(state,
-                         hyremote::CaptureEventCode::BackendFailure,
-                         "failed to allocate owned Qt Quick frame storage",
-                         false);
-            return;
-        }
-
-        std::byte *destination = storage->mutablePlane(0);
-        {
-            HYREMOTE_P1_SCOPE(QuickCopy);
-            for (int y = 0; y < image.height(); ++y) {
-                std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
-                            image.constScanLine(y),
-                            bytesPerLine);
+        if (!storage) {
+            // A malformed/unsupported image must not be exposed as RGBA. Keep
+            // the previous owned-copy route as a bounded correctness fallback,
+            // after checking all source row accesses.
+            const std::size_t width = static_cast<std::size_t>(image.width());
+            const std::size_t height = static_cast<std::size_t>(image.height());
+            if (image.format() != QImage::Format_RGBA8888_Premultiplied
+                || width > std::numeric_limits<std::size_t>::max() / 4U
+                || image.bytesPerLine() <= 0 || image.sizeInBytes() <= 0
+                || !image.constBits()) {
+                publishEvent(state,
+                             hyremote::CaptureEventCode::BackendFailure,
+                             "invalid Qt Quick grab image format or storage",
+                             false);
+                return;
             }
+            const std::size_t bytesPerLine = width * 4U;
+            const std::size_t sourceStride = static_cast<std::size_t>(image.bytesPerLine());
+            const std::size_t sourceBytes = static_cast<std::size_t>(image.sizeInBytes());
+            if (sourceStride < bytesPerLine || height > sourceBytes / sourceStride) {
+                publishEvent(state,
+                             hyremote::CaptureEventCode::BackendFailure,
+                             "invalid Qt Quick grab row stride",
+                             false);
+                return;
+            }
+            std::shared_ptr<hyremote::CpuFrameStorage> copied;
+            {
+                HYREMOTE_P1_SCOPE(QuickBuffer);
+                copied = hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine, height);
+            }
+            if (!copied || !copied->mutablePlane(0)) {
+                publishEvent(state,
+                             hyremote::CaptureEventCode::BackendFailure,
+                             "failed to allocate owned Qt Quick frame storage",
+                             false);
+                return;
+            }
+            HYREMOTE_P1_BYTES(QuickBuffer, bytesPerLine * height);
+            std::byte *destination = copied->mutablePlane(0);
+            {
+                HYREMOTE_P1_SCOPE(QuickCopy);
+                for (int y = 0; y < image.height(); ++y)
+                    std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
+                                image.constScanLine(y), bytesPerLine);
+            }
+            HYREMOTE_P1_BYTES(QuickCopy, bytesPerLine * height);
+            storage = std::move(copied);
         }
-        HYREMOTE_P1_BYTES(QuickCopy, bytesPerLine * static_cast<std::size_t>(image.height()));
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
         hyremote::RemoteFrame frame;
