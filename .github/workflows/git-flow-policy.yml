@@ -160,6 +160,10 @@ jobs:
         shell: bash
         run: bash .github/scripts/check-pr-branch-name.sh --self-test
 
+      - name: Self-test SHA-locked candidate correction and reopen gates
+        shell: bash
+        run: python .github/scripts/release_correction.py --self-test
+
       - name: Validate branch topology
         shell: bash
         env:
@@ -344,26 +348,37 @@ jobs:
                           stderr=subprocess.STDOUT)
                       sys.path.insert(0, ".github/scripts")
                       from release_correction import validate as validate_correction
-                      from release_correction import validate_reopen
+                      from release_correction import validate_reopen, validate_reopen_rc7
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
-                          # #806: exactly one Owner-authorized, SHA-locked reopening of the
-                          # accepted BUT UNPUBLISHED RC6 after new independent P2 findings.
-                          # A new candidate must equal reviewed develop except its root
-                          # VERSION; notes must revert to develop's exact pending text.
-                          # Protected PR review and all downstream gates still apply.
-                          if git("rev-parse", base_tree).decode("ascii").strip() != (
-                              "377b0a61b5dd99e3c16ea88356463068b255c7a6"
+                          # Only two exact independently reviewed exceptions exist:
+                          # #806 accepted RC6->RC7, and #812/#768 accepted RC7->next
+                          # candidate. Neither grants a general accepted-release edit.
+                          actual_accepted_base = git("rev-parse", base_tree).decode("ascii").strip()
+                          if actual_accepted_base not in (
+                              "377b0a61b5dd99e3c16ea88356463068b255c7a6",
+                              "a5fd439ed4039614021f2254dd2df6b76ffd4374",
                           ):
-                              raise SystemExit("RC6 accepted-notes reopen denied on unapproved base")
+                              raise SystemExit("accepted-notes reopen denied on unapproved exact base")
                           if subprocess.run(
                               ("git", "show-ref", "--verify", "--quiet", f"refs/tags/v{version}")
                           ).returncode == 0:
                               raise SystemExit("published/tagged version cannot reopen a candidate")
-                          stage = validate_reopen(
-                              git=git, version=version, notes_name=notes_name,
-                              base_notes=old_notes, head_notes=notes,
-                              head_cmake=new_cmake,
-                              actual_base_sha=git("rev-parse", base_tree).decode("ascii").strip())
+                          if actual_accepted_base == "377b0a61b5dd99e3c16ea88356463068b255c7a6":
+                              stage = validate_reopen(
+                                  git=git, version=version, notes_name=notes_name,
+                                  base_notes=old_notes, head_notes=notes,
+                                  head_cmake=new_cmake,
+                                  actual_base_sha=actual_accepted_base)
+                          else:
+                              # #812/#768: only four actual reviewed source files +
+                              # two reviewed governance files + exact pending notes.
+                              # Do NOT absorb unrelated develop architecture/design
+                              # documents or #609 performance work-order changes.
+                              stage = validate_reopen_rc7(
+                                  git=git, version=version, notes_name=notes_name,
+                                  base_notes=old_notes, head_notes=notes,
+                                  base_cmake=old_cmake, head_cmake=new_cmake,
+                                  actual_base_sha=actual_accepted_base)
                       else:
                           validate_correction(git=git, version=version, notes_name=notes_name,
                                               base_notes=old_notes, head_notes=notes,
