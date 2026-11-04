@@ -73,7 +73,9 @@ Current state:
 - **Qt 5.15 LTS:** Limited legacy lane on the exact Qt 5.15.2 Windows x86_64 cell (msvc2019_64): C++/Widgets Runtime, Tool, examples and installed consumer are build/install/test qualified. Qt 5 Quick is **Experimental** (internal opt-in only, normal entry hidden); Qt 5 QML and Generic are **Unsupported** and Qt 5 QPA is **Not applicable** (Owner D2, 2026-10-27); Linux and ARM64 Qt 5 are user-validation pending and are not implied by the Windows Widgets cell.
 - other Qt LTS or non-LTS families: no support claim without an explicit compatibility row; Qt 6.5 and 6.12 stay detected-but-not-qualified before V1.0 GA.
 
-Public Qt frontends and QPA follow different rules:
+Public Qt frontends and QPA follow different rules. **Note: the shared Runtime currently contains a narrowly scoped Qt Private window-system remote-input/high-DPI implementation** (Human `AR-04=A`). This does not introduce the QPA platform-entry ABI into the C++/QML/Generic frontend sources, but it does constrain binary reuse of the shared SDK across Qt Kits. Require exact relevant Qt Kit/platform evidence before claiming additional supported cells. See [ADR-0008](adr/0008-stage02-human-approved-architecture-decisions.md).
+
+The additional frontend distinctions are:
 
 - C++, QML, and Generic primarily depend on public Qt APIs and can be qualified by Qt family or version range;
 - QPA depends on the Qt private ABI and must be qualified per exact Qt patch and platform combination.
