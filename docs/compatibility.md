@@ -65,7 +65,9 @@ HyRemote 支持选定的 Qt LTS 家族，不自动承诺每一个 Qt 版本。
 - **Qt 5.15 LTS**：Windows x86_64 精确 cell 为 **Limited** 遗留路径（msvc2019_64）。C++/Widgets Runtime、Tool、示例和安装消费者已构建/安装/测试通过；Qt5 Quick 为 **Experimental**（仅内部 opt-in，普通入口隐藏）；Qt5 QML 与 Generic 为 **Unsupported**、Qt5 QPA 为 **Not applicable**（Owner D2，2026-10-27）；Linux 与 ARM64 Qt5 为 user-validation pending，不得由 Windows Widgets cell 外推。
 - 其他 Qt LTS 或非 LTS 家族：没有明确兼容行时，不做支持声明；Qt 6.5 与 6.12 在 V1.0 GA 前属于 detected-but-not-qualified。
 
-公共 Qt 前端和 QPA 的兼容规则不同：
+公共 Qt 前端和 QPA 的兼容规则不同。**注意：共享 Runtime 当前包含受控 Qt Private 远程输入/高 DPI 内部实现**（Human `AR-04=A`）；这不是 Generic/C++/QML 前端引入 QPA 平台入口，但会影响整个共享 SDK 二进制的可重用性。任何新支持声明都应包含实际 Qt Kit/平台验证，不能仅凭前端公共 API 兼容性推断。参见 [ADR-0008](adr/0008-stage02-human-approved-architecture-decisions.md)。
+
+公共 Qt 前端与 QPA 的额外区别如下：
 
 - C++、QML、Generic 主要依赖 Qt 公共 API，可以按 Qt 家族/版本范围认证；
 - QPA 依赖 Qt private ABI，必须按精确 Qt 补丁和平台组合认证。

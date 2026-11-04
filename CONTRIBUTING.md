@@ -86,9 +86,9 @@ Do not claim compatibility without repeatable validation.
 
 Prefer Qt public APIs for stable functionality. If Qt private/QPA APIs are unavoidable:
 
-1. isolate them in the QPA/private compatibility seam;
+1. isolate the QPA platform-entry ABI in the QPA compatibility seam, or the Human-approved `AR-04=A` Qt window-system input/high-DPI exception in its dedicated shared Runtime implementation unit; do not expand that exception to Core, public SDK types, or unrelated Runtime/frontend code;
 2. document the exact Qt versions tested;
-3. keep private types out of HyRemote public headers;
+3. keep private types out of HyRemote public headers, and truthfully declare the shared Runtime's qualified Qt Private development/ABI requirements;
 4. add compatibility tests before enabling support for a new Qt minor/patch cell.
 
 Do not create a second Qt5, embedded or accelerated Runtime to absorb version/platform differences.

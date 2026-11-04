@@ -58,11 +58,11 @@ Core 保持与 Qt UI 技术无关。
 
 - 普通产品接入优先使用公共 Qt API；
 - Generic Plugin 保持公共 Qt 插件 API，并保留应用原生平台接入；
-- QPA 是唯一允许因产品角色依赖 Qt private/QPA ABI 的前端；
+- 四个接入**前端**中只有 QPA 可使用 Qt private/QPA 平台入口 ABI；依据 Human `AR-04=A`，共享 Runtime 的远程输入/高 DPI 专用内部实现单元另有严格限定的 `Qt6::GuiPrivate` 例外，Core、公开 SDK 类型和 Generic 插件代码不包含私有 Qt API；
 - QPA 兼容性按精确 Qt 补丁/平台组合认证；
-- 公共 API 兼容不表示 QPA private-ABI 兼容。
+- 公共 API 兼容不表示 QPA private-ABI 兼容，也不保证包含上述 Runtime Qt Private 内部依赖的共享 SDK 二进制可以跨 Qt Kit/补丁任意复用；
 
-当前桌面参考：Qt **6.8.3**。
+当前桌面参考：Qt **6.8.3**。共享 Runtime 专用私有输入单元与 QPA 平台入口应分别说明所需精确 Qt Kit、构建和平台资格验证；不得因发布有同一套四种前端而对所有 Qt 单元宣称支持。详细历史与修订见 [ADR-0007](adr/0007-four-integration-runtime-architecture.md) 及 [ADR-0008](adr/0008-stage02-human-approved-architecture-decisions.md)。
 
 Qt 仍受其自身许可条款约束。分发者负责其重新分发的精确 Qt 二进制所附带的许可、通知、重链接/源码可用性和其他义务。
 
