@@ -674,12 +674,28 @@ struct AccessInstance::Impl
             return;
         const detail::HostPaths paths = detail::resolveHostPaths(securityConfigFile);
         const QString storePath = detail::watermarkStorePath(paths);
-        if (watermarkRestored && (!isConfigurable() || watermarkRestoredStorePath == storePath))
+        // #812: empty storePath can mean either an unusable selected state directory
+        // (must fail closed) or no selected state path after an unrelated rejected
+        // security descriptor (no implicit watermark to restore). Do not cache those
+        // distinct states under the same empty path while configuration is editable.
+        if (watermarkRestored && (!isConfigurable()
+                                  || (!storePath.isEmpty() && watermarkRestoredStorePath == storePath)))
             return;
 
         watermarkRestored = true;
         watermarkRestoredStorePath = storePath;
         watermark = detail::WatermarkPolicyResult{}; // old directory's mark/error may not leak to the new one
+        // #812: an unusable *selected state directory* may conceal a previously saved
+        // watermark and must fail closed. An unrelated invalid security descriptor leaves
+        // no selected state directory at all, so do not turn default-OFF into an invented
+        // corrupt watermark; that security capability validates its own descriptor.
+        if (storePath.isEmpty()) {
+            if (!paths.stateDir.ok()) {
+                watermark.error = QStringLiteral("the selected state directory cannot restore a stored watermark "
+                                                 "policy; check its path and permissions");
+            }
+            return;
+        }
         QString storeError;
         const auto stored = detail::loadWatermarkRequest(paths, &storeError);
         if (stored) {
@@ -1055,13 +1071,13 @@ bool AccessInstance::start()
         }
     }
 
-    // #589: an operator who explicitly enabled a watermark must never receive an unwatermarked remote picture.
-    // A policy that cannot be honoured refuses only the remote output capability; the host application keeps
-    // running with its own local picture untouched.
-    if (m_impl->watermark.policy.enabled && !m_impl->watermark.ok()) {
+    // #812: a failed *implicit restore* leaves enabled=false but carries an error. Refuse remote
+    // output on any invalid policy, not only an explicitly enabled one: otherwise a broken saved
+    // watermark could silently start an unmarked stream. The local host UI keeps running.
+    if (!m_impl->watermark.ok()) {
         m_impl->setError(ErrorCode::InvalidConfiguration,
-                         QStringLiteral("%1; the watermark is enabled, so remote output is refused instead of "
-                                        "streaming frames without it")
+                         QStringLiteral("%1; the watermark policy could not be applied, so remote output "
+                                        "is refused instead of streaming unwatermarked frames")
                              .arg(m_impl->watermark.error));
         return false;
     }
