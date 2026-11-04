@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "detail/input_mailbox_admission.hpp"
+#include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
@@ -125,6 +126,9 @@ private:
         bool finished = false;
         QSharedPointer<QQuickItemGrabResult> result;
         QMetaObject::Connection readyConnection;
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+        std::chrono::steady_clock::time_point p1GrabStart{};
+#endif
     };
 
     static bool isActive(const std::shared_ptr<State> &state)
@@ -231,16 +235,24 @@ private:
             return;
         }
 
-        const QImage image = grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+        QImage image;
+        {
+            HYREMOTE_P1_SCOPE(QuickConvert);
+            image = grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+        }
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
             retryLater(state, request, attempt, 100);
             return;
         }
 
         const std::size_t bytesPerLine = static_cast<std::size_t>(image.width()) * 4U;
-        std::shared_ptr<hyremote::CpuFrameStorage> storage =
-            hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine,
-                                                         static_cast<std::size_t>(image.height()));
+        std::shared_ptr<hyremote::CpuFrameStorage> storage;
+        {
+            HYREMOTE_P1_SCOPE(QuickBuffer);
+            storage = hyremote::CpuFrameStorage::createSinglePlane(
+                bytesPerLine, static_cast<std::size_t>(image.height()));
+        }
+        HYREMOTE_P1_BYTES(QuickBuffer, bytesPerLine * static_cast<std::size_t>(image.height()));
         if (!storage || !storage->mutablePlane(0)) {
             publishEvent(state,
                          hyremote::CaptureEventCode::BackendFailure,
@@ -250,11 +262,15 @@ private:
         }
 
         std::byte *destination = storage->mutablePlane(0);
-        for (int y = 0; y < image.height(); ++y) {
-            std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
-                        image.constScanLine(y),
-                        bytesPerLine);
+        {
+            HYREMOTE_P1_SCOPE(QuickCopy);
+            for (int y = 0; y < image.height(); ++y) {
+                std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
+                            image.constScanLine(y),
+                            bytesPerLine);
+            }
         }
+        HYREMOTE_P1_BYTES(QuickCopy, bytesPerLine * static_cast<std::size_t>(image.height()));
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
         hyremote::RemoteFrame frame;
@@ -309,7 +325,13 @@ private:
         const QSize logicalSize(qMax(1, qCeil(window->width())),
                                 qMax(1, qCeil(window->height())));
         const auto grab = std::make_shared<GrabAttempt>();
-        grab->result = content->grabToImage(logicalSize);
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+        grab->p1GrabStart = std::chrono::steady_clock::now();
+#endif
+        {
+            HYREMOTE_P1_SCOPE(QuickGrabSubmit);
+            grab->result = content->grabToImage(logicalSize);
+        }
         if (grab->result.isNull()) {
             retryLater(state, request, attempt, 100);
             return;
@@ -328,6 +350,11 @@ private:
                     return;
                 grab->finished = true;
                 QObject::disconnect(grab->readyConnection);
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+                ::HyRemote::detail::p1perf::addAsyncWall(
+                    ::HyRemote::detail::p1perf::Stage::QuickGrabReadyWall,
+                    std::chrono::steady_clock::now() - grab->p1GrabStart);
+#endif
                 const QImage image = grab->result ? grab->result->image() : QImage();
                 grab->result.clear();
                 publishImage(state, request, attempt, image);
