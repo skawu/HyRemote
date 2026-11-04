@@ -198,6 +198,104 @@ def hosted_l2(order: dict) -> dict:
     return {"status": "DISPATCHED", "run_id": None, "reused": False}
 
 
+
+def parse_cmake_assignments(content: str) -> dict[str, str]:
+    """Read only simple CMakeCache/runner key=value metadata, never execute it."""
+    result = {}
+    for line in content.splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.split(":", 1)[0]
+        if key in result:
+            raise Blocked("duplicate resolved build identity field")
+        result[key] = value.strip()
+    return result
+
+
+def read_identity_file(path: Path, *, limit: int = 128 * 1024) -> str:
+    try:
+        if not path.is_file() or path.stat().st_size > limit:
+            raise Blocked("required resolved build identity metadata missing or oversized")
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise Blocked("cannot read resolved build identity") from exc
+
+
+def verify_resolved_g6_identity(build_dir: Path, workspace: Path, order: dict) -> None:
+    """Prove the actual build tree's Qt/compiler/architecture/adapters before MACHINE_PASS."""
+    if order["kit"] != "win-qt683-msvc2022":
+        raise Blocked("unapproved qualified G6 Kit")
+    try:
+        root = build_dir.resolve(strict=True)
+        source = workspace.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise Blocked("cannot resolve qualified build tree") from exc
+    if not root.is_relative_to(source) or root == source:
+        raise Blocked("resolved G6 build tree must be under the verified worktree")
+
+    cache = parse_cmake_assignments(read_identity_file(root / "CMakeCache.txt"))
+    marker = parse_cmake_assignments(read_identity_file(root / ".hyremote-build-identity"))
+    if Path(cache.get("CMAKE_HOME_DIRECTORY", "")).resolve() != source:
+        raise Blocked("resolved G6 CMake source differs from qualified worktree")
+    if cache.get("CMAKE_BUILD_TYPE", "").casefold() != "release":
+        raise Blocked("canonical G6 must use Release")
+    expected = ("HYREMOTE_BUILD_CPP_API", "HYREMOTE_BUILD_QML_API",
+                "HYREMOTE_WITH_GENERIC_PLUGIN", "HYREMOTE_WITH_QPA_PROXY",
+                "HYREMOTE_BUILD_TESTS")
+    if any(cache.get(k, "").upper() not in ("ON", "TRUE", "YES", "1") for k in expected):
+        raise Blocked("resolved G6 lacks required Qt6 four-route test capabilities")
+    for key in ("cpp", "qml", "generic", "qpa"):
+        if marker.get(key, "").upper() not in ("ON", "TRUE", "YES", "1"):
+            raise Blocked("runner identity lacks required Qt6 frontends")
+
+    # Qt_DIR from actual CMakeCache binds the validated package to the build, not
+    # merely a textual Kit path supplied by the operator or the order.
+    qt_dir = Path(cache.get("Qt6_DIR", ""))
+    if not qt_dir.is_dir():
+        raise Blocked("resolved G6 lacks a configured Qt6 package")
+    qt_root = qt_dir.resolve().parent.parent.parent
+    if not str(qt_root).replace("\\", "/").lower().endswith("/msvc2022_64"):
+        raise Blocked("resolved G6 Qt Kit is not msvc2022_64")
+    if Path(marker.get("qt", "")).resolve() != qt_root:
+        raise Blocked("runner Qt Kit identity differs from CMake-resolved Qt6")
+    qt_version = read_identity_file(qt_dir / "Qt6ConfigVersion.cmake")
+    if not re.search(r'set\s*\(\s*PACKAGE_VERSION\s+"?6\.8\.3"?\s*\)', qt_version):
+        raise Blocked("resolved Qt6 package version is not exactly 6.8.3")
+
+    compiler_dir = root / "CMakeFiles"
+    compiler_files = list(compiler_dir.glob("*/CMakeCXXCompiler.cmake"))
+    if len(compiler_files) != 1:
+        raise Blocked("qualified G6 needs one resolved CMake C++ compiler")
+    compiler = read_identity_file(compiler_files[0])
+    def cmake_compiler_value(name: str) -> str:
+        found = re.search(r'set\s*\(\s*' + re.escape(name)
+                          + r'\s+"?([^"\s)]*)"?\s*\)', compiler)
+        return found.group(1) if found else ""
+    if cmake_compiler_value("CMAKE_CXX_COMPILER_ID") != "MSVC":
+        raise Blocked("resolved G6 must use MSVC")
+    version = cmake_compiler_value("CMAKE_CXX_COMPILER_VERSION")
+    if not re.fullmatch(r"19\.(3[0-9]|[4-9][0-9])(?:\.[0-9]+)*", version):
+        raise Blocked("resolved compiler is not a qualified VS2022 MSVC toolset")
+    if cmake_compiler_value("CMAKE_CXX_SIZEOF_DATA_PTR") != "8":
+        raise Blocked("resolved G6 compiler is not 64-bit")
+    arch = cmake_compiler_value("CMAKE_CXX_COMPILER_ARCHITECTURE_ID")
+    if arch and arch.lower() not in ("x64", "amd64", "x86_64"):
+        raise Blocked("resolved G6 compiler is not x64")
+
+
+def resolved_g6_build_dir(workspace: Path, kit_config: Path) -> Path:
+    # build.cmd's --print-build-dir is a read-only canonical entry point; never
+    # reconstruct paths from the caller's filename or run arbitrary commands.
+    p = run(["cmd.exe", "/d", "/c", str(workspace / "build.cmd"), "test",
+             "--config=" + str(kit_config), "--print-build-dir"], cwd=workspace)
+    lines = re.findall(r"(?m)^HYREMOTE_BUILD_DIR=(.+)\s*$",
+                       (p.stdout or "") + "\n" + (p.stderr or ""))
+    if p.returncode or len(lines) != 1 or not lines[0].strip():
+        raise Blocked("cannot resolve the canonical G6 build directory")
+    return Path(lines[0].strip())
+
+
 def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: Path) -> dict:
     verify_workspace(workspace, order["sha"])
     if os.name != "nt":
@@ -223,6 +321,10 @@ def canonical_g6(order: dict, workspace: Path, kit_config: Path | None, state: P
         raise Blocked("canonical G6 did not report positive discovered/executed counts")
     if proc.returncode or executed != discovered:
         raise TestFailed("canonical G6 returned failure or incomplete execution; inspect local log")
+    # A positive CTest count is NOT proof of a Windows Qt6.8.3/MSVC2022 four-route
+    # Kit: the Qt5 C++/Widgets 56/56 suite also passes. Fail closed before ACK.
+    build_dir = resolved_g6_build_dir(workspace, kit_config)
+    verify_resolved_g6_identity(build_dir, workspace, order)
     return {"status": "MACHINE_PASS", "discovered": discovered,
             "executed": executed, "log": log.name}
 
