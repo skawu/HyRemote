@@ -30,7 +30,11 @@ std::optional<hyremote::RemoteFrame> readPassiveQuickGlFrame(
         return std::nullopt;
 
     QOpenGLContext *context = QOpenGLContext::currentContext();
-    if (!context || !context->functions())
+    // An item grab may use an offscreen QSurface even when the Qt Quick
+    // renderer reports OpenGL. Never confuse it with the user's on-screen
+    // window; rejection is handled by the original capture fallback.
+    if (!context || !context->functions()
+        || context->surface() != static_cast<QSurface *>(window))
         return std::nullopt;
 
     QOpenGLFunctions *gl = context->functions();
