@@ -160,6 +160,10 @@ jobs:
         shell: bash
         run: bash .github/scripts/check-pr-branch-name.sh --self-test
 
+      - name: Self-test SHA-locked candidate correction and reopen gates
+        shell: bash
+        run: python .github/scripts/release_correction.py --self-test
+
       - name: Validate branch topology
         shell: bash
         env:
