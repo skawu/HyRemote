@@ -169,6 +169,12 @@ D3 的 [EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 与 
 本轮冻结的是**验收口径**：首批 `H-EDGE=A` 仅登录状态并显式启用时工作；不得虚构 24×7 Service，也不得把关闭一个窗口等于退出整个 View。Direct 的设备信任和 HMI 授权仍不依赖 Gateway。全部 `DESIGN_ONLY/NOT_RUN`，不授 Gate-G3/Gate-I。
 
 
+### 标准 RFB 传统用户权利与 F-06 Scope 的设备端验收合同
+
+[设备 F-04 `RLG-01..09` 设计合同](module-detail-d1-device-protocols-2026-11-05.md) 要求维护中标准第三方 Viewer 对 RFB 3.8/None/VNCAuth 的**真实互通**，同时验证匿名/共享口令的固定 Target/Scope 查看资格、宿主明确启用的传统输入、双协议共 Scope Controller、现场抢占、Qt 最终输入栅栏、跨 peer held 不串、撤权旧帧与回调失效。Legacy 旧版“remoteInputEnabled=true”只能作为过去已发布能力事实，不代表未来新架构已测试单 Scope 强制仲裁。
+
+XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB 第三方客户端、F-04/06 HMI exact SHA、OS/Qt Kit/Target/Scope/PolicyEpoch 归档；不许用官方 Native Viewer 的 Grant 测试替代传统 RFB 兼容。全部仍是 `DESIGN_ONLY/NOT_RUN`，不增加新的 RFB wire，不重新审核 H-RFB=A 产品选择。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
