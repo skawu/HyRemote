@@ -1,4 +1,7 @@
-# W00｜Native 1.0 未定义数值域的**待批准**精确技术补充与安全档位取舍（2026-11-05）
+# W00｜Native 1.0 未定义数值域的历史 P-A 取舍提案（2026-11-05）
+
+> **历史状态说明（2026-11-05）**：本文件原来写于 Human 决策之前，仅供留痕，不再是当前规范。Human 已正式选择 `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A`（[#843 审批](https://github.com/skawu/HyRemote/issues/843#issuecomment-6648340105)）。当前生效的单一数字/档位合同是 [Native P-A / TLS A 已批准受控补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；本文件中“候选、未批准、A/B/C 需选择”等字样均为**审批前历史快照**，不得继续据其最后一节给 Human 重发同一审批请求，也不能以历史提案代替受控增补。
+
 
 > **性质：`PROPOSAL_ONLY / NOT_NORMATIVE / NOT_WIRE_FROZEN`。** 本文明确区分：① **V8 已有** type/字段宽度/长度/某些常量；② **Cloud Owner 提议**的缺失 enum/bit/字节语义；③ 仍需 Human/受控上位版本决定的安全语义。**下文数字都是“候选”，不是从 V8 原文提取出来的常量，不能被 Host/View 代码据此自行实现**。唯一权威仍是已批准 `HYR-ARCH-001/V8` 附录 A/B；源 Word 经 Human 确认正文等效的送审稿 SHA 核验见 [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。
 
