@@ -87,6 +87,10 @@ flowchart TB
 | `Image` | Empty / AwaitingFull / Fresh / Stale / Forbidden / Failed | 只有新一代已许可像素才能 Fresh；Stale 遮罩并禁止当实时 |
 | `Interaction` | Inactive / FocusedView / FocusedControl / LosingFocus / Disabled | Tab/系统切换/focus 丢失必须解绑本地 held 状态与输入会话代际 |
 
+### 4.0.1 Native P-A/A 已批准补充
+
+参见 [唯一批准的 Native V8 数值和 TLS-first 补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；Framework 和 View 使用同一数值表，26 个 Golden Vector 属于设计数据，未运行产品测试。
+
 ### 4.1 Direct 与 Managed 共用真正的设备会话
 
 ~~~mermaid
