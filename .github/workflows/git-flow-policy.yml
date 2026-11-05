@@ -349,6 +349,7 @@ jobs:
                       sys.path.insert(0, ".github/scripts")
                       from release_correction import validate as validate_correction
                       from release_correction import validate_reopen, validate_reopen_rc7
+                      from release_correction import validate_v035_field_backport
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
                           # Only two exact independently reviewed exceptions exist:
                           # #806 accepted RC6->RC7, and #812/#768 accepted RC7->next
@@ -379,6 +380,16 @@ jobs:
                                   base_notes=old_notes, head_notes=notes,
                                   base_cmake=old_cmake, head_cmake=new_cmake,
                                   actual_base_sha=actual_accepted_base, head_ref=head)
+                      elif head == "feature/789-release-preparation":
+                          # #789: exact pre-publication field-fix candidate only.
+                          # The reviewed product blobs are SHA-locked and
+                          # governance files must match origin/develop bytes.
+                          actual_base = git("rev-parse", base_tree).decode("ascii").strip()
+                          stage = validate_v035_field_backport(
+                              git=git, version=version, notes_name=notes_name,
+                              base_notes=old_notes, head_notes=notes,
+                              base_cmake=old_cmake, head_cmake=new_cmake,
+                              actual_base_sha=actual_base, head_ref=head)
                       else:
                           validate_correction(git=git, version=version, notes_name=notes_name,
                                               base_notes=old_notes, head_notes=notes,
