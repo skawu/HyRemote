@@ -167,6 +167,80 @@ HMI 的密钥材料与 DeviceId 由设备制造商/客户可信交付或受信�
 
 设备 TLS 和会话用户名/密码属独立层：未经 E2E 身份核验不得传秘密或任何授权输入；用户名/口令材料只经合格端到端安全通道传输。验证配置/受信来源失效时拒绝，不自动切换 RFB 明文。任何密码算法/安全参数选择以 V8 9.4及目标硬件成本验收为准，不能在设计稿里增加凭据明文存储或临时 CLI 参数。
 
+### 4.4 Native 1.0 的正交状态机、错误归因与最终授权栅栏（W00 下一层详细设计）
+
+> **源权限边界**：受控字节值以 [Human 批准的 V8 P-A/A](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 为准；V8 §§5.2–5.5/6.3–6.4/7.2–7.4/8.2–8.6 和附录 A/B 优先。本节的 `T/S/V/C/F` **状态名是设备端/客户端内部设计模型，不是新增 Native 报文字段、公开 SDK API、消息 ID 或 wire status 编号**。原有类型完整保留，实际产品实现/测试仍未经 Gate-I。
+
+#### A. 多条相互独立的状态轴（禁止简化为一个 Connected/Running）
+
+| 内部状态轴 | 状态与进出条件 | 状态真相的唯一权威 | 失败关闭行为 |
+| --- | --- | --- | --- |
+| `T` Transport/Identity | `T0 STOPPED → T1 ADMISSION_PREPARED → T2 TLS_NEGOTIATING → T3 TLS_TRUSTED → T4 HYRP_NEGOTIATING → T5 SESSION_ACTIVE → T6 CLOSING/CLOSED` | HMI 可信部署清单决定 listener 可开；Viewer 独立设备证书/DeviceId Trust，TLS 握手双方各自确认安全链 | `T2` TLS/证书失败：**零 HYRP 字节**、无弱模式重连；`T4` 非法头/主版本/caps/序列必须拒绝 |
+| `S` Session/User | `S0 NO_SUBJECT → S1 AUTH_PENDING`（仅 `tls-password`）→ `S2 AUTH_VERIFIED` 或 `S3 AUTH_FAILED`；`plain` 为 `S4 DEVICE_ONLY_NO_USER_AUTH` | TLS 只能证明 HMI 设备；用户名认证只来自 HMI Native 密码验证器，`plain` 无自然人身份 | `S3` 不枚举 Target；`S4` 只能按 Host **明确可证明**的当前策略授权非敏感能力，Managed 缺可归责用户则拒绝 |
+| `V` Target/View（逐 Target） | `V0 UNKNOWN → V1 LISTED → V2 SUBSCRIBE_PENDING → V3 SUBSCRIBED` 或 `V4 DENIED / V5 REMOVED` | `TARGET_LIST` 只含当前获准目标；`TARGET_STATUS` 1/2/3/4 是设备回执，`PolicyRevision` 属 HMI | 本地历史 Target 不替代新 `ViewGrant`；失权或目标关闭清该目标输出和输入，其他获准目标可独立继续 |
+| `C` Control（逐冲突 Scope） | `C0 NONE → C1 REQUESTED/PENDING(1) → C2 GRANTED(2)` 或 `C3 DENIED(3) / C4 REVOKED(4) / C5 EXPIRED(5) / C6 RELEASED(6)` | HMI AccessSession、Scope、Target、PolicyRevision、GrantEpoch 与现场独占裁决；非 Viewer 请求意图 | 除 `C2` 且所有实时设备授权仍有效外一律禁止新输入；`C4/C5/C6` 清 held；不同 Scope 是否独立由 Host 证明 |
+| `F` Frame（逐 Target） | `F0 NO_BASE → F1 FULL_OPEN → F2 BASE_VALID`；合法增量 `F2→F3 DELTA_OPEN→F2`；失配 `F4 WAIT_FULL`；撤权 `F5 REVOKED` | HMI 单 Target 的 generation/frame_id/full 覆盖与 per-session filter；Viewer 只能确认自己已经完整应用的本地基线 | `F4` 不应用 DELTA，发 `REQUEST_FULL`；不把 TCP send/ACK 当呈现完成；撤权清可控已过滤帧与帧缓存 |
+
+**正交约束**：`T5 SESSION_ACTIVE` 并不等于 `S2 AUTH_VERIFIED`、`V3 SUBSCRIBED` 或 `C2 GRANTED`；`S2` 也不自动获得可见 Target。控制状态由设备当前 Policy 生效点决定，Viewer 只能显示回执及可能的过期/未知，不可用“刚才成功请求”代替 `C2`。
+
+#### B. 按 V8 唯一报文时序映射到上述内部状态
+
+| 阶段 | 可接收/发送的既有 Native 消息 | 必须检查的先决条件 | 设备/客户端应暴露的可验证结果 |
+| --- | --- | --- | --- |
+| Listener 前 | **无 HYRP** | H-DUAL=A 必需端点统一 DeploymentAdmission，失配全部不对外服务 | `START_ABORTED` 仅内部诊断，不是新增 Native error_code |
+| TLS | **无 HYRP** | 任一 Native 模式均按 SOURCE_TENSION_01=A 设备 TLS-first、身份可信 | 失败无协议字节；UI `DEVICE_TLS_UNTRUSTED` 为本地诊断标签，**非 wire 编号** |
+| HELLO/WELCOME | `0x0001/0x0002` | TLS 建立、`HYRP` magic、major1、caps=0、受控 auth_mode 0/1、长度/预算匹配 | 会话“通道可用”与用户/查看/控制分别报告；未知值拒绝 |
+| Auth（条件） | `0x0003 AUTH`、`0x0004 AUTH_RESULT` | 仅 `tls-password=1` 中的独立认证；`plain=0` **不要求 AUTH**，但不假定有用户身份 | `AUTH_RESULT.success=1` 仅表示用户验证成功；失败不得枚举目标 |
+| Target 列表/订阅 | `0x0040 TARGET_LIST`、`0x0041 TARGET_SUBSCRIBE`、`0x0042 TARGET_STATUS`、`0x0043 TARGET_EVENT`、`0x0005 SCREEN_INFO` | `T/S` 达准入条件，HMI 当前对每个 Target 许可 `ViewGrant`；status/op 值用 P-A | 不可见 Target 不列出；`DENIED/REMOVED` 停图，旧列表不产生授权 |
+| Screen | `0x0010 FRAME_BEGIN` → `0x0011 FRAME_RECT`×N → `0x0012 FRAME_END`，需要时 `0x0013 REQUEST_FULL` | 先设备 per-session 隐私过滤；`V3`、当前 Policy/generation、合法 rect 范围与 FULL/DELTA | FULL 需完整覆盖；失配进入 WAIT_FULL；不添加逐帧 ACK |
+| Control | `0x0050 CONTROL_REQUEST`、`0x0051 CONTROL_STATE`、`0x0052 CONTROL_RELEASE` | 设备单冲突 Scope 仲裁/现场优先；仅 `GRANTED=2` 且最新 GrantEpoch 有效 | `PENDING=1` 一律只读；迟到 GRANTED 若旧 request/epoch 失效不能启控 |
+| Input | `0x0020 INPUT`，五子型 | 先网络接纳检查 Session/Target/Scope/GrantEpoch/Generation、坐标和消息值；Qt GUI 真交付前**再检同一当前政策** | `Accepted/Rejected/Ignored` 是内部交付状态，不是 Native wire 扩展；Rejected 不增 held |
+| Heartbeat/Close/Error | `0x0030/31 PING/PONG`、`0x00FE ERROR`、`0x00FF CLOSE` | 状态合法、报文长度与原 V8 号码；TLS 失败不可发送 HYRP ERROR | 关闭清 session/held/frame；不会根据 PING 自动恢复用户授权 |
+
+#### C. 撤权、乱序与并发的不可破坏时序
+
+```mermaid
+sequenceDiagram
+  participant Host as HMI Host Policy
+  participant Runtime as Device Runtime
+  participant Net as Native Stream
+  participant Qt as Qt GUI Input
+  participant View as HyRemoteView
+  Host->>Runtime: 发布新的 PolicyRevision / GrantEpoch
+  Note over Runtime: 线性化：先使旧授权失效
+  Runtime->>Runtime: 阻断新旧许可输出/输入，清可控队列与帧基线
+  Runtime->>Qt: 旧票据在最终 Qt 栅栏被拒绝，受保护释放 held
+  Runtime-->>Net: 合法时通知 CONTROL_STATE / Target 变化或断链
+  Net-->>View: 可能仍有之前已交网络的字节
+  View->>View: 清敏感旧帧、禁输入，显示当前或未知许可
+```
+
+- **线性化先于通知**：设备不等待网络 ACK 或 View 关闭窗口才使旧 Grant 生效失效。依 H-REVOKE=A，进入 OS/TLS 或用户已经看到的像素物理上不能追溯收回；不能以客户端灰屏代替设备端隐私。
+- **GUI 与网络竞态**：input packet 在网络线程 `admitInput` 被 `Accepted`，若 Qt GUI 消费前 policy 改变，该输入须在 `deliverInput` 被拒绝；已按下来源计数释放单独优先通道，不允许清理期间生成新的 KEY_DOWN。
+- **跨协议 Scope**：RFB 和 Native 共享唯一 Host ControlArbiter/held 计数；新 Native GRANTED 不得绕过 RFB 既有控制者，除非 Host 明确撤权/切换 Scope。同名 Target/IP 不代表相同 TargetId 或 SessionId。
+- **增量基线**：`generation`、`frame_id`、`PolicyRevision`、`GrantEpoch` 属不同逻辑域；不可混作一个整数或以大小直接推断跨域授权。一帧 START/RECT/END 间不得夹另一目标帧报文；错误基线只能 REQUEST_FULL/WAIT_FULL 或断链，不得悄然拼接旧帧。
+- **状态失败路径**：TLS 失败零 HYRP；非法头/flags/len 用 V8 既有 `BAD_HEADER/BAD_LENGTH` 范围决定拒绝；非法顺序 `BAD_ORDER=3`；未知字段 `INVALID_FIELD=5`；无授权 `POLICY_DENIED=13`；错误代次 `STALE_GENERATION=10`。**是否发送 ERROR 后 CLOSE 取决于当前已建立的可信应用协议状态与 V8 既定规则**，不能把外部 TLS 错误包装成新的 Native 消息。
+
+#### D. 本模块与 V-01／X-02 对拍的设计验收入口
+
+| 合同 ID | 设计输入及预期 | 既有验收入口 | 当前状态 |
+| --- | --- | --- | --- |
+| `AFS-01` | 两档 TLS 在 HELLO 前完成证书/设备身份；TLS 失败零 HYRP，不能明文回退 | DP-07/XP-07/GN-10 | `DESIGN_ONLY` |
+| `AFS-02` | `plain=0` 无独立 Auth 不等于个人身份或可见 Target；Managed 缺用户/Host 权限拒绝 | XP-03/XP-10/GN-11 | `DESIGN_ONLY` |
+| `AFS-03` | `tls-password=1` AUTH_SUCCESS 后仍独立检查 HMI ViewGrant | DP-09/XP-03 | `DESIGN_ONLY` |
+| `AFS-04` | 仅已授权 Target 出现在 List，Denied/Removed 禁止订阅/像素/输入 | XP-06/XP-10 | `DESIGN_ONLY` |
+| `AFS-05` | PENDING/迟到 GRANTED 不能在旧 Scope/epoch 产生新输入 | FW-04/XP-04/XP-05 | `DESIGN_ONLY` |
+| `AFS-06` | 两协议共 Scope 现场抢占、撤权、held 保护性释放 | FW-06/XP-05 | `DESIGN_ONLY` |
+| `AFS-07` | FRAME FULL 与 DELTA 有效基线，旧 generation 进入 WAIT_FULL | DP-08/XP-06 | `DESIGN_ONLY` |
+| `AFS-08` | 不同权限 Viewer 过滤、基线、可控网络队列不串像素 | FW-07/FW-08/XP-06 | `DESIGN_ONLY` |
+| `AFS-09` | 旧输入已排 Qt GUI，在撤权后最终检查拒绝 | FW-06/XP-05/GN-09 | `DESIGN_ONLY` |
+| `AFS-10` | 错误 enum/caps/编码/消息乱序/长度不触发状态提升 | GN-01..GN-08/GN-12 | `DESIGN_ONLY` |
+| `AFS-11` | Gateway route 已 READY 但 HMI TLS/Grant 拒绝仍零目标/控件输入 | XP-09/XP-10 | `DESIGN_ONLY` |
+| `AFS-12` | 停机/断线后旧 target/Grant/Frame 不恢复、业务操作不重放 | XP-11/XP-26 | `DESIGN_ONLY` |
+
+**本节设计状态**：`F05_V01_NATIVE_STATE_AXIS=SPECIFIED_FOR_REVIEW`，`AFS-01..12=DESIGN_ONLY`，`NATIVE_NUMERICS_P_A=HUMAN_APPROVED`，`SOURCE_TENSION_01=A_HUMAN_APPROVED`；`HOST_VIEWER_E2E_TESTS=NOT_RUN`，`FULL_MODULE_DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
+
+
 ## 5. 多模式启动、降级与权限的精确定义
 
 | 构建/部署 | 允许的结构 | 必须拒绝的行为 |
