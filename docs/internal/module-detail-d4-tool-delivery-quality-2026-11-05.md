@@ -1,5 +1,7 @@
 # D4｜HyRemoteTool、安装交付与全产品安全/质量合同（候选）
 
+> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
+
 > **任务**：[全产品设计总控 #843](https://github.com/skawu/HyRemote/issues/843)，范围 T-01、X-01、X-02；对齐 D1 Framework、D2 HyRemoteView、D3 Edge/Gateway 设计候选。  
 > **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，但尚未取得可逐条回读的完整 DOCX/Native A/B。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默覆盖已批准的 S1 工作台规划或删除已经真实发布的基础 RFB 访问能力；S1 全量验收 #586 仍 OPEN。  
 > **性质**：`DESIGN_CANDIDATE / T01_X01_X02_REVIEW / NO_PRODUCT_CODE / NO_VERSION_ACTIVATION / NOT_FROZEN`。现有产品交付状态须按真实 release/代码/精确平台，本文不重写历史发布。
@@ -23,11 +25,11 @@
 - 最新 V15/V8 的产品总体分工倾向是：**Framework=设备端、HyRemoteView=官方完整访问客户端/内置 Edge、HyRemoteTool=开发者 SDK/Qt Kit 集成诊断和支持工具**。
 - 两套描述对“未来谁负责官方远程会话 UI、是否继续投资维护 Tool 的独立 RFB 客户端”存在**实质产品路线重叠**，不能仅凭“架构更优”直接覆盖旧审批或撤销客户权益。
 
-### 2.2 推荐的低风险候选 A（Human 审批前不生效）
+### 2.2 Human 正式批准的产品分工 A（H-T01=A）
 
 **保留 Tool 当前实际已发布的基础 RFB 访问能力及维护责任；S1 全量功能仍待 #586 真实验收，绝不宣称已交付**；将未来的高阶完整 View/Native/Managed/身份/共享界面作为 **HyRemoteView** 的单一产品演进主线；Tool 新增开发主线集中在本机 SDK 安装检查、四接入指导、真实/脱敏诊断及工单证据，不在 Tool 重新造一套 Native/Edge/企业工作区。对 RFB 客户端核心的复用，只在许可证、单一所有权、二进制 ABI 与依赖独立性通过设计评审后进行，不能借临时共享源码让两产品版本互相锁定。
 
-### 2.3 Human 必须对比的替代方案
+### 2.3 历史备选方案（已裁决，非重新征求选择）
 
 | 选项 | 功能归属与迁移 | 风险/成本 | 建议 |
 | --- | --- | --- | --- |
@@ -35,7 +37,7 @@
 | B：Tool 逐步转纯 SDK/诊断 | View 接管所有 Remote UI，Tool 提供迁移/入口与兼容窗口，约定停止支持日期 | 变更已批准 D/S1 和用户安装/工作流，版本与迁移成本高 | 需要 Human 明确退役和已交付权益过渡 |
 | C：Tool 和 View 永久各自全面 Remote | Tool 与 View 都持续实现 RFB/Native/权限/更新 | 双安全面、双测试矩阵、产品定位重叠且长期成本最高 | 不建议，除非明确不同客户群与商业理由 |
 
-**禁止默认决定**：不因为选 A 就把旧 Tool 发布为“已经支持 Native TLS”，也不因为设计 V15 就从工具已发布安装包中删除有效连接入口。无 Human 决策时 D4 仅记录候选并继续不依赖它的交付技术审查。
+**执行 H-T01=A 的边界**：不得因为 A 批准就宣称 Tool 已支持 Native TLS 或 S1 完整交付（#586 仍 OPEN），也不得删除已发布 RFB 访问能力；后续新的完整 Native/Managed/Edge 官方远控主线归 HyRemoteView，Tool 聚焦 SDK/Kit/诊断。RFB 底层库复用仍需技术/许可证审查。
 
 ## 3. T-01 Tool 内部职责及具体可验收接口
 
@@ -153,15 +155,15 @@ sequenceDiagram
 
 上述是**设计验收合同**而非目前的测试结论。完整 V15 原文条款追踪仍要逐条建立，不能用 20 个场景直接宣称覆盖全部产品要求。
 
-## 6. 需集中 Human 审核的实质决策与 D5 输入
+## 6. 已获 Human 批准的产品决策与仍未关闭的源审计
 
 | ID | 问题 | 当前技术倾向 | 触发审批 |
 | --- | --- | --- | --- |
-| H-T01 | Tool 长期仍为“远程综合工作台”还是改向 SDK/诊断？ | 推荐 A：维护已发布的基础 RFB 访问能力，S1 全量仍按 #586 未验收治理；新完整官方 Viewer/Native/Edge 归 View；不把已交付功能直接删除 | **产品路线与已批准历史冲突，必须 Human** |
-| H-DUAL | HMI Dual 预期协议启动是整体原子失败还是明确局部退化？ | 推荐 requiredProfiles 原子 Admission；运行中单协议故障只影响授权的对应 Session | 若影响客户可用性/安全承诺 |
-| H-RFB | 标准 RFB 匿名/共享密码连接能承诺怎样的细粒度 Grant/Scope？ | 推荐标准 Direct 的显式受限 Host 策略、默认只读；高保证身份/动态 Target 使用 Native | 任何削减已发布控制功能或更改安全承诺需 Human |
-| H-REVOKE | 撤权后已进入 TLS/socket/内核的 in-flight bytes 安全承诺 | 推荐权威新 epoch 之后不再产生新的旧权限输出；清设备侧可清队列、关闭必要连接，View 遮旧帧，不声称物理撤回已传内容 | 若 V8 安全文字要求更强绝对保证，Human 审批 |
-| H-EDGE | 是否将“注销后仍有 Edge 在线”作为首批必须成果？ | 首批只承诺已登录可用；无人值守独立实机资格后交付 | 产品级别/版本范围变化由 Human |
+| H-T01 | Tool 与 View 长期分工 | **HUMAN_APPROVED_A**：维护 Tool 已发布基础 RFB，完整 S1 #586 仍 OPEN；未来完整 Native/Managed/Edge/官方 Viewer 主线归 View，Tool 重点 SDK/Qt Kit/诊断 | 不再重开产品分工；共用 RFB 解析器/打包须技术与许可证审查 |
+| H-DUAL | HMI Dual 端点启动 | **HUMAN_APPROVED_A**：声明为必需的所有协议端点原子准入/启动，失败整体拒绝；运行期局部故障隔离且不弱协议回退 | 技术回滚/真实 listener 可见性/兼容验收待证 |
+| H-RFB | 标准 RFB 输入与授权 | **HUMAN_APPROVED_A**：保留 Host 已开放的基础输入能力；新架构默认只读，Scope 经 Host 栅栏与单控制者仲裁，共享口令不充当个人身份 | 旧客户端兼容/安全展示技术验收待证 |
+| H-REVOKE | 在途数据撤权边界 | **HUMAN_APPROVED_A**：新 epoch 生效后不新生成/排队旧许可输出；清本地可控缓存，必要时断链，View 遮旧帧；不承诺追回已传/已见内容 | 线程线性化、内核缓冲、负例审核待证 |
+| H-EDGE | 工厂后台首批范围 | **HUMAN_APPROVED_A**：仅支持登录期间 Edge 在线，退出/注销真实离线；无人值守需未来单独资格且仍同一个 View 安装 | 首批产品范围已定；Windows Service 不构成当前支持承诺 |
 | H-BASELINE | V15/V8 正式 Word 源文件及 Native 附录 A/B 核对 | 审批冻结前核对真实授权原文，按 SHA 归档索引；发现矛盾提出旧/新合同、影响和回退 | 真实文件输入/正式冻结需要 Human |
 
-**D4 结论：** 可以继续 D5 规划依赖和技术工作包，但以上真实决策不能由“文档合并成功”替代审批。下一步为**全产品统一实施 WBS/DAG + 设计完整性/冲突清单 + Human 决策卡**。正式 Word 编制须在完整方案/目录/内容/图表/版式先行规划和 Human 同意后独立展开，避免反复排版。
+**D4 审批后结论**：H-T01/H-DUAL/H-RFB/H-REVOKE/H-EDGE 已由 Human 正式选择 A；仍需对各设计合同、Qt/OS/网络真实技术资格和正式 V15/V8 原文做收口。此审批不代替全产品详细设计冻结、研发 Gate 或发布。正式 Word 必须先完成目录/内容/图表/版式与源条款审签，不提前生成。
