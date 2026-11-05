@@ -91,6 +91,8 @@ flowchart TB
 
 参见 [唯一批准的 Native V8 数值和 TLS-first 补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；Framework 和 View 使用同一数值表，26 个 Golden Vector 属于设计数据，未运行产品测试。
 
+**已批准的客户端语义**：`plain=0` 和 `tls-password=1` 都须通过设备 TLS 身份核验后才能发送 HELLO/WELCOME；前者省略独立用户 AUTH，但不产生自然人身份或设备 Grant。`pixel_format=1`/`encoding=1` 按 RGBA 字节序处理；TargetStatus、ControlState、键码均采用同一受控数值表。设备信任、用户认证、Target 可见和控制权分层显示；未知值拒绝。全部向量仍须真机/独立客户端验证。
+
 ### 4.1 Direct 与 Managed 共用真正的设备会话
 
 ~~~mermaid
