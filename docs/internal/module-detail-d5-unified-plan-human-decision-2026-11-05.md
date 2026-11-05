@@ -15,15 +15,18 @@
 
 **已取得正文等效依据**：Human 上传完整 V15/V8 送审稿并明确确认“内容一样”；真实 SHA-256 逐一与 #827 历史**送审稿**完全匹配，**不是正式版文件二进制摘要**。结构审计 V15 56、V8 99、附录 D 56/56、Native 21 已完成，详情见 [受控源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。行为级追踪、Wire 值域与测试仍不得标 `NORMATIVE_TRACE=PASS`。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
 
+
+**W00 2026-11-05 追溯工作增量（非冻结）**：已生成 [V15 56 条行为/失败/表6场景映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99 个 Heading2 详细设计主责索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)，以及 [Native 21 类消息正/负向向量与 WIRE-V01..V07 严格差距](module-detail-w00-native-wire-contract-gaps-2026-11-05.md)。56 条仍是 `MAPPED_NOT_TESTED`，99 节仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，Native 测试仍是 `NOT_RUN`。新增 `SOURCE_TENSION_01`：V8 §8.2 TLS-first 和 A.1 的 `plain/tls-password` 两档适用范围必须审签，**不由实现者私定或改写 V8**。无产品代码/服务激活。
+
 ## 1. 现在的真实阶段：设计接近全域覆盖，但不能宣布冻结
 
 | 阶段 | 交付范围 | 当前设计状态 | 未能自动越过的门禁 |
 | --- | --- | --- | --- |
-| D0 基线/目录审查 | 14 模块 #843 + [来源核验](module-detail-source-audit-v15-v8-2026-11-05.md) | **送审稿 SHA 匹配，56/99 目录与 A/B 21 type 索引已核** | 逐行为追踪、Wire 值域和负例尚待完成 |
+| W00 源结构/行为初步追踪 | 14 模块 #843 + [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md) + V15 56 行 + V8 99 行 + Native 21 类负向规格 | **送审稿 SHA 匹配；56 行行为/失败映射、99 节主责索引形成，未验证实现** | 细分原子合同与状态/错误/测试/Owner，Wire 数值与 SOURCE_TENSION_01 仍 OPEN |
 | D1 Framework | F01–F06：Core、Runtime、四入口、RFB/Native、Host 安全 | **三份设计候选与横向审查** | 传统 RFB 身份/Scope、Dual 启动、撤权在途数据、真实 Annex A/B |
 | D2 HyRemoteView | V01–V03：完整 Direct、QtQuick、Trust、设备/凭据/诊断/OEM | **设计候选** | G3 #5 **NOT PASSED**、真实 Native DeviceTLS/Frame/Grant、源条款对照 |
 | D3 Edge/Gateway | E01/G01：同安装 Edge、受管控制/字节隧道、ACL/自托管 | **复用 Stage04/05 并形成跨模块候选** | #190 **NOT_ACTIVATED**、control IDL 版本、OS 后台安全、真实 Managed E2E |
-| D4 Tool/交付/安全 | T01、X01、X02：Tool 角色、安装/Qt Kit、全系统验收 | **设计候选** | 与已批 Tool 综合工作台重叠的 Human 产品取舍；支持矩阵实证 |
+| D4 Tool/交付/安全 | T01、X01、X02：Tool 角色、安装/Qt Kit、全系统验收 | **设计候选** | **H-T01=A 已批准**，不再重开分工；Tool S1 #586 OPEN，支持矩阵实证尚缺 |
 | D5 实施规划/冻结提交 | 统一依赖、WBS、Owner、门禁、决策卡及文档编制顺序 | **本文件形成候选** | Human 审批正式设计与实施准入，未做则不能开始正式功能代码 |
 
 **状态术语**：`DESIGN_CANDIDATE` 表示可审阅结构/合同，不等于完整行为追踪或技术实测。送审稿历史 SHA 已核且 Human 确认正文等效；正式版二进制未逐字节对比，Native 数值绑定/负例未签收，仍为 `CONDITIONAL`。
@@ -124,7 +127,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | --- | --- | --- | --- |
 | HMI Framework/四接入 | D1 Boundary + Consistency，XC01..14 | FW01..12 / XP01、XP04–06 | 候选已审，Native/Grant 实现未批准 |
 | 标准 RFB | D1 Protocol，DP01..06 | RFB strict 3.8/Raw/TRLE 与传统 Viewer/Scope/场景 | 当前 RFB 代码存在，精确版本真实测试仍需专项 |
-| Native A/B + DeviceTLS | HMI design05 + D1 Protocol + [A/B 来源核验](module-detail-source-audit-v15-v8-2026-11-05.md) | DP07..14、HMI01..08；21 message 字段/长度、值域、负例 | **原文 21 类及长度已核；WIRE-V01..V07 值域仍 OPEN；设备 E2E 未实现** |
+| Native A/B + DeviceTLS | HMI design05 + D1 Protocol + [21 消息负向规格](module-detail-w00-native-wire-contract-gaps-2026-11-05.md) | DP07..14、HMI01..08；21 message 字段/长度、值域/负例及新 TENSION | **21 类源字段已核，缺 WIRE-V01..V07 的准确数值与 SOURCE_TENSION_01；12 类设计负例全部 NOT_RUN** |
 | View Direct/RemoteSurface/Identity | D2 VIEW01..14 | XP02–03、XP07、XP13、XP16–17 | G3 未通过，无 G4 产品代码 |
 | Factory Edge / Gateway | Stage04/05 + D3 MG01..16 | EDGE01..12 / XP08–13、XP18 | 设计候选；#190 未激活 |
 | Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 已有基础 RFB 产品基线；完整 Tool S1 #586 仍 OPEN；H-T01=A 已批准，技术交付待审 |
@@ -194,11 +197,13 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 - [x] 明确各 WBS 的依赖/Owner 类型/交付物/验证出口，避免“任务清单=已下发”。
 - [x] 保留 G3、Native E2E、Edge12、真实安装/支持资格和 Gateway #190 版本激活为独立 Gate，均未被设计 PR CI 取代。
 - [x] V15/V8 **送审稿**的实际 SHA 与历史归档匹配，56/99 章节、附录 D 56/56、Native A/B 21 type 字段及定长算术已核。
-- [ ] 全量逐行为要求追踪、WIRE-V01..V07 数值域、完整负例/互通向量及最终设计签收。
+- [x] 56 项 V15 逐项映射主责模块/候选行为/失败边界及原文表6序号；V8 99 个 Heading2 逐项登记到 D1–D5 Owner（**并非已审通过**）。
+- [x] Native 21 类消息各有待执行的合法字段及至少一类拒绝情形；NV-01..NV-12 确定性负向设计已列出（**NOT_RUN**）。
+- [ ] 56/99 项进一步分解到最终原子合同/状态/错误/测试 ID/Owner 和证据；WIRE-V01..V07 与 SOURCE_TENSION_01 规范值域/安全档位须签收，随后再评 Gate-D。
 - [x] Human 已批准五项产品/安全设计取舍 A（不等于实现或冻结）。
 - [ ] Human 正式模块设计冻结和独立 Gate-I 实施授权仍未取得。
 - [ ] 一切产品代码、实机/资格、全产品发布尚未由本计划启动。
 
 **状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`NORMATIVE_TRACE=PARTIAL`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
 
-**下一动作**：基于实际读取的送审稿等效正文完成 V15/V8 各要求→接口→状态/失败→测试/Owner 的行为级审查，以及 WIRE-V01..V07 数值域与负例收口；目录/图表/版式内容也须先签收，之后才另向 Human 申请 Gate-D。Gateway #190、G3 与 Gate-I 继续独立管理，当前不创建产品代码。
+**下一动作**：独立审查并归档本次 56+99+21 三类完整索引；把这些初步映射进一步拆为可签收原子状态/错误/测试/Owner 合同，审查 Native WIRE-V01..V07 和 SOURCE_TENSION_01 的正式规范取值。无足够原文证据不能臆填 bit/枚举或以纸面通过表示实测。内容和图表、目录/版式规划全部审好后，再单独向 Human 申请 Gate-D；Gate-G3、Gateway #190、Gate-I 独立，当前不创建产品代码。
