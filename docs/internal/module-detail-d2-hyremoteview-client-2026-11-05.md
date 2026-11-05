@@ -289,7 +289,7 @@ sequenceDiagram
 | `TRUST-REVOKED/BLOCKED` | 本地删除/撤销/过期可信绑定时，先取消受影响所有 SessionGeneration，清可控敏感画面与输入，再使受保护存储新 Revision 生效 | 不能让正在排队的 TLS 认证/旧异步 Callback 在新 revision 中重新设为 Verified；不得从 Edge/Gateway 或其他用户缓存中恢复旧 pin |
 | `PROFILE-MIGRATING` | 对版本化非秘密 schema 做**先校验→生成新记录→原子替换**，引用的密钥 handle 用受保护 Store 原语迁移/失效 | 未知安全相关字段、坏签名、秘密库不可用、回滚丢失撤销标记时 fail closed 并保留用户可修复的诊断状态，不能用默认弱配置强行迁移 |
 
-**事务与故障恢复**：对于**放宽信任/更换证书锚**的操作，必须成功写入且再次验证可信来源后才能对新的 DeviceTLS 授权。对于**收紧信任/撤销**，先立即更新当前 session admission 的拒绝事实，随后持久化撤销记录并终止受影响会话；如持久化失败，留在 `BLOCKED_NEEDS_REPAIR`，不可因重启自动使用旧受信根放行。磁盘迁移、OS SecretStore、TLS/Proxy 网络回调不能在 GUI 线程持锁阻塞；每个异步回调必须绑定 ProfileRevision/TrustRevision/SessionGeneration 并在消费时重验。
+**事务与故障恢复**：对于**放宽信任/更换证书锚**的操作，必须成功写入且再次验证可信来源后才能对新的 DeviceTLS 授权。对于**收紧信任/撤销**，立即使本进程当前 Session admission 拒绝并终止受影响会话，再通过 OS Secret/TrustStore 可验证的原子写入或带版本的持久撤销记录提交；**只有 durable commit 可证实后**才能对用户声明“撤销已保存”。如果写入失败，内存态保持 `BLOCKED_NEEDS_REPAIR` 且不得宣称持久化成功。**断电/进程崩溃后，旧存储文件可能仍保留原受信根**：若无法从受保护的单调修订/写前拒绝记录或下一次启动强制的可信重验证发现该未提交撤销，就不能保证跨重启失权。因此设计实现必须在支持方案中明确选定并验证一种 durable fail-closed 恢复机制；在此之前不得把“存储不可用时撤销已永久生效”写成产品安全承诺。磁盘迁移、OS SecretStore、TLS/Proxy 网络回调不能在 GUI 线程持锁阻塞；每个异步回调必须绑定 ProfileRevision/TrustRevision/SessionGeneration 并在消费时重验。
 
 ### 6.5 V-03 凭据、诊断与 OEM 的独立技术合同
 
@@ -305,7 +305,7 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | `IDT-01` | ProfileId/连接地址与 HMI DeviceId 分离 | 同 IP 不同证书、同名称不同 DeviceId 禁止自动复用信任；VIEW-10/11、XP-11 | `DESIGN_ONLY` |
 | `IDT-02` | 可信根/现场校验的首次 Native DeviceTrust | Gateway directory 自报 pin 和未知 CA 不自动信任；VIEW-03、MG-06 | `DESIGN_ONLY` |
-| `IDT-03` | TrustRevision 轮换/撤销与运行 SessionGeneration 一致 | 证书替换、迟到 TLS callback、密钥回滚不复活旧会话；VIEW-03/07 | `DESIGN_ONLY` |
+| `IDT-03` | TrustRevision 轮换/撤销与运行 SessionGeneration 一致 | 证书替换、迟到 TLS callback、撤销写盘失败+崩溃重启不能误报 durable；需可验证 fail-closed 恢复路径；VIEW-03/07、XP-24 | `DESIGN_ONLY / STORAGE_RECOVERY_PROOF_PENDING` |
 | `IDT-04` | Native/RFB/Gateway/Edge 凭据用途隔离 | SecretStore 缺失不退为明文、QML/报告无秘密；VIEW-10/12、XP-24 | `DESIGN_ONLY` |
 | `IDT-05` | Profile/schema 原子迁移、未知安全字段失败关闭 | 失败回退可诊断、已撤销 pin 不恢复；VIEW-10、XP-24 | `DESIGN_ONLY` |
 | `IDT-06` | Native DeviceTLS/Auth/User/Host Grant 四轴不混淆 | plain TLS 不授个人身份、路由 READY 不授 ControlGrant；VIEW-03/05、AFS-02 | `DESIGN_ONLY` |
@@ -314,7 +314,7 @@ sequenceDiagram
 | `IDT-09` | Factory Edge 受控 SitePolicy/Device Binding 与个人 Profile 分权 | 普通 DeviceCatalog 添加设备不自动使该 HMI 对外共享；MG-01/08、XP-23/24 | `DESIGN_ONLY` |
 | `IDT-10` | 注销/重连/身份变更下所有 Session/Secret 引用失效 | 旧授权、输入焦点、异步回调、未确认业务不自动重放；VIEW-07/10、XP-26 | `DESIGN_ONLY` |
 
-**V-03 当前等级**：`IDT-01..10=DETAILED_DESIGN_CANDIDATE`；实际产品 OS SecretStore、证书存储后端、安装升级/跨用户 Windows/Linux 资格和 Native TLS/Grant 全部仍待工程实施/测试，不能把设计稿当作 G3 PASS 或产品出门证明。
+**V-03 当前等级**：`IDT-01..10=DETAILED_DESIGN_CANDIDATE`；`TRUST_REVOKE_DURABLE_FAILSAFE=TECHNICAL_PROOF_PENDING`（不能用内存拒绝冒充断电后撤销成功）；实际产品 OS SecretStore、证书存储后端、安装升级/跨用户 Windows/Linux 资格和 Native TLS/Grant 全部仍待工程实施/测试，不能把设计稿当作 G3 PASS 或产品出门证明。
 
 ## 7. 操作界面及失败状态矩阵（仅显示可证事实）
 
