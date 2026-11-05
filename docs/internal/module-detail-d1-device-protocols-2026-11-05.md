@@ -241,7 +241,7 @@ revokeAccessScope(scope, newPolicyRevision)
 | DP-02 | RFB None/VNCAuth 安全差异和未加密事实 | 未授权及加密要求缺实现时 fail closed；不在公网声称设备保密 | `SPEC_READY` |
 | DP-03 | RFB Raw/TRLE/DesktopSize/Continuous/Fence/Cursor 互通 | 正确协商、每连接独立更新与基线、Fence 不声称 UI 输入已完成 | `SPEC_READY` |
 | DP-04 | RFB 资源/半包/多 peer 占用 | 在当前实现限额上做 burst/partial/usefulness/静态 outstanding FBU/重入及持键清理；不以已存在代码替代 exact-SHA 实验 | `SPEC_READY, MEASUREMENT_PENDING` |
-| DP-05 | 传统 RFB 的 Scope/View/ControlGrant 能力边界 | RFB 无 Native 自定义字段，HMI 本地承认的信任/Scope/只读/输入权有限且可证明 | `DESIGN_DECISION_OPEN` |
+| DP-05 | 传统 RFB 的 Scope/View/ControlGrant 能力边界 | **H-RFB=A 已批准**：RFB 无 Native Grant 字段，Host 显式开启的已有输入能力保留；新策略默认只读、统一 Scope Controller、共享认证非个人身份；仍需标准 Viewer 负测 | `PRODUCT_DECISION_APPROVED / EVIDENCE_NOT_RUN` |
 | DP-06 | 单 Scope 下 RFB+Native 多连接控制竞争 | HMI 统一限制默认一操作者，另一协议不会绕过；现场撤权阻断所有旧输入 | `NOT_IMPLEMENTED` |
 | DP-07 | Native 1.0 21 类消息对 V8 附录 A/B | 所有 opcode/字段/限额/握手/非法序列/错误号逐项与正式原文一致；不造第二 wire | `ANNEX_FULLTEXT_PENDING` |
 | DP-08 | Native TLS/设备身份、用户名密码安全认证 | 证书替身/过期/错误身份拒绝；TLS/口令变更不降级 | `NOT_IMPLEMENTED` |
