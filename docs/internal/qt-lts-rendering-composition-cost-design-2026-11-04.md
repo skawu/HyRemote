@@ -387,3 +387,75 @@ G7_FROZEN=UNCHANGED
 2. 即使以上通过，也只能形成 `FEASIBLE_FOR_COVERED_QT_QUICK_CASES`，**不能**直接将现有 100ms fallback 移除。下一决定应明示未覆盖 surface 的 fallback 成本、Qt5 private ABI 风险、Qt6 QRhi/effect 行为、pre-sync 读锁与 multi-window 竞态。
 3. 下一份实施前 Human 审批材料需写明：① private exact-Kit 兼容与部署/许可；②真实内容 revision 如何产生/如何处理 render-thread animated/texture；③同步序号如何绑定抓图像素版本并保留 pending；④ 四种接入/Popup/跨窗口/安全水印与隐私能力哪些可加速哪些继续保守回退；⑤ static/dynamic Viewer FPS/延迟/CPU，RK3588 单独验证；⑥异常退回公共抓图及停用私有路径；⑦不采用方案时保留原产品约束的性能后果。
 4. **明确审批状态**：`HUMAN_RESEARCH_APPROVED=YES`；`HUMAN_QT_PRIVATE_PRODUCTION_IMPL_APPROVED=NO`；`F-G1_TEST_APPROVED_WITHIN_RESEARCH_SCOPE=YES`；`F-G0_PASS_NOT_EQUAL_PRODUCT_GO`。所有生产提交必须在人审与风险裁定之后另行申请授权。
+
+
+## 14. F-G1 实测验收、拟议采集状态机与 Human 实施前决策（2026-11-05）
+
+**审批边界：** Human 已批准 **Qt5/Qt6 私有接口的技术可行性研究**，但**没有批准 HyRemote 产品实施**。本节不授权提交任何 Runtime/QtPrivate 生产源码、修改 Qt SDK 或延长/关闭静态检测时钟。本设计的建议和实施审批卡必须在 Human 明确决策后才可进入生产分支。
+
+**实测来源**：[本地 Owner #609 F-G1 完成报告](https://github.com/skawu/HyRemote/issues/609#issuecomment-6646603431)。独立 Qt-only `tmp/609-fg1`，Qt5.15.2 / MSVC 和 Qt6.8.3 / MSVC 各运行一次 10 s，默认 Windows 图形 API；**云端已核对 GitHub 报告与精确 Qt tags 源码，未直接读取本地 tmp 的原始日志**。
+
+### 14.1 已确证 / 仍未证实（不可混淆）
+
+| 判断 | 实测 / 依据 | 可以用于设计的结论 | 不能作出的推断 |
+| --- | --- | --- | --- |
+| 7 类离散变化都在同步前产生 item dirty | 位置 `0x8`、width `0x10`、opacity `0x100`、visible `0x10000`、z + 父 stacking `0x20/0x400`、layer enable/disable `0x28000` + ShaderEffectSource；**双 Qt 7/7** | 在这些 QQuickItem 路径中，观察 `dirtyAttributes` 比公共 window render 事件更有判别力 | 不能扩大为所有 Qt Quick 绘制内容或所有接入模式无遗漏 |
+| 动画同步观察 | Qt6 `72 tick→58 sync`（58/58 带 Transform）；Qt5 `73 tick→51 sync`（51/51 带 Transform）；无空 dirty sync | **已发生的每个 sync** 在这个动画中都携带场景变化；发生 coalescing | 不能把 58/58 说成 72/72 个逻辑状态均独立显示；不证明达到源 60 FPS 或 Viewer FPS |
+| `ready()` 的图像版本 | 3 in-flight 操作×2 Qt = **6/6 取回提交时内容**；提交后 ~15ms 改色、ready 时源版本已前进；随后补抓 **6/6 取回新色** | `ready` 时间**不能**标成它之前全部业务更新对应的最新像素；观察到后续真实 dirty 则应让待补抓保持 pending | **“任意 grab 返回图像版本都精确等于调用时版本”未证实**；真实图像来源于后续 scenegraph sync/render，时间点受调度影响 |
+| 原生 Qt 私有入口 | F-G0 已确认双已安装 Kit 的 `QQuickWindowPrivate` 只读可编译链接 | 可以开展严控的版本化设计 | private ABI 不保证 Qt patch 后稳定；未证明 QPA/Generic/独立 surface 适用 |
+| 真正性能改善 | 本轮没有 Viewer、CPU/RSS、嵌入式设备测量 | **仅算法可行性** | 禁止宣称可将 #789 ARM 静态满核问题解决或产出具体 CPU 降幅 |
+
+**额外时序结论（来自两代 Qt 源码）：** `QQuickItemGrabResultPrivate::create` 为捕获请求安排下一次 `QQuickWindow::update()`；抓图 `setup()` 在 `beforeSynchronizing`、`render()` 在 `afterRendering`；随后触发 GUI 线程 `ready`。因此图像的真实内容边界取决于**哪个 sync 被该 grab 使用**。在目前实验中“提交时版本”是避免把旧图误认成最新的**保守标记**，不能作为无例外的精确快照标识。对于 *submit 后、sync 前* 的更新，即使结果包含新内容，保守重复抓帧通常是多做工、不会漏画面；相反按 `ready` 当前状态确认则可能永久漏掉未抓入的更新。
+
+### 14.2 F-G1 判定与真正未闭合的产品问题
+
+**F-G1=`PASS_FOR_TESTED_STANDALONE_QT_QUICK_SCENES`**。研究进入“方案风险与决策”阶段，**不是** `PRODUCT_READY`。最重要的**阻断设计缺口**是**变化源覆盖资格**：任意 Qt Quick 内容可能有 ShaderEffect/time uniforms、视频纹理/texture provider、render-thread animator、窗口外独立 surface、popup/native window、非 QQuickItem 绘制、外部 Qt/OpenGL 更新。若其可见像素能变化而同步前没有相应 item dirty，停止 100ms fallback 会产生**静默冻结**。本轮离散变化 7/7 和当前测试动画并未证明这些情况安全；**不能靠“未观察 dirty”自动将任意窗口标记为可跳抓的 Eligible**。
+
+其次存在 **snapshot↔dirty 的证明缺口**：只有“提交/ready 时间”而无稳定的 `capturedSyncSerial`，则不能把私有观察的业务版本严格归属到图像像素；当前最安全语义是**保留 pending + 必要时补抓**，而不是精确确认任意图像已包含该版本。要承诺所有 source/Viewer 不丢刷新，必须对多次积压、异步完成顺序、stop/reconnect/resize 给出单调版本规则并满足测试。
+
+### 14.3 内部最小状态机提案（**仅设计，不是已批准实施**）
+
+**架构原则**：保留 G7 Core / Shared Runtime 分界与 `CaptureSource` / `RemoteFrame` 合同，只对 **Qt Quick 目标**提出一个私有 `DirtyRevisionCapability`，通用 `ViewerCaptureDemand` 不得因 Quick 专项假设改变 Widgets/Generic/QPA 的现有行为。Qt5.15 / Qt6.8 各自 exact Kit adapter，只记录同步点 item bitmask/同步序号，绝不从 render thread 等待网络/UI、遍历失效对象、变更 Qt 私有列表或传 QtPrivate 类型入 Core。Core scheduler 的 pace/in-flight 上界照旧，RFB 像素差异/水印与安全链不被跳过。
+
+拟议生命周期与状态：
+1. **`UNQUALIFIED_FALLBACK`（所有目标默认）**：继续公共异步 `grabToImage` + 现有 100ms bounded static probe。只有经过**明确完整能力资格判定**的 Quick 目标才可在后续实施中申请 `ELIGIBLE`。没有可靠资格机制时，**不应交付 auto-on 优化**。
+2. **`ELIGIBLE_IDLE`**：已持有有效的最近 `RemoteFrame`，无需业务 dirty 则不发新 capture；此状态需要证明所有可见内容源都在 QtPrivate dirty revision 管辖内，并能与自激性 `EffectReference`、窗口生命周期事件正确区分。异常、窗口变更、未知 dirty 类型、跨 surface 都转 `FALLBACK`。
+3. **`DIRTY_PENDING`**：可信 item dirty 出现时推进内部单调 `observedRevision`（不是像素版本），从 render synchronization 回调通过**无阻塞、生命周期锚定的信号**安全唤醒捕获调度。远程输入、Viewer 加入、重新可见、DPR/size/popup/privacy/水印变更和超时恢复均强制 request full capture，不能等待“下一次脏项”。
+4. **`CAPTURE_IN_FLIGHT`**：request 入队时记录 `submissionRevision`、`requestId`、目标代际 `generation`；观察到的后续 dirty 始终保留为 pending。记录真实与本次 grab 关联的 `syncSerial` 需要进一步证明其 capture attribution；不可假定 `ready` 时间就是 captured revision。
+5. **`COMPLETED_CHECK`**：收到 `ready` 先按旧路径发布正确像素；若 `observedRevision > submissionRevision`，需明确补抓直到交付更新或转有界 fallback，避免只显示陈旧帧。若快照串联/队列溢出/后端能力未知，不得将 pending 清零；转 `UNQUALIFIED_FALLBACK`。确保不会因高速动画无限补抓淹没 Host，保持 pacing / backpressure / latest-only 语义。
+
+**验证与受益边界**：这种设计有希望减少**静止且已具备可信能力资格**的 Qt Quick 目标的抓图次数；对仍使用 100ms fallback 的零代码通用窗口没有该收益；动画仍可能频繁 grab/readback。不能在完整资格与覆盖风险闭合前承诺“零代码 Quick 默认静态近零 CPU”。
+
+### 14.4 Human 实施前必须裁定的风险与实际取舍
+
+| 风险 | 等级 | 具体后果 | 需要 Human 明确知情/接受的条件 |
+| --- | --- | --- | --- |
+| **R1 变化源覆盖不完整** | **BLOCKER** | Shader/视频/纹理、render-thread 动画、Popup 或第三方自绘未触发 item dirty，远端永远停留旧画面 | 只有可被证明完整覆盖的 Quick 目标允许激活，其他继续保守 100ms，不能把 7/7 扩为所有入口 |
+| **R2 快照版本与在途更新** | **BLOCKER** | `ready` 是旧像素却确认最新 revision，丢更新；竞态时可能补抓风暴 | 必须保留后续 dirty pending、强制补抓/失效回退；submitVersion 是安全保守参考，非普适精确标签 |
+| **R3 render/GUI 与 Core 锁顺序** | **BLOCKER** | 死锁、取悬空 item、退出时触发无主回调 | sync 只读轻量、回调无阻塞；有 generation/unsubscribe/drain，受停止/销毁/重连约束 |
+| **R4 精确 Qt Kit / 私有 ABI** | **HIGH** | Qt 更新/不同构建的 private 布局变更、Qt5 experimental Quick 质量未知 | 精确 Kit 编译+运行门禁，未知/替代 Kit 默认 fallback；不得冒称跨 Qt ABI 兼容 |
+| **R5 四入口及双协议覆盖** | **BLOCKER product promise** | Quick 场景局部优化被误写为 Generic/QPA/Widgets 整体性能修复 | 单独声明适用的 Qt Quick surface；其他入口完全不变，保持零代码连接功能和隐私/授权 |
+| **R6 发行与许可** | **HIGH** | QtPrivate/private SDK 的开发、分发、许可条款与维护升级成本 | Human 审核准确 Qt 许可/部署方式；本研究并未批准修改或分发 Qt |
+| **R7 资源与实时性未验证** | **HIGH** | 静态降耗有限、动态滞后或多补抓、RK3588 +1 core/条带仍存在 | 以 Windows 同源实机 A/B 和 RK3588 EGLFS 后续目标验证分别裁定；真实 Viewer FPS/latency 不可由源动画 tick 代替 |
+| **R8 故障回退** | **BLOCKER** | 误启 private path 或 dirty 漏报时远端永久冻结，水印/敏感画面失效 | 缺资格/异常/超时/切换强制完整抓图；保留 100ms 安全兜底；设计可撤销、可记录并快速停用 |
+
+**三种产品决定方案（仍待 Human 选择）**：
+
+- **选项 A — 推荐的受限研究延续**：允许仅 Qt-only/独立分支的**资格识别与失效覆盖可靠性**继续小范围技术验证，尤其 ShaderEffect 动态纹理、render-thread animator、独立 Popup/窗口内容，不改 Runtime/Qt/SDK；证明具备可安全开启的有限 Quick profile 后再请求实施批准。益处：优先防止静态 CPU 优化造成产品冻结；代价：性能根因修复尚未交付。
+- **选项 B — 允许受限产品开发（需要新的 Human 明确批准）**：只为明确限定的 Quick 场景引入 Qt5/Qt6 exact-Kit private observer + revision/bounded fallback，**默认不开**、不改公共 API/零代码入口，先独立 PR + 真实 Viewer 回归/静态和动态 CPU 对照；任一 blocker 不满足即停。不应谎称对所有 Quick/Generic/QPA 自动起效。Human 必须接受 R1–R8 的残余风险，尤其只能对确定适用的 Quick 场景提速。
+- **选项 C — 维持现有**：保留 #842 A1 的去重复制收益与 100ms 有界静态探测，不引入 QtPrivate 生产依赖；接受目前已证实的抓图渲染 CPU 成本，#609 用户问题仍 P1 OPEN；需要另行设计 Qt LTS render-output reuse/受控 Qt 分发技术路线并提 Human 决策。
+
+**Cloud Owner 现阶段建议 A**。F-G1 的成功证明了 Qt LTS 观察方向具有可行性，但不足以给出可自动开启且满足零代码通用能力的生产安全合同。实际实施**仍须在 Human 了解当前信息与完成的风险结论后**再次明确批准。任何 Human 暂未选择，不允许以“已授权技术研究”推导 B 自动生效。
+
+```text
+F_G0=CONDITIONAL_PASS_QT5_QT6_INSTALLED_KITS
+F_G1=PASS_TESTED_VISUAL_DIRTY_AND_REGRAB
+F_G1_GLOBAL_QUICK_COVERAGE=UNVERIFIED
+F_G1_IMAGE_SYNC_SERIAL_BARRIER=UNVERIFIED
+F_G1_GUI_CORE_THREAD_SAFETY=NOT_PRODUCT_TESTED
+RECOMMENDED_NEXT=RISK_CLOSURE_RESEARCH_OPTION_A
+HUMAN_FEASIBILITY_RESEARCH_APPROVED=YES
+HUMAN_PRODUCT_IMPLEMENTATION_APPROVED=NO
+HUMAN_QTPRIVATE_DEPLOYMENT_ACCEPTANCE=NOT_YET
+PRODUCT_CODE_CHANGED_BY_THIS_RESEARCH=NO
+```
