@@ -53,13 +53,13 @@
 | V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、D2 TrustStore | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
 | V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 `IDT-01..10` 数据/信任迁移合同及已批准 UI/安全依据 | DeviceCatalog/ProfileStore/OS SecretStore、Native DeviceTrust/证书轮换、诊断/OEM/身份 Session UI 和升级回退 | **Gate-I 后**离线首启、同 IP 不同 HMI、TrustRev/凭据/升级和安全回滚的独立真实验证；设计期只审合同 |
 | E10 | Factory View Edge / HyRemoteView | W00、D3 `EG-01..12` 与同产品安装治理 | SiteRegistry/EndpointBinding/管理员共享、GatewayLink/RouteAdmission、once-Pair、FIFO Relay、默认 OFF/撤权 | 实施后验证工厂只装 View、精确白名单/站点 ACL、双侧配对与有界 FIFO、Direct 不退化；设计期仅合同审签 |
-| E11 | Factory Edge lifecycle / HyRemoteView | E10，OS 服务真实取舍 | 首批准入的用户登录态运行；获批后可增可验证的同产品 service 角色 | GUI 关闭/注销/重启/升级/卸载/IPC ACL/OS 凭据逐项合格，无假“无人值守” |
+| E11 | Factory Edge lifecycle / HyRemoteView | E10 + Human H-EDGE=A **登录态首批**；无人值守 Service 属未来同产品独立资格 | 登录期 RunLease、退出/注销实际离线、窗口/应用进程/OS 会话分域、升级回滚 fail closed；不把 Service 当首批必选实现 | 有准确登录/注销/崩溃/IPC/OS 凭据真实测试；无人值守不在首批支持声明 |
 | G10 | Optional Gateway / 独立交付责任 | W00、D3 `EG-01..12`、Stage05 唯一候选 IDL 与 **Human 对 #190 独立激活** | Identity/Site/Edge Registry、RoutePermit + one-shot PairLedger、opaque FIFO Relay、tenant/audit | 实施并独立激活后测试自托管证书/ACL、RouteEpoch/Pair 重放、负载及回退；**现阶段仅设计，未激活** |
 | G11 | Gateway Ops / Gateway owner | G10 + 批准的运维范围 | 最小部署/升级/备份/密钥轮换/策略迁移/脱敏诊断 runbook | 客户真实自托管环境可复现恢复/回退且不复活撤权 |
-| X10 | Whole-system E2E / Security + QA | F14 + V12 + E10 + G10，D3 E2E 目标 | 真 HMI↔View DeviceTLS + Edge/Gateway opaque route，12 Edge + 20 产品场景追溯 | 路由 READY≠Grant、无明文、现场优先、撤权/在途/慢端/多设备真实测试 |
+| X10 | Whole-system E2E / Security + QA | **按声明档位分别取证**：RFB Direct=F13+V10；Native Direct=F14+V12；Managed 仅在 #190 独立激活后另加 E10+G10、F14+V12 | 对已批准档位分别真实验证 HMI↔View 协议与安全；受管扩展验证 Edge/Gateway opaque Route，旧 Native/RFB 各自独立，Direct 不需云 | Direct RFB/Native、Managed、31 场景等分别记录 exact-SHA/Kit/权限/资源/负例；**未激活 Gateway 不可使合法 Direct 永远阻塞** |
 | T10 | Tool maintainer / HyRemoteTool | H-T01=A、[D4 TL-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已形成设计，Tool 完整 S1 #586 仍 OPEN | 保留既有 Basic RFB；未来 SDK/Qt Kit Inspector、四入口指导、只读脱敏诊断与人工确认 SupportReport 分批实现，不再重建 Native/Managed 官方客户端 | Gate-I 后核验 Tool 精确 Qt Kit/平台、失焦/断线、恶意日志、报告秘密脱敏与旧 RFB 兼容；当前仅 DESIGN_ONLY |
 | X11 | Product packaging / 各产品交付 Owner | F15、V13、E11、G11、T10 适用范围 | 安装/更新/卸载/密钥/迁移/产品级版本表/许可证/SBOM、精确平台适用矩阵 | 正/负安装/升级/回退、只装 View、SDK Kit 与 QtPrivate 精确隔离 |
-| X12 | Release QA / Human 产品/发布治理 | X10/X11 + 已批准支持范围 | 独立产品发布申请、客户支持矩阵与风险接受 | 与 #95 版本治理衔接、真实所有 Gate PASS，Human 另行批准 |
+| X12 | Release QA / Human 产品/发布治理 | X11 + **本次明确声明的** X10 协议/路径适用子场景（Managed 需 #190 另行激活） + 已批准支持范围 | 按 RFB Direct / Native Direct / Managed 可选路径逐产品独立提交发布资格与风险接受 | 与 #95 版本治理衔接、真正适用的 Gate 全 PASS、Human 独立批准；不将未激活 Gateway 当 Direct 必装组件 |
 
 **Owner 说明**：这些是未来产品**责任类型**，不是已经有实际 Local Worker ACK、不是自动派发、也没有预约版本号。Cloud Owner 当前仅有**设计审查和计划权限**，不因 WBS 排好队就打开 G10 产品公网服务。存在跨不同产品仓库的 PR/测试时按各仓真实保护规则独立签收。
 
@@ -67,8 +67,8 @@
 
 ~~~mermaid
 flowchart TB
-  B["W00 正式条款追踪 / Human Gate-D 设计冻结"] --> I["Human Gate-I 正式实施授权"]
-  G3["HyRemoteView G3 独立 PoC 证据，不必等 Gate-D 才验证"] --> I
+  B["W00 来源原子追踪 / Human Gate-D 设计冻结"] --> I["Human Gate-I 按范围实施授权"]
+  G3["HyRemoteView G3 对应实际 PoC 资格"] --> I
   I --> F10["F10 Host DeploymentAdmission / Policy"]
   F10 --> F11["F11 AccessSession / Input Gate"]
   F10 --> F12["F12 Per-session Output Privacy"]
@@ -76,29 +76,36 @@ flowchart TB
   F12 --> F14
   F11 --> F13["F13 RFB Host Policy"]
   F12 --> F13
-  I --> V10["V10 Direct RFB Product Client"]
+  I --> V10["V10 RFB Direct Product Client"]
   V10 --> V11["V11 RemoteSurface / UI"]
   F14 --> V12["V12 Native Trust / Grants"]
   I --> V12
-  V11 --> V13["V13 Device/Identity/Diagnostics"]
+  V11 --> V13["V13 Device / Identity / Diagnostics"]
   V12 --> V13
-  I --> IDL["Stage05 IDL/安全审查 + #190 独立激活"]
-  IDL --> E10["E10 Factory View Edge"]
+  F13 --> X10R["X10 RFB Direct E2E，仅 RFB 声明"]
+  V10 --> X10R
+  F14 --> X10N["X10 Native Direct E2E，仅 Native 声明"]
+  V12 --> X10N
+  I --> IDL["Stage05 IDL / 安全审查 + #190 独立激活，仅 Managed"]
+  IDL --> E10["E10 Factory View Edge，登录态"]
   IDL --> G10["G10 Optional Gateway"]
-  E10 --> X10["X10 真 HMI Native E2E / Security"]
-  G10 --> X10
-  V12 --> X10
-  F14 --> X10
-  X10 --> X11["X11 View/HMI/Edge/Gateway 安装升级矩阵"]
-  V13 --> X11
+  E10 --> X10M["X10 Managed E2E，条件路径"]
+  G10 --> X10M
+  F14 --> X10M
+  V12 --> X10M
+  I --> X11["X11 各产品安装/升级/信任迁移"]
   F13 --> X11
-  X11 --> X12["X12 对应产品发布准入 / Human"]
-  HT["H-T01=A 已批准的 Tool / View 分工"] --> TOOL["T10 Tool 产品主线，既有基础 RFB 维护，未完成 S1 按原授权治理"]
-  TOOL --> TQ["Tool 独立安装/版本/质量 Gate"]
+  V13 --> X11
+  X11 --> X12["X12 本次声明的产品/路径发布准入"]
+  X10R -. "仅 RFB 声明" .-> X12
+  X10N -. "仅 Native 声明" .-> X12
+  X10M -. "仅 Managed 声明" .-> X12
+  HT["H-T01=A：Tool / View 产品分工"] --> TOOL["T10 Basic RFB 保留，Tool S1 事实治理"]
+  TOOL --> TQ["Tool 自己的安装/版本/QA Gate"]
 ~~~
 
 
-**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 X10 的真实 E2E 必须同时具备 F14/V12/E10/G10。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586，**H-T01=A 已正式批准未来产品分工**。Tool 不成为 View/HMI/Gateway 的强制打包依赖。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
+**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 **X10 实际有按发布档位选择的 RFB Direct、Native Direct、Managed 三类验证支路**：RFB-only 不要求 Native Listener，Native-only 不依赖 RFB 帧；仅 Managed 安全路径才必须同时具备 F14/V12/E10/G10 及 #190 独立激活，**Gateway 未激活不得阻塞合格 Direct 的设计/验证/独立发布申请**。图中的 X10R/X10N/X10M 都是现有 WBS X10 的条件验收分支，不是三个新增产品或新实施阶段。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586，**H-T01=A 已正式批准未来产品分工**。Tool 不成为 View/HMI/Gateway 的强制打包依赖。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
 
 **不得用“Gateway 已启动”倒推 HMI Native 或 View 资格；不得以“PoC 编译通过”倒推正式客户端授权。**
 
@@ -119,6 +126,8 @@ flowchart TB
 **X-01 安装与迁移技术合同收口（2026-11-05，纯设计）**：[D4 DEP-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已从原“产品安装矩阵/元数据”细化为签名包/Qt Kit/清单、运行许可与配置分离、按产品秘密迁移、单调撤权高水位、Factory View/Edge 同安装、可选 Gateway/独立 Tool 的升级回滚事务，以及 8 组负向验收设计；[D2](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D3](module-detail-d3-managed-integration-2026-11-05.md) 已接收该合同。**这是最终实施规划的既有 X-01 内容完成度增量，不新增产品或研发路线；全部测试未运行，Gate-D/Gate-I 不因而自动批准**。
 
 **T-01 本轮实际设计收口（2026-11-05）**：沿既有 D4 第 3 章补齐 `TL-01..08`，基于 [Tool README](../../tools/hyremote-tool/README.md) 区分 V0.3.0.0 已发布文档声明与尚未实际验证的新 Inspector/Advisor/DiagnosticsImporter/SupportReport 设计；定义只读导入、精确 Kit/证据等级、脱敏报告与独立 Profile 权限，维持 H-T01=A 和 Tool 全量 S1 #586 OPEN。**X-01 签名/迁移/回滚以已合并的 D4 `DEP-01..08` 为唯一现行交付合同**，不把旧并行 PR #866 的 `PKG-01..08` 再立为平行规范。所有新验收 `DESIGN_ONLY/NOT_RUN`，本轮无产品代码、正式 Word 或研发 Gate 变更。
+
+**V8 99 节首轮架构原子反证复核（2026-11-05）**：在既有 [W00 V8 99 索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md) 第 4 章，实际核查十六个高风险断面，14 组找到 D1–D4 明确候选合同/失败与测试入口；两组仍 `OPEN`：V8 §13.3 文件传输/宿主业务结果的原子接口和实现分期，V8 §14.3 离线撤销“待送达/设备已确认”持久状态与回执责任。不得凭 XP-22/23 两个场景名称声称技术方案已完成或为此私改 Native wire。**D5 原依赖图把可选 Gateway 当成 X10/Release 的强制前置，现已纠正为每个已声明的 Direct 协议独立资格、Managed 按 #190 条件激活；这只是纠正实施 DAG 对已批准产品约束的错误表达，不是重新规划。**原子合同 Gate-D 审签仍未完成。
 
 ## 4. 全产品四个不同准入门槛
 

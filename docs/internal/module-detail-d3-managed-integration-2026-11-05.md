@@ -61,7 +61,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | `enrollSite` | 有权限的工厂客户管理员（本机或受保护管理 IPC） | 显式信任 Gateway/站点身份、登记 EdgeInstance，默认拒绝未核验根/证书 | Enrolled / CredentialMissing / TrustRejected |
 | `registerHmi` | 客户管理员显式选择设备并可信核验 HMI DeviceId | 精确绑定允许的 LAN 端点与证书/可信身份；不自动扫描共享网段 | RegisteredUnshared / IdentityMismatch |
-| `setHmiShare` | 管理员权限核验后的明确开关与期限 | 本地先持久化并推进 SitePolicyRevision；共享默认 OFF；撤权先断 Route | SharingEnabled / SharingRevoked / PolicyError |
+| `setHmiShare` | 管理员权限核验后的明确开关与期限 | 共享默认 OFF；**扩权先受信持久化并验证新 SitePolicyRevision 再开放准入**；**撤权先使本地新 Route 准入失效**，继而持久拒绝修订并关闭受影响 Route；写盘失败保持拒绝/NEEDS_RECOVERY | SharingEnabled / SharingRevoked / PolicyError |
 | `startEdgeLink` | 经授权的 Edge instance 生命周期管理 | Outbound 到受信 Gateway；证书验证失败拒绝；不影响本地 Direct | AuthenticatedSiteLink / Unavailable / Disabled |
 | `admitRouteOffer` | 当前受信 Gateway + 绑定 Offer | Revalidate Operator/Site/Edge/HMI/Protocol/TTL/revision/当地 ACL；只选本机白名单 Endpoint | RouteAccepted / Denied(reason) |
 | `pairByteStream` | 同一 RoutePermit 一次配对 | 配对**仅**受信远端和当前工厂 Edge 双边；按序 FIFO 转发，不解析 Native payload | Paired / Partial / PairConflict / Closed |
