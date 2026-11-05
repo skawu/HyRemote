@@ -6,7 +6,10 @@
 // the D3D11 RHI backend, whose destruction contract completes pending readbacks.
 #include <QMetaObject>
 
+#include <cstdint>
 #include <memory>
+
+#include "quick/quick_native_frame_claim.hpp"
 
 QT_BEGIN_NAMESPACE
 class QQuickWindow;
@@ -22,6 +25,15 @@ public:
 
     void start();
     void stop() noexcept;
+
+    // S2R-3 shadow claim simulator plumbing. Tokens carry metadata only and are
+    // polled on the GUI thread; no pixel ever leaves this observer.
+    bool takeCompletedToken(NativeFrameToken &token);
+    void requestSample() noexcept;
+    std::uint64_t renderSerial() const noexcept;
+    std::uint64_t currentEpoch() const noexcept;
+    long long lastRenderMs() const noexcept;
+    bool renderActive(long long nowMs, long long windowMs) const noexcept;
 
     QuickNativeFrameShadow(const QuickNativeFrameShadow &) = delete;
     QuickNativeFrameShadow &operator=(const QuickNativeFrameShadow &) = delete;

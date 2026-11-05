@@ -15,7 +15,10 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
+#include <optional>
 
+#include "quick/quick_native_frame_claim.hpp"
 #include "quick/quick_native_frame_policy.hpp"
 
 namespace HyRemote::detail {
@@ -36,6 +39,8 @@ struct PendingReadback
     long long submitMs = 0;
     int index = 0;
     long long submitGeneration = 0;
+    std::uint64_t epoch = 0;
+    double devicePixelRatio = 0.0;
 };
 
 long long steadyNowMs()
@@ -86,6 +91,16 @@ struct QuickNativeFrameShadow::State
     std::atomic<long long> lastSurfaceHeight{0};
     std::atomic<long long> sizeGeneration{0};
     std::atomic<std::uint64_t> completionsAcrossRecreation{0};
+
+    // S2R-3: token production for the shadow claim simulator. Tokens carry only
+    // metadata (serial/epoch/geometry); pixels are still discarded.
+    std::atomic<std::uint64_t> epochValue{1};
+    std::atomic<long long> lastRenderMs{0};
+    std::atomic<bool> sampleRequested{false};
+    std::atomic<std::uint64_t> tokensProduced{0};
+    std::atomic<std::uint64_t> tokensRejected{0};
+    std::mutex tokenMutex;
+    std::optional<NativeFrameToken> tokenSlot;
 };
 
 QuickNativeFrameShadow::QuickNativeFrameShadow(QQuickWindow *window)
@@ -115,6 +130,7 @@ void QuickNativeFrameShadow::start()
         [state] {
             state->invalidated.store(true, std::memory_order_release);
             state->scenegraphInvalidations.fetch_add(1, std::memory_order_relaxed);
+            state->epochValue.fetch_add(1, std::memory_order_relaxed);
         },
         Qt::DirectConnection);
 
@@ -157,20 +173,33 @@ void QuickNativeFrameShadow::start()
                                        || previousHeight != surface.height())) {
                 state->swapchainSizeChanges.fetch_add(1, std::memory_order_relaxed);
                 state->sizeGeneration.fetch_add(1, std::memory_order_relaxed);
+                state->epochValue.fetch_add(1, std::memory_order_relaxed);
             }
 
-            // Bounded shadow sampling: hard cap + minimum interval + at most
-            // one request in flight. Nothing here may block or wait.
-            if (state->readbackSubmitted.load(std::memory_order_relaxed)
-                >= kNativeFrameShadowMaxReadbacks)
+            state->lastRenderMs.store(steadyNowMs(), std::memory_order_relaxed);
+
+            // Two sampling sources share the single in-flight slot:
+            //   - scheduled diagnostic sampling (capped/interval) as before;
+            //   - an on-demand sample requested by a pending Core request in the
+            //     shadow claim simulator, which must not be hidden by the
+            //     diagnostic cap or the 250 ms interval.
+            const bool onDemand =
+                state->sampleRequested.exchange(false, std::memory_order_acq_rel);
+            if (!onDemand
+                && state->readbackSubmitted.load(std::memory_order_relaxed)
+                       >= kNativeFrameShadowMaxReadbacks)
                 return;
             if (state->readbackInFlight.load(std::memory_order_acquire)) {
+                // Keep the on-demand intent for the next natural frame instead
+                // of silently losing it behind the single in-flight slot.
+                if (onDemand)
+                    state->sampleRequested.store(true, std::memory_order_release);
                 state->readbackDropped.fetch_add(1, std::memory_order_relaxed);
                 return;
             }
             const long long now = steadyNowMs();
             const long long previous = state->lastReadbackSubmitMs.load(std::memory_order_relaxed);
-            if (previous != 0
+            if (!onDemand && previous != 0
                 && now - previous < static_cast<long long>(kNativeFrameShadowMinIntervalMs))
                 return;
 
@@ -196,6 +225,11 @@ void QuickNativeFrameShadow::start()
             pending->index =
                 static_cast<int>(state->readbackSubmitted.load(std::memory_order_relaxed)) + 1;
             pending->submitGeneration = state->sizeGeneration.load(std::memory_order_relaxed);
+            pending->epoch = state->epochValue.load(std::memory_order_relaxed);
+            pending->devicePixelRatio =
+                window->width() > 0
+                    ? static_cast<double>(surface.width()) / static_cast<double>(window->width())
+                    : 0.0;
             pending->result.completed = [pending, state] {
                 state->readbackCompleted.fetch_add(1, std::memory_order_relaxed);
                 if (state->stopped.load(std::memory_order_relaxed))
@@ -259,6 +293,28 @@ void QuickNativeFrameShadow::start()
                 state->lastWidth.store(width, std::memory_order_relaxed);
                 state->lastHeight.store(height, std::memory_order_relaxed);
 
+                // The token carries metadata only; pixels stay discarded. A
+                // stopped/invalidated window never produces a claimable token.
+                if (width > 0 && height > 0 && bytes > 0
+                    && !state->stopped.load(std::memory_order_relaxed)
+                    && !state->invalidated.load(std::memory_order_relaxed)) {
+                    NativeFrameToken token;
+                    token.serial = pending->submitFrame;
+                    token.epoch = pending->epoch;
+                    token.width = width;
+                    token.height = height;
+                    token.format = static_cast<int>(pending->result.format);
+                    token.devicePixelRatio = pending->devicePixelRatio;
+                    token.sourceMs = pending->submitMs;
+                    {
+                        std::lock_guard<std::mutex> lock(state->tokenMutex);
+                        state->tokenSlot = token;
+                    }
+                    state->tokensProduced.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    state->tokensRejected.fetch_add(1, std::memory_order_relaxed);
+                }
+
                 state->discardedBytes.fetch_add(bytes, std::memory_order_relaxed);
                 state->readbackInFlight.store(false, std::memory_order_release);
                 delete pending;
@@ -286,6 +342,10 @@ void QuickNativeFrameShadow::stop() noexcept
     m_afterRendering = {};
     QObject::disconnect(m_sceneGraphInvalidated);
     m_sceneGraphInvalidated = {};
+    {
+        std::lock_guard<std::mutex> lock(m_state->tokenMutex);
+        m_state->tokenSlot.reset();
+    }
     // This state is also owned by any signal currently executing. That
     // callback touches only atomics, so stop need not wait for a render thread
     // that may itself be synchronizing with the GUI thread. A readback still in
@@ -344,7 +404,47 @@ void QuickNativeFrameShadow::stop() noexcept
         << m_state->lastWidth.load(std::memory_order_relaxed)
         << "x"
         << m_state->lastHeight.load(std::memory_order_relaxed)
+        << " tokens_produced="
+        << m_state->tokensProduced.load(std::memory_order_relaxed)
+        << " tokens_rejected="
+        << m_state->tokensRejected.load(std::memory_order_relaxed)
         << " pixels_published=0";
+}
+
+bool QuickNativeFrameShadow::takeCompletedToken(NativeFrameToken &token)
+{
+    std::lock_guard<std::mutex> lock(m_state->tokenMutex);
+    if (!m_state->tokenSlot)
+        return false;
+    token = *m_state->tokenSlot;
+    m_state->tokenSlot.reset();
+    return true;
+}
+
+void QuickNativeFrameShadow::requestSample() noexcept
+{
+    m_state->sampleRequested.store(true, std::memory_order_release);
+}
+
+std::uint64_t QuickNativeFrameShadow::renderSerial() const noexcept
+{
+    return m_state->frameSeq.load(std::memory_order_relaxed);
+}
+
+std::uint64_t QuickNativeFrameShadow::currentEpoch() const noexcept
+{
+    return m_state->epochValue.load(std::memory_order_relaxed);
+}
+
+long long QuickNativeFrameShadow::lastRenderMs() const noexcept
+{
+    return m_state->lastRenderMs.load(std::memory_order_relaxed);
+}
+
+bool QuickNativeFrameShadow::renderActive(long long nowMs, long long windowMs) const noexcept
+{
+    const long long last = m_state->lastRenderMs.load(std::memory_order_relaxed);
+    return last > 0 && nowMs - last <= windowMs;
 }
 
 }  // namespace HyRemote::detail
