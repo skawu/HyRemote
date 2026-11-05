@@ -156,6 +156,12 @@ D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundari
 
 **Gate-D** 审查身份/数据唯一 owner、原子撤权/持久化失败关闭、资源公式和负向规格及与 Stage05 唯一 IDL 的一致性，不先要求正式 Gateway/Public 产品代码。**Gate-I/产品实施之后**才在真正工厂 PC 与自托管目标平台逐项验证 OS/Qt Kit、慢端/断线、TLS E2E、IPC ACL、密钥迁移以及更新回退。Gateway #190 激活另有 Human Gate，不能由 EG 文档合并推出。
 
+### V-03 设备目录、TrustStore、OS 秘密及 OEM 的验收设计
+
+[D2 V-03 `IDT-01..10`](module-detail-d2-hyremoteview-client-2026-11-05.md) 直接覆盖本地地址/DeviceId/Operator 与 HMI Grant 分层、可追责的可信初始锚、证书换发/TrustRevision、OS SecretStore 按 purpose 隔离、Schema 原子迁移/降级、诊断真实性与 OEM/工厂共享边界。
+
+Gate-D 审查 **Owner 与数据 schema、增权先安全验证并持久化/撤权先关闭准入、独立身份锚、失败关闭的状态/负例、凭据最小暴露与回退合同**；不以实际平台 OS SecretStore 成功读写为设计 Gate 的伪前置。正式获准实施后按 `VIEW-03/05/07/10/11/12`、`XP-11/14/16/19/23/24/28` 的实际 Windows/Linux Kit、身份/凭据/磁盘故障注入、升级回退和不串租户证据独立验收；全部当前 `DESIGN_ONLY/NOT_RUN`，不从已有 RFB 客户端测试推断 Native TrustStore 已实现。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
