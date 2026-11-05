@@ -11,7 +11,7 @@
 
 本稿交付 #843 中 F-01 Core、F-02 Shared Runtime、F-03 四个并列接入前端、F-06 设备部署授权/会话许可/隐私及最终输入栅栏的**跨模块职责、内部接口语义、状态与失败关闭契约**，作为下一轮 F-04 RFB/F-05 Native 协议详设和 V-01 View 客户端设计的稳定输入。
 
-**来源完整性说明**：本仓库可直接阅读 ADR-0007/0008、`docs/architecture.md`、`docs/security.md`、正式冻结记录及源代码；V15/V8 **完整 Word 原文与 V8 附录 A/B 没有同步为可逐条核对的 GitHub 规范全文**。已有 #830 的 HMI 详细设计 05 引用了附录 A/B 的结构，但引用不是独立复核。因此本稿按已批准原则开展详细设计，标明需原文签收的内容，不宣称完成 V15 已有 56 个二级标题所涵盖的条款/V8 全附录逐条追溯；任何实质差异提交 Human 变更决策。
+**来源完整性说明（按 2026-11-05 后续 W00 审计更新）**：本仓库可直接阅读 ADR-0007/0008、`docs/architecture.md`、`docs/security.md`、正式冻结记录及源代码；正式版 DOCX 二进制没有同步成 GitHub 规范全文，但 Human 已提供与历史送审稿 SHA 精确匹配、确认正文等效的 V15/V8 完整原文。见 [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md)：V15 56 条、V8 99 节和附录 A/B 的 21 类 Native 字段已作来源核对；原 V8 未绑定的数值和 TLS-first 解释已有 [Human P-A/A 受控增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)。**这仍不等于 56/99 逐原子合同审签、Native E2E 真实验证或设计冻结**；本稿最初代码快照及历史差距作为当时事实保留，新合同与上位审批冲突必须提交 Human 受控修订。
 
 本轮不实施 Native、DeploymentAdmission、会话授权、RFB 改造、Qt 采集性能优化或 View/Gateway/Edge；不新设第五接入方式、不强行改变已发布 API、RFB 监听默认配置、Native 1.0 消息、版本路线或测试 Gate。
 

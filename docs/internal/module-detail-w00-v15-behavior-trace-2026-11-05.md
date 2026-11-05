@@ -8,7 +8,7 @@
 - **模块责任**：`D1 F-01..F-06`、`D2 V-01..V-03`、`D3 E-01/G-01`、`D4 T-01/X-01/X-02`、`D5 W00` 是已合并的设计模块/计划域；多模块以分号表示原文义务需在设备、客户端与质量多边各自满足，**并非多个独立授权源**。
 - **状态不造 PASS**：本轮全部行只完成需求→责任→候选行为→禁止/故障→原 Word 验收场景初步映射，统一 `MAPPED_NOT_TESTED`。行级 `CONTRACT_REVIEWED`、`WIRE_READY`、`VALIDATED` 需有可查回证据，不能因为 Markdown 合并变 PASS。
 - **验证级别**：首轮单独检查来源 56/56、标题对应、主模块归属、是否写出可反证失败边界。后续对每行追加精确 `ContractID/State/Error/TestID/Owner/EvidenceSHA` 并分解成可执行原子要求；多项“及”不应在一条测试覆盖下自动全绿。
-- **五项批准**：`H-T01=A; H-DUAL=A; H-REVOKE=A; H-EDGE=A; H-RFB=A` 不再开放。Native V8 附录 A/B 的消息编号/字段仅以 V8 为权威，未解决数值语义不能由本表改写。
+- **五项批准**：`H-T01=A; H-DUAL=A; H-REVOKE=A; H-EDGE=A; H-RFB=A` 不再开放。Native V8 附录 A/B 的原有消息编号/字段不变；缺失数值与两档 TLS-first 语义已有 Human 批准的 P-A/A 受控补充，任何新增协议语义仍不得由本表改写。
 
 ## 2. V15 56 项来源逐行行为追溯
 
@@ -81,10 +81,29 @@ V15 表6 共 31 条，引用序号范围 **1–31**，文档原文没有这些�
 | --- | --- | --- | --- |
 | 权限撤销/旧帧/held | §4.1/4.3/6.1–6.3/10.2/13.2/13.4/13.7 | HMI 唯一 Policy/Grant 线性化，网络可控旧缓存失效；View 遮旧帧、禁输入；旧已达网络/已见像素不承诺追溯删除 | `POLICY_APPROVED / RACE_AND_TEST_OPEN` |
 | Direct/Managed/Tool | §1.4/2.1–2.2/5.1–5.3/8.6–8.7/11.3/13.8–13.9 | Direct 离线独立；Factory PC 只装 View；Edge/Gateway 仅 opaque 路由；Tool 仍维护已发布 RFB、S1 #586 OPEN | `PRODUCT_DECISION_APPROVED / E2E_OPEN` |
-| Native 字节规范/身份 | §5.2/5.4/6.1/7.2/10.1 | 独立 Native 21 类与 HMI DeviceTLS、会话 Target/Grant；不凭 RoutePermit 或用户 UI 自行授权，附录 A/B 未补数值必须 FailClosed | `SOURCE_A_B_AUDITED / WIRE_V01_V07_OPEN` |
+| Native 字节规范/身份 | §5.2/5.4/6.1/7.2/10.1 | 独立 Native 21 类与 HMI DeviceTLS、会话 Target/Grant；不凭 RoutePermit 或用户 UI 自行授权，按已批准 P-A/A 数值和 TLS-first 安全语义；未知值必须 FailClosed | `SOURCE_A_B_AUDITED / P_A_A_APPROVED / PARSER_E2E_NOT_RUN` |
+
+### 4.1 首批高风险原子合同的实际交叉核查（设计级，不冒充 56 项签收）
+
+本批从已有 56 行中选出**十组影响授权、失败关闭、业务事实和交付资格的高风险跨模块断面**，实地对照 D1/D2/D3/D4 已存在的合同 ID 与测试入口。下列 `CONTRACT_LINKED` 只表示**本轮已验证对应的设计文本存在且责任一致**；不代表所有源句子已经被原子化，更不是独立 Gate-D 审签或测试 PASS。尚无可核签的实现合同者明确 `OPEN`，不补造接口。
+
+| V15 原文义务/消费方 | 已存在的最小 ContractID 与唯一事实 Owner | 正常状态→拒绝/异常时序（要审签的原子断言） | 负例证据入口及未关闭事项 | 本轮状态 |
+| --- | --- | --- | --- | --- |
+| §3.2 启动/停止；F-02/F-06 + F-03 | D1 `RT-01`、`INT-07`，Host DeploymentAdmission | 必需 RFB/Native 先 prepare → 完整可信 commit 后公开；任一缺项 abort → 未对外可用，Qt 本地业务仍正常 | FW-02/03、XP-01；准备/端口绑定/故障竞态尚待真实资格 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§6.1/6.2/13.7 控制许可/现场优先；F-06 | D1 `POL-04/05/06`、F-05 `AFS-05/06/09`；HMI 当前 Scope Arbiter | 当前同 Scope holder 有效才可接纳 DOWN；现场抢占/GrantEpoch 变更 → 新 DOWN 禁入，GUI 旧票据投递前再拒、按来源保护释放 | FW-04/06、XP-04/05；Qt 最终交付线性化需独立审查 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§4.3/10.2/13.4 显示隐私和撤权；F-02→V-02 | D1 `RT-04/05/08`、`POL-03/07`；D2 `SURF-02/05`；HMI 负责输出策略，View 负责本地过期图 | PolicyEpoch 变化 → 未发会话队列和 DELTA 基线失效；View 失权时清敏感旧屏与禁输入；不声称追回已到达 OS/TLS 或已见像素 | FW-06/07/08、XP-06/25/26；逐 Session Filter 与网络在途界限需独立审签 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§5.1/5.2/5.4 两独立协议；F-04/F-05/V-01 | D1 `RLG-01..09` 与 `AFS-01/02/10`、Native P-A/A；HMI 设备权威 | Legacy RFB 固定 Target/Scope、明确允许输入且不伪造个人身份；Native 两档均先 DeviceTLS，非法握手/顺序/枚举拒绝 | DP-07、GN-01..12、XP-02/03/07；标准 Viewer + Native parser 双端均未做本轮实测 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§8.6/13.8 工厂共享/受管访问；E-01/G-01/F-05 | D3 `EG-01/03/04/08`、D1 `AFS-11`；工厂管理员许可 Route，HMI 独立准许像素/控制 | Gateway Permit + 本地精确白名单双通过后只能建立 Route；HMI DeviceTLS/Grant 若拒 → 零获准像素和输入；不许任意 host:port | MG-03/06/07、XP-08/09/10；Gateway #190 NOT_ACTIVATED，产品级真实路由未测 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§8.7/13.9 登录态 Edge 断线/恢复；E-01/V-03/X-01 | D3 `EDGE-LC-01..08`、`EG-09`，D2 `VIEW-EDGE-01..05`；当前 `EdgeRunLease` 唯一有效运行许可 | 单画面关闭不自动取消获准共享；整个 View 退出/OS 注销/崩溃 → 旧 RunEpoch/Route 失效，登录/升级不能无条件复活 | XP-12/24；需真实 OS 登录/注销/升级与持久撤权复验 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§8.4/12.3 客户端/安装升级及持续 Direct；V-03/X-01 | D4 `DEP-01/04/05/07/08`、D2 `IDT-03/05/08`；各产品独立 Install/Trust Owner | 包签名/Kit/策略 schema 预检 → 可恢复激活；旧撤销或不同设备身份在失败/回滚后不得复活；合法 Direct 不依赖 Gateway | XP-19/24/28；持久高水位掉电一致性尚无实测 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §11.3 Tool SDK 集成与诊断；T-01 | D4 `TL-01/03/04/05/06/08`；Tool 是实际观察/报告 Owner，不是 HMI Grant 权威 | 用户明确 SDK/Kit/日志来源 → 只读检查/人工确认脱敏报告；来源未知/未运行 → `UNKNOWN_SOURCE/NOT_RUN`，不能变成 PASS | XP-14/15/16/20；仅完成设计，Tool S1 #586 OPEN，新 Inspector/Report 未实现 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §§7.1/7.2 用户输入与中文 IME；F-05/F-06/V-02 | D1 `POL-05/06/08`、D2 `SURF-04/06/07`；设备最终 Qt 投递为业务输入界限 | 有效焦点/Scope/代次才发新 DOWN/CommittedText；失焦/几何重绑清旧 held；禁止把提交文本与按键重复执行 | VIEW-06/07、XP-05/21；真实中文 IME 与多 Qt Kit 测试未运行 | `CONTRACT_LINKED_NOT_SIGNED` |
+| §9.2 文件传输与业务应用结果；F-06/V-03 | 当前 D4 仅 `XP-22` 的阶段性验收语义；**没有在本轮查到可签收的文件传输实现接口/Host 业务结果回执合同** | 必须区分客户端已发、设备收到、宿主接受、业务生效/未知；结果未知不允许自动重放。**不得为填表私加 Native 1.0 字节消息或未经批准的管理端口** | XP-22；需回到 V15/V8 完整原文确定规划阶段、真实权限与可实现的受控接口，再技术审查 | `OPEN_ATOMIC_INTERFACE_AND_PHASE` |
+
+**本批发现与下轮入口**：九组有可定位的候选合同链，但仍缺独立合同审签/验证；**§9.2 文件/业务结果链缺可签收的设备端原子接口及具体分期证据**，不得以 XP-22 的文字覆盖假装该功能已确定实现。W00 中尚未完成原子核查的其余 V15 行，以及 V8 99 小节/非 Heading2 附录 C/E/F，仍按原始索引审查，必须继续按既定 `Requirement→Contract→State/Failure→Test→Owner` 逐项补齐；**这十组不是“完成 10/56 条冻结”**。真实实现和测试一概 `NOT_RUN/NOT_AUTHORIZED`。
 
 ## 5. 与 V8 99 小节与 D1–D5 的下一道复核门禁
 
-V8 附录 D 提供 56 项对应的主责章节/补充章节，已 56/56 精确匹配，故本表按 **V15 原章目**逐行建立责任映射。V8 全部 99 个 Heading2 是架构接口/状态/故障的下一层审签单位；**本轮未声称对 99 节的所有句子逐条映射到可编译 API**。正式 W00 在冻结申请前应补 `V8 § → D1–D5 ContractID → State/Failure/Test/Owner`，尤其 QtPrivate 版本单元、Runtime 资源限额、Grant/隐私线性化、Managed RoutePermit 和 Native wire 数值表。
+V8 附录 D 提供 56 项对应的主责章节/补充章节，已 56/56 精确匹配，故本表按 **V15 原章目**逐行建立责任映射。V8 全部 99 个 Heading2 是架构接口/状态/故障的下一层审签单位；**本轮未声称对 99 节的所有句子逐条映射到可编译 API**。正式 W00 在冻结申请前应补 `V8 § → D1–D5 ContractID → State/Failure/Test/Owner`，尤其 QtPrivate 版本单元、Runtime 资源限额、Grant/隐私线性化、Managed RoutePermit，以及**已经 Human 批准 P-A/A 的 Native 字节值域与仍未验证的状态/错误/负向对拍**。
 
-**本轮输出**：`SOURCE_REQUIREMENTS_56=EXACT_INDEXED`; `PD_56_BEHAVIOR_ROWS=56_MAPPED_NOT_TESTED`; `V8_APPENDIX_D_56_TITLE_MATCH=PASS`; `V8_ARCH99_BEHAVIOR_TRACE=OPEN`; `GATE_D=NO`; `GATE_I=NO`. 不生成正式 Word、不改产品代码。
+**本轮输出**：`SOURCE_REQUIREMENTS_56=EXACT_INDEXED`; `PD_56_BEHAVIOR_ROWS=56_MAPPED_NOT_TESTED`; `HIGH_RISK_ATOMIC_CHAINS=9_LINKED_1_OPEN_NOT_SIGNED`; `V8_APPENDIX_D_56_TITLE_MATCH=PASS`; `V8_ARCH99_BEHAVIOR_TRACE=OPEN`; `GATE_D=NO`; `GATE_I=NO`. 不生成正式 Word、不改产品代码。

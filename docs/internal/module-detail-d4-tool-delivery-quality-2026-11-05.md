@@ -1,9 +1,9 @@
 # D4｜HyRemoteTool、安装交付与全产品安全/质量合同（候选）
 
-> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
+> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。V15/V8 等效原文已取得，Native P-A 数值/TLS-first A 已获批准；其余内部接口、性能假设、原子验收与 Gate-D 仍待设计审签，不因上述决定自动冻结。
 
 > **任务**：[全产品设计总控 #843](https://github.com/skawu/HyRemote/issues/843)，范围 T-01、X-01、X-02；对齐 D1 Framework、D2 HyRemoteView、D3 Edge/Gateway 设计候选。  
-> **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，但尚未取得可逐条回读的完整 DOCX/Native A/B。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默覆盖已批准的 S1 工作台规划或删除已经真实发布的基础 RFB 访问能力；S1 全量验收 #586 仍 OPEN。  
+> **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，目前已获得经 Human 确认与正式版正文相同、历史送审稿 SHA 匹配的 V15/V8 完整原文，并完成 56/99/Native 21 类结构核验；正式版 DOCX 二进制尚未逐字节核对，原子合同审签未完成。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默覆盖已批准的 S1 工作台规划或删除已经真实发布的基础 RFB 访问能力；S1 全量验收 #586 仍 OPEN。  
 > **性质**：`DESIGN_CANDIDATE / T01_X01_X02_REVIEW / NO_PRODUCT_CODE / NO_VERSION_ACTIVATION / NOT_FROZEN`。现有产品交付状态须按真实 release/代码/精确平台，本文不重写历史发布。
 
 ## 1. 四个软件产品/责任必须明确
@@ -23,7 +23,7 @@
 
 - 2026-10-22 `hyremote-tool-workbench-prd-2026-10-22.md` 记录 Owner 确认 **D 综合工作台**、**S1=远程连接+会话工作区+基础诊断**；S2=进阶诊断，S3=SDK 集成辅助，S4=远程主机管理必须另经安全审核。
 - 最新 V15/V8 的产品总体分工倾向是：**Framework=设备端、HyRemoteView=官方完整访问客户端/内置 Edge、HyRemoteTool=开发者 SDK/Qt Kit 集成诊断和支持工具**。
-- 两套描述对“未来谁负责官方远程会话 UI、是否继续投资维护 Tool 的独立 RFB 客户端”存在**实质产品路线重叠**，不能仅凭“架构更优”直接覆盖旧审批或撤销客户权益。
+- 两套历史描述曾对“未来谁负责官方远程会话 UI、是否继续维护 Tool 的独立 RFB 客户端”存在实质重叠；**现已由 H-T01=A 正式裁决**，本节保留冲突来源及其消解依据，不再把它列作待决产品方向。
 
 ### 2.2 Human 正式批准的产品分工 A（H-T01=A）
 
@@ -53,6 +53,40 @@
 | `ManagementAdapter`（未来、不得先产品暴露） | 仅在设备端正式安全管理能力获批并实测后连接 | 不借 RFB 键鼠模拟“远程主机配置”，不私开第三设备 TLS listener |
 
 Tool 依照当前真实 Windows Qt5.15/Qt6.8 和已交付安装单元单独验证；与 Qt6.8 View 技术栈相似并不意味着两种不同产品的许可证、打包、版本、升级目录能够混用。
+
+### 3.1 T-01 当前已交付事实、证据等级与未来实现隔离
+
+当前已核对 [Tool README](../../tools/hyremote-tool/README.md) 的 **V0.3.0.0 既有客户端范围**：通过用户输入的 IP/port 连接 RFB 3.8 `SecurityType None`；默认只读，操作者显式开启后才发送键盘/指针/滚轮；支持画面、FPS/吞吐/帧数/分辨率、连接错误和中文/English 切换。该 README 还明确排除当前 VNCAuth、TLS/VeNCrypt、剪贴板、文件传输、全屏、多显示器及管理面功能。**这些是仓库文档声明而非本轮独立实机复验**；未来 Inspector、IntegrationAdvisor、SupportReport 并未由这份当前 Tool README 证明已交付。Native DeviceTLS/Managed/Edge 的正式访问工作仍归 View；Tool 完整 S1 #586 OPEN。
+
+本模块不将旧 Tool 的 `Connected`、RFB 无认证像素或操作者勾选键鼠解释成 HMI 个人身份、Native `ViewGrant/ControlGrant` 或公网安全证明。对已交付功能做回归时也须使用可复核的精确 Tool/Qt Kit/OS/设备版本，不以 README 或设计 PR 代替运行结果。
+
+### 3.2 Tool 内部只读诊断和用户可导出报告的输入输出合同
+
+| 数据对象/逻辑模块 | 唯一输入与 Owner | 输出与最小溯源字段 | 拒绝或不允许做的事 |
+| --- | --- | --- | --- |
+| `ToolInputSession` | T-01：用户明确选择的 SDK 根、Kit、日志/manifest；显式取消代次 | `sourceKind,selectedPath,observedAt,cancelGeneration,readStatus` | 不后台遍历无关目录、不自动下载或修改 Qt/CMake/系统配置 |
+| `SdkInspector` | T-01：指定 SDK manifest/CMake targets/实际 Qt Kit 与平台工件 | `source,artifactSHAOrUnknown,kit,checkKind,method,result`；静态/实际运行分离 | 文件存在不等于 QPA/QtPrivate exact Kit 已运行；缺证据不能 PASS |
+| `IntegrationAdvisor` | T-01 消费唯一 [F-03 INT-01..10](module-detail-d1-framework-boundaries-2026-11-05.md) 与真实已安装公开 API | C++/QML/Generic/QPA 的兼容路线、权限预检及复现条件 | 不发明 setter、新 Native wire、后台创建 listener 或偷偷修改客户工程 |
+| `DiagnosticsImporter` | T-01：用户显式导入且限制大小/路径的脱敏证据 | `source,observedAt,trustLevel,sourceSHAOrUnknown,parseStatus` | 不因用户陈述或日志文本就推断远端设备真实成功，不自动上传 |
+| `SupportReport` | T-01：上述只读检查的已预览、人工确认集合 | `reportVersion,toolSHA,kit,sourceKind,checks[],unknowns[],redactions[]` | 禁止导出口令/token/TLS 私钥/截屏/输入全文；无人工确认不外发 |
+| `ToolProfileStore` | T-01：Tool 自己的语言、非秘密连接偏好和 SDK 路径 | 独立产品 `schemaVersion`、迁移来源和失败状态 | 不与 View DeviceTrust、Factory SitePolicy 或 Gateway 租户秘密共享明文持久层 |
+
+`checks[]` 只允许 `PASS_OBSERVED / FAIL_OBSERVED / NOT_RUN / NOT_APPLICABLE / UNKNOWN_SOURCE` 五种**设计内部报告状态**；每项必须携带 `checkId,method,source,kitOrNA,artifactDigestOrUnknown,observedAt`。未知或导入证据不能冒充经独立签收的安全资格。名称及字段均是 **T-01 内部设计合同，不是已发布 Tool API、外部 wire 或现成界面功能**。
+
+### 3.3 T-01 可实施验收的最小不可分割合同
+
+| ContractID | 正常行为的责任归属 | 负向/边界测试（未来，均未运行） | 既有验收入口 | 当前 |
+| --- | --- | --- | --- | --- |
+| `TL-01` | T-01 保留已发布 Basic RFB3.8/None、默认只读与显式控制开关 | 非 TLS 不能显示“设备身份已核验”；未实现 Native/VNCAuth 按真实能力报告 | XP-02/15/20 | `DESIGN_ONLY` |
+| `TL-02` | T-01 管理当前 RFB 键鼠事件、失焦/断线及帧遥测的真实 UI | 禁控/丢连接/重复 UP 不谎报业务已执行，旧 held 清理须以未来真实回归验证 | XP-05/15 | `DESIGN_ONLY` |
+| `TL-03` | T-01 Inspector 明确 Kit/SDK/manifest 与来源等级 | Qt minor/ABI、QtPrivate/插件不符及缺运行证据均不可 PASS | XP-01/14 | `DESIGN_ONLY` |
+| `TL-04` | T-01 Advisor 使用唯一 F-03 INT-01..10 和已发布 API | QML/Generic/QPA 参数错、C++ setter 不存在及 Host H-02a 不合格不能给成功步骤 | FW-01/10、XP-14 | `DESIGN_ONLY` |
+| `TL-05` | T-01 日志/manifest 只读、限额、脱敏导入 | 超大输入、目录逃逸、伪造 DeviceTLS/设备成功来源不能提升资格 | XP-14/16 | `DESIGN_ONLY` |
+| `TL-06` | T-01 SupportReport 的逐项证据和显式导出确认 | token/私钥/屏幕内容/输入全文过滤；`NOT_RUN` 不可转成 PASS | XP-14/16/20 | `DESIGN_ONLY` |
+| `TL-07` | T-01 仅迁移自身非秘密 Profile 和语言/Kit 偏好 | 升级/回退不能覆盖或恢复 View/Edge/Gateway 另一 Owner 的权限 | DEP-07、XP-24 | `DESIGN_ONLY` |
+| `TL-08` | T-01 与 V-01 按 H-T01=A 分工，维护旧 RFB；未来完整 Native/Managed 归 View | Tool 全量 S1 #586 OPEN，不能当已验收；不得删除存量入口或构造第二个 Gateway/Edge 产品 | XP-15/19/20 | `DESIGN_ONLY` |
+
+以上八项将真实运行、许可证、Kit 和支持矩阵保留为 Gate-I 后的实施证据；**目前只完成可审查设计，不创建 Tool 新按钮/产品代码，也不由 T-01 改写已批准 H-T01=A**。
 
 ## 4. X-01 安装/配置/运行/回退的全链路产品矩阵
 
@@ -290,4 +324,4 @@ XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB �
 | H-EDGE | 工厂后台首批范围 | **HUMAN_APPROVED_A**：仅支持登录期间 Edge 在线，退出/注销真实离线；无人值守需未来单独资格且仍同一个 View 安装 | 首批产品范围已定；Windows Service 不构成当前支持承诺 |
 | H-BASELINE | V15/V8 送审稿等效完整正文与 Native 附录 A/B 已取得 | 送审稿实际 SHA 与 #827 历史记录匹配，Human 确认与已批准正式版正文相同；56/99/21 来源核对已归档，原 V8 的 WIRE-V01..V06 数值和 SOURCE_TENSION_01=A 已获 Human P-A/A 批准；WIRE-V07 真实互通及负向测试仍未运行 | Gate-D 仍未批准；不假称正式版 DOCX 二进制 SHA 已取回 |
 
-**D4 当前结论**：Human 的 H-T01/H-DUAL/H-RFB/H-REVOKE/H-EDGE=A 均保持批准。Human 提供了与 #827 送审稿归档 SHA 一致且正文等效的 V15/V8；56/99/21 来源索引与 V15 表6 31 场景已经形成受控审计。新补的 XP-21..XP-28 是此前 XP01..20 未充分覆盖的用户验收设计项，全部 `NOT_RUN`；Native 数值与原文安全档位仍存在缺口。上述不代替 Gate-D 冻结、产品代码 Gate-I、测试资格或发布。正式 Word 仍先目录/内容/图表/版式和源条款审签后才制作。
+**D4 当前结论**：Human 的 H-T01/H-DUAL/H-RFB/H-REVOKE/H-EDGE=A 均保持批准。Human 提供了与 #827 送审稿归档 SHA 一致且正文等效的 V15/V8；56/99/21 来源索引与 V15 表6 31 场景已经形成受控审计。新补的 XP-21..XP-28 是此前 XP01..20 未充分覆盖的用户验收设计项，全部 `NOT_RUN`；Native P-A 数值和 TLS-first 安全档位 A 已获 Human 批准，但 Host/Viewer 的互操作、负向向量与安全实现资格仍未运行。上述不代替 Gate-D 冻结、产品代码 Gate-I、测试资格或发布。正式 Word 仍先目录/内容/图表/版式和源条款审签后才制作。

@@ -1,6 +1,6 @@
 # D2｜HyRemoteView 客户端模块详细设计 V-01/V-02/V-03（候选）
 
-> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
+> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。V15/V8 等效原文已取得，Native P-A 数值/TLS-first A 已获批准；其余内部接口、性能假设、原子验收与 Gate-D 仍待设计审签，不因上述决定自动冻结。
 
 > **治理入口：** [HyRemote #843](https://github.com/skawu/HyRemote/issues/843)；跨仓前提为 [HyRemoteView #1](https://github.com/skawu/HyRemoteView/issues/1) / [#4](https://github.com/skawu/HyRemoteView/issues/4) / [#5](https://github.com/skawu/HyRemoteView/issues/5)，及已批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`。  
 > **依赖：** [D1 设备基础](module-detail-d1-framework-boundaries-2026-11-05.md)、[独立 RFB/Native](module-detail-d1-device-protocols-2026-11-05.md)、[D1 六模块一致性审查](module-detail-d1-consistency-review-2026-11-05.md)、Stage04/05 Managed 边界。  
