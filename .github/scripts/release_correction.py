@@ -79,6 +79,70 @@ def validate(*, git, version, notes_name, base_notes, head_notes, head_cmake, de
     return "candidate-correction"
 
 
+
+# #789 / #567: one exact V0.3.5.0 pre-publication field-fix maintenance
+# candidate, independently reviewed on develop before copying into the protected
+# release PR. This is NOT a general maintenance exception for release/v*.
+V035_FIELD_BASE_SHA = "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
+V035_FIELD_BRANCH = "feature/789-release-preparation"
+V035_FIELD_PRODUCT_BLOBS = {
+    "src/runtime/src/automatic/composite_target.cpp":
+        "424029b453870b64714816017a3b7363353879c8",
+    "src/runtime/src/quick/quick_image_frame_storage.hpp":
+        "b5a58e921ae1857d1e4569383d18c0d6456aeced",
+    "src/runtime/src/quick/quick_target.cpp":
+        "b70cfb2c9cf260768111d60e4d52aa4bbd54f5b8",
+    "src/runtime/src/transport/rfb_transport.cpp":
+        "d6cfebb237fbd7c405b9e9da29233f4f6102260d",
+    "src/runtime/tests/test_rfb_wire_robustness.cpp":
+        "e51e172670109129d552cd676ca5f3eace098b1a",
+}
+V035_FIELD_GOVERNANCE_FILES = frozenset({
+    ".github/scripts/release_correction.py",
+    ".github/workflows/git-flow-policy.yml",
+    "docs/internal/git-flow-release.md",
+})
+
+
+def validate_v035_field_backport(*, git, version, notes_name, base_notes, head_notes,
+                                base_cmake, head_cmake, actual_base_sha, head_ref,
+                                develop_ref=DEVELOP_REF):
+    """Admit exactly the five reviewed fix blobs and separately reviewed guard.
+
+    The checked-out PR's guard must be byte-for-byte identical to the guard
+    independently landed on develop. A PR cannot authorize arbitrary extra
+    product changes by editing its own allowlist. All other release lines keep
+    the original exact-develop candidate rule.
+    """
+    if (version != "0.3.5.0" or notes_name != "docs/releases/v0.3.5.0.md"
+            or actual_base_sha != V035_FIELD_BASE_SHA or head_ref != V035_FIELD_BRANCH):
+        raise SystemExit("V035 field backport denied on unapproved version/base/branch")
+    if not base_notes.startswith(CANDIDATE_MARKER) or head_notes != base_notes:
+        raise SystemExit("V035 field backport must preserve exact pending bilingual notes")
+    if head_cmake != base_cmake:
+        raise SystemExit("V035 field backport must not alter release CMakeLists/version")
+
+    # The reviewed release base must really be an ancestor of the proposed PR.
+    # check_output raises on a nonzero status, failing the Git Flow job closed.
+    git("merge-base", "--is-ancestor", actual_base_sha, "HEAD")
+    expected = set(V035_FIELD_PRODUCT_BLOBS) | V035_FIELD_GOVERNANCE_FILES
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD")
+                  .decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit("V035 field backport exact changed-file scope mismatch: "
+                         f"expected {sorted(expected)}, found {sorted(changed)}")
+
+    for path, expected_blob in sorted(V035_FIELD_PRODUCT_BLOBS.items()):
+        actual_blob = git("rev-parse", f"HEAD:{path}").decode("ascii").strip()
+        if actual_blob != expected_blob:
+            raise SystemExit(f"V035 field backport product blob mismatch: {path}")
+
+    for path in sorted(V035_FIELD_GOVERNANCE_FILES):
+        if git("show", f"HEAD:{path}") != git("show", f"{develop_ref}:{path}"):
+            raise SystemExit(f"V035 field backport governance differs from reviewed develop: {path}")
+    return "v035-sha-scoped-field-maintenance"
+
+
 # #806: a previously accepted RC6 note must be explicitly reopened after newly verified release-blocking
 # P2 defects. This exception is SHA-locked to a single unpublished release branch and does NOT generalize
 # the right to overwrite accepted release history. Its next correction is a fresh reviewed candidate.
@@ -404,6 +468,76 @@ def self_test() -> int:
                  expect_error="exact pending bilingual notes")
     rc7_scenario("RC7 CMake/version alteration rejected", wrong_cmake=True,
                  expect_error="must not alter the release VERSION")
+
+
+    # #789: negative/positive source and governance identity cases. The fake
+    # git contract deliberately models immutable Git blob IDs and ancestor
+    # checks; no live GitHub state or user hardware is needed.
+    v035_files = set(V035_FIELD_PRODUCT_BLOBS) | V035_FIELD_GOVERNANCE_FILES
+    v035_notes = CANDIDATE_MARKER + "\\n# 中文\\n# English\\n"
+    v035_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\\n"
+
+    def v035_case(name, *, bad_base=False, bad_branch=False, bad_version=False,
+                  bad_notes=False, bad_cmake=False, missing_file=False,
+                  extra_file=False, wrong_product=False, wrong_guard=False,
+                  expect_error=None):
+        nonlocal failures, cases
+        cases += 1
+        changed = set(v035_files)
+        if missing_file:
+            changed.remove("src/runtime/src/automatic/composite_target.cpp")
+        if extra_file:
+            changed.add("src/runtime/src/automatic/unreviewed.cpp")
+
+        def git_fixture(*args):
+            if args[:2] == ("merge-base", "--is-ancestor"):
+                return b""
+            if args[:2] == ("diff", "--name-only"):
+                return ("\\n".join(sorted(changed)) + "\\n").encode("utf-8")
+            if args[0] == "rev-parse" and args[1].startswith("HEAD:"):
+                path = args[1][len("HEAD:"):]
+                sha = V035_FIELD_PRODUCT_BLOBS[path]
+                if wrong_product and path == "src/runtime/src/transport/rfb_transport.cpp":
+                    sha = "0" * 40
+                return (sha + "\\n").encode("ascii")
+            if args[0] == "show":
+                path = args[1].split(":", 1)[1]
+                return b"unreviewed\\n" if wrong_guard and args[1].startswith("HEAD:") else (path + "\\n").encode("utf-8")
+            raise AssertionError(f"unexpected V035 git fixture {args}")
+
+        try:
+            validate_v035_field_backport(
+                git=git_fixture,
+                version="0.3.6.0" if bad_version else "0.3.5.0",
+                notes_name="docs/releases/v0.3.5.0.md",
+                base_notes=v035_notes,
+                head_notes=v035_notes + "edited" if bad_notes else v035_notes,
+                base_cmake=v035_cmake,
+                head_cmake=v035_cmake + b"edited" if bad_cmake else v035_cmake,
+                actual_base_sha="0" * 40 if bad_base else V035_FIELD_BASE_SHA,
+                head_ref="feature/95-release-preparation" if bad_branch else V035_FIELD_BRANCH)
+            if expect_error is not None:
+                print(f"FAIL {name}: expected {expect_error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+        except SystemExit as error:
+            if expect_error is None or expect_error not in str(error):
+                print(f"FAIL {name}: {error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+
+    v035_case("V035 exact field fix + reviewed governance admitted")
+    v035_case("V035 different base denied", bad_base=True, expect_error="unapproved")
+    v035_case("V035 wrong preparation branch denied", bad_branch=True, expect_error="unapproved")
+    v035_case("V035 wrong train denied", bad_version=True, expect_error="unapproved")
+    v035_case("V035 notes edit denied", bad_notes=True, expect_error="pending bilingual")
+    v035_case("V035 root CMake drift denied", bad_cmake=True, expect_error="CMakeLists")
+    v035_case("V035 missing fix denied", missing_file=True, expect_error="scope mismatch")
+    v035_case("V035 extra file denied", extra_file=True, expect_error="scope mismatch")
+    v035_case("V035 wrong product blob denied", wrong_product=True, expect_error="product blob mismatch")
+    v035_case("V035 unreviewed guard denied", wrong_guard=True, expect_error="governance differs")
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")
