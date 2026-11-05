@@ -304,3 +304,44 @@ G7_FROZEN=UNCHANGED
 4. **回退/回滚**：不支持 Kit 或触发异常自动关闭私有加速，恢复安全完整帧并保留审计；明确关闭/升级/独立验证责任。
 
 **明确停线：`HUMAN_FEASIBILITY_RESEARCH_APPROVED=YES`，`HUMAN_PRODUCT_IMPL_APPROVED=NO`。** Human 未读到上述技术问题/风险并明确选择前，云端及本地 Owner **不得**向 HyRemote 生产源码加入 QtPrivate、场景 dirty hooks、修改 Qt/构建部署、或默默削弱 zero-code 安全合同；即使 F-G0/F-G1 通过也只可提交研究结论、不能自动实施。
+
+
+## 12. F-G0 深化：同步前只读 dirty 观察窗口与抓图反向污染（2026-11-05）
+
+**阶段：源代码机制验证已完成；本地精确 Qt Kit 的私有头/链接 preflight 尚未运行；产品实施未获 Human 批准。**
+
+### 12.1 两代 Qt 的同步窗口并非虚构，但也不是完整的变化事件
+
+经直接核对 **qt/qtdeclarative `v5.15.2`、`v6.8.3`**：
+
+- Qt5 `src/quick/items/qquickwindow.cpp:500–525`：`QQuickWindowPrivate::syncSceneGraph()` 先 `emit q->beforeSynchronizing()`，随后 `updateDirtyNodes()`；Qt6 对应 `:524–566` 同样如此。两代 `updateDirtyNodes` 均提取并清空 `dirtyItemList`。因此，**在 `beforeSynchronizing` 的 `Qt::DirectConnection` 里只读采样队列头**是一个*有时间窗口的研究候选*，比同步后随意轮询更有技术根据。
+- 官方 Qt 6.8 [QQuickWindow::beforeSynchronizing](https://doc.qt.io/qt-6.8/qquickwindow.html) 保证 threaded render loop 中同步阶段 GUI 线程被阻塞；**但信号回调在渲染线程**，不能执行阻塞 I/O、访问未同步的外部 Runtime/Network 对象、遍历失效指针或持有任意跨线程锁。basic/threaded 生命周期不同，研究结果仍需按 LTS 精确评估。
+- Qt5 `qquickwindow_p.h:109` 用 `Q_QUICK_PRIVATE_EXPORT` 声明私有类，Qt6 `:107` 用 `Q_QUICK_EXPORT`；两个版本 `dirtyItemList` 是内部可访问的数据成员（Qt5 `:232`、Qt6 `:188`），**不是 public ABI 约束，也不是可订阅内容回调**。Qt6 源 `src/quick/CMakeLists.txt` 存在 `Qt::QuickPrivate` 私有模块引用，但**不能由 Qt 源构建声明推出已安装 Kit 一定分发 `Qt6::QuickPrivate` 或 Qt5 相应 target**。本地 G0 要核实 target/headers/links。
+
+### 12.2 一个此前未充分识别的污染源：抓图能制造 private dirty
+
+两代 `QQuickItemGrabResultPrivate::create()` 不只调用 `window()->update()`，还在之前调用 **`QQuickItemPrivate::get(item)->refFromEffectItem(false)`**：
+- Qt5：`qquickitemgrabresult.cpp:312–315`；Qt6：同文件 `:304–307`。
+- Qt5 `qquickitem.cpp:6202–6212` 和 Qt6 `:6804–6814`：当 `effectRefCount` 首次从 0→1，`refFromEffectItem(false)` 调用 `dirty(EffectReference)`；若有父 item，还可能 `dirty(ChildrenStackingChanged)`。两代版本同构。
+- **重要后果**：在 `beforeSynchronizing` 中发现 `dirtyItemList != nullptr`，仍**不能证明发生过业务视觉变化**。即便这次 capture 没有视觉变化，它自己的 effect-reference 构建也可能产生真实 internal dirty bit。简单筛选某一种 bitmask 也需要证明不会漏掉同时发生的内容变化、ShaderEffect、视频/外部纹理与渲染线程动画。
+
+这比 H1 的公共 `UpdateRequest` 自激更深一层：**私有 dirty 本身也可能受 HyRemote 的抓图操作污染**。因此 F-G0 如能编译，应核查 exact dirty mask 来源及相位时序，绝不能因为看到“非空 dirty”就将 P2 判为 GO。**本源代码事实不足以推断每一次 grab 都产生 effect-dirty：该路径仅在 effectRefCount 的特定状态下设置。**
+
+### 12.3 F-G0 最小独立研究 preflight（唯一下一项本地工作；不是产品实现）
+
+在**现有** Qt5.15.2 / Qt6.8.3 Kit 上，使用各自**独立、限时、自退出的非仓库 `tmp/` Qt-only** 工程：
+
+1. **先判断依赖**：CMake `Qt5::QuickPrivate`、`Qt6::QuickPrivate` 是否在已安装精确 Kit 实际提供；能否包含 `<QtQuick/private/qquickwindow_p.h>`、`<QtQuick/private/qquickitem_p.h>`，并以 Kit 原生目标成功编译、链接一个只读 `QQuickWindowPrivate::get(view)` 取指针程序。记录 Qt 版本、Kit、编译器、CMake target、头路径、第一条失败。**缺失即该 Kit `BLOCKED_KIT`，停，不下载/替换 Qt，不绕过现有 SDK。**
+2. **只有两个 Kit 的实际 private preflight 可用才进入最小只读区分**：给现成 QQuickView **`beforeSynchronizing` Qt::DirectConnection**，仅取 `dirtyItemList` 是否非空、**已知 content item 的** `dirtyAttributes` bitmask、Qt 阶段/线程与捕获请求时刻；不遍历、变更/锁住 private 链表，不从渲染线程日志输出。先记录静态第一次同步；单独做固定五次 `grabToImage`；再单独修改少量 QML 颜色，检查 `Content` 与 `EffectReference` 区分/同时出现的情况。只有需要测试 `inFlightRevision` 时追加固定两次“提交抓图后改变视觉属性”的单独相位，仍只观察，不修改生产。
+3. **严格止损**：只要抓图自身的 private dirty 无法与可见内容变化可靠分开，或 Kit 缺支持/同步数据存在未解释竞态，记录 `NO_GO_OR_UNKNOWN` 并立即停止。不要将测试扩展为 Window/D3D/EGLFS 产品后端、QtPrivate hook/符号劫持、Qt 重编译、常驻探针或 16 格矩阵。
+4. 汇总至 #609，明确 `G0_KIT_LINK`、`G0_ITEM_DIRTY_PROVENANCE`、`SNAPSHOT_BARRIER` 三项的 PASS/FAIL/UNKNOWN。**即使观察成功也只表示一个狭义 Quick item 的研究假设成立；不代表完整 zero-code／Generic/QPA 覆盖，也不允许直接进入 Runtime 实施。**
+
+### 12.4 下一次 Human 审查时的技术选择
+
+若 G0 只能获得 private class 读取权限，但没有覆盖完整内容的非自激、版本化变化源，应将 **QtPrivate 只读方案判为对整产品 `NO_GO`**。不要以“能够 include QtPrivate”冒充“解决静态 CPU 问题”。随后应向 Human 提交三项真实产品取舍：
+
+- 保持零代码与完整画面能力，接受现有有界轮询的静态 CPU 成本（可保留 A1 已完成的额外复制优化）。
+- 对自有 C++ / QML 场景增加**明确可选**的真实 visual revision 通道，零代码入口不降低功能承诺但可能无法享受近零静态 CPU。
+- 允许一个经过具体技术与许可评审的 **Qt LTS renderer integration / 受控 Qt 分发机制**，由 Qt 内部真实失效与捕获边界提供可验证版本。此选项可能显著增加应用集成/SDK/ABI/许可证/升级成本，实施前必须再次获得 Human 批准。
+
+**仍然明确：`RESEARCH_APPROVED=YES`；`IMPLEMENTATION_APPROVED=NO`。不因独立诊断项目存在就视为允许注入或修改 HyRemote 产品代码。**
