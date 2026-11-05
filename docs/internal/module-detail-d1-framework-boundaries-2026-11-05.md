@@ -422,6 +422,8 @@ Constructed / Stopped
 - **E-01/G-01 Edge/Gateway**：只能中转已登记 HMI 的 FIFO 设备协议字节；不能作为全局 HMI 客户端/FrameSink、第二画面采集器或输入授权者。
 - **HyRemoteTool**：可以展示 SDK/Qt/安全配置/有权读取的诊断状态，但不得下发伪造的 Grant 或默默替客户打开公网 listener。
 
+**标准 RFB F-04 的固定 Endpoint/Peer 准入合同已明确**：详见 [F-04 `RLG-01..09` 的 Legacy Target/Scope/Input 设计](module-detail-d1-device-protocols-2026-11-05.md)。它使用**设备 Host/F-06 唯一 ControlArbiter**，每 RFB peer 独立 AccessSession、Target/Scope、GrantEpoch 有效性和 held ledger，不修改现行 RFB 3.8 wire；默认只读，宿主明确打开 legacy 输入时可在当前 Scope 控制许可下接入。该边界不影响 Native P-A/A 已批准协议。真实旧第三方 Viewer 兼容/Qt 输入负例仍 `NOT_RUN`。
+
 ## 11. 设计验收矩阵（全部是未来实现的测试规格）
 
 | ID | 需证明的事件 | PASS 条件 / 当前状态 |
