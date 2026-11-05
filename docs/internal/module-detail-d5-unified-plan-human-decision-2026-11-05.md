@@ -18,7 +18,7 @@
 
 **W00 2026-11-05 追溯工作增量（非冻结）**：[V15 表6 **31/31** 源场景→[D4 XP01..28 设计用例](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md) 的交叉追踪已补，补充 XP21..28 用于原 20 项场景未明确覆盖的真实用户结果；**只完成规格设计、全部 NOT_RUN**。
 
-**W00 2026-11-05 上位要求索引**：已生成 [V15 56 条行为/失败/表6场景映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99 个 Heading2 详细设计主责索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)，以及 [Native 21 类消息正/负向向量与 WIRE-V01..V07 严格差距](module-detail-w00-native-wire-contract-gaps-2026-11-05.md)。56 条仍是 `MAPPED_NOT_TESTED`，99 节仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，Native 测试仍是 `NOT_RUN`。新增 `SOURCE_TENSION_01`：V8 §8.2 TLS-first 和 A.1 的 `plain/tls-password` 两档适用范围必须审签，**不由实现者私定或改写 V8**。无产品代码/服务激活。
+**W00 2026-11-05 上位要求索引**：已生成 [V15 56 条行为/失败/表6场景映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99 个 Heading2 详细设计主责索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)，以及 [Native 21 类消息正/负向向量与 WIRE-V01..V07 严格差距](module-detail-w00-native-wire-contract-gaps-2026-11-05.md)。56 条仍是 `MAPPED_NOT_TESTED`，99 节仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，Native 测试仍是 `NOT_RUN`。新增 `SOURCE_TENSION_01`：V8 §8.2 TLS-first 和 A.1 的 `plain/tls-password` 两档适用范围必须审签，**不由实现者私定或改写 V8**。现已备好 [NATIVE-V8-WIRE-DELTA-01 精确枚举/档位**待批准**取值方案](module-detail-w00-native-wire-value-proposal-2026-11-05.md)，仅为候选，不使 `WIRE_FROZEN=YES`。无产品代码/服务激活。
 
 ## 1. 现在的真实阶段：设计接近全域覆盖，但不能宣布冻结
 
