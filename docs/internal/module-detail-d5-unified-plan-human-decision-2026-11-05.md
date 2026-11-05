@@ -114,6 +114,8 @@ flowchart TB
 
 **E-01/H-EDGE=A 生命周期技术合同收口（2026-11-05，非产品实现）**：此前 D3 主要规定“登录期/注销离线”，但缺明确区分**关闭画面窗口、关闭工厂站点管理页面、退出整个 View、OS 注销、强杀进程、网络/证书变化、策略持久化失败和升级回滚**。现按既有产品范围完成 [D3 EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 的唯一 RunLease/RunEpoch、准入/撤销事务、白名单持久化及受控恢复设计；[D2 VIEW-EDGE-01..05](module-detail-d2-hyremoteview-client-2026-11-05.md) 与 [D4](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已共同消费。仅补可实施合同与可证伪验收，**不新增后台 Service/独立 Edge 安装包，不改变 H-EDGE=A，也未运行实测**。
 
+**F-04 Legacy RFB 设备授权/输入合同收口（2026-11-05，设计未实现）**：已将 Human `H-RFB=A` 细化为 [F-04 `RLG-01..09` 的实际实现合同](module-detail-d1-device-protocols-2026-11-05.md)，明确受控固定 Target/Scope/endpoint、按 peer 的 AccessSession/held/Frame 基线、共享口令不等于自然人身份、首次输入前设备当前 Scope 控制许可、RFB/Native 共用 F-06 仲裁/Qt 最终栅栏、撤权/断线清理及真实标准 Viewer 安全表达；[Framework F-06](module-detail-d1-framework-boundaries-2026-11-05.md)、[View V-01/V-03](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D4 X-02](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已共同消费。**不改变 RFB3.8 标准报文、既有合法输入权益或 Native P-A/A；全部 `RLG` 测试未运行**。
+
 ## 4. 全产品四个不同准入门槛
 
 ### Gate-D：详细设计冻结申请（当前目标，不等于已通过）
