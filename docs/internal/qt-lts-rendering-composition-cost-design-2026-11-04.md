@@ -239,3 +239,68 @@ A1_COPY_OPT=VALIDATED_SCOPE_PENDING_MERGE
 RK3588_TARGET_OUTCOME=NOT_RUN_ON_NEW_SHA
 G7_FROZEN=UNCHANGED
 ```
+
+
+## 11. QtPrivate 精确源版本技术可行性研究（2026-11-05；Human 仅批准研究，**实施未批准**）
+
+**本节阶段：`SOURCE_FEASIBILITY_ONLY`，Qt 官方仓库的精确 tag `v5.15.2`、`v6.8.3` 已对照；没有使用本地 Qt Kit 验证 QtPrivate 头文件/动态符号，没有开发或改变任何 HyRemote 产品代码，也没有修改 Qt。此处发现不是产品实现的授权。**
+
+### 11.1 精确源码核对结果（跨 LTS 共性与差异）
+
+| 原理 | Qt 5.15.2 tag | Qt 6.8.3 tag | 结论 |
+| --- | --- | --- | --- |
+| item dirty 入口 | `src/quick/items/qquickitem.cpp:6155–6182`：`QQuickItemPrivate::dirty()` 更新 bitmask 并入 `dirtyItemList`，`dirtyItem()` 通知渲染 | 同源文件 `:6758–6784`：同构，但 transform 处理有变化 | 两代确实管理 scene item dirty；**不是持久 image revision** |
+| dirty 列表消费 | `qquickwindow.cpp:3593–3611`：`updateDirtyNodes` 取链表并置 `dirtyItemList=nullptr` | `qquickwindow.cpp:1997–2015`：同样提取清空 | **轮询链表是否为空会漏掉已经同步消费的变化**；不能作为安全无变化判据 |
+| grab 强制更新 | `qquickitemgrabresult.cpp:281–345`，create 内 `item->window()->update()`，抓图订阅 `beforeSynchronizing/afterRendering` | 同源文件 `:273–337`，同构 | **即使没有 dirty item，grab 仍可直接触发窗口渲染**；这解释 H1 自激，与 Runtime 100ms 探测一致 |
+| window update 语义 | `qquickwindow.cpp:411–426` 明确即使场景图未改变仍发起 repaint | `qquickwindow.cpp:372–386` 同一语义 | “window render” 与 “QML 视觉像素发生了变化”不是同一个版本 |
+| QtPrivate ItemChangeListener | `qquickitem_p.h:320ff` `ChangeType` + `qquickitemchangelistener_p.h` 只有几何、层叠、可见性、alpha、父子、启用等回调 | `qquickitem_p.h:300ff` 增加 Focus/AllChanges，`qquickitemchangelistener_p.h` 同类回调，**无 `Content` callback** | **注册已有私有 listener 并不能观察全部内容绘制/ShaderEffect/texture 更新**；根节点或每个子节点的 ChangeListener 不等于完整变更流 |
+| `QQuickItemPrivate` DirtyType | 两代 `Content=0x40` 等定义存在，`dirty()` 非 virtual | 同构 | dirty flag 本身**不是可订阅、跨线程带 revision 的公开/受支持通知合同** |
+| LTS Qt 后端 | 默认直连 OpenGL/GLES，使用 Qt 5 scenegraph/render loop | Qt 6 scenegraph 默认经 QRhi，多 GPU API | 按**Qt LTS**评价接口，避免生成 OS/GPU 分支；真实生产覆盖不能仅在 Windows 通过 |
+| 私有头文件声明 | `qquickitem_p.h:43–50` 明确私人实现细节，版本间可能变化或移除 | `qquickitem_p.h:8–15` 同样警告 | 没有跨 Qt patch/minor ABI 或链接兼容承诺；需要精确 SDK/deploy/法律审查 |
+
+**精确 Qt 源链接：**
+- Qt5.15.2：[qquickitem.cpp](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickitem.cpp)、[qquickwindow.cpp](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickwindow.cpp)、[qquickitemgrabresult.cpp](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickitemgrabresult.cpp)、[qquickitem_p.h](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickitem_p.h)、[qquickitemchangelistener_p.h](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickitemchangelistener_p.h)。
+- Qt6.8.3：对应 [qquickitem.cpp](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickitem.cpp)、[qquickwindow.cpp](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickwindow.cpp)、[qquickitemgrabresult.cpp](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickitemgrabresult.cpp)、[qquickitem_p.h](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickitem_p.h)、[qquickitemchangelistener_p.h](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickitemchangelistener_p.h)。
+
+### 11.2 针对可落地性的否决与保留，不作乐观假定
+
+| 可行性候选 | 当前证据等级 | 裁定 |
+| --- | --- | --- |
+| **F0 直接在 GUI 线程轮询 `dirtyItemList`** | 列表同步时被清空，版本会消失；grab 可无 dirty 强制 render | **NO-GO 作为唯一可靠变化判据**，不是线程安全产品接口 |
+| **F1 注册私有 `QQuickItemChangeListener`** | 精确两代类型回调均缺 Content dirty，且根/所有子节点也不能覆盖外部纹理、QSG 直接变化 | **NO-GO 作为完整 visual dirty oracle**；作为局部失效辅助可研究，不能关掉 fallback |
+| **F2 拦截 `QQuickItemPrivate::dirty()` 入队点** | 这是发生时间较早的真实 item dirty 来源，但函数非虚、没有可直接注册的 observer；如何无侵入监控未知 | **UNPROVEN/HIGH RISK**。不能从“源码存在 dirty()”推出独立可安装 hook；若要 Qt 源码补丁、编译器插桩、符号劫持或注入，应转入单独 Human 风险审批，现阶段不得实施 |
+| **F3 对 Qt 控制的内容建立 revision↔grab snapshot 屏障** | 原始 H1 在途变更 6/6 返回旧帧；内部 dirty 列表消费并不告诉我们 `ready` 图像属于哪个 revision | **UNPROVEN，阻断任何无限期跳抓实现**。必须保证在途修改保留 pending，并在能证明图像包含该版本时才 acknowledge |
+| **F4 Qt5/Qt6 render-output frame reuse** | Qt5 GL 与 Qt6 QRhi 资源/提交语义不同；公开 `grabToImage` 无法被当作被动 screen scrape | **RESEARCH_ONLY**。不是 F2 的自动回退解法，不能先做 Windows/D3D 或 GL 专项产品代码 |
+| **F5 可选应用层 `visualRevision`** | 应用可在自己的全量视觉状态变化时提交 revision，能避开“抓图事件”和业务事件混淆 | **CONDITIONAL**。仅 C++/QML 配合场景；无业务代码的 Generic/QPA 仍需可靠的 fallback，且业务数据属性不一定覆盖视频/QSG/外部内容 |
+| **F6 保守公共 Qt 抓图** | 当前统一 Runtime 路径能够按有界探针发现独立变化 | **KEEP**。不能等同于用户现场性能问题已解决 |
+
+**本轮可明确排除的捷径：** `QtPrivate` *有一个 dirty 列表* `!=` *HyRemote 可以通过简单读取可靠跳过抓图*；`QQuickItemChangeListener` *有 AllChanges* `!=` *存在 ContentUpdate callback*；`ready()` *返回一张图片* `!=` *该图片包含 ready 前所有的业务变化*。
+
+### 11.3 风险清单（实施前必须逐条交 Human）
+
+| ID | 风险与未决项 | 重要性 | 研究证据/完成前提 |
+| --- | --- | --- | --- |
+| R1 | **信号覆盖缺失**：item-listener 与 dirty list 不是完整像素变更流，造成 Viewer 长时间显示旧内容 | **阻断** | 必须证明可独立观察内容失效，覆盖动画、ShaderEffect/texture、窗口内/跨窗口 UI，不得靠自激事件 |
+| R2 | **in-flight 版本错误**：UI 修改后 grab 旧帧，错把 `ready` 当新鲜版本 | **阻断** | 需有单调修订号、提交/已捕获/待补获关系，异步重叠及 stop/reconnect 不丢修订 |
+| R3 | **线程竞态与崩溃**：读取私有 GUI/render 链表，未保证并发/生命周期同步 | **阻断** | 不可直接在 render thread/网络 thread 遍历私有指针；需线程/锁/失效规则证据 |
+| R4 | **QtPrivate 版本与 Kit 锁定**：Qt5.15 vs Qt6.8 私有布局/内部行为和发布安装差异 | **高** | 两版各自 exact Kit 编译/运行/升级兼容研究；未知或缺头必须安全回退 |
+| R5 | **原生/零代码入口覆盖**：Generic/QPA、Widgets/Quick、多窗口、Popup/水印/privacy、视频/外部内容是否收到统一修订 | **阻断产品承诺** | 明确每个入口和 surface 的适用能力，不得用 C++/QML 业务协作冒充零代码解法 |
+| R6 | **Qt 分发与许可**：如果需要修改/重建 Qt、分发 QtPrivate 相关二进制，许可证、SDK 提供方式、维护成本 | **高 / Human 决策** | 对应已安装 Qt Kit 授权与发布方式单独核对；需 Legal/Owner 批准适用条件 |
+| R7 | **性能未达目标**：即使跳过静态重复 grab，动态图像 readback 仍可能吞掉 ARM 核；网络/条带问题独立存在 | **高** | 分开验证静态 + 动态真实 Viewer、RK3588 EGLFS，同源前后 CPU、流畅度及本地交互，不许以单机基准外推 |
+| R8 | **回退与安全**：不能让缺少 QtPrivate、变化漏检、帧缓存失效绕过隐私/水印/安全或冻结远端 | **阻断** | 已有 100ms 公共 API 回退保留；丢能力、DPR/size/change、Viewer join、stop/restart 均回退并重新完整抓帧 |
+
+### 11.4 后续研究门槛及必须 Human 再确认的审批卡
+
+**当前已做**：两个精确 Qt LTS tag 源码/差异分析与可行性拆解。**未做**：真实 QtPrivate 头/链接可用性、可观察且不自激的 dirty 事件原型、准确 snapshot revision 屏障、Qt5/Qt6/ARM 跨设备验证。
+
+**研究下一关 F-G0（仍属于可行性，不属于产品实施）**：仅在独立诊断程序里验证现有 Qt5.15.2/Qt6.8.3 **匹配安装的私有头/符号可用性**，识别能否在**不修改 Qt、自定义 interpose、不注入宿主进程**前提下观察每次原生内容失效。若不能，直接将该路线 `NO_GO_UNMODIFIED_QT`，**停止**，不得转为偷偷 patch Qt；不要求跑额外 16 格性能矩阵。
+
+**研究下一关 F-G1（须 F-G0 先 PASS）**：在**独立 sandbox 非产品代码**中明确区分 grab-triggered update、真实业务 content dirty、在途 revision；单个失效能否合法从 GUI/render 更新边界上锁存为单调版本。发生任何漏报即按保守回退定义 `INCOMPLETE_COVERAGE`，不能自称成功。不会引入 Runtime 生产文件、SDK/public API 或 release 改动。
+
+**产品实施前必须给 Human 展示并获得明确批准的选项**：
+1. **是否允许 QtPrivate 生产依赖、锁定 exact Kit 与可能的 ABI/部署风险？** 不能只因为本次研究允许就默认批准。
+2. **如果 F-G0/F-G1 不能证明安全完整失效流，是否接受（a）仅协作 C++/QML 的性能加速、Generic/QPA 保留较高 CPU；（b）受控修改 Qt build/patch 的部署和维护代价；或（c）继续公共 Qt 保守抓图及其已测 CPU 成本？** 不经 Human 审批不得下调四入口的产品能力承诺。
+3. **性能与画面验收**：静态 CPU 降幅、持续 60Hz 源变化下 Viewer 真实新鲜度/延迟、RK3588 现场验收、Popup/水印/连接生命周期；没有采样就填 UNKNOWN，不许承诺具体 CPU SLO。
+4. **回退/回滚**：不支持 Kit 或触发异常自动关闭私有加速，恢复安全完整帧并保留审计；明确关闭/升级/独立验证责任。
+
+**明确停线：`HUMAN_FEASIBILITY_RESEARCH_APPROVED=YES`，`HUMAN_PRODUCT_IMPL_APPROVED=NO`。** Human 未读到上述技术问题/风险并明确选择前，云端及本地 Owner **不得**向 HyRemote 生产源码加入 QtPrivate、场景 dirty hooks、修改 Qt/构建部署、或默默削弱 zero-code 安全合同；即使 F-G0/F-G1 通过也只可提交研究结论、不能自动实施。
