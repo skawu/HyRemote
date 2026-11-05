@@ -4,6 +4,15 @@
 > **设计前提**：Human 已批准产品设计 `HYR-PD-001/V15` 和架构 `HYR-ARCH-001/V8`；已合并 D1 Core/Runtime/四接入/设备授权、RFB/Native 独立协议、D1 横向一致性候选，以及 D2 客户端、D3 Managed、D4 Tool/交付设计候选。Stage04/05 已有详细 IDL/DAG 不重编。  
 > **法律/工程效力**：`DESIGN_CANDIDATE / IMPLEMENTATION_WBS_ONLY / NO_CODING_ORDER / NO_PRODUCT_ACTIVATION / NO_RELEASE_AUTHORIZATION`。**设计包合并不是 Human 全产品详细设计冻结，也不是 G3/G4/G5、Gateway #190 或任何产品版本激活。**
 
+### 上位文件源真实性校验清单（设计冻结前必须完成）
+
+| 受控输入 | 现有审批记录提供的 SHA-256 | 当前全文读取 | 冻结前需核对 |
+| --- | --- | --- | --- |
+| `HYR-PD-001/V15` 正式产品 Word | `d0408f333d4b9aec186067cd159ff8a4a2206ef66d58243fd4c5cd10ffb82cf1` | `NOT_AVAILABLE_IN_ACCESSIBLE_SOURCES` | 核准正文、全部表/图及条款编号，建立真实要求追踪 |
+| `HYR-ARCH-001/V8` 正式架构 Word | `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a` | `NOT_AVAILABLE_IN_ACCESSIBLE_SOURCES` | 完整章节、附录 A/B 21 消息与字段/限额/测试向量逐条核对 |
+
+没有原始受控文件时，以已有批准记录与派生设计为 **候选输入** 继续审查，但不得填 `NORMATIVE_TRACE=PASS`。源文件取得后必须先比对真实 digest；若不同，确认是否是另一个批准版本，而不是自动覆盖旧审批。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
+
 ## 1. 现在的真实阶段：设计接近全域覆盖，但不能宣布冻结
 
 | 阶段 | 交付范围 | 当前设计状态 | 未能自动越过的门禁 |
