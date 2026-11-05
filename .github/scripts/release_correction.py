@@ -474,8 +474,8 @@ def self_test() -> int:
     # git contract deliberately models immutable Git blob IDs and ancestor
     # checks; no live GitHub state or user hardware is needed.
     v035_files = set(V035_FIELD_PRODUCT_BLOBS) | V035_FIELD_GOVERNANCE_FILES
-    v035_notes = CANDIDATE_MARKER + "\\n# 中文\\n# English\\n"
-    v035_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\\n"
+    v035_notes = CANDIDATE_MARKER + "\n# 中文\n# English\n"
+    v035_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n"
 
     def v035_case(name, *, bad_base=False, bad_branch=False, bad_version=False,
                   bad_notes=False, bad_cmake=False, missing_file=False,
@@ -493,16 +493,16 @@ def self_test() -> int:
             if args[:2] == ("merge-base", "--is-ancestor"):
                 return b""
             if args[:2] == ("diff", "--name-only"):
-                return ("\\n".join(sorted(changed)) + "\\n").encode("utf-8")
+                return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
             if args[0] == "rev-parse" and args[1].startswith("HEAD:"):
                 path = args[1][len("HEAD:"):]
                 sha = V035_FIELD_PRODUCT_BLOBS[path]
                 if wrong_product and path == "src/runtime/src/transport/rfb_transport.cpp":
                     sha = "0" * 40
-                return (sha + "\\n").encode("ascii")
+                return (sha + "\n").encode("ascii")
             if args[0] == "show":
                 path = args[1].split(":", 1)[1]
-                return b"unreviewed\\n" if wrong_guard and args[1].startswith("HEAD:") else (path + "\\n").encode("utf-8")
+                return b"unreviewed\n" if wrong_guard and args[1].startswith("HEAD:") else (path + "\n").encode("utf-8")
             raise AssertionError(f"unexpected V035 git fixture {args}")
 
         try:
