@@ -95,7 +95,7 @@ flowchart TB
 
 #### F-05/V-01 原子状态与客户端真相映射（设计候选）
 
-[设备端唯一正交 FSM、AFS-01..AFS-12 负例合同](module-detail-d1-device-protocols-2026-11-05.md#44-native-10-的正交状态机错误归因与最终授权栅栏w00-下一层详细设计) 定义 `T` Transport/DeviceIdentity、`S` 用户认证、`V` Target/ViewGrant、`C` ControlGrant、`F` 每目标 Frame baseline。V-01/V-03 应持有五轴独立只读观察模型，不能把 `Connected` 或 RouteReady 作为可控状态。
+[设备端唯一正交 FSM、AFS-01..AFS-12 负例合同](module-detail-d1-device-protocols-2026-11-05.md) 定义 `T` Transport/DeviceIdentity、`S` 用户认证、`V` Target/ViewGrant、`C` ControlGrant、`F` 每目标 Frame baseline。V-01/V-03 应持有五轴独立只读观察模型，不能把 `Connected` 或 RouteReady 作为可控状态。
 
 | 用户界面/输入判定 | 必需的 HMI 可证明条件 | 缺失/迟到行为 |
 | --- | --- | --- |
