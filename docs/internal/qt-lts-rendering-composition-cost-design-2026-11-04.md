@@ -615,3 +615,68 @@ P3_PRODUCT_GO=NO
 HUMAN_FEASIBILITY_RESEARCH=APPROVED
 HUMAN_PRODUCT_IMPLEMENTATION=NOT_APPROVED
 ```
+
+
+## 18. F-G4 容量验收、P3 最小产品集成合同与 Human 实施前审批卡（2026-11-05）
+
+**本节状态：正式技术架构评审草案，未批准代码实施。** Human 已许可 F-G0…F-G4 的可行性研究；无权由实验 PASS 自行开始 HyRemote 产品 Runtime / build / release 改动。证据：[Local Owner F-G4 #609 原始报告](https://github.com/skawu/HyRemote/issues/609#issuecomment-6647205738)。现有 Qt5.15.2/MSVC2019、Qt6.8.3/MSVC2022 Windows 默认 API，`tmp/609-fg3` Qt-only，2s 无读回 A + 2s 6Hz 完整 surface 被动读回 B，各有效实验一次。云端已回读 GitHub 结构化报告，**未直接审阅本地 tmp 原始行日志**。
+
+### 18.1 可以确认的 F-G4 结果，及不能下的结论
+
+| 对比 | Qt 5.15.2 / OpenGL | Qt 6.8.3 / D3D11 QRhi |
+| --- | --- | --- |
+| A 无读回 / B 完整读回实际 FPS | 60.0 / 60.0 | 60.0 / 60.1 |
+| 帧间隔 mean、P95、max（ms） | A `16.64/20/22`；B `16.67/18/20` | A `16.66/17/17`；B `16.67/24/26` |
+| surface | 1920×1061，RGBA8，约 8.15MB | 同尺寸 / RGBA8 |
+| 成功次数 | 同步 `glReadPixels` 12/12，`glGetError=0`，调用时间 6.07–6.48ms，均值约 6.2ms | 异步 QRhi readback 12/12，完成延迟 22–23ms，`finish=0`，在途峰值 1，drops 0 |
+| 与原生画面像素相符 | 本机 OpacityAnimator 红像素及 alpha 核查通过 | 对应相位像素核查通过 |
+| 进程 CPU A/B | 11.2% → 6.2%，**不认为读回节省了 CPU** | 4.7% → 4.7%，**不证明零 CPU 成本** |
+
+**F-G4=`PASS_FOR_6HZ_FULL_SURFACE_READBACK_IN_TESTED_KITS`**，不等于连续 30/60fps 无阻塞、不等于“原生帧零拷贝”，不等于 Host/Viewer 端到端性能满足 SLO。CPU 仅 2 秒窗口且 `GetProcessTimes` 受约 15.6ms 粒度/启动相位影响，Local Owner 明确标记 **`CPU_DELTA=WITHIN_NOISE`**。Qt5 `glReadPixels` 的约 6.2ms 是**渲染线程墙钟占用/可能的 GPU stall**，不能写成同等 CPU 执行时间；如果按照相同每帧阻塞成本粗略外推，30Hz ≈186ms/s render-thread stall、60Hz ≈372ms/s，**仅说明潜在容量风险，不是测量值**。Qt6 22–23ms 回调完成说明峰值 in-flight=1 且不可无限排队；30/60Hz 交付、共享 GPU readback 带宽、与 render completion 时序仍未经验证。即便 Qt6 平均 60fps 未掉，**P95 从 17ms 到 24ms**，不能把 `FRAME_TIME_REGRESSION=NONE` 泛化到帧时间尾部。
+
+### 18.2 设计裁定：产品目标与最小架构边界（非实现授权）
+
+**设计目标是解决 #609 主因**：移除 Qt Quick *静止时每 100ms 强行重新 grab* 的 CPU/GPU 再渲染/读回，同时在正常原生渲染时利用**已有帧**获取 CPU-owned 像素；不能用牺牲本地/Viewer 正确性换取指标。严禁回退到 H1 被自激污染的普通 render-signal dirty 判定或 F-G2 被真实动画击穿的 item-dirty-only 闸门。
+
+- **Qt Quick 专属私有适配**：保持现有单 Core / Shared Runtime / 接入及双协议 / Qt5 Quick Experimental 状态。Qt5.15 exact-Kit 原生 OpenGL 和 Qt6.8 exact-Kit QRhi 是**两个 Qt LTS 版本适配**，不是 Windows/D3D-only 产品 fork；不改 `hyremote::CaptureSource` / `RemoteFrame` 公共 ABI，不把私有 Qt 指针暴露到 Core、网络或 SDK。其余 Widgets/Generic/QPA capture 路径照旧，不冒称一次 P3 修复四种接入方式所有 CPU 消耗。
+- **显式能力/启用门禁**：未知 Qt 版本、未覆盖 render backend、窗口类型/未暴露、QtPrivate Kit 不匹配、native resource 无效，默认完全走原生产品 `grabToImage` 保守路径。任何未来实验开关应**默认 OFF**，由受控测试显式启动；不能先 auto-on 上线零代码应用再检查是否会冻结。
+- **现有框架请求驱动 vs 自然帧事件**：Core 的 `CaptureSource::requestFrame` 和 pacing / max-in-flight 与 Runtime 的 `ViewerCaptureDemand`、RFB 改动判断之间必须制定单一交付所有权：native frame 生成时只登记有效 generation/size/frameSerial；有需求且采样预算允许时才在合法阶段安排一次读回；异步完成后将 **CPU-owned、stride/format/alpha 校验**的帧按对应 requestId 发布。异步完成顺序、超时、背压和最新帧覆盖规则不得让 Core `inFlight` 无期限悬挂，亦不得重复 publish 同一 request。静态时无自然渲染，不能仅盲等下一帧。
+- **首帧和恢复**：没有原生帧时接入 Viewer 必须收到有效 ServerInit 几何和完整初始化帧；新 Viewer/重连、DPR/resize、窗口 expose/hide、surface recreation、target loss、暂停/恢复、缓存无效、权限/安全变化，都需要**已验证的完整首帧获取/安全 fallback**，并清空旧 native generation，不可向新客户端发旧像素。必要时允许**单次**保守 `grabToImage` 来初始化/恢复，和正常被动路径不能互相制造无限反馈环。
+- **Qt6 资源寿命/限流**：非阻塞 `readBackTexture` 在合适 frame command buffer 时点提交；不使用 `QRhi::finish()`，readback result / closure 有安全生命周期锚点，`stop()`/窗口重建后的 completion 只能释放资源不可访问已销毁的 Qt/Runtime 对象。`inFlight` 上界与自然帧 budget 必须明确，不允许 GPU readback 无限堆积；高频动画默认保守丢弃**中间 readback 请求**，而不是丢掉未交付的安全/尺寸/初始化更新。
+- **Qt5 生产准入单列**：全帧同步 GL 6.2ms 在 6Hz 通过但对高 FPS 有阻塞风险；若后续实际 Viewer 动态场景产生卡顿，该 Qt5 同步适配不得默认启用，评估 PBO/fence 非阻塞方案需新的有限研究和 Qt5 Experimental 人审，不允许把 Qt6 QRhi 事实推广到 Qt5。
+- **画面与隐私语义同一性**：Qt native backbuffer 与原 `contentItem()->grabToImage` 不是天然同一输出合同。须明确记录图像原点（Y 方向）、背景清色、预乘 alpha、RGBA/BGRA、行 stride、物理像素与 DPR/逻辑像素、窗口区域/裁剪、透明窗口/overlay/Popup 子 surface；现有 server-side watermark、隐私政策及授权不得被原生帧快路绕过。不能证明等价时**必须原路径回退**，不允许用“Viewer 看起来没问题”代替像素、权限和水印验证。
+- **零代码兼容保底**：新能力只能提高明确证明等价的 Qt Quick native surface；其余现有零代码 Qt 入口保持功能正确且支持 fallback。即使严格限制能力能避免错画面，也要对 Human 直言**该场景可能保留 100ms 主动采集 CPU 成本**。
+
+### 18.3 实施前 Human 风险表（未闭合项不可隐去）
+
+| ID | 严重度 | 已掌握的证据与风险 | 实施前或受控研发 PR 需强制验证的验收门槛 |
+| --- | --- | --- | --- |
+| P3-R1 | **BLOCKER 安全/画面** | native framebuffer 与 `contentItem` 的 alpha、背景、透明窗口、DPR/子窗口/Popup/overlay 可能不同 | 最小固定场景的原旧双路径像素校验；不能证明等价则 fail-closed |
+| P3-R2 | **BLOCKER 并发/生命周期** | Qt6 async callback 后于 window stop/resize、target re-create；Qt5 render thread GL 状态变化 | generation + requestId + immutable frame ownership、stop/drain + timeout + backpressure，测试掉帧/重连/销毁 |
+| P3-R3 | **HIGH 性能** | Qt5 6.2ms full GL readback 同步 stall；6Hz 数据不外推 30/60Hz | 真实 Viewer 动态 FPS/延迟与本地 Qt p95，不达标时适配器保持 OFF |
+| P3-R4 | **HIGH 性能** | Qt6 22–23ms async 延迟、B 窗口 P95 24ms；单在途仅在 6Hz 成功 | 明确最大 in-flight / backpressure / 完成时序，真实 Viewer 新鲜度与 GPU/CPU/RSS |
+| P3-R5 | **BLOCKER 可用性** | 静态 Quick 仅一个原生帧，Viewer 可能之后才连；Core 仍 request-driven | 无 Viewer→1 Viewer ServerInit、静态→动态、重连、远程输入、DPR/resize、窗口隐藏/恢复全通过 |
+| P3-R6 | **BLOCKER 产品安全** | watermark/privacy/授权/双协议与 Cursor/native overlay 的边界不能被新通道绕过 | security policy 先于远程输出；现有 server decorator 保持，未经验证的 surface 禁止发出 |
+| P3-R7 | **HIGH 发布/平台** | QtPrivate 依赖 exact Qt Kit，没有私有 ABI 稳定承诺；目前仅 Windows 默认后端 | Qt5/Qt6 exact Kit build gate，unsupported/offscreen/Linux/EGLFS fallback，Qt 许可/SDK 分发明确审阅 |
+| P3-R8 | **HIGH 交付证据** | F-G4 未连 RealVNC/无 RK3588、无实际高频持续 CPU A/B；#609/#789/#567 不应据此关闭 | 在隔离分支与原版同源 Viewer A/B，记录 CPU、RAM、FPS、延迟及图像正确性；目标设备需单独现场检验 |
+
+**风险披露义务**：P3-R1、R2、R5、R6 是能阻断任何默认启用/合并发行的产品正确性条件；P3-R3、R4、R7、R8 是有条件研发和上线门槛。F-G4 未证明这些已经满足，不能把风险清单写成 PASS。任何 QtPrivate 许可/部署方式的变更由 Human/相应负责人确认，不通过“SDK 里刚好有头”视为许可批准。
+
+### 18.4 提交 Human 的三项明确选择（必须先确认再动产品代码）
+
+- **A — 建议：批准受限工程验证 PR，绝非上线/合并批准**：仅允许在独立功能分支开展 Qt Quick **开发态、默认 OFF** 的 P3 native-frame source 最小集成；Qt6.8.3 先验证 async frame→现有 Runtime/Core/RFB 帧管线，Qt5.15.2 仍仅 Experimental、同步 GL 适配仅在不影响源帧预算的前提下继续。严禁强制图形后端/改 Qt/公共 SDK/G7/接入方式；在具备 P3-R1/R2/R5/R6 的所有安全合同及测试证据前，不得 merge `develop`、不得发布，失败就关闭该隔离分支或保持开关 OFF。Human 明确批准 A 后才可动任何生产源码。
+- **B — 继续纯研究，不改产品**：只优先补两种原生帧与 `contentItem` 输出等价性（背景/透明/DPR/Popup）及 Qt5 sync→async 延迟风险；项目性能主因保持未修复，不能凭纯研究声称交付进度。
+- **C — 暂不采用 P3**：保留已合并的 A1 与原 100ms 有界抓图（可靠但有已测 CPU 成本），改为研究另外的 Qt LTS renderer integration / 自有 `QQuickRenderControl` 架构，需要新的零代码/交付成本 Human 取舍。
+
+**建议 A 的条件**：批准的是“风险有边界的**产品源码工程验证**”，不是“已验证可交付的加速功能”；风险审查和自动回退是实现的先决条件，不是先上线后补。若 Human 不愿在 P3-R1/R2/R5/R6 仍有未知时授权任何产品源码，则选 B。无 Human 选择时默认停留 `RESEARCH_ONLY`。
+
+```text
+FG4=PASS_AT_6HZ_QT5_SYNC_QT6_ASYNC
+P3_PRIORITY=PASSIVE_QT_NATIVE_FRAMES
+QT5_30_60HZ_COST=NOT_MEASURED
+QT6_30_60HZ_BACKPRESSURE=NOT_MEASURED
+HUMAN_PRODUCT_IMPLEMENTATION_APPROVED=NO
+HUMAN_CHOICE=AWAITING_EXPLICIT_A_B_C
+RELEASE_AND_DEVELOP_PRODUCT=UNCHANGED
+#609=P1_OPEN
+```
