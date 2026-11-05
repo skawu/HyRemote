@@ -39,6 +39,10 @@ ui_*.h
 .DS_Store
 Thumbs.db
 
+# Per-machine performance case paths and Viewer settings are never tracked.
+# Run output is already ignored under /build/.
+tools/perf/cases.local.json
+
 # Tool byte-code and caches.
 # Tool-specific directories (editors, agent workspaces) belong in a local or global exclude rather than in
 # the product's ignore file. These two lines are the part that is inert for every contributor, and without
