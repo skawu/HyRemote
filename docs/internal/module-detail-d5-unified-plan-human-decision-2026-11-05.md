@@ -84,12 +84,12 @@ flowchart TB
   V13 --> X11
   F13 --> X11
   X11 --> X12["X12 对应产品发布准入 / Human"]
-  HT["H-T01 Human Tool 产品分工"] --> TOOL["T10 Tool 产品主线，既有基础 RFB 维护，未完成 S1 按原授权治理"]
+  HT["H-T01=A 已批准的 Tool / View 分工"] --> TOOL["T10 Tool 产品主线，既有基础 RFB 维护，未完成 S1 按原授权治理"]
   TOOL --> TQ["Tool 独立安装/版本/质量 Gate"]
 ~~~
 
 
-**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 X10 的真实 E2E 必须同时具备 F14/V12/E10/G10。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586 及 Human 未来产品分工，新产品重组需 Human 先选，**Tool 不成为 View/HMI/Gateway 的强制打包依赖**。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
+**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 X10 的真实 E2E 必须同时具备 F14/V12/E10/G10。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586，**H-T01=A 已正式批准未来产品分工**。Tool 不成为 View/HMI/Gateway 的强制打包依赖。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
 
 **不得用“Gateway 已启动”倒推 HMI Native 或 View 资格；不得以“PoC 编译通过”倒推正式客户端授权。**
 
