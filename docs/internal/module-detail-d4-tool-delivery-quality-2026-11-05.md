@@ -133,6 +133,14 @@ D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundari
 
 这些要求仍服从已批准 H-RFB/H-DUAL/H-REVOKE、Native P-A/A，既不增加第五种接入也不创建新的 Native wire。
 
+### V-02 RemoteSurface 跨线程/图像/输入的设计验收入口
+
+已有 D2 [SURF-01..08](module-detail-d2-hyremoteview-client-2026-11-05.md) 细化了 Qt Quick GUI/RenderThread、decoder staging/immutable FrameSnapshot、DisplayEpoch、FULL/DELTA、输入坐标及焦点/Grant 的唯一责任。Gate-D 需审签其**对象所有权、失败闭合、状态/时序和精确可证伪用例**，不要求提前编译完完整 V-02 产品；实施批准后再按适用 G3/Viewer 产品 Gate 记录 Qt6.8 Windows/Linux 精确 Kit 下的像素一致性、背景/屏幕切换、帧龄 P95、CPU/RSS/GPU 资源、恶意 RECT、撤权与按键释放证据。
+
+**SURF-04/07 P2 负向设计**：保持某个 RFB/Native 控制会话的键/鼠标按钮 DOWN、再触发 HMI Target 尺寸/旋转/输入坐标几何变化；验证 View 先阻断新 DOWN、在仍有效的 Session/Scope/Grant 下按协议合法释放，无法安全释放时设备 F-06 `POL-08` 按其 per-source held ledger 保护性清理。旧 transform revision 的迟到 UP 不能导致卡键；设备不重复释放，也不释放其他合法 peer/现场来源。并发撤权时客户端不得以旧 Grant 发送释放，HMI 清理必须生效。**全是未来测试规格，目前 NOT_RUN**。
+
+本轮关联 `VIEW-06/07/08/09/12`、`XP-02/17/21/25/26/27` 及 `AFS-05/07/09`；**所有新增 SURF 验收内容均是设计，不是已运行产品测试**。特别检查 RFB 没有 Native Grant wire、失败时客户端无权虚构设备已发送撤权 ACK，Scene Graph 本地 PresentAck 也不得冒充 Native 帧 ACK。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |

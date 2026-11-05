@@ -250,7 +250,7 @@ sequenceDiagram
 | `POL-05` Input admission | F-06 InputAdmissionFence | 网络入队前先验 `SessionId/RuntimeGeneration/Target/Scope/GrantEpoch/PolicyRevision` 及资源预算 | 失败不占 held、不创建 Qt 事件 |
 | `POL-06` Input final delivery | Qt GUI 目标适配器 + F-06 | **最后实际投递 Qt 目标事件前**在同一有序决策域复核最新政策。撤权提交与此投递形成可判断先后顺序 | 撤权已生效的待消费 ticket 拒绝，保护性释放按原持有者 ledger |
 | `POL-07` Revoke | Host PolicyProvider→F-06 | 提升有效 epoch/使失权 View/Control/Privacy 原子生效为拒绝；网络通知**在后** | 旧输入与新输出被拒，相关缓存失效；未发通知不影响立即撤权 |
-| `POL-08` Close/Expiry | F-06 Registry + Qt Adapter | Session 关闭、期限到期、Target 丢失按幂等终止，注销全部票据与 per-owner held ledger | 重连分配新 Session；旧授权不复活 |
+| `POL-08` Close/Expiry/GeometryChange | F-06 Registry + Qt Adapter | Session 关闭、期限到期、Target 丢失时注销对应会话票据/held；**同一 Target 发生尺寸/输入坐标几何代次变化时**，先阻断该 Target 新 DOWN，再以设备端持有账本对受影响远程来源幂等执行保护性释放；此几何处理**不自动撤销仍合法的 View/ControlGrant** | 旧输入坐标票据失效、重复/迟到 UP 不误释放其他来源；之后新的几何代次输入须重新检现行许可 |
 
 **并发实现必须证明的线性化边界**：单纯在网络线程“检查过后投递 `postEvent`”**不满足** `POL-06`，因为撤权可能在 GUI 消费前生效。设计约束是：Host 撤权发布能立即使旧 PolicyEpoch 失效，GUI 最后投递事件与本地当前 Policy 判定具有可测试的相对顺序；如果实际 Qt 事件传递还存在异步阶段，则最终**事件应用点**继续判定，不得在较早的 enqueue 阶段认定操作已经完成。锁/线程串行化实现可以在现有 ABI 允许范围内选择，但不得以持锁执行用户业务、TLS、文件 IO 或不可控回调来假装原子性。
 
@@ -260,6 +260,7 @@ sequenceDiagram
 - **合法 DOWN**：`POL-05/POL-06` 均通过才登记该 SessionHeld；从合计 0→1 时向目标发送一次真实 Down。同一来源重复 DOWN 不增加引用数，按协议既有重复规则做幂等处置/拒绝，不生成“另一只按着的键”。
 - **合法 UP**：仅释放该来源此前实际被设备登记的 DOWN；当 TargetAggregateHeld 由 1→0 时发最终 Up。未知来源的重复 UP 不影响其他来源或现场输入；不能靠全局 `releaseAll` 误放掉另一个合法 Controller。
 - **撤权/断开/Target 销毁**：先令该来源新增 DOWN 的资格失效，再按持有账本逐一释放其真实 held，必要时走 V8 保护性释放保留通道/配额；重复 Close 或迟到网络 UP 不造成第二次释放。现场 Qt 物理输入有独立来源，不被错误合并为远程强制 UP。
+- **设备画面尺寸/旋转/输入映射几何代次变化（仍为同一 Target）**：F-02 Target/FrameSource 在 GUI 所有者域提交新几何代次时，F-06 的 `POL-08` 先将该目标的**旧坐标输入票据**失效，阻断新的旧变换 DOWN；随后按其**设备端实际接受的 per-source held ledger** 在 Qt 最终投递域执行受保护 UP，引用计数归零才向 Qt 目标发实际 UP。该清理属于 Target 输入几何转换而非用户撤权：有效 ControlGrant 可以保留，新尺寸的输入必须重新建立坐标变换。客户端可能先行发送合法 UP，但设备账本确保后续几何保护性清理/迟到 UP **幂等且不释放其他合法 peer/现场来源**。即使 RFB/Native 客户端因网络丢包、旧变换代次或失焦没能发送 UP，设备端仍完成清理，避免远端鼠标/按键卡住。此事件不新增 Native 报文，也不把普通 damage 当作几何代次变更。
 - **无权正常操作和授权清理不同**：即使旧 Grant 不再允许新的 `KEY_DOWN`，本地**已登记合法 DOWN** 的清理仍须可执行，且这种保护释放不得被误解释为设备重新授权远程控制。RFB 输入共享密码不改变单一 Scope 仲裁。
 - **不能宣称“已执行”**：排队成功只是 `QUEUED`；Qt 适配器实际交付前通过终审且成功进入目标才是 `DISPATCHED`，目标业务是否采纳是宿主另一个可观察结果。失去业务 ACK 时只能 `OUTCOME_UNKNOWN`，不能自动重放参数写入/复位/告警确认。
 
@@ -272,7 +273,7 @@ sequenceDiagram
 | `POL-04` | F-04 RFB、F-05 Native、V-03 | 当前 Scope holder/GrantEpoch，现场优先 | FW-04、AFS-05/06；不把 UI 意图当 Grant |
 | `POL-05/06` | Qt Input Adapter、V-02 | 真实入队许可/最后投递/拒绝/未知 | FW-06、AFS-09；晚撤权竞态，禁止旧事件执行 |
 | `POL-07` | F-02 Frame Publisher、Session queues、V-02 | 当前策略失效时的可控输出/输入清理与状态可见性 | FW-06/08、XP-25/26；已交 bytes 不虚构追回 |
-| `POL-08` | F-02 Coordinator、E-01/G-01 观察状态 | Close/Expiry/新会话 ID，不恢复旧 Grant | FW-09、XP-11/26；Edge route READY 不越权 |
+| `POL-08` | F-02 Target/Coordinator、Qt Input Adapter、V-02 | Close/Expiry/GeometryChange 各自终止旧会话或旧输入坐标代次；几何变化对已登记 held 做幂等保护性释放但不凭空撤 ControlGrant | FW-06/09、VIEW-06/07、SURF-04/07；同 Scope 多来源 held 不互相释放 |
 
 **F-06 设计审核通过的充分条件（当前尚未签收）**：独立审查上述对象唯一所有者、两次/最后输入栅栏、撤权与 GUI 线性化、Scope 冲突图、按连接 held ledger、每会话隐私和业务结果分别可验证；对每条 `POL` 能追溯 FW/AFS/XP 负例，且没有要求修改 Native V8 wire 或公开 SDK ABI。实际 Windows/Linux/Qt Kit、Resource/RSS 和 Native E2E 测试属于相应后续资格，不在本轮自报 PASS。
 

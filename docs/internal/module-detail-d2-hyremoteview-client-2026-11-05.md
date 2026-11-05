@@ -72,7 +72,7 @@ flowchart TB
 
 `RfbClient` 的 wire 数据仅从标准 RFB 3.8 解码：None/VNCAuth、ServerInit、Raw/TRLE 及实际双方协商支持的扩展；**未经过验证的 server 消息先检查长度/rect count/像素乘法溢出，后分配**。Server 可支持某 extension，不代表 Viewer 已实现并可向用户承诺。
 
-`NativeClient` 必须只依 V8 附录 A/B 已批准消息及严谨 parser：Device TLS→HELLO/WELCOME→必要 AUTH→获准 TargetList/Subscribe→ScreenInfo→FULL/DELTA→独立 CONTROL_REQUEST/STATE→INPUT；Gateway 的 `RouteId/OperatorId` 不进入 Native body。完整 A/B 原文仍待正式逐条校对；候选架构不擅自补全 opcode、字段或数值。
+`NativeClient` 必须只依 V8 附录 A/B 已批准消息及严谨 parser：Device TLS→HELLO/WELCOME→必要 AUTH→获准 TargetList/Subscribe→ScreenInfo→FULL/DELTA→独立 CONTROL_REQUEST/STATE→INPUT；Gateway 的 `RouteId/OperatorId` 不进入 Native body。V8 A/B 来源字段已核，Human P-A/A 数值及 TLS-first 语义已获批准，唯一值源为 [受控 Native 补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；实际独立 Host/Viewer parser 与 E2E 仍未实现/未测试，不得擅改 opcode、字段或数值。
 
 ## 4. 设备连接与会话的正交状态机
 
@@ -177,6 +177,73 @@ D1 设备端 [F-02 RT-01..08 与 F-06 POL-01..08](module-detail-d1-framework-bou
 
 按键发送仅在 RemoteSurface 真正焦点、当前 `Control` 可执行且当前 `SessionGeneration` 匹配时允许；离焦释放本地持键账本并在仍被授权的当前连接上按协议发送合法释放；**权限撤销后禁止再发送旧 GrantEpoch 的清理 INPUT**，设备端持键清理由 HMI 安全执行。不可再把过期 local held presses 带入新连接。
 
+### 5.3 V-02 RemoteSurface 对象所有权与跨线程帧交付合同
+
+V-02 仅复用已批准的 D2 ViewModel/Session/RemoteSurface 架构，并消费 [F-02 的 RT-01..08 与 F-06 的 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md)；不增加设备新权威，也不依赖 RFB 私有扩展。以下均为**内部设计接口、非已实现类或公开 SDK ABI**。
+
+| 逻辑对象/唯一所有者 | 写入线程及可变状态 | 向下游交付什么 | 必须阻断的错误 |
+| --- | --- | --- | --- |
+| `ProtocolParser`（V-01） | 每连接协议 I/O 执行域；仅 Native/RFB 各自合法 wire、会话 generation | 验证过的 Target/generation、FULL/RECT/END、像素块、设备授予状态 | 错误 length/stride、身份失效、乱序不能分配大缓冲或喂渲染 |
+| `DecodedFramebufferStore`（V-02 decoder） | 独占**可变**重建中的 framebuffer、协议基线与尺寸；按 Target 独立 | 仅在整帧有效之后发布不可变 `FrameSnapshot`，包括合法 damage、PTS、目标/会话代次 | 非法 DELTA 破坏原已展示基线、并发读写或旧 Target 代次串图 |
+| `RenderHandoff`（V-02） | 有界 mail slot；只接受合法、完整、不可变的 snapshot 引用及显示代次 | `PresentationCandidate` 与取消/遮蔽指令 | 慢 GPU 引发内存无界、以任意帧丢弃破坏 decoder DELTA 基线 |
+| `RemoteSurface`（QML/GUI） | 当前设备/Target/Scope/视口变换、显示时效和输入焦点 | 不可伪造的 `InputIntent` 给 V-01 Router；更新呈现目标 | 不直接访问 socket、PolicyProvider 或 mutate QSG node |
+| `SceneGraphRenderBridge`（Qt Quick render thread） | GPU 纹理/可见节点及实际提交帧代次；不拥有网络或用户密码 | 内部 `PresentAck`（仅渲染统计，不是 Native frame ACK） | render thread 在旧设备/session/permission 下上传或重新显示已禁帧 |
+| `InputIntentRouter`（V-01 Session 入口） | 当前连接/Focus/ControlEligibility/本地 held | 经过协议能力检验的 Key/Pointer/Text/Scroll 意图 | 控制权过期、失焦、旧 transform 或旧 SessionGeneration 时发送新输入 |
+
+**唯一所有权**：一个完整 `FrameSnapshot` 发布后不可再被 decoder 原位修改。若增量应用需要复用旧内容，只能在 decoder 拥有的可变 staging buffer 中重建；render thread 只持 pinned immutable snapshot 或自己的 GPU 副本。GPU texture 与 CPU staging 分开记账，不能让场景图持有可能被网络线程覆盖的裸指针。Qt 对象操作与 Scene Graph node/纹理更新仅在相应 Qt6.8 公开支持的线程回调进行，不从 socket 回调触碰 QQuickItem。
+
+### 5.4 V-02 帧与显示事务（每个设备、目标、会话独立）
+
+```mermaid
+sequenceDiagram
+  participant Parser as V-01 Protocol Decoder
+  participant Store as V-02 FramebufferStore
+  participant Handoff as Bounded RenderHandoff
+  participant Render as Qt Quick RenderThread
+  participant UI as ViewModel / RemoteSurface
+  Parser->>Store: FULL/DELTA + SessionGeneration/Target/Gene
+  Store->>Store: 校验尺寸/范围/基线，重建完整 staging
+  alt 校验通过
+    Store->>Handoff: immutable FrameSnapshot + DisplayEpoch
+    Handoff->>Render: 仅最新获准完整快照
+    Render->>Render: 检验代次、上传/替换受控纹理
+    Render-->>UI: PresentAck(帧标识、时间、状态，仅本地)
+  else 无效/旧代次
+    Store-->>UI: AwaitingFull / Forbidden / Failed
+    UI->>UI: 遮蔽旧画面，禁失权输入
+  end
+```
+
+- `DisplayEpoch` 是客户端本地作废旧纹理和异步 render job 的世代，不添加 Native wire 字段。一个候选必须同时匹配当前 `SessionGeneration`、设备可信身份、Target/incarnation、协议当前 framebuffer generation、DisplayEpoch 和可观察的授权边界；Legacy RFB 不具备的 Native PolicyRevision 不得由 View 伪造。
+- **完整性顺序**：`FULL` 形成合法新基线前不输出可显示内容；`DELTA` 先在 decoder staging 完整应用、验证无越界/错误基线，才发布完整新快照。跳过 GUI 上某个已完整构造的中间快照**不等于**丢弃 decoder 内部协议差量；后者只能在保证恢复 `FULL` 时发生。
+- **尺寸/Target 改变与安全释放的严格顺序**：首先冻结该 Target 新的按下/点击意图，作废旧 DisplayEpoch 并遮旧纹理；**不得在清空本地 held ledger 之前直接丢弃尚持有的 DOWN**。如果仍是同一 Target、同一当前 Session/Scope 且 ControlGrant 有效，V-01 应优先以当前合法协议发送该来源记录的 UP（键无坐标；鼠标释放须使用设备当前可验证的坐标界限，不得用失效的旧 transform 猜位置）。若新几何尚未确认、连接/权限失效或无法安全发 UP，则禁用该输入而交给 HMI 的 **F-06 `POL-08` TargetGeometryChange/Close 保护性释放**负责设备端 held 清理。随后才丢弃本地 held 与旧坐标变换，等待新尺寸合法 FULL 后重新建映射；合法其他 Target/peer 不受影响。客户端发出 UP 不等于证明 HMI 已执行，设备账本对重复/迟到 UP 幂等处理。
+- **超时/慢端**：帧的 `receivedAt/decodedAt/uploadedAt/presentedAt` 分别保留可信本地时钟和来源，`PTS` 有不同时钟域时标注不可直接相减。掉帧仅限 RenderHandoff 中的**已完成快照**，保留 decoder 连续性，不能尝试在 Edge/Gateway 的加密字节流中合并帧。
+- **撤权与隐私**：客户端被可靠告知 Native 失权、Session 终止或 Target 移除时，立即禁新输入、取消旧 DisplayEpoch 并遮蔽可见 Surface，在后续 Qt 合法安全生命周期回调销毁其可控 CPU/GPU 缓冲。已提交 GPU/屏幕和第三方保存的像素不能追溯收回；仅 View 的遮蔽不能替代 HMI 端设备撤权。RFB 无 Native Grant 通知时以真正可观察的拒绝/断线和本地可信策略限度为准，不能宣称“收到授权撤销消息”。
+- **资源上界**：令 `M_view = M_decoded_current + M_decoder_staging + M_handoff_pinned + M_GPU_textures + M_parser_buffers + M_other`。所有积压项必须有可配置/受审核上限，超过时对受影响会话丢过时完整呈现候选或拒绝并断开，绝不因内存压力改为跨会话共用遮罩内容。具体双/三缓冲、纹理格式、GPU API、P95/FPS 数值须依实际 G3 Kit 性能证据确定，**目前不伪造量化结论**。
+
+### 5.5 输入焦点与像素坐标合同（屏幕几何 != 设备授权）
+
+- 只有本机实际获得焦点的 RemoteSurface 和可证明的当前设备控制许可才能生成输入。多个连接/Target 即使同时显示，也只能把每个输入意图绑定到**事件产生时的** SessionGeneration、TargetId、Scope、DisplayEpoch 和 FrameSize/transform revision；目标切换/撤权后迟到事件一律丢弃。
+- 所有显示模式使用唯一可逆 `DevicePixelToViewport` 变换（含 Fit、Fill/Crop、1:1、居中偏移、平移、旋转及 Qt Quick DPR）；`InputIntentRouter` 用其逆矩阵把视口点映射到**设备 framebuffer 像素网格**。在黑边或被裁剪但不可输入的区域拒绝事件；错误矩阵、零尺寸、未获完整新 FULL 时拒绝，不能先 clamp 到边缘然后误点击危险按钮。
+- DPR 仅在 UI viewport 转换阶段采用 Qt 当前 screen 的确切比值；设备端 image pixel 是网络定义的像素，不能第二次乘 DPR。源图/显示容器在同一事件循环内变化时必须更新 transform revision，已排旧事件不得按新矩阵发送。
+- 鼠标 Move/Button/Scroll、按键（主键与小键盘不同码）、已提交中文 IME Text 都通过已批准协议的**实际可表达字段**映射。未协商的 Native 1.0 原生多点触控、剪贴板或宿主业务操作不得凭 QML 手势/控件隐式发送；本地双指缩放默认只改变本地视口。
+- View 本地 held ledger 与 F-06 Host held ledger **各自有责任**。离焦/几何改变且当前会话、目标和许可仍有效时，按当前协议能力先发合法 UP；几何变化**不能把 UP 当作新坐标点击**，需跳过已失效的旧 transform 直接按 held source 释放并遵守有效设备尺寸，否则依赖 HMI `POL-08` 的保护性清理。已经失权时不发送旧 GrantEpoch 的清理输入，立即停止本地新意图，由 HMI 受保护释放已接受的按键。发送 UP 仍不证明实际完成；RFB 共享密码不具备个人可追责性，客户端只能陈述发送事实/服务端可观察状态。
+
+### 5.6 V-02 可审查设计合同及后续验证入口
+
+| 合同 ID | 必须可证明的正确行为 | 失败/竞态用例 | 验收映射 |
+| --- | --- | --- | --- |
+| `SURF-01` | Parser/decoder/render 各在线程所有者域执行，immutable FrameSnapshot 生存期明确 | 解码尚未结束时 render 消费与销毁旧对象 | VIEW-06/08、XP-17 |
+| `SURF-02` | FULL/DELTA 每 Target 基线及矩形范围严格有效，未知格式 fail closed | invalid rect、partial FULL、旧 generation、bad encoding | VIEW-04/06/09、AFS-07 |
+| `SURF-03` | RenderHandoff 有界，只丢完整显示快照且不破坏 decoder 基线 | 慢 GPU/网络并发、断线后迟到 snapshot | VIEW-08、XP-17/27 |
+| `SURF-04` | Target/resize/device switch 先冻结新 DOWN、对有效 Grant 的旧 held 优先发送合法 UP；设备 `POL-08` 几何变化幂等清理兜底，随后失效旧 DisplayEpoch/纹理/transform | 在鼠标按钮/键保持按下期间 resize、迟到/丢失 UP、权限同时撤销、其他 peer 仍 held，均不得卡键或误释放 | VIEW-06/07/11、FW-06、XP-02/21 |
+| `SURF-05` | 撤权/证书变化/断线即禁输入、遮敏感旧图与清可控缓存 | TLS 中断、Native Grant 收回、RFB 无 Grant wire | VIEW-03/05/07、XP-25/26 |
+| `SURF-06` | Fit/Fill/1:1/高 DPI 只逆变换一次，非法或边框点不点击 | 黑边、缩放矩阵坏、DPR/旋转/Target 变更 | VIEW-06/07、XP-02/21 |
+| `SURF-07` | Focus/ControlGrant/按键 ledger 绑定当前 Session/Scope；失焦/resize 释放不被旧坐标 revision 误拦，设备端按来源幂等清理 | 控制请求 Pending、尺寸变化时旧 UP 丢失、失焦、重复 KEY_DOWN 与旧 Grant 迟到 | VIEW-07、AFS-05/09、SURF-04 |
+| `SURF-08` | 真实帧龄/解码/上传/呈现 P95 来自可复核采样 | 只有 PING 但画面旧、GPU 后台暂停、不同钟域相减 | VIEW-08/12、XP-17 |
+
+**V-02 设计状态**：`SURF-01..08=DESIGN_CANDIDATES_FOR_REVIEW`；所有产品 Frame/Qt Kit/G3 及性能资格仍按真实证据 `NOT_RUN / G3_NOT_PASSED`，不因这些纸面约束变成实施能力。**正式 API、纹理后端选择和缓冲精确容量**只能由已批准依赖范围及目标 Kit 验证后固定，不擅自修改 V15/V8 协议或新增批准功能。
+
 ## 6. DeviceCatalog、Trust、Identity、Credentials、Diagnostics 和 OEM
 
 ### 6.1 设备与信任来源
@@ -237,7 +304,7 @@ D1 设备端 [F-02 RT-01..08 与 F-06 POL-01..08](module-detail-d1-framework-bou
 | VIEW-01 | 彻底离线 Direct，不登录 Gateway | 仅本地网络+有效设备配置可建立 RFB/Native，云宕机无影响 | `DESIGN_ONLY` |
 | VIEW-02 | RFB 3.8 None/VNCAuth/Raw/TRLE 与合法拒绝 | 精确 server/client/Kit 和异常帧、无证书身份虚构 | `POC_PARTIAL_NOT_G4` |
 | VIEW-03 | Native TLS 设备指纹/CA 可信引导 | 正证通过，替换设备/证书变化在发送秘密前拒绝 | `NOT_IMPLEMENTED` |
-| VIEW-04 | Native 21 消息 A/B 对照与 Target/View/Control | 对完整原始 wire/正负向 vector 一一核验 | `ANNEX_PENDING` |
+| VIEW-04 | Native 21 消息 A/B + Human P-A/A 数值与 Target/View/Control | 26 黄金字节正例与 12 异常设计向量，未来双端独立解析/状态与身份 Grant 测试 | `SOURCE_APPROVED / VECTOR_DESIGNED / E2E_NOT_RUN` |
 | VIEW-05 | Route paired、Device TLS、ViewGrant、ControlGrant 分离 | Gateway 在线不能出现未获许可像素/输入 | `NOT_QUALIFIED` |
 | VIEW-06 | 视图缩放、DPR/resize/full/delta | 单屏/全屏/高 DPI/背景切换无错位/坏基线 | `G3_PARTIAL` |
 | VIEW-07 | Focus lost/reconnect/撤权并发 held 输入 | 无旧 Session input，HMI 清理一次，本地 GUI 不重放 | `NOT_RUN` |
