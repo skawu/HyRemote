@@ -1,5 +1,7 @@
 # D2｜HyRemoteView 客户端模块详细设计 V-01/V-02/V-03（候选）
 
+> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
+
 > **治理入口：** [HyRemote #843](https://github.com/skawu/HyRemote/issues/843)；跨仓前提为 [HyRemoteView #1](https://github.com/skawu/HyRemoteView/issues/1) / [#4](https://github.com/skawu/HyRemoteView/issues/4) / [#5](https://github.com/skawu/HyRemoteView/issues/5)，及已批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`。  
 > **依赖：** [D1 设备基础](module-detail-d1-framework-boundaries-2026-11-05.md)、[独立 RFB/Native](module-detail-d1-device-protocols-2026-11-05.md)、[D1 六模块一致性审查](module-detail-d1-consistency-review-2026-11-05.md)、Stage04/05 Managed 边界。  
 > **权威更正：** HyRemoteView G2 #4 历史“RFB+独立 Enhanced TLS 控制侧通道为必需”已被 V8/ADR-0008 修订；现行设计必须为完整独立 RFB/Native 两条设备协议，不得再定义第三基本协议 listener。  
@@ -215,15 +217,15 @@ sequenceDiagram
 
 | ID | 提案与未解决问题 | 技术先行处理 | Human 需要参与的条件 |
 | --- | --- | --- | --- |
-| D2-01 | RFB legacy `ControlAuthorization` UI 的可证等级 | 默认只读，输入可用与设备确权不同；可显示“未能验证 HMI 个人控制授权” | 如果变更 V15 承诺/现有已交付输入功能 |
+| D2-01 | RFB legacy `ControlAuthorization` UI 的可证等级 | **H-RFB=A 已批准**：默认只读；保留 Host 明确启用且当前 Scope 允许的传统输入，UI 显示“已请求发送/未获个人身份验证”，不得冒充设备回执 ControlGrant | 合同已定；准确状态、旧 Viewer 与输入负测仍待验证 |
 | D2-02 | TrustBundle 首次导入与证书轮换、TOFU/CA 优先级 | 优先显式指纹/制造商或客户 CA；不自动接受来自 Gateway 的任意新根 | 新信任根或产品安全默认改变 |
 | D2-03 | Frame stale 时输入是否暂停 | 作为 UI 风险提示/可配置策略候选，设备最终控制由 HMI 决定 | 改动安全/设备操作者权利时 |
-| D2-04 | 用户注销后工厂 Edge 仍在线的支持级别 | 先设计登录态可用、服务态真实资格另审；同安装/统一升级 | 若调整已批准产品功能级别或发布承诺 |
+| D2-04 | 用户注销后工厂 Edge 支持级别 | **H-EDGE=A 已批准**：首批仅用户登录期间 Edge 运行，退出/注销实时离线；无人值守服务态为以后独立资格，同安装/升级体系 | 首批产品选择已定；生命周期实现/实机验收仍待验证 |
 | D2-05 | 设备发现协议/扫描权限与长期元数据泄露 | 仅在用户明确触发时进行受限发现，发现≠可信设备登记 | 若开放网段扫描/自动共享则需要产品审批 |
-| D2-06 | 与 HyRemoteTool 现有 Remote Workbench 的长期职责 | Tool 既有 S1/RFB 作为已交付兼容维持，未来新官方完整 View 功能归 HyRemoteView；避免共享服务端双改 | **实质产品路线冲突**：是否继续双远控前端、保留 Tool S1 的定位，必须由 Human 最终决定 |
+| D2-06 | 与 HyRemoteTool 的长期职责 | **H-T01=A 已批准**：Tool 保留已发布基础 RFB 能力；完整 S1 依 #586 仍是 OPEN；新的 Native/Managed/Edge/官方完整 Viewer 主线归 HyRemoteView，Tool 后续偏重 SDK/Qt Kit/诊断 | 产品决策已关闭；协议客户端是否复用仍须许可证/技术评审 |
 | D2-07 | Qt Quick stable SceneGraph 核心与 GPU/CPU/帧 budget | 真实 G3 PoC 数据选择 buffer/texture/renderer；无 GPU 数据时不冻结优化 | 如改变架构 G2 已批准 Qt6.8/Quick 技术栈 |
 | D2-08 | OEM feature switches/installer 品牌边界 | 单源码/受签 Profile/协议能力无差别；不客户 fork | 改变客户已交付支持声明 |
 
-**重要历史兼容说明**：HyRemoteView #4 的“RFB + 必需 Enhanced side channel”和兼容 3.7 是旧方案；V8/ADR-0008 已替代其基本协议取向。本设计不要求去修改该 Issue 历史，只在 D2 表达真实 supersession。现有 Tool 独立的、Human 批准的“综合工作台”产品定位有实际重复范围，**不能在此稿里自动宣布 Tool 不再提供 remote View**；该冲突列为 D4/D5 真实 Human 产品决策。
+**重要历史兼容说明**：HyRemoteView #4 的“RFB + 必需 Enhanced side channel”和兼容 3.7 是旧方案；V8/ADR-0008 已替代其基本协议取向。本设计不要求去修改该 Issue 历史，只在 D2 表达真实 supersession。Tool 已批准的“综合工作台”历史规划与 View 主线曾有重叠，现已由 **H-T01=A** 明确分工：Tool 不撤销已发布基础 RFB 访问，完整 S1 #586 仍待验收，新完整 Native/Managed 官方远控主线属于 HyRemoteView；不借本次决定把 Tool 未完成工作自动标 PASS。
 
 **阶段状态**：`D2_V01_V02_V03=DESIGN_CANDIDATE`，非开发。下一步进入 **D3：把 Stage04/05 Edge/Gateway 既有设计进行跨客户端/设备接口消歧**，补齐后台运行/共享撤权、双信任界面与受管断线真实状态；不得重写平行 IDL 或申请 Gateway #190 产品激活。
