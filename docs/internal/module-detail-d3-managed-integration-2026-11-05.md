@@ -70,6 +70,10 @@ flowchart LR
 
 **IPC 安全**：若 Windows Service / GUI 分进程，客户端 UI 发来的任何 `addHmiEndpoint`、`setShare` 必须经 OS 进程身份及产品管理员权限再次确认，服务只接受固定命令集合；禁止通过 IPC 传入任意公网来源端 host、shell/exec、插件路径。GUI 的“已点击打开”不等于后台已经安全提交并持久化批准。
 
+### 已批准的 Native TLS/plain 受管消费边界
+
+[Human 批准的 P-A 和 SOURCE_TENSION_01=A](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 表明两种 Native 档位都由真实 HMI DeviceTLS 先建立设备身份；`plain` 不等于不加密，也不代表有独立用户身份。Managed 必须能验证 HMI 身份与当前用户/Target/ViewGrant/ControlGrant，缺失时拒绝输出或操作。Stage05 的 Edge/Gateway 只能按既有白名单和 RoutePermit 透明 FIFO 转发完整 TLS 字节，不能因为新增值域补充就解析或改写 `auth_mode`、能力位与 ControlState。Direct 继续独立于云端，Gateway #190 仍未激活。
+
 ## 5. D2 ManagedRemoteSession 到 Stage05 路由的调用合同
 
 ~~~mermaid
