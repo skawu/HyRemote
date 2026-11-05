@@ -21,6 +21,8 @@
 | WIRE-V06 | INPUT `button:u8,pressed:u8,modifiers:u16,key:u16` | 5 个 subtype ID、29-byte 输入公共前缀，表25 网络键码**部分**值域已明确 | 鼠标按钮、按压布尔、modifier bit assignment、特殊键 0x0101..0x010E 名称→单值绑定/小键盘完整码表 | 已定义的六修饰语义与键区间不可改；具体数值未列不得从 Qt::Key 转型或冒充交叉平台兼容 |
 | WIRE-V07 | A.2–A.6 + B.1/B.2 全状态 | 21 type/len、13 errors、5 close reasons、各上界等可作为正/负例输入 | 字节级 golden vectors、错误+close 时序、parser fuzz、独立 Host/Viewer 真互通 | 本文第3–4节仅列**待执行向量规格**；需在数值域审签后计算确定性 bytes 和互操作结果，不可写 PASS |
 
+**2026-11-05 设计补充（未批准）**：已将所有缺失数值的候选、来源张力以及 V8 变更影响集中于 [NATIVE-V8-WIRE-DELTA-01 候选](module-detail-w00-native-wire-value-proposal-2026-11-05.md)。该文件的数字**不是 V8 已批准常量**，当前正向互操作向量依旧 BLOCKED；Host/Viewer 不得基于提案各自实现。
+
 **流程建议（不修改 V8）**：先抽取全部已定义表/章节 → 写出“原文有/缺值”审计证据 → 尝试不用新增值就形成确定性正/负例 → 缺值项提出单一受控 `Wire Value Allocation / Compatibility Appendix` 变更建议及迁移风险 → 仅 Human 审批后改变正式协议承诺与 Host/Viewer 解析器。五项已批准 A 产品取舍保持生效；只有**上位 wire 取值或安全档位实质变更**才走新 Human Gate。
 
 ## 3. 21 类消息逐型的正/负向设计向量计划（未运行）
