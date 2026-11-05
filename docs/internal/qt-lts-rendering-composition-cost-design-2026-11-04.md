@@ -185,3 +185,57 @@ M1b 通过前不批准 A1 产品实现；M1b 也不改变 Stage02 G7 冻结、Qt
 **效益边界**：一次帧少一次完整 CPU buffer allocation/memcpy，可能避免已经是目标格式时的深格式转换；**`grabToImage()` 额外离屏渲染 + readback 不变**，静态 100ms 采样策略不变，不能声称已解决 #789 ARM 多吃一核或 #567 的条带刷新。
 
 **代码准入**：这是 G7 允许的 Shared Runtime 私有实现优化，不触及冻结产品/API/wire/security 合同。先以 **Draft 小型代码 PR** 编写、静态审查和独立确定性单元回归；Qt5.15 与 Qt6.8 两 Kit 编译/受影响测试通过、真实 Viewer 像素/内存/CPU 对照通过以后才能评价 Ready/合并。任何 ABI、时序、跨线程删除或实际功能不同立即 stop，不自动合并或推广。
+
+
+## 10. H1 公共变化事件 NO-GO：统一 Qt LTS 下一阶段技术决策（2026-11-05）
+
+**已完成证据**：[Local Owner #609 H1](https://github.com/skawu/HyRemote/issues/609#issuecomment-6645942372)，两代 Qt5.15.2/Qt6.8.3 独立 QQuickView，`QEvent::UpdateRequest`、`afterRendering`、`frameSwapped`、实际 `grabToImage` 的准确时间线。各 Kit 单次、小场景，只作机制证伪、不宣传普适 GPU 量化性能。
+
+| 相位 | Qt 5.15.2 | Qt 6.8.3 | 判定 |
+| --- | --- | --- | --- |
+| A：静态、不抓图 | UR 0、帧 1 | UR 0、帧 1 | 本机静止不触发持续场景渲染 |
+| B：静态、每 100ms 异步抓图 | 49 grabs → 49 UR / 49 frameSwapped | 54 grabs → 54 UR / 54 frameSwapped | **UR/帧信号被 grab 自激，不能作为独立 dirty oracle** |
+| C：每 100ms 独立 UI 修改 + grab | 54 真实变化、55 grabs → 56 UR | 54 真实变化、55 grabs → 57 UR | **更新合并，无法由 UR 计数区分变化来源** |
+| D：grab 在途发生 UI 修改 | 3/3 取回修改前的像素 | 3/3 取回修改前的像素 | **没有公开的 grab 像素快照修订边界**；ready 晚于 update event，且旧像素并未自动补获 |
+
+**结论：NO-GO 是针对上述共同公共渲染通知/窗口事件的精确限定结论，不宣称已证明 Qt 的全部内部机制都不可能。** 禁止把 `afterRendering`、`frameSwapped`、`UpdateRequest`、单纯 `QQuickItem::update()` 或基于它们的「抓图来源扣除」实现为可靠的产品无变化闸门。尤其不得把「事件早于 ready」视为这一帧已经含有该次变化，不能因一次截图是旧画面就永久丢弃相应业务 revision。
+
+### 10.1 剩余产品级性能根因：机制已证实，线程归因未完成
+
+- [#609 Qt6 静态 Q0/Q1](https://github.com/skawu/HyRemote/issues/609#issuecomment-6628044624)：无 Viewer / 约 33s 是 `0 grabs / 1 render / 0.14% 单核`；一个 Viewer 时 `247 grabs / 269 render / 10.99% 单核`。**直接可控的根因是 Runtime 100ms 静态探针调用全帧 `grabToImage`，自激 Qt 渲染 + GPU→CPU readback**；RFB 静止帧可不发送数据。单机实验不能归因 Qt GUI、render thread、driver 的具体 CPU 栈份额，也不能代替 RK3588 源设备准入。
+- [#842 A1 实测](https://github.com/skawu/HyRemote/issues/609#issuecomment-6644533595)：单次 Qt6 静态→动态 RealVNC A/B，正确性 PASS，Host CPU 48.5%→43.9% 单核、WS peak 252.2→239.6MB。A1 解决抓图**之后**的重复 CPU full-frame copy；对额外 scene render/readback 的触发频率零改善，故 #609 仍 OPEN。
+- `QQuickItem::grabToImage` Qt 文档明确为 offscreen render + GPU→CPU copy；Qt5 默认直接 GL、Qt6.8 默认 QRhi，公共 `afterRendering` 时序不同。不要把 Qt5 framebuffer scraping 当成 Qt6 ABI 或产品接口的替代。
+
+### 10.2 方案分层：适用于所有入口的核心合同与有边界的适配器
+
+| 路线 | 适用范围 | 对「100ms 全帧探测」的实际价值 | 重要边界 | 裁定 |
+| --- | --- | --- | --- | --- |
+| **P0 当前公共 API 回退** | Qt5/Qt6、所有现有适用入口 | **不能根除**：只有像素比较后才知道没有变 | 可以保证本地独立变化有界发现；不得单纯把 100ms 改成 500ms/1s 来伪造低 CPU | 暂存，用户问题未解决 |
+| **P1 Qt 应用协作源 Revision/Dirty 契约** | 应用显式集成的 C++/QML（经既有 Shared Runtime/目标适配，不增一个独立核心） | 在可靠修订标记、动画失效时可真正跳过不变帧抓图 | 无应用修改的 Generic/QPA **不适用**；不满足零代码完整产品目标，也不能把业务数据版本当成所有视觉变化版本；一次 grab 在途变化须累积 pending revision 并补获 | **可移植、可选补充；不作全产品根修复** |
+| **P2 Qt LTS-specific scenegraph invalidation 适配** | Qt5.15/Qt6.8 版本能力适配层，在 **Qt Runtime 私有实现**；不按 OS/graphics backend 路线拆产品 | **理论上**可追踪 Qt 场景真实失效及提交修订，在静止时跳过重 render/readback | 公开窗口通知不足；Qt5/Qt6 内部 dirty 链表/renderer 生命周期与线程不同，可能需要 QtPrivate/匹配 **精确 Qt minor/patch Kit**；外部 OpenGL、独立 popup、QuickWindow 之外的 native UI、异步 revision↔snapshot 仍需 fail-closed；QtPrivate ABI、许可证/打包与零代码能力需 Human 批准 | **下一架构评审优先候选，尚未证明可行，未授权代码实施** |
+| **P3 Qt 输出面复用 / 合成帧源** | 若 P2 无法达到产品约束或必须取消第二次 scene render 时 | **最大潜在收益**：只读回 native 已渲染结果，少一次场景合成 | Qt5 GL 与 Qt6 QRhi 具体 readback API、surface / Popup、异步时序、跨线程并发复杂；不能假定 QtPrivate 给了可靠 CPU readback，且不能强制某个 graphics backend | **后续高风险取舍，先架构设计/能力合同，不立即做 OS 专项 spike** |
+
+### 10.3 LTS-first 架构评审必须回答的问题（不得靠另一个事件计数代替）
+
+1. **真正 dirty 源在哪里？** Qt5.15/Qt6.8 的 `QQuickItemPrivate::dirty` / `QQuickWindowPrivate::dirtyItem` 及 render loop 消费路径有内部迹象，但私有符号是否可用、时序是否覆盖所有可见变化、能否获知**哪个 revision 被成功抓入帧**均 **NOT_PROVEN**。**不能**把读到 `dirtyItemList` 非空简单当作可用产品能力，更不能在公开 `UpdateRequest` 上贴私有 API 的名字。
+2. **并发正确性：** 设单调 `requestedRevision`、`capturedRevision`、`inFlightRevision`，抓图发起时保留需求，`ready` 仅在证明快照确实包含该 revision 才前移已捕获版本。若未能标定快照边界，在途业务变化都必须保持 pending 并触发下一次；不得静默变成「无 dirty」。
+3. **场景覆盖：** 普通 QML 属性/动画、ShaderEffect/视频/纹理提供器、QQuickWidget、Popup.Window/native surfaces、外部 OpenGL/3D、DPR/resize/隐藏/恢复/窗口销毁、水印/privacy、Viewer join/reconnect、RFB + Native 都须有保守回退。部分仅提供适用能力声明，不得宣称 Generic/QPA 零代码全面支持。
+4. **可移植构建与法律边界：** 尤其不能假设某个 Qt5/6 Kit 自带全部 QtPrivate 开发头、链接符号；不能依赖 Windows WGC/D3D11/私有厂商驱动实现，也不能顺便改变首轮 GA Qt5.15/Qt6.8 支持声明。
+5. **最小准入**：优先设计一个**版本化 CapturedContentRevision/dirty capability 内部接口**（非 Core 公共 API），将「来源可靠」、「覆盖范围」、「异步归属」与「什么时候必须完整回退」写清；只在 **Human 批准具体 QtPrivate 风险/产品覆盖取舍**后才允许做最小实验。禁止先写私有 hook 再寻找产品验收理由。
+
+### 10.4 当前决策边界及行动
+
+**Cloud Owner 立刻执行**：收口 #842 受控代码优化（已有 Qt6 8/8、Qt5 experiment storage 1/1、RealVNC 单次 A/B、独立 review 无阻塞），仅在新 HEAD 保护门禁通过时合并。**下一项不是让本地 Owner 再做 100ms/信号/Viewer 试验**，而是提交面向 Human 的 **Qt LTS-specific dirty contract vs 可选应用协作 vs 保守轮询**三路取舍卡。它是产品架构选择，不能由一次试验证据自动授权 QtPrivate 生产实现。
+
+**建议**：以统一 Qt LTS-adapter 的私有场景失效契约作为主线研究（P2），可选 C++/QML 协作源版本辅助（P1），维持现有有界 fallback（P0）；**不把私有 Qt 源方案声明为已可实现**，Human 明确接受匹配 SDK/ABI 和 zero-code 功能覆盖边界前不写实现。若 QtPrivate 仍无法提供稳定内容边界，则正面交付「纯公共 API + 零代码 + 不遗漏任意本地变化 + 静态近零捕获成本」可能无法同时满足的产品取舍，不能无限绕圈调参数。
+
+```text
+H1_QEVENT_PUBLIC_RENDER_DIRTY=NO_GO_QT5_QT6
+SNAPSHOT_CONTENT_REVISION_FROM_PUBLIC_SIGNALS=NOT_PROVEN
+QT_LTS_PRIVATE_SCENE_REVISION=ARCHITECTURE_REVIEW_OPTION_ONLY
+COOPERATIVE_DIRTY_REVISION=OPTIONAL_NOT_ZERO_CODE
+A1_COPY_OPT=VALIDATED_SCOPE_PENDING_MERGE
+#609_USER_OUTCOME=P1_OPEN
+RK3588_TARGET_OUTCOME=NOT_RUN_ON_NEW_SHA
+G7_FROZEN=UNCHANGED
+```
