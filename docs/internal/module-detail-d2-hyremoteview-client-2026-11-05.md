@@ -72,7 +72,7 @@ flowchart TB
 
 `RfbClient` 的 wire 数据仅从标准 RFB 3.8 解码：None/VNCAuth、ServerInit、Raw/TRLE 及实际双方协商支持的扩展；**未经过验证的 server 消息先检查长度/rect count/像素乘法溢出，后分配**。Server 可支持某 extension，不代表 Viewer 已实现并可向用户承诺。
 
-`NativeClient` 必须只依 V8 附录 A/B 已批准消息及严谨 parser：Device TLS→HELLO/WELCOME→必要 AUTH→获准 TargetList/Subscribe→ScreenInfo→FULL/DELTA→独立 CONTROL_REQUEST/STATE→INPUT；Gateway 的 `RouteId/OperatorId` 不进入 Native body。完整 A/B 原文仍待正式逐条校对；候选架构不擅自补全 opcode、字段或数值。
+`NativeClient` 必须只依 V8 附录 A/B 已批准消息及严谨 parser：Device TLS→HELLO/WELCOME→必要 AUTH→获准 TargetList/Subscribe→ScreenInfo→FULL/DELTA→独立 CONTROL_REQUEST/STATE→INPUT；Gateway 的 `RouteId/OperatorId` 不进入 Native body。V8 A/B 来源字段已核，Human P-A/A 数值及 TLS-first 语义已获批准，唯一值源为 [受控 Native 补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；实际独立 Host/Viewer parser 与 E2E 仍未实现/未测试，不得擅改 opcode、字段或数值。
 
 ## 4. 设备连接与会话的正交状态机
 
@@ -304,7 +304,7 @@ sequenceDiagram
 | VIEW-01 | 彻底离线 Direct，不登录 Gateway | 仅本地网络+有效设备配置可建立 RFB/Native，云宕机无影响 | `DESIGN_ONLY` |
 | VIEW-02 | RFB 3.8 None/VNCAuth/Raw/TRLE 与合法拒绝 | 精确 server/client/Kit 和异常帧、无证书身份虚构 | `POC_PARTIAL_NOT_G4` |
 | VIEW-03 | Native TLS 设备指纹/CA 可信引导 | 正证通过，替换设备/证书变化在发送秘密前拒绝 | `NOT_IMPLEMENTED` |
-| VIEW-04 | Native 21 消息 A/B 对照与 Target/View/Control | 对完整原始 wire/正负向 vector 一一核验 | `ANNEX_PENDING` |
+| VIEW-04 | Native 21 消息 A/B + Human P-A/A 数值与 Target/View/Control | 26 黄金字节正例与 12 异常设计向量，未来双端独立解析/状态与身份 Grant 测试 | `SOURCE_APPROVED / VECTOR_DESIGNED / E2E_NOT_RUN` |
 | VIEW-05 | Route paired、Device TLS、ViewGrant、ControlGrant 分离 | Gateway 在线不能出现未获许可像素/输入 | `NOT_QUALIFIED` |
 | VIEW-06 | 视图缩放、DPR/resize/full/delta | 单屏/全屏/高 DPI/背景切换无错位/坏基线 | `G3_PARTIAL` |
 | VIEW-07 | Focus lost/reconnect/撤权并发 held 输入 | 无旧 Session input，HMI 清理一次，本地 GUI 不重放 | `NOT_RUN` |
