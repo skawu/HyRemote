@@ -85,6 +85,7 @@ def validate(*, git, version, notes_name, base_notes, head_notes, head_cmake, de
 # release PR. This is NOT a general maintenance exception for release/v*.
 V035_FIELD_BASE_SHA = "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
 V035_FIELD_BRANCH = "feature/789-release-preparation"
+V035_FIELD_REVIEWED_SOURCE_HEAD = "f59719061ee09ffd7b9bd925b3bb156bfe335bab"
 V035_FIELD_PRODUCT_BLOBS = {
     "src/runtime/src/automatic/composite_target.cpp":
         "424029b453870b64714816017a3b7363353879c8",
@@ -125,12 +126,21 @@ def validate_v035_field_backport(*, git, version, notes_name, base_notes, head_n
     # The reviewed release base must really be an ancestor of the proposed PR.
     # check_output raises on a nonzero status, failing the Git Flow job closed.
     git("merge-base", "--is-ancestor", actual_base_sha, "HEAD")
+    try:
+        git("merge-base", "--is-ancestor", V035_FIELD_REVIEWED_SOURCE_HEAD, "HEAD")
+    except subprocess.CalledProcessError as error:
+        raise SystemExit("V035 field backport missing exact reviewed source ancestry") from error
     expected = set(V035_FIELD_PRODUCT_BLOBS) | V035_FIELD_GOVERNANCE_FILES
     changed = set(git("diff", "--name-only", actual_base_sha, "HEAD")
                   .decode("utf-8").splitlines())
     if changed != expected:
         raise SystemExit("V035 field backport exact changed-file scope mismatch: "
                          f"expected {sorted(expected)}, found {sorted(changed)}")
+    after_source = set(git("diff", "--name-only", V035_FIELD_REVIEWED_SOURCE_HEAD, "HEAD")
+                       .decode("utf-8").splitlines())
+    if after_source != V035_FIELD_GOVERNANCE_FILES:
+        raise SystemExit("V035 field backport changed files after reviewed source head: "
+                         f"found {sorted(after_source)}")
 
     for path, expected_blob in sorted(V035_FIELD_PRODUCT_BLOBS.items()):
         actual_blob = git("rev-parse", f"HEAD:{path}").decode("ascii").strip()
@@ -480,7 +490,7 @@ def self_test() -> int:
     def v035_case(name, *, bad_base=False, bad_branch=False, bad_version=False,
                   bad_notes=False, bad_cmake=False, missing_file=False,
                   extra_file=False, wrong_product=False, wrong_guard=False,
-                  expect_error=None):
+                  bad_lineage=False, expect_error=None):
         nonlocal failures, cases
         cases += 1
         changed = set(v035_files)
@@ -491,9 +501,14 @@ def self_test() -> int:
 
         def git_fixture(*args):
             if args[:2] == ("merge-base", "--is-ancestor"):
+                if bad_lineage and args[2] == V035_FIELD_REVIEWED_SOURCE_HEAD:
+                    raise subprocess.CalledProcessError(1, ("git",) + args)
                 return b""
             if args[:2] == ("diff", "--name-only"):
-                return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
+                result = (set(V035_FIELD_GOVERNANCE_FILES)
+                          if args[2] == V035_FIELD_REVIEWED_SOURCE_HEAD
+                          else changed)
+                return ("\n".join(sorted(result)) + "\n").encode("utf-8")
             if args[0] == "rev-parse" and args[1].startswith("HEAD:"):
                 path = args[1][len("HEAD:"):]
                 sha = V035_FIELD_PRODUCT_BLOBS[path]
@@ -537,6 +552,7 @@ def self_test() -> int:
     v035_case("V035 missing fix denied", missing_file=True, expect_error="scope mismatch")
     v035_case("V035 extra file denied", extra_file=True, expect_error="scope mismatch")
     v035_case("V035 wrong product blob denied", wrong_product=True, expect_error="product blob mismatch")
+    v035_case("V035 source lineage denied", bad_lineage=True, expect_error="exact reviewed source ancestry")
     v035_case("V035 unreviewed guard denied", wrong_guard=True, expect_error="governance differs")
 
     if failures:
