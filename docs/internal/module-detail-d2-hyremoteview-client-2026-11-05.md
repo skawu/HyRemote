@@ -308,7 +308,7 @@ sequenceDiagram
 
 **状态代际守卫**：V-03 对任何异步 `registerHmi/setHmiShare/startEdgeLink/RouteClose` 返回先检查发起时的 `EdgeRunEpoch` 和该 HMI 预期 `SitePolicyRevision`。如果已切换站点/当前用户或旧 UI 请求迟到，只能作为历史诊断，不可覆盖新的共享/关闭结果。UI 不自行实现回滚/自动重试非幂等管理命令；结果未知先向本机受信 Edge 查询当前真实快照再决定提示。
 
-**客户端设计验收**：`VIEW-EDGE-01` 关闭画面不退出共享；`VIEW-EDGE-02` 注销/退出真实离线；`VIEW-EDGE-03` 迟到共享回执不得覆新版本；`VIEW-EDGE-04` 升级/重启不复活旧 Route；`VIEW-EDGE-05` Gateway 在线不等于 HMI DeviceTLS/Grant。全部为 DESIGN_ONLY，按 D3 EDGE-LC 与 D4 XP-12/24/29/20 追踪，不声称已运行。
+**客户端设计验收**：`VIEW-EDGE-01` 关闭画面不退出共享；`VIEW-EDGE-02` 注销/退出真实离线；`VIEW-EDGE-03` 迟到共享回执不得覆新版本；`VIEW-EDGE-04` 升级/重启不复活旧 Route；`VIEW-EDGE-05` Gateway 在线不等于 HMI DeviceTLS/Grant。全部为 DESIGN_ONLY，按 D3 EDGE-LC 与 D4 XP-12/XP-24/XP-20 追踪，不声称已运行。
 
 
 ## 8. 依赖与后续实施阶段划分（设计包，不是立即编码）
