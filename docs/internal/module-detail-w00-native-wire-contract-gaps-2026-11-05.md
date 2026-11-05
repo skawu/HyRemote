@@ -1,5 +1,7 @@
 # W00｜Native 1.0 A/B 独立互操作合同与 WIRE-V01..V07 收口准则（草案）
 
+> **审批后状态（2026-11-05）**：WIRE-V01..V06 的**缺失数值**及 `SOURCE_TENSION_01` 已经 Human 批准，单一现行值源为 [Native P-A / TLS A 已批准受控补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；其字节级 21 type / 26 向量及拒绝规格见 [golden vector 设计](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)。以下“未定数值/待批准”描述是批准前的**来源差距历史记录**；WIRE-V07 的真实 Host/Viewer 互通、恶意输入/状态测试仍 **NOT_RUN**，不构成全协议运行资格。
+
 > **唯一协议规范**：Human 确认正文等效的 `HYR-ARCH-001/V8` 附录 A.1–A.6、B.1–B.3；本文件只建立“已定义内容/未定义取值/互操作向量”的审核目录，**不另立 Native 版本或 wire 字节规范**。源摘要及 21/21 索引见 [W00 上位原文审计](module-detail-source-audit-v15-v8-2026-11-05.md)。当前所有向量都未编译、未运行，且不同于设备端 Native E2E 已实现。
 
 ## 1. 必须固定、禁止随意重写的上位事实
