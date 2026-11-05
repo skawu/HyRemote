@@ -345,3 +345,45 @@ G7_FROZEN=UNCHANGED
 - 允许一个经过具体技术与许可评审的 **Qt LTS renderer integration / 受控 Qt 分发机制**，由 Qt 内部真实失效与捕获边界提供可验证版本。此选项可能显著增加应用集成/SDK/ABI/许可证/升级成本，实施前必须再次获得 Human 批准。
 
 **仍然明确：`RESEARCH_APPROVED=YES`；`IMPLEMENTATION_APPROVED=NO`。不因独立诊断项目存在就视为允许注入或修改 HyRemote 产品代码。**
+
+
+## 13. F-G0 实测验收与 F-G1 独立可靠性研究合同（2026-11-05）
+
+**证据**：[本地 Owner #609 comment 6646475852](https://github.com/skawu/HyRemote/issues/609#issuecomment-6646475852)。与 §12 的源码假设相比，本阶段已经由实际安装的 Qt5.15.2/MSVC2019、Qt6.8.3/MSVC2022 双 Kit 在独立 Qt-only 程序中编译、链接和运行确认；保留 Qt5 Quick Experimental 产品状态。原始日志位于本地 `tmp/609-fg0`，此文件仅引用 GitHub 已回报的结构化数据，不宣称云端已读取本地每行日志。
+
+### 13.1 F-G0 事实及边界
+
+| 实验 | Qt5.15.2 | Qt6.8.3 | 结论 |
+| --- | --- | --- | --- |
+| 私有头/链接/只读访问 | `QQuickWindowPrivate::get`、`dirtyItemList`、`dirtyAttributes` 编译链接和运行 PASS | PASS | **F-G0 private-read 可行**，不等同于未来所有 patch Kit/ABI 被支持 |
+| A：静态、无 grab | 1 次启动 dirty: `4/3/0/0` | 同 | 初始化项不代表每次都实际业务变化 |
+| B：静态只抓图 | 41 grabs；首个 root `EffectReference`，其余 40 次空 dirty，`Content=0` | 45 grabs；首个 root `EffectReference`，其余 44 次空 dirty，`Content=0` | 抓图本身能污染 **private EffectReference**，但本场景未产生 `Content`；**不得假设所有 grab 都只有 EffectReference** |
+| C：独立矩形颜色变化 | 45/45 `Content` | 45/45 `Content` | 在此 **Rectangle 颜色** 场景，区分业务更新与抓图自激 PASS |
+| D：业务色块变化 + grab | 46/46 观察 `Content`；45 grabs | 45/45 观察 `Content`；45 grabs | 该同时发生场景无 dirty 漏报；**不是“最终抓回图像无陈旧帧”的证明** |
+
+**F-G0=`CONDITIONAL_PASS_FOR_STANDALONE_QT_QUICK_RECTANGLE`**。由 Qt 源码可以校验：Qt5 `qquickitem.cpp:4386` / Qt6 `:4580` 的 `QQuickItem::update()` 都调用 `dirty(Content)`，所以该阳性对照在设计上合理。两代 `QQuickWindowPrivate::syncSceneGraph()` 的 `beforeSynchronizing` 早于 `updateDirtyNodes`，而后者消耗 private dirty 列表，解释为何同步前只读能观察到本次变化。
+
+**重要限制**：不能根据 `dirtyItemList 非空且非纯 root EffectReference` 就宣布完整的可见场景变化 oracle。这个表达式只是一个待检验的候选启发式：现实 layer/effect 本身可能由 `EffectReference` 表示；原生 texture、shader uniforms、QSG render-thread animation、子窗口/Popup、外部 surface 未证实；真实 GUI 变化与抓图可在同一/跨相位出现，dirty 修订和 grab 返回 image 的同步边界尚未建立。
+
+### 13.2 F-G1 首先验证语义与时间，而不是 CPU
+
+**目标是证明/证伪一个内部版本化变更能力，在不改 Qt、不改 HyRemote 产品代码的条件下，避免永久漏掉可见业务变化。** 不为现有 Runtime 生产实现授权。只使用之前 F-G0 的两个精确 Qt Kit 与本地 `tmp/` standalone probe；完成一组固定、不循环扩展的短测试。每段输出计数、时间戳、dirty 类型、对应 item 身份、`beforeSynchronizing` 同步序号，以及实际图像颜色/空间变化。生产 CMake、Core/Runtime API、Viewer、传输均不得更改。
+
+**F-G1a — 类型覆盖与自激负例**：
+1. 复用原 B 阶段的少量静态 grab，检查不会把第一次 root `EffectReference` 当成**自动可以忽略的全部**变化，也不因为空 dirty 的同步产生虚假的业务修订。
+2. 在独立 QML 测试对象上每次只触发一个**真正可见**的转换：位置/缩放等 Transform/Position/Size；opacity 或 visibility；叠放顺序/增删子项或 layer/effect 切换。每类做少量确定性更新，记录出现的**实际 DirtyType 组合**和是否有无法通过该观察点识别的真画面变化；**不预设“位置动画就是 Transform flag”**，须以最终源码/日志为准。至少一个简短持续动画周期，确认真实动态可见变化不会因 item 级 flag 去重而静默漏报。
+3. 若实验时出现**可见像素已变化，但同步前 dirty 空或只有误排除的标志**，立即记录 **`COVERAGE_NO_GO_FOR_GENERIC`**，停止扩张；保留原公共 API fallback。ShaderEffect/video/external/native 未运行的场景明确 `UNVERIFIED`，不得判 `SUPPORTED`。
+
+**F-G1b — 在途修订与旧图像屏障**：
+1. 只做 **3 次可复现的抓图事务**，每次：发起异步 `grabToImage`；在既有同步观察点记录该帧的 `syncSerial`、相关 dirty bit 和测试 QML 逻辑 `sourceRevision`；发起后延时约 15ms 再做一次真实可见变化，等 `ready` 取图像像素与源修订信息，并在需要时发一次**明确的补抓**，验证新图是否包含变化。
+2. 定义 `requestedRevision`（已知真实业务变化最新修订）、`observedSyncRevision`（在一次场景同步时看到的候选修订）、`confirmedImageRevision`（有**像素证据**证明确实进入该次图片的最新版本），对各次抓图按单调时间记录。**不得**因为 `ready` 晚于 dirty 通知就自动 `confirmedImageRevision=requestedRevision`；必须保留 pending，直至图像确实包含新 revision。将 `grabToImage` 内部的 `beforeSynchronizing` setup / `afterRendering` render 先后顺序作为源级技术依据，是否可以在生产界限无 race 仍 **NOT_PROVEN**。
+3. 若无法将某次 ready 图片可信地归属于同步周期，或改变发生在 sync 后却返回旧像素，记录 `SNAPSHOT_BARRIER_UNPROVEN`；不能由一次“补抓正确”推导任意复杂场景不会漏帧。需要阻断或丢帧处理时，不允许锁住 GUI/render 线程来伪造同步；旧帧可合法上屏，但待变更修订必须继续 pending。
+
+**所有结果均是**：`QT5_EXPERIMENTAL_QUICK` 和 `QT6_683_QUICK` **独立可行性证据**，不是 Generic/QPA/Widgets/Native、多窗口、ShaderEffect/视频/RK3588 的支持承诺，也不能自动转成产品功能。
+
+### 13.3 研究停止条件与下一 Human 风险卡
+
+1. 任一**可见更新漏报**、effect-only 真变化被跳过、无法区分 `ready` 的旧快照与后续 dirty、新增跨线程数据竞态或 toolkit 不兼容，判 `NO_GO_OR_SCOPE_LIMITED`，停止测试扩张。**不要求实际黑屏才判失败**；源码和观察证据也能判 NO-GO。
+2. 即使以上通过，也只能形成 `FEASIBLE_FOR_COVERED_QT_QUICK_CASES`，**不能**直接将现有 100ms fallback 移除。下一决定应明示未覆盖 surface 的 fallback 成本、Qt5 private ABI 风险、Qt6 QRhi/effect 行为、pre-sync 读锁与 multi-window 竞态。
+3. 下一份实施前 Human 审批材料需写明：① private exact-Kit 兼容与部署/许可；②真实内容 revision 如何产生/如何处理 render-thread animated/texture；③同步序号如何绑定抓图像素版本并保留 pending；④ 四种接入/Popup/跨窗口/安全水印与隐私能力哪些可加速哪些继续保守回退；⑤ static/dynamic Viewer FPS/延迟/CPU，RK3588 单独验证；⑥异常退回公共抓图及停用私有路径；⑦不采用方案时保留原产品约束的性能后果。
+4. **明确审批状态**：`HUMAN_RESEARCH_APPROVED=YES`；`HUMAN_QT_PRIVATE_PRODUCTION_IMPL_APPROVED=NO`；`F-G1_TEST_APPROVED_WITHIN_RESEARCH_SCOPE=YES`；`F-G0_PASS_NOT_EQUAL_PRODUCT_GO`。所有生产提交必须在人审与风险裁定之后另行申请授权。
