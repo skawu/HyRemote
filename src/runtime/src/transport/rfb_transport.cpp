@@ -613,7 +613,8 @@ public:
                 client.delivery.invalidateFull(served->geometry.size.width, served->geometry.size.height);
             else if (damage)
                 client.delivery.accumulate(*damage);
-            trySendUpdate(client);
+            // #567: encode the exact frame the damage was computed from.
+            trySendUpdate(client, &*served);
         }
         m_observedFrame = *served;
     }
@@ -1759,7 +1760,8 @@ private:
         return appendRawRectangle(message, frame, client.pixels, x, y, width, height);
     }
 
-    void trySendUpdate(ClientState &client)
+    void trySendUpdate(ClientState &client,
+                       const hyremote::RemoteFrame *frameSnapshot = nullptr)
     {
         if (!client.socket || client.phase != ClientPhase::Normal)
             return;
@@ -1771,7 +1773,11 @@ private:
             return;
 
         // #589: encode only what viewers may see; with a watermark installed the raw capture is never sent.
-        const auto frame = servedFrame();
+        // #567: use the caller's snapshot when provided so damage and pixels
+        // come from the same frame version.
+        std::optional<hyremote::RemoteFrame> frame =
+            frameSnapshot ? std::optional<hyremote::RemoteFrame>(*frameSnapshot)
+                          : servedFrame();
         if (!frame)
             return;
         if (frame->geometry.size.width == 0 || frame->geometry.size.height == 0
