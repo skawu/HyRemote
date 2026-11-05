@@ -23,7 +23,7 @@
 | WIRE-V06 | INPUT `button:u8,pressed:u8,modifiers:u16,key:u16` | 5 个 subtype ID、29-byte 输入公共前缀，表25 网络键码**部分**值域已明确 | 鼠标按钮、按压布尔、modifier bit assignment、特殊键 0x0101..0x010E 名称→单值绑定/小键盘完整码表 | 已定义的六修饰语义与键区间不可改；具体数值未列不得从 Qt::Key 转型或冒充交叉平台兼容 |
 | WIRE-V07 | A.2–A.6 + B.1/B.2 全状态 | 21 type/len、13 errors、5 close reasons、各上界等可作为正/负例输入 | 字节级 golden vectors、错误+close 时序、parser fuzz、独立 Host/Viewer 真互通 | 本文第3–4节仅列**待执行向量规格**；需在数值域审签后计算确定性 bytes 和互操作结果，不可写 PASS |
 
-**2026-11-05 设计补充（未批准）**：已将所有缺失数值的候选、来源张力以及 V8 变更影响集中于 [NATIVE-V8-WIRE-DELTA-01 候选](module-detail-w00-native-wire-value-proposal-2026-11-05.md)。该文件的数字**不是 V8 已批准常量**，当前正向互操作向量依旧 BLOCKED；Host/Viewer 不得基于提案各自实现。
+**2026-11-05 审批结果**：此前 [P-A 原候选](module-detail-w00-native-wire-value-proposal-2026-11-05.md) 已获 Human `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A` 批准；现行 [唯一数值与 TLS-first 增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 与 [26 个已计算字节向量](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md) 为正式设计依据。Host/Viewer 仍须经 Gate-I 后由独立实现和真实测试验证。
 
 **流程建议（不修改 V8）**：先抽取全部已定义表/章节 → 写出“原文有/缺值”审计证据 → 尝试不用新增值就形成确定性正/负例 → 缺值项提出单一受控 `Wire Value Allocation / Compatibility Appendix` 变更建议及迁移风险 → 仅 Human 审批后改变正式协议承诺与 Host/Viewer 解析器。五项已批准 A 产品取舍保持生效；只有**上位 wire 取值或安全档位实质变更**才走新 Human Gate。
 
@@ -72,7 +72,7 @@
 | `NV-11` | 一个慢 View 卡住，另一会话已撤销敏感目标 | HMI 原始采集可共享，但衍生敏感帧按会话隔离、网络发队有界；Edge/Gateway 不丢加密字节 | `NOT_RUN` |
 | `NV-12` | 进程关闭、目标消失、同名新 Target 或证书轮换、策略旧回调 | RuntimeEpoch/TargetId/GrantEpoch 清理，重连先核验，绝不旧会话自动复权 | `NOT_RUN` |
 
-**数值约束优先级**：`ERROR.error_code=1..13` 及 `CLOSE.reason=1..5` 是 V8 表26/A.5 的真实现有取值；`INPUT.input_type=1..5` 是表24 的真实取值。**其余 u8/bit 不因本文展示一个测试而分配新数值**。Native 直接/受管中涉及 TLS-first/plain 适用范围的测试需等待 SOURCE_TENSION_01 正式消歧，不能先测一版实现再倒推设计。
+**数值约束优先级（审批后）**：`ERROR.error_code=1..13`、`CLOSE.reason=1..5`、`INPUT.input_type=1..5` 直接来自 V8 A.3/A.5；其余缺失数值由 Human P-A/A 受控增补明确，**不得修改已批准的字段宽度、已有常量或报文编号**。TLS-first/plain 适用边界已批准，但真实 TLS/权限负例仍 `NOT_RUN`。
 
 ## 5. 与其他模块的收口消费接口
 
@@ -82,4 +82,4 @@
 - `D3 Edge/Gateway`：无需识别 Native A.2 类型即可有序 FIFO；获准路由端点绑定，不修改协议字节，不为获得性能任意丢字节。
 - `D4 X-02 质量`：把 `NV-01..NV-12` 当待执行场景规格，并要求 Host/Viewer 独立实现的 exact-SHA 与原生 Windows/Linux/Qt Kit 证据；PoC 与纸面通过不算 PASS。
 
-**结果**：`WIRE_SOURCE_TYPE_ID_FIELD_LEN=REVIEWED`; `KNOWN_NUMERICS=DOCUMENTED_ONLY`; `MISSING_NUMERICS=WIRE-V01..V06`; `TEST_VECTORS=WIRE-V07_DESIGN_ONLY`; `SOURCE_TENSION_01=OPEN`; `WIRE_FROZEN=NO`; `GATE_D=NO`; `GATE_I=NO`.
+**现行结果（保留本页来源差距历史）**：`WIRE_SOURCE_TYPE_ID_FIELD_LEN=REVIEWED`; `WIRE_V01_V06_NUMERICS=HUMAN_APPROVED_P_A`; `SOURCE_TENSION_01=HUMAN_APPROVED_A`; `WIRE_V07_GOLDEN_BYTES=26_DESIGNED`; `WIRE_V07_PARSER_E2E=NOT_RUN`; `FULL_PRODUCT_DESIGN_FREEZE=NO`; `GATE_I=NO`.
