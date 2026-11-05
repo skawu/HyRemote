@@ -1,5 +1,7 @@
 # D1｜Framework 设备端模块详细设计：Core / Shared Runtime / 四接入 / 设备授权（候选 V1）
 
+> **2026-11-05 Human 决策已生效**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698)。相关产品/安全取舍选 A；本文初始“待 Human 选择”语句如与本次批准冲突，以审批后的具体条款为准。批准不等于 V15/V8 原文审计、产品实现或设计冻结。
+
 > **归属**：[全产品模块设计总控 #843](https://github.com/skawu/HyRemote/issues/843)，D1 首轮；参考 [#830](https://github.com/skawu/HyRemote/issues/830) 的 HMI Native 安全设计与已合并 Stage04/05。  
 > **批准的上位基线**：HYR-PD-001/V15（SHA-256 `d0408f333d4b9aec186067cd159ff8a4a2206ef66d58243fd4c5cd10ffb82cf1`）、HYR-ARCH-001/V8（SHA-256 `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a`），均已获 Human 批准，见 #827/#830；阶段02 G7 与 ADR-0007/0008 保留为上位先行约束。  
 > **代码事实快照**：`skawu/HyRemote@develop:36ac22d5a2cea287e655d13129114db223db0087`（2026-11-05），只作差距分析，不代表所有历史发布二进制。  
@@ -192,9 +194,19 @@ Constructed / Stopped
 ~~~
 
 - `DeploymentAdmission=REJECTED` 时 **零新 listener**；不回退地址、协议或安全模式，不复活上次接受的权限；失败返回设备端具体可诊断但脱敏原因。
-- 若 Dual 模式某一协议创建失败，禁止隐藏另一协议仍对外监听的中间态；究竟“原子全失败”还是“明确配置的协议独立降级但不越权”须在 D1-DEC-02 决定并给出安全论证，不能靠实现便利决定。
+- **H-DUAL=A 已获 Human 批准**：仅对宿主显式声明为必需的全部 RFB/Native 端点执行统一 DeploymentAdmission 和原子启动；任何一个必需端点失败，启动事务回滚/停止其他本次新建监听并报告整体启动失败，不能向外发布伪“部分成功”。RFB-only/Native-only 是各自合法独立 profile。运行期单协议故障隔离其他合法 session，但必须报告真实 DEGRADED，不能静默回落为较弱协议。
 - RFB `0.0.0.0:5921` 是保留的**配置 getter 默认值**，不是 H-02a 的部署授权；现行旧版监听真实行为按 `docs/security.md` 如实记录。
 - Interface unavailable 维持真实 `Unavailable`：没有 listener，不等于合法地“已授权用户在线”。
+
+### 7.1.1 H-DUAL=A 启动原子性的可实现合同（设计，不是当前代码）
+
+- `PREPARE`：Host 对部署签名/Target/Scope、RFB-only/Native-only/Dual 声明及**全部 required 端点**执行同一个策略代际准入；构建每协议的独立 socket、证书材料与会话表，但**不得发布 Running/可用权限**。任何准备失败均 `ABORT` 并释放本事务资源。
+- `COMMIT`：仅全部 required 协议准备就绪后，以一个受信 RuntimeEpoch/AdmissionSnapshot 将会话接纳总闸门从 `BLOCKED` 提交为 `ACTIVE`；外部 API 才可报告 `Running`。对在准备/提交期间试探性连入的 socket，不得发送设备画面、认证秘密或接受输入。
+- `ABORT`：任一必需端口冲突、TLS 身份缺失或 Host 策略失败时，全部关闭本轮新建 socket/会话，报告 `START_ABORTED` 与真实原因，不得留下可服务的 RFB 或 Native 半启动实例；不得自动改为不加密 RFB。
+- `DEGRADED`：**只指已经 COMMIT 后**一个协议因运行时故障失效，其他端点经过现有 Host 授权、未受影响且仍安全时可以继续；健康/监听/会话状态按协议分别如实报告，不隐蔽故障。
+- TCP 多端口在 OS 层无法物理实现“两个 `listen()` 指令同一纳秒完成”的绝对保证。H-DUAL=A 要求的是**对外服务、授权和 Running 可见性的事务性全有或全无**，不能虚构网络原子性。设计验证需覆盖端口占用、协议准备后失败、并发连接抢入、策略更新同时回滚、四接入和旧 Qt Kit。
+
+**与 H-RFB=A 的配合**：仅当 Host 明确开启 legacy RFB 输入且当前 Target/Scope/ControlArbiter 仍许可，该 RFB session 才可提交输入；标准 RFB 未定义 Native Grant 状态，因此 Viewer 不得显示“已获得个人 ControlGrant”。任何会话撤销均以 H-REVOKE=A 的当前设备 epoch 作为最终禁止执行/输出栅栏，而不是依赖 GUI 远端通知。
 
 ### 7.2 运行期重绑、断线与取消
 
@@ -277,11 +289,11 @@ Constructed / Stopped
 | ID | 设计议题 | 候选方向 / 需有的证据 | 会否触及已冻结基线 |
 | --- | --- | --- | --- |
 | D1-DEC-01 | 多 Target 的 Source/Session 基数与授权索引 | 以 per-Target 共享 Source、每连接独立 Policy/Transport context 为方向；对当前 AccessInstance 的生命周期、跨目标资源和 GUI 线程做不变性分析 | 不应；若改 Core 公开 Session 语义需上升 |
-| D1-DEC-02 | RFB/Native Dual startup 的原子性与局部故障 | 推荐**新监听启用作为受控事务**，要么全部按部署策略可用，要么不发布不一致状态；对于允许运行期单协议退化须定义“不弱化安全/许可”的精确条件 | 可能：涉及公开可用性/安全承诺，Human 需看方案 |
+| D1-DEC-02 | RFB/Native Dual 启动/局部故障 | **H-DUAL=A 已批准**：必需端点在同一受信部署事务中全部成功才 Running，任何缺失都回滚启动；运行期局部故障隔离且不自动弱协议回退 | 产品选择已关闭；实际回滚语义、监听原子可见性、错误与 Qt Kit 负测仍需技术审查 |
 | D1-DEC-03 | Host PolicyProvider 交互与 revocation 线性化 | 候选只读版本化 snapshot + 原子更新 + GUI 投递栅栏；需要量化锁竞争与跨 GUI 线程最终检查 | 不应；若改变宿主授权语义需上升 |
 | D1-DEC-04 | 不同 Viewer 的隐私输出管线与缓存生命周期 | 候选“共享无权限基础帧、每会话过滤、基线独立、撤权清零”；对当前共享 `RfbFrameDecorator` 运行序和成本做设计签收 | 不应；若削弱已批准隐私则禁止 |
 | D1-DEC-05 | 将内部设备许可错误投射到四入口 API | 先保留现有公共枚举/API；用稳定诊断详情和能力协商表示新错误。是否需要公开新字段，待兼容/宿主需求设计后单独审批 | 可能：public SDK/ABI 改动需审批 |
-| D1-DEC-06 | RFB 标准客户端的目标/会话授权承诺 | 必须考虑 RFB 3.8 无等价 Native Grant 原生字段、老客户端的 read-only/Scope 限制，明确可信 LAN 的最低安全方式及不满足要求时拒绝 | 可能：外部互通范围变化必须 Human 决策 |
+| D1-DEC-06 | 标准 RFB 权限与 Scope | **H-RFB=A 已批准**：保留已发布 Host 明确启用 remote input 的 RFB 能力；新架构默认只读，Host 对具体 Scope/Target 授权并与 Native 共享默认单 Controller 仲裁；共享 VNCAuth 不当个人身份 | 产品选择已关闭；ServerInit/handshake 信息边界与旧 Viewer 互通需要技术/验收证据 |
 | D1-DEC-07 | Host 本地可信部署来源、设备凭据与失效后恢复 | 用 V8 Host/DeviceTrustBundle 基线具体核对身份和配置来源、吊销/证书变更，不接受不受信 Gateway 自行造信任 | 实质差异必须 Human 决策 |
 | D1-DEC-08 | V15/V8 正式原文与 Native A/B 签字追踪 | 取得经审核的完整原文，建立条款→对象→流程→FW-验收 ID 矩阵；现引用还不是完成追踪 | 本身不改架构 |
 

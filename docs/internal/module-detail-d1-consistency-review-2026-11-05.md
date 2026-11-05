@@ -1,5 +1,7 @@
 # D1 横向一致性审查与设备侧→客户端合同（候选，2026-11-05）
 
+> **2026-11-05 Human 决策已生效**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698)。相关产品/安全取舍选 A；本文初始“待 Human 选择”语句如与本次批准冲突，以审批后的具体条款为准。批准不等于 V15/V8 原文审计、产品实现或设计冻结。
+
 > **范围**：#843 D1 全部 F-01..F-06。审查输入：[Framework boundary](module-detail-d1-framework-boundaries-2026-11-05.md)、[RFB/Native device protocols](module-detail-d1-device-protocols-2026-11-05.md)、[HMI Native trust](managed-edge-detail-05-hmi-native-trust-2026-11-04.md)、ADR-0007/0008、Stage04/05、当前代码。  
 > **权威**：正式 `HYR-PD-001/V15`、`HYR-ARCH-001/V8` Human 已批准，附录 A/B 仍是 Native 唯一 wire；此审查**不是**重开批准事项，不自行冻结公开 API、协议、安全承诺或研发准入。  
 > **源审计**：初始开发树 `develop@268e26dbbccc6aaed4026ee4a888ba500623a372`；V15/V8 的 DOCX 完整原文尚未从本会话允许的 GitHub/Drive/文件检索中找到，不假装已完成原文逐条审计。  
@@ -16,7 +18,7 @@
 | XC-05 | 多 Peer 控制权 | 同一应用 Scope 默认一位远程操作者，除非宿主明确批准分离的不冲突 Scope | Host/F-06 arbitrate；F-04/05 不能“因各有 socket 就都可控制” | **CRITICAL GAP**：旧 RFB 汇总 held keys/按钮并未有设备会话权限/Scope 保证 |
 | XC-06 | 双栈共享采集 | 可共享底层 Target/FrameSource，但每连接/Scope 的显示许可、遮罩和输出队列必须独立 | F-02 控资源及 capture；F-06 policy filter；F-04/05 各自编码/baseline | **CRITICAL GAP**：旧 RFB FrameDecorator 单次合成全 peer 复用，不能等同未来隐私授权 |
 | XC-07 | 输入两次栅栏 | 入队时与 Qt 最终交付前校验当前 `AccessSessionId/Scope/GrantEpoch/PolicyRevision`；撤权优先现场 | F-04/05 关联可信 socket→F-06 检查→Qt adapter 最终验证 | **CRITICAL GAP**：需要保证同 Scope 不跨 peer 残留/重复 release |
-| XC-08 | 画面撤权的真实性 | 发布新政策后不得**新排队**旧受限画面；内部未发缓存清除，已写出网络/已显示的像素不能物理收回 | HMI 清理内部并中断必要连接；Viewer 清屏/标过期 | **OPEN SEMANTICS**：需选精确撤权生效界点、in-flight 处理和可证测试 |
+| XC-08 | 画面撤权的真实性 | **H-REVOKE=A 已批准**：新权限 epoch 后不产生/排队旧受限画面；可控队列清除、必要时断链，已发网络/已见像素不能撤回 | HMI 当前 PolicySnapshot/队列回收；Viewer 清屏并禁止旧输入 | **POLICY_APPROVED / IMPLEMENTATION_OPEN**：线性化点、in-flight 竞态、负向测试待细化/实证 |
 | XC-09 | 传输重连 | 每新设备连接/协议为新 AccessSession；旧 route/grant/输入/帧基线不可复活 | Core/Runtime generation；RFB/Native 新协议状态；View 新 Display epoch | **ALIGNED** |
 | XC-10 | 受管信任 | Gateway Operator/Site/RoutePermit 只批准受管路径；Edge 白名单与 HMI DeviceIdentity/Grant 分属不同权威 | E/G 不看 Native 明文/不任意 TCP proxy；HMI 最终裁决 | **ALIGNED**；与 Stage05 没有发现必须更改 Native A/B 的理由 |
 | XC-11 | 背压与资源 | Core bounded mailbox 不等于全设备有界；各协议 sender/Socket/TLS/Qt/每 session Filter/FrameStorage 分别累计 | F-02 用全口径预算；F-04/05 独立限额，Edge/Gateway 只能 FIFO 背压/关闭 | **OPEN BUDGET**：128MiB 设计目标不是测量证明 |
@@ -24,7 +26,7 @@
 | XC-13 | 协议兼容/已交付权益 | 当前 Source 代码已 exact RFB3.8/before-read bound/Normal sweep；#158 旧文字可能落后于代码 | F-04 不重做已修复事项；真实运行资格仍需复现；RFB 3.7 不受支持 | **ALIGNED**；`producedUsefulMessage` 对任一 Normal 完整消息置 true，持续占用需进一步定义 |
 | XC-14 | 设备侧 Native wire | V8 附录 A/B 唯一 1.0 权威；设计稿引用了 21 类、头与 Grant，但未见可复核 Word 全文 | F-05 必须在正式原文签收后生成完整 type/field/state/negative vector 追溯 | **PENDING BASELINE INPUT**；不能以已有派生 Markdown 充当正式附录 |
 
-**审查结论**：未发现足以授权另起协议/第五接入/第二采集的设计理由；但上表的 CRITICAL GAP、OPEN SEMANTICS 和 PENDING 阻止“D1 已完成冻结”。它们是**设计闭合工作**，不是现在开产品代码工单。
+**审查结论（审批后）**：未发现增加第三协议、第五接入或二次画面采集的正当理由。H-RFB/H-DUAL/H-REVOKE/H-T01 的产品语义已批准，但上表 CRITICAL IMPLEMENTATION GAP、具体撤权竞态、资源设计与原始 V15/V8/Native A/B 追溯仍阻止 D1 正式冻结；它们是设计与资格闭合，不是现在的代码工单。
 
 ## 2. 接口合同：哪一层产生什么事实
 
@@ -91,14 +93,14 @@ sequenceDiagram
 | 已经交给 TLS/socket 或 OS kernel send buffer | **不可声称可以物理收回已发送字节**；必要时关闭连接以限制继续投递并记录事件 | 连接失效时立即清理本地缓存/遮罩，禁用输入；不恢复旧 frame |
 | 已到达 Viewer/display | HMI 无法单方面擦除外地用户实际已见像素 | View 在 Revoked/Close/TrustChange 时清屏、清凭据和输入缓存；这不追溯撤回已看信息 |
 
-**规范建议**：新权限 epoch 线性化后，HMI 不再**选择或排队任何旧政策的敏感新输出**；失效队列被清理，必要时断开连接。若产品要求撤权瞬间既有网络缓冲中字节绝不可送达，则仅靠 TCP/TLS 无法作此绝对承诺；需 Human 对可验证的“撤权后不再产生新发送”界限、UI 处置和端到端在途风险作产品安全确认，不能文档偷偷承诺物理不可能。
+**已批准 H-REVOKE=A 的设备端承诺**：自新权限 epoch 线性化生效后，HMI 不再选择、生成或排队旧授权下的新输出/输入；清可控制队列、必要时断链，Viewer 遮蔽旧图。已经进入 TLS/kernel/远端显示的字节不能声称可物理追回；线性化与竞态仍是未实现、未实测的技术设计条件。
 
 ## 3. 一致性差距 → 设计关闭动作（无产品代码）
 
 | 缺口 | 对应 D1 已有选择 ID | 普通技术闭合任务 / 可独立形成的设计结论 | 需 Human 的条件 |
 | --- | --- | --- | --- |
-| RFB 匿名/共享 VNCAuth 的会话权限 | D1-DEC-06 / D1-PROT-01/02 | 给出兼容“单 Target、Host 管控、默认只读”与“拒绝无可证明个人身份的受限 Scope”两档精确能力；测试维护中第三方 Viewer 协议容错 | 若改变现有 RFB 客户可控制权或 V15/V8 人机权利语义 |
-| Dual bind 初始原子性与运行期局部退化 | D1-DEC-02 / D1-PROT-04 | 推荐 `requiredProfiles` 原子准入/启动，明确某一协议故障仅影响其自身已授权 session；无静默弱协议回退 | 影响用户安装/发布功能承诺时 |
+| RFB 匿名/共享 VNCAuth 的会话权限 | D1-DEC-06 / D1-PROT-01/02 | **H-RFB=A 已批准**：默认只读，但保留宿主显式允许的现有 RFB 控制；统一 Target/Scope 仲裁，不虚构个人身份 | 旧第三方 Viewer 的精确兼容/ServerInit/权限失败技术测试待审，不再要求重选 A/B |
+| Dual bind 初始原子性与运行期局部退化 | D1-DEC-02 / D1-PROT-04 | **H-DUAL=A 已批准**：必需端点原子启动，失败整体拒绝；运行期局部故障隔离，不静默降级 | 工程事务、回滚和状态真实性需设计/负测，不再重选 A/B |
 | Native A/B 原文全集与 21 message 追溯 | D1-DEC-08 / D1-PROT-06 | 建立 source digest→章节/offset/field/limit/test vector 表；不能从派生设计猜字段 | 需正式文件提供/源验证；变更附录由 Human |
 | RFB input aggregate 与统一 Scope 仲裁 | D1-DEC-03 / D1-PROT-05 | 推荐每 peer logical-held ledger + current `ControlArbiter`，GUI final fence；保留 Qt 目标输入语义 | 修改 D-02 默认控制独占才需要 Human |
 | per-Session privacy、静态 watermark 与帧复用 | D1-DEC-04 / D1-PROT-08 | 推荐共享 unfiltered base storage + per-permission-policy egress；敏感图像 per peer bounded cache；记录策略 revision | 放宽设备隐私/授权则需 Human，不可技术自批 |
@@ -106,14 +108,14 @@ sequenceDiagram
 | Policy Provider/凭据/Host Identity | D1-DEC-03/07 | 推荐 atomic policy revision、可信部署清单、设备 TrustBundle 与 Gateway trust 分离；无可用安全材料 fail closed | 新引入身份委托或变更设备信任模型需 Human |
 | 证据/预算/平台范围 | D1-DEC-01/05、D1-PROT-09 | 按 Qt5.15/Qt6.8/Windows/Linux/ARM cell 真实分层；把实际旧 API 错误映射与未来内部错误域分开 | 变更公开 SDK/强制支持或发布承诺需 Human |
 
-**技术默认优先方案**（均是提案、可讨论推翻）：共享底图逐会话输出；Host-issued scope arbitration；RFB protocol sandbox/固定 Target 的有界能力；Dual 要求的 profile 初始启动原子一致性；Native TLS 与用户密码分开；无新 public SDK ABI；直接/受管同设备会话接口、不同 ByteStream。未获正式全文时仍标 `CANDIDATE`。
+**审批分层**：H-RFB=A、H-DUAL=A、H-REVOKE=A、H-T01=A 已由 Human 选定，不再列为开放方案。共享底图逐会话输出、Qt final fence、设备 Native 原文和公开 SDK 兼容等仍是 **技术详细设计候选**，不能因批准了产品语义而声称实现或原文逐条签收。
 
 ## 4. 冲突与上位设计变更登记
 
 | 编号 | 发现的冲突/潜在误读 | 现阶段处理 |
 | --- | --- | --- |
 | CF-01 | HyRemoteView G2 #4 仍写“RFB + 必需 Enhanced TLS side channel”和 lenient 3.7；V8/ADR-0008 后者已撤回、RFB 源码 exact 3.8 | 记录 `SUPERSEDED_G2_SCOPE`，由 D2 直接消费最新 V8；不再立第三必需监听 |
-| CF-02 | 旧 Tool 工作台 RFC 独立实现 Viewer/S1，而 V15 有独立 HyRemoteView 工作台。两个已批准产品定位有**长期职责重叠** | 不追溯删除已交付 Tool 功能；D4 将整理存量维护 vs 新产品功能归属、共用协议客户端复用/迁移方案，涉及产品承诺时由 Human 选择 |
+| CF-02 | 历史 Tool 综合工作台与 V15 View 长期职责重叠 | **H-T01=A 已获 Human 批准**：维护 Tool 已发布基础 RFB；完整 Tool S1 #586 仍 OPEN；未来完整官方远控/Native/Managed/Edge 由 HyRemoteView 承担，Tool 聚焦 SDK/Kit/诊断；不静默撤旧功能 |
 | CF-03 | 现有 RFB 全 peer 静态水印/聚合输入不同于未来 per-session 隐私与 Scope 权限 | 仅是“现行实现 vs 新架构目标”差距，不代表已批准 V8 矛盾；不得误标现行已支持 |
 | CF-04 | #158/旧产品材料仍有“接纳 RFB3.7、readAll before cap”等过时事实 | 以最新代码树为准，测试状态单独列出；不重复建修复 Issue |
 | CF-05 | 阶段03 后台运行候选仍引用已废止 ADS Gate | ADS 已由 Human 撤销；G3 真实性、安全和设计审查仍有效，不复活 ADS |
@@ -138,7 +140,7 @@ sequenceDiagram
 
 `D1_MODULE_SCOPE=F01..F06_REVIEWED`（已形成并交叉比较三份审查候选）；`D1_INTERFACE_CONTRACT=CONDITIONAL_CANDIDATE`；`D1_FORMAL_DESIGN_FREEZE=NO`。
 
-允许继续 **D2 客户端详细设计**，但不能把开放的 RFB Scope/Grant、Dual 启动、撤权 in-flight、Native 原文校验擅自变成“已批准定案”。D2 需对这些问题采用清楚的条件分支并保留失败关闭契约。
+**阶段记录更新**：原始 D1 完成时允许按条件继续 D2；D2–D5 现已完成设计候选。Human 已批准 RFB Scope、Dual 启动和撤权在途的 **A 产品语义**，但 Native A/B 全文核验、真实权限/协议/撤权技术合同及验收依然待签收，不能升格为实现已通过或设计已冻结。
 
 下一阶段设计主线：D2 V-01 Direct/Native 双客户端协议适配，V-02 RemoteSurface/Qt Quick 输入/状态，V-03 Device/Identity/Credential/Diagnostics/Branding 与工厂 Edge 用户界面**界面消费合同**，以及与 Framework 的跨仓版本/能力协商。
 
