@@ -74,6 +74,87 @@ flowchart LR
 
 [Human 批准的 P-A 和 SOURCE_TENSION_01=A](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 表明两种 Native 档位都由真实 HMI DeviceTLS 先建立设备身份；`plain` 不等于不加密，也不代表有独立用户身份。Managed 必须能验证 HMI 身份与当前用户/Target/ViewGrant/ControlGrant，缺失时拒绝输出或操作。Stage05 的 Edge/Gateway 只能按既有白名单和 RoutePermit 透明 FIFO 转发完整 TLS 字节，不能因为新增值域补充就解析或改写 `auth_mode`、能力位与 ControlState。Direct 继续独立于云端，Gateway #190 仍未激活。
 
+### 4.2 E-01 / G-01 的唯一数据所有者与受信事务（详细设计候选）
+
+本节消费 [Stage05 唯一控制语义 IDL](stage05-managed-edge-control-idl-2026-11-04.md)，**不产生第二份 JSON/CBOR wire 或固定公开版本号**。Stage05 的 `major=0/minor=1`、历史 TTL/队列/Route 数值都是候选，不能在本节转成 SDK 常量或 SLA。
+
+| 内部对象 | 权威及唯一写入所有者 | 容许的派生状态与生存期 | 绝对禁止 |
+| --- | --- | --- | --- |
+| `SiteRegistry/SitePolicySnapshot` | 工厂 HyRemoteView 内置 Edge；受本机授权管理员变更 | 具有持久、单调 `SitePolicyRevision`，HMI 白名单/分享开关/期限/站点信任作为一个可校验快照提交 | Gateway 远端旧快照覆盖本地撤销，或从 UI 的未授权按钮生成共享许可 |
+| `EndpointBinding` | 工厂管理员受信核验 HMI 身份后，由 Edge 本地只读版本化登记 | `HmiDeviceId + exact host/port + protocolProfile + trust material ref + revision`；端点变化需要重新确认 | Operator/RouteOffer 传入任意 host:port/DNS 替换拨号目标或网段扫描 |
+| `EdgeInstanceIdentity` | 本机受保护 Edge 身份材料/OS 访问控制 | 与 Tenant/Site、当前登录态及 Gateway 信任分别验证，私钥不在 QML Profile 中 | 拿个人 Viewer 凭据当 Edge 密钥，或在日志/IPC 回传原始密钥 |
+| `GatewayRegistry` | Gateway 受信租户/站点认证面 | `OperatorPrincipal, Tenant, Site, EdgeInstance, SharedHmiMetadata` 的最小审计状态 | 以 Gateway 显示名/IP 取代 HMI DeviceId/设备 TLS 证明 |
+| `RouteRecord` | Gateway 为每次申请产生唯一 `RouteId + RouteEpoch`，Edge 保存本次关联快照 | 绑定认证 Operator/Tenant/Site/Edge/HMI/协议/Intent/TTL 与当前可用状态；重连必须新代际 | 复用已 CLOSED 的 Epoch 或让路由许可直接等于 ViewGrant |
+| `PairLedger` | Gateway 受信一次性消费事务；Edge 另核验己方端点与方向 | 只允许一条 route 的两端各一次带 audience 的有效配对，失败清消耗态/关闭本路 | 重放 token、第三条连接、交换两端角色、迟到 ACK 恢复旧配对 |
+| `OpaqueBytePipe` | Edge/Gateway 每 Route、每方向独立的有界连接队列 | 在 `FORWARDING` 期间只保序传输 TLS bytes；关闭丢未发送数据、销毁队列，指标无明文内容 | 根据 Native FrameId/Grant 作代理层过滤、拼帧、解密或丢加密片段 |
+| `EdgeLifecycle` | 同一 HyRemoteView 产品运行时，首批限登录态启用 | 登录/明确启用/站点许可有效才在线，退出/注销立即关闭 Route 与 Link；远端状态带来源与观察时间 | 在用户注销后冒称 Service 在线，或在关闭单个画面窗口时擅自关闭仍明确获准共享 |
+
+**配置提交事务**：本地管理员 `setHmiShare(false)` / 更新白名单时，先验证管理员与预期 `SitePolicyRevision`，再构造不放宽权限的新不可变快照；**本地当前准入门的原子指针先切换为拒绝**，确保新的 `RouteOffer` 与重验证无法通过，随后原子持久化撤销证据、关闭此 HMI 的已配对/未配对 Route，并异步通知 Gateway。若存储失败，不能恢复先前开放许可；保持拒绝/NEEDS_RECOVERY，直至可信管理员重新核验。对会增加权限的开启操作，必须**先成功安全持久化并验证**，才使准入门对外允许新 Route。旧 Gateway ACK 不能回滚较新本地 revision。
+
+**拨号防 TOCTOU**：`RouteOffer` 接收检查当前 revision、Operator/Site/HMI/协议/TTL/受信 Gateway；`PairReady` 之前及每次 `dialApprovedEndpoint` 前再次读取当前受信 `SitePolicySnapshot` 与端点身份 binding。即使 Offer 曾被批准，一旦本地撤权/证书变化/重启代际变化，必须拒绝拨号或关闭既有 Route。DNS 解析输出亦须与当前受信端点/地址约束相符；不得在连接阶段接受外来 host/port 替换。
+
+### 4.3 E-01 / G-01 的路由、一次性配对与关闭状态机
+
+```mermaid
+sequenceDiagram
+  participant O as Remote View
+  participant GW as Gateway Registry/PairLedger
+  participant E as Factory View Edge
+  participant H as Whitelisted HMI
+  O->>GW: Request exact Site/HMI/role
+  GW->>GW: Authorize Operator + bound RouteEpoch
+  GW->>E: Offer bound route (no host:port)
+  E->>E: Read current SitePolicy/EndpointBinding
+  E-->>GW: Approve or fail closed
+  GW->>O: Single-use paired route side credential
+  GW->>E: Single-use paired route side credential
+  GW->>GW: Atomic two-audience PairLedger decision
+  E->>E: Revalidate local current policy before dial
+  E->>H: Connect exact approved endpoint
+  O->>H: HMI DeviceTLS + Native auth/Grant over opaque FIFO
+  Note over O,H: Only HMI authorizes Target, view, control
+  E->>E: Local share revoke advances current revision
+  E->>E: Reject offers and close related routes
+  E-->>GW: Later RouteClosed notification
+  GW-->>O: Stream closed; no automatic input replay
+```
+
+- `REQUESTED→SITE_APPROVED→EDGE_APPROVED→PAIRING→FORWARDING→CLOSING→CLOSED` 严格使用 Stage05 的**内部语义状态**；`CLOSED` 是终态，迟到 `PairReady/RouteClosed/Offer` 与旧 RouteEpoch 无法重开。任何超时/非法版本/身份撤销/一端断线清理本次 Pair 状态；只重建新的 RouteEpoch 与新的 HMI DeviceTLS 会话。
+- **单次凭据与双向身份**：Gateway 的 `PairCredential` 同时约束 `RouteId/Epoch`、actor/audience、方向、短期到期、仅一次消费，Edge/Remote View 对自身侧核验。配对成功只证明**两条获准数据通道接到了同一 Route**，不能证明设备 TLS 或具体 HMI Grant。
+- **并发撤权**：本地 share revoke、Gateway Operator 许可撤销、Route 超时、工厂用户注销，分别由其所属权威先提交**拒绝门**，后发送异步通知/关闭 socket；并发进入终止时幂等，只能单调走向 `CLOSING/CLOSED`。Gateway 与 Edge 都不得在控制通道断裂但数据通道仍存在且无法确认现行许可时无界持续转发；保活上限如无可证明配置应立即 fail closed。
+- **业务命令不可重放**：ByteStream.write 成功仅表示**本地有界队列接受字节**，不表示 HMI 收到、更不表示参数写入/复位等业务已执行。网络断开时不自动重放最后一包 TLS 或 Native INPUT；应用命令在不可确认设备端结果时标 `OUTCOME_UNKNOWN`，由现场可信状态核实。
+
+### 4.4 OpaqueBytePipe 队列、线程和资源合同
+
+| 队列或执行域 | 唯一 Owner 与有界策略 | 满载/取消/隐私行为 |
+| --- | --- | --- |
+| Gateway control decode/PairLedger | Gateway 自有认证事件循环；读取前限制控制包/嵌套/JSON key/UTF-8，有限 TTL ledger | 拒大包/未知关键字段/重复字段，不开启任意 route |
+| Edge site/policy 管理 | 工厂 Edge 控制队列/受保护存储事务；与 Qt Quick render/input 线程隔离 | 不能在 UI 点击后就假报共享已持久化，取消与权限拒绝优先 |
+| Route data `O→H` | 一 route、一方向独立 `QrouteBytes` / watermarks；所有写回压、WS/QTcpSocket/TLS/OS buffering 分项计入 | 不修改加密字节，无法保序交付就暂停读/拒新写并在有界超时后整 Route 关闭 |
+| Route data `H→O` | 与逆方向独立有界 FIFO；不复用上一 RouteEpoch 缓冲 | 不重排、丢帧、重复密文字节；撤销后不续送旧 TLS 片段 |
+| Diagnostics/audit | 两端各维护最小 metadata （RouteId/Epoch、来源、状态/水位及脱敏原因） | 严禁保存 DeviceTLS 明文、HMI 帧/输入/用户密码/原始 PairCredential |
+
+`M_EdgeRSS = base(Qt/OS)+SiteRegistry+Link+sum(Route direction queues/TLS buffers)+audit` 和 `M_GatewayRSS = base+TenantRegistry+PairLedger+sum(Route direction queues/TLS buffers)+audit` 分别预算；未通过实际目标 Kit/企业代理环境测量前，**不填写** Stage03 的 `8 routes/256KiB/30s` 等探索数值为正式 SLA。Qt6.8 WebSocket inbound frame/message/read buffer、写侧积压和外层 TCP/TLS/OS 缓存都必须有单独有界策略/真实水位；若 API 层无法阻止 OS 已接受字节，也不能声称物理追回。Route 满载时仅**背压/整路关闭**，绝不边中继边裁减 Native TLS 内容。
+
+### 4.5 E-01/G-01 技术合同与现有负例证据映射
+
+| 合同 ID | 可实施的单一责任及失败行为 | 既有验收入口 | 当前 |
+| --- | --- | --- | --- |
+| `EG-01` | 仅工厂管理员能受信登记站点/HMI 精确 Endpoint/证书 | MG-01/02/03/05 | `DESIGN_ONLY` |
+| `EG-02` | 本地 SitePolicyRevision 原子持久化、撤权拒绝门先于通知 | MG-08、CTRL-06 | `DESIGN_ONLY` |
+| `EG-03` | RouteOffer 与 HMI Dial 两次受信白名单/PolicyRevision 校验 | MG-03/08、CTRL-04/06 | `DESIGN_ONLY` |
+| `EG-04` | RoutePermit 绑定身份/租户/设备/期限/当前权限，不生成 HMI Grant | MG-01/02/07、CTRL-02/05 | `DESIGN_ONLY` |
+| `EG-05` | PairCredential audience/方向一次性原子消费，第三路/旧 epoch 拒绝 | MG-04、CTRL-07/08 | `DESIGN_ONLY` |
+| `EG-06` | 同 RouteEpoch 状态单调，撤销/断网/到期不会复活 CLOSED | MG-04/08/11、CTRL-08 | `DESIGN_ONLY` |
+| `EG-07` | Edge/Gateway 逐方向有界、保序 opaque TLS Relay，背压或整路关 | MG-09/16、XP-27 | `DESIGN_ONLY` |
+| `EG-08` | HMI DeviceTLS/最终 Target、ViewGrant、ControlGrant 完全留在 HMI | MG-06/07、XP-10、AFS-11 | `DESIGN_ONLY` |
+| `EG-09` | H-EDGE=A 登录期仅显式启用在线，退出/注销关闭；关闭单个画面不擅自下线 | MG-10、XP-12/24 | `DESIGN_ONLY` |
+| `EG-10` | 站点/Route/HMI 授权失败分来源 UI，不能伪称 DeviceAccess 或业务成功 | MG-06/07/11/13/14 | `DESIGN_ONLY` |
+| `EG-11` | 工厂密钥/管理 IPC/升级回滚/撤销存储拒绝不可信权限提升 | MG-05/12/15、XP-18/24 | `DESIGN_ONLY` |
+| `EG-12` | Gateway #190 未激活时只保留设计与试验资格，不公开声明可托管 WAN 服务 | MG-13/14/16、XP-08/10 | `DESIGN_ONLY` |
+
+**本节不是 Gateway 实施激活**：`EG-01..12=DESIGN_CONTRACT_FOR_REVIEW`，`STAGE05_CONTROL_IDL=EXISTING_CANDIDATE_ONLY`，`NATIVE_P_A_A=HUMAN_APPROVED`，`GATEWAY_190=NOT_ACTIVATED`，`GATE_D=NO`，`GATE_I=NO`。无新的公开控制消息、版本号/路由限额、产品代码或“公网已安全发布”声明。
+
 ## 5. D2 ManagedRemoteSession 到 Stage05 路由的调用合同
 
 ~~~mermaid
@@ -124,7 +205,7 @@ sequenceDiagram
 | Viewer 有 ViewGrant、无 ControlGrant | 画面仍可在合规时继续 | 只读，不发旧控制意图 | HMI 最终禁止按键/触控 |
 | 现场管理员关闭共享 HMI1 | Edge **先**推进本地撤销，再关 HMI1 的 Route；异步通知 Gateway | HMI1 受管会话终止；HMI2/Direct 不受影响 | HMI 同机真正许可不靠 Gateway 撤销来决定 |
 | Gateway 数据包乱序/重放 PairCredential | 仅有一次配对账本/新 RouteEpoch 生效 | “路由过期/被拒”，不恢复旧 Session | HMI 旧 TLS socket 不成为新 Session |
-| 工厂 PC GUI 退出/Windows 注销 | 按真实当前合格后台运行模式结束或保持 Edge；不假在线 | 工厂侧标真实“边缘离线/服务在线” | HMI 本地业务持续，其他合法 Direct 不受影响 |
+| 工厂 PC 明确退出 HyRemoteView 或用户注销 | **H-EDGE=A 首批**：关闭 EdgeLink/所有 Route，拒新 Route 并真实标离线；仅关闭单个 RemoteSurface 窗口不自动关闭仍由用户启用的工厂共享 | 工厂侧标真实“Edge 已离线”，不宣称无人值守 Service 在线 | HMI 本地业务持续，其他合法 Direct 不受影响 |
 | 远端写业务命令后 WAN 断线 | 关闭 route，不缓冲命令到恢复后重发 | “操作结果未知，须现场核实” | `OUTCOME_UNKNOWN`，不可执行自动 replay |
 | 静止画面很久没有新像素 | 心跳/会话有效性与实际用户帧龄分别报告 | 不误将无变化的合法帧识别成断线 | HMI 视频按策略合法，网络无像素不代表离线 |
 | 透明 relay 队列积压 | 只暂停读取/有界背压/超时关 Route，不丢中间密文字节 | “通道拥塞/断开”，不能继续标实时 | HMI DeviceSession socket 关闭后释放 held 输入 |
