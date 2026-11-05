@@ -440,6 +440,19 @@ endif()
 
 # Qt Quick target-adapter contracts are likewise Runtime-owned and follow only the Quick adapter capability.
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+    # #609: read-only QImage backing storage, independent of any GPU backend.
+    # Exercise both Qt5 and Qt6 when the corresponding Quick adapter is enabled.
+    add_executable(hyremote-quick-image-storage-test
+        test_quick_image_frame_storage.cpp
+    )
+    target_compile_features(hyremote-quick-image-storage-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-quick-image-storage-test PRIVATE ../src)
+    target_link_libraries(hyremote-quick-image-storage-test PRIVATE
+        HyRemote::Core Qt6::Core Qt6::Gui
+    )
+    add_test(NAME hyremote-quick-image-storage-test COMMAND hyremote-quick-image-storage-test)
+    set_tests_properties(hyremote-quick-image-storage-test PROPERTIES TIMEOUT 15)
+
     add_executable(hyremote-quick-capture-test
         test_quick_capture.cpp
     )
@@ -601,6 +614,7 @@ hyremote_label_test_family("integration;widgets;fast"
     hyremote-widgets-input-preflight-test
 )
 hyremote_label_test_family("integration;quick;fast"
+    hyremote-quick-image-storage-test
     hyremote-quick-capture-test
     hyremote-quick-capture-forced-dpr-test
     hyremote-quick-input-routing-test
