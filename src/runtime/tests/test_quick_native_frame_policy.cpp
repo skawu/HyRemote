@@ -1,7 +1,5 @@
 #include "quick/quick_native_frame_policy.hpp"
 
-#include <cassert>
-
 using HyRemote::detail::NativeFrameExperimentFacts;
 using HyRemote::detail::NativeFrameExperimentMode;
 using HyRemote::detail::nativeFrameExperimentMode;
@@ -9,9 +7,11 @@ using HyRemote::detail::nativeFrameProductionAllowed;
 
 int main()
 {
+    // Explicit checks: CTest must remain effective in Release/NDEBUG builds.
     const NativeFrameExperimentFacts allEnabled{true, true, true, true};
-    assert(nativeFrameExperimentMode(allEnabled) ==
-           NativeFrameExperimentMode::ShadowObservationOnly);
+    if (nativeFrameExperimentMode(allEnabled)
+        != NativeFrameExperimentMode::ShadowObservationOnly)
+        return 1;
 
     for (int i = 0; i < 4; ++i) {
         NativeFrameExperimentFacts facts = allEnabled;
@@ -19,12 +19,14 @@ int main()
         if (i == 1) facts.runtimeOptIn = false;
         if (i == 2) facts.exactQtKit = false;
         if (i == 3) facts.quickWindow = false;
-        assert(nativeFrameExperimentMode(facts) ==
-               NativeFrameExperimentMode::Disabled);
-        assert(!nativeFrameProductionAllowed(facts));
+        if (nativeFrameExperimentMode(facts) != NativeFrameExperimentMode::Disabled)
+            return 2;
+        if (nativeFrameProductionAllowed(facts))
+            return 3;
     }
-    assert(!nativeFrameProductionAllowed(allEnabled));
-    assert(nativeFrameExperimentMode({}) ==
-           NativeFrameExperimentMode::Disabled);
+    if (nativeFrameProductionAllowed(allEnabled))
+        return 4;
+    if (nativeFrameExperimentMode({}) != NativeFrameExperimentMode::Disabled)
+        return 5;
     return 0;
 }
