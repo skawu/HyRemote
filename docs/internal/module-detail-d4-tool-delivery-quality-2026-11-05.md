@@ -1,7 +1,7 @@
 # D4｜HyRemoteTool、安装交付与全产品安全/质量合同（候选）
 
 > **任务**：[全产品设计总控 #843](https://github.com/skawu/HyRemote/issues/843)，范围 T-01、X-01、X-02；对齐 D1 Framework、D2 HyRemoteView、D3 Edge/Gateway 设计候选。  
-> **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，但尚未取得可逐条回读的完整 DOCX/Native A/B。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默把其已获批/已交付远程访问删除。  
+> **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，但尚未取得可逐条回读的完整 DOCX/Native A/B。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默覆盖已批准的 S1 工作台规划或删除已经真实发布的基础 RFB 访问能力；S1 全量验收 #586 仍 OPEN。  
 > **性质**：`DESIGN_CANDIDATE / T01_X01_X02_REVIEW / NO_PRODUCT_CODE / NO_VERSION_ACTIVATION / NOT_FROZEN`。现有产品交付状态须按真实 release/代码/精确平台，本文不重写历史发布。
 
 ## 1. 四个软件产品/责任必须明确
@@ -25,13 +25,13 @@
 
 ### 2.2 推荐的低风险候选 A（Human 审批前不生效）
 
-**保留既有 Tool S1 的真实客户可用访问功能及维护责任**；将未来的高阶完整 View/Native/Managed/身份/共享界面作为 **HyRemoteView** 的单一产品演进主线；Tool 新增开发主线集中在本机 SDK 安装检查、四接入指导、真实/脱敏诊断及工单证据，不在 Tool 重新造一套 Native/Edge/企业工作区。对 RFB 客户端核心的复用，只在许可证、单一所有权、二进制 ABI 与依赖独立性通过设计评审后进行，不能借临时共享源码让两产品版本互相锁定。
+**保留 Tool 当前实际已发布的基础 RFB 访问能力及维护责任；S1 全量功能仍待 #586 真实验收，绝不宣称已交付**；将未来的高阶完整 View/Native/Managed/身份/共享界面作为 **HyRemoteView** 的单一产品演进主线；Tool 新增开发主线集中在本机 SDK 安装检查、四接入指导、真实/脱敏诊断及工单证据，不在 Tool 重新造一套 Native/Edge/企业工作区。对 RFB 客户端核心的复用，只在许可证、单一所有权、二进制 ABI 与依赖独立性通过设计评审后进行，不能借临时共享源码让两产品版本互相锁定。
 
 ### 2.3 Human 必须对比的替代方案
 
 | 选项 | 功能归属与迁移 | 风险/成本 | 建议 |
 | --- | --- | --- | --- |
-| **A：存量保留，新增主线分工** | Tool 已交付 Remote S1 继续维护；新高级访问/Native/Edge 进入 View；Tool 聚焦 SDK/诊断 | 一段时间双 RFB UI/安全补丁路径并存；须治理共用 parser 或替代计划 | **推荐**：不追溯剥夺现有功能，避免未来无限双轨 |
+| **A：存量保留，新增主线分工** | 保留 Tool 已发布基础 RFB；S1 未完事项按原批准路线与新产品分工协调；新高级访问/Native/Edge 进入 View；Tool 聚焦 SDK/诊断 | 一段时间双 RFB UI/安全补丁路径并存；须治理共用 parser 或替代计划 | **推荐**：不追溯剥夺现有功能，避免未来无限双轨 |
 | B：Tool 逐步转纯 SDK/诊断 | View 接管所有 Remote UI，Tool 提供迁移/入口与兼容窗口，约定停止支持日期 | 变更已批准 D/S1 和用户安装/工作流，版本与迁移成本高 | 需要 Human 明确退役和已交付权益过渡 |
 | C：Tool 和 View 永久各自全面 Remote | Tool 与 View 都持续实现 RFB/Native/权限/更新 | 双安全面、双测试矩阵、产品定位重叠且长期成本最高 | 不建议，除非明确不同客户群与商业理由 |
 
@@ -144,7 +144,7 @@ sequenceDiagram
 | XP-12 | GUI 退出、用户注销、SCM 可用/不可用、升级回退时站点在线状态准确 | V03/E01/X01 |
 | XP-13 | 工厂 Edge 复制/重放 ticket 与旧 SitePolicyRevision 无权路由 | E01/G01 |
 | XP-14 | Tool 选择真实 SDK/Qt Kit 生成四路线准确步骤和脱敏证据，无伪远程诊断 | T01 |
-| XP-15 | Tool 旧 S1 兼容与 View 新官方访问产品各自独立安装/升级且不倒退 | T01/V01/X01，**Human 产品权责决策未定** |
+| XP-15 | Tool 已有基础 RFB 与未完 S1 规划、View 新官方访问产品各自独立安装/升级且不倒退 | T01/V01/X01，**Human 产品权责决策未定** |
 | XP-16 | OEM 多品牌不绕 TLS/设备许可，不改变 Native wire、不串持久资料 | V03/T01/X01 |
 | XP-17 | View/HMI/Tool/Edge/Gateway 逐进程 1080p CPU/帧龄/RSS、慢端和队列均可复现 | X02 |
 | XP-18 | 自托管 Gateway 证书轮换、备份/迁移、升级/回滚不会复活已撤 Route/共享 | G01/X01 |
@@ -157,7 +157,7 @@ sequenceDiagram
 
 | ID | 问题 | 当前技术倾向 | 触发审批 |
 | --- | --- | --- | --- |
-| H-T01 | Tool 长期仍为“远程综合工作台”还是改向 SDK/诊断？ | 推荐 A：已交付 S1 维护；新完整官方 Viewer/Native/Edge 归 View；不把旧功能直接删除 | **产品路线与已批准历史冲突，必须 Human** |
+| H-T01 | Tool 长期仍为“远程综合工作台”还是改向 SDK/诊断？ | 推荐 A：维护已发布的基础 RFB 访问能力，S1 全量仍按 #586 未验收治理；新完整官方 Viewer/Native/Edge 归 View；不把已交付功能直接删除 | **产品路线与已批准历史冲突，必须 Human** |
 | H-DUAL | HMI Dual 预期协议启动是整体原子失败还是明确局部退化？ | 推荐 requiredProfiles 原子 Admission；运行中单协议故障只影响授权的对应 Session | 若影响客户可用性/安全承诺 |
 | H-RFB | 标准 RFB 匿名/共享密码连接能承诺怎样的细粒度 Grant/Scope？ | 推荐标准 Direct 的显式受限 Host 策略、默认只读；高保证身份/动态 Target 使用 Native | 任何削减已发布控制功能或更改安全承诺需 Human |
 | H-REVOKE | 撤权后已进入 TLS/socket/内核的 in-flight bytes 安全承诺 | 推荐权威新 epoch 之后不再产生新的旧权限输出；清设备侧可清队列、关闭必要连接，View 遮旧帧，不声称物理撤回已传内容 | 若 V8 安全文字要求更强绝对保证，Human 审批 |
