@@ -1,7 +1,8 @@
 #pragma once
 
 // #609 P3 Qt6.8.3 experimental render-stage shadow observer.
-// No readback, Core callback, RFB publication, frame caching or update requests.
+// Bounded asynchronous readback is counted and discarded; no Core callback,
+// RFB publication, frame caching or update requests.
 #include <QMetaObject>
 
 #include <memory>

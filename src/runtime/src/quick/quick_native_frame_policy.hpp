@@ -18,6 +18,12 @@ struct NativeFrameExperimentFacts
     bool quickWindow = false;
 };
 
+// P3-S1 shadow readback is bounded by construction: a hard submission cap and a
+// minimum interval, with at most one request in flight. The pixels are counted
+// and discarded; nothing is ever published to Core, RFB or a viewer.
+inline constexpr unsigned int kNativeFrameShadowMaxReadbacks = 8U;
+inline constexpr unsigned int kNativeFrameShadowMinIntervalMs = 250U;
+
 constexpr NativeFrameExperimentMode nativeFrameExperimentMode(
     NativeFrameExperimentFacts facts) noexcept
 {

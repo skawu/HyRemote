@@ -1,5 +1,7 @@
 #include "quick/quick_native_frame_policy.hpp"
 
+using HyRemote::detail::kNativeFrameShadowMaxReadbacks;
+using HyRemote::detail::kNativeFrameShadowMinIntervalMs;
 using HyRemote::detail::NativeFrameExperimentFacts;
 using HyRemote::detail::NativeFrameExperimentMode;
 using HyRemote::detail::nativeFrameExperimentMode;
@@ -28,5 +30,13 @@ int main()
         return 4;
     if (nativeFrameExperimentMode({}) != NativeFrameExperimentMode::Disabled)
         return 5;
+
+    // P3-S1 bound: the shadow readback must stay small, spaced and bounded even
+    // when all gates pass. A regression here would let an experiment become an
+    // unbounded sampling loop.
+    if (kNativeFrameShadowMaxReadbacks == 0U || kNativeFrameShadowMaxReadbacks > 32U)
+        return 6;
+    if (kNativeFrameShadowMinIntervalMs < 100U || kNativeFrameShadowMinIntervalMs > 2000U)
+        return 7;
     return 0;
 }
