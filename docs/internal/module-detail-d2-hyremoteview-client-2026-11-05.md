@@ -347,6 +347,23 @@ sequenceDiagram
 - WAN/Route 可用、DeviceTLS 身份通过、Target 可见、ViewGrant/ControlGrant、已新渲染帧这几个状态分别来自 D3/F05/HMI/V02，用户端只能按真实来源呈现；Edge 不发布 HMI 的授权回执。
 - 撤销/修改共享发生时立即使受影响工厂 route 在本地拒新与终止；客户端取消旧接入/输入，不自动重放已送达但不知业务结果的命令，合法同机 Direct 可继续。
 
+### 7.2 工厂 View 关闭范围、Edge 状态与异步 UI 的具体消费合同
+
+完整 E-01 内部 RunLease/Route/Store/撤权时序由 [D3 EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 单一维护；V-03 只持有带权威 `revision/epoch/observationTime` 的只读视图，不在 QML 页面对象中保存可信管理员许可。
+
+| View 用户操作或观察 | V-03 应执行/显示的事实 | 不得混淆 |
+| --- | --- | --- |
+| 关闭单个 RemoteSurface、设备 Tab 或工厂管理页面 | 关闭关联前台 RemoteSession 与本地 pressed/focus；工厂 Edge 只要同产品仍运行且登录态租约、共享许可仍有效，便维持已明确批准的其他 SiteLink/Route | `CloseTab` 不是 `ExitHyRemoteView`，也不是撤销 HMI 共享 |
+| 工厂用户明确退出整个 HyRemoteView/OS 注销 | 应先请求 E-01 本机 STOP admission/fence 并注销观察者，终止受管数据路由；若应用被直接强杀，实际 socket 生命周期与远端租约做失效收敛 | 不因 Gateway 残留 presence 而展示 Factory Edge 仍真正在线 |
+| 管理员改变 HMI 分享状态 | 提交异步有权命令并显示 `PENDING`，只在本机 Edge 回传已持久化 PolicyRevision 和生效结果后显示 `SHARED/UNSHARED`；失败显示 DENY/NEEDS_RECOVERY | QML button toggle 不是授权，Gateway ACK 不是本地已提交 |
+| View 新开/重启登录会话 | 读取受信白名单与当前本机 `EdgeRunEpoch`，显式启用当前运行租约后才可能显示 `LINK_READY`；若尚未启用，则是 `CONFIGURED_OFFLINE` | 持久共享意图不是注销后的自动后台服务资格 |
+| 远端 Presence、SiteLink、HMI 在线或 DeviceTLS 状态发生变化 | 对每一条标来源与最后观测时间；RoutePairReady、HMI DeviceTrusted、Host ViewGrant 与 FrameFresh 分别更新 | 不能由一条“在线”推断用户现在可控制设备 |
+
+**状态代际守卫**：V-03 对任何异步 `registerHmi/setHmiShare/startEdgeLink/RouteClose` 返回先检查发起时的 `EdgeRunEpoch` 和该 HMI 预期 `SitePolicyRevision`。如果已切换站点/当前用户或旧 UI 请求迟到，只能作为历史诊断，不可覆盖新的共享/关闭结果。UI 不自行实现回滚/自动重试非幂等管理命令；结果未知先向本机受信 Edge 查询当前真实快照再决定提示。
+
+**客户端设计验收**：`VIEW-EDGE-01` 关闭画面不退出共享；`VIEW-EDGE-02` 注销/退出真实离线；`VIEW-EDGE-03` 迟到共享回执不得覆新版本；`VIEW-EDGE-04` 升级/重启不复活旧 Route；`VIEW-EDGE-05` Gateway 在线不等于 HMI DeviceTLS/Grant。全部为 DESIGN_ONLY，按 D3 EDGE-LC 与 D4 XP-12/XP-24/XP-20 追踪，不声称已运行。
+
+
 ## 8. 依赖与后续实施阶段划分（设计包，不是立即编码）
 
 - `V01-A` 协议/ByteStream 抽象、安全解析/拒绝/会话生成；与 D1 Native/RFB 精确兼容。**Native 需先有真实 HMI wire 实现与源合同**才可功能验收。
