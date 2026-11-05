@@ -146,6 +146,21 @@ sequenceDiagram
 5. 当 Display 断流、掉线、权限被收回、证书变化，旧纹理应**遮蔽并标记 Stale/Forbidden**而不是继续以“实时画面”展示。是否保留用户明确保存的截图属于未来权限范围，不能把缓存当截图功能。
 6. RFB 不支持 Native Grant 消息，不能要求第三方客户端因此拒绝基本 RFB；官方客户端需要坦诚显示权限可证明程度，而 HMI 最终权限仍在设备端。
 
+### 4.3 F-02/F-06 的客户端消费与显示边界（统一设计合同）
+
+D1 设备端 [F-02 RT-01..08 与 F-06 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 是 D2 客户端的**实际服务边界**，不新建第三套本地权限权威。
+
+| 设备输出/变更 | V-01/02/03 必须采取的动作 | 不得作出的推断 |
+| --- | --- | --- |
+| `RT-01/02` Runtime/Target generation 改变 | 使旧 Target 订阅、RemoteSurface 源、上一次 FULL/DELTA 基线无效，重连生成新会话 | 同 IP/同名称/旧 DeviceCatalog 记录不是旧 Grant 的恢复依据 |
+| `RT-04/05` 合法过滤帧 | 仅解码当前 Session/Target/generation 的已许可帧；FULL 完整覆盖后才可接受 DELTA，Render 对当前帧龄负责 | 网络队列清空、Socket Connected 或 Gateway Ready 不是显示新帧的证据 |
+| `RT-07/08` 慢端/失权/断链 | 慢端展示真实卡顿/WAIT_FULL；敏感或未知失权目标立即清理可控制的 GPU/CPU 缓存并阻断新输入 | 不能依靠 View 遮罩替代 HMI 设备端撤权，也不能承诺清除第三方已存截图 |
+| `POL-02/03` 设备身份与 ViewGrant | 设备身份、用户身份、目标可见、当前 ViewGrant 四种状态分开展示；`plain` TLS 不等于用户已认证 | 不从 TLS 握手成功/设备列表历史状态推出已获得控制权 |
+| `POL-04/05/06` 当前 Scope ControlGrant | PENDING/拒绝/过期/撤销时控件禁用、停止新输入，释放 View 本地 held，并等待设备当前回执 | 不把“已请求”当“已执行”，不自行猜测 GrantEpoch |
+| `POL-07/08` 撤权与终止 | 清旧会话/Scope 焦点、旧权限缓存与按键状态；只有重新确认设备许可才恢复会话 | 网络连通恢复不是业务操作重试的许可 |
+
+**接口消费约束**：D2 只订阅设备协议本身允许观察到的真实回执；标准 RFB 不具有 Native 专用 Grant 消息，其权限失败可通过设备端服务拒绝/会话关闭和第一方 UI 的“身份未验证/当前控制不可证”表述处理，不新增 RFB 字段。Qt Quick RenderThread 只消费经过 V-02 边界检查的 frame ownership，不与 HMI Qt GUI 线程锁耦合。
+
 ## 5. RemoteSurface / Qt Quick 帧管线与坐标
 
 ### 5.1 渲染对象、线程及有界缓存

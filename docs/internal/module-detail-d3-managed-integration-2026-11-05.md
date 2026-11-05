@@ -106,6 +106,14 @@ sequenceDiagram
 
 **Direct path**不会执行前六个 Gateway/Edge 消息，也不读取企业 login 缓存作为直接端 HMI 权限；直接 TCP 连 HMI Native/RFB 是另一种 `ConnectionPath`。
 
+### 5.1 F-02 输出与 F-06 授权的受管路径消费约束
+
+[设备 F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 的生效点在 **HMI 本地 Runtime/Qt**，不是 Edge/Gateway。受管路径职责仅为批准站点/设备/端点的有限期 Route admission、端到端 TLS 字节原序 FIFO、中断/背压的真实报告及撤销路由后停止新接纳。
+
+- `POL-07` 已在 HMI 生效时，即使此前 RoutePermit 尚未撤销，HMI 也不得新排旧许可敏感画面；Edge/Gateway 不能以 RouteReady/PairGranted 替代真实 ViewGrant。Route 被撤时关闭对应字节流，其他合法 Direct/HMI 本地工作不因此失败。
+- `RT-05/07` 的 Full/Delta 取舍发生在 HMI Native/RFB 明文协议边界的**编码/加密前**；Edge/Gateway 不丢弃、合并或重排 TLS 加密字节，受限队列达到上限时只能背压或断开受影响 Route。
+- Factory View 的登录态 Edge（H-EDGE=A）持有自己的连接/站点/路由生命周期；Qt 客户端窗口关闭与产品进程退出/用户注销必须分别给出真实在线状态。Route 关闭后旧 SessionId/GrantEpoch/已排 GUI 输入均不能复用。
+
 ## 6. 状态、断线、撤权和业务结果（五类“在线”不能互推）
 
 | 事件 | 本地 Edge / Gateway 做什么 | Remote View 怎么显示 | HMI 真正效力 |
