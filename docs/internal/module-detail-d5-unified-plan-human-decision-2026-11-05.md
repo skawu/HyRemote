@@ -57,8 +57,8 @@
 | G10 | Optional Gateway / 独立交付责任 | W00、D3 `EG-01..12`、Stage05 唯一候选 IDL 与 **Human 对 #190 独立激活** | Identity/Site/Edge Registry、RoutePermit + one-shot PairLedger、opaque FIFO Relay、tenant/audit | 实施并独立激活后测试自托管证书/ACL、RouteEpoch/Pair 重放、负载及回退；**现阶段仅设计，未激活** |
 | G11 | Gateway Ops / Gateway owner | G10 + 批准的运维范围 | 最小部署/升级/备份/密钥轮换/策略迁移/脱敏诊断 runbook | 客户真实自托管环境可复现恢复/回退且不复活撤权 |
 | X10 | Whole-system E2E / Security + QA | F14 + V12 + E10 + G10，D3 E2E 目标 | 真 HMI↔View DeviceTLS + Edge/Gateway opaque route，12 Edge + 20 产品场景追溯 | 路由 READY≠Grant、无明文、现场优先、撤权/在途/慢端/多设备真实测试 |
-| T10 | Tool maintainer / HyRemoteTool | **Human Tool vs View 职责决定**，现有 Tool S1 事实 | 当前已发布的 Tool 基础 RFB 回归/维护；S1 全量依 #586 仍待验收，SDK/Qt Kit Inspector/诊断/可复制四路线；是否复用 RFB client 单独资格 | 正式 Tool 版本/Qt5/6 Windows 工具兼容、脱敏报告、绝不虚构 Native |
-| X11 | Product packaging / 各产品交付 Owner | F15、V13、E11、G11、T10 适用范围 | 安装/更新/卸载/密钥/迁移/产品级版本表/许可证/SBOM、精确平台适用矩阵 | 正/负安装/升级/回退、只装 View、SDK Kit 与 QtPrivate 精确隔离 |
+| T10 | Tool maintainer / HyRemoteTool | H-T01=A 已批准、D4 `TL-01..08`、Tool S1 #586 OPEN 的真实交付范围 | 保留当前 Basic RFB；后续 SDK Inspector/四入口指导/脱敏导入与 SupportReport 仅按已批准实施包渐进交付 | 实施后精确 Kit/Tool 版本回归、无秘密报告、S1 真实验收；设计期不把未来功能写成已交付 |
+| X11 | Product packaging / 各产品交付 Owner | F15、V13、E11、G11、T10 + D4 `PKG-01..08` 各独立产品/存储 Owner 合同 | 安装/更新/卸载/密钥/持久撤销/迁移、产品制品清单/许可证/SBOM、精确 Qt Kit/平台适用矩阵 | **Gate-I 后**安装/升级/中断回退、工厂只装 View、SDK Kit/QtPrivate 兼容与撤权不复活真实测试 |
 | X12 | Release QA / Human 产品/发布治理 | X10/X11 + 已批准支持范围 | 独立产品发布申请、客户支持矩阵与风险接受 | 与 #95 版本治理衔接、真实所有 Gate PASS，Human 另行批准 |
 
 **Owner 说明**：这些是未来产品**责任类型**，不是已经有实际 Local Worker ACK、不是自动派发、也没有预约版本号。Cloud Owner 当前仅有**设计审查和计划权限**，不因 WBS 排好队就打开 G10 产品公网服务。存在跨不同产品仓库的 PR/测试时按各仓真实保护规则独立签收。
@@ -111,6 +111,8 @@ flowchart TB
 **E-01/G-01 模块细节设计增量（2026-11-05）**：按 Stage05 的**唯一候选 IDL**，直接在 [D3](module-detail-d3-managed-integration-2026-11-05.md) 补全 `EG-01..12`，明确 Factory SiteRegistry/PolicyRevision/EndpointBinding、Gateway Route/PairLedger 的唯一所有者、一次性配对/两次拨号前 ACL 栅栏、站点撤权的本地线性化/持久化、双向 opaque FIFO 的缓冲/取消与登录态 H-EDGE=A。D2/D4 对应操作状态/验收。只闭合设计合同；Stage05 控制消息格式仍未发布冻结、Gateway #190 未激活。
 
 **V-03 身份/档案/更新详细设计增量（2026-11-05）**：现有 [D2](module-detail-d2-hyremoteview-client-2026-11-05.md) 第 6 章补齐 `IDT-01..10`，精确规定本地非秘密 Profile、HMI DeviceTrust、Native 用户凭据、Gateway Operator、工厂 Edge SitePolicy 各有独立 Owner/存储，首用/轮换/撤权 TLS 信任的 Revision/SessionGeneration 并发，以及 OS SecretStore 不可用、档案回退、诊断和 OEM 隔离的失败闭合。D4 已将 IDT 映射 VIEW/XP 质量入口；没有引入新的首次信任默认产品决定或正式产品代码。
+
+**T-01 / X-01 Tool 与交付实施细节（2026-11-05）**：既定 [D4 模块设计](module-detail-d4-tool-delivery-quality-2026-11-05.md) 直接完成 `TL-01..08`（Tool 已发布 Basic RFB 与未来 SDK Inspector/Advisor/诊断/报告的真实功能边界）和 `PKG-01..08`（Framework/View/内置 Edge/可选 Gateway/Tool 各自的安装 ABI、信任数据所有权、升级与失败回退）。不再讨论 H-T01=A、H-EDGE=A；禁止把 Tool S1 #586 OPEN 或 Native/Gateway 未实现能力写成已交付。具体 installer/平台资格须在 Gate-I 后真测；本轮仅完成设计合同，**未生成正式 Word**。
 
 ## 4. 全产品四个不同准入门槛
 
