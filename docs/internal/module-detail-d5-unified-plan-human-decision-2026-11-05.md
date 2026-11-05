@@ -184,6 +184,8 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | R-06 | 工厂 Edge 注销后误显示在线；首批仅支持登录态，后台 Service 为后续同产品独立资格 | H-EDGE=A 已批准；生命周期/状态真实性仍待验收 |
 | R-07 | Native 21 消息及 Human P-A/A 的受控数值/TLS 语义已建立单一来源；但 Host/Viewer 的字节解析、状态/拒绝合同、互操作资格仍未签收，不能把文档定值称作产品 wire 实测 PASS | W00 / Gate-D 合同审签；真实协议对拍留相应实施资格 |
 | R-08 | 128MiB HMI 目标/8 route/256KiB 测试参数被当客户 SLA；任何门禁须真实 per-process/负载/平台证据，未测不支持 | G3 / 性能 / 实机 Gate |
+| R-09 | V15 §9.2 / V8 §13.3 所需文件/Host 业务结果不在已批准 Native 1.0 的 21 类消息中；[D4 §5.5](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已明确 `CLIENT_WRITTEN` 不等于 Host 业务 ACK，**真正受信 Host 文件接口/实施分期仍 OPEN**。不能私改 wire 或通过 RFB 键鼠冒充文件接口 | Gate-D 原子接口/范围收口；若更改批准协议/产品分期则 Human 受控决定 |
+| R-10 | V8 §14.3 离线售后撤销从签发到 HMI 真正收件/生效尚缺可信送达、持久回执和 Owner；[D4 §5.5](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已将待送达/设备确认/委托期限与永久 Direct 权益明确分开，但**传输/签名/离线恢复原子合同仍 OPEN** | Gate-D 受信回执与 Owner 审签；不得把 Gateway 状态等于 HMI Grant 撤销 |
 
 ## 7. Human 已批准的决策与执行追踪（2026-11-05）
 
