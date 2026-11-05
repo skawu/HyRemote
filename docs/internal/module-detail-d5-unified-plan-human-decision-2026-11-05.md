@@ -49,7 +49,7 @@
 | F14 | Framework Native / HyRemote | 已批准 P-A/A 唯一值源、W00 AFS-01..12 状态/错误合同、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | **Gate-I 后**按 26 字节黄金向量/12 异常变异与 AFS-01..12 逐项实际对拍、真 DeviceTLS、Host Grant/Qt 最终栅栏及 RFB-only/Native-only/Dual；当前这些真实 E2E 未运行 |
 | F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 Kit 约束 | C++/QML/Generic/QPA 一套共享 Runtime 的可配置/可观察接入、打包插件兼容 | 同期 Qt5/6 Windows exact cell，公共 API/ABI 与已发布部署回归 |
 | V10 | View Direct RFB / HyRemoteView | W00 与 View G3真实结论，F13 标准端点 | 产品级 bounded RFB client、独立 Direct、失败关闭与存储/恢复 | 真实维护中 Host/Viewer 像素、输入/持键/恶意消息/断网测试 |
-| V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧 / D2 稳定 Qt Quick 模型 | RemoteSurface/QSG、frame lifecycle/damage/resize/DPR、焦点、输入映射、可证明帧龄/反馈 | Qt6.8 Windows/Linux 按支持单元 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充 |
+| V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧、D2 `SURF-01..08` 已审候选合同、精确 Qt Quick 线程边界 | RemoteSurface/QSG、immutable FrameSnapshot / DisplayEpoch、frame lifecycle/damage/resize/DPR、Focus 与输入映射、帧龄/反馈 | **Gate-I 后**在 Qt6.8 Windows/Linux 实际支持单元验证 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充正式产品 |
 | V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、D2 TrustStore | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
 | V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 交互批准及安全资料 | DeviceCatalog/ProfileStore/SecretStore/Connection/Session UI、诊断/品牌/更新 | 离线首启、身份分离、旧画面遮蔽、OEM/凭据/升级独立真实测试 |
 | E10 | Factory View Edge / HyRemoteView | W00、D3、View 同产品安装治理 | SiteRegistry/EndpointBinding/管理员共享、GatewayLink/RouteAdmission、FIFO relay、默认 OFF/撤权 | 工厂只装 View、被动局域网只拨白名单、站点 ACL/权限不串、Direct 不退化 |
@@ -103,6 +103,8 @@ flowchart TB
 **不得用“Gateway 已启动”倒推 HMI Native 或 View 资格；不得以“PoC 编译通过”倒推正式客户端授权。**
 
 **本轮以既有文档为唯一交付载体**：D1 F-02 新增运行时生命周期、线程/Target/Frame/Session/QtTicket 所有权、per-session 输出和缓冲背压 `RT-01..08`；D1 F-06 新增 PolicySnapshot 生效、Qt 最终投递/现场撤权串行化、按 Session held ledger `POL-01..08`。二者是会影响研发实施的**实质模块技术合同**，不是新增 W00 追溯文档。与 D2 View 失权显示、D3 透明转发及 D4 XP 设计验收的消费关系继续独立审查。技术合同候选合并不自动冻结产品或授权代码。
+
+**V-02 RemoteSurface 模块技术合同增量（2026-11-05）**：原 [D2 客户端详细设计](module-detail-d2-hyremoteview-client-2026-11-05.md) 已补充 `SURF-01..08`：Decoder/Render 不可变 FrameSnapshot 所有权、Qt Quick thread fence、per-Target FULL/DELTA、DisplayEpoch 失效、DPR/坐标逆变换、Focus/Grant、本地 held 和像素/资源负例；D4 质量合同已定位 `VIEW/XP/AFS` 证据出口。它们是 **Gate-D 可审设计合同**，G3/产品平台/渲染性能实测未通过；不创建新产品或额外 Native wire。
 
 ## 4. 全产品四个不同准入门槛
 
