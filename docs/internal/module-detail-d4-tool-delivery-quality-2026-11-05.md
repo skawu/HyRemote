@@ -79,6 +79,57 @@ Tool 依照当前真实 Windows Qt5.15/Qt6.8 和已交付安装单元单独验�
 
 配置迁移独立设计：工厂 Edge 共享白名单/策略修订、View 的 Device Trust、Tool 的 SDK 偏好和 Gateway Tenant Registry **四种不同持久化合同**；不得把其中一类的 JSON 原样复制成另一类的权限来源。未知 schema 或旧版本回滚无法证明有效安全策略时必须 fail closed，而不是悄悄采用空密码或全网卡默认监听。
 
+### 4.3 X-01 安装、迁移、升级与失败回退的实施级合同（不增加产品）
+
+此处细化**现有四种产品/交付责任**，不是新发布计划、安装向导原型或正式产物。每个安装流程必须把**软件落盘、可信配置、启用远程监听、设备授权生效、外部可用状态**分成可证伪的独立结果。完成安装不等于安全监听已开放、用户已登录或 Gate-G3/产品正式资格已通过。
+
+| 受控对象 | 写入/运行权威 | 持久状态与最小关联 | 升级/回滚不可破坏条件 |
+| --- | --- | --- | --- |
+| `InstallManifest` | 各产品 X-01 Installer/PackageOwner | ProductId、package version、source SHA、Qt Kit/ABI、协议构建能力、文件清单/hash、dependency licenses、部署路径 | 安装器只能声称 manifest 真正拥有的文件/组件；不能把 Native 仅有设计写为已实现 |
+| `RuntimeDeploymentProfile` | **HMI 宿主受信部署管理员**，F-06 仅消费并准入 | Host identity、Target/Scope、required listeners、RFB/Native TLS 材料引用与策略代次 | RFB 默认地址配置 getter 不是有效准入；错误/缺失签名必须 fail closed，不因卸载 Tool/View 打开监听 |
+| `ViewDeviceCatalog/TrustStore` | HyRemoteView V-03 当前产品凭据边界 | DeviceId、trust anchor/pin、profile 代际、用户自有偏好（与 trust 结论分离） | 地址/证书/设备身份证明变化后不得自动接受新设备；迁移凭据不得明文写入日志/备份 |
+| `FactorySitePolicy/EdgeRunLease` | 同一 View 安装中的 E-01 本地管理员/运行角色 | 白名单、允许端点/期限、单调 SitePolicyRevision **可持久**；EdgeRunEpoch/登录态租约 **不持久** | H-EDGE=A：升级、崩溃/回滚、注销后不得自动复活旧 Route 或后台运行，关闭单个会话窗口不改共享 |
+| `GatewayTenantRegistry/PairLedger` | 独立可选 Gateway G-01 受信系统管理员 | Tenant/Site/Operator/Edge identity、租户 ACL、设备路由准入和一次性配对记录 | 不跨租户恢复旧 credential，不把备份 Route/Permit 当新运行许可，密钥轮换按受信身份验证 |
+| `ToolSdkPreferences` | 独立 Tool T-01 用户/本机权限 | SDK path、Qt Kit、诊断偏好及经许可导出报告 | Tool 更新不强制 View/HMI 同步升级，已发布基础 RFB 访问能力不被删除，完整 S1 #586 OPEN |
+
+#### A. 安装与升级事务（按产品独立执行）
+
+| 事务阶段 | 原子边界/执行责任 | 失败时必须出现的真实结果 |
+| --- | --- | --- |
+| `PACKAGE_VERIFY` | X-01 验证包签名/内容清单、依赖许可证、平台架构、精确 Qt Kit；任何可执行迁移脚本也必须同一受信来源 | 不可信包**不能执行脚本/替换文件**，记录失败原因，原有效安装不被破坏 |
+| `PLAN` | 枚举当前组件所有权、安装冲突、关联服务/应用版本及配置 schema；严格区分「仅 Viewer/Tool 更新」与「HMI 宿主部署」 | ABI 不兼容/路径越权直接停止；不得借改安装包把单 View 拆成独立 Edge 产品 |
+| `QUIESCE` | View 升级先让本机 Edge 运行许可与 Route 真正停止；Gateway 升级先停止新的 Route/Pair，清旧一次性凭据；Framework 必须由宿主控制合格停机窗口 | 非正常退出只能保证本机不再提供旧 socket/运行态；不能承诺跨 OS 强杀过程的完美日志通知。现场 HMI 业务不能被远程更新器强行终止 |
+| `SNAPSHOT` | 为允许回滚的**产品自有**持久配置做受保护快照，记录 schema 及不可倒退的许可/撤权高水位 | 读/解密/备份失败不继续危险迁移；敏感秘密不写入普通备份/日志/用户数据导出 |
+| `STAGE` / `SWITCH` | 先核对新二进制、插件/Qt Private exact ABI、可读取旧配置的 schema；受控路径原子替换/版本切换 | 部分文件落盘不宣布成功，旧进程/插件不混入新 Kit；失败回滚软件文件但**不恢复旧许可** |
+| `MIGRATE` | 每产品只在自身身份/ACL 保护下迁移：Host Policy、View Trust、Factory SitePolicy、Gateway Tenant ACL、Tool Preferences 各自独立，保持单调策略撤销高水位 | 未知 schema、未来版本数据、旧回滚不能保守解释时标 `NEEDS_RECOVERY/DENY`，不自动采用无密码/共享全网策略 |
+| `QUALIFY_AND_ACTIVATE` | 启动当前版本但先关闭网络/路由准入，验证配置/秘密、Qt Kit/证书/设备信任后由真实运行权威重新批准可服务状态 | `PACKAGE_INSTALLED`、`RUNTIME_RUNNING`、`DEVICE_TRUSTED`、`HMI_GRANTED`、`EDGE_ONLINE`、`QUALIFIED` 是不同状态，不得一键宣称成功 |
+| `ROLLBACK/UNINSTALL` | 软件可退回经签名允许的版本；配置仅在不撤销更严格的新安全策略时可恢复；卸载撤运行租约/当前 socket 与应用自有秘密 | 回滚旧版本无法理解新撤权版本时保持离线/拒绝，**绝不恢复被禁用的共享或过期令牌**；不删除宿主业务无关的现场数据 |
+
+**事务不是单一 OS 原子指令**：安装器可采用平台事务/目录交换/备份等不同机制，但**对外安全准入的原子性**必须由对应 Runtime/Policy 真实控制；不能因为文件复制完成或 Service 启动就自动接受 Native/RFB 会话。QPA/QtPrivate 例外必须在对应精确 Qt Kit 检查，不能仅靠文件名同名声称兼容。
+
+#### B. 跨产品升级偏序与不允许的耦合
+
+- HMI Framework 与 Qt 宿主按制造商签名/Qt ABI 资格独立发布；**安装升级不替宿主做业务授权选择**。无网络更新可仍使用已安装的合法 Direct 基础能力。
+- HyRemoteView 作为单一产品统一更新自己的 Viewer、同产品 Edge 角色与可信资源；不另装 Sidecar，退出/注销后不保留未经额外审批的 Windows Service。升级后只恢复**已批准的持久配置**，不恢复 EdgeRunLease/PairCredential/旧 Grant。
+- Gateway 是可选的自托管或供应商服务，有自己的滚动/备份和租户 ACL 演进，不能将 Gateway 更新变成 Direct 的硬依赖。Gateway 仅许可新 Route，不改变 HMI 现有 DeviceTLS/Target/View/ControlGrant。
+- HyRemoteTool 维护已发布的基础 RFB 和 SDK/Kit 诊断，不因为 HyRemoteView 新功能进度去删除用户已发布入口，完整 Tool S1 真实状态继续 #586 OPEN。
+- 各产品间通过**受控且已批准的**协议/接口版本兼容矩阵协作；本章节不为尚未交付的 Native/Gateway 擅造“已支持版本组合”或新的公开 API。
+
+#### C. X-01 设计验收与 Owner 交付字段
+
+| 设计合同 | 正/反向实施验收（未来） | 真正主责 | 状态 |
+| --- | --- | --- | --- |
+| `DEP-01` 包/依赖/Kit 准入 | 包损坏、签名错、Qt Private ABI 不符必须在替换/运行前拒绝；导出 manifest 可追溯 | X-01 Installer + 各组件 Owner | `DESIGN_ONLY` |
+| `DEP-02` HMI 宿主业务隔离 | SDK/Plugin 升级出错时不强停 HMI 业务或无可信策略自动 bind listener | F-03/F-06 + X-01 | `DESIGN_ONLY` |
+| `DEP-03` View 单产品/Edge 角色 | 安装/升级/卸载均无独立 Edge installer，登录态 RunLease 不跨重启；注销离线、单窗口关闭不撤共享 | V-03/E-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-04` 设备 Trust 迁移 | 同 IP 新证书/不同设备、未知 schema、凭据损坏时拒绝自动信任，不丢失可信历史回退轨迹 | V-03 + X-01 | `DESIGN_ONLY` |
+| `DEP-05` 站点共享撤权与回滚 | 旧版本回滚后不能复活曾撤销的 HMI 分享、PairCredential、旧 Route/Grant；失败需 NEEDS_RECOVERY | E-01/G-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-06` Gateway Tenant/Key 轮换 | 不跨租户恢复 operator/edge token，丢密钥或 TTL 到期时现存 Route 安全关闭，不影响 Direct | G-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-07` Tool 兼容与独立更新 | SDK/Kit 不一致/Tool 版本不同不破坏 View/Framework；旧已发布 RFB 保留 | T-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-08` 版本/支持真实性 | 未通过真实 Kit/平台/许可证明的组合标 `NOT_RUN/NOT_SUPPORTED` 而非自动 SUPPORTED | X-01/X-02 | `DESIGN_ONLY` |
+
+**设计出门条件**：安装角色、文件/配置/秘密的唯一 Owner、可信包/Qt Kit、取消与恢复、安全许可高水位及每一失败出口已审签。实际签名验证、OS 安装器、Windows/Linux Kit、无人值守、更新回滚资格和软件发行仍属于后续被独立批准的 Gate，不通过本文 Markdown 或 PR CI 自动通过。
+
 ## 5. X-02 安全、资源、可观测性、质量与全产品验收
 
 ### 5.1 安全性优先的失效序列
