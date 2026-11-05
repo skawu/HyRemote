@@ -11,7 +11,7 @@
 | 受控输入 | 现有审批记录提供的 SHA-256 | 当前全文读取 | 冻结前需核对 |
 | --- | --- | --- | --- |
 | `HYR-PD-001/V15` | 正式版 SHA `d0408f333d4b9aec186067cd159ff8a4a2206ef66d58243fd4c5cd10ffb82cf1`；实际读取送审稿 SHA `b753ebc69bbed47c2d8761f2eaf5f616001fb3e6ae32cff42f432b8930084b6b` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V15 56 条与 V8 附录 D 56/56 匹配；行为追踪仍未冻结 |
-| `HYR-ARCH-001/V8` | 正式版 SHA `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be6803a`；实际读取送审稿 SHA `3d89a90559ae62852538e919b7f0ad2188f54806ef13d806a095474dccce5824` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V8 99 小节、A/B 21 type/fields/length 可读；wire 值域/负例仍 OPEN |
+| `HYR-ARCH-001/V8` | 正式版 SHA `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a`；实际读取送审稿 SHA `3d89a90559ae62852538e919b7f0ad2188f54806ef13d806a095474dccce5824` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V8 99 小节、A/B 21 type/fields/length 可读；wire 值域/负例仍 OPEN |
 
 **已取得正文等效依据**：Human 上传完整 V15/V8 送审稿并明确确认“内容一样”；真实 SHA-256 逐一与 #827 历史**送审稿**完全匹配，**不是正式版文件二进制摘要**。结构审计 V15 56、V8 99、附录 D 56/56、Native 21 已完成，详情见 [受控源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。行为级追踪、Wire 值域与测试仍不得标 `NORMATIVE_TRACE=PASS`。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
 
