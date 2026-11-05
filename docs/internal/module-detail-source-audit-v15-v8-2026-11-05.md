@@ -1,5 +1,8 @@
 # HyRemote 模块详细设计：V15/V8 受控源全文核对与 Native A/B 差距登记（2026-11-05）
 
+> **后续审批状态**：本文件第 4 节如实记录“V8 送审稿**原文**曾未明确给出的数字”，并非现时规范仍为空。Human 已批准 `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A`，具体数值/安全档位以 [Native P-A / TLS A 已批准受控补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 为增补权威；字节级向量已设计但 Host/Viewer 实机未测。原送审稿 SHA 与正式版二进制 SHA 仍要严格区分。
+
+
 > **状态**：`SOURCE_TEXT_AUDITED / DESIGN_TRACE_PARTIAL / GATE_D_NOT_FROZEN`。本文仅是从 Human 提供的 Word **送审稿**读取的来源与差距索引，不重写 Native 1.0 报文规范，不对已批准正式 Word 进行二进制替代，也不批准产品研发。设计总控：[#843](https://github.com/skawu/HyRemote/issues/843)；五项 Human 决策已选 A。
 
 ## 1. 可信来源与证据等级
@@ -99,7 +102,7 @@ V8 A.2 **明确定义字段宽度和顺序**，但以下字段的具体 wire **�
 - `SOURCE_DRAFT_SHA_MATCH_ARCHIVE=PASS`、`HUMAN_CONTENT_EQUIVALENCE=AFFIRMED`、`FORMAL_BINARY_SHA_CHECK=NOT_DONE`（送审稿与正式稿 SHA 本应不同）。
 - `PD56_TO_V8_APPENDIX_D56=PASS`、`ARCH99_SOURCE_OUTLINE=PASS`、`NATIVE21_TYPE_FIELD_LENGTH_INVENTORY=PASS`、`FIXED_LENGTH_ARITHMETIC=PASS`。
 - `NORMATIVE_TO_MODULE_BEHAVIOR_TRACE=PARTIAL`：本稿完成真实来源与章/域接收方定位，仍需 D1–D5 **逐行为**关联 State/Failure/Test/Owner；不能用计数代替设计签收。
-- `NATIVE_WIRE_VALUE_BINDINGS=WIRE-V01..V07_OPEN`；`WIRE_FROZEN=NO`。
+- `ORIGINAL_V8_A_B_UNBOUND_WIRE_VALUES=SOURCE_AUDIT_CONFIRMED`；`W00_P_A_A_BINDINGS=HUMAN_APPROVED`，受控增补见 [Native V8 规范补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；`26_GOLDEN_BYTES=DESIGNED_NOT_RUN`、`NATIVE_INTEROPERABILITY=NOT_RUN`。
 - `HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`；`DETAIL_DESIGN_FROZEN=NO`、`VIEW_G3=NOT_PASSED`、`NATIVE_E2E=NOT_IMPLEMENTED`、`GATEWAY_190=NOT_ACTIVATED`、`GATE_I_IMPLEMENTATION_AUTHORIZED=NO`。
 
-**下一步只做设计收口**：优先补 `WIRE-V01..V07` 的值域/正负向合同及 Native 直接/受管安全档位说明；以本来源清单对照 D1–D5 的接口和验收状态，产出真正可验的 56/99 行级追踪并审查。若确认必须改变已批准 V8 Native wire，提出精确差量而非代码先行。文档和测试规划不等于自动生成产品代码或正式 Word。
+**审批后下一步**：采用 Human 已批准的 P-A/A 数值与安全档位，完成 F-05/V-01 精确状态/错误/输入授权/隐私线性化合同、预期 26 个字节向量和负例的独立评审；V15 56、V8 99 的追溯索引另见 W00 工作包。若改变已批准的 wire 数字或 TLS-first A，仍需受控 Human 变更。文档和测试规划不等于产品代码或正式 Word。

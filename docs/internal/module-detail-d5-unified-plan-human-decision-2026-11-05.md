@@ -11,20 +11,22 @@
 | 受控输入 | 现有审批记录提供的 SHA-256 | 当前全文读取 | 冻结前需核对 |
 | --- | --- | --- | --- |
 | `HYR-PD-001/V15` | 正式版 SHA `d0408f333d4b9aec186067cd159ff8a4a2206ef66d58243fd4c5cd10ffb82cf1`；实际读取送审稿 SHA `b753ebc69bbed47c2d8761f2eaf5f616001fb3e6ae32cff42f432b8930084b6b` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V15 56 条与 V8 附录 D 56/56 匹配；行为追踪仍未冻结 |
-| `HYR-ARCH-001/V8` | 正式版 SHA `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a`；实际读取送审稿 SHA `3d89a90559ae62852538e919b7f0ad2188f54806ef13d806a095474dccce5824` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V8 99 小节、A/B 21 type/fields/length 可读；wire 值域/负例仍 OPEN |
+| `HYR-ARCH-001/V8` | 正式版 SHA `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a`；实际读取送审稿 SHA `3d89a90559ae62852538e919b7f0ad2188f54806ef13d806a095474dccce5824` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V8 99 小节、A/B 21 type/fields/length 可读；Human P-A/A 已补准数值，真实负例仍 NOT_RUN |
 
-**已取得正文等效依据**：Human 上传完整 V15/V8 送审稿并明确确认“内容一样”；真实 SHA-256 逐一与 #827 历史**送审稿**完全匹配，**不是正式版文件二进制摘要**。结构审计 V15 56、V8 99、附录 D 56/56、Native 21 已完成，详情见 [受控源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。行为级追踪、Wire 值域与测试仍不得标 `NORMATIVE_TRACE=PASS`。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
+**已取得正文等效依据**：Human 上传完整 V15/V8 送审稿并明确确认“内容一样”；真实 SHA-256 逐一与 #827 历史**送审稿**完全匹配，**不是正式版文件二进制摘要**。结构审计 V15 56、V8 99、附录 D 56/56、Native 21 已完成，详情见 [受控源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。行为级追踪与实际测试仍不得标 `NORMATIVE_TRACE=PASS`（Native 数值 P-A/A 已获批）。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
 
 
 **W00 2026-11-05 追溯工作增量（非冻结）**：[V15 表6 **31/31** 源场景→[D4 XP01..28 设计用例](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md) 的交叉追踪已补，补充 XP21..28 用于原 20 项场景未明确覆盖的真实用户结果；**只完成规格设计、全部 NOT_RUN**。
 
-**W00 2026-11-05 上位要求索引**：已生成 [V15 56 条行为/失败/表6场景映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99 个 Heading2 详细设计主责索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)，以及 [Native 21 类消息正/负向向量与 WIRE-V01..V07 严格差距](module-detail-w00-native-wire-contract-gaps-2026-11-05.md)。56 条仍是 `MAPPED_NOT_TESTED`，99 节仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，Native 测试仍是 `NOT_RUN`。新增 `SOURCE_TENSION_01`：V8 §8.2 TLS-first 和 A.1 的 `plain/tls-password` 两档适用范围必须审签，**不由实现者私定或改写 V8**。现已备好 [NATIVE-V8-WIRE-DELTA-01 精确枚举/档位**待批准**取值方案](module-detail-w00-native-wire-value-proposal-2026-11-05.md)，仅为候选，不使 `WIRE_FROZEN=YES`。无产品代码/服务激活。
+**W00 2026-11-05 上位要求索引**：已生成 [V15 56 条行为/失败/表6场景映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99 个 Heading2 详细设计主责索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)，以及 [Native 21 类消息正/负向向量与 WIRE-V01..V07 严格差距](module-detail-w00-native-wire-contract-gaps-2026-11-05.md)。56 条仍是 `MAPPED_NOT_TESTED`，99 节仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，Native 测试仍是 `NOT_RUN`。原先 `SOURCE_TENSION_01` 的 V8 TLS-first/plain 歧义**已经 Human 选择 A**，P-A 具体数值亦已批准；此前 [待批原提案](module-detail-w00-native-wire-value-proposal-2026-11-05.md) 仅保留审签历史。当前唯一规范补充见 [Native V8 approved delta](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)。无产品代码/服务激活。
+
+**Native 规范数值及安全档位审批已落实（2026-11-05）**：Human 明确批准 `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A`（[#843 决策](https://github.com/skawu/HyRemote/issues/843#issuecomment-6648340105)）。唯一生效的 [V8 A/B 数值增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 已将先前 WIRE-V01..V06 数值、plain/tls-password 两档统一 TLS-first 正式绑定。基于此完成 [Native 21 类／26 个正向黄金字节＋12 个负向规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)；**全部仍为设计数据，未测试**。此前 [P-A 候选](module-detail-w00-native-wire-value-proposal-2026-11-05.md) 只作历史取舍记录，不再重复申请 Human 批准。Gate-D/Native E2E/Gate-I 仍待独立准入。
 
 ## 1. 现在的真实阶段：设计接近全域覆盖，但不能宣布冻结
 
 | 阶段 | 交付范围 | 当前设计状态 | 未能自动越过的门禁 |
 | --- | --- | --- | --- |
-| W00 源结构/行为初步追踪 | 14 模块 #843 + [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md) + V15 56 行 + V8 99 行 + Native 21 类负向规格 | **送审稿 SHA 匹配；56 行行为/失败映射、99 节主责索引形成，未验证实现** | 细分原子合同与状态/错误/测试/Owner，Wire 数值与 SOURCE_TENSION_01 仍 OPEN |
+| W00 源结构/行为初步追踪 | 14 模块 #843 + [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md) + V15 56 行 + V8 99 行 + Native 21 类负向规格 | **送审稿 SHA 匹配；56 行行为/失败映射、99 节主责索引形成，未验证实现** | 细分原子合同与状态/错误/测试/Owner，Wire 数值已获 Human P-A/A 批准；剩余状态、异常测试与真实互通仍未完成 |
 | D1 Framework | F01–F06：Core、Runtime、四入口、RFB/Native、Host 安全 | **三份设计候选与横向审查** | 传统 RFB 身份/Scope、Dual 启动、撤权在途数据、真实 Annex A/B |
 | D2 HyRemoteView | V01–V03：完整 Direct、QtQuick、Trust、设备/凭据/诊断/OEM | **设计候选** | G3 #5 **NOT PASSED**、真实 Native DeviceTLS/Frame/Grant、源条款对照 |
 | D3 Edge/Gateway | E01/G01：同安装 Edge、受管控制/字节隧道、ACL/自托管 | **复用 Stage04/05 并形成跨模块候选** | #190 **NOT_ACTIVATED**、control IDL 版本、OS 后台安全、真实 Managed E2E |
@@ -103,7 +105,8 @@ flowchart TB
 ### Gate-D：详细设计冻结申请（当前目标，不等于已通过）
 
 - [x] V15/V8 有经 #827 历史 SHA 验证的**等效完整正文**；56/99 标题、附录 D 56/56、Native 21 个 type/字段/长度已核，正式版**二进制**未对照。
-- [ ] Native A/B 数值域（`WIRE-V01..V07`）与完整正/负向互操作向量尚需受控确定；不能宣称 wire frozen。
+- [x] V8 A/B 原文曾空缺的数值、键码与两种 Native TLS-first 模式已获 Human P-A/A 正式批准，统一受控值源已归档；21 type／26 个正向 golden vectors 与 12 个负向规格只完成计算设计。
+- [ ] 真正 Host/Viewer 双端独立解析、错误时序、TLS 设备身份与 Qt 输入/帧安全负测尚未执行；不能宣称 Native E2E、整体 wire 互操作或 Gate-D 冻结通过。
 - [x] 已有六类 Framework 模块、三 View 模块、Edge/Gateway、Tool、部署/测试的设计候选和跨模块审查基础。
 - [x] H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 的产品/安全语义已由 Human 正式批准 A，纳入 D1–D5 合同（不是实现证明）。
 - [ ] 与正式 V15/V8 原文和 Native A/B 逐条核对的最终权限、错误与协议细节仍需技术审查。
@@ -129,7 +132,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | --- | --- | --- | --- |
 | HMI Framework/四接入 | D1 Boundary + Consistency，XC01..14 | FW01..12 / XP01、XP04–06 | 候选已审，Native/Grant 实现未批准 |
 | 标准 RFB | D1 Protocol，DP01..06 | RFB strict 3.8/Raw/TRLE 与传统 Viewer/Scope/场景 | 当前 RFB 代码存在，精确版本真实测试仍需专项 |
-| Native A/B + DeviceTLS | HMI design05 + D1 Protocol + [21 消息负向规格](module-detail-w00-native-wire-contract-gaps-2026-11-05.md) | DP07..14、HMI01..08；21 message 字段/长度、值域/负例及新 TENSION | **21 类源字段已核，缺 WIRE-V01..V07 的准确数值与 SOURCE_TENSION_01；12 类设计负例全部 NOT_RUN** |
+| Native A/B + DeviceTLS | HMI design05 + D1 Protocol + [21 消息负向规格](module-detail-w00-native-wire-contract-gaps-2026-11-05.md) | DP07..14、HMI01..08；21 message 字段/长度、值域/负例及新 TENSION | **21 类源字段已核；WIRE-V01..V06 数值及 SOURCE_TENSION_01=A 已批准；26 正向字节样例＋12 异常规格设计完成但均 NOT_RUN** |
 | View Direct/RemoteSurface/Identity | D2 VIEW01..14 | XP02–03、XP07、XP13、XP16–17 | G3 未通过，无 G4 产品代码 |
 | Factory Edge / Gateway | Stage04/05 + D3 MG01..16 | EDGE01..12 / XP08–13、XP18 | 设计候选；#190 未激活 |
 | Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 已有基础 RFB 产品基线；完整 Tool S1 #586 仍 OPEN；H-T01=A 已批准，技术交付待审 |
@@ -164,7 +167,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 
 **剩余真正阻断详细设计正式冻结的工作，不再是这五个取舍：**
 
-1. **规范正文现已取得，行为追踪仍需补齐**：Human 提供送审稿历史 SHA 完全匹配的完整原文并确认内容等效，V15 56 条与 V8 附录 D 56/56、架构 99 小节、Native A/B 21 type 已核。剩余工作是逐要求映射 `Contract/State/Failure/Test/Owner` 并填补 WIRE-V01..V07 值域与测试向量；`NORMATIVE_TRACE=PARTIAL`，不能把本次送审稿 SHA 误写为正式版文件 SHA。
+1. **规范正文现已取得，行为追踪仍需补齐**：Human 提供送审稿历史 SHA 完全匹配的完整原文并确认内容等效，V15 56 条与 V8 附录 D 56/56、架构 99 小节、Native A/B 21 type 已核。剩余工作是逐要求映射 `Contract/State/Failure/Test/Owner` 并完成已批准 P-A/A 值域的 Host/Viewer 双端状态/安全/兼容设计审签与向量实际资格；`NORMATIVE_TRACE=PARTIAL`，不能把本次送审稿 SHA 误写为正式版文件 SHA。
 2. **无需重开产品审批的工程细化**：Admission 的实际预绑定/回滚原子性，RFB 固定 Target/匿名会话显示信息与第三方 Viewer 兼容，撤权线性化与 GUI/网络栅栏，登录态 Edge 的进程/凭据/退出处理，Server/Client 的真实 Qt5/Qt6 适配及资源预算，均须形成可测合同。
 3. **Gate 的独立保持**：设计冻结由 Human 后续独立签收；G3 #5 技术资格尚未通过，Native TLS/E2E 未实现，Gateway #190 尚未激活。以上五项批准**没有**授权新产品代码、开公网路由或发布。
 
@@ -202,11 +205,12 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 - [x] 56 项 V15 逐项映射主责模块/候选行为/失败边界及原文表6序号；V8 99 个 Heading2 逐项登记到 D1–D5 Owner（**并非已审通过**）。
 - [x] Native 21 类消息各有待执行的合法字段及至少一类拒绝情形；NV-01..NV-12 确定性负向设计已列出（**NOT_RUN**）。
 - [x] V15 表6 **31/31** 原文场景已映射到已有 XP01..20 + 新补 XP21..28 的验收设计，未运行任何测试；完整 56 项需求仍须细分原子合同。
-- [ ] 56/99 项进一步分解到最终原子合同/状态/错误/测试 ID/Owner 和证据；WIRE-V01..V07 与 SOURCE_TENSION_01 规范值域/安全档位须签收，随后再评 Gate-D。
+- [x] WIRE-V01..V06 新数值分配、键码及 SOURCE_TENSION_01=A 的**产品协议语义**已获 Human 正式签收；不再重开候选数值选项。
+- [ ] 56/99 需求须进一步关联最终原子状态/错误/TestID/Owner；Native 26 黄金向量、12 个异常场景及全状态机的真实 Host/Viewer 互操作证明仍待执行和独立审查，Gate-D 尚不可批准。
 - [x] Human 已批准五项产品/安全设计取舍 A（不等于实现或冻结）。
 - [ ] Human 正式模块设计冻结和独立 Gate-I 实施授权仍未取得。
 - [ ] 一切产品代码、实机/资格、全产品发布尚未由本计划启动。
 
-**状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`V15_TABLE6_31_TO_XP28=DESIGN_COVERED_NOT_RUN`，`NORMATIVE_TRACE=PARTIAL`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
+**状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`V15_TABLE6_31_TO_XP28=DESIGN_COVERED_NOT_RUN`，`NATIVE_WIRE_P_A_AND_TLS_A=HUMAN_APPROVED`，`NATIVE_26_VECTORS=DESIGNED_NOT_RUN`，`NORMATIVE_TRACE=PARTIAL`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
 
-**下一动作**：独立审查并归档本次 56+99+21 三类完整索引；把这些初步映射进一步拆为可签收原子状态/错误/测试/Owner 合同，审查 Native WIRE-V01..V07 和 SOURCE_TENSION_01 的正式规范取值。无足够原文证据不能臆填 bit/枚举或以纸面通过表示实测。内容和图表、目录/版式规划全部审好后，再单独向 Human 申请 Gate-D；Gate-G3、Gateway #190、Gate-I 独立，当前不创建产品代码。
+**下一动作**：在当前**设计阶段**完成 Host/Viewer/Qt 最终输入与画面撤权的可签收状态、错误、时序合同，继续把 V15 56/V8 99 初步追踪拆为需求→ContractID→State/Error/TestID/Owner；已批准的 Native 26 字节样例/12 负例待未来独立产品实施及真机验证，不以纸面计算冒充实测。目录、图表和版式内容先审好，再独立向 Human 提交 Gate-D 设计冻结；Gate-G3、Gateway #190、Gate-I 分别管理，不创建产品代码。

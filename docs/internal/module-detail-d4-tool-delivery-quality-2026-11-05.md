@@ -112,6 +112,10 @@ sequenceDiagram
 
 说明：HMI 的 V8 128MiB 是设备侧预算目标；Edge/Gateway/View 的数值必须另测。原则上所有进程按 `0/1/2 viewers`、静态/小更新/高动态、正常/慢端/断网/撤权、GUI 登录/后台模式记录 CPU（明确 % 核心基数）、RSS/PSS、网络吞吐、Frame age P95、输入→可见延迟、socket/队列水位。含共享 FrameStorage 时内存计数应避免双计，但不得忽略每会话遮罩或 TLS buffer。**不能把降低刷新或保留旧帧当性能优化。**
 
+### Native 1.0 补充规范的验收输入
+
+XP-03/04/05/06/07/10/20/21 必须复核 [Human 批准的 Native V8 数值/档位合同](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 和 [26 个黄金字节向量与 12 个异常规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)。两个档位都必须设备 TLS-first；`plain` 只是不额外进行 Native 用户密码认证，不是开放匿名设备控制。验收要逐项记录独立 Host/Viewer 构建 SHA、Qt Kit/平台、可信设备身份、Host Scope 与是否真实执行。当前新增向量全部未运行，不能因为 Human 批准数字而写 PASS。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
@@ -174,6 +178,6 @@ sequenceDiagram
 | H-RFB | 标准 RFB 输入与授权 | **HUMAN_APPROVED_A**：保留 Host 已开放的基础输入能力；新架构默认只读，Scope 经 Host 栅栏与单控制者仲裁，共享口令不充当个人身份 | 旧客户端兼容/安全展示技术验收待证 |
 | H-REVOKE | 在途数据撤权边界 | **HUMAN_APPROVED_A**：新 epoch 生效后不新生成/排队旧许可输出；清本地可控缓存，必要时断链，View 遮旧帧；不承诺追回已传/已见内容 | 线程线性化、内核缓冲、负例审核待证 |
 | H-EDGE | 工厂后台首批范围 | **HUMAN_APPROVED_A**：仅支持登录期间 Edge 在线，退出/注销真实离线；无人值守需未来单独资格且仍同一个 View 安装 | 首批产品范围已定；Windows Service 不构成当前支持承诺 |
-| H-BASELINE | V15/V8 送审稿等效完整正文与 Native 附录 A/B 已取得 | 送审稿实际 SHA 与 #827 历史记录匹配，Human 确认与已批准正式版正文相同；56/99/21 来源核对已归档，Native 枚举 `WIRE-V01..V07` 和安全档位 `SOURCE_TENSION_01` 仍待受控规范签收 | Gate-D 仍未批准；不假称正式版 DOCX 二进制 SHA 已取回 |
+| H-BASELINE | V15/V8 送审稿等效完整正文与 Native 附录 A/B 已取得 | 送审稿实际 SHA 与 #827 历史记录匹配，Human 确认与已批准正式版正文相同；56/99/21 来源核对已归档，原 V8 的 WIRE-V01..V06 数值和 SOURCE_TENSION_01=A 已获 Human P-A/A 批准；WIRE-V07 真实互通及负向测试仍未运行 | Gate-D 仍未批准；不假称正式版 DOCX 二进制 SHA 已取回 |
 
 **D4 当前结论**：Human 的 H-T01/H-DUAL/H-RFB/H-REVOKE/H-EDGE=A 均保持批准。Human 提供了与 #827 送审稿归档 SHA 一致且正文等效的 V15/V8；56/99/21 来源索引与 V15 表6 31 场景已经形成受控审计。新补的 XP-21..XP-28 是此前 XP01..20 未充分覆盖的用户验收设计项，全部 `NOT_RUN`；Native 数值与原文安全档位仍存在缺口。上述不代替 Gate-D 冻结、产品代码 Gate-I、测试资格或发布。正式 Word 仍先目录/内容/图表/版式和源条款审签后才制作。

@@ -50,7 +50,7 @@
 | V8 7.5 | 键鼠、文本与触控 | D1 F-06; D2 V-02 | 事件归一化、双重准入、跨来源 held 状态与 Qt 最终栅栏 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 7.6 | 本地输入边界 | D1 F-06; D2 V-02 | 事件归一化、双重准入、跨来源 held 状态与 Qt 最终栅栏 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 8.1 | 协议组成与能力 | D1 F-04/F-05; D2 V-01; D3 E-01/G-01 | RFB/Native 双独立协议与设备身份/帧/输入/受管透明路径 | `INDEXED_CONTRACT_REVIEW_PENDING` |
-| V8 8.2 | 协商与会话建立 | D1 F-04/F-05; D2 V-01; D3 E-01/G-01 | Native §8.2 TLS-first 与 A.1 plain 档位存在 SOURCE_TENSION_01，尚待受控消歧 | `INDEXED_CONTRACT_REVIEW_PENDING` |
+| V8 8.2 | 协商与会话建立 | D1 F-04/F-05; D2 V-01; D3 E-01/G-01 | SOURCE_TENSION_01 已获 Human=A：plain 与 tls-password 都须 HMI DeviceTLS 先行；Host/View 状态与测试仍待审核 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 8.3 | 目标发现与订阅 | D1 F-04/F-05; D2 V-01; D3 E-01/G-01 | RFB/Native 双独立协议与设备身份/帧/输入/受管透明路径 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 8.4 | 画面更新与控制 | D1 F-04/F-05; D2 V-01; D3 E-01/G-01 | RFB/Native 双独立协议与设备身份/帧/输入/受管透明路径 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 8.5 | 输入与扩展能力 | D1 F-04/F-05; D2 V-01; D3 E-01/G-01 | RFB/Native 双独立协议与设备身份/帧/输入/受管透明路径 | `INDEXED_CONTRACT_REVIEW_PENDING` |
@@ -104,7 +104,7 @@
 | V8 16.5 | 演进与兼容原则 | D4 X-02; D5 W00; D3 E-01/G-01 | 产品条款到架构/测试、变更、跨域 E2E 和证据归属 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 16.6 | 跨域访问的架构验证 | D4 X-02; D5 W00; D3 E-01/G-01 | 产品条款到架构/测试、变更、跨域 E2E 和证据归属 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 A.1 | 通用消息格式 | D1 F-05; D2 V-01; D4 X-02 | 8-byte BE header、flags=0、TLS/plain 预配档位（与 §8.2 待消歧） | `INDEXED_CONTRACT_REVIEW_PENDING` |
-| V8 A.2 | 消息类型与字段顺序 | D1 F-05; D2 V-01; D4 X-02 | 21 type/字段顺序/长度固定；caps/status/format 等具体数值域 OPEN | `INDEXED_CONTRACT_REVIEW_PENDING` |
+| V8 A.2 | 消息类型与字段顺序 | D1 F-05; D2 V-01; D4 X-02 | 21 type/字段顺序/长度固定；原先未绑定 caps/status/format 数字已通过 Human P-A 受控补充，互操作未运行 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 A.3 | 输入子类型与键码 | D1 F-05; D2 V-01; D4 X-02 | INPUT subtype 1..5；modifier/button/key 映射部分未定 | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 A.4 | 画面事务与重同步 | D1 F-05; D2 V-01; D4 X-02 | 每 Target 独立 generation/frame_id，FULL 覆盖、WAIT_FULL/REQUEST_FULL | `INDEXED_CONTRACT_REVIEW_PENDING` |
 | V8 A.5 | 错误码与关闭原因 | D1 F-05; D2 V-01; D4 X-02 | ERROR 13 码及 CLOSE 1..5 原文已明确，TLS 失败无明文 ERROR 降级 | `INDEXED_CONTRACT_REVIEW_PENDING` |
@@ -119,7 +119,7 @@
 | --- | --- | --- | --- |
 | 一 Runtime 四入口 | §§3.1–3.5,4.1–4.6,15.1–15.5,附录 B | V15 §§2.2,3.1–3.4,13.1,13.6 | Qt Private 精确 Kit/ABI、受控准入与统一 Target/Policy |
 | 授权/撤权双栅栏 | §§5.1–5.5,6.1–6.5,7.1–7.6,附录 B | V15 §§4.1–4.3,6.1–6.3,10.1–10.2 | Host 唯一 PolicyEpoch、per-session 缓存与 Qt delivered-before-action 竞态 |
-| RFB/Native 二协议 | §§8.1–8.6,9.1–9.6,附录 A | V15 §§5.1–5.4,7.1–7.3 | 附录 A 21 类定长/变长与 SOURCE_TENSION_01、WIRE-V01..V07 未定数值域 |
+| RFB/Native 二协议 | §§8.1–8.6,9.1–9.6,附录 A | V15 §§5.1–5.4,7.1–7.3 | 附录 A 21 类字段与 Human 已批准的 P-A/A 数值及 TLS-first 合同；26 字节向量、12 负例仍未运行 |
 | Managed/Factory Edge | §§3.6,8.7,9.7,10.6,11.6,16.6 | V15 §§1.4,8.6–8.7,13.8–13.9 | 登录态 Edge、RoutePermit 与 HMI DeviceGrant 分离、E2E/公网 Gate |
 | Tool/软件/权益 | §§12.1–12.6,14.1–14.5,15.1–15.5,16.1–16.5 | V15 §§11–12,14 | H-T01=A；Tool S1 #586 OPEN，Qt 精确平台证据、持续合法离线使用 |
 | 安全资源 | §§9.1–9.7,10.1–10.6,附录 C/E | V15 §§10–11,14 | 设计额定不等于实测/SLA；中继不吸收 HMI 128MiB 预算 |

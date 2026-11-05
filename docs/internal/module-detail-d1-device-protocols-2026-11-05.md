@@ -28,11 +28,11 @@ RFB/Native **仅共享**设备端采集源/目标索引、可信 DeploymentAdmis
 | `consumeClientMessage()` 对**任意完整** Normal 消息设置 `producedUsefulMessage=true`，没有每次 FBU 后自动重新进入有限 usefulness 窗口 | 当前 `rfb_transport.cpp`；#158 后期评论要求更强的持续占用复核 | **DESIGN_GAP**：现有“首次完整消息”不等价于“持续生产有用显示请求”；须在协议模块详细设计选择正确的进度/活跃条件，再决定是否需要有限实现变更 |
 | RFB 当前 Raw + TRLE（按协商选择），DesktopSize、Cursor、Fence 的有界空 flags 回应、ContinuousUpdates 可选；Clipboard CutText 读取/限额后忽略 | `rfb_transport.cpp` / `rfb-delivery-profile.md` | **CODE_FACT**；不是所有维护中 Viewer 或剪贴板功能的发布保证；Fence 不能假称 Qt 最终输入完成同步 |
 | VNC Authentication 可在具备构建能力时使用，但不加密；`AuthenticatedEncrypted` 当前 `SecurityUnavailable`；默认 `0.0.0.0:5921` / remote input disabled | `docs/security.md` / Runtime `access_instance.cpp` | **CURRENT_RELEASE_BEHAVIOR**；不得把历史默认值与未来 H-02a 合为一项 |
-| 独立完整 Native 1.0：8-byte BE header、21 类消息、设备 TLS 与 Grant/Target/Scope/帧基线 | V8 附录 A/B（经 #830 文档 05 引述） | **ANNEX_SOURCE_21_TYPES_FIELDS_VERIFIED / WIRE_VALUE_BINDINGS_OPEN**：2026-11-05 Human 上传与历史 #827 送审稿 SHA 相符的 V8 全文且确认内容等效；21 type ID/字段/长度已核，u8 值域/负例存在 WIRE-V01..V07 未关闭；无真实设备/Viewer 互操作资格。不得以本稿重编号或猜补默认值 |
+| 独立完整 Native 1.0：8-byte BE header、21 类消息、设备 TLS 与 Grant/Target/Scope/帧基线 | V8 附录 A/B（经 #830 文档 05 引述） | **ANNEX_SOURCE_21_TYPES_FIELDS_VERIFIED / WIRE_VALUE_BINDINGS_HUMAN_APPROVED / E2E_NOT_TESTED**：2026-11-05 Human 上传与历史 #827 送审稿 SHA 相符的 V8 全文且确认内容等效；21 type ID/字段/长度已核，2026-11-05 Human 通过 P-A/A 已批准原文缺少的值域与 TLS-first 解释（单一受控补充见后文），26 个字节级向量已设计但 Host/Viewer E2E 仍未执行。不得以本稿重编号或引入另一套取值 |
 | H-02a 未来新架构启动任何协议监听前应先接受可信 DeploymentAdmission | ADR-0008 / V8 | **APPROVED_FUTURE_DESIGN, NOT CURRENT_IMPLEMENTATION**；保留已发布 RFB 行为事实 |
 | Gateway/Edge 只做已登记 HMI 的有界透明 FIFO 字节路由；Managed 安全必须 View↔HMI 端到端设备身份/TLS | V15/V8、Stage04/05 | **APPROVED_DESIGN**；不能用 WSS/代理签发的 route token 取代设备授信 |
 
-**来源更新（2026-11-05）**：Human 提供 V15/V8 的两份完整送审稿，实际 SHA-256 与历史 #827 **送审稿**记录精确匹配，Human 确认与批准正式版“内容一样”。已对真实 V8 A.1–A.6/B.1–B.3 核对 21/21 type ID/字段/长度、5 输入子型、13 错误码；具体 wire 值域与兼容负例仍未充分定义，见 [受控源审计 WIRE-V01..V07](module-detail-source-audit-v15-v8-2026-11-05.md)。本次不宣称正式版二进制 SHA 相同或 Native 已实现。
+**来源更新（2026-11-05）**：Human 提供 V15/V8 的两份完整送审稿，实际 SHA-256 与历史 #827 **送审稿**记录精确匹配，Human 确认与批准正式版“内容一样”。已对真实 V8 A.1–A.6/B.1–B.3 核对 21/21 type ID/字段/长度、5 输入子型、13 错误码；原 Word 原来缺少的值域已获 Human P-A/A 批准，作为 [V8 A/B 唯一数值/TLS 增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 生效， [26 个字节级向量](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md) 已完成设计计算，但 parser/E2E/负例实测均未执行。本次不宣称正式版 DOCX 二进制 SHA 相同或 Native 已实现。
 
 ## 2. 双协议逻辑拓扑与“共享但不串权”
 
@@ -112,7 +112,7 @@ TCP Accepted
 
 ## 4. F-05 Native 1.0：严格复用已批准的完整设备协议
 
-### 4.1 V8 A/B 等效正文已读与仍未解决的 wire 数值域
+### 4.1 V8 A/B 及 Human 已批准的数值补充（未实现，须实证）
 
 | 环节 | 当前 Stage03/05 候选中的 V8 引用（非全文二次验证） | 设计责任 |
 | --- | --- | --- |
@@ -126,7 +126,7 @@ TCP Accepted
 
 - **严禁**在 Native 1.0 header/body 塞 `RouteId/OperatorId/SiteId`，借 Gateway 登录发 Grant，或把 21 类消息拼成第二份“本文件定义的 Native 1.0”。
 - Native 1.0 必须完成一套独立画面、输入、目标/会话/授信能力。RFB 作为平行传输不提供 Native 帧依赖；Native-only 编译和 Direct 实用性须在方案验收证明。
-- `plain` 的使用范围与 TLS 安全模式必须严格服从已批准 V8 部署合同；**本稿不推断 plain 模式可作为不可信公网安全通道**。受管模式不能自动回退到它。
+- **Human SOURCE_TENSION_01=A 已批准**：`plain(0)` 与 `tls-password(1)` **均须先可信 HMI DeviceTLS→HELLO/WELCOME**；plain 仅表示不要求独立用户名密码 AUTH，仍不能由 TLS 自动授 ViewGrant/ControlGrant，Managed 仍须可归责身份/真实设备授权；tls-password 在 TLS 后还要 AUTH。禁止 STARTTLS、Native 明文回退和 Gateway RoutePermit 代授权。见 [唯一规范补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)。
 
 ### 4.2 Native 设备会话和帧基线状态机（语义候选，非 wire 新增）
 
@@ -243,7 +243,7 @@ revokeAccessScope(scope, newPolicyRevision)
 | DP-04 | RFB 资源/半包/多 peer 占用 | 在当前实现限额上做 burst/partial/usefulness/静态 outstanding FBU/重入及持键清理；不以已存在代码替代 exact-SHA 实验 | `SPEC_READY, MEASUREMENT_PENDING` |
 | DP-05 | 传统 RFB 的 Scope/View/ControlGrant 能力边界 | **H-RFB=A 已批准**：RFB 无 Native Grant 字段，Host 显式开启的已有输入能力保留；新策略默认只读、统一 Scope Controller、共享认证非个人身份；仍需标准 Viewer 负测 | `PRODUCT_DECISION_APPROVED / EVIDENCE_NOT_RUN` |
 | DP-06 | 单 Scope 下 RFB+Native 多连接控制竞争 | HMI 统一限制默认一操作者，另一协议不会绕过；现场撤权阻断所有旧输入 | `NOT_IMPLEMENTED` |
-| DP-07 | Native 1.0 21 类消息对 V8 附录 A/B | Human 等效送审稿附录 A.2 的 **21 type/field/len、5 INPUT subtype、13 ERROR** 已核；WIRE-V01..V07 数值域、异常顺序与测试向量不能靠类型个数证明互通，不造第二 wire | `SOURCE_FIELD_AUDITED / NUMERIC_BINDINGS_OPEN / NEGATIVE_VECTORS_NOT_RUN` |
+| DP-07 | Native 1.0 21 类消息与 V8 A/B + Human 增补 | 原文 **21 type/field/len、5 INPUT subtype、13 ERROR** 已核；P-A 数字及 TLS-first A 已获 Human 批准（唯一数值源见 W00 approved delta）；**26 个字节级 golden vector 仅计算完成，仍未在 Host/Viewer 运行** | `SOURCE_AUDITED / NUMERIC_SEMANTICS_APPROVED / VECTORS_DESIGNED_NOT_RUN` |
 | DP-08 | Native TLS/设备身份、用户名密码安全认证 | 证书替身/过期/错误身份拒绝；TLS/口令变更不降级 | `NOT_IMPLEMENTED` |
 | DP-09 | Native Target/Scope/ViewGrant/ControlGrant 分离 | 未授权不能枚举/看/控；GrantEpoch 旧输入在 Qt 最终投递前拒绝 | `NOT_IMPLEMENTED` |
 | DP-10 | Native FULL/DELTA/generation/PrivacyRevision | 独立每 Session 基线、撤权/遮罩变更无旧敏感帧输出、慢端恢复 FULL | `NOT_IMPLEMENTED` |
@@ -263,7 +263,7 @@ revokeAccessScope(scope, newPolicyRevision)
 | D1-PROT-03 | RFB 既有任意完整 Normal 消息置 useful 与长期占用保护差距 | 精确定义 FBU outstanding、配置消息、progress、有效客户端慢端与静态图的时序；不简单加全局 idle timeout | 一般工程细化可经技术审查 |
 | D1-PROT-04 | Dual 的启动/运行期故障 | **H-DUAL=A 已批准**：声明为必需的协议端点全部经过 Host Admission 并原子启动，失败整体拒绝；RFB-only/Native-only 仍是独立 profile；运行期局部故障隔离，无自动明文回退 | 产品选择已关闭；实际监听回滚、状态反馈与兼容性测试待证 |
 | D1-PROT-05 | RFB 原聚合 held count 与未来多 Scope 权限争用的实现关系 | 先在 Host 授权后形成 per-session/per-scope logical held 账本，再按目标 Qt state 做合法汇总和撤权释放；与 Qt Private 窗口投递例外隔离 | 涉及默认控制角色的修改必须遵守 D-02=A |
-| D1-PROT-06 | Native 认证与 V8 A/B 受控追踪 | 已取得 SHA 匹配 #827 且 Human 确认等效的 V8 Word 送审稿，完成 21 type/字段/定长算术索引；下一步填补 WIRE-V01..V07 的 wire 数值域、正/异常 vectors、凭据档位与 Qt/OS 行为合同 | 任意新增/改变已批准的 wire 数值或语义必须按上位变更申请 Human；工程互通负例可继续设计审查 |
+| D1-PROT-06 | Native 认证与 V8 A/B 受控追踪 | 21 type/字段/定长算术已审；Human P-A/A 已批准 WIRE-V01..V06 值域/键码和两模式 DeviceTLS；26 个正向字节向量 + 12 个异常变异**设计完成未测试**。下一步审签状态机、线程/错误、现有 RFB 兼容及真实 Host/Viewer 互通 | 若改变批准的数值或 TLS-first A 须 Human 另批准；当前不创建产品代码 |
 | D1-PROT-07 | 设备 TLS 信任材料更换、站点信任绑定、跨 protocol identity 映射 | 设备根与 Gateway/Edge 独立；不自动把云 OperatorId 变 Native 用户；如需委托另立版本/架构讨论 | 需要扩充身份/Device wire 则 Human |
 | D1-PROT-08 | 撤权与在途字节 | **H-REVOKE=A 已批准**：新 Policy/GrantEpoch 生效后不新选择/生成/排队旧受限输出和输入；清本进程可控缓冲并必要时断链；View 清/遮旧显示。已进 kernel/TLS/远端显示的字节不声称可撤回 | 产品安全承诺已确认；线性化点、队列拥有者与竞态/网络负向测试需技术审核 |
 | D1-PROT-09 | RFB 与 Native 的资源预算及正式支持矩阵 | 用当前代码限额做基线，按 V8 128MiB 设计目标及实测拓扑完善；不预填 TLS/Native 未验证数值 | 一般技术评审，实质支持声明需要授权 |
@@ -289,7 +289,8 @@ revokeAccessScope(scope, newPolicyRevision)
 - [x] 显式记录多客户端 held 状态、RFB 标准身份不足、当前 usefulness 语义、隐私 in-flight 字节四类真实设计难题。
 - [x] Legacy Direct 兼容与未来 Managed E2E 安全声明分开；不启用 #190。
 - [x] Human 提供的 **V15/V8 完整送审稿**历史 SHA 匹配、内容等效声明已记录，Native A/B 21 类 type/字段/长度已核。
-- [ ] V15/V8 全部要求→状态/错误/验收追踪与 Native **WIRE-V01..V07 值域/向量**尚未冻结；正式版 Word 二进制摘要未经取回比对。
+- [x] Native **WIRE-V01..V06 数值**及 SOURCE_TENSION_01=A 已由 Human 选定，唯一现行增补规范已归档；26 个字节样例/12 个异常变异**仅计算/设计**。
+- [ ] V15/V8 全部原子需求→状态/错误/验收追踪、Native **WIRE-V07 真实互通/恶意输入负测**以及正式版 Word 二进制比对仍未通过，不得宣布 Gate-D/Gate-I。
 - [ ] D1-PROT-01..09 经必要证据/产品决策审签，尚未冻结。
 - [ ] 未来新架构 Native/TLS/Grant/RFB-H02a 的任何正式实现/实测资格：均未获得。
 

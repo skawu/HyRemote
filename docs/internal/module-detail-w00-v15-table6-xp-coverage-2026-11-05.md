@@ -9,7 +9,7 @@
 | S01（V15 表6 行 1） | 只读连接 | XP-03,XP-04,XP-20 | 只读会话不得本地或设备端越过 ControlGrant | `DESIGN_COVERED_NOT_RUN` |
 | S02（V15 表6 行 2） | 多屏授权改变 | XP-06,XP-26 | 撤销目标旧坐标、待发送帧及 View 缓存失效 | `DESIGN_COVERED_NOT_RUN` |
 | S03（V15 表6 行 3） | 标准 VNC 访问 | XP-02 | 标准 RFB 独立第三方 Viewer，不依赖私有扩展 | `DESIGN_COVERED_NOT_RUN` |
-| S04（V15 表6 行 4） | 私有协议访问 | XP-03,XP-07 | Native 独立身份/完整帧/输入/授权；A/B 值域仍 OPEN | `DESIGN_COVERED_NOT_RUN` |
+| S04（V15 表6 行 4） | 私有协议访问 | XP-03,XP-07 | Native 独立身份/完整帧/输入/授权；P-A/A 值域现已获 Human 批准，E2E 未运行 | `DESIGN_COVERED_NOT_RUN` |
 | S05（V15 表6 行 5） | 控制撤销、断线重连 | XP-05,XP-26 | held 清理及不自动恢复旧许可/业务操作 | `DESIGN_COVERED_NOT_RUN` |
 | S06（V15 表6 行 6） | 中文输入与触控 | XP-21 | 新补：CommittedText/IME/本地手势/触控能力的真实边界 | `DESIGN_COVERED_NOT_RUN` |
 | S07（V15 表6 行 7） | 上传业务配置 | XP-22 | 新补：传输、宿主接收及业务生效分段确认/未知不重交 | `DESIGN_COVERED_NOT_RUN` |
@@ -60,7 +60,7 @@
 | `NEW_XP_TEST_EXECUTION` | `XP-21..XP-28 = NOT_RUN`，不暗示已实现 Native/Managed/OEM |
 | `OLD_XP_TEST_EXECUTION` | 本轮未执行原 XP-01..XP-20，也不从既有 PR CI 推断产品 PASS |
 | `REQ56_ATOMIC_COVERAGE` | 另见 [W00 56 项行为初始映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)，不能用 31 个场景替代每个复合产品要求的原子拆分 |
-| `NATIVE_WIRE` | `WIRE-V01..V07`、`SOURCE_TENSION_01` 仍未审签；[21 类 Native 报文字段与负向规格](module-detail-w00-native-wire-contract-gaps-2026-11-05.md) 仍是测试计划 |
+| `NATIVE_WIRE` | `WIRE-V01..V06` 数值与 `SOURCE_TENSION_01=A` 已由 Human 审批；[唯一 Native 增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 与 [26 字节／12 异常规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md) 尚未执行产品验证，`WIRE-V07` 互通资格仍 OPEN |
 | `DESIGN_FREEZE/GATE_I` | **NO/NO**；`Gateway #190 = NOT_ACTIVATED`，`HyRemoteView G3 = NOT PASSED` |
 
 **检查结论**：本轮修的是 **验收规格缺口**，不是从需求外增加产品特性。例如 Native 1.0 不包括原生多点触控/文件交换等未协商扩展；XP-21 的“支持与不可用正确表达”与 XP-22 的文件能力取决于宿主受控业务接口，不构成新的 Native 1.0 消息。测试实际执行仍受 Gate-G3/Gate-I 和独立产品/平台的准入约束。
