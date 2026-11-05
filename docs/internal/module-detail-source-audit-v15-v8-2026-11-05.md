@@ -1,5 +1,8 @@
 # HyRemote 模块详细设计：V15/V8 受控源全文核对与 Native A/B 差距登记（2026-11-05）
 
+> **后续审批状态**：本文件第 4 节如实记录“V8 送审稿**原文**曾未明确给出的数字”，并非现时规范仍为空。Human 已批准 `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A`，具体数值/安全档位以 [Native P-A / TLS A 已批准受控补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 为增补权威；字节级向量已设计但 Host/Viewer 实机未测。原送审稿 SHA 与正式版二进制 SHA 仍要严格区分。
+
+
 > **状态**：`SOURCE_TEXT_AUDITED / DESIGN_TRACE_PARTIAL / GATE_D_NOT_FROZEN`。本文仅是从 Human 提供的 Word **送审稿**读取的来源与差距索引，不重写 Native 1.0 报文规范，不对已批准正式 Word 进行二进制替代，也不批准产品研发。设计总控：[#843](https://github.com/skawu/HyRemote/issues/843)；五项 Human 决策已选 A。
 
 ## 1. 可信来源与证据等级
