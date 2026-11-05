@@ -71,7 +71,7 @@
 | 缺少数值/键码的 Human 补充 | `NATIVE_V8_WIRE_DELTA01_P_A=HUMAN_APPROVED` |
 | TLS-first / plain 模式语义 | `SOURCE_TENSION_01=A_HUMAN_APPROVED` |
 | 具体线缆数值与安全档位作为设计合同 | `NUMERIC_AND_MODE_SEMANTICS_APPROVED` |
-| 本受控补充的 GitHub 审查/合并 | `PENDING_REVIEW_MERGE`（本文件合并后更新） |
+| 本受控补充的 GitHub 独立审查与合并状态 | 以本文件所属的 GitHub PR 审查、要求检查及实际合并结果为准；不得用 Human 审批代替代码/文档审查 |
 | 基于受控值的 golden vectors / Host-Viewer 实施与真互通 | `VECTOR_DESIGN_PENDING / IMPLEMENTATION_NOT_AUTHORIZED` |
 | 全产品详细设计冻结 / Native 真实 E2E / View G3 / Gate-I / Gateway 激活 | **`NO / NOT_IMPLEMENTED / NOT_PASSED / NO / NOT_ACTIVATED`** |
 
