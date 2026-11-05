@@ -150,6 +150,12 @@ D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundari
 - **精确 Kit 和兼容**：Qt5.15/Qt6.8、平台/arch/编译器各产品所批准的实际单元验证，QPA private shim 和 Runtime `AR-04=A` 内部窗口输入例外不得进入 SDK public ABI；仅配置 getter `0.0.0.0:5921` 无法证明已获安全公网监听资格。
 - **证据字段**：必须在实施后保存实际源 SHA、Kit/运行平台、原生 QPA 类型、插件参数/安全 profile/Host Policy 来源、实际 Listener/Target/held 结果和拒绝状态，不把 `DESIGN_ONLY` 写成 `PASS`。
 
+### E-01/G-01 透明路由与首批 Edge 的验收责任
+
+[D3 内置 Edge/Gateway `EG-01..12` 合同](module-detail-d3-managed-integration-2026-11-05.md) 是 X-02 的设计审签入口：管理权限与本地 SitePolicyRevision 持久化、Offer→Dial 的二次准入、一次性双侧 Pair、RouteEpoch CLOSED 终态、有界 FIFO（绝不裁剪 TLS 字节）、HMI 设备授权独立、用户登录期间产品生命周期。映射既有 `MG-01..16`、`XP-08..13/18/24/27` 与 Stage05 `CTRL` 负例；全部当前 `DESIGN_ONLY / NOT_RUN`。
+
+**Gate-D** 审查身份/数据唯一 owner、原子撤权/持久化失败关闭、资源公式和负向规格及与 Stage05 唯一 IDL 的一致性，不先要求正式 Gateway/Public 产品代码。**Gate-I/产品实施之后**才在真正工厂 PC 与自托管目标平台逐项验证 OS/Qt Kit、慢端/断线、TLS E2E、IPC ACL、密钥迁移以及更新回退。Gateway #190 激活另有 Human Gate，不能由 EG 文档合并推出。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
