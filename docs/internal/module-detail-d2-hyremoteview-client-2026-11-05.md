@@ -333,6 +333,8 @@ sequenceDiagram
 | 设备 TargetLost / ScreenSize 变更 | 清旧图并等待新合法 FULL，正确处理 resize | 重新计算焦点/coords | 不沿用旧 Scope/帧基线 |
 | 用户主动退出或换设备 | Cancel generation、清显示/焦点/凭据临时态 | Disable | 告知未确认业务操作不可自动重试 |
 | 未支持的功能（诊断/剪贴板/其他编码） | 不显示可点的虚假入口 | N/A | `NOT_SUPPORTED` 与 `NOT_IMPLEMENTED` 分开 |
+| 业务文件交换或远端业务结果缺 Host 可信接口（XP-22） | V-03 不呈现 Native 1.0/RFB 当前未交付的文件上传或“设备已执行业务”成功按钮 | 无独立可信设备/业务 ACK 不可显示成功 | 写入本机队列/网络成功≠HMI 接收≠宿主生效；结果未知告知现场核实，不自动重放；详见 [D4 §5.5](module-detail-d4-tool-delivery-quality-2026-11-05.md) |
+| 客户已签发但设备离线未确认的售后撤销（XP-23） | 分开标注签发方 `PENDING_DEVICE_DELIVERY` 与设备实际确认/本地策略生效；来源/时间不可省 | 不把 Gateway 在线或 RouteClose 当成 HMI 已撤销 | HMI 离线不假造 ACK；有限委托时效与合法永久 Direct 分开；详见 D4 §5.5 |
 | 工厂开启 Edge 共享 | 独立工厂管理页，明确管理员/站点/HMI 精确清单 | 不影响 GUI Direct | 默认 OFF，单 HMI 明示共享并可撤销 |
 | 无人值守后台运行未资格通过 | UI 明确“仅登录会话期间可在线” | N/A | 不因服务计划而虚构登录后持续在线 |
 
