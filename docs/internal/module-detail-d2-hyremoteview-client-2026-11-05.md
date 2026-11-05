@@ -93,6 +93,21 @@ flowchart TB
 
 **已批准的客户端语义**：`plain=0` 和 `tls-password=1` 都须通过设备 TLS 身份核验后才能发送 HELLO/WELCOME；前者省略独立用户 AUTH，但不产生自然人身份或设备 Grant。`pixel_format=1`/`encoding=1` 按 RGBA 字节序处理；TargetStatus、ControlState、键码均采用同一受控数值表。设备信任、用户认证、Target 可见和控制权分层显示；未知值拒绝。全部向量仍须真机/独立客户端验证。
 
+#### F-05/V-01 原子状态与客户端真相映射（设计候选）
+
+[设备端唯一正交 FSM、AFS-01..AFS-12 负例合同](module-detail-d1-device-protocols-2026-11-05.md#44-native-10-的正交状态机错误归因与最终授权栅栏w00-下一层详细设计) 定义 `T` Transport/DeviceIdentity、`S` 用户认证、`V` Target/ViewGrant、`C` ControlGrant、`F` 每目标 Frame baseline。V-01/V-03 应持有五轴独立只读观察模型，不能把 `Connected` 或 RouteReady 作为可控状态。
+
+| 用户界面/输入判定 | 必需的 HMI 可证明条件 | 缺失/迟到行为 |
+| --- | --- | --- |
+| “已连接到可信设备” | `T3/T5` 的 HMI DeviceTLS 身份可信 | 证书变化/不可信应显示独立安全失败；无 HYRP 降级 |
+| “认证的用户” | `tls-password` `S2 AUTH_VERIFIED` | `plain` 为 `S4 DEVICE_ONLY_NO_USER_AUTH`，不显示为已认证自然人 |
+| “可查看 Target” | HMI 真实 `TARGET_LIST/STATUS` 与当前 ViewGrant/PolicyRevision 有效 | 本地历史 Target 不能显示为已获准；Denied/Removed 清失效内容 |
+| “可发送输入” | `C2 GRANTED` 且最新 Target/Scope/GrantEpoch/Policy 当前有效 | Pending/Expired/Revoked/Released 显示只读并禁输入；迟到 GRANTED 不恢复旧资格 |
+| “画面实时” | Target `F2 BASE_VALID`、已完整应用合法帧且未失权 | WAIT_FULL/断网/撤权按 V15 旧帧与敏感策略处理，不将旧画面当实时 |
+
+**V-02 的输入/渲染竞态**：View 的输入焦点和 RemoteSurface 只能产生新请求意图；设备端双栅栏仍为执行权威。断线/重连生成新会话、清 held/Delta 基线；本地没有“已渲染”线缆 ACK。上述仅设计，真机 UI/解码/Qt 线程证据尚未运行。
+
+
 ### 4.1 Direct 与 Managed 共用真正的设备会话
 
 ~~~mermaid
