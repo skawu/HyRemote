@@ -503,3 +503,61 @@ QT_PRIVATE_DIRTY_ONLY_GENERIC_QUALIFICATION=NOT_APPROVED
 RESEARCH=AUTHORIZED
 PRODUCT_QTPRIVATE_IMPLEMENTATION=NOT_AUTHORIZED
 ```
+
+
+## 16. F-G2 原生渲染线程反例验收及 Qt LTS 被动帧复用研究路线（2026-11-05）
+
+**状态与审批**：这是 Human 已允许的技术可行性研究，**绝非产品实施批准**；本节只修改设计文档，不改 HyRemote Runtime、Qt SDK、develop、发布分支或 G7。来源：[Local Owner #609 F-G2 报告](https://github.com/skawu/HyRemote/issues/609#issuecomment-6646844859)。Qt5.15.2 / Qt6.8.3 默认 Windows 图形栈、独立 Qt-only `OpacityAnimator` 程序（各 4s、到首个反例停止）；云端未直接读取本地 `tmp` 原始日志。
+
+### 16.1 已确认反例：通用 Quick item dirty-only 方案 NO-GO
+
+| 观测 | Qt5.15.2 | Qt6.8.3 |
+| --- | --- | --- |
+| 原生帧数推进 | 1→65，约 64 帧 | 1→77，约 76 帧 |
+| 稀疏 grab 红像素 | 104→110→138 | 108→149→185 |
+| 同步次数 / 空 `dirtyItemList` | 53 / **52** | 38 / **36** |
+| 非空来源 | root `EffectReference 0x8000`（grab 相关） | 同左 + 动画结束 `OpacityValue 0x100` |
+
+**终局裁定：`F_G2=NO_GO`；`PRIVATE_ITEM_DIRTY_ONLY_UNIVERSAL_QUICK_SUPPRESSION=REJECTED`。** 动画期间存在大量可见像素/原生渲染推进而 item dirty 为空的真实反例。因此 F-G0 私有访问和 F-G1 普通 GUI item 变化、GUI 定时器动画的限定 PASS 不能泛化到 render-thread `OpacityAnimator`。不得自动启用 §14 的 `ELIGIBLE_IDLE` dirty-only 状态机，不得将 `Content` 或“非空 item dirty”的存在作为任意零代码 Quick 的唯一抓图闸门。也不能退回公共 `UpdateRequest/frameSwapped/afterRendering` 当内容变化信号，H1 已证明它们被主动 grab 自激。
+
+### 16.2 新目标 P3：从“主动抓图导致额外 render”到“已有原生帧被动 CPU readback”
+
+本方向以**实际 Qt scenegraph 正常渲染帧**为来源，希望消除为检查变化而周期主动发起的 `QQuickItem::grabToImage()`；因此自然包含 Qt GUI item 更新、render-thread Animator 及其他确实进入目标原生帧的变化，静态帧不再因判断是否变化而被主动唤醒。但**从原生 GPU render target 读回 CPU 仍可能是昂贵的同步/像素转换，不等于零拷贝**，且目前只是技术候选。
+
+精确对照 `qt/qtdeclarative@v5.15.2` 与 `@v6.8.3` 的渲染实现：
+
+- **`QQuickWindow::grabWindow()` 不是被动替代**。两代 `src/quick/scenegraph/qsgthreadedrenderloop.cpp::grab()` 都先 polish/sync 并发 `WMGrabEvent`；Qt6 的 `WM_Grab` 路径直接执行 `beginFrame → syncSceneGraph → renderSceneGraph → grabAndBlockInCurrentFrame → endFrame(SkipPresent)`，所以还会主动 render+readback。即使像素完整，也不能宣称消除了额外 render。
+- **Qt6 QRhi 具备在当前帧读回 backbuffer 的内部示例**：`src/quick/scenegraph/qsgrhisupport.cpp:1302+` 使用 `QRhiReadbackDescription(src=nullptr)`（swapchain）和 `readBackTexture`、`cb->resourceUpdate`，随后的 `rhi->finish()` **强制等待 GPU**。其存在说明理论上可在真实帧内安排 readback，但不能直接照搬阻塞实现；须研究异步 completion、资源保留和 command buffer 时序，不能从源码直接宣称产品安全。
+- **Qt5 GL / Qt6 QRhi 是 Qt LTS 版本适配问题，不是 OS 适配问题**。Qt5 默认 OpenGL 需在真实渲染线程/合法目标 framebuffer 上读回（可用 `glReadPixels` 作受限同步基线，但可能停顿）；Qt6 `QSGRendererInterface` 能提供 `RhiResource`、`CommandListResource`、`RhiSwapchainResource` 查询入口，但访问私有 QRhi 类型仍需 exact Qt Kit/编译许可评审。Qt5 同一 `QSGRendererInterface` 根本没有 `RhiSwapchainResource`。
+- **`QQuickRenderControl` 并非“对已显示可见窗口的透明录屏”**：两代源码 `src/quick/items/qquickrendercontrol.cpp` 定义为应用自己管理 offscreen target、context、render loop；Qt6 明确此 Window 不应 show。它可能适用于自有 C++/QML 重新集成，却不等同于对已有零代码 Quick/Generic/QPA 的产品直接优化。
+- **帧边界有产品语义风险**：原来 `contentItem()->grabToImage` 的范围与 Native Window swapchain 背景、alpha、Popup 子窗口/独立 surface、overlay、隐私遮罩、水印、多个观众和 DPR/resize **不能预设一致**。凡不覆盖的场景须保持当前安全采集，不能因为 Native Tap 识别原生帧就跳过产品的隐私与渲染合成。
+
+对应精确 Qt 源：
+[Qt5 render loop](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/scenegraph/qsgthreadedrenderloop.cpp)；
+[Qt6 render loop](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/scenegraph/qsgthreadedrenderloop.cpp)；
+[Qt6 QRhi readback](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/scenegraph/qsgrhisupport.cpp)；
+[Qt5 RenderControl](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickrendercontrol.cpp)；
+[Qt6 RenderControl](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickrendercontrol.cpp)。
+
+**P3 总结：`PASSIVE_NATIVE_FRAME_REUSE=POSSIBLE_SOURCE_MECHANISM_NOT_TESTED`。** 相比 H1/G0/G1 的“是否 dirty”，它直接关注真实产出的 native frame；但 GPU→CPU readback/线程/Kit 依赖与零代码 surface 覆盖可能使它无法成为跨 Qt LTS 产品方案。
+
+### 16.3 下一关仅 F-G3：无产品改动的单次被动原生帧读回证伪
+
+两套既有 Windows Qt Kit，`tmp/` 独立自动退出 Qt-only QQuickView，每 Kit 最多一次。**只研究正常可见 Window 的原生渲染帧**，不实现 HyRemote Runtime/QtPrivate 生产代码、不连接 Viewer、不改 Qt SDK、不跑 CPU/多平台矩阵。
+
+1. **G3-A 无自激**：静态阶段 2s，确认 observer 不发 `window->update()`、`grabToImage`、`grabWindow`、离屏重新渲染；在自然原生帧阶段最多 3 次被动读回，不能让静态阶段意外增加原生 render。
+2. **G3-B 画面正确**：真实 QML `OpacityAnimator`（0.2→0.8，约 1.2s），从实际 native render output 最多取 3 张 CPU image，确认不同时刻有效红像素推进、本地动画正常、图像尺寸/格式/方向与原始窗口吻合；记录 native frame serial 与读回时间。Qt5 原生 OpenGL readback 若同步，用于研究负例，明示潜在 render-thread stall；Qt6 若用 QRhi，就在合法 command buffer/frame 时刻安排异步 `readBackTexture`，**不得**为了“成功”调用 `QRhi::finish()` 或阻塞 GUI/render thread。
+3. **G3-C 无破坏和准确失败**：没有合法 GL FBO / QRhi swapchain buffer、API 不可用、readback 没完成、改变正常显示/引发循环、显著同步阻塞或 GPU/resource 错误，立即停止，`NO_GO_OR_UNKNOWN`。不许强制切后端、重编 Qt 或改 HyRemote。详细报告第一条具体错误、Qt Kit、默认图形 API/目标输出、线程、渲染次数、每张 image bytes/格式/时间。
+4. 若两代 PASS，只表示 **bounded native frame readback 可行性**，不表示无 CPU 成本、任意 Surface/Popup/Generic/QPA 均安全，也**不触发产品实现授权**。之后必须把 ABI/部署/许可、readback queue/fence、资源生命周期、样本性能、四入口与隐私合成差异提交 Human 再批准。
+
+**唯一批准事项：研究/设计继续；`HUMAN_PRODUCT_IMPLEMENTATION_APPROVED=NO`；现有 100ms 安全回退保留。**
+
+```text
+FG2=NO_GO_DIRTY_ONLY
+F_G3=PASSIVE_NATIVE_FRAME_READBACK_NOT_RUN
+QQUICKWINDOW_GRABWINDOW=NOT_PASSIVE
+QT6_RHI_READBACK_INTERNAL_SAMPLE=BLOCKING
+QT5_GL_READBACK=UNVERIFIED_POTENTIAL_STALL
+HUMAN_RESEARCH_APPROVED=YES
+HUMAN_PRODUCT_IMPLEMENTATION_APPROVED=NO
+```
