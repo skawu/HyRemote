@@ -270,6 +270,8 @@ sequenceDiagram
 
 **验收证据要求**：测试时分别记录真实 OS 登录/注销、View 进程退出/强退、窗口关闭、RouteId/Epoch、PolicyRevision、受信 HMI 白名单、队列水位、Gateway stale 判定及关联代码 SHA/Qt Kit；所有测试现在是 **DESIGN_ONLY/NOT_RUN**。这不是产品启动、24×7 服务或性能验证报告。
 
+**E-01/G-01 安装回滚消费边界**：D4 的 [X-01 `DEP-01..08` 交付事务合同](module-detail-d4-tool-delivery-quality-2026-11-05.md) 是同一 View 安装产品里 Factory Edge 角色与独立可选 Gateway 版本变更的唯一交付设计。E-01 的登录期 RunLease/RouteEpoch 和 PairCredential 不做持久状态迁移；仅受控 SitePolicySnapshot 可以按不复活撤权的单调 revision 迁移。Gateway 自有 Tenant/ACL/信任备份不能替 HMI DeviceTLS/Grant，升级故障只能安全降为 SiteLink/Route unavailable；本机合法 Direct 继续独立。
+
 ## 8. 资源公式与性能/安全负向用例
 
 ### 8.1 累计资源，禁止把候选数当合同
