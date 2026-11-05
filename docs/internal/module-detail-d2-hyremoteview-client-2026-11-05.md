@@ -263,6 +263,59 @@ sequenceDiagram
 - OEM Profile 仅改变 UI/发行配置等经批准可定制域；不得为品牌 A 悄然禁用设备 TLS 校验，为品牌 B 改写 Native header 或泄露别家租户 Profile。
 - 供应链/许可证：不将 TigerVNC/LibVNCClient 的 GPL 实现作为新产品 production 依赖；Qt6.8/C++17 栈的详细第三方 licence 和 OEM 修改发布需单独出具依赖审计。
 
+### 6.3 V-03 非秘密档案、设备身份与秘密的独立数据合同
+
+设计遵循现有 `DeviceCatalog` / `TrustStore` / `CredentialStoreAdapter` / `IdentitySession` / `DiagnosticsPresenter`，以及 [D3 已细化的工厂 Edge/Gateway EG-01..12](module-detail-d3-managed-integration-2026-11-05.md)。以下为**内部存储与状态对象的技术合同**，不是新公共 SDK API、独立协议或自动可信发现机制。
+
+| 数据域 | 唯一写入 Owner / 最少持久化字段 | 信任和读取范围 | 禁止行为 |
+| --- | --- | --- | --- |
+| `DeviceCatalog.ProfileRecord` | V-03 本地 ProfileStore：不含秘密的 `ProfileId, displayName, directAddress/port, preferredProtocol, userPreference, schemaRevision, lastObservedAt` | 用户显式添加/修改；只表示一个连接地址/偏好，不存在设备身份已验证结论 | IP、DNS、显示名、最近成功或收藏项不自动授 DeviceId/Grant；不得存原始密码或 token |
+| `TrustStore.DeviceBinding` | V-03 TrustStore：`HmiDeviceId, issuer/CARef 或 fingerprint/pinRef, verificationSource, trustRevision, validFrom/Until, rotationState` | 必须有用户/管理员预先认可的独立可信来源；真实 Native DeviceTLS 再与绑定匹配 | 不信任 Gateway 目录 API 自报 pin、相同 IP/名字或 OAuth 登录来静默替换受信根 |
+| `CredentialStore.SecretRef` | V-03 OS SecretStore adapter：`secretHandle, purpose, accountScope, bindingRevision`；实际敏感材料仅在受保护后端 | RFB 密码、Native 用户凭据、Gateway Operator token、EdgeInstance machine key 按用途/用户/设备分别隔离 | 原始密码、token、private key 不进入 Profile JSON/QML/日志/诊断，也不跨产品明文共享 |
+| `GatewaySiteBinding` | V-03 仅保存用户当前可见的 `Tenant/Site/Operator` 非秘密元数据及连接来源 | 仅受管路径 Router 资格；不得修改 HMI DeviceTrust 或现场权限 | Gateway 站点在线、RoutePaired、共享 DeviceMetadata 不能直接生成 HMI DeviceTrust |
+| `EdgeSharePolicy` | 工厂 HyRemoteView **E-01** 拥有，SitePolicyRevision/Whitelist/Route/Edge Key 不由 V-03 ProfileStore 写入 | UI 读取 E-01 的受控状态；管理命令需 OS/本地管理员二次核验 | 不将用户普通连接列表一键变成工厂共享白名单 |
+| `DiagnosticsEvidence` | V-03 临时聚合：`source, measuredAt, sessionGeneration, trustLevel, valueOrUnavailable` | 最小授权范围、可复核来源/时间/单位/置信度；导出受控脱敏 | 不推断 Host CPU/帧龄/业务执行、不能输出捕获像素/键盘全文或秘密 |
+
+**存储不变量**：ProfileId 是本机非安全身份；HmiDeviceId 是由 HMI TLS 证明的设备身份；Operator/Tenant/Site 是 Gateway 账号/站点身份；AccessSessionId/GrantEpoch 是 HMI 运行时的会话授权代次；四者在本地不能合并成一个“trusted=true”。任何授予控制权的字段不得持久化为可复用许可。
+
+### 6.4 V-03 首次信任、轮换、失效与跨版本迁移状态机
+
+| 步骤/状态 | 受信输入与允许动作 | 必须阻断的错误路径 |
+| --- | --- | --- |
+| `TRUST-UNBOUND`（首次记录） | 用户显式添加 Profile；从客户受控 CA、制造商受信材料或由现场核对的身份指纹导入**可审计信任来源**。候选来源依已批准 D2 §6.2/Stage05 信任引导，不另作新信任根默认值决策 | 无可核验证据时可以保留地址草稿，但不能将 HMI 标为 VerifiedDevice、自动发送 Native 密码或开始授权画面 |
+| `TRUST-VERIFYING` | Native `DeviceTLS` 链/DeviceId/证书时效/当前本地 `trustRevision` 比对；证书绑定验证成功后方可进行 HELLO 和后续可选 AUTH | TLS 失败、pin 不一致、证书更换但无可信轮换证据 → `TRUST-BLOCKED`，零 HYRP 应用字节，不自动明文/RFB 降级 |
+| `TRUST-VERIFIED` | 每个连接 Session 持有只读 `VerifiedDeviceIdentity` 及使用过的 TrustRevision；是否有用户认证/Target/ViewGrant/ControlGrant 仍按 HMI 独立判定 | 旧 Session 已验证并不授予新 Session 的可信结论；TrustStore 的后续变更使受影响连接重验/关闭 |
+| `TRUST-ROTATING` | 由预先信任的客户/制造商根或现场认可的可信流程提供新的身份材料，先验证来源、变更影响与受影响 HMI | Gateway 目录下发一串新指纹、IP/显示名变化不能构成已批准轮换；不因未收到旧私钥证明便静默接受 |
+| `TRUST-REVOKED/BLOCKED` | 本地删除/撤销/过期可信绑定时，先取消受影响所有 SessionGeneration，清可控敏感画面与输入，再使受保护存储新 Revision 生效 | 不能让正在排队的 TLS 认证/旧异步 Callback 在新 revision 中重新设为 Verified；不得从 Edge/Gateway 或其他用户缓存中恢复旧 pin |
+| `PROFILE-MIGRATING` | 对版本化非秘密 schema 做**先校验→生成新记录→原子替换**，引用的密钥 handle 用受保护 Store 原语迁移/失效 | 未知安全相关字段、坏签名、秘密库不可用、回滚丢失撤销标记时 fail closed 并保留用户可修复的诊断状态，不能用默认弱配置强行迁移 |
+
+**事务与故障恢复**：对于**放宽信任/更换证书锚**的操作，必须成功写入且再次验证可信来源后才能对新的 DeviceTLS 授权。对于**收紧信任/撤销**，先立即更新当前 session admission 的拒绝事实，随后持久化撤销记录并终止受影响会话；如持久化失败，留在 `BLOCKED_NEEDS_REPAIR`，不可因重启自动使用旧受信根放行。磁盘迁移、OS SecretStore、TLS/Proxy 网络回调不能在 GUI 线程持锁阻塞；每个异步回调必须绑定 ProfileRevision/TrustRevision/SessionGeneration 并在消费时重验。
+
+### 6.5 V-03 凭据、诊断与 OEM 的独立技术合同
+
+- **SecretStore**：每种凭据有 `purpose + device/user/account scope` 绑定；Native 密码只在可信 DeviceTLS 后按 P-A/A 的 `tls-password` 档位使用；`plain` 仅表示省略独立 Native AUTH，不构成用户身份。RFB 的共享密码不移入 Native 用户身份，Gateway OIDC Token 不成为 HMI 授权凭据。OS 密钥库不可用时拒绝需要秘密的功能，不能静默把密钥写到普通文件或 QML 模型。
+- **最小读取与注销**：敏感 handle 只在相应会话用途的短窗口读取，用户注销/信任撤销/产品退出应取消新认证并清理内存中的凭据临时副本；EdgeInstance machine key 的保留/删除由 **E-01** 授权/安装生命周期负责，V-03 不自行删除整个产品的站点凭据。
+- **诊断来源**：用户可见的 `DEVICE_TRUST_CHANGED`、`HMI_VIEW_DENIED`、`ROUTE_UNAVAILABLE`、`FRAME_STALE`、`SECRETSTORE_UNAVAILABLE` 是**本地展示类别**，不是新增 Native/Gateway wire 错误码。对于 RFB 缺少用户个人身份或 HMI 某运行计数的情况显示“无法验证/未提供”，不伪造。
+- **OEM**：品牌资源和合法功能开关只影响 UI、包标识和发行配置；不得弱化 DeviceTLS/pin 校验、私自改变 RFB/Native wire、自动开放 Edge 分享或把一个 OEM 客户的 TrustStore 迁移到另一租户。若 OEM 配置改变安全默认或客户已获权益，必须受控变更而不是正常主题切换。
+- **客户端升级和回退**：View 自身档案与 TrustStore 迁移、Edge 独立 SitePolicyRevision、Gateway Tenant Registry、Tool SDK 偏好四者由各自 Owner 单独处理。回退只可恢复**安全上不放宽**的已知有效状态，无法解析新信任/撤权记录时要明确拒绝受影响连接，合法不依赖这些数据的 Direct/RFB 其他 Profile 按当前批准条件继续。
+
+### 6.6 V-03 直接可验收的内部合同
+
+| 合同 ID | 设计场景/唯一责任 | 失败闭合与未来验证入口 | 当前 |
+| --- | --- | --- | --- |
+| `IDT-01` | ProfileId/连接地址与 HMI DeviceId 分离 | 同 IP 不同证书、同名称不同 DeviceId 禁止自动复用信任；VIEW-10/11、XP-11 | `DESIGN_ONLY` |
+| `IDT-02` | 可信根/现场校验的首次 Native DeviceTrust | Gateway directory 自报 pin 和未知 CA 不自动信任；VIEW-03、MG-06 | `DESIGN_ONLY` |
+| `IDT-03` | TrustRevision 轮换/撤销与运行 SessionGeneration 一致 | 证书替换、迟到 TLS callback、密钥回滚不复活旧会话；VIEW-03/07 | `DESIGN_ONLY` |
+| `IDT-04` | Native/RFB/Gateway/Edge 凭据用途隔离 | SecretStore 缺失不退为明文、QML/报告无秘密；VIEW-10/12、XP-24 | `DESIGN_ONLY` |
+| `IDT-05` | Profile/schema 原子迁移、未知安全字段失败关闭 | 失败回退可诊断、已撤销 pin 不恢复；VIEW-10、XP-24 | `DESIGN_ONLY` |
+| `IDT-06` | Native DeviceTLS/Auth/User/Host Grant 四轴不混淆 | plain TLS 不授个人身份、路由 READY 不授 ControlGrant；VIEW-03/05、AFS-02 | `DESIGN_ONLY` |
+| `IDT-07` | 日志/诊断精确来源、时间/置信度、脱敏 | 无 Host 真来源显示 unavailable，不输出密码/画面；VIEW-12、XP-14/16 | `DESIGN_ONLY` |
+| `IDT-08` | OEM 品牌/账号分隔，不修改协议安全或基础离线权益 | OEM 切换不能替换 TLS 信任根，合法 Direct 无云亦正常；VIEW-11、XP-19/28 | `DESIGN_ONLY` |
+| `IDT-09` | Factory Edge 受控 SitePolicy/Device Binding 与个人 Profile 分权 | 普通 DeviceCatalog 添加设备不自动使该 HMI 对外共享；MG-01/08、XP-23/24 | `DESIGN_ONLY` |
+| `IDT-10` | 注销/重连/身份变更下所有 Session/Secret 引用失效 | 旧授权、输入焦点、异步回调、未确认业务不自动重放；VIEW-07/10、XP-26 | `DESIGN_ONLY` |
+
+**V-03 当前等级**：`IDT-01..10=DETAILED_DESIGN_CANDIDATE`；实际产品 OS SecretStore、证书存储后端、安装升级/跨用户 Windows/Linux 资格和 Native TLS/Grant 全部仍待工程实施/测试，不能把设计稿当作 G3 PASS 或产品出门证明。
+
 ## 7. 操作界面及失败状态矩阵（仅显示可证事实）
 
 | 场景 | 主画面/入口 | 控制区 | 需要给用户的反馈 |
