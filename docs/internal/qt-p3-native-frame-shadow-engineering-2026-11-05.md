@@ -38,6 +38,13 @@ P3-R6 server-side watermark/privacy/authorization must remain fail-closed.
 Qt5 full-frame sync cost, Qt6 high-frequency readback, cross-platform ABI/license and RealVNC/RK3588 A/B remain open.
 P3-S1 and S1R (bounded asynchronous shadow readback plus lifecycle closure) are implemented and locally verified; they still publish nothing. `QQuickWindow::sceneGraphInvalidated` did not fire in the destroy runs, so that specific hook remains unexercised; RHI destruction drain was exercised instead. Remaining before any publication decision: device-loss/backend-change runs, geometry/alpha/DPR equivalence and Viewer A/B, all behind the same compile-time OFF + runtime opt-in gates.
 
+## Test governance (2026-11-05)
+
+- Every new, modified or executed test requires a prior five-point justification (name and goal; real risk; why existing evidence cannot replace it; timing/environment/scope/run cap; PASS/FAIL, consequence and cost) and explicit Human confirmation. Code review, QtPrivate/QRhi analysis, design and ordinary engineering fixes remain autonomous.
+- No self-expansion of the test matrix, no ad-hoc CTest additions, no repeated full-suite runs and no unbounded fix-retest loops.
+- Status at `fc1bf73d`: S1R lifecycle evidence is complete. The final-SHA Viewer smoke is **pending confirmation**; the resize-repetition candidate was withdrawn as redundant (mechanism existence, not frequency, is what S1R needs). Unapproved sweep/hit scripts are marked non-runnable.
+- Interactive runtime checks must print per-stage progress and carry a hard timeout so a normal wait is never mistaken for a hang.
+
 ## Developer verification
 
 1. Normal default Qt6/Qt5 builds: `HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW:BOOL=OFF`. Existing Quick CTests plus `hyremote-quick-native-frame-policy-test` must pass.
