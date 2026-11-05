@@ -3,7 +3,7 @@
 > **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
 
 > **任务**：[全产品设计总控 #843](https://github.com/skawu/HyRemote/issues/843)，范围 T-01、X-01、X-02；对齐 D1 Framework、D2 HyRemoteView、D3 Edge/Gateway 设计候选。  
-> **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，但尚未取得可逐条回读的完整 DOCX/Native A/B。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默覆盖已批准的 S1 工作台规划或删除已经真实发布的基础 RFB 访问能力；S1 全量验收 #586 仍 OPEN。  
+> **正式基线**：Human 批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`，现已取得与历史归档精确匹配且 Human 确认正文等效的完整送审稿，V15 56/V8 99/Native 21 的来源核对及 P-A/A 受控增补已完成；正式版二进制未做逐字节同一性校验。现有 `hyremote-tool-workbench-prd-2026-10-22.md` 的 **D 综合工作台与 S1 先交付**曾经另获 Product Owner 认可；不能静默覆盖已批准的 S1 工作台规划或删除已经真实发布的基础 RFB 访问能力；S1 全量验收 #586 仍 OPEN。  
 > **性质**：`DESIGN_CANDIDATE / T01_X01_X02_REVIEW / NO_PRODUCT_CODE / NO_VERSION_ACTIVATION / NOT_FROZEN`。现有产品交付状态须按真实 release/代码/精确平台，本文不重写历史发布。
 
 ## 1. 四个软件产品/责任必须明确
@@ -110,6 +110,43 @@ Tool 依照当前真实 Windows Qt5.15/Qt6.8 和已交付安装单元单独验�
 为每个独立产品或安装包记录 `product,version,source_sha,build_kit,compiler,Qt_version,platform_arch,enabled_protocols,security_build_capabilities,auth_mode,dependency_licenses,installed_artifacts,upgrade_from,rollback_constraints,qualification_ref`。所有字段指向可复核的产品事实；`enabled_protocols` 只写实际构建可用，不因已设计 Native 1.0 就把它填 `SUPPORTED`。
 
 配置迁移独立设计：工厂 Edge 共享白名单/策略修订、View 的 Device Trust、Tool 的 SDK 偏好和 Gateway Tenant Registry **四种不同持久化合同**；不得把其中一类的 JSON 原样复制成另一类的权限来源。未知 schema 或旧版本回滚无法证明有效安全策略时必须 fail closed，而不是悄悄采用空密码或全网卡默认监听。
+
+### 4.3 X-01 软件制品与独立安全数据的安装、迁移及回退顺序
+
+**正式软件产品仍是四个边界**：HMI 随 SDK/Qt Kit 带 Framework、工厂和远端各安装 HyRemoteView（工厂内置 Edge）、Tool 独立、Gateway 仅按独立 #190 授权部署。工厂 PC **不得**出现需另行安装的 Sidecar/Bridge；首批 H-EDGE=A 不提供注销后无人值守 Service 资格。
+
+1. **预检与可信清单**：核实目标 Qt/编译器/架构、实际 enabled protocols、Host/DeviceTLS 安全材料、已安装 public API/ABI、产品与依赖许可证、当前非秘密/秘密 store schema。没有支持证据就标 `NOT_RUN/UNSUPPORTED`，不能按安装成功推断 Qt Private/Native/公网安全资格。
+2. **软件更新与数据迁移分开**：制品 hash 验证→受控安装→验证真实入口/插件和原生 Qt HMI 仍可工作→仅在已有资格中启用 Host/Edge。ProfileStore、V-03 DeviceTrust、E-01 SitePolicyRevision、Gateway Tenant Registry 与 Tool 偏好由各自 Owner 负责迁移，**绝不跨产品复制可信身份**。
+3. **放宽授权只在验证/持久化成功后生效**：增加受信 CA/pin、共享 HMI 白名单或 Route 能力时先校验管理员/身份/签名、版本化记录和存储安全，再允许对外访问。Host H-02a 初启缺项不监听；H-DUAL=A required 端点不留部分运行实例。
+4. **撤权与失败关闭**：受控撤销先使当前运行期的准入门失效，然后保存拒绝/单调 revision；磁盘故障时不能伪称已永久撤销。**若无法证明断电/回滚后仍能保持撤权**，必须在支持模型中实现并验证持久拒绝恢复或在启动时受信重验证；不能因旧配置仍在盘上而悄然重新开放。
+5. **升级中断/回退**：旧二进制可在满足自身安全和数据版本条件下恢复；不得把已撤销 DeviceTrust、共享白名单、Gateway pair ticket 随二进制一同回滚。无法识别新的安全 schema/撤销修订时阻断受影响远控/路由，允许可独立运行的本地 HMI 业务和其他合法 Direct 档位继续。
+6. **退出/卸载**：由本产品 Owner 幂等关闭服务/Route/Session，保护性释放 held、删除自身临时秘密并根据合法保留义务处理持久数据；不删除其他产品、Qt 系统 Kit 或现场 HMI 业务安装。首批没有无人值守 Edge，不能在清单中默认创建 Windows Service。
+7. **真实验收元数据**：实际安装/升级/恢复记录 `product,version,artifactSHA,QtKit,compiler,OS,arch,protocolProfile,secretStoreVersion,old/newSchema,permissionDiff,rollbackOutcome,evidenceRef`；每个未运行的矩阵单元明确 NOT_RUN。
+
+### 4.4 X-01 ABI、状态和持久化所有者的交付矩阵
+
+| 实际安装边界 | 制品/ABI 的唯一责任方 | 安全持久化 Owner | 禁止外推及失败处理 |
+| --- | --- | --- | --- |
+| Framework SDK/Runtime | 精确 Qt Kit/编译器/平台下 C++/QML/Generic/QPA 工件，Runtime 狭窄 Qt Private 与 QPA delegate 按 ADR-0008 | HMI 宿主受信 DeploymentProfile、Target/Scope/Policy | 已编译不等于真实可运行/安全准入；远控失败不强制结束仍可工作的现场 Qt HMI |
+| HyRemoteView Direct | View QtQuick/RFB/Native 独立客户端 | V-03 非秘密 Profile + 用户 OS SecretStore + 独立 DeviceTrustRevision | 云账号/Edge Route 不能替代本地 Direct 或 HMI Grant，证书/信任变更需独立复核 |
+| 同一 View 内 Factory Edge | 同产品登录态受控内部 Edge；无额外 Sidecar 安装 | E-01 SitePolicy/EndpointBinding/EdgeInstance 机密材料 | 注销/整个 View 退出真离线，关闭一个 RemoteSurface 窗口不必停合法共享；不能伪称后台 Service 合格 |
+| 可选 Gateway | 单独服务/运维可复现工件（#190 未激活） | Gateway Tenant/Site Registry 与 PairLedger | RoutePermit 不是设备 Grant；备份恢复不得复活旧票据、撤权/跨租户权限 |
+| HyRemoteTool | 独立当前 Basic RFB + 未来 SDK 诊断工作包 | Tool 语言/连接与 SDK 路径非秘密偏好 | 不能把新 View Native 能力写进旧 Tool 功能表、不能删已发布 RFB |
+
+### 4.5 X-01 可直接转为实施验收的原子合同
+
+| ID | 正确的安装/升级/恢复行为 | 负向验收与责任 | 当前 |
+| --- | --- | --- | --- |
+| `PKG-01` | 各产品精确 manifest/Kit/协议/许可证/签名可核 | 证书/依赖/Qt/CPU 不符阻断或标真实不支持；X-01 | `DESIGN_ONLY` |
+| `PKG-02` | 四入口 Qt public API 与 QPA/Runtime Private 精确 ABI 安装 | 错 Qt minor/vendor patched 插件不会静默加载成正常；FW-10 | `DESIGN_ONLY` |
+| `PKG-03` | HMI Host H-02a 与双协议安全启动 | 缺批准策略/证书/端口时远控失败，现场 Qt GUI 仍运行；FW-02/03 | `DESIGN_ONLY` |
+| `PKG-04` | Factory PC 只装 View + 登录态 Edge，统一升级/卸载 | 关闭单窗口/整个 View/注销/崩溃各自正确、无假在线；XP-08/12/24 | `DESIGN_ONLY` |
+| `PKG-05` | View Trust、Edge SitePolicy、Gateway Tenant、Tool Profile 各自安全迁移 | 旧备份回滚/存储损坏/撤销未持久化不伪称安全；MG-12、VIEW-10 | `DESIGN_ONLY` |
+| `PKG-06` | 合法永久基础 Direct 权益不依赖 Gateway/售后订阅 | WAN 不通/服务到期但设备授权有效的 Direct 能运行；XP-19/28 | `DESIGN_ONLY` |
+| `PKG-07` | OEM/签名许可证/SBOM、密钥与其他用户资料卸载边界 | 不删除 Qt 系统、另一个产品、用户自己的 HMI 业务；XP-18/24 | `DESIGN_ONLY` |
+| `PKG-08` | 二进制升级回退不扩权、不误报 Native/E2E/G3/服务支持 | 安装中断/未知高版本安全 schema/重启后旧 Route 复活；MG-12、XP-24 | `DESIGN_ONLY` |
+
+**交付设计 Gate**：这些是按既定规划的 X-01 详细技术合同，具体安装器/操作系统产品支持版本、System Service 技术路线尚未有可信实测资格，不能以文档填充替代平台测试。设计 Gate-D 审架构分工/接口/时序/失败/证据计划；Gate-I 后正式实现与验证；不因本节放行 Gateway #190。
 
 ## 5. X-02 安全、资源、可观测性、质量与全产品验收
 
