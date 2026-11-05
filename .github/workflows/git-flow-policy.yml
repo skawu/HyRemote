@@ -156,6 +156,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Trusted first: before running ANY PR-provided script, check that this
+      # exact field-fix PR's governance blobs match independently merged develop,
+      # then execute the SHA-scoped validator fetched from that trusted branch.
+      - name: Admit V035 field correction from trusted develop (first executable policy)
+        if: github.base_ref == 'release/v0.3.5.0' && github.head_ref == 'feature/789-release-preparation'
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin develop:refs/remotes/origin/develop --force
+          for file in .github/scripts/release_correction.py .github/workflows/git-flow-policy.yml docs/internal/git-flow-release.md; do
+            candidate="$(git rev-parse "HEAD:${file}")"
+            trusted="$(git rev-parse "refs/remotes/origin/develop:${file}")"
+            if [[ "${candidate}" != "${trusted}" ]]; then
+              echo "::error::V035 governance differs from independently merged develop: ${file}"
+              exit 1
+            fi
+          done
+          git show refs/remotes/origin/develop:.github/scripts/release_correction.py > "${RUNNER_TEMP}/trusted-v035-validator.py"
+          python3 "${RUNNER_TEMP}/trusted-v035-validator.py" --self-test
+          python3 "${RUNNER_TEMP}/trusted-v035-validator.py" --validate-v035-field-backport
+
       - name: Self-test the branch family gate
         shell: bash
         run: bash .github/scripts/check-pr-branch-name.sh --self-test
@@ -347,10 +371,8 @@ jobs:
                            "develop:refs/remotes/origin/develop", "--force"),
                           stderr=subprocess.STDOUT)
                       sys.path.insert(0, ".github/scripts")
-                      from release_correction import validate as validate_correction
-                      from release_correction import validate_reopen, validate_reopen_rc7
-                      from release_correction import validate_v035_field_backport
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
+                          from release_correction import validate_reopen, validate_reopen_rc7
                           # Only two exact independently reviewed exceptions exist:
                           # #806 accepted RC6->RC7, and #812/#768 accepted RC7->next
                           # candidate. Neither grants a general accepted-release edit.
@@ -381,16 +403,12 @@ jobs:
                                   base_cmake=old_cmake, head_cmake=new_cmake,
                                   actual_base_sha=actual_accepted_base, head_ref=head)
                       elif head == "feature/789-release-preparation":
-                          # #789: exact pre-publication field-fix candidate only.
-                          # The reviewed product blobs are SHA-locked and
-                          # governance files must match origin/develop bytes.
-                          actual_base = git("rev-parse", base_tree).decode("ascii").strip()
-                          stage = validate_v035_field_backport(
-                              git=git, version=version, notes_name=notes_name,
-                              base_notes=old_notes, head_notes=notes,
-                              base_cmake=old_cmake, head_cmake=new_cmake,
-                              actual_base_sha=actual_base, head_ref=head)
+                          # The first step already imported and executed the
+                          # validated module from reviewed develop, before any
+                          # PR-supplied script was run. No self-validation here.
+                          stage = "v035-sha-scoped-field-maintenance"
                       else:
+                          from release_correction import validate as validate_correction
                           validate_correction(git=git, version=version, notes_name=notes_name,
                                               base_notes=old_notes, head_notes=notes,
                                               head_cmake=new_cmake)
