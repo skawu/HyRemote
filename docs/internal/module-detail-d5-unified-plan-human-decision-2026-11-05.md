@@ -47,7 +47,7 @@
 | F12 | Framework Frame/Privacy / HyRemote | F10/F11、D1 [F-02 RT-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 设计合同 | 共享基础 capture、per-session Filter/Watermark/Full/Delta、撤权清未发缓存 | **实施后**实测两 peer 权限遮罩、慢端、旧 Full/Delta 不泄漏；设计阶段核准过滤顺序、缓冲所有权与 epoch 失效 |
 | F13 | Framework RFB / HyRemote | F10-F12、#158 真实修复与验收计划 | 现有标准 RFB3.8 的宿主授权接入、legacy 输入与 Scope 兼容、真实安全档位/资源 | 标准第三方 Viewer 与旧应用兼容；无 Native 私有消息、非公网明文资格 |
 | F14 | Framework Native / HyRemote | 已批准 P-A/A 唯一值源、W00 AFS-01..12 状态/错误合同、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | **Gate-I 后**按 26 字节黄金向量/12 异常变异与 AFS-01..12 逐项实际对拍、真 DeviceTLS、Host Grant/Qt 最终栅栏及 RFB-only/Native-only/Dual；当前这些真实 E2E 未运行 |
-| F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 Kit 约束 | C++/QML/Generic/QPA 一套共享 Runtime 的可配置/可观察接入、打包插件兼容 | 同期 Qt5/6 Windows exact cell，公共 API/ABI 与已发布部署回归 |
+| F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 与 D1 `INT-01..10` 审查合同 | C++/QML/Generic/QPA 使用一个共享 Runtime 实现与可信 Host 准入，QML/Generic/QPA bootstrap、配置/Target 与错误隔离、原生 QPA 安全共存 | **Gate-I 后**Qt5/Qt6 exact Kit/平台的四入口启动、输入/授权/Target/已发布 public API/ABI 与部署回归；设计阶段仅审合同 |
 | V10 | View Direct RFB / HyRemoteView | W00 与 View G3真实结论，F13 标准端点 | 产品级 bounded RFB client、独立 Direct、失败关闭与存储/恢复 | 真实维护中 Host/Viewer 像素、输入/持键/恶意消息/断网测试 |
 | V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧、D2 `SURF-01..08` 已审候选合同、精确 Qt Quick 线程边界 | RemoteSurface/QSG、immutable FrameSnapshot / DisplayEpoch、frame lifecycle/damage/resize/DPR、Focus 与输入映射、帧龄/反馈 | **Gate-I 后**在 Qt6.8 Windows/Linux 实际支持单元验证 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充正式产品 |
 | V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、D2 TrustStore | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
@@ -105,6 +105,8 @@ flowchart TB
 **本轮以既有文档为唯一交付载体**：D1 F-02 新增运行时生命周期、线程/Target/Frame/Session/QtTicket 所有权、per-session 输出和缓冲背压 `RT-01..08`；D1 F-06 新增 PolicySnapshot 生效、Qt 最终投递/现场撤权串行化、按 Session held ledger `POL-01..08`。二者是会影响研发实施的**实质模块技术合同**，不是新增 W00 追溯文档。与 D2 View 失权显示、D3 透明转发及 D4 XP 设计验收的消费关系继续独立审查。技术合同候选合并不自动冻结产品或授权代码。
 
 **V-02 RemoteSurface 模块技术合同增量（2026-11-05）**：原 [D2 客户端详细设计](module-detail-d2-hyremoteview-client-2026-11-05.md) 已补充 `SURF-01..08`：Decoder/Render 不可变 FrameSnapshot 所有权、Qt Quick thread fence、per-Target FULL/DELTA、DisplayEpoch 失效、DPR/坐标逆变换、Focus/Grant、本地 held 和像素/资源负例；D4 质量合同已定位 `VIEW/XP/AFS` 证据出口。它们是 **Gate-D 可审设计合同**，G3/产品平台/渲染性能实测未通过；不创建新产品或额外 Native wire。
+
+**F-03 四个 Qt 接入入口详细设计增量（2026-11-05）**：按已批准 ADR-0007/0008 和现有 C++/QML/Generic/QPA 接口，直接在 [D1 原设计](module-detail-d1-framework-boundaries-2026-11-05.md) 补齐 `INT-01..10`：启动阶段与 QML componentComplete、地址/接口语义、Generic/QPA 同一 automatic controller、QPA native delegate、Host H-02a 准入、多入口实例/资源隔离、QtPrivate 例外、Qt Kit 适用范围和停止/错误真相。D4 X-01/X-02 已对应 FW/XP 负例；这些是待审**技术合同**，不是已经变更发布 API、Qt binary 或真实已完成的产品功能。
 
 ## 4. 全产品四个不同准入门槛
 
