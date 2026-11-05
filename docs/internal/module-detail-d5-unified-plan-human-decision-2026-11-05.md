@@ -51,7 +51,7 @@
 | V10 | View Direct RFB / HyRemoteView | W00 与 View G3真实结论，F13 标准端点 | 产品级 bounded RFB client、独立 Direct、失败关闭与存储/恢复 | 真实维护中 Host/Viewer 像素、输入/持键/恶意消息/断网测试 |
 | V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧、D2 `SURF-01..08` 已审候选合同、精确 Qt Quick 线程边界 | RemoteSurface/QSG、immutable FrameSnapshot / DisplayEpoch、frame lifecycle/damage/resize/DPR、Focus 与输入映射、帧龄/反馈 | **Gate-I 后**在 Qt6.8 Windows/Linux 实际支持单元验证 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充正式产品 |
 | V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、D2 TrustStore | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
-| V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 交互批准及安全资料 | DeviceCatalog/ProfileStore/SecretStore/Connection/Session UI、诊断/品牌/更新 | 离线首启、身份分离、旧画面遮蔽、OEM/凭据/升级独立真实测试 |
+| V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 `IDT-01..10` 数据/信任迁移合同及已批准 UI/安全依据 | DeviceCatalog/ProfileStore/OS SecretStore、Native DeviceTrust/证书轮换、诊断/OEM/身份 Session UI 和升级回退 | **Gate-I 后**离线首启、同 IP 不同 HMI、TrustRev/凭据/升级和安全回滚的独立真实验证；设计期只审合同 |
 | E10 | Factory View Edge / HyRemoteView | W00、D3 `EG-01..12` 与同产品安装治理 | SiteRegistry/EndpointBinding/管理员共享、GatewayLink/RouteAdmission、once-Pair、FIFO Relay、默认 OFF/撤权 | 实施后验证工厂只装 View、精确白名单/站点 ACL、双侧配对与有界 FIFO、Direct 不退化；设计期仅合同审签 |
 | E11 | Factory Edge lifecycle / HyRemoteView | E10，OS 服务真实取舍 | 首批准入的用户登录态运行；获批后可增可验证的同产品 service 角色 | GUI 关闭/注销/重启/升级/卸载/IPC ACL/OS 凭据逐项合格，无假“无人值守” |
 | G10 | Optional Gateway / 独立交付责任 | W00、D3 `EG-01..12`、Stage05 唯一候选 IDL 与 **Human 对 #190 独立激活** | Identity/Site/Edge Registry、RoutePermit + one-shot PairLedger、opaque FIFO Relay、tenant/audit | 实施并独立激活后测试自托管证书/ACL、RouteEpoch/Pair 重放、负载及回退；**现阶段仅设计，未激活** |
@@ -109,6 +109,8 @@ flowchart TB
 **F-03 四个 Qt 接入入口详细设计增量（2026-11-05）**：按已批准 ADR-0007/0008 和现有 C++/QML/Generic/QPA 接口，直接在 [D1 原设计](module-detail-d1-framework-boundaries-2026-11-05.md) 补齐 `INT-01..10`：启动阶段与 QML componentComplete、地址/接口语义、Generic/QPA 同一 automatic controller、QPA native delegate、Host H-02a 准入、多入口实例/资源隔离、QtPrivate 例外、Qt Kit 适用范围和停止/错误真相。D4 X-01/X-02 已对应 FW/XP 负例；这些是待审**技术合同**，不是已经变更发布 API、Qt binary 或真实已完成的产品功能。
 
 **E-01/G-01 模块细节设计增量（2026-11-05）**：按 Stage05 的**唯一候选 IDL**，直接在 [D3](module-detail-d3-managed-integration-2026-11-05.md) 补全 `EG-01..12`，明确 Factory SiteRegistry/PolicyRevision/EndpointBinding、Gateway Route/PairLedger 的唯一所有者、一次性配对/两次拨号前 ACL 栅栏、站点撤权的本地线性化/持久化、双向 opaque FIFO 的缓冲/取消与登录态 H-EDGE=A。D2/D4 对应操作状态/验收。只闭合设计合同；Stage05 控制消息格式仍未发布冻结、Gateway #190 未激活。
+
+**V-03 身份/档案/更新详细设计增量（2026-11-05）**：现有 [D2](module-detail-d2-hyremoteview-client-2026-11-05.md) 第 6 章补齐 `IDT-01..10`，精确规定本地非秘密 Profile、HMI DeviceTrust、Native 用户凭据、Gateway Operator、工厂 Edge SitePolicy 各有独立 Owner/存储，首用/轮换/撤权 TLS 信任的 Revision/SessionGeneration 并发，以及 OS SecretStore 不可用、档案回退、诊断和 OEM 隔离的失败闭合。D4 已将 IDT 映射 VIEW/XP 质量入口；没有引入新的首次信任默认产品决定或正式产品代码。
 
 ## 4. 全产品四个不同准入门槛
 
