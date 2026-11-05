@@ -313,6 +313,26 @@ XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB �
 
 上述 **XP-01..XP-28 全部属于设计验收合同，不是已运行 PASS**。与 V15 表6 的 31 个真实源场景逐项对应见 [W00 S01..S31 ↔ XP 映射](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md)。**31/31 是验收入口设计覆盖，不等于可执行测试完成或 56 项 V15 复合要求已逐原子签收。**
 
+### 5.5 XP-22/23 业务结果与离线撤销的事实等级和失败闭合（不擅造实现接口）
+
+根据 V15 §9.2/§12.1 和 V8 §13.3/§14.3 的来源追踪，以下仅确定 **XP-22 业务文件/宿主结果**及 **XP-23 离线委托撤销**的可信状态、来源和错误闭合，**不声称**已实现文件远程管理、设备 ACK、离线送达或已批准具体版本分期。V8 Native 1.0 附录 A.2 既有 **21 种消息中没有文件上传/业务生效回执/离线撤销设备回执消息**；不能将 `INPUT/COMMITTED_TEXT`、普通 RFB 键鼠或 TCP ACK 偷偷重新解释为新协议功能。改变已批准的 wire/正式产品范围须走 Human 受控流程。
+
+| 事实层级（内部设计记号，不是协议 enum） | 唯一可信来源 | 严禁被提升成 | 失败闭合与真实 UI |
+| --- | --- | --- | --- |
+| `CAPABILITY_UNAVAILABLE` | V-01/V-03 当前经过验证的端点协议能力；Native1.0 无文件/业务结果消息 | 已支持安全文件传输 | 隐藏/禁用假功能，明确 UNSUPPORTED；不使用未经允许的剪贴板/键鼠替代文件接口 |
+| `CLIENT_QUEUED/STREAM_WRITTEN` | 发送端当前 Session 本机有界队列/网络写入结果 | 设备已接收/宿主已执行 | 丢连接、超时、重连后不得自动重放可能有副作用的命令 |
+| `DEVICE_RECEIVED/INTEGRITY_VERIFIED` | 仅未来 HMI 受信文件接收/校验证据，精确 DeviceId/操作 Id/摘要/会话代次 | 业务宿主接受或已生效 | 没有受信接收证据显示 OUTCOME_UNKNOWN，不让客户端摘要验证冒充设备确认 |
+| `HOST_ACCEPTED/BUSINESS_EFFECT_APPLIED` | 仅未来 HMI 业务应用真实回执/持久状态读取；F-06 Host 独立 Owner | TLS 已写入就等于参数生效/告警已确认 | 无 Host 可信回执只可显示 OUTCOME_UNKNOWN，需现场复核，不自动重试业务动作 |
+| `REVOKE_ISSUED/PENDING_DEVICE_DELIVERY` | 客户/售后委托签发方自己的受信变更及持久日志 | 离线 HMI 已撤销授权 | HMI 离线/无可信设备回执时显示待送达或未知，Gateway/Edge 不得代为推进 GrantEpoch |
+| `DEVICE_RECEIPT_VERIFIED/POLICY_EFFECTIVE` | 仅实际 HMI 已认证的设备收件证明和当前本地 F-06 PolicyRevision/GrantEpoch 生效证据 | Gateway 配对/RouteClose 就是设备撤销 | 设备身份/签名/代际不符则不能显示“已生效”；旧拒绝和 held/帧撤销仍以 Host 最终栅栏为准 |
+| `DELEGATION_EXPIRED_OFFLINE` | HMI 本地已批准的有限委托到期及可信设备时间/单调期限证据 | 合法永久 Direct 使用权益到期 | 时钟无法证明则不能伪称已远端送达；有限远控委托保守拒绝，不借云订阅停用合法基础 Direct |
+
+**权威不可转移**：文件/业务操作许可、最终业务状态、设备当前 Policy/Grant 仍归 HMI Host；客户端/Tool 只呈现有来源、带时间与作用域的事实；Gateway/Edge 只为自有 Route 负责，不保存/解读业务文件、不签发设备接收回执。上述全大写状态是**设计内部事实分类**，并非新 Native wire、SDK API 或已发布 UI。
+
+**两项仍未关闭的可实施合同缺口**：（1）Host 文件接收/沙箱路径/大小校验/幂等 OperationId、业务结果回执可信来源与分期仍 `OPEN_HOST_FILE_INTERFACE_AND_PHASE`；（2）离线撤销签发/持久化、可信送达/设备收件证明、去重/防重放、Owner 和恢复仍 `OPEN_OFFLINE_REVOCATION_DELIVERY_ACK`。目前不能拿 XP-22/23 场景文字当作可编码的接口规范。
+
+**未来负向验收**：XP-22 必须将“写出/设备收到/Host 拒绝/业务结果未知”、损坏文件、路径越权、断线重试分开；XP-23/28 必须将“已签发未送达/设备明确确认/可信期限到期/旧撤销重放/永久 Direct 继续使用”分别记录。全部 `DESIGN_ONLY/NOT_RUN`；本节只明确安全事实与失败闭合，不宣称实现接口及阶段已批准。
+
 ## 6. 已获 Human 批准的产品决策与仍未关闭的源审计
 
 | ID | 问题 | 当前技术倾向 | 触发审批 |
