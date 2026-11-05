@@ -56,35 +56,35 @@ Tool 依照当前真实 Windows Qt5.15/Qt6.8 和已交付安装单元单独验�
 
 ### 3.1 T-01 当前已交付事实、证据等级与未来实现隔离
 
-当前已核对 [Tool README](../../tools/hyremote-tool/README.md) 的 **V0.3.0.0 既有客户端范围**：通过用户输入的 IP/port 连接 RFB 3.8 \`SecurityType None\`；默认只读，操作者显式开启后才发送键盘/指针/滚轮；支持画面、FPS/吞吐/帧数/分辨率、连接错误和中文/English 切换。该 README 还明确排除当前 VNCAuth、TLS/VeNCrypt、剪贴板、文件传输、全屏、多显示器及管理面功能。**这些是仓库文档声明而非本轮独立实机复验**；未来 Inspector、IntegrationAdvisor、SupportReport 并未由这份当前 Tool README 证明已交付。Native DeviceTLS/Managed/Edge 的正式访问工作仍归 View；Tool 完整 S1 #586 OPEN。
+当前已核对 [Tool README](../../tools/hyremote-tool/README.md) 的 **V0.3.0.0 既有客户端范围**：通过用户输入的 IP/port 连接 RFB 3.8 `SecurityType None`；默认只读，操作者显式开启后才发送键盘/指针/滚轮；支持画面、FPS/吞吐/帧数/分辨率、连接错误和中文/English 切换。该 README 还明确排除当前 VNCAuth、TLS/VeNCrypt、剪贴板、文件传输、全屏、多显示器及管理面功能。**这些是仓库文档声明而非本轮独立实机复验**；未来 Inspector、IntegrationAdvisor、SupportReport 并未由这份当前 Tool README 证明已交付。Native DeviceTLS/Managed/Edge 的正式访问工作仍归 View；Tool 完整 S1 #586 OPEN。
 
-本模块不将旧 Tool 的 \`Connected\`、RFB 无认证像素或操作者勾选键鼠解释成 HMI 个人身份、Native \`ViewGrant/ControlGrant\` 或公网安全证明。对已交付功能做回归时也须使用可复核的精确 Tool/Qt Kit/OS/设备版本，不以 README 或设计 PR 代替运行结果。
+本模块不将旧 Tool 的 `Connected`、RFB 无认证像素或操作者勾选键鼠解释成 HMI 个人身份、Native `ViewGrant/ControlGrant` 或公网安全证明。对已交付功能做回归时也须使用可复核的精确 Tool/Qt Kit/OS/设备版本，不以 README 或设计 PR 代替运行结果。
 
 ### 3.2 Tool 内部只读诊断和用户可导出报告的输入输出合同
 
 | 数据对象/逻辑模块 | 唯一输入与 Owner | 输出与最小溯源字段 | 拒绝或不允许做的事 |
 | --- | --- | --- | --- |
-| \`ToolInputSession\` | T-01：用户明确选择的 SDK 根、Kit、日志/manifest；显式取消代次 | \`sourceKind,selectedPath,observedAt,cancelGeneration,readStatus\` | 不后台遍历无关目录、不自动下载或修改 Qt/CMake/系统配置 |
-| \`SdkInspector\` | T-01：指定 SDK manifest/CMake targets/实际 Qt Kit 与平台工件 | \`source,artifactSHAOrUnknown,kit,checkKind,method,result\`；静态/实际运行分离 | 文件存在不等于 QPA/QtPrivate exact Kit 已运行；缺证据不能 PASS |
-| \`IntegrationAdvisor\` | T-01 消费唯一 [F-03 INT-01..10](module-detail-d1-framework-boundaries-2026-11-05.md) 与真实已安装公开 API | C++/QML/Generic/QPA 的兼容路线、权限预检及复现条件 | 不发明 setter、新 Native wire、后台创建 listener 或偷偷修改客户工程 |
-| \`DiagnosticsImporter\` | T-01：用户显式导入且限制大小/路径的脱敏证据 | \`source,observedAt,trustLevel,sourceSHAOrUnknown,parseStatus\` | 不因用户陈述或日志文本就推断远端设备真实成功，不自动上传 |
-| \`SupportReport\` | T-01：上述只读检查的已预览、人工确认集合 | \`reportVersion,toolSHA,kit,sourceKind,checks[],unknowns[],redactions[]\` | 禁止导出口令/token/TLS 私钥/截屏/输入全文；无人工确认不外发 |
-| \`ToolProfileStore\` | T-01：Tool 自己的语言、非秘密连接偏好和 SDK 路径 | 独立产品 \`schemaVersion\`、迁移来源和失败状态 | 不与 View DeviceTrust、Factory SitePolicy 或 Gateway 租户秘密共享明文持久层 |
+| `ToolInputSession` | T-01：用户明确选择的 SDK 根、Kit、日志/manifest；显式取消代次 | `sourceKind,selectedPath,observedAt,cancelGeneration,readStatus` | 不后台遍历无关目录、不自动下载或修改 Qt/CMake/系统配置 |
+| `SdkInspector` | T-01：指定 SDK manifest/CMake targets/实际 Qt Kit 与平台工件 | `source,artifactSHAOrUnknown,kit,checkKind,method,result`；静态/实际运行分离 | 文件存在不等于 QPA/QtPrivate exact Kit 已运行；缺证据不能 PASS |
+| `IntegrationAdvisor` | T-01 消费唯一 [F-03 INT-01..10](module-detail-d1-framework-boundaries-2026-11-05.md) 与真实已安装公开 API | C++/QML/Generic/QPA 的兼容路线、权限预检及复现条件 | 不发明 setter、新 Native wire、后台创建 listener 或偷偷修改客户工程 |
+| `DiagnosticsImporter` | T-01：用户显式导入且限制大小/路径的脱敏证据 | `source,observedAt,trustLevel,sourceSHAOrUnknown,parseStatus` | 不因用户陈述或日志文本就推断远端设备真实成功，不自动上传 |
+| `SupportReport` | T-01：上述只读检查的已预览、人工确认集合 | `reportVersion,toolSHA,kit,sourceKind,checks[],unknowns[],redactions[]` | 禁止导出口令/token/TLS 私钥/截屏/输入全文；无人工确认不外发 |
+| `ToolProfileStore` | T-01：Tool 自己的语言、非秘密连接偏好和 SDK 路径 | 独立产品 `schemaVersion`、迁移来源和失败状态 | 不与 View DeviceTrust、Factory SitePolicy 或 Gateway 租户秘密共享明文持久层 |
 
-\`checks[]\` 只允许 \`PASS_OBSERVED / FAIL_OBSERVED / NOT_RUN / NOT_APPLICABLE / UNKNOWN_SOURCE\` 五种**设计内部报告状态**；每项必须携带 \`checkId,method,source,kitOrNA,artifactDigestOrUnknown,observedAt\`。未知或导入证据不能冒充经独立签收的安全资格。名称及字段均是 **T-01 内部设计合同，不是已发布 Tool API、外部 wire 或现成界面功能**。
+`checks[]` 只允许 `PASS_OBSERVED / FAIL_OBSERVED / NOT_RUN / NOT_APPLICABLE / UNKNOWN_SOURCE` 五种**设计内部报告状态**；每项必须携带 `checkId,method,source,kitOrNA,artifactDigestOrUnknown,observedAt`。未知或导入证据不能冒充经独立签收的安全资格。名称及字段均是 **T-01 内部设计合同，不是已发布 Tool API、外部 wire 或现成界面功能**。
 
 ### 3.3 T-01 可实施验收的最小不可分割合同
 
 | ContractID | 正常行为的责任归属 | 负向/边界测试（未来，均未运行） | 既有验收入口 | 当前 |
 | --- | --- | --- | --- | --- |
-| \`TL-01\` | T-01 保留已发布 Basic RFB3.8/None、默认只读与显式控制开关 | 非 TLS 不能显示“设备身份已核验”；未实现 Native/VNCAuth 按真实能力报告 | XP-02/15/20 | \`DESIGN_ONLY\` |
-| \`TL-02\` | T-01 管理当前 RFB 键鼠事件、失焦/断线及帧遥测的真实 UI | 禁控/丢连接/重复 UP 不谎报业务已执行，旧 held 清理须以未来真实回归验证 | XP-05/15 | \`DESIGN_ONLY\` |
-| \`TL-03\` | T-01 Inspector 明确 Kit/SDK/manifest 与来源等级 | Qt minor/ABI、QtPrivate/插件不符及缺运行证据均不可 PASS | XP-01/14 | \`DESIGN_ONLY\` |
-| \`TL-04\` | T-01 Advisor 使用唯一 F-03 INT-01..10 和已发布 API | QML/Generic/QPA 参数错、C++ setter 不存在及 Host H-02a 不合格不能给成功步骤 | FW-01/10、XP-14 | \`DESIGN_ONLY\` |
-| \`TL-05\` | T-01 日志/manifest 只读、限额、脱敏导入 | 超大输入、目录逃逸、伪造 DeviceTLS/设备成功来源不能提升资格 | XP-14/16 | \`DESIGN_ONLY\` |
-| \`TL-06\` | T-01 SupportReport 的逐项证据和显式导出确认 | token/私钥/屏幕内容/输入全文过滤；\`NOT_RUN\` 不可转成 PASS | XP-14/16/20 | \`DESIGN_ONLY\` |
-| \`TL-07\` | T-01 仅迁移自身非秘密 Profile 和语言/Kit 偏好 | 升级/回退不能覆盖或恢复 View/Edge/Gateway 另一 Owner 的权限 | DEP-07、XP-24 | \`DESIGN_ONLY\` |
-| \`TL-08\` | T-01 与 V-01 按 H-T01=A 分工，维护旧 RFB；未来完整 Native/Managed 归 View | Tool 全量 S1 #586 OPEN，不能当已验收；不得删除存量入口或构造第二个 Gateway/Edge 产品 | XP-15/19/20 | \`DESIGN_ONLY\` |
+| `TL-01` | T-01 保留已发布 Basic RFB3.8/None、默认只读与显式控制开关 | 非 TLS 不能显示“设备身份已核验”；未实现 Native/VNCAuth 按真实能力报告 | XP-02/15/20 | `DESIGN_ONLY` |
+| `TL-02` | T-01 管理当前 RFB 键鼠事件、失焦/断线及帧遥测的真实 UI | 禁控/丢连接/重复 UP 不谎报业务已执行，旧 held 清理须以未来真实回归验证 | XP-05/15 | `DESIGN_ONLY` |
+| `TL-03` | T-01 Inspector 明确 Kit/SDK/manifest 与来源等级 | Qt minor/ABI、QtPrivate/插件不符及缺运行证据均不可 PASS | XP-01/14 | `DESIGN_ONLY` |
+| `TL-04` | T-01 Advisor 使用唯一 F-03 INT-01..10 和已发布 API | QML/Generic/QPA 参数错、C++ setter 不存在及 Host H-02a 不合格不能给成功步骤 | FW-01/10、XP-14 | `DESIGN_ONLY` |
+| `TL-05` | T-01 日志/manifest 只读、限额、脱敏导入 | 超大输入、目录逃逸、伪造 DeviceTLS/设备成功来源不能提升资格 | XP-14/16 | `DESIGN_ONLY` |
+| `TL-06` | T-01 SupportReport 的逐项证据和显式导出确认 | token/私钥/屏幕内容/输入全文过滤；`NOT_RUN` 不可转成 PASS | XP-14/16/20 | `DESIGN_ONLY` |
+| `TL-07` | T-01 仅迁移自身非秘密 Profile 和语言/Kit 偏好 | 升级/回退不能覆盖或恢复 View/Edge/Gateway 另一 Owner 的权限 | DEP-07、XP-24 | `DESIGN_ONLY` |
+| `TL-08` | T-01 与 V-01 按 H-T01=A 分工，维护旧 RFB；未来完整 Native/Managed 归 View | Tool 全量 S1 #586 OPEN，不能当已验收；不得删除存量入口或构造第二个 Gateway/Edge 产品 | XP-15/19/20 | `DESIGN_ONLY` |
 
 以上八项将真实运行、许可证、Kit 和支持矩阵保留为 Gate-I 后的实施证据；**目前只完成可审查设计，不创建 Tool 新按钮/产品代码，也不由 T-01 改写已批准 H-T01=A**。
 
