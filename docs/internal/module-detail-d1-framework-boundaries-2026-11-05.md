@@ -198,6 +198,16 @@ Constructed / Stopped
 - RFB `0.0.0.0:5921` 是保留的**配置 getter 默认值**，不是 H-02a 的部署授权；现行旧版监听真实行为按 `docs/security.md` 如实记录。
 - Interface unavailable 维持真实 `Unavailable`：没有 listener，不等于合法地“已授权用户在线”。
 
+### 7.1.1 H-DUAL=A 启动原子性的可实现合同（设计，不是当前代码）
+
+- `PREPARE`：Host 对部署签名/Target/Scope、RFB-only/Native-only/Dual 声明及**全部 required 端点**执行同一个策略代际准入；构建每协议的独立 socket、证书材料与会话表，但**不得发布 Running/可用权限**。任何准备失败均 `ABORT` 并释放本事务资源。
+- `COMMIT`：仅全部 required 协议准备就绪后，以一个受信 RuntimeEpoch/AdmissionSnapshot 将会话接纳总闸门从 `BLOCKED` 提交为 `ACTIVE`；外部 API 才可报告 `Running`。对在准备/提交期间试探性连入的 socket，不得发送设备画面、认证秘密或接受输入。
+- `ABORT`：任一必需端口冲突、TLS 身份缺失或 Host 策略失败时，全部关闭本轮新建 socket/会话，报告 `START_ABORTED` 与真实原因，不得留下可服务的 RFB 或 Native 半启动实例；不得自动改为不加密 RFB。
+- `DEGRADED`：**只指已经 COMMIT 后**一个协议因运行时故障失效，其他端点经过现有 Host 授权、未受影响且仍安全时可以继续；健康/监听/会话状态按协议分别如实报告，不隐蔽故障。
+- TCP 多端口在 OS 层无法物理实现“两个 `listen()` 指令同一纳秒完成”的绝对保证。H-DUAL=A 要求的是**对外服务、授权和 Running 可见性的事务性全有或全无**，不能虚构网络原子性。设计验证需覆盖端口占用、协议准备后失败、并发连接抢入、策略更新同时回滚、四接入和旧 Qt Kit。
+
+**与 H-RFB=A 的配合**：仅当 Host 明确开启 legacy RFB 输入且当前 Target/Scope/ControlArbiter 仍许可，该 RFB session 才可提交输入；标准 RFB 未定义 Native Grant 状态，因此 Viewer 不得显示“已获得个人 ControlGrant”。任何会话撤销均以 H-REVOKE=A 的当前设备 epoch 作为最终禁止执行/输出栅栏，而不是依赖 GUI 远端通知。
+
 ### 7.2 运行期重绑、断线与取消
 
 - Runtime 旧 generation 与新 generation 完全隔离；旧网络/采集/输入回调不可操作新会话。现有 `AccessInstance::Impl::composeAndStart()` 先 `shutdownRuntime()` 再新建 Core Session 的旧代际隔离机制可复用，但未来必须补充当前 PolicySnapshot 的重评估。
