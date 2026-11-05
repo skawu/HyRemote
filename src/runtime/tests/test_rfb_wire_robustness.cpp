@@ -3399,7 +3399,11 @@ void testDamageAndEncodedFrameShareSnapshot()
     std::uint16_t height = 0;
     CHECK(connectRawRfb(socket, port, false, &width, &height));
     CHECK(width == 128 && height == 128);
-    CHECK(sendSetEncodings(socket, {0}));
+    // Negotiate Fence as an ordered request-PARSE barrier (not a TCP drain).
+    // This ensures the worker has armed the incremental request before frame A
+    // is queued, independently of readyRead/frameAvailable event ordering.
+    CHECK(sendSetEncodings(socket, {-312, 0}));
+    CHECK(readFence(socket) == makeFence(0U));
 
     TestFramebuffer framebuffer;
     framebuffer.resize(width, height);
@@ -3410,6 +3414,9 @@ void testDamageAndEncodedFrameShareSnapshot()
 
     phase.store(1);
     CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    const QByteArray requestBarrier("armed", 5);
+    CHECK(writeAll(socket, makeFence(0x80000000U, requestBarrier)));
+    CHECK(readFence(socket) == makeFence(0U, requestBarrier));
     auto a = makeFrame(128, 128, 0x101010U, {{{4, 4, 8, 8}, 0xff0000U}});
     hyremote::Damage aDamage;
     aDamage.kind = hyremote::DamageKind::Regions;
