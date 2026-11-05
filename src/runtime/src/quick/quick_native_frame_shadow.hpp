@@ -2,7 +2,8 @@
 
 // #609 P3 Qt6.8.3 experimental render-stage shadow observer.
 // Bounded asynchronous readback is counted and discarded; no Core callback,
-// RFB publication, frame caching or update requests.
+// RFB publication, frame caching or update requests. Sampling is restricted to
+// the D3D11 RHI backend, whose destruction contract completes pending readbacks.
 #include <QMetaObject>
 
 #include <memory>
@@ -30,6 +31,7 @@ private:
     QQuickWindow *m_window = nullptr; // only accessed while window emits its signal
     std::shared_ptr<State> m_state;
     QMetaObject::Connection m_afterRendering;
+    QMetaObject::Connection m_sceneGraphInvalidated;
 };
 
 }  // namespace HyRemote::detail

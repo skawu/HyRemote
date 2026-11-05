@@ -19,6 +19,16 @@ This branch is isolated from `develop` and **not approved for merge or release**
 - Read-back pixels are counted (`readback_discarded_bytes`) and discarded; nothing reaches Core, RFB or a Viewer. The stop diagnostic gains `readback_submitted/completed/dropped/discarded_bytes` while keeping `pixels_published=0`.
 - Regression covered by `hyremote-quick-native-frame-policy-test` (bound constants) plus local Viewer smoke: env absent, env `=1`, and repeated window resize during sampling, all with clean `HYREMOTE_STOP=Stopped`.
 
+## Slice P3-S1R (implemented, shadow only)
+
+- Sampling is restricted to the **D3D11 RHI backend** (`QRhi::D3D11`); other backends only count `readback_backend_skipped` and never allocate a readback result. Rationale from the exact Qt 6.8.3 sources: `QRhiD3D11::destroy()` calls `finishActiveReadbacks()` before releasing the device/context, and Vulkan does the same; the GLES2 backend does not advertise `ReadBackAnyTextureFormat`, so it is not a valid sampling target.
+- Diagnostics now carry lifecycle/integrity facts: `readback_same_frame/later_frame`, `readback_empty`, `readback_data_size_mismatch` (bytes vs WxHx4), `readback_submit_size_diff` (completion size vs submit size), `swapchain_size_changes`, `scenegraph_invalidations`, `readback_after_invalidation`, `readback_in_flight_at_stop`, `readback_after_stop`, `readback_across_recreation`, `readback_max_flight_ms`, `readback_min/max_bytes`, `readback_format`, `readback_size`. A `HyRemote P3 SHADOW LATE COMPLETION` line is emitted when a completion arrives after stop/invalidation.
+- Verified on exact Qt 6.8.3 / D3D11 with a 1920x1080 looping `OpacityAnimator` host:
+  - stop during a pending readback: `in_flight_at_stop=1`, late completion with `bytes=8294400 format=1 1920x1080 flight_ms≈25`, no crash/hang;
+  - window destroy during a pending readback: late completion `flight_ms≈950–980` delivered by the RHI destruction drain, same valid bytes/format/size;
+  - repeated resize: `swapchain_size_changes=12–16`, readbacks observed at both `4096000` (1280x800) and `8294400` (1920x1080), `data_size_mismatch=0`, one `submit_size_diff` proving a readback submitted on the old swapchain completed after recreation with a self-consistent payload.
+- Pixels remain discarded; no Core/RFB/Viewer publication.
+
 ## Pending BLOCKERS before any pixel publication
 
 P3-R1 native swapchain vs `contentItem` geometry/alpha/DPR/Popup and security equivalence;
@@ -26,7 +36,7 @@ P3-R2 asynchronous callback ownership across stop/device-loss/resize and Core re
 P3-R5 static Viewer join/reconnect/full-frame initialization/fallback;
 P3-R6 server-side watermark/privacy/authorization must remain fail-closed.
 Qt5 full-frame sync cost, Qt6 high-frequency readback, cross-platform ABI/license and RealVNC/RK3588 A/B remain open.
-P3-S1 (bounded QRhi asynchronous shadow readback) is implemented and locally verified; it still publishes nothing. Remaining before any publication decision: device-loss/drain regression, geometry/alpha/DPR equivalence and Viewer A/B, all of which stay behind the same compile-time OFF + runtime opt-in gates.
+P3-S1 and S1R (bounded asynchronous shadow readback plus lifecycle closure) are implemented and locally verified; they still publish nothing. `QQuickWindow::sceneGraphInvalidated` did not fire in the destroy runs, so that specific hook remains unexercised; RHI destruction drain was exercised instead. Remaining before any publication decision: device-loss/backend-change runs, geometry/alpha/DPR equivalence and Viewer A/B, all behind the same compile-time OFF + runtime opt-in gates.
 
 ## Developer verification
 
