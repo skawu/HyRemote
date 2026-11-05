@@ -364,6 +364,12 @@ sequenceDiagram
 **客户端设计验收**：`VIEW-EDGE-01` 关闭画面不退出共享；`VIEW-EDGE-02` 注销/退出真实离线；`VIEW-EDGE-03` 迟到共享回执不得覆新版本；`VIEW-EDGE-04` 升级/重启不复活旧 Route；`VIEW-EDGE-05` Gateway 在线不等于 HMI DeviceTLS/Grant。全部为 DESIGN_ONLY，按 D3 EDGE-LC 与 D4 XP-12/XP-24/XP-20 追踪，不声称已运行。
 
 
+### 7.3 传统 RFB 权限与输入的真实 UI 边界
+
+D1 F-04 的 [`RLG-01..09` 设备端 legacy RFB 设计合同](module-detail-d1-device-protocols-2026-11-05.md) 只在 HMI 内部实现真实 Target/Scope 策略，**没有**在标准 RFB 3.8 新增任何 ControlState/GrantEpoch 消息。因此 V-01/V-03 只应显示经 RFB 协商实际证实的：协议/安全类型、收到合法帧、应用是否配置输入意图及本地发送状态。**不可显示“已获得个人控制授权”“HMI 已执行业务输入”或设备 TLS 身份可信**，除非有其他独立、真正受控的证据来源（不能凭 Gateway Presence 或 VNCAuth 共享口令推断）。
+
+RFB 的 `sharedFlag` 是标准共用连接参数，不是 Scope Controller 请求；当 HMI 默认只读或当前 Scope 由别的 peer/Native 持有，官方 View 将输入标为“不可证/设备可能拒绝”，并按设备安全最终决策禁发不符合自身资格的输入。断线、失焦和 Target 改变应清本地 held 和旧画面，永远不复用旧 RFB 连接身份。XP-02/04/05/06/20 与 RLG 设计合同相互引用，**没有宣称真正第三方 Viewer 或新 HMI 策略已实现**。
+
 ## 8. 依赖与后续实施阶段划分（设计包，不是立即编码）
 
 - `V01-A` 协议/ByteStream 抽象、安全解析/拒绝/会话生成；与 D1 Native/RFB 精确兼容。**Native 需先有真实 HMI wire 实现与源合同**才可功能验收。
