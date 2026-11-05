@@ -1,6 +1,6 @@
 # D5｜HyRemote 全产品统一实施规划、设计冻结准入和 Human 决策卡（候选）
 
-> **2026-11-05 Human 决策追加**：H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB **全部 APPROVED_A**，以 [总控 #843 审批记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 为权威；五项无需再反复讨论。仅产品设计取舍获批，V15/V8 原始全文核对、设计冻结、G3/安全验证及正式研发另设 Gate。
+> **2026-11-05 Human 决策追加**：H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB **全部 APPROVED_A**，以 [总控 #843 审批记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 为权威；五项无需再反复讨论。仅产品设计取舍获批，V15/V8 等效全文已取得，仍需完成逐原子合同审签、正式版二进制区分、设计冻结以及独立的 G3/安全验证与正式研发 Gate。
 
 > **设计总控**：[HyRemote #843](https://github.com/skawu/HyRemote/issues/843)，覆盖 14 模块 F-01..F-06、V-01..V-03、E-01、G-01、T-01、X-01/X-02。  
 > **设计前提**：Human 已批准产品设计 `HYR-PD-001/V15` 和架构 `HYR-ARCH-001/V8`；已合并 D1 Core/Runtime/四接入/设备授权、RFB/Native 独立协议、D1 横向一致性候选，以及 D2 客户端、D3 Managed、D4 Tool/交付设计候选。Stage04/05 已有详细 IDL/DAG 不重编。  
@@ -35,7 +35,7 @@
 | D4 Tool/交付/安全 | T01、X01、X02：Tool 角色、安装/Qt Kit、全系统验收 | **设计候选** | **H-T01=A 已批准**，不再重开分工；Tool S1 #586 OPEN，支持矩阵实证尚缺 |
 | D5 实施规划/冻结提交 | 统一依赖、WBS、Owner、门禁、决策卡及文档编制顺序 | **本文件形成候选** | Human 审批正式设计与实施准入，未做则不能开始正式功能代码 |
 
-**状态术语**：`DESIGN_CANDIDATE` 表示可审阅结构/合同，不等于完整行为追踪或技术实测。送审稿历史 SHA 已核且 Human 确认正文等效；正式版二进制未逐字节对比，Native 数值绑定/负例未签收，仍为 `CONDITIONAL`。
+**状态术语**：`DESIGN_CANDIDATE` 表示可审阅结构/合同，不等于完整行为追踪或技术实测。送审稿历史 SHA 已核且 Human 确认正文等效；正式版二进制未逐字节对比，Native 数值绑定与 TLS-first 语义已经 Human P-A/A 批准，但 26 组黄金字节与 12 组负例只有设计、没有实际运行；全部原子技术合同仍待最终审签，状态是 `CONDITIONAL`。
 
 ## 2. 产品实现工作包与依赖（只是计划）
 
@@ -57,7 +57,7 @@
 | G10 | Optional Gateway / 独立交付责任 | W00、D3 `EG-01..12`、Stage05 唯一候选 IDL 与 **Human 对 #190 独立激活** | Identity/Site/Edge Registry、RoutePermit + one-shot PairLedger、opaque FIFO Relay、tenant/audit | 实施并独立激活后测试自托管证书/ACL、RouteEpoch/Pair 重放、负载及回退；**现阶段仅设计，未激活** |
 | G11 | Gateway Ops / Gateway owner | G10 + 批准的运维范围 | 最小部署/升级/备份/密钥轮换/策略迁移/脱敏诊断 runbook | 客户真实自托管环境可复现恢复/回退且不复活撤权 |
 | X10 | Whole-system E2E / Security + QA | F14 + V12 + E10 + G10，D3 E2E 目标 | 真 HMI↔View DeviceTLS + Edge/Gateway opaque route，12 Edge + 20 产品场景追溯 | 路由 READY≠Grant、无明文、现场优先、撤权/在途/慢端/多设备真实测试 |
-| T10 | Tool maintainer / HyRemoteTool | **Human Tool vs View 职责决定**，现有 Tool S1 事实 | 当前已发布的 Tool 基础 RFB 回归/维护；S1 全量依 #586 仍待验收，SDK/Qt Kit Inspector/诊断/可复制四路线；是否复用 RFB client 单独资格 | 正式 Tool 版本/Qt5/6 Windows 工具兼容、脱敏报告、绝不虚构 Native |
+| T10 | Tool maintainer / HyRemoteTool | H-T01=A、[D4 TL-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已形成设计，Tool 完整 S1 #586 仍 OPEN | 保留既有 Basic RFB；未来 SDK/Qt Kit Inspector、四入口指导、只读脱敏诊断与人工确认 SupportReport 分批实现，不再重建 Native/Managed 官方客户端 | Gate-I 后核验 Tool 精确 Qt Kit/平台、失焦/断线、恶意日志、报告秘密脱敏与旧 RFB 兼容；当前仅 DESIGN_ONLY |
 | X11 | Product packaging / 各产品交付 Owner | F15、V13、E11、G11、T10 适用范围 | 安装/更新/卸载/密钥/迁移/产品级版本表/许可证/SBOM、精确平台适用矩阵 | 正/负安装/升级/回退、只装 View、SDK Kit 与 QtPrivate 精确隔离 |
 | X12 | Release QA / Human 产品/发布治理 | X10/X11 + 已批准支持范围 | 独立产品发布申请、客户支持矩阵与风险接受 | 与 #95 版本治理衔接、真实所有 Gate PASS，Human 另行批准 |
 
@@ -118,6 +118,8 @@ flowchart TB
 
 **X-01 安装与迁移技术合同收口（2026-11-05，纯设计）**：[D4 DEP-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已从原“产品安装矩阵/元数据”细化为签名包/Qt Kit/清单、运行许可与配置分离、按产品秘密迁移、单调撤权高水位、Factory View/Edge 同安装、可选 Gateway/独立 Tool 的升级回滚事务，以及 8 组负向验收设计；[D2](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D3](module-detail-d3-managed-integration-2026-11-05.md) 已接收该合同。**这是最终实施规划的既有 X-01 内容完成度增量，不新增产品或研发路线；全部测试未运行，Gate-D/Gate-I 不因而自动批准**。
 
+**T-01 本轮实际设计收口（2026-11-05）**：沿既有 D4 第 3 章补齐 `TL-01..08`，基于 [Tool README](../../tools/hyremote-tool/README.md) 区分 V0.3.0.0 已发布文档声明与尚未实际验证的新 Inspector/Advisor/DiagnosticsImporter/SupportReport 设计；定义只读导入、精确 Kit/证据等级、脱敏报告与独立 Profile 权限，维持 H-T01=A 和 Tool 全量 S1 #586 OPEN。**X-01 签名/迁移/回滚以已合并的 D4 `DEP-01..08` 为唯一现行交付合同**，不把旧并行 PR #866 的 `PKG-01..08` 再立为平行规范。所有新验收 `DESIGN_ONLY/NOT_RUN`，本轮无产品代码、正式 Word 或研发 Gate 变更。
+
 ## 4. 全产品四个不同准入门槛
 
 ### Gate-D：详细设计冻结申请（当前目标，不等于已通过）
@@ -171,7 +173,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | R-04 | Tool 与 View 历史功能重叠；按批准分工保留 Tool 基础 RFB 与 #586 未完成 S1 治理，新完整 Native/Managed 客户端归 View | H-T01=A 已批准；迁移/复用代码技术方案待证 |
 | R-05 | 证书/TrustBundle 来源不可审计、自托管/外网替代身份；安全失败关闭，DeviceId HMI 独立验证，不因 Gateway 成功登录解锁 | V8 原文核对 + 安全审查 |
 | R-06 | 工厂 Edge 注销后误显示在线；首批仅支持登录态，后台 Service 为后续同产品独立资格 | H-EDGE=A 已批准；生命周期/状态真实性仍待验收 |
-| R-07 | 现有 D1/D2/Stage05 只引用 Native V8 Annex 派生材料，不能形成 wire freeze | H-BASELINE（权威原始输入） |
+| R-07 | Native 21 消息及 Human P-A/A 的受控数值/TLS 语义已建立单一来源；但 Host/Viewer 的字节解析、状态/拒绝合同、互操作资格仍未签收，不能把文档定值称作产品 wire 实测 PASS | W00 / Gate-D 合同审签；真实协议对拍留相应实施资格 |
 | R-08 | 128MiB HMI 目标/8 route/256KiB 测试参数被当客户 SLA；任何门禁须真实 per-process/负载/平台证据，未测不支持 | G3 / 性能 / 实机 Gate |
 
 ## 7. Human 已批准的决策与执行追踪（2026-11-05）
