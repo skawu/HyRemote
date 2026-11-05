@@ -54,6 +54,38 @@
 
 Tool 依照当前真实 Windows Qt5.15/Qt6.8 和已交付安装单元单独验证；与 Qt6.8 View 技术栈相似并不意味着两种不同产品的许可证、打包、版本、升级目录能够混用。
 
+### 3.1 T-01 现有真实交付与未来内部模块的隔离
+
+已核对 `tools/hyremote-tool/README.md`、`main.cpp`、`rfb_client.h`：目前有进程外显式地址连接、RFB3.8/`SecurityType None`、默认只读、明确勾选后发送键鼠、Frame/FPS/流量指标及中英语言。**现行产品不支持 VNCAuth 密码、Native DeviceTLS、Edge/Managed、主机管理与文件交换**；完整 S1 依 #586 仍 OPEN。H-T01=A 保留这条旧基础 RFB 维护路径，新完整访问功能由 HyRemoteView 承接。
+
+设计中的 `SdkInspector/IntegrationAdvisor/DiagnosticsImporter/SupportReport` 尚未在已确认的当前 Tool 源码中交付，不能向用户摆放未实现的“已通过诊断”按钮。已存在 `RfbClient::Connected` 只是 RFB 网络状态，不能伪称个人 HMI 身份/Native ControlGrant，更不能宣称未经 TLS 的 RFB 公网安全。
+
+### 3.2 SDK Inspector / 诊断 / 报告数据与安全合同
+
+| 内部职责 | 唯一输入/Owner | 正确数据与结果 | 禁止/失败闭合 |
+| --- | --- | --- | --- |
+| `ToolInputSession` | 用户明确选择 SDK 根、Qt Kit、日志及接入路线 | 路径/权限/文件大小验证、取消代次、只读处理 | 不扫描任意目录、改 CMake/系统参数、自动下载 Qt |
+| `SdkInspector` | 选定 SDK manifests、CMake Targets、插件/Qt Kit 实物 | `source,sourceSHAOrUnknown,kit,checkKind,observedAt,result`，静态与实际运行证据分离 | 文件存在或 Qt public 编译成功不得冒充 QPA private Kit 已运行 |
+| `IntegrationAdvisor` | 同一 F-03 `INT-01..10` 与实际 SDK public API | 四入口最小可复制参数、Host H-02a 授权约束、可用性与错误 | 不假造不存在的 C++ setter、Native/Managed/另一协议 |
+| `DiagnosticsImporter` | 用户明确导入的脱敏日志与证据 | 来源、时间、完整性/信任等级、`NOT_RUN` 明确区分 | 用户陈述不能当可信设备远端数据或 PASS |
+| `SupportReport` | 用户预览/确认的一组结构化检查项 | 版本化 `reportVersion,toolSHA,kit,sourceKind,observedAt,checks[],unknowns[],redactions` | 不输出口令/token/TLS 私钥/输入全文/截图；不自动上传 |
+| `ToolProfileStore` | Tool 自己非秘密连接偏好/语言/SDK 路径 | 独立 schema，原子升级和可恢复失败 | 不与 View DeviceTrust、Edge SitePolicy 或 Gateway 私钥共享明文配置 |
+
+检查项结果限于 `PASS_OBSERVED / FAIL_OBSERVED / NOT_RUN / NOT_APPLICABLE / UNKNOWN_SOURCE` 五种**设计内部状态**；每项必须记录 `method,source,kit,artifactDigestOrUnknown,observedAt`。这些字段不是已实施 Tool API 或 Native wire，未来测试需在具体来源和平台上证明真实。
+
+### 3.3 T-01 实施与验收的原子合同
+
+| ID | 技术与产品边界 | 应验证的失败或负向场景 | 状态 |
+| --- | --- | --- | --- |
+| `TL-01` | 保留 Tool 已发布 Basic RFB3.8 None/只读与显式控制 | Native/TLS/VNCAuth 未实际支持不得假显示；XP-14 | `DESIGN_ONLY` |
+| `TL-02` | 现有 RFB 键鼠与本地 held/连接错误诚实展示 | 离焦/禁控/断线合法释放且不宣称 HMI 业务已执行；XP-05 | `DESIGN_ONLY` |
+| `TL-03` | Inspector 用户明确选根、Kit 与 manifest 版本 | 错 SDK、缺 QtPrivate 目标/ABI、未运行不 PASS；XP-14 | `DESIGN_ONLY` |
+| `TL-04` | 四入口指导严格匹配已装公共 API 与 H-02a | Generic/QPA 参数冲突、C++ setters 已发布模式；FW-10 | `DESIGN_ONLY` |
+| `TL-05` | 日志/manifest 导入只读、限额且来源可信可见 | 恶意文本/超大日志/目录逃逸、虚构 Host 成功；XP-16 | `DESIGN_ONLY` |
+| `TL-06` | SupportReport 脱敏/人工确认导出 | 凭据、私钥、画面、输入全文和过期证据不得输出 | `DESIGN_ONLY` |
+| `TL-07` | Tool 自身 profile/语言与 SDK 偏好迁移 | 更新/回滚不能污染 View/Edge 的安全资料；XP-24 | `DESIGN_ONLY` |
+| `TL-08` | H-T01=A 的 Tool 与 View 长期责任一致 | Tool Basic RFB 不撤；完整 S1 #586 未验收，Native 主线仅 View；XP-15 | `DESIGN_ONLY` |
+
 ## 4. X-01 安装/配置/运行/回退的全链路产品矩阵
 
 | 现场角色/目的 | 必需安装 | 可信配置和安全材料 | 升级/卸载的强制结果 |
