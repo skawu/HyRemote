@@ -141,6 +141,15 @@ D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundari
 
 本轮关联 `VIEW-06/07/08/09/12`、`XP-02/17/21/25/26/27` 及 `AFS-05/07/09`；**所有新增 SURF 验收内容均是设计，不是已运行产品测试**。特别检查 RFB 没有 Native Grant wire、失败时客户端无权虚构设备已发送撤权 ACK，Scene Graph 本地 PresentAck 也不得冒充 Native 帧 ACK。
 
+### F-03 四入口一致性与 SDK/Qt Kit 验收合同
+
+[D1 的 F-03 `INT-01..10`](module-detail-d1-framework-boundaries-2026-11-05.md) 已明确 C++/QML/Generic/QPA **四个已有接入前端**的 bootstrap、配置归一化、线程所有权、Host admission、错误与部署资格。X-01/X-02 不得把“一个入口编译/运行成功”外推其他入口。
+
+- **设计审签 Gate-D**：10 条 INT 都能追溯既有公共 facade/Qt Plugin/ADR-0007/0008、Target 与 Policy 权威及错误出口；Generic/QPA 共享自动访问控制器，不开第二个设备授权系统。无须预先完成正式产品改造/真机测试。
+- **未来实测**：`FW-01/02/03/06/09/10`、`XP-01/14/19` 分别覆盖 C++ Widgets/Quick、QML 构建完成前/后 enabled、Generic address/interface 互斥、QPA native delegate 的窗口/输入与错误时独立存活，以及四入口对同 Host Target/Scope 的相同拒绝/撤权结果。
+- **精确 Kit 和兼容**：Qt5.15/Qt6.8、平台/arch/编译器各产品所批准的实际单元验证，QPA private shim 和 Runtime `AR-04=A` 内部窗口输入例外不得进入 SDK public ABI；仅配置 getter `0.0.0.0:5921` 无法证明已获安全公网监听资格。
+- **证据字段**：必须在实施后保存实际源 SHA、Kit/运行平台、原生 QPA 类型、插件参数/安全 profile/Host Policy 来源、实际 Listener/Target/held 结果和拒绝状态，不把 `DESIGN_ONLY` 写成 `PASS`。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
