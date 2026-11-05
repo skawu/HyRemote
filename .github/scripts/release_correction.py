@@ -566,6 +566,33 @@ def main(argv: list[str]) -> int:
     if "--self-test" in argv:
         return self_test()
 
+    # This entrypoint is invoked ONLY from the first, trusted-develop admission
+    # step of the release PR job. The caller writes this module using
+    # git show origin/develop:, not from the untrusted PR checkout.
+    if "--validate-v035-field-backport" in argv:
+        head = os.environ.get("HEAD_REF", "")
+        base = os.environ.get("BASE_REF", "")
+        if head != V035_FIELD_BRANCH or base != "release/v0.3.5.0":
+            raise SystemExit("V035 trusted admission invalid branch/base")
+        notes_name = "docs/releases/v0.3.5.0.md"
+
+        def git(*args: str) -> bytes:
+            return subprocess.check_output(("git", *args))
+
+        base_ref = "refs/remotes/origin/" + base
+        base_sha = git("rev-parse", base_ref).decode("ascii").strip()
+        base_notes = git("show", f"{base_ref}:{notes_name}").decode("utf-8")
+        head_notes = git("show", f"HEAD:{notes_name}").decode("utf-8")
+        status = validate_v035_field_backport(
+            git=git, version="0.3.5.0", notes_name=notes_name,
+            base_notes=base_notes, head_notes=head_notes,
+            base_cmake=git("show", f"{base_ref}:CMakeLists.txt"),
+            head_cmake=git("show", "HEAD:CMakeLists.txt"),
+            actual_base_sha=base_sha, head_ref=head)
+        print(f"trusted develop V035 field admission PASS: {status} "
+              f"base={base_sha} source={V035_FIELD_REVIEWED_SOURCE_HEAD}")
+        return 0
+
     head = os.environ.get("HEAD_REF", "")
     base = os.environ.get("BASE_REF", "")
     branch = re.fullmatch(r"release/v([0-9]+(?:\.[0-9]+){3})", base)
