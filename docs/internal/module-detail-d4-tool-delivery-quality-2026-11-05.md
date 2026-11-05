@@ -162,6 +162,13 @@ D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundari
 
 Gate-D 审查 **Owner 与数据 schema、增权先安全验证并持久化/撤权先关闭准入、独立身份锚、失败关闭的状态/负例、凭据最小暴露与回退合同**；不以实际平台 OS SecretStore 成功读写为设计 Gate 的伪前置。正式获准实施后按 `VIEW-03/05/07/10/11/12`、`XP-11/14/16/19/23/24/28` 的实际 Windows/Linux Kit、身份/凭据/磁盘故障注入、升级回退和不串租户证据独立验收；全部当前 `DESIGN_ONLY/NOT_RUN`，不从已有 RFB 客户端测试推断 Native TrustStore 已实现。
 
+### Factory Edge 首批生命周期的可证伪验收合同
+
+D3 的 [EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 与 D2 `VIEW-EDGE-01..05` 已定义登录态分享和用户操作边界。D4 必须将以下**不同事件**分别构成未来设计验收：关闭一个远程画面（共享不因此自动断）、关闭站点管理页面（共享不因此自动断）、退出整个 View、OS 用户注销、系统锁屏/睡眠、进程强杀、网络中断、撤销 HMI、策略持久化失败、升级回滚/凭据轮换。只有真实 OS/Qt Kit、带准确 RunEpoch/RouteId/SitePolicyRevision 及 Socket/Route 证据才能 PASS。
+
+本轮冻结的是**验收口径**：首批 `H-EDGE=A` 仅登录状态并显式启用时工作；不得虚构 24×7 Service，也不得把关闭一个窗口等于退出整个 View。Direct 的设备信任和 HMI 授权仍不依赖 Gateway。全部 `DESIGN_ONLY/NOT_RUN`，不授 Gate-G3/Gate-I。
+
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
