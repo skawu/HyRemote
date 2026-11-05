@@ -11,19 +11,28 @@
 | 受控输入 | 现有审批记录提供的 SHA-256 | 当前全文读取 | 冻结前需核对 |
 | --- | --- | --- | --- |
 | `HYR-PD-001/V15` | 正式版 SHA `d0408f333d4b9aec186067cd159ff8a4a2206ef66d58243fd4c5cd10ffb82cf1`；实际读取送审稿 SHA `b753ebc69bbed47c2d8761f2eaf5f616001fb3e6ae32cff42f432b8930084b6b` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V15 56 条与 V8 附录 D 56/56 匹配；行为追踪仍未冻结 |
-| `HYR-ARCH-001/V8` | 正式版 SHA `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a`；实际读取送审稿 SHA `3d89a90559ae62852538e919b7f0ad2188f54806ef13d806a095474dccce5824` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V8 99 小节、A/B 21 type/fields/length 可读；wire 值域/负例仍 OPEN |
+| `HYR-ARCH-001/V8` | 正式版 SHA `1101d5546cfc0ab63e4cfde809ba4b0530e1048ed3760b56b8c9e7be3de6803a`；实际读取送审稿 SHA `3d89a90559ae62852538e919b7f0ad2188f54806ef13d806a095474dccce5824` | `REVIEW_DRAFT_HASH_MATCH / HUMAN_CONTENT_EQUIVALENCE` | V8 99 小节、A/B 21 type/fields/length 可读；Human P-A/A 已补准数值，真实负例仍 NOT_RUN |
 
-**已取得正文等效依据**：Human 上传完整 V15/V8 送审稿并明确确认“内容一样”；真实 SHA-256 逐一与 #827 历史**送审稿**完全匹配，**不是正式版文件二进制摘要**。结构审计 V15 56、V8 99、附录 D 56/56、Native 21 已完成，详情见 [受控源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。行为级追踪、Wire 值域与测试仍不得标 `NORMATIVE_TRACE=PASS`。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
+**已取得正文等效依据**：Human 上传完整 V15/V8 送审稿并明确确认“内容一样”；真实 SHA-256 逐一与 #827 历史**送审稿**完全匹配，**不是正式版文件二进制摘要**。结构审计 V15 56、V8 99、附录 D 56/56、Native 21 已完成，详情见 [受控源审计](module-detail-source-audit-v15-v8-2026-11-05.md)。行为级追踪与实际测试仍不得标 `NORMATIVE_TRACE=PASS`（Native 数值 P-A/A 已获批）。**Tool 当前已发布的基础 RFB 访问不等于全量 S1 已通过验收；[#586](https://github.com/skawu/HyRemote/issues/586) 仍 OPEN**。
+
+
+**W00 2026-11-05 追溯工作增量（非冻结）**：[V15 表6 **31/31** 源场景→[D4 XP01..28 设计用例](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md) 的交叉追踪已补，补充 XP21..28 用于原 20 项场景未明确覆盖的真实用户结果；**只完成规格设计、全部 NOT_RUN**。
+
+**W00 2026-11-05 上位要求索引**：已生成 [V15 56 条行为/失败/表6场景映射](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99 个 Heading2 详细设计主责索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)，以及 [Native 21 类消息正/负向向量与 WIRE-V01..V07 严格差距](module-detail-w00-native-wire-contract-gaps-2026-11-05.md)。56 条仍是 `MAPPED_NOT_TESTED`，99 节仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，Native 测试仍是 `NOT_RUN`。原先 `SOURCE_TENSION_01` 的 V8 TLS-first/plain 歧义**已经 Human 选择 A**，P-A 具体数值亦已批准；此前 [待批原提案](module-detail-w00-native-wire-value-proposal-2026-11-05.md) 仅保留审签历史。当前唯一规范补充见 [Native V8 approved delta](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)。无产品代码/服务激活。
+
+**Native 规范数值及安全档位审批已落实（2026-11-05）**：Human 明确批准 `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A`（[#843 决策](https://github.com/skawu/HyRemote/issues/843#issuecomment-6648340105)）。唯一生效的 [V8 A/B 数值增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 已将先前 WIRE-V01..V06 数值、plain/tls-password 两档统一 TLS-first 正式绑定。基于此完成 [Native 21 类／26 个正向黄金字节＋12 个负向规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)；**全部仍为设计数据，未测试**。此前 [P-A 候选](module-detail-w00-native-wire-value-proposal-2026-11-05.md) 只作历史取舍记录，不再重复申请 Human 批准。Gate-D/Native E2E/Gate-I 仍待独立准入。
+
+**W00 Native 会话/授权原子合同增量（2026-11-05）**：在 Human 已批准的 P-A/A 基础上，已将 [F-05 Native 的五条正交状态轴、消息准入、撤权竞态及 AFS-01..12](module-detail-d1-device-protocols-2026-11-05.md) 设计为明确的 Host/Viewer 共同验收合同，并在 [D2](module-detail-d2-hyremoteview-client-2026-11-05.md) 与 [D4](module-detail-d4-tool-delivery-quality-2026-11-05.md) 逐项标注消费与测试责任。该增量不添加 wire 字段/错误码/新产品能力；**12 项 AFS 全部 DESIGN_ONLY**，旧 XP 和 Native E2E 仍未测试。
 
 ## 1. 现在的真实阶段：设计接近全域覆盖，但不能宣布冻结
 
 | 阶段 | 交付范围 | 当前设计状态 | 未能自动越过的门禁 |
 | --- | --- | --- | --- |
-| D0 基线/目录审查 | 14 模块 #843 + [来源核验](module-detail-source-audit-v15-v8-2026-11-05.md) | **送审稿 SHA 匹配，56/99 目录与 A/B 21 type 索引已核** | 逐行为追踪、Wire 值域和负例尚待完成 |
-| D1 Framework | F01–F06：Core、Runtime、四入口、RFB/Native、Host 安全 | **三份设计候选与横向审查** | 传统 RFB 身份/Scope、Dual 启动、撤权在途数据、真实 Annex A/B |
+| W00 源结构/行为初步追踪 | 14 模块 #843 + [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md) + V15 56 行 + V8 99 行 + Native 21 类负向规格 | **送审稿 SHA 匹配；56 行行为/失败映射、99 节主责索引形成，未验证实现** | 细分原子合同与状态/错误/测试/Owner，Wire 数值已获 Human P-A/A 批准；剩余状态、异常测试与真实互通仍未完成 |
+| D1 Framework | F01–F06：Core、Runtime、四入口、RFB/Native、Host 安全 | **既有 D1 候选 + F-02 RT-01..08 / F-06 POL-01..08 细化** | 需审签 Qt 最终投递线性化、逐 Session 过滤/缓存所有权及技术失败回退；真实产品验证不算 Gate-D 的前置 PASS |
 | D2 HyRemoteView | V01–V03：完整 Direct、QtQuick、Trust、设备/凭据/诊断/OEM | **设计候选** | G3 #5 **NOT PASSED**、真实 Native DeviceTLS/Frame/Grant、源条款对照 |
 | D3 Edge/Gateway | E01/G01：同安装 Edge、受管控制/字节隧道、ACL/自托管 | **复用 Stage04/05 并形成跨模块候选** | #190 **NOT_ACTIVATED**、control IDL 版本、OS 后台安全、真实 Managed E2E |
-| D4 Tool/交付/安全 | T01、X01、X02：Tool 角色、安装/Qt Kit、全系统验收 | **设计候选** | 与已批 Tool 综合工作台重叠的 Human 产品取舍；支持矩阵实证 |
+| D4 Tool/交付/安全 | T01、X01、X02：Tool 角色、安装/Qt Kit、全系统验收 | **设计候选** | **H-T01=A 已批准**，不再重开分工；Tool S1 #586 OPEN，支持矩阵实证尚缺 |
 | D5 实施规划/冻结提交 | 统一依赖、WBS、Owner、门禁、决策卡及文档编制顺序 | **本文件形成候选** | Human 审批正式设计与实施准入，未做则不能开始正式功能代码 |
 
 **状态术语**：`DESIGN_CANDIDATE` 表示可审阅结构/合同，不等于完整行为追踪或技术实测。送审稿历史 SHA 已核且 Human 确认正文等效；正式版二进制未逐字节对比，Native 数值绑定/负例未签收，仍为 `CONDITIONAL`。
@@ -34,18 +43,18 @@
 | --- | --- | --- | --- | --- |
 | W00 | Cloud Architecture / HyRemote | V15/V8 原文件 + D1-D4 评审 | 条款→模块→接口→状态→验收→冲突/变更 ID 一一追溯、接口/版本选择记录；全产品正式冻结签收包 | Human 设计审批、所有关键冲突有归属和裁决；非代码 |
 | F10 | Framework Host/Security / HyRemote | W00、H-02a / D1 HMI Policy 合同 | `DeploymentAdmission` 和可信 Target/Scope/PolicyProvider，listener 前 fail closed、可信来源/版本 | 无有效部署不能 bind、Host 现场优先、Qt5/6 适用代码/负测 |
-| F11 | Framework Session/Input / HyRemote | F10、D1 per-session Grant 语义 | AccessSession Registry、Scope Arbiter、Qt 投递前最终栅栏、held-state 不串 peer/协议 | 撤权/两人争 Scope/GUI 排队竞态及旧回调测试 |
-| F12 | Framework Frame/Privacy / HyRemote | F10/F11、独立设备输出合同 | 共享基础 capture、per-session Filter/Watermark/Full/Delta、撤权清未发缓存 | 两 peer 不同权限遮罩、慢端、旧 Full/Delta 不泄漏 |
+| F11 | Framework Session/Input / HyRemote | F10、D1 [F-06 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 设计合同 | AccessSession Registry、Scope Arbiter、Qt 投递前最终栅栏、held-state 按来源计数不串 peer/协议 | **实施后**验证撤权/两人争 Scope/GUI 排队竞态及旧回调；设计阶段审签 PolicyEpoch 与 Qt 投递线性化 |
+| F12 | Framework Frame/Privacy / HyRemote | F10/F11、D1 [F-02 RT-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 设计合同 | 共享基础 capture、per-session Filter/Watermark/Full/Delta、撤权清未发缓存 | **实施后**实测两 peer 权限遮罩、慢端、旧 Full/Delta 不泄漏；设计阶段核准过滤顺序、缓冲所有权与 epoch 失效 |
 | F13 | Framework RFB / HyRemote | F10-F12、#158 真实修复与验收计划 | 现有标准 RFB3.8 的宿主授权接入、legacy 输入与 Scope 兼容、真实安全档位/资源 | 标准第三方 Viewer 与旧应用兼容；无 Native 私有消息、非公网明文资格 |
-| F14 | Framework Native / HyRemote | W00 Native A/B 逐条签收、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | 正/异常消息矩阵、真 DeviceTLS 与 Host Grant/Qt 最终栅栏、RFB-only/Native-only/Dual |
-| F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 Kit 约束 | C++/QML/Generic/QPA 一套共享 Runtime 的可配置/可观察接入、打包插件兼容 | 同期 Qt5/6 Windows exact cell，公共 API/ABI 与已发布部署回归 |
+| F14 | Framework Native / HyRemote | 已批准 P-A/A 唯一值源、W00 AFS-01..12 状态/错误合同、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | **Gate-I 后**按 26 字节黄金向量/12 异常变异与 AFS-01..12 逐项实际对拍、真 DeviceTLS、Host Grant/Qt 最终栅栏及 RFB-only/Native-only/Dual；当前这些真实 E2E 未运行 |
+| F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 与 D1 `INT-01..10` 审查合同 | C++/QML/Generic/QPA 使用一个共享 Runtime 实现与可信 Host 准入，QML/Generic/QPA bootstrap、配置/Target 与错误隔离、原生 QPA 安全共存 | **Gate-I 后**Qt5/Qt6 exact Kit/平台的四入口启动、输入/授权/Target/已发布 public API/ABI 与部署回归；设计阶段仅审合同 |
 | V10 | View Direct RFB / HyRemoteView | W00 与 View G3真实结论，F13 标准端点 | 产品级 bounded RFB client、独立 Direct、失败关闭与存储/恢复 | 真实维护中 Host/Viewer 像素、输入/持键/恶意消息/断网测试 |
-| V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧 / D2 稳定 Qt Quick 模型 | RemoteSurface/QSG、frame lifecycle/damage/resize/DPR、焦点、输入映射、可证明帧龄/反馈 | Qt6.8 Windows/Linux 按支持单元 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充 |
+| V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧、D2 `SURF-01..08` 已审候选合同、精确 Qt Quick 线程边界 | RemoteSurface/QSG、immutable FrameSnapshot / DisplayEpoch、frame lifecycle/damage/resize/DPR、Focus 与输入映射、帧龄/反馈 | **Gate-I 后**在 Qt6.8 Windows/Linux 实际支持单元验证 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充正式产品 |
 | V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、D2 TrustStore | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
-| V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 交互批准及安全资料 | DeviceCatalog/ProfileStore/SecretStore/Connection/Session UI、诊断/品牌/更新 | 离线首启、身份分离、旧画面遮蔽、OEM/凭据/升级独立真实测试 |
-| E10 | Factory View Edge / HyRemoteView | W00、D3、View 同产品安装治理 | SiteRegistry/EndpointBinding/管理员共享、GatewayLink/RouteAdmission、FIFO relay、默认 OFF/撤权 | 工厂只装 View、被动局域网只拨白名单、站点 ACL/权限不串、Direct 不退化 |
+| V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 `IDT-01..10` 数据/信任迁移合同及已批准 UI/安全依据 | DeviceCatalog/ProfileStore/OS SecretStore、Native DeviceTrust/证书轮换、诊断/OEM/身份 Session UI 和升级回退 | **Gate-I 后**离线首启、同 IP 不同 HMI、TrustRev/凭据/升级和安全回滚的独立真实验证；设计期只审合同 |
+| E10 | Factory View Edge / HyRemoteView | W00、D3 `EG-01..12` 与同产品安装治理 | SiteRegistry/EndpointBinding/管理员共享、GatewayLink/RouteAdmission、once-Pair、FIFO Relay、默认 OFF/撤权 | 实施后验证工厂只装 View、精确白名单/站点 ACL、双侧配对与有界 FIFO、Direct 不退化；设计期仅合同审签 |
 | E11 | Factory Edge lifecycle / HyRemoteView | E10，OS 服务真实取舍 | 首批准入的用户登录态运行；获批后可增可验证的同产品 service 角色 | GUI 关闭/注销/重启/升级/卸载/IPC ACL/OS 凭据逐项合格，无假“无人值守” |
-| G10 | Optional Gateway / 独立交付责任 | W00、D3 Control IDL 和**Human 对 #190 明确激活** | Identity/Site/Edge Registry、RoutePermit + one-shot Pair、Opaque Relay、tenant/audit | 自托管证书/网络隔离/攻击负测/配对重放/HA 目标按获批范围 |
+| G10 | Optional Gateway / 独立交付责任 | W00、D3 `EG-01..12`、Stage05 唯一候选 IDL 与 **Human 对 #190 独立激活** | Identity/Site/Edge Registry、RoutePermit + one-shot PairLedger、opaque FIFO Relay、tenant/audit | 实施并独立激活后测试自托管证书/ACL、RouteEpoch/Pair 重放、负载及回退；**现阶段仅设计，未激活** |
 | G11 | Gateway Ops / Gateway owner | G10 + 批准的运维范围 | 最小部署/升级/备份/密钥轮换/策略迁移/脱敏诊断 runbook | 客户真实自托管环境可复现恢复/回退且不复活撤权 |
 | X10 | Whole-system E2E / Security + QA | F14 + V12 + E10 + G10，D3 E2E 目标 | 真 HMI↔View DeviceTLS + Edge/Gateway opaque route，12 Edge + 20 产品场景追溯 | 路由 READY≠Grant、无明文、现场优先、撤权/在途/慢端/多设备真实测试 |
 | T10 | Tool maintainer / HyRemoteTool | **Human Tool vs View 职责决定**，现有 Tool S1 事实 | 当前已发布的 Tool 基础 RFB 回归/维护；S1 全量依 #586 仍待验收，SDK/Qt Kit Inspector/诊断/可复制四路线；是否复用 RFB client 单独资格 | 正式 Tool 版本/Qt5/6 Windows 工具兼容、脱敏报告、绝不虚构 Native |
@@ -93,18 +102,38 @@ flowchart TB
 
 **不得用“Gateway 已启动”倒推 HMI Native 或 View 资格；不得以“PoC 编译通过”倒推正式客户端授权。**
 
+**本轮以既有文档为唯一交付载体**：D1 F-02 新增运行时生命周期、线程/Target/Frame/Session/QtTicket 所有权、per-session 输出和缓冲背压 `RT-01..08`；D1 F-06 新增 PolicySnapshot 生效、Qt 最终投递/现场撤权串行化、按 Session held ledger `POL-01..08`。二者是会影响研发实施的**实质模块技术合同**，不是新增 W00 追溯文档。与 D2 View 失权显示、D3 透明转发及 D4 XP 设计验收的消费关系继续独立审查。技术合同候选合并不自动冻结产品或授权代码。
+
+**V-02 RemoteSurface 模块技术合同增量（2026-11-05）**：原 [D2 客户端详细设计](module-detail-d2-hyremoteview-client-2026-11-05.md) 已补充 `SURF-01..08`：Decoder/Render 不可变 FrameSnapshot 所有权、Qt Quick thread fence、per-Target FULL/DELTA、DisplayEpoch 失效、DPR/坐标逆变换、Focus/Grant、本地 held 和像素/资源负例；D4 质量合同已定位 `VIEW/XP/AFS` 证据出口。它们是 **Gate-D 可审设计合同**，G3/产品平台/渲染性能实测未通过；不创建新产品或额外 Native wire。
+
+**F-03 四个 Qt 接入入口详细设计增量（2026-11-05）**：按已批准 ADR-0007/0008 和现有 C++/QML/Generic/QPA 接口，直接在 [D1 原设计](module-detail-d1-framework-boundaries-2026-11-05.md) 补齐 `INT-01..10`：启动阶段与 QML componentComplete、地址/接口语义、Generic/QPA 同一 automatic controller、QPA native delegate、Host H-02a 准入、多入口实例/资源隔离、QtPrivate 例外、Qt Kit 适用范围和停止/错误真相。D4 X-01/X-02 已对应 FW/XP 负例；这些是待审**技术合同**，不是已经变更发布 API、Qt binary 或真实已完成的产品功能。
+
+**E-01/G-01 模块细节设计增量（2026-11-05）**：按 Stage05 的**唯一候选 IDL**，直接在 [D3](module-detail-d3-managed-integration-2026-11-05.md) 补全 `EG-01..12`，明确 Factory SiteRegistry/PolicyRevision/EndpointBinding、Gateway Route/PairLedger 的唯一所有者、一次性配对/两次拨号前 ACL 栅栏、站点撤权的本地线性化/持久化、双向 opaque FIFO 的缓冲/取消与登录态 H-EDGE=A。D2/D4 对应操作状态/验收。只闭合设计合同；Stage05 控制消息格式仍未发布冻结、Gateway #190 未激活。
+
+**V-03 身份/档案/更新详细设计增量（2026-11-05）**：现有 [D2](module-detail-d2-hyremoteview-client-2026-11-05.md) 第 6 章补齐 `IDT-01..10`，精确规定本地非秘密 Profile、HMI DeviceTrust、Native 用户凭据、Gateway Operator、工厂 Edge SitePolicy 各有独立 Owner/存储，首用/轮换/撤权 TLS 信任的 Revision/SessionGeneration 并发，以及 OS SecretStore 不可用、档案回退、诊断和 OEM 隔离的失败闭合。D4 已将 IDT 映射 VIEW/XP 质量入口；没有引入新的首次信任默认产品决定或正式产品代码。
+
+**E-01/H-EDGE=A 生命周期技术合同收口（2026-11-05，非产品实现）**：此前 D3 主要规定“登录期/注销离线”，但缺明确区分**关闭画面窗口、关闭工厂站点管理页面、退出整个 View、OS 注销、强杀进程、网络/证书变化、策略持久化失败和升级回滚**。现按既有产品范围完成 [D3 EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 的唯一 RunLease/RunEpoch、准入/撤销事务、白名单持久化及受控恢复设计；[D2 VIEW-EDGE-01..05](module-detail-d2-hyremoteview-client-2026-11-05.md) 与 [D4](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已共同消费。仅补可实施合同与可证伪验收，**不新增后台 Service/独立 Edge 安装包，不改变 H-EDGE=A，也未运行实测**。
+
+**F-04 Legacy RFB 设备授权/输入合同收口（2026-11-05，设计未实现）**：已将 Human `H-RFB=A` 细化为 [F-04 `RLG-01..09` 的实际实现合同](module-detail-d1-device-protocols-2026-11-05.md)，明确受控固定 Target/Scope/endpoint、按 peer 的 AccessSession/held/Frame 基线、共享口令不等于自然人身份、首次输入前设备当前 Scope 控制许可、RFB/Native 共用 F-06 仲裁/Qt 最终栅栏、撤权/断线清理及真实标准 Viewer 安全表达；[Framework F-06](module-detail-d1-framework-boundaries-2026-11-05.md)、[View V-01/V-03](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D4 X-02](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已共同消费。**不改变 RFB3.8 标准报文、既有合法输入权益或 Native P-A/A；全部 `RLG` 测试未运行**。
+
+**X-01 安装与迁移技术合同收口（2026-11-05，纯设计）**：[D4 DEP-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已从原“产品安装矩阵/元数据”细化为签名包/Qt Kit/清单、运行许可与配置分离、按产品秘密迁移、单调撤权高水位、Factory View/Edge 同安装、可选 Gateway/独立 Tool 的升级回滚事务，以及 8 组负向验收设计；[D2](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D3](module-detail-d3-managed-integration-2026-11-05.md) 已接收该合同。**这是最终实施规划的既有 X-01 内容完成度增量，不新增产品或研发路线；全部测试未运行，Gate-D/Gate-I 不因而自动批准**。
+
 ## 4. 全产品四个不同准入门槛
 
 ### Gate-D：详细设计冻结申请（当前目标，不等于已通过）
 
 - [x] V15/V8 有经 #827 历史 SHA 验证的**等效完整正文**；56/99 标题、附录 D 56/56、Native 21 个 type/字段/长度已核，正式版**二进制**未对照。
-- [ ] Native A/B 数值域（`WIRE-V01..V07`）与完整正/负向互操作向量尚需受控确定；不能宣称 wire frozen。
+- [x] V8 A/B 原文曾空缺的数值、键码与两种 Native TLS-first 模式已获 Human P-A/A 正式批准，统一受控值源已归档；21 type／26 个正向 golden vectors 与 12 个负向规格只完成计算设计。
+- [x] Human 批准的 Native 21 type / P-A 数值 / TLS-first A 已形成同一受控设计来源，26 个黄金字节与 12 个异常变异规格供未来验证。
+- [ ] Host/Viewer 的解析器消息顺序、状态转移、错误归因、TLS 身份、Qt 最终输入与隐私撤权**设计合同及负例规格**必须充分签收；**不要求正式产品代码已开发或 Host/Viewer 产品实测 PASS 才能审 Gate-D**。真实互通/设备/平台测试留给适用 Gate-G3/研发后验收 Gate，不能用它们反过来阻止研发授权形成。
 - [x] 已有六类 Framework 模块、三 View 模块、Edge/Gateway、Tool、部署/测试的设计候选和跨模块审查基础。
 - [x] H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 的产品/安全语义已由 Human 正式批准 A，纳入 D1–D5 合同（不是实现证明）。
 - [ ] 与正式 V15/V8 原文和 Native A/B 逐条核对的最终权限、错误与协议细节仍需技术审查。
 - [ ] 关键复杂图（组件、两协议、信任、撤权、状态机、数据流、安装）与消息/接口/字段矩阵内容审定，无平行正式规范。
 - [ ] 真实验证前置的设计假设有**可证伪**实验/失败回退，未经验证的容量和 SLA 明确“候选”。
 - [ ] Human 明确发出 `DETAIL_DESIGN_FROZEN` 或带条件设计批准；只有此后实施 Gate 另行判断。
+
+**Gate-D 与产品验证的边界（纠正循环依赖）**：Gate-D 审的是**已经确定、无关键自相矛盾、可由后续实现和负例验证的完整详细设计**；源规范/人批准决定、14 模块关键内部合同/状态/错误/线程与资源预算、最终目录/图表/版式内容规划、可证伪验收规格及未验证假设/失败回退必须齐备。Gate-D 不宣称任何产品代码、Windows/Linux Kit、DeviceTLS 真机、性能或 Gateway E2E 已通过；这些只能在适用的技术 PoC 和**获批实施之后**形成真实证据。**Gate-D 不得因未获 Gate-I 而尚未进行的产品测试而陷入前置循环**。对确实影响设计可行性的高风险假设，列入有边界、独立授权的 Gate-G3 PoC 条件或 Human 的有条件冻结决策，不能偷跑正式产品代码，也不能用纸面设计消除风险。
 
 ### Gate-G3：正式研发之前的技术可行性证据
 
@@ -124,11 +153,11 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | --- | --- | --- | --- |
 | HMI Framework/四接入 | D1 Boundary + Consistency，XC01..14 | FW01..12 / XP01、XP04–06 | 候选已审，Native/Grant 实现未批准 |
 | 标准 RFB | D1 Protocol，DP01..06 | RFB strict 3.8/Raw/TRLE 与传统 Viewer/Scope/场景 | 当前 RFB 代码存在，精确版本真实测试仍需专项 |
-| Native A/B + DeviceTLS | HMI design05 + D1 Protocol + [A/B 来源核验](module-detail-source-audit-v15-v8-2026-11-05.md) | DP07..14、HMI01..08；21 message 字段/长度、值域、负例 | **原文 21 类及长度已核；WIRE-V01..V07 值域仍 OPEN；设备 E2E 未实现** |
+| Native A/B + DeviceTLS | HMI design05 + D1 Protocol + [21 消息负向规格](module-detail-w00-native-wire-contract-gaps-2026-11-05.md) | DP07..14、HMI01..08；21 message 字段/长度、值域/负例及新 TENSION | **21 类源字段已核；WIRE-V01..V06 数值及 SOURCE_TENSION_01=A 已批准；26 正向字节样例＋12 异常规格设计完成但均 NOT_RUN** |
 | View Direct/RemoteSurface/Identity | D2 VIEW01..14 | XP02–03、XP07、XP13、XP16–17 | G3 未通过，无 G4 产品代码 |
 | Factory Edge / Gateway | Stage04/05 + D3 MG01..16 | EDGE01..12 / XP08–13、XP18 | 设计候选；#190 未激活 |
 | Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 已有基础 RFB 产品基线；完整 Tool S1 #586 仍 OPEN；H-T01=A 已批准，技术交付待审 |
-| 安装/安全/质量 | D4 X01/X02 | XP01..20 全域 + 环境/证据表 | 设计矩阵已成；未运行全产品 E2E/产品资格 |
+| 安装/安全/质量 | D4 X01/X02 + [V15 表6 31 场景映射](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md) | XP01..28 全域 + 环境/证据表 | 31/31 有设计验收入口；新增 XP21..28 均 NOT_RUN，未运行全产品 E2E/产品资格 |
 
 正式 V15/V8 的条款 ID 不是从 Issue 目录数量推导；以获批准的原 Word 真实章节/表格为准建立 `RequirementID→ModuleID→ContractID→State/Failure→TestID→Owner→EvidenceSHA`。对每一项需记录 `COVERED/CONFLICT/OPEN/NOT_APPLICABLE` 及理由，不能以“共有 20 个 XP”证明 100% 条款覆盖。
 
@@ -159,7 +188,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 
 **剩余真正阻断详细设计正式冻结的工作，不再是这五个取舍：**
 
-1. **规范正文现已取得，行为追踪仍需补齐**：Human 提供送审稿历史 SHA 完全匹配的完整原文并确认内容等效，V15 56 条与 V8 附录 D 56/56、架构 99 小节、Native A/B 21 type 已核。剩余工作是逐要求映射 `Contract/State/Failure/Test/Owner` 并填补 WIRE-V01..V07 值域与测试向量；`NORMATIVE_TRACE=PARTIAL`，不能把本次送审稿 SHA 误写为正式版文件 SHA。
+1. **规范正文现已取得，行为追踪仍需补齐**：Human 提供送审稿历史 SHA 完全匹配的完整原文并确认内容等效，V15 56 条与 V8 附录 D 56/56、架构 99 小节、Native A/B 21 type 已核。剩余工作是逐要求映射 `Contract/State/Failure/Test/Owner` 并完成已批准 P-A/A 值域的 Host/Viewer 双端状态/安全/兼容设计审签与向量实际资格；`NORMATIVE_TRACE=PARTIAL`，不能把本次送审稿 SHA 误写为正式版文件 SHA。
 2. **无需重开产品审批的工程细化**：Admission 的实际预绑定/回滚原子性，RFB 固定 Target/匿名会话显示信息与第三方 Viewer 兼容，撤权线性化与 GUI/网络栅栏，登录态 Edge 的进程/凭据/退出处理，Server/Client 的真实 Qt5/Qt6 适配及资源预算，均须形成可测合同。
 3. **Gate 的独立保持**：设计冻结由 Human 后续独立签收；G3 #5 技术资格尚未通过，Native TLS/E2E 未实现，Gateway #190 尚未激活。以上五项批准**没有**授权新产品代码、开公网路由或发布。
 
@@ -194,11 +223,16 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 - [x] 明确各 WBS 的依赖/Owner 类型/交付物/验证出口，避免“任务清单=已下发”。
 - [x] 保留 G3、Native E2E、Edge12、真实安装/支持资格和 Gateway #190 版本激活为独立 Gate，均未被设计 PR CI 取代。
 - [x] V15/V8 **送审稿**的实际 SHA 与历史归档匹配，56/99 章节、附录 D 56/56、Native A/B 21 type 字段及定长算术已核。
-- [ ] 全量逐行为要求追踪、WIRE-V01..V07 数值域、完整负例/互通向量及最终设计签收。
+- [x] 56 项 V15 逐项映射主责模块/候选行为/失败边界及原文表6序号；V8 99 个 Heading2 逐项登记到 D1–D5 Owner（**并非已审通过**）。
+- [x] Native 21 类消息各有待执行的合法字段及至少一类拒绝情形；NV-01..NV-12 确定性负向设计已列出（**NOT_RUN**）。
+- [x] V15 表6 **31/31** 原文场景已映射到已有 XP01..20 + 新补 XP21..28 的验收设计，未运行任何测试；完整 56 项需求仍须细分原子合同。
+- [x] WIRE-V01..V06 新数值分配、键码及 SOURCE_TENSION_01=A 的**产品协议语义**已获 Human 正式签收；不再重开候选数值选项。
+- [ ] 56/99 需求进一步关联最终原子 ContractID、状态/错误/TestID/Owner，所有 14 模块关键接口、线程所有权、数据生命周期和负例设计独立审签；不以索引行数代替冻结。
+- [x] 26 个 Native 黄金向量、12 个异常变异和 AFS-01..12 为**待执行的测试设计依据**，真实 Host/Viewer 互通尚未完成；其结果归适用 Gate-G3/后续工程验收，不是 Gate-D 的伪前置条件。
 - [x] Human 已批准五项产品/安全设计取舍 A（不等于实现或冻结）。
 - [ ] Human 正式模块设计冻结和独立 Gate-I 实施授权仍未取得。
 - [ ] 一切产品代码、实机/资格、全产品发布尚未由本计划启动。
 
-**状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`NORMATIVE_TRACE=PARTIAL`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
+**状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`V15_TABLE6_31_TO_XP28=DESIGN_COVERED_NOT_RUN`，`NATIVE_WIRE_P_A_AND_TLS_A=HUMAN_APPROVED`，`NATIVE_26_VECTORS=DESIGNED_NOT_RUN`，`NORMATIVE_TRACE=PARTIAL`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
 
-**下一动作**：基于实际读取的送审稿等效正文完成 V15/V8 各要求→接口→状态/失败→测试/Owner 的行为级审查，以及 WIRE-V01..V07 数值域与负例收口；目录/图表/版式内容也须先签收，之后才另向 Human 申请 Gate-D。Gateway #190、G3 与 Gate-I 继续独立管理，当前不创建产品代码。
+**下一动作**：独立审查 AFS-01..12 并完成 56 项 V15 / 99 小节 V8 到模块最小原子状态、错误、TestID、Owner 与质量 Gate 的余项追溯，继续把 V15 56/V8 99 初步追踪拆为需求→ContractID→State/Error/TestID/Owner；已批准的 Native 26 字节样例/12 负例待未来独立产品实施及真机验证，不以纸面计算冒充实测。目录、图表和版式内容先审好，再独立向 Human 提交 Gate-D 设计冻结；Gate-G3、Gateway #190、Gate-I 分别管理，不创建产品代码。

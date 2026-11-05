@@ -79,6 +79,57 @@ Tool 依照当前真实 Windows Qt5.15/Qt6.8 和已交付安装单元单独验�
 
 配置迁移独立设计：工厂 Edge 共享白名单/策略修订、View 的 Device Trust、Tool 的 SDK 偏好和 Gateway Tenant Registry **四种不同持久化合同**；不得把其中一类的 JSON 原样复制成另一类的权限来源。未知 schema 或旧版本回滚无法证明有效安全策略时必须 fail closed，而不是悄悄采用空密码或全网卡默认监听。
 
+### 4.3 X-01 安装、迁移、升级与失败回退的实施级合同（不增加产品）
+
+此处细化**现有四种产品/交付责任**，不是新发布计划、安装向导原型或正式产物。每个安装流程必须把**软件落盘、可信配置、启用远程监听、设备授权生效、外部可用状态**分成可证伪的独立结果。完成安装不等于安全监听已开放、用户已登录或 Gate-G3/产品正式资格已通过。
+
+| 受控对象 | 写入/运行权威 | 持久状态与最小关联 | 升级/回滚不可破坏条件 |
+| --- | --- | --- | --- |
+| `InstallManifest` | 各产品 X-01 Installer/PackageOwner | ProductId、package version、source SHA、Qt Kit/ABI、协议构建能力、文件清单/hash、dependency licenses、部署路径 | 安装器只能声称 manifest 真正拥有的文件/组件；不能把 Native 仅有设计写为已实现 |
+| `RuntimeDeploymentProfile` | **HMI 宿主受信部署管理员**，F-06 仅消费并准入 | Host identity、Target/Scope、required listeners、RFB/Native TLS 材料引用与策略代次 | RFB 默认地址配置 getter 不是有效准入；错误/缺失签名必须 fail closed，不因卸载 Tool/View 打开监听 |
+| `ViewDeviceCatalog/TrustStore` | HyRemoteView V-03 当前产品凭据边界 | DeviceId、trust anchor/pin、profile 代际、用户自有偏好（与 trust 结论分离） | 地址/证书/设备身份证明变化后不得自动接受新设备；迁移凭据不得明文写入日志/备份 |
+| `FactorySitePolicy/EdgeRunLease` | 同一 View 安装中的 E-01 本地管理员/运行角色 | 白名单、允许端点/期限、单调 SitePolicyRevision **可持久**；EdgeRunEpoch/登录态租约 **不持久** | H-EDGE=A：升级、崩溃/回滚、注销后不得自动复活旧 Route 或后台运行，关闭单个会话窗口不改共享 |
+| `GatewayTenantRegistry/PairLedger` | 独立可选 Gateway G-01 受信系统管理员 | Tenant/Site/Operator/Edge identity、租户 ACL、设备路由准入和一次性配对记录 | 不跨租户恢复旧 credential，不把备份 Route/Permit 当新运行许可，密钥轮换按受信身份验证 |
+| `ToolSdkPreferences` | 独立 Tool T-01 用户/本机权限 | SDK path、Qt Kit、诊断偏好及经许可导出报告 | Tool 更新不强制 View/HMI 同步升级，已发布基础 RFB 访问能力不被删除，完整 S1 #586 OPEN |
+
+#### A. 安装与升级事务（按产品独立执行）
+
+| 事务阶段 | 原子边界/执行责任 | 失败时必须出现的真实结果 |
+| --- | --- | --- |
+| `PACKAGE_VERIFY` | X-01 验证包签名/内容清单、依赖许可证、平台架构、精确 Qt Kit；任何可执行迁移脚本也必须同一受信来源 | 不可信包**不能执行脚本/替换文件**，记录失败原因，原有效安装不被破坏 |
+| `PLAN` | 枚举当前组件所有权、安装冲突、关联服务/应用版本及配置 schema；严格区分「仅 Viewer/Tool 更新」与「HMI 宿主部署」 | ABI 不兼容/路径越权直接停止；不得借改安装包把单 View 拆成独立 Edge 产品 |
+| `QUIESCE` | View 升级先让本机 Edge 运行许可与 Route 真正停止；Gateway 升级先停止新的 Route/Pair，清旧一次性凭据；Framework 必须由宿主控制合格停机窗口 | 非正常退出只能保证本机不再提供旧 socket/运行态；不能承诺跨 OS 强杀过程的完美日志通知。现场 HMI 业务不能被远程更新器强行终止 |
+| `SNAPSHOT` | 为允许回滚的**产品自有**持久配置做受保护快照，记录 schema 及不可倒退的许可/撤权高水位 | 读/解密/备份失败不继续危险迁移；敏感秘密不写入普通备份/日志/用户数据导出 |
+| `STAGE` / `SWITCH` | 先核对新二进制、插件/Qt Private exact ABI、可读取旧配置的 schema；受控路径原子替换/版本切换 | 部分文件落盘不宣布成功，旧进程/插件不混入新 Kit；失败回滚软件文件但**不恢复旧许可** |
+| `MIGRATE` | 每产品只在自身身份/ACL 保护下迁移：Host Policy、View Trust、Factory SitePolicy、Gateway Tenant ACL、Tool Preferences 各自独立，保持单调策略撤销高水位 | 未知 schema、未来版本数据、旧回滚不能保守解释时标 `NEEDS_RECOVERY/DENY`，不自动采用无密码/共享全网策略 |
+| `QUALIFY_AND_ACTIVATE` | 启动当前版本但先关闭网络/路由准入，验证配置/秘密、Qt Kit/证书/设备信任后由真实运行权威重新批准可服务状态 | `PACKAGE_INSTALLED`、`RUNTIME_RUNNING`、`DEVICE_TRUSTED`、`HMI_GRANTED`、`EDGE_ONLINE`、`QUALIFIED` 是不同状态，不得一键宣称成功 |
+| `ROLLBACK/UNINSTALL` | 软件可退回经签名允许的版本；配置仅在不撤销更严格的新安全策略时可恢复；卸载撤运行租约/当前 socket 与应用自有秘密 | 回滚旧版本无法理解新撤权版本时保持离线/拒绝，**绝不恢复被禁用的共享或过期令牌**；不删除宿主业务无关的现场数据 |
+
+**事务不是单一 OS 原子指令**：安装器可采用平台事务/目录交换/备份等不同机制，但**对外安全准入的原子性**必须由对应 Runtime/Policy 真实控制；不能因为文件复制完成或 Service 启动就自动接受 Native/RFB 会话。QPA/QtPrivate 例外必须在对应精确 Qt Kit 检查，不能仅靠文件名同名声称兼容。
+
+#### B. 跨产品升级偏序与不允许的耦合
+
+- HMI Framework 与 Qt 宿主按制造商签名/Qt ABI 资格独立发布；**安装升级不替宿主做业务授权选择**。无网络更新可仍使用已安装的合法 Direct 基础能力。
+- HyRemoteView 作为单一产品统一更新自己的 Viewer、同产品 Edge 角色与可信资源；不另装 Sidecar，退出/注销后不保留未经额外审批的 Windows Service。升级后只恢复**已批准的持久配置**，不恢复 EdgeRunLease/PairCredential/旧 Grant。
+- Gateway 是可选的自托管或供应商服务，有自己的滚动/备份和租户 ACL 演进，不能将 Gateway 更新变成 Direct 的硬依赖。Gateway 仅许可新 Route，不改变 HMI 现有 DeviceTLS/Target/View/ControlGrant。
+- HyRemoteTool 维护已发布的基础 RFB 和 SDK/Kit 诊断，不因为 HyRemoteView 新功能进度去删除用户已发布入口，完整 Tool S1 真实状态继续 #586 OPEN。
+- 各产品间通过**受控且已批准的**协议/接口版本兼容矩阵协作；本章节不为尚未交付的 Native/Gateway 擅造“已支持版本组合”或新的公开 API。
+
+#### C. X-01 设计验收与 Owner 交付字段
+
+| 设计合同 | 正/反向实施验收（未来） | 真正主责 | 状态 |
+| --- | --- | --- | --- |
+| `DEP-01` 包/依赖/Kit 准入 | 包损坏、签名错、Qt Private ABI 不符必须在替换/运行前拒绝；导出 manifest 可追溯 | X-01 Installer + 各组件 Owner | `DESIGN_ONLY` |
+| `DEP-02` HMI 宿主业务隔离 | SDK/Plugin 升级出错时不强停 HMI 业务或无可信策略自动 bind listener | F-03/F-06 + X-01 | `DESIGN_ONLY` |
+| `DEP-03` View 单产品/Edge 角色 | 安装/升级/卸载均无独立 Edge installer，登录态 RunLease 不跨重启；注销离线、单窗口关闭不撤共享 | V-03/E-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-04` 设备 Trust 迁移 | 同 IP 新证书/不同设备、未知 schema、凭据损坏时拒绝自动信任，不丢失可信历史回退轨迹 | V-03 + X-01 | `DESIGN_ONLY` |
+| `DEP-05` 站点共享撤权与回滚 | 旧版本回滚后不能复活曾撤销的 HMI 分享、PairCredential、旧 Route/Grant；失败需 NEEDS_RECOVERY | E-01/G-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-06` Gateway Tenant/Key 轮换 | 不跨租户恢复 operator/edge token，丢密钥或 TTL 到期时现存 Route 安全关闭，不影响 Direct | G-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-07` Tool 兼容与独立更新 | SDK/Kit 不一致/Tool 版本不同不破坏 View/Framework；旧已发布 RFB 保留 | T-01 + X-01 | `DESIGN_ONLY` |
+| `DEP-08` 版本/支持真实性 | 未通过真实 Kit/平台/许可证明的组合标 `NOT_RUN/NOT_SUPPORTED` 而非自动 SUPPORTED | X-01/X-02 | `DESIGN_ONLY` |
+
+**设计出门条件**：安装角色、文件/配置/秘密的唯一 Owner、可信包/Qt Kit、取消与恢复、安全许可高水位及每一失败出口已审签。实际签名验证、OS 安装器、Windows/Linux Kit、无人值守、更新回滚资格和软件发行仍属于后续被独立批准的 Gate，不通过本文 Markdown 或 PR CI 自动通过。
+
 ## 5. X-02 安全、资源、可观测性、质量与全产品验收
 
 ### 5.1 安全性优先的失效序列
@@ -112,6 +163,69 @@ sequenceDiagram
 
 说明：HMI 的 V8 128MiB 是设备侧预算目标；Edge/Gateway/View 的数值必须另测。原则上所有进程按 `0/1/2 viewers`、静态/小更新/高动态、正常/慢端/断网/撤权、GUI 登录/后台模式记录 CPU（明确 % 核心基数）、RSS/PSS、网络吞吐、Frame age P95、输入→可见延迟、socket/队列水位。含共享 FrameStorage 时内存计数应避免双计，但不得忽略每会话遮罩或 TLS buffer。**不能把降低刷新或保留旧帧当性能优化。**
 
+### Native 1.0 补充规范的验收输入
+
+XP-03/04/05/06/07/10/20/21 必须复核 [Human 批准的 Native V8 数值/档位合同](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 和 [26 个黄金字节向量与 12 个异常规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)。两个档位都必须设备 TLS-first；`plain` 只是不额外进行 Native 用户密码认证，不是开放匿名设备控制。验收要逐项记录独立 Host/Viewer 构建 SHA、Qt Kit/平台、可信设备身份、Host Scope 与是否真实执行。当前新增向量全部未运行，不能因为 Human 批准数字而写 PASS。
+
+### F05/V01 正交状态机的验收映射补充
+
+[Native AFS-01..AFS-12 原子设计合同](module-detail-d1-device-protocols-2026-11-05.md) 已覆盖 TLS-first/plain、认证与独立 ViewGrant、ControlState/Scope/现场接管、Target 撤销、FULL/DELTA、Qt 双栅栏和 Managed Route 失败。这些是原 `FW/DP/VIEW/XP` 的**细化设计入口**，不改动已有测试用例编号与 Native wire。QA 在正式实现后须采集 **HMI SHA + Viewer SHA + 平台 Kit + 真实 Policy/Grant epoch + 正负日志**，并记录每个 `AFS` 到测试 ID 的对应；尚无真实执行结果，全部 `DESIGN_ONLY`。不能让一条成功 TLS 或一张正确画面代替全部权限/隐私/撤权验收。
+
+
+### F-02 / F-06 可实施合同的设计验收与未来产品验证分离
+
+D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 界定资源/对象唯一 Owner、per-session Filter/Full/Delta、PolicySnapshot、Qt 最终输入线性化、按来源 held 账本及撤权在途边界。其审查入口如下：
+
+| 审查时机 | 需要什么证据 | 不可偷换为 |
+| --- | --- | --- |
+| **Gate-D 设计冻结** | 全部 RT/POL 合同有明确源条款、Owner、前后状态、线程所有者、失败闭合、预算边界和至少一个正/负 TestSpec；与 Native AFS-01..12、D2/D3 的消费合同一致且无未裁决关键冲突 | 不要求尚未获 Gate-I 的正式 Host/Viewer 产品代码与真机互通已经 PASS |
+| 适用 **Gate-G3 技术 PoC** | 对真正威胁方案可行性的 TLS/Qt Render/Host policy 并发等假设，按已获准的 PoC 范围、精确 SHA/Kit/环境单独验证；不外推产品支持 | 不能拿设计合并或旧 PoC 局部结果冒充完整产品 |
+| **Gate-I 后实现级测试** | `FW-02/03/04/05/06/07/08/09/12`、`AFS-01..12`、`XP-05/06/25/26/27` 按精确 Host/Viewer 构建测试来源会话隔离、Qt 抢占、隐私旧帧、资源上限与非法消息 | 不能把未运行的 XP 计划标为 PASS、不能拿单一 Qt Kit 外推所有平台 |
+
+这些要求仍服从已批准 H-RFB/H-DUAL/H-REVOKE、Native P-A/A，既不增加第五种接入也不创建新的 Native wire。
+
+### V-02 RemoteSurface 跨线程/图像/输入的设计验收入口
+
+已有 D2 [SURF-01..08](module-detail-d2-hyremoteview-client-2026-11-05.md) 细化了 Qt Quick GUI/RenderThread、decoder staging/immutable FrameSnapshot、DisplayEpoch、FULL/DELTA、输入坐标及焦点/Grant 的唯一责任。Gate-D 需审签其**对象所有权、失败闭合、状态/时序和精确可证伪用例**，不要求提前编译完完整 V-02 产品；实施批准后再按适用 G3/Viewer 产品 Gate 记录 Qt6.8 Windows/Linux 精确 Kit 下的像素一致性、背景/屏幕切换、帧龄 P95、CPU/RSS/GPU 资源、恶意 RECT、撤权与按键释放证据。
+
+**SURF-04/07 P2 负向设计**：保持某个 RFB/Native 控制会话的键/鼠标按钮 DOWN、再触发 HMI Target 尺寸/旋转/输入坐标几何变化；验证 View 先阻断新 DOWN、在仍有效的 Session/Scope/Grant 下按协议合法释放，无法安全释放时设备 F-06 `POL-08` 按其 per-source held ledger 保护性清理。旧 transform revision 的迟到 UP 不能导致卡键；设备不重复释放，也不释放其他合法 peer/现场来源。并发撤权时客户端不得以旧 Grant 发送释放，HMI 清理必须生效。**全是未来测试规格，目前 NOT_RUN**。
+
+本轮关联 `VIEW-06/07/08/09/12`、`XP-02/17/21/25/26/27` 及 `AFS-05/07/09`；**所有新增 SURF 验收内容均是设计，不是已运行产品测试**。特别检查 RFB 没有 Native Grant wire、失败时客户端无权虚构设备已发送撤权 ACK，Scene Graph 本地 PresentAck 也不得冒充 Native 帧 ACK。
+
+### F-03 四入口一致性与 SDK/Qt Kit 验收合同
+
+[D1 的 F-03 `INT-01..10`](module-detail-d1-framework-boundaries-2026-11-05.md) 已明确 C++/QML/Generic/QPA **四个已有接入前端**的 bootstrap、配置归一化、线程所有权、Host admission、错误与部署资格。X-01/X-02 不得把“一个入口编译/运行成功”外推其他入口。
+
+- **设计审签 Gate-D**：10 条 INT 都能追溯既有公共 facade/Qt Plugin/ADR-0007/0008、Target 与 Policy 权威及错误出口；Generic/QPA 共享自动访问控制器，不开第二个设备授权系统。无须预先完成正式产品改造/真机测试。
+- **未来实测**：`FW-01/02/03/06/09/10`、`XP-01/14/19` 分别覆盖 C++ Widgets/Quick、QML 构建完成前/后 enabled、Generic address/interface 互斥、QPA native delegate 的窗口/输入与错误时独立存活，以及四入口对同 Host Target/Scope 的相同拒绝/撤权结果。
+- **精确 Kit 和兼容**：Qt5.15/Qt6.8、平台/arch/编译器各产品所批准的实际单元验证，QPA private shim 和 Runtime `AR-04=A` 内部窗口输入例外不得进入 SDK public ABI；仅配置 getter `0.0.0.0:5921` 无法证明已获安全公网监听资格。
+- **证据字段**：必须在实施后保存实际源 SHA、Kit/运行平台、原生 QPA 类型、插件参数/安全 profile/Host Policy 来源、实际 Listener/Target/held 结果和拒绝状态，不把 `DESIGN_ONLY` 写成 `PASS`。
+
+### E-01/G-01 透明路由与首批 Edge 的验收责任
+
+[D3 内置 Edge/Gateway `EG-01..12` 合同](module-detail-d3-managed-integration-2026-11-05.md) 是 X-02 的设计审签入口：管理权限与本地 SitePolicyRevision 持久化、Offer→Dial 的二次准入、一次性双侧 Pair、RouteEpoch CLOSED 终态、有界 FIFO（绝不裁剪 TLS 字节）、HMI 设备授权独立、用户登录期间产品生命周期。映射既有 `MG-01..16`、`XP-08..13/18/24/27` 与 Stage05 `CTRL` 负例；全部当前 `DESIGN_ONLY / NOT_RUN`。
+
+**Gate-D** 审查身份/数据唯一 owner、原子撤权/持久化失败关闭、资源公式和负向规格及与 Stage05 唯一 IDL 的一致性，不先要求正式 Gateway/Public 产品代码。**Gate-I/产品实施之后**才在真正工厂 PC 与自托管目标平台逐项验证 OS/Qt Kit、慢端/断线、TLS E2E、IPC ACL、密钥迁移以及更新回退。Gateway #190 激活另有 Human Gate，不能由 EG 文档合并推出。
+
+### V-03 设备目录、TrustStore、OS 秘密及 OEM 的验收设计
+
+[D2 V-03 `IDT-01..10`](module-detail-d2-hyremoteview-client-2026-11-05.md) 直接覆盖本地地址/DeviceId/Operator 与 HMI Grant 分层、可追责的可信初始锚、证书换发/TrustRevision、OS SecretStore 按 purpose 隔离、Schema 原子迁移/降级、诊断真实性与 OEM/工厂共享边界。
+
+Gate-D 审查 **Owner 与数据 schema、增权先安全验证并持久化/撤权先关闭准入、独立身份锚、失败关闭的状态/负例、凭据最小暴露与回退合同**；不以实际平台 OS SecretStore 成功读写为设计 Gate 的伪前置。正式获准实施后按 `VIEW-03/05/07/10/11/12`、`XP-11/14/16/19/23/24/28` 的实际 Windows/Linux Kit、身份/凭据/磁盘故障注入、升级回退和不串租户证据独立验收；全部当前 `DESIGN_ONLY/NOT_RUN`，不从已有 RFB 客户端测试推断 Native TrustStore 已实现。
+
+### Factory Edge 首批生命周期的可证伪验收合同
+
+D3 的 [EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 与 D2 `VIEW-EDGE-01..05` 已定义登录态分享和用户操作边界。D4 必须将以下**不同事件**分别构成未来设计验收：关闭一个远程画面（共享不因此自动断）、关闭站点管理页面（共享不因此自动断）、退出整个 View、OS 用户注销、系统锁屏/睡眠、进程强杀、网络中断、撤销 HMI、策略持久化失败、升级回滚/凭据轮换。只有真实 OS/Qt Kit、带准确 RunEpoch/RouteId/SitePolicyRevision 及 Socket/Route 证据才能 PASS。
+
+本轮冻结的是**验收口径**：首批 `H-EDGE=A` 仅登录状态并显式启用时工作；不得虚构 24×7 Service，也不得把关闭一个窗口等于退出整个 View。Direct 的设备信任和 HMI 授权仍不依赖 Gateway。全部 `DESIGN_ONLY/NOT_RUN`，不授 Gate-G3/Gate-I。
+
+
+### 标准 RFB 传统用户权利与 F-06 Scope 的设备端验收合同
+
+[设备 F-04 `RLG-01..09` 设计合同](module-detail-d1-device-protocols-2026-11-05.md) 要求维护中标准第三方 Viewer 对 RFB 3.8/None/VNCAuth 的**真实互通**，同时验证匿名/共享口令的固定 Target/Scope 查看资格、宿主明确启用的传统输入、双协议共 Scope Controller、现场抢占、Qt 最终输入栅栏、跨 peer held 不串、撤权旧帧与回调失效。Legacy 旧版“remoteInputEnabled=true”只能作为过去已发布能力事实，不代表未来新架构已测试单 Scope 强制仲裁。
+
+XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB 第三方客户端、F-04/06 HMI exact SHA、OS/Qt Kit/Target/Scope/PolicyEpoch 归档；不许用官方 Native Viewer 的 Grant 测试替代传统 RFB 兼容。全部仍是 `DESIGN_ONLY/NOT_RUN`，不增加新的 RFB wire，不重新审核 H-RFB=A 产品选择。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
@@ -130,6 +244,8 @@ sequenceDiagram
 
 ### 5.4 全产品关键用户验收场景（超出 Edge12）
 
+> **2026-11-05 W00 证据补齐**：V15 表6 实有 **31** 个场景，经 [逐行追溯](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md) 对照既有 XP01..20；为业务文件/IME/OEM 离线委托/View 更新/旧帧/慢中继/永久 Direct 等未充分显式覆盖的条款补 **XP21..28**，均仅设计，未实施或运行。
+
 | ID | 端到端用户成果与拒绝情形 | 责任模块 |
 | --- | --- | --- |
 | XP-01 | Qt SDK 四种接入不产生重复 Runtime/隐式网络 listener；权限缺失时准入失败 | F01/02/03/06 |
@@ -143,17 +259,25 @@ sequenceDiagram
 | XP-09 | 未共享 HMI2/同名另一站/任意内网 TCP 不可经 Edge 被拨通 | E01/G01 |
 | XP-10 | Gateway/Edge 透明中转不拥有设备明文；远端 HMI ViewGrant 被拒零像素 | F05/06 / V01 / E01/G01 |
 | XP-11 | Gateway/Tenant/Route 撤销或云断网不影响合法 LAN Direct/现场业务 | 全域 |
-| XP-12 | GUI 退出、用户注销、SCM 可用/不可用、升级回退时站点在线状态准确 | V03/E01/X01 |
+| XP-12 | H-EDGE=A 首批：关闭单个 RemoteSurface 窗口不误关闭已获准共享；用户明确退出整个 View、注销或结束登录会话时 Edge 真实离线；升级回退后状态准确。注销后 SCM 无人值守在线不属于首批支持 | V03/E01/X01 |
 | XP-13 | 工厂 Edge 复制/重放 ticket 与旧 SitePolicyRevision 无权路由 | E01/G01 |
 | XP-14 | Tool 选择真实 SDK/Qt Kit 生成四路线准确步骤和脱敏证据，无伪远程诊断 | T01 |
-| XP-15 | Tool 已有基础 RFB 与未完 S1 规划、View 新官方访问产品各自独立安装/升级且不倒退 | T01/V01/X01，**Human 产品权责决策未定** |
+| XP-15 | Tool 已有基础 RFB 与未完 S1 规划、View 新官方访问产品各自独立安装/升级且不倒退 | T01/V01/X01，**H-T01=A 已由 Human 批准，原 Tool S1 #586 仍 OPEN** |
 | XP-16 | OEM 多品牌不绕 TLS/设备许可，不改变 Native wire、不串持久资料 | V03/T01/X01 |
 | XP-17 | View/HMI/Tool/Edge/Gateway 逐进程 1080p CPU/帧龄/RSS、慢端和队列均可复现 | X02 |
 | XP-18 | 自托管 Gateway 证书轮换、备份/迁移、升级/回滚不会复活已撤 Route/共享 | G01/X01 |
 | XP-19 | 无公网的工厂可独立使用 RFB/Native Direct，未安装 Gateway 时 UI 不报错 | V01/X01 |
 | XP-20 | 权限/凭据/界面功能尚未实现时统一显示不支持/未知，禁止假按钮和假资格 | 全域 |
+| XP-21 | 中文/IME/已提交文本完整，远端触控能力与本地手势明确区分；Native 1.0 不伪称原生多点触控已支持 | F05/F06/V02 |
+| XP-22 | 上传业务文件分别证实传输、校验、宿主接收和最终业务生效；结果不明不重放，路径越界拒绝 | F06/V03/X02 |
+| XP-23 | OEM 客户接管、售后委托授权期限与离线撤销待送达/已确认分离；不误关合法永久离线使用权 | F06/V03/X02 |
+| XP-24 | HyRemoteView 自身可信更新/离线安装/档案和凭据迁移/失败回退；同产品 Edge 无假在线 | V03/E01/X01 |
+| XP-25 | 第三方 VNC Viewer 不能远程删除已存副本；设备撤权后不新输出旧权限像素，第一方 View 自有缓存清除 | F02/F06/V02/X02 |
+| XP-26 | 断线旧画面按宿主政策分敏感隐藏和普通仅可标过期；重连/在线撤权不复活旧帧、输入或业务命令 | F02/F06/V02/V03 |
+| XP-27 | 慢 Viewer 与多 HMI 下 Edge/Gateway 仅做有界透明 FIFO/背压；不删加密字节、不做 HMI 第二次采集 | F02/E01/G01/X02 |
+| XP-28 | 已合法获得永久基础 Direct 使用权的客户在托管/售后到期时仍依设备安全授权离线使用，不被订阅失效误关 | F06/V03/X01/X02 |
 
-上述是**设计验收合同**而非目前的测试结论。完整 V15 原文条款追踪仍要逐条建立，不能用 20 个场景直接宣称覆盖全部产品要求。
+上述 **XP-01..XP-28 全部属于设计验收合同，不是已运行 PASS**。与 V15 表6 的 31 个真实源场景逐项对应见 [W00 S01..S31 ↔ XP 映射](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md)。**31/31 是验收入口设计覆盖，不等于可执行测试完成或 56 项 V15 复合要求已逐原子签收。**
 
 ## 6. 已获 Human 批准的产品决策与仍未关闭的源审计
 
@@ -164,6 +288,6 @@ sequenceDiagram
 | H-RFB | 标准 RFB 输入与授权 | **HUMAN_APPROVED_A**：保留 Host 已开放的基础输入能力；新架构默认只读，Scope 经 Host 栅栏与单控制者仲裁，共享口令不充当个人身份 | 旧客户端兼容/安全展示技术验收待证 |
 | H-REVOKE | 在途数据撤权边界 | **HUMAN_APPROVED_A**：新 epoch 生效后不新生成/排队旧许可输出；清本地可控缓存，必要时断链，View 遮旧帧；不承诺追回已传/已见内容 | 线程线性化、内核缓冲、负例审核待证 |
 | H-EDGE | 工厂后台首批范围 | **HUMAN_APPROVED_A**：仅支持登录期间 Edge 在线，退出/注销真实离线；无人值守需未来单独资格且仍同一个 View 安装 | 首批产品范围已定；Windows Service 不构成当前支持承诺 |
-| H-BASELINE | V15/V8 正式 Word 源文件及 Native 附录 A/B 核对 | 审批冻结前核对真实授权原文，按 SHA 归档索引；发现矛盾提出旧/新合同、影响和回退 | 真实文件输入/正式冻结需要 Human |
+| H-BASELINE | V15/V8 送审稿等效完整正文与 Native 附录 A/B 已取得 | 送审稿实际 SHA 与 #827 历史记录匹配，Human 确认与已批准正式版正文相同；56/99/21 来源核对已归档，原 V8 的 WIRE-V01..V06 数值和 SOURCE_TENSION_01=A 已获 Human P-A/A 批准；WIRE-V07 真实互通及负向测试仍未运行 | Gate-D 仍未批准；不假称正式版 DOCX 二进制 SHA 已取回 |
 
-**D4 审批后结论**：H-T01/H-DUAL/H-RFB/H-REVOKE/H-EDGE 已由 Human 正式选择 A；仍需对各设计合同、Qt/OS/网络真实技术资格和正式 V15/V8 原文做收口。此审批不代替全产品详细设计冻结、研发 Gate 或发布。正式 Word 必须先完成目录/内容/图表/版式与源条款审签，不提前生成。
+**D4 当前结论**：Human 的 H-T01/H-DUAL/H-RFB/H-REVOKE/H-EDGE=A 均保持批准。Human 提供了与 #827 送审稿归档 SHA 一致且正文等效的 V15/V8；56/99/21 来源索引与 V15 表6 31 场景已经形成受控审计。新补的 XP-21..XP-28 是此前 XP01..20 未充分覆盖的用户验收设计项，全部 `NOT_RUN`；Native 数值与原文安全档位仍存在缺口。上述不代替 Gate-D 冻结、产品代码 Gate-I、测试资格或发布。正式 Word 仍先目录/内容/图表/版式和源条款审签后才制作。

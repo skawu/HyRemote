@@ -104,6 +104,64 @@ flowchart TB
 
 新状态域是**内部设计候选**，不是现有 Runtime 枚举/API 已增加这些值。
 
+### 4.4 F-02 运行时对象、线程所有权与生命周期（详细设计闭合候选）
+
+本节将 4.1 的逻辑责任转换为**可直接实施和审查的内部合同**。类型名为内部设计记号，非已存在 C++ 声明、Native 新字段或公开 SDK ABI；部署许可、四入口一 Runtime、RFB/Native 双独立协议、H-REVOKE=A 均继续以 V15/V8 和已批准方案为准。
+
+| 对象/资源 | 创建及唯一所有者 | 跨线程交换 | 销毁及不可复活条件 |
+| --- | --- | --- | --- |
+| `RuntimeGeneration` | F-02 Coordinator 每次 Start/Rebind 生成不可复用 generation | listener、Target、回调、队列和 Qt 投递均携带当前 generation | Stop/故障/重绑先关闭 admission；旧代次 callback 一律拒绝 |
+| `TargetRecord` | F-02 TargetScopeRegistry 持有 ID、Scope 冲突图、Qt 对象弱引用/存活令牌 | GUI 目标访问只能在正确 Qt 对象线程；网络线程只持不可变描述/ID | target 丢失/重建必须新 incarnation；原 ID/授权/采集缓存不继承 |
+| `BaseFrameRef` | 每 Target F-02 FrameSourceRegistry 持有受控帧存储与 generation | 采集线程只交付带 Target/生成代次/PTS 的 owned frame；不得借用已销毁 Qt 内存 | 最后一有效消费者释放；不是任何会话输出许可 |
+| `OutputSessionRecord` | F-02 AccessSessionRegistry 为每条真实连接唯一建立 | policy/encoder 持会话代次、Target/Scope 与过滤快照；网络并非授权源 | Close/Revoked/PolicyChange 失效所有未发送过滤帧与基线 |
+| `SessionEgressQueue` | 对应 F-04 RFB 或 F-05 Native 连接独占 | **仅授权后的帧/协议 payload** 进入各自有界队列；TCP/TLS 发送队列再单独计费 | 撤权清可控队列，无法清已交 OS/TLS in-flight 时必要断链 |
+| `QtInputTicket` | F-06 InputAdmissionFence 创建不可客户端伪造的内部临时票据 | GUI 最终处理时凭 Session、Target、Scope、RuntimeEpoch、GrantEpoch、PolicyRevision 重验 | policy/target/session 变化后不可跨事件循环重用，完成/拒绝一次消费 |
+| `RuntimeMetricSnapshot` | F-02 Diagnostics 单点聚合 | 仅脱敏计数、队列水位、状态与明确来源的时戳 | 不包含密码、像素、输入全文或可复用 Grant |
+
+**线程边界**：Qt Target 的生存期/输入投递由所属 GUI 线程拥有；采集完成回调可从后端线程到达，但只递送不可变持有的 FrameRef；策略写入经 Host 受信发布路径，网络协议会话在各自事件循环解析，不能在 GUI 线程等待 socket/TLS/编码。跨线程任务一律附 `RuntimeGeneration` 和对象存活令牌，并在消费点验证；取消标志不等于任务完成，stop 必须追踪持有资源的队列已失效。
+
+**启动/停止状态合同**：
+
+1. `STOPPED→PREPARING`：检查签名/Host Profile/Target/Scope、required listeners、Native TLS 材料；均为 **不可对外接纳业务**。单一 H-DUAL=A admission snapshot；RFB-only/Native-only 是合法独立部署档位。
+2. `PREPARING→ACTIVE`：全部 required endpoint 已准备好，提交一个 `RuntimeGeneration + AdmissionSnapshot`，**对外可服务与 Running 可见性**同时开放。多个 OS `listen()` 不承诺物理瞬时原子；准备期间任何试探连接不得获得目标、画面或输入。
+3. `PREPARING→STOPPED(ABORT)`：任一必需准备失败时撤回该轮所有 socket/session、TLS 材料与弱引用，返回真实根因，不自动降为另一协议或让 GUI 生产业务停止。
+4. `ACTIVE→STOPPING`：先原子关闭**新会话、新输出、新输入**的接纳门；推进 generation、作废所有在途任务及 Session；清本进程可控缓冲、释放 held，再依次撤掉协议连接/采集/Qt Target 适配，最后成为 `STOPPED`。此顺序的对外结果不依赖远端 Viewer 先 ACK。
+5. `ACTIVE→DEGRADED` 仅用于**提交后**局部协议运行时损坏且其他已许可协议仍安全；状态必须如实报告，不能重做未授权的 profile 切换。目标消失、重绑或策略版本改变时按受影响 Scope 最小隔离，未经许可不能自行复活。
+
+### 4.5 F-02 出帧流水线的原子步骤、缓冲水位与隐私隔离
+
+```text
+Qt Target capture (one source, target incarnation)
+  → immutable BaseFrameRef [TargetId, Generation, PTS, damage]
+  → per AccessSession current ViewGrant/Policy/Privacy gate
+  → per-session mask/watermark → per-session FULL/DELTA decision
+  → bounded protocol-specific encoder/cleartext queue
+  → Native TLS or legacy RFB transport
+  → network/OS bytes (already handed off cannot be recalled)
+```
+
+- `BaseFrameRef` 可以共享**仅未加个人权限的原始存储引用**；任何已遮罩、加水印或差分基线默认**每 Session 独占**。跨 Session 去重只能在未来证明 Target/Policy/Privacy/Identity 完全同一且撤权能同步失效的情况下单独审核，当前不作为实施默认值。
+- **输出提交点**：生成/选择帧前读取 HMI 当前 PolicySnapshot；进入协议队列前再次校验当前 `RuntimeGeneration/AccessSession/Target incarnation/ViewGrant/PrivacyRevision`，失配即废弃并失效该会话的 Delta baseline。两次之间若已撤权，不可将旧帧放进可控待发队列。
+- `FULL` 只有在对应权限快照已处理完整 Target 覆盖后才可标为可用基线；`DELTA` 必须引用该 Session/Target/generation 下**已完整构成**的本地基线。丢弃过时帧后无法证明差分正确，则进入 `WAIT_FULL` 并重新生成当前权限下的 FULL，不向客户端发送不连续 Delta。
+- **背压域分离**：采集回调与 Core mailbox、每 Session Filter/Encoder、每协议待发、Native TLS buffers、OS socket、Qt 输入邮箱分别记账。V8 的连接数、每目标 Qt 输入容量、Native 每连接待发上界和受管 128 MiB 设备侧预算分别在其**原文适用层**校验，不将共享引用重复计费，也不把未计 TLS/OS/遮罩的 Core 限额冒充整机内存。
+- **慢端处置**：只有在编码/TLS 前且可以正确恢复 FULL 的会话级帧才可丢/合并；密文 Native FIFO 不能剪字节或凭 FrameId 重排序。超过受控内存/等待上限则拒绝本会话进一步入队、报告真实 `RESOURCE_LIMIT` 并按协议关闭受影响连接；本地 HMI 与其他正常会话不被拖死。
+- **撤权互锁**：Policy/GrantEpoch 生效后，不新增旧许可像素/输入、不将旧受限帧新入队；清所有仍可控的旧明文/已过滤缓存与待发送 Session 队列，旧基线失效。Native TLS/OS 已交出的字节**不保证追回**；必要时断链，第一方 View 遮旧图、禁输入。恢复查看必须以新授权、新 Full 和当前 Session 为条件。
+
+### 4.6 F-02 明确的实施接口输入与异常出口
+
+| 合同 ID | 输入→内部输出 | 不变量与失败可观察性 | 设计验证入口 |
+| --- | --- | --- | --- |
+| `RT-01` | Host 配置→`prepare/commit/abort` admission | H-DUAL=A 的 required 端点对外服务全有或全无；准备连接不泄漏目标 | FW-02/03 |
+| `RT-02` | Qt Target 注册/销毁→带 incarnation 的目标描述 | 一次 Qt 目标重建不继承旧 ID/Grant/Frame baseline | FW-06/09 |
+| `RT-03` | CaptureSource 帧→共享 owned BaseFrameRef | 生命周期独立且不在 GUI 回调执行网络慢工作 | FW-07/12 |
+| `RT-04` | BaseFrameRef + Session 当前 Policy→过滤后的帧 | 跨 Session 不串 Mask/Watermark/Scope，未知 Policy 零敏感像素 | FW-07 |
+| `RT-05` | 每 Session 输出→可发送 FULL/DELTA/bounded bytes | 任何丢帧/撤权/切目标损坏基线都必须重新 FULL | FW-08/DP-08 |
+| `RT-06` | Stop/Rebind/目标移除→取消所有受影响回调 | 旧 RuntimeGeneration/Qt 弱引用不在新轮复活 | FW-06/09 |
+| `RT-07` | 负载/网络背压→仅局部限制或关闭连接 | 本地 Qt 业务和别的 Scope 不阻塞；OS/TLS 队列真实计入 | FW-12/XP-27 |
+| `RT-08` | Host 撤权→旧输出队列与基线失效 | H-REVOKE=A；清可控缓冲但不承诺收回已交 bytes | FW-06/08/XP-25 |
+
+**4.4–4.6 的闭合等级**：`F02_DESIGN_CONTRACT_DEFINED_FOR_REVIEW`，不是公开头文件/ABI/单元测试/Qt Kit 的实施证明。新参数、容量和类名若需进入公共 SDK，必须先独立兼容审查，而不是直接照搬本内部合同。
+
 ## 5. F-03 四种接入方式的映射合同
 
 | 前端 | 请求进入形式 | 前端有权处理 | 前端禁止处理 |
@@ -118,6 +176,65 @@ flowchart TB
 - 已安装 `RemoteAccess` public API 不是默认拥有可表达 V8 所有未来身份/Scope 的能力；宿主如何配置复杂策略是独立设计项，不准借一行新 setter 偷偷改变现有 ABI。
 - QPA/Qt Private 的精确 Qt Kit 验证归 X-01；不能把 Qt6.8 通过推导为 Qt5.15/Qt6.12/ARM。
 - Host 的“有权调用 `start()`”只是请求；H-02a 生效后 `DeploymentAdmission` 是真正创建任何监听前的必要条件，保留 RFB getter 默认 `0.0.0.0:5921` 的语义。
+
+### 5.1 F-03 四入口的配置来源、调用时机与唯一 Runtime 归属
+
+以已接受 [ADR-0007](../adr/0007-four-integration-runtime-architecture.md)、[ADR-0008](../adr/0008-stage02-human-approved-architecture-decisions.md) 及当前源码的四入口公共合同为准。本节区分**现有已发布入口事实**和**新 V8 受信部署准入的目标设计**；接口名只是内部语义，不是追加一个 `RemoteAccess` 公共 setter、第五入口或新的 Qt Private 依赖。
+
+| 接入入口 | 当前实际配置/启动事实 | 目标 Runtime 内部动作 | 禁止和失败边界 |
+| --- | --- | --- | --- |
+| **Embedded C++** `src/integrations/cpp` | 已安装 `HyRemote::RemoteAccess` 持有 target、`setListenAddress/Interface/Port`、`setRemoteInputEnabled`、`setSecurityProfile`、`setSecurityConfigFile`、watermark、`start/stop`；设置要求 Stopped | Facade 将请求包装为**内部部署描述**，在 Host 权威签署的 Policy/Target/Scope 有效后申请 F-02 Coordinator 的启动；Target 可为 Widgets 或 Quick | `start()` 是申请不是无条件监听；旧配置 getter `0.0.0.0:5921` **保留但不授予绑定权**；不扩展现有公开 ABI |
+| **QML** `src/integrations/qml` | `QmlRemoteAccess` 的 `enabled`、`QQmlParserStatus.componentComplete()`、QML 属性和 typed `state/error` 通知 | **组件完成并解析稳定配置后**才向同一 F-02 Runtime 模型提交启动；通知从工作线程排队到 QML 对象线程 | 属性求值/对象构造中不得开 Listener；热改目标/安全材料需遵守已有 Stopped/重启合同，不越过 Host admission |
+| **Generic Plugin** `src/integrations/generic` | 标准 `QGenericPlugin`、`-plugin hyremote`/`QT_QPA_GENERIC_PLUGINS`；`address` 与 `interface` 互斥，插件只解析启动语法 | 调用 **Runtime 共用的 AutomaticAccessController** 和同一 Target/Frame/Policy 适配；继续保留原生 QPA | 启动命令行和环境变量只是意图，**不是签名部署授权**；不依赖 QPA 私有 ABI，也不能把错误参数解释成更宽松默认 |
+| **QPA Factory Trampoline** `src/integrations/qpa` | `QT_QPA_PLATFORM=hyremote:...` 等加载；专属 hyremote 参数解析/剥离、选择并创建已资格化**原生** delegate | 先忠实构造原生 Qt QPA 委托并保持其平台/窗口/输入语义，再在可用的 Qt/Host 生命周期阶段委托相同 AutomaticAccessController | 不创建另一套 compositor、CaptureSource 或私有 Host 授权；native delegate 失败要区分平台失败，远控准入失败不应杀死仍可运行的原生 HMI |
+| **共有 F-02 实现** | `src/runtime` 共享 Qt target/automatic/composite/input/transport，`src/core` 保持无 UI/协议依赖 | 四入口消费同一**实现与受信政策决策**，每个实际运行实例与 Session 独立可追踪；不得把“共享 Runtime 代码”偷换成不受 Host 管控的全进程无条件单例 | 不因两个入口各自成功解析配置就各开一套授权/采集/Scope Registry；真实不同授权配置不能静默相互覆盖 |
+
+**关键部署事实**：保留当前已发布二进制/头文件/默认 getter 的真实能力；H-02a/V8 的 `DeploymentAdmission` 属未来新架构实施时必须验证的规则，不能声称现行发布物已支持。已批准 H-DUAL=A 的必需协议原子提交，针对的是实际 F-02 部署事务；不能靠 Generic/QPA 的解析成功来宣布双协议已在线。
+
+### 5.2 同一个部署请求的归一化、冲突与生命周期
+
+```text
+C++ / QML / Generic / QPA 入口配置
+     └─> Frontend parse + syntax/Qt target lifetime validation
+           └─> Runtime-normalized DeploymentIntent (untrusted request)
+                 └─> Host trusted DeploymentProfile/PolicyProvider
+                       └─> F-06 DeploymentAdmission / Scope / Target checks
+                             └─> F-02 prepare required endpoints → commit one RuntimeGeneration
+                                   └─> F-04 RFB and/or F-05 Native listeners
+```
+
+- **归一化输入必须覆盖**：请求来源/入口类型、Target 身份与 Qt 存活令牌、`address` 或网络 interface 选择、端口、必需协议 profile、现有 public security intent、remoteInputEnabled、watermark 当前政策、Host trusted Profile 版本。普通 CLI/QML/C++ 可变参数不能直接变成 `AuthorizedTarget`、ListenerPermit 或 DeviceTLS 身份。
+- **互斥与参数检查**：`address` 与 `interface` 最终只可选一种模式。**Generic/QPA 启动字符串中同时给出二者应按既有解析合同拒绝**；而已发布的 C++ `setListenAddress` 会明确清除旧 interface，`setListenInterface` 会切换为 interface 模式，QML 也遵守其已发布属性语义，不能以新设计禁止合法的显式 setter 切换。非法端口/目标、无法验证的接口、无效 watermark（包含请求启用但无法渲染）、未知 hyremote-prefixed QPA 参数或弱档位不能被静默改为另一默认。QPA native delegate 专属 token 必须按现有语法正确剥离，不可因 hyremote 参数污染原生插件参数。
+- **多入口同时存在**：同一宿主可能既实例化 `RemoteAccess` 也加载一个插件。Runtime 的共享实现**不代表两个 frontend 可互相继承权限**：每个调用者形成可追踪的 `AccessInstance/RuntimeGeneration`，只有当明确由**同一 Host 签署的同一 Target/Scope/配置/安全 profile** 管理并证明能共享资源时，才可复用受控 Source/Runtime 对象；不匹配时返回现有公开错误类的真实配置/绑定失败，并保持既有有效实例，不擅自关闭另一入口。是否允许多个对外不同端点依实际 Host Profile，不能将不同实例的 Grant 账本合并成一个用户。
+- **变更与停机**：现行 C++ 配置在 `Stopped` 才可变更；QML `enabled=false` 或对象析构只撤掉其明确拥有的引用和 Session，不得因另一个合法前端的资源仍有效就越权停止它。Host 整体撤销/Target 对象销毁则由 F-02/F-06 统一失效相关 RuntimeGeneration、frame/input queue；不能以重建 QML 组件复活旧 Grant。
+- **状态反馈**：Frontend 只显示 F-02 来源的真实 `Stopped/Starting/Running/Stopping/Faulted/Unavailable` 和现有可表达 `RemoteAccessErrorCode`；`ListenerBound` 不表示 Native DeviceTLS/UserAuth/ViewGrant/ControlGrant。任何新的内部 `POLICY_INVALID/PROFILE_CONFLICT` 类别必须无损地转换为真实已有 public error + 不泄密上下文；不得在此文档自动追加公共 enum。
+- **没有受信 Host Provider**：从四入口到达的零代码参数不足以履行 H-02a 的“宿主明确授权”。未获得可验证 Target/Scope/Policy 时**默认不打开对外 Listener**，宿主 Qt 的原生 GUI 和在原生 QPA 上的现场显示/输入应继续按其能否独立运行的真实状态运行，不能拿远控准入失败等同“宿主程序崩溃”。
+
+### 5.3 Qt/QPA 兼容与线程/插件加载的禁止行为
+
+1. **Core 继续 UI/Qt/QPA/具体协议无关**；Qt Private 只能保留 ADR-0008 `AR-04=A` 的已批准 Runtime 内部窗口输入/高 DPI 专用例外，以及 QPA facade 自身 private ABI 入口。Generic/QML/C++ facade 公共类型不 include `QPlatformIntegration` 或本地 Native/TLS 内部类。
+2. **精确 Kit**：`Qt 5.15 / Qt 6.8` 及对应 Windows/Linux x86_64/ARM、不同补丁/BSP 应按实际支持单元分别认证；特别 QPA Factory/Runtime private 输入窄单元不能跨 minor、编译器、厂商分支共享一个二进制。一般 Qt public API 可编译不代表 private ABI 可部署。
+3. **QML 时机**：`componentComplete()` 前状态只允许保存属性与校验错误，不得引发网络 listener/认证。QML typed 通知跨线程必须 queued，旧 generation 的通知不能覆盖新实例 UI；QML 元素销毁时先使其异步回调失效。
+4. **Generic**：`QGenericPlugin` 保留 Qt 本机 platform key；只从 public Qt 插件入口装配同一 automatic access controller。无法从 Qt surface 明确界定安全 Target 时拒绝远控可见范围，不静默广播整个桌面。
+5. **QPA**：由 Factory Trampoline 返回原生 `QPlatformIntegration*`。原生 delegate 初始化/失败与远控 Runtime 准入/失败有不同来源；插件不得因为 RemotePort 被占用就自创另一种 Qt Platform、退出宿主业务或默默换网络端点。
+6. **无第五协议/入口**：Widgets 和 Quick 是 Runtime Target adapter 家族，不是额外接入入口；内置 Edge/Gateway 更不是设备端的第五集成方式。
+
+### 5.4 F-03 可以直接审签的接口与负向验收
+
+| ID | 源接口/配置场景 | 同一 Runtime 的必须行为 | 负例与未来证据 |
+| --- | --- | --- | --- |
+| `INT-01` | C++ target Widgets/Quick→start | 相同 Host Profile/Target/Scope 经 F-06 准入后调用 F-02，无 facade 专属帧/权限实现 | target 销毁或缺 Host 准入零 listener；FW-01/02 |
+| `INT-02` | QML `enabled` 与 `componentComplete` | Component 完成前不能启动，工作线程通知转 GUI 线程，取消防旧 callback | 组件中途销毁/快速 enabled toggle；FW-01/09 |
+| `INT-03` | Generic `address/interface` 与初始只读参数 | 互斥配置、公共 QGenericPlugin API、同一 AutomaticAccessController | 参数冲突/未知命令行不能变宽松；FW-01/02/10 |
+| `INT-04` | QPA 专用参数/原生 delegate | 私有兼容 shim 与已资格原生 QPA 各司其职，远控失败与原生 GUI 命运隔离 | delegate 参数污染、插件加载顺序、远控 port 拒绝；FW-01/09/10 |
+| `INT-05` | 四入口同 Target/Host Profile | 一套 policy/source/输入行为，四个 Facade 只作启动/通知，不自造 Grant | 相同权限下 RFB/Native frame、撤权、Scope/held 不应因入口不同而漂移；FW-01/04/07 |
+| `INT-06` | C++ facade 与零代码 Plugin 同进程 | 多入口调用按 Host 授权实例隔离/安全共享；配置冲突按真实错误拒绝，已有合法服务不被静默覆盖 | 双 bind、QML 热重建、旧代次回调；FW-03/09 |
+| `INT-07` | Invalid watermark / TLS 材料 / Native-only | 必需 profile 不满足则 H-DUAL=A 全事务失败，不变成无水印/明文 RFB | 安全配置冲突、端口占用、未知密钥；FW-02/03 |
+| `INT-08` | Qt Private/多 OS exact Kit | Core/前端 public ABI 稳定，QPA 和 Runtime 窄 Qt Private 单元精确标注分发资格 | 同源码不同 Kit 二进制混装/Qt 插件部署失败；FW-10/XP-01 |
+| `INT-09` | Host 撤权/Target 消失、Facade stop | F-06 优先失效旧输入/像素，F-02 停受影响端点/引用，不伤本地 HMI/其他合法 Scope | 旧 QML signal / QPA callback / C++ owner 离场；FW-06/09 |
+| `INT-10` | 合法离线 Direct/Tool SDK 诊断 | 不强制 Gateway/Edge/TLS side channel 做 Runtime 依赖；诊断只输出当前真实配置能力 | 未安装 Gateway、证书缺失、旧 Tool 不能伪称 Native；XP-01/14/19 |
+
+**F-03 设计审查状态**：`INT-01..10=DESIGN_CONTRACT_FOR_REVIEW`，当前 GitHub 源码仅证明旧公共 API/Plugin/Qt 适配事实，尚未实现/验收 H-02a、Native DeviceTLS、Dual 新准入；因此 `IMPLEMENTATION_NOT_AUTHORIZED`、`GATE_D_NOT_FROZEN`。若精确 Kit 证明必须修改已批准 API/ABI、QtPrivate 范围或四入口模型，才提交有旧/新差量的 Human 受控变更，不以功能编写时临时修改决策。
 
 ## 6. F-06 设备授权：主体、状态、不变量与策略快照
 
@@ -178,6 +295,46 @@ sequenceDiagram
 ~~~
 
 **顺序约束**：发布撤权后的“旧输入不得执行”是设备端最终强制条件，不能只依赖异步发送给 Viewer/Gateway 的撤权事件；撤权后的画面缓存释放必须有明确资源所有权。与真正 GUI 线程并发的线性化实现点需进一步审核并做确定性竞态验证，当前不是实现事实。
+
+### 6.4 F-06 授权快照的原子性与权限执行点（详细设计闭合候选）
+
+**单一权威数据流**：Host 创建可信 `DeploymentProfile`，登记目标/冲突 Scope 后发布 **不可变** `PolicySnapshot(revision, effectiveEpoch, perTargetView/Privacy, perScopeControl, expiresAt)`。F-06 在受控设备运行时保存指向当前快照的原子可见引用；协议端仅提交已经验证的连接事实，不得把 Viewer 的 Target 名字、Gateway RoutePermit 或 Native `grant_epoch` 自造为授权。任何当前快照无法确认、过期或 Target incarnation 不符即默认 `DENY`。
+
+| 顺序 | 责任方 | 线性化点/提交规则 | 拒绝与可观察结果 |
+| --- | --- | --- | --- |
+| `POL-01` Deploy / Update | Host PolicyProvider→F-06 | 受信来源、Scope 冲突图、期限全部验证后发布**一个**新 Revision/epoch；无效输入不替换为放宽策略 | `DEPLOYMENT_DENIED/POLICY_INVALID` 仅内部诊断，不新设 Native error |
+| `POL-02` Session Open | F-04/F-05 认证层→F-02 Registry | server-generated `AccessSessionId` 绑定协议、peer generation、实际认证强度及 RuntimeGeneration | 证书/用户/历史共享 RFB 密码不自动推出个人身份/Grant |
+| `POL-03` View/Target | F-06 Host authorizeView | 每次枚举、过滤/入队前以当前 Target incarnation、Session、Scope 与授权快照裁决 | 拒绝时不枚举未授权 Target，不产生其敏感帧 |
+| `POL-04` Control | Host ControlArbiter | 对**冲突 Scope** 的授权/释放做串行提交，返回真实 `GrantEpoch`；现场抢占优先 | 旧 request/PENDING/Denied 不获得 Qt 输入权 |
+| `POL-05` Input admission | F-06 InputAdmissionFence | 网络入队前先验 `SessionId/RuntimeGeneration/Target/Scope/GrantEpoch/PolicyRevision` 及资源预算 | 失败不占 held、不创建 Qt 事件 |
+| `POL-06` Input final delivery | Qt GUI 目标适配器 + F-06 | **最后实际投递 Qt 目标事件前**在同一有序决策域复核最新政策。撤权提交与此投递形成可判断先后顺序 | 撤权已生效的待消费 ticket 拒绝，保护性释放按原持有者 ledger |
+| `POL-07` Revoke | Host PolicyProvider→F-06 | 提升有效 epoch/使失权 View/Control/Privacy 原子生效为拒绝；网络通知**在后** | 旧输入与新输出被拒，相关缓存失效；未发通知不影响立即撤权 |
+| `POL-08` Close/Expiry/GeometryChange | F-06 Registry + Qt Adapter | Session 关闭、期限到期、Target 丢失时注销对应会话票据/held；**同一 Target 发生尺寸/输入坐标几何代次变化时**，先阻断该 Target 新 DOWN，再以设备端持有账本对受影响远程来源幂等执行保护性释放；此几何处理**不自动撤销仍合法的 View/ControlGrant** | 旧输入坐标票据失效、重复/迟到 UP 不误释放其他来源；之后新的几何代次输入须重新检现行许可 |
+
+**并发实现必须证明的线性化边界**：单纯在网络线程“检查过后投递 `postEvent`”**不满足** `POL-06`，因为撤权可能在 GUI 消费前生效。设计约束是：Host 撤权发布能立即使旧 PolicyEpoch 失效，GUI 最后投递事件与本地当前 Policy 判定具有可测试的相对顺序；如果实际 Qt 事件传递还存在异步阶段，则最终**事件应用点**继续判定，不得在较早的 enqueue 阶段认定操作已经完成。锁/线程串行化实现可以在现有 ABI 允许范围内选择，但不得以持锁执行用户业务、TLS、文件 IO 或不可控回调来假装原子性。
+
+### 6.5 F-06 每连接按键账本与受保护释放（详细设计闭合候选）
+
+- **两个独立维度**：`SessionHeld[SessionId,Target incarnation,Scope,logicalKeyOrButton]` 持有“该连接实际获准并提交的 DOWN”；`TargetAggregateHeld[Target incarnation,logicalKeyOrButton]` 持有合计引用数/活跃来源，全部更新在同一 Qt 输入决策顺序域。不同协议和两个 peer 都不能只凭远端声称 DOWN/UP 来修改其他来源的 held 状态。
+- **合法 DOWN**：`POL-05/POL-06` 均通过才登记该 SessionHeld；从合计 0→1 时向目标发送一次真实 Down。同一来源重复 DOWN 不增加引用数，按协议既有重复规则做幂等处置/拒绝，不生成“另一只按着的键”。
+- **合法 UP**：仅释放该来源此前实际被设备登记的 DOWN；当 TargetAggregateHeld 由 1→0 时发最终 Up。未知来源的重复 UP 不影响其他来源或现场输入；不能靠全局 `releaseAll` 误放掉另一个合法 Controller。
+- **撤权/断开/Target 销毁**：先令该来源新增 DOWN 的资格失效，再按持有账本逐一释放其真实 held，必要时走 V8 保护性释放保留通道/配额；重复 Close 或迟到网络 UP 不造成第二次释放。现场 Qt 物理输入有独立来源，不被错误合并为远程强制 UP。
+- **设备画面尺寸/旋转/输入映射几何代次变化（仍为同一 Target）**：F-02 Target/FrameSource 在 GUI 所有者域提交新几何代次时，F-06 的 `POL-08` 先将该目标的**旧坐标输入票据**失效，阻断新的旧变换 DOWN；随后按其**设备端实际接受的 per-source held ledger** 在 Qt 最终投递域执行受保护 UP，引用计数归零才向 Qt 目标发实际 UP。该清理属于 Target 输入几何转换而非用户撤权：有效 ControlGrant 可以保留，新尺寸的输入必须重新建立坐标变换。客户端可能先行发送合法 UP，但设备账本确保后续几何保护性清理/迟到 UP **幂等且不释放其他合法 peer/现场来源**。即使 RFB/Native 客户端因网络丢包、旧变换代次或失焦没能发送 UP，设备端仍完成清理，避免远端鼠标/按键卡住。此事件不新增 Native 报文，也不把普通 damage 当作几何代次变更。
+- **无权正常操作和授权清理不同**：即使旧 Grant 不再允许新的 `KEY_DOWN`，本地**已登记合法 DOWN** 的清理仍须可执行，且这种保护释放不得被误解释为设备重新授权远程控制。RFB 输入共享密码不改变单一 Scope 仲裁。
+- **不能宣称“已执行”**：排队成功只是 `QUEUED`；Qt 适配器实际交付前通过终审且成功进入目标才是 `DISPATCHED`，目标业务是否采纳是宿主另一个可观察结果。失去业务 ACK 时只能 `OUTCOME_UNKNOWN`，不能自动重放参数写入/复位/告警确认。
+
+### 6.6 F-06 的跨模块输出与技术设计检查
+
+| 合同 | 消费者 | 可读出且必须唯一的事实 | 失败与后续验证 |
+| --- | --- | --- | --- |
+| `POL-01/02` | F-02、F-04、F-05 | 设备可信部署/会话真实性/实际认证强度 | FW-02/09、AFS-01..03；TLS-first plain 无个人身份 |
+| `POL-03` | F-02 Publisher、V-01 | 当前获准 Target / ViewGrant / 隐私修订 | FW-05/07、AFS-04/08；旧 Target/帧拒绝 |
+| `POL-04` | F-04 RFB、F-05 Native、V-03 | 当前 Scope holder/GrantEpoch，现场优先 | FW-04、AFS-05/06；不把 UI 意图当 Grant |
+| `POL-05/06` | Qt Input Adapter、V-02 | 真实入队许可/最后投递/拒绝/未知 | FW-06、AFS-09；晚撤权竞态，禁止旧事件执行 |
+| `POL-07` | F-02 Frame Publisher、Session queues、V-02 | 当前策略失效时的可控输出/输入清理与状态可见性 | FW-06/08、XP-25/26；已交 bytes 不虚构追回 |
+| `POL-08` | F-02 Target/Coordinator、Qt Input Adapter、V-02 | Close/Expiry/GeometryChange 各自终止旧会话或旧输入坐标代次；几何变化对已登记 held 做幂等保护性释放但不凭空撤 ControlGrant | FW-06/09、VIEW-06/07、SURF-04/07；同 Scope 多来源 held 不互相释放 |
+
+**F-06 设计审核通过的充分条件（当前尚未签收）**：独立审查上述对象唯一所有者、两次/最后输入栅栏、撤权与 GUI 线性化、Scope 冲突图、按连接 held ledger、每会话隐私和业务结果分别可验证；对每条 `POL` 能追溯 FW/AFS/XP 负例，且没有要求修改 Native V8 wire 或公开 SDK ABI。实际 Windows/Linux/Qt Kit、Resource/RSS 和 Native E2E 测试属于相应后续资格，不在本轮自报 PASS。
 
 ## 7. 启动、重绑、退出与故障模型
 
@@ -265,6 +422,8 @@ Constructed / Stopped
 - **E-01/G-01 Edge/Gateway**：只能中转已登记 HMI 的 FIFO 设备协议字节；不能作为全局 HMI 客户端/FrameSink、第二画面采集器或输入授权者。
 - **HyRemoteTool**：可以展示 SDK/Qt/安全配置/有权读取的诊断状态，但不得下发伪造的 Grant 或默默替客户打开公网 listener。
 
+**标准 RFB F-04 的固定 Endpoint/Peer 准入合同已明确**：详见 [F-04 `RLG-01..09` 的 Legacy Target/Scope/Input 设计](module-detail-d1-device-protocols-2026-11-05.md)。它使用**设备 Host/F-06 唯一 ControlArbiter**，每 RFB peer 独立 AccessSession、Target/Scope、GrantEpoch 有效性和 held ledger，不修改现行 RFB 3.8 wire；默认只读，宿主明确打开 legacy 输入时可在当前 Scope 控制许可下接入。该边界不影响 Native P-A/A 已批准协议。真实旧第三方 Viewer 兼容/Qt 输入负例仍 `NOT_RUN`。
+
 ## 11. 设计验收矩阵（全部是未来实现的测试规格）
 
 | ID | 需证明的事件 | PASS 条件 / 当前状态 |
@@ -312,7 +471,8 @@ Constructed / Stopped
 - [x] F-01/02/03/06 的依赖方向、数据权威、成功/拒绝/撤权/故障设计边界已成稿。
 - [x] 以未来候选而不是现行实现陈述 DeploymentAdmission、Native 设备信任和会话级授权。
 - [x] 与 Stage04/05 的透明转发、HMI 最终授权边界没有相反要求。
-- [ ] V15 56 条和 V8 完整 A/B 真实原文逐条追踪（来源尚未在本仓库全文可得）。
+- [x] Human 提供完整且历史 SHA 匹配的 V15/V8 送审稿，确认与已批准正式版正文相同；W00 已完成 V15 56、V8 99 小节及 Native A/B 21 type 索引。
+- [ ] V15/V8 逐原子要求→最终状态/错误/TestID/Owner 仍需审签；P-A/A 数值已获 Human 批准但真互通/Qt 负例未执行。
 - [ ] D1-DEC-01..08 中需进一步技术取舍、兼容和产品审批的内容签收。
 - [ ] F-04/F-05 协议详设、F-01/02/03/06 后续跨协议一致性复核。
 - [ ] 全产品模块设计冻结、研发实施计划、正式实现准入（均未发生）。

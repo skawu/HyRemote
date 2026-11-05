@@ -4,7 +4,7 @@
 
 > **范围**：#843 D1 全部 F-01..F-06。审查输入：[Framework boundary](module-detail-d1-framework-boundaries-2026-11-05.md)、[RFB/Native device protocols](module-detail-d1-device-protocols-2026-11-05.md)、[HMI Native trust](managed-edge-detail-05-hmi-native-trust-2026-11-04.md)、ADR-0007/0008、Stage04/05、当前代码。  
 > **权威**：正式 `HYR-PD-001/V15`、`HYR-ARCH-001/V8` Human 已批准，附录 A/B 仍是 Native 唯一 wire；此审查**不是**重开批准事项，不自行冻结公开 API、协议、安全承诺或研发准入。  
-> **源审计**：初始开发树 `develop@268e26dbbccc6aaed4026ee4a888ba500623a372`；V15/V8 的 DOCX 完整原文尚未从本会话允许的 GitHub/Drive/文件检索中找到，不假装已完成原文逐条审计。  
+> **源审计**：初始开发树 `develop@268e26dbbccc6aaed4026ee4a888ba500623a372`；D1 初始评审时尚未取得 V15/V8 完整 Word；其后 Human 已提供历史 SHA 匹配且确认正文等效的 V15/V8 送审稿，W00 完成 56/99 章节、Native 21 type 来源核验。原 D1 快照不可据此推断全量原子合同签收。  
 > **状态**：`DESIGN_REVIEW_CANDIDATE / CROSS_MODULE_CONTRACT_V1 / NOT_HUMAN_FROZEN / NO_CODE_CHANGES`。
 
 ## 1. 一致性审查结果：统一权威与禁止边界
@@ -140,7 +140,7 @@ sequenceDiagram
 
 `D1_MODULE_SCOPE=F01..F06_REVIEWED`（已形成并交叉比较三份审查候选）；`D1_INTERFACE_CONTRACT=CONDITIONAL_CANDIDATE`；`D1_FORMAL_DESIGN_FREEZE=NO`。
 
-**阶段记录更新**：原始 D1 完成时允许按条件继续 D2；D2–D5 现已完成设计候选。Human 已批准 RFB Scope、Dual 启动和撤权在途的 **A 产品语义**，但 Native A/B 全文核验、真实权限/协议/撤权技术合同及验收依然待签收，不能升格为实现已通过或设计已冻结。
+**阶段记录更新**：原始 D1 完成时允许按条件继续 D2；D2–D5 现已完成设计候选。Human 已批准 RFB Scope、Dual 启动和撤权在途的 **A 产品语义**，而 Native A/B 原文已核、P-A/A 数值/TLS 语义已获 Human 批准；但真实权限/协议/撤权技术合同及产品互通/资格仍待签收，不能升格为实现已通过或设计已冻结。
 
 下一阶段设计主线：D2 V-01 Direct/Native 双客户端协议适配，V-02 RemoteSurface/Qt Quick 输入/状态，V-03 Device/Identity/Credential/Diagnostics/Branding 与工厂 Edge 用户界面**界面消费合同**，以及与 Framework 的跨仓版本/能力协商。
 

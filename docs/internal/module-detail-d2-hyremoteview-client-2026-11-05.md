@@ -72,7 +72,7 @@ flowchart TB
 
 `RfbClient` 的 wire 数据仅从标准 RFB 3.8 解码：None/VNCAuth、ServerInit、Raw/TRLE 及实际双方协商支持的扩展；**未经过验证的 server 消息先检查长度/rect count/像素乘法溢出，后分配**。Server 可支持某 extension，不代表 Viewer 已实现并可向用户承诺。
 
-`NativeClient` 必须只依 V8 附录 A/B 已批准消息及严谨 parser：Device TLS→HELLO/WELCOME→必要 AUTH→获准 TargetList/Subscribe→ScreenInfo→FULL/DELTA→独立 CONTROL_REQUEST/STATE→INPUT；Gateway 的 `RouteId/OperatorId` 不进入 Native body。完整 A/B 原文仍待正式逐条校对；候选架构不擅自补全 opcode、字段或数值。
+`NativeClient` 必须只依 V8 附录 A/B 已批准消息及严谨 parser：Device TLS→HELLO/WELCOME→必要 AUTH→获准 TargetList/Subscribe→ScreenInfo→FULL/DELTA→独立 CONTROL_REQUEST/STATE→INPUT；Gateway 的 `RouteId/OperatorId` 不进入 Native body。V8 A/B 来源字段已核，Human P-A/A 数值及 TLS-first 语义已获批准，唯一值源为 [受控 Native 补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；实际独立 Host/Viewer parser 与 E2E 仍未实现/未测试，不得擅改 opcode、字段或数值。
 
 ## 4. 设备连接与会话的正交状态机
 
@@ -86,6 +86,27 @@ flowchart TB
 | `Control` | NotRequested / Requesting / Granted / Denied / Revoked / NotExpressible | 按 Scope 与有效期；按钮状态不足以证明 HMI 实际执行 |
 | `Image` | Empty / AwaitingFull / Fresh / Stale / Forbidden / Failed | 只有新一代已许可像素才能 Fresh；Stale 遮罩并禁止当实时 |
 | `Interaction` | Inactive / FocusedView / FocusedControl / LosingFocus / Disabled | Tab/系统切换/focus 丢失必须解绑本地 held 状态与输入会话代际 |
+
+### 4.0.1 Native P-A/A 已批准补充
+
+参见 [唯一批准的 Native V8 数值和 TLS-first 补充](module-detail-w00-native-v8-delta01-approved-2026-11-05.md)；Framework 和 View 使用同一数值表，26 个 Golden Vector 属于设计数据，未运行产品测试。
+
+**已批准的客户端语义**：`plain=0` 和 `tls-password=1` 都须通过设备 TLS 身份核验后才能发送 HELLO/WELCOME；前者省略独立用户 AUTH，但不产生自然人身份或设备 Grant。`pixel_format=1`/`encoding=1` 按 RGBA 字节序处理；TargetStatus、ControlState、键码均采用同一受控数值表。设备信任、用户认证、Target 可见和控制权分层显示；未知值拒绝。全部向量仍须真机/独立客户端验证。
+
+#### F-05/V-01 原子状态与客户端真相映射（设计候选）
+
+[设备端唯一正交 FSM、AFS-01..AFS-12 负例合同](module-detail-d1-device-protocols-2026-11-05.md) 定义 `T` Transport/DeviceIdentity、`S` 用户认证、`V` Target/ViewGrant、`C` ControlGrant、`F` 每目标 Frame baseline。V-01/V-03 应持有五轴独立只读观察模型，不能把 `Connected` 或 RouteReady 作为可控状态。
+
+| 用户界面/输入判定 | 必需的 HMI 可证明条件 | 缺失/迟到行为 |
+| --- | --- | --- |
+| “已连接到可信设备” | `T3/T5` 的 HMI DeviceTLS 身份可信 | 证书变化/不可信应显示独立安全失败；无 HYRP 降级 |
+| “认证的用户” | `tls-password` `S2 AUTH_VERIFIED` | `plain` 为 `S4 DEVICE_ONLY_NO_USER_AUTH`，不显示为已认证自然人 |
+| “可查看 Target” | HMI 真实 `TARGET_LIST/STATUS` 与当前 ViewGrant/PolicyRevision 有效 | 本地历史 Target 不能显示为已获准；Denied/Removed 清失效内容 |
+| “可发送输入” | `C2 GRANTED` 且最新 Target/Scope/GrantEpoch/Policy 当前有效 | Pending/Expired/Revoked/Released 显示只读并禁输入；迟到 GRANTED 不恢复旧资格 |
+| “画面实时” | Target `F2 BASE_VALID`、已完整应用合法帧且未失权 | WAIT_FULL/断网/撤权按 V15 旧帧与敏感策略处理，不将旧画面当实时 |
+
+**V-02 的输入/渲染竞态**：View 的输入焦点和 RemoteSurface 只能产生新请求意图；设备端双栅栏仍为执行权威。断线/重连生成新会话、清 held/Delta 基线；本地没有“已渲染”线缆 ACK。上述仅设计，真机 UI/解码/Qt 线程证据尚未运行。
+
 
 ### 4.1 Direct 与 Managed 共用真正的设备会话
 
@@ -125,6 +146,21 @@ sequenceDiagram
 5. 当 Display 断流、掉线、权限被收回、证书变化，旧纹理应**遮蔽并标记 Stale/Forbidden**而不是继续以“实时画面”展示。是否保留用户明确保存的截图属于未来权限范围，不能把缓存当截图功能。
 6. RFB 不支持 Native Grant 消息，不能要求第三方客户端因此拒绝基本 RFB；官方客户端需要坦诚显示权限可证明程度，而 HMI 最终权限仍在设备端。
 
+### 4.3 F-02/F-06 的客户端消费与显示边界（统一设计合同）
+
+D1 设备端 [F-02 RT-01..08 与 F-06 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 是 D2 客户端的**实际服务边界**，不新建第三套本地权限权威。
+
+| 设备输出/变更 | V-01/02/03 必须采取的动作 | 不得作出的推断 |
+| --- | --- | --- |
+| `RT-01/02` Runtime/Target generation 改变 | 使旧 Target 订阅、RemoteSurface 源、上一次 FULL/DELTA 基线无效，重连生成新会话 | 同 IP/同名称/旧 DeviceCatalog 记录不是旧 Grant 的恢复依据 |
+| `RT-04/05` 合法过滤帧 | 仅解码当前 Session/Target/generation 的已许可帧；FULL 完整覆盖后才可接受 DELTA，Render 对当前帧龄负责 | 网络队列清空、Socket Connected 或 Gateway Ready 不是显示新帧的证据 |
+| `RT-07/08` 慢端/失权/断链 | 慢端展示真实卡顿/WAIT_FULL；敏感或未知失权目标立即清理可控制的 GPU/CPU 缓存并阻断新输入 | 不能依靠 View 遮罩替代 HMI 设备端撤权，也不能承诺清除第三方已存截图 |
+| `POL-02/03` 设备身份与 ViewGrant | 设备身份、用户身份、目标可见、当前 ViewGrant 四种状态分开展示；`plain` TLS 不等于用户已认证 | 不从 TLS 握手成功/设备列表历史状态推出已获得控制权 |
+| `POL-04/05/06` 当前 Scope ControlGrant | PENDING/拒绝/过期/撤销时控件禁用、停止新输入，释放 View 本地 held，并等待设备当前回执 | 不把“已请求”当“已执行”，不自行猜测 GrantEpoch |
+| `POL-07/08` 撤权与终止 | 清旧会话/Scope 焦点、旧权限缓存与按键状态；只有重新确认设备许可才恢复会话 | 网络连通恢复不是业务操作重试的许可 |
+
+**接口消费约束**：D2 只订阅设备协议本身允许观察到的真实回执；标准 RFB 不具有 Native 专用 Grant 消息，其权限失败可通过设备端服务拒绝/会话关闭和第一方 UI 的“身份未验证/当前控制不可证”表述处理，不新增 RFB 字段。Qt Quick RenderThread 只消费经过 V-02 边界检查的 frame ownership，不与 HMI Qt GUI 线程锁耦合。
+
 ## 5. RemoteSurface / Qt Quick 帧管线与坐标
 
 ### 5.1 渲染对象、线程及有界缓存
@@ -140,6 +176,73 @@ sequenceDiagram
 源图像用设备端真实 framebuffer 像素整数网格 `(W,H)`；显示视口 `(vw,vh)`；Fit 模式缩放 `s=min(vw/W,vh/H)`，绘制左上偏移 `(dx,dy)`；将窗口鼠标点换算为源像素 `x=clamp(floor((px-dx)/s),0,W-1)`、`y=clamp(floor((py-dy)/s),0,H-1)`，在黑边区域不自动向 HMI 发送点击。Fill/1:1/缩放拖动须保留自己的具体反变换。**DPR 只按来源合同换算一次**，不在 Viewer 与 HMI 分别再乘。滚轮、按钮、触控、IME 等在当前协议可表达和真实测试范围内逐项映射；未验证不得猜测。
 
 按键发送仅在 RemoteSurface 真正焦点、当前 `Control` 可执行且当前 `SessionGeneration` 匹配时允许；离焦释放本地持键账本并在仍被授权的当前连接上按协议发送合法释放；**权限撤销后禁止再发送旧 GrantEpoch 的清理 INPUT**，设备端持键清理由 HMI 安全执行。不可再把过期 local held presses 带入新连接。
+
+### 5.3 V-02 RemoteSurface 对象所有权与跨线程帧交付合同
+
+V-02 仅复用已批准的 D2 ViewModel/Session/RemoteSurface 架构，并消费 [F-02 的 RT-01..08 与 F-06 的 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md)；不增加设备新权威，也不依赖 RFB 私有扩展。以下均为**内部设计接口、非已实现类或公开 SDK ABI**。
+
+| 逻辑对象/唯一所有者 | 写入线程及可变状态 | 向下游交付什么 | 必须阻断的错误 |
+| --- | --- | --- | --- |
+| `ProtocolParser`（V-01） | 每连接协议 I/O 执行域；仅 Native/RFB 各自合法 wire、会话 generation | 验证过的 Target/generation、FULL/RECT/END、像素块、设备授予状态 | 错误 length/stride、身份失效、乱序不能分配大缓冲或喂渲染 |
+| `DecodedFramebufferStore`（V-02 decoder） | 独占**可变**重建中的 framebuffer、协议基线与尺寸；按 Target 独立 | 仅在整帧有效之后发布不可变 `FrameSnapshot`，包括合法 damage、PTS、目标/会话代次 | 非法 DELTA 破坏原已展示基线、并发读写或旧 Target 代次串图 |
+| `RenderHandoff`（V-02） | 有界 mail slot；只接受合法、完整、不可变的 snapshot 引用及显示代次 | `PresentationCandidate` 与取消/遮蔽指令 | 慢 GPU 引发内存无界、以任意帧丢弃破坏 decoder DELTA 基线 |
+| `RemoteSurface`（QML/GUI） | 当前设备/Target/Scope/视口变换、显示时效和输入焦点 | 不可伪造的 `InputIntent` 给 V-01 Router；更新呈现目标 | 不直接访问 socket、PolicyProvider 或 mutate QSG node |
+| `SceneGraphRenderBridge`（Qt Quick render thread） | GPU 纹理/可见节点及实际提交帧代次；不拥有网络或用户密码 | 内部 `PresentAck`（仅渲染统计，不是 Native frame ACK） | render thread 在旧设备/session/permission 下上传或重新显示已禁帧 |
+| `InputIntentRouter`（V-01 Session 入口） | 当前连接/Focus/ControlEligibility/本地 held | 经过协议能力检验的 Key/Pointer/Text/Scroll 意图 | 控制权过期、失焦、旧 transform 或旧 SessionGeneration 时发送新输入 |
+
+**唯一所有权**：一个完整 `FrameSnapshot` 发布后不可再被 decoder 原位修改。若增量应用需要复用旧内容，只能在 decoder 拥有的可变 staging buffer 中重建；render thread 只持 pinned immutable snapshot 或自己的 GPU 副本。GPU texture 与 CPU staging 分开记账，不能让场景图持有可能被网络线程覆盖的裸指针。Qt 对象操作与 Scene Graph node/纹理更新仅在相应 Qt6.8 公开支持的线程回调进行，不从 socket 回调触碰 QQuickItem。
+
+### 5.4 V-02 帧与显示事务（每个设备、目标、会话独立）
+
+```mermaid
+sequenceDiagram
+  participant Parser as V-01 Protocol Decoder
+  participant Store as V-02 FramebufferStore
+  participant Handoff as Bounded RenderHandoff
+  participant Render as Qt Quick RenderThread
+  participant UI as ViewModel / RemoteSurface
+  Parser->>Store: FULL/DELTA + SessionGeneration/Target/Gene
+  Store->>Store: 校验尺寸/范围/基线，重建完整 staging
+  alt 校验通过
+    Store->>Handoff: immutable FrameSnapshot + DisplayEpoch
+    Handoff->>Render: 仅最新获准完整快照
+    Render->>Render: 检验代次、上传/替换受控纹理
+    Render-->>UI: PresentAck(帧标识、时间、状态，仅本地)
+  else 无效/旧代次
+    Store-->>UI: AwaitingFull / Forbidden / Failed
+    UI->>UI: 遮蔽旧画面，禁失权输入
+  end
+```
+
+- `DisplayEpoch` 是客户端本地作废旧纹理和异步 render job 的世代，不添加 Native wire 字段。一个候选必须同时匹配当前 `SessionGeneration`、设备可信身份、Target/incarnation、协议当前 framebuffer generation、DisplayEpoch 和可观察的授权边界；Legacy RFB 不具备的 Native PolicyRevision 不得由 View 伪造。
+- **完整性顺序**：`FULL` 形成合法新基线前不输出可显示内容；`DELTA` 先在 decoder staging 完整应用、验证无越界/错误基线，才发布完整新快照。跳过 GUI 上某个已完整构造的中间快照**不等于**丢弃 decoder 内部协议差量；后者只能在保证恢复 `FULL` 时发生。
+- **尺寸/Target 改变与安全释放的严格顺序**：首先冻结该 Target 新的按下/点击意图，作废旧 DisplayEpoch 并遮旧纹理；**不得在清空本地 held ledger 之前直接丢弃尚持有的 DOWN**。如果仍是同一 Target、同一当前 Session/Scope 且 ControlGrant 有效，V-01 应优先以当前合法协议发送该来源记录的 UP（键无坐标；鼠标释放须使用设备当前可验证的坐标界限，不得用失效的旧 transform 猜位置）。若新几何尚未确认、连接/权限失效或无法安全发 UP，则禁用该输入而交给 HMI 的 **F-06 `POL-08` TargetGeometryChange/Close 保护性释放**负责设备端 held 清理。随后才丢弃本地 held 与旧坐标变换，等待新尺寸合法 FULL 后重新建映射；合法其他 Target/peer 不受影响。客户端发出 UP 不等于证明 HMI 已执行，设备账本对重复/迟到 UP 幂等处理。
+- **超时/慢端**：帧的 `receivedAt/decodedAt/uploadedAt/presentedAt` 分别保留可信本地时钟和来源，`PTS` 有不同时钟域时标注不可直接相减。掉帧仅限 RenderHandoff 中的**已完成快照**，保留 decoder 连续性，不能尝试在 Edge/Gateway 的加密字节流中合并帧。
+- **撤权与隐私**：客户端被可靠告知 Native 失权、Session 终止或 Target 移除时，立即禁新输入、取消旧 DisplayEpoch 并遮蔽可见 Surface，在后续 Qt 合法安全生命周期回调销毁其可控 CPU/GPU 缓冲。已提交 GPU/屏幕和第三方保存的像素不能追溯收回；仅 View 的遮蔽不能替代 HMI 端设备撤权。RFB 无 Native Grant 通知时以真正可观察的拒绝/断线和本地可信策略限度为准，不能宣称“收到授权撤销消息”。
+- **资源上界**：令 `M_view = M_decoded_current + M_decoder_staging + M_handoff_pinned + M_GPU_textures + M_parser_buffers + M_other`。所有积压项必须有可配置/受审核上限，超过时对受影响会话丢过时完整呈现候选或拒绝并断开，绝不因内存压力改为跨会话共用遮罩内容。具体双/三缓冲、纹理格式、GPU API、P95/FPS 数值须依实际 G3 Kit 性能证据确定，**目前不伪造量化结论**。
+
+### 5.5 输入焦点与像素坐标合同（屏幕几何 != 设备授权）
+
+- 只有本机实际获得焦点的 RemoteSurface 和可证明的当前设备控制许可才能生成输入。多个连接/Target 即使同时显示，也只能把每个输入意图绑定到**事件产生时的** SessionGeneration、TargetId、Scope、DisplayEpoch 和 FrameSize/transform revision；目标切换/撤权后迟到事件一律丢弃。
+- 所有显示模式使用唯一可逆 `DevicePixelToViewport` 变换（含 Fit、Fill/Crop、1:1、居中偏移、平移、旋转及 Qt Quick DPR）；`InputIntentRouter` 用其逆矩阵把视口点映射到**设备 framebuffer 像素网格**。在黑边或被裁剪但不可输入的区域拒绝事件；错误矩阵、零尺寸、未获完整新 FULL 时拒绝，不能先 clamp 到边缘然后误点击危险按钮。
+- DPR 仅在 UI viewport 转换阶段采用 Qt 当前 screen 的确切比值；设备端 image pixel 是网络定义的像素，不能第二次乘 DPR。源图/显示容器在同一事件循环内变化时必须更新 transform revision，已排旧事件不得按新矩阵发送。
+- 鼠标 Move/Button/Scroll、按键（主键与小键盘不同码）、已提交中文 IME Text 都通过已批准协议的**实际可表达字段**映射。未协商的 Native 1.0 原生多点触控、剪贴板或宿主业务操作不得凭 QML 手势/控件隐式发送；本地双指缩放默认只改变本地视口。
+- View 本地 held ledger 与 F-06 Host held ledger **各自有责任**。离焦/几何改变且当前会话、目标和许可仍有效时，按当前协议能力先发合法 UP；几何变化**不能把 UP 当作新坐标点击**，需跳过已失效的旧 transform 直接按 held source 释放并遵守有效设备尺寸，否则依赖 HMI `POL-08` 的保护性清理。已经失权时不发送旧 GrantEpoch 的清理输入，立即停止本地新意图，由 HMI 受保护释放已接受的按键。发送 UP 仍不证明实际完成；RFB 共享密码不具备个人可追责性，客户端只能陈述发送事实/服务端可观察状态。
+
+### 5.6 V-02 可审查设计合同及后续验证入口
+
+| 合同 ID | 必须可证明的正确行为 | 失败/竞态用例 | 验收映射 |
+| --- | --- | --- | --- |
+| `SURF-01` | Parser/decoder/render 各在线程所有者域执行，immutable FrameSnapshot 生存期明确 | 解码尚未结束时 render 消费与销毁旧对象 | VIEW-06/08、XP-17 |
+| `SURF-02` | FULL/DELTA 每 Target 基线及矩形范围严格有效，未知格式 fail closed | invalid rect、partial FULL、旧 generation、bad encoding | VIEW-04/06/09、AFS-07 |
+| `SURF-03` | RenderHandoff 有界，只丢完整显示快照且不破坏 decoder 基线 | 慢 GPU/网络并发、断线后迟到 snapshot | VIEW-08、XP-17/27 |
+| `SURF-04` | Target/resize/device switch 先冻结新 DOWN、对有效 Grant 的旧 held 优先发送合法 UP；设备 `POL-08` 几何变化幂等清理兜底，随后失效旧 DisplayEpoch/纹理/transform | 在鼠标按钮/键保持按下期间 resize、迟到/丢失 UP、权限同时撤销、其他 peer 仍 held，均不得卡键或误释放 | VIEW-06/07/11、FW-06、XP-02/21 |
+| `SURF-05` | 撤权/证书变化/断线即禁输入、遮敏感旧图与清可控缓存 | TLS 中断、Native Grant 收回、RFB 无 Grant wire | VIEW-03/05/07、XP-25/26 |
+| `SURF-06` | Fit/Fill/1:1/高 DPI 只逆变换一次，非法或边框点不点击 | 黑边、缩放矩阵坏、DPR/旋转/Target 变更 | VIEW-06/07、XP-02/21 |
+| `SURF-07` | Focus/ControlGrant/按键 ledger 绑定当前 Session/Scope；失焦/resize 释放不被旧坐标 revision 误拦，设备端按来源幂等清理 | 控制请求 Pending、尺寸变化时旧 UP 丢失、失焦、重复 KEY_DOWN 与旧 Grant 迟到 | VIEW-07、AFS-05/09、SURF-04 |
+| `SURF-08` | 真实帧龄/解码/上传/呈现 P95 来自可复核采样 | 只有 PING 但画面旧、GPU 后台暂停、不同钟域相减 | VIEW-08/12、XP-17 |
+
+**V-02 设计状态**：`SURF-01..08=DESIGN_CANDIDATES_FOR_REVIEW`；所有产品 Frame/Qt Kit/G3 及性能资格仍按真实证据 `NOT_RUN / G3_NOT_PASSED`，不因这些纸面约束变成实施能力。**正式 API、纹理后端选择和缓冲精确容量**只能由已批准依赖范围及目标 Kit 验证后固定，不擅自修改 V15/V8 协议或新增批准功能。
 
 ## 6. DeviceCatalog、Trust、Identity、Credentials、Diagnostics 和 OEM
 
@@ -159,6 +262,59 @@ sequenceDiagram
 - 本地发现是**可选明确授权动作**，不得自动扫描工厂所有主机并共享；发现到的地址只创建待确认档案，不签署 HMI 身份、不能自动启用 Edge Sharing。
 - OEM Profile 仅改变 UI/发行配置等经批准可定制域；不得为品牌 A 悄然禁用设备 TLS 校验，为品牌 B 改写 Native header 或泄露别家租户 Profile。
 - 供应链/许可证：不将 TigerVNC/LibVNCClient 的 GPL 实现作为新产品 production 依赖；Qt6.8/C++17 栈的详细第三方 licence 和 OEM 修改发布需单独出具依赖审计。
+
+### 6.3 V-03 非秘密档案、设备身份与秘密的独立数据合同
+
+设计遵循现有 `DeviceCatalog` / `TrustStore` / `CredentialStoreAdapter` / `IdentitySession` / `DiagnosticsPresenter`，以及 [D3 已细化的工厂 Edge/Gateway EG-01..12](module-detail-d3-managed-integration-2026-11-05.md)。以下为**内部存储与状态对象的技术合同**，不是新公共 SDK API、独立协议或自动可信发现机制。
+
+| 数据域 | 唯一写入 Owner / 最少持久化字段 | 信任和读取范围 | 禁止行为 |
+| --- | --- | --- | --- |
+| `DeviceCatalog.ProfileRecord` | V-03 本地 ProfileStore：不含秘密的 `ProfileId, displayName, directAddress/port, preferredProtocol, userPreference, schemaRevision, lastObservedAt` | 用户显式添加/修改；只表示一个连接地址/偏好，不存在设备身份已验证结论 | IP、DNS、显示名、最近成功或收藏项不自动授 DeviceId/Grant；不得存原始密码或 token |
+| `TrustStore.DeviceBinding` | V-03 TrustStore：`HmiDeviceId, issuer/CARef 或 fingerprint/pinRef, verificationSource, trustRevision, validFrom/Until, rotationState` | 必须有用户/管理员预先认可的独立可信来源；真实 Native DeviceTLS 再与绑定匹配 | 不信任 Gateway 目录 API 自报 pin、相同 IP/名字或 OAuth 登录来静默替换受信根 |
+| `CredentialStore.SecretRef` | V-03 OS SecretStore adapter：`secretHandle, purpose, accountScope, bindingRevision`；实际敏感材料仅在受保护后端 | RFB 密码、Native 用户凭据、Gateway Operator token、EdgeInstance machine key 按用途/用户/设备分别隔离 | 原始密码、token、private key 不进入 Profile JSON/QML/日志/诊断，也不跨产品明文共享 |
+| `GatewaySiteBinding` | V-03 仅保存用户当前可见的 `Tenant/Site/Operator` 非秘密元数据及连接来源 | 仅受管路径 Router 资格；不得修改 HMI DeviceTrust 或现场权限 | Gateway 站点在线、RoutePaired、共享 DeviceMetadata 不能直接生成 HMI DeviceTrust |
+| `EdgeSharePolicy` | 工厂 HyRemoteView **E-01** 拥有，SitePolicyRevision/Whitelist/Route/Edge Key 不由 V-03 ProfileStore 写入 | UI 读取 E-01 的受控状态；管理命令需 OS/本地管理员二次核验 | 不将用户普通连接列表一键变成工厂共享白名单 |
+| `DiagnosticsEvidence` | V-03 临时聚合：`source, measuredAt, sessionGeneration, trustLevel, valueOrUnavailable` | 最小授权范围、可复核来源/时间/单位/置信度；导出受控脱敏 | 不推断 Host CPU/帧龄/业务执行、不能输出捕获像素/键盘全文或秘密 |
+
+**存储不变量**：ProfileId 是本机非安全身份；HmiDeviceId 是由 HMI TLS 证明的设备身份；Operator/Tenant/Site 是 Gateway 账号/站点身份；AccessSessionId/GrantEpoch 是 HMI 运行时的会话授权代次；四者在本地不能合并成一个“trusted=true”。任何授予控制权的字段不得持久化为可复用许可。
+
+### 6.4 V-03 首次信任、轮换、失效与跨版本迁移状态机
+
+| 步骤/状态 | 受信输入与允许动作 | 必须阻断的错误路径 |
+| --- | --- | --- |
+| `TRUST-UNBOUND`（首次记录） | 用户显式添加 Profile；从客户受控 CA、制造商受信材料或由现场核对的身份指纹导入**可审计信任来源**。候选来源依已批准 D2 §6.2/Stage05 信任引导，不另作新信任根默认值决策 | 无可核验证据时可以保留地址草稿，但不能将 HMI 标为 VerifiedDevice、自动发送 Native 密码或开始授权画面 |
+| `TRUST-VERIFYING` | Native `DeviceTLS` 链/DeviceId/证书时效/当前本地 `trustRevision` 比对；证书绑定验证成功后方可进行 HELLO 和后续可选 AUTH | TLS 失败、pin 不一致、证书更换但无可信轮换证据 → `TRUST-BLOCKED`，零 HYRP 应用字节，不自动明文/RFB 降级 |
+| `TRUST-VERIFIED` | 每个连接 Session 持有只读 `VerifiedDeviceIdentity` 及使用过的 TrustRevision；是否有用户认证/Target/ViewGrant/ControlGrant 仍按 HMI 独立判定 | 旧 Session 已验证并不授予新 Session 的可信结论；TrustStore 的后续变更使受影响连接重验/关闭 |
+| `TRUST-ROTATING` | 由预先信任的客户/制造商根或现场认可的可信流程提供新的身份材料，先验证来源、变更影响与受影响 HMI | Gateway 目录下发一串新指纹、IP/显示名变化不能构成已批准轮换；不因未收到旧私钥证明便静默接受 |
+| `TRUST-REVOKED/BLOCKED` | 本地删除/撤销/过期可信绑定时，先取消受影响所有 SessionGeneration，清可控敏感画面与输入，再使受保护存储新 Revision 生效 | 不能让正在排队的 TLS 认证/旧异步 Callback 在新 revision 中重新设为 Verified；不得从 Edge/Gateway 或其他用户缓存中恢复旧 pin |
+| `PROFILE-MIGRATING` | 对版本化非秘密 schema 做**先校验→生成新记录→原子替换**，引用的密钥 handle 用受保护 Store 原语迁移/失效 | 未知安全相关字段、坏签名、秘密库不可用、回滚丢失撤销标记时 fail closed 并保留用户可修复的诊断状态，不能用默认弱配置强行迁移 |
+
+**事务与故障恢复**：对于**放宽信任/更换证书锚**的操作，必须成功写入且再次验证可信来源后才能对新的 DeviceTLS 授权。对于**收紧信任/撤销**，立即使本进程当前 Session admission 拒绝并终止受影响会话，再通过 OS Secret/TrustStore 可验证的原子写入或带版本的持久撤销记录提交；**只有 durable commit 可证实后**才能对用户声明“撤销已保存”。如果写入失败，内存态保持 `BLOCKED_NEEDS_REPAIR` 且不得宣称持久化成功。**断电/进程崩溃后，旧存储文件可能仍保留原受信根**：若无法从受保护的单调修订/写前拒绝记录或下一次启动强制的可信重验证发现该未提交撤销，就不能保证跨重启失权。因此设计实现必须在支持方案中明确选定并验证一种 durable fail-closed 恢复机制；在此之前不得把“存储不可用时撤销已永久生效”写成产品安全承诺。磁盘迁移、OS SecretStore、TLS/Proxy 网络回调不能在 GUI 线程持锁阻塞；每个异步回调必须绑定 ProfileRevision/TrustRevision/SessionGeneration 并在消费时重验。
+
+### 6.5 V-03 凭据、诊断与 OEM 的独立技术合同
+
+- **SecretStore**：每种凭据有 `purpose + device/user/account scope` 绑定；Native 密码只在可信 DeviceTLS 后按 P-A/A 的 `tls-password` 档位使用；`plain` 仅表示省略独立 Native AUTH，不构成用户身份。RFB 的共享密码不移入 Native 用户身份，Gateway OIDC Token 不成为 HMI 授权凭据。OS 密钥库不可用时拒绝需要秘密的功能，不能静默把密钥写到普通文件或 QML 模型。
+- **最小读取与注销**：敏感 handle 只在相应会话用途的短窗口读取，用户注销/信任撤销/产品退出应取消新认证并清理内存中的凭据临时副本；EdgeInstance machine key 的保留/删除由 **E-01** 授权/安装生命周期负责，V-03 不自行删除整个产品的站点凭据。
+- **诊断来源**：用户可见的 `DEVICE_TRUST_CHANGED`、`HMI_VIEW_DENIED`、`ROUTE_UNAVAILABLE`、`FRAME_STALE`、`SECRETSTORE_UNAVAILABLE` 是**本地展示类别**，不是新增 Native/Gateway wire 错误码。对于 RFB 缺少用户个人身份或 HMI 某运行计数的情况显示“无法验证/未提供”，不伪造。
+- **OEM**：品牌资源和合法功能开关只影响 UI、包标识和发行配置；不得弱化 DeviceTLS/pin 校验、私自改变 RFB/Native wire、自动开放 Edge 分享或把一个 OEM 客户的 TrustStore 迁移到另一租户。若 OEM 配置改变安全默认或客户已获权益，必须受控变更而不是正常主题切换。
+- **客户端升级和回退**：View 自身档案与 TrustStore 迁移、Edge 独立 SitePolicyRevision、Gateway Tenant Registry、Tool SDK 偏好四者由各自 Owner 单独处理。回退只可恢复**安全上不放宽**的已知有效状态，无法解析新信任/撤权记录时要明确拒绝受影响连接，合法不依赖这些数据的 Direct/RFB 其他 Profile 按当前批准条件继续。
+
+### 6.6 V-03 直接可验收的内部合同
+
+| 合同 ID | 设计场景/唯一责任 | 失败闭合与未来验证入口 | 当前 |
+| --- | --- | --- | --- |
+| `IDT-01` | ProfileId/连接地址与 HMI DeviceId 分离 | 同 IP 不同证书、同名称不同 DeviceId 禁止自动复用信任；VIEW-10/11、XP-11 | `DESIGN_ONLY` |
+| `IDT-02` | 可信根/现场校验的首次 Native DeviceTrust | Gateway directory 自报 pin 和未知 CA 不自动信任；VIEW-03、MG-06 | `DESIGN_ONLY` |
+| `IDT-03` | TrustRevision 轮换/撤销与运行 SessionGeneration 一致 | 证书替换、迟到 TLS callback、撤销写盘失败+崩溃重启不能误报 durable；需可验证 fail-closed 恢复路径；VIEW-03/07、XP-24 | `DESIGN_ONLY / STORAGE_RECOVERY_PROOF_PENDING` |
+| `IDT-04` | Native/RFB/Gateway/Edge 凭据用途隔离 | SecretStore 缺失不退为明文、QML/报告无秘密；VIEW-10/12、XP-24 | `DESIGN_ONLY` |
+| `IDT-05` | Profile/schema 原子迁移、未知安全字段失败关闭 | 失败回退可诊断、已撤销 pin 不恢复；VIEW-10、XP-24 | `DESIGN_ONLY` |
+| `IDT-06` | Native DeviceTLS/Auth/User/Host Grant 四轴不混淆 | plain TLS 不授个人身份、路由 READY 不授 ControlGrant；VIEW-03/05、AFS-02 | `DESIGN_ONLY` |
+| `IDT-07` | 日志/诊断精确来源、时间/置信度、脱敏 | 无 Host 真来源显示 unavailable，不输出密码/画面；VIEW-12、XP-14/16 | `DESIGN_ONLY` |
+| `IDT-08` | OEM 品牌/账号分隔，不修改协议安全或基础离线权益 | OEM 切换不能替换 TLS 信任根，合法 Direct 无云亦正常；VIEW-11、XP-19/28 | `DESIGN_ONLY` |
+| `IDT-09` | Factory Edge 受控 SitePolicy/Device Binding 与个人 Profile 分权 | 普通 DeviceCatalog 添加设备不自动使该 HMI 对外共享；MG-01/08、XP-23/24 | `DESIGN_ONLY` |
+| `IDT-10` | 注销/重连/身份变更下所有 Session/Secret 引用失效 | 旧授权、输入焦点、异步回调、未确认业务不自动重放；VIEW-07/10、XP-26 | `DESIGN_ONLY` |
+
+**V-03 当前等级**：`IDT-01..10=DETAILED_DESIGN_CANDIDATE`；`TRUST_REVOKE_DURABLE_FAILSAFE=TECHNICAL_PROOF_PENDING`（不能用内存拒绝冒充断电后撤销成功）；实际产品 OS SecretStore、证书存储后端、安装升级/跨用户 Windows/Linux 资格和 Native TLS/Grant 全部仍待工程实施/测试，不能把设计稿当作 G3 PASS 或产品出门证明。
 
 ## 7. 操作界面及失败状态矩阵（仅显示可证事实）
 
@@ -182,6 +338,40 @@ sequenceDiagram
 
 **界面职责**：身份/控制/连接进度靠结构化状态驱动，不能通过“一个绿色 Connected 状态”包办。错误消息统一按证据层分类，具体对外文本/翻译在 V15 正式条款对照及交互稿中再审。
 
+### 7.1 工厂端 EdgeSiteManager 的真相与登录态操作合同
+
+既定的工厂页面只消费 [D3 E-01/G-01 `EG-01..12` 受管路由/共享设计合同](module-detail-d3-managed-integration-2026-11-05.md)，不在 QML 侧创建 SitePolicyRevision、RoutePermit、PairCredential 或任意 LAN 代理：
+
+- `registerHmi`、`setHmiShare`、`revokeShare` 是需要真实本机管理员授权/受信持久化结果的异步命令。点击“共享”后先显示 `PENDING`，收到本地 Edge 权威 revision 与结果才显示 `SHARED`；失败不能继续显示“共享已生效”。
+- H-EDGE=A 首批登录期：**退出整个 HyRemoteView 或注销工厂用户**使 EdgeLink/所有 Route 真关闭；关闭一个远程画面窗口（Factory View 仍运行且分享明确启用）**不自动关闭**工厂共享。未来无人值守 Service 的进程/凭据资格未激活，不显示已支持。
+- WAN/Route 可用、DeviceTLS 身份通过、Target 可见、ViewGrant/ControlGrant、已新渲染帧这几个状态分别来自 D3/F05/HMI/V02，用户端只能按真实来源呈现；Edge 不发布 HMI 的授权回执。
+- 撤销/修改共享发生时立即使受影响工厂 route 在本地拒新与终止；客户端取消旧接入/输入，不自动重放已送达但不知业务结果的命令，合法同机 Direct 可继续。
+
+### 7.2 工厂 View 关闭范围、Edge 状态与异步 UI 的具体消费合同
+
+完整 E-01 内部 RunLease/Route/Store/撤权时序由 [D3 EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 单一维护；V-03 只持有带权威 `revision/epoch/observationTime` 的只读视图，不在 QML 页面对象中保存可信管理员许可。
+
+| View 用户操作或观察 | V-03 应执行/显示的事实 | 不得混淆 |
+| --- | --- | --- |
+| 关闭单个 RemoteSurface、设备 Tab 或工厂管理页面 | 关闭关联前台 RemoteSession 与本地 pressed/focus；工厂 Edge 只要同产品仍运行且登录态租约、共享许可仍有效，便维持已明确批准的其他 SiteLink/Route | `CloseTab` 不是 `ExitHyRemoteView`，也不是撤销 HMI 共享 |
+| 工厂用户明确退出整个 HyRemoteView/OS 注销 | 应先请求 E-01 本机 STOP admission/fence 并注销观察者，终止受管数据路由；若应用被直接强杀，实际 socket 生命周期与远端租约做失效收敛 | 不因 Gateway 残留 presence 而展示 Factory Edge 仍真正在线 |
+| 管理员改变 HMI 分享状态 | 提交异步有权命令并显示 `PENDING`，只在本机 Edge 回传已持久化 PolicyRevision 和生效结果后显示 `SHARED/UNSHARED`；失败显示 DENY/NEEDS_RECOVERY | QML button toggle 不是授权，Gateway ACK 不是本地已提交 |
+| View 新开/重启登录会话 | 读取受信白名单与当前本机 `EdgeRunEpoch`，显式启用当前运行租约后才可能显示 `LINK_READY`；若尚未启用，则是 `CONFIGURED_OFFLINE` | 持久共享意图不是注销后的自动后台服务资格 |
+| 远端 Presence、SiteLink、HMI 在线或 DeviceTLS 状态发生变化 | 对每一条标来源与最后观测时间；RoutePairReady、HMI DeviceTrusted、Host ViewGrant 与 FrameFresh 分别更新 | 不能由一条“在线”推断用户现在可控制设备 |
+
+**状态代际守卫**：V-03 对任何异步 `registerHmi/setHmiShare/startEdgeLink/RouteClose` 返回先检查发起时的 `EdgeRunEpoch` 和该 HMI 预期 `SitePolicyRevision`。如果已切换站点/当前用户或旧 UI 请求迟到，只能作为历史诊断，不可覆盖新的共享/关闭结果。UI 不自行实现回滚/自动重试非幂等管理命令；结果未知先向本机受信 Edge 查询当前真实快照再决定提示。
+
+**客户端设计验收**：`VIEW-EDGE-01` 关闭画面不退出共享；`VIEW-EDGE-02` 注销/退出真实离线；`VIEW-EDGE-03` 迟到共享回执不得覆新版本；`VIEW-EDGE-04` 升级/重启不复活旧 Route；`VIEW-EDGE-05` Gateway 在线不等于 HMI DeviceTLS/Grant。全部为 DESIGN_ONLY，按 D3 EDGE-LC 与 D4 XP-12/XP-24/XP-20 追踪，不声称已运行。
+
+
+### 7.3 传统 RFB 权限与输入的真实 UI 边界
+
+D1 F-04 的 [`RLG-01..09` 设备端 legacy RFB 设计合同](module-detail-d1-device-protocols-2026-11-05.md) 只在 HMI 内部实现真实 Target/Scope 策略，**没有**在标准 RFB 3.8 新增任何 ControlState/GrantEpoch 消息。因此 V-01/V-03 只应显示经 RFB 协商实际证实的：协议/安全类型、收到合法帧、应用是否配置输入意图及本地发送状态。**不可显示“已获得个人控制授权”“HMI 已执行业务输入”或设备 TLS 身份可信**，除非有其他独立、真正受控的证据来源（不能凭 Gateway Presence 或 VNCAuth 共享口令推断）。
+
+RFB 的 `sharedFlag` 是标准共用连接参数，不是 Scope Controller 请求；当 HMI 默认只读或当前 Scope 由别的 peer/Native 持有，官方 View 将输入标为“不可证/设备可能拒绝”，并按设备安全最终决策禁发不符合自身资格的输入。断线、失焦和 Target 改变应清本地 held 和旧画面，永远不复用旧 RFB 连接身份。XP-02/04/05/06/20 与 RLG 设计合同相互引用，**没有宣称真正第三方 Viewer 或新 HMI 策略已实现**。
+
+**V-03 与 X-01 的安装/升级边界**：现行 [X-01 `DEP-01..08` 交付事务设计](module-detail-d4-tool-delivery-quality-2026-11-05.md) 负责 HyRemoteView **单产品安装**、Factory Edge 同产品运行角色更新、可信 DeviceCatalog/TrustStore 的迁移与回滚。V-03 只消费经实际本机安全材料校验和当前 App/Edge RunEpoch 的投影，不会因为安装器返回“文件已复制”就显示“已认证设备”“共享在线”或“产品资格 PASS”。配置持久化与真实 Route/RunLease 严格分开；历史 DeviceId/Trust 新证书必须重新可信复核。
+
 ## 8. 依赖与后续实施阶段划分（设计包，不是立即编码）
 
 - `V01-A` 协议/ByteStream 抽象、安全解析/拒绝/会话生成；与 D1 Native/RFB 精确兼容。**Native 需先有真实 HMI wire 实现与源合同**才可功能验收。
@@ -201,7 +391,7 @@ sequenceDiagram
 | VIEW-01 | 彻底离线 Direct，不登录 Gateway | 仅本地网络+有效设备配置可建立 RFB/Native，云宕机无影响 | `DESIGN_ONLY` |
 | VIEW-02 | RFB 3.8 None/VNCAuth/Raw/TRLE 与合法拒绝 | 精确 server/client/Kit 和异常帧、无证书身份虚构 | `POC_PARTIAL_NOT_G4` |
 | VIEW-03 | Native TLS 设备指纹/CA 可信引导 | 正证通过，替换设备/证书变化在发送秘密前拒绝 | `NOT_IMPLEMENTED` |
-| VIEW-04 | Native 21 消息 A/B 对照与 Target/View/Control | 对完整原始 wire/正负向 vector 一一核验 | `ANNEX_PENDING` |
+| VIEW-04 | Native 21 消息 A/B + Human P-A/A 数值与 Target/View/Control | 26 黄金字节正例与 12 异常设计向量，未来双端独立解析/状态与身份 Grant 测试 | `SOURCE_APPROVED / VECTOR_DESIGNED / E2E_NOT_RUN` |
 | VIEW-05 | Route paired、Device TLS、ViewGrant、ControlGrant 分离 | Gateway 在线不能出现未获许可像素/输入 | `NOT_QUALIFIED` |
 | VIEW-06 | 视图缩放、DPR/resize/full/delta | 单屏/全屏/高 DPI/背景切换无错位/坏基线 | `G3_PARTIAL` |
 | VIEW-07 | Focus lost/reconnect/撤权并发 held 输入 | 无旧 Session input，HMI 清理一次，本地 GUI 不重放 | `NOT_RUN` |
