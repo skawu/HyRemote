@@ -18,7 +18,7 @@
 | XC-05 | 多 Peer 控制权 | 同一应用 Scope 默认一位远程操作者，除非宿主明确批准分离的不冲突 Scope | Host/F-06 arbitrate；F-04/05 不能“因各有 socket 就都可控制” | **CRITICAL GAP**：旧 RFB 汇总 held keys/按钮并未有设备会话权限/Scope 保证 |
 | XC-06 | 双栈共享采集 | 可共享底层 Target/FrameSource，但每连接/Scope 的显示许可、遮罩和输出队列必须独立 | F-02 控资源及 capture；F-06 policy filter；F-04/05 各自编码/baseline | **CRITICAL GAP**：旧 RFB FrameDecorator 单次合成全 peer 复用，不能等同未来隐私授权 |
 | XC-07 | 输入两次栅栏 | 入队时与 Qt 最终交付前校验当前 `AccessSessionId/Scope/GrantEpoch/PolicyRevision`；撤权优先现场 | F-04/05 关联可信 socket→F-06 检查→Qt adapter 最终验证 | **CRITICAL GAP**：需要保证同 Scope 不跨 peer 残留/重复 release |
-| XC-08 | 画面撤权的真实性 | 发布新政策后不得**新排队**旧受限画面；内部未发缓存清除，已写出网络/已显示的像素不能物理收回 | HMI 清理内部并中断必要连接；Viewer 清屏/标过期 | **OPEN SEMANTICS**：需选精确撤权生效界点、in-flight 处理和可证测试 |
+| XC-08 | 画面撤权的真实性 | **H-REVOKE=A 已批准**：新权限 epoch 后不产生/排队旧受限画面；可控队列清除、必要时断链，已发网络/已见像素不能撤回 | HMI 当前 PolicySnapshot/队列回收；Viewer 清屏并禁止旧输入 | **POLICY_APPROVED / IMPLEMENTATION_OPEN**：线性化点、in-flight 竞态、负向测试待细化/实证 |
 | XC-09 | 传输重连 | 每新设备连接/协议为新 AccessSession；旧 route/grant/输入/帧基线不可复活 | Core/Runtime generation；RFB/Native 新协议状态；View 新 Display epoch | **ALIGNED** |
 | XC-10 | 受管信任 | Gateway Operator/Site/RoutePermit 只批准受管路径；Edge 白名单与 HMI DeviceIdentity/Grant 分属不同权威 | E/G 不看 Native 明文/不任意 TCP proxy；HMI 最终裁决 | **ALIGNED**；与 Stage05 没有发现必须更改 Native A/B 的理由 |
 | XC-11 | 背压与资源 | Core bounded mailbox 不等于全设备有界；各协议 sender/Socket/TLS/Qt/每 session Filter/FrameStorage 分别累计 | F-02 用全口径预算；F-04/05 独立限额，Edge/Gateway 只能 FIFO 背压/关闭 | **OPEN BUDGET**：128MiB 设计目标不是测量证明 |
@@ -26,7 +26,7 @@
 | XC-13 | 协议兼容/已交付权益 | 当前 Source 代码已 exact RFB3.8/before-read bound/Normal sweep；#158 旧文字可能落后于代码 | F-04 不重做已修复事项；真实运行资格仍需复现；RFB 3.7 不受支持 | **ALIGNED**；`producedUsefulMessage` 对任一 Normal 完整消息置 true，持续占用需进一步定义 |
 | XC-14 | 设备侧 Native wire | V8 附录 A/B 唯一 1.0 权威；设计稿引用了 21 类、头与 Grant，但未见可复核 Word 全文 | F-05 必须在正式原文签收后生成完整 type/field/state/negative vector 追溯 | **PENDING BASELINE INPUT**；不能以已有派生 Markdown 充当正式附录 |
 
-**审查结论**：未发现足以授权另起协议/第五接入/第二采集的设计理由；但上表的 CRITICAL GAP、OPEN SEMANTICS 和 PENDING 阻止“D1 已完成冻结”。它们是**设计闭合工作**，不是现在开产品代码工单。
+**审查结论（审批后）**：未发现增加第三协议、第五接入或二次画面采集的正当理由。H-RFB/H-DUAL/H-REVOKE/H-T01 的产品语义已批准，但上表 CRITICAL IMPLEMENTATION GAP、具体撤权竞态、资源设计与原始 V15/V8/Native A/B 追溯仍阻止 D1 正式冻结；它们是设计与资格闭合，不是现在的代码工单。
 
 ## 2. 接口合同：哪一层产生什么事实
 
@@ -140,7 +140,7 @@ sequenceDiagram
 
 `D1_MODULE_SCOPE=F01..F06_REVIEWED`（已形成并交叉比较三份审查候选）；`D1_INTERFACE_CONTRACT=CONDITIONAL_CANDIDATE`；`D1_FORMAL_DESIGN_FREEZE=NO`。
 
-允许继续 **D2 客户端详细设计**，但不能把开放的 RFB Scope/Grant、Dual 启动、撤权 in-flight、Native 原文校验擅自变成“已批准定案”。D2 需对这些问题采用清楚的条件分支并保留失败关闭契约。
+**阶段记录更新**：原始 D1 完成时允许按条件继续 D2；D2–D5 现已完成设计候选。Human 已批准 RFB Scope、Dual 启动和撤权在途的 **A 产品语义**，但 Native A/B 全文核验、真实权限/协议/撤权技术合同及验收依然待签收，不能升格为实现已通过或设计已冻结。
 
 下一阶段设计主线：D2 V-01 Direct/Native 双客户端协议适配，V-02 RemoteSurface/Qt Quick 输入/状态，V-03 Device/Identity/Credential/Diagnostics/Branding 与工厂 Edge 用户界面**界面消费合同**，以及与 Framework 的跨仓版本/能力协商。
 
