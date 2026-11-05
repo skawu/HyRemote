@@ -121,6 +121,18 @@ XP-03/04/05/06/07/10/20/21 必须复核 [Human 批准的 Native V8 数值/档位
 [Native AFS-01..AFS-12 原子设计合同](module-detail-d1-device-protocols-2026-11-05.md) 已覆盖 TLS-first/plain、认证与独立 ViewGrant、ControlState/Scope/现场接管、Target 撤销、FULL/DELTA、Qt 双栅栏和 Managed Route 失败。这些是原 `FW/DP/VIEW/XP` 的**细化设计入口**，不改动已有测试用例编号与 Native wire。QA 在正式实现后须采集 **HMI SHA + Viewer SHA + 平台 Kit + 真实 Policy/Grant epoch + 正负日志**，并记录每个 `AFS` 到测试 ID 的对应；尚无真实执行结果，全部 `DESIGN_ONLY`。不能让一条成功 TLS 或一张正确画面代替全部权限/隐私/撤权验收。
 
 
+### F-02 / F-06 可实施合同的设计验收与未来产品验证分离
+
+D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 界定资源/对象唯一 Owner、per-session Filter/Full/Delta、PolicySnapshot、Qt 最终输入线性化、按来源 held 账本及撤权在途边界。其审查入口如下：
+
+| 审查时机 | 需要什么证据 | 不可偷换为 |
+| --- | --- | --- |
+| **Gate-D 设计冻结** | 全部 RT/POL 合同有明确源条款、Owner、前后状态、线程所有者、失败闭合、预算边界和至少一个正/负 TestSpec；与 Native AFS-01..12、D2/D3 的消费合同一致且无未裁决关键冲突 | 不要求尚未获 Gate-I 的正式 Host/Viewer 产品代码与真机互通已经 PASS |
+| 适用 **Gate-G3 技术 PoC** | 对真正威胁方案可行性的 TLS/Qt Render/Host policy 并发等假设，按已获准的 PoC 范围、精确 SHA/Kit/环境单独验证；不外推产品支持 | 不能拿设计合并或旧 PoC 局部结果冒充完整产品 |
+| **Gate-I 后实现级测试** | `FW-02/03/04/05/06/07/08/09/12`、`AFS-01..12`、`XP-05/06/25/26/27` 按精确 Host/Viewer 构建测试来源会话隔离、Qt 抢占、隐私旧帧、资源上限与非法消息 | 不能把未运行的 XP 计划标为 PASS、不能拿单一 Qt Kit 外推所有平台 |
+
+这些要求仍服从已批准 H-RFB/H-DUAL/H-REVOKE、Native P-A/A，既不增加第五种接入也不创建新的 Native wire。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
