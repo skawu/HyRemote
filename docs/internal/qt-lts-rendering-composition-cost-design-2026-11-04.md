@@ -561,3 +561,57 @@ QT5_GL_READBACK=UNVERIFIED_POTENTIAL_STALL
 HUMAN_RESEARCH_APPROVED=YES
 HUMAN_PRODUCT_IMPLEMENTATION_APPROVED=NO
 ```
+
+
+## 17. F-G3 双 Qt 原生帧被动读回验收与 F-G4 全帧容量门禁（2026-11-05）
+
+**审批状态不变**：Human 只批准**技术可行性研究**，没有授权修改 HyRemote 产品捕获代码、QtPrivate 生产依赖、Qt SDK、发布或 G7。证据：[Local Owner F-G3 #609](https://github.com/skawu/HyRemote/issues/609#issuecomment-6647041056)。Qt5.15.2 / MSVC2019、Qt6.8.3 / MSVC2022 各一套独立自动退出 Qt-only QQuickView，默认 Windows 图形后端；云端仅核对 GitHub 的试验汇报，未直接读取本地 `tmp/609-fg3` 原始日志。
+
+### 17.1 准确验收：两代 PASS，但不是同等产能证明
+
+| 检查 | Qt5.15.2 | Qt6.8.3 |
+| --- | --- | --- |
+| native 渲染来源 | 当前桌面 OpenGL 后缓冲，`afterRendering`、交换前 | 默认 D3D11 / QRhi 当前 swapchain，合法 CB `resourceUpdate(readBackTexture(null,...))` |
+| 静态 2s | `frames=1; afterRendering=1; reads=0` | `frames=1; afterRendering=1; submits=0` |
+| 自然原生动画 | `frames/afterRendering=76/76` | `78/78` |
+| 有效像素 | 3次 4×4 `GL_RGBA/UNSIGNED_BYTE`，R=`51,74,100`，`glGetError=0` | 3次完整 **1920×1061** RGBA8（`8,148,480` bytes），R=`51,74,100`；3/3 async completed，`8/22/22 ms`，无 `rhi->finish()` |
+| 无异常 | 本测试未观察到 QT WARN / GL error / crash | 未观察到警告、未完成回调或 crash |
+| 尚未证明 | **全帧读取时延、render-thread stall、帧率** | 持续 readback 队列、in-flight 背压、提交/完成版本、surface 生命周期与资源失效 |
+
+**F-G3=`PASS_FOR_PASSIVE_BYTE_ACCESS_ON_TESTED_KITS`**。静态无额外帧，动画内 native `afterRendering==frameSwapped` 且探针未触发采集专用 `update/grab`，可合理支持“该探针未额外驱动场景绘制”的有限判断；不能从 3 次读回推出任意驱动、原生绘制帧率或 full-frame 性能零损失。**Qt5 4×4 与 Qt6 全帧不是对等性能样本**。Qt5 GL 当前读回 alpha=255，不能自动代表 `contentItem()->grabToImage` 的预乘 alpha / 窗口背景语义。Qt6 1920×1061 是受窗口边框/显示区域限制的物理 surface，不是 1920×1080 逻辑合同。
+
+### 17.2 后续架构候选（只形成设计，不修改代码）
+
+- **P3-native-frame-capability**：Qt Quick 目标仅在 native frame 已实际生成时，Qt5/Qt6 LTS-version adapter 发起有边界的 readback，完成后发布 owned/immutable `Rgba8888` frame 到现有 Shared Runtime。`CaptureSource` / Core pacing、不透明权限校验、水印/隐私处理、RFB/Native 传输以及四入口的现有支持定义**不得更改**。这需要显式定义 native frame tap 与 Core request-driven 模型如何对齐，否则 `requestFrame` 可能等不到 native 帧，或在 Viewer 新连接时没有有效初始化帧。
+- **Bootstrap / static / reconnect**：Qt Quick 在静态时可能只渲染过**1 帧**，而 Viewer 可能晚于它连接。不能简单“只听未来 native 帧”导致 Viewer 无 ServerInit。新 Viewer / 断线重连 / window 显示与隐藏 / DPR/resize / 失效 / watermark/privacy 状态变更，必须允许**一次可信的按需完整抓图或安全 fallback**；成功获取并确认为有效后再可能进入 native passive 状态。未知类型一律退回当前 bounded `grabToImage` 路径。
+- **异步状态与生命周期**：native frame `frameSerial`、`readbackRequestId`、`windowGeneration`、pixel size/format/DPR 必须跨完成回调保持关联；Qt6 GPU 结果不能被 premature free，失效/stop/resize 后的异步 callback 不得进入 Core。Qt5 同步 GL 读回若 stall 严重，须先证明可用 PBO + fence（不强制同步），否则不能宣布符合实时性。
+- **捕获边界与安全**：native window/swapchain 包含的颜色/清屏/overlay 等不同于旧 Quick contentItem 结果；独立 Popup/native surface、不透明背景与透明控件、Y 轴方向、premult RGBA/BGRA、DPR 都需要保持现有 API 的语义。任何水印、隐私、权限不得被 raw swapchain 绕过。被动帧未提供可验证的完整覆盖时，不应启用新快路。
+- **非消失的成本**：GPU→CPU readback、内存带宽、潜在 GPU fence/submit latency、RFB 压缩与对端交付仍存在；Qt6 8–22ms 仅为单次低密度 readback completion，未验证 60Hz。不能以 F-G3 宣称 #789 或 #609 已解决。
+
+### 17.3 唯一下一研究门槛 F-G4 — full-frame 容量与干扰止损
+
+**目的**：填上对产品性能结论影响最大的差异——Qt5 只测 4×4，而 Qt6 只测稀疏的整帧。继续复用本地 Qt-only `tmp/609-fg3`，不修改 Qt/HyRemote 源码，不连 Viewer、不开展平台矩阵。
+
+每 Kit **一次**自退出自然 `OpacityAnimator` 连续动画：先 **2s baseline**（不读回），随后 **2s capture phase**（最多 **12 次**，以约 6Hz 做完整 window surface 的 readback；不得另外调用 `update/grabWindow/grabToImage` 或强制 graphics backend），原生帧持续，尽量保持同一窗口尺寸和场景。记录每相位的 native frame 计数和帧时间（中位/P95）、host process CPU 窗口；读回的 dimensions/format/total bytes/实际像素校验、提交与完成时间、完成数和最大同时在途数。Qt5 按合法 GL 状态全帧读取，实测 `glReadPixels` 调用耗时中位/P95 和首个 GL 错误；Qt6 继续有效 QRhi asynchronous callback，**不准 `rhi->finish()` 或主线程等待**，最大同时在途 **1**（超出直接跳过一次读回，不能无限排队）。
+- **硬停线**：整帧数据无效、异步资源跨阶段失效、native frame 被读回反向唤醒、常规动画明显卡死/同步卡顿、GPU/Qt 错误、Qt5 阻塞读回导致明显不可接受的 frame delay，就在第一条可信异常处停止该 Kit；立即报告 `G4_STALL_OR_CORRECTNESS_NO_GO`，不得改用 Qt/驱动补丁或另换 Windows API 绕过。
+- **判定**：仅当两代完整像素有效、容量/线程安全可解释、没有明显交互破坏，输出 `F_G4_CAPACITY_RESEARCH_PASS`；性能指标同时原样报告，**不预设 gain**，即使 PASS 仍须 Human 审批 QtPrivate 依赖、安全语义和先期产品实验。无法测到的写 NOT_MEASURED。Qt5 若严重 stall，本版同步 GL 方案 NO-GO，保留“受控研究异步 GL PBO”选项供 Human 选择，而**不是自动进入产品开发**。
+
+### 17.4 实施前 Human 风险核对卡（当前待签字）
+
+1. **High/Blocker**：零代码 Quick 的 native swapchain vs 原 `contentItem` 区域/alpha、跨窗口 Popup/native/Shader/视频与隐私水印链一致性（未证明）。
+2. **High/Blocker**：Qt5 full-frame GL stall / 异步 PBO 可用性；Qt6 QRhi async 读回/资源寿命/背压和高频延迟（F-G4 待测）。
+3. **High**：QtPrivate exact-Kit ABI、Qt5 Quick experimental 的支持声明、Qt5 GL/Qt6 QRhi 各平台 SDK 和 Qt 授权/发行方式。
+4. **Blocker**：CaptureSource request/ready 关联、静态首帧/新 Viewer ServerInit、DPR/resize、stop/reconnect/target-lost 故障回退；未知支持能力必须 fail-closed。
+5. **High**：没有真实 Viewer/ARM/RK3588 的新 P3 A/B；CPU/RSS/FPS/延迟的可实现 SLO 尚不能承诺。
+
+**Human 已批准本研究，不等于批准下一项代码实施。所有 P3 产品 Runtime 改动前，须提交 F-G4 结论+风险清单+相对保守 fallback 的能力取舍，由 Human 明确授权；研究过程中发现反例即提前 STOP。**
+
+```text
+F_G3=PASS_QT5_SMALL_READ_QT6_FULL_ASYNC
+F_G4=NOT_RUN_FULL_FRAME_CAPACITY
+QT5_REALTIME_COST=UNKNOWN
+QT6_ASYNC_SUSTAINABILITY=UNKNOWN
+P3_PRODUCT_GO=NO
+HUMAN_FEASIBILITY_RESEARCH=APPROVED
+HUMAN_PRODUCT_IMPLEMENTATION=NOT_APPROVED
+```
