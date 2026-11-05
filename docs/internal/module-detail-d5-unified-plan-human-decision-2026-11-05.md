@@ -37,7 +37,7 @@
 | G10 | Optional Gateway / 独立交付责任 | W00、D3 Control IDL 和**Human 对 #190 明确激活** | Identity/Site/Edge Registry、RoutePermit + one-shot Pair、Opaque Relay、tenant/audit | 自托管证书/网络隔离/攻击负测/配对重放/HA 目标按获批范围 |
 | G11 | Gateway Ops / Gateway owner | G10 + 批准的运维范围 | 最小部署/升级/备份/密钥轮换/策略迁移/脱敏诊断 runbook | 客户真实自托管环境可复现恢复/回退且不复活撤权 |
 | X10 | Whole-system E2E / Security + QA | F14 + V12 + E10 + G10，D3 E2E 目标 | 真 HMI↔View DeviceTLS + Edge/Gateway opaque route，12 Edge + 20 产品场景追溯 | 路由 READY≠Grant、无明文、现场优先、撤权/在途/慢端/多设备真实测试 |
-| T10 | Tool maintainer / HyRemoteTool | **Human Tool vs View 职责决定**，现有 Tool S1 事实 | 已交付 S1 回归/维护、SDK/Qt Kit Inspector/诊断/可复制四路线；是否复用 RFB client 单独资格 | 正式 Tool 版本/Qt5/6 Windows 工具兼容、脱敏报告、绝不虚构 Native |
+| T10 | Tool maintainer / HyRemoteTool | **Human Tool vs View 职责决定**，现有 Tool S1 事实 | 当前已发布的 Tool 基础 RFB 回归/维护；S1 全量依 #586 仍待验收，SDK/Qt Kit Inspector/诊断/可复制四路线；是否复用 RFB client 单独资格 | 正式 Tool 版本/Qt5/6 Windows 工具兼容、脱敏报告、绝不虚构 Native |
 | X11 | Product packaging / 各产品交付 Owner | F15、V13、E11、G11、T10 适用范围 | 安装/更新/卸载/密钥/迁移/产品级版本表/许可证/SBOM、精确平台适用矩阵 | 正/负安装/升级/回退、只装 View、SDK Kit 与 QtPrivate 精确隔离 |
 | X12 | Release QA / Human 产品/发布治理 | X10/X11 + 已批准支持范围 | 独立产品发布申请、客户支持矩阵与风险接受 | 与 #95 版本治理衔接、真实所有 Gate PASS，Human 另行批准 |
 
@@ -73,11 +73,11 @@ flowchart TB
   V13 --> X11
   F13 --> X11
   X11 --> X12["X12 对应产品发布准入 / Human"]
-  HT["H-T01 Human Tool 产品分工"] --> TOOL["T10 Tool 产品主线，既有 S1 维护另循原授权"]
+  HT["H-T01 Human Tool 产品分工"] --> TOOL["T10 Tool 产品主线，既有基础 RFB 维护，未完成 S1 按原授权治理"]
   TOOL --> TQ["Tool 独立安装/版本/质量 Gate"]
 
 
-**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 X10 的真实 E2E 必须同时具备 F14/V12/E10/G10。Tool 历史 S1 回归维护可按其已授权的独立产品路线继续，新产品重组需 Human 先选，**Tool 不成为 View/HMI/Gateway 的强制打包依赖**。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
+**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 X10 的真实 E2E 必须同时具备 F14/V12/E10/G10。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586 及 Human 未来产品分工，新产品重组需 Human 先选，**Tool 不成为 View/HMI/Gateway 的强制打包依赖**。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
 
 **不得用“Gateway 已启动”倒推 HMI Native 或 View 资格；不得以“PoC 编译通过”倒推正式客户端授权。**
 
@@ -113,7 +113,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | Native A/B + DeviceTLS | HMI design05 + D1 Protocol | DP07..14、HMI01..08；原文 21 类和错误集 | **正式 A/B 源未核对，端到端未实现** |
 | View Direct/RemoteSurface/Identity | D2 VIEW01..14 | XP02–03、XP07、XP13、XP16–17 | G3 未通过，无 G4 产品代码 |
 | Factory Edge / Gateway | Stage04/05 + D3 MG01..16 | EDGE01..12 / XP08–13、XP18 | 设计候选；#190 未激活 |
-| Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 既有 S1 有历史产品基线；新版产品边界需 Human |
+| Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 已有基础 RFB 产品基线；完整 Tool S1 的 #586 仍 OPEN；新版产品边界需 Human |
 | 安装/安全/质量 | D4 X01/X02 | XP01..20 全域 + 环境/证据表 | 设计矩阵已成；未运行全产品 E2E/产品资格 |
 
 正式 V15/V8 的条款 ID 不是从 Issue 目录数量推导；以获批准的原 Word 真实章节/表格为准建立 `RequirementID→ModuleID→ContractID→State/Failure→TestID→Owner→EvidenceSHA`。对每一项需记录 `COVERED/CONFLICT/OPEN/NOT_APPLICABLE` 及理由，不能以“共有 20 个 XP”证明 100% 条款覆盖。
@@ -125,7 +125,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | R-01 | 旧 RFB 匿名/共享口令不提供 Native 个人身份，却要求单 Scope 控制独占；以 Host 显式授权 + 默认只读 + RFB 标准兼容测试作为候选；不修改 wire | H-RFB（如影响已交付用户权限需 Human） |
 | R-02 | Dual 任一 listener 启动失败可能出现用户误认“全可用”；优先原子绑定需全部成功，对运行中故障可只标部分不可用但绝不弱协议回退 | H-DUAL |
 | R-03 | 撤权时已进入 TCP/TLS/内核/远端显示的数据不可撤回；不产生新的旧权限发送，清仍可控制的队列，必要时断链，View 遮蔽 | H-REVOKE，Human 对安全承诺范围接受 |
-| R-04 | Tool 与 View 双官方访问 UI，长期双安全与客户支持成本；优先存量 Tool S1 维护、未来完整 View 归 View | H-T01（明确 Human） |
+| R-04 | Tool 与 View 双官方访问 UI，长期双安全与客户支持成本；优先保留已发布 Tool 基础 RFB、未完 S1 保持真实规划，未来完整 View 归 View | H-T01（明确 Human） |
 | R-05 | 证书/TrustBundle 来源不可审计、自托管/外网替代身份；安全失败关闭，DeviceId HMI 独立验证，不因 Gateway 成功登录解锁 | V8 原文核对 + 安全审查 |
 | R-06 | Edge 用户注销后被误宣称无人值守在线；首个可验证级别只登录期，真正服务模式通过 Windows SCM/ACL/升级资格后另发布 | H-EDGE（产品目标级别） |
 | R-07 | 现有 D1/D2/Stage05 只引用 Native V8 Annex 派生材料，不能形成 wire freeze | H-BASELINE（权威原始输入） |
@@ -137,7 +137,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 
 | 决策 | 推荐 A / 影响 | 替代 B / 成本 | Human 决定格式 |
 | --- | --- | --- | --- |
-| **H-T01 Tool / View 长期分工** | **A** 保持已交付 Tool S1 的可用性与维护，但未来 Native/Managed/官方完整工作区主线归 HyRemoteView；Tool 新投资 SDK/Kit/诊断，避免双研发 | **B** 规划 Tool Remote 逐步退役/迁移到 View，需要用户兼容与支持期限；或 C 永久双全功能，成本更高 | `H-T01=A/B/C` |
+| **H-T01 Tool / View 长期分工** | **A** 保持 Tool 已发布基础 RFB 访问的可用性与维护，S1 全量仍待 #586 验收并按新产品边界协调；未来 Native/Managed/官方完整工作区主线归 HyRemoteView；Tool 新投资 SDK/Kit/诊断，避免双研发 | **B** 规划 Tool Remote 逐步退役/迁移到 View，需要用户兼容与支持期限；或 C 永久双全功能，成本更高 | `H-T01=A/B/C` |
 | **H-DUAL RFB-only/Native-only/Dual 启动失败语义** | **A** 要求的协议端点在新架构统一受信 Admission 后做受控原子启动：任一必须项失败不发布部分成功；运行期局部故障只关受影响协议连接并明示 | **B** 宿主显式声明可降级的 required/optional Profiles，仅在不削弱安全/授权情况下容许局部服务，需要更多 UI/运维测试 | `H-DUAL=A/B` |
 | **H-REVOKE 设备撤权对在途内容的安全承诺** | **A** 自新 Policy/GrantEpoch 生效点之后不产生新的旧政策输出；清本进程可控制缓冲，必要时断链，View 立即遮蔽旧画面；明确已发送/已展示不能物理撤回 | **B** 要求更强在途可达性约束，需要额外主动终止/协议和硬件实验且仍无法撤回已显示内容；若产品文案暗示物理撤回须修正文案 | `H-REVOKE=A/B` |
 | **H-EDGE 首批工厂后台可用级别** | **A** 首先认证用户已登录期间 Edge 在线，退出/注销真实离线；无人值守 Windows service 作为后续独立可验收能力，不额外安装软件 | **B** 首批必须注销后在线，要求更强 OS 账户/安全/更新实际证据并改变最短可交付路径 | `H-EDGE=A/B` |
