@@ -264,7 +264,7 @@ sequenceDiagram
 | `EDGE-LC-03` 本地撤销事务 | E-01 PolicyAdmission owner | 存储失败保持 DENY/NEEDS_RECOVERY，不因迟到云 ACK 复活 | EG-03/EG-08、XP-09 |
 | `EDGE-LC-04` Offer/Pair/dial TOCTOU | E-01 Route owner + G-01 PairLedger | Epoch/revision/endpoint/trust 改变拒绝或关路由，不得拨任意内网地址 | EG-05/EG-09、XP-10 |
 | `EDGE-LC-05` 透明 FIFO/背压和退出释放 | E-01 OpaqueBytePipe owner | 每 Route/方向 queue 受限；只关闭/背压，不能删改 Native TLS 字节 | EG-06/EG-11、XP-17/27 |
-| `EDGE-LC-06` 回滚和密钥旋转 | X-01 Installer/Upgrader + E-01 credential owner | 撤权版本单调；回滚不恢复旧共享或 token；凭据不输出日志/UI | XP-24/XP-29 |
+| `EDGE-LC-06` 回滚和密钥旋转 | X-01 Installer/Upgrader + E-01 credential owner | 撤权版本单调；回滚不恢复旧共享或 token；凭据不输出日志/UI | XP-24/XP-12 |
 | `EDGE-LC-07` 可信状态上报 | E-01 runtime telemetry → V-03 / Gateway | Gateway 旧在线观测仅显示 stale；不推出 HMI DeviceTLS、ViewGrant、实时帧 | XP-11/XP-20 |
 | `EDGE-LC-08` Direct 隔离 | V-01 DirectPath + F-05/F-06 HMI | Edge STOP/网断仅结束受管路由，不破坏本机合法 Direct/现场 Qt HMI | XP-11/XP-19 |
 
