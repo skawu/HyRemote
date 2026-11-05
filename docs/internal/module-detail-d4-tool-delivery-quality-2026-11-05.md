@@ -116,6 +116,11 @@ sequenceDiagram
 
 XP-03/04/05/06/07/10/20/21 必须复核 [Human 批准的 Native V8 数值/档位合同](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 和 [26 个黄金字节向量与 12 个异常规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)。两个档位都必须设备 TLS-first；`plain` 只是不额外进行 Native 用户密码认证，不是开放匿名设备控制。验收要逐项记录独立 Host/Viewer 构建 SHA、Qt Kit/平台、可信设备身份、Host Scope 与是否真实执行。当前新增向量全部未运行，不能因为 Human 批准数字而写 PASS。
 
+### F05/V01 正交状态机的验收映射补充
+
+[Native AFS-01..AFS-12 原子设计合同](module-detail-d1-device-protocols-2026-11-05.md) 已覆盖 TLS-first/plain、认证与独立 ViewGrant、ControlState/Scope/现场接管、Target 撤销、FULL/DELTA、Qt 双栅栏和 Managed Route 失败。这些是原 `FW/DP/VIEW/XP` 的**细化设计入口**，不改动已有测试用例编号与 Native wire。QA 在正式实现后须采集 **HMI SHA + Viewer SHA + 平台 Kit + 真实 Policy/Grant epoch + 正负日志**，并记录每个 `AFS` 到测试 ID 的对应；尚无真实执行结果，全部 `DESIGN_ONLY`。不能让一条成功 TLS 或一张正确画面代替全部权限/隐私/撤权验收。
+
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
