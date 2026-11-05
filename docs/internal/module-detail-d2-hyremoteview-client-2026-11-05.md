@@ -370,6 +370,8 @@ D1 F-04 的 [`RLG-01..09` 设备端 legacy RFB 设计合同](module-detail-d1-de
 
 RFB 的 `sharedFlag` 是标准共用连接参数，不是 Scope Controller 请求；当 HMI 默认只读或当前 Scope 由别的 peer/Native 持有，官方 View 将输入标为“不可证/设备可能拒绝”，并按设备安全最终决策禁发不符合自身资格的输入。断线、失焦和 Target 改变应清本地 held 和旧画面，永远不复用旧 RFB 连接身份。XP-02/04/05/06/20 与 RLG 设计合同相互引用，**没有宣称真正第三方 Viewer 或新 HMI 策略已实现**。
 
+**V-03 与 X-01 的安装/升级边界**：现行 [X-01 `DEP-01..08` 交付事务设计](module-detail-d4-tool-delivery-quality-2026-11-05.md) 负责 HyRemoteView **单产品安装**、Factory Edge 同产品运行角色更新、可信 DeviceCatalog/TrustStore 的迁移与回滚。V-03 只消费经实际本机安全材料校验和当前 App/Edge RunEpoch 的投影，不会因为安装器返回“文件已复制”就显示“已认证设备”“共享在线”或“产品资格 PASS”。配置持久化与真实 Route/RunLease 严格分开；历史 DeviceId/Trust 新证书必须重新可信复核。
+
 ## 8. 依赖与后续实施阶段划分（设计包，不是立即编码）
 
 - `V01-A` 协议/ByteStream 抽象、安全解析/拒绝/会话生成；与 D1 Native/RFB 精确兼容。**Native 需先有真实 HMI wire 实现与源合同**才可功能验收。
