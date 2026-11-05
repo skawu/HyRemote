@@ -459,3 +459,47 @@ HUMAN_PRODUCT_IMPLEMENTATION_APPROVED=NO
 HUMAN_QTPRIVATE_DEPLOYMENT_ACCEPTANCE=NOT_YET
 PRODUCT_CODE_CHANGED_BY_THIS_RESEARCH=NO
 ```
+
+
+## 15. F-G2 反例优先：Render-thread Animator 可能绕过 item dirty（2026-11-05）
+
+**范围和审批**：只做技术可行性研究。F-G0 / F-G1 在普通 `Rectangle` 修改及 16ms GUI 定时器动画上双 Qt PASS，结论有效，但不得据此给任意 Qt Quick 窗口授予“dirty=empty ⇒ 图像不变化”资格。**没有实施授权**，不修改 HyRemote、Qt SDK 或 release。
+
+### 15.1 精确 Qt tags 源码发现（构成高优先级潜在反例）
+
+通过 GitHub 连接核对 `qt/qtdeclarative@v5.15.2` 与 `@v6.8.3`：
+
+1. 两代 `src/quick/util/qquickanimatorjob.cpp` 中的 **`QQuickOpacityAnimatorJob::updateCurrentTime` 直接调用 `m_opacityNode->setOpacity(m_value)`**（Qt5 行 610 起；Qt6 行 571 起）。这改变的是 **scenegraph 的 `QSGOpacityNode`**，没有逐帧调用 `QQuickItemPrivate::dirty(OpacityValue)`。渲染线程的 transform helper 也直接调用 `node->setMatrix(m)`（Qt5 行 413 起、Qt6 行 386 起）。
+2. 两代 `src/quick/util/qquickanimatorcontroller.cpp::advance` 在运行时 `job->commit()`，并在仍有动画运行时执行 **`m_window->update()`**（Qt5 行 96 起、Qt6 行 59 起）；`beforeNodeSync()` 对待运行动画也能直接安排 `m_window->update()`。故**可以有真实 scenegraph 节点变化 + Window 更新，却不必每帧有 QQuickItemPrivate item dirty 入队**。
+3. [Qt 6.8 OpacityAnimator 官方文档](https://doc.qt.io/qt-6.8/qml-qtquick-opacityanimator.html) 解释它可以在渲染线程执行，且 GUI `Item::opacity` 会在动画结束后才写回；[Qt 6.8 Scene Graph 文档](https://doc.qt.io/qt-6.8/qtquick-visualcanvas-scenegraph.html) 区分 GUI animation driver 与 render-thread Animator driver。**F-G1 采用 GUI 定时器改动属性的 51/51、58/58 sync dirty 不能代表 OpacityAnimator、XAnimator、ScaleAnimator 这一路径。**
+4. 另外一个外部窗口状态路径：两代 `src/quick/items/qquickwindow.cpp::setColor` 都直接变更 `QQuickWindowPrivate::clearColor` 并调用 `update()`，在 scenegraph sync 后仅把 clearColor 传入 renderer，未按每次颜色变更向 item dirtyList 入队（Qt5 行 4951 起、Qt6 行 3257 起）。它证明**实际窗口背景视觉输出不是纯 item dirty 的完整子集**；不过 **HyRemote 当前 `contentItem()->grabToImage` 是否会包含 Window 背景须单独核实**，不能把背景清色当成未经验证的 Viewer 像素漏报。
+5. 源码核查支持判断 **`ITEM_DIRTY_ONLY_GENERIC_QUICK=DESIGN_NO_GO_UNLESS_COUNTEREVIDENCE`**。这是机制级反例线索，**Qt5/Qt6 目标 Kit 的实际图像和 dirty 时序反例尚未测**，不能谎称已有某个 Viewer bug。
+
+准确源码链接：Qt5 [animator job](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/util/qquickanimatorjob.cpp)、[animator controller](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/util/qquickanimatorcontroller.cpp)、[window](https://github.com/qt/qtdeclarative/blob/v5.15.2/src/quick/items/qquickwindow.cpp)；Qt6.8.3 [job](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/util/qquickanimatorjob.cpp)、[controller](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/util/qquickanimatorcontroller.cpp)、[window](https://github.com/qt/qtdeclarative/blob/v6.8.3/src/quick/items/qquickwindow.cpp)。
+
+### 15.2 唯一下一项独立研究任务 F-G2：两 Kit 一个原生 Animator 反例测试
+
+**目的不是继续“证明变化有 dirty”，而是以最小成本确定“可见图像改变而 item dirty 为空”是否真实出现。**
+
+- 用 F-G1 现成独立 `tmp/` Qt5.15.2/Qt6.8.3 工程，各运行一个有限时长的 **`OpacityAnimator` QML**：固定背景、单个红/白不透明矩形，动画持续约 1.2s `opacity:0.2→0.8`（必须使用 **`OpacityAnimator`，不是 `NumberAnimation`/定时器改 `opacity`**）。记录 per-sync `beforeSynchronizing` 中 item dirty 位和 sync serial、真实原生 `frameSwapped`/render loop，以及**独立于 dirty 的 QImage 像素检查**；最多 2–3 次稀疏 `grabToImage` 作为读回验证，并明确标注其自激时段，避免反过来“用 grab 信号证明 native 内容 dirty”。只观察、不修改 private 结构/线程或 Qt SDK。
+- 判断：在动画 **持续期间**，若确有相异的 Qt 图片像素或节点视觉状态，但存在一个或多个**无对应 item dirty** 的原生渲染帧，`F_G2_ITEM_DIRTY_ONLY=NO_GO`。一旦可信负例出现，就停，不追加更大覆盖矩阵；将 render-thread animator / native output 帧变化作为独立变更来源要求。若两 Qt Kit 未复现，也只能判 `NOT_REPRODUCED_FOR_KITS`，**不能**证明全平台 no-miss；仍需注明 Qt 源机制风险。
+- 不进行 Windows GPU API 指定、真实 Viewer、CPU 性能 A/B、无上限循环、QtPrivate Hook 或 HyRemote 产品开发。两 Kit 各一次，程序自行退出并在 #609 写一次结论。
+
+### 15.3 同时收敛“复用 Qt 已渲染帧”路线（纯研究，不扩大本地试验）
+
+- [Qt 6.8 QQuickRenderControl](https://doc.qt.io/qt-6.8/qquickrendercontrol.html) **不是现有可见 QQuickWindow 的透明监听器**：它要求应用自己控制渲染循环，并把 Window 设为离屏；自有 Qt Quick 集成可以研究，但不能对 Generic/QPA 或现有零代码 Quick 自动替换，而不改变应用集成与视觉行为。
+- [Qt 6.8 QQuickWindow 渲染信号](https://doc.qt.io/qt-6.8/qquickwindow.html) 可给出 render-thread 录制阶段入口；**并未直接提供一个跨 Qt5 OpenGL / Qt6 QRhi、所有 surface/多窗口都可消费且由 CPU 拥有的已合成帧**。即使复用真正 frame output，也仍可能要独立 GPU→CPU readback/同步/颜色转换，不能把它写成天然零拷贝。
+- 因此 **`P3_REUSE_COMPOSITED_FRAME=TECHNICALLY_POSSIBLE_AS_BACKEND_DESIGN_HYPOTHESIS_ONLY`**，不等同于现有 Core/Runtime 中随时可得的帧；必须列明渲染线程 / render pass / 回读复制时序、帧版本、窗口外绘制、多后端、关闭与恢复、以及 Qt5/Qt6 ABI。
+- 若 F-G2 击穿 item dirty-only，**不得**改用 `frameSwapped/afterRendering` 来声称独立内容变更：H1 已证实这些公共通知受 grab 自激。后续方案必须明确区分**来自真实渲染工作**与**由自身主动 grab 产生**的 frame，并解决“已渲染内容怎样成为 RemoteFrame”这一产品成本问题。
+
+### 15.4 Human 实施前决策更新
+
+旧 §14 **受限自动跳抓（B）**在 F-G2 的来源覆盖风险完成前仅是风险取舍候选，**绝不可**借 F-G1 PASS 把它当作可上线设计。建议继续选 **A — 风险封口研究**：优先 F-G2 一个真正的 render-thread 动画反例；若确认漏检，直接把 **QtPrivate dirty-only 通用方案判 NO-GO**，将完整 GUI+render 变化源及 P3 Qt 输出帧复用纳入新的可行性/实施风险卡，给 Human 决策。禁止默认关闭现有 100ms fallback，禁止隐性牺牲四接入零代码特性。
+
+```text
+F_G1_COVERED_ITEM_MUTATIONS=PASS
+F_G2_RENDER_THREAD_ANIMATOR_DIRTY_COVERAGE=SOURCE_RISK_IDENTIFIED_LIVE_NOT_RUN
+QT_PRIVATE_DIRTY_ONLY_GENERIC_QUALIFICATION=NOT_APPROVED
+RESEARCH=AUTHORIZED
+PRODUCT_QTPRIVATE_IMPLEMENTATION=NOT_AUTHORIZED
+```
