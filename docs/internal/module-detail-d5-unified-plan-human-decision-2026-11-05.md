@@ -22,6 +22,8 @@
 
 **Native 规范数值及安全档位审批已落实（2026-11-05）**：Human 明确批准 `NATIVE-V8-WIRE-DELTA-01=P-A; SOURCE_TENSION_01=A`（[#843 决策](https://github.com/skawu/HyRemote/issues/843#issuecomment-6648340105)）。唯一生效的 [V8 A/B 数值增补](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 已将先前 WIRE-V01..V06 数值、plain/tls-password 两档统一 TLS-first 正式绑定。基于此完成 [Native 21 类／26 个正向黄金字节＋12 个负向规格](module-detail-w00-native-v8-golden-vectors-design-2026-11-05.md)；**全部仍为设计数据，未测试**。此前 [P-A 候选](module-detail-w00-native-wire-value-proposal-2026-11-05.md) 只作历史取舍记录，不再重复申请 Human 批准。Gate-D/Native E2E/Gate-I 仍待独立准入。
 
+**W00 Native 会话/授权原子合同增量（2026-11-05）**：在 Human 已批准的 P-A/A 基础上，已将 [F-05 Native 的五条正交状态轴、消息准入、撤权竞态及 AFS-01..12](module-detail-d1-device-protocols-2026-11-05.md) 设计为明确的 Host/Viewer 共同验收合同，并在 [D2](module-detail-d2-hyremoteview-client-2026-11-05.md) 与 [D4](module-detail-d4-tool-delivery-quality-2026-11-05.md) 逐项标注消费与测试责任。该增量不添加 wire 字段/错误码/新产品能力；**12 项 AFS 全部 DESIGN_ONLY**，旧 XP 和 Native E2E 仍未测试。
+
 ## 1. 现在的真实阶段：设计接近全域覆盖，但不能宣布冻结
 
 | 阶段 | 交付范围 | 当前设计状态 | 未能自动越过的门禁 |
@@ -44,7 +46,7 @@
 | F11 | Framework Session/Input / HyRemote | F10、D1 per-session Grant 语义 | AccessSession Registry、Scope Arbiter、Qt 投递前最终栅栏、held-state 不串 peer/协议 | 撤权/两人争 Scope/GUI 排队竞态及旧回调测试 |
 | F12 | Framework Frame/Privacy / HyRemote | F10/F11、独立设备输出合同 | 共享基础 capture、per-session Filter/Watermark/Full/Delta、撤权清未发缓存 | 两 peer 不同权限遮罩、慢端、旧 Full/Delta 不泄漏 |
 | F13 | Framework RFB / HyRemote | F10-F12、#158 真实修复与验收计划 | 现有标准 RFB3.8 的宿主授权接入、legacy 输入与 Scope 兼容、真实安全档位/资源 | 标准第三方 Viewer 与旧应用兼容；无 Native 私有消息、非公网明文资格 |
-| F14 | Framework Native / HyRemote | W00 Native A/B 逐条签收、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | 正/异常消息矩阵、真 DeviceTLS 与 Host Grant/Qt 最终栅栏、RFB-only/Native-only/Dual |
+| F14 | Framework Native / HyRemote | 已批准 P-A/A 唯一值源、W00 AFS-01..12 状态/错误合同、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | 26 字节 golden vectors/12 异常变异与 AFS-01..12 全部真实对拍、真 DeviceTLS 与 Host Grant/Qt 最终栅栏、RFB-only/Native-only/Dual（均未运行） |
 | F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 Kit 约束 | C++/QML/Generic/QPA 一套共享 Runtime 的可配置/可观察接入、打包插件兼容 | 同期 Qt5/6 Windows exact cell，公共 API/ABI 与已发布部署回归 |
 | V10 | View Direct RFB / HyRemoteView | W00 与 View G3真实结论，F13 标准端点 | 产品级 bounded RFB client、独立 Direct、失败关闭与存储/恢复 | 真实维护中 Host/Viewer 像素、输入/持键/恶意消息/断网测试 |
 | V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧 / D2 稳定 Qt Quick 模型 | RemoteSurface/QSG、frame lifecycle/damage/resize/DPR、焦点、输入映射、可证明帧龄/反馈 | Qt6.8 Windows/Linux 按支持单元 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充 |
@@ -213,4 +215,4 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 
 **状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`V15_TABLE6_31_TO_XP28=DESIGN_COVERED_NOT_RUN`，`NATIVE_WIRE_P_A_AND_TLS_A=HUMAN_APPROVED`，`NATIVE_26_VECTORS=DESIGNED_NOT_RUN`，`NORMATIVE_TRACE=PARTIAL`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
 
-**下一动作**：在当前**设计阶段**完成 Host/Viewer/Qt 最终输入与画面撤权的可签收状态、错误、时序合同，继续把 V15 56/V8 99 初步追踪拆为需求→ContractID→State/Error/TestID/Owner；已批准的 Native 26 字节样例/12 负例待未来独立产品实施及真机验证，不以纸面计算冒充实测。目录、图表和版式内容先审好，再独立向 Human 提交 Gate-D 设计冻结；Gate-G3、Gateway #190、Gate-I 分别管理，不创建产品代码。
+**下一动作**：独立审查 AFS-01..12 并完成 56 项 V15 / 99 小节 V8 到模块最小原子状态、错误、TestID、Owner 与质量 Gate 的余项追溯，继续把 V15 56/V8 99 初步追踪拆为需求→ContractID→State/Error/TestID/Owner；已批准的 Native 26 字节样例/12 负例待未来独立产品实施及真机验证，不以纸面计算冒充实测。目录、图表和版式内容先审好，再独立向 Human 提交 Gate-D 设计冻结；Gate-G3、Gateway #190、Gate-I 分别管理，不创建产品代码。
