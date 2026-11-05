@@ -3360,6 +3360,84 @@ void runLargePageTransitionProfile(const QString &outputPath)
     file.close();
 }
 
+// #567: damage and encoded pixels must come from the same frame snapshot. The
+// observer runs inside frameAvailable() after the damage diff and before the
+// client loop, so enqueueing B there deterministically creates the A-damage /
+// B-pixel interleaving without sleeps or a second producer thread.
+void testDamageAndEncodedFrameShareSnapshot()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    std::atomic<int> phase{0};
+    std::atomic<bool> injected{false};
+    hyremote::Transport *transportPtr = nullptr;
+
+    auto transport = startTransport(
+        port, recorder, makeFrame(128, 128, 0x101010U), {}, {},
+        [&](bool) {
+            if (phase.load() != 1 || injected.exchange(true))
+                return;
+            auto b = makeFrame(128, 128, 0x101010U, {{{68, 68, 8, 8}, 0x0000ffU}});
+            hyremote::Damage damage;
+            damage.kind = hyremote::DamageKind::Regions;
+            damage.regions.push_back({68, 68, 8, 8});
+            b.damage = damage;
+            if (transportPtr)
+                transportPtr->enqueueFrame(std::move(b));
+        });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    transportPtr = transport.get();
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(width == 128 && height == 128);
+    // Negotiate Fence as an ordered request-PARSE barrier (not a TCP drain).
+    // This ensures the worker has armed the incremental request before frame A
+    // is queued, independently of readyRead/frameAvailable event ordering.
+    CHECK(sendSetEncodings(socket, {-312, 0}));
+    CHECK(readFence(socket) == makeFence(0U));
+
+    TestFramebuffer framebuffer;
+    framebuffer.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(socket, framebuffer, rectangles));
+    CHECK(framebuffer.get(4, 4) == 0x101010U);
+
+    phase.store(1);
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    const QByteArray requestBarrier("armed", 5);
+    CHECK(writeAll(socket, makeFence(0x80000000U, requestBarrier)));
+    CHECK(readFence(socket) == makeFence(0U, requestBarrier));
+    auto a = makeFrame(128, 128, 0x101010U, {{{4, 4, 8, 8}, 0xff0000U}});
+    hyremote::Damage aDamage;
+    aDamage.kind = hyremote::DamageKind::Regions;
+    aDamage.regions.push_back({4, 4, 8, 8});
+    a.damage = aDamage;
+    transport->enqueueFrame(std::move(a));
+
+    // First update must carry A (red), not the newer B pixels.
+    CHECK(readFramebufferUpdate(socket, framebuffer, rectangles));
+    CHECK(framebuffer.get(4, 4) == 0xff0000U);
+    CHECK(framebuffer.get(68, 68) == 0x101010U);
+
+    // B is delivered by the following update; its blue region must arrive.
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(socket, framebuffer, rectangles));
+    CHECK(framebuffer.get(68, 68) == 0x0000ffU);
+
+    socket.disconnectFromHost();
+    transport->stop();
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -3377,6 +3455,7 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testDamageAndEncodedFrameShareSnapshot();
     testWatermarkReachesEveryEncoding();
     testStandaloneMarkedBootstrapSurvivesReconnects();
     testProducerBackedIdleRawFrameRelease();
