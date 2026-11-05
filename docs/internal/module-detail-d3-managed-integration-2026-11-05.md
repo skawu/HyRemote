@@ -220,6 +220,56 @@ sequenceDiagram
 
 **自托管 Gateway**：只安装其经明确批准的服务，维护带认证的 tenant/site registry、一次性 route pairing 账本、FIFO relay 与最小 metadata/audit；拒绝无租户绑定的横向 Device enumeration；升级、备份、证书轮换、崩溃恢复、健康探针和清理要明确 runbook。自托管不是“客户自己负责安全，所以可不验证 TLS”。
 
+### 7.1 E-01 工厂登录态 Edge 的可实施生命周期合同（H-EDGE=A 已批准）
+
+本节**完善已批准的工厂 Edge 首批级别**，不重选进程模式、不新增安装产品、也不提前启用无人值守。Factory PC 只有一套 HyRemoteView 安装；单个 RemoteSurface 窗口、工厂站点管理工作区、整个 Viewer 应用进程、OS 登录会话是**四个不同生命周期边界**。
+
+| 对象/存储 | 所有者、写入与保护 | 生命周期与不可混淆状态 |
+| --- | --- | --- |
+| `SitePolicySnapshot`（持久） | 工厂本机受信 Edge 策略仓，只有经管理员 ACL 校验的命令写入；原子替换，单调 `SitePolicyRevision` | 允许持久保留注册设备、共享白名单、期限和显式共享意图；**持久意图不是当前在线许可**，不可因恢复文件/登录就自动接受 Route |
+| `EdgeRunLease`（非持久） | 当前已登录 OS 用户上下文中的 HyRemoteView 工厂运行角色；与产品进程/登录会话绑定 | 包含独立 `EdgeRunEpoch`、当前用户会话、受信启用意图和取消源；每次应用启动/登录重新取得，不恢复上一进程租约 |
+| `EdgeEffectiveAdmission`（运行态） | E-01 本机当前许可裁决器，消费最新 SitePolicy + EdgeRunLease + Gateway trust | 只有 `LoginActive ∧ ViewProcessAlive ∧ ExplicitlyEnabled ∧ TrustedSite ∧ HmiShareAllowed ∧ NotExpired` 时，才有可能对**该 HMI/协议**许可新 Route；缺一项即关闭 |
+| `SiteLink`（网络态） | E-01 出站受信 Gateway 控制连接 | `LINK_DOWN/CONNECTING/VERIFIED/DEGRADED/CLOSED` 只证明站点控制通道状态，不证明指定 HMI DeviceTLS/Grant |
+| `RouteRecord + PairLedger`（每 Route） | Gateway 产生 RouteId/epoch；E-01 当前运行态验证并持有自己的 RouteContext | 仅在当前 `EdgeRunEpoch+SitePolicyRevision+EndpointBinding` 可用，进入 CLOSED 后永不因旧 Offer/ACK 复活 |
+| `HmiDeviceSession`（HMI 设备端） | HMI Framework F-05/F-06；Remote View 自己完成 TLS 和设备 Grant | 工厂 Edge 不持有/签发设备 ViewGrant/ControlGrant；关闭 Edge Route 不等于撤销其他合法 Direct session |
+
+#### A. 明确区分关闭窗口、退出进程、注销和故障
+
+| 输入事件 | 必须发生的状态变化 | 不允许发生的行为 |
+| --- | --- | --- |
+| 用户只关闭某个 RemoteSurface/远程画面窗口 | 仅对应 ViewingSession 关闭，释放其本地输入焦点/帧；如果工厂 View **仍在运行且 EdgeRunLease/Share 仍有效**，已共享 HMI 的其他 Route 保持其原许可 | 不能把“关闭画面”误解释为关闭整个 Factory Edge 站点或注销用户 |
+| 用户关闭工厂站点管理 UI 页面，但主 View 产品继续运行 | Site manager 的观察者取消订阅；Edge 的独立产品运行角色按原有效运行租约继续服务 | QML 页面对象析构不能删除共享白名单或改变 Grant/Route，除非用户明确按撤销按钮 |
+| 用户明确退出整个 HyRemoteView 产品，或 OS 用户注销 | **同步先关闭本地新 Route Admission**，推进 `EdgeRunEpoch` 并取消 RunLease；随后关闭 Link/所有配对 Route、销毁内存态 PairCredential/Queue；离线通知可延后但本地离线必须真实 | 不得在 GUI 不在且没有获批 Service 资格时保持后台在线，不得仅靠 Gateway 上报 OFFLINE 而实际仍转发 |
+| 系统睡眠/网络断开/可信证书过期 | 先使不能验证的 SiteLink/Route 不再新准入，旧 Route 按真实数据通道安全性终止或隔离，观察状态带来源/时戳 | 不得凭上次 `SiteOnline=true` 显示为当前 online，也不重放旧 PairCredential |
+| Viewer/Edge 进程崩溃、OS 会话被强制终止 | 进程死亡释放本机 socket/Route/密钥内存；远端旧路由必须因对端断流/租约超时关闭，恢复应用须以 **new EdgeRunEpoch** 重新验证策略和用户启用意图 | 不能重用旧 RouteEpoch、单次 PairCredential 或把历史共享“已开启”记录当当前联网事实 |
+| 本地管理员明确 `setHmiShare(false)` / 白名单撤销 | 先以新 PolicyRevision 在本机当前准入门拒绝受影响 HMI，再持久化拒绝并关闭全部相关现有 Route；失败保持 `DENY/NEEDS_RECOVERY` | Gateway ACK 延迟/失败不能使旧共享继续开放；不受影响的其他 HMI 和合法 Direct 不应被误关闭 |
+| 管理员增加新共享目标/延长期限 | 先验证本机权限、HMI DeviceId、精确端点与材料，成功持久化**新**策略版本之后才对外开放；有效运行租约仍须单独存在 | 不能依靠 GUI 尚未确认的按钮、旧 Revision 或 Gateway RouteOffer 来激活新 HMI |
+
+**操作系统支持边界**：此处规定的是跨 Windows/Linux 可证伪的行为语义；最初资格仅覆盖真正测试通过的 OS/Qt Kit/登录生命周期。Windows 锁屏是否保持登录会话与用户注销不同，不应默认为同一事件；断电/强制杀进程无法要求应用先发送完整关闭通知，但必须保证**没有授权的后台进程继续转发**，远端必须通过租约/断流收敛。将来无人值守 Service 是**同一产品的另一个独立资格**，不能借本节直接实现/宣称首批支持。
+
+#### B. 启停与更新的事务边界
+
+1. `START`：工厂用户已登录 → HyRemoteView 工厂角色存在 → 经受信管理员启用当前 EdgeRunLease → 读取/核验最新 SitePolicySnapshot + Gateway Trust → 计算有界可共享 HMI 白名单 → 建立出站 SiteLink。**只有真实验证后**报告当前 online；单个 HMI 路由/设备安全状态独立。
+2. `OFFER`：Gateway 带绑定的 Tenant/Site/Operator/HmiDeviceId/Protocol/TTL 的 RouteOffer → E-01 原子读取当前 `SitePolicyRevision+EdgeRunEpoch` → 只向对应**白名单 exact endpoint**拨号。准备到 Pairing 或 dial 前再读取同一当前态；revision/epoch 不一致一律拒绝本次 Offer 并关闭新建 socket。
+3. `STOP`：撤销 EdgeRunLease 的原子本地停止门 → 标记全部 Route `CLOSING`、销毁受限队列和一次性 PairCredential、关闭 SiteLink → 以单调 `EdgeRunEpoch` 使迟到回调无效。通知 Gateway 只是最佳努力，不作为本机离线成立的前提。
+4. `UPDATE/ROLLBACK`：升级必须先执行 STOP/fence，备份持久的白名单/策略及受信材料，校验签名后迁移；回滚若读到较新的撤销版本或不兼容数据，进入 `NEEDS_RECOVERY/DENY`，不得以旧安装包/旧持久状态重新分享。恢复后也必须申请**新运行租约**，禁止复活旧 Route。
+5. `CREDENTIAL_ROTATION`：Gateway trust、EdgeInstance secret、HMI DeviceTLS trust 三套流程分别验证，任一失败只关闭受影响入口；原始私钥/密码/token 不跨 QML/日志/无授权 IPC。
+
+#### C. 线程、资源、错误与测试的实施合同
+
+| 设计合同 | 所有者/执行点 | 必须可验证的错误出口与状态 | 既有验收入口 |
+| --- | --- | --- | --- |
+| `EDGE-LC-01` 单一 RunLease + RunEpoch | E-01 工厂 Edge lifecycle owner，非 QML page | 进程/登录终止时本地 STOP 门先于新 Route；旧回调拒绝 | EG-01/EG-10、XP-12 |
+| `EDGE-LC-02` 持久共享意图与当前在线分离 | E-01 SitePolicyStore + V-03 GUI readonly projection | 恢复白名单但未启用登录期 lease：`OFFLINE/NOT_SERVING` | XP-08/XP-12 |
+| `EDGE-LC-03` 本地撤销事务 | E-01 PolicyAdmission owner | 存储失败保持 DENY/NEEDS_RECOVERY，不因迟到云 ACK 复活 | EG-03/EG-08、XP-09 |
+| `EDGE-LC-04` Offer/Pair/dial TOCTOU | E-01 Route owner + G-01 PairLedger | Epoch/revision/endpoint/trust 改变拒绝或关路由，不得拨任意内网地址 | EG-05/EG-09、XP-10 |
+| `EDGE-LC-05` 透明 FIFO/背压和退出释放 | E-01 OpaqueBytePipe owner | 每 Route/方向 queue 受限；只关闭/背压，不能删改 Native TLS 字节 | EG-06/EG-11、XP-17/27 |
+| `EDGE-LC-06` 回滚和密钥旋转 | X-01 Installer/Upgrader + E-01 credential owner | 撤权版本单调；回滚不恢复旧共享或 token；凭据不输出日志/UI | XP-24/XP-12 |
+| `EDGE-LC-07` 可信状态上报 | E-01 runtime telemetry → V-03 / Gateway | Gateway 旧在线观测仅显示 stale；不推出 HMI DeviceTLS、ViewGrant、实时帧 | XP-11/XP-20 |
+| `EDGE-LC-08` Direct 隔离 | V-01 DirectPath + F-05/F-06 HMI | Edge STOP/网断仅结束受管路由，不破坏本机合法 Direct/现场 Qt HMI | XP-11/XP-19 |
+
+**验收证据要求**：测试时分别记录真实 OS 登录/注销、View 进程退出/强退、窗口关闭、RouteId/Epoch、PolicyRevision、受信 HMI 白名单、队列水位、Gateway stale 判定及关联代码 SHA/Qt Kit；所有测试现在是 **DESIGN_ONLY/NOT_RUN**。这不是产品启动、24×7 服务或性能验证报告。
+
 ## 8. 资源公式与性能/安全负向用例
 
 ### 8.1 累计资源，禁止把候选数当合同
