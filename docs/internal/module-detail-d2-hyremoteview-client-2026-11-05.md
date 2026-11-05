@@ -285,6 +285,15 @@ sequenceDiagram
 
 **界面职责**：身份/控制/连接进度靠结构化状态驱动，不能通过“一个绿色 Connected 状态”包办。错误消息统一按证据层分类，具体对外文本/翻译在 V15 正式条款对照及交互稿中再审。
 
+### 7.1 工厂端 EdgeSiteManager 的真相与登录态操作合同
+
+既定的工厂页面只消费 [D3 E-01/G-01 `EG-01..12` 受管路由/共享设计合同](module-detail-d3-managed-integration-2026-11-05.md)，不在 QML 侧创建 SitePolicyRevision、RoutePermit、PairCredential 或任意 LAN 代理：
+
+- `registerHmi`、`setHmiShare`、`revokeShare` 是需要真实本机管理员授权/受信持久化结果的异步命令。点击“共享”后先显示 `PENDING`，收到本地 Edge 权威 revision 与结果才显示 `SHARED`；失败不能继续显示“共享已生效”。
+- H-EDGE=A 首批登录期：**退出整个 HyRemoteView 或注销工厂用户**使 EdgeLink/所有 Route 真关闭；关闭一个远程画面窗口（Factory View 仍运行且分享明确启用）**不自动关闭**工厂共享。未来无人值守 Service 的进程/凭据资格未激活，不显示已支持。
+- WAN/Route 可用、DeviceTLS 身份通过、Target 可见、ViewGrant/ControlGrant、已新渲染帧这几个状态分别来自 D3/F05/HMI/V02，用户端只能按真实来源呈现；Edge 不发布 HMI 的授权回执。
+- 撤销/修改共享发生时立即使受影响工厂 route 在本地拒新与终止；客户端取消旧接入/输入，不自动重放已送达但不知业务结果的命令，合法同机 Direct 可继续。
+
 ## 8. 依赖与后续实施阶段划分（设计包，不是立即编码）
 
 - `V01-A` 协议/ByteStream 抽象、安全解析/拒绝/会话生成；与 D1 Native/RFB 精确兼容。**Native 需先有真实 HMI wire 实现与源合同**才可功能验收。
