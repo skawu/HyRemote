@@ -6,9 +6,11 @@ name: Branch hygiene
 # where six belonged. This workflow applies the documented deletion rule on a schedule instead of relying on somebody
 # remembering to run the prune script with a local PowerShell 7.
 #
-# The rule it applies is the policy's, verbatim: delete a head ref whose pull request is merged or closed, provided the
-# branch is not the head of another open pull request. It fails closed on anything it cannot prove: no pull request at
-# all, an unknown state, a protected or lifecycle name, the default branch, or the API refusing to answer.
+# The rule it applies: delete a head ref only when it has no open pull request, its current HEAD equals the recorded
+# head of one of its closed/merged PRs, and a HEAD re-read immediately before DELETE still matches. Any API/JSON/ref
+# error, an unknown state, a protected or lifecycle name, the default branch, or a HEAD that advanced after the PR
+# closed keeps the branch. The re-read plus DELETE is not an atomic compare-and-swap, so a residual race is
+# acknowledged rather than claimed closed. All PR lookups are paginated.
 
 on:
   schedule:
@@ -65,9 +67,22 @@ jobs:
               continue
             fi
 
-            # The policy decides on pull-request facts, never on commit ids.
-            prs=$(gh api "repos/${REPO}/pulls?state=all&head=${REPO%%/*}:${branch}&per_page=100" \
-                    --jq '[.[] | {number: .number, state: .state, merged: (.merged_at != null)}]')
+            # The policy decides on pull-request facts plus branch-head identity. The head identity is a
+            # deletion gate, not a reason to delete: if a commit landed after the PR closed, the ref is kept.
+            # Pagination is required so a branch reused across many PRs cannot hide its newest association.
+            if ! pr_objects=$(gh api --paginate \
+                    "repos/${REPO}/pulls?state=all&head=${REPO%%/*}:${branch}&per_page=100" \
+                    --jq '.[] | {number: .number, state: .state, merged: (.merged_at != null), head_sha: .head.sha}' \
+                    2>/dev/null); then
+              echo "keep   ${branch}  (fail closed: pull-request pagination failed)"
+              kept=$((kept + 1))
+              continue
+            fi
+            if ! prs=$(printf '%s' "$pr_objects" | jq -s '.' 2>/dev/null); then
+              echo "keep   ${branch}  (fail closed: pull-request JSON could not be parsed)"
+              kept=$((kept + 1))
+              continue
+            fi
             count=$(printf '%s' "$prs" | jq 'length')
 
             if [ "$count" -eq 0 ]; then
@@ -82,12 +97,39 @@ jobs:
               continue
             fi
 
+            # A branch that advanced after its pull request was closed may hold a
+            # new, unmerged commit (for example the V0.3.5.0 notes correction on
+            # feature/95-release-preparation). Deleting it would destroy that
+            # work, so require the current branch head to equal the head of one
+            # of its pull requests. Unknown branch heads also fail closed.
+            branch_sha=$(gh api "repos/${REPO}/git/ref/heads/${branch}" --jq '.object.sha' 2>/dev/null || true)
+            if ! printf '%s' "$branch_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "keep   ${branch}  (fail closed: could not resolve a valid branch head)"
+              kept=$((kept + 1))
+              continue
+            fi
+            if ! printf '%s' "$prs" | jq -e --arg sha "$branch_sha" 'any(.[]; .head_sha == $sha)' >/dev/null; then
+              echo "keep   ${branch}  (head ${branch_sha} is newer than every pull request head; fail closed)"
+              kept=$((kept + 1))
+              continue
+            fi
+
             if printf '%s' "$prs" | jq -e 'any(.[]; .state == "closed")' >/dev/null; then
               if [ "$EXECUTE" = "true" ]; then
+                # Re-read immediately before DELETE. REST read + DELETE is not an
+                # atomic compare-and-swap, so a push can still race this window;
+                # any change or failure here keeps the branch.
+                confirm_sha=$(gh api "repos/${REPO}/git/ref/heads/${branch}" --jq '.object.sha' 2>/dev/null || true)
+                if [ "$confirm_sha" != "$branch_sha" ] \
+                   || ! printf '%s' "$prs" | jq -e --arg sha "$confirm_sha" 'any(.[]; .head_sha == $sha)' >/dev/null; then
+                  echo "keep   ${branch}  (head changed or became unverifiable before delete; fail closed)"
+                  kept=$((kept + 1))
+                  continue
+                fi
                 gh api -X DELETE "repos/${REPO}/git/refs/heads/${branch}"
-                echo "delete ${branch}  (pull request merged or closed)"
+                echo "delete ${branch}  (pull request merged or closed, head unchanged)"
               else
-                echo "would  ${branch}  (pull request merged or closed; dry run)"
+                echo "would  ${branch}  (pull request merged or closed, head unchanged; dry run)"
               fi
               deleted=$((deleted + 1))
               continue
