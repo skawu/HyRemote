@@ -116,6 +116,8 @@ flowchart TB
 
 **F-04 Legacy RFB 设备授权/输入合同收口（2026-11-05，设计未实现）**：已将 Human `H-RFB=A` 细化为 [F-04 `RLG-01..09` 的实际实现合同](module-detail-d1-device-protocols-2026-11-05.md)，明确受控固定 Target/Scope/endpoint、按 peer 的 AccessSession/held/Frame 基线、共享口令不等于自然人身份、首次输入前设备当前 Scope 控制许可、RFB/Native 共用 F-06 仲裁/Qt 最终栅栏、撤权/断线清理及真实标准 Viewer 安全表达；[Framework F-06](module-detail-d1-framework-boundaries-2026-11-05.md)、[View V-01/V-03](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D4 X-02](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已共同消费。**不改变 RFB3.8 标准报文、既有合法输入权益或 Native P-A/A；全部 `RLG` 测试未运行**。
 
+**X-01 安装与迁移技术合同收口（2026-11-05，纯设计）**：[D4 DEP-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已从原“产品安装矩阵/元数据”细化为签名包/Qt Kit/清单、运行许可与配置分离、按产品秘密迁移、单调撤权高水位、Factory View/Edge 同安装、可选 Gateway/独立 Tool 的升级回滚事务，以及 8 组负向验收设计；[D2](module-detail-d2-hyremoteview-client-2026-11-05.md)、[D3](module-detail-d3-managed-integration-2026-11-05.md) 已接收该合同。**这是最终实施规划的既有 X-01 内容完成度增量，不新增产品或研发路线；全部测试未运行，Gate-D/Gate-I 不因而自动批准**。
+
 ## 4. 全产品四个不同准入门槛
 
 ### Gate-D：详细设计冻结申请（当前目标，不等于已通过）
