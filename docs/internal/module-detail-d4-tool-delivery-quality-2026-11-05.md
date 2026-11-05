@@ -166,7 +166,7 @@ D1 已在 [F-02 RT-01..08 / F-06 POL-01..08](module-detail-d1-framework-boundari
 | XP-09 | 未共享 HMI2/同名另一站/任意内网 TCP 不可经 Edge 被拨通 | E01/G01 |
 | XP-10 | Gateway/Edge 透明中转不拥有设备明文；远端 HMI ViewGrant 被拒零像素 | F05/06 / V01 / E01/G01 |
 | XP-11 | Gateway/Tenant/Route 撤销或云断网不影响合法 LAN Direct/现场业务 | 全域 |
-| XP-12 | GUI 退出、用户注销、SCM 可用/不可用、升级回退时站点在线状态准确 | V03/E01/X01 |
+| XP-12 | H-EDGE=A 首批：关闭单个 RemoteSurface 窗口不误关闭已获准共享；用户明确退出整个 View、注销或结束登录会话时 Edge 真实离线；升级回退后状态准确。注销后 SCM 无人值守在线不属于首批支持 | V03/E01/X01 |
 | XP-13 | 工厂 Edge 复制/重放 ticket 与旧 SitePolicyRevision 无权路由 | E01/G01 |
 | XP-14 | Tool 选择真实 SDK/Qt Kit 生成四路线准确步骤和脱敏证据，无伪远程诊断 | T01 |
 | XP-15 | Tool 已有基础 RFB 与未完 S1 规划、View 新官方访问产品各自独立安装/升级且不倒退 | T01/V01/X01，**H-T01=A 已由 Human 批准，原 Tool S1 #586 仍 OPEN** |
