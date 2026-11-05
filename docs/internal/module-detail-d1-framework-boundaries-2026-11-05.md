@@ -204,7 +204,7 @@ C++ / QML / Generic / QPA 入口配置
 ```
 
 - **归一化输入必须覆盖**：请求来源/入口类型、Target 身份与 Qt 存活令牌、`address` 或网络 interface 选择、端口、必需协议 profile、现有 public security intent、remoteInputEnabled、watermark 当前政策、Host trusted Profile 版本。普通 CLI/QML/C++ 可变参数不能直接变成 `AuthorizedTarget`、ListenerPermit 或 DeviceTLS 身份。
-- **互斥与参数检查**：`address` 与 `interface` 是单一监听选择，不靠“后写覆盖先写”默默放宽；非法端口/目标、无法验证的接口、无效 watermark（包含请求启用但无法渲染）、未知 hyremote-prefixed QPA 参数或弱档位不能被静默改为另一默认。QPA native delegate 专属 token 必须先按现有语法正确剥离，不可因 hyremote 参数污染原生插件参数。
+- **互斥与参数检查**：`address` 与 `interface` 最终只可选一种模式。**Generic/QPA 启动字符串中同时给出二者应按既有解析合同拒绝**；而已发布的 C++ `setListenAddress` 会明确清除旧 interface，`setListenInterface` 会切换为 interface 模式，QML 也遵守其已发布属性语义，不能以新设计禁止合法的显式 setter 切换。非法端口/目标、无法验证的接口、无效 watermark（包含请求启用但无法渲染）、未知 hyremote-prefixed QPA 参数或弱档位不能被静默改为另一默认。QPA native delegate 专属 token 必须按现有语法正确剥离，不可因 hyremote 参数污染原生插件参数。
 - **多入口同时存在**：同一宿主可能既实例化 `RemoteAccess` 也加载一个插件。Runtime 的共享实现**不代表两个 frontend 可互相继承权限**：每个调用者形成可追踪的 `AccessInstance/RuntimeGeneration`，只有当明确由**同一 Host 签署的同一 Target/Scope/配置/安全 profile** 管理并证明能共享资源时，才可复用受控 Source/Runtime 对象；不匹配时返回现有公开错误类的真实配置/绑定失败，并保持既有有效实例，不擅自关闭另一入口。是否允许多个对外不同端点依实际 Host Profile，不能将不同实例的 Grant 账本合并成一个用户。
 - **变更与停机**：现行 C++ 配置在 `Stopped` 才可变更；QML `enabled=false` 或对象析构只撤掉其明确拥有的引用和 Session，不得因另一个合法前端的资源仍有效就越权停止它。Host 整体撤销/Target 对象销毁则由 F-02/F-06 统一失效相关 RuntimeGeneration、frame/input queue；不能以重建 QML 组件复活旧 Grant。
 - **状态反馈**：Frontend 只显示 F-02 来源的真实 `Stopped/Starting/Running/Stopping/Faulted/Unavailable` 和现有可表达 `RemoteAccessErrorCode`；`ListenerBound` 不表示 Native DeviceTLS/UserAuth/ViewGrant/ControlGrant。任何新的内部 `POLICY_INVALID/PROFILE_CONFLICT` 类别必须无损地转换为真实已有 public error + 不泄密上下文；不得在此文档自动追加公共 enum。
