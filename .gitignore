@@ -60,3 +60,11 @@ aqtinstall.log
 # the repository root, that resolves to the root; the directory is generated
 # evidence, not product source.
 hyremote-release-notes-fixtures/
+
+# CodeBuddy: explicitly allowlist the shared project Skill; ignore all other local state.
+.codebuddy/*
+!.codebuddy/skills/
+.codebuddy/skills/*
+!.codebuddy/skills/engineering-task-execution/
+.codebuddy/skills/engineering-task-execution/*
+!.codebuddy/skills/engineering-task-execution/SKILL.md
