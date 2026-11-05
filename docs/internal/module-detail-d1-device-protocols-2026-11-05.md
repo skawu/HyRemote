@@ -1,5 +1,7 @@
 # D1｜设备协议详细设计：RFB 3.8 / Native 1.0 独立互操作、授权与状态契约（候选 V1）
 
+> **2026-11-05 Human 决策已生效**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698)。相关产品/安全取舍选 A；本文初始“待 Human 选择”语句如与本次批准冲突，以审批后的具体条款为准。批准不等于 V15/V8 原文审计、产品实现或设计冻结。
+
 > **归属：** [全产品模块设计总控 #843](https://github.com/skawu/HyRemote/issues/843)；继承 [D1 Framework 边界稿](module-detail-d1-framework-boundaries-2026-11-05.md)（PR #844）。  
 > **上位权威：** Human 批准 HYR-PD-001/V15、HYR-ARCH-001/V8（#827/#830）；Stage02 G7 + ADR-0007/0008。V8 **附录 A/B 原文是 Native 1.0 唯一 wire 权威**，本文件没有替代资格。  
 > **代码事实基线：** `HyRemote/develop@02bd993174016439f22fe8c3dc304e20d8e3ed69`；`docs/security.md`、`src/runtime/src/transport/rfb_transport.cpp` 和 `rfb_delivery_state.hpp`。  
@@ -256,14 +258,14 @@ revokeAccessScope(scope, newPolicyRevision)
 
 | 决策 ID | 问题 | 当前候选 / 应取得的证据 | 人员审批边界 |
 | --- | --- | --- | --- |
-| D1-PROT-01 | 无法个人认证的标准 RFB ViewGrant/ControlGrant 与宿主 Scope 的安全映射 | 研究“显式可信 LAN/固定 Target/默认只读；需要动态 per-user 授权优先 Native”；保护已交付 RFB 兼容/用户预期 | 如果缩减现有产品承诺或改变 V8 安全规则，提交 Human |
+| D1-PROT-01 | 标准 RFB View/Control 与 Host Scope | **H-RFB=A 已批准**：标准 RFB 保留 Host 过去明确开启的远程输入；新设备策略默认只读，Host 为 Scope/Target 明确授予控制，并与 Native 共用单 Controller 仲裁；不把共享密码当个人/Grant | 产品选择已关闭；高保证动态身份用 Native，维护中 Viewer/权限负向验证仍待证 |
 | D1-PROT-02 | 新架构 RFB 的 ServerInit、Cursor、Target name/geometry 在 ViewGrant 前能透露什么 | 优先只暴露政策允许的非敏感协议元数据；确需延迟/拒绝 handshake 时审查维护中的标准 Viewer 容错 | 如对公开互操作构成实质变化，Human |
 | D1-PROT-03 | RFB 既有任意完整 Normal 消息置 useful 与长期占用保护差距 | 精确定义 FBU outstanding、配置消息、progress、有效客户端慢端与静态图的时序；不简单加全局 idle timeout | 一般工程细化可经技术审查 |
-| D1-PROT-04 | Dual 的启动是否原子失败与运行期局部失效政策 | 强推新架构 H-02a 下按部署策略的原子安全；可选局部退化必须无越权和可诊断 | 如变更公开可用性/部署语义，Human |
+| D1-PROT-04 | Dual 的启动/运行期故障 | **H-DUAL=A 已批准**：声明为必需的协议端点全部经过 Host Admission 并原子启动，失败整体拒绝；RFB-only/Native-only 仍是独立 profile；运行期局部故障隔离，无自动明文回退 | 产品选择已关闭；实际监听回滚、状态反馈与兼容性测试待证 |
 | D1-PROT-05 | RFB 原聚合 held count 与未来多 Scope 权限争用的实现关系 | 先在 Host 授权后形成 per-session/per-scope logical held 账本，再按目标 Qt state 做合法汇总和撤权释放；与 Qt Private 窗口投递例外隔离 | 涉及默认控制角色的修改必须遵守 D-02=A |
 | D1-PROT-06 | Native 认证与正式 V8 A/B 的逐字/逐字段追踪 | 取得正式 V8 原始 Word；列齐 21 types、正/异常 vectors、有效期、错误、A/B 附录不变量，记录差异与 digest | 基线变更只能 Human |
 | D1-PROT-07 | 设备 TLS 信任材料更换、站点信任绑定、跨 protocol identity 映射 | 设备根与 Gateway/Edge 独立；不自动把云 OperatorId 变 Native 用户；如需委托另立版本/架构讨论 | 需要扩充身份/Device wire 则 Human |
-| D1-PROT-08 | 端到端撤权对已写入内核/TLS 缓冲的字节及客户端已看到内容的承诺 | 明确 HMI 的撤权线性化、待发队列销毁/连接中断、潜在 in-flight 信息界限，UI 立即遮蔽旧缓存 | 如现有 V8 隐私承诺需改写则 Human |
+| D1-PROT-08 | 撤权与在途字节 | **H-REVOKE=A 已批准**：新 Policy/GrantEpoch 生效后不新选择/生成/排队旧受限输出和输入；清本进程可控缓冲并必要时断链；View 清/遮旧显示。已进 kernel/TLS/远端显示的字节不声称可撤回 | 产品安全承诺已确认；线性化点、队列拥有者与竞态/网络负向测试需技术审核 |
 | D1-PROT-09 | RFB 与 Native 的资源预算及正式支持矩阵 | 用当前代码限额做基线，按 V8 128MiB 设计目标及实测拓扑完善；不预填 TLS/Native 未验证数值 | 一般技术评审，实质支持声明需要授权 |
 
 ## 10. 与其他设计包的边界与下一轮接续
