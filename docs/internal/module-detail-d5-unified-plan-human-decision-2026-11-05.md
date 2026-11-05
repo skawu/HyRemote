@@ -1,5 +1,7 @@
 # D5｜HyRemote 全产品统一实施规划、设计冻结准入和 Human 决策卡（候选）
 
+> **2026-11-05 Human 决策追加**：H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB **全部 APPROVED_A**，以 [总控 #843 审批记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 为权威；五项无需再反复讨论。仅产品设计取舍获批，V15/V8 原始全文核对、设计冻结、G3/安全验证及正式研发另设 Gate。
+
 > **设计总控**：[HyRemote #843](https://github.com/skawu/HyRemote/issues/843)，覆盖 14 模块 F-01..F-06、V-01..V-03、E-01、G-01、T-01、X-01/X-02。  
 > **设计前提**：Human 已批准产品设计 `HYR-PD-001/V15` 和架构 `HYR-ARCH-001/V8`；已合并 D1 Core/Runtime/四接入/设备授权、RFB/Native 独立协议、D1 横向一致性候选，以及 D2 客户端、D3 Managed、D4 Tool/交付设计候选。Stage04/05 已有详细 IDL/DAG 不重编。  
 > **法律/工程效力**：`DESIGN_CANDIDATE / IMPLEMENTATION_WBS_ONLY / NO_CODING_ORDER / NO_PRODUCT_ACTIVATION / NO_RELEASE_AUTHORIZATION`。**设计包合并不是 Human 全产品详细设计冻结，也不是 G3/G4/G5、Gateway #190 或任何产品版本激活。**
@@ -97,7 +99,8 @@ flowchart TB
 
 - [ ] V15/V8 Human 批准的**原始** DOCX/等效可信完整文本可审计；Native A/B type/field/bounds/negative vector 一一比对并附 digest，权威清晰。
 - [x] 已有六类 Framework 模块、三 View 模块、Edge/Gateway、Tool、部署/测试的设计候选和跨模块审查基础。
-- [ ] 全部重大冲突（特别 Tool vs View、RFB Scope/个人身份、Dual 启动、撤权 in-flight）有 Human 决定或经批准的条件处置，错误/权限状态跨模块互相一致。
+- [x] H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 的产品/安全语义已由 Human 正式批准 A，纳入 D1–D5 合同（不是实现证明）。
+- [ ] 与正式 V15/V8 原文和 Native A/B 逐条核对的最终权限、错误与协议细节仍需技术审查。
 - [ ] 关键复杂图（组件、两协议、信任、撤权、状态机、数据流、安装）与消息/接口/字段矩阵内容审定，无平行正式规范。
 - [ ] 真实验证前置的设计假设有**可证伪**实验/失败回退，未经验证的容量和 SLA 明确“候选”。
 - [ ] Human 明确发出 `DETAIL_DESIGN_FROZEN` 或带条件设计批准；只有此后实施 Gate 另行判断。
@@ -123,7 +126,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | Native A/B + DeviceTLS | HMI design05 + D1 Protocol | DP07..14、HMI01..08；原文 21 类和错误集 | **正式 A/B 源未核对，端到端未实现** |
 | View Direct/RemoteSurface/Identity | D2 VIEW01..14 | XP02–03、XP07、XP13、XP16–17 | G3 未通过，无 G4 产品代码 |
 | Factory Edge / Gateway | Stage04/05 + D3 MG01..16 | EDGE01..12 / XP08–13、XP18 | 设计候选；#190 未激活 |
-| Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 已有基础 RFB 产品基线；完整 Tool S1 的 #586 仍 OPEN；新版产品边界需 Human |
+| Tool SDK/诊断 | Tool PRD + D4 | XP14–15，真实 SDK/Qt Kit 与脱敏报告 | 已有基础 RFB 产品基线；完整 Tool S1 #586 仍 OPEN；H-T01=A 已批准，技术交付待审 |
 | 安装/安全/质量 | D4 X01/X02 | XP01..20 全域 + 环境/证据表 | 设计矩阵已成；未运行全产品 E2E/产品资格 |
 
 正式 V15/V8 的条款 ID 不是从 Issue 目录数量推导；以获批准的原 Word 真实章节/表格为准建立 `RequirementID→ModuleID→ContractID→State/Failure→TestID→Owner→EvidenceSHA`。对每一项需记录 `COVERED/CONFLICT/OPEN/NOT_APPLICABLE` 及理由，不能以“共有 20 个 XP”证明 100% 条款覆盖。
@@ -132,30 +135,32 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 
 | RiskID | 风险和可逆策略 | 决策/门禁 |
 | --- | --- | --- |
-| R-01 | 旧 RFB 匿名/共享口令不提供 Native 个人身份，却要求单 Scope 控制独占；以 Host 显式授权 + 默认只读 + RFB 标准兼容测试作为候选；不修改 wire | H-RFB（如影响已交付用户权限需 Human） |
-| R-02 | Dual 任一 listener 启动失败可能出现用户误认“全可用”；优先原子绑定需全部成功，对运行中故障可只标部分不可用但绝不弱协议回退 | H-DUAL |
-| R-03 | 撤权时已进入 TCP/TLS/内核/远端显示的数据不可撤回；不产生新的旧权限发送，清仍可控制的队列，必要时断链，View 遮蔽 | H-REVOKE，Human 对安全承诺范围接受 |
-| R-04 | Tool 与 View 双官方访问 UI，长期双安全与客户支持成本；优先保留已发布 Tool 基础 RFB、未完 S1 保持真实规划，未来完整 View 归 View | H-T01（明确 Human） |
+| R-01 | 旧 RFB 匿名/共享口令不提供 Native 个人身份；按 H-RFB=A 保留 Host 显式允许的传统输入、默认只读及单冲突 Scope Controller，不改 wire | H-RFB=A 已批准；实现与兼容性证据待取得 |
+| R-02 | Dual 任一必需端点失败不能露出半启动；运行期单协议故障可隔离但不能默默退为更弱协议 | H-DUAL=A 已批准；原子绑定/回滚/错误证据待取得 |
+| R-03 | 撤权时已到达 TCP/TLS/内核/远端显示的数据无法收回；按新 epoch 停止新增旧权限输出与清可控队列，必要时断链，View 遮帧 | H-REVOKE=A 已批准；线性化/真实负测待取得 |
+| R-04 | Tool 与 View 历史功能重叠；按批准分工保留 Tool 基础 RFB 与 #586 未完成 S1 治理，新完整 Native/Managed 客户端归 View | H-T01=A 已批准；迁移/复用代码技术方案待证 |
 | R-05 | 证书/TrustBundle 来源不可审计、自托管/外网替代身份；安全失败关闭，DeviceId HMI 独立验证，不因 Gateway 成功登录解锁 | V8 原文核对 + 安全审查 |
-| R-06 | Edge 用户注销后被误宣称无人值守在线；首个可验证级别只登录期，真正服务模式通过 Windows SCM/ACL/升级资格后另发布 | H-EDGE（产品目标级别） |
+| R-06 | 工厂 Edge 注销后误显示在线；首批仅支持登录态，后台 Service 为后续同产品独立资格 | H-EDGE=A 已批准；生命周期/状态真实性仍待验收 |
 | R-07 | 现有 D1/D2/Stage05 只引用 Native V8 Annex 派生材料，不能形成 wire freeze | H-BASELINE（权威原始输入） |
 | R-08 | 128MiB HMI 目标/8 route/256KiB 测试参数被当客户 SLA；任何门禁须真实 per-process/负载/平台证据，未测不支持 | G3 / 性能 / 实机 Gate |
 
-## 7. 向 Human 提交的单次决策卡（只需要真正产品裁决）
+## 7. Human 已批准的决策与执行追踪（2026-11-05）
 
-下列是**尚未取得新批准的建议**，并非在文档中代替 Human 选定：
+> Human 正式在项目对话确认：**H-T01=A; H-DUAL=A; H-REVOKE=A; H-EDGE=A; H-RFB=A**，登记证据：[总控 #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698)。五项状态均为 `HUMAN_APPROVED_A`，不再是待审批方案。替代 B/C 仅作为历史评估保留，只有新的受控产品变更才需重开。
 
-| 决策 | 推荐 A / 影响 | 替代 B / 成本 | Human 决定格式 |
-| --- | --- | --- | --- |
-| **H-T01 Tool / View 长期分工** | **A** 保持 Tool 已发布基础 RFB 访问的可用性与维护，S1 全量仍待 #586 验收并按新产品边界协调；未来 Native/Managed/官方完整工作区主线归 HyRemoteView；Tool 新投资 SDK/Kit/诊断，避免双研发 | **B** 规划 Tool Remote 逐步退役/迁移到 View，需要用户兼容与支持期限；或 C 永久双全功能，成本更高 | `H-T01=A/B/C` |
-| **H-DUAL RFB-only/Native-only/Dual 启动失败语义** | **A** 要求的协议端点在新架构统一受信 Admission 后做受控原子启动：任一必须项失败不发布部分成功；运行期局部故障只关受影响协议连接并明示 | **B** 宿主显式声明可降级的 required/optional Profiles，仅在不削弱安全/授权情况下容许局部服务，需要更多 UI/运维测试 | `H-DUAL=A/B` |
-| **H-REVOKE 设备撤权对在途内容的安全承诺** | **A** 自新 Policy/GrantEpoch 生效点之后不产生新的旧政策输出；清本进程可控制缓冲，必要时断链，View 立即遮蔽旧画面；明确已发送/已展示不能物理撤回 | **B** 要求更强在途可达性约束，需要额外主动终止/协议和硬件实验且仍无法撤回已显示内容；若产品文案暗示物理撤回须修正文案 | `H-REVOKE=A/B` |
-| **H-EDGE 首批工厂后台可用级别** | **A** 首先认证用户已登录期间 Edge 在线，退出/注销真实离线；无人值守 Windows service 作为后续独立可验收能力，不额外安装软件 | **B** 首批必须注销后在线，要求更强 OS 账户/安全/更新实际证据并改变最短可交付路径 | `H-EDGE=A/B` |
-| **H-RFB 传统 RFB 用户控制权的未来映射** | **A** 保留已交付的客户明确启用远程输入的实际可用行为；新架构要求 Host 显式批准 Scope/Controller，默认只读，不把共享密码当个人身份；动态细粒度身份用 Native | **B** 无可证明个人身份的 RFB 连接一律只能看不能控制，会影响既有使用权益，需要迁移/版本治理 | `H-RFB=A/B` |
+| 决策 ID | 已批准的唯一产品语义 | 模块/工作包 | 还需要证明的技术行为 | 当前 |
+| --- | --- | --- | --- | --- |
+| H-T01=A | 保留 Tool 已发布基础 RFB 访问并维护；完整 Tool S1 #586 仍 OPEN；未来完整 Native/Managed/Edge/官方客户端由 HyRemoteView 发展，Tool 新重点为 SDK/Kit/诊断 | T01/V01-V03；T10/V10-V13 | 已发布客户端回归、Tool S1 权益不被删除，产品包独立；RFB 代码复用许可证另审 | `APPROVED_DESIGN_NOT_IMPLEMENTED` |
+| H-DUAL=A | 对部署声明为**必需**的所有 RFB/Native listeners 统一 Host Admission 和原子启动；初启失败整体拒绝，运行期局部故障可隔离但不自动弱协议回退；RFB-only/Native-only 仍可合法存在 | F03/F04/F05/F06；F10/F13/F14/F15 | 端点预绑定/回滚无可观察半成功，错误源真实、同 Kit/四入口/双协议负测 | `APPROVED_DESIGN_NOT_IMPLEMENTED` |
+| H-REVOKE=A | 新权限 epoch 生效后不得**新生成/选择/排队**旧授权输出/输入，清所有可控队列，必要时断开，View 遮/清旧帧；不声称撤回进入 OS/TLS/已被用户看到的字节 | F02/F06/V01-V02；F11/F12/V11/V12 | 设备端线性化点、Qt GUI 二次输入栅栏、FrameQueue ownership、TLS/socket bytes-in-flight 时序、显示/held 清理 | `APPROVED_DESIGN_NOT_IMPLEMENTED` |
+| H-EDGE=A | 首批工厂 Edge 只在用户登录及产品明确启用期间在线，用户退出/注销即离线；将来可研究统一 View 安装/升级中的无人值守 Service，**不算首批支持** | V03/E01/X01；E10/E11/X11 | Windows/Linux 精确平台运行与卸载、可信管理命令、真实状态；不因 Gateway online 假称 service 在线 | `APPROVED_DESIGN_NOT_IMPLEMENTED` |
+| H-RFB=A | 保留 Host 明确启用的传统 RFB 控制能力，新设计默认只读且经 Target/Scope Host policy 允许，冲突 Scope 默认一个远程控制者；共享 VNCAuth 不代表个人身份，细粒度动态 Grant 由 Native | F04/F06/V01/Tool；F11/F13/V10/T10 | 标准第三方 Viewer 互通、Host 授权/单 Controller、旧 Tool 权益、legacy 受限 UI 的真实来源/错误状态 | `APPROVED_DESIGN_NOT_IMPLEMENTED` |
 
-**正式 DOCX 输入**：请在冻结前提供可核对的正式 `HYR-PD-001/V15` 与 `HYR-ARCH-001/V8`（特别原始附录 A/B），或其当前可访问的可信位置；要求与已归档 digest 对齐。单纯截图/历史转述/Issue 中引用的十几条字节结构不足以宣称完整 wire 追踪。
+**剩余真正阻断详细设计正式冻结的工作，不再是这五个取舍：**
 
-**审批流程**：若 Human 同意上述方向，也不自动等于 `G3_PASS`、`GATE-D_FINAL_APPROVED` 或正式研发激活。先对原文逐条追溯与最终接口、测试风险差距签收，再申请**独立** `DETAIL_DESIGN_FREEZE`；之后才按真实资格和已批准版本范围启动实现。
+1. **正式全文与协议源完整性**：取得已获批准的 `HYR-PD-001/V15` 与 `HYR-ARCH-001/V8` Word 原件并验证批准 SHA-256，逐条建立 56 项产品二级条款、99 项架构二级条款及 Native A/B（附录名称/内容以正式原文为准）的要求→合同→测试映射；目前 `NORMATIVE_TRACE=PENDING`，不可造字段或以派生 Markdown 代替。
+2. **无需重开产品审批的工程细化**：Admission 的实际预绑定/回滚原子性，RFB 固定 Target/匿名会话显示信息与第三方 Viewer 兼容，撤权线性化与 GUI/网络栅栏，登录态 Edge 的进程/凭据/退出处理，Server/Client 的真实 Qt5/Qt6 适配及资源预算，均须形成可测合同。
+3. **Gate 的独立保持**：设计冻结由 Human 后续独立签收；G3 #5 技术资格尚未通过，Native TLS/E2E 未实现，Gateway #190 尚未激活。以上五项批准**没有**授权新产品代码、开公网路由或发布。
 
 ## 8. 正式《模块详细设计与实施规划》Word 的先行结构设计（暂不制成 Word）
 
@@ -175,7 +180,7 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 | 9 全产品非功能与资源 | 性能预算、CPU/帧龄/内存、可观测、隐私/安全分层 | per-process memory budget、风险表 |
 | 10 一体化验证与验收 | XC/FW/DP/VIEW/MG/XP ID 映射、环境、正负例、状态 | Trace matrix / Gate evidence |
 | 11 实施 WBS/Owner/DAG | 本文 W00..X12、Owner、并行/依赖、独立 Gate | 工作包表、关键路径图 |
-| 12 未决决策与变更 | Human 卡、取舍、已接受风险、排除项、后续修订 | Decision register |
+| 12 已批准决策与剩余风险 | Human A 决策卡、源条款追溯缺口、技术候选与后续受控变更 | Decision register |
 | 附录 A 规范引用与术语 | **引用** V8 Native 原有 A/B，不复制/改号；其他受控设计 URL 与 digest | Provenance, glossary |
 
 **版式建议，仅供审批**：A4 纵向、中文正文宋体小四、章节标题样式、自动目录/图表目录与交叉引用、图不跨页断裂、表头跨页重复/主要合同表尽量一页，页眉页脚和页码一致；正文图表优先 Mermaid/矢量源核对、再转换为 Word 嵌入图；先校对所有标题/数据/决策后再处理封面和分页。沿用 V15/V8 文档实际获批准的视觉体系，不单独创造新模板/版本。**此阶段不生成 Word、PDF或发布文件。**
@@ -184,13 +189,14 @@ HyRemoteView #5 仍是 `NOT PASSED`。RFB Direct #9 Windows PoC 只有部分证�
 
 - [x] 14 模块有一份可追溯的总体目录、分模块设计候选和实施依赖计划，不重复生成 Gateway/Native 平行规范。
 - [x] 四产品职责、两设备协议、Direct 独立、设备端最后授权、现场优先、Factory View 一个安装已贯穿。
-- [x] Tool 旧审批与新 View 产品重叠、RFB legacy identity、Dual 启动、撤权在途、Edge 登录/无人值守被标为**Human 产品问题**，未自行宣布裁决。
+- [x] H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 已由 Human 全部选择 A 并在本章登记到对应模块与技术验证合同，未经批准不重开 A/B。
 - [x] 明确各 WBS 的依赖/Owner 类型/交付物/验证出口，避免“任务清单=已下发”。
 - [x] 保留 G3、Native E2E、Edge12、真实安装/支持资格和 Gateway #190 版本激活为独立 Gate，均未被设计 PR CI 取代。
 - [ ] V15/V8 原文 digest、全部要求逐条、Native A/B 正文与负向向量的复核和最终评审。
-- [ ] Human 选择/批准真正的产品范围与安全承诺、正式模块设计冻结及实施准入。
+- [x] Human 已批准五项产品/安全设计取舍 A（不等于实现或冻结）。
+- [ ] Human 正式模块设计冻结和独立 Gate-I 实施授权仍未取得。
 - [ ] 一切产品代码、实机/资格、全产品发布尚未由本计划启动。
 
-**状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`NORMATIVE_TRACE=PENDING`，`HUMAN_DECISION_REQUIRED=YES`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
+**状态结果**：`D5_PLAN_DRAFT=COMPLETE_FOR_REVIEW`，`DESIGN_COVERAGE=CANDIDATE_FULL_DOMAIN`，`HUMAN_H_T01_DUAL_REVOKE_EDGE_RFB=APPROVED_A`，`NORMATIVE_TRACE=PENDING`，`DESIGN_FREEZE=NO`，`IMPLEMENTATION_AUTHORIZED=NO`。
 
-**下一动作**：提交唯一 Human 选择包和正式 Word 源材料核对需求；Human 尚未参与前，可完成审查/CI/合并候选，但**不得越过 Gate-D 和 Gate-I**。取得 Human 实质决策后再按真实原文作最终一致性修订与目录/图表/版式签收，之后才申请冻结。
+**下一动作**：依据已批准的五项 A 完成跨模块合同消歧与内容 QA，进一步核对 V15/V8 受控 Word 原件及 Native A/B；缺真实文件时不得伪造原文追溯或推进正式 Word。取得源材料后完成原文追踪、最终接口/目录图表版式签收，再向 Human 单独申请 Gate-D 设计冻结；Gateway #190、G3 与 Gate-I 分别独立管理。
