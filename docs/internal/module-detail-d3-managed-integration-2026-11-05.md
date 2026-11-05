@@ -1,5 +1,7 @@
 # D3｜HyRemoteView 内置 Edge / 可选 Gateway 跨模块接口收口（候选）
 
+> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
+
 > **设计主线**：全产品 #843 的 E-01/G-01，与 D1 HMI Device Contract、D2 HyRemoteView 客户端合同对接。现有 [Stage04 module](stage04-managed-edge-module-design-2026-11-04.md)、[Stage04 security](stage04-managed-edge-protocol-security-2026-11-04.md)、[Stage05 IDL](stage05-managed-edge-control-idl-2026-11-04.md)、[Stage05 DAG](stage05-managed-edge-implementation-dag-2026-11-04.md) 仍是细节主源；本稿**只做跨产品消费接口/状态/冲突消歧，不重新创建第二份 Gateway Control wire**。  
 > **批准约束**：HYR-PD-001/V15、HYR-ARCH-001/V8；工厂 PC **只安装 HyRemoteView**；Direct 无中心依赖；HMI Framework 是最终权限裁决者；Gateway 可由厂商或客户自托管；#190 `POST_GA_CONDITIONAL / NOT_ACTIVATED`。  
 > **状态**：`DESIGN_CANDIDATE / NOT_FROZEN / NOT_ACTIVATED / NO_PRODUCT_CODE`。所有 Token、IDL、UI、Service 名称均为设计内逻辑候选，不冒充已发布 API/端点或安全合格。
@@ -117,7 +119,7 @@ sequenceDiagram
 
 ## 7. 运行/进程/更新与信任隔离设计候选
 
-**首个可验证级别**：登录的工厂用户明确启用 Edge，HyRemoteView GUI 会话在时才在线；用户明确退出/注销时 Edge 真实离线。这与 Stage05 最小先验吻合，不能伪称无人值守支持。
+**H-EDGE=A 已获 Human 批准的首批支持合同**：工厂用户登录并明确启用时，HyRemoteView 内置 Edge 才可在线；用户明确退出/注销必须真实离线、关闭 Route、取消旧状态，绝不显示无人值守在线。Stage05 的 Windows Service 仍是后续独立可证明资格，不能提前纳入首批出门口径。
 
 **扩展级别**：同一 HyRemoteView 安装产品可承载独立授权的 Windows Service 或同二进制 `--managed-edge-service` 角色；GUI 与 service 的 UID/Session、凭据可访问性、SCM 服务安装/卸载、可用性、自动更新/回退必须有 OS ACL/真实 Windows evidence。技术更优的“双进程同产品”或“单二进制双运行模式”尚不能靠文字判胜；也不可让客户额外安装一款独立 Agent。
 
@@ -165,13 +167,13 @@ Stage03 32 HMI/8 route/256KiB per direction/30s ticket/64KiB control 等都是�
 | ID | 议题 | 技术建议（候选） | Human 触发 |
 | --- | --- | --- | --- |
 | D3-01 | Gateway Control serialization / version / IDL | Stage05 唯一逻辑 schema，验证 JSON vs CBOR 与跨语言 parser/未知字段/迁移；不另造控制 wire | 公网接口版本正式冻结与重大产品变更 |
-| D3-02 | Factory GUI + Edge Service 实现形态 | 先支持已登录期间，评估同产品内部服务角色/OS ACL/凭据；无第二安装 | 若要承诺“注销后持续在线”或改变产品级别 |
+| D3-02 | Factory GUI + Edge Service 支持级别 | **H-EDGE=A 已批准**：首批只支持登录期间的 Edge，用户明确退出/注销即离线；后续同产品内部 Windows Service/OS ACL/凭据研究保留独立验收 | 首批产品级别已定；若未来要求首批无人值守才另报受控变更 |
 | D3-03 | Route TTL/数量/缓存/重连 | 以上限可证/队列有界/用户感受测量后选择，保持独立 HMI 预算 | 公开 SLA/成本/版本承诺 |
 | D3-04 | 安全 bootstrap：HMI TrustBundle 与 Gateway/Edge 根分离 | 工厂可信登记，远端独立 HMI DeviceTLS 校验；证书换用时人工可信复核 | 修改 V8 信任或引入云端身份委托 |
 | D3-05 | Gateway 自托管单节点工程形态 | 优先最小 Registry+Broker+Relay 而非微服务；数据最少/迁移可回滚 | 客户运维/合规或产品定价范围变更 |
 | D3-06 | 失联时本地 ACL 撤销与云端 eventual consistency | Edge 权威本地先禁、再通知 Gateway；旧 Pair/Route 不恢复 | 无需改变既定 HMI 权利时技术细化 |
 | D3-07 | D2 Client 与 D3 Edge 在一个 View 产品中的隔离 | UI 只发有权限管理意图；EdgeService 二次校验；Direct 引擎永不依赖 Edge state | 修改“只安装 View”或 Direct 离线须 Human |
 
-**设计候选结论**：E-01/G-01 与 F-01..F-06、V-01..V-03 没有需要加第三 HMI 监听或另装独立 Edge 软件才能成立的结构理由；Stage05 控制/状态名称可以做语义消歧，不必现在创造第二份版本协议。真正产品化仍依赖 Native Device E2E、真实 View G3、站点凭据与自托管运维、首次 Human 设计冻结及 #190 独立激活。
+**设计候选结论**：H-EDGE=A 已关闭首批后台范围争议。E-01/G-01 与 F-01..F-06、V-01..V-03 没有需要加第三 HMI 监听或另装独立 Edge 软件才能成立的结构理由；Stage05 控制/状态名称可以做语义消歧，不必现在创造第二份版本协议。真正产品化仍依赖 Native Device E2E、真实 View G3、站点凭据与自托管运维、首次 Human 设计冻结及 #190 独立激活。
 
 **下一步 D4**：工具与客户端职责分界、安装/更新/Qt Kit、全产品性能/安全/验收证据矩阵；然后 D5 编制统一依赖 DAG 与 Human 决策卡，不把未通过的 PoC 当既成条件。
