@@ -32,6 +32,10 @@
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+#  include "quick/quick_native_frame_policy.hpp"
+#  include "quick/quick_native_frame_shadow.hpp"
+#endif
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -75,11 +79,33 @@ public:
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        // Human A authorized a shadow-only experiment. Both the exact-Kit
+        // build option and this explicit process opt-in must be present.
+        const NativeFrameExperimentFacts nativeFacts{
+            true,
+            qEnvironmentVariable("HYREMOTE_P3_SHADOW_OBSERVER") == "1",
+            QT_VERSION == QT_VERSION_CHECK(6, 8, 3),
+            !m_state->target.isNull(),
+        };
+        if (nativeFrameExperimentMode(nativeFacts)
+            == NativeFrameExperimentMode::ShadowObservationOnly) {
+            m_nativeShadow = std::make_unique<QuickNativeFrameShadow>(
+                m_state->target.data());
+            m_nativeShadow->start();
+        }
+#endif
         return true;
     }
 
     void stop() noexcept override
     {
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        if (m_nativeShadow) {
+            m_nativeShadow->stop();
+            m_nativeShadow.reset();
+        }
+#endif
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
         m_state->onFrame = {};
@@ -418,6 +444,9 @@ private:
     }
 
     std::shared_ptr<State> m_state;
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+    std::unique_ptr<QuickNativeFrameShadow> m_nativeShadow;
+#endif
 };
 
 Qt::KeyboardModifiers toQtModifiers(hyremote::InputModifiers modifiers)

@@ -181,6 +181,39 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
     endif()
 endif()
 
+
+# #609 P3: Human-approved engineering verification ONLY. A compile-time OFF
+# gate PLUS an explicit runtime environment opt-in are required even to observe
+# native frames. This target never publishes a native frame to Core or transport.
+option(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW
+    "Developer-only Qt6.8.3 P3 native-frame shadow observer (NO frame publication)" OFF)
+if(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+    if(NOT HYREMOTE_REMOTEACCESS_WITH_QUICK
+       OR NOT Qt6_VERSION_MAJOR EQUAL 6
+       OR NOT Qt6_VERSION VERSION_EQUAL "6.8.3")
+        message(FATAL_ERROR
+            "P3 shadow observer requires the EXACT Qt 6.8.3 Quick runtime. "
+            "Qt5 Quick remains experimental and this diagnostic build is not a product.")
+    endif()
+    if(NOT TARGET Qt6::QuickPrivate OR NOT TARGET Qt6::GuiPrivate)
+        find_package(Qt6 6.8.3 EXACT QUIET COMPONENTS QuickPrivate GuiPrivate)
+    endif()
+    if(NOT TARGET Qt6::QuickPrivate OR NOT TARGET Qt6::GuiPrivate)
+        message(FATAL_ERROR
+            "P3 shadow observer requires matching Qt6::QuickPrivate and Qt6::GuiPrivate. "
+            "Do not install alternate Qt or silently reduce the version gate.")
+    endif()
+    target_sources(hyremote-remoteaccess PRIVATE
+        src/quick/quick_native_frame_shadow.cpp)
+    target_link_libraries(hyremote-remoteaccess PRIVATE
+        Qt6::QuickPrivate Qt6::GuiPrivate)
+    target_compile_definitions(hyremote-remoteaccess PRIVATE
+        HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW=1)
+    message(WARNING
+        "P3 #609 shadow-only development build. No native pixel transport; "
+        "NOT qualified for develop merge or release.")
+endif()
+
 # Pointer input enters Qt at the same QPA/window-system boundary used by platform plugins. Keep the
 # private dependency isolated to one Runtime translation unit; integration frontends remain peers and
 # never need to include or understand Qt private headers themselves.
