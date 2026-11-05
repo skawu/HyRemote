@@ -98,7 +98,7 @@ V15 表6 共 31 条，引用序号范围 **1–31**，文档原文没有这些�
 | §§8.4/12.3 客户端/安装升级及持续 Direct；V-03/X-01 | D4 `DEP-01/04/05/07/08`、D2 `IDT-03/05/08`；各产品独立 Install/Trust Owner | 包签名/Kit/策略 schema 预检 → 可恢复激活；旧撤销或不同设备身份在失败/回滚后不得复活；合法 Direct 不依赖 Gateway | XP-19/24/28；持久高水位掉电一致性尚无实测 | `CONTRACT_LINKED_NOT_SIGNED` |
 | §11.3 Tool SDK 集成与诊断；T-01 | D4 `TL-01/03/04/05/06/08`；Tool 是实际观察/报告 Owner，不是 HMI Grant 权威 | 用户明确 SDK/Kit/日志来源 → 只读检查/人工确认脱敏报告；来源未知/未运行 → `UNKNOWN_SOURCE/NOT_RUN`，不能变成 PASS | XP-14/15/16/20；仅完成设计，Tool S1 #586 OPEN，新 Inspector/Report 未实现 | `CONTRACT_LINKED_NOT_SIGNED` |
 | §§7.1/7.2 用户输入与中文 IME；F-05/F-06/V-02 | D1 `POL-05/06/08`、D2 `SURF-04/06/07`；设备最终 Qt 投递为业务输入界限 | 有效焦点/Scope/代次才发新 DOWN/CommittedText；失焦/几何重绑清旧 held；禁止把提交文本与按键重复执行 | VIEW-06/07、XP-05/21；真实中文 IME 与多 Qt Kit 测试未运行 | `CONTRACT_LINKED_NOT_SIGNED` |
-| §9.2 文件传输与业务应用结果；F-06/V-03 | 当前 D4 仅 `XP-22` 的阶段性验收语义；**没有在本轮查到可签收的文件传输实现接口/Host 业务结果回执合同** | 必须区分客户端已发、设备收到、宿主接受、业务生效/未知；结果未知不允许自动重放。**不得为填表私加 Native 1.0 字节消息或未经批准的管理端口** | XP-22；需回到 V15/V8 完整原文确定规划阶段、真实权限与可实现的受控接口，再技术审查 | `OPEN_ATOMIC_INTERFACE_AND_PHASE` |
+| §9.2 文件传输与业务应用结果；F-06/V-03 | 当前 D4 仅 `XP-22` 的阶段性验收语义；**没有在本轮查到可签收的文件传输实现接口/Host 业务结果回执合同** | 必须区分客户端已发、设备收到、宿主接受、业务生效/未知；结果未知不允许自动重放。**不得为填表私加 Native 1.0 字节消息或未经批准的管理端口** | XP-22；[D4 §5.5](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已界定写出/接收/业务生效各自可信来源及失败闭合；Native1.0 既有 21 类不含文件/Host ACK，真实 Host 接口和分期仍需依据已批准 V15/V8 原文审签 | `OPEN_ATOMIC_INTERFACE_AND_PHASE` |
 
 **本批发现与下轮入口**：九组有可定位的候选合同链，但仍缺独立合同审签/验证；**§9.2 文件/业务结果链缺可签收的设备端原子接口及具体分期证据**，不得以 XP-22 的文字覆盖假装该功能已确定实现。W00 中尚未完成原子核查的其余 V15 行，以及 V8 99 小节/非 Heading2 附录 C/E/F，仍按原始索引审查，必须继续按既定 `Requirement→Contract→State/Failure→Test→Owner` 逐项补齐；**这十组不是“完成 10/56 条冻结”**。真实实现和测试一概 `NOT_RUN/NOT_AUTHORIZED`。
 
