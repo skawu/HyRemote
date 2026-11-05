@@ -1,6 +1,6 @@
 # D3｜HyRemoteView 内置 Edge / 可选 Gateway 跨模块接口收口（候选）
 
-> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。其他接口、性能和 Native A/B 原文仍是待审候选，不因本次选择而自动冻结。
+> **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。V15/V8 等效原文已取得，Native P-A 数值/TLS-first A 已获批准；其余内部接口、性能假设、原子验收与 Gate-D 仍待设计审签，不因上述决定自动冻结。
 
 > **设计主线**：全产品 #843 的 E-01/G-01，与 D1 HMI Device Contract、D2 HyRemoteView 客户端合同对接。现有 [Stage04 module](stage04-managed-edge-module-design-2026-11-04.md)、[Stage04 security](stage04-managed-edge-protocol-security-2026-11-04.md)、[Stage05 IDL](stage05-managed-edge-control-idl-2026-11-04.md)、[Stage05 DAG](stage05-managed-edge-implementation-dag-2026-11-04.md) 仍是细节主源；本稿**只做跨产品消费接口/状态/冲突消歧，不重新创建第二份 Gateway Control wire**。  
 > **批准约束**：HYR-PD-001/V15、HYR-ARCH-001/V8；工厂 PC **只安装 HyRemoteView**；Direct 无中心依赖；HMI Framework 是最终权限裁决者；Gateway 可由厂商或客户自托管；#190 `POST_GA_CONDITIONAL / NOT_ACTIVATED`。  
