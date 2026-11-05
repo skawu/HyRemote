@@ -90,11 +90,11 @@ TCP Accepted
 | RFB 具有明确批准的**未来**设备端端到端加密方式 | 目前没有已交付资格 | 若经独立威胁审查、实现和真实 Viewer 验证，可另行确定 Managed 资格 | 不能把 Gateway WSS、端口转发、代理 TLS 自动算作 RFB 设备 E2E |
 | RFB 3.7 或其他版本 | 当前代码要求精确 3.8 | 作为不受支持的客户端版本按标准语义拒绝 | 不把旧 `lenient37` 握手现象包装成严格 3.7 互通 |
 
-**开放问题 RFB-ID**：V8 设备端每会话许可可以与传统 RFB 匿名/共享密码兼容到什么程度？初步建议分开：
+**RFB-ID 已由 Human 的 H-RFB=A 关闭产品语义选择**；本节明确的是 legacy RFB 在 V8 Host 授权体系中的技术实现与兼容边界：
 1. 可信 LAN 上仅对经宿主显式允许的固定 Target 提供 read-only 标准 Viewer 路径；
 2. 需要个人身份、动态 Target/Scope、设备端细粒度 Grant 的交互优先 Native；
 3. RFB 输入仅在 HMI 自身**明确且当前**授权了连接范围的情况下允许，默认关闭；单 Scope 控制独占需要设备 Runtime 中真正的 Gate，不能靠 Viewer 端自律。
-该建议**不是**对既有已发布 RFB 使用权益或 V8 安全要求作出单方面缩减；如与 V15/V8 或对客户承诺冲突，列出影响、兼容和迁移方案交由 Human 决定。
+上述条款受已批准 **H-RFB=A** 约束，不能自行取消已发布宿主明确启用的 legacy 输入，也不能以 RFB 共享密码构造个人/Native Grant；未来真正改变产品权利或 RFB 标准 wire 才需新的 Human 受控变更。
 
 ### 3.3 RFB 数据、资源与时间界限的详细契约
 
@@ -109,6 +109,48 @@ TCP Accepted
 | 错误与恢复 | `protocolFailure`、`authenticationRejected`、`deferClientAbort`、断开回收 | 网络/协议错误不能提升 Host 权限；停止/重绑后一切旧会话/输入/敏感基线无效 |
 
 特别审查当前 `consumeClientMessage()`：对任一完整 Normal 消息将 `producedUsefulMessage=true`。因此“曾发完整 SetEncodings”与“目前有显示 FBU 请求或有效持续交互”并未被严格区分；协议工作包应设计**按真实有用进展**的可复核状态转移，同时防止静态帧、慢 Viewer 被误杀。**本稿不直接指定修改超时或现行发布验收结论。**
+
+### 3.4 标准 RFB 3.8 的设备端 Target/Scope/输入仲裁实施合同（H-RFB=A）
+
+> **已批准产品范围，不重开选择**：Human 的 `H-RFB=A` 确认保留宿主**明确开放**的已发布基础 RFB 输入能力；新设计默认只读、设备侧统一 Target/Scope 和单冲突 Scope 一名远程控制者，匿名与共享 VNCAuth 不能构成个人身份。以下 `RLG-` 是**F-04/F-06 内部逻辑合同**，不是扩展 RFB 3.8 报文字段、Native Grant 编号、公开 SDK ABI 或客户端对第三方 Viewer 的能力要求。
+
+#### A. 只存在一个设备端权威的 legacy 会话上下文
+
+| 内部对象 | 唯一所有者与生成条件 | 生命周期/失效边界 | 不能做的事 |
+| --- | --- | --- | --- |
+| `RfbEndpointProfile` | 经 DeploymentAdmission 验证的宿主配置；一个 RFB listener 与获准的**固定 TargetId/ScopeId** 绑定 | ProfileRevision 改变、Target 撤销、RuntimeEpoch 停止时失效 | 从 ClientInit sharedFlag、RFB ServerInit name、IP、第三方客户端字符串推导 Target/Scope |
+| `RfbPeerContext` | F-04 在每个 TCP peer 协议身份验证后创建，含 `AccessSessionId/RuntimeEpoch/ProfileRevision/TargetId/ScopeId/AuthAssurance` 和独立 Frame/held ledger | 断线、授权失效或连接代际不匹配，终态；绝不跨 reconnect 复用 | 把 VNCAuth 共享密码、来源 IP 或 Gateway OperatorId 冒充个人/Native 设备授权 |
+| `LegacyViewEligibility` | F-06 从当前宿主 ViewPolicy/TargetScope 和该 peer 的真实身份**能力等级**裁决 | ClientInit/ServerInit 前最后检查，出每个受限 Frame 前再次检查；撤权先失效当前 egress | RFB 握手成功便可读取任意 Target；以 client sharedFlag 放宽控制 |
+| `LegacyControlLease` | F-06 唯一 `ControlArbiter` 为具体 peer/Scope 授予；同 Scope 与 Native 互斥，现场优先 | policy epoch、peer 断线、现场接管、Target 销毁、lease 结束立即失效 | 两个 RFB peer 各自 socket 输入就同时实际控制；Native 和 RFB 各有第二套仲裁器 |
+| `PeerHeldLedger` | F-06 按 `AccessSessionId+Scope+key/button` 记录合法投递的 DOWN | peer 失效/撤权先关新 DOWN，再通过受保护释放清该 peer 的 held；对跨 peer 聚合状态逐源计数 | 一连接断开就松开其他合法 peer 或现场正在按住的同键；把保护 UP 当新 Grant |
+
+**一个 RFB endpoint 不能自动枚举/切换多个目标**：RFB 3.8 的 ServerInit 是一幅桌面几何，V8 的多个 Target/Scope 通过**受控部署中明确登记的 endpoint/profile** 暴露相应允许的固定目标；是否允许额外 endpoint 还受 H-DUAL=A 的统一 Host Admission、端口配置和资源预算约束。不能为了方便在 RFB 内添加 Native 的 TARGET_LIST 或绕过 Host 共享敏感 Target。
+
+#### B. 握手、查看与首个输入的确定顺序
+
+1. `DeploymentAdmission` 在任何监听前决定 `RfbEndpointProfile` 是否可信，配置可保存默认 getter `0.0.0.0:5921` 但**不会因此允许真实网络 listener**。拒绝时不得用“只读”状态留下旁路监听。
+2. TCP peer 进入原标准 RFB3.8 版本/安全协商（None/VNCAuth 按实际部署配置）→ F-04 创建**非个人身份的** PeerContext → F-06 检验 Host 当前固定 Target/Scope 的查看政策。任何阶段拒绝必须尽可能在标准协商/连接关闭边界完成，不发送自定义 Native 授权结构。
+3. `ServerInit` 中几何、桌面名称和 framebuffer 内容均受当前 Target 可见/隐私规则控制。未获准时**不可先发送敏感桌面名称或第一帧再遮蔽**；如果身份/策略不满足部署档位，拒绝握手或结束 peer。
+4. 每次 `FramebufferUpdateRequest`/ContinuousUpdates 只面向该 peer 当前获准的过滤后 Target；Full/Delta 基线、Encoding/pixel format 与待发队列按 peer 隔离。H-REVOKE=A 新 PolicyEpoch 生效后停止新选取/排队旧受限图、清可控 egress/FrameBaseline，必要断链；已到内核/TLS或已显示像素无法追回。
+5. `KeyEvent/PointerEvent` 进入 `F-04 parse→F-06 currentScopeGate→ControlArbiter→admitInput(ticket)→Qt deliverInput(finalCurrentPolicy)`。**不是**在 F-04 仅判断 `remoteInputEnabled=true` 就直接调用 Qt；必须同时持有宿主实际许可、当前 Scope 控制 lease 和与现场优先兼容的输入资格。
+6. 传统第三方 RFB 不具有 Native 的 `CONTROL_REQUEST/CONTROL_STATE`。对宿主**明确开放** legacy control 的 peer，F-06 在首次需要实际控制的输入到来前，应从**当前** Host Policy 申请/确认本 peer 的内部 ControlLease；如果无法取得（另一 peer 或 Native 持有、Scope 撤销、身份要求不可满足）则拒绝该次输入而仍可保持获准查看。必要时断开 peer 以保证安全清理，**不能默默重新指派已被占用的控制权**。此控制资格是设备内部状态，不能声称向第三方 Viewer 发送了 RFB 授权 ACK。
+7. 客户端 `sharedFlag` 按 RFB 的标准共享连接语义处理，不是远程控制抢占请求；Client `SetPixelFormat/SetEncodings` 的调整只影响输出呈现，不可改变 Host/Scope/Grant。已知 RFB 扩展 Cursor/Fence/CutText 也不得作为隧道偷带权限、设备身份或秘密。
+
+#### C. 失败、收尾和跨协议竞态（不改变 RFB wire）
+
+| 竞态/异常 | F-04/F-06 必须做出的设备行为 | 第三方客户端与官方 View 的真实表达 | 设计验收 |
+| --- | --- | --- | --- |
+| Host 未完成部署准入，但配置 getter 显示默认端口 | 不 bind，不创建 PeerContext | 连接拒绝；不能误报服务正在安全运行 | `RLG-01` |
+| RFB None/VNCAuth 通过但 Host 当前 Target/Scope 无查看许可 | ServerInit/任何敏感 Frame 发送前拒绝或关闭；不枚举目标信息 | 协议断连/拒绝，不宣称“连接成功但设备没画面”是权限成功 | `RLG-02` |
+| 两个 RFB 与一个 Native 同时申请同 Scope 控制 | F-06 控制租约只属于当前获准一名远程 peer；现场可随时收回 | 旧 RFB 没有 Grant 回执，官方 View 标识能力无法证明，绝不显示“已执行” | `RLG-03` |
+| RFB peer 已送 KEY_DOWN，Qt GUI 队列尚未消费，Host 撤权 | 先推进权限 epoch、禁新 DOWN，Qt 最终检查拒旧 ticket；保护性释放按 peer held ledger 计数 | 没有第二次授权，迟到 KeyUp 不跨 peer 释放 | `RLG-04` |
+| RFB 只读政策下收到合法语法 Key/Pointer | 消耗有界合法协议包，但不投递 Qt/不改变 held；若行为无法安全隔离才关闭该 peer | 第三方没有标准 InputACK，不伪造“成功控制” | `RLG-05` |
+| Target 被撤销、改变几何、遮罩或 PolicyRevision，peer 帧有积压 | per-peer 全/增量基线和可控队列失效，后续合法图只能基于新授权 FULL/resize 重新开始 | 旧已显示像素无法物理追回；官方 View 按策略遮旧 | `RLG-06` |
+| 断线/旧 peer 回调与新连接同 IP | 旧 `AccessSessionId/RuntimeEpoch` 失效、释放其 held、销毁旧 frame，重连必须重新 Host 审核 | 不因为 IP/共享密码相同继承旧控制租约 | `RLG-07` |
+| RFB 被用于 Managed/Public 安全要求 | 无独立 DeviceTLS E2E/个人身份资格时拒绝不符合要求的部署 profile，不从 Gateway 的 WSS 推导 HMI 加密 | UI 如实呈现“不满足设备端安全资格”，不偷偷回退 Native/RFB | `RLG-08` |
+| ClientInit/FBU 的握手超时和静态画面 | 区分协议状态和可证明的“有效进展”；正常静态画面不得被无依据的空闲判定反复断链 | 不把 SetEncodings 反复发送当作真实画面进展/权限认证 | `RLG-09` |
+
+**安全与兼容边界**：本节仅要求使用 RFB 3.8 已有标准消息和设备端 Host Policy 的内部控制；未改变已发布 RFB 的明确授权输入权益，也没有把其共享密码升级成个人身份或端到端安全。所有 `RLG-01..09` 属于**设计验收规格、未运行**。当第三方 Viewer 无法获知细粒度授权拒绝的原因时，设备端依然 FailClosed；不能靠新增非标准私有报文伪装原生兼容。
 
 ## 4. F-05 Native 1.0：严格复用已批准的完整设备协议
 
