@@ -110,6 +110,8 @@ flowchart TB
 
 **E-01/G-01 模块细节设计增量（2026-11-05）**：按 Stage05 的**唯一候选 IDL**，直接在 [D3](module-detail-d3-managed-integration-2026-11-05.md) 补全 `EG-01..12`，明确 Factory SiteRegistry/PolicyRevision/EndpointBinding、Gateway Route/PairLedger 的唯一所有者、一次性配对/两次拨号前 ACL 栅栏、站点撤权的本地线性化/持久化、双向 opaque FIFO 的缓冲/取消与登录态 H-EDGE=A。D2/D4 对应操作状态/验收。只闭合设计合同；Stage05 控制消息格式仍未发布冻结、Gateway #190 未激活。
 
+**E-01/H-EDGE=A 生命周期技术合同收口（2026-11-05，非产品实现）**：此前 D3 主要规定“登录期/注销离线”，但缺明确区分**关闭画面窗口、关闭工厂站点管理页面、退出整个 View、OS 注销、强杀进程、网络/证书变化、策略持久化失败和升级回滚**。现按既有产品范围完成 [D3 EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 的唯一 RunLease/RunEpoch、准入/撤销事务、白名单持久化及受控恢复设计；[D2 VIEW-EDGE-01..05](module-detail-d2-hyremoteview-client-2026-11-05.md) 与 [D4](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已共同消费。仅补可实施合同与可证伪验收，**不新增后台 Service/独立 Edge 安装包，不改变 H-EDGE=A，也未运行实测**。
+
 ## 4. 全产品四个不同准入门槛
 
 ### Gate-D：详细设计冻结申请（当前目标，不等于已通过）
