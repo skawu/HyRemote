@@ -1,0 +1,51 @@
+# #95/#789: run one exact candidate audit using trusted *develop* sources.
+# This workflow and its Actions check are advisory, NOT a required release gate.
+# No PR-source checkout or code execution in the privileged workflow_run job.
+name: Release scoped admission audit
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - '.github/scripts/release_scoped_admission.py'
+      - '.github/workflows/release-scoped-admission.yml'
+  workflow_run:
+    workflows:
+      - Git Flow policy
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  source-validator-self-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Positive and adversarial negative checks
+        run: python3 .github/scripts/release_scoped_admission.py --self-test
+
+  trusted-release-admission-audit:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    steps:
+      # workflow_run loads the trusted default-branch workflow definition.
+      # Never check out the triggering PR head or execute its artifacts.
+      - name: Checkout only trusted default-branch verifier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Verify exact source DAG and full Git trees using REST
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/release_scoped_admission.py --workflow-run-event "$GITHUB_EVENT_PATH"
