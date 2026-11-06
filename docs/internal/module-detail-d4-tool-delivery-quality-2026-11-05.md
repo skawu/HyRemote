@@ -282,6 +282,12 @@ RACE-03 除“GUI 两级队列后撤权”外，还必须固定如下反证记�
 
 XP-17/27、FW-07/08/12 的测试计划必须包含持续**大面积变化**而非只看准静态画面。静态算术边界：1920×1080×4 字节完整 RGBA ≈7.91 MiB，8 个不同隐私用户的独立全帧约 63.28 MiB；若共享 RawPool 恰占 V8 96 MiB，另有 8 条 Native 待发各 512 KiB（共 4 MiB），仅这些受管对象就 **>163 MiB**，与 128 MiB 目标不能同时成立。未来正式验收要记录：Source/Target 真实画面变化率与损伤面积，真实 owned raw/遮罩/编码/Qt stage bytes，per Session 取消与 FULL 复原、Native 512KiB/连接待发、128MiB 受管水位，以及**另外**实际 RSS/CPU/GPU/帧龄 P50/P95。失败时必须证明**只拒绝/背压受影响会话，不冻结现场 GUI，不泄露不同遮罩、不裁剪加密中继字节、不发生旧基线重用**。本项为设计内存/算术反证，不是当前已有真实性能测量或客户 SLA。
 
+### 5.2.5 Qt 最终画面采集与现实动态负载的设计验收
+
+实施验收不可仅测“Grab API 返回帧”或“网络能发出一张屏幕”：必须按**同一 Kit、Target、界面规模和负载**区分 `QWidget::render`/当前 Quick `grabToImage`/混合 CPU Composite/候选 Qt Quick RenderOutput，并以准确能力声明证明业务原有合成画面是否被复用。Qt Quick 的帧完成信号不是画面真实损伤 oracle，主动 grab 可能自激 scenegraph；`QQuickWindow::grabWindow` 不能未经测量替换为“更优零拷贝”路线，GPU/QRhi backbuffer readback 仍可能有同步与复制。
+
+XP-17/27 与 FW-07/08/12 需要同时记录现场 Qt GUI 响应、Viewer 最新帧龄/完整覆盖、原业务真实动效、CPU/GPU readback/编码/帧合成耗时、每 Target/Session 分配上界、P50/P95 和切换尺寸/隐藏/弹窗结果。Q0/Q1/Q2（静态无 Viewer、静态一 Viewer、持续大面积 60Hz 源动画）是先判捕获机制独立性的有限实验；高动态多 Viewer 异权限另验证 F-02 per-session 隐私与单源共享。不通过则标对应 Kit/Target/后端 `NOT_QUALIFIED`，安全拒绝发布资格；不得为了图示完整而让 Edge/Gateway 重抓、重编或裁剪加密字节。设计评审只固定选择条件/拒绝语义，真实硬件性能与 QtPrivate ABI 的 PoC 仍 NOT_RUN。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
