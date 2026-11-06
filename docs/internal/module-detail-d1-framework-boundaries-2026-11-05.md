@@ -162,6 +162,24 @@ Qt Target capture (one source, target incarnation)
 
 **反证入口**：RACE-02、FW-07/08、AFS-07/08 必须在过滤后入队前、FULL 未完整排入、FULL 部分交 TLS、DELTA 排队后丢弃/撤权四处可确定性注入。审签时至少有来源、代次、出队/发送结果、基线及拒绝恢复的预期表；全部仍 DESIGN_ONLY/NOT_RUN。
 
+### 4.5.2 持续大面积变化下的受管帧内存和并发准入合同（V8 §10.4／附录 C）
+
+**批准值不是所有上限同时可达的 SLA**：V8 明确 Host 设备受管内存目标 128 MiB，其中共享原始帧子池上限 96 MiB；最多 8 个连接，Native 每连接受控用户态待发上限 512 KiB。按“8 条连接全为 Native 且每条待发达到 512 KiB”作保守算术：仅共享 raw pool（若实际占满 96 MiB）与队列（8×0.5 MiB=4 MiB）已占 100 MiB，理论剩余只有 **28 MiB**，还没放每 Session 独立遮罩、编码工作区、Target/Qt 临时帧和控制元数据。**因此禁止宣称‘8 个全屏变化、各有不同遮罩的 1080p 会话始终都能 128 MiB 内完整缓存’**。
+
+| 资源域 | 唯一所有者与不可双计/漏计原则 | 事先预算及失败策略 |
+| --- | --- | --- |
+| BaseFrameRef / SharedRawPool | F-02 FrameSourceRegistry 以 `TargetIncarnation+FrameGeneration` 对真实 owned storage **只计一次**；引用计数、DMA/Qt 有界导出及帧副本实际独立占有分别标记 | 共享 raw pool 当前占用≤96 MiB；超过不能再生成一个可被任意 Viewer 引用的无限期历史帧，应在 HMI 采集/编码前按基线可恢复规则丢弃过时帧或对受影响 session 暂停 |
+| PerSessionPrivacy/FilterPool | F-02 PerSessionPublisher 为不同 ViewGrant/Mask/Watermark/PolicyRev/Target 各自隔离 raw-filtered/full/delta 内存；**不同隐私用户之间不可把遮罩输出当共享零成本引用** | 在新完整帧遮罩/编码申请前按实际 stride×height/像素格式预算；保护会话独立性高于帧率，无法在余量中安全构成一次 FULL 则不接纳该输出 |
+| EncoderScratch+ProtocolQueue | F-04/F-05 每真实连接独占编码器和明文字节队列；Native 待发硬上限 512 KiB/连接并按对应 V8 所属预算记账；Native TLS 用户态缓冲与 OS socket 容量**分别观测** | 队列溢出不能剪除已构成 TLS/Native 密文的任意字节；仅编码前、完整 FULL/DELTA 基线可恢复的候选帧可以合并/丢过时更新；否则有界关闭这一连接 |
+| QtCaptureInflight/TargetBuffers | F-02 RuntimeInstance + 目标 Qt owner 计真实在途像素与 GPU/CPU 拷贝；对跨线程不可变对象同一底层 allocation 不双计，额外 GPU/Qt staging、独立 per Session 纹理实际分列 | Qt GUI/RenderThread 不等待慢 Viewer，内存水位不达标时降低新采样请求/按策略暂停，不依赖遮蔽屏幕/假帧达到 CPU/RSS 指标 |
+| Input/Session/TLS/Diagnostics | F-06 Host 和各协议 owner 计有界 held/mailbox/session、可控 TLS buffers 与诊断数据；已交 OS 的 byte 不等于受管队列内存但仍计入真实资源证据 | 128 MiB 预算是**定义过的用户态受管对象总合**，不是进程 RSS；实际验收必须另测 RSS/CPU/帧龄/GPU、OS socket 压力，不能以指标缺项宣称通过 |
+
+**每次分配和入队的原子 Admission**：F-02 当前受管对象总账 `M_controlled = M_raw_shared_unique + M_privacy_unique + M_encoder_scratch + M_protocol_pending + M_capture_inflight + M_input + M_session + M_controllable_TLS + M_other_controlled`（不重复计引用）须保证 `M_controlled ≤128MiB`，其中 `M_raw_shared_unique≤96MiB`、每 Native 连接 `pending≤512KiB`。对相互别名的 allocation 由真实 owner 记一次，对未知大小/无效 geometry/溢出算术先拒绝申请。可控 TLS 双缓冲若与明文队列独立分配，必须两份实际计费；OS/驱动分配仍做整机资源观测但不冒称已被覆盖。
+
+**持续变化反例（只是设计边界算术，不是实机测量）**：1920×1080×4 = 8,294,400 bytes ≈7.91 MiB；八个用户各持有一张不同隐私的 1080p 全帧副本，单独隐私池下界约 **63.28 MiB**。若其他合法工作负载已占满上述 96 MiB raw + 4 MiB 发送队列，则合计已超过 **163 MiB**，连 Qt staging/encode 还未计，显然违反 128 MiB 目标。实现设计必须允许在**真实预算内**减少并行全帧持有、取消可控过时采集/编码、独立会话背压/拒绝额外观看或安全断开受影响慢端，**不能**因此提高受控预算、复用错遮罩、把旧 DELTA 当新 FULL、让 Gateway/Edge 裁剪加密字节。
+
+**最小量化设计交付**：预算对象列表、所有权/引用去重证明、Native/RFB/Qt/OS/TLS 分层水位、单连接降级先后、8 Viewer×多 Target×不同隐私×1s 持续大面积更新下的 FULL/DELTA/帧龄/RSS 等负例判定式；目标负载与测量环境在 Gate-I 后由适用平台资格验证，**Gate-D 只冻结精确实施策略和失败界限，不把设计算术当 P95/RSS 实测通过**。
+
 ### 4.6 F-02 明确的实施接口输入与异常出口
 
 | 合同 ID | 输入→内部输出 | 不变量与失败可观察性 | 设计验证入口 |
