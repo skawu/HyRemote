@@ -153,6 +153,19 @@
 
 **对正式 Word 编制的直接影响**：上述“信任/Route/Grant 是三种不同权威、申请控制与实际 Qt 执行是两种不同结果、内存目标不是客户 SLA、安装不是启用、离线撤销待送达不是已生效”的边界必须在 D5 已规划的组件/信任/撤权/部署图表和表格中使用同一术语；其中两条 `OPEN` 未解决前不宣称全产品 Gate-D 冻结。所有新增后续实测仍 `DESIGN_ONLY/NOT_RUN`，不是新的实施工单或设计路线重开。
 
+## 4.1 GD-05｜V8 附录 A.3 与 Core 现行输入 ABI 的原子反证
+
+**来源不一致不是 wire 值待选**：Human 已批准 Native P-A button 1..5、KP_0..KP_EQUAL 0x0400..0x0410。当前已发布 `src/core/include/hyremote/core/input.hpp` 的公开 `PointerButton` 只有三按钮、`KeyCode` 只有 69 个非小键盘已知值；Runtime 旧 `InputMailboxAdmission`、`qt_window_system_input.cpp` 仅围绕 69+3 类设计。不能误称 **Native 21 type 已获批准**就推断 Qt 全部输入类型已实现。
+
+| V8/P-A 原子义务 | 当前/批准的差别 | Gate-D 内部合同 Owner | 负向反证与状态 |
+| --- | --- | --- | --- |
+| A.3 KEY 主键/17 小键盘 | 合法 wire 覆盖 69+17，公开 Core 仅 69 类 | F-05 内部 NativeInputFact、F-06 Qt 最终 Adapter，V-02/V-01 精确 Keypad source/encode | GN-14/XP-21；不可用普通数字/ENTER 伪映射，OPEN_PLATFORM_PROOF |
+| A.3 POINTER_BUTTON 1..5 | X1/X2 对当前公开三按钮是**合法扩展类型**，不可当非法 wire | F-05 与 V-01 协议校验、F-06 Qt 末端、V-02 UI 来源 | GN-13/XP-21；保护释放/跨会话 OWNED，OPEN_PLATFORM_PROOF |
+| V8 每实际目标普通 64 / 保护 136 | 旧 69+3=72 逻辑 held 类别的证明不能覆盖未来 86 键+5 按钮=91 类 | F-06/Runtime QtInputDomain 同时已接纳 held 限额 72，仍按单物理叶子 64/136 | GN-15/16/RACE-03，held 73 拒新 DOWN 但不丢旧 UP，DESIGN_CONTRACT_PENDING_INDEPENDENT_SIGNOFF |
+| public Core 兼容 | 若直接扩展公开 KeyCode/PointerButton，可能破坏已发布 SDK ABI/兼容 | F-01 Core 保持既有 ABI；F-05/F-06 使用不出现在公共 API 的内部事实模型 | XP-01/21；旧 RFB 与四接入不回归，NOT_RUN |
+
+本表不是 A/B 新协议规范、Host/Viewer 已通过测试，也不能用批准的 wire 取值推导旧 Core 已支持该输入集合。后续正式 Word 需受控更新 §4.2/4.3/§8 与附录 Native 输入字典，不能悄悄覆盖获 Human 文档评审 V5。**Gate-D 仍 NOT_FROZEN**。
+
 ## 5. GD-02｜99 项中非普通合同链接项目及附录责任（2026-11-06）
 
 截至本轮 Human H-O01=A、H-O02=A 已批准：上文第 4 节对 V8 §13.3/§14.3 的两处“接口/分期 OPEN”为 2026-11-05 历史审核结论。现在**本期功能分期取舍已关闭，但未来文件/Host 回执与可信设备收件通道未设计/未实现**；Gate-D 本期应验证 UNSUPPORTED/OUTCOME_UNKNOWN/DEVICE_PENDING 与合法 Direct，不能要求在现有 Native 21 消息中实现未来回执。
