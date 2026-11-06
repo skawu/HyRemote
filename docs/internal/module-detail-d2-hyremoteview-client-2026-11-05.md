@@ -316,6 +316,12 @@ sequenceDiagram
 
 **V-03 当前等级**：`IDT-01..10=DETAILED_DESIGN_CANDIDATE`；`TRUST_REVOKE_DURABLE_FAILSAFE=TECHNICAL_PROOF_PENDING`（不能用内存拒绝冒充断电后撤销成功）；实际产品 OS SecretStore、证书存储后端、安装升级/跨用户 Windows/Linux 资格和 Native TLS/Grant 全部仍待工程实施/测试，不能把设计稿当作 G3 PASS 或产品出门证明。
 
+### 6.6.1 V-03 对委托时间与撤销事实的呈现合同（H-O02=A）
+
+V-03 对同一设备的状态至少区分：**有效委托（仅 HMI 可证）**、**期限不可信而当前拒绝临时访问**、**本地可信期限确已到期**、**Issuer 已签发但 HMI 尚未可信收件**、**设备本地撤销已受信生效**。这些不是 Native 1.0 新枚举或新增 Device ACK。HMI 离线时客户端/云端不能凭自身时钟或 Gateway RouteClose 伪造设备到期/撤销执行；Host 一旦返回 TIME_UNVERIFIED/权限不足，V-01/V-03 立即禁止相关新输入、遮蔽失权画面，而不是重新使用上一次 GRANTED。
+
+DeviceCatalog 与永久基础 Direct 使用权益独立记账：客户合法永久 Direct 不应因有限售后 Lease 时间异常、订阅过期或暂时无法验证云端时间而被擅自注销/禁用；它仍必须遵守当前 HMI 安全和真实认证条件。诊断必须标来源（Host/Issuer/Local）及可验证时刻，未知事实显示 UNKNOWN，不用 UI 推测 Host 时钟。负例映射 XP-23/28、IDT-08 与 VIEW-07，实际设备/系统时钟测试仍 NOT_RUN。
+
 ## 7. 操作界面及失败状态矩阵（仅显示可证事实）
 
 | 场景 | 主画面/入口 | 控制区 | 需要给用户的反馈 |
