@@ -115,6 +115,7 @@ V8 附录 D 提供 56 项对应的主责章节/补充章节，已 56/56 精确�
 | V15 来源（对应正式 V5 中 16 条非通常合同关联项） | 本期准确界限／独立责任 | 已有合同与设计反证 | Gate-D 当前结果 |
 | --- | --- | --- | --- |
 | §§1.1–1.3、14.1–14.2（5 条） | 主要是产品定位、角色及验收治理义务；不为每一段虚构新的 Runtime API，X-02 负责一致性和场景审签 | D4 XP-01..28、W00 S01..31；逐项核对未把用户角色等同于设备授权 | DOCUMENT_NORMATIVE_TRACE_PENDING，不算功能 PASS |
+| §2.3（1 条） | F-06/HMI Host 是业务结果唯一事实来源；即使 H-O01=A 将未来文件与 Host 回执接口延期，也不能让当前 INPUT、SocketWrite、传输 ACK 冒充应用参数已更改或告警已确认 | F-06 POL-06/08、D4 §5.5、XP-20/22；无 Host 可信结果时显示 OUTCOME_UNKNOWN，不自动重放副作用操作 | HOST_OUTCOME_AUTHORITY_REVIEW_PENDING |
 | §4.2（1 条） | V-02/V-03 负责多获准 Target 的独立呈现和焦点；F-06 独立授权，同一物理屏号不是 Target 身份 | SURF-02/04/06/07、IDT-03、XP-02/21；历史布局与旧 Scope 不得恢复权限 | CONTRACT_LINKED_REVIEW_PENDING；View G3 属实施资格 |
 | §§7.2–7.3（2 条） | F-05/F-06 与 V-02 明确 CommittedText 不是普通按键序列；本地触屏手势、合法指针模拟和原生多点触控分别按已批准 wire 能力声明 | AFS-09、SURF-06/07、XP-21；中文 IME 一次提交、旧代际输入拒绝，Native 1.0 未获批准的多点触控不伪报支持 | CURRENT_CAPABILITY_BOUNDARY_REVIEW_PENDING |
 | §9.1（1 条，混合义务） | **文本输入/剪贴板/文件是不同授权域**。H-O01=A **只**批准文件传输及受信 Host 业务回执延期；它既不授权将普通 COMMITTED_TEXT 当文件，也**不能自动判定**文本或剪贴板都延期。V-03 呈现真实能力，F-06 宿主权限为准 | F-06 POL-03/05、V-02 SURF-07、D4 XP-21/22。提交文本、剪贴板同步、文件交付三条路径分别列支持/不支持，不因 H-O01 一起改变范围 | MIXED_SCOPE_ATOMIC_REVIEW_REQUIRED（当前期文本/剪贴板精确资格待逐源审签） |
