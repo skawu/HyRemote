@@ -20,26 +20,46 @@ bool check(bool condition, const char *message)
     return condition;
 }
 
-// With a 250ms idle probe, this confirms a blocked capture request resumes
-// on the input/Viewer notification rather than merely on the next timer tick.
+// Zero-viewer waits have no probe deadline, so any wake requires a real
+// notification. Avoid fragile sub-250ms assertions under CI descheduling.
 template<typename Notify>
-bool expectPromptWake(Gate &gate, Notify notify, bool expected,
-                      const char *message, std::chrono::milliseconds precheck = 35ms)
+bool expectZeroViewerWake(Gate &gate, Notify notify, bool expected, const char *message)
 {
     std::promise<bool> completion;
     auto result = completion.get_future();
     std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
-    const bool wasBlocked = result.wait_for(precheck) == std::future_status::timeout;
-
+    const bool wasBlocked = result.wait_for(40ms) == std::future_status::timeout;
     notify();
-    // The bound is deliberately shorter than the 250ms static probe. It does
-    // not claim an application/render/transport latency bound.
-    const bool wokePromptly = result.wait_for(120ms) == std::future_status::ready;
-    if (!wokePromptly)
-        gate.stop(); // unblock on failure so a test never leaks a worker
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
     waiter.join();
+    return check(wasBlocked && woke && result.get() == expected, message);
+}
 
-    return check(wasBlocked && wokePromptly && result.get() == expected, message);
+// Exact synchronization: the test-only hook runs on the scheduler thread
+// immediately before its hour-away static wait. The ensuing observed wake
+// cannot be a 250ms timer expiry, even if the CI worker is descheduled.
+bool expectRemoteInputWakeFromStaticWait(Gate &gate)
+{
+    std::promise<void> waiting;
+    auto entered = waiting.get_future();
+    gate.armStaticWaitObserverForTest([&] { waiting.set_value(); });
+
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool reachedStaticWait = entered.wait_for(2s) == std::future_status::ready;
+    if (reachedStaticWait)
+        gate.noteRemoteInput();
+    else
+        gate.stop();
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    return check(reachedStaticWait && woke && result.get(),
+                 "remote input did not wake the real blocked static capture");
 }
 
 void enterStaticGate(Gate &gate)
@@ -63,8 +83,7 @@ int main()
 
     // A remote user action must wake a scheduler already waiting in static
     // mode. It must not be delayed by the 250ms local-only fallback.
-    if (!expectPromptWake(gate, [&] { gate.noteRemoteInput(); }, true,
-                          "remote input did not promptly wake static capture"))
+    if (!expectRemoteInputWakeFromStaticWait(gate))
         return 2;
 
     // The input resets the idle counter; entering idle again must be safe.
@@ -74,14 +93,14 @@ int main()
     // Removing the last viewer must NOT make capture run. It remains sleeping
     // until a subsequent real connection; reconnect then requires full init.
     gate.setViewerCount(0);
-    if (!expectPromptWake(gate, [&] { gate.setViewerCount(1); }, true,
+    if (!expectZeroViewerWake(gate, [&] { gate.setViewerCount(1); }, true,
                           "reconnecting viewer did not resume capture"))
         return 3;
 
     // After a fresh viewer leaves, 0V with a previously queued bootstrap
     // must not busy-spin, even if the idle counter was reset.
     gate.setViewerCount(0);
-    if (!expectPromptWake(gate, [&] { gate.stop(); }, false,
+    if (!expectZeroViewerWake(gate, [&] { gate.stop(); }, false,
                           "stop did not release a zero-viewer scheduler"))
         return 4;
 
