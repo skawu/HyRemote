@@ -119,7 +119,7 @@
 | --- | --- | --- | --- |
 | 一 Runtime 四入口 | §§3.1–3.5,4.1–4.6,15.1–15.5,附录 B | V15 §§2.2,3.1–3.4,13.1,13.6 | Qt Private 精确 Kit/ABI、受控准入与统一 Target/Policy |
 | 授权/撤权双栅栏 | §§5.1–5.5,6.1–6.5,7.1–7.6,附录 B | V15 §§4.1–4.3,6.1–6.3,10.1–10.2 | Host 唯一 PolicyEpoch、per-session 缓存与 Qt delivered-before-action 竞态 |
-| RFB/Native 二协议 | §§8.1–8.6,9.1–9.6,附录 A | V15 §§5.1–5.4,7.1–7.3 | 附录 A 21 类字段与 Human 已批准的 P-A/A 数值及 TLS-first 合同；26 字节向量、12 负例仍未运行 |
+| RFB/Native 二协议 | §§8.1–8.6,9.1–9.6,附录 A | V15 §§5.1–5.4,7.1–7.3 | 附录 A 21 类字段与 Human 已批准的 P-A/A 数值及 TLS-first 合同；26 字节向量、16 负例仍未运行 |
 | Managed/Factory Edge | §§3.6,8.7,9.7,10.6,11.6,16.6 | V15 §§1.4,8.6–8.7,13.8–13.9 | 登录态 Edge、RoutePermit 与 HMI DeviceGrant 分离、E2E/公网 Gate |
 | Tool/软件/权益 | §§12.1–12.6,14.1–14.5,15.1–15.5,16.1–16.5 | V15 §§11–12,14 | H-T01=A；Tool S1 #586 OPEN，Qt 精确平台证据、持续合法离线使用 |
 | 安全资源 | §§9.1–9.7,10.1–10.6,附录 C/E | V15 §§10–11,14 | 设计额定不等于实测/SLA；中继不吸收 HMI 128MiB 预算 |
@@ -137,7 +137,7 @@
 | §§5.3/7.3 控制独占与跨协议输入来源 | F-06 `POL-04/05/06/08` + F-04 `RLG-01..09`；HMI Scope 控制仲裁唯一权威 | Remote Ctrl 必须有当前 Scope 与 Session holder；两个 RFB/Native peer 按来源 held，不误放现场或另一合法连接 | FW-04/06、XP-04/05；按键账本与 GUI 交付顺序仍为设计候选 | `LINKED_DESIGN_NOT_SIGNED` |
 | §§5.5/7.4 撤权、Qt 最终交付与保护释放 | F-06 `POL-05/06/07/08`、F-05 `AFS-06/09`；HMI 当前 PolicyRevision/GrantEpoch 权威 | 先让旧权失效，再拒旧 Qt ticket/清受控旧输入；已登记的 held 有单独幂等 UP 通道，不能因失权禁 DOWN 而残留卡键 | FW-06/09、XP-05/26；OS 内核已交字节不承诺追回 | `LINKED_DESIGN_NOT_SIGNED` |
 | §§6.3/6.4 隐私派生帧和撤销缓存 | F-02 `RT-04/05/08`、F-06 `POL-03/07`、V-02 `SURF-02/05` | BaseFrame 可共享，但 Mask/Watermark/Delta 必须 per-session 授权；策略改动使旧 Full/Delta/旧敏感显示失效 | FW-07/08、XP-06/25/26；并发旧帧与慢端终止需未来验证 | `LINKED_DESIGN_NOT_SIGNED` |
-| §§8.2/9.3 TLS-first、身份/会话建立 | F-05 `AFS-01/02/03/10` + V-03 `IDT-02/06`；原 V8 A/B 与 Human P-A/A 唯一 wire 依据 | 两 Native 档位均先可信 DeviceTLS；plain 无密码 AUTH 也绝非无 TLS/默认个人身份；User Auth、ViewGrant、ControlGrant 独立 | GN-01..12、XP-03/07/10；26 正向/12 负向字节规格已设计但真实 Parser/E2E NOT_RUN | `LINKED_DESIGN_NOT_SIGNED` |
+| §§8.2/9.3 TLS-first、身份/会话建立 | F-05 `AFS-01/02/03/10` + V-03 `IDT-02/06`；原 V8 A/B 与 Human P-A/A 唯一 wire 依据 | 两 Native 档位均先可信 DeviceTLS；plain 无密码 AUTH 也绝非无 TLS/默认个人身份；User Auth、ViewGrant、ControlGrant 独立 | GN-01..16、XP-03/07/10；26 正向/12 负向字节规格已设计但真实 Parser/E2E NOT_RUN | `LINKED_DESIGN_NOT_SIGNED` |
 | §§8.7/9.7 受管可信路由与透明数据面 | E-01/G-01 `EG-01/03/04/05/07/08` + F-05 `AFS-11` | Gateway Permit/Pair 和本地白名单是路由许可，非 DeviceTrust/Grant；Route bytes 严格有序、有界，拥塞只能背压或整路关闭 | MG-03/04/06/09、XP-09/10/27；#190 未激活，不能宣称公网安全或代理级业务结果 | `LINKED_DESIGN_NOT_SIGNED` |
 | §10.4 + 附录 C 性能和受管内存 | F-02 `RT-03/05/07`、X-02 XP-17/27、D3 `EG-07`；每进程/队列所有者独立 | V8 所列 128 MiB 受管 HMI 目标、96 MiB 共享原始帧子池、8 连接、Native 每连接待发 512 KiB 等是设计预算；不能和系统 RSS/客户 SLA 混算；Edge/Gateway 队列另计 | XP-17/27、FW-12；各平台精确 Kit/P95/RSS/负载未实测，容量仍为候选资格 | `LINKED_DESIGN_NOT_SIGNED` |
 | §§11.4/11.6 客户端断线与同产品 Edge 生命周期 | D2 `SURF-05/07`、`VIEW-EDGE-01..05` + D3 `EG-09`、`EDGE-LC-01..08` | 关闭单个画面仅销毁该 Session；全 View 退出/OS 注销撤当前 EdgeRunLease/Route；旧 UI 回调不能显示虚假在线或恢复 Grant | XP-12/24/26；真实 OS 注销/崩溃/锁屏与 QtQuick 生命周期测试 NOT_RUN | `LINKED_DESIGN_NOT_SIGNED` |
@@ -146,7 +146,7 @@
 | §14.3 客户离线撤销与回执 | D4 XP-23、F-06 Device Policy 及 V-03 Identity 有原则，**尚未形成离线撤销签发、待送达、设备确认、生效与过期的完整持久状态与 Owner/回执合同** | 服务端“已下发”不能等同离线 HMI “已收讫/已撤权”；既有永久离线合法权益与有限委托期限必须分开 | XP-23/28；需按 V15 §12.1/§13.3 与 V8 §14.3 原文审查撤销生效语义及离线信任主体，无证据不补造云控制通道 | `OPEN_DELIVERY_ACK_AND_OWNER` |
 | §14.4 永久离线 Direct 权益 | F-03 `INT-10`、V-03 `IDT-08`、X-01 `DEP-07`、D4 XP-19/28；本地设备安全门为最终权威 | 合法基础 Direct 不依赖 Gateway、售后账号或订阅；设备自身安全政策撤销与购买权益必须分别判断 | XP-19/23/28；期限/License/DeviceGrant 业务边界仍需原 Word 逐句核查 | `LINKED_DESIGN_NOT_SIGNED` |
 | §§15.4/15.5 构建、发布与支持真相 | F-03 `INT-08`、X-01 `DEP-01/08`、T-01 `TL-03`；各产品交付和 QA Owner | 编译成功不等于 Qt Kit、平台、协议、安装器、E2E 已资格化；升级不得恢复已撤权限或旧 Site/Grant | FW-10、DEP-01/08、XP-24；正式产品支持声明全部留 Gate-R | `LINKED_DESIGN_NOT_SIGNED` |
-| 附录 A.2/A.5/A.6 类型/错误/限额 | V8 A/B 原始字段与 Human [P-A/A](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 受控增补；F-05 `AFS-10` | 21 type/字段宽度和已有 ERROR/CLOSE 不修改；未知值、错误长度、消息乱序按 V8 拒绝；不能以“向量设计”冒充 Parser | 26 字节 golden + 12 负向设计、GN-01..12；真实 Host/Viewer 对拍 NOT_RUN | `LINKED_DESIGN_NOT_SIGNED` |
+| 附录 A.2/A.5/A.6 类型/错误/限额 | V8 A/B 原始字段与 Human [P-A/A](module-detail-w00-native-v8-delta01-approved-2026-11-05.md) 受控增补；F-05 `AFS-10` | 21 type/字段宽度和已有 ERROR/CLOSE 不修改；未知值、错误长度、消息乱序按 V8 拒绝；不能以“向量设计”冒充 Parser | 26 字节 golden + 16 负向设计、GN-01..16；真实 Host/Viewer 对拍 NOT_RUN | `LINKED_DESIGN_NOT_SIGNED` |
 | 附录 B.2 事件、宿主线程与业务结果 | F-06 `POL-05/06/08`、F-02 `RT-02/06`；HMI Host/Qt GUI 最终调度 Owner | 设备策略变更与 Qt 目标销毁具有单调代际；旧 GUI ticket 在最终投递前拒绝，`QUEUED` 不等于业务执行成功 | FW-06/09、AFS-09、XP-05；Qt5/6 实际 EventLoop 竞态和 Host 结果证明未运行 | `LINKED_DESIGN_NOT_SIGNED` |
 
 **本次实际审查结果**：上述 16 组中 **14 组仅建立合同、状态、失败与测试的明确设计级链接，2 组存在不可忽视的原子接口/责任缺口**（V8 §13.3 的文件/业务结果，§14.3 的离线撤权送达/确认）。这两项不是允许立即修改 Native wire 或新建云控制面的授权，必须从批准的原 Word 条款和现有模块设计边界中闭合。99 个 Heading2 行仍是 `INDEXED_CONTRACT_REVIEW_PENDING`，非 Heading2 的附录 C/E/F 除本表 C 的预算切片外也未逐条签收；**本表不是 14/99 条已冻结**。
