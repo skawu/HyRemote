@@ -1,0 +1,124 @@
+// #789: exercise the static idle gate's freshness escapes without a Viewer.
+// This intentionally tests private scheduling semantics, not an end-to-end
+// RealVNC latency SLO or the RK3588/Qt graphics driver.
+#include "detail/viewer_capture_demand.hpp"
+
+#include <chrono>
+#include <future>
+#include <iostream>
+#include <thread>
+
+namespace {
+
+using Gate = HyRemote::detail::ViewerCaptureDemand;
+using namespace std::chrono_literals;
+
+bool check(bool condition, const char *message)
+{
+    if (!condition)
+        std::cerr << "FAIL: " << message << '\n';
+    return condition;
+}
+
+// Zero-viewer waits have no probe deadline, so any wake requires a real
+// notification. Avoid fragile sub-250ms assertions under CI descheduling.
+template<typename Notify>
+bool expectZeroViewerWake(Gate &gate, Notify notify, bool expected, const char *message)
+{
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool wasBlocked = result.wait_for(40ms) == std::future_status::timeout;
+    notify();
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    return check(wasBlocked && woke && result.get() == expected, message);
+}
+
+// Exact synchronization: the test-only hook runs on the scheduler thread
+// immediately before its hour-away static wait. The ensuing observed wake
+// cannot be a 250ms timer expiry, even if the CI worker is descheduled.
+bool expectRemoteInputWakeFromStaticWait(Gate &gate)
+{
+    std::promise<void> waiting;
+    auto entered = waiting.get_future();
+    gate.armStaticWaitObserverForTest([&] { waiting.set_value(); });
+
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool reachedStaticWait = entered.wait_for(2s) == std::future_status::ready;
+    if (reachedStaticWait)
+        gate.noteRemoteInput();
+    else
+        gate.stop();
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    return check(reachedStaticWait && woke && result.get(),
+                 "remote input did not wake the real blocked static capture");
+}
+
+void enterStaticGate(Gate &gate)
+{
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i)
+        gate.noteFrameChange(false);
+}
+
+} // namespace
+
+int main()
+{
+    Gate gate;
+    enterStaticGate(gate);
+    if (!check(Gate::kStaticProbeInterval == 250ms,
+               "experiment expected a 250ms private static probe"))
+        return 1;
+
+    // A remote user action must wake a scheduler already waiting in static
+    // mode. It must not be delayed by the 250ms local-only fallback.
+    if (!expectRemoteInputWakeFromStaticWait(gate))
+        return 2;
+
+    // The input resets the idle counter; entering idle again must be safe.
+    for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i)
+        gate.noteFrameChange(false);
+
+    // Removing the last viewer must NOT make capture run. It remains sleeping
+    // until a subsequent real connection; reconnect then requires full init.
+    gate.setViewerCount(0);
+    if (!expectZeroViewerWake(gate, [&] { gate.setViewerCount(1); }, true,
+                          "reconnecting viewer did not resume capture"))
+        return 3;
+
+    // After a fresh viewer leaves, 0V with a previously queued bootstrap
+    // must not busy-spin, even if the idle counter was reset.
+    gate.setViewerCount(0);
+    if (!expectZeroViewerWake(gate, [&] { gate.stop(); }, false,
+                          "stop did not release a zero-viewer scheduler"))
+        return 4;
+
+    // A non-input, local-only change is discovered by the bounded probe and
+    // cannot make the capture scheduler wait forever.
+    enterStaticGate(gate);
+    std::promise<bool> captured;
+    auto future = captured.get_future();
+    std::thread probe([&] { captured.set_value(gate.waitForViewer()); });
+    const bool probeReady = future.wait_for(800ms) == std::future_status::ready;
+    if (!probeReady)
+        gate.stop();
+    probe.join();
+    if (!check(probeReady && future.get(), "bounded local-only probe never fired"))
+        return 5;
+    gate.stop();
+
+    std::cout << "PASS 250ms bounded probe, remote input prompt wake, "
+                 "disconnect/reconnect and stop\n";
+    return 0;
+}

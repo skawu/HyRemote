@@ -264,6 +264,20 @@ target_compile_definitions(hyremote-remoteaccess PRIVATE
 )
 
 if(HYREMOTE_BUILD_TESTS)
+    # #789: private gate correctness under a slower idle probe. No Qt GUI is
+    # needed to assert that remote input and a reconnect wake a blocked worker.
+    add_executable(hyremote-viewer-capture-demand-test
+        tests/test_viewer_capture_demand.cpp
+    )
+    target_compile_features(hyremote-viewer-capture-demand-test PRIVATE cxx_std_17)
+    target_compile_definitions(hyremote-viewer-capture-demand-test
+        PRIVATE HYREMOTE_VIEWER_DEMAND_TEST_HOOK=1)
+    target_include_directories(hyremote-viewer-capture-demand-test PRIVATE src)
+    target_link_libraries(hyremote-viewer-capture-demand-test PRIVATE Qt6::Core)
+    add_test(NAME hyremote-viewer-capture-demand-test COMMAND hyremote-viewer-capture-demand-test)
+    set_tests_properties(hyremote-viewer-capture-demand-test PROPERTIES
+        TIMEOUT 10 LABELS "component;runtime;fast")
+
     add_executable(hyremote-runtime-diagnostics-test
         tests/test_runtime_diagnostics.cpp
     )

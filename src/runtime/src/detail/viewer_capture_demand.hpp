@@ -5,6 +5,11 @@
 #include <cstddef>
 #include <mutex>
 
+#if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+#include <functional>
+#include <utility>
+#endif
+
 // Private Shared Runtime demand gate. Never changes Core Session scheduling or exposes a public
 // integration knob: it suppresses unnecessary Qt captures after RFB has compared *served* pixels.
 namespace HyRemote::detail {
@@ -14,8 +19,26 @@ class ViewerCaptureDemand final
 public:
     // A local-only Qt Quick page change still becomes visible through the next bounded probe.
     // Do not rely solely on QQuickWindow rendering signals: offscreen grabs can generate them.
-    static constexpr auto kStaticProbeInterval = std::chrono::milliseconds(100);
+    // #789: matched 1080p A/B/A static tests showed about half the capture
+    // load with 250ms idle probes (9.2% -> 4.5% one-core CPU, Windows).
+    // Local-only UI changes can take up to 150ms longer to be discovered than
+    // the 100ms baseline; remote input and new viewers reset idle immediately.
+    // Keep this private to the shared Runtime; active frames retain 60fps.
+    static constexpr auto kStaticProbeInterval = std::chrono::milliseconds(250);
     static constexpr std::size_t kConsecutiveUnchangedFrames = 3;
+
+#if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+    // Test-only concurrency seam; never defined in the shipped Runtime. The
+    // long deadline makes a wake necessarily notification-driven rather than
+    // an accidental 250ms fallback. The hook signals *after* the waiter
+    // acquired m_mutex and immediately before wait_until releases it.
+    void armStaticWaitObserverForTest(std::function<void()> observer)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_nextStaticProbe = Clock::now() + std::chrono::hours(1);
+        m_testStaticWaitObserver = std::move(observer);
+    }
+#endif
 
     void start()
     {
@@ -100,6 +123,12 @@ public:
                 m_nextStaticProbe = now + kStaticProbeInterval;
                 return true; // local-only changes have bounded detection delay
             }
+#if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+            if (m_testStaticWaitObserver) {
+                auto observer = std::move(m_testStaticWaitObserver);
+                observer(); // test callback only signals a promise; never reenters this gate
+            }
+#endif
             m_changed.wait_until(lock, m_nextStaticProbe);
         }
     }
@@ -131,6 +160,9 @@ private:
     Clock::time_point m_nextStaticProbe{};
     bool m_bootstrapFrameQueued = false;
     bool m_stopped = true;
+#if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+    std::function<void()> m_testStaticWaitObserver;
+#endif
 };
 
 }  // namespace HyRemote::detail
