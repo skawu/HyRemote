@@ -54,6 +54,23 @@ if(HYREMOTE_ENABLE_CPU_PROBE)
     message(WARNING "HyRemote #609/#789 CPU probe is ON: diagnostic-only, NOT release-qualified")
 endif()
 
+# Run the unprivileged Linux clock regression only for explicitly opt-in
+# diagnostic builds. The default product/CI build remains unaffected.
+if(HYREMOTE_BUILD_TESTS AND HYREMOTE_ENABLE_CPU_PROBE
+   AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(hyremote-linux-cpu-probe-test
+        tests/test_cpu_probe_linux_clock.cpp
+    )
+    target_compile_features(hyremote-linux-cpu-probe-test PRIVATE cxx_std_17)
+    target_compile_definitions(hyremote-linux-cpu-probe-test PRIVATE HYREMOTE_ENABLE_CPU_PROBE=1)
+    target_include_directories(hyremote-linux-cpu-probe-test PRIVATE src)
+    add_test(NAME hyremote-linux-cpu-probe-test
+        COMMAND hyremote-linux-cpu-probe-test
+            "${CMAKE_CURRENT_BINARY_DIR}/cpu-probe-linux-selftest.jsonl"
+    )
+    set_tests_properties(hyremote-linux-cpu-probe-test PROPERTIES TIMEOUT 15)
+endif()
+
 # #335 build/process identity. SOURCE_SHA deliberately uses the same git fact that build.cmd install writes into
 # HYREMOTE-MANIFEST.txt; source archives or non-git consumers fall back to "unknown" rather than inventing an id.
 set(_hyremote_diagnostic_source_sha "unknown")
