@@ -182,3 +182,14 @@
 **非 Heading2 附录处理**：A/B 的 21 message/7 Host 事件及 Human P-A/A 仍是 Native 唯一权威；C 的资源限额必须原值绑定到 Runtime/Edge/Gateway 的**各自计量域**，不得拿 128 MiB/96 MiB 等设计预算冒充进程 RSS；D 的 56 ID 与 V15 原文标题已 56/56 校验；E/F 的具体条款、术语/示意与变更优先级仍须重新按原 Word 逐项核对，目录映射不是签收。没有已批准 Wire 变更，本轮没有任何产品测试 PASS。
 
 **Gate-D 未闭合**：上表解决的是来源接收方、范围状态与负例入口定位，**不等于对 99 个小节逐句技术审签**。V5 仍是已批准的文档版本，后续正式受控修订才更新其 99 项附录和图表。
+
+## 6. GD-05｜Route 重放与网关回滚的架构反链补足
+
+正式版 V5 的 99 条追溯表中，只有 `XP-13` 与 `XP-18` 缺少**具体小节**的验收反链（排除 `XP-01..28` 纯治理范围行，其他单条缺失多由 `XP-09/10` 一类缩写造成）。V8 上位与现有技术合同的唯一接收方如下；不修改 V8 原文或延期 Gateway #190 资格。
+
+| V8 规范条款 | 技术合同 Owner | 反证入口与必须观察的拒绝 | 冻结状态 |
+| --- | --- | --- | --- |
+| §§8.7、9.7（受管 Route/站点信任） | D3 `EG-04/05/08`、`MG-06/09`，G-01 的 PairLedger 与 E-01 的本地 CurrentSitePolicy；HMI 设备端最后授权独立 | `XP-13`：令牌 audience 错误、nonce/epoch 重放、双终端抢同凭据、旧 RouteClosed 回调不得恢复；不出现任意 TCP 拨号 | `DESIGN_LINKED/NOT_RUN` |
+| §§11.6、15.4–15.5、14.4（工厂生命周期、升级兼容、离线 Direct） | D3 `EG-11/EDGE-LC-06` + D4 `DEP-04..08`，Gateway 安全配置/Edge 可信恢复分别独占 | `XP-18`：旧备份/旧 token、密钥轮换中断、回滚及登录态退出失败后不能复活撤销 Route/Share；合法本机 Direct 不依赖 Gateway | `DESIGN_LINKED/NOT_RUN` |
+
+本节仅补足 *Requirement→Owner/Contract→Test* 反向索引；真正 Gateway 技术接口、平台证据与自托管发布均独立未激活，不能凭此表标 `GATE_D=PASS`。
