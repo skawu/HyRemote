@@ -107,3 +107,30 @@ V15 表6 共 31 条，引用序号范围 **1–31**，文档原文没有这些�
 V8 附录 D 提供 56 项对应的主责章节/补充章节，已 56/56 精确匹配，故本表按 **V15 原章目**逐行建立责任映射。V8 全部 99 个 Heading2 是架构接口/状态/故障的下一层审签单位；**本轮未声称对 99 节的所有句子逐条映射到可编译 API**。正式 W00 在冻结申请前应补 `V8 § → D1–D5 ContractID → State/Failure/Test/Owner`，尤其 QtPrivate 版本单元、Runtime 资源限额、Grant/隐私线性化、Managed RoutePermit，以及**已经 Human 批准 P-A/A 的 Native 字节值域与仍未验证的状态/错误/负向对拍**。
 
 **本轮输出**：`SOURCE_REQUIREMENTS_56=EXACT_INDEXED`; `PD_56_BEHAVIOR_ROWS=56_MAPPED_NOT_TESTED`; `HIGH_RISK_ATOMIC_CHAINS=9_LINKED_1_OPEN_NOT_SIGNED`; `V8_APPENDIX_D_56_TITLE_MATCH=PASS`; `V8_ARCH99_BEHAVIOR_TRACE=OPEN`; `GATE_D=NO`; `GATE_I=NO`. 不生成正式 Word、不改产品代码。
+
+## 6. GD-02｜产品要求非“已关联”项目的当前期/延期分域审核（2026-11-06）
+
+**审查依据和状态**：本节按 V15 56 行源目录、正式 V5 追溯表、D1–D4 现行合同及 Human H-O01=A / H-O02=A 交叉核查。它仅补齐源义务的**责任与负例入口**，不把旧 40/56 的“合同已关联”冒充技术签收，也不把本节条目变为已运行测试。第 4.1 节的 2026-11-05 “文件分期 OPEN”是当时的历史状态；Human 已选 A 后，**分期选择已关闭，未来通信接口归受控扩展**。
+
+| V15 来源（对应正式 V5 中 16 条非通常合同关联项） | 本期准确界限／独立责任 | 已有合同与设计反证 | Gate-D 当前结果 |
+| --- | --- | --- | --- |
+| §§1.1–1.3、14.1–14.2（5 条） | 主要是产品定位、角色及验收治理义务；不为每一段虚构新的 Runtime API，X-02 负责一致性和场景审签 | D4 XP-01..28、W00 S01..31；逐项核对未把用户角色等同于设备授权 | DOCUMENT_NORMATIVE_TRACE_PENDING，不算功能 PASS |
+| §2.3（1 条） | F-06/HMI Host 是业务结果唯一事实来源；即使 H-O01=A 将未来文件与 Host 回执接口延期，也不能让当前 INPUT、SocketWrite、传输 ACK 冒充应用参数已更改或告警已确认 | F-06 POL-06（仅 Qt 输入投递事实）、D4 §5.5、XP-20/22；无 Host 可信结果时显示 OUTCOME_UNKNOWN，不自动重放副作用操作 | HOST_OUTCOME_AUTHORITY_REVIEW_PENDING |
+| §4.2（1 条） | V-02/V-03 负责多获准 Target 的独立呈现和焦点；F-06 独立授权，同一物理屏号不是 Target 身份 | SURF-02/04/06/07、IDT-03、XP-02/21；历史布局与旧 Scope 不得恢复权限 | CONTRACT_LINKED_REVIEW_PENDING；View G3 属实施资格 |
+| §§7.2–7.3（2 条） | F-05/F-06 与 V-02 明确 CommittedText 不是普通按键序列；本地触屏手势、合法指针模拟和原生多点触控分别按已批准 wire 能力声明 | AFS-09、SURF-06/07、XP-21；中文 IME 一次提交、旧代际输入拒绝，Native 1.0 未获批准的多点触控不伪报支持 | CURRENT_CAPABILITY_BOUNDARY_REVIEW_PENDING |
+| §9.1（1 条，混合义务） | **文本输入/剪贴板/文件是不同授权域**。H-O01=A **只**批准文件传输及受信 Host 业务回执延期；它既不授权将普通 COMMITTED_TEXT 当文件，也**不能自动判定**文本或剪贴板都延期。V-03 呈现真实能力，F-06 宿主权限为准 | F-06 POL-03/05、V-02 SURF-07、D4 XP-21/22。提交文本、剪贴板同步、文件交付三条路径分别列支持/不支持，不因 H-O01 一起改变范围 | MIXED_SCOPE_ATOMIC_REVIEW_REQUIRED（当前期文本/剪贴板精确资格待逐源审签） |
+| §9.2（1 条） | H-O01=A：文件/Host 业务回执作为后续独立受控扩展；Native 1.0 21 类消息不变，当期按 NOT_SUPPORTED 显示，结果 UNKNOWN 不重放 | D4 §5.5、XP-22 当前期负例；未来收件/校验/宿主业务结果测试不得冒称本期交付 | HUMAN_PHASE_APPROVED / CURRENT_DENIAL_REVIEW_PENDING |
+| §§9.3–9.4（2 条） | 拖放/打印/通知与音频/标注/录制为各自权限和资格，不由 H-O01 自动扩展或延期；无明确实现资格时不能显示已支持、不能绕过 F-06 宿主 | V-03 IDT-07、D4 XP-20/22；有害拖放不触发业务、录制默认禁用、未知功能显示不支持 | OPTIONAL_CAPABILITY_SCOPE_REVIEW_PENDING |
+| §12.1、§13.3（2 条） | H-O02=A：离线签发/待送达 ≠ HMI 已收件/已生效；当前有限售后委托依 HMI 本地可信期限到期，合法永久 Direct 不因云到期失效 | POL-01/07、IDT-08、XP-23/28；不伪设备回执，不重放过期售后权限 | HUMAN_SEMANTICS_APPROVED / CURRENT_FACT_REVIEW_PENDING |
+| §12.2（1 条） | V-03 OEM 仅控制表现、G-01 企业服务必须独立授权/激活，X-01 负责版本/包资格；OEM 不提升 HMI Grant | IDT-09/10、EG-01/08、DEP-01/08、XP-16/19/24；Gateway #190 不因 OEM 存在被启动 | PRODUCT_OPTIONAL_GATE_REVIEW_PENDING |
+
+**直接来源索引的 4 项遗漏（不是缺少合同本体）**：
+
+| V5 内部合同 | 规范层级与唯一归属 | 可证伪入口 / 实际状态 |
+| --- | --- | --- |
+| DD-F01-02（Core Session start / epoch） | V15 §3.2、V8 §§3.2、10.1；F-01 Core 唯一会话生命期，F-02/F-06 决定远端 admission | FW-02/09、XP-01；索引缺直接反链，DESIGN_ONLY |
+| DD-F03-05（同进程四入口共存） | V15 §3.1、§3.2、V8 §§3.3、4.1–4.4；F-03 入口所有权不等于重复 Runtime | INT-01/06、XP-01；冲突 bind 不劫持已有目标，DESIGN_ONLY |
+| DD-V01-04（帧接收进入解码 staging） | V15 §§4.3、5.2、V8 §8.4；V-01 解析与 V-02 decoder 唯一边界 | SURF-01/02、XP-06/17；非法半帧不能呈现，DESIGN_ONLY |
+| DD-T01-01（已发布 Basic RFB） | V15 §11.3、V8 §§12.1–12.2 和 H-T01=A；T-01 仅旧 Basic RFB 真实范围 | TL-01/02、XP-14/15/20；Native/DeviceTLS 不得假称已有，DESIGN_ONLY |
+
+**GD-02 余项与禁止推断**：本节未宣布 56/56 原子审签，尤其文本/剪贴板当前期能力边界、可选能力批准范围和设备离线事实模型仍须按源文逐行为/逐接口审核；这些不是允许在 Native wire 或 Host public API 中临时补字段的授权。正式版 V5 已审签的文档二进制**未据此静默改写**，后续需要受控勘误/修订和独立文档评审。
