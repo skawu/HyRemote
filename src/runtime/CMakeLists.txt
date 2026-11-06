@@ -42,16 +42,33 @@ endif()
 
 target_compile_features(hyremote-remoteaccess PUBLIC cxx_std_17)
 
-# #609: optional Windows-only, unprivileged instrumentation for isolated CPU
-# attribution on a developer worktree. OFF in all shipped/qualified builds;
-# not installed as an API and never enabled by the release profile.
-option(HYREMOTE_ENABLE_CPU_PROBE "Developer-only #609 Windows Host stage CPU probes" OFF)
+# #609/#789: unprivileged Windows/Linux stage CPU attribution on a separate
+# developer worktree. OFF in all shipped/qualified builds, not a public API.
+# Linux CLOCK_*_CPUTIME_ID covers ARM64/Buildroot without perf privileges.
+option(HYREMOTE_ENABLE_CPU_PROBE "Developer-only Windows/Linux Host stage CPU probes" OFF)
 if(HYREMOTE_ENABLE_CPU_PROBE)
-    if(NOT WIN32)
-        message(FATAL_ERROR "HYREMOTE_ENABLE_CPU_PROBE currently requires Windows")
+    if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "HYREMOTE_ENABLE_CPU_PROBE requires Windows or Linux")
     endif()
     target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_ENABLE_CPU_PROBE=1)
-    message(WARNING "HyRemote #609 CPU probe is ON: this build is diagnostic-only, not release qualified")
+    message(WARNING "HyRemote #609/#789 CPU probe is ON: diagnostic-only, NOT release-qualified")
+endif()
+
+# Run the unprivileged Linux clock regression only for explicitly opt-in
+# diagnostic builds. The default product/CI build remains unaffected.
+if(HYREMOTE_BUILD_TESTS AND HYREMOTE_ENABLE_CPU_PROBE
+   AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(hyremote-linux-cpu-probe-test
+        tests/test_cpu_probe_linux_clock.cpp
+    )
+    target_compile_features(hyremote-linux-cpu-probe-test PRIVATE cxx_std_17)
+    target_compile_definitions(hyremote-linux-cpu-probe-test PRIVATE HYREMOTE_ENABLE_CPU_PROBE=1)
+    target_include_directories(hyremote-linux-cpu-probe-test PRIVATE src)
+    add_test(NAME hyremote-linux-cpu-probe-test
+        COMMAND hyremote-linux-cpu-probe-test
+            "${CMAKE_CURRENT_BINARY_DIR}/cpu-probe-linux-selftest.jsonl"
+    )
+    set_tests_properties(hyremote-linux-cpu-probe-test PROPERTIES TIMEOUT 15)
 endif()
 
 # #335 build/process identity. SOURCE_SHA deliberately uses the same git fact that build.cmd install writes into
