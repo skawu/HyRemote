@@ -189,7 +189,7 @@
 
 | V8 规范条款 | 技术合同 Owner | 反证入口与必须观察的拒绝 | 冻结状态 |
 | --- | --- | --- | --- |
-| §§8.7、9.7（受管 Route/站点信任） | D3 `EG-04/05/08`、`MG-06/09`，G-01 的 PairLedger 与 E-01 的本地 CurrentSitePolicy；HMI 设备端最后授权独立 | `XP-13`：令牌 audience 错误、nonce/epoch 重放、双终端抢同凭据、旧 RouteClosed 回调不得恢复；不出现任意 TCP 拨号 | `DESIGN_LINKED/NOT_RUN` |
-| §§11.6、15.4–15.5、14.4（工厂生命周期、升级兼容、离线 Direct） | D3 `EG-11/EDGE-LC-06` + D4 `DEP-04..08`，Gateway 安全配置/Edge 可信恢复分别独占 | `XP-18`：旧备份/旧 token、密钥轮换中断、回滚及登录态退出失败后不能复活撤销 Route/Share；合法本机 Direct 不依赖 Gateway | `DESIGN_LINKED/NOT_RUN` |
+| §§8.7、9.7（受管 Route/站点信任） | D3 `EG-04/05/06`、`MG-04`，G-01 的 PairLedger 与 E-01 的本地 CurrentSitePolicy；HMI 设备端最后授权独立 | `XP-13`：令牌 audience 错误、nonce/epoch 重放、双终端抢同凭据、旧 RouteClosed 回调不得恢复；不出现任意 TCP 拨号 | `DESIGN_LINKED/NOT_RUN` |
+| §§11.6、15.4–15.5、14.4（工厂生命周期、升级兼容、离线 Direct） | D3 `EG-11/EDGE-LC-06` + `MG-12`，D4 `DEP-04..08`，Gateway 安全配置/Edge 可信恢复分别独占 | `XP-18`：旧备份/旧 token、密钥轮换中断、回滚及登录态退出失败后不能复活撤销 Route/Share；合法本机 Direct 不依赖 Gateway | `DESIGN_LINKED/NOT_RUN` |
 
 本节仅补足 *Requirement→Owner/Contract→Test* 反向索引；真正 Gateway 技术接口、平台证据与自托管发布均独立未激活，不能凭此表标 `GATE_D=PASS`。
