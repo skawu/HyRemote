@@ -274,6 +274,10 @@ XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB �
 
 RACE-03 除“GUI 两级队列后撤权”外，还必须固定如下反证记录：**实际 Qt 叶子对象及 TargetIncarnation**、ScopeConflictGraph 冲突裁决、各会话的源感知 Held、物理 AggregateHeld、普通 mailbox 高水位（≤64）、保护性 Qt release 高水位（≤136）、每个 permit 的进入/完成代次及 RevokePending/Effective 时刻。测试必须区分“8×72 个逻辑来源-held 组合”与“最多 72 个物理已按下类别”，不得将每来源释放入队数与物理 Qt Up 上界混算。对于无法证明隔离的同叶子双 Scope，**期待拒绝第二 ControlGrant**，不得为达标临时放宽 Qt 输入语义或当场更改 V8 预算。具体 Qt Kit 独立运行与容量测量尚未进行，记录为 DESIGN_ONLY/NOT_RUN。
 
+### 5.2.3 Native 五按钮与十七种小键盘键码的边界反证
+
+把 V8 P-A 的合法值 1/2/3/4/5 与非法值 0/6 分为**协议接受**、**设备最终 Qt 投递**、**已投递 held 平衡**三层独立断言。F-05/V-01 真 parser 应识别全部合法值，不能将 X1/X2 无声映射为 None/Left，也不能使用 INVALID_FIELD 拒绝合法按钮。Qt5/Qt6 Widgets/Quick/Composite 必须有可验证的 X1/X2→对应叶子按钮 Down/Up、会话/Scope 撤权、重连/焦点转移保护释放、真实重复按键与单控制者判定。五种按钮、17 个独立 Keypad 与旧 69 逻辑键合计 91 个**可能类别**，但同一 leaf 实时 held 上限 72、普通 pending 上限 64、保护性释放上限 136，达到限额前拒绝新 DOWN 而不是丢旧 UP。负例：69 旧键 + 3 按钮已满时 X1/X2 或任意 Keypad 新 held 必须明确资源拒绝；后释放后再请求 X1/X2/Keypad 都必须正确执行并平衡。原值 `KP_0..KP_9`、`KP_ENTER` 与主键区对应键的 Qt 身份和 `KeypadModifier` 必须逐值验证，禁止错误映射或把 KEY 重复提交为 COMMITTED_TEXT。不得以旧三按钮单元测试 PASS 代替五按钮符合性；全项 NOT_RUN。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
