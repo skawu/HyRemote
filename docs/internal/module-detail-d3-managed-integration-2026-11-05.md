@@ -98,8 +98,8 @@ flowchart LR
 本地 setHmiShare(false) 先关闭有效准入再保存拒绝的顺序已经正确，但**当前进程的 deny/NEEDS_RECOVERY 不自动成为掉电后可证明的持久事实**。若 fsync 失败后立即终止，磁盘上可能只有旧共享白名单。禁止把旧文件本身视为已恢复的在线许可。
 
 1. 撤销发起时 E-01 立即 deny 该 HMI 的新 Route、取消旧 Pair/Route，随后以受信版本、原子替换和文件/目录持久同步提交新 SitePolicyRevision。持久同步未证实成功不显示“持久撤销完成”；当前进程始终维持 DENY/NEEDS_RECOVERY，不接受迟到 Gateway ACK 反向恢复。
-2. **每次新进程/OS 登录/崩溃恢复都从 Edge OFF 开始**，不从磁盘恢复 EdgeRunLease、PairCredential、旧 RouteEpoch。持久白名单或历史共享意图不是新进程的有效 Admission。必须在完整核验当前 SitePolicy、DeviceId、EndpointBinding、管理员身份及最新可证版本后，取得一次新的**逐设备显式可信启用**才能开放该设备 Route；无法核验最新安全状态则仍 OFF/NEEDS_RECOVERY。
-3. 若撤销写盘失败后掉电，软件可能根本没有可靠材料重建那次未提交意图，**不得声称设备已经持久撤销、也不得静默启用旧共享**。要证明掉电后每一次失败撤销仍可追溯，未来须另有可靠拒绝日志/高水位机制；本期通过默认 OFF + 不自动继承旧许可 + 管理员重新核验形成安全恢复边界。
+2. **每次新进程/OS 登录/崩溃恢复都从 Edge OFF 开始**，不从磁盘恢复 EdgeRunLease、PairCredential、旧 RouteEpoch。正常、可证明的安全退出后，已持久批准的逐设备共享白名单仅作配置输入；登录用户仍须按 H-EDGE=A **重新显式启用当前运行期 EdgeRunLease**，经当前 SitePolicy/EndpointBinding/管理员权限校验才能对外准入，**正常重新登录并不强制逐设备重新审批已持久批准的白名单**。若上一运行期异常终止、政策版本不明、签名/持久性无法验证，则保持 OFF/NEEDS_RECOVERY，要求受信管理员重新核对受影响设备并确认才可开启。
+3. **异常重启可识别性**：在允许任何 EdgeRunLease 对外服务之前必须先将本次运行的独立启动/策略代次标为持久 DIRTY，并验证文件及目录同步成功；若做不到则不可对外共享。正常 STOP 完成后才将对应代次持久标为 CLEAN。下次启动看到 DIRTY/缺标记/代际不一致/损坏时一律 OFF/NEEDS_RECOVERY，需受信管理员复核受影响设备；不能将旧持久允许清单直接激活。若撤销写盘失败后掉电，可能无法从失败写入还原完整变更请求，**不得宣称已持久撤销**；DIRTY 只提供保守异常恢复识别，不捏造业务操作回执。该启动标记/恢复事务是内部设计候选，不新增 Native/Gateway wire。
 4. 该拒绝只影响对应工厂共享/Route，不能误停 HMI 合法 Direct 或其他无冲突 HMI。扩权始终必须先完成可信持久提交再对外准入。
 
 **反证入口**：RACE-05/XP-24 必须在原子写入、文件/目录 fsync、撤销时旧 Offer 抢入及强杀/重登之间注入失败；重启绝无旧 RunLease/Pair 或无新批准的共享。保存 PolicyRevision、RunEpoch、写入结果、admin 新批准证据；仍是 DESIGN_ONLY/NOT_RUN。
