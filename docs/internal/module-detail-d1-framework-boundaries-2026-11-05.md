@@ -374,7 +374,7 @@ Human H-O02=A 已决定**离线 Issuer 签发不等于设备收到/撤销实际�
 
 ### 6.4.4 Native 五按钮与现有三按钮预算模型的有界扩展
 
-V8 Human 已批准的 Native 1..5 左/中/右/X1/X2 合法值域，**与现有** `hyremote::PointerButton`、`QtWindowSystemPointerState`、`InputMailboxAdmission` 的三按钮实现是不同事实，不能将五种协议按钮误算为三种支持。现有 `69 + 3 + 64 = 136` 对当前实现成立；五按钮完整设计采用内部可信会话票据扩展后，保持**每真实 Qt leaf 同时已接纳物理 held ≤72、普通 pending ≤64、保护性释放请求上界 ≤136**。允许的按键/按钮总枚举可能有 69+5=74 类，但任意时刻合计最多 72 种持有；占满时禁止新 DOWN 入队，而已接受 DOWN 仍享有受保护的真实 UP。动态容量检查必须在记录 accepted/保留 release 槽**之前**完成，并对多来源 aggregate 去重。
+V8 Human 已批准的 Native 1..5 左/中/右/X1/X2 按钮及独立 `0x0400..0x0410` 17 个小键盘键码，**与现有** `hyremote::PointerButton`、`QtWindowSystemPointerState`、`InputMailboxAdmission` 的三按钮实现是不同事实，不能将五种协议按钮及 17 个小键盘键码误算为旧三按钮/69 KeyCode 已支持。现有 `69 + 3 + 64 = 136` 对当前实现成立；五按钮与 Keypad 完整设计采用内部可信会话票据扩展后，保持**每真实 Qt leaf 同时已接纳物理 held ≤72、普通 pending ≤64、保护性释放请求上界 ≤136**。允许的按键/按钮潜在逻辑类别达到 69+17+5=91 类，但任意时刻合计最多 72 种持有；占满时禁止新 DOWN 入队，而已接受 DOWN 仍享有受保护的真实 UP。动态容量检查必须在记录 accepted/保留 release 槽**之前**完成，并对多来源 aggregate 去重。
 
 F-06 不通过修改 V8 wire 值、开放 public `InputEvent` 原有 enum、以 `None` 偷换 X1/X2 或建立未经最终 Qt 栅栏的第二条输入通道“解决”差距；既有 RFB/Widget/Quick/Composite 公开接口兼容性必须在适配设计审签中逐项核对。若 Qt5/Qt6 目标不支持等价且对称的 X1/X2 投递/释放，先拒绝有害的此类输入并标**协议能力未完成设计资格**，不得以 CI PASS 宣称 Native 五按钮互操作通过。
 
