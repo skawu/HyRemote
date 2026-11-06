@@ -1,0 +1,39 @@
+name: Linux CPU attribution smoke
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - .github/workflows/linux-cpu-probe.yml
+      - src/runtime/src/detail/perf_probe.hpp
+      - src/runtime/CMakeLists.txt
+      - src/runtime/tests/test_cpu_probe_linux_clock.cpp
+      - tools/perf/aggregate_cpu_probe.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rootless-linux-clock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build diagnostic clock smoke without Qt or elevated privileges
+        shell: bash
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread \
+            -DHYREMOTE_ENABLE_CPU_PROBE=1 \
+            -Isrc/runtime/src \
+            src/runtime/tests/test_cpu_probe_linux_clock.cpp \
+            -o /tmp/hyremote-linux-cpu-probe-test
+      - name: Verify real process/thread CPU, stage scopes and JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/hyremote-linux-cpu-probe-test "$RUNNER_TEMP/cpu-probe.jsonl"
+          python3 tools/perf/aggregate_cpu_probe.py --self-test
+          grep -q '"process_cpu_valid":true' "$RUNNER_TEMP/cpu-probe.jsonl"
