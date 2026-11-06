@@ -60,6 +60,25 @@ inline bool containsRfbRect(const RfbRect &outer, const RfbRect &inner) noexcept
            && outer.right() >= inner.right() && outer.bottom() >= inner.bottom();
 }
 
+// Adjacent regions with identical horizontal or vertical spans can be joined
+// WITHOUT including any unchanged pixels. This matters before enforceBound():
+// crossing 64 separate 64px tiles currently expands a sparse delta to one
+// possibly full-screen bounding box even when actual changes cover <25%.
+inline bool mergeExactlyAdjacentRfbRects(const RfbRect &a, const RfbRect &b,
+                                         RfbRect &merged) noexcept
+{
+    if (a.empty() || b.empty())
+        return false;
+    if ((a.y == b.y && a.height == b.height
+         && (a.right() == b.x || b.right() == a.x))
+        || (a.x == b.x && a.width == b.width
+            && (a.bottom() == b.y || b.bottom() == a.y))) {
+        merged = boundRfbRects(a, b);
+        return true;
+    }
+    return false;
+}
+
 inline std::vector<RfbRect> subtractRfbRect(const RfbRect &source, const RfbRect &cut)
 {
     const RfbRect hit = intersectRfbRect(source, cut);
@@ -92,14 +111,28 @@ public:
     {
         if (rect.empty())
             return;
-        for (auto it = m_rects.begin(); it != m_rects.end();) {
-            if (containsRfbRect(*it, rect))
-                return;
-            if (containsRfbRect(rect, *it)) {
-                it = m_rects.erase(it);
-                continue;
+        // Revisit the bounded list after every exact union, since a newly
+        // enlarged rectangle can connect to an earlier neighbor. Do not merge
+        // merely intersecting/diagonal regions: that could enlarge the wire
+        // payload or mask the source of changed pixels.
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (auto it = m_rects.begin(); it != m_rects.end(); ++it) {
+                if (containsRfbRect(*it, rect))
+                    return;
+                RfbRect joined;
+                if (containsRfbRect(rect, *it)) {
+                    m_rects.erase(it);
+                    changed = true;
+                    break;
+                }
+                if (mergeExactlyAdjacentRfbRects(rect, *it, joined)) {
+                    rect = joined;
+                    m_rects.erase(it);
+                    changed = true;
+                    break;
+                }
             }
-            ++it;
         }
         m_rects.push_back(rect);
         enforceBound();

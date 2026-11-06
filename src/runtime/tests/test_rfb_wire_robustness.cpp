@@ -3011,6 +3011,63 @@ void testPendingDamageCoalescesAtDelivery()
     }
 }
 
+// #789: 65 sparse-but-row-contiguous 64px changed tiles are only ~13% of
+// a 1920x1080 page. Previously the hard 64-rect bound joined the 65th tile
+// to a near/full-page rectangle before the 25% paint policy could even run.
+// Only exact unions are allowed: no unchanged pixel may be invented.
+void testExactTileUnionPreventsSparseFullPageInflation()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    constexpr std::uint32_t width = 1920;
+    constexpr std::uint32_t height = 1080;
+    RfbDamageRegion actual;
+    std::uint64_t tileArea = 0;
+    std::size_t tileCount = 0;
+    for (std::uint32_t row = 0; row < 17U; ++row) {
+        const std::uint32_t y = row * 64U;
+        const std::uint32_t tileHeight = std::min<std::uint32_t>(64U, height - y);
+        const std::uint32_t firstX = (row % 2U == 0U) ? 0U : (width - 256U);
+        const std::uint32_t tilesInRow = row == 16U ? 1U : 4U;
+        for (std::uint32_t col = 0; col < tilesInRow; ++col) {
+            actual.add({static_cast<std::int32_t>(firstX + col * 64U),
+                        static_cast<std::int32_t>(y), 64,
+                        static_cast<std::int32_t>(tileHeight)});
+            tileArea += 64U * tileHeight;
+            ++tileCount;
+        }
+    }
+    CHECK(tileCount == 65U);
+    CHECK(tileArea * 100U < static_cast<std::uint64_t>(width) * height * 25U);
+    CHECK(actual.size() == 17U); // no global 64-rect bounding fallback
+
+    std::uint64_t deliveredArea = 0;
+    for (const RfbRect &rect : actual.rects())
+        deliveredArea += static_cast<std::uint64_t>(rect.width) * rect.height;
+    CHECK(deliveredArea == tileArea); // no unchanged bytes added by exact union
+
+    const auto painted = HyRemote::detail::coalesceRfbDamageForPaint(actual, width, height);
+    CHECK(painted.size() == 17U); // below intentional 25% large-paint threshold
+
+    // A genuine 25% spread-out page transition must still collapse to one
+    // paint rectangle. Avoid reintroducing the top-to-bottom banding complaint.
+    RfbDamageRegion quarter;
+    quarter.add({0, 0, 64, 64});
+    quarter.add({192, 0, 64, 64});
+    quarter.add({0, 192, 64, 64});
+    quarter.add({192, 192, 64, 64});
+    const auto wide = HyRemote::detail::coalesceRfbDamageForPaint(quarter, 256U, 256U);
+    CHECK(wide.size() == 1U);
+    if (wide.size() == 1U)
+        CHECK(wide.rects().front() == (RfbRect{0, 0, 256, 256}));
+
+    // Only full-edge adjacency is exact. Diagonal touching is not a union.
+    RfbDamageRegion diagonal;
+    diagonal.add({0, 0, 64, 64});
+    diagonal.add({64, 64, 64, 64});
+    CHECK(diagonal.size() == 2U);
+}
+
 void testLargeDamageCoalescesForPaint()
 {
     HyRemote::detail::RfbDamageRegion large;
@@ -3473,6 +3530,7 @@ int main(int argc, char **argv)
     testPerViewerPendingDamageRemainsBounded();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
+    testExactTileUnionPreventsSparseFullPageInflation();
     testFullPageTransitionSingleWireRectangle();
     testStaticViewerCaptureDemandFeedback();
     testRfbFeedbackUsesActualServedPixels();
