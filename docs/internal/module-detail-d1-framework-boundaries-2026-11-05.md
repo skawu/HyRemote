@@ -340,6 +340,23 @@ sequenceDiagram
 
 **确定性负例**：RACE-03、FW-06、AFS-09 分别暂停复合队列、叶子队列、同步 Qt 事件开始点，再并发撤权/现场输入；验证无撤权后新的旧 DOWN、旧 held 不跨 peer 误释放、重复 UP 幂等及真实最终执行来源。此处仅为设计要求，具体 Qt Kit 可行性与互通均待独立审签，NOT_RUN。
 
+### 6.4.2 多来源输入的 Qt 目标等价关系与 136 保护配额证明（Gate-D 审查候选）
+
+**事实基线**：当前 src/runtime/src/detail/input_mailbox_admission.hpp 将 69 个已识别逻辑键位和 3 个指针按钮合计为 **72 个已接受 held 类别**，普通待处理预算 64、保护性释放预算 **72+64=136**；这些是已批准 V8 在实际 Qt 目标适配器上的容量，不是允许**每个远程会话重新复制 136 个物理释放槽**。当前叶子类按逻辑按键标记 accepted，并不含 F-06 要求的会话、Scope 或 Grant 身份；不能直接当成新多来源授权实现。
+
+| 设计对象 | 唯一所有者及原子不变量 | 失败拒绝 |
+| --- | --- | --- |
+| QtDispatchDomain / TargetInputIdentity | F-06 与 F-02 从**真实 Qt 输入接收者/叶子适配器 + TargetIncarnation**推导唯一物理投递域；不同逻辑 Target/Scope 若指向同一个不可独立仲裁的键鼠/焦点域，必须在 ScopeConflictGraph 中视为**有冲突**，除非能证明每个受控操作确实有隔离的 Qt 叶子与 held domain | 仅靠不同 ScopeId 或不同 QWidget 子对象名字不得同时给同一 QWindow 焦点多个远程控制者；证明不足直接拒绝第二个 Controller |
+| SessionHeld / AggregateHeld | GUI 最终投递域存按 AccessSessionId/PeerGeneration/TargetIncarnation/实际 Qt leaf/KeyOrButton 的**已投递**来源账本；AggregateHeld 为每物理键位的已生效来源引用数，只在 0→1 形成真实 Qt DOWN、1→0 形成真实 Qt UP | 对未实际投递的 DOWN 的撤销只取消待处理票据，不补发 Qt UP；来源不符的 UP 永不改变其他 peer/现场 |
+| PendingTicket / DispatchPermit | F-06 入队/叶子必须携带来源；对每次同步 QWS 或 sendEvent 调用，最终检查与进入调用的先后经可观测 DispatchPermit/在途计数定义，进入前先记录 in-flight，返回后才结算实际投递/失败 | 若撤权先设置 deny，则后来的 permit 拒绝；permit 已进入时撤权进入 REVOKING 并待 in-flight 收敛，不提前回报 REVOKE_EFFECTIVE |
+| ProtectedReleaseSchedule | 每真实 Qt leaf 的普通输入预算 64 和保护释放预算 136 不因多会话/多 Scope 放大。撤权/离焦时按**物理键位**聚合源感知释放意图，最多一个未完成 Qt UP 对应一个实际已按下的物理键位；来源级释放意图可在每连接固定上限的 ledger/bitset 中合并，不把每来源重复 UP 逐个入 Qt queue | 如果合法来源组合、重复 DOWN/UP 或新提案 key 码使保留容量无法证明，拒绝新增 ControlGrant/关闭受影响输入，不允许吞掉最后 UP 或无界入队 |
+
+**配额算术及适用限制**：每个物理叶子已投递不同 held 类别最多 72，现行普通事件待处理上限 64，因此需要保留的实际 Qt 保护性释放上界为 **72+64=136**；上界成立的前提是**同物理键位的多个合法来源不是多个 Qt key-down 实体**，来源计数和取消意图在有界设备内部账本完成，Qt 叶子只有一次物理状态转移。8 个全局连接对单叶子最多构成 **8×72=576 个来源/键位组合的账本记录**（这是存储/验证上界，**不能**当成 576 个 Qt 释放事件）。多会话同物理 leaf 若无法证明 Scope 冲突隔离、来源 refcount 的串行结算和最后物理 UP 则**不签收此优化**，最小合法方案是对该 leaf 同时至多一个远程 Controller。保护性释放与普通输入必须分队列/配额，不能让普通事件耗尽释放资格。
+
+**撤权与重入**：同步 Qt sendEvent/QWS 仍可能进入宿主回调。DispatchPermit 记录该调用从准入到返回的状态，Host BeginRevoke **先拒新票据和敏感帧**，不持同步 Qt 回调锁等待 GUI；in-flight 全部安全结算、受影响来源实际 held 保护释放完成后才可陈述 REVOKE_EFFECTIVE。事件若卡在宿主代码且无法证明已完成，就保持 REVOKING/NEEDS_RECOVERY、隔离远端连接，绝不把网络 ACK/队列为空当作“设备端业务已停”。
+
+**确定性反证**：RACE-03 必测 (a) 两 peer 同 Scope 争控制；(b) 两个称“不冲突”Scope 却共享实际 QWindow/Qt 输入叶子，第二控制请求应拒绝或有确证独立适配；(c) 8 个会话的重复键/按钮 Down 与跨 peer Up，不错误释放其他远程/现场；(d) 69 键+3 按钮持有、64 正常待发、连环撤权/Resize，实际 Qt 保护性事件不越 136 且无卡键；(e) 同步 sendEvent 期间 Host 重入撤权，有确定先后及未完成真实状态。量化结论为**设计证明前置候选**，所有 Qt5/Qt6 Kit/代码实现仍 NOT_RUN。
+
 ### 6.5 F-06 每连接按键账本与受保护释放（详细设计闭合候选）
 
 - **两个独立维度**：`SessionHeld[SessionId,Target incarnation,Scope,logicalKeyOrButton]` 持有“该连接实际获准并提交的 DOWN”；`TargetAggregateHeld[Target incarnation,logicalKeyOrButton]` 持有合计引用数/活跃来源，全部更新在同一 Qt 输入决策顺序域。不同协议和两个 peer 都不能只凭远端声称 DOWN/UP 来修改其他来源的 held 状态。

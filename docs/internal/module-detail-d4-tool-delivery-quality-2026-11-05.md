@@ -270,6 +270,10 @@ XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB �
 
 以上只要求**可审查设计与负例判定方法**，不是在 Gate-D 前要求新功能 E2E 实测 PASS。实际 Qt Kit 末端 API、保护容量、持久恢复的技术可行性若仍无法证明，保留 Gate-D OPEN，不能留到实施时临时选型。
 
+### 5.2.2 多来源 held 与保护性释放预算的审查判据
+
+RACE-03 除“GUI 两级队列后撤权”外，还必须固定如下反证记录：**实际 Qt 叶子对象及 TargetIncarnation**、ScopeConflictGraph 冲突裁决、各会话的源感知 Held、物理 AggregateHeld、普通 mailbox 高水位（≤64）、保护性 Qt release 高水位（≤136）、每个 permit 的进入/完成代次及 RevokePending/Effective 时刻。测试必须区分“8×72 个逻辑来源-held 组合”与“最多 72 个物理已按下类别”，不得将每来源释放入队数与物理 Qt Up 上界混算。对于无法证明隔离的同叶子双 Scope，**期待拒绝第二 ControlGrant**，不得为达标临时放宽 Qt 输入语义或当场更改 V8 预算。具体 Qt Kit 独立运行与容量测量尚未进行，记录为 DESIGN_ONLY/NOT_RUN。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |
