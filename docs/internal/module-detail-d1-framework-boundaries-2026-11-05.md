@@ -180,6 +180,23 @@ Qt Target capture (one source, target incarnation)
 
 **最小量化设计交付**：预算对象列表、所有权/引用去重证明、Native/RFB/Qt/OS/TLS 分层水位、单连接降级先后、8 Viewer×多 Target×不同隐私×1s 持续大面积更新下的 FULL/DELTA/帧龄/RSS 等负例判定式；目标负载与测量环境在 Gate-I 后由适用平台资格验证，**Gate-D 只冻结精确实施策略和失败界限，不把设计算术当 P95/RSS 实测通过**。
 
+### 4.5.3 Qt 合成画面来源与采集后端的适用性合同（Gate-D 设计候选）
+
+**现场前提**：真实业务可持续全屏变化、混合 QWidget/QML、多个顶层窗口及 Qt5/Qt6 + EGLFS/Windows 不同渲染系统。不能从“Qt 最终会渲染到 GPU”推断**同进程所有 Target 必然有一个可安全直接引用的最终 GPU 画面**；QWidget raster、QQuickWindow scenegraph、多个 native window/QPA、屏幕与应用 Target 彼此不同。每条合法采集后端必须先说明 Target 边界，不能使用一个全屏 OS 抓图替代 F-06 已授权 Target/Privacy。
+
+**现有源码事实（非已批准最终性能方案）**：Qt Quick `src/runtime/src/quick/quick_target.cpp` 使用 `QQuickItem::grabToImage()` 得到 CPU 可读 QImage；Widgets `widget_target.cpp` 通过 QWidget 绘制/FrameStorage 输出；Automatic `composite_target.cpp` 逐子 Target 捕获后用 CPU `QPainter` 合成。Qt Quick 的 `grabToImage` 不等于借用宿主已经合成的 GPU backbuffer；其主动抓图可能引入 render/readback/CPU 同步成本。Qt6.8 `QQuickWindow::grabWindow()` 官方文档也明确提示性能风险，不能仅以 API 名称把它视为“零复制路径”。Qt QRhi texture/backbuffer readback 属受限兼容接口且可能仍需要 GPU→CPU 拷贝，不能用“GPU Capture”这个标签宣称零拷贝/硬编码。研究与局限见 [已存在的 Qt Quick 采集资格审查](qt-quick-capture-path-qualification-2026-11-04.md)。
+
+| Target 类型／实现候选 | 唯一来源与所有权 | 必须证明的准入条件 | 失败、降级、禁止 |
+| --- | --- | --- | --- |
+| Widgets/raster | 目标 Qt 所在线程 QWidget→有界 owned CPU QImage/frame；必要时覆盖 native child/popup 的实际目标范围 | Qt5.15/Qt6.8、顶层/子窗口、DPR/旋转、离屏或遮挡状态下数据范围正确；采集时段不长期占用 GUI | 不默认存在共享 GPU 合成纹理；未支持的本机弹窗/隐私范围必须显式报告不能纳入 Target，不得悄悄省略 |
+| Qt Quick 现有兼容实现 | 同一 Target 只执行一次受控 `grabToImage` 请求，异步 ready 返回 owned CPU FrameRef；FrameSourceRegistry 才允许一份基础帧供多个会话引用 | 检查主动抓图是否诱发 Qt scenegraph 再渲染、GPU readback、Qt GUI/RenderThread 阻塞；实测静态/持续全屏/动画三类 | 未经证据不得报告该后端在 RK3588/EGLFS 或真实 1080p 高动态达标；旧图不变时也不能仅因无 Qt 信号就无限期停抓 |
+| Qt Quick 渲染输出候选（Qt6 特定 Kit） | 如果可在宿主现有渲染完成点、正确 GPU/render thread/同步栅栏下引用已合成的**同一已授权 Target**纹理或 backbuffer，建立受控 `GpuFrameLease`，由专属图形后端负责持有/释放与颜色转换 | 必须证明来源确为业务已有合成输出而非另一轮主动绘制，纹理使用寿命/fence、QtPrivate/QRhi Kit、Backend API、MSAA/format、EGLFS 和多窗口视域准确；不因借帧阻断本地业务渲染 | 不强行在 Qt5/GPU backend 不具备合格纹理所有权的场景启用；GPU→CPU readback 不自动叫零拷贝；Backend lost/resize/SceneGraph 重建先撤旧 generation/Frame 与隐私输出 |
+| Composite 多窗口/混合场景 | 以 TargetScopeRegistry 提供**实际受控窗口集合及层叠/几何/可见性**；若不属于同一 Qt Quick composited render target，不得假定能借一个 GPU texture 覆盖所有 QWidget 和 native popup | 计算窗口坐标/DPR/失效代际，保证输出完整且无旧帧伪装新帧；现场原有窗口不可为远控强制重组 | 不能“先全桌面抓、再靠 Viewer 遮挡”越权；不支持的外部 native overlay/DRM 内容必须报告受限而非错误画面；CPU Composite 若在高动态超预算需另设计/拒绝该资格 |
+
+**统一内部交付**：F-02 唯一 `CaptureBackendSelector/FrameSourceRegistry`（逻辑名）负责按已声明 Host/Target、Qt Kit、实际渲染 backend 与已证实资格选择一种**确定**的捕获实现；不创建第 5 种 Qt 访问入口或新 public SDK/Native wire。任何后端交付 immutable `BaseFrameRef{TargetId, TargetIncarnation, Generation, PixelGeometry, DPR, ColorFormat, Alpha, FrameCaptureTime, DamageTruth, StorageDomain, ReleaseFence}`；GPU-owned 只可在安全纹理生命周期内由已资格化的转换/编码器消费，CPU-owned 只可在真实分配预算内复制。基础帧仍不是授权发布权；必须经过 F-06 当前 Grant、逐 Session Mask/Watermark、FULL/DELTA 和最后明文出队栅栏。若未来 GPU 原生编码不能在设备上保证按会话隐私过滤**先于加密/转发**，就不得启用该路径。
+
+**选择与冻结条件**：对每个正式声称支持的目标平台/Kit/Target 类型，必须有一条明确的合格**主路径与保守回退路径**，且回退不会跳过设备隐私、返回旧尺寸帧、造成原现场业务阻塞或无限降低真实帧龄。优先做已有 #609/#789 研究要求的最小差异对照，不增造全产品开发任务：`Q0` 无 Viewer 静态、`Q1` 单 Viewer 静态有主动抓图、`Q2` 单 Viewer 真实 60Hz 大面积变化，并含多 Viewer 异隐私、native 弹窗/resize、RK3588/EGLFS 真实样例。记录同源 SHA/Kit/目标负载/CPU/GPU/帧龄、抓图频率与更新面积、实际 Viewer 结果；如果相关高动态目标无可行路径，Gate-D 标 `CAPTURE_BACKEND_QUALIFICATION_OPEN`，不得以旧单机静态实验宣称体系结构已优或产品达标。具体实验与目标设备证据须在获准的技术 PoC/资格范围内执行，本设计文件未运行测试也未授权编码。
+
 ### 4.6 F-02 明确的实施接口输入与异常出口
 
 | 合同 ID | 输入→内部输出 | 不变量与失败可观察性 | 设计验证入口 |
