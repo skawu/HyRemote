@@ -390,6 +390,12 @@ Human H-O02=A 已决定**离线 Issuer 签发不等于设备收到/撤销实际�
 
 **XP-23/28 确定性负例**：(1) 运行中系统壁钟回拨一天，已单调计时的 Lease 不得增长；(2) 委托未到期时断网重启且无可信时间锚，临时授权 fail closed 而永久 Direct 可按自身安全准入继续；(3) 当前设备时钟无来源却跳进未来，不能误报收件或确定“已可信到期”；(4) 云端 Issuer 撤销持续待送达期间本地可信期限独立到期，分开记录两条事实；(5) 到期与 Qt 输入票据/输出帧出队同时发生，旧委托不得新增执行或新出敏感像素；(6) 设备收到旧版本续租/缓存策略，不能倒退 Epoch 或重开已失权 Scope。设计验收入口不代表真设备时钟、TPM/RTC 或 E2E 已测试。
 
+### 6.4.4 Native 五按钮与现有三按钮预算模型的有界扩展
+
+V8 Human 已批准的 Native 1..5 左/中/右/X1/X2 按钮及独立 `0x0400..0x0410` 17 个小键盘键码，**与现有** `hyremote::PointerButton`、`QtWindowSystemPointerState`、`InputMailboxAdmission` 的三按钮实现是不同事实，不能将五种协议按钮及 17 个小键盘键码误算为旧三按钮/69 KeyCode 已支持。现有 `69 + 3 + 64 = 136` 对当前实现成立；五按钮与 Keypad 完整设计采用内部可信会话票据扩展后，保持**每真实 Qt leaf 同时已接纳物理 held ≤72、普通 pending ≤64、保护性释放请求上界 ≤136**。允许的按键/按钮潜在逻辑类别达到 69+17+5=91 类，但任意时刻合计最多 72 种持有；占满时禁止新 DOWN 入队，而已接受 DOWN 仍享有受保护的真实 UP。动态容量检查必须在记录 accepted/保留 release 槽**之前**完成，并对多来源 aggregate 去重。
+
+F-06 不通过修改 V8 wire 值、开放 public `InputEvent` 原有 enum、以 `None` 偷换 X1/X2 或建立未经最终 Qt 栅栏的第二条输入通道“解决”差距；既有 RFB/Widget/Quick/Composite 公开接口兼容性必须在适配设计审签中逐项核对。若 Qt5/Qt6 目标不支持等价且对称的 X1/X2 投递/释放，先拒绝有害的此类输入并标**协议能力未完成设计资格**，不得以 CI PASS 宣称 Native 五按钮互操作通过。
+
 ### 6.5 F-06 每连接按键账本与受保护释放（详细设计闭合候选）
 
 - **两个独立维度**：`SessionHeld[SessionId,Target incarnation,Scope,logicalKeyOrButton]` 持有“该连接实际获准并提交的 DOWN”；`TargetAggregateHeld[Target incarnation,logicalKeyOrButton]` 持有合计引用数/活跃来源，全部更新在同一 Qt 输入决策顺序域。不同协议和两个 peer 都不能只凭远端声称 DOWN/UP 来修改其他来源的 held 状态。
