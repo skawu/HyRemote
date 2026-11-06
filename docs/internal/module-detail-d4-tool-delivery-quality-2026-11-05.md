@@ -260,6 +260,16 @@ D3 的 [EDGE-LC-01..08](module-detail-d3-managed-integration-2026-11-05.md) 与 
 
 XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB 第三方客户端、F-04/06 HMI exact SHA、OS/Qt Kit/Target/Scope/PolicyEpoch 归档；不许用官方 Native Viewer 的 Grant 测试替代传统 RFB 兼容。全部仍是 `DESIGN_ONLY/NOT_RUN`，不增加新的 RFB wire，不重新审核 H-RFB=A 产品选择。
 
+### 5.2.1 Gate-D 原子反证的设计签收接口
+
+| 入口 | 设计冻结前必须唯一确定的事实 | 未来负向验证的观察与禁止输出 |
+| --- | --- | --- |
+| RACE-02 / FW-07/08 / AFS-07/08 | F-02 最后明文出队与完整 FULL 基线提交、逐 Session Policy/Privacy/Queue 版本 | 中途撤权、部分 TLS 写、DELTA 丢弃/慢端；旧许可不产生新增可控字节，不用 SocketWrite 声称 Viewer 已呈现 |
+| RACE-03 / FW-06 / AFS-09 | 带可信 Authorization 的输入票据贯穿复合/叶子队列，Qt 最后投递许可与撤权真实线性化、按来源 held/136 保护预算 | 两级 GUI 队列停顿与现场抢占；旧 DOWN 失权后不得实际投递，保护性 UP 不释放其他来源；撤权未确认不报已生效 |
+| RACE-05 / XP-24 | E-01 deny-first、持久提交资格及掉电新进程 OFF/管理员显式新授信 | fsync 失败、强杀/重启、备份旧 Policy/旧 Gateway Offer；无新批准零 Route，合法 Direct 不中断 |
+
+以上只要求**可审查设计与负例判定方法**，不是在 Gate-D 前要求新功能 E2E 实测 PASS。实际 Qt Kit 末端 API、保护容量、持久恢复的技术可行性若仍无法证明，保留 Gate-D OPEN，不能留到实施时临时选型。
+
 ### 5.3 测试资格分层（不混用门禁）
 
 | Gate | 证明什么 | 明确**不能**证明什么 |

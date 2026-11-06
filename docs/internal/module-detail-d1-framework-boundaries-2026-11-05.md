@@ -147,6 +147,21 @@ Qt Target capture (one source, target incarnation)
 - **慢端处置**：只有在编码/TLS 前且可以正确恢复 FULL 的会话级帧才可丢/合并；密文 Native FIFO 不能剪字节或凭 FrameId 重排序。超过受控内存/等待上限则拒绝本会话进一步入队、报告真实 `RESOURCE_LIMIT` 并按协议关闭受影响连接；本地 HMI 与其他正常会话不被拖死。
 - **撤权互锁**：Policy/GrantEpoch 生效后，不新增旧许可像素/输入、不将旧受限帧新入队；清所有仍可控的旧明文/已过滤缓存与待发送 Session 队列，旧基线失效。Native TLS/OS 已交出的字节**不保证追回**；必要时断链，第一方 View 遮旧图、禁输入。恢复查看必须以新授权、新 Full 和当前 Session 为条件。
 
+### 4.5.1 最后出队校验与逐会话差量基线（Gate-D 审查合同）
+
+本节只规定 F-02/F-04/F-05 的**内部发送事务**，不增加 Native 消息、逐帧 ACK 或 SDK 公共 ABI。先验授权、已完成 FULL、已排队和远端已呈现是四种不同事实。
+
+| 阶段 | 唯一责任与提交条件 | 失败及恢复 |
+| --- | --- | --- |
+| 帧候选 | F-02 逐 Session Publisher 生成不可变候选，绑定 RuntimeGeneration、AccessSessionId、TargetIncarnation、GrantEpoch、PrivacyRevision、FrameGeneration、FrameId 与 baseline generation | 任一版本或 Target 不匹配时整帧丢弃，失效此 Session 的 DELTA 基线 |
+| 最后明文出队 | F-04/F-05 受控发送队列在进入 TLS/Socket 前读取**当前** F-06 Policy、Session、Target、隐私快照；同连接 FULL/RECT/END 保序且不交叉 | 已撤权者禁止新增明文字节提交；未出队旧数据可删除，已部分送 TLS/OS 无法安全剪切则关闭该连接 |
+| 基线有效 | 仅完整 FULL 获得保证**不被后续静默丢弃、重排**的可靠有序发送位置后，才能为该同一连接的后续 DELTA 提供内部发送基线；无逐帧 ACK，不能宣称 Viewer 已显示 | 可控队列丢任何必需更新、传输不连续或策略/尺寸/会话变更，改 WAIT_FULL；FULL 部分交 TLS 且无法修复时闭路重建新 Session |
+| 资源与证据 | 独立记录清晰候选、明文队列、TLS/OS 交付、高水位、实际发送与本地不可追回边界 | SocketWrite、Ping/Pong、队列排空不构成 Viewer 已呈现/Host 业务已应用 |
+
+**禁止绕过**：Core 的通用 Transport.enqueueFrame 既非 ViewGrant 也非可信输出许可；新受信 Runtime 的任何对外像素必须统一经过 F-06 当前授权、F-02 逐会话过滤及上述最后出队复核，不可由另一入口直接发布未过滤 BaseFrameRef。旧公开 ABI 按已发布事实另行兼容。
+
+**反证入口**：RACE-02、FW-07/08、AFS-07/08 必须在过滤后入队前、FULL 未完整排入、FULL 部分交 TLS、DELTA 排队后丢弃/撤权四处可确定性注入。审签时至少有来源、代次、出队/发送结果、基线及拒绝恢复的预期表；全部仍 DESIGN_ONLY/NOT_RUN。
+
 ### 4.6 F-02 明确的实施接口输入与异常出口
 
 | 合同 ID | 输入→内部输出 | 不变量与失败可观察性 | 设计验证入口 |
@@ -312,6 +327,18 @@ sequenceDiagram
 | `POL-08` Close/Expiry/GeometryChange | F-06 Registry + Qt Adapter | Session 关闭、期限到期、Target 丢失时注销对应会话票据/held；**同一 Target 发生尺寸/输入坐标几何代次变化时**，先阻断该 Target 新 DOWN，再以设备端持有账本对受影响远程来源幂等执行保护性释放；此几何处理**不自动撤销仍合法的 View/ControlGrant** | 旧输入坐标票据失效、重复/迟到 UP 不误释放其他来源；之后新的几何代次输入须重新检现行许可 |
 
 **并发实现必须证明的线性化边界**：单纯在网络线程“检查过后投递 `postEvent`”**不满足** `POL-06`，因为撤权可能在 GUI 消费前生效。设计约束是：Host 撤权发布能立即使旧 PolicyEpoch 失效，GUI 最后投递事件与本地当前 Policy 判定具有可测试的相对顺序；如果实际 Qt 事件传递还存在异步阶段，则最终**事件应用点**继续判定，不得在较早的 enqueue 阶段认定操作已经完成。锁/线程串行化实现可以在现有 ABI 允许范围内选择，但不得以持锁执行用户业务、TLS、文件 IO 或不可控回调来假装原子性。
+
+### 6.4.1 多级 Qt 输入队列的最终许可栅栏（Gate-D 审查合同）
+
+**已核源码插入点**：当前 CompositeInputSink 用 Qt::QueuedConnection 排入 GUI，Widgets/Quick 叶子 InputSink 还有第二级 queued drain；叶子最终通过 QtWindowSystemInput 的同步 QWS 投递或 QWidget/QQuickWindow 输入投递。当前公共 InputEvent 不带已验证 Session/Grant 上下文，故只在网络入口或复合 GUI drain 检查不可能满足 H-REVOKE=A。
+
+**内部可信票据**：F-06 在网络准入后创建 AuthorizedInputTicket（仅 Runtime 内部），绑定真实 AccessSessionId、peer/runtime generation、TargetId+Incarnation、ScopeId、PolicyRevision、GrantEpoch、GeometryEpoch、来源 held ledger key、接收时戳及取消标志。复合队列、目标路由、Widgets/Quick 叶子队列必须携带整张票据，不得从普通 InputEvent、Qt 对象名或远端字段重新推断权限；不改现有 public InputEvent ABI 或 Native 消息。
+
+**不可拆分的时序**：① 初次准入仅可宣称 QUEUED，不登记已交付 held；② 最后一级 Qt 对象所属线程在同步 QWS/sendEvent 的**最后实际调用前**，检查当前可信 policy/deny latch/Session/Scope/Grant/Target/geometry，拒绝迟到旧票据；若叶子之后还有异步投递，就必须将最终检查后移至真正应用点；③ Host 撤权先发布 scope denyPending 立刻拒新普通 DOWN/旧帧，随后与 Qt 最后投递域协调旧在途票据及每来源保护性释放，只有能证明旧票据不会再被应用才可报告 REVOKE_EFFECTIVE；同步调用已进入时按其与撤权的实际线性化先后归因，不能假装撤回已进入宿主的事件；④ Qt GUI 线程不得等待网络、磁盘或宿主业务回执。无法证明最终顺序时保持 deny/断链并报 PENDING/NEEDS_RECOVERY，不得报撤销成功。
+
+**资源账本**：SessionHeld 与 TargetAggregateHeld 对已交 Qt 的 DOWN 逐来源登记，普通新输入和保护性 UP 分权；沿用每目标 64 个普通事件及 136 个保护性释放容量。若多合法不冲突 Scope 共用真实 Qt 叶子适配器，授予控制前必须证明跨来源最坏 held/预留释放有界；资源不足拒绝新准入，不通过每会话多开队列绕过总配额。
+
+**确定性负例**：RACE-03、FW-06、AFS-09 分别暂停复合队列、叶子队列、同步 Qt 事件开始点，再并发撤权/现场输入；验证无撤权后新的旧 DOWN、旧 held 不跨 peer 误释放、重复 UP 幂等及真实最终执行来源。此处仅为设计要求，具体 Qt Kit 可行性与互通均待独立审签，NOT_RUN。
 
 ### 6.5 F-06 每连接按键账本与受保护释放（详细设计闭合候选）
 

@@ -93,6 +93,17 @@ flowchart LR
 
 **拨号防 TOCTOU**：`RouteOffer` 接收检查当前 revision、Operator/Site/HMI/协议/TTL/受信 Gateway；`PairReady` 之前及每次 `dialApprovedEndpoint` 前再次读取当前受信 `SitePolicySnapshot` 与端点身份 binding。即使 Offer 曾被批准，一旦本地撤权/证书变化/重启代际变化，必须拒绝拨号或关闭既有 Route。DNS 解析输出亦须与当前受信端点/地址约束相符；不得在连接阶段接受外来 host/port 替换。
 
+### 4.2.1 撤销写盘失败及掉电恢复的设备共享准入（Gate-D 审查合同）
+
+本地 setHmiShare(false) 先关闭有效准入再保存拒绝的顺序已经正确，但**当前进程的 deny/NEEDS_RECOVERY 不自动成为掉电后可证明的持久事实**。若 fsync 失败后立即终止，磁盘上可能只有旧共享白名单。禁止把旧文件本身视为已恢复的在线许可。
+
+1. 撤销发起时 E-01 立即 deny 该 HMI 的新 Route、取消旧 Pair/Route，随后以受信版本、原子替换和文件/目录持久同步提交新 SitePolicyRevision。持久同步未证实成功不显示“持久撤销完成”；当前进程始终维持 DENY/NEEDS_RECOVERY，不接受迟到 Gateway ACK 反向恢复。
+2. **每次新进程/OS 登录/崩溃恢复都从 Edge OFF 开始**，不从磁盘恢复 EdgeRunLease、PairCredential、旧 RouteEpoch。持久白名单或历史共享意图不是新进程的有效 Admission。必须在完整核验当前 SitePolicy、DeviceId、EndpointBinding、管理员身份及最新可证版本后，取得一次新的**逐设备显式可信启用**才能开放该设备 Route；无法核验最新安全状态则仍 OFF/NEEDS_RECOVERY。
+3. 若撤销写盘失败后掉电，软件可能根本没有可靠材料重建那次未提交意图，**不得声称设备已经持久撤销、也不得静默启用旧共享**。要证明掉电后每一次失败撤销仍可追溯，未来须另有可靠拒绝日志/高水位机制；本期通过默认 OFF + 不自动继承旧许可 + 管理员重新核验形成安全恢复边界。
+4. 该拒绝只影响对应工厂共享/Route，不能误停 HMI 合法 Direct 或其他无冲突 HMI。扩权始终必须先完成可信持久提交再对外准入。
+
+**反证入口**：RACE-05/XP-24 必须在原子写入、文件/目录 fsync、撤销时旧 Offer 抢入及强杀/重登之间注入失败；重启绝无旧 RunLease/Pair 或无新批准的共享。保存 PolicyRevision、RunEpoch、写入结果、admin 新批准证据；仍是 DESIGN_ONLY/NOT_RUN。
+
 ### 4.3 E-01 / G-01 的路由、一次性配对与关闭状态机
 
 ```mermaid
