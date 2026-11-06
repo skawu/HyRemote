@@ -1,3 +1,4 @@
+#include <QColor>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QEventLoop>
@@ -11,7 +12,9 @@
 #include <QTimer>
 #include <QWheelEvent>
 
+#include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <optional>
@@ -62,6 +65,42 @@ public:
     {
         painter->fillRect(boundingRect(), QColor(20, 120, 220));
     }
+};
+
+// #567/H4: a real QQuickPaintedItem can render an intentional intermediate
+// A/S/B scene. Track which scene was actually painted, not a timer guess.
+class StagedQuickProbeItem final : public QQuickPaintedItem
+{
+public:
+    explicit StagedQuickProbeItem(QQuickItem *parent = nullptr)
+        : QQuickPaintedItem(parent)
+    {
+        setAntialiasing(false);
+    }
+
+    void setStage(int stage)
+    {
+        m_requestedStage.store(stage, std::memory_order_release);
+        update();
+    }
+
+    int paintedStage() const { return m_paintedStage.load(std::memory_order_acquire); }
+
+    void paint(QPainter *painter) override
+    {
+        const int stage = m_requestedStage.load(std::memory_order_acquire);
+        const QRectF left(0.0, 0.0, width() / 2.0, height());
+        const QRectF right(width() / 2.0, 0.0, width() / 2.0, height());
+        const QColor a(20, 60, 160);
+        const QColor b(225, 30, 40);
+        painter->fillRect(left, stage >= 1 ? b : a);
+        painter->fillRect(right, stage >= 2 ? b : a);
+        m_paintedStage.store(stage, std::memory_order_release);
+    }
+
+private:
+    std::atomic<int> m_requestedStage{0};
+    std::atomic<int> m_paintedStage{-1};
 };
 
 class EventProbe final : public QObject
@@ -268,6 +307,94 @@ void testQuickFactoryAndOwnedFrame()
     components.capture->stop();
 }
 
+// H4 mechanism check: distinguish a source that really paints A/S/B from an
+// adapter which invents mixed pixels. A and B are complete pages, while S is
+// deliberately half of each, representing an application-staged transition.
+// The Qt rendering signal is a stage barrier; no sleep is used for ordering.
+void testStagedQuickSourceCaptureFollowsPaintedScene()
+{
+    HyRemote::detail::resetFactories();
+
+    QQuickWindow window;
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+
+    std::atomic<int> completedPaintStage{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        completedPaintStage.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.supported && components.capture != nullptr);
+    if (!components.capture)
+        return;
+
+    std::optional<hyremote::RemoteFrame> received;
+    int captureEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        [&](const hyremote::CaptureEvent &) { ++captureEvents; }));
+
+    for (int stage = 0; stage <= 2; ++stage) {
+        // afterRendering is emitted only after the Quick scene graph has drawn
+        // the stage; requestFrame is issued strictly after that confirmation.
+        content.setStage(stage);
+        const bool rendered = pumpUntil([&] {
+            return completedPaintStage.load(std::memory_order_acquire) == stage;
+        });
+        CHECK(rendered);
+        if (!rendered)
+            break;
+
+        received.reset();
+        hyremote::CaptureRequest request;
+        request.id = static_cast<hyremote::CaptureRequestId>(500U + stage);
+        request.requestTime = hyremote::Clock::now();
+        CHECK(components.capture->requestFrame(request));
+        const bool captured = pumpUntil([&] { return received.has_value(); });
+        CHECK(captured);
+        if (!captured)
+            break;
+
+        CHECK(received->requestId.has_value() && *received->requestId == request.id);
+        CHECK(received->storage != nullptr);
+        if (!received->storage)
+            break;
+        CHECK(received->geometry.pixelFormat == hyremote::PixelFormat::Rgba8888);
+        CHECK(received->geometry.alphaMode == hyremote::AlphaMode::Premultiplied);
+        const auto plane = received->storage->mapRead(0);
+        CHECK(plane.has_value() && plane->data != nullptr);
+        if (!plane || !plane->data)
+            break;
+
+        const auto width = static_cast<std::size_t>(received->geometry.size.width);
+        const auto height = static_cast<std::size_t>(received->geometry.size.height);
+        CHECK(width >= 4U && height >= 4U);
+        CHECK(plane->stride >= width * 4U && height <= plane->bytes / plane->stride);
+        if (width < 4U || height < 4U || plane->stride < width * 4U
+            || height > plane->bytes / plane->stride)
+            break;
+
+        const auto sample = [&](std::size_t x) {
+            const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                                + (height / 2U) * plane->stride + x * 4U;
+            return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+                   | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+                   | static_cast<std::uint32_t>(pixel[2]);
+        };
+        constexpr std::uint32_t aRgb = 0x143ca0U;
+        constexpr std::uint32_t bRgb = 0xe11e28U;
+        CHECK(sample(width / 4U) == (stage >= 1 ? bRgb : aRgb));
+        CHECK(sample(3U * width / 4U) == (stage >= 2 ? bRgb : aRgb));
+    }
+    CHECK(captureEvents == 0);
+    components.capture->stop();
+}
+
 void testDestroyedQuickTargetReportsTargetLost()
 {
     HyRemote::detail::resetFactories();
@@ -465,6 +592,7 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
 
     testQuickFactoryAndOwnedFrame();
+    testStagedQuickSourceCaptureFollowsPaintedScene();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
     testQuickInputIsQueuedToWindow();
