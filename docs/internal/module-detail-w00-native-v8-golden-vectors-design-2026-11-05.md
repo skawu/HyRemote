@@ -60,8 +60,15 @@
 | GN-10 | `WELCOME` 在 TLS 之前被要求发送、HMI 身份不可信、证书更换未受信 | **零** HYRP 应用数据、拒绝连接；不可自动尝试无 TLS plain |
 | GN-11 | `plain` 模式得到 TLS 后未独立完成可归责用户/Host 授权，却请求 Managed Target/Control | 设备目标/画面/输入全部拒绝，Edge/Gateway RoutePermit 不替代 HMI 授权 |
 | GN-12 | HEADER `payload_length` 比真实正文小/大 1，或 FRAME_RECT `37+4wh` 溢出/尺寸越界 | 读取/分配前拒绝；无半帧与越界内存分配；具体 ERROR/CLOSE 依 V8 已有类型 |
+| GN-13 | 基于 GV-12 的合法 INPUT POINTER_BUTTON，将正文最后 2 字节由 `01 01` 改为 `04 01`、`05 01`，并分别用 `04 00`、`05 00` 收尾（P-A X1/X2） | 已授权、资源可用的真实 Qt Kit 必须保留 X1/X2 身份并有正确 Qt DOWN/UP；不得经公开三按钮 `PointerButton::None` 静默丢弃，Kit 无法证明语义须明确不可用而非 INVALID_FIELD |
+| GN-14 | GV-14 KEY 正文末 5 字节中的 `00 41` 改为 `04 00`（KP_0）、`04 0b`（KP_ENTER）、`04 10`（KP_EQUAL）；其余 pressed/modifiers 按既有结构保持合法 | 这些码由已批准 P-A 承认，设备必须区分小键盘与普通数字或普通 ENTER；Viewer 无受信 Qt Keypad 来源时不能猜码，不能按 UNKNOWN/非法 enum 静默映射 |
+| GN-15 | 同真实 Qt 叶子、同当前 Grant 下依次使用 P-A 全部合法键/按钮值，保持最多 72 个不同 held 类别；再发送第 73 个合法新 DOWN，并随后释放已持有的键 | 91 个**可表达**类别不等于 91 个同时持有资格；第 73 个按下必须在 F-06 准入时作为有界资源拒绝，不得输入 Qt、不得改变现有 held；既有保护 UP 仍成功，实际 Qt protected mailbox 不越 136 |
+| GN-16 | 两个真实 Peer（可分别为 Native/RFB）指向同一 QtInputDomain：A 已交付 X1 与 KP_ENTER 按下，B 发送不属于自身的 UP，继以 A 失权、Ctrl 切换及延迟叶子 GUI 投递 | 未获准 peer/过代 UP 不释放 A/现场的 held；A 撤权后只对 A 的真实物理持有结算一次，旧票据不复活；不能借不同 ScopeId 绕过同 Qt 输入域的冲突约束 |
+
 
 **后续验证合同**：F-05 与 V-01 应各自以**相同 26 个已批准字节向量**做读写对拍、畸形帧/fuzz、消息状态序列/证书与策略拒绝、Qt held 释放与双协议隔离，并记录 Host SHA、Viewer SHA、Kit/OS、每项生成/解码差异及 PASS/FAIL 日志。两端同一个“自实现解析器”互相证明不足以替代 V8 golden vector；Edge/Gateway 不得重编码或删除这些字节。
+
+**GD-05 新增规范检查与证据状态**：GN-13..GN-16 是针对**已经批准** P-A KEY/POINTER_BUTTON 合法取值和 F-06 真实输入模型边界的**负向实现在位验证**，不是新增线缆消息、重新分配编号，也不是把“合法输入必须在资源上限外接受”写成新规范。26 个原字节正向向量保持字节不变；负向/资源/来源反证规格现合计 **GN-01..16（16 项，全部 NOT_RUN）**。X1/X2 与小键盘的正向可用性必须在具体 Qt Kit、DeviceTrust、当前 ControlGrant 及资源容量均满足时才能验收；无法支持的 Kit 仍不得宣称当前该能力已经可用。
 
 ## 4. 按协议来源隔离审签和交付状态
 
@@ -70,7 +77,7 @@
 | V8 原始 21 type、A.2/A.3/A.5 字段/限额 | `UPPER_SOURCE_APPROVED_UNCHANGED` |
 | P-A 精确补值、SOURCE_TENSION_01=A | `HUMAN_APPROVED` |
 | 本文 26 个向量的十六进制/长度构造 | `DESIGN_COMPUTED / REVIEW_PENDING` |
-| Host/Viewer parser/interoperability/恶意输入真实测试 | `NOT_RUN` |
+| Host/Viewer parser/interoperability/恶意输入真实测试（GN-01..16） | `NOT_RUN` |
 | Native E2E / View G3 / Gateway #190 / Gate-D / Gate-I | `NOT_IMPLEMENTED / NOT_PASSED / NOT_ACTIVATED / NO / NO` |
 
 备注：本文件是协议**测试数据和正负向设计计划**，不是产品代码生成器；正式 Word 的目录、图表和版式仍先于正文编制审查，不因数值已获批而跳过全产品 Gate。
