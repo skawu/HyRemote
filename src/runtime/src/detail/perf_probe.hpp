@@ -1,17 +1,22 @@
 #pragma once
 
-// #609: optional, developer-only CPU attribution. Never enabled in delivered
-// builds or public SDK. Only aggregate counters; no frame contents, input or
-// configuration values enter the trace. Disabled builds compile to no-ops.
+// #609/#789: optional, developer-only Windows/Linux CPU attribution.
+// Never enabled in delivered builds or public SDK. Only aggregate counters;
+// no frame contents, input or configuration values enter the trace.
+// Disabled builds compile to no-ops.
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
 
-#ifndef _WIN32
-#error "HYREMOTE_ENABLE_CPU_PROBE currently supports Windows only"
-#endif
+#if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX 1
 #endif
 #include <windows.h>
+#elif defined(__linux__)
+#include <time.h>
+#include <unistd.h>
+#else
+#error "HYREMOTE_ENABLE_CPU_PROBE currently supports Windows and Linux only"
+#endif
 
 #include <array>
 #include <atomic>
@@ -47,6 +52,10 @@ inline constexpr std::array<const char *, static_cast<std::size_t>(Stage::Count)
     "rfb_compare", "rfb_encode", "rfb_write"
 };
 
+// Unlike snapshots of a thread enumeration, these bookend the CURRENT thread's
+// actual stage execution. A thread that exits between profiler snapshots cannot
+// disappear from the accumulated stage total.
+#if defined(_WIN32)
 inline std::uint64_t filetimeNs(const FILETIME &time) noexcept
 {
     ULARGE_INTEGER value{};
@@ -55,9 +64,6 @@ inline std::uint64_t filetimeNs(const FILETIME &time) noexcept
     return value.QuadPart * 100ULL;
 }
 
-// Unlike snapshots of a thread enumeration, these bookend the CURRENT thread's
-// actual stage execution. A thread that exits between profiler snapshots cannot
-// disappear from the accumulated stage total.
 inline bool threadCpuNs(std::uint64_t &out) noexcept
 {
     FILETIME created{}, exited{}, kernel{}, user{};
@@ -75,6 +81,41 @@ inline bool processCpuNs(std::uint64_t &out) noexcept
     out = filetimeNs(kernel) + filetimeNs(user);
     return true;
 }
+
+inline unsigned long processId() noexcept
+{
+    return static_cast<unsigned long>(GetCurrentProcessId());
+}
+#else
+// Linux CLOCK_THREAD_CPUTIME_ID / CLOCK_PROCESS_CPUTIME_ID work on normal
+// unprivileged desktop, ARM64 and Buildroot processes. They count CPU time,
+// NOT wall time, and no /proc, CAP_PERFMON or perf_event permission is needed.
+inline bool cpuClockNs(clockid_t id, std::uint64_t &out) noexcept
+{
+    timespec sample{};
+    if (clock_gettime(id, &sample) != 0 || sample.tv_sec < 0
+        || sample.tv_nsec < 0 || sample.tv_nsec >= 1000000000L)
+        return false;
+    out = static_cast<std::uint64_t>(sample.tv_sec) * 1000000000ULL
+          + static_cast<std::uint64_t>(sample.tv_nsec);
+    return true;
+}
+
+inline bool threadCpuNs(std::uint64_t &out) noexcept
+{
+    return cpuClockNs(CLOCK_THREAD_CPUTIME_ID, out);
+}
+
+inline bool processCpuNs(std::uint64_t &out) noexcept
+{
+    return cpuClockNs(CLOCK_PROCESS_CPUTIME_ID, out);
+}
+
+inline unsigned long processId() noexcept
+{
+    return static_cast<unsigned long>(getpid());
+}
+#endif
 
 struct Counters {
     std::atomic<std::uint64_t> calls{0};
@@ -162,7 +203,7 @@ private:
         std::fprintf(file,
                      "{\"schema\":1,\"pid\":%lu,\"elapsed_ms\":%lld,"
                      "\"process_cpu_ns\":%llu,\"process_cpu_valid\":%s,\"stages\":{",
-                     static_cast<unsigned long>(GetCurrentProcessId()),
+                     processId(),
                      static_cast<long long>(elapsed),
                      static_cast<unsigned long long>(valid && processCpu >= m_startCpuNs
                                                          ? processCpu - m_startCpuNs : 0),
