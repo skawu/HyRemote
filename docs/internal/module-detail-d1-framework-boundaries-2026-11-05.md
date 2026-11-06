@@ -357,6 +357,21 @@ sequenceDiagram
 
 **确定性反证**：RACE-03 必测 (a) 两 peer 同 Scope 争控制；(b) 两个称“不冲突”Scope 却共享实际 QWindow/Qt 输入叶子，第二控制请求应拒绝或有确证独立适配；(c) 8 个会话的重复键/按钮 Down 与跨 peer Up，不错误释放其他远程/现场；(d) 69 键+3 按钮持有、64 正常待发、连环撤权/Resize，实际 Qt 保护性事件不越 136 且无卡键；(e) 同步 sendEvent 期间 Host 重入撤权，有确定先后及未完成真实状态。量化结论为**设计证明前置候选**，所有 Qt5/Qt6 Kit/代码实现仍 NOT_RUN。
 
+### 6.4.3 有限售后委托的可信到期时钟与离线事实（Gate-D 审查候选）
+
+Human H-O02=A 已决定**离线 Issuer 签发不等于设备收到/撤销实际生效**，而设备**可信本地有限委托到期**可独立使相应临时访问失效。这里的“可信时间”不能直接等同可随意改动的 Windows/Linux 普通 wall clock。合法永久基础 Direct 资格与临时售后委托是两条独立 Policy 条件，不能将时钟异常解释为永久许可证失效。
+
+| Host 内部对象/事实 | 唯一 Owner 及允许的判定 | 安全拒绝与对外事实 |
+| --- | --- | --- |
+| DelegationLease（内部策略记录，不是 Native 报文） | F-06 Host 受信 PolicyProvider 创建受设备身份、Target/Scope、授权目的、期限、LeaseId/PolicyRevision 约束的不可变有限委托 | Viewer/Edge/Gateway 的 TTL、站点会话、普通系统时间均不得自行续租；旧版本或来源不明不得替换更严格的当前策略 |
+| TrustedTimeEvidence | 宿主选取具有可核验来源、当前启动代次及单调推进性的本地时间依据；可信在线时间锚后同启动期可以使用 monotonic elapsed/截止值，不允许普通墙钟回拨延长 Lease | 没有可靠当前时间证据，特别是掉电后只剩可回滚的本地时间和旧 Lease 快照时，标 TIME_UNVERIFIED 并**拒绝临时委托的新查看/控制许可**；不得冒称“期限已真正到期”或“设备已收到远程撤销” |
+| DevicePolicy / ExpiryDecision | F-06 将期限有效性与 PolicyRevision、GrantEpoch、当前 Target/Scope 一同用于 ViewGrant、InputAdmission、最后 Qt Dispatch 及最终可控帧出队的拒绝判定；本次运行中到期时推进失权栅栏并清 held/旧帧 | 可信期限确实到期才记录 LOCAL_DELEGATION_EXPIRED；无法证明时间的只报 TIME_UNVERIFIED/DENY，Host 状态不得写成 DEVICE_RECEIPT_VERIFIED |
+| PersistedHighWater（有条件的增强） | 仅当具备可信、不可倒退的持久时间锚/安全计数证据时才可在离线重启跨启动验证剩余委托；普通可回滚备份中的数值**不是**防回拨证明 | 安全存储/RTC 能力不足时不要求新增硬件或绕过策略；允许**拒绝临时远控并继续合法永久 Direct**。扩充硬件承诺需独立技术/产品资格，不能代码时默许时钟放宽 |
+
+**状态与线性化次序**：DEVICE_REVOKE_PENDING（云端签发、设备未知）、LOCAL_DELEGATION_EXPIRED（HMI 可信时钟确证）、DEVICE_REVOKE_VERIFIED（未来 HMI 真正受信接收/执行）是互不冒充的来源事实。到期/可信撤销触发 F-06 BeginRevoke 时，立刻关闭新普通输入/输出；与已进入同步 Qt 调用的票据按 6.4.1 的 DispatchPermit 完成次序收敛，才能报告当前设备执行拒绝有效；不能将 GUI 挂起后的排队成功当成到期后安全已落实。RFB 共享密码不构成独立售后自然人身份，所有临时授权仍需可信 Host Profile 限制。
+
+**XP-23/28 确定性负例**：(1) 运行中系统壁钟回拨一天，已单调计时的 Lease 不得增长；(2) 委托未到期时断网重启且无可信时间锚，临时授权 fail closed 而永久 Direct 可按自身安全准入继续；(3) 当前设备时钟无来源却跳进未来，不能误报收件或确定“已可信到期”；(4) 云端 Issuer 撤销持续待送达期间本地可信期限独立到期，分开记录两条事实；(5) 到期与 Qt 输入票据/输出帧出队同时发生，旧委托不得新增执行或新出敏感像素；(6) 设备收到旧版本续租/缓存策略，不能倒退 Epoch 或重开已失权 Scope。设计验收入口不代表真设备时钟、TPM/RTC 或 E2E 已测试。
+
 ### 6.5 F-06 每连接按键账本与受保护释放（详细设计闭合候选）
 
 - **两个独立维度**：`SessionHeld[SessionId,Target incarnation,Scope,logicalKeyOrButton]` 持有“该连接实际获准并提交的 DOWN”；`TargetAggregateHeld[Target incarnation,logicalKeyOrButton]` 持有合计引用数/活跃来源，全部更新在同一 Qt 输入决策顺序域。不同协议和两个 peer 都不能只凭远端声称 DOWN/UP 来修改其他来源的 held 状态。
