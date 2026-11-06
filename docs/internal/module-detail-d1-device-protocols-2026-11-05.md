@@ -207,6 +207,15 @@ DeploymentAdmitted
 
 **实物冲突（非上位规范冲突）**：Human 批准的 V8 P-A 中，POINTER_BUTTON 可使用 1..5（含 X1/X2），KEY 可使用独立的 0x0400..0x0410 十七种小键盘键码；现有公开 `hyremote::InputEvent` 的 `PointerButton` 仅 Left/Middle/Right，`KeyCode` 为 69 个已知非小键盘键位；`src/runtime/src/detail/input_mailbox_admission.hpp` 和 `qt_window_system_input.cpp` 当前只处理三种按钮。直接将 Wire 值 cast 为现有 Core enum、将小键盘冒充普通数字键或以 None/Unknown 静默丢弃，均不能满足已批准的合法 Native 输入集合。
 
+**接入边界（不能遗漏的现有 API 限制）**：当前 `hyremote::Transport::start(InputHandler)` 的公开 `InputHandler` 仅接收公开 `InputEvent`，`hyremote::Session` 会将其路由给 `InputSink::post(InputEvent)`。因此**不能**把带 X1/X2/Keypad 的 Native 完整输入先塞入该公开回调再假装内部还保留了值域。F-05 在 F-02 统一 Runtime 的设备协议会话层（构造 Core 兼容 `InputEvent` **之前**）将完整已校验的 `NativeInputFact` 送到 F-06 **唯一**授权裁决器，统一沿用 F-02 RuntimeGeneration、TargetScopeRegistry、Qt 目标与停止栅栏；旧 RFB/Core 入口只消费它本来能够无损表示的标准输入，**不新增第二个 Core、独立监听或第二套 Grant 权威**。
+
+内部操作候选的可调用合同（非 public C++ 声明）：
+- `F05.decodeNativeInput(header, payload, nativeSession) → VerifiedNativeInputFact | Reject(approved_error)`：入 Host 前完成合法值域、长度、目标/消息顺序校验，`nativeSession` 为服务端当前真实会话标识，不接受 Viewer 自造身份。
+- `F06.admitNativeFact(VerifiedNativeInputFact, VerifiedPeerContext) → Queued(opaqueTicket) | Denied(reason) | Terminate`：在设备端当前 Policy/Scope/Target、来源权限及物理 QtInputDomain 剩余资源上裁决，成功后仅生成不可伪造票据，**不**声称已投 Qt。
+- `F02/QtLeaf.consumeAuthorizedTicket(opaqueTicket, QtTargetToken) → Dispatched | Rejected | Pending`：仅正确 Qt GUI 对象线程进入最后同步事件投递前重验；重复票据一次消费、撤权/stop 同代次联动、实际 held ledger 在确定提交边界更新。结果是设备本地输入事实，**不**是 Host 业务已执行回执。
+  
+上述三个内部调用不经旧 `InputSink::post(InputEvent)` 路径丢失扩展类型；若实现必须调整已发布 SDK 的公开回调形状，应判 `ABI_CHANGE_REQUIRED/NOT_FROZEN` 并提交受控兼容审查，**不能**在编码时静默加枚举、改变 QML/Qt 插件的已发布 ABI。
+
 **本期内部可实施方案（不修改已发布 public ABI、Native 类型/值域或 V8 上限）**：
 1. F-05 在 DeviceTLS、Session/Grant 与报文校验后，产出**内置于受信 Runtime 的 `NativeInputFact`**（非公开 SDK、非线缆字段），带严格区分的 `PhysicalButton{Left,Middle,Right,X1,X2}` 和 `PhysicalKeyId`；后者保持 P-A 既有主键与小键盘 0x0400..0x0410 的不同身份，连同 wire modifier、pressed、source viewport/generation 原样规范化。普通 RFB 或旧 Core `InputEvent` 经另一明确适配入口进入相同 Host 权限栅栏，不根据 public enum 序号猜 Native 值。
 2. F-06 将该 Fact 与**服务端生成**的 SessionId/Scope/GrantEpoch/TargetIncarnation/PolicyRevision/GeometryEpoch 绑定为 `AuthorizedInputTicket`；跨复合 Qt 和 Widgets/Quick 叶子队列保留安全票据。只有最后 GUI 投递时在当前 Snapshot 上重新校验成功，才转换到 Qt `XButton1/XButton2`、带真实 Keypad 语义的 Qt 键码或独立 `QInputMethodEvent`；不能提前转换成可能丢失身份的公开 `KeyCode`。
