@@ -47,28 +47,30 @@
 | F12 | Framework Frame/Privacy / HyRemote | F10/F11、D1 [F-02 RT-01..08](module-detail-d1-framework-boundaries-2026-11-05.md) 设计合同 | 共享基础 capture、per-session Filter/Watermark/Full/Delta、撤权清未发缓存 | **实施后**实测两 peer 权限遮罩、慢端、旧 Full/Delta 不泄漏；设计阶段核准过滤顺序、缓冲所有权与 epoch 失效 |
 | F13 | Framework RFB / HyRemote | F10-F12、#158 真实修复与验收计划 | 现有标准 RFB3.8 的宿主授权接入、legacy 输入与 Scope 兼容、真实安全档位/资源 | 标准第三方 Viewer 与旧应用兼容；无 Native 私有消息、非公网明文资格 |
 | F14 | Framework Native / HyRemote | 已批准 P-A/A 唯一值源、W00 AFS-01..12 状态/错误合同、F10-F12、合格 TLS 身份材料 | 真正**独立完整 Native1.0** Listener/Parser、TLS 用户身份、Target/View/Control/Frame/Input/安全拒绝 | **Gate-I 后**按 26 字节黄金向量/12 异常变异与 AFS-01..12 逐项实际对拍、真 DeviceTLS、Host Grant/Qt 最终栅栏及 RFB-only/Native-only/Dual；当前这些真实 E2E 未运行 |
-| F15 | Framework four integrations / HyRemote | F10-F14、ADR-0007/0008 与 D1 `INT-01..10` 审查合同 | C++/QML/Generic/QPA 使用一个共享 Runtime 实现与可信 Host 准入，QML/Generic/QPA bootstrap、配置/Target 与错误隔离、原生 QPA 安全共存 | **Gate-I 后**Qt5/Qt6 exact Kit/平台的四入口启动、输入/授权/Target/已发布 public API/ABI 与部署回归；设计阶段仅审合同 |
+| F15 | Framework four integrations / HyRemote | F10–F12 + 已声明协议分支：RFB-only 取 F13、Native-only 取 F14、Dual 才同时取 F13/F14；ADR-0007/0008 与 D1 `INT-01..10` | C++/QML/Generic/QPA 使用一个共享 Runtime 实现与可信 Host 准入，QML/Generic/QPA bootstrap、配置/Target 与错误隔离、原生 QPA 安全共存 | **Gate-I 后**Qt5/Qt6 exact Kit/平台的四入口启动、输入/授权/Target/已发布 public API/ABI 与部署回归；设计阶段仅审合同 |
 | V10 | View Direct RFB / HyRemoteView | W00 与 View G3真实结论，F13 标准端点 | 产品级 bounded RFB client、独立 Direct、失败关闭与存储/恢复 | 真实维护中 Host/Viewer 像素、输入/持键/恶意消息/断网测试 |
-| V11 | View Qt Quick UI / HyRemoteView | V10 的合法帧、D2 `SURF-01..08` 已审候选合同、精确 Qt Quick 线程边界 | RemoteSurface/QSG、immutable FrameSnapshot / DisplayEpoch、frame lifecycle/damage/resize/DPR、Focus 与输入映射、帧龄/反馈 | **Gate-I 后**在 Qt6.8 Windows/Linux 实际支持单元验证 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充正式产品 |
-| V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、D2 TrustStore | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
-| V13 | View Identity/Workspace / HyRemoteView | V10–V12、D2 `IDT-01..10` 数据/信任迁移合同及已批准 UI/安全依据 | DeviceCatalog/ProfileStore/OS SecretStore、Native DeviceTrust/证书轮换、诊断/OEM/身份 Session UI 和升级回退 | **Gate-I 后**离线首启、同 IP 不同 HMI、TrustRev/凭据/升级和安全回滚的独立真实验证；设计期只审合同 |
+| V11 | View Qt Quick UI / HyRemoteView | V-01 协议中立且合法的 immutable FrameSnapshot 合同（可由 RFB/V10 或 Native/V12 实现提供）；D2 `SURF-01..08`、适用 G3 与精确 Qt Quick 线程边界；不强制要求 V10 | RemoteSurface/QSG、immutable FrameSnapshot / DisplayEpoch、frame lifecycle/damage/resize/DPR、Focus 与输入映射、帧龄/反馈 | **Gate-I 后**在 Qt6.8 Windows/Linux 实际支持单元验证 FPS/P95/RSS/正确性；G3 PoC 不能直接冒充正式产品 |
+| V12 | View Device Trust/Native / HyRemoteView | F14 真 HMI Native/TLS & Annex A/B、V13 中由 V-03 独占的最小 TrustStore/OS SecretStore 基础切片，以及适用 V11 画面渲染合同；不依赖 V10 RFB | 同一 View 中独立 Native client、安全验证、TargetList/View/ControlGrant，E2E 可信 Direct | 伪装设备/证书变化/撤权/重连负测；无旧 Grant 或业务重放 |
+| V13 | View Identity/Workspace / HyRemoteView | 分段：先交付不依赖任何访问协议的 DeviceCatalog/TrustStore/OS SecretStore 基础（供 V10/V12）；再按已声明访问路径接入 V10 和/或 V12，合并工作区、诊断与 OEM；D2 `IDT-01..10` | DeviceCatalog/ProfileStore/OS SecretStore、Native DeviceTrust/证书轮换、诊断/OEM/身份 Session UI 和升级回退 | **Gate-I 后**离线首启、同 IP 不同 HMI、TrustRev/凭据/升级和安全回滚的独立真实验证；设计期只审合同 |
 | E10 | Factory View Edge / HyRemoteView | W00、D3 `EG-01..12` 与同产品安装治理 | SiteRegistry/EndpointBinding/管理员共享、GatewayLink/RouteAdmission、once-Pair、FIFO Relay、默认 OFF/撤权 | 实施后验证工厂只装 View、精确白名单/站点 ACL、双侧配对与有界 FIFO、Direct 不退化；设计期仅合同审签 |
 | E11 | Factory Edge lifecycle / HyRemoteView | E10 + Human H-EDGE=A **登录态首批**；无人值守 Service 属未来同产品独立资格 | 登录期 RunLease、退出/注销实际离线、窗口/应用进程/OS 会话分域、升级回滚 fail closed；不把 Service 当首批必选实现 | 有准确登录/注销/崩溃/IPC/OS 凭据真实测试；无人值守不在首批支持声明 |
 | G10 | Optional Gateway / 独立交付责任 | W00、D3 `EG-01..12`、Stage05 唯一候选 IDL 与 **Human 对 #190 独立激活** | Identity/Site/Edge Registry、RoutePermit + one-shot PairLedger、opaque FIFO Relay、tenant/audit | 实施并独立激活后测试自托管证书/ACL、RouteEpoch/Pair 重放、负载及回退；**现阶段仅设计，未激活** |
 | G11 | Gateway Ops / Gateway owner | G10 + 批准的运维范围 | 最小部署/升级/备份/密钥轮换/策略迁移/脱敏诊断 runbook | 客户真实自托管环境可复现恢复/回退且不复活撤权 |
 | X10 | Whole-system E2E / Security + QA | **按声明档位分别取证**：RFB Direct=F13+V10；Native Direct=F14+V12；Managed 仅在 #190 独立激活后另加 E10+G10、F14+V12 | 对已批准档位分别真实验证 HMI↔View 协议与安全；受管扩展验证 Edge/Gateway opaque Route，旧 Native/RFB 各自独立，Direct 不需云 | Direct RFB/Native、Managed、31 场景等分别记录 exact-SHA/Kit/权限/资源/负例；**未激活 Gateway 不可使合法 Direct 永远阻塞** |
 | T10 | Tool maintainer / HyRemoteTool | H-T01=A、[D4 TL-01..08](module-detail-d4-tool-delivery-quality-2026-11-05.md) 已形成设计，Tool 完整 S1 #586 仍 OPEN | 保留既有 Basic RFB；未来 SDK/Qt Kit Inspector、四入口指导、只读脱敏诊断与人工确认 SupportReport 分批实现，不再重建 Native/Managed 官方客户端 | Gate-I 后核验 Tool 精确 Qt Kit/平台、失焦/断线、恶意日志、报告秘密脱敏与旧 RFB 兼容；当前仅 DESIGN_ONLY |
-| X11 | Product packaging / 各产品交付 Owner | F15、V13、E11、G11、T10 适用范围 | 安装/更新/卸载/密钥/迁移/产品级版本表/许可证/SBOM、精确平台适用矩阵 | 正/负安装/升级/回退、只装 View、SDK Kit 与 QtPrivate 精确隔离 |
+| X11 | Product packaging / 各产品交付 Owner | **按本次产品/路径实际交付物分别执行**：Framework 取已声明的 F15 分支，View 取适用 V11/V13 切片，Factory Edge、Gateway、Tool 只在各自已获资格的路径纳入；不把 E11/G11/T10 全体设为 Direct 的强制前置 | 安装/更新/卸载/密钥/迁移/产品级版本表/许可证/SBOM、精确平台适用矩阵 | 正/负安装/升级/回退、只装 View、SDK Kit 与 QtPrivate 精确隔离 |
 | X12 | Release QA / Human 产品/发布治理 | X11 + **本次明确声明的** X10 协议/路径适用子场景（Managed 需 #190 另行激活） + 已批准支持范围 | 按 RFB Direct / Native Direct / Managed 可选路径逐产品独立提交发布资格与风险接受 | 与 #95 版本治理衔接、真正适用的 Gate 全 PASS、Human 独立批准；不将未激活 Gateway 当 Direct 必装组件 |
 
 **Owner 说明**：这些是未来产品**责任类型**，不是已经有实际 Local Worker ACK、不是自动派发、也没有预约版本号。Cloud Owner 当前仅有**设计审查和计划权限**，不因 WBS 排好队就打开 G10 产品公网服务。存在跨不同产品仓库的 PR/测试时按各仓真实保护规则独立签收。
+
+**Gate-D 原子依赖纠偏（2026-11-06，仅更正既有批准约束的表达）**：原 WBS 中 `F15←F10-F14`、`V11←V10`、`V13←V10-V12` 形成非预期的 Native-only→RFB 依赖及 `V12→V13 TrustStore→V12` 前置环；与已批准 Direct RFB/Native 独立实施和 V-03 Trust 唯一 Owner 相矛盾。现按**产品/协议声明的条件前置**修订。V13 的“基础切片/工作区切片”仅是**同一 WBS 的实施顺序**，不增加第 15 个模块、不复制信任 Store Owner；V11 消费来自任一合法协议解码器的不可变帧，不依赖 RFB parser。适用 G3 资格只约束 View QtQuick 分支，不阻塞 Framework 或 Tool 独立提出 Gate-I 实施申请；`Gate-I` 仍由 Human 按范围授权，绝不自动批准。
 
 ## 3. 关键依赖有向图：先完整设计，再在获批范围中并行实施
 
 ~~~mermaid
 flowchart TB
   B["W00 来源原子追踪 / Human Gate-D 设计冻结"] --> I["Human Gate-I 按范围实施授权"]
-  G3["HyRemoteView G3 对应实际 PoC 资格"] --> I
+  G3["HyRemoteView G3 对应实际 PoC 资格，仅限 View 相关工作"]
   I --> F10["F10 Host DeploymentAdmission / Policy"]
   F10 --> F11["F11 AccessSession / Input Gate"]
   F10 --> F12["F12 Per-session Output Privacy"]
@@ -77,11 +79,16 @@ flowchart TB
   F11 --> F13["F13 RFB Host Policy"]
   F12 --> F13
   I --> V10["V10 RFB Direct Product Client"]
-  V10 --> V11["V11 RemoteSurface / UI"]
-  F14 --> V12["V12 Native Trust / Grants"]
+  I --> V11["V11 RemoteSurface / UI（协议中立）"]
+  G3 --> V11
+  I --> V13BASE["V13 基础切片：DeviceTrust / OS SecretStore"]
+  V13BASE --> V12["V12 Native Trust / Grants"]
+  F14 --> V12
   I --> V12
-  V11 --> V13["V13 Device / Identity / Diagnostics"]
-  V12 --> V13
+  V11 --> V13["V13 工作区集成（仅适用协议分支）"]
+  V13BASE --> V13
+  V12 -. "仅 Native 访问分支" .-> V13
+  V10 -. "仅 RFB 访问分支" .-> V13
   F13 --> X10R["X10 RFB Direct E2E，仅 RFB 声明"]
   V10 --> X10R
   F14 --> X10N["X10 Native Direct E2E，仅 Native 声明"]
@@ -93,9 +100,9 @@ flowchart TB
   G10 --> X10M
   F14 --> X10M
   V12 --> X10M
-  I --> X11["X11 各产品安装/升级/信任迁移"]
-  F13 --> X11
-  V13 --> X11
+  I --> X11["X11 各产品独立安装/升级/信任迁移"]
+  F13 -. "仅 RFB / Dual 产品声明" .-> X11
+  V13 -. "仅本次 View 声明的切片" .-> X11
   X11 --> X12["X12 本次声明的产品/路径发布准入"]
   X10R -. "仅 RFB 声明" .-> X12
   X10N -. "仅 Native 声明" .-> X12
@@ -104,6 +111,8 @@ flowchart TB
   TOOL --> TQ["Tool 自己的安装/版本/QA Gate"]
 ~~~
 
+
+**说明**：依赖图是 Gate-I 后的**按声明路径的技术偏序**；RFB-only 不需要 F14/V12，Native-only 不需要 F13/V10，V13 安全存储基础为 V12 的前置但不要求先实现两种客户端，适用 G3 不得变成全部产品统一实施阻塞器。初始总控 W00 及整个 Gate-D 仍须逐原子审签，图表修正不是冻结结论。
 
 **说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 **X10 实际有按发布档位选择的 RFB Direct、Native Direct、Managed 三类验证支路**：RFB-only 不要求 Native Listener，Native-only 不依赖 RFB 帧；仅 Managed 安全路径才必须同时具备 F14/V12/E10/G10 及 #190 独立激活，**Gateway 未激活不得阻塞合格 Direct 的设计/验证/独立发布申请**。图中的 X10R/X10N/X10M 都是现有 WBS X10 的条件验收分支，不是三个新增产品或新实施阶段。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586，**H-T01=A 已正式批准未来产品分工**。Tool 不成为 View/HMI/Gateway 的强制打包依赖。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
 
