@@ -175,7 +175,7 @@ TCP Accepted
 ~~~text
 DeploymentAdmitted
   -> NativeListenerReady
-  -> TransportSecured? (由批准的安全模式决定；Managed 必须 Device TLS)
+  -> DeviceTLSIdentityVerified (plain 与 tls-password 两档均必需；失败零 HYRP)
   -> HELLO/WELCOME exact V8 version and bounds
   -> AUTH required by configured mode
   -> DeviceSessionAuthenticated
@@ -202,6 +202,19 @@ DeploymentAdmitted
 1. **输出撤权：** 当前 PolicyRevision 更新后，不可有旧敏感帧从 device output 队列继续发送；已有写入 TLS/内核不可撤回字节的风险需定义明确的事件生效界点、连接关闭方式及相关剩余泄漏上界。不能简单声称“清缓存=撤回所有已发送字节”。
 2. **输入撤权：** `INPUT` 进入协议队列不等于最终允许执行；在 GUI 真正提交前复核 `AccessSessionId/GrantEpoch/Scope/PolicyRevision`。授权更替和输入提交的线性化顺序需能证明旧 input 不在撤权生效后执行。
 3. **断线重连：** 网络通道恢复不恢复旧 `ControlGrant`、未确认业务操作或 DELTA 基线；新连接须从可信 TLS/Native 身份与独立 Grant 开始。
+
+### 4.2.1 Native 五按钮线缆值与 Qt 最终投递能力之间的合同（Gate-D 审查）
+
+**已批准事实**：V8 P-A 将 `INPUT.POINTER_BUTTON.button` 精确规定为 1 LEFT / 2 MIDDLE / 3 RIGHT / 4 X1 / 5 X2。这五个都是合法协议值，不能在解析器里把 4/5 当 `INVALID_FIELD`，更不得静默映射为 `None`、已执行成功或一个不同的按钮。**实际仓库事实**：`src/core/include/hyremote/core/input.hpp` 的公开 `hyremote::PointerButton` 目前只有 None/Left/Middle/Right；`qt_window_system_input.cpp` 的 `toQtButton` 和释放列表处理三种；`input_mailbox_admission.hpp` 只对三种按钮计算 held。当前代码**不能据此声明 X1/X2 已实现**。
+
+| 层 | 拟定的唯一设计责任 | 失败/验收要求 |
+| --- | --- | --- |
+| F-05 Native parser / InternalInputEnvelope | 按受控 V8 值域接受 1..5；内部 `NativeButtonKind` 和携 Session/Scope/Grant/Target 的可信 InputTicket 原样保留 5 类，不借公开旧枚举做有损 cast。公开 `InputEvent` 的已有 ABI 不作静默修改；Legacy RFB 继续遵守已有协议与公开 API 兼容 | 非法 0/6+ 才按 V8 既有 INVALID_FIELD 拒绝；合法 4/5 若下游无法安全投递，应拒绝**该输入操作的接纳**并以现有受信失败/资源路径表明未执行，不得送一个 None 或回报 SUCCESS |
+| F-06 Control/Qt DispatchDomain | 五按钮与键码在**同一** Host Admission、Qt 最后栅栏及来源 held 账本内处理；支持的 Qt Kit 使用独立可靠的 X1/X2→Qt Back/Forward 按钮映射且按同一原始按钮身份完成 Release；不允许开私有第二路绕开已批准栅栏 | 需要精确 Qt Kit 的同步投递与真实 held 释放资格；不支持时不得向 Native Viewer 宣称该键已执行。不存在新增 Native 握手 caps 表达可选按钮，故完整合法 1..5 是协议互操作设计目标，不能无限期隐藏为未支持的可选扩展 |
+| 资源/退化 | V8 每真实 Qt leaf 普通 64、保护 136 上限不变。上位 69 键+3 按钮=72 类别是**当前三按钮实现模型**；五按钮扩展后最多 74 种逻辑类别，但**同一叶子同时合法已接纳 held 上限仍为 72**。再加可等待的普通 64，受保护释放最坏需求仍 ≤136；超出资源时必须在 DOWN 入队前拒绝新 hold，不准接受后丢匹配 UP | 69 键全持有时最多再接纳 3 种按钮同时 held；剩余 X1/X2 的新 DOWN 因容量拒绝，不是值域非法。凡已接纳的五种按钮都必须能按来源闭合释放，无卡键、无未记录事件 |
+| Viewer V-01/V-02 | 只有 View 当前真实目标能力与 HMI ControlGrant 许可下才发送合法 Native 1..5；输入是否发送/Host 是否执行是两个事实 | 不能因 Qt 当前本地不产生侧键而捏造额外协议输入或在未收到设备事实时显示“已执行” |
+
+**静态技术设计尚未完成的判定**：五按钮到既有 public `InputEvent` 的完整兼容适配策略和 Qt5/Qt6 精确 Kit 的 X1/X2 释放行为，须在 Gate-D 前由 F-03/F-06 明确审签，不得在研发时暗改 public enum/ABI。若实证表明无法在保留现有公开 API/ABI 的前提下覆盖 V8 的五按钮，须先提交有上位约束/兼容影响的受控设计变更，不得私自降级协议。测试尚 NOT_RUN。
 
 ### 4.3 独立设备 TLS 的部署与安全要求
 
