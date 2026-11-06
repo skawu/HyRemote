@@ -229,6 +229,14 @@ sequenceDiagram
 - 鼠标 Move/Button/Scroll、按键（主键与小键盘不同码）、已提交中文 IME Text 都通过已批准协议的**实际可表达字段**映射。未协商的 Native 1.0 原生多点触控、剪贴板或宿主业务操作不得凭 QML 手势/控件隐式发送；本地双指缩放默认只改变本地视口。
 - View 本地 held ledger 与 F-06 Host held ledger **各自有责任**。离焦/几何改变且当前会话、目标和许可仍有效时，按当前协议能力先发合法 UP；几何变化**不能把 UP 当作新坐标点击**，需跳过已失效的旧 transform 直接按 held source 释放并遵守有效设备尺寸，否则依赖 HMI `POL-08` 的保护性清理。已经失权时不发送旧 GrantEpoch 的清理输入，立即停止本地新意图，由 HMI 受保护释放已接受的按键。发送 UP 仍不证明实际完成；RFB 共享密码不具备个人可追责性，客户端只能陈述发送事实/服务端可观察状态。
 
+### 5.5.1 V-02 合法扩展输入的客户端序列化与明确失败（Gate-D 审查合同）
+
+Native 1.0 已批准的五种鼠标按钮（含 X1/X2）和十七个小键盘键码，是**既有 P-A 线缆定义**而非本节新增能力。V-02 从 Qt 的实际鼠标按钮、设备键盘来源和用户已提交文本**分别**形成 `InputIntent`；V-01 只在当前真实 Device/Session/Scope/Grant/Focus/Geometry 有效且数值可证明时编码为已批准 Wire 值。不可依赖当前 Core 公开 `PointerButton` 三类或 `KeyCode` 非小键盘 69 类值去重新编号。
+
+- X1/X2 必须序列化为 P-A button 4/5；真实按下/抬起作为一组 held 事实。Qt 仅有普通键盘数字时不能因显示相同字符就猜它来自小键盘；小键盘 0x0400..0x0410 需验证 Keypad 来源/scan/QtKit 映射，并区分独立的 KP_ENTER 与主 ENTER。Qt Kit 无法证明来源则拒绝该事件并如实显示不可用，不发送错误键位。
+- 输入法已经提交的 Unicode 文本只发送单次 COMMITTED_TEXT；小键盘键事件与文本提交不得重复注入字符。旧焦点、旧几何代次、ControlState 非 Granted 或未持有对应来源 DOWN 时，禁新 Down/拒绝跨会话 Up，依赖 Host 来源账本完成最终清理。
+- 真正的设备端按钮/键码可执行性只能经 F-05/F-06 的内部 NativeInputFact→AuthorizedInputTicket→Qt 最终投递链验证。客户端是否成功 encode/send 不等于设备业务实际执行；XP-21/GN-13..16/RACE-03 的反证应记录 Qt Kit、真实按键来源、序列化 Wire 值与实际末端接收。
+
 ### 5.6 V-02 可审查设计合同及后续验证入口
 
 | 合同 ID | 必须可证明的正确行为 | 失败/竞态用例 | 验收映射 |
