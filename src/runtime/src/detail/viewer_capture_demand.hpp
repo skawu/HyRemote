@@ -14,9 +14,11 @@ class ViewerCaptureDemand final
 public:
     // A local-only Qt Quick page change still becomes visible through the next bounded probe.
     // Do not rely solely on QQuickWindow rendering signals: offscreen grabs can generate them.
-    // #789 diagnostic A/B ONLY: 250ms reduces idle Quick grab/readback load
-    // but can defer local-only page changes by up to 150ms beyond the 100ms
-    // product baseline. DO NOT MERGE without matched CPU+freshness acceptance.
+    // #789: matched 1080p A/B/A static tests showed about half the capture
+    // load with 250ms idle probes (9.2% -> 4.5% one-core CPU, Windows).
+    // Local-only UI changes can take up to 150ms longer to be discovered than
+    // the 100ms baseline; remote input and new viewers reset idle immediately.
+    // Keep this private to the shared Runtime; active frames retain 60fps.
     static constexpr auto kStaticProbeInterval = std::chrono::milliseconds(250);
     static constexpr std::size_t kConsecutiveUnchangedFrames = 3;
 
