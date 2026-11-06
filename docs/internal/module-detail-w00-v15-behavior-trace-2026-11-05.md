@@ -141,7 +141,7 @@ V8 附录 D 提供 56 项对应的主责章节/补充章节，已 56/56 精确�
 
 | V15 上位要求准确接收方 | 目前缺少的具体 XP 反链 | 模块合同、最终权威与必要负例 | 审签结论 |
 | --- | --- | --- | --- |
-| V15 §§8.6（工厂边缘共享）、13.8（异地访问）、10.3（审计） | `XP-13` 站点/Route/Pair 凭据复用及重放拒绝 | D3 E-01/G-01 `EG-04/05/08`、`MG-06/09`：RoutePermit audience/nonce/epoch、Gateway 原子 PairLedger、Edge 当前白名单/RunEpoch 都要成立；重复使用旧令牌或新客户端交换配对端身份必须拒绝，HMI DeviceTrust/Grant 仍独立 | `DESIGN_TRACE_LINKED_NOT_SIGNED / XP13_NOT_RUN` |
-| V15 §§8.7（登录态边缘恢复）、12.3（更新与离线权益）、13.9（断线/恢复） | `XP-18` 自托管网关迁移、证书轮换、回滚防授权复活 | D3 G-01/E-01 `EG-11`、`EDGE-LC-06`，D4 X-01 `DEP-04..08`：受信 Gateway/Factory PolicyRevision 单调且密钥轮换不恢复旧 Route/Pair；升级失败默认不可用，合法 LAN Direct 独立；旧备份/过代凭据不开放 SiteLink | `DESIGN_TRACE_LINKED_NOT_SIGNED / XP18_NOT_RUN` |
+| V15 §§8.6（工厂边缘共享）、13.8（异地访问）、10.3（审计） | `XP-13` 站点/Route/Pair 凭据复用及重放拒绝 | D3 E-01/G-01 `EG-04/05/06`、`MG-04`：RoutePermit audience/nonce/epoch、Gateway 原子 PairLedger、Edge 当前白名单/RunEpoch 都要成立；重复使用旧令牌或新客户端交换配对端身份必须拒绝，HMI DeviceTrust/Grant 仍独立 | `DESIGN_TRACE_LINKED_NOT_SIGNED / XP13_NOT_RUN` |
+| V15 §§8.7（登录态边缘恢复）、12.3（更新与离线权益）、13.9（断线/恢复） | `XP-18` 自托管网关迁移、证书轮换、回滚防授权复活 | D3 G-01/E-01 `EG-11`、`EDGE-LC-06`（负例 `MG-12`），D4 X-01 `DEP-04..08`：受信 Gateway/Factory PolicyRevision 单调且密钥轮换不恢复旧 Route/Pair；升级失败默认不可用，合法 LAN Direct 独立；旧备份/过代凭据不开放 SiteLink | `DESIGN_TRACE_LINKED_NOT_SIGNED / XP18_NOT_RUN` |
 
 **重要区分**：补反链不改变已批准 V15/V8，也不把 Managed #190 从 `NOT_ACTIVATED` 改成产品资格。本表列出具体反证对象而非简单补两个编号，因此才能作为 Gate-D 来源索引纠偏。其他已缩写引用将来在正式 Word 受控版本中改为 `XP-09、XP-10` 的完整文字，便于机器检查和读者索引；**正式版 V5 二进制保持不变**。全部 XP 仍为设计验收合同、非真实运行结果。
