@@ -357,6 +357,12 @@ sequenceDiagram
 
 **确定性反证**：RACE-03 必测 (a) 两 peer 同 Scope 争控制；(b) 两个称“不冲突”Scope 却共享实际 QWindow/Qt 输入叶子，第二控制请求应拒绝或有确证独立适配；(c) 8 个会话的重复键/按钮 Down 与跨 peer Up，不错误释放其他远程/现场；(d) 69 键+3 按钮持有、64 正常待发、连环撤权/Resize，实际 Qt 保护性事件不越 136 且无卡键；(e) 同步 sendEvent 期间 Host 重入撤权，有确定先后及未完成真实状态。量化结论为**设计证明前置候选**，所有 Qt5/Qt6 Kit/代码实现仍 NOT_RUN。
 
+### 6.4.2.1 扩展输入 held 类别与公共 ABI 的边界（Gate-D 来源冲突修正）
+
+`Core InputEvent` 的 `PointerButton` 现有 Left/Middle/Right 三类与 69 个已知 KeyCode 不覆盖 Human P-A 已批准的 Native X1/X2 与 17 个独立小键盘码；`InputMailboxAdmission` 旧有 `69+3=72` 是**旧适配器的现状**，不能误写为新 Native 全量输入类型数。受信 Native 输入必须在公开 `hyremote::Transport::start(InputHandler)` / `InputSink::post(InputEvent)` 转换之前，由 F-05 同一 F-02 Runtime 会话层形成内部独立 `NativeInputFact`，送 F-06 源感知 `AuthorizedInputTicket` 后再交 Qt 末端适配；保留既有 Core Session/旧 RFB 输入兼容路径，**不能创建第二 Core 或独立授权/监听**；本设计不增 public Core `InputEvent` 枚举、不改已发布 ABI/Native wire。
+
+设计区分 `SupportedIdentityCategories=69+17+5=91` 和 `MaximumSimultaneouslyAdmittedHeldPerRealQtLeaf=72`：容纳全部批准的合法身份，**但每真实 Qt InputDomain 的已投递加待处理新 held 预留受 72 上限约束**，并与已有 64 普通/136 保护预算同计。第 73 个新 held 不得入普通/保护队列，不登记来源或向 Qt 发送 DOWN；已按下来源的合法 UP 与保护性撤权释放照常优先。多 Session/Scope 冲突和 8 连接最坏来源账本仍按本节 §6.4.2 边界审查，不能按 peer 倍增 Qt 释放事件。跨 Qt Kit 的 XButton 与 keypad 适配必须先给出可证明原生语义；不能静默将 Native 受控按钮变成 `None` 或将 keypad `ENTER` 伪装为主 `Enter`。反证 GN-13..16、RACE-03、XP-21，仍 `DESIGN_ONLY/NOT_RUN`。
+
 ### 6.4.3 有限售后委托的可信到期时钟与离线事实（Gate-D 审查候选）
 
 Human H-O02=A 已决定**离线 Issuer 签发不等于设备收到/撤销实际生效**，而设备**可信本地有限委托到期**可独立使相应临时访问失效。这里的“可信时间”不能直接等同可随意改动的 Windows/Linux 普通 wall clock。合法永久基础 Direct 资格与临时售后委托是两条独立 Policy 条件，不能将时钟异常解释为永久许可证失效。

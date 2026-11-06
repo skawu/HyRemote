@@ -203,6 +203,28 @@ DeploymentAdmitted
 2. **输入撤权：** `INPUT` 进入协议队列不等于最终允许执行；在 GUI 真正提交前复核 `AccessSessionId/GrantEpoch/Scope/PolicyRevision`。授权更替和输入提交的线性化顺序需能证明旧 input 不在撤权生效后执行。
 3. **断线重连：** 网络通道恢复不恢复旧 `ControlGrant`、未确认业务操作或 DELTA 基线；新连接须从可信 TLS/Native 身份与独立 Grant 开始。
 
+### 4.2.1 Native 合法键位与现有 Core 输入模型的隔离适配合同（Gate-D 技术反证）
+
+**实物冲突（非上位规范冲突）**：Human 批准的 V8 P-A 中，POINTER_BUTTON 可使用 1..5（含 X1/X2），KEY 可使用独立的 0x0400..0x0410 十七种小键盘键码；现有公开 `hyremote::InputEvent` 的 `PointerButton` 仅 Left/Middle/Right，`KeyCode` 为 69 个已知非小键盘键位；`src/runtime/src/detail/input_mailbox_admission.hpp` 和 `qt_window_system_input.cpp` 当前只处理三种按钮。直接将 Wire 值 cast 为现有 Core enum、将小键盘冒充普通数字键或以 None/Unknown 静默丢弃，均不能满足已批准的合法 Native 输入集合。
+
+**接入边界（不能遗漏的现有 API 限制）**：当前 `hyremote::Transport::start(InputHandler)` 的公开 `InputHandler` 仅接收公开 `InputEvent`，`hyremote::Session` 会将其路由给 `InputSink::post(InputEvent)`。因此**不能**把带 X1/X2/Keypad 的 Native 完整输入先塞入该公开回调再假装内部还保留了值域。F-05 在 F-02 统一 Runtime 的设备协议会话层（构造 Core 兼容 `InputEvent` **之前**）将完整已校验的 `NativeInputFact` 送到 F-06 **唯一**授权裁决器，统一沿用 F-02 RuntimeGeneration、TargetScopeRegistry、Qt 目标与停止栅栏；旧 RFB/Core 入口只消费它本来能够无损表示的标准输入，**不新增第二个 Core、独立监听或第二套 Grant 权威**。
+
+内部操作候选的可调用合同（非 public C++ 声明）：
+- `F05.decodeNativeInput(header, payload, nativeSession) → VerifiedNativeInputFact | Reject(approved_error)`：入 Host 前完成合法值域、长度、目标/消息顺序校验，`nativeSession` 为服务端当前真实会话标识，不接受 Viewer 自造身份。
+- `F06.admitNativeFact(VerifiedNativeInputFact, VerifiedPeerContext) → Queued(opaqueTicket) | Denied(reason) | Terminate`：在设备端当前 Policy/Scope/Target、来源权限及物理 QtInputDomain 剩余资源上裁决，成功后仅生成不可伪造票据，**不**声称已投 Qt。
+- `F02/QtLeaf.consumeAuthorizedTicket(opaqueTicket, QtTargetToken) → Dispatched | Rejected | Pending`：仅正确 Qt GUI 对象线程进入最后同步事件投递前重验；重复票据一次消费、撤权/stop 同代次联动、实际 held ledger 在确定提交边界更新。结果是设备本地输入事实，**不**是 Host 业务已执行回执。
+  
+上述三个内部调用不经旧 `InputSink::post(InputEvent)` 路径丢失扩展类型；若实现必须调整已发布 SDK 的公开回调形状，应判 `ABI_CHANGE_REQUIRED/NOT_FROZEN` 并提交受控兼容审查，**不能**在编码时静默加枚举、改变 QML/Qt 插件的已发布 ABI。
+
+**本期内部可实施方案（不修改已发布 public ABI、Native 类型/值域或 V8 上限）**：
+1. F-05 在 DeviceTLS、Session/Grant 与报文校验后，产出**内置于受信 Runtime 的 `NativeInputFact`**（非公开 SDK、非线缆字段），带严格区分的 `PhysicalButton{Left,Middle,Right,X1,X2}` 和 `PhysicalKeyId`；后者保持 P-A 既有主键与小键盘 0x0400..0x0410 的不同身份，连同 wire modifier、pressed、source viewport/generation 原样规范化。普通 RFB 或旧 Core `InputEvent` 经另一明确适配入口进入相同 Host 权限栅栏，不根据 public enum 序号猜 Native 值。
+2. F-06 将该 Fact 与**服务端生成**的 SessionId/Scope/GrantEpoch/TargetIncarnation/PolicyRevision/GeometryEpoch 绑定为 `AuthorizedInputTicket`；跨复合 Qt 和 Widgets/Quick 叶子队列保留安全票据。只有最后 GUI 投递时在当前 Snapshot 上重新校验成功，才转换到 Qt `XButton1/XButton2`、带真实 Keypad 语义的 Qt 键码或独立 `QInputMethodEvent`；不能提前转换成可能丢失身份的公开 `KeyCode`。
+3. Qt Kit/宿主若不能区分小键盘与主键的键码来源，**不得猜测**，不把无法证明的事件当已成功执行；需要在对应 Qt Kit 资格审查中找到可证明的映射，否则该 Kit 的此输入能力不得标支持。拒绝必须保留正确的本地诊断、授权/资源原因；不凭空新增 HYRP ERROR/CLOSE 枚举。
+4. `69` 个现有已知普通键位 + `17` 个小键盘键位 + `5` 个鼠标按钮 = **91 个可表达的 held 类别**，但这**不意味着同一叶子可同时持有 91 个状态**。为维持 V8 每真实目标 `64` 普通/ `136` 保护性释放预算，F-06 对真实 Qt InputDomain 的**同时已接纳或预留 held 类别设置上限 72**；不能接受第 73 个新 held，再指望 136 个保护槽足以覆盖 `91+64=155` 的最坏情形。资源达限只能有界拒绝**新的**按下，原有合法释放仍有优先保护；不修改 Wire 五按钮/17 个小键盘合法性，也不将临时资源拒绝说成非法协议字段。
+5. 同一实际 Qt 叶子仍有唯一 ScopeConflictGraph 与多来源 held 聚合（D1 §6.4.2）；不能给每会话另分 136 个保护额度。含 `X1/X2` 和小键盘的真实 pressed/released 组合要与普通键共享一次性物理 Qt 转移规则，针对撤权/断连/几何变化独立清理。
+
+**可确定性反证**：增列 GN-13（X1/X2 按下/释放及旧 public enum 不能替代）、GN-14（0x0400..0x0410 逐码小键盘与普通数字/Enter 不同）、GN-15（72 个活跃/预留 held 后第 73 个按下必须有界拒绝，既有释放仍最终执行）、GN-16（Native 与 RFB 两个来源在同叶子竞争、失焦/撤权期间不丢扩展键 UP）。所有值域合法时不得按 INVALID_FIELD 静默拒绝；Wire 正向/负向向量与平台 Qt 测试应继续设计，`NOT_RUN`。本节仅为内部实施合同，**不宣称现有 SDK 已支持这 22 类扩展输入或已经通过 Qt Kit 实测**。
+
 ### 4.3 独立设备 TLS 的部署与安全要求
 
 HMI 的密钥材料与 DeviceId 由设备制造商/客户可信交付或受信根管理；Viewer 必须独立验证真实 HMI 的证书链/标识与已确认 DeviceId。工厂 View Edge/Gateway 仅经授权转发字节，绝不拿到 HMI 设备 TLS 私钥或充当信任根。证书变化、过期、吊销和被替身攻击应在 View 端失败关闭，不得显示旧像素冒充实时当前画面。

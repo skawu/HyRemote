@@ -270,6 +270,12 @@ XP-02/04/05/06/20/FW-04/05/06/07 和 `RLG-01..09` 的正反证须按真实 RFB �
 
 以上只要求**可审查设计与负例判定方法**，不是在 Gate-D 前要求新功能 E2E 实测 PASS。实际 Qt Kit 末端 API、保护容量、持久恢复的技术可行性若仍无法证明，保留 Gate-D OPEN，不能留到实施时临时选型。
 
+### 5.2.1.1 Native 扩展按钮/小键盘与 Qt 输入配额的强制反证
+
+XP-21 与 F-05/V-02 互通不能只测试 `A`、普通 ENTER、普通三按钮。须逐值验证 P-A `POINTER_BUTTON.button=4/5` 的 X1/X2，以及 `KEY=0x0400..0x0410` 的十七个独立小键盘值；观察原始 Qt key/Keypad 来源、实际 Wire 值、F-06 票据、Qt 末端/保护 UP，不可把 `KeyCode::Unknown`、`PointerButton::None` 或主键盘同字符当 PASS。Core 公开兼容 API 仍保持不变，内部 Native 新路径不应意外改变已有 RFB / Widgets / Quick 输入语义。
+
+释放容量的否定算术：未来全量合法输入共有 **91 种 held 身份**，若不做并发 held 准入上限则 `91+64=155>136`，与 V8 单真实叶子保护预算矛盾。只有同一 QtInputDomain **最多 72 个已投递或已预留 held 类别**、64 个普通待处理事件、136 个保护释放槽位，才可沿用批准预算；第 73 个合法但资源不足的新 DOWN 必须有界拒绝（不能当非法枚举），此前实际投递的 UP 仍必须完成。额外检查跨 RFB/Native、8 peer、断连/撤权/同一物理 Qt leaf，不得出现同一个 Qt 键位被重复物理 DOWN 或跨 peer UP。GN-13..16、RACE-03、XP-21 全部 `DESIGN_ONLY/NOT_RUN`。
+
 ### 5.2.2 多来源 held 与保护性释放预算的审查判据
 
 RACE-03 除“GUI 两级队列后撤权”外，还必须固定如下反证记录：**实际 Qt 叶子对象及 TargetIncarnation**、ScopeConflictGraph 冲突裁决、各会话的源感知 Held、物理 AggregateHeld、普通 mailbox 高水位（≤64）、保护性 Qt release 高水位（≤136）、每个 permit 的进入/完成代次及 RevokePending/Effective 时刻。测试必须区分“8×72 个逻辑来源-held 组合”与“最多 72 个物理已按下类别”，不得将每来源释放入队数与物理 Qt Up 上界混算。对于无法证明隔离的同叶子双 Scope，**期待拒绝第二 ControlGrant**，不得为达标临时放宽 Qt 输入语义或当场更改 V8 预算。具体 Qt Kit 独立运行与容量测量尚未进行，记录为 DESIGN_ONLY/NOT_RUN。
