@@ -103,10 +103,36 @@ inline bool appendNativeTrlePayload(QByteArray &out,
             }
 
             if (paletteOverflow) {
-                out.append(char(0));  // TRLE raw CPIXEL tile.
+                // High-entropy TRLE tile: no palette can encode 17+ colours,
+                // so emit the exact raw CPIXEL bytes. The old path performed
+                // three QByteArray::append calls per pixel; a 1080p noisy page
+                // means millions of tiny appends plus repeated bounds checks.
+                // Resize the complete tile once, then write R,G,B directly.
+                // Tile size is <=16x16, and the wire remains RFC 6143 mode 0.
+                const qsizetype tileBytes =
+                    static_cast<qsizetype>(tileWidth * tileHeight * 3U);
+                if (out.size() > std::numeric_limits<qsizetype>::max()
+                                     - tileBytes - 1)
+                    return false;
+                out.append(char(0));
+                const qsizetype offset = out.size();
+                out.resize(offset + tileBytes);
+                auto *packed = reinterpret_cast<std::uint8_t *>(out.data() + offset);
                 for (std::uint32_t row = 0; row < tileHeight; ++row) {
-                    for (std::uint32_t col = 0; col < tileWidth; ++col)
-                        appendNativeCpixel(out, pixelAt(tileX + col, tileY + row));
+                    const auto *source = base
+                        + static_cast<std::size_t>(tileY + row) * plane->stride
+                        + static_cast<std::size_t>(tileX) * 4U;
+                    for (std::uint32_t col = 0; col < tileWidth; ++col) {
+                        const auto *rgba = source + static_cast<std::size_t>(col) * 4U;
+                        const std::size_t i =
+                            (static_cast<std::size_t>(row) * tileWidth + col) * 3U;
+                        packed[i] = rfbOpaqueChannel(
+                            rgba[0], rgba[3], frame.geometry.alphaMode);
+                        packed[i + 1U] = rfbOpaqueChannel(
+                            rgba[1], rgba[3], frame.geometry.alphaMode);
+                        packed[i + 2U] = rfbOpaqueChannel(
+                            rgba[2], rgba[3], frame.geometry.alphaMode);
+                    }
                 }
                 continue;
             }
