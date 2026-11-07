@@ -1697,6 +1697,61 @@ void testNativeRawFastPathAlphaEquivalence()
     }
 }
 
+// #789: high-entropy TRLE blocks use mode-0 raw CPIXEL, not packed
+// palettes. Confirm each byte on native and alpha-matted paths, including
+// a non-zero x offset and padded source row stride.
+void testHighEntropyTrleRawTileBytesAndAlpha()
+{
+    using hyremote::AlphaMode;
+    constexpr std::uint32_t width = 20U, height = 17U, stride = width * 4U + 16U;
+    for (const auto mode : {AlphaMode::Opaque, AlphaMode::Premultiplied,
+                            AlphaMode::Straight}) {
+        auto frame = makeFrame(width, height, 0U);
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(stride, height);
+        CHECK(storage && storage->mutablePlane(0));
+        if (!storage || !storage->mutablePlane(0))
+            return;
+        auto *base = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::uint32_t y = 0; y < height; ++y) {
+            for (std::uint32_t x = 0; x < width; ++x) {
+                const std::uint32_t index = y * width + x;
+                auto *pixel = base + static_cast<std::size_t>(y) * stride + x * 4U;
+                pixel[0] = static_cast<std::uint8_t>((index * 11U) & 255U);
+                pixel[1] = static_cast<std::uint8_t>((index * 47U) & 255U);
+                pixel[2] = static_cast<std::uint8_t>((index * 71U) & 255U);
+                pixel[3] = 180U;
+            }
+        }
+        frame.storage = std::move(storage);
+        frame.geometry.alphaMode = mode;
+        for (const std::uint32_t left : {0U, 16U}) {
+            const std::uint32_t tileWidth = left == 0U ? 16U : 4U;
+            QByteArray actual;
+            CHECK(HyRemote::detail::appendNativeTrlePayload(
+                actual, frame, left, 0U, tileWidth, 16U));
+            CHECK(actual.size() == static_cast<qsizetype>(1U + tileWidth * 16U * 3U));
+            if (actual.isEmpty())
+                continue;
+            CHECK(static_cast<std::uint8_t>(actual.at(0)) == 0U);
+            for (std::uint32_t row = 0; row < 16U; ++row) {
+                for (std::uint32_t col = 0; col < tileWidth; ++col) {
+                    const auto *rgba =
+                        base + static_cast<std::size_t>(row) * stride
+                             + static_cast<std::size_t>(left + col) * 4U;
+                    const auto offset = static_cast<qsizetype>(
+                        1U + (row * tileWidth + col) * 3U);
+                    for (std::uint32_t channel = 0; channel < 3U; ++channel) {
+                        const auto wanted = HyRemote::detail::rfbOpaqueChannel(
+                            rgba[channel], rgba[3], mode);
+                        CHECK(static_cast<std::uint8_t>(actual.at(
+                                  offset + static_cast<qsizetype>(channel))) == wanted);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void testTrlePreferredOverRawOrder()
 {
     const quint16 port = freePort();
@@ -3967,6 +4022,7 @@ int main(int argc, char **argv)
     testStaticCompareFastHintPreservesDamage();
     testAlphaOnlyFrameIsNotPublishedToRfb();
     testNativeRawFastPathAlphaEquivalence();
+    testHighEntropyTrleRawTileBytesAndAlpha();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
