@@ -534,7 +534,12 @@ public:
             if (client.phase != ClientPhase::Normal || !client.socket)
                 continue;
             haveNormalViewer = true;
-            if (client.socket->bytesToWrite() == 0) {
+            // A synchronous full-frame encode occupies the same RFB worker
+            // before any bytes are queued. Include that interval in the
+            // backpressure contract so the producer doesn't spin through
+            // expensive grabs that this worker cannot accept yet.
+            if (client.socket != m_encodingSocket
+                && client.socket->bytesToWrite() == 0) {
                 allQueued = false;
                 break;
             }
@@ -1852,6 +1857,11 @@ private:
             return;
         }
 
+        // Keep the GUI/Core capture scheduler out of an already saturated
+        // single-viewer encoding interval; the worker itself is non-reentrant.
+        m_encodingSocket = client.socket;
+        publishCaptureBackpressure();
+
         QByteArray update;
         update.append(char(0));
         update.append(char(0));
@@ -1867,6 +1877,8 @@ private:
             HYREMOTE_P1_SCOPE(RfbEncode);
             for (const RfbRect &rect : selected.rects()) {
                 if (!appendFramebufferRectangle(update, *frame, client, rect)) {
+                    m_encodingSocket = nullptr;
+                    publishCaptureBackpressure();
                     protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
                     return;
                 }
@@ -1880,6 +1892,10 @@ private:
             queued = client.socket->write(update);
         }
         HYREMOTE_P1_BYTES(RfbWrite, update.size());
+        // From this point any remaining pressure belongs to Qt's outbound
+        // queue, not to CPU encoding. Release the producer once both clear.
+        m_encodingSocket = nullptr;
+        publishCaptureBackpressure();
         if (queued != update.size()) {
             protocolFailure(client, "RFB socket write failed");
             return;
@@ -1912,6 +1928,7 @@ private:
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
     bool m_backpressureReported = false;
+    QTcpSocket *m_encodingSocket = nullptr; // RFB worker-thread only, never retained
 };
 
 class RfbTransport final : public hyremote::Transport
