@@ -1496,6 +1496,9 @@ void testPresentedRgbDamageVsSourceAlpha()
     auto sameStorageDifferentMode = preAlphaOnly;
     auto originallyOpaque = preAlphaOnly;
     originallyOpaque.geometry.alphaMode = AlphaMode::Opaque;
+    sameStorageDifferentMode.geometry.alphaMode = AlphaMode::Straight;
+    // Both frames share identical RGBA storage but have *different* visible
+    // RGB on the black-matted RFB wire when alpha=0x80.
     originallyOpaque.id = 10U;
     sameStorageDifferentMode.id = 11U;
     sameStorageDifferentMode.damage.kind = hyremote::DamageKind::Regions;
