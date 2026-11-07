@@ -28,6 +28,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <optional>
 #include <vector>
 
@@ -652,6 +653,8 @@ struct PilotBenchResult
     double wallMs = 0.0;
     int actualNativeFrames = 0;
     int frames = 0;
+    double requestP50Ms = 0.0;
+    double requestP95Ms = 0.0;
 };
 
 PilotBenchResult runPilotBenchCase(bool nativeOptIn)
@@ -744,14 +747,27 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
     const double cpuStart = benchmarkProcessCpuMs();
     const auto wallStart = std::chrono::steady_clock::now();
     constexpr int requestedFrames = 48;
+    std::vector<double> requestLatencyMs;
+    requestLatencyMs.reserve(requestedFrames);
     for (int i = 0; i < requestedFrames; ++i) {
         const std::uint64_t id = static_cast<std::uint64_t>(12000 + i);
+        const auto admittedAt = std::chrono::steady_clock::now();
         CHECK(parts.capture->requestFrame({id, hyremote::Clock::now()}));
         if (!pumpUntil([&] { return servedRequest == id; }, 160)) {
             CHECK(false && "benchmark capture exceeded bounded completion");
             break;
         }
+        const auto doneAt = std::chrono::steady_clock::now();
+        requestLatencyMs.push_back(
+            std::chrono::duration<double, std::milli>(doneAt - admittedAt).count());
         ++result.frames;
+    }
+    if (!requestLatencyMs.empty()) {
+        std::sort(requestLatencyMs.begin(), requestLatencyMs.end());
+        result.requestP50Ms = requestLatencyMs[(requestLatencyMs.size() - 1U) / 2U];
+        // Nearest-rank P95, including a slow public-grab fallback if one occurs.
+        result.requestP95Ms = requestLatencyMs[
+            (requestLatencyMs.size() * 95U + 99U) / 100U - 1U];
     }
     const auto wallEnd = std::chrono::steady_clock::now();
     const double cpuEnd = benchmarkProcessCpuMs();
@@ -772,10 +788,12 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
               << " usable=" << (usablePixels ? 1 : 0)
               << " frames=" << result.frames
               << " cpu_ms=" << result.cpuMs << " wall_ms=" << result.wallMs
-              << " native_hits=" << result.actualNativeFrames << '\n';
+              << " native_hits=" << result.actualNativeFrames
+              << " p50_latency_ms=" << result.requestP50Ms
+              << " p95_latency_ms=" << result.requestP95Ms << '\n';
     CHECK(result.ok);
     if (nativeOptIn)
-        CHECK(result.actualNativeFrames > 0);
+        CHECK(result.actualNativeFrames == result.frames);
     else
         CHECK(result.actualNativeFrames == 0);
     return result;
@@ -786,65 +804,129 @@ void testQuickCaptureProcessCostAba()
     if (qEnvironmentVariable("HYREMOTE_P3_BENCH") != "1")
         return;
 
+    // The previous one-off 48-frame run showed an apparent 10.9% CPU benefit
+    // while A1 and A2 differed by 17.4%. That is not enough evidence to
+    // promote an expensive private-QRhi path. Repeat three bracketed samples
+    // with identical warmed Qt scenes and report both variability and P95
+    // capture latency. Do not use a hosted Windows result to qualify EGLFS,
+    // Qt5, a customer's GPU, or any production default.
+    constexpr int repetitions = 3;
+    constexpr int framesPerCase = 48;
     const QByteArray oldNative = qgetenv("HYREMOTE_QUICK_NATIVE_FRAME");
-    const PilotBenchResult referenceA1 = runPilotBenchCase(false);
-    const PilotBenchResult native = runPilotBenchCase(true);
-    const PilotBenchResult referenceA2 = runPilotBenchCase(false);
-    qputenv("HYREMOTE_QUICK_NATIVE_FRAME", oldNative);
-    if (!referenceA1.ok || !native.ok || !referenceA2.ok)
-        return;
+    std::vector<PilotBenchResult> publicA1;
+    std::vector<PilotBenchResult> nativeResults;
+    std::vector<PilotBenchResult> publicA2;
+    publicA1.reserve(repetitions);
+    nativeResults.reserve(repetitions);
+    publicA2.reserve(repetitions);
 
+    for (int cycle = 0; cycle < repetitions; ++cycle) {
+        publicA1.push_back(runPilotBenchCase(false));
+        nativeResults.push_back(runPilotBenchCase(true));
+        publicA2.push_back(runPilotBenchCase(false));
+        if (!publicA1.back().ok || !nativeResults.back().ok
+            || !publicA2.back().ok) {
+            qputenv("HYREMOTE_QUICK_NATIVE_FRAME", oldNative);
+            return;
+        }
+    }
+    qputenv("HYREMOTE_QUICK_NATIVE_FRAME", oldNative);
+
+    double sumPublicA1Cpu = 0.0;
+    double sumNativeCpu = 0.0;
+    double sumPublicA2Cpu = 0.0;
+    double sumPublicA1Wall = 0.0;
+    double sumNativeWall = 0.0;
+    double sumPublicA2Wall = 0.0;
+    double maxBaselineSpread = 0.0;
+    int nativeHits = 0;
+    std::vector<double> cpuRatios;
+    cpuRatios.reserve(repetitions);
+    std::ostringstream output;
+    output << std::fixed << std::setprecision(4);
+    output << "BENCH_CONTEXT=HOSTED_WINDOWS_QT6.8.3_D3D11_1080P_SYNTHETIC\n"
+           << "BENCH_DESIGN=3x_BRACKETED_PUBLIC_NATIVE_PUBLIC\n"
+           << "BENCH_REPETITIONS=" << repetitions << '\n'
+           << "BENCH_FRAME_COUNT_PER_CASE=" << framesPerCase << '\n'
+           << "BENCH_WARMUP_PER_CASE=12\n";
+    for (int i = 0; i < repetitions; ++i) {
+        const auto &a = publicA1[i];
+        const auto &n = nativeResults[i];
+        const auto &z = publicA2[i];
+        const double publicCpu = (a.cpuMs + z.cpuMs) / (2.0 * framesPerCase);
+        const double nativeCpu = n.cpuMs / framesPerCase;
+        const double ratio = publicCpu > 0.0 ? nativeCpu / publicCpu : -1.0;
+        const double spread = publicCpu > 0.0
+            ? std::abs(a.cpuMs - z.cpuMs) / framesPerCase / publicCpu : -1.0;
+        CHECK(n.actualNativeFrames == framesPerCase);
+        CHECK(ratio > 0.0 && spread >= 0.0);
+        cpuRatios.push_back(ratio);
+        maxBaselineSpread = std::max(maxBaselineSpread, spread);
+        sumPublicA1Cpu += a.cpuMs;
+        sumNativeCpu += n.cpuMs;
+        sumPublicA2Cpu += z.cpuMs;
+        sumPublicA1Wall += a.wallMs;
+        sumNativeWall += n.wallMs;
+        sumPublicA2Wall += z.wallMs;
+        nativeHits += n.actualNativeFrames;
+        output << "BENCH_CYCLE_" << (i + 1)
+               << "_PUBLIC_A1_CPU_MS=" << a.cpuMs << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_NATIVE_CPU_MS=" << n.cpuMs << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_PUBLIC_A2_CPU_MS=" << z.cpuMs << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_CPU_RATIO=" << ratio << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_BASELINE_SPREAD=" << spread << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_PUBLIC_A1_P95_MS=" << a.requestP95Ms << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_NATIVE_P95_MS=" << n.requestP95Ms << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_PUBLIC_A2_P95_MS=" << z.requestP95Ms << '\n';
+    }
+    std::sort(cpuRatios.begin(), cpuRatios.end());
+    const double medianRatio = cpuRatios[cpuRatios.size() / 2U];
     const double publicCpuPerFrame =
-        (referenceA1.cpuMs / referenceA1.frames
-         + referenceA2.cpuMs / referenceA2.frames) / 2.0;
-    const double nativeCpuPerFrame = native.cpuMs / native.frames;
-    const double ratio = publicCpuPerFrame > 0.0
-        ? nativeCpuPerFrame / publicCpuPerFrame : -1.0;
-    const double baselineSpread =
-        publicCpuPerFrame > 0.0
-        ? std::abs(referenceA1.cpuMs / referenceA1.frames
-                   - referenceA2.cpuMs / referenceA2.frames) / publicCpuPerFrame
-        : -1.0;
-    const QString result = QStringLiteral(
-        "BENCH_CONTEXT=HOSTED_WINDOWS_QT6.8.3_D3D11_1080P_SYNTHETIC\n"
-        "BENCH_FRAME_COUNT=%1\n"
-        "BENCH_WARMUP_PER_CASE=12\n"
-        "PUBLIC_A1_CPU_MS=%2\nPUBLIC_A1_WALL_MS=%3\n"
-        "NATIVE_CPU_MS=%4\nNATIVE_WALL_MS=%5\nNATIVE_HITS=%6\n"
-        "PUBLIC_A2_CPU_MS=%7\nPUBLIC_A2_WALL_MS=%8\n"
-        "CPU_MS_PER_FRAME_PUBLIC_ABA_AVERAGE=%9\n"
-        "CPU_MS_PER_FRAME_NATIVE=%10\n"
-        "NATIVE_TO_PUBLIC_CPU_RATIO=%11\n"
-        "PUBLIC_ABA_BASELINE_SPREAD_FRACTION=%12\n"
-        "BENCH_STABILITY=%13\n"
-        "BENCH_QUALIFICATION=ADVISORY_NOT_FIELD_PROOF\n")
-        .arg(native.frames)
-        .arg(referenceA1.cpuMs, 0, 'f', 3)
-        .arg(referenceA1.wallMs, 0, 'f', 3)
-        .arg(native.cpuMs, 0, 'f', 3)
-        .arg(native.wallMs, 0, 'f', 3)
-        .arg(native.actualNativeFrames)
-        .arg(referenceA2.cpuMs, 0, 'f', 3)
-        .arg(referenceA2.wallMs, 0, 'f', 3)
-        .arg(publicCpuPerFrame, 0, 'f', 3)
-        .arg(nativeCpuPerFrame, 0, 'f', 3)
-        .arg(ratio, 0, 'f', 4)
-        .arg(baselineSpread, 0, 'f', 4)
-        .arg(baselineSpread >= 0.0 && baselineSpread <= 0.25
-                 ? QStringLiteral("TENTATIVE_MATCHED")
-                 : QStringLiteral("UNSTABLE_BASELINE"));
-    std::cout << result.toStdString();
-    const QString output = qEnvironmentVariable("HYREMOTE_P3_BENCH_OUTPUT");
-    if (!output.isEmpty()) {
-        QFile file(output);
+        (sumPublicA1Cpu + sumPublicA2Cpu) / (2.0 * repetitions * framesPerCase);
+    const double nativeCpuPerFrame = sumNativeCpu / (repetitions * framesPerCase);
+    const bool stableReference = maxBaselineSpread <= 0.15;
+    const bool consistentImprovement = std::all_of(
+        cpuRatios.begin(), cpuRatios.end(), [](double ratio) { return ratio < 0.95; });
+    output << "PUBLIC_A1_TOTAL_CPU_MS=" << sumPublicA1Cpu << '\n'
+           << "NATIVE_TOTAL_CPU_MS=" << sumNativeCpu << '\n'
+           << "PUBLIC_A2_TOTAL_CPU_MS=" << sumPublicA2Cpu << '\n'
+           << "PUBLIC_A1_TOTAL_WALL_MS=" << sumPublicA1Wall << '\n'
+           << "NATIVE_TOTAL_WALL_MS=" << sumNativeWall << '\n'
+           << "PUBLIC_A2_TOTAL_WALL_MS=" << sumPublicA2Wall << '\n'
+           << "NATIVE_MEASURED_HITS=" << nativeHits << '\n'
+           << "PUBLIC_ABA_CPU_MS_PER_FRAME=" << publicCpuPerFrame << '\n'
+           << "NATIVE_CPU_MS_PER_FRAME=" << nativeCpuPerFrame << '\n'
+           << "CPU_RATIO_MEDIAN_OF_BRACKETED_CYCLES=" << medianRatio << '\n'
+           << "CPU_RATIO_RANGE=" << cpuRatios.front() << ',' << cpuRatios.back() << '\n'
+           << "PUBLIC_ABA_MAX_BASELINE_SPREAD=" << maxBaselineSpread << '\n'
+           << "BENCH_STABILITY=" << (stableReference
+                                          ? "BASELINE_WITHIN_15_PERCENT"
+                                          : "UNSTABLE_BASELINE") << '\n'
+           << "BENCH_PERFORMANCE_SIGNAL="
+           << (stableReference && consistentImprovement
+                   ? "REPEATED_HOSTED_GAIN_ONLY"
+                   : "INSUFFICIENT_FOR_GAIN_CLAIM") << '\n'
+           << "BENCH_QUALIFICATION=ADVISORY_NOT_FIELD_PROOF\n"
+           << "BENCH_RELEASE_GATE=NOT_QUALIFIED\n";
+
+    const std::string report = output.str();
+    std::cout << report;
+    const QString filename = qEnvironmentVariable("HYREMOTE_P3_BENCH_OUTPUT");
+    if (!filename.isEmpty()) {
+        QFile file(filename);
         CHECK(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
         if (file.isOpen()) {
-            const QByteArray bytes = result.toUtf8();
+            const QByteArray bytes = QByteArray::fromStdString(report);
             CHECK(file.write(bytes) == bytes.size());
         }
     }
-    // No runner-specific CPU threshold is asserted. The same-machine A/B/A
-    // estimate guides engineering only and cannot qualify EGLFS or RK3588.
 }
 
 void testDestroyedQuickTargetReportsTargetLost()
