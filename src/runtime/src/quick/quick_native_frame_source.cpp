@@ -46,6 +46,9 @@ struct QuickNativeFrameSource::State
     std::atomic<bool> qualified{false};
     std::atomic<bool> requested{false};
     std::atomic<bool> inFlight{false};
+    std::atomic<std::uint64_t> afterRenderingSignals{0};
+    std::atomic<std::uint64_t> noRhi{0};
+    std::atomic<std::uint64_t> noSwapchain{0};
     std::atomic<long long> lastRenderMs{0};
     std::atomic<std::uint64_t> serial{0};
     std::atomic<std::uint64_t> epoch{1};
@@ -103,8 +106,15 @@ void QuickNativeFrameSource::start()
             if (!state->enabled.load(std::memory_order_acquire)
                 || state->invalidated.load(std::memory_order_acquire))
                 return;
+            state->afterRenderingSignals.fetch_add(1, std::memory_order_relaxed);
             auto *d = QQuickWindowPrivate::get(window);
-            if (!d || !d->rhi || !d->swapchain) {
+            if (!d || !d->rhi) {
+                state->noRhi.fetch_add(1, std::memory_order_relaxed);
+                state->qualified.store(false, std::memory_order_release);
+                return;
+            }
+            if (!d->swapchain) {
+                state->noSwapchain.fetch_add(1, std::memory_order_relaxed);
                 state->qualified.store(false, std::memory_order_release);
                 return;
             }
@@ -227,6 +237,12 @@ void QuickNativeFrameSource::stop() noexcept
     qInfo().nospace()
         << "HyRemote P3 native pilot: eligible_render="
         << m_state->eligibleRenders.load(std::memory_order_relaxed)
+        << " after_rendering="
+        << m_state->afterRenderingSignals.load(std::memory_order_relaxed)
+        << " no_rhi="
+        << m_state->noRhi.load(std::memory_order_relaxed)
+        << " no_swapchain="
+        << m_state->noSwapchain.load(std::memory_order_relaxed)
         << " unsupported_backend="
         << m_state->backendIneligible.load(std::memory_order_relaxed)
         << " missing_transfer_source="
