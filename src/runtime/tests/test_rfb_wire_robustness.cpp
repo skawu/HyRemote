@@ -1336,6 +1336,63 @@ void testOpaqueAlphaPolicy()
     CHECK(HyRemote::detail::rfbOpaqueChannel(255, 0, AlphaMode::Straight) == 0);
 }
 
+// Native 32bpp Raw must preserve the black-matte RGB policy across all alpha
+// variants. Opaque/premultiplied take the row-copy fast path; straight-alpha
+// retains the per-channel conversion path. The wire decoder validates the
+// exact RFB payload, not merely a private helper's result.
+void testNativeRawFastPathAlphaEquivalence()
+{
+    using hyremote::AlphaMode;
+    const std::array<AlphaMode, 3> modes{
+        AlphaMode::Opaque, AlphaMode::Premultiplied, AlphaMode::Straight};
+    for (const AlphaMode mode : modes) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (port == 0)
+            return;
+
+        Recorder recorder;
+        auto frame = makeFrame(16, 8, 0x203040U);
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(16U * 4U, 8U);
+        CHECK(storage && storage->mutablePlane(0));
+        if (!storage || !storage->mutablePlane(0))
+            return;
+        auto *pixels = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::size_t pixel = 0; pixel < 16U * 8U; ++pixel) {
+            pixels[pixel * 4U + 0U] = 0x20U;
+            pixels[pixel * 4U + 1U] = 0x30U;
+            pixels[pixel * 4U + 2U] = 0x40U;
+            pixels[pixel * 4U + 3U] = 0x80U;
+        }
+        frame.storage = std::move(storage);
+        frame.geometry.alphaMode = mode;
+
+        auto transport = startTransport(port, recorder, std::move(frame));
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+        QTcpSocket socket;
+        std::uint16_t width = 0;
+        std::uint16_t height = 0;
+        CHECK(connectRawRfb(socket, port, false, &width, &height));
+        CHECK(width == 16 && height == 8);
+        CHECK(sendSetEncodings(socket, {0}));
+        CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+        TestFramebuffer decoded;
+        decoded.resize(width, height);
+        std::vector<UpdateRect> rects;
+        CHECK(readFramebufferUpdate(socket, decoded, rects));
+        CHECK(rects.size() == 1U && rects.front().encoding == 0);
+        CHECK(decoded.get(0, 0)
+              == (mode == AlphaMode::Straight ? 0x101820U : 0x203040U));
+        CHECK(decoded.get(15, 7)
+              == (mode == AlphaMode::Straight ? 0x101820U : 0x203040U));
+        socket.disconnectFromHost();
+        waitForDisconnected(socket);
+        transport->stop();
+    }
+}
+
 void testTrlePreferredOverRawOrder()
 {
     const quint16 port = freePort();
@@ -3521,6 +3578,7 @@ int main(int argc, char **argv)
     testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
+    testNativeRawFastPathAlphaEquivalence();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
