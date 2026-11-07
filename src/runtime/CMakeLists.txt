@@ -198,6 +198,31 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
     endif()
 endif()
 
+# #609: alternate Qt Quick native-frame source is an optional, exact-Kit
+# backend implementation. Public Qt5/Qt6 capture remains the portable fallback.
+# A second explicit process opt-in is required before replacing grabToImage.
+option(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME
+    "Exact Qt 6.8.3 native readback source pilot; default OFF" OFF)
+if(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+    if(NOT HYREMOTE_REMOTEACCESS_WITH_QUICK
+       OR NOT Qt6_VERSION VERSION_EQUAL "6.8.3")
+        message(FATAL_ERROR
+            "Native Qt Quick readback pilot requires exact Qt 6.8.3 Quick.")
+    endif()
+    if(NOT TARGET Qt6::QuickPrivate OR NOT TARGET Qt6::GuiPrivate)
+        find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS QuickPrivate GuiPrivate)
+    endif()
+    target_sources(hyremote-remoteaccess PRIVATE
+        src/quick/quick_native_frame_source.cpp)
+    target_link_libraries(hyremote-remoteaccess PRIVATE
+        Qt6::QuickPrivate Qt6::GuiPrivate)
+    target_compile_definitions(hyremote-remoteaccess PRIVATE
+        HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=1)
+    message(WARNING
+        "Native Qt Quick frame source PILOT: exact Qt Kit / explicit runtime opt-in; "
+        "not qualified for release before pixel and performance A/B.")
+endif()
+
 # Pointer input enters Qt at the same QPA/window-system boundary used by platform plugins. Keep the
 # private dependency isolated to one Runtime translation unit; integration frontends remain peers and
 # never need to include or understand Qt private headers themselves.

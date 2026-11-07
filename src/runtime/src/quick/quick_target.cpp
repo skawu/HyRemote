@@ -32,6 +32,9 @@
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+#  include "quick/quick_native_frame_source.hpp"
+#endif
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -75,6 +78,12 @@ public:
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+        if (qEnvironmentVariable("HYREMOTE_QUICK_NATIVE_FRAME") == "1") {
+            m_state->native = std::make_shared<QuickNativeFrameSource>(m_state->target.data());
+            m_state->native->start();
+        }
+#endif
         return true;
     }
 
@@ -84,6 +93,13 @@ public:
         m_state->active = false;
         m_state->onFrame = {};
         m_state->onEvent = {};
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+        m_state->pendingNative.reset();
+        if (m_state->native) {
+            m_state->native->stop();
+            m_state->native.reset();
+        }
+#endif
 
         // Ready/timer continuations may still exist after stop, but they all check active before
         // entering a Core callback. A callback that already entered is drained here.
@@ -105,7 +121,7 @@ public:
         const std::shared_ptr<State> state = m_state;
         return QMetaObject::invokeMethod(
             dispatcher,
-            [state, request] { attemptGrabOnGuiThread(state, request, 1U); },
+            [state, request] { dispatchCaptureOnGuiThread(state, request); },
             Qt::QueuedConnection);
     }
 
@@ -121,6 +137,13 @@ private:
         std::size_t callbacksInFlight = 0;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+        std::shared_ptr<QuickNativeFrameSource> native;
+        std::optional<hyremote::CaptureRequest> pendingNative; // mutex protected
+        std::uint64_t pendingNativeSerial = 0;
+        std::uint64_t pendingNativeEpoch = 0;
+        long long pendingNativeAdmittedMs = 0;
+#endif
     };
 
     struct GrabAttempt
@@ -326,6 +349,139 @@ private:
         frame.damage = hyremote::Damage::fullFrame();
         frame.requestId = request.id;
         publishCallback(state, &State::onFrame, std::move(frame));
+    }
+
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+    static long long nativeNowMs()
+    {
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    }
+
+    // QImage retains the readback's QByteArray without a second full-size
+    // allocation. BGRA8 is normalized through Qt's premultiplied ARGB32 path.
+    // The exact byte size, readback format and surface epoch have already
+    // been checked in the QRhi callback; this remains an experimental Kit.
+    static QImage imageFromNative(QuickNativeSample sample)
+    {
+        if (sample.width <= 0 || sample.height <= 0 || sample.dpr <= 0.0)
+            return {};
+        const QImage::Format format =
+            sample.format == 1 ? QImage::Format_RGBA8888_Premultiplied
+            : sample.format == 2 ? QImage::Format_ARGB32_Premultiplied
+                                 : QImage::Format_Invalid;
+        if (format == QImage::Format_Invalid)
+            return {};
+        auto *owner = new QByteArray(std::move(sample.pixels));
+        QImage view(reinterpret_cast<const uchar *>(owner->constData()),
+                    sample.width, sample.height, sample.width * 4, format,
+                    [](void *p) { delete static_cast<QByteArray *>(p); }, owner);
+        if (view.isNull()) {
+            delete owner;
+            return {};
+        }
+        view.setDevicePixelRatio(sample.dpr);
+        return view;
+    }
+
+    static void pollNative(const std::shared_ptr<State> &state,
+                           const hyremote::CaptureRequest &request,
+                           long long deadlineMs)
+    {
+        std::shared_ptr<QuickNativeFrameSource> native;
+        std::uint64_t serial = 0;
+        std::uint64_t epoch = 0;
+        long long admittedMs = 0;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active || !state->pendingNative
+                || state->pendingNative->id != request.id)
+                return;
+            native = state->native;
+            serial = state->pendingNativeSerial;
+            epoch = state->pendingNativeEpoch;
+            admittedMs = state->pendingNativeAdmittedMs;
+        }
+        QuickNativeSample sample;
+        if (native && native->takeSample(sample)
+            && sample.epoch == epoch && sample.epoch == native->epoch()
+            && sample.renderSerial > serial
+            && sample.sourceMs >= admittedMs
+            && nativeNowMs() - sample.sourceMs <= 80
+            && !state->target.isNull()) {
+            // Full Qt Quick contentItem target only. Any change to geometry,
+            // DPR or target visibility must fail to the established Qt grab.
+            QQuickWindow *window = state->target.data();
+            const int expectedW = qRound(window->width() * window->devicePixelRatio());
+            const int expectedH = qRound(window->height() * window->devicePixelRatio());
+            if (window->isVisible() && sample.width == expectedW
+                && sample.height == expectedH
+                && qAbs(sample.dpr - window->devicePixelRatio()) <= 0.01) {
+                QImage nativeImage = imageFromNative(std::move(sample));
+                if (!nativeImage.isNull()) {
+                    {
+                        std::lock_guard<std::mutex> lock(state->mutex);
+                        if (!state->active || !state->pendingNative
+                            || state->pendingNative->id != request.id)
+                            return;
+                        state->pendingNative.reset();
+                    }
+                    // Same immutable Core/RFB pipeline and watermark/privacy
+                    // as grabToImage. No render-thread Core callback.
+                    publishImage(state, request, 1U, nativeImage);
+                    return;
+                }
+            }
+        }
+        if (nativeNowMs() >= deadlineMs || !native) {
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (!state->active || !state->pendingNative
+                    || state->pendingNative->id != request.id)
+                    return;
+                state->pendingNative.reset();
+            }
+            if (native)
+                native->cancelRequest();
+            attemptGrabOnGuiThread(state, request, 1U);
+            return;
+        }
+        QObject *dispatcher = QCoreApplication::instance();
+        if (dispatcher)
+            QTimer::singleShot(10, dispatcher, [state, request, deadlineMs] {
+                pollNative(state, request, deadlineMs);
+            });
+    }
+#endif
+
+    static void dispatchCaptureOnGuiThread(const std::shared_ptr<State> &state,
+                                           const hyremote::CaptureRequest &request)
+    {
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+        std::shared_ptr<QuickNativeFrameSource> native;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active)
+                return;
+            native = state->native;
+        }
+        const long long nowMs = nativeNowMs();
+        if (native && native->renderActive(nowMs, 34)) {
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (!state->active)
+                    return;
+                state->pendingNative = request;
+                state->pendingNativeSerial = native->renderSerial();
+                state->pendingNativeEpoch = native->epoch();
+                state->pendingNativeAdmittedMs = nowMs;
+            }
+            native->requestNextRender();
+            pollNative(state, request, nowMs + 60);
+            return;
+        }
+#endif
+        attemptGrabOnGuiThread(state, request, 1U);
     }
 
     static void attemptGrabOnGuiThread(const std::shared_ptr<State> &state,
