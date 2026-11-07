@@ -66,8 +66,15 @@ jobs:
           CORE_BIN="$(cygpath -u "$(pwd)/build-quick-native/core")"
           export PATH="$RUNTIME_BIN:$CORE_BIN:$QT_BIN:$PATH"
           export HYREMOTE_QUICK_NATIVE_FRAME=1
-          ctest --test-dir build-quick-native --output-on-failure \
-            -R '^hyremote-quick-capture-test$' --timeout 150
+          ctest --test-dir build-quick-native --verbose --output-on-failure \
+            -R '^hyremote-quick-capture-test
+      - name: Evidence scope
+        if: always()
+        shell: bash
+        run: |
+          echo "Exact Qt 6.8.3 private pilot build only; no field performance claim." >> "$GITHUB_STEP_SUMMARY"
+          echo "Synthetic Quick test may fall back to public grabToImage; native-hit and pixel-equivalence measurements are separate gates." >> "$GITHUB_STEP_SUMMARY"
+ --timeout 150
       - name: Evidence scope
         if: always()
         shell: bash

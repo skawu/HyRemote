@@ -33,6 +33,7 @@
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
+#  include <QDebug>
 #  include "quick/quick_native_frame_source.hpp"
 #endif
 #include "hyremote/core/capture_source.hpp"
@@ -99,6 +100,9 @@ public:
             m_state->native->stop();
             m_state->native.reset();
         }
+        qInfo().nospace()
+            << "HyRemote P3 native pilot: native_frames_published="
+            << m_state->nativeFramesPublished.load(std::memory_order_relaxed);
 #endif
 
         // Ready/timer continuations may still exist after stop, but they all check active before
@@ -143,6 +147,7 @@ private:
         std::uint64_t pendingNativeSerial = 0;
         std::uint64_t pendingNativeEpoch = 0;
         long long pendingNativeAdmittedMs = 0;
+        std::atomic<std::uint64_t> nativeFramesPublished{0};
 #endif
     };
 
@@ -428,6 +433,7 @@ private:
                     }
                     // Same immutable Core/RFB pipeline and watermark/privacy
                     // as grabToImage. No render-thread Core callback.
+                    state->nativeFramesPublished.fetch_add(1, std::memory_order_relaxed);
                     publishImage(state, request, 1U, nativeImage);
                     return;
                 }

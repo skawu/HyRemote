@@ -4,6 +4,7 @@
 #  error "Qt Private native-frame source must be compiled only with explicit opt-in"
 #endif
 
+#include <QDebug>
 #include <QtQuick/QQuickWindow>
 #include <QtQuick/private/qquickwindow_p.h>
 #include <rhi/qrhi.h>
@@ -50,6 +51,12 @@ struct QuickNativeFrameSource::State
     std::atomic<std::uint64_t> epoch{1};
     std::atomic<int> surfaceWidth{0};
     std::atomic<int> surfaceHeight{0};
+    std::atomic<std::uint64_t> backendIneligible{0};
+    std::atomic<std::uint64_t> transferSourceUnavailable{0};
+    std::atomic<std::uint64_t> eligibleRenders{0};
+    std::atomic<std::uint64_t> readbacksSubmitted{0};
+    std::atomic<std::uint64_t> readbacksCompleted{0};
+    std::atomic<std::uint64_t> samplesTaken{0};
 
     // One latest sample, for one Core request. No samples are taken at idle;
     // any unclaimed completed image is dropped on the next request or stop.
@@ -106,12 +113,18 @@ void QuickNativeFrameSource::start()
             // until proven with their exact Qt Kit and framebuffer semantics.
             // Crucially, an arbitrary Qt Quick swapchain MUST NOT be read
             // without its creation-time UsedAsTransferSource flag.
-            const bool eligible =
-                d->rhi->backend() == QRhi::D3D11
-                && d->swapchain->flags().testFlag(QRhiSwapChain::UsedAsTransferSource);
+            const bool supportedBackend = d->rhi->backend() == QRhi::D3D11;
+            const bool transferSource = d->swapchain->flags().testFlag(
+                QRhiSwapChain::UsedAsTransferSource);
+            if (!supportedBackend)
+                state->backendIneligible.fetch_add(1, std::memory_order_relaxed);
+            if (supportedBackend && !transferSource)
+                state->transferSourceUnavailable.fetch_add(1, std::memory_order_relaxed);
+            const bool eligible = supportedBackend && transferSource;
             state->qualified.store(eligible, std::memory_order_release);
             if (!eligible)
                 return;
+            state->eligibleRenders.fetch_add(1, std::memory_order_relaxed);
 
             const QSize physical = d->swapchain->surfacePixelSize();
             if (physical.width() <= 0 || physical.height() <= 0)
@@ -184,9 +197,11 @@ void QuickNativeFrameSource::start()
                     std::lock_guard<std::mutex> lock(state->sampleMutex);
                     state->sample = std::move(sample);
                 }
+                state->readbacksCompleted.fetch_add(1, std::memory_order_relaxed);
                 state->inFlight.store(false, std::memory_order_release);
                 delete pending;
             };
+            state->readbacksSubmitted.fetch_add(1, std::memory_order_relaxed);
             state->inFlight.store(true, std::memory_order_release);
             batch->readBackTexture(QRhiReadbackDescription{}, &pending->result);
             cb->resourceUpdate(batch);
@@ -208,6 +223,19 @@ void QuickNativeFrameSource::stop() noexcept
     m_initialized = {};
     std::lock_guard<std::mutex> lock(m_state->sampleMutex);
     m_state->sample.reset();
+    qInfo().nospace()
+        << "HyRemote P3 native pilot: eligible_render="
+        << m_state->eligibleRenders.load(std::memory_order_relaxed)
+        << " unsupported_backend="
+        << m_state->backendIneligible.load(std::memory_order_relaxed)
+        << " missing_transfer_source="
+        << m_state->transferSourceUnavailable.load(std::memory_order_relaxed)
+        << " readback_submitted="
+        << m_state->readbacksSubmitted.load(std::memory_order_relaxed)
+        << " readback_completed="
+        << m_state->readbacksCompleted.load(std::memory_order_relaxed)
+        << " sample_taken="
+        << m_state->samplesTaken.load(std::memory_order_relaxed);
 }
 
 bool QuickNativeFrameSource::renderActive(long long nowMs, long long maxAgeMs) const noexcept
@@ -245,6 +273,7 @@ bool QuickNativeFrameSource::takeSample(QuickNativeSample &out)
         return false;
     out = std::move(*m_state->sample);
     m_state->sample.reset();
+    m_state->samplesTaken.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 

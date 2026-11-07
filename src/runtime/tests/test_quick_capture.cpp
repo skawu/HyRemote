@@ -339,7 +339,21 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
         [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
         [&](const hyremote::CaptureEvent &) { ++captureEvents; }));
 
+    // Native Kit experiment only: keep actual scenegraph rendering active
+    // while the Core capture request is outstanding. This forces an honest
+    // afterRendering readback opportunity and still checks A/S/B pixels.
+    // The normal product test remains unchanged without both opt-in gates.
+    int activeStage = 0;
+    QTimer nativePaintPulse(&window);
+    if (qEnvironmentVariable("HYREMOTE_QUICK_NATIVE_FRAME") == "1") {
+        nativePaintPulse.setInterval(8);
+        QObject::connect(&nativePaintPulse, &QTimer::timeout, &window,
+                         [&] { content.setStage(activeStage); });
+        nativePaintPulse.start();
+    }
+
     for (int stage = 0; stage <= 2; ++stage) {
+        activeStage = stage;
         // afterRendering is emitted only after the Quick scene graph has drawn
         // the stage; requestFrame is issued strictly after that confirmation.
         content.setStage(stage);
@@ -392,6 +406,7 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
         CHECK(sample(3U * width / 4U) == (stage >= 2 ? bRgb : aRgb));
     }
     CHECK(captureEvents == 0);
+    nativePaintPulse.stop();
     components.capture->stop();
 }
 
