@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "hyremote/core/frame.hpp"
+#include "rfb_trle.hpp"  // same black-matte channel policy as Raw and TRLE wire encoders
 
 namespace HyRemote::detail {
 
@@ -356,6 +357,29 @@ static_assert(!rfbFrameIdsAreAdjacent(10U, 12U));
 static_assert(!rfbFrameIdsAreAdjacent(0U, 1U));
 static_assert(!rfbFrameIdsAreAdjacent(11U, 10U));
 
+// Compare the *presented* RGB, not source alpha which RFB cannot transmit.
+// Keep the common byte-identical case as a single memcmp; only inspect channel
+// presentation when raw bytes differ. This avoids false 64x64 damage tiles and
+// false "changed" feedback from transparent/alpha-only Qt Quick updates.
+inline bool rfbPresentedRowDiffers(const std::uint8_t *before,
+                                    const std::uint8_t *after,
+                                    std::uint32_t pixels,
+                                    hyremote::AlphaMode alphaMode) noexcept
+{
+    if (std::memcmp(before, after, static_cast<std::size_t>(pixels) * 4U) == 0)
+        return false;
+    for (std::uint32_t x = 0; x < pixels; ++x) {
+        const std::uint8_t *a = before + static_cast<std::size_t>(x) * 4U;
+        const std::uint8_t *b = after + static_cast<std::size_t>(x) * 4U;
+        for (std::uint32_t channel = 0; channel < 3U; ++channel) {
+            if (rfbOpaqueChannel(a[channel], a[3], alphaMode)
+                != rfbOpaqueChannel(b[channel], b[3], alphaMode))
+                return true;
+        }
+    }
+    return false;
+}
+
 inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
                                        const hyremote::RemoteFrame &current)
 {
@@ -364,22 +388,27 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
     if (width == 0 || height == 0)
         return {};
 
+    // Presentation metadata affects the on-wire picture, independently
+    // of FrameStorage identity or a Regions hint. Before trusting a delta or
+    // a shared-storage fast path, ensure the framebuffer's interpretation
+    // did not change. RFB has no alpha channel: Straight must be black-matted.
+    if (!previous || previous->geometry.size.width != width
+        || previous->geometry.size.height != height
+        || previous->geometry.pixelFormat != current.geometry.pixelFormat
+        || previous->geometry.planeCount != current.geometry.planeCount
+        || previous->geometry.alphaMode != current.geometry.alphaMode) {
+        return fullRfbDamage(width, height);
+    }
+
     // A Regions list describes the delta from the immediately preceding accepted frame. The
     // RFB transport mailbox is latest-frame-wins, so more than one accepted frame may be
     // coalesced before the worker observes it. Only trust Regions when FrameId proves that no
     // accepted frame was skipped; otherwise diff the actual last-observed pixels against the
     // newest frame so a delta from a discarded intermediate frame cannot be lost.
     const bool adjacentAcceptedFrame
-        = previous && rfbFrameIdsAreAdjacent(previous->id, current.id);
+        = rfbFrameIdsAreAdjacent(previous->id, current.id);
     if (current.damage.kind == hyremote::DamageKind::Regions && adjacentAcceptedFrame)
         return regionsFromFrameDamage(current);
-
-    if (!previous || previous->geometry.size.width != width
-        || previous->geometry.size.height != height
-        || previous->geometry.pixelFormat != current.geometry.pixelFormat
-        || previous->geometry.planeCount != current.geometry.planeCount) {
-        return fullRfbDamage(width, height);
-    }
 
     if (previous->storage == current.storage)
         return {};
@@ -412,10 +441,10 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
                                           + static_cast<std::size_t>(x0) * 4U;
                 const auto afterOffset = static_cast<std::size_t>(y0 + row) * after->stride
                                          + static_cast<std::size_t>(x0) * 4U;
-                if (std::memcmp(beforeBase + beforeOffset,
-                                afterBase + afterOffset,
-                                static_cast<std::size_t>(tileWidth) * 4U)
-                    != 0) {
+                if (rfbPresentedRowDiffers(beforeBase + beforeOffset,
+                                           afterBase + afterOffset,
+                                           tileWidth,
+                                           current.geometry.alphaMode)) {
                     changed = true;
                     break;
                 }

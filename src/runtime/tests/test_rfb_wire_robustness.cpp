@@ -1446,6 +1446,68 @@ void testOpaqueAlphaPolicy()
 // variants. Opaque/premultiplied take the row-copy fast path; straight-alpha
 // retains the per-channel conversion path. The wire decoder validates the
 // exact RFB payload, not merely a private helper's result.
+// #789: the RFB wire carries RGB only. A complete RGBA byte comparison
+// incorrectly expands changes in invisible alpha into full 64x64 RFB damage
+// and keeps the Qt Quick capture gate active forever. Also guard against the
+// opposite error: the same immutable source storage with a new alpha *mode*
+// is a new on-wire image and cannot use the shared-pointer equality shortcut.
+void testPresentedRgbDamageVsSourceAlpha()
+{
+    using hyremote::AlphaMode;
+    const auto makeRgbaFrame = [](std::uint8_t red, std::uint8_t green,
+                                  std::uint8_t blue, std::uint8_t alpha,
+                                  AlphaMode mode) {
+        auto frame = makeFrame(128U, 128U, 0U);
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(128U * 4U, 128U);
+        CHECK(storage && storage->mutablePlane(0));
+        if (!storage || !storage->mutablePlane(0))
+            return hyremote::RemoteFrame{};
+        auto *pixels = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::size_t pixel = 0; pixel < 128U * 128U; ++pixel) {
+            pixels[pixel * 4U + 0U] = red;
+            pixels[pixel * 4U + 1U] = green;
+            pixels[pixel * 4U + 2U] = blue;
+            pixels[pixel * 4U + 3U] = alpha;
+        }
+        frame.storage = std::move(storage);
+        frame.geometry.alphaMode = mode;
+        return frame;
+    };
+
+    const auto opaque = makeRgbaFrame(32U, 48U, 64U, 255U, AlphaMode::Opaque);
+    const auto alphaOnly = makeRgbaFrame(32U, 48U, 64U, 128U, AlphaMode::Opaque);
+    CHECK(HyRemote::detail::changedRfbTiles(&opaque, alphaOnly).empty());
+    const auto pre = makeRgbaFrame(32U, 48U, 64U, 255U, AlphaMode::Premultiplied);
+    const auto preAlphaOnly =
+        makeRgbaFrame(32U, 48U, 64U, 128U, AlphaMode::Premultiplied);
+    CHECK(HyRemote::detail::changedRfbTiles(&pre, preAlphaOnly).empty());
+
+    // Fully transparent straight-alpha pixels are invisible despite different
+    // underlying RGB values; changing their alpha to opaque must be delivered.
+    const auto invisibleA =
+        makeRgbaFrame(32U, 48U, 64U, 0U, AlphaMode::Straight);
+    const auto invisibleB =
+        makeRgbaFrame(240U, 8U, 99U, 0U, AlphaMode::Straight);
+    CHECK(HyRemote::detail::changedRfbTiles(&invisibleA, invisibleB).empty());
+    const auto visible =
+        makeRgbaFrame(240U, 8U, 99U, 255U, AlphaMode::Straight);
+    CHECK(!HyRemote::detail::changedRfbTiles(&invisibleB, visible).empty());
+
+    auto sameStorageDifferentMode = preAlphaOnly;
+    auto originallyOpaque = preAlphaOnly;
+    originallyOpaque.geometry.alphaMode = AlphaMode::Opaque;
+    originallyOpaque.id = 10U;
+    sameStorageDifferentMode.id = 11U;
+    sameStorageDifferentMode.damage.kind = hyremote::DamageKind::Regions;
+    sameStorageDifferentMode.damage.regions.clear();
+    const auto presentationDelta =
+        HyRemote::detail::changedRfbTiles(&originallyOpaque, sameStorageDifferentMode);
+    CHECK(presentationDelta.size() == 1U);
+    if (presentationDelta.size() == 1U)
+        CHECK(presentationDelta.rects().front()
+              == (HyRemote::detail::RfbRect{0, 0, 128, 128}));
+}
+
 void testNativeRawFastPathAlphaEquivalence()
 {
     using hyremote::AlphaMode;
@@ -3685,6 +3747,7 @@ int main(int argc, char **argv)
     testWatermarkFollowsDevicePixelRatio();
     testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
+    testPresentedRgbDamageVsSourceAlpha();
     testNativeRawFastPathAlphaEquivalence();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
