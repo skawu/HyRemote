@@ -118,7 +118,87 @@ int main()
         return 5;
     gate.stop();
 
+    // A bounded producer must not keep grabbing while its only Normal RFB
+    // viewer is draining a previous large FBU. A new connection gets one
+    // initial escape; a remote input event gets one more, but neither turns
+    // permanent backpressure into an unbounded spin.
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.waitForViewer(), "first viewer lost one-shot bootstrap escape"))
+        return 6;
+
+    std::promise<bool> blockedCompletion;
+    auto blockedFuture = blockedCompletion.get_future();
+    std::thread blockedWaiter([&] { blockedCompletion.set_value(gate.waitForViewer()); });
+    const bool blocked = blockedFuture.wait_for(40ms) == std::future_status::timeout;
+    gate.noteRemoteInput();
+    const bool inputWoke = blockedFuture.wait_for(2s) == std::future_status::ready;
+    if (!inputWoke)
+        gate.stop();
+    blockedWaiter.join();
+    if (!check(blocked && inputWoke && blockedFuture.get(),
+               "backpressure ignored or remote input failed to escape once"))
+        return 7;
+
+    std::promise<bool> drainedCompletion;
+    auto drainedFuture = drainedCompletion.get_future();
+    std::thread drainedWaiter([&] { drainedCompletion.set_value(gate.waitForViewer()); });
+    const bool blockedAgain = drainedFuture.wait_for(40ms) == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool drainedWoke = drainedFuture.wait_for(2s) == std::future_status::ready;
+    if (!drainedWoke)
+        gate.stop();
+    drainedWaiter.join();
+    if (!check(blockedAgain && drainedWoke && drainedFuture.get(),
+               "backpressure did not remain bounded until the socket drained"))
+        return 8;
+
+    // Even a repeatedly non-incremental Viewer must not be starved forever:
+    // the first full FBU request may deliver the cached picture, but a fresh
+    // source request is granted once, and saturation resumes thereafter.
+    gate.noteDeliveryBackpressure(true);
+    gate.noteForcedViewerRefresh();
+    if (!check(gate.waitForViewer(), "explicit full FBU request lost its one-shot capture"))
+        return 9;
+    std::promise<bool> fullBlockedCompletion;
+    auto fullBlockedFuture = fullBlockedCompletion.get_future();
+    std::thread fullBlockedWaiter(
+        [&] { fullBlockedCompletion.set_value(gate.waitForViewer()); });
+    const bool fullBlocked = fullBlockedFuture.wait_for(40ms) == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool fullDrainWoke = fullBlockedFuture.wait_for(2s) == std::future_status::ready;
+    if (!fullDrainWoke)
+        gate.stop();
+    fullBlockedWaiter.join();
+    if (!check(fullBlocked && fullDrainWoke && fullBlockedFuture.get(),
+               "full FBU escape bypassed the next backpressure wait"))
+        return 10;
+    gate.stop();
+
+    // A client that is not pulling must not consume 60fps captures forever,
+    // but a later single full refresh must not be served an arbitrarily old
+    // source. Check the independent 250ms fallback without involving Qt timers.
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true, true);
+    if (!check(gate.waitForViewer(), "first no-demand Viewer bootstrap lost"))
+        return 11;
+    std::promise<bool> idleProbeCompletion;
+    auto idleProbeFuture = idleProbeCompletion.get_future();
+    std::thread idleProbe([&] { idleProbeCompletion.set_value(gate.waitForViewer()); });
+    const bool probeFired = idleProbeFuture.wait_for(800ms) == std::future_status::ready;
+    if (!probeFired)
+        gate.stop();
+    idleProbe.join();
+    if (!check(probeFired && idleProbeFuture.get(),
+               "no-request Viewer freshness probe exceeded its bounded interval"))
+        return 12;
+    gate.stop();
+
     std::cout << "PASS 250ms bounded probe, remote input prompt wake, "
-                 "disconnect/reconnect and stop\n";
+                 "disconnect/reconnect, delivery backpressure, no-demand freshness and stop\n";
     return 0;
 }

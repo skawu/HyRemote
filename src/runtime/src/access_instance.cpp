@@ -1597,6 +1597,17 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     // #789: reuse transport's exact changed-pixel calculation to avoid repeatedly grabbing a
     // static Qt Quick scene at the active 60fps cap. Only a weak pointer crosses the worker seam.
     auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
+    effectiveSecurity.frameBackpressureObserver =
+        [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
+            bool blocked, bool noViewerUpdateDemand) {
+            if (const auto demand = weak.lock())
+                demand->noteDeliveryBackpressure(blocked, noViewerUpdateDemand);
+        };
+    effectiveSecurity.frameFullRefreshObserver =
+        [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)] {
+            if (const auto demand = weak.lock())
+                demand->noteForcedViewerRefresh();
+        };
     effectiveSecurity.frameChangeObserver = [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
                                                 bool changed) {
         if (auto gate = weak.lock())
