@@ -75,6 +75,13 @@ jobs:
           HYREMOTE_RFB_COMPARE_PROFILE_FILE="$PWD/build-profile/profile/rfb-compare-profile.txt" \
             xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
 
+      - name: Compare high-entropy TRLE raw-tile packing, same binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE="$PWD/build-profile/profile/trle-raw-pack-profile.txt" \
+            xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
+
       - name: Upload profile JSON and unchanged-frame scan measurements
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +89,7 @@ jobs:
           path: |
             build-profile/profile/rfb-delivery-profile.json
             build-profile/profile/rfb-compare-profile.txt
+            build-profile/profile/trle-raw-pack-profile.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -128,6 +136,13 @@ jobs:
           $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
           & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
 
+      - name: Compare high-entropy TRLE raw-tile packing, same binary
+        shell: pwsh
+        run: |
+          $env:HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE = "$PWD/build-profile/profile/trle-raw-pack-profile.txt"
+          $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
+          & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
+
       - name: Upload profile JSON and unchanged-frame scan measurements
         uses: actions/upload-artifact@v4
         with:
@@ -135,5 +150,6 @@ jobs:
           path: |
             build-profile/profile/rfb-delivery-profile.json
             build-profile/profile/rfb-compare-profile.txt
+            build-profile/profile/trle-raw-pack-profile.txt
           if-no-files-found: error
           retention-days: 14
