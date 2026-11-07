@@ -44,7 +44,7 @@ jobs:
       - name: Exact QtPrivate pilot through the canonical build/test authority
         shell: cmd
         run: |
-          call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-capture-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" --no-prompt -j4
+          call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-capture-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" "--env=HYREMOTE_EXPECT_NATIVE_HIT=1" --no-prompt -j4
       - name: Evidence boundary
         if: always()
         shell: bash

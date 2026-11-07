@@ -1,4 +1,5 @@
 #include <QColor>
+#include <QDebug>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QEventLoop>
@@ -15,6 +16,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <optional>
@@ -27,6 +29,27 @@
 namespace {
 
 int failures = 0;
+
+// Only the exact-Kit pilot uses this diagnostic check. The ordinary Quick
+// regression neither installs a Qt message hook nor imposes native hits.
+// A successful public-Qt grabToImage fallback MUST NOT be counted as a
+// successful passive QRhi source optimization.
+std::atomic<int> pilotNativeHits{0};
+QtMessageHandler previousQtMessageHandler = nullptr;
+void pilotQtMessageHandler(QtMsgType type, const QMessageLogContext &context,
+                           const QString &message)
+{
+    constexpr const char *needle = "native_frames_published=";
+    const int index = message.indexOf(QString::fromLatin1(needle));
+    if (index >= 0) {
+        bool ok = false;
+        const int hits = message.mid(index + static_cast<int>(std::strlen(needle))).toInt(&ok);
+        if (ok)
+            pilotNativeHits.fetch_add(hits, std::memory_order_relaxed);
+    }
+    if (previousQtMessageHandler)
+        previousQtMessageHandler(type, context, message);
+}
 
 #define CHECK(expr)                                                                                \
     do {                                                                                           \
@@ -351,6 +374,7 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
     // while the Core capture request is outstanding. This forces an honest
     // afterRendering readback opportunity and still checks A/S/B pixels.
     // The normal product test remains unchanged without both opt-in gates.
+    const int stagePreviousNativeHits = pilotNativeHits.load(std::memory_order_relaxed);
     int activeStage = 0;
     QTimer nativePaintPulse(&window);
     if (qEnvironmentVariable("HYREMOTE_QUICK_NATIVE_FRAME") == "1") {
@@ -416,6 +440,12 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
     CHECK(captureEvents == 0);
     nativePaintPulse.stop();
     components.capture->stop();
+    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1") {
+        const int stageHits = pilotNativeHits.load(std::memory_order_relaxed)
+                              - stagePreviousNativeHits;
+        std::cout << "P3_NATIVE_STAGE_PIXELS_DELIVERED=" << stageHits << '\n';
+        CHECK(stageHits > 0); // no substituted public fallback may fake P3 PASS
+    }
 }
 
 void testDestroyedQuickTargetReportsTargetLost()
@@ -613,6 +643,8 @@ void testQueuedQuickInputIsDroppedWhenSinkIsDestroyed()
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1")
+        previousQtMessageHandler = qInstallMessageHandler(pilotQtMessageHandler);
 
     testQuickFactoryAndOwnedFrame();
     testStagedQuickSourceCaptureFollowsPaintedScene();
@@ -622,6 +654,8 @@ int main(int argc, char **argv)
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 
     HyRemote::detail::resetFactories();
+    if (previousQtMessageHandler)
+        qInstallMessageHandler(previousQtMessageHandler);
     if (failures != 0)
         std::cerr << failures << " Quick adapter checks failed\n";
     return failures == 0 ? 0 : 1;
