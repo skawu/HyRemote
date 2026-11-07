@@ -516,7 +516,6 @@ public:
         m_clients.clear();
         publishCaptureBackpressure();
         m_observedFrame.reset();
-        m_servedFrame.reset();
         m_lastComparedFrameUnchanged = false;
         m_decorationFailed = false;
         m_keyHolderCounts.fill(0);
@@ -562,7 +561,6 @@ public:
         // their last observed/marked pixels for immediate first-FBU and exact
         // incremental damage, even when no Viewer is connected.
         m_observedFrame.reset();
-        m_servedFrame.reset();
         m_lastComparedFrameUnchanged = false;
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         m_frames->latest.reset();
@@ -600,10 +598,8 @@ public:
                 return;
             }
             served = std::move(decorated);
-            m_servedFrame = served;
         } else {
             served = frame;
-            m_servedFrame.reset();
         }
 
         const bool geometryChanged = !m_observedFrame
@@ -667,7 +663,6 @@ public:
         if (m_decorationFailed)
             return;
         m_decorationFailed = true;
-        m_servedFrame.reset();
         m_observedFrame.reset();
         m_lastComparedFrameUnchanged = false;
 
@@ -733,13 +728,13 @@ private:
         return m_frames->latest;
     }
 
-    // #589: the only frame a viewer may ever be given. With a decorator installed this is the composed frame that
-    // frameAvailable() produced for the current capture; without one it is the capture frame, untouched.
+    // The producer mailbox advances before frameAvailable() has necessarily
+    // computed damage for the new frame. A Viewer request or socket drain must
+    // only send pixels from the frame with committed damage. Using latestFrame
+    // in this path could encode unprocessed pixels with older pending rects.
     std::optional<hyremote::RemoteFrame> servedFrame() const
     {
-        if (!m_security.frameDecorator)
-            return latestFrame();
-        return m_servedFrame;
+        return m_observedFrame;
     }
 
     hyremote::InputModifiers aggregateModifiers() const
@@ -1353,7 +1348,11 @@ private:
     {
         if (!client.socket)
             return;
-        const auto frame = latestFrame();
+        // Align ServerInit dimensions with the processed framebuffer whenever
+        // one exists. The producer's newer queued resize is not yet a
+        // deliverable picture. Initial startup still accepts latest as a
+        // bootstrap geometry before the first frameAvailable() completes.
+        const auto frame = m_observedFrame ? m_observedFrame : latestFrame();
         const auto width = frame ? frame->geometry.size.width : m_security.initialFramebufferWidth;
         const auto height = frame ? frame->geometry.size.height : m_security.initialFramebufferHeight;
         if (width == 0 || height == 0 || width > std::numeric_limits<std::uint16_t>::max()
@@ -1645,13 +1644,14 @@ private:
         return true;
     }
 
-    hyremote::InputViewport currentViewport() const
+    hyremote::InputViewport currentViewport(const ClientState &client) const
     {
+        // RFB pointer coordinates are relative to the per-Viewer framebuffer
+        // already advertised by ServerInit/DesktopSize, not a newer producer
+        // frame that the Viewer has not requested/received.
         hyremote::InputViewport viewport;
-        if (const auto frame = latestFrame()) {
-            viewport.width = frame->geometry.size.width;
-            viewport.height = frame->geometry.size.height;
-        }
+        viewport.width = client.framebufferWidth;
+        viewport.height = client.framebufferHeight;
         viewport.devicePixelRatio = 1.0F;
         return viewport;
     }
@@ -1661,7 +1661,7 @@ private:
                         std::uint16_t x,
                         std::uint16_t y)
     {
-        const hyremote::InputViewport viewport = currentViewport();
+        const hyremote::InputViewport viewport = currentViewport(client);
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
@@ -1973,9 +1973,8 @@ private:
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
     bool m_lastComparedFrameUnchanged = false; // worker-thread-only static hint
-    // #589: the composed frame currently shared by every viewer, and the one-shot latch that stops the transport
-    // from ever falling back to undecorated pixels after a composition failure.
-    std::optional<hyremote::RemoteFrame> m_servedFrame;
+    // #589: a decoration failure must remain fail-closed. The processed
+    // m_observedFrame is also the sole immutable source for Viewer delivery.
     bool m_decorationFailed = false;
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
