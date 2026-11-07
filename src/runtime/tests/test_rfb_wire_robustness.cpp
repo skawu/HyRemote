@@ -3856,9 +3856,89 @@ void testDamageAndEncodedFrameShareSnapshot()
     transport->stop();
 }
 
+// Developer-only comparison of the existing exact-tile scan and the optional
+// static-hinted fast equality. The *same* executable, CPU and two independent
+// frame allocations are used for both. No fixed runner CPU/ratio is asserted.
+void runRfbStaticCompareProfile(const QString &outputPath)
+{
+    const auto before = makeFrame(1920U, 1080U, 0x203040U);
+    const auto identical = makeFrame(1920U, 1080U, 0x203040U);
+    const auto changed = makeFrame(
+        1920U, 1080U, 0x203040U,
+        {{hyremote::Rect{896, 512, 64, 64}, 0xd02030U}});
+    CHECK(before.storage && identical.storage && changed.storage);
+    if (!before.storage || !identical.storage || !changed.storage)
+        return;
+    CHECK(before.storage != identical.storage);
+
+    constexpr int repetitions = 120;
+    const auto sample = [&](const hyremote::RemoteFrame &after, bool preferStatic) {
+        QElapsedTimer elapsed;
+        volatile std::size_t total = 0;
+        elapsed.start();
+        for (int i = 0; i < repetitions; ++i) {
+            const auto diff = HyRemote::detail::changedRfbTiles(
+                &before, after, preferStatic);
+            total = total + diff.size();
+        }
+        const double nsPerCall =
+            static_cast<double>(elapsed.nsecsElapsed()) / repetitions;
+        return std::make_pair(nsPerCall, static_cast<std::size_t>(total));
+    };
+
+    // Alternating order limits warm-cache and runner placement bias; only
+    // two figures at the same synthetic size are advisory, not RK3588 data.
+    const auto staticOldA = sample(identical, false);
+    const auto staticFast = sample(identical, true);
+    const auto staticOldB = sample(identical, false);
+    const auto sparseOld = sample(changed, false);
+    const auto sparseFirstAfterStatic = sample(changed, true);
+    CHECK(staticOldA.second == 0U && staticOldB.second == 0U);
+    CHECK(staticFast.second == 0U);
+    CHECK(sparseOld.second == sparseFirstAfterStatic.second);
+    CHECK(sparseOld.second == repetitions);
+
+    const double oldMean = (staticOldA.first + staticOldB.first) / 2.0;
+    const QString report = QStringLiteral(
+        "PROFILE_KIND=RFB_STATIC_COMPARE_HINT\n"
+        "PROFILE_CONTEXT=HOSTED_SYNTHETIC_NOT_DEVICE_PROOF\n"
+        "FRAMEBUFFER=1920x1080\n"
+        "REPETITIONS=%1\n"
+        "STATIC_OLD_A_NS_PER_FRAME=%2\n"
+        "STATIC_FAST_NS_PER_FRAME=%3\n"
+        "STATIC_OLD_B_NS_PER_FRAME=%4\n"
+        "STATIC_FAST_OVER_OLD_RATIO=%5\n"
+        "SPARSE_DYNAMIC_OLD_NS_PER_FRAME=%6\n"
+        "SPARSE_DYNAMIC_FIRST_AFTER_STATIC_NS_PER_FRAME=%7\n"
+        "SPARSE_DYNAMIC_FIRST_HINT_OVER_OLD_RATIO=%8\n"
+        "PROFILE_QUALIFICATION=ADVISORY_ONLY\n")
+        .arg(repetitions)
+        .arg(staticOldA.first, 0, 'f', 0)
+        .arg(staticFast.first, 0, 'f', 0)
+        .arg(staticOldB.first, 0, 'f', 0)
+        .arg(oldMean > 0.0 ? staticFast.first / oldMean : -1.0, 0, 'f', 4)
+        .arg(sparseOld.first, 0, 'f', 0)
+        .arg(sparseFirstAfterStatic.first, 0, 'f', 0)
+        .arg(sparseOld.first > 0.0
+             ? sparseFirstAfterStatic.first / sparseOld.first : -1.0, 0, 'f', 4);
+    std::cout << report.toStdString();
+    QFile file(outputPath);
+    CHECK(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    if (file.isOpen()) {
+        const QByteArray bytes = report.toUtf8();
+        CHECK(file.write(bytes) == bytes.size());
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+
+    const QByteArray staticComparePath = qgetenv("HYREMOTE_RFB_COMPARE_PROFILE_FILE");
+    if (!staticComparePath.isEmpty()) {
+        runRfbStaticCompareProfile(QString::fromLocal8Bit(staticComparePath));
+        return failures == 0 ? 0 : 1;
+    }
 
     const QByteArray largeProfilePath = qgetenv("HYREMOTE_RFB_LARGE_PROFILE_FILE");
     if (!largeProfilePath.isEmpty()) {
