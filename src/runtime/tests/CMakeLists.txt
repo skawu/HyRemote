@@ -469,6 +469,19 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
+    # The normal Qt Quick regression intentionally forces the software scene
+    # graph so it can execute headless. That is NOT a GPU/QRhi acceptance test.
+    # Register a separate exact-Kit ON-screen pilot against the same binary:
+    # forcing D3D11 through QSG_RHI_BACKEND cannot override the old
+    # QT_QUICK_BACKEND=software CTest environment.
+    if(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME AND WIN32)
+        add_test(NAME hyremote-quick-native-frame-pilot-test
+            COMMAND hyremote-quick-capture-test)
+        set_tests_properties(hyremote-quick-native-frame-pilot-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;HYREMOTE_QUICK_NATIVE_FRAME=1;HYREMOTE_EXPECT_NATIVE_HIT=1"
+            TIMEOUT 150)
+    endif()
+
     add_test(NAME hyremote-quick-capture-forced-dpr-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-forced-dpr-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
