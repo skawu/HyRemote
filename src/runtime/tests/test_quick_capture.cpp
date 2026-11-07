@@ -1,5 +1,9 @@
 #include <QColor>
 #include <QDebug>
+#include <QFile>
+#include <QSGGeometryNode>
+#include <QSGFlatColorMaterial>
+#include <QTextStream>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QEventLoop>
@@ -17,13 +21,23 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <vector>
+
+#ifdef Q_OS_WIN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#endif
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
@@ -567,6 +581,225 @@ void testConcurrentQuickNativeRequestsKeepBothTerminals()
     parts.capture->stop();
 }
 
+// #789/#609: paired A / Native / A CPU-cost diagnostic on exactly the
+// same hosted Qt Kit. Uses a tiny scenegraph geometry update rather than
+// QQuickPaintedItem's full-frame CPU painting, so the captured 1080p readback
+// and additional offscreen renders are the dominant variable.
+// The sample is advisory, NOT a target-board performance qualification.
+class LightweightBenchItem final : public QQuickItem
+{
+public:
+    explicit LightweightBenchItem(QQuickItem *parent) : QQuickItem(parent)
+    {
+        setFlag(ItemHasContents, true);
+    }
+
+    void tick()
+    {
+        m_colorEpoch.fetch_add(1, std::memory_order_release);
+        update();
+    }
+
+protected:
+    QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override
+    {
+        auto *node = static_cast<QSGGeometryNode *>(old);
+        if (!node) {
+            node = new QSGGeometryNode;
+            auto *geometry = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 4);
+            geometry->setDrawingMode(QSGGeometry::DrawTriangleStrip);
+            node->setGeometry(geometry);
+            node->setFlag(QSGNode::OwnsGeometry);
+            auto *material = new QSGFlatColorMaterial;
+            node->setMaterial(material);
+            node->setFlag(QSGNode::OwnsMaterial);
+        }
+        QSGGeometry::updateRectGeometry(node->geometry(), boundingRect());
+        node->markDirty(QSGNode::DirtyGeometry);
+        const auto epoch = m_colorEpoch.load(std::memory_order_acquire);
+        auto *material = static_cast<QSGFlatColorMaterial *>(node->material());
+        material->setColor((epoch & 1U) ? QColor(20, 60, 160) : QColor(225, 30, 40));
+        node->markDirty(QSGNode::DirtyMaterial);
+        return node;
+    }
+
+private:
+    std::atomic<unsigned int> m_colorEpoch{0};
+};
+
+double benchmarkProcessCpuMs()
+{
+#ifdef Q_OS_WIN
+    FILETIME creation{}, exit{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user))
+        return -1.0;
+    const auto ticks = [](FILETIME f) {
+        return (static_cast<std::uint64_t>(f.dwHighDateTime) << 32U)
+               | static_cast<std::uint64_t>(f.dwLowDateTime);
+    };
+    return static_cast<double>(ticks(kernel) + ticks(user)) / 10000.0;
+#else
+    // This evidence run is Windows-only; do not label std::clock() as CPU
+    // time on MSVC, where it is elapsed wall time.
+    return -1.0;
+#endif
+}
+
+struct PilotBenchResult
+{
+    bool ok = false;
+    double cpuMs = 0.0;
+    double wallMs = 0.0;
+    int actualNativeFrames = 0;
+    int frames = 0;
+};
+
+PilotBenchResult runPilotBenchCase(bool nativeOptIn)
+{
+    qputenv("HYREMOTE_QUICK_NATIVE_FRAME", nativeOptIn ? "1" : "0");
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    QSurfaceFormat surface = window.format();
+    surface.setAlphaBufferSize(8);
+    window.setFormat(surface);
+    window.setColor(Qt::transparent);
+    window.resize(1920, 1080);
+    LightweightBenchItem content(window.contentItem());
+    content.setWidth(1920);
+    content.setHeight(1080);
+
+    std::atomic<int> rendered{0};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window,
+                     [&] { rendered.fetch_add(1, std::memory_order_relaxed); },
+                     Qt::DirectConnection);
+    QTimer timer(&window);
+    timer.setInterval(8);
+    QObject::connect(&timer, &QTimer::timeout, &window, [&] { content.tick(); });
+    window.show();
+    timer.start();
+
+    PilotBenchResult result;
+    if (!pumpUntil([&] { return rendered.load(std::memory_order_acquire) >= 4; }, 250)) {
+        CHECK(false && "benchmark scenegraph did not render");
+        timer.stop();
+        return result;
+    }
+
+    auto parts = HyRemote::detail::createTargetComponents(&window, false);
+    if (!parts.capture) {
+        CHECK(false && "benchmark capture factory unavailable");
+        timer.stop();
+        return result;
+    }
+    std::uint64_t servedRequest = 0;
+    bool usablePixels = true;
+    const bool started = parts.capture->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (frame.requestId)
+                servedRequest = static_cast<std::uint64_t>(*frame.requestId);
+            usablePixels = usablePixels && frame.storage != nullptr
+                && frame.geometry.size.width == 1920U
+                && frame.geometry.size.height == 1080U;
+        },
+        [&](const hyremote::CaptureEvent &) {});
+    CHECK(started);
+    if (!started) {
+        timer.stop();
+        return result;
+    }
+
+    // Wait until the Runtime's native observer has had a real render pulse,
+    // without requesting extra renders or warming up by calling grabToImage.
+    const int beforeRender = rendered.load(std::memory_order_relaxed);
+    CHECK(pumpUntil([&] {
+        return rendered.load(std::memory_order_relaxed) >= beforeRender + 3;
+    }, 250));
+
+    const int beforeHits = pilotNativeHits.load(std::memory_order_acquire);
+    const double cpuStart = benchmarkProcessCpuMs();
+    const auto wallStart = std::chrono::steady_clock::now();
+    constexpr int requestedFrames = 12;
+    for (int i = 0; i < requestedFrames; ++i) {
+        const std::uint64_t id = static_cast<std::uint64_t>(12000 + i);
+        CHECK(parts.capture->requestFrame({id, hyremote::Clock::now()}));
+        if (!pumpUntil([&] { return servedRequest == id; }, 160)) {
+            CHECK(false && "benchmark capture exceeded bounded completion");
+            break;
+        }
+        ++result.frames;
+    }
+    const auto wallEnd = std::chrono::steady_clock::now();
+    const double cpuEnd = benchmarkProcessCpuMs();
+    result.wallMs = std::chrono::duration<double, std::milli>(wallEnd - wallStart).count();
+    result.cpuMs = cpuStart < 0.0 || cpuEnd < cpuStart ? -1.0 : cpuEnd - cpuStart;
+    timer.stop();
+    parts.capture->stop(); // emits the exact native publication count
+    result.actualNativeFrames =
+        pilotNativeHits.load(std::memory_order_acquire) - beforeHits;
+    result.ok = usablePixels && result.frames == requestedFrames
+        && result.cpuMs >= 0.0 && result.wallMs > 0.0;
+    CHECK(result.ok);
+    if (nativeOptIn)
+        CHECK(result.actualNativeFrames > 0);
+    else
+        CHECK(result.actualNativeFrames == 0);
+    return result;
+}
+
+void testQuickCaptureProcessCostAba()
+{
+    if (qEnvironmentVariable("HYREMOTE_P3_BENCH") != "1")
+        return;
+
+    const QByteArray oldNative = qgetenv("HYREMOTE_QUICK_NATIVE_FRAME");
+    const PilotBenchResult referenceA1 = runPilotBenchCase(false);
+    const PilotBenchResult native = runPilotBenchCase(true);
+    const PilotBenchResult referenceA2 = runPilotBenchCase(false);
+    qputenv("HYREMOTE_QUICK_NATIVE_FRAME", oldNative);
+    if (!referenceA1.ok || !native.ok || !referenceA2.ok)
+        return;
+
+    const double publicCpuPerFrame =
+        (referenceA1.cpuMs / referenceA1.frames
+         + referenceA2.cpuMs / referenceA2.frames) / 2.0;
+    const double nativeCpuPerFrame = native.cpuMs / native.frames;
+    const double ratio = publicCpuPerFrame > 0.0
+        ? nativeCpuPerFrame / publicCpuPerFrame : -1.0;
+    const QString result = QStringLiteral(
+        "BENCH_CONTEXT=HOSTED_WINDOWS_QT6.8.3_D3D11_1080P_SYNTHETIC\n"
+        "BENCH_FRAME_COUNT=%1\n"
+        "PUBLIC_A1_CPU_MS=%2\nPUBLIC_A1_WALL_MS=%3\n"
+        "NATIVE_CPU_MS=%4\nNATIVE_WALL_MS=%5\nNATIVE_HITS=%6\n"
+        "PUBLIC_A2_CPU_MS=%7\nPUBLIC_A2_WALL_MS=%8\n"
+        "CPU_MS_PER_FRAME_PUBLIC_ABA_AVERAGE=%9\n"
+        "CPU_MS_PER_FRAME_NATIVE=%10\n"
+        "NATIVE_TO_PUBLIC_CPU_RATIO=%11\n"
+        "BENCH_QUALIFICATION=ADVISORY_NOT_FIELD_PROOF\n")
+        .arg(native.frames)
+        .arg(referenceA1.cpuMs, 0, 'f', 3)
+        .arg(referenceA1.wallMs, 0, 'f', 3)
+        .arg(native.cpuMs, 0, 'f', 3)
+        .arg(native.wallMs, 0, 'f', 3)
+        .arg(native.actualNativeFrames)
+        .arg(referenceA2.cpuMs, 0, 'f', 3)
+        .arg(referenceA2.wallMs, 0, 'f', 3)
+        .arg(publicCpuPerFrame, 0, 'f', 3)
+        .arg(nativeCpuPerFrame, 0, 'f', 3)
+        .arg(ratio, 0, 'f', 4);
+    std::cout << result.toStdString();
+    const QString output = qEnvironmentVariable("HYREMOTE_P3_BENCH_OUTPUT");
+    if (!output.isEmpty()) {
+        QFile file(output);
+        CHECK(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        if (file.isOpen()) {
+            const QByteArray bytes = result.toUtf8();
+            CHECK(file.write(bytes) == bytes.size());
+        }
+    }
+    // No runner-specific CPU threshold is asserted. The same-machine A/B/A
+    // estimate guides engineering only and cannot qualify EGLFS or RK3588.
+}
+
 void testDestroyedQuickTargetReportsTargetLost()
 {
     HyRemote::detail::resetFactories();
@@ -768,6 +1001,7 @@ int main(int argc, char **argv)
     testQuickFactoryAndOwnedFrame();
     testStagedQuickSourceCaptureFollowsPaintedScene();
     testConcurrentQuickNativeRequestsKeepBothTerminals();
+    testQuickCaptureProcessCostAba();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
     testQuickInputIsQueuedToWindow();
