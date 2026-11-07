@@ -172,14 +172,16 @@ void checkOwnedComposedStorageOutlivesSourceAndKeepsPaddedRows()
                   && plane->bytes == paddedStride * static_cast<std::size_t>(kHeight),
               QStringLiteral("owned storage keeps source stride and byte count"));
         referencePixels = readPixels(composed);
+        bool paddingUntouched = true;
         for (int y = 0; y < kHeight; ++y) {
             const auto pad = reinterpret_cast<const unsigned char *>(plane->data)
                              + static_cast<std::size_t>(y) * paddedStride
                              + static_cast<std::size_t>(kWidth) * 4U;
             for (std::size_t j = 0; j < 16; ++j)
-                check(pad[j] == 0xA5,
-                      QStringLiteral("compositor does not overwrite row padding"));
+                paddingUntouched = paddingUntouched && pad[j] == 0xA5;
         }
+        check(paddingUntouched,
+              QStringLiteral("compositor preserves all 200 padded row sentinels"));
     }
     check(oldSource.expired(),
           QStringLiteral("composed frame retains no source frame allocation"));
