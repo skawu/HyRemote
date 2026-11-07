@@ -1602,6 +1602,11 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
             if (const auto demand = weak.lock())
                 demand->noteDeliveryBackpressure(blocked);
         };
+    effectiveSecurity.frameFullRefreshObserver =
+        [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)] {
+            if (const auto demand = weak.lock())
+                demand->noteForcedViewerRefresh();
+        };
     effectiveSecurity.frameChangeObserver = [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
                                                 bool changed) {
         if (auto gate = weak.lock())

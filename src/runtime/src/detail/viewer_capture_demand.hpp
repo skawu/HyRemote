@@ -113,6 +113,23 @@ public:
         m_changed.notify_all();
     }
 
+    // A non-incremental RFB request explicitly asks for a full refresh.
+    // Without this escape, successive full requests can be served from the
+    // last cached source frame while an encoder/network-constrained viewer
+    // keeps the producer asleep. Allow one new capture per explicit request,
+    // still subject to Core's existing 60fps and in-flight bounds.
+    void noteForcedViewerRefresh()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_stopped || m_viewers == 0)
+                return;
+            resetIdleLocked();
+            m_backpressureEscape = true;
+        }
+        m_changed.notify_all();
+    }
+
     void noteRemoteInput()
     {
         {

@@ -154,6 +154,27 @@ int main()
     if (!check(blockedAgain && drainedWoke && drainedFuture.get(),
                "backpressure did not remain bounded until the socket drained"))
         return 8;
+
+    // Even a repeatedly non-incremental Viewer must not be starved forever:
+    // the first full FBU request may deliver the cached picture, but a fresh
+    // source request is granted once, and saturation resumes thereafter.
+    gate.noteDeliveryBackpressure(true);
+    gate.noteForcedViewerRefresh();
+    if (!check(gate.waitForViewer(), "explicit full FBU request lost its one-shot capture"))
+        return 9;
+    std::promise<bool> fullBlockedCompletion;
+    auto fullBlockedFuture = fullBlockedCompletion.get_future();
+    std::thread fullBlockedWaiter(
+        [&] { fullBlockedCompletion.set_value(gate.waitForViewer()); });
+    const bool fullBlocked = fullBlockedFuture.wait_for(40ms) == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool fullDrainWoke = fullBlockedFuture.wait_for(2s) == std::future_status::ready;
+    if (!fullDrainWoke)
+        gate.stop();
+    fullBlockedWaiter.join();
+    if (!check(fullBlocked && fullDrainWoke && fullBlockedFuture.get(),
+               "full FBU escape bypassed the next backpressure wait"))
+        return 10;
     gate.stop();
 
     std::cout << "PASS 250ms bounded probe, remote input prompt wake, "

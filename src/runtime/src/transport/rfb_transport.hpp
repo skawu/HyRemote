@@ -73,6 +73,10 @@ struct RfbSecurityConfig
     // output. This is Qt queued-byte backpressure, NOT kernel/network ACK.
     // Standalone/custom transports leave this unset and retain their pacing.
     std::function<void(bool blocked)> frameBackpressureObserver;
+    // A Normal viewer's explicit non-incremental FBU request may warrant a
+    // fresh source capture even if its previous network output is still queued.
+    // This remains Runtime-private; standalone transports need no callback.
+    std::function<void()> frameFullRefreshObserver;
 };
 
 // Creates the product's bounded, dependency-light RFB correctness transport. The concrete type is

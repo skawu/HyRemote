@@ -1281,6 +1281,8 @@ private:
                      static_cast<std::int32_t>(readU16(client.input, 6)),
                      static_cast<std::int32_t>(readU16(client.input, 8))});
                 consumeClientMessage(client, 10);
+                if (!incremental && m_security.frameFullRefreshObserver)
+                    m_security.frameFullRefreshObserver();
                 trySendUpdate(client);
                 continue;
             }
