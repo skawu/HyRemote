@@ -68,6 +68,11 @@ struct RfbSecurityConfig
     // Private #789 feedback: whether the pixels actually served to an authenticated/normal
     // viewer changed since the previous observed frame, after watermark compositing.
     std::function<void(bool changed)> frameChangeObserver;
+    // Private feedback from the RFB worker to the producer-backed Runtime:
+    // true only when every connected Normal viewer still has queued socket
+    // output. This is Qt queued-byte backpressure, NOT kernel/network ACK.
+    // Standalone/custom transports leave this unset and retain their pacing.
+    std::function<void(bool blocked)> frameBackpressureObserver;
 };
 
 // Creates the product's bounded, dependency-light RFB correctness transport. The concrete type is

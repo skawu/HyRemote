@@ -46,6 +46,8 @@ public:
         m_stopped = false;
         m_viewers = 0;
         m_bootstrapFrameQueued = false;
+        m_deliveryBackpressured = false;
+        m_backpressureEscape = false;
         resetIdleLocked();
     }
 
@@ -65,8 +67,11 @@ public:
     {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            if (m_viewers != viewers)
+            if (m_viewers != viewers) {
                 resetIdleLocked(); // every new viewer requires a prompt, full initialization
+                if (viewers > m_viewers)
+                    m_backpressureEscape = true;
+            }
             m_viewers = viewers;
         }
         m_changed.notify_all();
@@ -92,11 +97,28 @@ public:
         m_changed.notify_all();
     }
 
+    // Backpressure reflects Qt's *queued socket bytes*, not a measured kernel ACK
+    // or physical link rate. Only the producer-backed Runtime enables this path.
+    // It is a hint to stop expensive captures while every Normal viewer is busy
+    // draining an already encoded framebuffer. New viewers and real remote input
+    // may each escape it once to preserve first-frame/input responsiveness.
+    void noteDeliveryBackpressure(bool blocked)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_deliveryBackpressured = blocked;
+            if (!blocked)
+                m_backpressureEscape = false;
+        }
+        m_changed.notify_all();
+    }
+
     void noteRemoteInput()
     {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             resetIdleLocked(); // input-to-remote pixels must not wait for an idle probe
+            m_backpressureEscape = true;
         }
         m_changed.notify_all();
     }
@@ -114,6 +136,15 @@ public:
                     return true; // one valid bootstrap frame before any RFB ClientConnected
                 m_changed.wait(lock);
                 continue;
+            }
+            if (m_deliveryBackpressured) {
+                if (!m_backpressureEscape) {
+                    m_changed.wait(lock);
+                    continue;
+                }
+                m_backpressureEscape = false; // at most one extra frame per input/join event
+            } else {
+                m_backpressureEscape = false;
             }
             if (m_identicalFrames < kConsecutiveUnchangedFrames)
                 return true; // active/changing frames retain the existing 60fps cap
@@ -139,6 +170,8 @@ public:
             std::lock_guard<std::mutex> lock(m_mutex);
             m_stopped = true;
             m_viewers = 0;
+            m_deliveryBackpressured = false;
+            m_backpressureEscape = false;
             resetIdleLocked();
         }
         m_changed.notify_all();
@@ -159,6 +192,8 @@ private:
     std::size_t m_identicalFrames = 0;
     Clock::time_point m_nextStaticProbe{};
     bool m_bootstrapFrameQueued = false;
+    bool m_deliveryBackpressured = false;
+    bool m_backpressureEscape = false;
     bool m_stopped = true;
 #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
     std::function<void()> m_testStaticWaitObserver;

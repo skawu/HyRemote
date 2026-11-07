@@ -118,7 +118,45 @@ int main()
         return 5;
     gate.stop();
 
+    // A bounded producer must not keep grabbing while its only Normal RFB
+    // viewer is draining a previous large FBU. A new connection gets one
+    // initial escape; a remote input event gets one more, but neither turns
+    // permanent backpressure into an unbounded spin.
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.waitForViewer(), "first viewer lost one-shot bootstrap escape"))
+        return 6;
+
+    std::promise<bool> blockedCompletion;
+    auto blockedFuture = blockedCompletion.get_future();
+    std::thread blockedWaiter([&] { blockedCompletion.set_value(gate.waitForViewer()); });
+    const bool blocked = blockedFuture.wait_for(40ms) == std::future_status::timeout;
+    gate.noteRemoteInput();
+    const bool inputWoke = blockedFuture.wait_for(2s) == std::future_status::ready;
+    if (!inputWoke)
+        gate.stop();
+    blockedWaiter.join();
+    if (!check(blocked && inputWoke && blockedFuture.get(),
+               "backpressure ignored or remote input failed to escape once"))
+        return 7;
+
+    std::promise<bool> drainedCompletion;
+    auto drainedFuture = drainedCompletion.get_future();
+    std::thread drainedWaiter([&] { drainedCompletion.set_value(gate.waitForViewer()); });
+    const bool blockedAgain = drainedFuture.wait_for(40ms) == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool drainedWoke = drainedFuture.wait_for(2s) == std::future_status::ready;
+    if (!drainedWoke)
+        gate.stop();
+    drainedWaiter.join();
+    if (!check(blockedAgain && drainedWoke && drainedFuture.get(),
+               "backpressure did not remain bounded until the socket drained"))
+        return 8;
+    gate.stop();
+
     std::cout << "PASS 250ms bounded probe, remote input prompt wake, "
-                 "disconnect/reconnect and stop\n";
+                 "disconnect/reconnect, delivery backpressure, and stop\n";
     return 0;
 }

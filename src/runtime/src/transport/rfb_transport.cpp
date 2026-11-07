@@ -513,6 +513,7 @@ public:
             socket->deleteLater();
         }
         m_clients.clear();
+        publishCaptureBackpressure();
         m_observedFrame.reset();
         m_servedFrame.reset();
         m_decorationFailed = false;
@@ -520,6 +521,29 @@ public:
         m_buttonHolderCounts.fill(0);
         m_onInput = {};
         m_onEvent = {};
+    }
+
+    void publishCaptureBackpressure()
+    {
+        if (!m_security.frameBackpressureObserver)
+            return;
+        bool haveNormalViewer = false;
+        bool allQueued = true;
+        for (const auto &entry : m_clients) {
+            const ClientState &client = *entry.second;
+            if (client.phase != ClientPhase::Normal || !client.socket)
+                continue;
+            haveNormalViewer = true;
+            if (client.socket->bytesToWrite() == 0) {
+                allQueued = false;
+                break;
+            }
+        }
+        const bool blocked = haveNormalViewer && allQueued;
+        if (blocked == m_backpressureReported)
+            return;
+        m_backpressureReported = blocked;
+        m_security.frameBackpressureObserver(blocked);
     }
 
     void releaseIdleFrameCaches()
@@ -742,8 +766,13 @@ private:
             connect(socket, &QTcpSocket::readyRead, this, [this, socket] { readClient(socket); });
             connect(socket, &QTcpSocket::bytesWritten, this, [this, socket](qint64) {
                 const auto it = m_clients.find(socket);
-                if (it != m_clients.end())
+                if (it != m_clients.end()) {
+                    // Notify the producer before a possible next FBU write:
+                    // this drain is the chance to capture a fresher frame.
+                    publishCaptureBackpressure();
                     trySendUpdate(*it->second);
+                    publishCaptureBackpressure();
+                }
             });
             connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
                 const auto it = m_clients.find(socket);
@@ -754,6 +783,7 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                publishCaptureBackpressure();
                 if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
                     // 2→1 always retains, 1→0 releases true raw bytes only for
                     // a producer-backed Runtime which wakes on ClientConnected.
@@ -1323,6 +1353,7 @@ private:
         client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+        publishCaptureBackpressure();
 
 
     }
@@ -1860,6 +1891,7 @@ private:
         armContinuousRequest(client);
         client.framebufferWidth = width;
         client.framebufferHeight = height;
+        publishCaptureBackpressure();
     }
 
     QHostAddress m_address;
@@ -1879,6 +1911,7 @@ private:
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
+    bool m_backpressureReported = false;
 };
 
 class RfbTransport final : public hyremote::Transport
