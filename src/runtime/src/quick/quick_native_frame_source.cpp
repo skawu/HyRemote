@@ -120,7 +120,8 @@ void QuickNativeFrameSource::start()
                 state->backendIneligible.fetch_add(1, std::memory_order_relaxed);
             if (supportedBackend && !transferSource)
                 state->transferSourceUnavailable.fetch_add(1, std::memory_order_relaxed);
-            const bool eligible = supportedBackend && transferSource;
+            const bool eligible = supportedBackend && transferSource
+                && d->swapchain->flags().testFlag(QRhiSwapChain::SurfaceHasPreMulAlpha);
             state->qualified.store(eligible, std::memory_order_release);
             if (!eligible)
                 return;

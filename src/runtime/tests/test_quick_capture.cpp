@@ -316,6 +316,14 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
     HyRemote::detail::resetFactories();
 
     QQuickWindow window;
+    if (qEnvironmentVariable("HYREMOTE_QUICK_NATIVE_FRAME") == "1") {
+        // The native pilot may only claim contentItem-equivalent images when
+        // both item and swapchain clear to transparent premultiplied pixels.
+        QSurfaceFormat format = window.format();
+        format.setAlphaBufferSize(8);
+        window.setFormat(format);
+        window.setColor(Qt::transparent);
+    }
     window.resize(160, 90);
     StagedQuickProbeItem content(window.contentItem());
     content.setWidth(160);

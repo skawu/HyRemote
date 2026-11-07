@@ -472,19 +472,37 @@ private:
             native = state->native;
         }
         const long long nowMs = nativeNowMs();
-        if (native && native->renderActive(nowMs, 34)) {
+        QQuickWindow *window = state->target.data();
+        // contentItem()->grabToImage() clears its isolated layer to
+        // transparent, whereas an ordinary opaque swapchain includes the
+        // QQuickWindow background (white by default). Only consider native
+        // when those source-composition contracts can agree.
+        const bool equivalentClearContract =
+            window && window->isVisible()
+            && window->color().alpha() == 0
+            && window->format().alphaBufferSize() > 0;
+        if (equivalentClearContract && native && native->renderActive(nowMs, 34)) {
+            bool reserved = false;
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 if (!state->active)
                     return;
-                state->pendingNative = request;
-                state->pendingNativeSerial = native->renderSerial();
-                state->pendingNativeEpoch = native->epoch();
-                state->pendingNativeAdmittedMs = nowMs;
+                // Core allows two in-flight requests. Never overwrite the
+                // accepted request awaiting a native sample; additional
+                // requests use the existing independent public grab path.
+                if (!state->pendingNative) {
+                    state->pendingNative = request;
+                    state->pendingNativeSerial = native->renderSerial();
+                    state->pendingNativeEpoch = native->epoch();
+                    state->pendingNativeAdmittedMs = nowMs;
+                    reserved = true;
+                }
             }
-            native->requestNextRender();
-            pollNative(state, request, nowMs + 60);
-            return;
+            if (reserved) {
+                native->requestNextRender();
+                pollNative(state, request, nowMs + 60);
+                return;
+            }
         }
 #endif
         attemptGrabOnGuiThread(state, request, 1U);
