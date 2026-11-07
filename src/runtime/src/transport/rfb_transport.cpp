@@ -517,6 +517,7 @@ public:
         publishCaptureBackpressure();
         m_observedFrame.reset();
         m_servedFrame.reset();
+        m_lastComparedFrameUnchanged = false;
         m_decorationFailed = false;
         m_keyHolderCounts.fill(0);
         m_buttonHolderCounts.fill(0);
@@ -562,6 +563,7 @@ public:
         // incremental damage, even when no Viewer is connected.
         m_observedFrame.reset();
         m_servedFrame.reset();
+        m_lastComparedFrameUnchanged = false;
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         m_frames->latest.reset();
     }
@@ -626,9 +628,15 @@ public:
             // frame never reports "nothing changed" while the stream is missing an update.
             {
                 HYREMOTE_P1_SCOPE(RfbCompare);
-                damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
+                damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr,
+                                         *served, m_lastComparedFrameUnchanged);
             }
         }
+        // Reset whenever there is no complete comparable frame (new client,
+        // resize, unavailable capture, or all viewers disconnected). This is
+        // a performance hint only, never a claim that Qt content is unchanged.
+        m_lastComparedFrameUnchanged = hasNormalClient && !geometryChanged
+                                      && damage && damage->empty();
 
         // Exact served-pixel equality is already computed for damage; feed it back to the
         // producer's bounded idle gate without introducing a second full-frame comparison.
@@ -661,6 +669,7 @@ public:
         m_decorationFailed = true;
         m_servedFrame.reset();
         m_observedFrame.reset();
+        m_lastComparedFrameUnchanged = false;
 
         // Drop the viewers with the same bookkeeping as an ordinary disconnect. Closing the sockets here without it
         // would skip releaseHeldInput() and the ClientDisconnected accounting, so a composition failure while a
@@ -1963,6 +1972,7 @@ private:
     QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
+    bool m_lastComparedFrameUnchanged = false; // worker-thread-only static hint
     // #589: the composed frame currently shared by every viewer, and the one-shot latch that stops the transport
     // from ever falling back to undecorated pixels after a composition failure.
     std::optional<hyremote::RemoteFrame> m_servedFrame;

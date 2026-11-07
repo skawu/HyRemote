@@ -68,11 +68,20 @@ jobs:
           HYREMOTE_RFB_PROFILE_FILE="$PWD/build-profile/profile/rfb-delivery-profile.json" \
             xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
 
-      - name: Upload profile JSON
+      - name: Compare unchanged-frame diff costs (advisory, same binary)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HYREMOTE_RFB_COMPARE_PROFILE_FILE="$PWD/build-profile/profile/rfb-compare-profile.txt" \
+            xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
+
+      - name: Upload profile JSON and unchanged-frame scan measurements
         uses: actions/upload-artifact@v4
         with:
           name: rfb-delivery-profile-linux
-          path: build-profile/profile/rfb-delivery-profile.json
+          path: |
+            build-profile/profile/rfb-delivery-profile.json
+            build-profile/profile/rfb-compare-profile.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -112,10 +121,19 @@ jobs:
           $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
           & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
 
-      - name: Upload profile JSON
+      - name: Compare unchanged-frame diff costs (advisory, same binary)
+        shell: pwsh
+        run: |
+          $env:HYREMOTE_RFB_COMPARE_PROFILE_FILE = "$PWD/build-profile/profile/rfb-compare-profile.txt"
+          $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
+          & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
+
+      - name: Upload profile JSON and unchanged-frame scan measurements
         uses: actions/upload-artifact@v4
         with:
           name: rfb-delivery-profile-windows
-          path: build-profile/profile/rfb-delivery-profile.json
+          path: |
+            build-profile/profile/rfb-delivery-profile.json
+            build-profile/profile/rfb-compare-profile.txt
           if-no-files-found: error
           retention-days: 14

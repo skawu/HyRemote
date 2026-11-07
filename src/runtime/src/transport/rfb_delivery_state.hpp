@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -381,7 +382,8 @@ inline bool rfbPresentedRowDiffers(const std::uint8_t *before,
 }
 
 inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
-                                       const hyremote::RemoteFrame &current)
+                                       const hyremote::RemoteFrame &current,
+                                       bool previousPresentedFrameUnchanged = false)
 {
     const auto width = current.geometry.size.width;
     const auto height = current.geometry.size.height;
@@ -431,6 +433,25 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
     RfbDamageRegion result;
     const auto *beforeBase = reinterpret_cast<const std::uint8_t *>(before->data);
     const auto *afterBase = reinterpret_cast<const std::uint8_t *>(after->data);
+
+    // #789: after a whole frame has already been proven visually unchanged,
+    // the next static probe is likely byte-identical too. Tight source rows
+    // permit ONE bulk memcmp rather than ~32k 256-byte memcmp calls at 1080p.
+    // This does NOT trust Qt scenegraph notifications or skip capturing.
+    // A byte delta falls back to exact wire-visible 64x64 tile comparison
+    // immediately; all subsequent changing frames skip this speculative scan,
+    // so continuous animation does not pay for a redundant full comparison.
+    // Padded images, alpha-only source changes, different formats, and
+    // geometry changes retain the existing pixel-accurate fallback.
+    if (previousPresentedFrameUnchanged
+        && before->stride == rowBytes && after->stride == rowBytes
+        && static_cast<std::size_t>(height)
+               <= std::numeric_limits<std::size_t>::max() / rowBytes
+        && std::memcmp(beforeBase, afterBase,
+                       rowBytes * static_cast<std::size_t>(height)) == 0) {
+        return result;
+    }
+
     for (std::uint32_t y0 = 0; y0 < height; y0 += kRfbDamageTile) {
         const std::uint32_t tileHeight = std::min(kRfbDamageTile, height - y0);
         for (std::uint32_t x0 = 0; x0 < width; x0 += kRfbDamageTile) {
