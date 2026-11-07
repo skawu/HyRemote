@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "hyremote/core/frame.hpp"
-#include "rfb_trle.hpp"  // same black-matte channel policy as Raw and TRLE wire encoders
+#include "rfb_pixel_policy.hpp"  // common black-matte channel policy; no Qt dependency
 
 namespace HyRemote::detail {
 

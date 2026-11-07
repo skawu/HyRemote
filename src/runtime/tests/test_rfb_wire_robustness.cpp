@@ -1451,46 +1451,48 @@ void testOpaqueAlphaPolicy()
 // and keeps the Qt Quick capture gate active forever. Also guard against the
 // opposite error: the same immutable source storage with a new alpha *mode*
 // is a new on-wire image and cannot use the shared-pointer equality shortcut.
+hyremote::RemoteFrame makePresentedRgbTestFrame(std::uint8_t red, std::uint8_t green,
+                                               std::uint8_t blue, std::uint8_t alpha,
+                                               hyremote::AlphaMode mode)
+{
+    auto frame = makeFrame(128U, 128U, 0U);
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(128U * 4U, 128U);
+    CHECK(storage && storage->mutablePlane(0));
+    if (!storage || !storage->mutablePlane(0))
+        return {};
+    auto *pixels = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+    for (std::size_t pixel = 0; pixel < 128U * 128U; ++pixel) {
+        pixels[pixel * 4U + 0U] = red;
+        pixels[pixel * 4U + 1U] = green;
+        pixels[pixel * 4U + 2U] = blue;
+        pixels[pixel * 4U + 3U] = alpha;
+    }
+    frame.storage = std::move(storage);
+    frame.geometry.alphaMode = mode;
+    return frame;
+}
+
 void testPresentedRgbDamageVsSourceAlpha()
 {
     using hyremote::AlphaMode;
-    const auto makeRgbaFrame = [](std::uint8_t red, std::uint8_t green,
-                                  std::uint8_t blue, std::uint8_t alpha,
-                                  AlphaMode mode) {
-        auto frame = makeFrame(128U, 128U, 0U);
-        auto storage = hyremote::CpuFrameStorage::createSinglePlane(128U * 4U, 128U);
-        CHECK(storage && storage->mutablePlane(0));
-        if (!storage || !storage->mutablePlane(0))
-            return hyremote::RemoteFrame{};
-        auto *pixels = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
-        for (std::size_t pixel = 0; pixel < 128U * 128U; ++pixel) {
-            pixels[pixel * 4U + 0U] = red;
-            pixels[pixel * 4U + 1U] = green;
-            pixels[pixel * 4U + 2U] = blue;
-            pixels[pixel * 4U + 3U] = alpha;
-        }
-        frame.storage = std::move(storage);
-        frame.geometry.alphaMode = mode;
-        return frame;
-    };
 
-    const auto opaque = makeRgbaFrame(32U, 48U, 64U, 255U, AlphaMode::Opaque);
-    const auto alphaOnly = makeRgbaFrame(32U, 48U, 64U, 128U, AlphaMode::Opaque);
+    const auto opaque = makePresentedRgbTestFrame(32U, 48U, 64U, 255U, AlphaMode::Opaque);
+    const auto alphaOnly = makePresentedRgbTestFrame(32U, 48U, 64U, 128U, AlphaMode::Opaque);
     CHECK(HyRemote::detail::changedRfbTiles(&opaque, alphaOnly).empty());
-    const auto pre = makeRgbaFrame(32U, 48U, 64U, 255U, AlphaMode::Premultiplied);
+    const auto pre = makePresentedRgbTestFrame(32U, 48U, 64U, 255U, AlphaMode::Premultiplied);
     const auto preAlphaOnly =
-        makeRgbaFrame(32U, 48U, 64U, 128U, AlphaMode::Premultiplied);
+        makePresentedRgbTestFrame(32U, 48U, 64U, 128U, AlphaMode::Premultiplied);
     CHECK(HyRemote::detail::changedRfbTiles(&pre, preAlphaOnly).empty());
 
     // Fully transparent straight-alpha pixels are invisible despite different
     // underlying RGB values; changing their alpha to opaque must be delivered.
     const auto invisibleA =
-        makeRgbaFrame(32U, 48U, 64U, 0U, AlphaMode::Straight);
+        makePresentedRgbTestFrame(32U, 48U, 64U, 0U, AlphaMode::Straight);
     const auto invisibleB =
-        makeRgbaFrame(240U, 8U, 99U, 0U, AlphaMode::Straight);
+        makePresentedRgbTestFrame(240U, 8U, 99U, 0U, AlphaMode::Straight);
     CHECK(HyRemote::detail::changedRfbTiles(&invisibleA, invisibleB).empty());
     const auto visible =
-        makeRgbaFrame(240U, 8U, 99U, 255U, AlphaMode::Straight);
+        makePresentedRgbTestFrame(240U, 8U, 99U, 255U, AlphaMode::Straight);
     CHECK(!HyRemote::detail::changedRfbTiles(&invisibleB, visible).empty());
 
     auto sameStorageDifferentMode = preAlphaOnly;
@@ -1509,6 +1511,91 @@ void testPresentedRgbDamageVsSourceAlpha()
     if (presentationDelta.size() == 1U)
         CHECK(presentationDelta.rects().front()
               == (HyRemote::detail::RfbRect{0, 0, 128, 128}));
+}
+
+// End-to-end test: alpha-only changes in the CPU source must not cause
+// another incremental Raw FBU or a spurious "changed pixels" capture wake.
+void testAlphaOnlyFrameIsNotPublishedToRfb()
+{
+    using hyremote::AlphaMode;
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    struct Feedback {
+        std::mutex mutex;
+        std::condition_variable cv;
+        int unchanged = 0;
+        int changed = 0;
+        void record(bool differs)
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (differs)
+                    ++changed;
+                else
+                    ++unchanged;
+            }
+            cv.notify_all();
+        }
+        bool await(bool differs, int expected)
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            return cv.wait_for(lock, std::chrono::seconds(3),
+                               [&] { return (differs ? changed : unchanged) >= expected; });
+        }
+    } feedback;
+
+    Recorder recorder;
+    auto transport = startTransport(
+        port, recorder, makePresentedRgbTestFrame(32, 48, 64, 255, AlphaMode::Premultiplied),
+        {}, {}, [&](bool differs) { feedback.record(differs); });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    const bool connected = connectRawRfb(socket, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(socket, {0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer actual;
+    actual.resize(width, height);
+    std::vector<UpdateRect> rects;
+    CHECK(readFramebufferUpdate(socket, actual, rects));
+    CHECK(actual.get(10, 10) == 0x203040U);
+
+    int expectUnchanged;
+    {
+        std::lock_guard<std::mutex> lock(feedback.mutex);
+        expectUnchanged = feedback.unchanged + 1;
+    }
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    transport->enqueueFrame(
+        makePresentedRgbTestFrame(32, 48, 64, 128, AlphaMode::Premultiplied));
+    CHECK(feedback.await(false, expectUnchanged));
+    CHECK(noFramebufferData(socket, 75)); // no alpha bytes in the RFB picture
+
+    int expectChanged;
+    {
+        std::lock_guard<std::mutex> lock(feedback.mutex);
+        expectChanged = feedback.changed + 1;
+    }
+    transport->enqueueFrame(
+        makePresentedRgbTestFrame(80, 48, 64, 128, AlphaMode::Premultiplied));
+    CHECK(feedback.await(true, expectChanged));
+    CHECK(readFramebufferUpdate(socket, actual, rects));
+    CHECK(actual.get(10, 10) == 0x503040U);
+
+    socket.disconnectFromHost();
+    CHECK(waitForDisconnected(socket));
+    transport->stop();
 }
 
 void testNativeRawFastPathAlphaEquivalence()
@@ -3751,6 +3838,7 @@ int main(int argc, char **argv)
     testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
     testPresentedRgbDamageVsSourceAlpha();
+    testAlphaOnlyFrameIsNotPublishedToRfb();
     testNativeRawFastPathAlphaEquivalence();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
