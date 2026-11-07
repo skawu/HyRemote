@@ -369,7 +369,8 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
     HyRemote::detail::resetFactories();
 
     QQuickWindow window;
-    if (qEnvironmentVariable("HYREMOTE_QUICK_NATIVE_FRAME") == "1") {
+    if (qEnvironmentVariable("HYREMOTE_QUICK_NATIVE_FRAME") == "1"
+        && qEnvironmentVariable("HYREMOTE_FORCE_QUICK_OPAQUE") != "1") {
         // The native pilot may only claim contentItem-equivalent images when
         // both item and swapchain clear to transparent premultiplied pixels.
         QSurfaceFormat format = window.format();
@@ -525,6 +526,11 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
                               - stagePreviousNativeHits;
         std::cout << "P3_NATIVE_STAGE_PIXELS_DELIVERED=" << stageHits << '\n';
         CHECK(stageHits > 0); // no substituted public fallback may fake P3 PASS
+    } else if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_FALLBACK") == "1") {
+        const int stageHits = pilotNativeHits.load(std::memory_order_relaxed)
+                              - stagePreviousNativeHits;
+        std::cout << "P3_OPAQUE_FALLBACK_STAGE_NATIVE_HITS=" << stageHits << '\n';
+        CHECK(stageHits == 0); // opaque Qt Quick window MUST preserve item-grab alpha
     }
 }
 
@@ -1152,7 +1158,8 @@ void testQueuedQuickInputIsDroppedWhenSinkIsDestroyed()
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
-    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1")
+    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1"
+        || qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_FALLBACK") == "1")
         previousQtMessageHandler = qInstallMessageHandler(pilotQtMessageHandler);
 
     testQuickFactoryAndOwnedFrame();
@@ -1165,6 +1172,8 @@ int main(int argc, char **argv)
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 
     HyRemote::detail::resetFactories();
+    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_FALLBACK") == "1")
+        CHECK(pilotNativeHits.load(std::memory_order_acquire) == 0);
     if (previousQtMessageHandler)
         qInstallMessageHandler(previousQtMessageHandler);
     if (failures != 0)

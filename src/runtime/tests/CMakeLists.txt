@@ -480,6 +480,13 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
         set_tests_properties(hyremote-quick-native-frame-pilot-test PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;HYREMOTE_QUICK_NATIVE_FRAME=1;HYREMOTE_EXPECT_NATIVE_HIT=1"
             TIMEOUT 150)
+        # Do not silently replace an ordinary opaque window's contentItem
+        # grab with a composite swapchain image that has a different clear.
+        add_test(NAME hyremote-quick-native-frame-fallback-test
+            COMMAND hyremote-quick-capture-test)
+        set_tests_properties(hyremote-quick-native-frame-fallback-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=windows;QSG_RHI_BACKEND=d3d11;HYREMOTE_QUICK_NATIVE_FRAME=1;HYREMOTE_EXPECT_NATIVE_FALLBACK=1;HYREMOTE_FORCE_QUICK_OPAQUE=1"
+            TIMEOUT 150)
     endif()
 
     add_test(NAME hyremote-quick-capture-forced-dpr-test COMMAND hyremote-quick-capture-test)
