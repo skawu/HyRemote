@@ -128,6 +128,7 @@ private:
         bool finished = false;
         QSharedPointer<QQuickItemGrabResult> result;
         QMetaObject::Connection readyConnection;
+        QPointer<QTimer> timeoutTimer; // GUI-thread-only, cancelled when ready
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
         std::chrono::steady_clock::time_point p1GrabStart{};
 #endif
@@ -388,6 +389,16 @@ private:
                     return;
                 grab->finished = true;
                 QObject::disconnect(grab->readyConnection);
+                // The old QTimer::singleShot(2000, ...) always stayed queued
+                // for two seconds even if the image completed in milliseconds.
+                // Under sustained captures this retains request/state closures
+                // and wakes the Qt event loop only to return immediately.
+                // A cancelable, dispatcher-owned timer releases them on ready.
+                if (grab->timeoutTimer) {
+                    grab->timeoutTimer->stop();
+                    grab->timeoutTimer->deleteLater();
+                    grab->timeoutTimer.clear();
+                }
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
                 ::HyRemote::detail::p1perf::addAsyncWall(
                     ::HyRemote::detail::p1perf::Stage::QuickGrabReadyWall,
@@ -398,7 +409,18 @@ private:
                 publishImage(state, request, attempt, image);
             });
 
-        QTimer::singleShot(2000, dispatcher, [state, request, attempt, grab] {
+        // The deadline is owned by the GUI dispatcher and uses Qt's normal
+        // QObject cancellation semantics on Qt 5.15 and Qt 6.x. The weak
+        // QPointer in GrabAttempt avoids timer/closure ownership cycles.
+        auto *deadline = new QTimer(dispatcher);
+        deadline->setSingleShot(true);
+        grab->timeoutTimer = deadline;
+        QObject::connect(deadline, &QTimer::timeout, dispatcher,
+                         [state, request, attempt, grab] {
+            if (grab->timeoutTimer) {
+                grab->timeoutTimer->deleteLater();
+                grab->timeoutTimer.clear();
+            }
             if (grab->finished)
                 return;
             grab->finished = true;
@@ -415,6 +437,7 @@ private:
             }
             retryLater(state, request, attempt, 100);
         });
+        deadline->start(2000);
     }
 
     std::shared_ptr<State> m_state;
