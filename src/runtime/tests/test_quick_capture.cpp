@@ -417,7 +417,7 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
             // golden reference for this stage. It is completed BEFORE the
             // candidate request; comparing to itself can never validate P3.
             const auto reference = window.contentItem()->grabToImage(
-                QSize(qRound(window.width()), qRound(window.height())));
+                QSize(window.width(), window.height()));
             CHECK(!reference.isNull());
             if (reference) {
                 bool ready = false;
