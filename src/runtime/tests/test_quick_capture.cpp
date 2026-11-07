@@ -47,6 +47,8 @@ void pilotQtMessageHandler(QtMsgType type, const QMessageLogContext &context,
         if (ok)
             pilotNativeHits.fetch_add(hits, std::memory_order_relaxed);
     }
+    if (message.contains(QStringLiteral("HyRemote P3 native pilot:")))
+        std::cerr << "P3_TRACE=" << message.toStdString() << '\n';
     if (previousQtMessageHandler)
         previousQtMessageHandler(type, context, message);
 }
