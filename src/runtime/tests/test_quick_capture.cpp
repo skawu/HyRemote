@@ -23,6 +23,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <vector>
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
@@ -512,6 +513,60 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
     }
 }
 
+// Native readbacks are asynchronous; Core may accept a second frame request
+// while the first is waiting. The production adapter is not allowed to replace
+// the first request's pending slot and silently consume an in-flight quota.
+void testConcurrentQuickNativeRequestsKeepBothTerminals()
+{
+    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") != "1")
+        return;
+
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    QSurfaceFormat format = window.format();
+    format.setAlphaBufferSize(8);
+    window.setFormat(format);
+    window.setColor(Qt::transparent);
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+
+    std::atomic<int> rendered{0};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window,
+                     [&] { rendered.fetch_add(1, std::memory_order_relaxed); },
+                     Qt::DirectConnection);
+    QTimer pulse(&window);
+    pulse.setInterval(8);
+    QObject::connect(&pulse, &QTimer::timeout, &window, [&] { content.update(); });
+    window.show();
+    pulse.start();
+    CHECK(pumpUntil([&] { return rendered.load(std::memory_order_relaxed) >= 3; }));
+
+    auto parts = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(parts.supported && parts.capture);
+    if (!parts.capture) {
+        pulse.stop();
+        return;
+    }
+    std::vector<hyremote::CaptureRequestId> completions;
+    CHECK(parts.capture->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (frame.requestId)
+                completions.push_back(*frame.requestId);
+        },
+        [&](const hyremote::CaptureEvent &) {}));
+    CHECK(parts.capture->requestFrame({910, hyremote::Clock::now()}));
+    CHECK(parts.capture->requestFrame({911, hyremote::Clock::now()}));
+    const bool complete = pumpUntil([&] { return completions.size() >= 2; });
+    CHECK(complete);
+    CHECK(completions.size() == 2U);
+    CHECK(std::count(completions.begin(), completions.end(), 910U) == 1);
+    CHECK(std::count(completions.begin(), completions.end(), 911U) == 1);
+    pulse.stop();
+    parts.capture->stop();
+}
+
 void testDestroyedQuickTargetReportsTargetLost()
 {
     HyRemote::detail::resetFactories();
@@ -712,6 +767,7 @@ int main(int argc, char **argv)
 
     testQuickFactoryAndOwnedFrame();
     testStagedQuickSourceCaptureFollowsPaintedScene();
+    testConcurrentQuickNativeRequestsKeepBothTerminals();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
     testQuickInputIsQueuedToWindow();

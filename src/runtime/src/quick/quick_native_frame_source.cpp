@@ -130,8 +130,13 @@ void QuickNativeFrameSource::start()
                 state->backendIneligible.fetch_add(1, std::memory_order_relaxed);
             if (supportedBackend && !transferSource)
                 state->transferSourceUnavailable.fetch_add(1, std::memory_order_relaxed);
+            // Orientation must match the top-down Core RGBA contract.
+            // Do not silently publish a vertically inverted native frame.
+            // An upside-down backend needs a separately qualified row-flip
+            // adapter, not a generalization of the D3D11 observation.
             const bool eligible = supportedBackend && transferSource
-                && d->swapchain->flags().testFlag(QRhiSwapChain::SurfaceHasPreMulAlpha);
+                && d->swapchain->flags().testFlag(QRhiSwapChain::SurfaceHasPreMulAlpha)
+                && !d->rhi->isYUpInFramebuffer();
             state->qualified.store(eligible, std::memory_order_release);
             if (!eligible)
                 return;

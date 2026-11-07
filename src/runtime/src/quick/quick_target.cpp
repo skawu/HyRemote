@@ -34,6 +34,7 @@
 #include "quick/quick_image_frame_storage.hpp"
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
 #  include <QDebug>
+#  include <rhi/qrhi.h>
 #  include "quick/quick_native_frame_source.hpp"
 #endif
 #include "hyremote/core/capture_source.hpp"
@@ -369,12 +370,21 @@ private:
     // been checked in the QRhi callback; this remains an experimental Kit.
     static QImage imageFromNative(QuickNativeSample sample)
     {
-        if (sample.width <= 0 || sample.height <= 0 || sample.dpr <= 0.0)
+        if (sample.width <= 0 || sample.height <= 0
+            || sample.width > std::numeric_limits<int>::max() / 4
+            || sample.dpr <= 0.0)
             return {};
-        const QImage::Format format =
-            sample.format == 1 ? QImage::Format_RGBA8888_Premultiplied
-            : sample.format == 2 ? QImage::Format_ARGB32_Premultiplied
-                                 : QImage::Format_Invalid;
+        // Use QRhi's *actual enum*, not guessed 1/2 constants. BGRA byte
+        // ordering is directly representable as Qt ARGB32 only on LE; other
+        // CPUs fail closed to public Qt capture until a measured swizzle
+        // adapter is available. There is no Qt Quick/SoC platform assumption.
+        QImage::Format format = QImage::Format_Invalid;
+        if (sample.format == static_cast<int>(QRhiTexture::RGBA8))
+            format = QImage::Format_RGBA8888_Premultiplied;
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        else if (sample.format == static_cast<int>(QRhiTexture::BGRA8))
+            format = QImage::Format_ARGB32_Premultiplied;
+#endif
         if (format == QImage::Format_Invalid)
             return {};
         auto *owner = new QByteArray(std::move(sample.pixels));
