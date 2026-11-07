@@ -16,6 +16,7 @@
 #include <QtQuick/QQuickWindow>
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstring>
@@ -32,6 +33,12 @@
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+#  include <QDebug>
+#  include "quick/quick_native_frame_claim.hpp"
+#  include "quick/quick_native_frame_policy.hpp"
+#  include "quick/quick_native_frame_shadow.hpp"
+#endif
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -75,11 +82,88 @@ public:
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        // Human A authorized a shadow-only experiment. Both the exact-Kit
+        // build option and this explicit process opt-in must be present.
+        const NativeFrameExperimentFacts nativeFacts{
+            true,
+            qEnvironmentVariable("HYREMOTE_P3_SHADOW_OBSERVER") == "1",
+            QT_VERSION == QT_VERSION_CHECK(6, 8, 3),
+            !m_state->target.isNull(),
+        };
+        if (nativeFrameExperimentMode(nativeFacts)
+            == NativeFrameExperimentMode::ShadowObservationOnly) {
+            m_nativeShadow = std::make_unique<QuickNativeFrameShadow>(
+                m_state->target.data());
+            m_nativeShadow->start();
+            m_state->nativeShadow = m_nativeShadow.get();
+
+            // S2R-3: optional claim simulator. It requires the shadow observer
+            // to be active as well, so SIMULATE_CLAIM alone cannot arm a ledger
+            // without a token source or change any product behaviour.
+            if (m_state->nativeShadow
+                && qEnvironmentVariable("HYREMOTE_P3_SHADOW_SIMULATE_CLAIM") == "1") {
+                m_state->claimLedger = std::make_unique<RequestLedger>(4);
+                m_state->claimCache = std::make_unique<NativeFrameCache>();
+                auto *timer = new QTimer(app);
+                // 10 ms keeps poll latency below the 10 ms term used by the
+                // 60 ms wait budget; 25 ms would already exceed it once the
+                // 23 ms QRhi completion is added.
+                timer->setInterval(10);
+                QObject::connect(timer, &QTimer::timeout, timer,
+                                 [state = m_state] { drainClaimTokens(state); });
+                timer->start();
+                m_state->claimPoll = timer;
+            }
+        }
+#endif
         return true;
     }
 
     void stop() noexcept override
     {
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        if (m_state->claimPoll) {
+            m_state->claimPoll->stop();
+            m_state->claimPoll->deleteLater();
+            m_state->claimPoll = nullptr;
+        }
+        if (m_state->claimLedger) {
+            const std::size_t pendingAtStop = m_state->claimLedger->size();
+            m_state->claimLedger->cancelAll();
+            if (m_state->claimCache)
+                m_state->claimCache->clear();
+            ClaimStats &stats = m_state->claimStats;
+            stats.cancelled += static_cast<std::uint64_t>(pendingAtStop);
+            const std::uint64_t terminals = stats.nativeClaims + stats.grabClaims
+                                            + stats.unavailableClaims + stats.cancelled;
+            stats.unterminated =
+                stats.admitted > terminals ? stats.admitted - terminals : 0;
+            qInfo().nospace() << "HyRemote P3 SHADOW CLAIM SIM: admitted=" << stats.admitted
+                              << " cached_eligible=" << stats.cachedEligible
+                              << " wait_eligible=" << stats.waitEligible
+                              << " grab_only=" << stats.grabOnly
+                              << " native_claims=" << stats.nativeClaims
+                              << " grab_claims=" << stats.grabClaims
+                              << " unavailable_claims=" << stats.unavailableClaims
+                              << " unterminated=" << stats.unterminated
+                              << " grab_induced_tokens=" << stats.grabInducedTokens
+                              << " simulated_native_then_real_grab="
+                              << stats.simulatedNativeThenRealGrab
+                              << " tokens=" << stats.tokensReceived
+                              << " stale_tokens=" << stats.staleTokens
+                              << " duplicate_terminals=" << stats.duplicateTerminals
+                              << " cancelled=" << stats.cancelled
+                              << " pixels_published=0";
+            m_state->claimLedger.reset();
+            m_state->claimCache.reset();
+        }
+        m_state->nativeShadow = nullptr;
+        if (m_nativeShadow) {
+            m_nativeShadow->stop();
+            m_nativeShadow.reset();
+        }
+#endif
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
         m_state->onFrame = {};
@@ -121,6 +205,19 @@ private:
         std::size_t callbacksInFlight = 0;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
+
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        // S2R-3 shadow claim simulator. Diagnostics only: the real grab path is
+        // untouched and no native pixel is ever published.
+        QuickNativeFrameShadow *nativeShadow = nullptr;
+        std::unique_ptr<RequestLedger> claimLedger;
+        std::unique_ptr<NativeFrameCache> claimCache;
+        NativeFrameClaimPolicy claimPolicy;
+        ClaimStats claimStats;
+        std::uint64_t lastConsumedSerial = 0;
+        long long lastGrabSubmitMs = 0; // GUI thread only
+        QTimer *claimPoll = nullptr;
+#endif
     };
 
     struct GrabAttempt
@@ -196,6 +293,12 @@ private:
         completion.timing.requestTime = request.requestTime;
         completion.timing.completionTime = hyremote::Clock::now();
         completion.requestId = request.id;
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        if (state->claimLedger
+            && state->claimLedger->claim(request.id, ClaimKind::Unavailable)) {
+            ++state->claimStats.unavailableClaims;
+        }
+#endif
         publishCallback(state, &State::onFrame, std::move(completion));
     }
 
@@ -217,6 +320,125 @@ private:
             attemptGrabOnGuiThread(state, request, attempt + 1U);
         });
     }
+
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+    static long long claimNowMs()
+    {
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    }
+
+    // GUI thread: consume metadata tokens completed by the shadow observer.
+    // A token only satisfies a waiting request when it was rendered after that
+    // request was admitted; otherwise it becomes a bounded unserved cache entry
+    // for a later request (explicitly reusedUnserved, never "newer than request").
+    static void drainClaimTokens(const std::shared_ptr<State> &state)
+    {
+        if (!state->nativeShadow || !state->claimCache || !state->claimLedger)
+            return;
+        NativeFrameToken token;
+        while (state->nativeShadow->takeCompletedToken(token)) {
+            ++state->claimStats.tokensReceived;
+            if (token.epoch != state->nativeShadow->currentEpoch()) {
+                ++state->claimStats.staleTokens;
+                continue;
+            }
+            // A frame that only appeared because our own grab requested a
+            // render must not be counted as a natural window frame. Without this
+            // filter the simulator would "save" grabs that it caused itself.
+            const long long grabMs = state->lastGrabSubmitMs;
+            if (grabMs > 0 && token.sourceMs >= grabMs
+                && token.sourceMs - grabMs <= 120) {
+                ++state->claimStats.grabInducedTokens;
+                continue;
+            }
+            bool claimed = false;
+            if (auto id = state->claimLedger->oldestWaiting()) {
+                const auto entry = state->claimLedger->entry(*id);
+                if (entry && token.serial > entry->admissionSerial
+                    && state->claimLedger->claim(*id, ClaimKind::Native)) {
+                    ++state->claimStats.nativeClaims;
+                    state->lastConsumedSerial = token.serial;
+                    claimed = true;
+                }
+            }
+            if (!claimed)
+                state->claimCache->offer(token);
+        }
+    }
+
+    // Admission decision for diagnostics. The real grab is still issued; this
+    // only records whether a native frame could have served the request.
+    static void simulateAdmission(const std::shared_ptr<State> &state,
+                                  const hyremote::CaptureRequest &request)
+    {
+        if (!state->claimLedger || !state->nativeShadow)
+            return;
+        const long long now = claimNowMs();
+        if (!state->claimLedger->admit(
+                request.id, state->nativeShadow->renderSerial(), now)) {
+            ++state->claimStats.duplicateTerminals;
+            return;
+        }
+        ++state->claimStats.admitted;
+
+        // Two frame periods of recent rendering qualifies as "animation active";
+        // a static window takes the grab path without waiting.
+        const bool active = state->nativeShadow->renderActive(now, 34);
+        AdmissionDecision decision = decideAdmission(*state->claimCache,
+                                                     state->lastConsumedSerial,
+                                                     state->nativeShadow->currentEpoch(),
+                                                     now,
+                                                     active,
+                                                     state->claimPolicy);
+        switch (decision.action) {
+        case AdmissionAction::UseCached:
+            if (state->claimLedger->claim(request.id, ClaimKind::Native, true)) {
+                ++state->claimStats.cachedEligible;
+                ++state->claimStats.nativeClaims;
+                state->lastConsumedSerial = decision.token.serial;
+            } else {
+                ++state->claimStats.duplicateTerminals;
+            }
+            break;
+        case AdmissionAction::WaitForNative:
+            state->claimLedger->beginWait(request.id);
+            ++state->claimStats.waitEligible;
+            state->nativeShadow->requestSample();
+            break;
+        case AdmissionAction::GrabNow:
+            state->claimLedger->beginGrab(request.id);
+            ++state->claimStats.grabOnly;
+            break;
+        }
+    }
+
+    static void simulateGrabTerminal(const std::shared_ptr<State> &state,
+                                     const hyremote::CaptureRequest &request)
+    {
+        if (!state->claimLedger)
+            return;
+        const auto entry = state->claimLedger->entry(request.id);
+        if (!entry)
+            return;
+        if (state->claimLedger->claim(request.id, ClaimKind::Grab)) {
+            ++state->claimStats.grabClaims;
+            // A grab renders current content; any older native token must not
+            // be replayed afterwards as if it were newer.
+            if (state->claimCache)
+                state->claimCache->clear();
+            if (state->nativeShadow) {
+                const auto barrier = state->nativeShadow->renderSerial();
+                if (barrier > state->lastConsumedSerial)
+                    state->lastConsumedSerial = barrier;
+            }
+        } else if (entry->kind == ClaimKind::Native) {
+            // Expected in shadow mode: the simulated native claim never
+            // preempts the real grab, which still produced the Core frame.
+            ++state->claimStats.simulatedNativeThenRealGrab;
+        }
+    }
+#endif
 
     static void publishImage(const std::shared_ptr<State> &state,
                              const hyremote::CaptureRequest &request,
@@ -325,6 +547,9 @@ private:
         frame.timing.completionTime = completion;
         frame.damage = hyremote::Damage::fullFrame();
         frame.requestId = request.id;
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        simulateGrabTerminal(state, request);
+#endif
         publishCallback(state, &State::onFrame, std::move(frame));
     }
 
@@ -334,6 +559,11 @@ private:
     {
         if (!isActive(state))
             return;
+
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        if (attempt == 0)
+            simulateAdmission(state, request);
+#endif
 
         QQuickWindow *window = state->target.data();
         if (!window) {
@@ -365,6 +595,9 @@ private:
         const auto grab = std::make_shared<GrabAttempt>();
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
         grab->p1GrabStart = std::chrono::steady_clock::now();
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+        state->lastGrabSubmitMs = claimNowMs();
 #endif
         {
             HYREMOTE_P1_SCOPE(QuickGrabSubmit);
@@ -418,6 +651,9 @@ private:
     }
 
     std::shared_ptr<State> m_state;
+#if defined(HYREMOTE_EXPERIMENTAL_P3_NATIVE_FRAME_SHADOW)
+    std::unique_ptr<QuickNativeFrameShadow> m_nativeShadow;
+#endif
 };
 
 Qt::KeyboardModifiers toQtModifiers(hyremote::InputModifiers modifiers)

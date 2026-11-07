@@ -440,6 +440,19 @@ endif()
 
 # Qt Quick target-adapter contracts are likewise Runtime-owned and follow only the Quick adapter capability.
 if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
+
+    # #609 P3 Human-A isolated branch: ensure the experiment can never
+    # authorize native pixels to Core, including when all shadow gates pass.
+    # This test has no private-Qt or GPU dependency and runs in the normal lanes.
+    add_executable(hyremote-quick-native-frame-policy-test
+        test_quick_native_frame_policy.cpp
+    )
+    target_compile_features(hyremote-quick-native-frame-policy-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-quick-native-frame-policy-test PRIVATE ../src)
+    add_test(NAME hyremote-quick-native-frame-policy-test
+             COMMAND hyremote-quick-native-frame-policy-test)
+    set_tests_properties(hyremote-quick-native-frame-policy-test PROPERTIES TIMEOUT 15)
+
     # #609: read-only QImage backing storage, independent of any GPU backend.
     # Exercise both Qt5 and Qt6 when the corresponding Quick adapter is enabled.
     add_executable(hyremote-quick-image-storage-test
