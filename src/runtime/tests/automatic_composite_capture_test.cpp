@@ -182,6 +182,40 @@ int main(int argc, char **argv)
         return 4;
     }
 
+    // #567: once all child surfaces disappear, do not re-label the last
+    // colorful frame as new pixels. Keep the old geometry to avoid forcing
+    // a DesktopSize extension on legacy Viewers, but clear every pixel.
+    composite.removeSurface(1);
+    composite.removeSurface(2);
+    if (!check(components.capture->requestFrame({2, hyremote::Clock::now()}),
+               "empty composite request accepted")
+        || !check(waitForFrame(frames, 2), "empty composite frame arrives"))
+        return 9;
+    const QImage emptyImage = imageView(frames.at(1));
+    if (!check(emptyImage.size() == QSize(4, 2), "empty scene retains geometry")
+        || !check(emptyImage.pixelColor(0, 0) == QColor(0, 0, 0, 0),
+                  "empty scene does not replay left stale pixels")
+        || !check(emptyImage.pixelColor(3, 0) == QColor(0, 0, 0, 0),
+                  "empty scene does not replay right stale pixels")
+        || !check(frames.at(1).requestId == hyremote::CaptureRequestId{2},
+                  "empty scene completes current request without old-frame metadata"))
+        return 10;
+
+    // A visible but unsupported child must also clear, rather than return a
+    // stale frame stamped as a new successful capture.
+    QObject missingTarget;
+    composite.upsertSurface(5, &missingTarget, QRect(-2, 0, 4, 2), true);
+    if (!check(components.capture->requestFrame({3, hyremote::Clock::now()}),
+               "unavailable-child composite request accepted")
+        || !check(waitForFrame(frames, 3), "unavailable-child clear frame arrives"))
+        return 11;
+    const QImage unavailableImage = imageView(frames.at(2));
+    if (!check(unavailableImage.size() == QSize(4, 2), "unavailable child retains canvas bounds")
+        || !check(unavailableImage.pixelColor(0, 0) == QColor(0, 0, 0, 0),
+                  "unavailable child does not replay prior source")
+        || !check(frames.at(2).requestId == hyremote::CaptureRequestId{3},
+                  "unavailable child completes its own request"))
+        return 12;
     components.capture->stop();
 
     // #609: one full-canvas, DPR1 premultiplied child is already the exact
@@ -270,6 +304,6 @@ int main(int argc, char **argv)
         return 8;
     }
     scaledComponents.capture->stop();
-    std::cout << "PASS: composite multi-surface, single-canvas immutable fast path, and DPR fallback\n";
+    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, and DPR fallback\n";
     return 0;
 }
