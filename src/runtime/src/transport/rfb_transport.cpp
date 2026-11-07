@@ -528,23 +528,26 @@ public:
         if (!m_security.frameBackpressureObserver)
             return;
         bool haveNormalViewer = false;
-        bool allQueued = true;
+        bool anyReadyForFreshFrame = false;
         for (const auto &entry : m_clients) {
             const ClientState &client = *entry.second;
             if (client.phase != ClientPhase::Normal || !client.socket)
                 continue;
             haveNormalViewer = true;
-            // A synchronous full-frame encode occupies the same RFB worker
-            // before any bytes are queued. Include that interval in the
-            // backpressure contract so the producer doesn't spin through
-            // expensive grabs that this worker cannot accept yet.
-            if (client.socket != m_encodingSocket
+            // RFB is client-pull unless ContinuousUpdates has armed a synthetic
+            // request. With no outstanding request, producing 60fps captures
+            // cannot deliver anything to this viewer. If the viewer is ready,
+            // a synchronous encoder or Qt's queued bytes still prevent another
+            // picture from being consumed. At least one ready viewer keeps
+            // shared capture active; one slow peer must not stall a fast peer.
+            if (client.delivery.hasOutstandingRequest()
+                && client.socket != m_encodingSocket
                 && client.socket->bytesToWrite() == 0) {
-                allQueued = false;
+                anyReadyForFreshFrame = true;
                 break;
             }
         }
-        const bool blocked = haveNormalViewer && allQueued;
+        const bool blocked = haveNormalViewer && !anyReadyForFreshFrame;
         if (blocked == m_backpressureReported)
             return;
         m_backpressureReported = blocked;
@@ -1228,11 +1231,13 @@ private:
                     // The latest enable message replaces the active area.
                     client.continuousRegion = region;
                     armContinuousRequest(client);
+                    publishCaptureBackpressure();
                     trySendUpdate(client);
                 } else if (!endContinuousUpdates(client)) {
                     // A disable acknowledgment is mandatory even if already disabled.
                     return;
                 }
+                publishCaptureBackpressure();
                 continue;
             }
 
@@ -1281,6 +1286,11 @@ private:
                      static_cast<std::int32_t>(readU16(client.input, 6)),
                      static_cast<std::int32_t>(readU16(client.input, 8))});
                 consumeClientMessage(client, 10);
+                // This request is the transport's source-demand edge; wake a
+                // producer that was correctly sleeping while no client asked
+                // for a framebuffer update. A full request also gets a
+                // one-shot capture even when the previous FBU is backlogged.
+                publishCaptureBackpressure();
                 if (!incremental && m_security.frameFullRefreshObserver)
                     m_security.frameFullRefreshObserver();
                 trySendUpdate(client);

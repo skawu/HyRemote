@@ -69,8 +69,10 @@ struct RfbSecurityConfig
     // viewer changed since the previous observed frame, after watermark compositing.
     std::function<void(bool changed)> frameChangeObserver;
     // Private feedback from the RFB worker to the producer-backed Runtime:
-    // true only when every connected Normal viewer still has queued socket
-    // output. This is Qt queued-byte backpressure, NOT kernel/network ACK.
+    // true when no Normal viewer can consume another source frame: either
+    // every viewer has no outstanding FBU/ContinuousUpdates demand, or all
+    // viewers with demand are currently encoding / draining queued bytes.
+    // Qt queued bytes are NOT a kernel ACK, network rate or Viewer paint.
     // Standalone/custom transports leave this unset and retain their pacing.
     std::function<void(bool blocked)> frameBackpressureObserver;
     // A Normal viewer's explicit non-incremental FBU request may warrant a
