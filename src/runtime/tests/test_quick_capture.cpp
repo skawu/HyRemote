@@ -723,10 +723,27 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
         return rendered.load(std::memory_order_relaxed) >= beforeRender + 3;
     }, 250));
 
+    // Warm both paths before recording CPU. A cold first public grab creates
+    // Qt's offscreen layer and shader/storage caches; without warm-up a short
+    // A/B/A run can report a false 4x A1/A2 spread.
+    constexpr int warmupFrames = 12;
+    for (int i = 0; i < warmupFrames; ++i) {
+        const std::uint64_t id = static_cast<std::uint64_t>(11000 + i);
+        CHECK(parts.capture->requestFrame({id, hyremote::Clock::now()}));
+        if (!pumpUntil([&] { return servedRequest == id; }, 160)) {
+            CHECK(false && "benchmark warmup capture did not complete");
+            timer.stop();
+            parts.capture->stop();
+            return result;
+        }
+    }
+
+    // 48 frames rather than 12 reduces the effect of Windows process-CPU
+    // 15.625 ms clock quantization. Still an advisory hosted-renderer sample.
     const int beforeHits = pilotNativeHits.load(std::memory_order_acquire);
     const double cpuStart = benchmarkProcessCpuMs();
     const auto wallStart = std::chrono::steady_clock::now();
-    constexpr int requestedFrames = 12;
+    constexpr int requestedFrames = 48;
     for (int i = 0; i < requestedFrames; ++i) {
         const std::uint64_t id = static_cast<std::uint64_t>(12000 + i);
         CHECK(parts.capture->requestFrame({id, hyremote::Clock::now()}));
@@ -783,15 +800,23 @@ void testQuickCaptureProcessCostAba()
     const double nativeCpuPerFrame = native.cpuMs / native.frames;
     const double ratio = publicCpuPerFrame > 0.0
         ? nativeCpuPerFrame / publicCpuPerFrame : -1.0;
+    const double baselineSpread =
+        publicCpuPerFrame > 0.0
+        ? std::abs(referenceA1.cpuMs / referenceA1.frames
+                   - referenceA2.cpuMs / referenceA2.frames) / publicCpuPerFrame
+        : -1.0;
     const QString result = QStringLiteral(
         "BENCH_CONTEXT=HOSTED_WINDOWS_QT6.8.3_D3D11_1080P_SYNTHETIC\n"
         "BENCH_FRAME_COUNT=%1\n"
+        "BENCH_WARMUP_PER_CASE=12\n"
         "PUBLIC_A1_CPU_MS=%2\nPUBLIC_A1_WALL_MS=%3\n"
         "NATIVE_CPU_MS=%4\nNATIVE_WALL_MS=%5\nNATIVE_HITS=%6\n"
         "PUBLIC_A2_CPU_MS=%7\nPUBLIC_A2_WALL_MS=%8\n"
         "CPU_MS_PER_FRAME_PUBLIC_ABA_AVERAGE=%9\n"
         "CPU_MS_PER_FRAME_NATIVE=%10\n"
         "NATIVE_TO_PUBLIC_CPU_RATIO=%11\n"
+        "PUBLIC_ABA_BASELINE_SPREAD_FRACTION=%12\n"
+        "BENCH_STABILITY=%13\n"
         "BENCH_QUALIFICATION=ADVISORY_NOT_FIELD_PROOF\n")
         .arg(native.frames)
         .arg(referenceA1.cpuMs, 0, 'f', 3)
@@ -803,7 +828,11 @@ void testQuickCaptureProcessCostAba()
         .arg(referenceA2.wallMs, 0, 'f', 3)
         .arg(publicCpuPerFrame, 0, 'f', 3)
         .arg(nativeCpuPerFrame, 0, 'f', 3)
-        .arg(ratio, 0, 'f', 4);
+        .arg(ratio, 0, 'f', 4)
+        .arg(baselineSpread, 0, 'f', 4)
+        .arg(baselineSpread >= 0.0 && baselineSpread <= 0.25
+                 ? QStringLiteral("TENTATIVE_MATCHED")
+                 : QStringLiteral("UNSTABLE_BASELINE"));
     std::cout << result.toStdString();
     const QString output = qEnvironmentVariable("HYREMOTE_P3_BENCH_OUTPUT");
     if (!output.isEmpty()) {
