@@ -307,6 +307,66 @@ void testQuickFactoryAndOwnedFrame()
     components.capture->stop();
 }
 
+// #609/#790: each successful asynchronous Qt Quick grab used to leave a
+// two-second singleShot callback alive after the image was delivered. Verify
+// the replacement cancels its owned timeout promptly instead of maintaining
+// a growing set of dormant Qt timers for high-frequency captures.
+void testCompletedQuickGrabsCancelTimeouts()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(128, 72);
+    PaintedProbeItem content(window.contentItem());
+    content.setWidth(128);
+    content.setHeight(72);
+    window.show();
+    QCoreApplication::processEvents();
+
+    auto *dispatcher = QCoreApplication::instance();
+    CHECK(dispatcher != nullptr);
+    if (!dispatcher)
+        return;
+    // The grab deadlines have the dispatcher as their direct QObject parent.
+    // Count after warmup to ignore unrelated Qt platform timers.
+    const auto deadlineCount = [dispatcher] {
+        return dispatcher->findChildren<QTimer *>(QString(),
+                                                  Qt::FindDirectChildrenOnly).size();
+    };
+    const int baseline = deadlineCount();
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.supported && components.capture != nullptr);
+    if (!components.capture)
+        return;
+
+    hyremote::CaptureRequestId latest = 0;
+    int successes = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (frame.requestId && frame.storage) {
+                latest = *frame.requestId;
+                ++successes;
+            }
+        },
+        [&](const hyremote::CaptureEvent &) {}));
+    constexpr int count = 20;
+    for (int index = 0; index < count; ++index) {
+        const auto id = static_cast<hyremote::CaptureRequestId>(3000 + index);
+        const bool accepted = components.capture->requestFrame(
+            {id, hyremote::Clock::now()});
+        CHECK(accepted);
+        if (!accepted || !pumpUntil([&] { return latest == id; }))
+            break;
+        // Flush just Qt's deferred deletion, never wait 2s for the watchdog:
+        // cancellation is part of the ready callback itself.
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        CHECK(deadlineCount() <= baseline + 1);
+    }
+    CHECK(successes == count);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    CHECK(deadlineCount() <= baseline + 1);
+    components.capture->stop();
+}
+
 // H4 mechanism check: distinguish a source that really paints A/S/B from an
 // adapter which invents mixed pixels. A and B are complete pages, while S is
 // deliberately half of each, representing an application-staged transition.
@@ -592,6 +652,7 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
 
     testQuickFactoryAndOwnedFrame();
+    testCompletedQuickGrabsCancelTimeouts();
     testStagedQuickSourceCaptureFollowsPaintedScene();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
