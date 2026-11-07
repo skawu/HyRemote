@@ -767,6 +767,14 @@ void testRfbConsumerPressureAndFullRequestWake()
             changed.notify_all();
         }
 
+        int countPressure(bool blocked, bool noDemand)
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return static_cast<int>(
+                std::count(states.begin(), states.end(),
+                           std::make_pair(blocked, noDemand)));
+        }
+
         bool waitForPressure(bool blocked, bool noDemand, int minOccurrences = 1)
         {
             std::unique_lock<std::mutex> lock(mutex);
@@ -821,8 +829,9 @@ void testRfbConsumerPressureAndFullRequestWake()
     // Continuous incremental request is a second independent wake source;
     // as no pixels changed, it remains pending while the producer is allowed
     // to capture its next frame. This test does not need to manufacture pixels.
+    const int previouslyReady = trace.countPressure(false, false);
     CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
-    CHECK(trace.waitForPressure(false, false, 2));
+    CHECK(trace.waitForPressure(false, false, previouslyReady + 1));
 
     socket.disconnectFromHost();
     waitForDisconnected(socket);
