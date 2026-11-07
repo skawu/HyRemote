@@ -1182,6 +1182,77 @@ void testProducerBackedReconnectWatermarkFailsClosed()
     transport->stop();
 }
 
+// #567/#589: a decorator may change far-away served pixels even though
+// the source advertises a valid adjacent-ID Regions hint. The test decorator
+// changes the bottom-right watermark when the first source pixel changes.
+// Both changed areas must reach the actual Raw/TRLE Viewer.
+void testDecoratedRegionsCannotHideWatermarkChanges()
+{
+    for (const std::int32_t preferredEncoding : {0, 15}) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (!port)
+            return;
+        Recorder recorder;
+        auto first = makeFrame(256, 256, 0x102030U);
+        first.id = 10U;
+        auto transport = startTransport(port, recorder, std::move(first), {},
+                                        markDecorator());
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+        QTcpSocket socket;
+        std::uint16_t width = 0, height = 0;
+        const bool connected = connectRawRfb(socket, port, false, &width, &height);
+        CHECK(connected && width == 256 && height == 256);
+        if (!connected) {
+            transport->stop();
+            return;
+        }
+        CHECK(sendSetEncodings(socket, {-312, preferredEncoding, 0}));
+        CHECK(readFence(socket) == makeFence(0U));
+        TestFramebuffer framebuffer;
+        framebuffer.resize(width, height);
+        std::vector<UpdateRect> rects;
+        CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+        CHECK(readFramebufferUpdate(socket, framebuffer, rects));
+        CHECK(framebuffer.get(0, 0) == 0x102030U);
+        CHECK(framebuffer.get(250, 250) == 0x00FF00U);
+
+        // The second source changes ONLY (0,0), but the decorator changes
+        // the watermark at the opposite corner based on that same pixel.
+        // Source frame IDs are adjacent, so without the transport fix the
+        // RFB Regions shortcut incorrectly trusts the 1x1 source hint and
+        // the Viewer keeps an old green watermark forever.
+        CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+        const QByteArray barrier("delta-armed", 11);
+        CHECK(writeAll(socket, makeFence(0x80000000U, barrier)));
+        CHECK(readFence(socket) == makeFence(0U, barrier));
+        auto second = makeFrame(256, 256, 0x102030U,
+                                {{{0, 0, 1, 1}, 0x203040U}});
+        second.id = 11U;
+        second.damage.kind = hyremote::DamageKind::Regions;
+        second.damage.regions = {hyremote::Rect{0, 0, 1, 1}};
+        transport->enqueueFrame(std::move(second));
+
+        CHECK(readFramebufferUpdate(socket, framebuffer, rects));
+        CHECK(framebuffer.get(0, 0) == 0x203040U);
+        CHECK(framebuffer.get(250, 250) == kMarkColor);
+        // For this 256x256 scene, only two separated 64x64 tiles changed:
+        // below the 25% whole-page paint threshold. Do not smuggle a
+        // full-page update through an overly broad damage fallback.
+        std::uint64_t area = 0;
+        for (const UpdateRect &rect : rects) {
+            if (rect.encoding == 0 || rect.encoding == 15)
+                area += static_cast<std::uint64_t>(rect.width) * rect.height;
+        }
+        CHECK(area <= 2U * 64U * 64U);
+        socket.disconnectFromHost();
+        waitForDisconnected(socket);
+        transport->stop();
+    }
+}
+
 void testWatermarkReachesEveryEncoding()
 {
     const quint16 port = freePort();
@@ -4246,6 +4317,7 @@ int main(int argc, char **argv)
     testRfbConsumerPressureAndFullRequestWake();
     testDamageAndEncodedFrameShareSnapshot();
     testPointerViewportTracksAdvertisedFramebuffer();
+    testDecoratedRegionsCannotHideWatermarkChanges();
     testWatermarkReachesEveryEncoding();
     testStandaloneMarkedBootstrapSurvivesReconnects();
     testProducerBackedIdleRawFrameRelease();
