@@ -1,0 +1,67 @@
+name: Qt Quick exact-Kit native-frame pilot
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'src/runtime/src/quick/quick_native_frame_source.*'
+      - 'src/runtime/src/quick/quick_target.cpp'
+      - 'src/runtime/tests/test_quick_capture.cpp'
+      - 'src/runtime/CMakeLists.txt'
+      - '.github/workflows/quick-native-frame-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quick-native-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  exact-qt6-native:
+    name: Windows Qt 6.8.3 private / canonical native-pilot test
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Restore exact Qt 6.8.3 SDK
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v4-Windows-6.8.3-win64_msvc2022_64
+      - name: Ensure exact Qt SDK with private headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          QT_PREFIX="$QT_ROOT/6.8.3/msvc2022_64"
+          if [[ ! -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
+            python -m pip install --disable-pip-version-check aqtinstall
+            aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "$QT_ROOT"
+          fi
+          test -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake"
+          echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+      - name: Exact QtPrivate pilot through the canonical build/test authority
+        shell: cmd
+        run: |
+          call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-native-frame-pilot-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" "--env=HYREMOTE_EXPECT_NATIVE_HIT=1" "--env=QSG_RHI_BACKEND=d3d11" --no-prompt -j4
+      - name: Bracketed public/native/public CPU diagnostic (report actual viewport)
+        shell: cmd
+        run: |
+          call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-native-frame-pilot-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" "--env=HYREMOTE_EXPECT_NATIVE_HIT=1" "--env=HYREMOTE_P3_BENCH=1" "--env=HYREMOTE_P3_BENCH_OUTPUT=%RUNNER_TEMP%\hyremote-p3-aba.txt" "--env=QSG_RHI_BACKEND=d3d11" --no-prompt -j4
+      - name: Surface measured process CPU and experiment scope
+        if: always()
+        shell: cmd
+        run: |
+          if not exist "%RUNNER_TEMP%\hyremote-p3-aba.txt" exit /b 1
+          type "%RUNNER_TEMP%\hyremote-p3-aba.txt"
+      - name: Opaque Quick window must fall back to public content-item grab
+        shell: cmd
+        run: |
+          call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-native-frame-fallback-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" "--env=HYREMOTE_EXPECT_NATIVE_FALLBACK=1" "--env=HYREMOTE_FORCE_QUICK_OPAQUE=1" "--env=QSG_RHI_BACKEND=d3d11" --no-prompt -j4
+      - name: Evidence boundary
+        if: always()
+        shell: bash
+        run: |
+          echo "Exact Kit native source ON and real Qt Quick synthetic tests; canonical build/test runner owns identity and DLLs." >> "$GITHUB_STEP_SUMMARY"
+          echo "Native-hit/pixel equivalence, non-D3D11 backend and target hardware performance remain separate gates." >> "$GITHUB_STEP_SUMMARY"
