@@ -1,0 +1,74 @@
+name: Qt Quick exact-Kit native-frame pilot
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'src/runtime/src/quick/quick_native_frame_source.*'
+      - 'src/runtime/src/quick/quick_target.cpp'
+      - 'src/runtime/CMakeLists.txt'
+      - '.github/workflows/quick-native-frame-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quick-native-pilot-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  exact-qt6-native:
+    name: Windows Qt 6.8.3 private / native source enabled
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Restore exact Qt 6.8.3 SDK
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: hyremote-qt-v4-Windows-6.8.3-win64_msvc2022_64
+      - name: Ensure exact Qt SDK with private headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_ROOT="${RUNNER_TEMP//\\//}/Qt"
+          QT_PREFIX="$QT_ROOT/6.8.3/msvc2022_64"
+          if [[ ! -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake" ]]; then
+            python -m pip install --disable-pip-version-check aqtinstall
+            aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "$QT_ROOT"
+          fi
+          python -m pip install --disable-pip-version-check ninja
+          test -f "$QT_PREFIX/lib/cmake/Qt6/Qt6Config.cmake"
+          echo "QT_PREFIX=$QT_PREFIX" >> "$GITHUB_ENV"
+      - name: Configure exact QtPrivate experiment ON and compile Quick adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-quick-native -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
+            -DHYREMOTE_BUILD_TESTS=ON \
+            -DHYREMOTE_BUILD_EXAMPLES=OFF \
+            -DHYREMOTE_BUILD_QUICK_ADAPTER=ON \
+            -DHYREMOTE_BUILD_QML_API=OFF \
+            -DHYREMOTE_WITH_GENERIC_PLUGIN=OFF \
+            -DHYREMOTE_WITH_QPA_PROXY=OFF \
+            -DHYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON
+          grep -q 'HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME:BOOL=ON' build-quick-native/CMakeCache.txt
+          cmake --build build-quick-native --target hyremote-quick-capture-test --parallel 4
+      - name: Run existing synthetic Quick pixel/lifecycle regressions with opt-in
+        shell: bash
+        run: |
+          set -euo pipefail
+          QT_BIN="$(cygpath -u "$QT_PREFIX/bin")"
+          export PATH="$QT_BIN:$PATH"
+          export HYREMOTE_QUICK_NATIVE_FRAME=1
+          ctest --test-dir build-quick-native --output-on-failure \
+            -R '^hyremote-quick-capture-test$' --timeout 150
+      - name: Evidence scope
+        if: always()
+        shell: bash
+        run: |
+          echo "Exact Qt 6.8.3 private pilot build only; no field performance claim." >> "$GITHUB_STEP_SUMMARY"
+          echo "Synthetic Quick test may fall back to public grabToImage; native-hit and pixel-equivalence measurements are separate gates." >> "$GITHUB_STEP_SUMMARY"
