@@ -598,6 +598,14 @@ public:
                 return;
             }
             served = std::move(decorated);
+            // The decorator is allowed to modify pixels OUTSIDE the source's
+            // Damage::Regions hint (for instance a watermark at the opposite
+            // corner or a DPR-driven overlay change). Adjacent FrameIds do
+            // not make source regions authoritative for composed pixels.
+            // Force a comparison of the actual served RGB without forcing a
+            // full-screen RFB transmission: changedRfbTiles() will still
+            // generate precise 64x64 visible-pixel damage.
+            served->damage = hyremote::Damage::fullFrame();
         } else {
             served = frame;
         }

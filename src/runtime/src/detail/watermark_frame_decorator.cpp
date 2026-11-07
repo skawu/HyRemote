@@ -55,8 +55,10 @@ bool decorate(const WatermarkPolicy &policy, const hyremote::RemoteFrame &source
     }
     std::memcpy(target, composed.constData(), static_cast<std::size_t>(composed.size()));
 
-    // Everything except the pixels is the captured frame's own truth: id, geometry, timing and damage stay
-    // identical so the transport's damage/refresh bookkeeping keeps working against the decorated picture.
+    // Identity, geometry and timing remain those of the captured frame.
+    // The RFB worker must NOT trust the source's Regions metadata for the
+    // recomposed picture: this decorator can change pixels outside the
+    // source region, and the worker derives exact delivered RGB damage.
     decorated = source;
     decorated.storage = std::move(storage);
     return true;
