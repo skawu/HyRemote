@@ -1697,6 +1697,61 @@ void testNativeRawFastPathAlphaEquivalence()
     }
 }
 
+// #789: high-entropy TRLE blocks use mode-0 raw CPIXEL, not packed
+// palettes. Confirm each byte on native and alpha-matted paths, including
+// a non-zero x offset and padded source row stride.
+void testHighEntropyTrleRawTileBytesAndAlpha()
+{
+    using hyremote::AlphaMode;
+    constexpr std::uint32_t width = 20U, height = 17U, stride = width * 4U + 16U;
+    for (const auto mode : {AlphaMode::Opaque, AlphaMode::Premultiplied,
+                            AlphaMode::Straight}) {
+        auto frame = makeFrame(width, height, 0U);
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(stride, height);
+        CHECK(storage && storage->mutablePlane(0));
+        if (!storage || !storage->mutablePlane(0))
+            return;
+        auto *base = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::uint32_t y = 0; y < height; ++y) {
+            for (std::uint32_t x = 0; x < width; ++x) {
+                const std::uint32_t index = y * width + x;
+                auto *pixel = base + static_cast<std::size_t>(y) * stride + x * 4U;
+                pixel[0] = static_cast<std::uint8_t>((index * 11U) & 255U);
+                pixel[1] = static_cast<std::uint8_t>((index * 47U) & 255U);
+                pixel[2] = static_cast<std::uint8_t>((index * 71U) & 255U);
+                pixel[3] = 180U;
+            }
+        }
+        frame.storage = std::move(storage);
+        frame.geometry.alphaMode = mode;
+        for (const std::uint32_t left : {0U, 16U}) {
+            const std::uint32_t tileWidth = left == 0U ? 16U : 4U;
+            QByteArray actual;
+            CHECK(HyRemote::detail::appendNativeTrlePayload(
+                actual, frame, left, 0U, tileWidth, 16U));
+            CHECK(actual.size() == static_cast<qsizetype>(1U + tileWidth * 16U * 3U));
+            if (actual.isEmpty())
+                continue;
+            CHECK(static_cast<std::uint8_t>(actual.at(0)) == 0U);
+            for (std::uint32_t row = 0; row < 16U; ++row) {
+                for (std::uint32_t col = 0; col < tileWidth; ++col) {
+                    const auto *rgba =
+                        base + static_cast<std::size_t>(row) * stride
+                             + static_cast<std::size_t>(left + col) * 4U;
+                    const auto offset = static_cast<qsizetype>(
+                        1U + (row * tileWidth + col) * 3U);
+                    for (std::uint32_t channel = 0; channel < 3U; ++channel) {
+                        const auto wanted = HyRemote::detail::rfbOpaqueChannel(
+                            rgba[channel], rgba[3], mode);
+                        CHECK(static_cast<std::uint8_t>(actual.at(
+                                  offset + static_cast<qsizetype>(channel))) == wanted);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void testTrlePreferredOverRawOrder()
 {
     const quint16 port = freePort();
@@ -4028,9 +4083,146 @@ void runRfbStaticCompareProfile(const QString &outputPath)
     }
 }
 
+// Exact pre-optimization raw-tile encoding for the synthetic workload in
+// which every tile has 17+ colours. This reference never ships in Runtime.
+QByteArray legacyHighEntropyTrleRawTiles(const hyremote::RemoteFrame &frame)
+{
+    QByteArray out;
+    const auto plane = frame.storage->mapRead(0);
+    if (!plane || !plane->data)
+        return {};
+    const auto *base = reinterpret_cast<const std::uint8_t *>(plane->data);
+    const auto pixelAt = [&](std::uint32_t x, std::uint32_t y) {
+        const auto *p = base + static_cast<std::size_t>(y) * plane->stride + x * 4U;
+        return HyRemote::detail::rfbRgb(p[0], p[1], p[2]);
+    };
+    const auto width = frame.geometry.size.width;
+    const auto height = frame.geometry.size.height;
+    out.reserve(static_cast<qsizetype>(static_cast<std::uint64_t>(width) * height * 3U));
+    for (std::uint32_t ty = 0; ty < height; ty += 16U) {
+        const auto th = std::min(16U, height - ty);
+        for (std::uint32_t tx = 0; tx < width; tx += 16U) {
+            const auto tw = std::min(16U, width - tx);
+            std::array<std::uint32_t, 16> palette{};
+            std::array<std::uint8_t, 256> indices{};
+            std::size_t count = 0;
+            bool overflow = false;
+            for (std::uint32_t row = 0; row < th && !overflow; ++row) {
+                for (std::uint32_t col = 0; col < tw; ++col) {
+                    const auto p = pixelAt(tx + col, ty + row);
+                    std::size_t i = 0;
+                    while (i < count && palette[i] != p)
+                        ++i;
+                    if (i == count) {
+                        if (count == palette.size()) {
+                            overflow = true;
+                            break;
+                        }
+                        palette[count++] = p;
+                    }
+                    indices[static_cast<std::size_t>(row) * tw + col]
+                        = static_cast<std::uint8_t>(i);
+                }
+            }
+            if (!overflow) // explicit scope: all tiles must be raw in this test
+                return {};
+            out.append(char(0));
+            for (std::uint32_t row = 0; row < th; ++row)
+                for (std::uint32_t col = 0; col < tw; ++col)
+                    HyRemote::detail::appendNativeCpixel(
+                        out, pixelAt(tx + col, ty + row));
+        }
+    }
+    return out;
+}
+
+// Same executable / same 1080p source bytes / same old-style palette scan:
+// measure the exact raw-packing replacement without any OS/GPU assumptions.
+void runHighEntropyTrleRawPackingProfile(const QString &filePath)
+{
+    constexpr std::uint32_t width = 1920U, height = 1080U;
+    auto frame = makeFrame(width, height, 0U);
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(width * 4U, height);
+    CHECK(storage && storage->mutablePlane(0));
+    if (!storage || !storage->mutablePlane(0))
+        return;
+    auto *p = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+    for (std::uint32_t y = 0; y < height; ++y) {
+        for (std::uint32_t x = 0; x < width; ++x) {
+            const auto off = (static_cast<std::size_t>(y) * width + x) * 4U;
+            p[off + 0U] = static_cast<std::uint8_t>((x * 13U + y * 7U) & 255U);
+            p[off + 1U] = static_cast<std::uint8_t>((x * 29U + y * 11U) & 255U);
+            p[off + 2U] = static_cast<std::uint8_t>((x * 37U + y * 19U) & 255U);
+            p[off + 3U] = 255U;
+        }
+    }
+    frame.storage = std::move(storage);
+    frame.geometry.alphaMode = hyremote::AlphaMode::Opaque;
+    const QByteArray reference = legacyHighEntropyTrleRawTiles(frame);
+    QByteArray optimized;
+    CHECK(HyRemote::detail::appendNativeTrlePayload(optimized, frame, 0, 0, width, height));
+    CHECK(!reference.isEmpty() && reference == optimized);
+    if (reference.isEmpty() || reference != optimized)
+        return;
+
+    constexpr int iterations = 10;
+    const auto measure = [&](bool fast) {
+        QElapsedTimer clock;
+        std::uint64_t bytes = 0;
+        clock.start();
+        for (int i = 0; i < iterations; ++i) {
+            QByteArray encoded;
+            if (fast)
+                CHECK(HyRemote::detail::appendNativeTrlePayload(
+                    encoded, frame, 0, 0, width, height));
+            else
+                encoded = legacyHighEntropyTrleRawTiles(frame);
+            CHECK(encoded.size() == reference.size());
+            bytes += static_cast<std::uint64_t>(encoded.size());
+        }
+        CHECK(bytes == static_cast<std::uint64_t>(reference.size()) * iterations);
+        return static_cast<double>(clock.nsecsElapsed()) / iterations;
+    };
+    (void)measure(false);
+    (void)measure(true);
+    const double oldA = measure(false);
+    const double fast = measure(true);
+    const double oldB = measure(false);
+    const double baseline = (oldA + oldB) / 2.0;
+    const QString report = QStringLiteral(
+        "PROFILE_KIND=TRLE_HIGH_ENTROPY_RAW_TILES\n"
+        "PROFILE_CONTEXT=HOSTED_SYNTHETIC_NOT_DEVICE_PROOF\n"
+        "FRAMEBUFFER=1920x1080\n"
+        "WIRE_BYTES_PER_FRAME=%1\n"
+        "ITERATIONS_PER_CASE=%2\n"
+        "OLD_A_NS_PER_FRAME=%3\n"
+        "NEW_NS_PER_FRAME=%4\n"
+        "OLD_B_NS_PER_FRAME=%5\n"
+        "NEW_OVER_OLD_RATIO=%6\n"
+        "WIRE_EQUALITY=PASS\n"
+        "PROFILE_QUALIFICATION=ADVISORY_ONLY\n")
+        .arg(reference.size()).arg(iterations)
+        .arg(oldA, 0, 'f', 0).arg(fast, 0, 'f', 0)
+        .arg(oldB, 0, 'f', 0)
+        .arg(baseline > 0.0 ? fast / baseline : -1.0, 0, 'f', 4);
+    std::cout << report.toStdString();
+    QFile output(filePath);
+    CHECK(output.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    if (output.isOpen()) {
+        const QByteArray bytes = report.toUtf8();
+        CHECK(output.write(bytes) == bytes.size());
+    }
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+
+    const QByteArray trleRawPath = qgetenv("HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE");
+    if (!trleRawPath.isEmpty()) {
+        runHighEntropyTrleRawPackingProfile(QString::fromLocal8Bit(trleRawPath));
+        return failures == 0 ? 0 : 1;
+    }
 
     const QByteArray staticComparePath = qgetenv("HYREMOTE_RFB_COMPARE_PROFILE_FILE");
     if (!staticComparePath.isEmpty()) {
@@ -4066,6 +4258,7 @@ int main(int argc, char **argv)
     testStaticCompareFastHintPreservesDamage();
     testAlphaOnlyFrameIsNotPublishedToRfb();
     testNativeRawFastPathAlphaEquivalence();
+    testHighEntropyTrleRawTileBytesAndAlpha();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
