@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -1701,9 +1702,39 @@ private:
         const std::uint64_t pixelBytes = static_cast<std::uint64_t>(width) * height * bytesPerPixel;
         if (pixelBytes > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
             return false;
+        if (pixelBytes > static_cast<std::uint64_t>(
+                             std::numeric_limits<qsizetype>::max() - message.size()))
+            return false;
         message.reserve(message.size() + static_cast<qsizetype>(pixelBytes));
 
         const auto *base = reinterpret_cast<const std::uint8_t *>(plane->data);
+
+        // #609/#789: the most common Raw viewer (native 32bpp RGBA, little-endian
+        // R/G/B shifts 0/8/16) needs exactly R,G,B,0 on the wire. The existing
+        // encoder appended four QByteArray bytes per source pixel, i.e. >8M
+        // append calls for a single 1080p framebuffer. Copy each row once,
+        // then clear the protocol's unused high byte. Premultiplied colours
+        // already encode the project's black-matte policy; straight-alpha,
+        // reduced-bpp, big-endian, and nonnative formats retain the exact old
+        // conversion path. No Qt, OS, or CPU endian assumptions are required.
+        if (nativeTrlePixelSpec(pixels)
+            && frame.geometry.alphaMode != hyremote::AlphaMode::Straight) {
+            const qsizetype offset = message.size();
+            message.resize(offset + static_cast<qsizetype>(pixelBytes));
+            auto *destination = reinterpret_cast<std::uint8_t *>(message.data() + offset);
+            const std::size_t rowBytes = static_cast<std::size_t>(width) * 4U;
+            for (std::uint32_t row = 0; row < height; ++row) {
+                const std::uint8_t *source =
+                    base + (static_cast<std::size_t>(y) + row) * plane->stride
+                         + static_cast<std::size_t>(x) * 4U;
+                std::uint8_t *target = destination + static_cast<std::size_t>(row) * rowBytes;
+                std::memcpy(target, source, rowBytes);
+                for (std::uint32_t col = 0; col < width; ++col)
+                    target[static_cast<std::size_t>(col) * 4U + 3U] = 0U;
+            }
+            return true;
+        }
+
         for (std::uint32_t row = 0; row < height; ++row) {
             const std::uint8_t *source = base + (static_cast<std::size_t>(y) + row) * plane->stride
                                          + static_cast<std::size_t>(x) * 4U;
