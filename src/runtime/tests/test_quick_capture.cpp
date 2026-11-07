@@ -10,9 +10,12 @@
 #include <QPainter>
 #include <QQuickPaintedItem>
 #include <QQuickWindow>
+#include <QQuickItemGrabResult>
+#include <QSharedPointer>
 #include <QTimer>
 #include <QWheelEvent>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -120,6 +123,15 @@ public:
         const QColor b(225, 30, 40);
         painter->fillRect(left, stage >= 1 ? b : a);
         painter->fillRect(right, stage >= 2 ? b : a);
+        // Verify uncovered and translucent item pixels. A swapchain's
+        // background is not automatically equivalent to a Quick item layer;
+        // the pilot must match this reference before it may be promoted.
+        painter->save();
+        painter->setCompositionMode(QPainter::CompositionMode_Clear);
+        painter->fillRect(QRectF(2, 2, 7, 7), Qt::transparent);
+        painter->setCompositionMode(QPainter::CompositionMode_Source);
+        painter->fillRect(QRectF(12, 12, 8, 8), QColor(90, 150, 210, 96));
+        painter->restore();
         m_paintedStage.store(stage, std::memory_order_release);
     }
 
@@ -398,6 +410,26 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
         if (!rendered)
             break;
 
+        QImage referenceImage;
+        if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1") {
+            // A separate public Qt content-item grab supplies the full-pixel
+            // golden reference for this stage. It is completed BEFORE the
+            // candidate request; comparing to itself can never validate P3.
+            const auto reference = window.contentItem()->grabToImage(
+                QSize(qRound(window.width()), qRound(window.height())));
+            CHECK(!reference.isNull());
+            if (reference) {
+                bool ready = false;
+                QObject::connect(reference.data(), &QQuickItemGrabResult::ready,
+                                 &window, [&] { ready = true; });
+                CHECK(pumpUntil([&] { return ready; }));
+                if (ready)
+                    referenceImage = reference->image().convertToFormat(
+                        QImage::Format_RGBA8888_Premultiplied);
+            }
+            CHECK(!referenceImage.isNull());
+        }
+
         received.reset();
         hyremote::CaptureRequest request;
         request.id = static_cast<hyremote::CaptureRequestId>(500U + stage);
@@ -426,6 +458,36 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
         if (width < 4U || height < 4U || plane->stride < width * 4U
             || height > plane->bytes / plane->stride)
             break;
+
+        if (!referenceImage.isNull()) {
+            CHECK(referenceImage.width() == static_cast<int>(width));
+            CHECK(referenceImage.height() == static_cast<int>(height));
+            if (referenceImage.width() == static_cast<int>(width)
+                && referenceImage.height() == static_cast<int>(height)) {
+                std::size_t pixelChannelDifferences = 0;
+                unsigned int largestDelta = 0;
+                for (std::size_t y = 0; y < height; ++y) {
+                    const auto *actual = reinterpret_cast<const std::uint8_t *>(
+                        plane->data + y * plane->stride);
+                    const auto *reference = referenceImage.constScanLine(static_cast<int>(y));
+                    for (std::size_t channel = 0; channel < width * 4U; ++channel) {
+                        const unsigned int diff = static_cast<unsigned int>(
+                            std::abs(static_cast<int>(actual[channel])
+                                     - static_cast<int>(reference[channel])));
+                        largestDelta = std::max(largestDelta, diff);
+                        // GPU vs Qt QPainter may differ by up to two levels
+                        // on blended pixels; larger changes (including alpha,
+                        // upside-down rows and wrong clear colours) are real.
+                        if (diff > 2U)
+                            ++pixelChannelDifferences;
+                    }
+                }
+                std::cout << "P3_PIXEL_PARITY_STAGE=" << stage
+                          << " DIFFERENT_CHANNELS=" << pixelChannelDifferences
+                          << " MAX_CHANNEL_DELTA=" << largestDelta << '\n';
+                CHECK(pixelChannelDifferences == 0);
+            }
+        }
 
         const auto sample = [&](std::size_t x) {
             const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
