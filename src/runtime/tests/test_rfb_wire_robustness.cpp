@@ -1515,6 +1515,52 @@ void testPresentedRgbDamageVsSourceAlpha()
 
 // End-to-end test: alpha-only changes in the CPU source must not cause
 // another incremental Raw FBU or a spurious "changed pixels" capture wake.
+// #789: a prior confirmed RFB-visible static frame may select the exact
+// byte equality fast path, without suppressing alpha-only semantics or new
+// localized changes. Verify both choices return identical damage rectangles.
+void testStaticCompareFastHintPreservesDamage()
+{
+    using hyremote::AlphaMode;
+    const auto base = makePresentedRgbTestFrame(40, 60, 80, 255, AlphaMode::Opaque);
+    const auto unchanged = makePresentedRgbTestFrame(40, 60, 80, 255, AlphaMode::Opaque);
+    CHECK(base.storage != unchanged.storage);
+    const auto scan = HyRemote::detail::changedRfbTiles(&base, unchanged, false);
+    const auto hinted = HyRemote::detail::changedRfbTiles(&base, unchanged, true);
+    CHECK(scan.empty());
+    CHECK(hinted.rects() == scan.rects());
+
+    const auto alphaOnly = makePresentedRgbTestFrame(40, 60, 80, 128, AlphaMode::Opaque);
+    CHECK(HyRemote::detail::changedRfbTiles(&base, alphaOnly, false).empty());
+    CHECK(HyRemote::detail::changedRfbTiles(&base, alphaOnly, true).empty());
+
+    const auto changed = makePresentedRgbTestFrame(40, 60, 99, 255, AlphaMode::Opaque);
+    const auto usual = HyRemote::detail::changedRfbTiles(&base, changed, false);
+    const auto maybeStatic = HyRemote::detail::changedRfbTiles(&base, changed, true);
+    CHECK(!usual.empty());
+    CHECK(maybeStatic.rects() == usual.rects());
+
+    // A visually equivalent fully-transparent straight-alpha frame is still
+    // permitted after an exact raw compare misses: the fallback applies the
+    // same black-matte policy as native Raw/TRLE.
+    const auto transparentA =
+        makePresentedRgbTestFrame(10, 20, 30, 0, AlphaMode::Straight);
+    const auto transparentB =
+        makePresentedRgbTestFrame(240, 200, 160, 0, AlphaMode::Straight);
+    CHECK(HyRemote::detail::changedRfbTiles(&transparentA, transparentB, false).empty());
+    CHECK(HyRemote::detail::changedRfbTiles(&transparentA, transparentB, true).empty());
+
+    // Changing the interpretation of identical bytes never takes the bulk
+    // shortcut; metadata changes must force the existing full refresh.
+    auto modeChanged = alphaOnly;
+    modeChanged.geometry.alphaMode = AlphaMode::Straight;
+    auto priorOpaque = alphaOnly;
+    priorOpaque.geometry.alphaMode = AlphaMode::Opaque;
+    const auto full = HyRemote::detail::changedRfbTiles(&priorOpaque, modeChanged, true);
+    CHECK(full.size() == 1U);
+    if (full.size() == 1U)
+        CHECK(full.rects().front() == (HyRemote::detail::RfbRect{0, 0, 128, 128}));
+}
+
 void testAlphaOnlyFrameIsNotPublishedToRfb()
 {
     using hyremote::AlphaMode;
@@ -3838,6 +3884,7 @@ int main(int argc, char **argv)
     testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
     testPresentedRgbDamageVsSourceAlpha();
+    testStaticCompareFastHintPreservesDamage();
     testAlphaOnlyFrameIsNotPublishedToRfb();
     testNativeRawFastPathAlphaEquivalence();
     testTrlePreferredOverRawOrder();
