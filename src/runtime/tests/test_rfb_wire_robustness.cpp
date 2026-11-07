@@ -714,12 +714,16 @@ std::unique_ptr<hyremote::Transport> startTransport(
     hyremote::RemoteFrame initial,
     HyRemote::detail::RfbCursorProvider cursorProvider = {},
     HyRemote::detail::RfbFrameDecorator frameDecorator = {},
-    std::function<void(bool)> frameChangeObserver = {})
+    std::function<void(bool)> frameChangeObserver = {},
+    std::function<void(bool, bool)> frameBackpressureObserver = {},
+    std::function<void()> frameFullRefreshObserver = {})
 {
     HyRemote::detail::RfbSecurityConfig security;
     security.cursorProvider = std::move(cursorProvider);
     security.frameDecorator = std::move(frameDecorator);
     security.frameChangeObserver = std::move(frameChangeObserver);
+    security.frameBackpressureObserver = std::move(frameBackpressureObserver);
+    security.frameFullRefreshObserver = std::move(frameFullRefreshObserver);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
                                                           std::move(security));
     if (!transport)
@@ -730,6 +734,108 @@ std::unique_ptr<hyremote::Transport> startTransport(
     }
     transport->enqueueFrame(std::move(initial));
     return transport;
+}
+
+// #609: exercise the real RFB-worker → producer-pressure callback with an
+// actual RFB 3.8 socket, rather than assuming ViewerCaptureDemand unit-test
+// notifications are wired correctly. Requests and Qt output-drain transitions
+// must be reported separately; all observed state is recorded off the worker.
+void testRfbConsumerPressureAndFullRequestWake()
+{
+    struct Trace
+    {
+        std::mutex mutex;
+        std::condition_variable changed;
+        std::vector<std::pair<bool, bool>> states;
+        int fullRefreshRequests = 0;
+
+        void pressure(bool blocked, bool noDemand)
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                states.emplace_back(blocked, noDemand);
+            }
+            changed.notify_all();
+        }
+
+        void fullRequest()
+        {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                ++fullRefreshRequests;
+            }
+            changed.notify_all();
+        }
+
+        int countPressure(bool blocked, bool noDemand)
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            return static_cast<int>(
+                std::count(states.begin(), states.end(),
+                           std::make_pair(blocked, noDemand)));
+        }
+
+        bool waitForPressure(bool blocked, bool noDemand, int minOccurrences = 1)
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            return changed.wait_for(lock, std::chrono::seconds(3), [&] {
+                return std::count(states.begin(), states.end(),
+                                  std::make_pair(blocked, noDemand))
+                       >= minOccurrences;
+            });
+        }
+    } trace;
+
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(
+        port, recorder, makeFrame(32, 24, 0x203040U), {}, {}, {},
+        [&](bool blocked, bool noDemand) { trace.pressure(blocked, noDemand); },
+        [&] { trace.fullRequest(); });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(width == 32 && height == 24);
+    // A Normal Viewer with no FBU request must not demand 60fps captures.
+    CHECK(trace.waitForPressure(true, true));
+    CHECK(sendSetEncodings(socket, {0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(0, 0) == 0x203040U);
+    // A fresh explicit full request must unblock the producer even if the
+    // pending current pixels can be served immediately from the cache.
+    CHECK(trace.waitForPressure(false, false));
+    CHECK(trace.waitForPressure(true, false));
+    CHECK(trace.waitForPressure(true, true, 2));
+
+    {
+        std::lock_guard<std::mutex> lock(trace.mutex);
+        CHECK(trace.fullRefreshRequests == 1);
+    }
+
+    // Continuous incremental request is a second independent wake source;
+    // as no pixels changed, it remains pending while the producer is allowed
+    // to capture its next frame. This test does not need to manufacture pixels.
+    const int previouslyReady = trace.countPressure(false, false);
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    CHECK(trace.waitForPressure(false, false, previouslyReady + 1));
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
 }
 
 void testTrleRawAndIncrementalDelivery()
@@ -3569,6 +3675,7 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testRfbConsumerPressureAndFullRequestWake();
     testDamageAndEncodedFrameShareSnapshot();
     testWatermarkReachesEveryEncoding();
     testStandaloneMarkedBootstrapSurvivesReconnects();
