@@ -209,13 +209,13 @@ if(HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME)
         message(FATAL_ERROR
             "Native Qt Quick readback pilot requires exact Qt 6.8.3 Quick.")
     endif()
-    if(NOT TARGET Qt6::QuickPrivate OR NOT TARGET Qt6::GuiPrivate)
-        find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS QuickPrivate GuiPrivate)
+    if(NOT TARGET Qt6::GuiPrivate)
+        find_package(Qt6 6.8.3 EXACT REQUIRED COMPONENTS GuiPrivate)
     endif()
     target_sources(hyremote-remoteaccess PRIVATE
         src/quick/quick_native_frame_source.cpp)
     target_link_libraries(hyremote-remoteaccess PRIVATE
-        Qt6::QuickPrivate Qt6::GuiPrivate)
+        Qt6::GuiPrivate)
     target_compile_definitions(hyremote-remoteaccess PRIVATE
         HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=1)
     message(WARNING

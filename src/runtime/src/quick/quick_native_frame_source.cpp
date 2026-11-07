@@ -6,7 +6,6 @@
 
 #include <QDebug>
 #include <QtQuick/QQuickWindow>
-#include <QtQuick/private/qquickwindow_p.h>
 #include <rhi/qrhi.h>
 
 #include <atomic>
@@ -107,13 +106,18 @@ void QuickNativeFrameSource::start()
                 || state->invalidated.load(std::memory_order_acquire))
                 return;
             state->afterRenderingSignals.fetch_add(1, std::memory_order_relaxed);
-            auto *d = QQuickWindowPrivate::get(window);
-            if (!d || !d->rhi) {
+            // Qt 6.6+ exposes both resources through QQuickWindow public
+            // accessors. Only the QRhi readback protocol is QtGuiPrivate;
+            // QtQuickPrivate's version-sensitive QQuickWindowPrivate layout
+            // must never be a production capture dependency.
+            QRhi *rhi = window->rhi();
+            QRhiSwapChain *swapchain = window->swapChain();
+            if (!rhi) {
                 state->noRhi.fetch_add(1, std::memory_order_relaxed);
                 state->qualified.store(false, std::memory_order_release);
                 return;
             }
-            if (!d->swapchain) {
+            if (!swapchain) {
                 state->noSwapchain.fetch_add(1, std::memory_order_relaxed);
                 state->qualified.store(false, std::memory_order_release);
                 return;
@@ -123,8 +127,8 @@ void QuickNativeFrameSource::start()
             // until proven with their exact Qt Kit and framebuffer semantics.
             // Crucially, an arbitrary Qt Quick swapchain MUST NOT be read
             // without its creation-time UsedAsTransferSource flag.
-            const bool supportedBackend = d->rhi->backend() == QRhi::D3D11;
-            const bool transferSource = d->swapchain->flags().testFlag(
+            const bool supportedBackend = rhi->backend() == QRhi::D3D11;
+            const bool transferSource = swapchain->flags().testFlag(
                 QRhiSwapChain::UsedAsTransferSource);
             if (!supportedBackend)
                 state->backendIneligible.fetch_add(1, std::memory_order_relaxed);
@@ -135,14 +139,14 @@ void QuickNativeFrameSource::start()
             // An upside-down backend needs a separately qualified row-flip
             // adapter, not a generalization of the D3D11 observation.
             const bool eligible = supportedBackend && transferSource
-                && d->swapchain->flags().testFlag(QRhiSwapChain::SurfaceHasPreMulAlpha)
-                && !d->rhi->isYUpInFramebuffer();
+                && swapchain->flags().testFlag(QRhiSwapChain::SurfaceHasPreMulAlpha)
+                && !rhi->isYUpInFramebuffer();
             state->qualified.store(eligible, std::memory_order_release);
             if (!eligible)
                 return;
             state->eligibleRenders.fetch_add(1, std::memory_order_relaxed);
 
-            const QSize physical = d->swapchain->surfacePixelSize();
+            const QSize physical = swapchain->surfacePixelSize();
             if (physical.width() <= 0 || physical.height() <= 0)
                 return;
             const int prevW = state->surfaceWidth.exchange(physical.width());
@@ -161,12 +165,12 @@ void QuickNativeFrameSource::start()
                 state->requested.store(true, std::memory_order_release);
                 return;
             }
-            QRhiCommandBuffer *cb = d->swapchain->currentFrameCommandBuffer();
+            QRhiCommandBuffer *cb = swapchain->currentFrameCommandBuffer();
             if (!cb) {
                 state->inFlight.store(false, std::memory_order_release);
                 return;
             }
-            QRhiResourceUpdateBatch *batch = d->rhi->nextResourceUpdateBatch();
+            QRhiResourceUpdateBatch *batch = rhi->nextResourceUpdateBatch();
             if (!batch) {
                 state->inFlight.store(false, std::memory_order_release);
                 return;

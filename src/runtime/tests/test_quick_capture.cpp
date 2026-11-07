@@ -692,14 +692,22 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
         return result;
     }
     std::uint64_t servedRequest = 0;
+    const std::uint32_t expectedWidth = static_cast<std::uint32_t>(
+        qRound(window.width() * window.devicePixelRatio()));
+    const std::uint32_t expectedHeight = static_cast<std::uint32_t>(
+        qRound(window.height() * window.devicePixelRatio()));
+    std::uint32_t observedWidth = 0;
+    std::uint32_t observedHeight = 0;
     bool usablePixels = true;
     const bool started = parts.capture->start(
         [&](hyremote::RemoteFrame frame) {
             if (frame.requestId)
                 servedRequest = static_cast<std::uint64_t>(*frame.requestId);
+            observedWidth = frame.geometry.size.width;
+            observedHeight = frame.geometry.size.height;
             usablePixels = usablePixels && frame.storage != nullptr
-                && frame.geometry.size.width == 1920U
-                && frame.geometry.size.height == 1080U;
+                && observedWidth == expectedWidth
+                && observedHeight == expectedHeight;
         },
         [&](const hyremote::CaptureEvent &) {});
     CHECK(started);
@@ -738,6 +746,16 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
         pilotNativeHits.load(std::memory_order_acquire) - beforeHits;
     result.ok = usablePixels && result.frames == requestedFrames
         && result.cpuMs >= 0.0 && result.wallMs > 0.0;
+    std::cout << "BENCH_DIAGNOSTIC case=" << (nativeOptIn ? "native" : "public")
+              << " requested=1920x1080"
+              << " logical=" << window.width() << 'x' << window.height()
+              << " dpr=" << window.devicePixelRatio()
+              << " expected=" << expectedWidth << 'x' << expectedHeight
+              << " observed=" << observedWidth << 'x' << observedHeight
+              << " usable=" << (usablePixels ? 1 : 0)
+              << " frames=" << result.frames
+              << " cpu_ms=" << result.cpuMs << " wall_ms=" << result.wallMs
+              << " native_hits=" << result.actualNativeFrames << '\n';
     CHECK(result.ok);
     if (nativeOptIn)
         CHECK(result.actualNativeFrames > 0);
