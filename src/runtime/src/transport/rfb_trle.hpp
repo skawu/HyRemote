@@ -9,6 +9,7 @@
 #include <limits>
 
 #include "hyremote/core/frame.hpp"
+#include "rfb_pixel_policy.hpp"
 
 namespace HyRemote::detail {
 
@@ -19,20 +20,6 @@ inline std::uint32_t rfbRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b) noex
 {
     return (static_cast<std::uint32_t>(r) << 16U) | (static_cast<std::uint32_t>(g) << 8U)
            | static_cast<std::uint32_t>(b);
-}
-
-// RFB true-colour pixels carry no alpha. V0.3.3's presentation policy is a deterministic black
-// matte: straight-alpha pixels are composited over black, while premultiplied RGB is already
-// black-composited and is passed through unchanged. Opaque pixels are unchanged.
-inline std::uint8_t rfbOpaqueChannel(std::uint8_t channel,
-                                     std::uint8_t alpha,
-                                     hyremote::AlphaMode mode) noexcept
-{
-    if (mode == hyremote::AlphaMode::Straight) {
-        return static_cast<std::uint8_t>((static_cast<std::uint32_t>(channel) * alpha + 127U)
-                                         / 255U);
-    }
-    return channel;
 }
 
 inline void appendNativeCpixel(QByteArray &out, std::uint32_t rgb)
