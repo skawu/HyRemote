@@ -651,8 +651,11 @@ struct PilotBenchResult
     bool ok = false;
     double cpuMs = 0.0;
     double wallMs = 0.0;
+    // Reported on capture->stop(), includes 12 warmup + 48 measured frames.
     int actualNativeFrames = 0;
     int frames = 0;
+    std::uint32_t physicalWidth = 0;
+    std::uint32_t physicalHeight = 0;
     double requestP50Ms = 0.0;
     double requestP95Ms = 0.0;
 };
@@ -771,6 +774,8 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
     }
     const auto wallEnd = std::chrono::steady_clock::now();
     const double cpuEnd = benchmarkProcessCpuMs();
+    result.physicalWidth = observedWidth;
+    result.physicalHeight = observedHeight;
     result.wallMs = std::chrono::duration<double, std::milli>(wallEnd - wallStart).count();
     result.cpuMs = cpuStart < 0.0 || cpuEnd < cpuStart ? -1.0 : cpuEnd - cpuStart;
     timer.stop();
@@ -793,7 +798,7 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
               << " p95_latency_ms=" << result.requestP95Ms << '\n';
     CHECK(result.ok);
     if (nativeOptIn)
-        CHECK(result.actualNativeFrames == result.frames);
+        CHECK(result.actualNativeFrames == result.frames + warmupFrames);
     else
         CHECK(result.actualNativeFrames == 0);
     return result;
@@ -839,12 +844,18 @@ void testQuickCaptureProcessCostAba()
     double sumNativeWall = 0.0;
     double sumPublicA2Wall = 0.0;
     double maxBaselineSpread = 0.0;
-    int nativeHits = 0;
+    int nativeHitsIncludingWarmup = 0;
+    bool resolutionMatched = true;
+    bool exactRequestedResolution = true;
+    const std::uint32_t commonWidth = publicA1.front().physicalWidth;
+    const std::uint32_t commonHeight = publicA1.front().physicalHeight;
     std::vector<double> cpuRatios;
     cpuRatios.reserve(repetitions);
     std::ostringstream output;
     output << std::fixed << std::setprecision(4);
-    output << "BENCH_CONTEXT=HOSTED_WINDOWS_QT6.8.3_D3D11_1080P_SYNTHETIC\n"
+    output << "BENCH_CONTEXT=HOSTED_WINDOWS_QT6.8.3_D3D11_SYNTHETIC\n"
+           << "BENCH_REQUESTED_FRAMEBUFFER=1920x1080\n"
+           << "BENCH_OBSERVED_FRAMEBUFFER=" << commonWidth << 'x' << commonHeight << '\n'
            << "BENCH_DESIGN=3x_BRACKETED_PUBLIC_NATIVE_PUBLIC\n"
            << "BENCH_REPETITIONS=" << repetitions << '\n'
            << "BENCH_FRAME_COUNT_PER_CASE=" << framesPerCase << '\n'
@@ -858,8 +869,18 @@ void testQuickCaptureProcessCostAba()
         const double ratio = publicCpu > 0.0 ? nativeCpu / publicCpu : -1.0;
         const double spread = publicCpu > 0.0
             ? std::abs(a.cpuMs - z.cpuMs) / framesPerCase / publicCpu : -1.0;
-        CHECK(n.actualNativeFrames == framesPerCase);
+        // qInfo/native publication count is emitted on capture stop, so
+        // the 12 warmup native hits belong to the same total.
+        CHECK(n.actualNativeFrames == framesPerCase + 12);
         CHECK(ratio > 0.0 && spread >= 0.0);
+        for (const PilotBenchResult *sample : {&a, &n, &z}) {
+            resolutionMatched = resolutionMatched
+                && sample->physicalWidth == commonWidth
+                && sample->physicalHeight == commonHeight;
+            exactRequestedResolution = exactRequestedResolution
+                && sample->physicalWidth == 1920U
+                && sample->physicalHeight == 1080U;
+        }
         cpuRatios.push_back(ratio);
         maxBaselineSpread = std::max(maxBaselineSpread, spread);
         sumPublicA1Cpu += a.cpuMs;
@@ -868,7 +889,7 @@ void testQuickCaptureProcessCostAba()
         sumPublicA1Wall += a.wallMs;
         sumNativeWall += n.wallMs;
         sumPublicA2Wall += z.wallMs;
-        nativeHits += n.actualNativeFrames;
+        nativeHitsIncludingWarmup += n.actualNativeFrames;
         output << "BENCH_CYCLE_" << (i + 1)
                << "_PUBLIC_A1_CPU_MS=" << a.cpuMs << '\n'
                << "BENCH_CYCLE_" << (i + 1)
@@ -891,7 +912,8 @@ void testQuickCaptureProcessCostAba()
     const double publicCpuPerFrame =
         (sumPublicA1Cpu + sumPublicA2Cpu) / (2.0 * repetitions * framesPerCase);
     const double nativeCpuPerFrame = sumNativeCpu / (repetitions * framesPerCase);
-    const bool stableReference = maxBaselineSpread <= 0.15;
+    const bool stableReference = maxBaselineSpread <= 0.15
+                                 && resolutionMatched;
     const bool consistentImprovement = std::all_of(
         cpuRatios.begin(), cpuRatios.end(), [](double ratio) { return ratio < 0.95; });
     output << "PUBLIC_A1_TOTAL_CPU_MS=" << sumPublicA1Cpu << '\n'
@@ -900,7 +922,13 @@ void testQuickCaptureProcessCostAba()
            << "PUBLIC_A1_TOTAL_WALL_MS=" << sumPublicA1Wall << '\n'
            << "NATIVE_TOTAL_WALL_MS=" << sumNativeWall << '\n'
            << "PUBLIC_A2_TOTAL_WALL_MS=" << sumPublicA2Wall << '\n'
-           << "NATIVE_MEASURED_HITS=" << nativeHits << '\n'
+           << "NATIVE_TOTAL_HITS_INCLUDING_WARMUP=" << nativeHitsIncludingWarmup << '\n'
+           << "NATIVE_MEASURED_HITS="
+           << (nativeHitsIncludingWarmup - repetitions * 12) << '\n'
+           << "BENCH_RESOLUTION_MATCHED_ACROSS_CASES="
+           << (resolutionMatched ? "YES" : "NO") << '\n'
+           << "BENCH_ACTUAL_1080P="
+           << (exactRequestedResolution ? "YES" : "NO") << '\n'
            << "PUBLIC_ABA_CPU_MS_PER_FRAME=" << publicCpuPerFrame << '\n'
            << "NATIVE_CPU_MS_PER_FRAME=" << nativeCpuPerFrame << '\n'
            << "CPU_RATIO_MEDIAN_OF_BRACKETED_CYCLES=" << medianRatio << '\n'
@@ -911,7 +939,7 @@ void testQuickCaptureProcessCostAba()
                                           : "UNSTABLE_BASELINE") << '\n'
            << "BENCH_PERFORMANCE_SIGNAL="
            << (stableReference && consistentImprovement
-                   ? "REPEATED_HOSTED_GAIN_ONLY"
+                   ? "REPEATED_HOSTED_GAIN_AT_OBSERVED_RESOLUTION_ONLY"
                    : "INSUFFICIENT_FOR_GAIN_CLAIM") << '\n'
            << "BENCH_QUALIFICATION=ADVISORY_NOT_FIELD_PROOF\n"
            << "BENCH_RELEASE_GATE=NOT_QUALIFIED\n";
