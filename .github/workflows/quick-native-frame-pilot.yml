@@ -62,7 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           QT_BIN="$(cygpath -u "$QT_PREFIX/bin")"
-          export PATH="$QT_BIN:$PATH"
+          RUNTIME_BIN="$(cygpath -u "$(pwd)/build-quick-native/runtime")"
+          CORE_BIN="$(cygpath -u "$(pwd)/build-quick-native/core")"
+          export PATH="$RUNTIME_BIN:$CORE_BIN:$QT_BIN:$PATH"
           export HYREMOTE_QUICK_NATIVE_FRAME=1
           ctest --test-dir build-quick-native --output-on-failure \
             -R '^hyremote-quick-capture-test$' --timeout 150
