@@ -629,6 +629,7 @@ hyremote_label_test_family("integration;widgets;fast"
 hyremote_label_test_family("integration;quick;fast"
     hyremote-quick-image-storage-test
     hyremote-quick-capture-test
+    hyremote-quick-native-frame-pilot-test
     hyremote-quick-capture-forced-dpr-test
     hyremote-quick-input-routing-test
     hyremote-quick-input-backpressure-test

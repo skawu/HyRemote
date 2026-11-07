@@ -80,6 +80,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-rfb-input-preflight-test` | Widgets + VNC | Production RFB pointer facts reach the shared Qt window-system ingress; Qt owns interval/distance double-click classification. |
 | `hyremote-quick-image-storage-test` | Quick | #609 A1: immutable QImage-backed FrameStorage; verifies exact RGBA premultiplied format admission, implicit sharing without full-frame copy, safe source release, const cross-thread read and alpha/stride contract. Failure invalidates Qt Quick zero-extra-copy frame lifetime. |
 | `hyremote-quick-capture-test` | Quick | Ordinary Qt Quick capture/lifetime/resize/target-loss contract. |
+| `hyremote-quick-native-frame-pilot-test` | Quick, Qt 6.8.3 private/D3D11 (experimental only) | Conditional Windows exact-Kit real-RHI opt-in: same Quick pixel/lifetime regression with mandatory actual QRhi native frame publication; registration is absent for normal builds. Never use a software-rendered Quick test or a fallback-only PASS as native performance evidence. |
 | `hyremote-quick-capture-forced-dpr-test` | Quick | Executes the same Quick capture contract at deterministic DPR=1.5/software backend. Closes TG-002. |
 | `hyremote-quick-capture-dpr2-test` | Quick | Executes the same Quick capture and cursor-coordinate contract at deterministic DPR=2/software backend. |
 | `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |
