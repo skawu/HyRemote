@@ -47,6 +47,8 @@ public:
         m_viewers = 0;
         m_bootstrapFrameQueued = false;
         m_deliveryBackpressured = false;
+        m_noViewerUpdateDemand = false;
+        m_nextNoDemandProbe = {};
         m_backpressureEscape = false;
         resetIdleLocked();
     }
@@ -102,11 +104,21 @@ public:
     // It is a hint to stop expensive captures while every Normal viewer is busy
     // draining an already encoded framebuffer. New viewers and real remote input
     // may each escape it once to preserve first-frame/input responsiveness.
-    void noteDeliveryBackpressure(bool blocked)
+    void noteDeliveryBackpressure(bool blocked, bool noViewerUpdateDemand = false)
     {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_deliveryBackpressured = blocked;
+            // A Viewer that has no outstanding RFB update request may resume
+            // later without sending a second request. Keep a bounded periodic
+            // freshness probe in that state. When Qt's socket/encoder is busy,
+            // no probe is useful: the already queued output must drain first.
+            const bool noDemand = blocked && noViewerUpdateDemand;
+            if (noDemand && !m_noViewerUpdateDemand)
+                m_nextNoDemandProbe = Clock::now() + kStaticProbeInterval;
+            if (!noDemand)
+                m_nextNoDemandProbe = {};
+            m_noViewerUpdateDemand = noDemand;
             if (!blocked)
                 m_backpressureEscape = false;
         }
@@ -156,7 +168,16 @@ public:
             }
             if (m_deliveryBackpressured) {
                 if (!m_backpressureEscape) {
-                    m_changed.wait(lock);
+                    if (m_noViewerUpdateDemand) {
+                        const auto now = Clock::now();
+                        if (now >= m_nextNoDemandProbe) {
+                            m_nextNoDemandProbe = now + kStaticProbeInterval;
+                            return true; // bound stale cached pixels for later requests
+                        }
+                        m_changed.wait_until(lock, m_nextNoDemandProbe);
+                    } else {
+                        m_changed.wait(lock); // encoding/network output cannot consume more
+                    }
                     continue;
                 }
                 m_backpressureEscape = false; // at most one extra frame per input/join event
@@ -188,6 +209,8 @@ public:
             m_stopped = true;
             m_viewers = 0;
             m_deliveryBackpressured = false;
+            m_noViewerUpdateDemand = false;
+            m_nextNoDemandProbe = {};
             m_backpressureEscape = false;
             resetIdleLocked();
         }
@@ -210,6 +233,8 @@ private:
     Clock::time_point m_nextStaticProbe{};
     bool m_bootstrapFrameQueued = false;
     bool m_deliveryBackpressured = false;
+    bool m_noViewerUpdateDemand = false;
+    Clock::time_point m_nextNoDemandProbe{};
     bool m_backpressureEscape = false;
     bool m_stopped = true;
 #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)

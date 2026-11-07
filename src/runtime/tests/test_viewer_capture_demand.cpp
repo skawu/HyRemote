@@ -177,7 +177,28 @@ int main()
         return 10;
     gate.stop();
 
+    // A client that is not pulling must not consume 60fps captures forever,
+    // but a later single full refresh must not be served an arbitrarily old
+    // source. Check the independent 250ms fallback without involving Qt timers.
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true, true);
+    if (!check(gate.waitForViewer(), "first no-demand Viewer bootstrap lost"))
+        return 11;
+    std::promise<bool> idleProbeCompletion;
+    auto idleProbeFuture = idleProbeCompletion.get_future();
+    std::thread idleProbe([&] { idleProbeCompletion.set_value(gate.waitForViewer()); });
+    const bool probeFired = idleProbeFuture.wait_for(800ms) == std::future_status::ready;
+    if (!probeFired)
+        gate.stop();
+    idleProbe.join();
+    if (!check(probeFired && idleProbeFuture.get(),
+               "no-request Viewer freshness probe exceeded its bounded interval"))
+        return 12;
+    gate.stop();
+
     std::cout << "PASS 250ms bounded probe, remote input prompt wake, "
-                 "disconnect/reconnect, delivery backpressure, and stop\n";
+                 "disconnect/reconnect, delivery backpressure, no-demand freshness and stop\n";
     return 0;
 }

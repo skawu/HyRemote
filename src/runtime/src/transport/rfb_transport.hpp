@@ -74,7 +74,7 @@ struct RfbSecurityConfig
     // viewers with demand are currently encoding / draining queued bytes.
     // Qt queued bytes are NOT a kernel ACK, network rate or Viewer paint.
     // Standalone/custom transports leave this unset and retain their pacing.
-    std::function<void(bool blocked)> frameBackpressureObserver;
+    std::function<void(bool blocked, bool noViewerUpdateDemand)> frameBackpressureObserver;
     // A Normal viewer's explicit non-incremental FBU request may warrant a
     // fresh source capture even if its previous network output is still queued.
     // This remains Runtime-private; standalone transports need no callback.

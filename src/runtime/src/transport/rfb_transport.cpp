@@ -529,29 +529,29 @@ public:
             return;
         bool haveNormalViewer = false;
         bool anyReadyForFreshFrame = false;
+        bool allNoDemandAndDrained = true;
         for (const auto &entry : m_clients) {
             const ClientState &client = *entry.second;
             if (client.phase != ClientPhase::Normal || !client.socket)
                 continue;
             haveNormalViewer = true;
-            // RFB is client-pull unless ContinuousUpdates has armed a synthetic
-            // request. With no outstanding request, producing 60fps captures
-            // cannot deliver anything to this viewer. If the viewer is ready,
-            // a synchronous encoder or Qt's queued bytes still prevent another
-            // picture from being consumed. At least one ready viewer keeps
-            // shared capture active; one slow peer must not stall a fast peer.
-            if (client.delivery.hasOutstandingRequest()
-                && client.socket != m_encodingSocket
-                && client.socket->bytesToWrite() == 0) {
+            const bool readyToConsume =
+                client.socket != m_encodingSocket && client.socket->bytesToWrite() == 0;
+            const bool requested = client.delivery.hasOutstandingRequest();
+            if (requested || !readyToConsume)
+                allNoDemandAndDrained = false;
+            // One fast requesting viewer keeps shared capture active even if
+            // other viewers are still decoding/receiving their prior update.
+            if (requested && readyToConsume)
                 anyReadyForFreshFrame = true;
-                break;
-            }
         }
         const bool blocked = haveNormalViewer && !anyReadyForFreshFrame;
-        if (blocked == m_backpressureReported)
+        const bool noDemand = blocked && allNoDemandAndDrained;
+        if (blocked == m_backpressureReported && noDemand == m_noDemandReported)
             return;
         m_backpressureReported = blocked;
-        m_security.frameBackpressureObserver(blocked);
+        m_noDemandReported = noDemand;
+        m_security.frameBackpressureObserver(blocked, noDemand);
     }
 
     void releaseIdleFrameCaches()
@@ -1940,6 +1940,7 @@ private:
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
     bool m_backpressureReported = false;
+    bool m_noDemandReported = false;
     QTcpSocket *m_encodingSocket = nullptr; // RFB worker-thread only, never retained
 };
 
