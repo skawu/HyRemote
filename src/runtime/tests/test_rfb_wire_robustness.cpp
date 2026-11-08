@@ -3762,6 +3762,52 @@ void runDeliveryProfile(const QString &outputPath)
               << outputPath.toStdString() << '\n';
 }
 
+// An over-capacity sparse pending set may contain overlapping bounding boxes.
+// When a Viewer consumes the entire selected update, commitDelivered must
+// remove ALL pending change, not resurrect an earlier cut because an
+// intermediate subtraction re-applied the lossy 64-rectangle bound.
+// A 200-region workload is deliberately kept below the 25% large-paint policy
+// so the test exercises many distinct cuts instead of one full-page clear.
+void testSparseDeliveredCutsDoNotResurrectPendingDamage()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    constexpr RfbRect viewport{0, 0, 3840, 2160};
+    std::vector<RfbRect> patches;
+    patches.reserve(200U);
+    HyRemote::detail::RfbUpdateState viewer;
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 20; ++x) {
+            const RfbRect rect{x * 192, y * 192, 16, 16};
+            patches.push_back(rect);
+            RfbDamageRegion delta;
+            delta.add(rect);
+            viewer.accumulate(delta);
+        }
+    }
+    CHECK(patches.size() == 200U);
+    viewer.request(true, viewport);
+    const auto selected = viewer.selectEligible();
+    CHECK(selected.has_value());
+    if (!selected)
+        return;
+    CHECK(selected->size() > 1U);
+    CHECK(selected->size() <= HyRemote::detail::kRfbMaxDamageRects);
+    for (const RfbRect &tile : patches) {
+        CHECK(std::any_of(selected->rects().begin(), selected->rects().end(),
+                          [&tile](const RfbRect &box) {
+                              return HyRemote::detail::containsRfbRect(box, tile);
+                          }));
+    }
+    viewer.commitDelivered(*selected);
+    CHECK(!viewer.hasPendingDamage());
+    CHECK(!viewer.hasOutstandingRequest());
+    // No new frame: a fresh incremental FBU must not re-send the same pixels.
+    viewer.request(true, viewport);
+    CHECK(!viewer.selectEligible().has_value());
+    viewer.cancelRequest();
+}
+
 void testPendingDamageCoalescesAtDelivery()
 {
     HyRemote::detail::RfbUpdateState state;
@@ -4602,6 +4648,7 @@ int main(int argc, char **argv)
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
+    testSparseDeliveredCutsDoNotResurrectPendingDamage();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
     testExactTileUnionPreventsSparseFullPageInflation();
