@@ -68,7 +68,7 @@ def main():
     close.argtypes = [wintypes.HANDLE]
     close.restype = wintypes.BOOL
 
-    handle = open_process(0x1000, False, args.pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    handle = open_process(0x1000 | 0x00100000, False, args.pid)  # QUERY_LIMITED | SYNCHRONIZE
     require(handle, f"Cannot open PID {args.pid} for process CPU timing")
 
     def read_cpu():
@@ -81,6 +81,7 @@ def main():
         return ns_filetime(kernel) + ns_filetime(user), ns_filetime(created)
 
     try:
+        started_at = timestamp()
         start_cpu, created_stamp = read_cpu()
         start_ns = time.perf_counter_ns()
         old_ns, old_cpu = start_ns, start_cpu
@@ -114,7 +115,7 @@ def main():
             "wall_cpu_clock": "QueryPerformanceCounter/Python perf_counter_ns",
             "process_cpu_clock": "GetProcessTimes(kernel+user)",
             "cpu_pct_one_core": "100 percent is one logical core equivalent",
-            "started_utc": timestamp(),
+            "started_utc": started_at,
             "duration_measured_s": (old_ns - start_ns) / 1e9,
             "samples": samples,
             "cpu_mean_pct_one_core": statistics.mean(values),
