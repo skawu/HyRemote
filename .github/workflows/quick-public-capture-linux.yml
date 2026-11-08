@@ -9,6 +9,9 @@ on:
     paths:
       - .github/workflows/quick-public-capture-linux.yml
       - src/runtime/src/quick/**
+      - src/runtime/src/detail/perf_probe.hpp
+      - src/runtime/tests/test_cpu_probe_linux_clock.cpp
+      - tools/perf/aggregate_cpu_probe.py
       - src/runtime/src/detail/watermark_frame_decorator.cpp
       - src/runtime/tests/test_watermark_frame_decorator.cpp
       - src/runtime/tests/test_quick_capture.cpp
@@ -20,9 +23,13 @@ permissions:
 
 jobs:
   linux-quick-public-grab:
-    name: Linux x86_64 / Qt 6.8.3 / Quick and watermark
+    name: Linux x86_64 / Qt 6.8.3 / Quick / CPU probe ${{ matrix.cpu_probe }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        cpu_probe: [OFF, ON]
     steps:
       - uses: actions/checkout@v4
 
@@ -59,22 +66,23 @@ jobs:
             --mode=runtime \
             --qt-prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64" \
             --build-type=Release \
-            --build-dir=build-quick-public-linux \
+            --build-dir=build-quick-public-linux-${{ matrix.cpu_probe }} \
             --tests --run-tests --no-examples \
             --xvfb --clean -j4 \
             "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
-            "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator)-test$" \
+            "--cmake=HYREMOTE_ENABLE_CPU_PROBE=${{ matrix.cpu_probe }}" \
+            "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator|linux-cpu-probe)-test$" \
             "--env=QT_QUICK_BACKEND=software"
 
       - name: Verify public capture on a real OpenGL scenegraph (Mesa/Xvfb)
         shell: bash
         run: |
           set -euo pipefail
-          test -x build-quick-public-linux/runtime/tests/hyremote-quick-capture-test
+          test -x build-quick-public-linux-${{ matrix.cpu_probe }}/runtime/tests/hyremote-quick-capture-test
           xvfb-run -a -s "-screen 0 1920x1080x24" env \
             -u QT_QUICK_BACKEND \
             QT_QPA_PLATFORM=xcb \
             QSG_RHI_BACKEND=opengl \
             LIBGL_ALWAYS_SOFTWARE=1 \
             HYREMOTE_EXPECT_QUICK_OPENGL=1 \
-            ./build-quick-public-linux/runtime/tests/hyremote-quick-capture-test
+            ./build-quick-public-linux-${{ matrix.cpu_probe }}/runtime/tests/hyremote-quick-capture-test
