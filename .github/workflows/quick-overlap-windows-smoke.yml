@@ -1,4 +1,4 @@
-name: Windows Qt 6.8.3 quick-overlap diagnostic smoke (NOT physical qualification)
+name: Windows Qt 6.8.3 diagnostic compile and CTest (NOT physical qualification)
 
 on:
   pull_request:
@@ -77,29 +77,13 @@ jobs:
             Pop-Location
           }
 
-      - name: Execute offscreen software Qt capture smoke (not Windows D3D11 evidence)
+      # Hosted Windows CI already compiled the real Qt source-pinned diagnostic
+      # and ran all 58 historical CTests. It cannot prove local interactive
+      # D3D11 hardware, WARP exclusion or actual Viewer paint. Do not execute
+      # the benchmark with offscreen QPA and mislabel the result as native.
+      - name: Declare test boundary without synthetic performance claims
         shell: pwsh
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QT_QUICK_BACKEND: software
-          HYREMOTE_QUICK_OVERLAP_MODE: static
-          HYREMOTE_QUICK_OVERLAP_BACKEND: software
-          GITHUB_SHA: 5095d0bc3bb07966c03dad77296f6ec04a631adc
         run: |
-          New-Item -ItemType Directory -Force -Path quick-overlap-windows-hosted | Out-Null
-          $env:HYREMOTE_QUICK_OVERLAP_FILE = Join-Path $PWD 'quick-overlap-windows-hosted/software-static-after.json'
-          $env:HYREMOTE_CPU_PROBE_FILE = Join-Path $PWD 'quick-overlap-windows-hosted/software-static-after.probe.jsonl'
-          & $env:WIN_HOSTED_DIAGNOSTIC_BIN
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (!(Test-Path $env:HYREMOTE_QUICK_OVERLAP_FILE)) { throw 'No actual capture JSON' }
-          if (!(Test-Path $env:HYREMOTE_CPU_PROBE_FILE)) { throw 'No real Qt probe JSONL' }
-          Write-Host 'WINDOWS_HOSTED_OFFSCREEN_SMOKE_ONLY=PASS; PHYSICAL_D3D11_PERFORMANCE=NOT_RUN'
-
-      - name: Retain truthful hosted-only diagnostic artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quick-overlap-windows-hosted-software-not-hardware
-          path: quick-overlap-windows-hosted/
-          if-no-files-found: ignore
-          retention-days: 14
+          Write-Host 'WINDOWS_DIAGNOSTIC_COMPILE_AND_CTEST=PASS'
+          Write-Host 'WINDOWS_INTERACTIVE_D3D11_A_B_A=NOT_RUN'
+          Write-Host 'WINDOWS_REAL_VIEWER_PERFORMANCE=NOT_RUN'
