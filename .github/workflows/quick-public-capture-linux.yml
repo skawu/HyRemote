@@ -12,6 +12,7 @@ on:
       - src/runtime/src/detail/perf_probe.hpp
       - src/runtime/tests/test_cpu_probe_linux_clock.cpp
       - tools/perf/aggregate_cpu_probe.py
+      - tools/perf/assess_quick_public_profile.py
       - src/runtime/src/detail/watermark_frame_decorator.cpp
       - src/runtime/tests/test_watermark_frame_decorator.cpp
       - src/runtime/tests/test_quick_capture.cpp
@@ -86,3 +87,50 @@ jobs:
             LIBGL_ALWAYS_SOFTWARE=1 \
             HYREMOTE_EXPECT_QUICK_OPENGL=1 \
             ./build-quick-public-linux-${{ matrix.cpu_probe }}/runtime/tests/hyremote-quick-capture-test
+
+      - name: Qualify true 1080p PUBLIC capture CPU and A1 / page-change / A2 drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/perf/assess_quick_public_profile.py --self-test
+          bin="./build-quick-public-linux-${{ matrix.cpu_probe }}/runtime/tests/hyremote-quick-capture-test"
+          test -x "$bin"
+          stamp="$(git rev-parse HEAD)"
+          profile_dir="$PWD/build-quick-public-linux-${{ matrix.cpu_probe }}"
+          xvfb-run -a -s "-screen 0 1920x1080x24" env \
+            QT_QPA_PLATFORM=xcb \
+            QT_QUICK_BACKEND=software \
+            HYREMOTE_QUICK_PUBLIC_PROFILE=1 \
+            HYREMOTE_PUBLIC_PROFILE_EXPECT_BACKEND=software \
+            HYREMOTE_EXPECT_PHYSICAL_1080P=1 \
+            HYREMOTE_PUBLIC_PROFILE_PROBE_MODE="${{ matrix.cpu_probe }}" \
+            HYREMOTE_QUICK_PUBLIC_PROFILE_FILE="$profile_dir/public-quick-software.json" \
+            GITHUB_SHA="$stamp" \
+            "$bin"
+          python tools/perf/assess_quick_public_profile.py \
+            --expected-backend software "$profile_dir/public-quick-software.json"
+          xvfb-run -a -s "-screen 0 1920x1080x24" env \
+            -u QT_QUICK_BACKEND \
+            QT_QPA_PLATFORM=xcb \
+            QSG_RHI_BACKEND=opengl \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            HYREMOTE_QUICK_PUBLIC_PROFILE=1 \
+            HYREMOTE_PUBLIC_PROFILE_EXPECT_BACKEND=opengl \
+            HYREMOTE_EXPECT_PHYSICAL_1080P=1 \
+            HYREMOTE_PUBLIC_PROFILE_PROBE_MODE="${{ matrix.cpu_probe }}" \
+            HYREMOTE_QUICK_PUBLIC_PROFILE_FILE="$profile_dir/public-quick-opengl.json" \
+            GITHUB_SHA="$stamp" \
+            "$bin"
+          python tools/perf/assess_quick_public_profile.py \
+            --expected-backend opengl "$profile_dir/public-quick-opengl.json"
+
+      - name: Preserve synthetic, source-stamped public capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt683-public-grab-${{ matrix.cpu_probe }}
+          path: |
+            build-quick-public-linux-${{ matrix.cpu_probe }}/public-quick-software.json
+            build-quick-public-linux-${{ matrix.cpu_probe }}/public-quick-opengl.json
+          if-no-files-found: ignore
+          retention-days: 14
