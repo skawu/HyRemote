@@ -2,6 +2,7 @@
 
 #include "hyremote/core/storage.hpp"
 #include "watermark_compositor.hpp"
+#include "perf_probe.hpp"
 
 #include <QByteArray>
 
@@ -174,12 +175,21 @@ RfbFrameDecorator makeWatermarkFrameDecorator(const WatermarkPolicy &policy)
                 // of replaying an old RemoteFrame as a new completion.
                 decorated = source;
                 decorated.storage = previousDecorated;
+                HYREMOTE_P1_COUNT(WatermarkReuse);
                 error.clear();
                 return true;
             }
         }
 
-        if (!decorate(policy, source, decorated, error)) {
+        bool composed = false;
+        {
+            // CPU-clock duration includes source copy, Qt painter and
+            // immutable storage wrapping. Failed paint still costs CPU.
+            // This scope excludes the cache hit path entirely.
+            HYREMOTE_P1_SCOPE(WatermarkCompose);
+            composed = decorate(policy, source, decorated, error);
+        }
+        if (!composed) {
             cache->ready = false;
             cache->source.reset();
             cache->decorated.reset();
