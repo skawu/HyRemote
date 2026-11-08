@@ -41,6 +41,7 @@
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
 #include "quick/quick_capture_backend.hpp"
+#include "quick/quick_capture_single_flight.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -456,6 +457,156 @@ void testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels()
         }
     }
     CHECK(events == 0);
+    components.capture->stop();
+}
+
+// The single-flight admission contract is independent of operating system,
+// Qt Quick's rendering backend or a particular QQuickItemGrabResult timing.
+// This model test fails if an in-flight batch accidentally becomes eligible
+// for another grab when a later Core request is admitted.
+void testQuickSingleFlightDispatchPolicy()
+{
+    HyRemote::detail::QuickCaptureSingleFlight gate;
+    CHECK(gate.needsDispatch());
+    gate.dispatchPosted();
+    CHECK(!gate.needsDispatch());
+    CHECK(gate.beginDispatchedGrab());
+    CHECK(gate.grabInProgress());
+    // The newer request may be queued but must NOT submit a second grab.
+    CHECK(!gate.needsDispatch());
+    gate.grabCompleted();
+    CHECK(!gate.grabInProgress());
+    CHECK(gate.needsDispatch());
+    gate.dispatchPosted();
+    CHECK(gate.beginDispatchedGrab());
+    CHECK(!gate.needsDispatch());
+    // Stop / restart invalidates both the old dispatch and active grab.
+    gate.reset();
+    CHECK(gate.needsDispatch());
+    CHECK(!gate.grabInProgress());
+}
+
+// A later request in a different GUI turn must get a NEW Qt scene capture,
+// but may not overtake the earlier asynchronous result. The old adapter
+// began multiple offscreen grabs concurrently; scene/driver readiness could
+// reorder completions and publish an older page after a newer page.
+void testQuickDeferredRequestsKeepOrderAndFreshPixels()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+    content.setStage(0);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 0; }));
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> frames;
+    int events = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &) { ++events; }));
+
+    const auto firstTime = hyremote::Clock::now();
+    CHECK(components.capture->requestFrame({811U, firstTime}));
+    bool queuedSecondAccepted = false;
+    const auto secondTime = hyremote::Clock::now();
+    // The first GUI-dispatch event was queued BEFORE this callback. Thus the
+    // second request is admitted in a distinct GUI turn while the first
+    // grab may still be waiting for its asynchronous ready signal.
+    CHECK(QMetaObject::invokeMethod(
+        QCoreApplication::instance(), [&] {
+            content.setStage(2);
+            queuedSecondAccepted = components.capture->requestFrame(
+                {812U, secondTime});
+        }, Qt::QueuedConnection));
+    CHECK(pumpUntil([&] { return frames.size() == 2U; }, 600));
+    CHECK(queuedSecondAccepted);
+    CHECK(events == 0);
+    if (frames.size() == 2U) {
+        CHECK(frames[0].requestId && *frames[0].requestId == 811U);
+        CHECK(frames[1].requestId && *frames[1].requestId == 812U);
+        CHECK(frames[0].timing.requestTime
+              && *frames[0].timing.requestTime == firstTime);
+        CHECK(frames[1].timing.requestTime
+              && *frames[1].timing.requestTime == secondTime);
+        CHECK(frames[0].storage && frames[1].storage);
+        CHECK(frames[0].storage != frames[1].storage);
+        const auto leftRgb = [](const hyremote::RemoteFrame &frame) {
+            if (!frame.storage)
+                return std::uint32_t(0);
+            const auto plane = frame.storage->mapRead(0);
+            if (!plane || !plane->data)
+                return std::uint32_t(0);
+            const auto *pixel = reinterpret_cast<const std::uint8_t *>(plane->data)
+                                + (frame.geometry.size.height / 2U) * plane->stride
+                                + (frame.geometry.size.width / 4U) * 4U;
+            return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+                   | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+                   | static_cast<std::uint32_t>(pixel[2]);
+        };
+        // Qt grabToImage is asynchronous: submission at stage A does
+        // not promise an A pixel snapshot. By the time its offscreen render
+        // takes place the application may already have painted stage B.
+        // Either is valid for request 811; request 812, whose NEW grab starts
+        // strictly after 811 completes, must observe the updated B page.
+        const auto firstRgb = leftRgb(frames[0]);
+        CHECK(firstRgb == 0x143ca0U || firstRgb == 0xe11e28U);
+        CHECK(leftRgb(frames[1]) == 0xe11e28U);
+    }
+    components.capture->stop();
+}
+
+// A hidden target exercises the same single-flight gate across bounded
+// retry timers. Requests arriving during the previous retry cannot launch
+// an independent Qt grab or hold a Core slot forever; every accepted request
+// must have a terminal callback, then a visible target must recover.
+void testQuickSingleFlightHiddenRetryQueuesAndDrains()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(96, 64);
+    PaintedProbeItem content(window.contentItem());
+    content.setWidth(96);
+    content.setHeight(64);
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> frames;
+    int unavailableEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &event) {
+            if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable)
+                ++unavailableEvents;
+        }));
+    CHECK(components.capture->requestFrame({820U, hyremote::Clock::now()}));
+    QCoreApplication::processEvents(); // first GUI batch enters bounded retry
+    CHECK(components.capture->requestFrame({821U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return frames.size() == 2U; }, 600));
+    CHECK(unavailableEvents == 2); // each independently retried batch
+    if (frames.size() == 2U) {
+        CHECK(frames[0].requestId && *frames[0].requestId == 820U);
+        CHECK(frames[1].requestId && *frames[1].requestId == 821U);
+        CHECK(!frames[0].storage && !frames[1].storage);
+    }
+    window.show();
+    CHECK(components.capture->requestFrame({822U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return frames.size() == 3U; }, 500));
+    if (frames.size() == 3U) {
+        CHECK(frames[2].requestId && *frames[2].requestId == 822U);
+        CHECK(frames[2].storage != nullptr);
+    }
     components.capture->stop();
 }
 
@@ -1256,6 +1407,9 @@ int main(int argc, char **argv)
     testQuickRendererCapabilityRouting();
     testQuickFactoryAndOwnedFrame();
     testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels();
+    testQuickSingleFlightDispatchPolicy();
+    testQuickDeferredRequestsKeepOrderAndFreshPixels();
+    testQuickSingleFlightHiddenRetryQueuesAndDrains();
     testQuickQueuedRequestsDoNotCrossStopRestart();
     testCompletedQuickGrabsCancelTimeouts();
     testStagedQuickSourceCaptureFollowsPaintedScene();

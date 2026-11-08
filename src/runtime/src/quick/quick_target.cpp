@@ -35,6 +35,7 @@
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_backend.hpp"
+#include "quick/quick_capture_single_flight.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -80,7 +81,7 @@ public:
         // new handlers even if the same CaptureSource is started again.
         ++m_state->generation;
         m_state->pendingRequests.clear();
-        m_state->batchDispatchScheduled = false;
+        m_state->singleFlight.reset();
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
@@ -93,7 +94,7 @@ public:
         m_state->active = false;
         ++m_state->generation;
         m_state->pendingRequests.clear();
-        m_state->batchDispatchScheduled = false;
+        m_state->singleFlight.reset();
         m_state->onFrame = {};
         m_state->onEvent = {};
 
@@ -116,10 +117,11 @@ public:
         // Core can issue two requests before the GUI queue is serviced.
         // One GUI-dispatch batch is one fresh offscreen Qt grab, rather than
         // two independent GPU readbacks for the exact same capture instant.
-        // Requests arriving AFTER this batch starts must create a NEW grab:
-        // never complete a newer page transition from an older in-flight
-        // image. Keep per-request IDs, timestamps and terminal callbacks.
-        if (!state->batchDispatchScheduled) {
+        // Requests arriving AFTER this batch starts must create a NEW grab.
+        // Keep at most one actual Qt grab in progress, rather than launching
+        // another asynchronous offscreen render and risking out-of-order
+        // completions. Keep distinct IDs, timestamps and terminal callbacks.
+        if (state->singleFlight.needsDispatch()) {
             const std::uint64_t generation = state->generation;
             if (!QMetaObject::invokeMethod(
                     dispatcher, [state, generation] {
@@ -127,7 +129,7 @@ public:
                     }, Qt::QueuedConnection)) {
                 return false;
             }
-            state->batchDispatchScheduled = true;
+            state->singleFlight.dispatchPosted();
         }
         state->pendingRequests.push_back(request);
         HYREMOTE_P1_COUNT(QuickAcceptedRequests);
@@ -146,7 +148,7 @@ private:
         std::uint64_t generation = 0;
         std::size_t callbacksInFlight = 0;
         std::vector<hyremote::CaptureRequest> pendingRequests;
-        bool batchDispatchScheduled = false;
+        QuickCaptureSingleFlight singleFlight;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
     };
@@ -184,11 +186,18 @@ private:
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active || state->generation != generation)
                 return;
+            // The slot is acquired before dispatch leaves this lock. New
+            // requests are buffered until this batch finishes (or exhausts
+            // its bounded retry budget), preventing overlapping GPU readbacks
+            // and out-of-order source frame publications.
+            if (!state->singleFlight.beginDispatchedGrab())
+                return;
             requests.swap(state->pendingRequests);
-            state->batchDispatchScheduled = false;
         }
-        if (requests.empty())
+        if (requests.empty()) {
+            finishGrabOnGuiThread(state, generation);
             return;
+        }
 
         HYREMOTE_P1_COUNT(QuickGuiBatches);
         auto batch = std::make_shared<GrabBatch>();
@@ -241,6 +250,38 @@ private:
         publishCallback(state, &State::onEvent, std::move(event), generation);
     }
 
+    static void finishGrabOnGuiThread(const std::shared_ptr<State> &state,
+                                      std::uint64_t generation)
+    {
+        bool dispatchFailure = false;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active || state->generation != generation)
+                return;
+            state->singleFlight.grabCompleted();
+            if (!state->pendingRequests.empty()
+                && state->singleFlight.needsDispatch()) {
+                // Deferred requests are never satisfied from the previous
+                // grab. Schedule one fresh GUI batch only AFTER the previous
+                // callback has fully published every accepted identity.
+                QObject *dispatcher = QCoreApplication::instance();
+                if (dispatcher && QMetaObject::invokeMethod(
+                        dispatcher, [state, generation] {
+                            dispatchQueuedBatchOnGuiThread(state, generation);
+                        }, Qt::QueuedConnection)) {
+                    state->singleFlight.dispatchPosted();
+                } else {
+                    dispatchFailure = true;
+                }
+            }
+        }
+        if (dispatchFailure)
+            publishEvent(state, generation,
+                         hyremote::CaptureEventCode::BackendFailure,
+                         "could not schedule deferred Qt Quick capture batch",
+                         false);
+    }
+
     static void completeUnavailable(const std::shared_ptr<State> &state,
                                     const GrabBatchPtr &batch)
     {
@@ -262,6 +303,7 @@ private:
             publishCallback(state, &State::onFrame, std::move(completion),
                             batch->generation);
         }
+        finishGrabOnGuiThread(state, batch->generation);
     }
 
     static void retryLater(const std::shared_ptr<State> &state,
@@ -399,6 +441,7 @@ private:
             publishCallback(state, &State::onFrame, std::move(frame),
                             batch->generation);
         }
+        finishGrabOnGuiThread(state, batch->generation);
     }
 
     static void attemptGrabOnGuiThread(const std::shared_ptr<State> &state,
