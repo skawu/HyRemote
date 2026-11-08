@@ -65,3 +65,16 @@ jobs:
             "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
             "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator)-test$" \
             "--env=QT_QUICK_BACKEND=software"
+
+      - name: Verify public capture on a real OpenGL scenegraph (Mesa/Xvfb)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x build-quick-public-linux/runtime/tests/hyremote-quick-capture-test
+          xvfb-run -a -s "-screen 0 1920x1080x24" env \
+            -u QT_QUICK_BACKEND \
+            QT_QPA_PLATFORM=xcb \
+            QSG_RHI_BACKEND=opengl \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            HYREMOTE_EXPECT_QUICK_OPENGL=1 \
+            ./build-quick-public-linux/runtime/tests/hyremote-quick-capture-test
